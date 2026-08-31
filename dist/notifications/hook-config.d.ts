@@ -1,8 +1,8 @@
 /**
  * Hook Notification Config Reader
  *
- * Reads omp_config.hook.json for user-customizable message templates.
- * File-based, cached config reader.
+ * Reads omc_config.hook.json for user-customizable message templates.
+ * Follows the OpenClaw config reader pattern (file-based, cached).
  */
 import type { HookNotificationConfig } from "./hook-config-types.js";
 import type { NotificationConfig, NotificationEvent, NotificationPlatform } from "./types.js";

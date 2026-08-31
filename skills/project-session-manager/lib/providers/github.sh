@@ -14,7 +14,7 @@ provider_github_detect_ref() {
 provider_github_fetch_pr() {
     local pr_number="$1"
     local repo="$2"
-    gh pr view "$pr_number" --repo "$repo" --json number,title,author,headRefName,baseRefName,body,url 2>/dev/null
+    gh pr view "$pr_number" --repo "$repo" --json number,title,author,headRefName,baseRefName,body,files,url 2>/dev/null
 }
 
 provider_github_fetch_issue() {

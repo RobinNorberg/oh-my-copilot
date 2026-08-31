@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync } from 'fs';
+import { mkdtempSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { getWorkerHealthReports, checkWorkerHealth } from '../worker-health.js';
@@ -19,13 +19,30 @@ vi.mock('../tmux-session.js', async (importOriginal) => {
 
 describe('worker-health', () => {
   let testDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousOmcStateDir: string | undefined;
   const teamName = 'test-team';
 
   beforeEach(() => {
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousOmcStateDir = process.env.OMC_STATE_DIR;
+
     testDir = mkdtempSync(join(tmpdir(), 'worker-health-test-'));
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
+    delete process.env.OMC_STATE_DIR;
   });
 
   afterEach(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousOmcStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousOmcStateDir;
+
     rmSync(testDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });

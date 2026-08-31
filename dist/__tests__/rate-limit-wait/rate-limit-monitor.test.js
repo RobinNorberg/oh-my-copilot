@@ -7,12 +7,23 @@ import { checkRateLimitStatus, formatTimeUntilReset, formatRateLimitStatus, isRa
 vi.mock('../../hud/usage-api.js', () => ({
     getUsage: vi.fn(),
 }));
+vi.mock('../../hud/stdin.js', () => ({
+    readStdinCache: vi.fn(),
+}));
 import { getUsage } from '../../hud/usage-api.js';
+import { readStdinCache } from '../../hud/stdin.js';
 describe('rate-limit-monitor', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        vi.mocked(readStdinCache).mockReturnValue(null);
     });
     describe('checkRateLimitStatus', () => {
+        it('passes the cached Claude Code version to the usage API', async () => {
+            vi.mocked(readStdinCache).mockReturnValue({ version: '2.1.232' });
+            vi.mocked(getUsage).mockResolvedValue({ rateLimits: null, error: 'no_credentials' });
+            await checkRateLimitStatus();
+            expect(getUsage).toHaveBeenCalledWith({ clientVersion: '2.1.232' });
+        });
         it('should return null when getUsage returns null rateLimits', async () => {
             vi.mocked(getUsage).mockResolvedValue({ rateLimits: null, error: 'no_credentials' });
             const result = await checkRateLimitStatus();

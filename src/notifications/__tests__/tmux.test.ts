@@ -44,7 +44,7 @@ describe("getCurrentTmuxSession", () => {
 
     expect(getCurrentTmuxSession()).toBe("my-detached-session");
     expect(mockTmuxShell).toHaveBeenCalledWith(
-      "list-panes -a -F '#{pane_id} #{session_name}'",
+      ["list-panes", "-a", "-F", "#{pane_id} #{session_name}"],
       expect.objectContaining({ timeout: 3000 })
     );
   });
@@ -67,7 +67,7 @@ describe("getCurrentTmuxSession", () => {
 
     expect(getCurrentTmuxSession()).toBe("fallback-session");
     expect(mockTmuxShell).toHaveBeenCalledWith(
-      "display-message -p '#S'",
+      ["display-message", "-p", "#S"],
       expect.objectContaining({ timeout: 3000 })
     );
   });
@@ -172,7 +172,7 @@ describe("getTeamTmuxSessions", () => {
 
   it("returns sessions matching the team prefix", () => {
     mockTmuxShell.mockReturnValueOnce(
-      "omcp-team-myteam-worker1\nomcp-team-myteam-worker2\nother-session\n"
+      "omc-team-myteam-worker1\nomc-team-myteam-worker2\nother-session\n"
     );
     expect(getTeamTmuxSessions("myteam")).toEqual(["worker1", "worker2"]);
   });

@@ -1,37 +1,59 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, realpathSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { getTeamStatus } from '../team-status.js';
 import { atomicWriteJson } from '../fs-utils.js';
 import { appendOutbox } from '../inbox-outbox.js';
 import { recordTaskUsage } from '../usage-tracker.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 const TEST_TEAM = 'test-team-status';
 let WORK_DIR;
-// Canonical tasks dir: {WORK_DIR}/.omcp/state/team/{TEST_TEAM}/tasks/
+// Canonical tasks dir: {WORK_DIR}/.omg/state/team/{TEST_TEAM}/tasks/
 let TASKS_DIR;
+let previousHome;
+let previousUserProfile;
+let previousOmcStateDir;
 beforeEach(() => {
-    WORK_DIR = join(realpathSync(tmpdir()), `omcp-team-status-test-${Date.now()}`);
-    TASKS_DIR = join(WORK_DIR, '.omcp', 'state', 'team', TEST_TEAM, 'tasks');
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousOmcStateDir = process.env.OMC_STATE_DIR;
+    WORK_DIR = mkdtempSync(join(realpathSync(tmpdir()), 'omc-team-status-test-'));
+    process.env.HOME = WORK_DIR;
+    process.env.USERPROFILE = WORK_DIR;
+    delete process.env.OMC_STATE_DIR;
+    TASKS_DIR = join(WORK_DIR, '.omg', 'state', 'team', TEST_TEAM, 'tasks');
     mkdirSync(TASKS_DIR, { recursive: true });
-    mkdirSync(join(WORK_DIR, '.omcp', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
-    mkdirSync(join(WORK_DIR, '.omcp', 'state'), { recursive: true });
+    mkdirSync(join(WORK_DIR, '.omg', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
+    mkdirSync(join(WORK_DIR, '.omg', 'state'), { recursive: true });
 });
 afterEach(() => {
+    const outboxDir = join(getCopilotConfigDir(), 'teams', TEST_TEAM);
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
+    if (previousOmcStateDir === undefined)
+        delete process.env.OMC_STATE_DIR;
+    else
+        process.env.OMC_STATE_DIR = previousOmcStateDir;
     rmSync(WORK_DIR, { recursive: true, force: true });
-    // Clean up outbox files written to ~/.copilot/teams/ by appendOutbox
-    rmSync(join(getClaudeConfigDir(), 'teams', TEST_TEAM), { recursive: true, force: true });
+    // Clean up outbox files written to ~/.claude/teams/ by appendOutbox
+    rmSync(outboxDir, { recursive: true, force: true });
 });
 function writeWorkerRegistry(workers) {
-    const registryPath = join(WORK_DIR, '.omcp', 'state', 'team-mcp-workers.json');
+    const registryPath = join(WORK_DIR, '.omg', 'state', 'team-mcp-workers.json');
     atomicWriteJson(registryPath, { teamName: TEST_TEAM, workers });
 }
 function writeTask(task) {
     atomicWriteJson(join(TASKS_DIR, `${task.id}.json`), task);
 }
 function writeHeartbeatFile(data) {
-    const hbPath = join(WORK_DIR, '.omcp', 'state', 'team-bridge', TEST_TEAM, `${data.workerName}.heartbeat.json`);
+    const hbPath = join(WORK_DIR, '.omg', 'state', 'team-bridge', TEST_TEAM, `${data.workerName}.heartbeat.json`);
     atomicWriteJson(hbPath, data);
 }
 function makeWorker(name, provider = 'codex') {
@@ -41,7 +63,7 @@ function makeWorker(name, provider = 'codex') {
         agentType: `mcp-${provider}`,
         model: 'test-model',
         joinedAt: Date.now(),
-        tmuxPaneId: `omcp-team-${TEST_TEAM}-${name}`,
+        tmuxPaneId: `omc-team-${TEST_TEAM}-${name}`,
         cwd: WORK_DIR,
         backendType: 'tmux',
         subscriptions: [],

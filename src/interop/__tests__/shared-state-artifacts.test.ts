@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
@@ -15,6 +16,7 @@ describe('shared-state artifact handoff', () => {
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'shared-state-artifacts-'));
+    execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
     initInteropSession('session-1', tempDir);
   });
 

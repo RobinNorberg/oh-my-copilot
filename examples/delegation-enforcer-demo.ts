@@ -81,11 +81,11 @@ console.log('Model value:', (hookResult.modifiedInput as { model?: string }).mod
 console.log('');
 
 // Example 5: Debug mode warning
-console.log('\nExample 5: Debug mode (OMP_DEBUG=true)');
+console.log('\nExample 5: Debug mode (OMC_DEBUG=true)');
 console.log('-------------------------------------');
-console.log('Setting OMP_DEBUG=true to see warnings...\n');
+console.log('Setting OMC_DEBUG=true to see warnings...\n');
 
-process.env.OMP_DEBUG = 'true';
+process.env.OMC_DEBUG = 'true';
 
 const result3 = enforceModel({
   description: 'Test',
@@ -97,12 +97,12 @@ console.log('\nWarning message:', result3.warning);
 console.log('Model injected:', result3.model);
 
 // Clean up
-delete process.env.OMP_DEBUG;
+delete process.env.OMC_DEBUG;
 
 console.log('\n=== Demo Complete ===');
 console.log('\nKey takeaways:');
 console.log('1. Model parameter is auto-injected when not specified');
 console.log('2. Explicit models are always preserved');
 console.log('3. Each agent tier has its own default model');
-console.log('4. Debug warnings only shown when OMP_DEBUG=true');
+console.log('4. Debug warnings only shown when OMC_DEBUG=true');
 console.log('5. Works seamlessly with pre-tool-use hooks');

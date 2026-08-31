@@ -16,14 +16,24 @@ import {
 describe("planning/artifacts", () => {
   let testDir: string;
   let plansDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), "artifacts-test-"));
-    plansDir = join(testDir, ".omc", "plans");
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
+    plansDir = join(testDir, ".omg", "plans");
     mkdirSync(plansDir, { recursive: true });
   });
 
   afterEach(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -126,7 +136,7 @@ describe("planning/artifacts", () => {
 
       expect(result.prdPaths).toHaveLength(2);
       expect(result.prdPaths[0]).toContain(join(".omx", "plans", "prd-zzz.md"));
-      expect(result.prdPaths[1]).toContain(join(".omc", "plans", "prd-aaa.md"));
+      expect(result.prdPaths[1]).toContain(join(".omg", "plans", "prd-aaa.md"));
     });
 
     it("orders timestamped artifacts after legacy names by timestamp", () => {

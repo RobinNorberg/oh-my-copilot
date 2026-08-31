@@ -13,7 +13,7 @@ import { execSync } from 'child_process';
 import { checkPersistentModes } from '../index.js';
 import { DEFAULT_PROMPT_ECHO_MAX_CHARS } from '../../../lib/truncate-prompt.js';
 function writeRalphState(tempDir, sessionId, prompt) {
-    const sessionDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
+    const sessionDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, 'ralph-state.json'), JSON.stringify({
         active: true,

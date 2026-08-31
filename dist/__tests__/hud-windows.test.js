@@ -36,23 +36,30 @@ describe('HUD Windows Compatibility', () => {
         });
     });
     describe('pathToFileURL for Dynamic Import', () => {
-        it('installer HUD script should import pathToFileURL', () => {
+        it('shared HUD wrapper template should import pathToFileURL', () => {
+            // The wrapper text now lives in the shared template (binary-weaving-mountain).
             const templatePath = join(packageRoot, 'scripts', 'lib', 'hud-wrapper-template.txt');
             const content = readFileSync(templatePath, 'utf-8');
-            // Should have pathToFileURL import in the HUD wrapper template
-            expect(content).toContain('pathToFileURL');
+            expect(content).toContain('pathToFileURL } from "node:url"');
         });
-        it('installer HUD script should use pathToFileURL for dev path import', () => {
+        it('shared HUD wrapper template uses pathToFileURL for OMC_PLUGIN_ROOT path import', () => {
+            // The OMC_DEV/devPath branch was deleted; OMC_PLUGIN_ROOT subsumes it.
             const templatePath = join(packageRoot, 'scripts', 'lib', 'hud-wrapper-template.txt');
             const content = readFileSync(templatePath, 'utf-8');
-            // Should use pathToFileURL for resolved HUD path
-            expect(content).toContain('pathToFileURL(resolvedHudPath).href');
+            expect(content).toContain('pathToFileURL(envHudPath).href');
         });
-        it('installer HUD script should use pathToFileURL for plugin path import', () => {
+        it('shared HUD wrapper template uses pathToFileURL for plugin path import', () => {
             const templatePath = join(packageRoot, 'scripts', 'lib', 'hud-wrapper-template.txt');
             const content = readFileSync(templatePath, 'utf-8');
-            // Should use pathToFileURL for resolved HUD path imports
-            expect(content).toContain('pathToFileURL(resolvedHudPath).href');
+            expect(content).toContain('pathToFileURL(pluginPath).href');
+        });
+        it('shared HUD wrapper template uses shell:true only for Windows npm root discovery', () => {
+            const templatePath = join(packageRoot, 'scripts', 'lib', 'hud-wrapper-template.txt');
+            const content = readFileSync(templatePath, 'utf-8');
+            expect(content).toContain('const isWin = process.platform === "win32";');
+            expect(content).toContain('const npmCommand = isWin ? "npm.cmd" : "npm";');
+            expect(content).toContain('shell: isWin');
+            expect(content).not.toContain('shell: true');
         });
         it('pathToFileURL should correctly convert Unix paths', () => {
             const unixPath = '/home/user/test.js';
@@ -68,11 +75,11 @@ describe('HUD Windows Compatibility', () => {
         });
     });
     describe('Numeric Version Sorting', () => {
-        it('installer HUD script should use numeric version sorting', () => {
+        it('shared HUD wrapper template should use semver-aware version sorting', () => {
             const templatePath = join(packageRoot, 'scripts', 'lib', 'hud-wrapper-template.txt');
             const content = readFileSync(templatePath, 'utf-8');
-            // Should use localeCompare with numeric option
-            expect(content).toContain('localeCompare(String(ai), undefined, { numeric: true })');
+            expect(content).toContain('const compareSemverDesc = (a, b) => {');
+            expect(content).toContain('stable (empty pre) wins over any prerelease');
         });
         it('numeric sort should correctly order versions', () => {
             const versions = ['3.5.0', '3.10.0', '3.9.0'];
@@ -118,58 +125,71 @@ describe('HUD Windows Compatibility', () => {
             const cachePath = getPluginCacheBase();
             // Should contain the expected path segments regardless of separator
             const normalized = cachePath.replace(/\\/g, '/');
-            expect(normalized).toContain('plugins/cache/omg/oh-my-copilot');
+            expect(normalized).toContain('plugins/cache/omc/oh-my-copilot');
         });
         it('getPluginCacheBase should use platform-native separators', () => {
             const cachePath = getPluginCacheBase();
             // On Windows: backslashes, on Unix: forward slashes
-            expect(cachePath).toContain(`plugins${sep}cache${sep}omg${sep}oh-my-copilot`);
+            expect(cachePath).toContain(`plugins${sep}cache${sep}omc${sep}oh-my-copilot`);
         });
-        it('getPluginCacheBase should be under copilot config dir', () => {
+        it('getPluginCacheBase should be under claude config dir', () => {
             const cachePath = getPluginCacheBase();
             const configDir = getCopilotConfigDir();
             expect(cachePath.startsWith(configDir)).toBe(true);
         });
-        it('plugin-setup.mjs should use pathToFileURL for dynamic imports', () => {
-            const setupPath = join(packageRoot, 'scripts', 'plugin-setup.mjs');
-            const content = readFileSync(setupPath, 'utf-8');
-            // Should import pathToFileURL
-            expect(content).toContain('pathToFileURL } from "node:url"');
-            // Should use pathToFileURL for the dynamic import
-            expect(content).toContain('pathToFileURL(pluginPath).href');
-        });
-        it('shared HUD wrapper template uses shell:true only for Windows npm root discovery', () => {
+        it('shared HUD wrapper template should use pathToFileURL for dynamic imports', () => {
+            // After binary-weaving-mountain, plugin-setup.mjs writes the wrapper
+            // body sourced from scripts/lib/hud-wrapper-template.txt.
             const templatePath = join(packageRoot, 'scripts', 'lib', 'hud-wrapper-template.txt');
             const content = readFileSync(templatePath, 'utf-8');
-            expect(content).toContain('const isWin = process.platform === "win32";');
-            expect(content).toContain('const npmCommand = isWin ? "npm.cmd" : "npm";');
-            expect(content).toContain('shell: isWin');
-            expect(content).not.toContain('shell: true');
+            expect(content).toContain('pathToFileURL } from "node:url"');
+            expect(content).toContain('pathToFileURL(pluginPath).href');
         });
-        it('plugin-setup.mjs should respect COPILOT_CONFIG_DIR for plugin cache base', () => {
-            const setupPath = join(packageRoot, 'scripts', 'plugin-setup.mjs');
-            const content = readFileSync(setupPath, 'utf-8');
-            // Should use getCopilotConfigDir() which reads COPILOT_CONFIG_DIR internally (#897)
+        it('shared HUD wrapper template should respect COPILOT_CONFIG_DIR for plugin cache base', () => {
+            const templatePath = join(packageRoot, 'scripts', 'lib', 'hud-wrapper-template.txt');
+            const content = readFileSync(templatePath, 'utf-8');
             expect(content).toContain('getCopilotConfigDir()');
-            // Should use join() with configDir for path construction
             expect(content).toContain('join(configDir,');
         });
         it('omc-doctor skill should use cross-platform Node.js commands', () => {
             const doctorPath = join(packageRoot, 'skills', 'omc-doctor', 'SKILL.md');
             const content = readFileSync(doctorPath, 'utf-8');
             // Should NOT use ~ for plugin cache paths in bash commands
-            expect(content).not.toMatch(/ls ~\/\.copilot\/plugins\/cache/);
+            expect(content).not.toMatch(/ls ~\/\.claude\/plugins\/cache/);
             // Should use node -e for cross-platform compatibility
             expect(content).toContain("node -e");
             // Should use path.join for constructing paths
-            expect(content).toContain("p.join(d,'plugins','cache','omg','oh-my-copilot')");
+            expect(content).toContain("p.join(d,'plugins','cache','omc','oh-my-copilot')");
+            expect(content).not.toContain('ls ~/.claude/CLAUDE-*.md');
+            // The companion scan used POSIX `find -maxdepth`, which System32's find.exe
+            // rejects; it now enumerates CLAUDE-*.md through fs like the other checks.
+            expect(content).not.toMatch(/find .*-maxdepth/);
+            expect(content).toContain("n.startsWith('claude-')&&n.endsWith('.md')");
         });
-        // hud skill test removed — skill deleted (Copilot doesn't support custom HUDs)
+        it('hud skill should use cross-platform Node.js commands for plugin detection', () => {
+            const hudPath = join(packageRoot, 'skills', 'hud', 'SKILL.md');
+            const content = readFileSync(hudPath, 'utf-8');
+            // Step 1 and Step 2 should use node -e instead of ls/sort -V
+            expect(content).not.toMatch(/ls ~\/\.claude\/plugins\/cache/);
+            expect(content).not.toMatch(/sort -V/);
+            // Should use node for cross-platform path resolution
+            expect(content).toContain("node -e");
+        });
+        it('hud skill should normalize statusLine command paths to forward slashes', () => {
+            const hudPath = join(packageRoot, 'skills', 'hud', 'SKILL.md');
+            const content = readFileSync(hudPath, 'utf-8');
+            expect(content).toContain(".split(require('path').sep).join('/')");
+            expect(content).toContain('The command path MUST use forward slashes on all platforms');
+            expect(content).toContain('On Windows the path uses forward slashes (not backslashes):');
+            expect(content).toContain('"command": "node C:/Users/username/.copilot/hud/omcp-hud.mjs"');
+            expect(content).not.toContain('"command": "node C:\\Users\\username\\.copilot\\hud\\omcp-hud.mjs"');
+        });
         it('usage-api should use path.join with separate segments', () => {
             const usageApiPath = join(packageRoot, 'src', 'hud', 'usage-api.ts');
             const content = readFileSync(usageApiPath, 'utf-8');
             // Should use join() with separate segments, not forward-slash literals
-            expect(content).toContain("'plugins', 'oh-my-copilot', '.usage-cache.json'");
+            // Provider-specific cache files use template literals with the same join() pattern
+            expect(content).toContain("'plugins', 'oh-my-copilot', `.usage-cache-${source}.json`");
         });
     });
 });

@@ -37,6 +37,31 @@ Detect which provider the user wants based on their request or argument:
 
 ---
 
+## Shared Config Commands
+
+Every provider section reads and writes the same `${COPILOT_CONFIG_DIR:-~/.copilot}/.omc-config.json`.
+These two commands are the only ones you need for that, and both run unchanged in bash,
+zsh, and PowerShell — no jq, no shell-specific redirection.
+
+**READ_NOTIFICATIONS** — print the current `notifications` object, or `NO_CONFIG_FILE`:
+
+```bash
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-config.json');if(f.existsSync(t)===false){console.log('NO_CONFIG_FILE');process.exit(0)}let c={};try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.log('INVALID_CONFIG_FILE');process.exit(0)}console.log(JSON.stringify(c.notifications||{},null,2))"
+```
+
+**MERGE_CONFIG** — deep-merge one JSON patch into the config. It writes through a temp
+file, so a failure can never truncate the user's existing settings, and it refuses to
+touch a config it cannot parse:
+
+```bash
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-config.json');const patch=JSON.parse(process.argv[1]);f.mkdirSync(p.dirname(t),{recursive:true});let c={};if(f.existsSync(t)){try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: existing config is not valid JSON; it was not modified');process.exit(1)}}const merge=(a,b)=>{for(const k of Object.keys(b)){const v=b[k];if(v&&typeof v==='object'&&Array.isArray(v)===false){a[k]=merge(a[k]&&typeof a[k]==='object'?a[k]:{},v)}else{a[k]=v}}return a};merge(c,patch);const tmp=t+'.tmp';f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Updated '+t)" "{\"notifications\":{\"enabled\":true}}"
+```
+
+Replace the trailing JSON argument with the patch for the provider you are configuring.
+Use `null` for any optional value the user declined, exactly as the old jq form did.
+
+---
+
 ## Telegram Setup
 
 Set up Telegram notifications so OMC can message you when sessions end, need input, or complete background tasks.
@@ -47,25 +72,9 @@ This is an interactive, natural-language configuration skill. Walk the user thro
 
 ### Step 1: Detect Existing Configuration
 
-```bash
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
-
-if [ -f "$CONFIG_FILE" ]; then
-  HAS_TELEGRAM=$(jq -r '.notifications.telegram.enabled // false' "$CONFIG_FILE" 2>/dev/null)
-  CHAT_ID=$(jq -r '.notifications.telegram.chatId // empty' "$CONFIG_FILE" 2>/dev/null)
-  PARSE_MODE=$(jq -r '.notifications.telegram.parseMode // "Markdown"' "$CONFIG_FILE" 2>/dev/null)
-
-  if [ "$HAS_TELEGRAM" = "true" ]; then
-    echo "EXISTING_CONFIG=true"
-    echo "CHAT_ID=$CHAT_ID"
-    echo "PARSE_MODE=$PARSE_MODE"
-  else
-    echo "EXISTING_CONFIG=false"
-  fi
-else
-  echo "NO_CONFIG_FILE"
-fi
-```
+Run **READ_NOTIFICATIONS** (see Shared Config Commands). Telegram is already configured
+when the printed object has `telegram.enabled === true`; read `telegram.chatId` and
+`telegram.parseMode` (default `Markdown`) from the same output.
 
 If existing config is found, show the user what's currently configured and ask if they want to update or reconfigure.
 
@@ -116,10 +125,7 @@ The user will type their chat ID in the "Other" field.
 - If invalid, offer to help them find it:
 
 ```bash
-# Help user find their chat ID
-BOT_TOKEN="USER_PROVIDED_TOKEN"
-echo "Fetching recent messages to find your chat ID..."
-curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getUpdates" | jq '.result[-1].message.chat.id // .result[-1].message.from.id // "No messages found - send /start to your bot first"'
+node -e "const token=process.argv[1];console.log('Fetching recent messages to find your chat ID...');fetch('https://api.telegram.org/bot'+token+'/getUpdates').then(r=>r.json()).then(j=>{const last=(j.result||[]).at(-1);const m=last&&last.message;const id=m&&(m.chat&&m.chat.id||m.from&&m.from.id);console.log(id===undefined||id===null?'No messages found - send /start to your bot first':id)}).catch(e=>console.log('Network error: '+e.message))" "BOT_TOKEN"
 ```
 
 ### Step 5: Choose Parse Mode
@@ -150,40 +156,20 @@ Default selection: session-end + ask-user-question.
 
 Read the existing config, merge the new Telegram settings, and write back:
 
-```bash
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
-mkdir -p "$(dirname "$CONFIG_FILE")"
+Run **MERGE_CONFIG** with the values collected from the user as its JSON patch:
 
-if [ -f "$CONFIG_FILE" ]; then
-  EXISTING=$(cat "$CONFIG_FILE")
-else
-  EXISTING='{}'
-fi
-
-# BOT_TOKEN, CHAT_ID, PARSE_MODE are collected from user
-echo "$EXISTING" | jq \
-  --arg token "$BOT_TOKEN" \
-  --arg chatId "$CHAT_ID" \
-  --arg parseMode "$PARSE_MODE" \
-  '.notifications = (.notifications // {enabled: true}) |
-   .notifications.enabled = true |
-   .notifications.telegram = {
-     enabled: true,
-     botToken: $token,
-     chatId: $chatId,
-     parseMode: $parseMode
-   }' > "$CONFIG_FILE"
+```json
+{"notifications":{"enabled":true,"telegram":{"enabled":true,"botToken":"BOT_TOKEN","chatId":"CHAT_ID","parseMode":"PARSE_MODE"}}}
 ```
 
 #### Add event-specific config if user didn't select all events:
 
 For each event NOT selected, disable it:
 
-```bash
-# Example: disable session-start if not selected
-echo "$(cat "$CONFIG_FILE")" | jq \
-  '.notifications.events = (.notifications.events // {}) |
-   .notifications.events["session-start"] = {enabled: false}' > "$CONFIG_FILE"
+Run **MERGE_CONFIG** once with a patch naming each unselected event, for example:
+
+```json
+{"notifications":{"events":{"session-start":{"enabled":false}}}}
 ```
 
 ### Step 8: Test the Configuration
@@ -201,25 +187,7 @@ Use AskUserQuestion:
 #### If testing:
 
 ```bash
-BOT_TOKEN="USER_PROVIDED_TOKEN"
-CHAT_ID="USER_PROVIDED_CHAT_ID"
-PARSE_MODE="Markdown"
-
-RESPONSE=$(curl -s -w "\n%{http_code}" \
-  "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-  -d "chat_id=${CHAT_ID}" \
-  -d "parse_mode=${PARSE_MODE}" \
-  -d "text=OMC test notification - Telegram is configured!")
-
-HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-BODY=$(echo "$RESPONSE" | head -1)
-
-if [ "$HTTP_CODE" = "200" ]; then
-  echo "Test notification sent successfully!"
-else
-  echo "Failed (HTTP $HTTP_CODE):"
-  echo "$BODY" | jq -r '.description // "Unknown error"' 2>/dev/null || echo "$BODY"
-fi
+node -e "const[token,chatId,parseMode]=process.argv.slice(1);fetch('https://api.telegram.org/bot'+token+'/sendMessage',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({chat_id:chatId,parse_mode:parseMode,text:'OMC test notification - Telegram is configured'})}).then(async r=>{const b=await r.text();if(r.ok){console.log('Test notification sent successfully')}else{let m=b;try{m=JSON.parse(b).description||b}catch{};console.log('Failed (HTTP '+r.status+'): '+m)}}).catch(e=>console.log('Network error: '+e.message))" "BOT_TOKEN" "CHAT_ID" "Markdown"
 ```
 
 Report success or failure. Common issues:
@@ -239,7 +207,7 @@ Telegram Notifications Configured!
   Format:     Markdown
   Events:     session-end, ask-user-question
 
-Config saved to: ~/.copilot/.omc-config.json
+Config saved to: ~/.claude/.omc-config.json
 
 You can also set these via environment variables:
   OMC_TELEGRAM_BOT_TOKEN=123456789:ABCdefGHI...
@@ -273,29 +241,9 @@ This is an interactive, natural-language configuration skill. Walk the user thro
 
 ### Step 1: Detect Existing Configuration
 
-```bash
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
-
-if [ -f "$CONFIG_FILE" ]; then
-  # Check for existing discord config
-  HAS_DISCORD=$(jq -r '.notifications.discord.enabled // false' "$CONFIG_FILE" 2>/dev/null)
-  HAS_DISCORD_BOT=$(jq -r '.notifications["discord-bot"].enabled // false' "$CONFIG_FILE" 2>/dev/null)
-  WEBHOOK_URL=$(jq -r '.notifications.discord.webhookUrl // empty' "$CONFIG_FILE" 2>/dev/null)
-  MENTION=$(jq -r '.notifications.discord.mention // empty' "$CONFIG_FILE" 2>/dev/null)
-
-  if [ "$HAS_DISCORD" = "true" ] || [ "$HAS_DISCORD_BOT" = "true" ]; then
-    echo "EXISTING_CONFIG=true"
-    echo "WEBHOOK_CONFIGURED=$HAS_DISCORD"
-    echo "BOT_CONFIGURED=$HAS_DISCORD_BOT"
-    [ -n "$WEBHOOK_URL" ] && echo "WEBHOOK_URL=$WEBHOOK_URL"
-    [ -n "$MENTION" ] && echo "MENTION=$MENTION"
-  else
-    echo "EXISTING_CONFIG=false"
-  fi
-else
-  echo "NO_CONFIG_FILE"
-fi
-```
+Run **READ_NOTIFICATIONS** (see Shared Config Commands). Discord is already configured
+when either `discord.enabled` or `discord-bot.enabled` is `true` in the printed object;
+read `discord.webhookUrl` and `discord.mention` from the same output.
 
 If existing config is found, show the user what's currently configured and ask if they want to update or reconfigure.
 
@@ -384,65 +332,29 @@ Use AskUserQuestion:
 
 Read the existing config, merge the new Discord settings, and write back:
 
-```bash
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
-mkdir -p "$(dirname "$CONFIG_FILE")"
-
-if [ -f "$CONFIG_FILE" ]; then
-  EXISTING=$(cat "$CONFIG_FILE")
-else
-  EXISTING='{}'
-fi
-```
+Run **MERGE_CONFIG** (see Shared Config Commands) with the patch for the method the user
+chose. Send `null` for any optional value the user declined.
 
 #### For Webhook method:
 
-Build the notifications object with the collected values and merge into `.omc-config.json` using jq:
-
-```bash
-# WEBHOOK_URL, MENTION, USERNAME are collected from user
-# EVENTS is the list of enabled events
-
-echo "$EXISTING" | jq \
-  --arg url "$WEBHOOK_URL" \
-  --arg mention "$MENTION" \
-  --arg username "$USERNAME" \
-  '.notifications = (.notifications // {enabled: true}) |
-   .notifications.enabled = true |
-   .notifications.discord = {
-     enabled: true,
-     webhookUrl: $url,
-     mention: (if $mention == "" then null else $mention end),
-     username: (if $username == "" then null else $username end)
-   }' > "$CONFIG_FILE"
+```json
+{"notifications":{"enabled":true,"discord":{"enabled":true,"webhookUrl":"WEBHOOK_URL","mention":"MENTION_OR_NULL","username":"USERNAME_OR_NULL"}}}
 ```
 
 #### For Bot API method:
 
-```bash
-echo "$EXISTING" | jq \
-  --arg token "$BOT_TOKEN" \
-  --arg channel "$CHANNEL_ID" \
-  --arg mention "$MENTION" \
-  '.notifications = (.notifications // {enabled: true}) |
-   .notifications.enabled = true |
-   .notifications["discord-bot"] = {
-     enabled: true,
-     botToken: $token,
-     channelId: $channel,
-     mention: (if $mention == "" then null else $mention end)
-   }' > "$CONFIG_FILE"
+```json
+{"notifications":{"enabled":true,"discord-bot":{"enabled":true,"botToken":"BOT_TOKEN","channelId":"CHANNEL_ID","mention":"MENTION_OR_NULL"}}}
 ```
 
 #### Add event-specific config if user didn't select all events:
 
 For each event NOT selected, disable it:
 
-```bash
-# Example: disable session-start if not selected
-echo "$(cat "$CONFIG_FILE")" | jq \
-  '.notifications.events = (.notifications.events // {}) |
-   .notifications.events["session-start"] = {enabled: false}' > "$CONFIG_FILE"
+Run **MERGE_CONFIG** once with a patch naming each unselected event, for example:
+
+```json
+{"notifications":{"events":{"session-start":{"enabled":false}}}}
 ```
 
 ### Step 8: Test the Configuration
@@ -460,11 +372,7 @@ Use AskUserQuestion:
 #### If testing:
 
 ```bash
-# For webhook:
-curl -s -o /dev/null -w "%{http_code}" \
-  -H "Content-Type: application/json" \
-  -d "{\"content\": \"${MENTION:+$MENTION\\n}OMC test notification - Discord is configured!\"}" \
-  "$WEBHOOK_URL"
+node -e "const[url,mention]=process.argv.slice(1);const text=(mention?mention+'\n':'')+'OMC test notification - Discord is configured';fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({content:text})}).then(async r=>console.log(r.ok?'Test notification sent successfully':'Failed (HTTP '+r.status+'): '+await r.text())).catch(e=>console.log('Network error: '+e.message))" "WEBHOOK_URL" "MENTION_OR_EMPTY"
 ```
 
 Report success or failure. If it fails, help the user debug (check URL, permissions, etc.).
@@ -481,7 +389,7 @@ Discord Notifications Configured!
   Events:   session-end, ask-user-question
   Username: OMC
 
-Config saved to: ~/.copilot/.omc-config.json
+Config saved to: ~/.claude/.omc-config.json
 
 You can also set these via environment variables:
   OMC_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
@@ -523,27 +431,9 @@ This is an interactive, natural-language configuration skill. Walk the user thro
 
 ### Step 1: Detect Existing Configuration
 
-```bash
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
-
-if [ -f "$CONFIG_FILE" ]; then
-  HAS_SLACK=$(jq -r '.notifications.slack.enabled // false' "$CONFIG_FILE" 2>/dev/null)
-  WEBHOOK_URL=$(jq -r '.notifications.slack.webhookUrl // empty' "$CONFIG_FILE" 2>/dev/null)
-  MENTION=$(jq -r '.notifications.slack.mention // empty' "$CONFIG_FILE" 2>/dev/null)
-  CHANNEL=$(jq -r '.notifications.slack.channel // empty' "$CONFIG_FILE" 2>/dev/null)
-
-  if [ "$HAS_SLACK" = "true" ]; then
-    echo "EXISTING_CONFIG=true"
-    [ -n "$WEBHOOK_URL" ] && echo "WEBHOOK_URL=$WEBHOOK_URL"
-    [ -n "$MENTION" ] && echo "MENTION=$MENTION"
-    [ -n "$CHANNEL" ] && echo "CHANNEL=$CHANNEL"
-  else
-    echo "EXISTING_CONFIG=false"
-  fi
-else
-  echo "NO_CONFIG_FILE"
-fi
-```
+Run **READ_NOTIFICATIONS** (see Shared Config Commands). Slack is already configured when
+`slack.enabled` is `true` in the printed object; read `slack.webhookUrl`, `slack.mention`,
+and `slack.channel` from the same output.
 
 If existing config is found, show the user what's currently configured and ask if they want to update or reconfigure.
 
@@ -644,42 +534,21 @@ Use AskUserQuestion:
 
 Read the existing config, merge the new Slack settings, and write back:
 
-```bash
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
-mkdir -p "$(dirname "$CONFIG_FILE")"
+Run **MERGE_CONFIG** (see Shared Config Commands) with the values collected from the user.
+Send `null` for any optional value the user declined:
 
-if [ -f "$CONFIG_FILE" ]; then
-  EXISTING=$(cat "$CONFIG_FILE")
-else
-  EXISTING='{}'
-fi
-
-# WEBHOOK_URL, MENTION, USERNAME, CHANNEL are collected from user
-echo "$EXISTING" | jq \
-  --arg url "$WEBHOOK_URL" \
-  --arg mention "$MENTION" \
-  --arg username "$USERNAME" \
-  --arg channel "$CHANNEL" \
-  '.notifications = (.notifications // {enabled: true}) |
-   .notifications.enabled = true |
-   .notifications.slack = {
-     enabled: true,
-     webhookUrl: $url,
-     mention: (if $mention == "" then null else $mention end),
-     username: (if $username == "" then null else $username end),
-     channel: (if $channel == "" then null else $channel end)
-   }' > "$CONFIG_FILE"
+```json
+{"notifications":{"enabled":true,"slack":{"enabled":true,"webhookUrl":"WEBHOOK_URL","mention":"MENTION_OR_NULL","username":"USERNAME_OR_NULL","channel":"CHANNEL_OR_NULL"}}}
 ```
 
 #### Add event-specific config if user didn't select all events:
 
 For each event NOT selected, disable it:
 
-```bash
-# Example: disable session-start if not selected
-echo "$(cat "$CONFIG_FILE")" | jq \
-  '.notifications.events = (.notifications.events // {}) |
-   .notifications.events["session-start"] = {enabled: false}' > "$CONFIG_FILE"
+Run **MERGE_CONFIG** once with a patch naming each unselected event, for example:
+
+```json
+{"notifications":{"events":{"session-start":{"enabled":false}}}}
 ```
 
 ### Step 9: Test the Configuration
@@ -697,16 +566,7 @@ Use AskUserQuestion:
 #### If testing:
 
 ```bash
-# For webhook:
-MENTION_PREFIX=""
-if [ -n "$MENTION" ]; then
-  MENTION_PREFIX="${MENTION}\n"
-fi
-
-curl -s -o /dev/null -w "%{http_code}" \
-  -H "Content-Type: application/json" \
-  -d "{\"text\": \"${MENTION_PREFIX}OMC test notification - Slack is configured!\"}" \
-  "$WEBHOOK_URL"
+node -e "const[url,mention]=process.argv.slice(1);const text=(mention?mention+'\n':'')+'OMC test notification - Slack is configured';fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text})}).then(async r=>console.log(r.ok?'Test notification sent successfully':'Failed (HTTP '+r.status+'): '+await r.text())).catch(e=>console.log('Network error: '+e.message))" "WEBHOOK_URL" "MENTION_OR_EMPTY"
 ```
 
 Report success or failure. Common issues:
@@ -728,7 +588,7 @@ Slack Notifications Configured!
   Events:   session-end, ask-user-question
   Username: OMC
 
-Config saved to: ~/.copilot/.omc-config.json
+Config saved to: ~/.claude/.omc-config.json
 
 You can also set these via environment variables:
   OMC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
@@ -799,7 +659,7 @@ Hook event templates let you customize the notification messages sent to each pl
 You can set different messages for Discord vs Telegram vs Slack, and control which
 events fire on which platform.
 
-Config file: ~/.copilot/omcp_config.hook.json
+Config file: ~/.claude/omc_config.hook.json
 ```
 
 ### Step 2: Choose Event to Configure
@@ -949,22 +809,11 @@ If the user says "custom integration", "openclaw", "n8n", "webhook", "cli comman
 
 ### Migration from OpenClaw
 
-If `~/.copilot/omcp_config.openclaw.json` exists, detect and offer migration:
+If `~/.claude/omc_config.openclaw.json` exists, detect and offer migration:
 
 **Step 1: Detect Legacy Config**
 ```bash
-LEGACY_CONFIG="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/omc_config.openclaw.json"
-if [ -f "$LEGACY_CONFIG" ]; then
-  echo "LEGACY_FOUND=true"
-  # Check if already migrated
-  if jq -e '.customIntegrations.integrations[] | select(.preset == "openclaw")' "$CONFIG_FILE" >/dev/null 2>&1; then
-    echo "ALREADY_MIGRATED=true"
-  else
-    echo "ALREADY_MIGRATED=false"
-  fi
-else
-  echo "LEGACY_FOUND=false"
-fi
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');if(f.existsSync(p.join(d,'omc_config.openclaw.json'))===false){console.log('LEGACY_FOUND=false');process.exit(0)}console.log('LEGACY_FOUND=true');let c={};try{c=JSON.parse(f.readFileSync(p.join(d,'.omc-config.json'),'utf8'))}catch{};const list=((c.customIntegrations||{}).integrations)||[];console.log('ALREADY_MIGRATED='+list.some(i=>i&&i.preset==='openclaw'))"
 ```
 
 **Step 2: Offer Migration**
@@ -993,11 +842,11 @@ If migrate:
 **Options:**
 1. **OpenClaw Gateway** - Wake external automations and AI agents
 2. **n8n Webhook** - Trigger n8n workflows
-3. **ClawdBot** - Send notifications to ClawdBot
+3. **Custom Agent Gateway** - Send notifications to a custom agent webhook
 4. **Generic Webhook** - Custom HTTPS webhook
 5. **Generic CLI Command** - Execute shell command on events
 
-### OpenClaw/n8n/ClawdBot Preset Flow
+### OpenClaw/n8n/Custom Agent Gateway Preset Flow
 
 **Step 2: Gateway URL**
 
@@ -1045,12 +894,7 @@ Default for n8n: session-end, ask-user-question
 
 If test:
 ```bash
-# For webhook integrations
-curl -X POST \
-  -H "Content-Type: application/json" \
-  ${AUTH_HEADER:+"-H \"$AUTH_HEADER\""} \
-  -d '{"event":"test","instruction":"OMC test notification","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' \
-  "$WEBHOOK_URL"
+node -e "const[url,authName,authValue]=process.argv.slice(1);const headers={'content-type':'application/json'};if(authName)headers[authName]=authValue;fetch(url,{method:'POST',headers,body:JSON.stringify({event:'test',instruction:'OMC test notification',timestamp:new Date().toISOString()})}).then(async r=>console.log('HTTP '+r.status+': '+await r.text())).catch(e=>console.log('Network error: '+e.message))" "WEBHOOK_URL" "AUTH_HEADER_NAME_OR_EMPTY" "AUTH_HEADER_VALUE"
 ```
 
 Show result (HTTP status, any error).
@@ -1155,9 +999,12 @@ Multi-select events.
 
 **Step 6: Test and Save**
 
-For test, execute command with test values:
+For test, run the configured command with `{{event}}` substituted by `test` in every
+argument. Passing the argument list to the executable directly (rather than through a
+shell) keeps quoting correct on every platform:
+
 ```bash
-$COMMAND "${ARGS[@]//{{event}}/test}"
+node -e "const{spawnSync}=require('node:child_process');const[cmd,...args]=process.argv.slice(1);const r=spawnSync(cmd,args.map(a=>a.split('{{event}}').join('test')),{encoding:'utf8',shell:process.platform==='win32'});process.stdout.write(r.stdout||'');process.stderr.write(r.stderr||'');console.log('exit code: '+r.status)" "COMMAND" "ARG1" "ARG2"
 ```
 
 Show stdout/stderr and exit code.
@@ -1166,21 +1013,15 @@ Show stdout/stderr and exit code.
 
 **List existing:**
 ```bash
-jq '.customIntegrations.integrations[] | {id, type, preset, enabled, events}' "$CONFIG_FILE"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');let c={};try{c=JSON.parse(f.readFileSync(p.join(d,'.omc-config.json'),'utf8'))}catch{};for(const i of ((c.customIntegrations||{}).integrations)||[])console.log(JSON.stringify({id:i.id,type:i.type,preset:i.preset,enabled:i.enabled,events:i.events}))"
 ```
 
-**Disable/Enable:**
-```bash
-# Disable
-jq '.customIntegrations.integrations = [.customIntegrations.integrations[] | if .id == "my-integration" then .enabled = false else . end]' "$CONFIG_FILE"
+**Disable, enable, or remove one** — pass the integration id and the action
+(`enable`, `disable`, or `remove`). The write goes through a temp file, so a failure
+cannot truncate the config:
 
-# Enable
-jq '.customIntegrations.integrations = [.customIntegrations.integrations[] | if .id == "my-integration" then .enabled = true else . end]' "$CONFIG_FILE"
-```
-
-**Remove:**
 ```bash
-jq '.customIntegrations.integrations = [.customIntegrations.integrations[] | select(.id != "my-integration")]' "$CONFIG_FILE"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-config.json');const[id,action]=process.argv.slice(1);let c={};try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: config missing or not valid JSON; it was not modified');process.exit(1)}c.customIntegrations=c.customIntegrations||{};const list=c.customIntegrations.integrations||[];c.customIntegrations.integrations=action==='remove'?list.filter(i=>(i.id===id)===false):list.map(i=>i.id===id?{...i,enabled:action==='enable'}:i);const tmp=t+'.tmp';f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log(action+' applied to '+id)" "my-integration" "disable"
 ```
 
 ### Template Variables Reference

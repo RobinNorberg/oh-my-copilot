@@ -3,7 +3,7 @@
  * Message routing abstraction for hybrid teams.
  *
  * Routes messages to the correct backend:
- * - Copilot native members: returns instruction for SendMessage tool
+ * - Claude native members: returns instruction for SendMessage tool
  * - MCP workers: appends to worker's inbox JSONL file
  */
 import { join } from 'node:path';
@@ -13,7 +13,7 @@ import { getTeamMembers } from './unified-team.js';
 import { sanitizeName } from './tmux-session.js';
 /**
  * Route a message to a team member regardless of backend.
- * - Copilot native: returns instruction to use SendMessage tool
+ * - Claude native: returns instruction to use SendMessage tool
  * - MCP worker: appends to worker's inbox JSONL
  */
 export function routeMessage(teamName, recipientName, content, workingDirectory) {
@@ -50,7 +50,7 @@ export function routeMessage(teamName, recipientName, content, workingDirectory)
 }
 /**
  * Broadcast to all team members.
- * - Copilot native: returns list for SendMessage broadcast
+ * - Claude native: returns list for SendMessage broadcast
  * - MCP workers: appends to each worker's inbox
  */
 export function broadcastToTeam(teamName, content, workingDirectory) {

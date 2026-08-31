@@ -19,6 +19,7 @@ const sharedExternal = [
 const cliConfig = {
   entryPoints: ['src/cli/index.ts'],
   bundle: true,
+  preserveSymlinks: true,
   platform: 'node',
   target: 'node18',
   format: 'cjs',
@@ -37,6 +38,7 @@ const teamOutfile = 'bridge/team.js';
 const teamConfig = {
   entryPoints: ['src/cli/team.ts'],
   bundle: true,
+  preserveSymlinks: true,
   platform: 'node',
   target: 'node18',
   format: 'esm',
@@ -48,10 +50,10 @@ if (watchMode) {
   const cliCtx = await esbuild.context(cliConfig);
   const teamCtx = await esbuild.context(teamConfig);
   await Promise.all([cliCtx.watch(), teamCtx.watch()]);
-  console.log(`Watching ${outfile} and ${teamOutfile}...`);
+  console.error(`Watching ${outfile} and ${teamOutfile}...`);
 } else {
   await esbuild.build(cliConfig);
-  console.log(`Built ${outfile}`);
+  console.error(`Built ${outfile}`);
   await esbuild.build(teamConfig);
-  console.log(`Built ${teamOutfile}`);
+  console.error(`Built ${teamOutfile}`);
 }

@@ -6,7 +6,7 @@
  *
  * Adapted from oh-my-opencode's preemptive-compaction hook.
  *
- * Note: This is a simplified version for Copilot CLI's shell hook system.
+ * Note: This is a simplified version for Claude Code's shell hook system.
  * The original uses OpenCode's plugin event system for automatic summarization.
  * This version injects warning messages to prompt manual compaction.
  */
@@ -65,5 +65,5 @@ export declare function resetSessionTokenEstimate(sessionId: string): void;
 export declare function clearRapidFireDebounce(sessionId: string): void;
 export type { ContextUsageResult, PreemptiveCompactionConfig, } from './types.js';
 export { RAPID_FIRE_DEBOUNCE_MS };
-export { DEFAULT_THRESHOLD, CRITICAL_THRESHOLD, COMPACTION_COOLDOWN_MS, MAX_WARNINGS, COPILOT_DEFAULT_CONTEXT_LIMIT, CHARS_PER_TOKEN, CONTEXT_WARNING_MESSAGE, CONTEXT_CRITICAL_MESSAGE, } from './constants.js';
+export { DEFAULT_THRESHOLD, CRITICAL_THRESHOLD, COMPACTION_COOLDOWN_MS, MAX_WARNINGS, CLAUDE_DEFAULT_CONTEXT_LIMIT, CHARS_PER_TOKEN, CONTEXT_WARNING_MESSAGE, CONTEXT_CRITICAL_MESSAGE, } from './constants.js';
 //# sourceMappingURL=index.d.ts.map

@@ -1,7 +1,7 @@
 /**
  * Popular Plugin Patterns
  *
- * Common hook patterns from the Copilot CLI community:
+ * Common hook patterns from the Claude Code community:
  * - Auto-format on file save
  * - Lint validation before commit
  * - Commit message validation
@@ -12,6 +12,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join, extname, normalize } from 'path';
 import { execFileSync, spawnSync } from 'child_process';
+import { isExecutableAvailable } from '../../platform/executable-resolution.js';
 
 // =============================================================================
 // SECURITY UTILITIES
@@ -74,10 +75,7 @@ export function getFormatter(ext: string): string | null {
  * Check if a formatter is available
  */
 export function isFormatterAvailable(command: string): boolean {
-  const binary = command.split(' ')[0];
-  const checkCommand = process.platform === 'win32' ? 'where' : 'which';
-  const result = spawnSync(checkCommand, [binary], { stdio: 'ignore' });
-  return result.status === 0;
+  return isExecutableAvailable(command.split(' ')[0]);
 }
 
 /**
@@ -156,9 +154,7 @@ export function lintFile(filePath: string): { success: boolean; message: string 
   }
 
   const linterBin = linter.split(' ')[0];
-  const checkCommand = process.platform === 'win32' ? 'where' : 'which';
-  const checkResult = spawnSync(checkCommand, [linterBin], { stdio: 'ignore' });
-  if (checkResult.status !== 0) {
+  if (!isExecutableAvailable(linterBin)) {
     return { success: true, message: `Linter ${linter} not available` };
   }
 
@@ -271,9 +267,7 @@ export function runTypeCheck(directory: string): { success: boolean; message: st
     return { success: true, message: 'No tsconfig.json found' };
   }
 
-  const checkCommand = process.platform === 'win32' ? 'where' : 'which';
-  const tscCheck = spawnSync(checkCommand, ['tsc'], { stdio: 'ignore' });
-  if (tscCheck.status !== 0) {
+  if (!isExecutableAvailable('tsc')) {
     return { success: true, message: 'TypeScript not installed' };
   }
 
@@ -345,7 +339,13 @@ export function runLint(directory: string): { success: boolean; message: string 
       const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
       if (pkg.scripts?.lint) {
         try {
-          execFileSync('npm', ['run', 'lint'], { cwd: directory, encoding: 'utf-8', stdio: 'pipe', shell: process.platform === 'win32' });
+          execFileSync('npm', ['run', 'lint'], {
+            cwd: directory,
+            encoding: 'utf-8',
+            stdio: 'pipe',
+            // shell:true on Windows avoids Node 20.12+ EINVAL when spawning npm.cmd (CVE-2024-27980). #2721
+            shell: process.platform === 'win32',
+          });
           return { success: true, message: 'Lint passed' };
         } catch (_error) {
           return { success: false, message: 'Lint errors found' };

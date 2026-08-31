@@ -2,7 +2,7 @@
  * Context Window Limit Recovery
  *
  * Detects context window limit errors and injects recovery messages
- * to help Copilot recover gracefully.
+ * to help Claude recover gracefully.
  */
 import type { ParsedTokenLimitError, RecoveryResult, RecoveryConfig } from './types.js';
 /**

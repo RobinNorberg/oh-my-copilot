@@ -66,7 +66,7 @@ export function processThinkMode(
 }
 
 /**
- * Create the think mode hook for Copilot CLI integration.
+ * Create the think mode hook for Claude Code integration.
  */
 export function createThinkModeHook() {
   return {
@@ -171,7 +171,7 @@ export function shouldActivateUltrathink(prompt: string): boolean {
 }
 
 /**
- * Get Copilot thinking configuration for extended thinking.
- * For direct use when manually configuring Copilot API calls.
+ * Get Claude thinking configuration for extended thinking.
+ * For direct use when manually configuring Claude API calls.
  */
 export { getClaudeThinkingConfig };

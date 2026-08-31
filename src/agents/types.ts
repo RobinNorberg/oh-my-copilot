@@ -89,7 +89,7 @@ export interface FullAgentConfig extends AgentConfig {
   temperature?: number;
   /** Max tokens */
   maxTokens?: number;
-  /** Thinking configuration (for Copilot models) */
+  /** Thinking configuration (for Claude models) */
   thinking?: {
     type: 'enabled' | 'disabled';
     budgetTokens?: number;
@@ -139,10 +139,10 @@ export function isGptModel(modelId: string): boolean {
 }
 
 /**
- * Check if a model ID is a Copilot model
+ * Check if a model ID is a Claude model
  */
 export function isClaudeModel(modelId: string): boolean {
-  return modelId.toLowerCase().includes('gh');
+  return modelId.toLowerCase().includes('claude');
 }
 
 /**

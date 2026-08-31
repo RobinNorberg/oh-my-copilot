@@ -6,7 +6,7 @@
  * delete, and clean up shared key-value entries namespaced by
  * session group or pipeline run.
  *
- * Storage: .omcp/state/shared-memory/{namespace}/{key}.json
+ * Storage: .omg/state/shared-memory/{namespace}/{key}.json
  * Config gate: agents.sharedMemory.enabled in ~/.copilot/.omc-config.json
  *
  * @see https://github.com/anthropics/oh-my-copilot/issues/1119
@@ -37,7 +37,6 @@ function errorResponse(msg) {
 export const sharedMemoryWriteTool = {
     name: 'shared_memory_write',
     description: 'Write a key-value pair to shared memory for cross-agent handoffs. Namespace by session group or pipeline run. Supports optional TTL for auto-expiry.',
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         key: z.string().min(1).max(128).describe('Key identifier (alphanumeric, hyphens, underscores, dots)'),
         value: z.unknown().describe('JSON-serializable value to store'),
@@ -68,7 +67,6 @@ export const sharedMemoryWriteTool = {
 export const sharedMemoryReadTool = {
     name: 'shared_memory_read',
     description: 'Read a value from shared memory by key and namespace. Returns null if the key does not exist or has expired.',
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         key: z.string().min(1).max(128).describe('Key to read'),
         namespace: z.string().min(1).max(128).describe('Namespace to read from'),
@@ -115,7 +113,6 @@ export const sharedMemoryReadTool = {
 export const sharedMemoryListTool = {
     name: 'shared_memory_list',
     description: 'List keys in a shared memory namespace, or list all namespaces if no namespace is provided.',
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         namespace: z.string().min(1).max(128).optional().describe('Namespace to list keys from. Omit to list all namespaces.'),
         workingDirectory: z.string().optional().describe('Working directory (defaults to cwd)'),
@@ -174,7 +171,6 @@ export const sharedMemoryListTool = {
 export const sharedMemoryDeleteTool = {
     name: 'shared_memory_delete',
     description: 'Delete a key from shared memory.',
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     schema: {
         key: z.string().min(1).max(128).describe('Key to delete'),
         namespace: z.string().min(1).max(128).describe('Namespace to delete from'),
@@ -212,7 +208,6 @@ export const sharedMemoryDeleteTool = {
 export const sharedMemoryCleanupTool = {
     name: 'shared_memory_cleanup',
     description: 'Remove expired entries from shared memory. Cleans a specific namespace or all namespaces.',
-    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     schema: {
         namespace: z.string().min(1).max(128).optional().describe('Namespace to clean. Omit to clean all namespaces.'),
         workingDirectory: z.string().optional().describe('Working directory (defaults to cwd)'),

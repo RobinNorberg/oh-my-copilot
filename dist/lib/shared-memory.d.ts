@@ -4,7 +4,7 @@
  * Filesystem-based key-value store for cross-session memory sync
  * between agents in /team and /pipeline workflows.
  *
- * Storage: .omcp/state/shared-memory/{namespace}/{key}.json
+ * Storage: .omg/state/shared-memory/{namespace}/{key}.json
  *
  * Each entry is a JSON file containing:
  * - key: string identifier
@@ -36,7 +36,8 @@ export interface SharedMemoryListItem {
 /**
  * Check if shared memory is enabled via config.
  *
- * Reads `agents.sharedMemory.enabled` from ~/.copilot/.omc-config.json.
+ * Reads `agents.sharedMemory.enabled` from
+ * `[$COPILOT_CONFIG_DIR|~/.claude]/.omc-config.json`.
  * Defaults to true when the config key is absent (opt-out rather than opt-in
  * once the feature ships, but tools check this gate).
  */

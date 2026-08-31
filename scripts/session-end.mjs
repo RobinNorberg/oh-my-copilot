@@ -1,26 +1,22 @@
 #!/usr/bin/env node
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-import { readStdin } from './lib/stdin.mjs';
+import { readSessionEndFrame } from './lib/stdin.mjs';
+import { isMainThread } from 'node:worker_threads';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
-async function main() {
-  // Read stdin (timeout-protected, see issue #240/#459)
-  const input = await readStdin();
+const fallback = { continue: true, suppressOutput: true };
 
-  const fallback = { continue: true, suppressOutput: true };
+export async function runSessionEndHook() {
+  const frame = await readSessionEndFrame();
 
-  // Copilot CLI may invoke the SessionEnd hook with empty stdin during a
-  // clean shutdown. Treat that as an expected no-op so the hook stays quiet
-  // instead of logging a JSON parse error (#3104/#3105/#3106).
-  if (input.trim().length === 0) {
+  if (frame.status !== 'ok') {
     console.log(JSON.stringify(fallback));
     return;
   }
 
   try {
-    const data = JSON.parse(input);
     const { processSessionEnd } = await import('../dist/hooks/session-end/index.js');
-    const result = await processSessionEnd(data);
+    const result = await processSessionEnd(frame.value);
     console.log(JSON.stringify(result));
   } catch (error) {
     console.error('[session-end] Error:', error.message);
@@ -28,4 +24,4 @@ async function main() {
   }
 }
 
-main();
+if (!isMainThread || (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))) void runSessionEndHook();

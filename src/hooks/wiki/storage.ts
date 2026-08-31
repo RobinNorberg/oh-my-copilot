@@ -6,7 +6,7 @@
  * to prevent concurrent corruption.
  *
  * Storage layout:
- *   .omcp/wiki/
+ *   .omg/wiki/
  *   ├── index.md      (auto-maintained catalog)
  *   ├── log.md         (append-only operation chronicle)
  *   ├── page-slug.md   (knowledge pages)
@@ -15,6 +15,7 @@
 
 import { existsSync, readFileSync, readdirSync, unlinkSync, mkdirSync } from 'fs';
 import { join, resolve, sep } from 'path';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import {
@@ -38,14 +39,9 @@ const RESERVED_FILES = new Set([INDEX_FILE, LOG_FILE, ENVIRONMENT_FILE]);
 // Path helpers
 // ============================================================================
 
-/** Get the .omc root directory for a given worktree root. */
-function getOmcDir(root: string): string {
-  return join(root, '.omcp');
-}
-
 /** Get the wiki directory path. */
 export function getWikiDir(root: string): string {
-  return join(getOmcDir(root), WIKI_DIR);
+  return join(getOmcRoot(root), WIKI_DIR);
 }
 
 /** Ensure wiki directory exists and is git-ignored. */
@@ -55,8 +51,8 @@ export function ensureWikiDir(root: string): string {
     mkdirSync(wikiDir, { recursive: true });
   }
 
-  // Ensure .omcp/.gitignore includes wiki/
-  const omcRoot = getOmcDir(root);
+  // Ensure .omg/.gitignore includes wiki/
+  const omcRoot = getOmcRoot(root);
   const gitignorePath = join(omcRoot, '.gitignore');
   if (existsSync(gitignorePath)) {
     const content = readFileSync(gitignorePath, 'utf-8');
@@ -74,6 +70,13 @@ export function ensureWikiDir(root: string): string {
 // Mutation Boundary
 // ============================================================================
 
+export interface WikiLockOptions {
+  /** Maximum time to wait for the wiki lock. Ordinary callers retain the existing 5s default. */
+  timeoutMs?: number;
+  /** Optional absolute deadline for worker-owned work. */
+  deadlineAt?: number;
+}
+
 /**
  * Execute a function under the wiki-wide file lock.
  * All write operations MUST go through this boundary.
@@ -81,10 +84,14 @@ export function ensureWikiDir(root: string): string {
  * Uses synchronous file lock (withFileLockSync) because wiki operations
  * are called from sync hook contexts (notepad pattern).
  */
-export function withWikiLock<T>(root: string, fn: () => T): T {
+export function withWikiLock<T>(root: string, fn: () => T, options?: WikiLockOptions): T {
   const wikiDir = ensureWikiDir(root);
   const lockPath = lockPathFor(join(wikiDir, '.wiki-lock'));
-  return withFileLockSync(lockPath, fn, { timeoutMs: 5_000, retryDelayMs: 50 });
+  const remainingMs = options?.deadlineAt === undefined
+    ? undefined
+    : Math.max(0, options.deadlineAt - Date.now());
+  const timeoutMs = Math.min(options?.timeoutMs ?? 5_000, remainingMs ?? Infinity);
+  return withFileLockSync(lockPath, fn, { timeoutMs, retryDelayMs: 50 });
 }
 
 // ============================================================================
@@ -342,6 +349,18 @@ export function appendLogUnsafe(root: string, entry: WikiLogEntry): void {
   }
 
   atomicWriteFileSync(logPath, existing + logLine);
+}
+
+/**
+ * Write the reserved environment.md page. MUST be called inside withWikiLock.
+ *
+ * environment.md is a reserved file (excluded from index/listPages and
+ * rejected by writePageUnsafe), so project-memory feeding gets a dedicated
+ * write path — mirroring updateIndexUnsafe and appendLogUnsafe.
+ */
+export function writeEnvironmentUnsafe(root: string, page: WikiPage): void {
+  const wikiDir = ensureWikiDir(root);
+  atomicWriteFileSync(join(wikiDir, ENVIRONMENT_FILE), serializePage(page));
 }
 
 // ============================================================================

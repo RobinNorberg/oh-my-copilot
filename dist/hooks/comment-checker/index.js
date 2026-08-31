@@ -1,7 +1,7 @@
 /**
  * Comment Checker Hook
  *
- * Detects comments and docstrings in code changes and prompts Copilot
+ * Detects comments and docstrings in code changes and prompts Claude
  * to justify or remove unnecessary comments.
  *
  * Adapted from oh-my-opencode's comment-checker hook.
@@ -161,10 +161,10 @@ export function checkForComments(filePath, content, oldString, newString, edits)
  */
 const pendingCalls = new Map();
 /**
- * Create comment checker hook for Copilot CLI shell hooks
+ * Create comment checker hook for Claude Code shell hooks
  *
  * This hook checks for comments in Write/Edit operations and injects
- * a message prompting Copilot to justify or remove unnecessary comments.
+ * a message prompting Claude to justify or remove unnecessary comments.
  */
 export function createCommentCheckerHook(config) {
     debugLog('createCommentCheckerHook called', { config });

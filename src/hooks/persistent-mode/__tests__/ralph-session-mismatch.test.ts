@@ -5,10 +5,9 @@
  * a long Ralph session, even though the Stop hook fires many times. The
  * iteration counter never increments past 1.
  *
- * Root cause: `checkRalphLoop` and `checkUltrawork` in
- * `src/hooks/persistent-mode/index.ts` re-applied a strict session-id
- * check on top of the lenient check already done by `readRalphState` /
- * `readUltraworkState`. The strict check `state.session_id !== sessionId`
+ * Root cause: `checkRalphLoop` in `src/hooks/persistent-mode/index.ts`
+ * re-applied a strict session-id check on top of the lenient check already
+ * done by `readRalphState`. The strict check `state.session_id !== sessionId`
  * rejected the legitimate case where ONE side is undefined and the other
  * is a UUID, causing the entire ralph/ultrawork loop to bail out before
  * `incrementRalphIteration()` could fire.
@@ -53,8 +52,8 @@ function writeRalphStateFile(
   // Write to the legacy unscoped path when sessionId is undefined,
   // session-scoped path when defined.
   const stateDir = sessionId
-    ? join(tempDir, '.omcp', 'state', 'sessions', sessionId)
-    : join(tempDir, '.omcp', 'state');
+    ? join(tempDir, '.omg', 'state', 'sessions', sessionId)
+    : join(tempDir, '.omg', 'state');
   mkdirSync(stateDir, { recursive: true });
 
   const state: Record<string, unknown> = {
@@ -80,7 +79,7 @@ describe('persistent-mode ralph session-id mismatch (stuck counter regression)',
     // Simulate the bug: state file written without a session_id (e.g. ralph
     // started before the session_id was known, or an older state schema).
     // Place it at the SESSION-SCOPED path so readRalphState finds it.
-    const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
+    const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
       join(stateDir, 'ralph-state.json'),
@@ -119,7 +118,7 @@ describe('persistent-mode ralph session-id mismatch (stuck counter regression)',
     expect(result.mode).not.toBe('ralph');
 
     // Session A's state should be unchanged
-    const stateFile = join(tempDir, '.omcp', 'state', 'sessions', sessionA, 'ralph-state.json');
+    const stateFile = join(tempDir, '.omg', 'state', 'sessions', sessionA, 'ralph-state.json');
     const unchanged = JSON.parse(readFileSync(stateFile, 'utf-8')) as { iteration: number };
     expect(unchanged.iteration).toBe(5);
   });
@@ -134,7 +133,7 @@ describe('persistent-mode ralph session-id mismatch (stuck counter regression)',
     const result = await checkPersistentModes(sessionId, tempDir);
     expect(result.mode).toBe('ralph');
 
-    const stateFile = join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'ralph-state.json');
+    const stateFile = join(tempDir, '.omg', 'state', 'sessions', sessionId, 'ralph-state.json');
     const updated = JSON.parse(readFileSync(stateFile, 'utf-8')) as { iteration: number };
     expect(updated.iteration).toBe(4);
   });

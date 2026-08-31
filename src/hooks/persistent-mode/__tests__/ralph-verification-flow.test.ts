@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { checkPersistentModes } from '../index.js';
-import { readPrd, writePrd, type PRD } from '../../ralph/prd.js';
+import { amendCriterion, getStoryGoverningCriteriaRevision, readPrd, writePrd as writeRawPrd, type PRD } from '../../ralph/prd.js';
 import { readRalphState } from '../../ralph/loop.js';
 
 describe('Ralph verification flow', () => {
@@ -24,6 +24,7 @@ describe('Ralph verification flow', () => {
   });
 
   afterEach(() => {
+    delete process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64;
     if (originalClaudeConfigDir === undefined) {
       delete process.env.COPILOT_CONFIG_DIR;
     } else {
@@ -36,7 +37,7 @@ describe('Ralph verification flow', () => {
   });
 
   function writeRalphState(sessionId: string, extra: Record<string, unknown> = {}): void {
-    const sessionDir = join(testDir, '.omcp', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, 'ralph-state.json'), JSON.stringify({
       active: true,
@@ -58,6 +59,39 @@ describe('Ralph verification flow', () => {
     );
   }
 
+  function writeApprovalTranscript(
+    sessionId: string,
+    critic: 'architect' | 'critic',
+    requestId: string,
+    storyId?: string
+  ): void {
+    const approval = `<ralph-approved critic="${critic}" request-id="${requestId}"${storyId ? ` story-id="${storyId}"` : ''}>VERIFIED_COMPLETE</ralph-approved>`;
+    writeMessagesTranscript(sessionId, [
+      {
+        timestamp: '2026-04-13T12:00:00.000Z',
+        message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu-review', name: 'Task', input: { subagent_type: critic } }] },
+      },
+      {
+        timestamp: '2026-04-13T12:00:05.000Z',
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu-review', content: [{ type: 'text', text: approval }] }] },
+      },
+    ]);
+  }
+
+  function bindCompletedStories(prd: PRD): PRD {
+    for (const story of prd.userStories) {
+      if (!story.passes) continue;
+      const revision = getStoryGoverningCriteriaRevision(story);
+      story.completionCriteriaRevision = revision;
+      if (story.architectVerified) story.architectVerificationCriteriaRevision = revision;
+    }
+    return prd;
+  }
+
+  function writePrd(directory: string, prd: PRD, sessionId?: string): boolean {
+    return writeRawPrd(directory, bindCompletedStories(prd), sessionId);
+  }
+
   it('enters verification instead of completing immediately when PRD is done', async () => {
     const sessionId = 'ralph-prd-complete';
     const prd: PRD = {
@@ -75,7 +109,7 @@ describe('Ralph verification flow', () => {
       }],
     };
 
-    writePrd(testDir, prd);
+    writePrd(testDir, bindCompletedStories(prd));
     writeRalphState(sessionId, { critic_mode: 'codex' });
 
     const result = await checkPersistentModes(sessionId, testDir);
@@ -88,7 +122,7 @@ describe('Ralph verification flow', () => {
 
   it('completes Ralph only after reviewer-authored approval output is seen in messages.json', async () => {
     const sessionId = 'ralph-approved';
-    const sessionDir = join(testDir, '.omcp', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
 
     writeRalphState(sessionId);
@@ -147,6 +181,90 @@ describe('Ralph verification flow', () => {
     expect(result.message).toContain('Critic verified task completion');
   });
 
+  it('preserves replacement Ralph, Ultrawork, and verification generations after request consumption', async () => {
+    const sessionId = 'ralph-terminal-generation-replacement';
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
+    mkdirSync(sessionDir, { recursive: true });
+    const now = new Date().toISOString();
+    writeRalphState(sessionId, { iteration: 4, started_at: now });
+    writeFileSync(join(sessionDir, 'ultrawork-state.json'), JSON.stringify({
+      active: true,
+      session_id: sessionId,
+      started_at: now,
+      last_checked_at: now,
+      original_prompt: 'replacement ultrawork',
+      reinforcement_count: 1,
+    }));
+    writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
+      pending: true,
+      completion_claim: 'All work is complete',
+      verification_attempts: 0,
+      max_verification_attempts: 3,
+      requested_at: now,
+      original_task: 'Issue #3829',
+      critic_mode: 'critic',
+      request_id: 'completion-request',
+    }));
+    writeApprovalTranscript(sessionId, 'critic', 'completion-request');
+
+    const ralphPath = join(sessionDir, 'ralph-state.json');
+    const ultraworkPath = join(sessionDir, 'ultrawork-state.json');
+    const verificationPath = join(sessionDir, 'ralph-verification-state.json');
+    process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64 = Buffer.from(JSON.stringify([
+      { path: ralphPath, content: { active: true, session_id: sessionId, iteration: 9, started_at: now, prompt: 'replacement ralph' } },
+      { path: ultraworkPath, content: { active: true, session_id: sessionId, started_at: now, last_checked_at: now, original_prompt: 'replacement ultrawork', reinforcement_count: 9 } },
+      { path: verificationPath, content: { pending: true, request_id: 'replacement-request', requested_at: now, original_task: 'replacement verification' } },
+    ])).toString('base64');
+
+    const result = await checkPersistentModes(sessionId, testDir);
+
+    expect(result).toMatchObject({ shouldBlock: true, mode: 'ralph' });
+    expect(JSON.parse(readFileSync(ralphPath, 'utf8'))).toMatchObject({ iteration: 9, prompt: 'replacement ralph' });
+    expect(JSON.parse(readFileSync(ultraworkPath, 'utf8'))).toMatchObject({ reinforcement_count: 9 });
+    expect(JSON.parse(readFileSync(verificationPath, 'utf8'))).toMatchObject({ request_id: 'replacement-request' });
+  });
+
+  it('restores only captured state after partial terminal cleanup failure', async () => {
+    const sessionId = 'ralph-terminal-partial-cleanup';
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
+    mkdirSync(sessionDir, { recursive: true });
+    const now = new Date().toISOString();
+    writeRalphState(sessionId, { iteration: 4, started_at: now });
+    writeFileSync(join(sessionDir, 'ultrawork-state.json'), JSON.stringify({
+      active: true,
+      session_id: sessionId,
+      started_at: now,
+      last_checked_at: now,
+      original_prompt: 'original ultrawork',
+      reinforcement_count: 1,
+    }));
+    writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
+      pending: true,
+      completion_claim: 'All work is complete',
+      verification_attempts: 0,
+      max_verification_attempts: 3,
+      requested_at: now,
+      original_task: 'Issue #3829',
+      critic_mode: 'critic',
+      request_id: 'partial-request',
+    }));
+    writeApprovalTranscript(sessionId, 'critic', 'partial-request');
+
+    const ultraworkPath = join(sessionDir, 'ultrawork-state.json');
+    const verificationPath = join(sessionDir, 'ralph-verification-state.json');
+    process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64 = Buffer.from(JSON.stringify([
+      { path: ultraworkPath, content: { active: true, session_id: sessionId, started_at: now, last_checked_at: now, original_prompt: 'replacement ultrawork', reinforcement_count: 8 } },
+      { path: verificationPath, content: { pending: true, request_id: 'replacement-request', requested_at: now, original_task: 'replacement verification' } },
+    ])).toString('base64');
+
+    const result = await checkPersistentModes(sessionId, testDir);
+
+    expect(result).toMatchObject({ shouldBlock: true, mode: 'ralph' });
+    expect(JSON.parse(readFileSync(join(sessionDir, 'ralph-state.json'), 'utf8'))).toMatchObject({ iteration: 4 });
+    expect(JSON.parse(readFileSync(ultraworkPath, 'utf8'))).toMatchObject({ reinforcement_count: 8 });
+    expect(JSON.parse(readFileSync(verificationPath, 'utf8'))).toMatchObject({ request_id: 'replacement-request' });
+  });
+
   it('starts story-scoped architect verification before moving to the next story', async () => {
     const sessionId = 'ralph-story-gate';
     const prd: PRD = {
@@ -175,7 +293,7 @@ describe('Ralph verification flow', () => {
       ],
     };
 
-    writePrd(testDir, prd);
+    writePrd(testDir, bindCompletedStories(prd));
     writeRalphState(sessionId, { current_story_id: 'US-001' });
 
     const result = await checkPersistentModes(sessionId, testDir);
@@ -185,7 +303,7 @@ describe('Ralph verification flow', () => {
     expect(result.message).toContain('US-001');
     expect(result.message).toContain('Verify EACH acceptance criterion');
 
-    const sessionDir = join(testDir, '.omcp', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     const verificationState = JSON.parse(
       readFileSync(join(sessionDir, 'ralph-verification-state.json'), 'utf-8')
     );
@@ -195,7 +313,7 @@ describe('Ralph verification flow', () => {
 
   it('advances current_story_id after story approval instead of completing Ralph', async () => {
     const sessionId = 'ralph-story-approved';
-    const sessionDir = join(testDir, '.omcp', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
 
     const prd: PRD = {
@@ -226,6 +344,7 @@ describe('Ralph verification flow', () => {
 
     writePrd(testDir, prd);
     writeRalphState(sessionId, { current_story_id: 'US-001' });
+    const criteriaRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
     writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
       pending: true,
       completion_claim: 'US-001 is ready to progress',
@@ -237,6 +356,7 @@ describe('Ralph verification flow', () => {
       verification_scope: 'story',
       story_id: 'US-001',
       request_id: 'story-request',
+      criteria_revision: criteriaRevision,
     }));
 
     writeMessagesTranscript(sessionId, [
@@ -290,10 +410,64 @@ describe('Ralph verification flow', () => {
     expect(updatedState?.current_story_id).toBe('US-002');
   });
 
+  it('rejects a stale story approval after an amendment reopens the story', async () => {
+    const sessionId = 'ralph-amended-story';
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
+    mkdirSync(sessionDir, { recursive: true });
+    writePrd(testDir, {
+      project: 'Test', branchName: 'ralph/test', description: 'Stale approval',
+      userStories: [{ id: 'US-001', title: 'Story', description: '', acceptanceCriteria: ['Original'], priority: 1, passes: true, architectVerified: false }],
+    }, sessionId);
+    writeRalphState(sessionId, { current_story_id: 'US-001' });
+    writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
+      pending: true, completion_claim: 'US-001 complete', verification_attempts: 0, max_verification_attempts: 3,
+      requested_at: new Date().toISOString(), original_task: 'Issue #3818', critic_mode: 'architect', verification_scope: 'story', story_id: 'US-001', request_id: 'stale-story',
+    }));
+    expect(amendCriterion(testDir, 'US-001', {
+      original: 'Original', replacement: 'Replacement', reason: 'The contract changed',
+      evidence: 'Measured evidence refuted the original criterion', authority: 'issue-3818',
+    }, sessionId).ok).toBe(true);
+    writeApprovalTranscript(sessionId, 'architect', 'stale-story', 'US-001');
+
+    const result = await checkPersistentModes(sessionId, testDir);
+
+    expect(result).toMatchObject({ shouldBlock: true, mode: 'ralph' });
+    expect(existsSync(join(sessionDir, 'ralph-verification-state.json'))).toBe(false);
+    expect(readRalphState(testDir, sessionId)?.current_story_id).toBe('US-001');
+    expect(readPrd(testDir, sessionId)?.userStories[0]).toMatchObject({ passes: false, architectVerified: false });
+  });
+
+  it('rejects a stale final approval after an amendment reopens completion', async () => {
+    const sessionId = 'ralph-amended-final';
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
+    mkdirSync(sessionDir, { recursive: true });
+    writePrd(testDir, {
+      project: 'Test', branchName: 'ralph/test', description: 'Stale completion',
+      userStories: [{ id: 'US-001', title: 'Story', description: '', acceptanceCriteria: ['Original'], priority: 1, passes: true, architectVerified: true }],
+    }, sessionId);
+    writeRalphState(sessionId, { current_story_id: 'US-001' });
+    writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
+      pending: true, completion_claim: 'All stories complete', verification_attempts: 0, max_verification_attempts: 3,
+      requested_at: new Date().toISOString(), original_task: 'Issue #3818', critic_mode: 'critic', request_id: 'stale-final',
+    }));
+    expect(amendCriterion(testDir, 'US-001', {
+      original: 'Original', replacement: 'Replacement', reason: 'The contract changed',
+      evidence: 'Measured evidence refuted the original criterion', authority: 'issue-3818',
+    }, sessionId).ok).toBe(true);
+    writeApprovalTranscript(sessionId, 'critic', 'stale-final');
+
+    const result = await checkPersistentModes(sessionId, testDir);
+
+    expect(result).toMatchObject({ shouldBlock: true, mode: 'ralph' });
+    expect(existsSync(join(sessionDir, 'ralph-verification-state.json'))).toBe(false);
+    expect(readRalphState(testDir, sessionId)?.current_story_id).toBe('US-001');
+    expect(readPrd(testDir, sessionId)?.userStories[0]).toMatchObject({ passes: false, architectVerified: false });
+  });
+
 
   it('marks a rejected story incomplete in the session-scoped PRD without mutating legacy PRD', async () => {
     const sessionId = 'ralph-story-rejected-session-prd';
-    const sessionDir = join(testDir, '.omcp', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
 
     const sessionPrd: PRD = {
@@ -335,6 +509,7 @@ describe('Ralph verification flow', () => {
     writePrd(testDir, sessionPrd, sessionId);
     writePrd(testDir, legacyPrd);
     writeRalphState(sessionId, { current_story_id: 'US-001' });
+    const criteriaRevision = readPrd(testDir, sessionId)?.userStories[0].governingCriteriaRevision;
     writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
       pending: true,
       completion_claim: 'US-001 is ready to progress',
@@ -346,6 +521,7 @@ describe('Ralph verification flow', () => {
       verification_scope: 'story',
       story_id: 'US-001',
       request_id: 'rejected-story-request',
+      criteria_revision: criteriaRevision,
     }));
 
     const transcriptDir = join(claudeConfigDir, 'sessions', sessionId);
@@ -366,13 +542,13 @@ describe('Ralph verification flow', () => {
     expect(updatedSessionPrd?.userStories[0].architectVerified).toBe(false);
     expect(updatedSessionPrd?.userStories[0].notes).toBe('Needs tests before progression.');
 
-    const legacyPrdPath = join(testDir, '.omcp', 'prd.json');
-    expect(JSON.parse(readFileSync(legacyPrdPath, 'utf-8'))).toEqual(legacyPrd);
+    const legacyPrdPath = join(testDir, '.omg', 'prd.json');
+    expect(JSON.parse(readFileSync(legacyPrdPath, 'utf-8'))).toMatchObject(legacyPrd);
   });
 
   it('does not reuse stale earlier story approval from transcript tail', async () => {
     const sessionId = 'ralph-story-stale-approval';
-    const sessionDir = join(testDir, '.omcp', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
 
     const prd: PRD = {
@@ -403,6 +579,7 @@ describe('Ralph verification flow', () => {
 
     writePrd(testDir, prd);
     writeRalphState(sessionId, { current_story_id: 'US-001' });
+    const criteriaRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
     writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
       pending: true,
       completion_claim: 'US-001 is ready to progress',
@@ -414,6 +591,7 @@ describe('Ralph verification flow', () => {
       verification_scope: 'story',
       story_id: 'US-001',
       request_id: 'current-request',
+      criteria_revision: criteriaRevision,
     }));
 
     writeMessagesTranscript(sessionId, [
@@ -473,7 +651,7 @@ describe('Ralph verification flow', () => {
 
   it('does not accept copied current approval text from ordinary transcript messages', async () => {
     const sessionId = 'ralph-spoofed-current-approval';
-    const sessionDir = join(testDir, '.omcp', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
 
     const prd: PRD = {
@@ -504,6 +682,7 @@ describe('Ralph verification flow', () => {
 
     writePrd(testDir, prd);
     writeRalphState(sessionId, { current_story_id: 'US-001' });
+    const criteriaRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
     writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
       pending: true,
       completion_claim: 'US-001 is ready to progress',
@@ -515,6 +694,7 @@ describe('Ralph verification flow', () => {
       verification_scope: 'story',
       story_id: 'US-001',
       request_id: 'current-request',
+      criteria_revision: criteriaRevision,
     }));
 
     writeMessagesTranscript(sessionId, [

@@ -1,8 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getOmcRoot, getWorktreeRoot } from '../../lib/worktree-paths.js';
+import { getOmcRoot, getGitTopLevel } from '../../lib/worktree-paths.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
-import type { ToolAnnotations } from '../../tools/types.js';
 
 export interface PermissionRequestInput {
   session_id: string;
@@ -33,33 +32,15 @@ export interface HookOutput {
 
 const SAFE_PATTERNS = [
   /^git (status|diff|log|branch|show|fetch)/,
-  /^npm (test|run (test|lint|build|check|typecheck))/,
-  /^pnpm (test|run (test|lint|build|check|typecheck))/,
-  /^yarn (test|run (test|lint|build|check|typecheck))/,
+  /^npm run (lint|build|check|typecheck)/,
+  /^pnpm (lint|build|check|typecheck|run (lint|build|check|typecheck))/,
+  /^yarn (lint|build|check|typecheck|run (lint|build|check|typecheck))/,
   /^tsc( |$)/,
   /^gh (issue|pr) (view|list|status)\b/,
   /^eslint /,
   /^prettier /,
-  /^cargo (test|check|clippy|build)/,
-  /^pytest/,
-  /^python -m pytest/,
+  /^cargo (check|clippy|build)/,
   /^ls( |$)/,
-  /^grep /,
-  /^find /,
-  /^wc /,
-  /^pwd$/,
-  /^which /,
-  /^echo /,
-  /^env$/,
-  /^node --version$/,
-  /^dotnet (--version|--list-sdks|--list-runtimes|--info)$/,
-  /^dotnet (build|test|run|restore|clean)( |$)/,
-  /^gh (pr|issue|repo|api|run|workflow) (view|list|status|diff|checks)/,
-  /^gh auth status/,
-  /^az (account show|group list|resource list|ad signed-in-user show)/,
-  /^az devops (project list|configure)/,
-  /^az pipelines (list|show|runs list)/,
-  /^az repos (list|show|pr list)/,
   // REMOVED: cat, head, tail - they allow reading arbitrary files
 ];
 
@@ -71,77 +52,6 @@ const DANGEROUS_SHELL_CHARS = /[;&|`$()<>\n\r\t\0\\{}\[\]*?~!#]/;
 
 // Heredoc operator detection (<<, <<-, <<~, with optional quoting of delimiter)
 const HEREDOC_PATTERN = /<<[-~]?\s*['"]?\w+['"]?/;
-
-// --- Deny tracking & escalation ---
-const CONSECUTIVE_DENY_LIMIT = 3;
-const TOTAL_DENY_LIMIT = 20;
-
-interface DenyTracker {
-  consecutiveDenials: number;
-  totalDenials: number;
-  totalAllows: number;
-  lastDecision: 'allow' | 'deny' | 'ask' | null;
-}
-
-const sessionDenyTracker: DenyTracker = {
-  consecutiveDenials: 0,
-  totalDenials: 0,
-  totalAllows: 0,
-  lastDecision: null,
-};
-
-function trackDecision(decision: 'allow' | 'deny' | 'ask'): void {
-  sessionDenyTracker.lastDecision = decision;
-  if (decision === 'deny') {
-    sessionDenyTracker.consecutiveDenials++;
-    sessionDenyTracker.totalDenials++;
-  } else if (decision === 'allow') {
-    sessionDenyTracker.consecutiveDenials = 0;
-    sessionDenyTracker.totalAllows++;
-  }
-}
-
-function shouldEscalate(): boolean {
-  return (
-    sessionDenyTracker.consecutiveDenials >= CONSECUTIVE_DENY_LIMIT ||
-    sessionDenyTracker.totalDenials >= TOTAL_DENY_LIMIT
-  );
-}
-
-// --- Audit logging ---
-function logPermissionDecision(
-  toolName: string,
-  command: string | undefined,
-  decision: 'allow' | 'deny' | 'ask',
-  reason: string,
-  directory: string,
-): void {
-  try {
-    const logDir = path.join(getOmcRoot(directory), 'logs');
-    if (!fs.existsSync(logDir)) {
-      fs.mkdirSync(logDir, { recursive: true });
-    }
-    const logPath = path.join(logDir, 'permissions.log');
-    const entry = JSON.stringify({
-      ts: new Date().toISOString(),
-      tool: toolName,
-      command: command?.slice(0, 200),
-      decision,
-      reason,
-      denials: sessionDenyTracker.totalDenials,
-      allows: sessionDenyTracker.totalAllows,
-    });
-    fs.appendFileSync(logPath, entry + '\n');
-  } catch {
-    // Audit logging is best-effort; never fail the permission decision
-  }
-}
-
-// --- Annotation-aware MCP tool approval ---
-function isAnnotationSafe(annotations: ToolAnnotations | undefined): boolean {
-  if (!annotations) return false;
-  return annotations.readOnlyHint === true && annotations.destructiveHint !== true;
-}
 
 /**
  * Patterns that are safe to auto-allow even when they contain heredoc content.
@@ -176,17 +86,19 @@ const BACKGROUND_MUTATION_SUBAGENTS = new Set([
   'document-specialist',
 ]);
 
-function readPermissionAllowEntries(filePath: string): string[] {
+function readPermissionStringEntries(filePath: string, key: 'allow' | 'ask'): string[] {
   try {
     if (!fs.existsSync(filePath)) {
       return [];
     }
 
     const settings = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as {
-      permissions?: { allow?: unknown };
+      permissions?: { allow?: unknown; ask?: unknown };
+      allow?: unknown;
+      ask?: unknown;
     };
-    const allow = settings?.permissions?.allow;
-    return Array.isArray(allow) ? allow.filter((entry): entry is string => typeof entry === 'string') : [];
+    const entries = settings?.permissions?.[key] ?? settings?.[key];
+    return Array.isArray(entries) ? entries.filter((entry): entry is string => typeof entry === 'string') : [];
   } catch {
     return [];
   }
@@ -203,7 +115,7 @@ export function getCopilotPermissionAllowEntries(directory: string): string[] {
 
   const allowEntries = new Set<string>();
   for (const candidatePath of candidatePaths) {
-    for (const entry of readPermissionAllowEntries(candidatePath)) {
+    for (const entry of readPermissionStringEntries(candidatePath, 'allow')) {
       allowEntries.add(entry.trim());
     }
   }
@@ -215,7 +127,7 @@ function hasGenericToolPermission(allowEntries: string[], toolName: string): boo
   return allowEntries.some(entry => entry === toolName || entry.startsWith(`${toolName}(`));
 }
 
-export function hasCopilotPermissionApproval(
+export function hasClaudePermissionApproval(
   directory: string,
   toolName: 'Edit' | 'Write' | 'Bash',
   command?: string,
@@ -238,6 +150,78 @@ export function hasCopilotPermissionApproval(
   return allowEntries.includes(`Bash(${trimmedCommand})`);
 }
 
+
+export function getCopilotPermissionAskEntries(directory: string): string[] {
+  const projectSettingsPath = path.join(directory, '.copilot', 'settings.local.json');
+  const globalConfigDir = getCopilotConfigDir();
+  const candidatePaths = [
+    projectSettingsPath,
+    path.join(globalConfigDir, 'settings.local.json'),
+    path.join(globalConfigDir, 'settings.json'),
+  ];
+
+  const askEntries = new Set<string>();
+  for (const candidatePath of candidatePaths) {
+    for (const entry of readPermissionStringEntries(candidatePath, 'ask')) {
+      askEntries.add(entry.trim());
+    }
+  }
+
+  return [...askEntries];
+}
+
+function commandMatchesPermissionPattern(command: string, pattern: string): boolean {
+  const trimmedPattern = pattern.trim();
+  if (!trimmedPattern) {
+    return false;
+  }
+
+  if (!trimmedPattern.includes('*')) {
+    return command === trimmedPattern;
+  }
+
+  const normalizedPrefix = trimmedPattern.replace(/[\s:]*\*+$/, '').trimEnd();
+  if (!normalizedPrefix) {
+    return false;
+  }
+
+  if (!command.startsWith(normalizedPrefix)) {
+    return false;
+  }
+
+  const nextChar = command.charAt(normalizedPrefix.length);
+  return nextChar === '' || /[\s:=(["']/.test(nextChar);
+}
+
+export function hasClaudePermissionAsk(
+  directory: string,
+  toolName: 'Edit' | 'Write' | 'Bash',
+  command?: string,
+): boolean {
+  const askEntries = getCopilotPermissionAskEntries(directory);
+
+  if (toolName !== 'Bash') {
+    return hasGenericToolPermission(askEntries, toolName);
+  }
+
+  const trimmedCommand = command?.trim();
+  if (!trimmedCommand) {
+    return false;
+  }
+
+  return askEntries.some(entry => {
+    if (entry === 'Bash') {
+      return true;
+    }
+
+    if (!entry.startsWith('Bash(') || !entry.endsWith(')')) {
+      return false;
+    }
+
+    return commandMatchesPermissionPattern(trimmedCommand, entry.slice(5, -1));
+  });
+}
+
 export interface BackgroundPermissionFallbackResult {
   shouldFallback: boolean;
   missingTools: string[];
@@ -253,7 +237,7 @@ export function getBackgroundTaskPermissionFallback(
   }
 
   const missingTools = ['Edit', 'Write'].filter(
-    toolName => !hasCopilotPermissionApproval(directory, toolName as 'Edit' | 'Write'),
+    toolName => !hasClaudePermissionApproval(directory, toolName as 'Edit' | 'Write'),
   );
 
   return {
@@ -266,59 +250,21 @@ export function getBackgroundBashPermissionFallback(
   directory: string,
   command?: string,
 ): BackgroundPermissionFallbackResult {
-  if (!command || isSafeCommand(command) || isHeredocWithSafeBase(command)) {
+  if (!command) {
     return { shouldFallback: false, missingTools: [] };
   }
 
-  return hasCopilotPermissionApproval(directory, 'Bash', command)
+  if (hasClaudePermissionAsk(directory, 'Bash', command)) {
+    return { shouldFallback: true, missingTools: ['Bash'] };
+  }
+
+  if (isSafeAutoApprovedCommand(command, directory)) {
+    return { shouldFallback: false, missingTools: [] };
+  }
+
+  return hasClaudePermissionApproval(directory, 'Bash', command)
     ? { shouldFallback: false, missingTools: [] }
     : { shouldFallback: true, missingTools: ['Bash'] };
-}
-
-/**
- * Check if a command matches safe patterns
- */
-export function isSafeCommand(command: string): boolean {
-  const trimmed = command.trim();
-
-  // SECURITY: Reject ANY command with shell metacharacters
-  // These allow command chaining that bypasses safe pattern checks
-  if (DANGEROUS_SHELL_CHARS.test(trimmed)) {
-    return false;
-  }
-
-  return SAFE_PATTERNS.some(pattern => pattern.test(trimmed));
-}
-
-/**
- * Check if a command is a heredoc command with a safe base command.
- * Issue #608: Heredoc commands contain shell metacharacters (<<, \n, $, etc.)
- * that cause isSafeCommand() to reject them. When they fall through to Copilot
- * Code's native permission flow and the user approves "Always allow", the entire
- * heredoc body (potentially hundreds of lines) gets stored in settings.local.json.
- *
- * This function detects heredoc commands and checks whether the base command
- * (first line) matches known-safe patterns, allowing auto-approval without
- * polluting settings.local.json.
- */
-export function isHeredocWithSafeBase(command: string): boolean {
-  const trimmed = command.trim();
-
-  // Heredoc commands from Copilot CLI are always multi-line
-  if (!trimmed.includes('\n')) {
-    return false;
-  }
-
-  // Must contain a heredoc operator
-  if (!HEREDOC_PATTERN.test(trimmed)) {
-    return false;
-  }
-
-  // Extract the first line as the base command
-  const firstLine = trimmed.split('\n')[0].trim();
-
-  // Check if the first line starts with a safe pattern
-  return SAFE_HEREDOC_PATTERNS.some(pattern => pattern.test(firstLine));
 }
 
 function tokenizeShellCommand(command: string): string[] | null {
@@ -360,49 +306,241 @@ function tokenizeShellCommand(command: string): string[] | null {
     tokens.push(current);
   }
 
-  return tokens;
+  return tokens.length > 0 ? tokens : null;
 }
 
-function isRipgrepReadOnly(tokens: string[]): boolean {
-  if (tokens[0] !== 'rg') return false;
-  for (let i = 1; i < tokens.length; i++) {
-    const t = tokens[i];
-    if (t.startsWith('-')) {
-      if (SAFE_RIPGREP_FLAGS.has(t)) continue;
-      if (t.startsWith('--type=') || t.startsWith('--glob=') || t.startsWith('-g')) continue;
-      if (t === '--type' || t === '--glob' || t === '-g' || t === '-t') { i++; continue; }
+function isSensitiveRepoRelativePath(repoRelativePath: string): boolean {
+  const normalized = repoRelativePath.replace(/\\/g, '/').replace(/^\.\//, '');
+  if (!normalized || normalized === '.') {
+    return false;
+  }
+
+  return (
+    normalized === '.git' ||
+    normalized.startsWith('.git/') ||
+    normalized.includes('/.git/') ||
+    normalized === '.ssh' ||
+    normalized.startsWith('.ssh/') ||
+    normalized.includes('/.ssh/') ||
+    normalized === 'secrets' ||
+    normalized.startsWith('secrets/') ||
+    normalized.includes('/secrets/') ||
+    normalized === '.env' ||
+    normalized.startsWith('.env.') ||
+    normalized.includes('/.env') ||
+    normalized.includes('/.env.') ||
+    normalized === 'node_modules/.cache' ||
+    normalized.startsWith('node_modules/.cache/') ||
+    normalized.includes('/node_modules/.cache/')
+  );
+}
+
+function isSafeRepoPath(
+  cwd: string,
+  inputPath: string,
+  options: { allowDirectory?: boolean; requireExisting?: boolean } = {},
+): boolean {
+  const { allowDirectory = false, requireExisting = true } = options;
+  if (!inputPath) {
+    return false;
+  }
+
+  // Literal git toplevel (no submodule→superproject climb) so the containment
+  // boundary stays the actual repo the path lives in (#3349 / PR #3350).
+  const worktreeRoot = getGitTopLevel(cwd);
+  if (!worktreeRoot) {
+    return false;
+  }
+  const resolvedPath = path.resolve(cwd, inputPath);
+
+  let canonicalPath = resolvedPath;
+  const exists = fs.existsSync(resolvedPath);
+
+  if (exists) {
+    try {
+      canonicalPath = fs.realpathSync(resolvedPath);
+    } catch {
+      return false;
+    }
+  } else if (requireExisting) {
+    return false;
+  }
+
+  const relativePath = path.relative(worktreeRoot, canonicalPath);
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    return false;
+  }
+
+  if (!relativePath || relativePath === '.') {
+    return allowDirectory;
+  }
+
+  if (isSensitiveRepoRelativePath(relativePath)) {
+    return false;
+  }
+
+  if (!allowDirectory && exists) {
+    try {
+      if (fs.statSync(resolvedPath).isDirectory()) {
+        return false;
+      }
+    } catch {
       return false;
     }
   }
+
   return true;
 }
 
-function isInsideGitWorktree(cwd: string): boolean {
-  try {
-    return !!getWorktreeRoot(cwd);
-  } catch {
+function areSafeRepoPaths(
+  cwd: string,
+  args: string[],
+  options: { allowDirectory?: boolean; requireExisting?: boolean } = {},
+): boolean {
+  const pathArgs = args.filter(arg => arg !== '--');
+  return pathArgs.length > 0 && pathArgs.every(arg => !arg.startsWith('-') && isSafeRepoPath(cwd, arg, options));
+}
+
+function isSafeCatCommand(tokens: string[], cwd: string): boolean {
+  return tokens[0] === 'cat' && areSafeRepoPaths(cwd, tokens.slice(1));
+}
+
+function isSafeHeadOrTailCommand(tokens: string[], cwd: string): boolean {
+  if (tokens[0] !== 'head' && tokens[0] !== 'tail') {
     return false;
   }
+
+  let index = 1;
+  if (tokens[index] === '-n') {
+    index += 2;
+  } else if (/^-n\d+$/.test(tokens[index] ?? '')) {
+    index += 1;
+  }
+
+  return areSafeRepoPaths(cwd, tokens.slice(index));
+}
+
+function isSafeSedInspectionCommand(tokens: string[], cwd: string): boolean {
+  if (tokens[0] !== 'sed' || tokens[1] !== '-n') {
+    return false;
+  }
+
+  const script = tokens[2];
+  if (!script || !/^\d+(,\d+)?p$/.test(script)) {
+    return false;
+  }
+
+  return areSafeRepoPaths(cwd, tokens.slice(3));
+}
+
+function isSafeRipgrepInspectionCommand(tokens: string[], cwd: string): boolean {
+  if (tokens[0] !== 'rg') {
+    return false;
+  }
+
+  let index = 1;
+  while (index < tokens.length) {
+    const token = tokens[index];
+    if (token === '--') {
+      index += 1;
+      break;
+    }
+    if (!token.startsWith('-')) {
+      break;
+    }
+    if (!SAFE_RIPGREP_FLAGS.has(token)) {
+      return false;
+    }
+    index += 1;
+  }
+
+  const pattern = tokens[index];
+  if (!pattern || pattern.startsWith('-')) {
+    return false;
+  }
+
+  const searchPaths = tokens.slice(index + 1);
+  return areSafeRepoPaths(cwd, searchPaths, { allowDirectory: false });
+}
+
+function isSafeTargetedVitestCommand(tokens: string[], cwd: string): boolean {
+  const supportedPrefixes: string[][] = [
+    ['vitest', 'run'],
+    ['pnpm', 'vitest', 'run'],
+    ['yarn', 'vitest', 'run'],
+  ];
+
+  const matchedPrefix = supportedPrefixes.find(prefix =>
+    prefix.every((part, index) => tokens[index] === part),
+  );
+
+  if (!matchedPrefix) {
+    return false;
+  }
+
+  const remaining = tokens.slice(matchedPrefix.length);
+  return remaining.length === 1 && isSafeRepoPath(cwd, remaining[0], { allowDirectory: false });
+}
+
+function isSafeTargetedPackageManagerTestCommand(tokens: string[], cwd: string): boolean {
+  const supportedPrefixes: string[][] = [
+    ['npm', 'test', '--', '--run'],
+    ['npm', 'run', 'test', '--', '--run'],
+    ['pnpm', 'test', '--', '--run'],
+    ['pnpm', 'run', 'test', '--', '--run'],
+    ['yarn', 'test', '--run'],
+  ];
+
+  const matchedPrefix = supportedPrefixes.find(prefix =>
+    prefix.every((part, index) => tokens[index] === part),
+  );
+
+  if (!matchedPrefix) {
+    return false;
+  }
+
+  const remaining = tokens.slice(matchedPrefix.length);
+  return remaining.length === 1 && isSafeRepoPath(cwd, remaining[0], { allowDirectory: false });
+}
+
+function isSafeTargetedNodeTestCommand(tokens: string[], cwd: string): boolean {
+  return tokens[0] === 'node'
+    && tokens[1] === '--test'
+    && tokens.length === 3
+    && isSafeRepoPath(cwd, tokens[2], { allowDirectory: false });
 }
 
 export function isSafeRepoInspectionCommand(command: string, cwd: string): boolean {
-  if (!isInsideGitWorktree(cwd)) return false;
-  const tokens = tokenizeShellCommand(command);
-  if (!tokens || tokens.length === 0) return false;
-  if (isRipgrepReadOnly(tokens)) return true;
-  if (/^cat( |$)/.test(command) || /^head( |$)/.test(command) || /^tail( |$)/.test(command)) return true;
-  return false;
+  const trimmed = command.trim();
+  if (!trimmed || DANGEROUS_SHELL_CHARS.test(trimmed)) {
+    return false;
+  }
+
+  const tokens = tokenizeShellCommand(trimmed);
+  if (!tokens) {
+    return false;
+  }
+
+  return isSafeCatCommand(tokens, cwd)
+    || isSafeHeadOrTailCommand(tokens, cwd)
+    || isSafeSedInspectionCommand(tokens, cwd)
+    || isSafeRipgrepInspectionCommand(tokens, cwd);
 }
 
 export function isSafeTargetedLocalTestCommand(command: string, cwd: string): boolean {
-  if (!isInsideGitWorktree(cwd)) return false;
-  const tokens = tokenizeShellCommand(command);
-  if (!tokens || tokens.length < 2) return false;
-  const bin = tokens[0];
-  if (bin === 'npx' && tokens[1] === 'vitest' && tokens.includes('run') && tokens.some(t => t.endsWith('.test.ts') || t.endsWith('.test.js'))) return true;
-  if (bin === 'pytest' && tokens.some(t => t.endsWith('.py') || t.includes('::') || t.startsWith('tests/'))) return true;
-  if (bin === 'go' && tokens[1] === 'test' && tokens.some(t => t.startsWith('./') || t.includes('...'))) return true;
-  return false;
+  const trimmed = command.trim();
+  if (!trimmed || DANGEROUS_SHELL_CHARS.test(trimmed)) {
+    return false;
+  }
+
+  const tokens = tokenizeShellCommand(trimmed);
+  if (!tokens) {
+    return false;
+  }
+
+  return isSafeTargetedVitestCommand(tokens, cwd)
+    || isSafeTargetedPackageManagerTestCommand(tokens, cwd)
+    || isSafeTargetedNodeTestCommand(tokens, cwd);
 }
 
 export function isSafeAutoApprovedCommand(command: string, cwd: string): boolean {
@@ -413,7 +551,53 @@ export function isSafeAutoApprovedCommand(command: string, cwd: string): boolean
 }
 
 /**
- * Check if an active mode (autopilot/ultrawork/ralph/team) is running
+ * Check if a command matches safe patterns
+ */
+export function isSafeCommand(command: string): boolean {
+  const trimmed = command.trim();
+
+  // SECURITY: Reject ANY command with shell metacharacters
+  // These allow command chaining that bypasses safe pattern checks
+  if (DANGEROUS_SHELL_CHARS.test(trimmed)) {
+    return false;
+  }
+
+  return SAFE_PATTERNS.some(pattern => pattern.test(trimmed));
+}
+
+/**
+ * Check if a command is a heredoc command with a safe base command.
+ * Issue #608: Heredoc commands contain shell metacharacters (<<, \n, $, etc.)
+ * that cause isSafeCommand() to reject them. When they fall through to Claude
+ * Code's native permission flow and the user approves "Always allow", the entire
+ * heredoc body (potentially hundreds of lines) gets stored in settings.local.json.
+ *
+ * This function detects heredoc commands and checks whether the base command
+ * (first line) matches known-safe patterns, allowing auto-approval without
+ * polluting settings.local.json.
+ */
+export function isHeredocWithSafeBase(command: string): boolean {
+  const trimmed = command.trim();
+
+  // Heredoc commands from Claude Code are always multi-line
+  if (!trimmed.includes('\n')) {
+    return false;
+  }
+
+  // Must contain a heredoc operator
+  if (!HEREDOC_PATTERN.test(trimmed)) {
+    return false;
+  }
+
+  // Extract the first line as the base command
+  const firstLine = trimmed.split('\n')[0].trim();
+
+  // Check if the first line starts with a safe pattern
+  return SAFE_HEREDOC_PATTERNS.some(pattern => pattern.test(firstLine));
+}
+
+/**
+ * Check if an active supported mode is running
  */
 export function isActiveModeRunning(directory: string): boolean {
   const stateDir = path.join(getOmcRoot(directory), 'state');
@@ -425,7 +609,6 @@ export function isActiveModeRunning(directory: string): boolean {
   const activeStateFiles = [
     'autopilot-state.json',
     'ralph-state.json',
-    'ultrawork-state.json',
     'team-state.json',
     'omc-teams-state.json',
   ];
@@ -453,100 +636,42 @@ export function isActiveModeRunning(directory: string): boolean {
 }
 
 /**
- * Build a permission decision result with tracking and audit logging.
- */
-function makeDecision(
-  behavior: 'allow' | 'deny' | 'ask',
-  reason: string,
-  toolName: string,
-  command: string | undefined,
-  directory: string,
-): HookOutput {
-  trackDecision(behavior);
-  logPermissionDecision(toolName, command, behavior, reason, directory);
-
-  if (behavior === 'allow' || behavior === 'deny') {
-    return {
-      continue: true,
-      hookSpecificOutput: {
-        hookEventName: 'PermissionRequest',
-        decision: { behavior, reason },
-      },
-    };
-  }
-
-  // 'ask' — pass through to Copilot CLI's native prompt
-  return { continue: true };
-}
-
-/**
- * Process permission request and decide whether to auto-allow.
- *
- * Decision flow:
- * 1. Escalation check — if too many denials, stop and escalate
- * 2. MCP tool annotations — readOnlyHint tools auto-approved
- * 3. Bash safe patterns — known-safe CLI commands auto-approved
- * 4. Bash heredoc — safe base commands with heredoc content auto-approved
- * 5. Default — pass through to Copilot CLI's native permission prompt
+ * Process permission request and decide whether to auto-allow
  */
 export function processPermissionRequest(input: PermissionRequestInput): HookOutput {
+  // Only process Bash tool for command auto-approval
+  // Normalize tool name - handle both proxy_ prefixed and unprefixed versions
   const toolName = input.tool_name.replace(/^proxy_/, '');
-  const command = input.tool_input.command;
-  const directory = input.cwd;
-
-  // Escalation: if consecutive or total denials exceeded, deny-and-escalate
-  if (shouldEscalate()) {
-    return makeDecision(
-      'deny',
-      `Escalation: ${sessionDenyTracker.consecutiveDenials} consecutive or ${sessionDenyTracker.totalDenials} total denials — stopping to prevent unsafe retry loops`,
-      toolName,
-      command,
-      directory,
-    );
-  }
-
-  // MCP tool annotation check — auto-approve read-only plugin tools
-  if (toolName.startsWith('mcp__t__')) {
-    const annotations = input.tool_input._annotations as ToolAnnotations | undefined;
-    if (isAnnotationSafe(annotations)) {
-      return makeDecision('allow', 'Read-only MCP tool (annotation)', toolName, command, directory);
-    }
-  }
-
-  // Only process Bash commands beyond this point
   if (toolName !== 'Bash') {
-    return makeDecision('ask', 'Non-Bash tool — defer to Copilot CLI', toolName, command, directory);
+    return { continue: true };
   }
 
+  const command = input.tool_input.command;
   if (!command || typeof command !== 'string') {
     return { continue: true };
   }
 
-  // Auto-allow safe commands
-  if (isSafeCommand(command)) {
-    return makeDecision('allow', 'Safe read-only or test command', toolName, command, directory);
-  }
+  const shouldAskBashPermission = hasClaudePermissionAsk(input.cwd, 'Bash', command);
 
-  // Auto-allow heredoc commands with safe base commands (Issue #608)
-  if (isHeredocWithSafeBase(command)) {
-    return makeDecision('allow', 'Safe command with heredoc content', toolName, command, directory);
+  // Auto-allow safe commands
+  if (!shouldAskBashPermission && isSafeAutoApprovedCommand(command, input.cwd)) {
+    const reason = isHeredocWithSafeBase(command)
+      ? 'Safe command with heredoc content'
+      : 'Safe read-only or test command';
+    return {
+      continue: true,
+      hookSpecificOutput: {
+        hookEventName: 'PermissionRequest',
+        decision: {
+          behavior: 'allow',
+          reason,
+        },
+      },
+    };
   }
 
   // Default: let normal permission flow handle it
-  return makeDecision('ask', 'No safe pattern match — defer to Copilot CLI prompt', toolName, command, directory);
-}
-
-/** Get current deny tracker state (for diagnostics/omc-doctor) */
-export function getPermissionDenyStats(): Readonly<DenyTracker> {
-  return { ...sessionDenyTracker };
-}
-
-/** Reset deny tracker (e.g., after user explicitly approves) */
-export function resetDenyTracker(): void {
-  sessionDenyTracker.consecutiveDenials = 0;
-  sessionDenyTracker.totalDenials = 0;
-  sessionDenyTracker.totalAllows = 0;
-  sessionDenyTracker.lastDecision = null;
+  return { continue: true };
 }
 
 /**

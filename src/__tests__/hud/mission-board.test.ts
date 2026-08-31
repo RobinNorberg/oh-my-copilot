@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { renderMissionBoard } from '../../hud/elements/mission-board.js';
 import { render } from '../../hud/render.js';
 import { DEFAULT_HUD_CONFIG, type HudConfig, type HudRenderContext } from '../../hud/types.js';
 import type { MissionBoardState } from '../../hud/mission-board.js';
+
+// Force non-local so the OMC banner omits the "L" local-build suffix under test.
+vi.mock('../../lib/version.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/version.js')>()),
+  isRuntimePackageLocal: () => false,
+}));
 
 function createMissionState(): MissionBoardState {
   return {
@@ -99,7 +105,7 @@ describe('mission board renderer', () => {
       pendingPermission: null,
       thinkingState: null,
       sessionHealth: null,
-      omcVersion: '4.8.2',
+      omcVersion: '4.7.8',
       updateAvailable: null,
       toolCallCount: 0,
       agentCallCount: 0,
@@ -107,7 +113,7 @@ describe('mission board renderer', () => {
       promptTime: null,
       apiKeySource: null,
       profileName: null,
-      sessionSummary: null,
+    sessionSummary: null,
     };
 
     const config: HudConfig = {
@@ -141,7 +147,7 @@ describe('mission board renderer', () => {
     const output = await render(context, config);
     const lines = output.split('\n');
 
-    expect(lines[0]).toContain('[OMC#4.8.2]');
+    expect(lines[0]).toContain('[OMC#4.7.8]');
     expect(lines[1]).toContain('MISSION demo [running]');
     expect(lines[2]).toContain('[run] worker-1');
     expect(lines[4]).toContain('timeline: 07:05 handoff worker-1');

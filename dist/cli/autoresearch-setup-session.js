@@ -1,5 +1,4 @@
 import { spawnSync } from 'child_process';
-import { getHostCliBinary } from '../utils/host-detection.js';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { parseAutoresearchSetupHandoffJson, } from '../autoresearch/setup-contract.js';
@@ -115,7 +114,7 @@ export function buildAutoresearchSetupPrompt(input) {
 }
 export function runAutoresearchSetupSession(input) {
     const prompt = buildAutoresearchSetupPrompt(input);
-    const result = spawnSync(getHostCliBinary(), ['-p', prompt], {
+    const result = spawnSync('claude', ['-p', prompt], {
         cwd: input.repoRoot,
         encoding: 'utf-8',
         shell: process.platform === 'win32',

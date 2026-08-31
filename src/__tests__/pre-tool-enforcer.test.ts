@@ -9,8 +9,15 @@ vi.unmock('node:child_process');
 import { execFileSync } from 'child_process';
 // @ts-expect-error Local hook helper is a JS module loaded directly by the tests.
 import { evaluateAgentHeavyPreflight } from '../../scripts/lib/pre-tool-enforcer-preflight.mjs';
+import { clearWorktreeCache, getOmcRoot } from '../lib/worktree-paths.js';
 
 const SCRIPT_PATH = join(process.cwd(), 'scripts', 'pre-tool-enforcer.mjs');
+
+function makeGitTemp(prefix: string): string {
+  const directory = mkdtempSync(join(tmpdir(), prefix));
+  execFileSync('git', ['init'], { cwd: directory, stdio: 'pipe' });
+  return directory;
+}
 
 function runPreToolEnforcer(input: Record<string, unknown>): Record<string, unknown> {
   return runPreToolEnforcerWithEnv(input);
@@ -30,10 +37,17 @@ function runPreToolEnforcerWithEnv(
     env: {
       ...process.env,
       HOME: homeDir,
-      COPILOT_CONFIG_DIR: join(homeDir, '.copilot'),
+      USERPROFILE: homeDir,
+      COPILOT_CONFIG_DIR: join(homeDir, '.claude'),
       NODE_ENV: 'test',
       DISABLE_OMC: '',
       OMC_SKIP_HOOKS: '',
+      OMC_STATE_DIR: '',
+      CLAUDE_PLUGIN_ROOT: '',
+      // Advisory verbosity: unset it so a contributor running with OMC_QUIET
+      // exported does not silence the advisories these tests assert on.
+      // The OMC_QUIET suites pass their own value via `env`, which wins below.
+      OMC_QUIET: '',
       // Reset Bedrock/routing env vars so tests are isolated from the host environment.
       // Tests that exercise Bedrock model-routing behaviour set these explicitly via `env`.
       OMC_AGENT_PREFLIGHT_CONTEXT_THRESHOLD: '',
@@ -54,6 +68,8 @@ function runPreToolEnforcerWithEnv(
       ANTHROPIC_DEFAULT_HAIKU_MODEL: '',
       ANTHROPIC_DEFAULT_SONNET_MODEL: '',
       ANTHROPIC_DEFAULT_OPUS_MODEL: '',
+      CLAUDE_CODE_BEDROCK_FABLE_MODEL: '',
+      ANTHROPIC_DEFAULT_FABLE_MODEL: '',
       ...env,
     },
   });
@@ -76,11 +92,176 @@ function writeTranscriptWithContext(filePath: string, contextWindow: number, inp
   writeFileSync(filePath, `${line}\n`, 'utf-8');
 }
 
+
+describe('pre-tool-enforcer advisory throttling (issue #3163)', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = makeGitTemp('pre-tool-enforcer-advisory-throttle-');
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function runWithThrottle(toolName: string, nowMs = '1000'): Record<string, unknown> {
+    return runPreToolEnforcerWithEnv(
+      {
+        tool_name: toolName,
+        cwd: tempDir,
+        session_id: 'session-3163',
+      },
+      {
+        OMC_PRE_TOOL_ADVISORY_COOLDOWN_MS: '5000',
+        OMC_PRE_TOOL_ADVISORY_NOW_MS: nowMs,
+      },
+    );
+  }
+
+  it('emits the first advisory and suppresses an immediate repeated identical advisory', () => {
+    const first = runWithThrottle('Bash');
+    const repeated = runWithThrottle('Bash');
+
+    expect(first.continue).toBe(true);
+    expect((first.hookSpecificOutput as Record<string, unknown>).additionalContext).toContain(
+      'Use parallel execution for independent tasks',
+    );
+    expect(repeated).toEqual({ continue: true, suppressOutput: true });
+  });
+
+  it('still emits a different advisory while the previous advisory is cooling down', () => {
+    const first = runWithThrottle('Bash');
+    const different = runWithThrottle('Edit');
+
+    expect((first.hookSpecificOutput as Record<string, unknown>).additionalContext).toContain(
+      'Use parallel execution for independent tasks',
+    );
+    expect((different.hookSpecificOutput as Record<string, unknown>).additionalContext).toContain(
+      'Verify changes work after editing',
+    );
+  });
+
+  it('does not throttle repeated hard-gate denials', () => {
+    const sessionId = 'session-3163';
+    writeJson(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'ultragoal-state.json'), {
+      active: true,
+      session_id: sessionId,
+      project_path: tempDir,
+      objective: 'complete the aggregate ultragoal',
+      last_checked_at: new Date().toISOString(),
+    });
+
+    const input = {
+      tool_name: 'Bash',
+      cwd: tempDir,
+      session_id: sessionId,
+      tool_input: { command: 'echo safe' },
+    };
+    const env = {
+      OMC_PRE_TOOL_ADVISORY_COOLDOWN_MS: '5000',
+      OMC_PRE_TOOL_ADVISORY_NOW_MS: '1000',
+    };
+
+    const first = runPreToolEnforcerWithEnv(input, env);
+    const repeated = runPreToolEnforcerWithEnv(input, env);
+
+    for (const output of [first, repeated]) {
+      const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+      expect(output.continue).toBe(true);
+      expect(hookSpecificOutput.permissionDecision).toBe('deny');
+      expect(hookSpecificOutput.permissionDecisionReason).toContain('[ULTRAGOAL /GOAL REQUIRED]');
+    }
+  });
+
+  it('uses deterministic cooldown interval boundaries', () => {
+    const first = runWithThrottle('Bash', '1000');
+    const beforeCooldown = runWithThrottle('Bash', '5999');
+    const atCooldown = runWithThrottle('Bash', '6000');
+
+    expect((first.hookSpecificOutput as Record<string, unknown>).additionalContext).toContain(
+      'Use parallel execution for independent tasks',
+    );
+    expect(beforeCooldown).toEqual({ continue: true, suppressOutput: true });
+    expect((atCooldown.hookSpecificOutput as Record<string, unknown>).additionalContext).toContain(
+      'Use parallel execution for independent tasks',
+    );
+  });
+
+  it('does not let a future throttle timestamp suppress an advisory', () => {
+    runWithThrottle('Bash', '10000');
+
+    const output = runWithThrottle('Bash', '1000');
+
+    expect((output.hookSpecificOutput as Record<string, unknown>).additionalContext).toContain(
+      'Use parallel execution for independent tasks',
+    );
+  });
+
+  it('keeps advisory throttle state capped after adding a new entry', () => {
+    const sessionId = 'session-3163';
+    const throttlePath = join(
+      tempDir,
+      '.omg',
+      'state',
+      'sessions',
+      sessionId,
+      'pre-tool-advisory-throttle.json',
+    );
+    const entries = Object.fromEntries(
+      Array.from({ length: 100 }, (_, index) => [
+        `old-${index}`,
+        {
+          last_emitted_at_ms: 10_000 - index,
+          message: `old message ${index}`,
+        },
+      ]),
+    );
+    writeJson(throttlePath, { version: 1, entries });
+
+    runWithThrottle('Bash', '20000');
+
+    const state = JSON.parse(readFileSync(throttlePath, 'utf-8')) as {
+      entries: Record<string, unknown>;
+    };
+    expect(Object.keys(state.entries)).toHaveLength(100);
+  });
+
+  it('prunes future throttle entries so they cannot consume the cap', () => {
+    const sessionId = 'session-3163';
+    const throttlePath = join(
+      tempDir,
+      '.omg',
+      'state',
+      'sessions',
+      sessionId,
+      'pre-tool-advisory-throttle.json',
+    );
+    const entries = Object.fromEntries(
+      Array.from({ length: 100 }, (_, index) => [
+        `future-${index}`,
+        {
+          last_emitted_at_ms: 999_000 + index,
+          message: `future message ${index}`,
+        },
+      ]),
+    );
+    writeJson(throttlePath, { version: 1, entries });
+
+    runWithThrottle('Bash', '20000');
+
+    const state = JSON.parse(readFileSync(throttlePath, 'utf-8')) as {
+      entries: Record<string, { last_emitted_at_ms: number }>;
+    };
+    expect(Object.keys(state.entries)).toHaveLength(1);
+    expect(Object.values(state.entries)[0].last_emitted_at_ms).toBe(20_000);
+  });
+});
+
 describe('pre-tool-enforcer fallback gating (issue #970)', () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-'));
+    tempDir = makeGitTemp('pre-tool-enforcer-');
   });
 
   afterEach(() => {
@@ -100,7 +281,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
   it('emits boulder fallback for unknown tools when session-scoped mode is active', () => {
     const sessionId = 'session-970';
     writeJson(
-      join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'ralph-state.json'),
+      join(tempDir, '.omg', 'state', 'sessions', sessionId, 'ralph-state.json'),
       {
         active: true,
         session_id: sessionId,
@@ -120,7 +301,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
   });
 
   it('does not fall back to legacy mode files when a valid session_id is provided', () => {
-    writeJson(join(tempDir, '.omcp', 'state', 'ralph-state.json'), {
+    writeJson(join(tempDir, '.omg', 'state', 'ralph-state.json'), {
       active: true,
     });
 
@@ -134,7 +315,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
   });
 
   it('uses legacy mode files when session_id is not provided', () => {
-    writeJson(join(tempDir, '.omcp', 'state', 'ultrawork-state.json'), {
+    writeJson(join(tempDir, '.omg', 'state', 'ralph-state.json'), {
       active: true,
     });
 
@@ -150,10 +331,10 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
 
   // === Team-routing enforcement tests (issue #1006) ===
 
-  it('injects team-routing redirect when Task called without team_name during active team session', () => {
+  it('injects team-routing redirect when Task called without teammate name during active team session', () => {
     const sessionId = 'session-1006';
     writeJson(
-      join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'),
+      join(tempDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'),
       {
         active: true,
         session_id: sessionId,
@@ -176,13 +357,20 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     expect(output.continue).toBe(true);
     expect(hookSpecificOutput.additionalContext).toContain('TEAM ROUTING REQUIRED');
     expect(hookSpecificOutput.additionalContext).toContain('fix-ts-errors');
-    expect(hookSpecificOutput.additionalContext).toContain('team_name=');
+    expect(hookSpecificOutput.additionalContext).toContain('name="worker-N"');
+    expect(hookSpecificOutput.additionalContext).toContain('TeamCreate and TeamDelete are removed');
+    expect(hookSpecificOutput.additionalContext).toContain('team_name for routing');
+    expect(hookSpecificOutput.additionalContext).toContain('ignored legacy metadata');
+    expect(hookSpecificOutput.additionalContext).not.toContain('CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS');
+    expect(hookSpecificOutput.additionalContext).not.toContain('verify CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS');
+    expect(hookSpecificOutput.additionalContext).not.toContain('Restart Claude Code');
+
   });
 
-  it('does NOT inject team-routing redirect when Task called WITH team_name', () => {
+  it('does NOT inject team-routing redirect when Task called WITH teammate name', () => {
     const sessionId = 'session-1006b';
     writeJson(
-      join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'),
+      join(tempDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'),
       {
         active: true,
         session_id: sessionId,
@@ -194,7 +382,6 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       tool_name: 'Task',
       toolInput: {
         subagent_type: 'oh-my-copilot:executor',
-        team_name: 'fix-ts-errors',
         name: 'worker-1',
         description: 'Fix type errors',
         prompt: 'Fix all type errors in src/auth/',
@@ -208,6 +395,85 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     // Should be a normal spawn message, not a redirect
     expect(String(hookSpecificOutput.additionalContext)).not.toContain('TEAM ROUTING REQUIRED');
     expect(String(hookSpecificOutput.additionalContext)).toContain('Spawning agent');
+  });
+
+  it('injects team-routing redirect when Agent called without teammate name during active team session', () => {
+    const sessionId = 'session-3323-agent';
+    writeJson(
+      join(tempDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'),
+      {
+        active: true,
+        session_id: sessionId,
+        team_name: 'native-team-compat',
+      },
+    );
+
+    const output = runPreToolEnforcer({
+      tool_name: 'Agent',
+      toolInput: {
+        subagent_type: 'oh-my-copilot:executor',
+        description: 'Fix type errors',
+        prompt: 'Fix all type errors in src/auth/',
+      },
+      cwd: tempDir,
+      session_id: sessionId,
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    const context = String(hookSpecificOutput.additionalContext);
+    expect(output.continue).toBe(true);
+    expect(context).toContain('TEAM ROUTING REQUIRED');
+    expect(context).toContain('native-team-compat');
+    expect(context).toContain('name="worker-N"');
+    expect(context).toContain('TeamCreate and TeamDelete are removed');
+    expect(context).not.toContain('verify CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS');
+    expect(context).not.toContain('CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS');
+    expect(context).not.toContain('Restart Claude Code');
+  });
+
+  it('does NOT inject team-routing redirect when Agent called WITH teammate name', () => {
+    const sessionId = 'session-3323-agent-named';
+    writeJson(
+      join(tempDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'),
+      {
+        active: true,
+        session_id: sessionId,
+        team_name: 'native-team-compat',
+      },
+    );
+
+    const output = runPreToolEnforcer({
+      tool_name: 'Agent',
+      toolInput: {
+        subagent_type: 'oh-my-copilot:executor',
+        name: 'worker-1',
+        description: 'Fix type errors',
+        prompt: 'Fix all type errors in src/auth/',
+      },
+      cwd: tempDir,
+      session_id: sessionId,
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    const context = String(hookSpecificOutput.additionalContext);
+    expect(output.continue).toBe(true);
+    expect(context).not.toContain('TEAM ROUTING REQUIRED');
+    expect(context).toContain('Spawning agent');
+  });
+
+  it('keeps team skill guidance on the Claude Code 2.1.x implicit team contract', () => {
+    const skillSource = readFileSync(join(process.cwd(), 'skills', 'team', 'SKILL.md'), 'utf-8');
+
+    expect(skillSource).toContain('implicit Claude Code team');
+    expect(skillSource).toContain('Agent/Task');
+    expect(skillSource).toContain('name="worker-N"');
+    expect(skillSource).toContain('Do **not** call `TeamCreate`');
+    expect(skillSource).toContain('no `TeamDelete`');
+    expect(skillSource.split('\n').filter((line) => /call\s+`?TeamCreate/i.test(line) && !/not.*call\s+`?TeamCreate/i.test(line))).toEqual([]);
+    expect(skillSource).not.toMatch(/TeamCreate\s*\(/);
+    expect(skillSource).not.toMatch(/TeamDelete\s*\(/);
+    expect(skillSource).not.toContain('If `TeamCreate` is not available');
+    expect(skillSource).not.toContain('Restart Claude Code');
   });
 
   it('does NOT inject team-routing redirect when no team state is active', () => {
@@ -260,7 +526,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     const output = runPreToolEnforcer({
       tool_name: 'Agent',
       toolInput: {
-        subagent_type: 'oh-my-claudecode:executor',
+        subagent_type: 'oh-my-copilot:executor',
         description: 'Fix type errors',
         prompt: 'Fix all type errors in src/auth/',
       },
@@ -270,11 +536,11 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
 
     const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
     expect(output.continue).toBe(true);
-    expect(String(hookSpecificOutput.additionalContext)).toContain('Spawning agent: oh-my-claudecode:executor');
+    expect(String(hookSpecificOutput.additionalContext)).toContain('Spawning agent: oh-my-copilot:executor');
   });
 
   it('reads team state from legacy path when session_id is absent', () => {
-    writeJson(join(tempDir, '.omcp', 'state', 'team-state.json'), {
+    writeJson(join(tempDir, '.omg', 'state', 'team-state.json'), {
       active: true,
       team_name: 'legacy-team',
     });
@@ -295,9 +561,46 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     expect(hookSpecificOutput.additionalContext).toContain('legacy-team');
   });
 
+  it('routes Task calls from canonical team state when coarse team-state drifts away', () => {
+    const sessionId = 'session-canonical-team';
+    const canonicalTeamDir = join(tempDir, '.omg', 'state', 'team', 'canonical-team');
+    writeJson(join(canonicalTeamDir, 'manifest.json'), {
+      name: 'canonical-team',
+      task: 'Canonical team task',
+      leader: {
+        session_id: sessionId,
+        worker_id: 'leader-fixed',
+        role: 'leader',
+      },
+      created_at: new Date().toISOString(),
+      leader_cwd: tempDir,
+      team_state_root: join(tempDir, '.omg', 'state'),
+    });
+    writeJson(join(canonicalTeamDir, 'phase-state.json'), {
+      current_phase: 'executing',
+      updated_at: new Date().toISOString(),
+    });
+
+    const output = runPreToolEnforcer({
+      tool_name: 'Task',
+      toolInput: {
+        subagent_type: 'oh-my-copilot:executor',
+        description: 'Fix type errors',
+        prompt: 'Fix all type errors in src/auth/',
+      },
+      cwd: tempDir,
+      session_id: sessionId,
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(hookSpecificOutput.additionalContext).toContain('TEAM ROUTING REQUIRED');
+    expect(hookSpecificOutput.additionalContext).toContain('canonical-team');
+  });
+
   it('respects session isolation — ignores team state from different session', () => {
     writeJson(
-      join(tempDir, '.omcp', 'state', 'sessions', 'other-session', 'team-state.json'),
+      join(tempDir, '.omg', 'state', 'sessions', 'other-session', 'team-state.json'),
       {
         active: true,
         session_id: 'other-session',
@@ -366,14 +669,14 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
   it('keeps active-mode and team-routing enforcement visible when OMC_QUIET is enabled', () => {
     const sessionId = 'session-1646';
     writeJson(
-      join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'ralph-state.json'),
+      join(tempDir, '.omg', 'state', 'sessions', sessionId, 'ralph-state.json'),
       {
         active: true,
         session_id: sessionId,
       },
     );
     writeJson(
-      join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'),
+      join(tempDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'),
       {
         active: true,
         session_id: sessionId,
@@ -518,7 +821,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     const output = runPreToolEnforcer({
       tool_name: 'Task',
       toolInput: {
-        subagent_type: 'oh-my-claudecode:executor',
+        subagent_type: 'oh-my-copilot:executor',
         description: 'Implement fallback routing',
         prompt: 'Please implement a fallback layer for the flaky API.',
       },
@@ -535,7 +838,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     const output = runPreToolEnforcer({
       tool_name: 'Task',
       toolInput: {
-        subagent_type: 'oh-my-claudecode:executor',
+        subagent_type: 'oh-my-copilot:executor',
         description: 'Skip architecture for flaky API failures',
         prompt: 'Please work around flaky API failures by skipping the normal architecture.',
       },
@@ -552,7 +855,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     const output = runPreToolEnforcer({
       tool_name: 'Task',
       toolInput: {
-        subagent_type: 'oh-my-claudecode:executor',
+        subagent_type: 'oh-my-copilot:executor',
         description: 'Add API fallback',
         prompt: 'If the API fails, fall back on cached responses.',
       },
@@ -569,7 +872,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     const output = runPreToolEnforcer({
       tool_name: 'Task',
       toolInput: {
-        subagent_type: 'oh-my-claudecode:executor',
+        subagent_type: 'oh-my-copilot:executor',
         description: 'Add API fallback',
         prompt: 'If the API fails, fallback to cached responses.',
       },
@@ -586,7 +889,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     const output = runPreToolEnforcer({
       tool_name: 'Task',
       toolInput: {
-        subagent_type: 'oh-my-claudecode:executor',
+        subagent_type: 'oh-my-copilot:executor',
         description: 'Implement fallback routing',
         prompt: [
           '## Implementation',
@@ -651,7 +954,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       const output = runPreToolEnforcer({
         tool_name: 'Task',
         toolInput: {
-          subagent_type: 'oh-my-claudecode:executor',
+          subagent_type: 'oh-my-copilot:executor',
           description: 'Handle benign fallback documentation',
           prompt,
         },
@@ -669,7 +972,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     const output = runPreToolEnforcer({
       tool_name: 'Task',
       toolInput: {
-        subagent_type: 'oh-my-claudecode:executor',
+        subagent_type: 'oh-my-copilot:executor',
         description: 'Preserve benign fallback and reject risky routing fallback',
         prompt: 'Preserve the fail-soft fallback value, and fallback to weaker model if the preferred agent is unavailable.',
       },
@@ -686,7 +989,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     const output = runPreToolEnforcer({
       tool_name: 'Task',
       toolInput: {
-        subagent_type: 'oh-my-claudecode:executor',
+        subagent_type: 'oh-my-copilot:executor',
         description: 'Review quoted technical phrases',
         prompt: [
           'Review the quoted phrase "fallback to default config" in the migration notes.',
@@ -764,7 +1067,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       const output = runPreToolEnforcer({
         tool_name: 'Task',
         toolInput: {
-          subagent_type: 'oh-my-claudecode:executor',
+          subagent_type: 'oh-my-copilot:executor',
           description: 'Implement risky fallback',
           prompt,
         },
@@ -826,7 +1129,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
 
   it('clears awaiting confirmation from session-scoped mode state when a skill is invoked', () => {
     const sessionId = 'session-confirm';
-    const sessionStateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
+    const sessionStateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionStateDir, { recursive: true });
     writeJson(join(sessionStateDir, 'ralph-state.json'), {
       active: true,
@@ -857,7 +1160,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     ).toBeUndefined();
     expect(
       JSON.parse(readFileSync(join(sessionStateDir, 'ultrawork-state.json'), 'utf-8')).awaiting_confirmation,
-    ).toBeUndefined();
+    ).toBe(true);
   });
 
   // === Model routing / forceInherit tests (issue #1868 catch-22) ===
@@ -940,6 +1243,63 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     expect(JSON.stringify(output)).not.toContain('MODEL ROUTING');
   });
 
+  it('allows tier alias "fable" via ANTHROPIC_DEFAULT_FABLE_MODEL without OMC_SUBAGENT_MODEL (issue #3246)', () => {
+    const output = runPreToolEnforcerWithEnv(
+      {
+        tool_name: 'Agent',
+        toolInput: { subagent_type: 'oh-my-copilot:architect', model: 'fable' },
+        cwd: tempDir,
+        session_id: 'session-tier-default-fable',
+      },
+      {
+        OMC_ROUTING_FORCE_INHERIT: 'true',
+        OMC_SUBAGENT_MODEL: '',
+        ANTHROPIC_DEFAULT_FABLE_MODEL: 'global.anthropic.claude-fable-5-v1',
+      },
+    );
+
+    expect(output.continue).toBe(true);
+    expect(JSON.stringify(output)).not.toContain('MODEL ROUTING');
+  });
+
+  it('resolves tier alias "fable" via CLAUDE_CODE_BEDROCK_FABLE_MODEL (issue #3246)', () => {
+    const output = runPreToolEnforcerWithEnv(
+      {
+        tool_name: 'Agent',
+        toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'fable' },
+        cwd: tempDir,
+        session_id: 'session-tier-fable-cc-bedrock-env',
+      },
+      {
+        OMC_ROUTING_FORCE_INHERIT: 'true',
+        OMC_SUBAGENT_MODEL: '',
+        CLAUDE_CODE_BEDROCK_FABLE_MODEL: 'us.anthropic.claude-fable-5-v1:0',
+      },
+    );
+
+    expect(output.continue).toBe(true);
+    expect(JSON.stringify(output)).not.toContain('MODEL ROUTING');
+  });
+
+  it('blocks tier alias "fable" when no fable model env is configured (issue #3246)', () => {
+    const output = runPreToolEnforcerWithEnv(
+      {
+        tool_name: 'Agent',
+        toolInput: { subagent_type: 'oh-my-copilot:architect', model: 'fable' },
+        cwd: tempDir,
+        session_id: 'session-tier-fable-no-env',
+      },
+      {
+        OMC_ROUTING_FORCE_INHERIT: 'true',
+        OMC_SUBAGENT_MODEL: '',
+        ANTHROPIC_DEFAULT_FABLE_MODEL: '',
+      },
+    );
+
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
+  });
+
   it.each([
     ['sonnet', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'glm-5.1:cloud', 'session-tier-proxy-sonnet'],
     ['opus', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'glm-5.1:cloud', 'session-tier-proxy-opus'],
@@ -979,7 +1339,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output as Record<string, unknown>;
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
     expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
@@ -999,12 +1359,12 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output as Record<string, unknown>;
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
     expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
   it('allows proxy ANTHROPIC_DEFAULT_*_MODEL in config force-inherit mode when no normal Claude model is active', () => {
-    const configDir = join(tempDir, '.omcp');
+    const configDir = join(tempDir, '.omg');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, 'config.json'), JSON.stringify({ routing: { forceInherit: true } }));
 
@@ -1042,7 +1402,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output as Record<string, unknown>;
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
     expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
@@ -1152,7 +1512,8 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    expect(output.permissionDecisionReason as string).toContain('MODEL ROUTING');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
   it('blocks tier alias when NO safe model env is configured at all', () => {
@@ -1170,7 +1531,8 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    expect(output.permissionDecisionReason as string).toContain('MODEL ROUTING');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
   it('agent-definition deny works via ANTHROPIC_DEFAULT_*_MODEL without OMC_SUBAGENT_MODEL', () => {
@@ -1201,9 +1563,11 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    expect(output.permissionDecision).toBe('deny');
-    expect(output.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
-    expect(output.permissionDecisionReason as string).toContain('claude-opus-4-6');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(hookOutput.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
+    expect(hookOutput.permissionDecisionReason as string).toContain('claude-opus-4-6');
   });
 
   it('blocks tier alias when OMC_SUBAGENT_MODEL is itself a bare Anthropic model ID', () => {
@@ -1220,7 +1584,8 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    expect(output.permissionDecisionReason as string).toContain('MODEL ROUTING');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
   it('blocks tier alias when OMC_SUBAGENT_MODEL has a [1m] extended-context suffix', () => {
@@ -1237,8 +1602,10 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    expect(output.permissionDecisionReason as string).toContain('MODEL ROUTING');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
+
 
   it('still blocks bare Anthropic model ID even when OMC_SUBAGENT_MODEL is set', () => {
     const output = runPreToolEnforcerWithEnv(
@@ -1254,7 +1621,8 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    expect(output.permissionDecisionReason as string).toContain('MODEL ROUTING');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
   // === Agent definition model routing (issue: subagent_type bare-model-id on Bedrock) ===
@@ -1286,9 +1654,11 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    expect(output.permissionDecision).toBe('deny');
-    expect(output.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
-    expect(output.permissionDecisionReason as string).toContain('claude-opus-4-6');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(hookOutput.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
+    expect(hookOutput.permissionDecisionReason as string).toContain('claude-opus-4-6');
   });
 
   it('denies Task call when a discovered plugin agent definition has a bare Anthropic model ID', () => {
@@ -1318,8 +1688,10 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    expect(output.permissionDecision).toBe('deny');
-    expect(output.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(hookOutput.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
   });
 
   it('deny message includes the bare model from a plugin definition and suggests the tier alias', () => {
@@ -1349,7 +1721,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const reason = output.permissionDecisionReason as string;
+    const reason = (output.hookSpecificOutput as Record<string, unknown>).permissionDecisionReason as string;
     expect(reason).toContain('claude-opus-4-6');
     expect(reason).toContain('opus'); // tier alias suggestion
     expect(reason).toContain('global.anthropic.claude-sonnet-4-6'); // resolved safe model in guidance
@@ -1397,8 +1769,9 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    expect(output.permissionDecision as string).toBe('deny');
-    expect(output.permissionDecisionReason as string).toContain('MODEL ROUTING');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(hookOutput.permissionDecision as string).toBe('deny');
+    expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
   it('does NOT deny subagent_type call when forceInherit is disabled', () => {
@@ -1637,9 +2010,11 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     );
 
     // Quoted model "claude-opus-4-6" must be stripped of quotes before the safety check
-    expect(output.permissionDecision).toBe('deny');
-    expect(output.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
-    expect(output.permissionDecisionReason as string).toContain('claude-opus-4-6');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(hookOutput.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
+    expect(hookOutput.permissionDecisionReason as string).toContain('claude-opus-4-6');
   });
 
   it('allows a valid provider-specific model ID written with YAML quotes', () => {
@@ -1704,9 +2079,11 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
 
     // BOM must be stripped so the frontmatter regex matches and the bare
     // Anthropic model ID triggers a deny — not silently bypassed.
-    expect(output.permissionDecision).toBe('deny');
-    expect(output.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
-    expect(output.permissionDecisionReason as string).toContain('bom-agent');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(hookOutput.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
+    expect(hookOutput.permissionDecisionReason as string).toContain('bom-agent');
   });
 
   it('does NOT deny Agent call without subagent_type in forceInherit mode (normal inheritance unchanged)', () => {
@@ -1751,7 +2128,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     expect(JSON.stringify(output)).not.toContain('MODEL ROUTING');
   });
 
-  it('does not write skill-active-state for unknown custom skills', () => {
+    it('does not write skill-active-state for unknown custom skills', () => {
     const sessionId = 'session-1581';
 
     const output = runPreToolEnforcer({
@@ -1765,7 +2142,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
 
     expect(output).toEqual({ continue: true, suppressOutput: true });
     expect(
-      existsSync(join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'skill-active-state.json')),
+      existsSync(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'skill-active-state.json')),
     ).toBe(false);
   });
 });
@@ -1776,7 +2153,7 @@ describe('pre-tool-enforcer force-agent-delegation enforcement', () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-fad-'));
+    tempDir = makeGitTemp('pre-tool-enforcer-fad-');
   });
 
   afterEach(() => {
@@ -1784,7 +2161,7 @@ describe('pre-tool-enforcer force-agent-delegation enforcement', () => {
   });
 
   function writeDelegationConfig(rules: Array<Record<string, unknown>>, enforce = true): void {
-    writeJson(join(tempDir, '.omcp', 'config.json'), {
+    writeJson(join(tempDir, '.omg', 'config.json'), {
       routing: {
         forceDelegation: { enforce, rules },
       },
@@ -1930,5 +2307,764 @@ describe('pre-tool-enforcer force-agent-delegation enforcement', () => {
     const hookOutput = third.hookSpecificOutput as Record<string, unknown>;
     expect(hookOutput.permissionDecision).toBe('deny');
     expect(String(hookOutput.permissionDecisionReason)).toContain('Investigation budget');
+  });
+});
+
+describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => {
+  let tempDir: string;
+  let xdgConfigHome: string;
+
+  beforeEach(() => {
+    tempDir = makeGitTemp('pre-tool-enforcer-agent-model-');
+    xdgConfigHome = join(tempDir, 'xdg-config');
+    mkdirSync(join(xdgConfigHome, 'claude-omc'), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function writeUserConfig(jsonc: string): void {
+    writeFileSync(join(xdgConfigHome, 'claude-omc', 'config.jsonc'), jsonc);
+  }
+
+  function writeProjectConfig(jsonc: string): void {
+    const dir = join(tempDir, '.claude');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'omc.jsonc'), jsonc);
+  }
+
+  function run(input: Record<string, unknown>, env: Record<string, string> = {}): Record<string, unknown> {
+    return runPreToolEnforcerWithEnv(
+      { cwd: tempDir, ...input },
+      { XDG_CONFIG_HOME: xdgConfigHome, OMC_ROUTING_FORCE_INHERIT: 'false', ...env },
+    );
+  }
+
+  function updatedModel(output: Record<string, unknown>): unknown {
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown> | undefined;
+    const updatedInput = hookOutput?.updatedInput as Record<string, unknown> | undefined;
+    return updatedInput?.model;
+  }
+
+  it('injects configured model via updatedInput for native Task calls without a model param', () => {
+    writeUserConfig('{ "agents": { "explore": { "model": "sonnet" } } }');
+    const output = run({
+      tool_name: 'Task',
+      toolInput: { subagent_type: 'oh-my-copilot:explore', prompt: 'x', description: 'find files' },
+      session_id: 'session-3242-inject',
+    });
+    expect(updatedModel(output)).toBe('sonnet');
+  });
+
+  it('does not inject when no per-agent override is configured', () => {
+    writeUserConfig('{ "agents": {} }');
+    const output = run({
+      tool_name: 'Task',
+      toolInput: { subagent_type: 'oh-my-copilot:architect', prompt: 'x', description: 'design' },
+      session_id: 'session-3242-noop',
+    });
+    expect(updatedModel(output)).toBeUndefined();
+  });
+
+  it('preserves an explicit model param and does not inject', () => {
+    writeUserConfig('{ "agents": { "explore": { "model": "sonnet" } } }');
+    const output = run({
+      tool_name: 'Task',
+      toolInput: { subagent_type: 'oh-my-copilot:explore', model: 'opus', prompt: 'x', description: 'd' },
+      session_id: 'session-3242-explicit',
+    });
+    expect(updatedModel(output)).toBeUndefined();
+  });
+
+  it('normalizes full Claude model IDs to a CC tier alias', () => {
+    writeUserConfig('{ "agents": { "executor": { "model": "claude-opus-4-6" } } }');
+    const output = run({
+      tool_name: 'Task',
+      toolInput: { subagent_type: 'oh-my-copilot:executor', prompt: 'x', description: 'd' },
+      session_id: 'session-3242-normalize',
+    });
+    expect(updatedModel(output)).toBe('opus');
+  });
+
+  it('lets project config override user config', () => {
+    writeUserConfig('{ "agents": { "explore": { "model": "haiku" } } }');
+    writeProjectConfig('{ "agents": { "explore": { "model": "sonnet" } } }');
+    const output = run({
+      tool_name: 'Task',
+      toolInput: { subagent_type: 'oh-my-copilot:explore', prompt: 'x', description: 'd' },
+      session_id: 'session-3242-precedence',
+    });
+    expect(updatedModel(output)).toBe('sonnet');
+  });
+
+  it('resolves deprecated subagent aliases to the canonical config key', () => {
+    writeUserConfig('{ "agents": { "codeReviewer": { "model": "opus" } } }');
+    const output = run({
+      tool_name: 'Task',
+      toolInput: { subagent_type: 'oh-my-copilot:reviewer', prompt: 'x', description: 'd' },
+      session_id: 'session-3242-alias',
+    });
+    expect(updatedModel(output)).toBe('opus');
+  });
+
+  it('does not inject under forceInherit even when an override is configured', () => {
+    writeUserConfig('{ "agents": { "explore": { "model": "sonnet" } } }');
+    const output = run(
+      {
+        tool_name: 'Task',
+        toolInput: { subagent_type: 'oh-my-copilot:explore', prompt: 'x', description: 'd' },
+        session_id: 'session-3242-force-inherit',
+      },
+      { OMC_ROUTING_FORCE_INHERIT: 'true' },
+    );
+    expect(updatedModel(output)).toBeUndefined();
+  });
+
+  it('still injects the configured model when the advisory message is throttled (suppressOutput)', () => {
+    writeUserConfig('{ "agents": { "explore": { "model": "sonnet" } } }');
+    const input = {
+      tool_name: 'Task',
+      toolInput: { subagent_type: 'oh-my-copilot:explore', prompt: 'x', description: 'find files' },
+      session_id: 'session-3242-throttle',
+    };
+    // Pin the throttle clock so the second identical call lands inside the cooldown
+    // window and is advisory-throttled.
+    const throttleEnv = {
+      OMC_PRE_TOOL_ADVISORY_COOLDOWN_MS: '5000',
+      OMC_PRE_TOOL_ADVISORY_NOW_MS: '1000',
+    };
+
+    const first = run(input, throttleEnv);
+    const throttled = run(input, throttleEnv);
+
+    // First call: advisory emitted alongside the injection.
+    expect(updatedModel(first)).toBe('sonnet');
+    // Second identical call: advisory suppressed, but the model injection MUST survive.
+    expect(throttled.suppressOutput).toBe(true);
+    expect(throttled.hookSpecificOutput).toBeDefined();
+    expect(updatedModel(throttled)).toBe('sonnet');
+  });
+});
+describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = makeGitTemp('pre-tool-enforcer-skill-agent-');
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function runTask(
+    subagentType: unknown,
+    toolName = 'Task',
+    extraInput: Record<string, unknown> = {},
+    env: Record<string, string> = {},
+  ): Record<string, unknown> {
+    return runPreToolEnforcerWithEnv(
+      {
+        tool_name: toolName,
+        cwd: tempDir,
+        session_id: 'session-3667',
+        transcript_path: '',
+        toolInput: {
+          subagent_type: subagentType,
+          description: 'Some task',
+          prompt: 'Do something',
+          ...extraInput,
+        },
+      },
+      env,
+    );
+  }
+
+  function denyReason(output: Record<string, unknown>): string {
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    return String(hookOutput.permissionDecisionReason ?? '');
+  }
+
+  it('denies Task call whose subagent_type names a bundled skill (oh-my-copilot:ai-slop-cleaner)', () => {
+    const output = runTask('oh-my-copilot:ai-slop-cleaner');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(hookOutput.permissionDecisionReason as string).toContain('[SKILL vs AGENT]');
+    expect(hookOutput.permissionDecisionReason as string).toContain('ai-slop-cleaner');
+    // Names the correct tool and identifier — no generic "Agent type not found".
+    expect(hookOutput.permissionDecisionReason as string).toContain(
+      'Skill(skill="oh-my-copilot:ai-slop-cleaner")',
+    );
+    // Forbids closest-match substitution (code-simplifier is the attractive wrong answer).
+    expect(hookOutput.permissionDecisionReason as string).toContain('closest match');
+    expect(hookOutput.permissionDecisionReason as string).not.toContain('code-simplifier');
+  });
+
+  it('denies Agent call with a bare bundled skill identifier and suggests the canonical namespaced identifier', () => {
+    const output = runTask('ai-slop-cleaner', 'Agent');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    // Recovery must be unambiguous: always the plugin-namespaced form, never a
+    // bare skill name that could resolve to a different project/user skill.
+    expect(denyReason(output)).toContain('Skill(skill="oh-my-copilot:ai-slop-cleaner")');
+    expect(denyReason(output)).not.toContain('Skill(skill="ai-slop-cleaner")');
+  });
+
+  it('recognizes the omc: namespace alias and suggests the canonical oh-my-copilot: identifier', () => {
+    const output = runTask('omc:ai-slop-cleaner');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(denyReason(output)).toContain('Skill(skill="oh-my-copilot:ai-slop-cleaner")');
+  });
+
+  it('denies skill-as-agent even when an explicit model is present (guard precedes model routing)', () => {
+    const output = runTask('oh-my-copilot:ai-slop-cleaner', 'Task', { model: 'sonnet' });
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(denyReason(output)).toContain('[SKILL vs AGENT]');
+  });
+
+  it('denies skill-as-agent even under force-inherit routing', () => {
+    const output = runTask('oh-my-copilot:ai-slop-cleaner', 'Task', {}, { OMC_ROUTING_FORCE_INHERIT: 'true' });
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(denyReason(output)).toContain('[SKILL vs AGENT]');
+  });
+
+  it('maps a skill alias to its primary name in the Skill-tool identifier', () => {
+    const output = runTask('oh-my-copilot:cancel-ralph');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(denyReason(output)).toContain('alias of "cancel"');
+    expect(denyReason(output)).toContain('Skill(skill="oh-my-copilot:cancel")');
+  });
+
+  it('recognizes the renamed plan skill dir through its registered name omc-plan', () => {
+    const output = runTask('oh-my-copilot:plan');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(denyReason(output)).toContain('omc-plan');
+    expect(denyReason(output)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
+  });
+
+
+  it('does NOT deny a real agent identifier (code-simplifier passes through)', () => {
+    const output = runTask('oh-my-copilot:code-simplifier');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBeUndefined();
+    expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+  });
+
+  it('does NOT deny a genuinely unknown agent identifier', () => {
+    const output = runTask('oh-my-copilot:nonexistent-agent-xyz');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBeUndefined();
+    expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+  });
+
+  it('does NOT fuzzy-match a typo to a skill (no unsafe closest-match substitution)', () => {
+    const output = runTask('oh-my-copilot:ai-slop-cleanr');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBeUndefined();
+    expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+  });
+
+  it('lets a plugin agent with the same name as a skill win the collision (namespaced call)', () => {
+    const pluginRoot = join(tempDir, 'plugin');
+    mkdirSync(join(pluginRoot, 'agents'), { recursive: true });
+    mkdirSync(join(pluginRoot, 'skills', 'wiki'), { recursive: true });
+    writeFileSync(join(pluginRoot, 'agents', 'wiki.md'), '---\nname: wiki\n---\nagent body\n');
+    writeFileSync(join(pluginRoot, 'skills', 'wiki', 'SKILL.md'), '---\nname: wiki\n---\nskill body\n');
+
+    const output = runPreToolEnforcerWithEnv(
+      {
+        tool_name: 'Task',
+        cwd: tempDir,
+        session_id: 'session-3667-collision',
+        transcript_path: '',
+        toolInput: {
+          subagent_type: 'oh-my-copilot:wiki',
+          description: 'Some task',
+          prompt: 'Do something',
+        },
+      },
+      { CLAUDE_PLUGIN_ROOT: pluginRoot },
+    );
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBeUndefined();
+    expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+  });
+
+  it('lets a project agent with the same name as a skill win the collision (bare call)', () => {
+    mkdirSync(join(tempDir, '.claude', 'agents'), { recursive: true });
+    writeFileSync(join(tempDir, '.claude', 'agents', 'wiki.md'), '---\nname: wiki\n---\nagent body\n');
+
+    const output = runTask('wiki');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBeUndefined();
+    expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+  });
+
+  it('denies a bare bundled skill name when no agent definition resolves it anywhere', () => {
+    // tempDir has no .claude/agents and no user-config agents; wiki resolves only as a skill.
+    const output = runTask('wiki');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(denyReason(output)).toContain('Skill(skill="oh-my-copilot:wiki")');
+  });
+
+  it('does NOT deny non-string or empty subagent_type values', () => {
+    const numeric = runTask(42 as unknown as string);
+    const empty = runTask('   ');
+    expect(numeric.hookSpecificOutput as Record<string, unknown>).not.toHaveProperty('permissionDecision');
+    expect(empty.hookSpecificOutput as Record<string, unknown>).not.toHaveProperty('permissionDecision');
+  });
+  it.each(['remember', 'verify', 'debug'])(
+    'denies the namespaced %s skill for a non-skininthegamebros user (USER_TYPE != ant)',
+    (skill) => {
+      const output = runTask(`oh-my-copilot:${skill}`, 'Task', {}, { USER_TYPE: '' });
+      expect(output.continue).toBe(true);
+      expect((output.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(output)).toContain(`Skill(skill="oh-my-copilot:${skill}")`);
+    },
+  );
+
+  it.each(['remember', 'verify', 'debug'])(
+    'denies the %s skill for a skininthegamebros user (USER_TYPE=ant)',
+    (hiddenSkill) => {
+      const output = runTask(`oh-my-copilot:${hiddenSkill}`, 'Task', {}, { USER_TYPE: 'ant' });
+      const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+      expect(hookOutput.permissionDecision).toBe('deny');
+      expect(denyReason(output)).toContain(`Skill(skill="oh-my-copilot:${hiddenSkill}")`);
+    },
+  );
+
+  it('denies every visible skill for a non-skininthegamebros user', () => {
+    const visible = runTask('oh-my-copilot:plan', 'Task', {}, { USER_TYPE: '' });
+    const remember = runTask('oh-my-copilot:remember', 'Task', {}, { USER_TYPE: '' });
+
+    expect((visible.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+    expect(denyReason(visible)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
+    expect((remember.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+  });
+  describe('case-insensitive identifier folding (Windows/macOS semantics, issue #3667)', () => {
+    it('does NOT suggest a runtime-hidden skill when a case-variant identifier resolves its directory (case-insensitive-faithful harness)', () => {
+      // Simulate a case-insensitive filesystem: the plugin root holds the
+      // hidden skill at the case-variant path `skills/Remember/SKILL.md`,
+      // exactly as a case-insensitive fs would resolve `skills/remember`.
+      const pluginRoot = join(tempDir, 'ci-plugin');
+      mkdirSync(join(pluginRoot, 'skills', 'Remember'), { recursive: true });
+      writeFileSync(
+        join(pluginRoot, 'skills', 'Remember', 'SKILL.md'),
+        '---\nname: remember\n---\nhidden skill body\n',
+      );
+
+      const run = (subagentType: string, env: Record<string, string>) =>
+        runPreToolEnforcerWithEnv(
+          {
+            tool_name: 'Task',
+            cwd: tempDir,
+            session_id: 'session-3667-ci',
+            transcript_path: '',
+            toolInput: { subagent_type: subagentType, description: 'd', prompt: 'p' },
+          },
+          { CLAUDE_PLUGIN_ROOT: pluginRoot, USER_TYPE: '', ...env },
+        );
+
+      const nonAnt = run('oh-my-copilot:Remember', {});
+      const nonAntLower = run('oh-my-copilot:remember', {});
+      const ant = run('oh-my-copilot:Remember', { USER_TYPE: 'ant' });
+
+      expect((nonAnt.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(nonAnt)).toContain('Skill(skill="oh-my-copilot:remember")');
+      expect((nonAntLower.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      // Canonical lowercase output spelling is preserved for every user.
+      expect((ant.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(ant)).toContain('Skill(skill="oh-my-copilot:remember")');
+    });
+
+    it.each([
+      ['oh-my-copilot:Plan', 'oh-my-copilot:omc-plan'],
+      ['oh-my-copilot:AI-Slop-Cleaner', 'oh-my-copilot:ai-slop-cleaner'],
+      ['oh-my-copilot:Cancel-Ralph', 'oh-my-copilot:cancel'],
+      ['oh-my-copilot:PSM', 'oh-my-copilot:project-session-manager'],
+    ])('denies mixed-case %s with the canonical namespaced identifier %s', (input, expected) => {
+      const output = runTask(input, 'Task', {}, { USER_TYPE: '' });
+      const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+      expect(hookOutput.permissionDecision).toBe('deny');
+      expect(denyReason(output)).toContain(`Skill(skill="${expected}")`);
+    });
+
+    it.each(['Remember', 'VERIFY', 'Debug'])(
+      'denies the mixed-case visible %s skill for a non-ant user',
+      (skill) => {
+        const output = runTask(`oh-my-copilot:${skill}`, 'Task', {}, { USER_TYPE: '' });
+        expect((output.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+        expect(denyReason(output)).toContain(`Skill(skill="oh-my-copilot:${skill.toLowerCase()}")`);
+      },
+    );
+
+    it('recognizes case-variant namespace aliases (OMC: / OH-MY-COPILOT:)', () => {
+      const omcUpper = runTask('OMC:ai-slop-cleaner', 'Task', {}, { USER_TYPE: '' });
+      const fullUpper = runTask('OH-MY-COPILOT:Remember', 'Task', {}, { USER_TYPE: '' });
+
+      expect((omcUpper.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(omcUpper)).toContain('Skill(skill="oh-my-copilot:ai-slop-cleaner")');
+      expect((fullUpper.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(fullUpper)).toContain('Skill(skill="oh-my-copilot:remember")');
+    });
+
+    it('applies case folding before explicit-model and force-inherit routing', () => {
+      const withModel = runTask('oh-my-copilot:Plan', 'Task', { model: 'sonnet' }, { USER_TYPE: '' });
+      expect((withModel.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(withModel)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
+
+      const forceInheritVisible = runTask(
+        'oh-my-copilot:Plan',
+        'Task',
+        {},
+        { USER_TYPE: '', OMC_ROUTING_FORCE_INHERIT: 'true' },
+      );
+      expect((forceInheritVisible.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(forceInheritVisible)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
+
+      const forceInheritRemember = runTask(
+        'oh-my-copilot:Remember',
+        'Task',
+        {},
+        { USER_TYPE: '', OMC_ROUTING_FORCE_INHERIT: 'true' },
+      );
+      expect((forceInheritRemember.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(forceInheritRemember)).toContain('Skill(skill="oh-my-copilot:remember")');
+    });
+  });
+  describe('native/session-defined bare agent boundary (issue #3667 P1)', () => {
+    it.each(['plan', 'Plan', 'general-purpose'])(
+      'does NOT deny the bare %s identifier (native Claude agents are not file-discoverable)',
+      (nativeAgent) => {
+        const output = runTask(nativeAgent, 'Task', {}, { USER_TYPE: '' });
+        expect((output.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
+        expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+      },
+    );
+
+    it('denies the plugin-namespaced plan identifier while preserving bare plan', () => {
+      const namespaced = runTask('oh-my-copilot:plan', 'Task', {}, { USER_TYPE: '' });
+      const omcAlias = runTask('omc:plan', 'Task', {}, { USER_TYPE: '' });
+      const bare = runTask('plan', 'Task', {}, { USER_TYPE: '' });
+
+      expect((namespaced.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(namespaced)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
+      expect((omcAlias.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(omcAlias)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
+      expect((bare.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
+    });
+
+    it('still denies bare canonical-registry skill claims (omc-plan, ai-slop-cleaner)', () => {
+      for (const [input, expected] of [
+        ['omc-plan', 'oh-my-copilot:omc-plan'],
+        ['ai-slop-cleaner', 'oh-my-copilot:ai-slop-cleaner'],
+      ] as const) {
+        const output = runTask(input, 'Task', {}, { USER_TYPE: '' });
+        const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+        expect(hookOutput.permissionDecision).toBe('deny');
+        expect(denyReason(output)).toContain(`Skill(skill="${expected}")`);
+      }
+    });
+
+    it('keeps plugin/project agent collisions winning over skills for bare names', () => {
+      // Project agent named `wiki` (also a canonical skill claim) must win.
+      mkdirSync(join(tempDir, '.claude', 'agents'), { recursive: true });
+      writeFileSync(join(tempDir, '.claude', 'agents', 'wiki.md'), '---\nname: wiki\n---\nagent body\n');
+      const output = runTask('wiki', 'Task', {}, { USER_TYPE: '' });
+      expect((output.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
+      expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+    });
+  });
+});
+
+describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = makeGitTemp('pre-tool-enforcer-session-tracking-');
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function spawnAdvisory(sessionId: string): Record<string, unknown> {
+    return runPreToolEnforcer({
+      tool_name: 'Task',
+      cwd: tempDir,
+      session_id: sessionId,
+      toolInput: {
+        subagent_type: 'oh-my-copilot:executor',
+        description: 'issue #3732 regression',
+      },
+    });
+  }
+
+  it('reports running agents from the session-scoped tracking file', () => {
+    const sessionId = 'session-3732-scoped';
+    writeJson(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'a1', agent_type: 'oh-my-copilot:executor', status: 'running' },
+        { agent_id: 'a2', agent_type: 'oh-my-copilot:executor', status: 'running' },
+      ],
+      total_spawned: 203,
+      total_completed: 185,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 2');
+  });
+
+  it('prefers session-scoped state over a stale legacy file', () => {
+    const sessionId = 'session-3732-precedence';
+    writeJson(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'a1', agent_type: 'oh-my-copilot:executor', status: 'running' },
+      ],
+      total_spawned: 203,
+      total_completed: 185,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+    // Stale legacy file with contradictory counters (the 160-vs-203 symptom).
+    writeJson(join(tempDir, '.omg', 'state', 'subagent-tracking.json'), {
+      agents: [],
+      total_spawned: 160,
+      total_completed: 0,
+      total_failed: 0,
+      last_updated: new Date(0).toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('falls back to the legacy file when no session-scoped state exists', () => {
+    const sessionId = 'session-3732-legacy';
+    writeJson(join(tempDir, '.omg', 'state', 'subagent-tracking.json'), {
+      agents: [
+        { agent_id: 'b1', agent_type: 'oh-my-copilot:executor', status: 'running' },
+      ],
+      total_spawned: 7,
+      total_completed: 2,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+  it('falls back to the canonical resolver legacy name when no session-scoped or plain legacy file exists', () => {
+    const sessionId = 'session-3732-canonical-legacy';
+    // The canonical resolver's legacy read path is
+    // .omg/state/subagent-tracking-state.json (normalized name), distinct from
+    // the pre-Wave-A plain subagent-tracking.json. The read must route through
+    // resolveSessionStatePathsForHook and honor this name too.
+    writeJson(join(tempDir, '.omg', 'state', 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'c1', agent_type: 'oh-my-copilot:executor', status: 'running' },
+      ],
+      total_spawned: 11,
+      total_completed: 10,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('resolves the session-scoped tracking read through OMC_STATE_DIR centralized state', () => {
+    const sessionId = 'session-3732-centralized';
+    const centralRoot = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-central-'));
+    const previousStateDir = process.env.OMC_STATE_DIR;
+    let output: Record<string, unknown>;
+    try {
+      process.env.OMC_STATE_DIR = centralRoot;
+      clearWorktreeCache();
+      const stateRoot = getOmcRoot(centralRoot);
+      writeJson(join(stateRoot, 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      session_id: sessionId,
+        agents: [
+          { agent_id: 'z1', agent_type: 'oh-my-copilot:executor', status: 'running' },
+        ],
+        total_spawned: 4,
+        total_completed: 3,
+        total_failed: 0,
+        last_updated: new Date().toISOString(),
+      });
+
+      output = runPreToolEnforcerWithEnv(
+        {
+          tool_name: 'Task',
+          cwd: centralRoot,
+          session_id: sessionId,
+          toolInput: {
+            subagent_type: 'oh-my-copilot:executor',
+            description: 'issue #3732 centralized regression',
+          },
+        },
+        { OMC_STATE_DIR: centralRoot },
+      );
+    } finally {
+      if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+      else process.env.OMC_STATE_DIR = previousStateDir;
+      clearWorktreeCache();
+    rmSync(centralRoot, { recursive: true, force: true });
+    }
+
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    // The canonical resolver (not manual join(stateDir, ...)) routes the read
+    // into the centralized state root; a manual stateDir join would miss it.
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('rejects invalid session ids before scoped resolution (no escaped read)', () => {
+    // A payload with a path-traversal id must not reach the escaped
+    // .omg/state/evil/ location: only the safe legacy roots may be probed.
+    // Under the pre-fix code the unvalidated id flowed into the inline
+    // resolver fallback, join()-normalized `sessions/../evil` into `state/evil`,
+    // and reported counters from the unrelated file below.
+    writeJson(join(tempDir, '.omg', 'state', 'evil', 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'x1', agent_type: 'oh-my-copilot:executor', status: 'running' },
+        { agent_id: 'x2', agent_type: 'oh-my-copilot:executor', status: 'running' },
+      ],
+      total_spawned: 99,
+      last_updated: new Date().toISOString(),
+    });
+    writeJson(join(tempDir, '.omg', 'state', 'subagent-tracking.json'), {
+      agents: [
+        { agent_id: 'l1', agent_type: 'oh-my-copilot:executor', status: 'running' },
+      ],
+      total_spawned: 7,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory('../evil');
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    // Safe legacy roots still work for invalid ids...
+    expect(advisory).toContain('Active agents: 1');
+    // ...but the escaped session-scoped file is never read.
+    expect(advisory).not.toContain('Active agents: 2');
+  });
+
+  it('skips a malformed session-scoped candidate and falls back to the legacy file', () => {
+    const sessionId = 'session-3732-malformed';
+    // Parseable but shape-corrupt: `agents` is not an array. This candidate
+    // must be skipped locally so the legacy fallback still resolves and the
+    // hook keeps running instead of aborting into suppressOutput.
+    writeJson(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: 'corrupt',
+    });
+    writeJson(join(tempDir, '.omg', 'state', 'subagent-tracking.json'), {
+      agents: [
+        { agent_id: 'l1', agent_type: 'oh-my-copilot:executor', status: 'running' },
+      ],
+      total_spawned: 7,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('does not let a malformed scoped canonical file suppress the canonical legacy file', () => {
+    const sessionId = 'session-3732-malformed-scoped-canonical';
+    // The session-scoped canonical file exists but is shape-corrupt; the
+    // canonical legacy file for the SAME state name holds the valid data. The
+    // resolver's effective read points at the (malformed) scoped file, so the
+    // legacy file must still be probed explicitly instead of being skipped.
+    writeJson(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: 'corrupt',
+    });
+    writeJson(join(tempDir, '.omg', 'state', 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'c1', agent_type: 'oh-my-copilot:executor', status: 'running' },
+      ],
+      total_spawned: 11,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('reads the canonical legacy file when no session id is observable', () => {
+    // No session_id in the payload: the canonical legacy
+    // subagent-tracking-state.json must still be probed (the suffixed state
+    // name the pre-fix reader used normalizes to a nonexistent
+    // `-state.json` name and silently skipped it).
+    writeJson(join(tempDir, '.omg', 'state', 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'c1', agent_type: 'oh-my-copilot:executor', status: 'running' },
+      ],
+      total_spawned: 11,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = runPreToolEnforcer({
+      tool_name: 'Task',
+      cwd: tempDir,
+      toolInput: {
+        subagent_type: 'oh-my-copilot:executor',
+        description: 'issue #3732 no-session regression',
+      },
+    });
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('survives all-malformed tracking candidates with a zero count', () => {
+    const sessionId = 'session-3732-all-malformed';
+    writeJson(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: 'corrupt',
+    });
+    writeJson(join(tempDir, '.omg', 'state', 'subagent-tracking.json'), {
+      agents: { agent_id: 'nope' },
+      total_spawned: 42,
+    });
+
+    const output = spawnAdvisory(sessionId);
+    expect(output.continue).toBe(true);
+    // The spawn advisory still flows (no abort into the broad catch's
+    // suppressOutput-only path), with a zero agent count.
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Spawning agent:');
+    expect(advisory).not.toContain('Active agents:');
   });
 });

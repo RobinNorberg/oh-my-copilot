@@ -4,7 +4,7 @@
  * Records agent lifecycle events as JSONL for timeline visualization
  * and post-session bottleneck analysis.
  *
- * Events are appended to: .omcp/state/agent-replay-{sessionId}.jsonl
+ * Events are appended to: .omg/state/agent-replay-{sessionId}.jsonl
  */
 import { existsSync, appendFileSync, readFileSync, mkdirSync, readdirSync, unlinkSync, statSync } from 'fs';
 import { join } from 'path';
@@ -79,7 +79,7 @@ export function appendReplayEvent(directory, sessionId, event) {
 /**
  * Record agent start event
  */
-export function recordAgentStart(directory, sessionId, agentId, agentType, task, parentMode, model) {
+export function recordAgentStart(directory, sessionId, agentId, agentType, task, parentMode, model, description, name) {
     appendReplayEvent(directory, sessionId, {
         agent: agentId.substring(0, 7),
         agent_type: agentType.replace('oh-my-copilot:', ''),
@@ -87,18 +87,24 @@ export function recordAgentStart(directory, sessionId, agentId, agentType, task,
         task: task?.substring(0, 100),
         parent_mode: parentMode,
         model,
+        description: description?.substring(0, 200),
+        name,
     });
 }
 /**
  * Record agent stop event
  */
-export function recordAgentStop(directory, sessionId, agentId, agentType, success, durationMs) {
+export function recordAgentStop(directory, sessionId, agentId, agentType, success, durationMs, metadata) {
     appendReplayEvent(directory, sessionId, {
         agent: agentId.substring(0, 7),
         agent_type: agentType.replace('oh-my-copilot:', ''),
         event: 'agent_stop',
         success,
         duration_ms: durationMs,
+        synthetic: metadata?.synthetic,
+        telemetry_status: metadata?.telemetry_status,
+        reason: metadata?.reason,
+        dirty_worktree: metadata?.dirty_worktree,
     });
 }
 /**
@@ -235,6 +241,18 @@ export function getReplaySummary(directory, sessionId) {
                 }
                 break;
             case 'agent_stop':
+                // B2 (#3663): a dirty worktree implies an abnormal stop by
+                // construction (dirty evidence is only attached to abnormal
+                // terminations), so a synthetic/unmatched stop carrying dirty
+                // evidence must still count toward dirty_worktrees even though it is
+                // excluded from completed/failed counters.
+                if (event.dirty_worktree) {
+                    summary.dirty_worktrees = (summary.dirty_worktrees || 0) + 1;
+                }
+                if (event.synthetic || event.telemetry_status === 'unmatched_stop') {
+                    summary.agents_untracked_stops = (summary.agents_untracked_stops || 0) + 1;
+                    break;
+                }
                 if (event.success)
                     summary.agents_completed++;
                 else

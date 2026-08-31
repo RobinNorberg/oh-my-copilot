@@ -3,6 +3,11 @@ import { limitOutputLines } from '../../hud/render.js';
 import { render } from '../../hud/render.js';
 import { DEFAULT_HUD_CONFIG, PRESET_CONFIGS } from '../../hud/types.js';
 import { stringWidth } from '../../utils/string-width.js';
+// Force non-local so the OMC banner omits the "L" local-build suffix under test.
+vi.mock('../../lib/version.js', async (importOriginal) => ({
+    ...(await importOriginal()),
+    isRuntimePackageLocal: () => false,
+}));
 // Mock git elements
 vi.mock('../../hud/elements/git.js', () => ({
     renderGitRepo: vi.fn(() => 'repo:my-repo'),
@@ -405,10 +410,323 @@ describe('maxWidth wrapMode behavior', () => {
         expect(stringWidth(lines[0] ?? '')).toBeLessThanOrEqual(8);
     });
 });
-describe('elementOrder convenience setting', () => {
-    const createMockContext = () => ({
+describe('token usage rendering', () => {
+    const createTokenContext = () => ({
         contextPercent: 30,
-        modelName: '',
+        modelName: 'claude-sonnet-4-5',
+        ralph: null,
+        ultrawork: null,
+        prd: null,
+        autopilot: null,
+        activeAgents: [],
+        todos: [],
+        backgroundTasks: [],
+        cwd: '/home/user/project',
+        lastSkill: null,
+        rateLimitsResult: null,
+        customBuckets: null,
+        pendingPermission: null,
+        thinkingState: null,
+        sessionHealth: { durationMinutes: 10, messageCount: 5, health: 'healthy' },
+        lastRequestTokenUsage: { inputTokens: 1250, outputTokens: 340, reasoningTokens: 120 },
+        sessionTotalTokens: 6590,
+        omcVersion: '4.5.4',
+        updateAvailable: null,
+        toolCallCount: 0,
+        agentCallCount: 0,
+        skillCallCount: 0,
+        promptTime: null,
+        apiKeySource: null,
+        profileName: null,
+        sessionSummary: null,
+    });
+    const createTokenConfig = (showTokens) => ({
+        preset: 'focused',
+        elements: {
+            ...DEFAULT_HUD_CONFIG.elements,
+            omcLabel: true,
+            rateLimits: false,
+            ralph: false,
+            autopilot: false,
+            prdStory: false,
+            activeSkills: false,
+            contextBar: false,
+            agents: false,
+            backgroundTasks: false,
+            todos: false,
+            promptTime: false,
+            sessionHealth: true,
+            showTokens,
+            maxOutputLines: 4,
+        },
+        thresholds: DEFAULT_HUD_CONFIG.thresholds,
+        staleTaskThresholdMinutes: 30,
+        contextLimitWarning: {
+            ...DEFAULT_HUD_CONFIG.contextLimitWarning,
+            threshold: 101,
+        },
+        usageApiPollIntervalMs: DEFAULT_HUD_CONFIG.usageApiPollIntervalMs,
+    });
+    it('shows last-request token usage when enabled', async () => {
+        const result = await render(createTokenContext(), createTokenConfig(true));
+        expect(result).toContain('tok:i1.3k/o340 r120 s6.6k');
+    });
+    it('omits last-request token usage when explicitly disabled', async () => {
+        const result = await render(createTokenContext(), createTokenConfig(false));
+        expect(result).not.toContain('tok:');
+    });
+});
+describe('layout element ordering', () => {
+    const createMockContext = () => ({
+        contextPercent: 50,
+        modelName: 'claude-sonnet-4-5',
+        ralph: null,
+        ultrawork: null,
+        prd: null,
+        autopilot: null,
+        activeAgents: [],
+        todos: [],
+        backgroundTasks: [],
+        cwd: '/home/user/project',
+        lastSkill: null,
+        rateLimitsResult: null,
+        customBuckets: null,
+        pendingPermission: null,
+        thinkingState: null,
+        sessionHealth: { durationMinutes: 10, messageCount: 5, health: 'healthy' },
+        omcVersion: '4.5.4',
+        updateAvailable: null,
+        toolCallCount: 5,
+        agentCallCount: 1,
+        skillCallCount: 0,
+        promptTime: null,
+        apiKeySource: null,
+        profileName: null,
+        sessionSummary: null,
+    });
+    const createLayoutConfig = (layout) => ({
+        preset: 'focused',
+        elements: {
+            ...DEFAULT_HUD_CONFIG.elements,
+            omcLabel: true,
+            contextBar: true,
+            gitBranch: true,
+            rateLimits: false,
+            ralph: false,
+            autopilot: false,
+            prdStory: false,
+            activeSkills: false,
+            agents: false,
+            backgroundTasks: false,
+            todos: false,
+            promptTime: false,
+            sessionHealth: true,
+            showCallCounts: true,
+            maxOutputLines: 6,
+        },
+        thresholds: DEFAULT_HUD_CONFIG.thresholds,
+        staleTaskThresholdMinutes: 30,
+        contextLimitWarning: { ...DEFAULT_HUD_CONFIG.contextLimitWarning, threshold: 101 },
+        usageApiPollIntervalMs: DEFAULT_HUD_CONFIG.usageApiPollIntervalMs,
+        layout,
+    });
+    const createElementOrderConfig = (elementOrder) => ({
+        ...createLayoutConfig(),
+        elementOrder,
+    });
+    it('uses DEFAULT_ELEMENT_ORDER when no layout is configured', async () => {
+        const context = createMockContext();
+        const config = createLayoutConfig(); // no layout
+        const result = await render(context, config);
+        const lines = result.split('\n');
+        // line1 has gitBranch, main has [OMC]
+        expect(lines[0]).toContain('branch:');
+        expect(lines[1]).toContain('[OMC');
+    });
+    it('reorders main elements according to layout.main', async () => {
+        const context = createMockContext();
+        // Put contextBar before omcLabel
+        const config = createLayoutConfig({
+            main: ['contextBar', 'omcLabel', 'session', 'callCounts'],
+        });
+        const result = await render(context, config);
+        const lines = result.split('\n');
+        // Find the main line (has [OMC])
+        const mainLine = lines.find(l => l.includes('[OMC'));
+        expect(mainLine).toBeDefined();
+        // contextBar should appear before [OMC]
+        const ctxIdx = mainLine.indexOf('ctx:');
+        const omcIdx = mainLine.indexOf('[OMC');
+        expect(ctxIdx).toBeLessThan(omcIdx);
+    });
+    it('moves elements between groups via layout', async () => {
+        const context = createMockContext();
+        // Move omcLabel to line1, gitBranch stays in line1 too
+        const config = createLayoutConfig({
+            line1: ['omcLabel', 'gitBranch'],
+            main: ['contextBar', 'session', 'callCounts'],
+        });
+        const result = await render(context, config);
+        const lines = result.split('\n');
+        // line1 should have both [OMC] and branch:
+        expect(lines[0]).toContain('[OMC');
+        expect(lines[0]).toContain('branch:');
+        // main should have contextBar but not [OMC]
+        expect(lines[1]).toContain('ctx:');
+        expect(lines[1]).not.toContain('[OMC');
+    });
+    it('skips elements not in layout silently', async () => {
+        const context = createMockContext();
+        // Only include omcLabel in main, skip everything else
+        const config = createLayoutConfig({
+            line1: [],
+            main: ['omcLabel'],
+            detail: [],
+        });
+        const result = await render(context, config);
+        // Should only have the OMC label, no other elements
+        expect(result).toContain('[OMC');
+        expect(result).not.toContain('ctx:');
+        expect(result).not.toContain('branch:');
+    });
+    it('ignores unknown element names in layout', async () => {
+        const context = createMockContext();
+        const config = createLayoutConfig({
+            main: ['nonExistentElement', 'omcLabel'],
+        });
+        const result = await render(context, config);
+        // Should still render omcLabel without error
+        expect(result).toContain('[OMC');
+    });
+    it('produces no line1 output when line1 layout is empty', async () => {
+        const context = createMockContext();
+        const config = createLayoutConfig({
+            line1: [],
+            main: ['omcLabel'],
+        });
+        const result = await render(context, config);
+        const lines = result.split('\n');
+        // First line should be main (OMC), no git info line
+        expect(lines[0]).toContain('[OMC');
+        expect(lines).toHaveLength(1);
+    });
+    it('falls back to DEFAULT_ELEMENT_ORDER for omitted groups', async () => {
+        const context = createMockContext();
+        // Only specify main order; line1 and detail use defaults
+        const config = createLayoutConfig({
+            main: ['contextBar', 'omcLabel'],
+        });
+        const result = await render(context, config);
+        const lines = result.split('\n');
+        // line1 should use default order (gitBranch)
+        expect(lines[0]).toContain('branch:');
+        // main should use custom order (ctx before OMC)
+        const mainLine = lines.find(l => l.includes('[OMC'));
+        expect(mainLine).toBeDefined();
+        const ctxIdx = mainLine.indexOf('ctx:');
+        const omcIdx = mainLine.indexOf('[OMC');
+        expect(ctxIdx).toBeLessThan(omcIdx);
+    });
+    it('reorders main elements according to elementOrder and appends unspecified defaults', async () => {
+        const context = createMockContext();
+        const config = createElementOrderConfig(['contextBar', 'omcLabel']);
+        const result = await render(context, config);
+        const lines = result.split('\n');
+        const mainLine = lines.find(l => l.includes('[OMC'));
+        expect(mainLine).toBeDefined();
+        expect(mainLine).toContain('ctx:');
+        expect(mainLine).toContain('session:');
+        expect(mainLine).toMatch(/(?:🔧5|T:5)/);
+        expect(mainLine.indexOf('ctx:')).toBeLessThan(mainLine.indexOf('[OMC'));
+        expect(mainLine.indexOf('[OMC')).toBeLessThan(mainLine.indexOf('session:'));
+    });
+    it('ignores unknown names in elementOrder silently', async () => {
+        const context = createMockContext();
+        const config = createElementOrderConfig(['unknownElement', 'contextBar', 'omcLabel']);
+        const result = await render(context, config);
+        const lines = result.split('\n');
+        const mainLine = lines.find(l => l.includes('[OMC'));
+        expect(mainLine).toBeDefined();
+        expect(mainLine.indexOf('ctx:')).toBeLessThan(mainLine.indexOf('[OMC'));
+    });
+    it('lets layout.main override elementOrder when both are present', async () => {
+        const context = createMockContext();
+        const config = {
+            ...createElementOrderConfig(['contextBar', 'omcLabel']),
+            layout: {
+                main: ['omcLabel', 'contextBar'],
+            },
+        };
+        const result = await render(context, config);
+        const lines = result.split('\n');
+        const mainLine = lines.find(l => l.includes('[OMC'));
+        expect(mainLine).toBeDefined();
+        expect(mainLine.indexOf('[OMC')).toBeLessThan(mainLine.indexOf('ctx:'));
+    });
+});
+describe('optional HUD line defaults', () => {
+    it('does not emit a blank header line when all top-line elements are disabled', async () => {
+        const context = {
+            contextPercent: 30,
+            modelName: 'claude-sonnet-4-5',
+            ralph: null,
+            ultrawork: null,
+            prd: null,
+            autopilot: null,
+            activeAgents: [],
+            todos: [],
+            backgroundTasks: [],
+            cwd: '/home/user/project',
+            lastSkill: null,
+            rateLimitsResult: null,
+            customBuckets: null,
+            pendingPermission: null,
+            thinkingState: null,
+            sessionHealth: { durationMinutes: 10, messageCount: 5, health: 'healthy' },
+            omcVersion: '4.5.4',
+            updateAvailable: null,
+            toolCallCount: 0,
+            agentCallCount: 0,
+            skillCallCount: 0,
+            promptTime: null,
+            apiKeySource: null,
+            profileName: null,
+            sessionSummary: null,
+        };
+        const config = {
+            ...DEFAULT_HUD_CONFIG,
+            elements: {
+                ...DEFAULT_HUD_CONFIG.elements,
+                omcLabel: false,
+                rateLimits: false,
+                permissionStatus: false,
+                thinking: false,
+                promptTime: false,
+                sessionHealth: false,
+                ralph: false,
+                autopilot: false,
+                prdStory: false,
+                activeSkills: false,
+                lastSkill: false,
+                contextBar: false,
+                agents: false,
+                backgroundTasks: false,
+                todos: false,
+                showCallCounts: false,
+                cwd: true,
+                gitRepo: false,
+                gitBranch: false,
+                model: false,
+            },
+        };
+        await expect(render(context, config)).resolves.toBe('~/workspace/project');
+    });
+});
+describe('HUD model display', () => {
+    const createModelContext = (modelName, modelId = null) => ({
+        contextPercent: 0,
+        modelName,
+        modelId,
         ralph: null,
         ultrawork: null,
         prd: null,
@@ -423,7 +741,7 @@ describe('elementOrder convenience setting', () => {
         pendingPermission: null,
         thinkingState: null,
         sessionHealth: null,
-        omcVersion: '4.5.4',
+        omcVersion: '4.14.0',
         updateAvailable: null,
         toolCallCount: 0,
         agentCallCount: 0,
@@ -433,63 +751,69 @@ describe('elementOrder convenience setting', () => {
         profileName: null,
         sessionSummary: null,
     });
-    const createElementOrderConfig = (elementOrder) => ({
-        preset: 'focused',
+    const modelConfig = {
+        ...DEFAULT_HUD_CONFIG,
         elements: {
             ...DEFAULT_HUD_CONFIG.elements,
+            model: true,
             omcLabel: true,
-            contextBar: true,
             rateLimits: false,
+            permissionStatus: false,
+            thinking: false,
+            promptTime: false,
+            sessionHealth: false,
             ralph: false,
             autopilot: false,
             prdStory: false,
             activeSkills: false,
+            lastSkill: false,
+            contextBar: false,
             agents: false,
             backgroundTasks: false,
             todos: false,
-            promptTime: false,
-            sessionHealth: false,
+            showCallCounts: false,
+            gitBranch: false,
+            gitStatus: false,
+            profile: false,
         },
-        thresholds: DEFAULT_HUD_CONFIG.thresholds,
-        staleTaskThresholdMinutes: 30,
-        contextLimitWarning: {
-            ...DEFAULT_HUD_CONFIG.contextLimitWarning,
-            threshold: 101,
+        layout: {
+            line1: [],
+            main: ['omcLabel', 'model'],
+            detail: [],
         },
-        usageApiPollIntervalMs: DEFAULT_HUD_CONFIG.usageApiPollIntervalMs,
-        elementOrder,
+    };
+    it('renders the Claude model when statusline stdin provides reliable metadata', async () => {
+        const output = await render(createModelContext('Claude Sonnet 4.5'), modelConfig);
+        expect(output.split('\n')).toHaveLength(1);
+        expect(output).toContain('[OMC#4.14.0]');
+        expect(output).toContain('Model: Sonnet 4.5');
     });
-    it('reorders main elements according to elementOrder and appends unspecified defaults', async () => {
-        const context = createMockContext();
-        const config = createElementOrderConfig(['contextBar', 'omcLabel']);
-        const result = await render(context, config);
-        const mainLine = result.split('\n').find(l => l.includes('[OMC') || l.includes('ctx:'));
-        expect(mainLine).toBeDefined();
-        if (mainLine.includes('ctx:') && mainLine.includes('[OMC')) {
-            expect(mainLine.indexOf('ctx:')).toBeLessThan(mainLine.indexOf('[OMC'));
-        }
-    });
-    it('ignores unknown names in elementOrder silently', async () => {
-        const context = createMockContext();
-        const config = createElementOrderConfig(['unknownElement', 'contextBar', 'omcLabel']);
-        const result = await render(context, config);
-        const mainLine = result.split('\n').find(l => l.includes('[OMC') || l.includes('ctx:'));
-        expect(mainLine).toBeDefined();
-    });
-    it('lets layout.main override elementOrder when both are present', async () => {
-        const context = createMockContext();
-        const config = {
-            ...createElementOrderConfig(['contextBar', 'omcLabel']),
-            layout: {
-                main: ['omcLabel', 'contextBar'],
+    it('renders full format from raw model id when display name is also available', async () => {
+        const output = await render(createModelContext('Claude Sonnet 4.5', 'claude-sonnet-4-5-20250929'), {
+            ...modelConfig,
+            elements: {
+                ...modelConfig.elements,
+                modelFormat: 'full',
             },
-        };
-        const result = await render(context, config);
-        const mainLine = result.split('\n').find(l => l.includes('[OMC') || l.includes('ctx:'));
-        expect(mainLine).toBeDefined();
-        if (mainLine.includes('[OMC') && mainLine.includes('ctx:')) {
-            expect(mainLine.indexOf('[OMC')).toBeLessThan(mainLine.indexOf('ctx:'));
-        }
+        });
+        expect(output).toContain('Model: claude-sonnet-4-5-20250929');
+        expect(output).not.toContain('Claude Sonnet 4.5');
+    });
+    it('renders configured model label through HUD labels', async () => {
+        const output = await render(createModelContext('Claude Sonnet 4.5'), {
+            ...modelConfig,
+            labels: {
+                ...DEFAULT_HUD_CONFIG.labels,
+                model: '模型',
+            },
+        });
+        expect(output).toContain('模型: Sonnet 4.5');
+        expect(output).not.toContain('Model: Sonnet 4.5');
+    });
+    it('omits the model segment when model metadata is unavailable', async () => {
+        const output = await render(createModelContext(null), modelConfig);
+        expect(output).toBe('\u001b[1m[OMC#4.14.0]\u001b[0m');
+        expect(output).not.toContain('Unknown');
     });
 });
 //# sourceMappingURL=render.test.js.map

@@ -1,8 +1,24 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { isSafeCommand, isHeredocWithSafeBase, isActiveModeRunning, processPermissionRequest } from '../index.js';
+import { execFileSync } from 'child_process';
+import { clearWorktreeCache } from '../../../lib/worktree-paths.js';
+import {
+  isSafeCommand,
+  isSafeRepoInspectionCommand,
+  isSafeTargetedLocalTestCommand,
+  isHeredocWithSafeBase,
+  isActiveModeRunning,
+  processPermissionRequest,
+} from '../index.js';
 import type { PermissionRequestInput } from '../index.js';
+
+function initializeGitRepo(directory: string): void {
+  execFileSync('git', ['init', '--quiet'], {
+    cwd: directory,
+    stdio: 'pipe',
+  });
+}
 
 describe('permission-handler', () => {
   describe('isSafeCommand', () => {
@@ -14,26 +30,24 @@ describe('permission-handler', () => {
         'git branch',
         'git show',
         'git fetch',
-        'npm test',
-        'npm run test',
         'npm run lint',
         'npm run build',
-        'pnpm test',
-        'yarn test',
         'tsc',
         'tsc --noEmit',
         'eslint .',
         'prettier .',
-        'cargo test',
         'cargo check',
-        'pytest',
-        'python -m pytest',
         'ls',
         'ls -la',
         // Quoted paths are allowed (needed for paths with spaces)
         'ls "my folder"',
         'ls \'my folder\'',
         'git diff "src/file with spaces.ts"',
+        'gh issue list',
+        'gh issue view 2508',
+        'gh issue status',
+        'gh pr view 2510',
+        'gh pr list --state open',
       ];
 
       safeCases.forEach((cmd) => {
@@ -121,6 +135,8 @@ describe('permission-handler', () => {
         // Comment injection
         { cmd: 'git status #ignore rest', desc: 'comment injection' },
         { cmd: 'npm test # malicious', desc: 'comment to hide code' },
+        { cmd: 'npm test -- --run src/example.test.ts', desc: 'broad npm test invocation' },
+        { cmd: 'pytest tests/example_test.py', desc: 'broad pytest invocation' },
       ];
 
       additionalDangerousCases.forEach(({ cmd, desc }) => {
@@ -169,12 +185,102 @@ describe('permission-handler', () => {
     });
   });
 
+  describe('repo-scoped inspection commands', () => {
+    const testDir = '/tmp/omc-permission-safe-inspection';
+
+    beforeEach(() => {
+      fs.rmSync(testDir, { recursive: true, force: true });
+      fs.mkdirSync(path.join(testDir, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(testDir, 'src', 'sample.ts'), 'export const value = 1;\n');
+      initializeGitRepo(testDir);
+      fs.writeFileSync(path.join(testDir, '.env.local'), 'SECRET=1\n');
+    });
+
+    afterEach(() => {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    });
+
+    it('allows narrow repo inspection commands', () => {
+      expect(isSafeRepoInspectionCommand('cat src/sample.ts', testDir)).toBe(true);
+      expect(isSafeRepoInspectionCommand('sed -n 1,20p src/sample.ts', testDir)).toBe(true);
+      expect(isSafeRepoInspectionCommand('rg -n value src/sample.ts', testDir)).toBe(true);
+      expect(isSafeRepoInspectionCommand('head -n 5 src/sample.ts', testDir)).toBe(true);
+    });
+
+    it('rejects sensitive or escaping repo inspection paths', () => {
+      expect(isSafeRepoInspectionCommand('cat .env.local', testDir)).toBe(false);
+      expect(isSafeRepoInspectionCommand('cat ../outside.txt', testDir)).toBe(false);
+      expect(isSafeRepoInspectionCommand('rg -n value .git', testDir)).toBe(false);
+      expect(isSafeRepoInspectionCommand('rg -n value src', testDir)).toBe(false);
+      expect(isSafeRepoInspectionCommand('rg -n value .', testDir)).toBe(false);
+      expect(isSafeRepoInspectionCommand('rg --hidden SECRET .', testDir)).toBe(false);
+      expect(isSafeRepoInspectionCommand('sed -n 1,20p missing.ts', testDir)).toBe(false);
+    });
+
+    it('rejects repo inspection commands when cwd is not inside a git worktree', () => {
+      const nonGitDir = fs.mkdtempSync('/tmp/omc-permission-safe-inspection-non-git-');
+
+      try {
+        fs.mkdirSync(path.join(nonGitDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(nonGitDir, 'src', 'sample.ts'), 'export const value = 1;\n');
+
+        expect(isSafeRepoInspectionCommand('cat src/sample.ts', nonGitDir)).toBe(false);
+        expect(isSafeRepoInspectionCommand('rg -n value src', nonGitDir)).toBe(false);
+      } finally {
+        fs.rmSync(nonGitDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('targeted local test commands', () => {
+    const testDir = '/tmp/omc-permission-safe-tests';
+
+    beforeEach(() => {
+      fs.rmSync(testDir, { recursive: true, force: true });
+      fs.mkdirSync(path.join(testDir, 'src', '__tests__'), { recursive: true });
+      fs.writeFileSync(path.join(testDir, 'src', '__tests__', 'sample.test.ts'), 'test("x", () => {});\n');
+      initializeGitRepo(testDir);
+    });
+
+    afterEach(() => {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    });
+
+    it('allows narrow single-test commands', () => {
+      expect(isSafeTargetedLocalTestCommand('vitest run src/__tests__/sample.test.ts', testDir)).toBe(true);
+      expect(isSafeTargetedLocalTestCommand('npm test -- --run src/__tests__/sample.test.ts', testDir)).toBe(true);
+      expect(isSafeTargetedLocalTestCommand('pnpm vitest run src/__tests__/sample.test.ts', testDir)).toBe(true);
+      expect(isSafeTargetedLocalTestCommand('node --test src/__tests__/sample.test.ts', testDir)).toBe(true);
+    });
+
+    it('rejects broad or malformed test commands', () => {
+      expect(isSafeTargetedLocalTestCommand('npm test', testDir)).toBe(false);
+      expect(isSafeTargetedLocalTestCommand('vitest run', testDir)).toBe(false);
+      expect(isSafeTargetedLocalTestCommand('vitest run src/__tests__/sample.test.ts --watch', testDir)).toBe(false);
+      expect(isSafeTargetedLocalTestCommand('vitest run ../other.test.ts', testDir)).toBe(false);
+    });
+
+    it('rejects targeted test commands when cwd is not inside a git worktree', () => {
+      const nonGitDir = fs.mkdtempSync('/tmp/omc-permission-safe-tests-non-git-');
+
+      try {
+        fs.mkdirSync(path.join(nonGitDir, 'src', '__tests__'), { recursive: true });
+        fs.writeFileSync(path.join(nonGitDir, 'src', '__tests__', 'sample.test.ts'), 'test("x", () => {});\n');
+
+        expect(isSafeTargetedLocalTestCommand('vitest run src/__tests__/sample.test.ts', nonGitDir)).toBe(false);
+        expect(isSafeTargetedLocalTestCommand('node --test src/__tests__/sample.test.ts', nonGitDir)).toBe(false);
+      } finally {
+        fs.rmSync(nonGitDir, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('isHeredocWithSafeBase (Issue #608)', () => {
     describe('should detect and allow safe heredoc commands', () => {
       const safeCases = [
         {
           desc: 'git commit with HEREDOC message',
-          cmd: `git commit -m "$(cat <<'EOF'\nCommit message here.\n\nCo-Authored-By: Copilot Opus 4.6 <noreply@anthropic.com>\nEOF\n)"`,
+          cmd: `git commit -m "$(cat <<'EOF'\nCommit message here.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n)"`,
         },
         {
           desc: 'git commit with unquoted EOF delimiter',
@@ -186,7 +292,7 @@ describe('permission-handler', () => {
         },
         {
           desc: 'git commit with long multi-line message',
-          cmd: `git commit -m "$(cat <<'EOF'\nfeat: add authentication module\n\nThis adds OAuth2 support with:\n- Google provider\n- GitHub provider\n- Session management\n\nCloses #123\n\nCo-Authored-By: Copilot Opus 4.6 <noreply@anthropic.com>\nEOF\n)"`,
+          cmd: `git commit -m "$(cat <<'EOF'\nfeat: add authentication module\n\nThis adds OAuth2 support with:\n- Google provider\n- GitHub provider\n- Session management\n\nCloses #123\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n)"`,
         },
         {
           desc: 'git commit --amend with heredoc',
@@ -263,9 +369,15 @@ describe('permission-handler', () => {
 
   describe('isActiveModeRunning', () => {
     const testDir = '/tmp/omc-permission-test';
-    const stateDir = path.join(testDir, '.omcp', 'state');
+    const stateDir = path.join(testDir, '.omg', 'state');
+    let previousHome: string | undefined;
+    let previousUserProfile: string | undefined;
 
     beforeEach(() => {
+      previousHome = process.env.HOME;
+      previousUserProfile = process.env.USERPROFILE;
+      process.env.HOME = testDir;
+      process.env.USERPROFILE = testDir;
       // Clean up any existing test directory
       if (fs.existsSync(testDir)) {
         fs.rmSync(testDir, { recursive: true, force: true });
@@ -276,6 +388,10 @@ describe('permission-handler', () => {
       if (fs.existsSync(testDir)) {
         fs.rmSync(testDir, { recursive: true, force: true });
       }
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = previousUserProfile;
     });
 
     it('should return false when no state directory exists', () => {
@@ -359,9 +475,16 @@ describe('permission-handler', () => {
 
   describe('processPermissionRequest', () => {
     const testDir = '/tmp/omc-permission-test';
-    const stateDir = path.join(testDir, '.omcp', 'state');
+    const stateDir = path.join(testDir, '.omg', 'state');
+    let previousHome: string | undefined;
+    let previousUserProfile: string | undefined;
 
     beforeEach(() => {
+      previousHome = process.env.HOME;
+      previousUserProfile = process.env.USERPROFILE;
+      process.env.HOME = testDir;
+      process.env.USERPROFILE = testDir;
+      clearWorktreeCache();
       if (fs.existsSync(testDir)) {
         fs.rmSync(testDir, { recursive: true, force: true });
       }
@@ -371,6 +494,11 @@ describe('permission-handler', () => {
       if (fs.existsSync(testDir)) {
         fs.rmSync(testDir, { recursive: true, force: true });
       }
+      clearWorktreeCache();
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = previousUserProfile;
     });
 
     const createInput = (command: string): PermissionRequestInput => ({
@@ -392,8 +520,63 @@ describe('permission-handler', () => {
         expect(result.hookSpecificOutput?.decision?.reason).toContain('Safe');
       });
 
+      it('should auto-approve safe repo inspection commands', () => {
+        fs.mkdirSync(path.join(testDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(testDir, 'src', 'safe.ts'), 'export const value = 1;\n');
+        initializeGitRepo(testDir);
+
+        const result = processPermissionRequest(createInput('cat src/safe.ts'));
+        expect(result.continue).toBe(true);
+        expect(result.hookSpecificOutput?.decision?.behavior).toBe('allow');
+      });
+
+      it('should not auto-approve ripgrep directory or hidden sweeps', () => {
+        fs.mkdirSync(path.join(testDir, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(testDir, 'src', 'safe.ts'), 'export const SECRET = 1;\n');
+        fs.writeFileSync(path.join(testDir, '.env.local'), 'SECRET=1\n');
+        initializeGitRepo(testDir);
+
+        const directorySweep = processPermissionRequest(createInput('rg -n SECRET .'));
+        expect(directorySweep.continue).toBe(true);
+        expect(directorySweep.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
+
+        const hiddenSweep = processPermissionRequest(createInput('rg --hidden SECRET .'));
+        expect(hiddenSweep.continue).toBe(true);
+        expect(hiddenSweep.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
+      });
+
+      it('should auto-approve narrowly targeted local test commands', () => {
+        fs.mkdirSync(path.join(testDir, 'src', '__tests__'), { recursive: true });
+        fs.writeFileSync(path.join(testDir, 'src', '__tests__', 'safe.test.ts'), 'test("x", () => {});\n');
+        initializeGitRepo(testDir);
+
+        const result = processPermissionRequest(createInput('vitest run src/__tests__/safe.test.ts'));
+        expect(result.continue).toBe(true);
+        expect(result.hookSpecificOutput?.decision?.behavior).toBe('allow');
+      });
+
+      it('should not auto-approve repo-scoped commands outside a git worktree', () => {
+        fs.mkdirSync(path.join(testDir, 'src', '__tests__'), { recursive: true });
+        fs.writeFileSync(path.join(testDir, 'src', 'safe.ts'), 'export const value = 1;\n');
+        fs.writeFileSync(path.join(testDir, 'src', '__tests__', 'safe.test.ts'), 'test("x", () => {});\n');
+
+        const inspectionResult = processPermissionRequest(createInput('cat src/safe.ts'));
+        expect(inspectionResult.continue).toBe(true);
+        expect(inspectionResult.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
+
+        const testResult = processPermissionRequest(createInput('vitest run src/__tests__/safe.test.ts'));
+        expect(testResult.continue).toBe(true);
+        expect(testResult.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
+      });
+
       it('should reject unsafe commands even when pattern matches prefix', () => {
         const result = processPermissionRequest(createInput('git status; rm -rf /'));
+        expect(result.continue).toBe(true);
+        expect(result.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
+      });
+
+      it('should not auto-approve broad local test commands', () => {
+        const result = processPermissionRequest(createInput('npm test'));
         expect(result.continue).toBe(true);
         expect(result.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
       });
@@ -466,8 +649,22 @@ describe('permission-handler', () => {
     });
 
     describe('heredoc command handling (Issue #608)', () => {
+      it('should respect explicit ask rules for git commit heredoc commands', () => {
+        fs.mkdirSync(path.join(testDir, '.copilot'), { recursive: true });
+        fs.writeFileSync(
+          path.join(testDir, '.copilot', 'settings.local.json'),
+          JSON.stringify({ permissions: { ask: ['Bash(git commit:*)'] } }, null, 2),
+        );
+
+        const cmd = `git commit -m "$(cat <<'EOF'\nfeat: add new feature\n\nDetailed description here.\nEOF\n)"`;
+        const result = processPermissionRequest(createInput(cmd));
+
+        expect(result.continue).toBe(true);
+        expect(result.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
+      });
+
       it('should auto-allow git commit with heredoc message', () => {
-        const cmd = `git commit -m "$(cat <<'EOF'\nfeat: add new feature\n\nDetailed description here.\n\nCo-Authored-By: Copilot Opus 4.6 <noreply@anthropic.com>\nEOF\n)"`;
+        const cmd = `git commit -m "$(cat <<'EOF'\nfeat: add new feature\n\nDetailed description here.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n)"`;
         const result = processPermissionRequest(createInput(cmd));
         expect(result.continue).toBe(true);
         expect(result.hookSpecificOutput?.decision?.behavior).toBe('allow');

@@ -5,23 +5,45 @@ import { tmpdir } from 'os';
 import { routeMessage, broadcastToTeam } from '../message-router.js';
 import { registerMcpWorker } from '../team-registration.js';
 import { writeHeartbeat } from '../heartbeat.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 
 describe('message-router', () => {
   let testDir: string;
+  let fixtureClaudeConfigDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousStateDir: string | undefined;
+  let previousClaudeConfigDir: string | undefined;
   const teamName = 'test-router';
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'message-router-test-'));
+    fixtureClaudeConfigDir = join(testDir, '.claude');
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
+    previousClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
+    delete process.env.OMC_STATE_DIR;
+    process.env.COPILOT_CONFIG_DIR = fixtureClaudeConfigDir;
   });
 
   afterEach(() => {
-    rmSync(testDir, { recursive: true, force: true });
     // Clean up inbox files that may have been created
     try {
-      const inboxDir = join(getClaudeConfigDir(), 'teams', teamName, 'inbox');
+      const inboxDir = join(fixtureClaudeConfigDir, 'teams', teamName, 'inbox');
       rmSync(inboxDir, { recursive: true, force: true });
     } catch { /* ignore */ }
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
+    if (previousClaudeConfigDir === undefined) delete process.env.COPILOT_CONFIG_DIR;
+    else process.env.COPILOT_CONFIG_DIR = previousClaudeConfigDir;
+    rmSync(testDir, { recursive: true, force: true });
   });
 
   function registerWorker(name: string, agentType: string = 'mcp-codex') {
@@ -48,7 +70,7 @@ describe('message-router', () => {
       expect(result.details).toContain('inbox');
 
       // Verify inbox file was written
-      const inboxPath = join(getClaudeConfigDir(), 'teams', teamName, 'inbox', 'codex-1.jsonl');
+      const inboxPath = join(getCopilotConfigDir(), 'teams', teamName, 'inbox', 'codex-1.jsonl');
       expect(existsSync(inboxPath)).toBe(true);
       const content = readFileSync(inboxPath, 'utf-8').trim();
       const msg = JSON.parse(content);
@@ -74,8 +96,8 @@ describe('message-router', () => {
       expect(result.nativeRecipients).toEqual([]);
 
       // Verify both inbox files were written
-      const inbox1 = join(getClaudeConfigDir(), 'teams', teamName, 'inbox', 'worker1.jsonl');
-      const inbox2 = join(getClaudeConfigDir(), 'teams', teamName, 'inbox', 'worker2.jsonl');
+      const inbox1 = join(getCopilotConfigDir(), 'teams', teamName, 'inbox', 'worker1.jsonl');
+      const inbox2 = join(getCopilotConfigDir(), 'teams', teamName, 'inbox', 'worker2.jsonl');
       expect(existsSync(inbox1)).toBe(true);
       expect(existsSync(inbox2)).toBe(true);
     });

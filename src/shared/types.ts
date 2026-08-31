@@ -2,7 +2,7 @@
  * Shared types for Oh-My-Copilot
  */
 
-export type ModelType = 'sonnet' | 'opus' | 'haiku' | 'inherit';
+export type ModelType = "sonnet" | "opus" | "haiku" | "fable" | "inherit";
 
 export interface AgentConfig {
   name: string;
@@ -16,10 +16,61 @@ export interface AgentConfig {
   defaultModel?: string;
 }
 
+export type AutopilotExecutionBackend = "team" | "solo";
+export type AutopilotPlanningMode = "ralplan" | "direct" | false;
+export type AutopilotTeamAgentType =
+  | "claude"
+  | "codex"
+  | "gemini"
+  | "grok"
+  | "cursor"
+  | "antigravity";
+
+/** Built-in stages admitted by version 1 named autopilot workflows. */
+export type AutopilotWorkflowStage = "ralplan" | "execution" | "ralph" | "qa";
+
+/** Closed, versioned named autopilot workflow profile. */
+export interface AutopilotWorkflowProfileV1 {
+  version: 1;
+  stages: AutopilotWorkflowStage[];
+}
+
+export interface AutopilotConfigBlock {
+  /** Maximum total iterations across all phases. */
+  maxIterations?: number;
+  /** Maximum QA test-fix cycles. */
+  maxQaCycles?: number;
+  /** Maximum validation rounds before giving up. */
+  maxValidationRounds?: number;
+  /** Pause for user confirmation after expansion. */
+  pauseAfterExpansion?: boolean;
+  /** Pause for user confirmation after planning. */
+  pauseAfterPlanning?: boolean;
+  /** Skip QA phase entirely. */
+  skipQa?: boolean;
+  /** Skip validation phase entirely. */
+  skipValidation?: boolean;
+  /** Planning stage: 'ralplan' for consensus, 'direct' for simple planning, false to skip. */
+  planning?: AutopilotPlanningMode;
+  /** Execution backend: 'team' for multi-worker execution, 'solo' for current-session execution. */
+  execution?: AutopilotExecutionBackend;
+  /** Verification config, or false to skip verification. */
+  verification?: { engine: "ralph"; maxIterations: number } | false;
+  /** Whether to run QA build/lint/test cycling. */
+  qa?: boolean;
+  /** Named, fixed-stage workflow profiles. Project profiles replace user profiles of the same name. */
+  workflows?: Record<string, AutopilotWorkflowProfileV1>;
+  /** Team execution options used when execution is 'team'. */
+  team?: {
+    /** Preferred CLI worker types for executor-style implementation tasks. */
+    agentTypes?: AutopilotTeamAgentType[];
+  };
+}
+
 export interface PluginConfig {
   // Agent model overrides
   agents?: {
-    omg?: { model?: string };
+    omc?: { model?: string };
     explore?: { model?: string };
     analyst?: { model?: string };
     planner?: { model?: string };
@@ -34,6 +85,7 @@ export interface PluginConfig {
     writer?: { model?: string };
     qaTester?: { model?: string };
     scientist?: { model?: string };
+    tracer?: { model?: string };
     gitMaster?: { model?: string };
     codeSimplifier?: { model?: string };
     critic?: { model?: string };
@@ -62,6 +114,12 @@ export interface PluginConfig {
     onError?: "warn" | "silent" | "fail";
   };
 
+  // UserPromptSubmit keyword-detector opt-outs
+  keywordDetector?: {
+    // Skill keywords to stop auto-routing (e.g. "wiki"); "cancel" is never disabled.
+    disabled?: string[];
+  };
+
   // Permission settings
   permissions?: {
     allowBash?: boolean;
@@ -72,7 +130,6 @@ export interface PluginConfig {
 
   // Magic keyword customization
   magicKeywords?: {
-    ultrawork?: string[];
     search?: string[];
     analyze?: string[];
     ultrathink?: string[];
@@ -83,11 +140,11 @@ export interface PluginConfig {
     /** Enable intelligent model routing */
     enabled?: boolean;
     /** Default tier when no rules match */
-    defaultTier?: 'LOW' | 'MEDIUM' | 'HIGH';
+    defaultTier?: "LOW" | "MEDIUM" | "HIGH";
     /**
      * Force all agents to inherit the parent model instead of using OMC model routing.
      * When true, the `model` parameter is stripped from all Task/Agent calls so agents use
-     * the user's Copilot CLI model setting. Overrides all per-agent model recommendations.
+     * the user's Claude Code model setting. Overrides all per-agent model recommendations.
      * Env: OMC_ROUTING_FORCE_INHERIT=true
      */
     forceInherit?: boolean;
@@ -102,10 +159,13 @@ export interface PluginConfig {
       HIGH?: string;
     };
     /** Agent-specific tier overrides */
-    agentOverrides?: Record<string, {
-      tier: 'LOW' | 'MEDIUM' | 'HIGH';
-      reason: string;
-    }>;
+    agentOverrides?: Record<
+      string,
+      {
+        tier: "LOW" | "MEDIUM" | "HIGH";
+        reason: string;
+      }
+    >;
     /**
      * Model alias overrides.
      *
@@ -118,9 +178,9 @@ export interface PluginConfig {
      *   (useful on non-Anthropic backends without the nuclear forceInherit)
      * - `{ haiku: 'sonnet' }` — promote all haiku agents to sonnet tier
      *
-     * Env: OMC_MODEL_ALIAS_HAIKU, OMC_MODEL_ALIAS_SONNET, OMC_MODEL_ALIAS_OPUS
+     * Env: OMC_MODEL_ALIAS_HAIKU, OMC_MODEL_ALIAS_SONNET, OMC_MODEL_ALIAS_OPUS, OMC_MODEL_ALIAS_FABLE
      */
-    modelAliases?: Partial<Record<'haiku' | 'sonnet' | 'opus', ModelType>>;
+    modelAliases?: Partial<Record<"haiku" | "sonnet" | "opus" | "fable", ModelType>>;
     /** Keywords that force escalation to higher tier */
     escalationKeywords?: string[];
     /** Keywords that suggest lower tier */
@@ -136,9 +196,12 @@ export interface PluginConfig {
   // /team role routing configuration (scoped to /team only; distinct from delegationRouting)
   team?: TeamConfigBlock;
 
-  // Plan output configuration
+  // /autopilot pipeline and team execution configuration
+  autopilot?: AutopilotConfigBlock;
+
+  // Plan output configuration (issue #1636)
   planOutput?: {
-    /** Relative directory for generated plan artifacts. Default: .omcp/plans */
+    /** Relative directory for generated plan artifacts. Default: .omg/plans */
     directory?: string;
     /** Filename template. Supported tokens: {{name}}, {{kind}}. Default: {{name}}.md */
     filenameTemplate?: string;
@@ -158,7 +221,7 @@ export interface PluginConfig {
   guards?: {
     factcheck?: {
       enabled?: boolean;
-      mode?: 'strict' | 'declared' | 'manual' | 'quick';
+      mode?: "strict" | "declared" | "manual" | "quick";
       strict_project_patterns?: string[];
       forbidden_path_prefixes?: string[];
       forbidden_path_substrings?: string[];
@@ -224,7 +287,7 @@ export interface SessionState {
 
 export interface AgentState {
   name: string;
-  status: 'idle' | 'running' | 'completed' | 'error';
+  status: "idle" | "running" | "completed" | "error";
   lastMessage?: string;
   startTime?: number;
 }
@@ -233,7 +296,7 @@ export interface BackgroundTask {
   id: string;
   agentName: string;
   prompt: string;
-  status: 'pending' | 'running' | 'completed' | 'error';
+  status: "pending" | "running" | "completed" | "error";
   result?: string;
   error?: string;
 }
@@ -245,7 +308,13 @@ export interface MagicKeyword {
 }
 
 export interface HookDefinition {
-  event: 'PreToolUse' | 'PostToolUse' | 'Stop' | 'SessionStart' | 'SessionEnd' | 'UserPromptSubmit';
+  event:
+    | "PreToolUse"
+    | "PostToolUse"
+    | "Stop"
+    | "SessionStart"
+    | "SessionEnd"
+    | "UserPromptSubmit";
   matcher?: string;
   command?: string;
   handler?: (context: HookContext) => Promise<HookResult>;
@@ -267,7 +336,7 @@ export interface HookResult {
 /**
  * External model provider type
  */
-export type ExternalModelProvider = 'codex' | 'gemini';
+export type ExternalModelProvider = "codex" | "gemini" | "antigravity";
 
 /**
  * External model configuration for a specific role or task
@@ -285,13 +354,14 @@ export interface ExternalModelsDefaults {
   codexModel?: string;
   geminiModel?: string;
   grokModel?: string;
+  antigravityModel?: string;
 }
 
 /**
  * External models fallback policy
  */
 export interface ExternalModelsFallbackPolicy {
-  onModelFailure: 'provider_chain' | 'cross_provider' | 'claude_only';
+  onModelFailure: "provider_chain" | "cross_provider" | "claude_only";
   allowCrossProvider?: boolean;
   crossProviderOrder?: ExternalModelProvider[];
 }
@@ -329,15 +399,14 @@ export interface ResolveOptions {
  * Provider type for delegation routing
  */
 export type DelegationProvider =
-  | 'copilot'
-  | 'claude'
+  | "claude"
   /** Use /team to coordinate Codex CLI workers in tmux panes. */
-  | 'codex'
+  | "codex"
   /** Use /team to coordinate Gemini CLI workers in tmux panes. */
-  | 'gemini';
+  | "gemini";
 
-/** Tool type for delegation routing — only Copilot Task is supported. */
-export type DelegationTool = 'Task';
+/** Tool type for delegation routing — only Claude Task is supported. */
+export type DelegationTool = "Task";
 
 /**
  * Individual route configuration for a role
@@ -407,14 +476,14 @@ export const CANONICAL_TEAM_ROLES = [
 export type CanonicalTeamRole = typeof CANONICAL_TEAM_ROLES[number];
 
 /** Provider for /team role routing. */
-export type TeamRoleProvider = 'claude' | 'codex' | 'gemini' | 'grok';
+export type TeamRoleProvider = 'claude' | 'copilot' | 'codex' | 'gemini' | 'grok' | 'cursor' | 'antigravity';
 
 /** Tier name accepted in role-assignment `model` field. */
 export type TeamRoleTier = 'HIGH' | 'MEDIUM' | 'LOW';
 
 /** Known agent names derived from `buildDefaultConfig().agents` keys in src/config/loader.ts. */
 export const KNOWN_AGENT_NAMES = [
-  'omcp',
+  'omc',
   'explore',
   'analyst',
   'planner',

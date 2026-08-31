@@ -130,10 +130,20 @@ export {
   type SkillRegistry
 } from './builtin-skills/index.js';
 
+// Session Friction Report - local context-bloat and operator-friction summaries
+export {
+  generateSessionFrictionReport,
+  type SessionFrictionReport,
+  type SessionFrictionReportOptions,
+  type SessionFrictionSession,
+  type SessionFrictionSignal,
+} from './session-friction-report/index.js';
+
 // Model Routing - intelligent model tier routing
 export {
   // Main functions
   routeTask,
+  routeWithEscalation,
   routeAndAdaptTask,
   escalateModel,
   canEscalate,
@@ -232,10 +242,12 @@ export {
   createStateManager,
   // Functions
   getStatePath,
+  getLegacyPaths,
   ensureStateDir,
   readState,
   writeState,
   clearState,
+  migrateState,
   listStates,
   cleanupOrphanedStates,
   // Enums/Constants
@@ -247,6 +259,7 @@ export {
   type StateReadResult,
   type StateWriteResult,
   type StateClearResult,
+  type StateMigrationResult,
   type StateFileInfo,
   type ListStatesOptions,
   type CleanupOptions,
@@ -299,3 +312,31 @@ export {
   type FileOwnership,
   type DecompositionStrategy
 } from './task-decomposer/index.js';
+
+
+// Session History Search - local transcript/session artifact search
+export {
+  searchSessionHistory,
+  parseSinceSpec,
+  type SessionHistoryMatch,
+  type SessionHistorySearchOptions,
+  type SessionHistorySearchReport,
+} from './session-history-search/index.js';
+// Agent Addressability & Discoverability - unnamed agent addressing/listing contract (#3665)
+export {
+  shortId,
+  hasExplicitName,
+  hasDescription,
+  addressFor,
+  listingLabel,
+  notificationReference,
+  resolveAgent,
+  formatAgentList,
+  SHORT_ID_LENGTH,
+  type AgentStatus,
+  type AddressableAgent,
+  type MatchKind,
+  type ResolveResult,
+  type FormatAgentListOptions,
+} from './agent-addressability/index.js';
+

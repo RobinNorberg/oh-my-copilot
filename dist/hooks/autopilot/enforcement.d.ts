@@ -6,8 +6,8 @@
  *
  * Also handles signal detection in session transcripts.
  */
-import type { AutopilotPhase, AutopilotSignal } from './types.js';
-import { type ToolErrorState } from '../persistent-mode/index.js';
+import type { AutopilotPhase, AutopilotSignal } from "./types.js";
+import { type ToolErrorState } from "../persistent-mode/index.js";
 export interface AutopilotEnforcementResult {
     /** Whether to block the stop event */
     shouldBlock: boolean;

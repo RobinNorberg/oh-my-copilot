@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { teamCommand, parseTeamArgs, buildStartupTasks, buildTeamLaunchTasks, resolveAvailableTeamName, resolveTeamFanoutLimit, splitTaskString } from '../team.js';
+import { teamCommand, parseTeamArgs, buildStartupTasks, buildTeamLaunchTasks, resolveAvailableTeamName, resolveTeamFanoutLimit, splitTaskString, assertTeamSpawnAllowed } from '../team.js';
 /** Helper: capture console.log output during a callback */
 async function captureLog(fn) {
     const logs = [];
@@ -18,55 +18,79 @@ async function captureLog(fn) {
 }
 /** Helper: init minimal team state on disk */
 async function initTeamState(teamName, wd) {
-    const base = join(wd, '.omcp', 'state', 'team', teamName);
+    const base = join(wd, '.omg', 'state', 'team', teamName);
     await mkdir(join(base, 'tasks'), { recursive: true });
     await mkdir(join(base, 'workers', 'worker-1'), { recursive: true });
     await mkdir(join(base, 'mailbox'), { recursive: true });
     await mkdir(join(base, 'events'), { recursive: true });
     await writeFile(join(base, 'config.json'), JSON.stringify({
-        team_name: teamName,
+        name: teamName,
         task: 'test',
         agent_type: 'executor',
         worker_count: 1,
         workers: [{ name: 'worker-1', index: 1, role: 'executor', assigned_tasks: [] }],
         created_at: new Date().toISOString(),
+        tmux_session: 'test-session:0',
     }));
 }
 describe('teamCommand help output', () => {
     it('prints team help for --help', async () => {
         const logs = await captureLog(() => teamCommand(['--help']));
-        expect(logs[0]).toContain('omcp team api <operation>');
+        expect(logs[0]).toContain('omc team api <operation>');
     });
     it('prints team help for help alias', async () => {
         const logs = await captureLog(() => teamCommand(['help']));
-        expect(logs[0]).toContain('omcp team api <operation>');
+        expect(logs[0]).toContain('omc team api <operation>');
     });
-    it('prints api help for omcp team api --help', async () => {
+    it('prints api help for omc team api --help', async () => {
         const logs = await captureLog(() => teamCommand(['api', '--help']));
         expect(logs[0]).toContain('Supported operations');
         expect(logs[0]).toContain('send-message');
         expect(logs[0]).toContain('transition-task-status');
     });
-    it('prints operation-specific help for omcp team api <op> --help', async () => {
+    it('prints operation-specific help for omc team api <op> --help', async () => {
         const logs = await captureLog(() => teamCommand(['api', 'send-message', '--help']));
-        expect(logs[0]).toContain('Usage: omcp team api send-message');
+        expect(logs[0]).toContain('Usage: omc team api send-message');
         expect(logs[0]).toContain('from_worker');
         expect(logs[0]).toContain('to_worker');
     });
-    it('prints operation-specific help for omcp team api --help <op>', async () => {
+    it('prints operation-specific help for omc team api --help <op>', async () => {
         const logs = await captureLog(() => teamCommand(['api', '--help', 'claim-task']));
-        expect(logs[0]).toContain('Usage: omcp team api claim-task');
+        expect(logs[0]).toContain('Usage: omc team api claim-task');
         expect(logs[0]).toContain('expected_version');
     });
 });
 describe('teamCommand api operations', () => {
     let wd;
     let previousCwd;
+    let previousHome;
+    let previousUserProfile;
+    let previousStateDir;
+    const isolateFixtureHome = (directory) => {
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        previousStateDir = process.env.OMC_STATE_DIR;
+        process.env.HOME = directory;
+        process.env.USERPROFILE = directory;
+        delete process.env.OMC_STATE_DIR;
+    };
     afterEach(async () => {
         if (previousCwd)
             process.chdir(previousCwd);
         if (wd)
             await rm(wd, { recursive: true, force: true }).catch(() => { });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
+        if (previousStateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = previousStateDir;
         process.exitCode = 0;
     });
     it('returns JSON error for unknown operation with --json', async () => {
@@ -81,7 +105,8 @@ describe('teamCommand api operations', () => {
         expect(envelope.error.code).toBe('invalid_input');
     });
     it('executes send-message with stable JSON envelope', async () => {
-        wd = await mkdtemp(join(tmpdir(), 'omcp-team-cli-'));
+        wd = await mkdtemp(join(tmpdir(), 'omc-team-cli-'));
+        isolateFixtureHome(wd);
         previousCwd = process.cwd();
         process.chdir(wd);
         await initTeamState('cli-test', wd);
@@ -100,11 +125,12 @@ describe('teamCommand api operations', () => {
         const envelope = JSON.parse(logs[0]);
         expect(envelope.schema_version).toBe('1.0');
         expect(envelope.ok).toBe(true);
-        expect(envelope.command).toBe('omcp team api send-message');
+        expect(envelope.command).toBe('omc team api send-message');
         expect(envelope.data.message.body).toBe('ACK');
     });
     it('supports claim-safe lifecycle: create -> claim -> transition', async () => {
-        wd = await mkdtemp(join(tmpdir(), 'omcp-team-lifecycle-'));
+        wd = await mkdtemp(join(tmpdir(), 'omc-team-lifecycle-'));
+        isolateFixtureHome(wd);
         previousCwd = process.cwd();
         process.chdir(wd);
         await initTeamState('lifecycle', wd);
@@ -162,15 +188,103 @@ describe('teamCommand api operations', () => {
     });
     it('blocks team start when running inside worker context', async () => {
         const previousWorker = process.env.OMC_TEAM_WORKER;
+        const errors = [];
+        const originalError = console.error;
         try {
+            console.error = (...args) => errors.push(args.map(String).join(' '));
             process.env.OMC_TEAM_WORKER = 'demo-team/worker-1';
             const logs = await captureLog(() => teamCommand(['1:executor', 'do work']));
-            expect(logs[0]).toContain('omcp team [N:agent-type[:role]]');
+            expect(logs.join('\n')).not.toContain('Usage: omc team');
+            expect(errors.join('\n')).toContain('nested_teams_allowed is false');
             expect(process.exitCode).toBe(1);
         }
         finally {
+            console.error = originalError;
             process.env.OMC_TEAM_WORKER = previousWorker;
             process.exitCode = 0;
+        }
+    });
+    it('reports malformed worker specs without dumping generic team usage', async () => {
+        const errors = [];
+        const originalError = console.error;
+        try {
+            console.error = (...args) => errors.push(args.map(String).join(' '));
+            const logs = await captureLog(() => teamCommand(['1:claude:executor:extra', 'do work']));
+            expect(errors.join('\n')).toContain('Invalid worker spec "1:claude:executor:extra"');
+            expect(logs.join('\n')).not.toContain('Usage: omc team');
+            expect(process.exitCode).toBe(1);
+        }
+        finally {
+            console.error = originalError;
+            process.exitCode = 0;
+        }
+    });
+    it('ignores stale team state without a live tmux session when enforcing leader spawn gate', async () => {
+        wd = await mkdtemp(join(tmpdir(), 'omc-team-stale-gate-'));
+        isolateFixtureHome(wd);
+        const stale = join(wd, '.omg', 'state', 'team', 'stale-team');
+        await mkdir(stale, { recursive: true });
+        await writeFile(join(stale, 'config.json'), JSON.stringify({
+            name: 'stale-team',
+            task: 'old launch',
+            agent_type: 'claude',
+            worker_count: 1,
+            workers: [{ name: 'worker-1', index: 1, role: 'claude', assigned_tasks: [] }],
+            created_at: new Date().toISOString(),
+            tmux_session: 'stale-session:0',
+            next_task_id: 1,
+        }, null, 2));
+        delete process.env.OMC_TEAM_WORKER;
+        delete process.env.OMX_TEAM_WORKER;
+        await expect(assertTeamSpawnAllowed(wd)).resolves.toBeUndefined();
+    });
+    it('allows nested team spawn only when parent governance enables it', async () => {
+        wd = await mkdtemp(join(tmpdir(), 'omc-team-governance-'));
+        isolateFixtureHome(wd);
+        previousCwd = process.cwd();
+        process.chdir(wd);
+        const base = join(wd, '.omg', 'state', 'team', 'demo-team');
+        await mkdir(base, { recursive: true });
+        await writeFile(join(base, 'manifest.json'), JSON.stringify({
+            schema_version: 2,
+            name: 'demo-team',
+            task: 'test',
+            leader: { session_id: 's1', worker_id: 'leader-fixed', role: 'leader' },
+            policy: {
+                display_mode: 'split_pane',
+                worker_launch_mode: 'interactive',
+                dispatch_mode: 'hook_preferred_with_fallback',
+                dispatch_ack_timeout_ms: 15000,
+            },
+            governance: {
+                delegation_only: true,
+                plan_approval_required: false,
+                nested_teams_allowed: true,
+                one_team_per_leader_session: true,
+                cleanup_requires_all_workers_inactive: true,
+            },
+            permissions_snapshot: {
+                approval_mode: 'default',
+                sandbox_mode: 'workspace-write',
+                network_access: false,
+            },
+            tmux_session: 'demo-session',
+            worker_count: 1,
+            workers: [],
+            next_task_id: 2,
+            created_at: new Date().toISOString(),
+            leader_pane_id: null,
+            hud_pane_id: null,
+            resize_hook_name: null,
+            resize_hook_target: null,
+        }));
+        const previousWorker = process.env.OMC_TEAM_WORKER;
+        try {
+            process.env.OMC_TEAM_WORKER = 'demo-team/worker-1';
+            await expect(assertTeamSpawnAllowed(wd, process.env)).resolves.toBeUndefined();
+        }
+        finally {
+            process.env.OMC_TEAM_WORKER = previousWorker;
         }
     });
 });
@@ -216,6 +330,31 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
         const effective = resolveTeamFanoutLimit(parsed.workerCount, parsed.agentTypes[0], parsed.explicitWorkerSpec ? parsed.workerCount : undefined, decomposition, parsed.noDecompose);
         expect(() => buildTeamLaunchTasks(parsed, decomposition, effective)).toThrow(/scope count \(3\) must match explicit worker count \(2\)/);
     });
+    it('does not reject a single explicit worker when prose contains "and"/commas (#3267)', () => {
+        const parsed = parseTeamArgs(['1:executor', 'Read plan.md and execute it then commit the result']);
+        expect(parsed.workerCount).toBe(1);
+        expect(parsed.explicitWorkerSpec).toBe(true);
+        const decomposition = splitTaskString(parsed.task);
+        // Free-form prose still parses as a conjunction heuristic...
+        expect(decomposition.strategy).toBe('conjunction');
+        expect(decomposition.subtasks.length).toBeGreaterThan(1);
+        const effective = resolveTeamFanoutLimit(parsed.workerCount, parsed.agentTypes[0], parsed.explicitWorkerSpec ? parsed.workerCount : undefined, decomposition, parsed.noDecompose);
+        expect(effective).toBe(1);
+        // ...but a conjunction guess must NOT reject the explicit worker spec.
+        const tasks = buildTeamLaunchTasks(parsed, decomposition, effective);
+        expect(tasks).toHaveLength(1);
+        expect(tasks[0].description).toBe(parsed.task);
+    });
+    it('gives every explicit worker the full prose instead of splitting on conjunctions (#3267)', () => {
+        const parsed = parseTeamArgs(['2:codex', 'review the parser and patch the runtime']);
+        const decomposition = splitTaskString(parsed.task);
+        expect(decomposition.strategy).toBe('conjunction');
+        expect(decomposition.subtasks).toHaveLength(2);
+        const effective = resolveTeamFanoutLimit(parsed.workerCount, parsed.agentTypes[0], parsed.explicitWorkerSpec ? parsed.workerCount : undefined, decomposition, parsed.noDecompose);
+        expect(effective).toBe(2);
+        const tasks = buildTeamLaunchTasks(parsed, decomposition, effective);
+        expect(tasks.map((task) => task.description)).toEqual([parsed.task, parsed.task]);
+    });
     it('maps pre-authored numbered scopes to explicit workers when counts match', () => {
         const parsed = parseTeamArgs([
             '1:claude,2:codex',
@@ -253,17 +392,29 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
         const parsed = parseTeamArgs(['abcdefghijklmnopqrstuvwxyz abc', 'task body']);
         expect(parsed.teamName.endsWith('-')).toBe(false);
         const slugWd = await mkdtemp(join(tmpdir(), 'omc-team-slug-'));
-        await mkdir(join(slugWd, '.omcp', 'state', 'team', parsed.teamName), { recursive: true });
+        const originalHome = process.env.HOME;
+        const originalUserProfile = process.env.USERPROFILE;
+        process.env.HOME = slugWd;
+        process.env.USERPROFILE = slugWd;
+        await mkdir(join(slugWd, '.omg', 'state', 'team', parsed.teamName), { recursive: true });
         expect(resolveAvailableTeamName(parsed.teamName, slugWd)).toBe(`${parsed.teamName.slice(0, 28).replace(/-$/g, '')}-2`);
+        if (originalHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = originalHome;
+        if (originalUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = originalUserProfile;
         await rm(slugWd, { recursive: true, force: true });
     });
-    it('treats role-only shorthand as copilot workers plus a shared role', () => {
+    it('treats role-only shorthand as claude workers plus a shared role', () => {
         const parsed = parseTeamArgs(['2:executor', 'fix the bug']);
         expect(parsed.workerCount).toBe(2);
-        expect(parsed.agentTypes).toEqual(['copilot', 'copilot']);
+        expect(parsed.agentTypes).toEqual(['claude', 'claude']);
         expect(parsed.workerSpecs).toEqual([
-            { agentType: 'copilot', role: 'executor' },
-            { agentType: 'copilot', role: 'executor' },
+            { agentType: 'claude', role: 'executor' },
+            { agentType: 'claude', role: 'executor' },
         ]);
         expect(parsed.role).toBe('executor');
         expect(parsed.task).toBe('fix the bug');
@@ -272,12 +423,18 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
         const parsed = parseTeamArgs(['1:codex,1:gemini', 'do the task']);
         expect(parsed.workerCount).toBe(2);
         expect(parsed.agentTypes).toEqual(['codex', 'gemini']);
+        expect(parsed.workerSpecs).toEqual([{ agentType: 'codex' }, { agentType: 'gemini' }]);
         expect(parsed.task).toBe('do the task');
     });
-    it('parses 2:copilot,1:codex:architect with mixed counts and roles', () => {
-        const parsed = parseTeamArgs(['2:copilot,1:codex:architect', 'design system']);
+    it('parses 2:claude,1:codex:architect with mixed counts and roles', () => {
+        const parsed = parseTeamArgs(['2:claude,1:codex:architect', 'design system']);
         expect(parsed.workerCount).toBe(3);
-        expect(parsed.agentTypes).toEqual(['copilot', 'copilot', 'codex']);
+        expect(parsed.agentTypes).toEqual(['claude', 'claude', 'codex']);
+        expect(parsed.workerSpecs).toEqual([
+            { agentType: 'claude' },
+            { agentType: 'claude' },
+            { agentType: 'codex', role: 'architect' },
+        ]);
         expect(parsed.role).toBeUndefined(); // mixed roles -> no single role
         expect(parsed.task).toBe('design system');
     });
@@ -285,14 +442,19 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
         const parsed = parseTeamArgs(['1:codex:executor,2:gemini:executor', 'run tasks']);
         expect(parsed.workerCount).toBe(3);
         expect(parsed.agentTypes).toEqual(['codex', 'gemini', 'gemini']);
+        expect(parsed.workerSpecs).toEqual([
+            { agentType: 'codex', role: 'executor' },
+            { agentType: 'gemini', role: 'executor' },
+            { agentType: 'gemini', role: 'executor' },
+        ]);
         expect(parsed.role).toBe('executor');
     });
     it('supports mixed explicit cli types and role-only shorthand in comma specs', () => {
         const parsed = parseTeamArgs(['1:executor,1:codex:architect', 'run tasks']);
         expect(parsed.workerCount).toBe(2);
-        expect(parsed.agentTypes).toEqual(['copilot', 'codex']);
+        expect(parsed.agentTypes).toEqual(['claude', 'codex']);
         expect(parsed.workerSpecs).toEqual([
-            { agentType: 'copilot', role: 'executor' },
+            { agentType: 'claude', role: 'executor' },
             { agentType: 'codex', role: 'architect' },
         ]);
         expect(parsed.role).toBeUndefined();
@@ -303,19 +465,81 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
         expect(parsed.agentTypes).toEqual(['codex', 'codex', 'codex']);
         expect(parsed.task).toBe('fix tests');
     });
-    it('defaults to 3 copilot workers when no spec is given', () => {
+    it('parses single-type spec 3:cursor into uniform agentTypes', () => {
+        const parsed = parseTeamArgs(['3:cursor', 'apply implementation']);
+        expect(parsed.workerCount).toBe(3);
+        expect(parsed.agentTypes).toEqual(['cursor', 'cursor', 'cursor']);
+        expect(parsed.workerSpecs).toEqual([
+            { agentType: 'cursor' },
+            { agentType: 'cursor' },
+            { agentType: 'cursor' },
+        ]);
+        expect(parsed.task).toBe('apply implementation');
+    });
+    it('supports cursor in mixed explicit cli specs', () => {
+        const parsed = parseTeamArgs(['1:cursor,1:codex', 'compare edits']);
+        expect(parsed.workerCount).toBe(2);
+        expect(parsed.agentTypes).toEqual(['cursor', 'codex']);
+        expect(parsed.workerSpecs).toEqual([
+            { agentType: 'cursor' },
+            { agentType: 'codex' },
+        ]);
+        expect(parsed.task).toBe('compare edits');
+    });
+    it('accepts cursor with non-executor explicit roles (issue #3880)', () => {
+        expect(parseTeamArgs(['1:cursor:architect', 'design auth']).workerSpecs).toEqual([
+            { agentType: 'cursor', role: 'architect' },
+        ]);
+        expect(parseTeamArgs(['1:cursor:security-reviewer', 'review auth']).workerSpecs).toEqual([
+            { agentType: 'cursor', role: 'security-reviewer' },
+        ]);
+    });
+    it('accepts a mixed cursor-reviewer / codex-critic spec (issue #3880)', () => {
+        const parsed = parseTeamArgs(['1:cursor:code-reviewer,1:codex:critic', 'review the change']);
+        expect(parsed.workerCount).toBe(2);
+        expect(parsed.agentTypes).toEqual(['cursor', 'codex']);
+        expect(parsed.workerSpecs).toEqual([
+            { agentType: 'cursor', role: 'code-reviewer' },
+            { agentType: 'codex', role: 'critic' },
+        ]);
+    });
+    it('parses single-type spec 2:antigravity into uniform agentTypes', () => {
+        const parsed = parseTeamArgs(['2:antigravity', 'apply implementation']);
+        expect(parsed.workerCount).toBe(2);
+        expect(parsed.agentTypes).toEqual(['antigravity', 'antigravity']);
+        expect(parsed.workerSpecs).toEqual([
+            { agentType: 'antigravity' },
+            { agentType: 'antigravity' },
+        ]);
+        expect(parsed.task).toBe('apply implementation');
+    });
+    it('supports antigravity in mixed explicit cli specs', () => {
+        const parsed = parseTeamArgs(['1:antigravity,1:codex', 'compare edits']);
+        expect(parsed.workerCount).toBe(2);
+        expect(parsed.agentTypes).toEqual(['antigravity', 'codex']);
+        expect(parsed.task).toBe('compare edits');
+    });
+    it('parses antigravity with an explicit executor role', () => {
+        const parsed = parseTeamArgs(['1:antigravity:executor', 'apply the implementation']);
+        expect(parsed.agentTypes).toEqual(['antigravity']);
+    });
+    it('uses configured antigravity CLI provider default when supported', () => {
+        const parsed = parseTeamArgs(['run all tests'], 'antigravity');
+        expect(parsed.agentTypes).toEqual(['antigravity', 'antigravity', 'antigravity']);
+    });
+    it('defaults to 3 claude workers when no spec is given', () => {
         const parsed = parseTeamArgs(['run all tests']);
         expect(parsed.workerCount).toBe(3);
-        expect(parsed.agentTypes).toEqual(['copilot', 'copilot', 'copilot']);
+        expect(parsed.agentTypes).toEqual(['claude', 'claude', 'claude']);
         expect(parsed.task).toBe('run all tests');
     });
     it('uses configured CLI provider default when it is supported', () => {
-        const parsed = parseTeamArgs(['run all tests'], 'codex');
-        expect(parsed.agentTypes).toEqual(['codex', 'codex', 'codex']);
+        const parsed = parseTeamArgs(['run all tests'], 'cursor');
+        expect(parsed.agentTypes).toEqual(['cursor', 'cursor', 'cursor']);
         expect(parsed.workerSpecs).toEqual([
-            { agentType: 'codex' },
-            { agentType: 'codex' },
-            { agentType: 'codex' },
+            { agentType: 'cursor' },
+            { agentType: 'cursor' },
+            { agentType: 'cursor' },
         ]);
     });
     it('falls back to claude when configured defaultAgentType is not a supported CLI provider', () => {
@@ -331,7 +555,30 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
         const parsed = parseTeamArgs(['2:codex:architect', 'design auth']);
         expect(parsed.workerCount).toBe(2);
         expect(parsed.agentTypes).toEqual(['codex', 'codex']);
+        expect(parsed.workerSpecs).toEqual([
+            { agentType: 'codex', role: 'architect' },
+            { agentType: 'codex', role: 'architect' },
+        ]);
         expect(parsed.role).toBe('architect');
+    });
+    it('fails loudly when N:agent:role uses an invalid agent type instead of collapsing to claude', () => {
+        expect(() => parseTeamArgs(['2:foo:architect', 'design auth'])).toThrow(/Invalid agent type "foo" in worker spec/);
+    });
+    it('rejects invalid agent in a comma-separated three-segment spec', () => {
+        expect(() => parseTeamArgs(['1:codex:architect,1:foo:writer', 'do task'])).toThrow(/Invalid agent type "foo" in worker spec/);
+    });
+    it('suggests the role-only shorthand in the invalid-agent error', () => {
+        expect(() => parseTeamArgs(['3:reviewer:executor', 'go'])).toThrow(/use "3:executor"/);
+    });
+    it('fails loudly on a malformed worker spec instead of swallowing it into the task', () => {
+        expect(() => parseTeamArgs(['2:claude:executor:extra', 'go'])).toThrow(/Invalid worker spec "2:claude:executor:extra"/);
+        expect(() => parseTeamArgs(['1:codex,bogus', 'go'])).toThrow(/Invalid worker spec "1:codex,bogus"/);
+    });
+    it('does not misread a time-like task prefix as a worker spec', () => {
+        const parsed = parseTeamArgs(['12:00 standup notes']);
+        expect(parsed.workerCount).toBe(3);
+        expect(parsed.agentTypes).toEqual(['claude', 'claude', 'claude']);
+        expect(parsed.task).toBe('12:00 standup notes');
     });
     it('supports --json and --new-window flags with comma-separated specs', () => {
         const parsed = parseTeamArgs(['1:codex,1:gemini', '--new-window', '--json', 'compare']);

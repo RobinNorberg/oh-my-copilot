@@ -11,23 +11,22 @@ concurrency:
   group: upgrade-test-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   upgrade-test:
     name: omcp update + session-start hook
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      # The globally-installed omcp (from npm) may still read CLAUDE_CONFIG_DIR,
-      # while the local build reads COPILOT_CONFIG_DIR. Pin both to the same
-      # path so omcp update and verification agree on where hooks live.
-      COPILOT_CONFIG_DIR: /home/runner/.copilot
-      CLAUDE_CONFIG_DIR: /home/runner/.copilot
 
     steps:
       # ── 1. Environment ──────────────────────────────────────────────────────
 
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -38,39 +37,130 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      # ── 2. Install Copilot CLI ────────────────────────────────────────────────
-      # Keep Copilot CLI installed in CI so the upgrade path still runs in a
-      # realistic environment, but avoid relying on Copilot runtime behavior for
+      # ── 2. Install Claude Code ────────────────────────────────────────────────
+      # Keep Claude Code installed in CI so the upgrade path still runs in a
+      # realistic environment, but avoid relying on Claude runtime behavior for
       # hook verification. Step 6 validates the installed SessionStart hook
       # directly from repo-owned artifacts and therefore runs on push + PR.
 
-      - name: Install Copilot CLI
+      # ENOTEMPTY hardening: the toolcache global lib/node_modules dir is reused
+      # across runs on GitHub-hosted runners (and inside the GitHub-hosted tool
+      # cache). A previously interrupted `npm install -g` can leave the resolved
+      # scoped package dir and/or npm's staging temp dirs behind, so the next
+      # install fails with
+      #   npm error ENOTEMPTY: directory not empty, rename
+      #     '.../@anthropic-ai/claude-code' -> '.../@anthropic-ai/.claude-code-XXXX'
+      # (observed in run 27492794574). Install Claude Code into an isolated npm
+      # global prefix under RUNNER_TEMP so the install never depends on or
+      # mutates the shared toolcache global dir, and retry with a fresh prefix to
+      # absorb any residual rename race. A persistent failure still exits
+      # non-zero (we never swallow the final failure).
+      - name: Install Claude Code
         run: |
-          npm install -g @github/copilot
-          copilot --version
+          set -euo pipefail
 
-      - name: Verify Copilot CLI is on PATH
-        run: which copilot
+          CLAUDE_CODE_PREFIX="$RUNNER_TEMP/claude-code-global"
 
-      # ── 3. Install omcp@latest via npm ────────────────────────────────────────
-      # Establishes the "old version" baseline before `omcp update` is run.
+          reset_prefix() {
+            rm -rf "${CLAUDE_CODE_PREFIX:?}" 2>/dev/null || true
+            mkdir -p "$CLAUDE_CODE_PREFIX"
+          }
 
-      - name: Install omcp latest via npm
-        run: npm install -g oh-my-copilot@latest
+          reset_prefix
 
-      - name: Verify omcp installed
-        run: |
-          omcp --version > "$RUNNER_TEMP/omcp-pre-update.version" 2>&1
-          VERSION_EXIT=$?
-          INSTALLED_VERSION=$(cat "$RUNNER_TEMP/omcp-pre-update.version")
+          ATTEMPTS=3
+          INSTALLED=false
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            echo "Installing @anthropic-ai/claude-code (attempt $attempt/$ATTEMPTS)"
+            if npm install -g --prefix "$CLAUDE_CODE_PREFIX" \
+                @anthropic-ai/claude-code --no-audit --no-fund; then
+              INSTALLED=true
+              break
+            fi
+            echo "Install attempt $attempt failed; recreating isolated prefix and retrying."
+            reset_prefix
+            sleep 2
+          done
 
-          if [ "$VERSION_EXIT" -ne 0 ]; then
-            echo "FAIL: omcp --version exited with code $VERSION_EXIT"
-            cat "$RUNNER_TEMP/omcp-pre-update.version"
+          if [ "$INSTALLED" != "true" ]; then
+            echo "FAIL: npm install -g @anthropic-ai/claude-code failed after $ATTEMPTS attempts"
             exit 1
           fi
 
-          echo "Installed omcp version: $INSTALLED_VERSION"
+          # Expose the isolated prefix bin dir to this and subsequent steps so
+          # `claude` resolves on PATH (e.g. the "Verify Claude Code is on PATH"
+          # step's `which claude`).
+          echo "$CLAUDE_CODE_PREFIX/bin" >> "$GITHUB_PATH"
+          export PATH="$CLAUDE_CODE_PREFIX/bin:$PATH"
+          claude --version
+
+      - name: Verify Claude Code is on PATH
+        run: which claude
+
+      # ── 3. Install omc@4.13.79 via npm ────────────────────────────────────────
+      # Establishes the "old version" baseline before `omcp update` is run.
+      #
+      # ENOTEMPTY hardening: the global node_modules dir is reused across runs on
+      # GitHub-hosted runners (and within the GitHub-hosted tool cache). A
+      # previously interrupted `npm install -g` can leave behind the resolved
+      # package dir and/or npm's staging temp dirs (`.oh-my-copilot-*`),
+      # which makes the next install fail with
+      #   npm ERR! ENOTEMPTY: directory not empty, rename '.../oh-my-copilot'
+      #     -> '.../.oh-my-copilot-XXXXXXXX'
+      # and, on rerun, appear to hang. Remove any stale global package + npm
+      # staging dirs before installing, then retry the install a few times so a
+      # transient rename race does not fail the run. Persistent install failures
+      # still surface as a non-zero exit (we never swallow the final failure).
+
+      - name: Install omc v4.13.79 via npm
+        run: |
+          set -euo pipefail
+
+          PKG=oh-my-copilot
+          GLOBAL_ROOT="$(npm root -g)"
+
+          clean_stale_global_pkg() {
+            # Remove the resolved global package dir plus any npm staging temp
+            # dirs left over from an interrupted global install. `:?` guards
+            # against an empty GLOBAL_ROOT so we never rm -rf "/".
+            rm -rf "${GLOBAL_ROOT:?}/$PKG" 2>/dev/null || true
+            find "$GLOBAL_ROOT" -maxdepth 1 -name ".$PKG-*" -exec rm -rf {} + 2>/dev/null || true
+          }
+
+          clean_stale_global_pkg
+
+          ATTEMPTS=3
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            echo "Installing $PKG@4.13.79 (attempt $attempt/$ATTEMPTS)"
+            if npm install -g "$PKG@4.13.79" --no-audit --no-fund; then
+              echo "Installed $PKG@4.13.79"
+              exit 0
+            fi
+            echo "Install attempt $attempt failed; cleaning stale global state and retrying."
+            clean_stale_global_pkg
+            sleep 2
+          done
+
+          echo "FAIL: npm install -g $PKG@4.13.79 failed after $ATTEMPTS attempts"
+          exit 1
+
+      - name: Verify omc version is 4.13.79
+        run: |
+          omcp --version > "$RUNNER_TEMP/omc-pre-update.version" 2>&1
+          VERSION_EXIT=$?
+          INSTALLED_VERSION=$(cat "$RUNNER_TEMP/omc-pre-update.version")
+
+          if [ "$VERSION_EXIT" -ne 0 ]; then
+            echo "FAIL: omcp --version exited with code $VERSION_EXIT"
+            cat "$RUNNER_TEMP/omc-pre-update.version"
+            exit 1
+          fi
+
+          echo "Installed omc version: $INSTALLED_VERSION"
+          if [ "$INSTALLED_VERSION" != "4.13.79" ]; then
+            echo "Expected version 4.13.79, got: $INSTALLED_VERSION"
+            exit 1
+          fi
 
       # ── 4. Run omcp update and verify clean stdout only ───────────────────────
       # omcp update must:
@@ -78,11 +168,11 @@ jobs:
       #   - Produce zero stderr
       # Any npm warnings, git warnings, or sync messages to stderr are failures.
       # Note: syncMarketplaceClone() is best-effort and skips gracefully when
-      # the marketplace clone (~/.copilot/plugins/marketplaces/omcp/) doesn't exist,
+      # the marketplace clone (~/.copilot/plugins/marketplaces/omc/) doesn't exist,
       # so CI runners with a fresh home directory are handled correctly.
       #
       # dev can legitimately carry a package/release-notes version bump before
-      # that version is published to npm. In that window the old baseline updater
+      # that version is published to npm. In that window the old 4.13.79 updater
       # still tries `npm install -g ...@latest`, which fails with ETARGET before
       # any current update/reconcile code can run. Keep the real `omcp update`
       # path when the current package version exists on npm; otherwise install
@@ -95,25 +185,69 @@ jobs:
         run: npm run build
 
       - name: Prepare local package tarball
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           CURRENT_PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          TARBALL_NAME="$(npm pack --pack-destination "$RUNNER_TEMP" --silent)"
+          PACK_OUTPUT="$RUNNER_TEMP/npm-pack.stdout"
+          npm pack --pack-destination "$RUNNER_TEMP" --silent > "$PACK_OUTPUT"
+          TARBALL_NAME="$(node -e '
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const lines = fs.readFileSync(process.argv[1], "utf8").trim().split(/\r?\n/);
+            const filename = [...lines].reverse().find(line => /^[^/\\]+\.tgz$/.test(line));
+            if (!filename || !fs.existsSync(path.join(process.argv[2], filename))) {
+              throw new Error(`npm pack did not report a tarball filename: ${JSON.stringify(lines)}`);
+            }
+            process.stdout.write(filename);
+          ' "$PACK_OUTPUT" "$RUNNER_TEMP")"
           {
             echo "OMC_UPGRADE_TEST_EXPECTED_VERSION=$CURRENT_PACKAGE_VERSION"
             echo "OMC_UPGRADE_TEST_TARBALL=$RUNNER_TEMP/$TARBALL_NAME"
           } >> "$GITHUB_ENV"
 
           if npm view "oh-my-copilot@$CURRENT_PACKAGE_VERSION" version >/dev/null 2>&1; then
-            echo "OMC_UPGRADE_TEST_USE_LOCAL_TARBALL=false" >> "$GITHUB_ENV"
-            echo "Package $CURRENT_PACKAGE_VERSION is published; testing the live omcp update path."
+            set +e
+            GITHUB_LATEST_VERSION="$(node -e '
+              const headers = { "User-Agent": "omc-upgrade-test" };
+              if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+
+              fetch("https://api.github.com/repos/RobinNorberg/oh-my-copilot/releases/latest", { headers })
+                .then(async response => {
+                  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+                  const release = await response.json();
+                  process.stdout.write(String(release.tag_name || "").replace(/^v/, ""));
+                })
+                .catch(error => {
+                  console.error(error instanceof Error ? error.message : String(error));
+                  process.exit(1);
+                });
+            ' 2>"$RUNNER_TEMP/github-latest-release.stderr")"
+            GITHUB_LATEST_EXIT=$?
+            set -e
+
+            if [ "$GITHUB_LATEST_EXIT" -ne 0 ] || [ -z "$GITHUB_LATEST_VERSION" ]; then
+              echo "OMC_UPGRADE_TEST_USE_LOCAL_TARBALL=true" >> "$GITHUB_ENV"
+              echo "GitHub latest release lookup failed or returned empty; testing local tarball + update-reconcile."
+              if [ -s "$RUNNER_TEMP/github-latest-release.stderr" ]; then
+                echo "GitHub latest release lookup stderr:"
+                cat "$RUNNER_TEMP/github-latest-release.stderr"
+              fi
+            elif [ "$GITHUB_LATEST_VERSION" = "$CURRENT_PACKAGE_VERSION" ]; then
+              echo "OMC_UPGRADE_TEST_USE_LOCAL_TARBALL=false" >> "$GITHUB_ENV"
+              echo "Package $CURRENT_PACKAGE_VERSION is published and GitHub latest matches; testing the live omcp update path."
+            else
+              echo "OMC_UPGRADE_TEST_USE_LOCAL_TARBALL=true" >> "$GITHUB_ENV"
+              echo "Package $CURRENT_PACKAGE_VERSION is published, but GitHub latest is $GITHUB_LATEST_VERSION; testing local tarball + update-reconcile."
+            fi
           else
             echo "OMC_UPGRADE_TEST_USE_LOCAL_TARBALL=true" >> "$GITHUB_ENV"
             echo "Package $CURRENT_PACKAGE_VERSION is not published; testing local tarball + update-reconcile."
           fi
 
       - name: Run omcp update
-        id: omcp-update
+        id: omc-update
         env:
           # Suppress npm update progress bar to keep stdout clean
           npm_config_progress: 'false'
@@ -122,38 +256,48 @@ jobs:
 
           # Capture exit code of omcp update itself (or the deterministic
           # unpublished-version fallback). npm install may emit deprecation
-          # warnings to stderr — those are not omcp errors. Filter those out and
+          # warnings to stderr — those are not omc errors. Filter those out and
           # fail on everything else.
           set +e
           if [ "$OMC_UPGRADE_TEST_USE_LOCAL_TARBALL" = "true" ]; then
             {
-              echo "Using local package tarball because $OMC_UPGRADE_TEST_EXPECTED_VERSION is not published to npm."
+              echo "Using local package tarball because deterministic fallback is required for $OMC_UPGRADE_TEST_EXPECTED_VERSION."
               npm install -g "$OMC_UPGRADE_TEST_TARBALL"
               omcp update-reconcile
-            } 1>"$RUNNER_TEMP/omcp-update.stdout.log" 2>"$RUNNER_TEMP/omcp-update.stderr.log"
+            } 1>"$RUNNER_TEMP/omc-update.stdout.log" 2>"$RUNNER_TEMP/omc-update.stderr.log"
+            UPDATE_EXIT=$?
           else
-            omcp update 1>"$RUNNER_TEMP/omcp-update.stdout.log" 2>"$RUNNER_TEMP/omcp-update.stderr.log"
+            omcp update 1>"$RUNNER_TEMP/omc-update.stdout.log" 2>"$RUNNER_TEMP/omc-update.stderr.log"
+            UPDATE_EXIT=$?
+            LIVE_UPDATED_VERSION="$(omcp --version 2>/dev/null || true)"
+            if [ "$LIVE_UPDATED_VERSION" = "4.13.79" ]; then
+              {
+                echo "Live omcp update left version at 4.13.79; falling back to local tarball + update-reconcile."
+                npm install -g "$OMC_UPGRADE_TEST_TARBALL"
+                omcp update-reconcile
+              } >>"$RUNNER_TEMP/omc-update.stdout.log" 2>>"$RUNNER_TEMP/omc-update.stderr.log"
+              UPDATE_EXIT=$?
+            fi
           fi
-          UPDATE_EXIT=$?
           set -e
 
-          # Check for non-npm stderr (omcp warnings/errors/exceptions)
-          # Exclude npm deprecation warnings: "npm deprecated ..." or lines not starting with npm/
-          # All other stderr lines (omcp console.warn, error, exception, fail patterns) are failures.
-          if grep -vE '^npm deprecated ' "$RUNNER_TEMP/omcp-update.stderr.log" 2>/dev/null | grep -qiE '^(error|exception|fail|critical|warn|omcp)'; then
+          # Check for non-npm stderr (omc warnings/errors/exceptions)
+          # Exclude npm deprecation warnings: "npm deprecated ...".
+          # All other stderr lines (omc console.warn, error, exception, fail patterns) are failures.
+          if grep -vE '^npm deprecated ' "$RUNNER_TEMP/omc-update.stderr.log" 2>/dev/null | grep -qiE '^(error|exception|fail|critical|warn|omc)'; then
             echo "FAIL: omcp update produced stderr:"
-            cat "$RUNNER_TEMP/omcp-update.stderr.log"
+            cat "$RUNNER_TEMP/omc-update.stderr.log"
             echo "Full stdout:"
-            cat "$RUNNER_TEMP/omcp-update.stdout.log"
+            cat "$RUNNER_TEMP/omc-update.stdout.log"
             exit 1
           fi
 
           if [ "$UPDATE_EXIT" -ne 0 ]; then
             echo "FAIL: omcp update exited with code $UPDATE_EXIT"
             echo "Full stdout:"
-            cat "$RUNNER_TEMP/omcp-update.stdout.log"
+            cat "$RUNNER_TEMP/omc-update.stdout.log"
             echo "Full stderr:"
-            cat "$RUNNER_TEMP/omcp-update.stderr.log"
+            cat "$RUNNER_TEMP/omc-update.stderr.log"
             exit 1
           fi
 
@@ -163,41 +307,34 @@ jobs:
             echo "PASS: omcp update succeeded"
           fi
 
-      # ── 4b. Run omcp install to ensure hooks are created ────────────────────
-      # Workaround: published omcp@4.11.x has a binary name mismatch (looks for
-      # 'omg' instead of 'omcp') causing reconciliation to silently skip during
-      # `omcp update`. Explicitly running `omcp install --force` ensures hooks +
-      # settings are created. This step can be removed once the fix ships.
-      - name: Run omcp install (workaround for reconcile bug)
-        run: |
-          omcp install --force 2>&1
-          echo "--- Config dir after install ---"
-          find "${COPILOT_CONFIG_DIR:-$HOME/.copilot}" -type f 2>/dev/null || echo "(empty)"
+      # ── 5. Verify new omc version installed ──────────────────────────────────
 
-      # ── 5. Verify new omcp version installed ──────────────────────────────────
-
-      - name: Verify omcp version after update
+      - name: Verify omc version after update
         run: |
-          omcp --version > "$RUNNER_TEMP/omcp-post-update.version" 2>&1
+          omcp --version > "$RUNNER_TEMP/omc-post-update.version" 2>&1
           VERSION_EXIT=$?
-          UPDATED_VERSION=$(cat "$RUNNER_TEMP/omcp-post-update.version")
+          UPDATED_VERSION=$(cat "$RUNNER_TEMP/omc-post-update.version")
 
           if [ "$VERSION_EXIT" -ne 0 ]; then
             echo "FAIL: omcp --version exited with code $VERSION_EXIT"
-            cat "$RUNNER_TEMP/omcp-post-update.version"
+            cat "$RUNNER_TEMP/omc-post-update.version"
             exit 1
           fi
 
-          echo "Updated omcp version: $UPDATED_VERSION"
+          echo "Updated omc version: $UPDATED_VERSION"
           if [ -z "$UPDATED_VERSION" ]; then
             echo "FAIL: omcp --version returned empty"
+            exit 1
+          fi
+          if [ "$UPDATED_VERSION" = "4.13.79" ]; then
+            echo "FAIL: omc version still 4.13.79 after update"
             exit 1
           fi
           if [ "$OMC_UPGRADE_TEST_USE_LOCAL_TARBALL" = "true" ] && [ "$UPDATED_VERSION" != "$OMC_UPGRADE_TEST_EXPECTED_VERSION" ]; then
             echo "FAIL: local tarball fallback installed $UPDATED_VERSION, expected $OMC_UPGRADE_TEST_EXPECTED_VERSION"
             exit 1
           fi
-          echo "PASS: omcp version after update: $UPDATED_VERSION"
+          echo "PASS: omc updated from 4.13.79 to $UPDATED_VERSION"
 
       # ── 6. Verify SessionStart hook wiring + execution ───────────────────────
       # Validate the update-owned coverage directly:
@@ -205,15 +342,15 @@ jobs:
       #   - the installed standalone hook script exists
       #   - the hook script runs successfully on representative SessionStart JSON
       #
-      # This keeps upgrade coverage inside OMCP-owned artifacts and avoids relying
-      # on external Copilot CLI print-mode behavior in headless CI.
+      # This keeps upgrade coverage inside OMC-owned artifacts and avoids relying
+      # on external Claude CLI print-mode behavior in headless CI.
       - name: Verify SessionStart hook wiring and script
         run: |
           set -o pipefail
 
-          COPILOT_DIR="${COPILOT_CONFIG_DIR:-$HOME/.copilot}"
-          SESSION_HOOK="$COPILOT_DIR/hooks/session-start.mjs"
-          SETTINGS_PATH="$COPILOT_DIR/settings.json"
+          COPILOT_CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.copilot}"
+          SESSION_HOOK="$COPILOT_CONFIG_DIR/hooks/session-start.mjs"
+          SETTINGS_PATH="$COPILOT_CONFIG_DIR/settings.json"
 
           if [ ! -f "$SESSION_HOOK" ]; then
             echo "FAIL: missing SessionStart hook script at $SESSION_HOOK"
@@ -221,7 +358,7 @@ jobs:
           fi
 
           if [ ! -f "$SETTINGS_PATH" ]; then
-            echo "FAIL: missing Copilot CLI settings at $SETTINGS_PATH"
+            echo "FAIL: missing Claude settings at $SETTINGS_PATH"
             exit 1
           fi
 
@@ -242,9 +379,21 @@ jobs:
             exit 1
           fi
 
+          set +e
           printf '%s' \
             "{\"hook_event_name\":\"SessionStart\",\"session_id\":\"ci-upgrade-test\",\"cwd\":\"$GITHUB_WORKSPACE\"}" \
             | node "$SESSION_HOOK" 1>"$RUNNER_TEMP/session.stdout.log" 2>"$RUNNER_TEMP/session.stderr.log"
+          SESSION_EXIT=$?
+          set -e
+
+          if [ "$SESSION_EXIT" -ne 0 ]; then
+            echo "FAIL: SessionStart hook exited with code $SESSION_EXIT"
+            echo "stderr:"
+            cat "$RUNNER_TEMP/session.stderr.log"
+            echo "stdout:"
+            cat "$RUNNER_TEMP/session.stdout.log"
+            exit 1
+          fi
 
           if [ -s "$RUNNER_TEMP/session.stderr.log" ]; then
             echo "FAIL: SessionStart hook produced stderr:"

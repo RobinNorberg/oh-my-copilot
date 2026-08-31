@@ -43,4 +43,6 @@ export function isWSL() {
 }
 // Re-exports
 export * from './process-utils.js';
+export * from './posix-shell.js';
+export * from './executable-resolution.js';
 //# sourceMappingURL=index.js.map

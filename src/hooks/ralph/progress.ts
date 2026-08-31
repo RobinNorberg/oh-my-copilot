@@ -67,14 +67,14 @@ export function getProgressPath(directory: string): string {
 }
 
 /**
- * Get the path to progress.txt in .omcp subdirectory
+ * Get the path to progress.txt in .omc subdirectory
  */
 export function getOmcProgressPath(directory: string): string {
   return join(getOmcRoot(directory), PROGRESS_FILENAME);
 }
 
 /**
- * Find progress.txt in a directory (checks both root and .omcp)
+ * Find progress.txt in a directory (checks both root and .omc)
  */
 export function findProgressPath(directory: string): string | null {
   const rootPath = getProgressPath(directory);

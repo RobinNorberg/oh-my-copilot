@@ -9,6 +9,7 @@ import { ensureSkillsDir, getSkillsDir } from './finder.js';
 import { generateSkillFrontmatter } from './parser.js';
 import { validateExtractionRequest } from './validator.js';
 import { DEBUG_ENABLED } from './constants.js';
+import { ensureClaudeCodeUserSkillCompat } from '../../utils/user-skill-compat.js';
 /**
  * Generate a unique skill ID.
  */
@@ -72,8 +73,8 @@ ${request.problem}
 
 ${request.solution}
 `;
-    // Write to file
-    const filename = `${sanitizeFilename(skillName)}.md`;
+    const safeSkillName = sanitizeFilename(skillName);
+    const filename = `${safeSkillName}.md`;
     const skillsDir = getSkillsDir(request.targetScope, projectRoot || undefined);
     const filePath = join(skillsDir, filename);
     // Check for duplicates
@@ -86,6 +87,9 @@ ${request.solution}
     }
     try {
         writeFileSync(filePath, content);
+        if (request.targetScope === 'user') {
+            ensureClaudeCodeUserSkillCompat(safeSkillName, filePath);
+        }
         return {
             success: true,
             path: filePath,

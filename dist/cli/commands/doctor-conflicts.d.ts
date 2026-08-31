@@ -2,6 +2,17 @@
  * Conflict diagnostic command
  * Scans for and reports plugin coexistence issues.
  */
+import { inspectUnifiedMcpRegistrySync } from '../../installer/mcp-registry.js';
+export interface WorkspaceMarkerStatus {
+    /** Absolute path to the directory containing .omc-workspace, or null if absent. */
+    markerRoot: string | null;
+    /** True when OMC_STATE_DIR env var is set. */
+    stateDirEnvSet: boolean;
+    /** Value of OMC_STATE_DIR, or null when unset. */
+    stateDirEnvValue: string | null;
+    /** When both OMC_STATE_DIR and .omc-workspace are active, this is true (warn: OMC_STATE_DIR wins). */
+    precedenceConflict: boolean;
+}
 export interface ConflictReport {
     hookConflicts: {
         event: string;
@@ -13,6 +24,10 @@ export interface ConflictReport {
         hasUserContent: boolean;
         path: string;
         companionFile?: string;
+        files: ClaudeMdFileStatus[];
+        dirtyFiles: string[];
+        exactLegacyPaths: string[];
+        manualReviewPaths: string[];
     } | null;
     legacySkills: {
         name: string;
@@ -30,13 +45,23 @@ export interface ConflictReport {
         event: string;
         command: string;
     }[];
+    mcpRegistrySync: ReturnType<typeof inspectUnifiedMcpRegistrySync>;
+    workspaceMarker: WorkspaceMarkerStatus;
     hasConflicts: boolean;
+}
+export interface ClaudeMdFileStatus {
+    path: string;
+    hasMarkers: boolean;
+    hasUserContent: boolean;
+    markerState: 'none' | 'complete' | 'corrupt' | 'symlink' | 'unreadable' | 'invalid-utf8';
+    exactLegacy: boolean;
+    manualReview: boolean;
 }
 /**
  * Check for hook conflicts in both profile-level (~/.copilot/settings.json)
  * and project-level (./.copilot/settings.json).
  *
- * Copilot CLI settings precedence: project > profile > defaults.
+ * Claude Code settings precedence: project > profile > defaults.
  * We check both levels so the diagnostic is complete.
  */
 export declare function checkHookConflicts(): ConflictReport['hookConflicts'];
@@ -44,19 +69,10 @@ export declare function checkHookConflicts(): ConflictReport['hookConflicts'];
  * Native Windows cannot execute plugin hooks that still route through sh/find-node.
  * Detect stale cache manifests so doctor can point users at setup/update repair
  * instead of reporting a generic hook conflict.
- *
- * Fork note: the shipped hooks/hooks.json uses a Copilot dual-shell manifest with
- * `bash`/`powershell` keys (not a single `command`), but stale cache manifests from
- * older OMC versions may still carry a single `command` routed through sh/find-node.
- * We inspect all three keys so legacy and current manifest shapes both surface.
  */
 export declare function checkWindowsUnsafePluginHooks(): ConflictReport['windowsUnsafePluginHooks'];
-/**
- * Check copilot-instructions.md for OMC markers and user content.
- * Also checks companion files (CLAUDE-omg.md, etc.) for the file-split pattern
- * where users keep OMC config in a separate file.
- */
-export declare function checkCopilotMdStatus(): ConflictReport['claudeMdStatus'];
+/** Analyze main and companion CLAUDE files without following symlinks. */
+export declare function checkClaudeMdStatus(): ConflictReport['claudeMdStatus'];
 /**
  * Check environment flags that affect OMC behavior
  */
@@ -71,6 +87,16 @@ export declare function checkLegacySkills(): ConflictReport['legacySkills'];
  * Check for unknown fields in config files
  */
 export declare function checkConfigIssues(): ConflictReport['configIssues'];
+/**
+ * Check for .omc-workspace marker presence and OMC_STATE_DIR precedence.
+ *
+ * Reports:
+ *  - Whether a .omc-workspace marker was found (and where).
+ *  - Whether OMC_STATE_DIR is set.
+ *  - When both are set, emits a precedenceConflict flag (OMC_STATE_DIR wins per
+ *    the resolution-order principle: OMC_STATE_DIR > .omc-workspace > git > cwd).
+ */
+export declare function checkWorkspaceMarker(): WorkspaceMarkerStatus;
 /**
  * Run complete conflict check
  */

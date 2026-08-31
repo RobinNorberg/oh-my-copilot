@@ -11,12 +11,27 @@ import type { TaskUsageRecord } from '../usage-tracker.js';
 
 describe('usage-tracker', () => {
   let testDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousStateDir: string | undefined;
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'usage-tracker-test-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
+    delete process.env.OMC_STATE_DIR;
   });
 
   afterEach(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
     rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -39,7 +54,7 @@ describe('usage-tracker', () => {
       const record = makeRecord('worker1', 'task1');
       recordTaskUsage(testDir, 'test-team', record);
 
-      const logPath = join(testDir, '.omcp', 'logs', 'team-usage-test-team.jsonl');
+      const logPath = join(testDir, '.omg', 'logs', 'team-usage-test-team.jsonl');
       expect(existsSync(logPath)).toBe(true);
 
       const content = readFileSync(logPath, 'utf-8').trim();
@@ -52,15 +67,15 @@ describe('usage-tracker', () => {
       recordTaskUsage(testDir, 'test-team', makeRecord('worker1', 'task1'));
       recordTaskUsage(testDir, 'test-team', makeRecord('worker1', 'task2'));
 
-      const logPath = join(testDir, '.omcp', 'logs', 'team-usage-test-team.jsonl');
+      const logPath = join(testDir, '.omg', 'logs', 'team-usage-test-team.jsonl');
       const lines = readFileSync(logPath, 'utf-8').trim().split('\n');
       expect(lines).toHaveLength(2);
     });
 
-    it.skipIf(process.platform === 'win32')('creates log with correct permissions', () => {
+    it('creates log with correct permissions', () => {
       recordTaskUsage(testDir, 'test-team', makeRecord('worker1', 'task1'));
 
-      const logPath = join(testDir, '.omcp', 'logs', 'team-usage-test-team.jsonl');
+      const logPath = join(testDir, '.omg', 'logs', 'team-usage-test-team.jsonl');
       const stat = statSync(logPath);
       expect(stat.mode & 0o777).toBe(0o600);
     });

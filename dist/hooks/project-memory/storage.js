@@ -49,13 +49,13 @@ export async function loadProjectMemory(projectRoot) {
 }
 /**
  * Save project memory to disk
- * Creates .omcp directory if it doesn't exist
+ * Creates .omc directory if it doesn't exist
  */
 export async function saveProjectMemory(projectRoot, memory) {
     const memoryPath = getMemoryPath(projectRoot);
     const omcDir = path.dirname(memoryPath);
     try {
-        // Ensure .omcp directory exists
+        // Ensure .omc directory exists
         await fs.mkdir(omcDir, { recursive: true });
         // Write memory file atomically to prevent corruption on crash
         await atomicWriteJson(memoryPath, memory);

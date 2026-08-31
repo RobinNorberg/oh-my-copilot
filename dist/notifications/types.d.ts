@@ -67,6 +67,20 @@ export interface SlackBotNotificationConfig {
     /** Optional mention to prepend to messages */
     mention?: string;
 }
+/** Generic webhook configuration */
+export interface AskUserQuestionOption {
+    label: string;
+    value?: string;
+    description?: string;
+}
+export interface AskUserQuestionPrompt {
+    question: string;
+    header?: string;
+    options: AskUserQuestionOption[];
+    allowOther?: boolean;
+    otherLabel?: string;
+    multiSelect?: boolean;
+}
 /** Microsoft Teams webhook configuration (Workflows or legacy O365 Connectors) */
 export interface TeamsNotificationConfig {
     enabled: boolean;
@@ -75,7 +89,6 @@ export interface TeamsNotificationConfig {
     /** Optional mentions — each entry is "DisplayName:AAD-Object-ID" (e.g. "John Doe:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx") */
     tagList?: string[];
 }
-/** Generic webhook configuration */
 export interface WebhookNotificationConfig {
     enabled: boolean;
     /** Webhook URL (POST with JSON body) */
@@ -162,6 +175,8 @@ export interface NotificationPayload {
     maxIterations?: number;
     /** Question text (for ask-user-question events) */
     question?: string;
+    /** Structured AskUserQuestion prompts/options preserved from tool input */
+    askUserQuestionPrompts?: AskUserQuestionPrompt[];
     /** Incomplete task count */
     incompleteTasks?: number;
     /** tmux pane ID for reply injection target */
@@ -174,11 +189,11 @@ export interface NotificationPayload {
     tmuxTail?: string;
     /** Max meaningful lines to display from tmux tail */
     maxTailLines?: number;
-    /** Reply channel name */
+    /** Reply channel name (from OPENCLAW_REPLY_CHANNEL env var) */
     replyChannel?: string;
-    /** Reply target */
+    /** Reply target (from OPENCLAW_REPLY_TARGET env var) */
     replyTarget?: string;
-    /** Reply thread ID */
+    /** Reply thread ID (from OPENCLAW_REPLY_THREAD env var) */
     replyThread?: string;
 }
 /** Named notification profiles (keyed by profile name) */
@@ -243,7 +258,7 @@ export interface CustomIntegration {
     id: string;
     /** Integration type: webhook or cli */
     type: CustomIntegrationType;
-    /** Preset name if created from a preset (n8n, generic-webhook, etc.) */
+    /** Preset name if created from a preset (openclaw, n8n, etc.) */
     preset?: string;
     /** Whether this integration is enabled */
     enabled: boolean;

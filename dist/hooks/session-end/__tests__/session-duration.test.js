@@ -10,8 +10,10 @@ import { getSessionStartTime, recordSessionMetrics } from '../index.js';
  * durations to span across sessions.
  */
 let tmpDir;
+let previousHome;
+let previousUserProfile;
 function stateDir() {
-    return path.join(tmpDir, '.omcp', 'state');
+    return path.join(tmpDir, '.omg', 'state');
 }
 function writeState(filename, state) {
     const dir = stateDir();
@@ -31,9 +33,21 @@ function makeInput(overrides) {
 }
 beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-duration-test-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = tmpDir;
+    process.env.USERPROFILE = tmpDir;
 });
 afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
 });
 describe('getSessionStartTime', () => {
     it('returns undefined when state dir does not exist', () => {

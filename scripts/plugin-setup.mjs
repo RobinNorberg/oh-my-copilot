@@ -12,6 +12,8 @@ import { homedir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
+import { buildHudWrapper } from './lib/hud-wrapper-template.mjs';
+import { hookPrefixForPlatform, normalizeHooksDataForPlatform } from './lib/hook-command-normalizer.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -20,14 +22,12 @@ const CLAUDE_DIR = getCopilotConfigDir();
 const HUD_DIR = join(CLAUDE_DIR, 'hud');
 const HUD_LIB_DIR = join(HUD_DIR, 'lib');
 const SETTINGS_FILE = join(CLAUDE_DIR, 'settings.json');
-// Use the absolute node binary path so nvm/fnm users don't get
-// "node not found" errors in non-interactive shells (issue #892).
+// Store the absolute node binary path so find-node.sh can resolve Node for
+// nvm/fnm users whose non-interactive hook shells do not include node on PATH
+// (issue #892).
 const nodeBin = process.execPath || 'node';
-// Only rewrite the shipped hooks.json when running from a published plugin
-// cache (npm tarball / marketplace clone). In a git checkout the manifest is
-// source-controlled and must stay direct-node so we never commit an installer's
-// absolute node path. Mirrors upstream #3201.
 const isPublishedPluginCache = !existsSync(join(__dirname, '..', '.git'));
+
 
 console.log('[OMC] Running post-install setup...');
 
@@ -39,7 +39,7 @@ function checkRalphRubyDependency() {
     console.log('[OMC] Warning: Ruby was not found on PATH. Ralph workflows require Ruby and may fail until it is installed.');
     console.log('[OMC] Ubuntu/Debian: sudo apt update && sudo apt install ruby-full');
     console.log('[OMC] macOS: brew install ruby');
-    console.log('[OMC] After installing Ruby, restart Claude Code and rerun /oh-my-claudecode:omc-setup if needed.');
+    console.log('[OMC] After installing Ruby, restart Claude Code and rerun /oh-my-copilot:omc-setup if needed.');
   }
 }
 
@@ -62,192 +62,7 @@ try { chmodSync(join(HUD_DIR, 'omcp-hud-cache.sh'), 0o755); } catch { /* Windows
 
 // 2. Create HUD wrapper script
 const hudScriptPath = join(HUD_DIR, 'omcp-hud.mjs').replace(/\\/g, '/');
-const hudScript = `#!/usr/bin/env node
-/**
- * OMC HUD - Statusline Script
- * Wrapper that imports from plugin cache or development paths
- */
-
-import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
-import { createRequire } from "node:module";
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, "lib", "config-dir.mjs")).href);
-
-// Semantic version comparison: returns negative if a < b, positive if a > b, 0 if equal
-function semverCompare(a, b) {
-  // Use parseInt to handle pre-release suffixes (e.g. "0-beta" -> 0)
-  const pa = a.replace(/^v/, "").split(".").map(s => parseInt(s, 10) || 0);
-  const pb = b.replace(/^v/, "").split(".").map(s => parseInt(s, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const na = pa[i] || 0;
-    const nb = pb[i] || 0;
-    if (na !== nb) return na - nb;
-  }
-  // If numeric parts equal, non-pre-release > pre-release
-  const aHasPre = /-/.test(a);
-  const bHasPre = /-/.test(b);
-  if (aHasPre && !bHasPre) return -1;
-  if (!aHasPre && bHasPre) return 1;
-  return 0;
-}
-
-function uniquePaths(paths) {
-  return [...new Set(paths.filter(Boolean).map(candidate => resolve(candidate)))];
-}
-
-function getGlobalNodeModuleRoots() {
-  const roots = [];
-  const addPrefixRoots = (prefix) => {
-    if (!prefix) return;
-    if (process.platform === 'win32') {
-      roots.push(join(prefix, 'node_modules'));
-      return;
-    }
-    roots.push(join(prefix, 'lib', 'node_modules'));
-    roots.push(join(prefix, 'node_modules'));
-  };
-
-  addPrefixRoots(process.env.npm_config_prefix);
-  addPrefixRoots(process.env.PREFIX);
-
-  const nodeBinDir = dirname(process.execPath);
-  roots.push(join(nodeBinDir, 'node_modules'));
-  roots.push(join(nodeBinDir, '..', 'node_modules'));
-  roots.push(join(nodeBinDir, '..', 'lib', 'node_modules'));
-
-  if (process.platform === 'win32' && process.env.APPDATA) {
-    roots.push(join(process.env.APPDATA, 'npm', 'node_modules'));
-  }
-
-  try {
-    const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-    const npmRoot = String(execFileSync(npmCommand, ['root', '-g'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-      timeout: 1500,
-    })).trim();
-    if (npmRoot) roots.unshift(npmRoot);
-  } catch { /* continue */ }
-
-  return uniquePaths(roots);
-}
-
-async function importHudPackage(hudPackage) {
-  try {
-    const wrapperRequire = createRequire(import.meta.url);
-    const resolvedHudPath = wrapperRequire.resolve(hudPackage);
-    await import(pathToFileURL(resolvedHudPath).href);
-    return true;
-  } catch { /* continue */ }
-
-  try {
-    const cwdRequire = createRequire(join(process.cwd(), '__omc_hud__.cjs'));
-    const resolvedHudPath = cwdRequire.resolve(hudPackage);
-    await import(pathToFileURL(resolvedHudPath).href);
-    return true;
-  } catch { /* continue */ }
-
-  for (const nodeModulesRoot of getGlobalNodeModuleRoots()) {
-    const resolvedHudPath = join(nodeModulesRoot, hudPackage);
-    if (!existsSync(resolvedHudPath)) continue;
-    try {
-      await import(pathToFileURL(resolvedHudPath).href);
-      return true;
-    } catch { /* continue */ }
-  }
-
-  return false;
-}
-
-async function main() {
-  const home = homedir();
-  let pluginCacheDir = null;
-
-  // 1. Try plugin cache first (marketplace: omg, plugin: oh-my-copilot)
-  // Respect COPILOT_CONFIG_DIR so installs under a custom config dir are found
-  const configDir = getCopilotConfigDir();
-  const pluginCacheBase = join(configDir, "plugins", "cache", "omg", "oh-my-copilot");
-  if (existsSync(pluginCacheBase)) {
-    try {
-      const versions = readdirSync(pluginCacheBase);
-      if (versions.length > 0) {
-        const sortedVersions = versions.sort(semverCompare).reverse();
-        pluginCacheDir = join(pluginCacheBase, sortedVersions[0]);
-
-        // Filter to only versions with built dist/hud/index.js
-        const builtVersions = sortedVersions.filter(v => {
-          const hudPath = join(pluginCacheBase, v, "dist/hud/index.js");
-          return existsSync(hudPath);
-        });
-        if (builtVersions.length > 0) {
-          const latestBuilt = builtVersions[0];
-          pluginCacheDir = join(pluginCacheBase, latestBuilt);
-          const pluginPath = join(pluginCacheBase, latestBuilt, "dist/hud/index.js");
-          await import(pathToFileURL(pluginPath).href);
-          return;
-        }
-      }
-    } catch { /* continue */ }
-  }
-
-  // 2. Development paths
-  const devPaths = [
-    join(home, "Workspace/oh-my-copilot/dist/hud/index.js"),
-    join(home, "workspace/oh-my-copilot/dist/hud/index.js"),
-  ];
-
-  for (const devPath of devPaths) {
-    if (existsSync(devPath)) {
-      try {
-        await import(pathToFileURL(devPath).href);
-        return;
-      } catch { /* continue */ }
-    }
-  }
-
-  // 3. Marketplace clone (for marketplace installs without a populated cache)
-  const marketplaceHudPath = join(configDir, "plugins", "marketplaces", "omg", "dist/hud/index.js");
-  if (existsSync(marketplaceHudPath)) {
-    try {
-      await import(pathToFileURL(marketplaceHudPath).href);
-      return;
-    } catch { /* continue */ }
-  }
-
-  // 4. npm package (current project, global install, or branded fallback)
-  const npmHudPackages = [
-    "oh-my-claude-sisyphus/dist/hud/index.js",
-    "oh-my-copilot/dist/hud/index.js",
-  ];
-  for (const hudPackage of npmHudPackages) {
-    if (await importHudPackage(hudPackage)) {
-      return;
-    }
-  }
-
-  // 5. Fallback: provide targeted repair guidance
-  if (pluginCacheDir && existsSync(pluginCacheDir)) {
-    const distDir = join(pluginCacheDir, "dist");
-    if (!existsSync(distDir)) {
-      console.log(\`[OMC HUD] Plugin installed but not built. Run: cd "\${pluginCacheDir}" && npm install && npm run build\`);
-    } else {
-      console.log(\`[OMC HUD] Plugin HUD load failed. Run: cd "\${pluginCacheDir}" && npm install && npm run build\`);
-    }
-  } else if (existsSync(pluginCacheBase)) {
-    console.log("[OMC HUD] Plugin cache found but no versions installed. Run: /oh-my-copilot:omc-setup");
-  } else {
-    console.log("[OMC HUD] Plugin not installed. Run: /oh-my-copilot:omc-setup");
-  }
-}
-
-main();
-`;
+const hudScript = buildHudWrapper();
 
 writeFileSync(hudScriptPath, hudScript);
 try {
@@ -273,9 +88,9 @@ try {
   writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
   console.log('[OMC] Configured HUD statusLine in settings.json');
 
-  // Persist the node binary path to .omcp-config.json for use by find-node.sh
+  // Persist the node binary path to .omc-config.json for use by find-node.sh
   try {
-    const configPath = join(CLAUDE_DIR, '.omcp-config.json');
+    const configPath = join(CLAUDE_DIR, '.omc-config.json');
     let omcConfig = {};
     if (existsSync(configPath)) {
       omcConfig = JSON.parse(readFileSync(configPath, 'utf-8'));
@@ -292,64 +107,36 @@ try {
   console.log('[OMC] Warning: Could not configure settings.json:', e.message);
 }
 
-// Patch the published plugin-cache hooks.json to use the absolute node binary
-// path so hooks work on all platforms: Windows (no `sh`), nvm/fnm users (node
-// not on PATH in hooks), etc.
+// Keep the cached plugin manifest executable by the host that will actually run
+// the hooks. Claude Code's plugin loader reads hooks/hooks.json directly, and
+// the shipped manifest is the platform-neutral `node -> run.cjs` form, which
+// both cmd.exe and POSIX sh resolve identically. The manifest is rewritten only
+// when this host genuinely cannot use it: a POSIX box whose non-interactive hook
+// PATH has no node (nvm/fnm) gets the find-node.sh bootstrap instead. Leaving
+// the neutral form in place everywhere else is what keeps a marketplace update
+// — or a config directory shared between WSL/macOS and native Windows — from
+// silently killing the whole hook pipeline.
 //
-// The source hooks.json uses `node run.cjs` as a portable template; this step
-// substitutes the real process.execPath so Copilot CLI always invokes the same
-// Node binary that ran this setup script. In a git checkout the manifest is
-// source-controlled and left untouched (see isPublishedPluginCache, #3201).
+// Stale manifests still self-heal, whichever form they are in:
+//  1. Current find-node.sh format – sh "$CLAUDE_PLUGIN_ROOT"/scripts/find-node.sh ...
+//  2. Legacy find-node.sh format – sh "${CLAUDE_PLUGIN_ROOT}/scripts/find-node.sh" ...
+//  3. Direct run.cjs format from the neutral shipped manifest
+//  4. Absolute run.cjs format from older setup patches/publish mistakes
 //
-// Three patterns are handled:
-//  1. Current  – node "${PLUGIN_ROOT}/scripts/run.cjs" ... (all platforms)
-//  2. Legacy   – node "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs" ... (migration)
-//  3. Old format  – sh  "${CLAUDE_PLUGIN_ROOT}/scripts/find-node.sh" ... (Windows
-//     backward-compat: migrates old installs to the new run.cjs chain)
-//
-// Fixes issues #909, #899, #892, #869.
+// Fixes issues #909, #899, #892, #869, #3121.
 try {
   const hooksJsonPath = isPublishedPluginCache ? join(__dirname, '..', 'hooks', 'hooks.json') : null;
   if (hooksJsonPath && existsSync(hooksJsonPath)) {
     const data = JSON.parse(readFileSync(hooksJsonPath, 'utf-8'));
-    let patched = false;
-
-    // Pattern 1+2 (current/legacy): node "${PLUGIN_ROOT}/scripts/run.cjs" <rest>
-    const runCjsPattern =
-      /^node ("\$\{(?:PLUGIN_ROOT|CLAUDE_PLUGIN_ROOT)\}\/scripts\/run\.cjs".*)$/;
-
-    // Pattern 3 (old, Windows backward-compat): sh find-node.sh <target> [args]
-    const findNodePattern =
-      /^sh "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/find-node\.sh" "(\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[^"]+)"(.*)$/;
-
-    for (const groups of Object.values(data.hooks ?? {})) {
-      for (const group of groups) {
-        for (const hook of (group.hooks ?? [])) {
-          if (typeof hook.command !== 'string') continue;
-
-          // New run.cjs format — replace bare `node` with absolute path (all platforms)
-          const m1 = hook.command.match(runCjsPattern);
-          if (m1) {
-            hook.command = `"${nodeBin}" ${m1[1]}`;
-            patched = true;
-            continue;
-          }
-
-          // Old find-node.sh format — migrate to run.cjs + absolute path (Windows only)
-          if (process.platform === 'win32') {
-            const m2 = hook.command.match(findNodePattern);
-            if (m2) {
-              hook.command = `"${nodeBin}" "\${PLUGIN_ROOT}/scripts/run.cjs" "${m2[1]}"${m2[2]}`;
-              patched = true;
-            }
-          }
-        }
-      }
-    }
+    const prefix = hookPrefixForPlatform();
+    const patched = normalizeHooksDataForPlatform(data, process.platform, prefix);
 
     if (patched) {
       writeFileSync(hooksJsonPath, JSON.stringify(data, null, 2) + '\n');
-      console.log(`[OMC] Patched hooks.json with absolute node path (${nodeBin}), fixes issues #909, #899, #892`);
+      const platformLabel = prefix.startsWith('node ') ? 'portable node run.cjs' : 'find-node.sh run.cjs';
+      console.log(`[OMC] Patched hooks.json to use ${platformLabel} hook commands`);
+    } else {
+      console.log('[OMC] hooks.json already uses hook commands this host can run');
     }
   }
 } catch (e) {
@@ -358,7 +145,7 @@ try {
 
 // 5. Ensure runtime dependencies are installed in the plugin cache directory.
 //    The npm-published tarball includes only the files listed in "files" (package.json),
-//    which does NOT include node_modules.  When Copilot CLI extracts the plugin into its
+//    which does NOT include node_modules.  When Claude Code extracts the plugin into its
 //    cache the dependencies are therefore missing, causing ERR_MODULE_NOT_FOUND at runtime.
 //    We detect this by probing for a known production dependency (commander) and running a
 //    production-only install when it is absent.  --ignore-scripts avoids re-triggering this
@@ -381,4 +168,4 @@ if (!existsSync(commanderCheck)) {
   console.log('[OMC] Runtime dependencies already present');
 }
 
-console.log('[OMC] Setup complete! Restart Copilot CLI to activate HUD.');
+console.log('[OMC] Setup complete! Restart Claude Code to activate HUD.');

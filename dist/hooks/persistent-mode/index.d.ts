@@ -1,13 +1,12 @@
 /**
  * Persistent Mode Hook
  *
- * Unified handler for persistent work modes: ultrawork, ralph, and todo-continuation.
+ * Unified handler for persistent work modes: ralph and todo-continuation.
  * This hook intercepts Stop events and enforces work continuation based on:
- * 1. Active ultrawork mode with pending todos
- * 2. Active ralph loop (until cancelled via /oh-my-claudecode:cancel)
- * 3. Any pending todos (general enforcement)
+ * 1. Active ralph loop (until cancelled via /oh-my-copilot:cancel)
+ * 2. Any pending todos (general enforcement)
  *
- * Priority order: Ralph > Ultrawork > Todo Continuation
+ * Priority order: Ralph > Todo Continuation
  */
 import { StopContext } from '../todo-continuation/index.js';
 import type { IdleNotificationRepoState } from './idle-repo-state.js';
@@ -24,7 +23,7 @@ export interface PersistentModeResult {
     /** Message to inject into context */
     message: string;
     /** Which mode triggered the block */
-    mode: 'ralph' | 'ultrawork' | 'todo-continuation' | 'autopilot' | 'autoresearch' | 'team' | 'ralplan' | 'none';
+    mode: 'ralph' | 'todo-continuation' | 'autopilot' | 'autoresearch' | 'team' | 'ralplan' | 'skill-active' | 'none';
     /** Additional metadata */
     metadata?: {
         todoCount?: number;
@@ -84,8 +83,10 @@ export declare function shouldSendIdleNotification(stateDir: string, sessionId?:
  */
 export declare function recordIdleNotificationSent(stateDir: string, sessionId?: string, repoState?: IdleNotificationRepoState | null): void;
 /**
- * Main persistent mode checker
- * Checks all persistent modes in priority order and returns appropriate action
+ * Main persistent mode checker.
+ * Resolves which mode (if any) should block, then applies the thinking-only
+ * streak guard so an active mode cannot loop forever re-injecting continuation
+ * prompts while the agent only emits thinking blocks and never tool_use (#3280).
  */
 export declare function checkPersistentModes(sessionId?: string, directory?: string, stopContext?: StopContext): Promise<PersistentModeResult>;
 /**

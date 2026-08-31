@@ -4,12 +4,12 @@
  * Extended PRD schema with hardening support for the ralphthon lifecycle.
  * Handles read/write/status operations for ralphthon-prd.json.
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { join } from 'path';
-import { getOmcRoot } from '../lib/worktree-paths.js';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { join } from "path";
+import { getOmcRoot } from "../lib/worktree-paths.js";
 import { PRD_FILENAME, RALPHTHON_DEFAULTS, } from "./types.js";
 // ============================================================================
-// Planning Context
+// File Operations
 // ============================================================================
 export const DEFAULT_PLANNING_CONTEXT = {
     brownfield: false,
@@ -28,9 +28,6 @@ export function normalizePlanningContext(context) {
             : [...DEFAULT_PLANNING_CONTEXT.knownConstraints],
     };
 }
-// ============================================================================
-// File Operations
-// ============================================================================
 /**
  * Get the path to the ralphthon PRD file in .omc
  */
@@ -57,7 +54,7 @@ export function readRalphthonPrd(directory) {
     if (!prdPath)
         return null;
     try {
-        const content = readFileSync(prdPath, 'utf-8');
+        const content = readFileSync(prdPath, "utf-8");
         const prd = JSON.parse(content);
         if (!prd.stories || !Array.isArray(prd.stories))
             return null;
@@ -111,19 +108,24 @@ export function getRalphthonPrdStatus(prd) {
             allTasks.push({ storyId: story.id, task });
         }
         const allDone = storyTasks.length > 0 &&
-            storyTasks.every(t => t.status === 'done' || t.status === 'skipped');
+            storyTasks.every((t) => t.status === "done" || t.status === "skipped");
         if (allDone)
             completedStories++;
     }
-    const completedTasks = allTasks.filter(t => t.task.status === 'done').length;
-    const pendingTasks = allTasks.filter(t => t.task.status === 'pending' || t.task.status === 'in_progress').length;
-    const failedOrSkippedTasks = allTasks.filter(t => t.task.status === 'failed' || t.task.status === 'skipped').length;
+    const completedTasks = allTasks.filter((t) => t.task.status === "done").length;
+    const pendingTasks = allTasks.filter((t) => t.task.status === "pending" || t.task.status === "in_progress").length;
+    const failedOrSkippedTasks = allTasks.filter((t) => t.task.status === "failed" || t.task.status === "skipped").length;
     // Find next pending task (by story priority order)
-    const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+    const priorityOrder = {
+        critical: 0,
+        high: 1,
+        medium: 2,
+        low: 3,
+    };
     const sortedStories = [...prd.stories].sort((a, b) => (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3));
     let nextTask = null;
     for (const story of sortedStories) {
-        const pending = story.tasks.find(t => t.status === 'pending');
+        const pending = story.tasks.find((t) => t.status === "pending");
         if (pending) {
             nextTask = { storyId: story.id, task: pending };
             break;
@@ -131,9 +133,9 @@ export function getRalphthonPrdStatus(prd) {
     }
     // Hardening status
     const hardeningTasks = prd.hardening || [];
-    const completedHardening = hardeningTasks.filter(t => t.status === 'done').length;
-    const pendingHardening = hardeningTasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
-    const nextHardeningTask = hardeningTasks.find(t => t.status === 'pending') || null;
+    const completedHardening = hardeningTasks.filter((t) => t.status === "done").length;
+    const pendingHardening = hardeningTasks.filter((t) => t.status === "pending" || t.status === "in_progress").length;
+    const nextHardeningTask = hardeningTasks.find((t) => t.status === "pending") || null;
     return {
         totalStories: prd.stories.length,
         completedStories,
@@ -166,10 +168,10 @@ export function updateTaskStatus(directory, storyId, taskId, status, notes) {
     const prd = readRalphthonPrd(directory);
     if (!prd)
         return false;
-    const story = prd.stories.find(s => s.id === storyId);
+    const story = prd.stories.find((s) => s.id === storyId);
     if (!story)
         return false;
-    const task = story.tasks.find(t => t.id === taskId);
+    const task = story.tasks.find((t) => t.id === taskId);
     if (!task)
         return false;
     task.status = status;
@@ -184,10 +186,10 @@ export function incrementTaskRetry(directory, storyId, taskId, maxRetries) {
     const prd = readRalphthonPrd(directory);
     if (!prd)
         return { retries: 0, skipped: false };
-    const story = prd.stories.find(s => s.id === storyId);
+    const story = prd.stories.find((s) => s.id === storyId);
     if (!story)
         return { retries: 0, skipped: false };
-    const task = story.tasks.find(t => t.id === taskId);
+    const task = story.tasks.find((t) => t.id === taskId);
     if (!task)
         return { retries: 0, skipped: false };
     const result = incrementRetry(task, maxRetries);
@@ -201,7 +203,7 @@ export function updateHardeningTaskStatus(directory, taskId, status, notes) {
     const prd = readRalphthonPrd(directory);
     if (!prd)
         return false;
-    const task = prd.hardening.find(t => t.id === taskId);
+    const task = prd.hardening.find((t) => t.id === taskId);
     if (!task)
         return false;
     task.status = status;
@@ -216,7 +218,7 @@ export function incrementHardeningTaskRetry(directory, taskId, maxRetries) {
     const prd = readRalphthonPrd(directory);
     if (!prd)
         return { retries: 0, skipped: false };
-    const task = prd.hardening.find(t => t.id === taskId);
+    const task = prd.hardening.find((t) => t.id === taskId);
     if (!task)
         return { retries: 0, skipped: false };
     const result = incrementRetry(task, maxRetries);
@@ -230,9 +232,9 @@ export function addHardeningTasks(directory, tasks) {
     const prd = readRalphthonPrd(directory);
     if (!prd)
         return false;
-    const newTasks = tasks.map(t => ({
+    const newTasks = tasks.map((t) => ({
         ...t,
-        status: 'pending',
+        status: "pending",
         retries: 0,
     }));
     prd.hardening = [...(prd.hardening || []), ...newTasks];
@@ -291,8 +293,10 @@ If you find additional issues during this hardening pass, note them — they'll 
  * Format the hardening wave generation prompt
  */
 export function formatHardeningGenerationPrompt(wave, prd) {
-    const completedTasks = prd.stories.flatMap(s => s.tasks).filter(t => t.status === 'done');
-    const completedHardening = prd.hardening.filter(t => t.status === 'done');
+    const completedTasks = prd.stories
+        .flatMap((s) => s.tasks)
+        .filter((t) => t.status === "done");
+    const completedHardening = prd.hardening.filter((t) => t.status === "done");
     return `You are in HARDENING WAVE ${wave} of a ralphthon session.
 
 Review ALL completed work and generate new hardening tasks. Focus on:
@@ -306,7 +310,7 @@ Completed story tasks: ${completedTasks.length}
 Completed hardening tasks: ${completedHardening.length}
 
 Write new hardening tasks to the ralphthon PRD (ralphthon-prd.json) in the hardening array.
-Each task needs: id (H-${String(wave).padStart(2, '0')}-NNN), title, description, category, wave: ${wave}.
+Each task needs: id (H-${String(wave).padStart(2, "0")}-NNN), title, description, category, wave: ${wave}.
 Set status to "pending" and retries to 0.
 
 If you find NO new issues, write an empty set of new tasks. This signals the code is solid.`;
@@ -330,8 +334,8 @@ export function formatRalphthonStatus(prd) {
         lines.push(`Next hardening: ${status.nextHardeningTask.id} - ${status.nextHardeningTask.title}`);
     }
     else if (status.allStoriesDone) {
-        lines.push('All stories complete — ready for hardening');
+        lines.push("All stories complete — ready for hardening");
     }
-    return lines.join('\n');
+    return lines.join("\n");
 }
 //# sourceMappingURL=prd.js.map

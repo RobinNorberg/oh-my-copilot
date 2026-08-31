@@ -7,12 +7,41 @@
  * Ported from oh-my-opencode's keyword-detector hook.
  */
 import { type TaskSizeResult } from '../task-size-detector/index.js';
-export type KeywordType = 'cancel' | 'ralph' | 'autopilot' | 'team' | 'ultrawork' | 'ralplan' | 'tdd' | 'code-review' | 'security-review' | 'ultrathink' | 'deepsearch' | 'deep-interview' | 'analyze' | 'claude' | 'codex' | 'gemini' | 'cccg';
+export type KeywordType = 'cancel' | 'ralph' | 'autopilot' | 'team' | 'ralplan' | 'tdd' | 'code-review' | 'security-review' | 'ultrathink' | 'deepsearch' | 'deep-interview' | 'analyze' | 'codex' | 'gemini' | 'cursor' | 'antigravity';
 export interface DetectedKeyword {
     type: KeywordType;
     keyword: string;
     position: number;
 }
+export declare function isRetiredWorkflowSlashInvocation(text: string): boolean;
+/**
+ * Canonical workflow skills detected via explicit slash invocation.
+ * This is intentionally narrower than the state compatibility registry:
+ * removed-not-aliased workflows may retain legacy state readers, but must not
+ * be parsed as active slash routes.
+ */
+declare const CANONICAL_WORKFLOW_SLASH_SKILLS: readonly ["autopilot", "ralph", "team", "ultraqa", "deep-interview", "ralplan", "self-improve"];
+export type CanonicalWorkflowSlashSkill = (typeof CANONICAL_WORKFLOW_SLASH_SKILLS)[number];
+export interface ExplicitWorkflowSlashInvocation {
+    /** Canonical workflow skill name (lowercase, no `oh-my-copilot:` prefix). */
+    skill: CanonicalWorkflowSlashSkill;
+    /** Trailing arguments after the slash command. */
+    args: string;
+    /** Raw matched prefix (including any namespace prefix and the skill name). */
+    raw: string;
+}
+/**
+ * Parse an explicit workflow slash invocation at the start of a prompt.
+ *
+ * Recognizes `/<skill>`, `/omc:<skill>`, and `/oh-my-copilot:<skill>` for
+ * the canonical workflow skill list. Code fences and inline backticks are
+ * stripped first so quoted commands do not match. The trailing lookahead
+ * (whitespace, end-of-text, or punctuation) prevents file paths like
+ * `/ralph-logs/foo.txt` from matching `/ralph`.
+ *
+ * Returns `null` when no explicit invocation is present.
+ */
+export declare function parseExplicitWorkflowSlashInvocation(promptText: string): ExplicitWorkflowSlashInvocation | null;
 /**
  * Remove code blocks from text to prevent false positives
  * Handles both fenced code blocks and inline code
@@ -37,34 +66,6 @@ export declare function extractPromptText(parts: Array<{
     text?: string;
     [key: string]: unknown;
 }>): string;
-/**
- * Canonical workflow skills detected via explicit slash invocation.
- * Mirrors `CANONICAL_WORKFLOW_SKILLS` in `skill-state/index.ts`. Listed here
- * (rather than imported) to keep the keyword-detector free of cross-module
- * dependencies on skill-state.
- */
-declare const CANONICAL_WORKFLOW_SLASH_SKILLS: readonly ["autopilot", "ralph", "team", "ultrawork", "ultraqa", "deep-interview", "ralplan", "self-improve"];
-export type CanonicalWorkflowSlashSkill = (typeof CANONICAL_WORKFLOW_SLASH_SKILLS)[number];
-export interface ExplicitWorkflowSlashInvocation {
-    /** Canonical workflow skill name (lowercase, no `oh-my-copilot:` prefix). */
-    skill: CanonicalWorkflowSlashSkill;
-    /** Trailing arguments after the slash command. */
-    args: string;
-    /** Raw matched prefix (including any namespace prefix and the skill name). */
-    raw: string;
-}
-/**
- * Parse an explicit workflow slash invocation at the start of a prompt.
- *
- * Recognizes `/<skill>`, `/omc:<skill>`, and `/oh-my-copilot:<skill>` for
- * the canonical workflow skill list. Code fences and inline backticks are
- * stripped first so quoted commands do not match. The trailing lookahead
- * (whitespace, end-of-text, or punctuation) prevents file paths like
- * `/ralph-logs/foo.txt` from matching `/ralph`.
- *
- * Returns `null` when no explicit invocation is present.
- */
-export declare function parseExplicitWorkflowSlashInvocation(promptText: string): ExplicitWorkflowSlashInvocation | null;
 /**
  * Detect keywords in text and return matches with type info
  */
@@ -100,7 +101,7 @@ export interface TaskSizeAwareKeywordsResult {
 }
 /**
  * Get all keywords with task-size-based filtering applied.
- * For small tasks, heavy orchestration modes (ralph/autopilot/team/ultrawork etc.)
+ * For small tasks, heavy orchestration modes (ralph/autopilot/team etc.)
  * are suppressed to avoid over-orchestration.
  *
  * This is the recommended function to use in the bridge hook for keyword detection.

@@ -1,42 +1,50 @@
 /**
  * Persistent Mode Hook
  *
- * Unified handler for persistent work modes: ultrawork, ralph, and todo-continuation.
+ * Unified handler for persistent work modes: ralph and todo-continuation.
  * This hook intercepts Stop events and enforces work continuation based on:
- * 1. Active ultrawork mode with pending todos
- * 2. Active ralph loop (until cancelled via /oh-my-claudecode:cancel)
- * 3. Any pending todos (general enforcement)
+ * 1. Active ralph loop (until cancelled via /oh-my-copilot:cancel)
+ * 2. Any pending todos (general enforcement)
  *
- * Priority order: Ralph > Ultrawork > Todo Continuation
+ * Priority order: Ralph > Todo Continuation
  */
 
+import { createHash } from 'crypto';
 import { existsSync, readFileSync, unlinkSync, statSync, openSync, readSync, closeSync, mkdirSync } from 'fs';
 import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
 import { join } from 'path';
 import { getHardMaxIterations } from '../../lib/security-config.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { getGlobalOmcConfigCandidates } from '../../utils/paths.js';
-import {
-  readUltraworkState,
-  writeUltraworkState,
-  incrementReinforcement,
-  deactivateUltrawork,
-  getUltraworkPersistenceMessage,
-  type UltraworkState
-} from '../ultrawork/index.js';
 import { resolveToWorktreeRoot, resolveSessionStatePath, resolveStatePath, getOmcRoot } from '../../lib/worktree-paths.js';
-import { readModeState, writeModeState } from '../../lib/mode-state-io.js';
+import {
+  captureModeStateCleanup,
+  captureStateFileGeneration,
+  clearModeStateFile,
+  clearStateFileLockedIf,
+  canClearStateForSession,
+  readModeState,
+  readModeStateWithMeta,
+  recoverEmergencyStateFile,
+  writeModeState,
+  withStateFileMutationLock,
+  type ModeStateCleanupSnapshot,
+} from '../../lib/mode-state-io.js';
 import {
   readRalphState,
   writeRalphState,
+  restoreRalphStateIfAbsent,
   incrementRalphIteration,
   clearRalphState,
   findPrdPath,
   getPrdCompletionStatus,
   getRalphContext,
+  readPrd,
   getStory,
   markStoryIncomplete,
-  markStoryArchitectVerified,
+  consumeStoryArchitectApproval,
+  consumeCompletionArchitectApproval,
+  getPrdGoverningCriteriaRevision,
   readVerificationState,
   startVerification,
   recordArchitectFeedback,
@@ -45,12 +53,14 @@ import {
   detectArchitectApproval,
   detectArchitectRejection,
   clearVerificationState,
+  consumeVerificationRequest,
+  restoreVerificationRequestIfAbsent,
   type VerificationState,
 } from '../ralph/index.js';
 import { checkIncompleteTodos, getNextPendingTodo, StopContext, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError, isScheduledWakeupStop, isOversizeToolResultRedirectStop } from '../todo-continuation/index.js';
 import { TODO_CONTINUATION_PROMPT } from '../../installer/hooks.js';
 import {
-  isAutopilotActive
+  isAutopilotActive,
 } from '../autopilot/index.js';
 import { checkAutopilot } from '../autopilot/enforcement.js';
 import { readTeamPipelineState } from '../team-pipeline/state.js';
@@ -59,6 +69,8 @@ import { getActiveAgentSnapshot } from '../subagent-tracker/index.js';
 import type { IdleNotificationRepoState } from './idle-repo-state.js';
 import { truncatePromptForEcho } from '../../lib/truncate-prompt.js';
 import { isModeActive } from '../mode-registry/index.js';
+import { namedWorkflowRuntimeSupported, validateNamedWorkflowState } from '../autopilot/named-workflow-resume-validator.js';
+import type { AutopilotState } from '../autopilot/types.js';
 
 export interface ToolErrorState {
   tool_name: string;
@@ -74,7 +86,7 @@ export interface PersistentModeResult {
   /** Message to inject into context */
   message: string;
   /** Which mode triggered the block */
-  mode: 'ralph' | 'ultrawork' | 'todo-continuation' | 'autopilot' | 'autoresearch' | 'team' | 'ralplan' | 'none';
+  mode: 'ralph' | 'todo-continuation' | 'autopilot' | 'autoresearch' | 'team' | 'ralplan' | 'skill-active' | 'none';
   /** Additional metadata */
   metadata?: {
     todoCount?: number;
@@ -92,6 +104,7 @@ export interface PersistentModeResult {
 /** Maximum todo-continuation attempts before giving up (prevents infinite loops) */
 const MAX_TODO_CONTINUATION_ATTEMPTS = 5;
 const CANCEL_SIGNAL_TTL_MS = 30_000;
+const CANCEL_SIGNAL_CLOCK_SKEW_MS = 5_000;
 const STALE_STATE_THRESHOLD_MS = 2 * 60 * 60 * 1000;
 const PENDING_ASYNC_STATE_STALE_MS = 24 * 60 * 60 * 1000;
 const OVERSIZE_TOOL_RESULT_REDIRECT_STOP_MAX = 3;
@@ -108,6 +121,70 @@ const TERMINAL_WORKFLOW_PHASES = new Set([
   'stopped',
 ]);
 
+/** Deterministic test-only publication between request consumption and cleanup. */
+function forceTerminalCleanupReplacementForTest(): void {
+  if (
+    process.env.NODE_ENV !== 'test' ||
+    !process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64
+  ) {
+    return;
+  }
+
+  try {
+    const replacements = JSON.parse(
+      Buffer.from(process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64, 'base64').toString('utf8'),
+    ) as Array<{ path?: unknown; content?: unknown }>;
+    for (const replacement of replacements) {
+      if (typeof replacement?.path !== 'string' || replacement.path.length === 0) continue;
+      atomicWriteJsonSync(replacement.path, replacement.content);
+    }
+  } finally {
+    delete process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64;
+  }
+}
+
+function resolveVerificationStatePath(workingDir: string, sessionId?: string): string {
+  return sessionId
+    ? resolveSessionStatePath('ralph-verification', sessionId, workingDir)
+    : join(getOmcRoot(workingDir), 'ralph-verification.json');
+}
+
+function hasNamedWorkflowMarkers(state: unknown): boolean {
+  return Boolean(
+    state &&
+      typeof state === 'object' &&
+      ['workflow', 'workflowRunId', 'pipelineTracking'].some((marker) =>
+        Object.prototype.hasOwnProperty.call(state, marker),
+      ),
+  );
+}
+
+function isEnforceableNamedAutopilotState(
+  state: Record<string, unknown> | null,
+  directory: string,
+  sessionId?: string,
+): boolean {
+  if (
+    !state ||
+    !sessionId ||
+    !hasNamedWorkflowMarkers(state) ||
+    state.active !== true ||
+    state.session_id !== sessionId ||
+    isTerminalWorkflowModeState(state) ||
+    typeof state.project_path !== 'string' ||
+    !namedWorkflowRuntimeSupported()
+  ) {
+    return false;
+  }
+
+  try {
+    return resolveToWorktreeRoot(state.project_path) === resolveToWorktreeRoot(directory)
+      && Boolean(validateNamedWorkflowState(state as unknown as AutopilotState, sessionId));
+  } catch {
+    return false;
+  }
+}
+
 /** Track todo-continuation attempts per session to prevent infinite loops */
 const todoContinuationAttempts = new Map<string, number>();
 
@@ -115,51 +192,179 @@ export function shouldWriteStateBack(statePath: string | null | undefined): bool
   return Boolean(statePath && existsSync(statePath));
 }
 
-/**
- * Check whether this session is in an explicit cancel window.
- * Used to prevent stop-hook re-enforcement races during /cancel.
- */
-function isSessionCancelInProgress(directory: string, sessionId?: string): boolean {
-  let cancelSignalPath: string | undefined;
+interface LoadedAutopilotTarget {
+  path: string;
+  state: Record<string, unknown>;
+}
 
+interface SessionCancelCheck {
+  autopilotCancellation: boolean;
+  nonAutopilotCancellation: boolean;
+  enforceableAutopilot?: LoadedAutopilotTarget;
+}
+
+function resolveAutopilotTargetPath(directory: string, sessionId?: string): string {
+  return sessionId
+    ? resolveSessionStatePath('autopilot', sessionId, directory)
+    : resolveStatePath('autopilot', directory);
+}
+
+function readAutopilotTarget(directory: string, sessionId?: string): LoadedAutopilotTarget | null {
+  const path = resolveAutopilotTargetPath(directory, sessionId);
+  if (!recoverEmergencyStateFile(path)) return null;
+  const state = readModeStateWithMeta<Record<string, unknown>>('autopilot', directory, sessionId);
+  return state && typeof state === 'object' && !Array.isArray(state)
+    ? { path, state }
+    : null;
+}
+
+function isCurrentAutopilotTarget(
+  state: Record<string, unknown>,
+  directory: string,
+  sessionId?: string,
+): boolean {
+  if (
+    state.active !== true ||
+    state.session_id !== sessionId ||
+    typeof state.project_path !== 'string' ||
+    isTerminalWorkflowModeState(state)
+  ) {
+    return false;
+  }
+  try {
+    return resolveToWorktreeRoot(state.project_path) === resolveToWorktreeRoot(directory);
+  } catch {
+    return false;
+  }
+}
+
+function isAuthenticatedAutopilotCancelSignal(
+  signal: Record<string, unknown>,
+  target: LoadedAutopilotTarget,
+): boolean {
+  if (signal.active !== true || signal.mode !== 'autopilot' || typeof signal.source !== 'string' || signal.source.length === 0) {
+    return false;
+  }
+  const now = Date.now();
+  const requestedAt = typeof signal.requested_at === 'string' ? new Date(signal.requested_at).getTime() : NaN;
+  const expiresAt = typeof signal.expires_at === 'string' ? new Date(signal.expires_at).getTime() : NaN;
+  if (
+    !Number.isFinite(requestedAt) ||
+    requestedAt > now + CANCEL_SIGNAL_CLOCK_SKEW_MS ||
+    now - requestedAt > CANCEL_SIGNAL_TTL_MS ||
+    !Number.isFinite(expiresAt) ||
+    expiresAt <= requestedAt ||
+    expiresAt - requestedAt > CANCEL_SIGNAL_TTL_MS ||
+    expiresAt <= now
+  ) {
+    return false;
+  }
+  const digest = createHash('sha256').update(JSON.stringify(target.state)).digest('hex');
+  if (
+    typeof signal.target_state_sha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(signal.target_state_sha256) ||
+    signal.target_state_sha256 !== digest
+  ) {
+    return false;
+  }
+  const workflowRunId = target.state.workflowRunId;
+  return typeof workflowRunId === 'string'
+    ? signal.target_workflow_run_id === workflowRunId
+    : signal.target_workflow_run_id === undefined;
+}
+
+function isSessionCancelInProgress(directory: string, sessionId?: string): SessionCancelCheck {
+  const autopilotPath = resolveAutopilotTargetPath(directory, sessionId);
+  let cancelSignalPath: string | undefined;
+  let cancelSignalSessionId: string | undefined;
   if (sessionId) {
     try {
       cancelSignalPath = resolveSessionStatePath('cancel-signal', sessionId, directory);
+      cancelSignalSessionId = sessionId;
     } catch {
-      // fall through to legacy path
+      // Fall through to the legacy path.
     }
   }
-
-  // Fallback: check legacy (non-session-scoped) cancel signal
   if (!cancelSignalPath) {
     cancelSignalPath = join(getOmcRoot(directory), 'state', 'cancel-signal-state.json');
   }
 
-  if (!existsSync(cancelSignalPath)) {
-    return false;
-  }
+  const validateSignal = (target: LoadedAutopilotTarget | null): boolean => {
+    const locked = withStateFileMutationLock(cancelSignalPath, () => {
+      const raw = readModeStateWithMeta<Record<string, unknown>>(
+        'cancel-signal',
+        directory,
+        cancelSignalSessionId,
+      );
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+      // Legacy/shared signal paths are not session-scoped by location, so
+      // enforce their embedded owner before accepting or removing them.
+      if (sessionId && !canClearStateForSession(raw, sessionId)) return false;
+      const now = Date.now();
+      const requestedAt = typeof raw.requested_at === 'string' ? new Date(raw.requested_at).getTime() : NaN;
+      const expiresAt = typeof raw.expires_at === 'string' ? new Date(raw.expires_at).getTime() : NaN;
+      if (target) {
+        if (Number.isFinite(expiresAt) && expiresAt <= now && existsSync(cancelSignalPath!)) unlinkSync(cancelSignalPath!);
+        return isAuthenticatedAutopilotCancelSignal(raw, target);
+      }
+      // A requested-at-only signal belongs to Ralph. It must never be
+      // interpreted as an unauthenticated autopilot cancellation.
+      if (
+        raw.mode === 'autopilot' ||
+        raw.target_state_sha256 !== undefined ||
+        raw.target_workflow_run_id !== undefined
+      ) {
+        return false;
+      }
+      const effectiveExpiry = Number.isFinite(expiresAt)
+        ? expiresAt
+        : Number.isFinite(requestedAt) ? requestedAt + CANCEL_SIGNAL_TTL_MS : NaN;
+      if (
+        !Number.isFinite(requestedAt) ||
+        requestedAt > now + CANCEL_SIGNAL_CLOCK_SKEW_MS ||
+        now - requestedAt > CANCEL_SIGNAL_TTL_MS ||
+        !Number.isFinite(effectiveExpiry) ||
+        effectiveExpiry <= requestedAt ||
+        effectiveExpiry - requestedAt > CANCEL_SIGNAL_TTL_MS ||
+        effectiveExpiry <= now
+      ) {
+        if (Number.isFinite(effectiveExpiry) && effectiveExpiry <= now && existsSync(cancelSignalPath!)) unlinkSync(cancelSignalPath!);
+        return false;
+      }
+      return true;
+    }, target !== null);
+    return locked.acquired && locked.value === true;
+  };
 
-  try {
-    const raw = JSON.parse(readFileSync(cancelSignalPath, 'utf-8')) as {
-      requested_at?: string;
-      expires_at?: string;
-    };
-
-    const now = Date.now();
-    const expiresAt = raw.expires_at ? new Date(raw.expires_at).getTime() : NaN;
-    const requestedAt = raw.requested_at ? new Date(raw.requested_at).getTime() : NaN;
-    const fallbackExpiry = Number.isFinite(requestedAt) ? requestedAt + CANCEL_SIGNAL_TTL_MS : NaN;
-    const effectiveExpiry = Number.isFinite(expiresAt) ? expiresAt : fallbackExpiry;
-
-    if (!Number.isFinite(effectiveExpiry) || effectiveExpiry <= now) {
-      unlinkSync(cancelSignalPath);
-      return false;
+  // A target-bearing signal must hold both locks. On runtimes without flock,
+  // requested-at-only Ralph cancellation may proceed only after
+  // canonical discovery proves this session has no enforceable autopilot state.
+  const locked = withStateFileMutationLock(autopilotPath, () => {
+    const current = readAutopilotTarget(directory, sessionId);
+    if (!current || !isCurrentAutopilotTarget(current.state, directory, sessionId)) {
+      return { autopilotCancellation: false, nonAutopilotCancellation: validateSignal(null) };
     }
-
-    return true;
-  } catch {
-    return false;
+    // Named integrity failures deliberately fail closed so checkAutopilot()
+    // can propagate its diagnostic instead of a forged cancel hiding it.
+    if (hasNamedWorkflowMarkers(current.state) && !isEnforceableNamedAutopilotState(current.state, directory, sessionId)) {
+      return { autopilotCancellation: false, nonAutopilotCancellation: false };
+    }
+    return {
+      autopilotCancellation: validateSignal(current),
+      nonAutopilotCancellation: false,
+      enforceableAutopilot: current,
+    };
+  }, true);
+  if (locked.acquired && locked.value) return locked.value;
+  if (namedWorkflowRuntimeSupported()) {
+    return { autopilotCancellation: false, nonAutopilotCancellation: false };
   }
+
+  const current = readAutopilotTarget(directory, sessionId);
+  if (current && isCurrentAutopilotTarget(current.state, directory, sessionId)) {
+    return { autopilotCancellation: false, nonAutopilotCancellation: false, enforceableAutopilot: current };
+  }
+  return { autopilotCancellation: false, nonAutopilotCancellation: validateSignal(null) };
 }
 
 /**
@@ -203,18 +408,17 @@ function isFreshTimestamp(value: unknown, ttlMs = PENDING_ASYNC_STATE_STALE_MS):
 
 function hasPendingBackgroundTask(directory: string, sessionId?: string): boolean {
   try {
-    const stateRoot = join(getOmcRoot(directory), 'state');
-    const hudPath = sessionId
-      ? join(stateRoot, 'sessions', sessionId, 'hud-state.json')
-      : join(stateRoot, 'hud-state.json');
-    if (!existsSync(hudPath)) return false;
-    const hudState = JSON.parse(readFileSync(hudPath, 'utf-8')) as {
+    const hudState = readModeState<{
+      sessionId?: unknown;
       backgroundTasks?: Array<{
         status?: string;
         startedAt?: string;
         startTime?: string;
       }>;
-    };
+    }>('hud', directory, sessionId);
+    if (sessionId && typeof hudState?.sessionId === 'string' && hudState.sessionId !== sessionId) {
+      return false;
+    }
     return Boolean(hudState?.backgroundTasks?.some((task) => {
       if (task.status !== 'running') return false;
       return isFreshTimestamp(task.startedAt ?? task.startTime);
@@ -225,28 +429,19 @@ function hasPendingBackgroundTask(directory: string, sessionId?: string): boolea
 }
 
 function readPendingWakeupState(directory: string, sessionId?: string): Array<Record<string, unknown>> {
-  const stateRoot = join(getOmcRoot(directory), 'state');
-  const dirs = sessionId
-    ? [join(stateRoot, 'sessions', sessionId), stateRoot]
-    : [stateRoot];
-  const fileNames = [
-    'scheduled-wakeup-state.json',
-    'schedule-wakeup-state.json',
-    'wakeup-state.json',
-  ];
+  const modes = ['scheduled-wakeup', 'schedule-wakeup', 'wakeup'];
   const states: Array<Record<string, unknown>> = [];
 
-  for (const dir of dirs) {
-    for (const fileName of fileNames) {
-      const filePath = join(dir, fileName);
-      try {
-        if (!existsSync(filePath)) continue;
-        const parsed = JSON.parse(readFileSync(filePath, 'utf-8'));
-        if (parsed && typeof parsed === 'object') {
-          states.push(parsed as Record<string, unknown>);
-        }
-      } catch {
-        continue;
+  for (const mode of modes) {
+    const sessionState = readModeStateWithMeta<Record<string, unknown>>(mode, directory, sessionId);
+    if (sessionState && typeof sessionState === 'object') {
+      states.push(sessionState);
+    }
+
+    if (sessionId) {
+      const legacyState = readModeStateWithMeta<Record<string, unknown>>(mode, directory);
+      if (legacyState && typeof legacyState === 'object' && canClearStateForSession(legacyState, sessionId)) {
+        states.push(legacyState);
       }
     }
   }
@@ -618,6 +813,14 @@ const RALPLAN_TERMINAL_PHASES = new Set([
   'terminated',
   'done',
   'handoff',
+  'pending approval',
+  'pending-approval',
+  'pending_approval',
+  'awaiting approval',
+  'awaiting-approval',
+  'awaiting_approval',
+  'approval-required',
+  'approval_required',
 ]);
 
 /**
@@ -867,7 +1070,7 @@ function checkArchitectApprovalInTranscript(
   sessionId: string,
   verificationState?: Pick<VerificationState, 'request_id' | 'story_id' | 'critic_mode'>
 ): boolean {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const possiblePaths = [join(claudeDir, 'sessions', sessionId, 'messages.json')];
 
   for (const transcriptPath of possiblePaths) {
@@ -891,7 +1094,7 @@ function checkArchitectApprovalInTranscript(
  * Check for architect rejection in session transcript
  */
 function checkArchitectRejectionInTranscript(sessionId: string): { rejected: boolean; feedback: string } {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const possiblePaths = [
     join(claudeDir, 'sessions', sessionId, 'transcript.md'),
     join(claudeDir, 'sessions', sessionId, 'messages.json'),
@@ -962,26 +1165,6 @@ async function checkRalphLoop(
     };
   }
 
-  // Self-heal linked ultrawork: if ralph is active and marked linked but ultrawork
-  // state is missing, recreate it so stop reinforcement cannot silently disappear.
-  if (state.linked_ultrawork) {
-    const ultraworkState = readUltraworkState(workingDir, sessionId);
-    if (!ultraworkState?.active) {
-      const now = new Date().toISOString();
-      const restoredState: UltraworkState = {
-        active: true,
-        started_at: state.started_at || now,
-        original_prompt: state.prompt || 'Ralph loop task',
-        session_id: sessionId,
-        project_path: workingDir,
-        reinforcement_count: 0,
-        last_checked_at: now,
-        linked_to_ralph: true
-      };
-      writeUltraworkState(restoredState, workingDir, sessionId);
-    }
-  }
-
   // Check team pipeline state coordination
   // When team mode is active alongside ralph, respect team phase transitions
   const teamState = readTeamPipelineState(workingDir, sessionId);
@@ -992,7 +1175,6 @@ async function checkRalphLoop(
     if (teamPhase === 'complete') {
       clearRalphState(workingDir, sessionId);
       clearVerificationState(workingDir, sessionId);
-      deactivateUltrawork(workingDir, sessionId);
       return {
         shouldBlock: false,
         message: `[RALPH LOOP COMPLETE - TEAM] Team pipeline completed successfully. Ralph loop ending after ${state.iteration} iteration(s).`,
@@ -1002,7 +1184,6 @@ async function checkRalphLoop(
     if (teamPhase === 'failed') {
       clearRalphState(workingDir, sessionId);
       clearVerificationState(workingDir, sessionId);
-      deactivateUltrawork(workingDir, sessionId);
       return {
         shouldBlock: false,
         message: `[RALPH LOOP STOPPED - TEAM FAILED] Team pipeline failed. Ralph loop ending after ${state.iteration} iteration(s).`,
@@ -1012,7 +1193,6 @@ async function checkRalphLoop(
     if (teamPhase === 'cancelled') {
       clearRalphState(workingDir, sessionId);
       clearVerificationState(workingDir, sessionId);
-      deactivateUltrawork(workingDir, sessionId);
       return {
         shouldBlock: false,
         message: `[RALPH LOOP CANCELLED - TEAM] Team pipeline was cancelled. Ralph loop ending after ${state.iteration} iteration(s).`,
@@ -1025,30 +1205,125 @@ async function checkRalphLoop(
   let verificationState = readVerificationState(workingDir, sessionId);
 
   if (verificationState?.pending) {
+    const prdStatus = getPrdCompletionStatus(workingDir, sessionId);
+    const verifiedStory = verificationState.verification_scope === 'story' && verificationState.story_id
+      ? getStory(workingDir, verificationState.story_id, sessionId)
+      : undefined;
+    const staleVerification = verificationState.verification_scope === 'story'
+      ? !verifiedStory?.passes || verifiedStory.architectVerified === true
+        || verifiedStory.governingCriteriaRevision !== verificationState.criteria_revision
+      : prdStatus.hasPrd && (!prdStatus.allComplete
+        || (() => {
+          const prd = readPrd(workingDir, sessionId);
+          return !prd || getPrdGoverningCriteriaRevision(prd) !== verificationState.criteria_revision;
+        })());
+
+    if (staleVerification) {
+      if (consumeVerificationRequest(workingDir, verificationState.request_id, sessionId)) {
+        const refreshedState = readRalphState(workingDir, sessionId);
+        if (refreshedState) {
+          refreshedState.current_story_id = prdStatus.nextStory?.id;
+          writeRalphState(workingDir, refreshedState, sessionId);
+        }
+      }
+      verificationState = null;
+    }
+
+    if (verificationState?.pending) {
     // Verification is in progress - check for architect's response
     if (sessionId) {
       // Check for architect approval
       if (checkArchitectApprovalInTranscript(sessionId, verificationState)) {
         if (verificationState.verification_scope === 'story' && verificationState.story_id) {
-          markStoryArchitectVerified(workingDir, verificationState.story_id, undefined, sessionId);
-          clearVerificationState(workingDir, sessionId);
+          const consumed = consumeStoryArchitectApproval(
+            workingDir,
+            verificationState.story_id,
+            verificationState.criteria_revision ?? '',
+            sessionId,
+            undefined,
+            undefined,
+            () => consumeVerificationRequest(workingDir, verificationState!.request_id, sessionId),
+          );
+          if (!consumed) {
+            verificationState = null;
+          }
 
-          const refreshedState = readRalphState(workingDir, sessionId);
-          if (refreshedState) {
-            const refreshedPrd = getPrdCompletionStatus(workingDir, sessionId);
-            refreshedState.current_story_id = refreshedPrd.nextStory?.id;
-            writeRalphState(workingDir, refreshedState, sessionId);
+          if (consumed) {
+            const refreshedState = readRalphState(workingDir, sessionId);
+            if (refreshedState) {
+              const refreshedPrd = getPrdCompletionStatus(workingDir, sessionId);
+              refreshedState.current_story_id = refreshedPrd.nextStory?.id;
+              writeRalphState(workingDir, refreshedState, sessionId);
+            }
           }
           verificationState = readVerificationState(workingDir, sessionId);
         } else {
           // Architect approved - truly complete
-          // Also deactivate ultrawork if it was active alongside ralph
-          clearVerificationState(workingDir, sessionId);
-          clearRalphState(workingDir, sessionId);
-          deactivateUltrawork(workingDir, sessionId);
-          const criticLabel = verificationState.critic_mode === 'codex'
+          const criticMode = verificationState.critic_mode;
+          // Capture every terminal cleanup target before consuming the request.
+          // A same-session replacement may be published immediately after the
+          // request disappears; cleanup must remain bound to these generations.
+          const snapshot = { ...verificationState! };
+          const verificationPath = resolveVerificationStatePath(workingDir, sessionId);
+          const verificationCleanupSnapshot = captureStateFileGeneration(verificationPath);
+          const ralphSnapshot = readRalphState(workingDir, sessionId);
+          const ralphCleanupSnapshot: ModeStateCleanupSnapshot | undefined = ralphSnapshot
+            ? captureModeStateCleanup('ralph', workingDir, sessionId)
+            : undefined;
+          const consume = () => {
+            const consumed = verificationCleanupSnapshot
+              ? clearStateFileLockedIf(
+                verificationPath,
+                current => current.request_id === verificationState!.request_id,
+                undefined,
+                verificationCleanupSnapshot.generation,
+              ) === 'cleared'
+              : false;
+            if (consumed) forceTerminalCleanupReplacementForTest();
+            return consumed;
+          };
+          const cleanup = () => {
+            const locked = withStateFileMutationLock(verificationPath, () => {
+              if (existsSync(verificationPath)) return false;
+              const ralphCleared = !ralphSnapshot || !ralphCleanupSnapshot
+                ? !ralphSnapshot
+                : clearModeStateFile(
+                  'ralph',
+                  workingDir,
+                  sessionId,
+                  ralphSnapshot as unknown as Record<string, unknown>,
+                  ralphCleanupSnapshot,
+                );
+              return ralphCleared;
+            }, true);
+            if (locked.acquired && locked.value === true) return true;
+            if (ralphSnapshot) restoreRalphStateIfAbsent(workingDir, ralphSnapshot, sessionId);
+            restoreVerificationRequestIfAbsent(workingDir, snapshot, sessionId);
+            return false;
+          };
+          const consumed = !prdStatus.hasPrd
+            ? consume() && cleanup()
+            : consumeCompletionArchitectApproval(
+              workingDir,
+              verificationState.criteria_revision ?? '',
+              sessionId,
+              consume,
+              undefined,
+              cleanup,
+            );
+          if (!consumed) {
+            verificationState = null;
+          }
+          if (!consumed) {
+            return {
+              shouldBlock: true,
+              message: '[RALPH VERIFICATION INVALIDATED] The PRD changed while approval was being consumed. Re-run verification against the current criteria.',
+              mode: 'ralph',
+            };
+          }
+          const criticLabel = criticMode === 'codex'
             ? 'Codex critic'
-            : verificationState.critic_mode === 'critic'
+            : criticMode === 'critic'
               ? 'Critic'
               : 'Architect';
           return {
@@ -1083,6 +1358,7 @@ async function checkRalphLoop(
           };
         }
       }
+    }
     }
 
     if (verificationState?.pending) {
@@ -1169,7 +1445,7 @@ async function checkRalphLoop(
     writeRalphState(workingDir, state, sessionId);
     return {
       shouldBlock: true,
-      message: `[RALPH - HARD LIMIT] Reached hard max iterations (${hardMax}). Mode auto-disabled. Restart with /oh-my-claudecode:ralph if needed.`,
+      message: `[RALPH - HARD LIMIT] Reached hard max iterations (${hardMax}). Mode auto-disabled. Restart with /oh-my-copilot:ralph if needed.`,
       mode: 'ralph',
       metadata: { iteration: state.iteration, maxIterations: state.max_iterations }
     };
@@ -1203,7 +1479,7 @@ async function checkRalphLoop(
   const ralphContext = getRalphContext(workingDir, sessionId);
   const activePrdPath = prdStatus.hasPrd ? findPrdPath(workingDir, sessionId) : null;
   const prdInstruction = prdStatus.hasPrd
-    ? `2. Check ${activePrdPath ?? 'prd.json'} - verify the current story's acceptance criteria are met, then mark it passes: true. Are ALL stories complete?`
+    ? `2. Check ${activePrdPath ?? 'prd.json'} - verify the current story's acceptance criteria are met, then create a revision-bound completion claim: set passes to true and set completionCriteriaRevision to the story's current governingCriteriaRevision. If implementation proves an acceptance criterion empirically false, record an evidence-backed amendment (replace or supersede it, retaining the original verbatim in the story's criterionAmendments ledger with reason, evidence, authority, and timestamp) instead of silently deleting the criterion or claiming it passes. Are ALL stories complete?`
     : `2. Check your todo list - are ALL items marked complete?`;
 
   const continuationPrompt = `<ralph-continuation>
@@ -1216,7 +1492,7 @@ CRITICAL INSTRUCTIONS:
 1. Review your progress and the original task
 ${prdInstruction}
 3. Continue from where you left off
-4. When FULLY complete (after ${state.critic_mode === 'codex' ? 'Codex critic' : state.critic_mode === 'critic' ? 'Critic' : 'Architect'} verification), run \`/oh-my-claudecode:cancel\` to cleanly exit and clean up state files. If cancel fails, retry with \`/oh-my-claudecode:cancel --force\`.
+4. When FULLY complete (after ${state.critic_mode === 'codex' ? 'Codex critic' : state.critic_mode === 'critic' ? 'Critic' : 'Architect'} verification), run \`/oh-my-copilot:cancel\` to cleanly exit and clean up state files. If cancel fails, retry with \`/oh-my-copilot:cancel --force\`.
 5. Do NOT stop until the task is truly done
 
 ${newState.prompt ? `Original task: ${truncatePromptForEcho(newState.prompt)}` : ''}
@@ -1283,6 +1559,177 @@ function writeStopBreaker(directory: string, name: string, count: number, sessio
   } catch {
     // Ignore write errors — fail-open
   }
+}
+
+// ---------------------------------------------------------------------------
+// Thinking-only streak guard (issue #3280)
+//
+// A persistent mode (ralph/autopilot/team/ralplan/…) re-injects a
+// continuation prompt on every Stop while the mode is active. If the agent
+// answers each continuation with only thinking blocks and never a tool_use,
+// no work happens but tokens keep burning. Bound that failure: count
+// consecutive thinking-only assistant turns and release the stop once the
+// streak hits a conservative threshold. Any tool_use turn resets the streak,
+// and every read/parse path fails open (keep enforcing) so a flaky transcript
+// never short-circuits a healthy persistent mode.
+// ---------------------------------------------------------------------------
+
+const THINKING_ONLY_STREAK_BREAKER = 'thinking-only-streak';
+const THINKING_ONLY_STREAK_MAX = 3;
+const THINKING_ONLY_STREAK_TTL_MS = 5 * 60 * 1000; // 5 min
+const THINKING_ONLY_STREAK_BAILOUT_MESSAGE =
+  `[PERSISTENT MODE PAUSED - NO TOOL PROGRESS] The last ${THINKING_ONLY_STREAK_MAX} assistant turns ` +
+  'produced only thinking with no tool calls, so the persistent-mode stop guard is releasing this ' +
+  'stop to avoid an infinite loop. Resume manually with a concrete next action (run a tool/command) ' +
+  'or /cancel the active mode.';
+
+type ThinkingOnlyClassification = 'tool_use' | 'thinking_only' | 'indeterminate';
+
+/**
+ * Does a user-role transcript record carry a tool_result block? A tool_result
+ * only exists because the assistant invoked a tool earlier in the same turn, so
+ * its presence proves the most recent assistant turn made tool progress.
+ */
+function userRecordHasToolResult(content: unknown): boolean {
+  if (!Array.isArray(content)) return false;
+  return content.some(
+    (block) => (block as { type?: unknown } | null)?.type === 'tool_result',
+  );
+}
+
+/**
+ * Classify the most recent assistant *turn* in a transcript as making tool
+ * progress, being thinking-only, or indeterminate. A turn spans every assistant
+ * record (and interleaved tool_result records) back to the preceding real user
+ * message, so a productive turn whose final record is plain text — tool_use
+ * earlier, trailing text before stop — still classifies as tool_use rather than
+ * leaking through as indeterminate.
+ *
+ * Reads only the bounded transcript tail (never the whole file) and treats any
+ * unreadable/ambiguous shape as indeterminate so callers fail open.
+ */
+function classifyLastAssistantTurn(transcriptPath: string): ThinkingOnlyClassification {
+  let lines: string[];
+  try {
+    lines = readTranscriptTailLines(transcriptPath);
+  } catch {
+    return 'indeterminate';
+  }
+
+  let sawAssistant = false;
+  let hasThinking = false;
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]?.trim();
+    if (!line) continue;
+
+    let parsed: { type?: string; message?: { role?: string; content?: unknown } };
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      // Skip non-JSON/truncated lines and keep scanning backward.
+      continue;
+    }
+
+    const role = parsed?.message?.role;
+    const isAssistant = parsed?.type === 'assistant' || role === 'assistant';
+    if (isAssistant) {
+      sawAssistant = true;
+      const content = parsed.message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          const blockType = (block as { type?: unknown } | null)?.type;
+          if (blockType === 'tool_use') {
+            // Any tool_use anywhere in the most recent turn is real progress.
+            return 'tool_use';
+          }
+          if (blockType === 'thinking' || blockType === 'redacted_thinking') {
+            hasThinking = true;
+          }
+        }
+      }
+      // Non-array (string/missing) content carries no structured block; keep
+      // scanning the rest of the turn rather than bailing out early.
+      continue;
+    }
+
+    const isUser = parsed?.type === 'user' || role === 'user';
+    if (isUser) {
+      // A tool_result confirms the turn invoked a tool, so it made progress.
+      if (userRecordHasToolResult(parsed.message?.content)) {
+        return 'tool_use';
+      }
+      // A real user message marks the start of the most recent assistant turn.
+      break;
+    }
+
+    // Other record types (system/summary/…) are turn-neutral; keep scanning.
+  }
+
+  if (!sawAssistant) return 'indeterminate';
+  return hasThinking ? 'thinking_only' : 'indeterminate';
+}
+
+/**
+ * Bound persistent-mode continuation loops that make no tool progress.
+ *
+ * Only acts when a mode would otherwise block the stop. A tool_use turn resets
+ * the streak; a thinking-only turn increments it and, once it reaches
+ * THINKING_ONLY_STREAK_MAX, releases the stop (and clears the counter) instead
+ * of re-injecting another continuation prompt. Indeterminate/unreadable
+ * transcripts leave the streak untouched and keep the original blocking result.
+ */
+function applyThinkingOnlyStreakGuard(
+  result: PersistentModeResult,
+  workingDir: string,
+  sessionId?: string,
+  stopContext?: StopContext,
+): PersistentModeResult {
+  // Non-blocking results already let the session stop — no loop to bound.
+  if (!result.shouldBlock) return result;
+
+  const transcriptPath = stopContext?.transcript_path ?? stopContext?.transcriptPath;
+  if (!transcriptPath || !existsSync(transcriptPath)) {
+    return result; // fail open: cannot classify without a transcript
+  }
+
+  let classification: ThinkingOnlyClassification;
+  try {
+    classification = classifyLastAssistantTurn(transcriptPath);
+  } catch {
+    return result; // fail open on any unexpected read/parse error
+  }
+
+  if (classification === 'tool_use') {
+    // Real progress — reset the streak and keep enforcing.
+    writeStopBreaker(workingDir, THINKING_ONLY_STREAK_BREAKER, 0, sessionId);
+    return result;
+  }
+
+  if (classification === 'indeterminate') {
+    // Cannot confirm a thinking-only stall — keep enforcing, leave streak as is.
+    return result;
+  }
+
+  const streak = readStopBreaker(
+    workingDir,
+    THINKING_ONLY_STREAK_BREAKER,
+    sessionId,
+    THINKING_ONLY_STREAK_TTL_MS,
+  ) + 1;
+
+  if (streak >= THINKING_ONLY_STREAK_MAX) {
+    // Bail out: release the stop and clear the counter for a clean restart.
+    writeStopBreaker(workingDir, THINKING_ONLY_STREAK_BREAKER, 0, sessionId);
+    return {
+      shouldBlock: false,
+      message: THINKING_ONLY_STREAK_BAILOUT_MESSAGE,
+      mode: 'none',
+    };
+  }
+
+  writeStopBreaker(workingDir, THINKING_ONLY_STREAK_BREAKER, streak, sessionId);
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -1406,7 +1853,7 @@ async function checkTeamPipeline(
 
 The team pipeline is active in phase "${phase}". Continue working on the team workflow.
 Do not stop until the pipeline reaches a terminal state (complete/failed/cancelled).
-When done, run \`/oh-my-claudecode:cancel\` to cleanly exit.
+When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
 
 </team-pipeline-continuation>
 
@@ -1482,8 +1929,14 @@ async function checkAutoresearch(
   // Autoresearch predates session-scoped state files. Preserve strict sessioned reads
   // first, then allow a narrow legacy/shared bridge only for matching or unbound state.
   if (!state && sessionId) {
-    const legacyState = readModeState<AutoresearchStopState>('autoresearch', workingDir);
-    if (!legacyState?.session_id || legacyState.session_id === sessionId) {
+    const legacyEnvelope = readModeStateWithMeta<Record<string, unknown>>('autoresearch', workingDir);
+    const legacyState = legacyEnvelope && canClearStateForSession(legacyEnvelope, sessionId)
+      ? (() => {
+        const { _meta: _, ...payload } = legacyEnvelope;
+        return payload as unknown as AutoresearchStopState;
+      })()
+      : null;
+    if (legacyState && (!legacyState.session_id || legacyState.session_id === sessionId)) {
       state = legacyState;
       stateSourceSessionId = undefined;
     }
@@ -1695,9 +2148,10 @@ async function checkRalplan(
 
 [RALPLAN - CONSENSUS PLANNING | REINFORCEMENT ${breakerCount}/${RALPLAN_STOP_BLOCKER_MAX}]
 
-The ralplan consensus workflow is active. Continue the Planner/Architect/Critic loop.
-Do not stop until consensus is reached or the workflow completes.
-When done, run \`/oh-my-claudecode:cancel\` to cleanly exit.
+The ralplan consensus workflow is active. Continue the Planner/Architect/Critic planning loop only.
+Ralplan is read-only/planning mode: do not implement, invoke execution skills, edit source, commit, push, or open PRs from this continuation.
+When consensus is reached, stop at a pending-approval handoff and require explicit user approval before execution.
+When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
 
 </ralplan-continuation>
 
@@ -1708,85 +2162,6 @@ When done, run \`/oh-my-claudecode:cancel\` to cleanly exit.
   };
 }
 
-/**
- * Check Ultrawork state and determine if it should reinforce
- */
-async function checkUltrawork(
-  sessionId?: string,
-  directory?: string,
-  _hasIncompleteTodos?: boolean,
-  cancelInProgress?: boolean
-): Promise<PersistentModeResult | null> {
-  const workingDir = resolveToWorktreeRoot(directory);
-  const state = readUltraworkState(workingDir, sessionId);
-
-  if (!state || !state.active || isStaleState(state)) {
-    return null;
-  }
-
-  // Session isolation. `readUltraworkState()` already enforces the lenient
-  // form ("only reject when BOTH sides have defined session_ids that
-  // differ"). The previous strict check rejected legitimate cases where
-  // one side was undefined — same root cause as the ralph counter bug.
-  if (state.session_id && sessionId && state.session_id !== sessionId) {
-    return null;
-  }
-
-  if (isAwaitingConfirmation(state)) {
-    return null;
-  }
-
-  // Uses cached cancel signal from checkPersistentModes to avoid TOCTOU re-reads.
-  if (cancelInProgress) {
-    return {
-      shouldBlock: false,
-      message: '',
-      mode: 'none'
-    };
-  }
-
-  // If all tracked work is complete, auto-deactivate ultrawork and allow exit.
-  // Issue #2419: otherwise the Stop hook can keep blocking even after task
-  // completion, leaving ultrawork active until manual /cancel or session-end.
-  if (!_hasIncompleteTodos) {
-    deactivateUltrawork(workingDir, sessionId);
-    return {
-      shouldBlock: false,
-      message: '[ULTRAWORK COMPLETE] No incomplete tasks remain. Ultrawork state cleared.',
-      mode: 'none'
-    };
-  }
-
-  // Enforce hard max iterations for ultrawork (mirrors ralph enforcement).
-  const hardMax = getHardMaxIterations();
-  if (hardMax > 0 && state.reinforcement_count >= hardMax) {
-    deactivateUltrawork(workingDir, sessionId);
-    return {
-      shouldBlock: true,
-      message: '[ULTRAWORK - HARD LIMIT] Reached hard max iterations (' + hardMax + '). Mode auto-disabled. Restart with /oh-my-claudecode:ultrawork if needed.',
-      mode: 'ultrawork',
-      metadata: { reinforcementCount: state.reinforcement_count }
-    };
-  }
-
-  // Reinforce ultrawork mode while incomplete work remains.
-  // This prevents false stops from bash errors or transient failures mid-task.
-  const newState = incrementReinforcement(workingDir, sessionId);
-  if (!newState) {
-    return null;
-  }
-
-  const message = getUltraworkPersistenceMessage(newState);
-
-  return {
-    shouldBlock: true,
-    message,
-    mode: 'ultrawork',
-    metadata: {
-      reinforcementCount: newState.reinforcement_count
-    }
-  };
-}
 
 /**
  * Check for incomplete todos (baseline enforcement)
@@ -1859,10 +2234,30 @@ ${TODO_CONTINUATION_PROMPT}
 }
 
 /**
- * Main persistent mode checker
- * Checks all persistent modes in priority order and returns appropriate action
+ * Main persistent mode checker.
+ * Resolves which mode (if any) should block, then applies the thinking-only
+ * streak guard so an active mode cannot loop forever re-injecting continuation
+ * prompts while the agent only emits thinking blocks and never tool_use (#3280).
  */
 export async function checkPersistentModes(
+  sessionId?: string,
+  directory?: string,
+  stopContext?: StopContext  // NEW: from todo-continuation types
+): Promise<PersistentModeResult> {
+  const result = await resolvePersistentModeBlock(sessionId, directory, stopContext);
+  return applyThinkingOnlyStreakGuard(
+    result,
+    resolveToWorktreeRoot(directory),
+    sessionId,
+    stopContext,
+  );
+}
+
+/**
+ * Resolve which persistent mode (if any) should block this stop event.
+ * Checks all persistent modes in priority order and returns appropriate action.
+ */
+async function resolvePersistentModeBlock(
   sessionId?: string,
   directory?: string,
   stopContext?: StopContext  // NEW: from todo-continuation types
@@ -1907,8 +2302,8 @@ export async function checkPersistentModes(
   }
 
   // Explicit /cancel paths must always bypass continuation re-enforcement.
-  // This prevents cancel races where stop-hook persistence can re-arm Ralph/Ultrawork
-  // (self-heal, max-iteration extension, reinforcement) during shutdown.
+  // This prevents cancel races where stop-hook persistence can re-arm Ralph
+  // (max-iteration extension or reinforcement) during shutdown.
   if (isExplicitCancelCommand(stopContext)) {
     return {
       shouldBlock: false,
@@ -1917,10 +2312,11 @@ export async function checkPersistentModes(
     };
   }
 
-  // Session-scoped cancel signal from state_clear during /cancel flow.
-  // Cache once and pass to sub-functions to avoid TOCTOU re-reads (issue #1058).
-  const cancelInProgress = isSessionCancelInProgress(workingDir, sessionId);
-  if (cancelInProgress) {
+  // Session-scoped cancel signals are authenticated against the current
+  // autopilot generation while its mutation lock is held.
+  const cancelCheck = isSessionCancelInProgress(workingDir, sessionId);
+  const cancelInProgress = cancelCheck.nonAutopilotCancellation;
+  if (cancelCheck.autopilotCancellation) {
     return {
       shouldBlock: false,
       message: '',
@@ -1977,7 +2373,7 @@ export async function checkPersistentModes(
 
   // Oversized tool outputs can cause Claude Code to end the current turn after
   // redirecting the payload to a `tool-results/*.txt` file pointer. That stop is
-  // not a real idle/stall signal: injecting a visible Ralph/Ultrawork/todo
+  // not a real idle/stall signal: injecting a visible Ralph/todo
   // continuation banner immediately after the redirect spams the transcript
   // while the agent is still mid-task. Suppress only a small consecutive window
   // of such redirects; if redirects keep repeating, fall through to the normal
@@ -2013,10 +2409,6 @@ export async function checkPersistentModes(
     };
   }
 
-  // First, check for incomplete todos (we need this info for ultrawork)
-  // Note: stopContext already checked above, but pass it for consistency
-  const todoResult = await checkIncompleteTodos(sessionId, workingDir, stopContext);
-  const hasIncompleteTodos = todoResult.count > 0;
 
   // Consult the workflow ledger ONCE before direct mode-priority shortcuts.
   // `resolveAuthoritativeWorkflowSkill()` returns the root of the live chain
@@ -2051,14 +2443,18 @@ export async function checkPersistentModes(
   const runAutopilotPriority = async (): Promise<PersistentModeResult | null> => {
     if (
       tombstonedWorkflowModes.has('autopilot') ||
-      !isAutopilotActive(workingDir, sessionId)
+      !(cancelCheck.enforceableAutopilot || isAutopilotActive(workingDir, sessionId))
     ) {
       return null;
     }
     const autopilotResult = await checkAutopilot(sessionId, workingDir);
-    if (!autopilotResult?.shouldBlock) return null;
+    if (!autopilotResult) return null;
+    const isNamedDiagnostic =
+      autopilotResult.message === 'workflow_descriptor_integrity_failed' ||
+      autopilotResult.message.startsWith('[AUTOPILOT NAMED WORKFLOW UNSUPPORTED]');
+    if (!autopilotResult.shouldBlock && !isNamedDiagnostic) return null;
     return {
-      shouldBlock: true,
+      shouldBlock: autopilotResult.shouldBlock,
       message: autopilotResult.message,
       mode: 'autopilot',
       metadata: {
@@ -2080,6 +2476,20 @@ export async function checkPersistentModes(
     if (tombstonedWorkflowModes.has('ralph') || !isModeActive('ralph', workingDir, sessionId)) return null;
     return checkRalphLoop(sessionId, workingDir, cancelInProgress);
   };
+
+  if (cancelInProgress) {
+    // Requested-at-only signals may cancel Ralph, never autopilot.
+    // Recheck autopilot after signal consumption so an active replacement wins.
+    const autopilotResult = await runAutopilotPriority();
+    // Terminal named diagnostics are not enforceable autopilot targets and
+    // must not alter the established generic-cancellation result contract.
+    if (autopilotResult?.shouldBlock) return autopilotResult;
+    return {
+      shouldBlock: false,
+      message: '',
+      mode: 'none',
+    };
+  }
 
   if (autopilotPriorityFirst) {
     const autopilotResult = await runAutopilotPriority();
@@ -2123,15 +2533,7 @@ export async function checkPersistentModes(
     }
   }
 
-  // Priority 2: Ultrawork Mode (performance mode with persistence)
-  if (!tombstonedWorkflowModes.has('ultrawork') && isModeActive('ultrawork', workingDir, sessionId)) {
-    const ultraworkResult = await checkUltrawork(sessionId, workingDir, hasIncompleteTodos, cancelInProgress);
-    if (ultraworkResult) {
-      return ultraworkResult;
-    }
-  }
-
-  // Priority 3: Skill Active State (issue #1033)
+  // Priority 2: Skill Active State (issue #1033)
   // Skills like code-review, plan, tdd, etc. write skill-active-state.json
   // when invoked via the Skill tool. This prevents premature stops mid-skill.
   try {
@@ -2141,7 +2543,7 @@ export async function checkPersistentModes(
       return {
         shouldBlock: true,
         message: skillResult.message,
-        mode: 'ultrawork' as const, // Reuse ultrawork mode type for compatibility
+        mode: 'skill-active',
         metadata: {
           phase: `skill:${skillResult.skillName || 'unknown'}`,
         }

@@ -13,7 +13,7 @@
  *   omc wait status        - Show current rate limit and daemon status
  *   omc wait daemon start  - Start the background daemon
  *   omc wait daemon stop   - Stop the daemon
- *   omc wait detect        - Scan for blocked Copilot CLI sessions
+ *   omc wait detect        - Scan for blocked Claude Code sessions
  */
 import chalk from 'chalk';
 import { checkRateLimitStatus, formatRateLimitStatus, isRateLimitStatusDegraded, isTmuxAvailable, isInsideTmux, getDaemonStatus, startDaemon, stopDaemon, detectBlockedPanes, runDaemonForeground, isDaemonRunning, } from '../../features/rate-limit-wait/index.js';
@@ -46,7 +46,7 @@ export async function waitCommand(options) {
     console.log(chalk.bold('\n🕐 Rate Limit Status\n'));
     if (!rateLimitStatus) {
         console.log(chalk.yellow('Unable to check rate limits (OAuth credentials required)\n'));
-        console.log(chalk.gray('Rate limit monitoring requires Copilot Pro/Max subscription.'));
+        console.log(chalk.gray('Rate limit monitoring requires Claude Pro/Max subscription.'));
         return;
     }
     if (rateLimitStatus.isLimited) {
@@ -180,7 +180,7 @@ export async function waitDaemonCommand(action, options) {
                 console.log(chalk.green(`✓ ${result.message}`));
                 console.log(chalk.gray('\nThe daemon will:'));
                 console.log(chalk.gray('  • Poll rate limit status every minute'));
-                console.log(chalk.gray('  • Track blocked Copilot CLI sessions in tmux'));
+                console.log(chalk.gray('  • Track blocked Claude Code sessions in tmux'));
                 console.log(chalk.gray('  • Auto-resume sessions when rate limit clears'));
                 console.log(chalk.gray('\nUse "omc wait status" to check daemon status'));
                 console.log(chalk.gray('Use "omc wait daemon stop" to stop the daemon'));
@@ -209,7 +209,7 @@ export async function waitDaemonCommand(action, options) {
     }
 }
 /**
- * Detect blocked Copilot CLI sessions
+ * Detect blocked Claude Code sessions
  */
 export async function waitDetectCommand(options) {
     if (!isTmuxAvailable()) {
@@ -217,7 +217,7 @@ export async function waitDetectCommand(options) {
         console.log(chalk.gray('Install tmux to use session detection and auto-resume'));
         process.exit(1);
     }
-    console.log(chalk.blue('Scanning for blocked Copilot CLI sessions...\n'));
+    console.log(chalk.blue('Scanning for blocked Claude Code sessions...\n'));
     const config = {
         paneLinesToCapture: options.lines,
     };

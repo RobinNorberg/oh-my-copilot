@@ -251,7 +251,7 @@ describe("validateSlackUsername", () => {
   });
 
   it("accepts username with periods", () => {
-    expect(validateSlackUsername("omg.bot")).toBe("omg.bot");
+    expect(validateSlackUsername("omc.bot")).toBe("omc.bot");
   });
 
   it("accepts username with apostrophe", () => {
@@ -314,7 +314,6 @@ describe("buildConfigFromEnv", () => {
     vi.stubEnv("OMC_TELEGRAM_NOTIFIER_UID", "");
     vi.stubEnv("OMC_SLACK_WEBHOOK_URL", "");
     vi.stubEnv("OMC_SLACK_MENTION", "");
-    vi.stubEnv("OMC_MICROSOFT_TEAMS_WEBHOOK_URL", "");
   });
 
   afterEach(() => {
@@ -427,15 +426,6 @@ describe("buildConfigFromEnv", () => {
     vi.stubEnv("OMC_TELEGRAM_NOTIFIER_UID", "uid-999");
     const config = buildConfigFromEnv();
     expect(config!.telegram!.chatId).toBe("uid-999");
-  });
-
-  it("should build teams config from OMC_MICROSOFT_TEAMS_WEBHOOK_URL", () => {
-    vi.stubEnv("OMC_MICROSOFT_TEAMS_WEBHOOK_URL", "https://prod-01.westus.logic.azure.com/workflows/abc123");
-    const config = buildConfigFromEnv();
-    expect(config).not.toBeNull();
-    expect(config!.teams).toBeDefined();
-    expect(config!.teams!.enabled).toBe(true);
-    expect(config!.teams!.webhookUrl).toBe("https://prod-01.westus.logic.azure.com/workflows/abc123");
   });
 });
 

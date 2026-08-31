@@ -3,7 +3,7 @@
 // Bootstraps and writes to the leader's markdown inbox, mirroring the worker
 // appendToInbox pattern from worker-bootstrap.ts:268.
 //
-// Leader inbox path: .omcp/state/team/{sanitizedTeam}/leader/inbox.md
+// Leader inbox path: .omg/state/team/{sanitizedTeam}/leader/inbox.md
 // This resolves C1: leader notifications arrive via file, not tmux send-keys.
 // DO NOT register the leader as a member of the team registry (Option C, rejected).
 import { appendFile, mkdir, writeFile } from 'fs/promises';
@@ -11,6 +11,7 @@ import { existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { sanitizeName } from './tmux-session.js';
 import { validateResolvedPath } from './fs-utils.js';
+import { teamStateRoot } from './state-paths.js';
 const LEADER_INBOX_HEADER = `# Leader Inbox
 
 Runtime notifications (merge conflicts, rebase events, etc.) appear here.
@@ -24,18 +25,18 @@ Check this file periodically and after long-running operations.
  */
 export function leaderInboxPath(teamName, cwd) {
     const safe = sanitizeName(teamName);
-    return join(cwd, `.omcp/state/team/${safe}/leader/inbox.md`);
+    return join(teamStateRoot(cwd, safe), 'leader', 'inbox.md');
 }
 /**
  * Ensures the leader inbox directory and seed file exist.
- * Creates .omcp/state/team/{team}/leader/ and seeds inbox.md with a header banner.
+ * Creates .omg/state/team/{team}/leader/ and seeds inbox.md with a header banner.
  * Returns the absolute path to inbox.md.
  * Idempotent: safe to call multiple times.
  * Validates path is within cwd to prevent traversal.
  */
 export async function ensureLeaderInbox(teamName, cwd) {
     const inboxPath = leaderInboxPath(teamName, cwd);
-    validateResolvedPath(inboxPath, cwd);
+    validateResolvedPath(inboxPath, teamStateRoot(cwd, sanitizeName(teamName)));
     await mkdir(dirname(inboxPath), { recursive: true });
     if (!existsSync(inboxPath)) {
         await writeFile(inboxPath, LEADER_INBOX_HEADER, 'utf-8');
@@ -49,7 +50,7 @@ export async function ensureLeaderInbox(teamName, cwd) {
  */
 export async function appendToLeaderInbox(teamName, message, cwd) {
     const inboxPath = leaderInboxPath(teamName, cwd);
-    validateResolvedPath(inboxPath, cwd);
+    validateResolvedPath(inboxPath, teamStateRoot(cwd, sanitizeName(teamName)));
     await mkdir(dirname(inboxPath), { recursive: true });
     await appendFile(inboxPath, `\n\n---\n${message}`, 'utf-8');
 }
@@ -60,9 +61,11 @@ export async function appendToLeaderInbox(teamName, message, cwd) {
  * directive is consumed by the leader process which interprets the path
  * relative to its own working directory).
  */
-export function extendLeaderBootstrapPrompt(teamName) {
+export function extendLeaderBootstrapPrompt(teamName, cwd) {
     const safe = sanitizeName(teamName);
-    const path = `.omcp/state/team/${safe}/leader/inbox.md`;
+    const path = cwd
+        ? join(teamStateRoot(cwd, safe), 'leader', 'inbox.md')
+        : `.omg/state/team/${safe}/leader/inbox.md`;
     return `Runtime notifications appear at ${path} — check this file periodically and after long-running operations.`;
 }
 //# sourceMappingURL=leader-inbox.js.map

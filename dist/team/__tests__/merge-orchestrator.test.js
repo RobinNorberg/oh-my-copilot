@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 const mocks = vi.hoisted(() => {
     const calls = [];
     // Programmable behaviour for git invocations keyed by a string match.
@@ -22,7 +23,7 @@ const mocks = vi.hoisted(() => {
         handlers,
         reset,
         execFileSync: vi.fn((cmd, args, opts) => {
-            calls.push({ cmd, args, cwd: opts?.cwd });
+            calls.push({ cmd, args, cwd: opts?.cwd, options: opts });
             for (const h of handlers) {
                 if (h.match(args, opts?.cwd)) {
                     const r = h.handler(args, opts?.cwd);
@@ -78,7 +79,13 @@ import { atomicWriteJson } from '../fs-utils.js';
 // ---------------------------------------------------------------------------
 function makeRepoRoot() {
     const dir = mkdtempSync(join(tmpdir(), 'merge-orchestrator-test-'));
+    process.env.HOME = dir;
+    process.env.USERPROFILE = dir;
+    delete process.env.OMC_STATE_DIR;
     return dir;
+}
+function omcPath(repoRoot, ...segments) {
+    return join(getOmcRoot(repoRoot), ...segments);
 }
 function defaultConfig(repoRoot) {
     return {
@@ -111,12 +118,56 @@ function defaultHappyPath(_repoRoot, leaderBranch) {
     // git merge-base
     on((args) => args[0] === 'merge-base', () => 'merge-base-sha\n');
 }
+let previousHome;
+let previousUserProfile;
+let previousOmcStateDir;
 beforeEach(() => {
     mocks.reset();
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousOmcStateDir = process.env.OMC_STATE_DIR;
     process.env.OMC_RUNTIME_V2 = '1';
+});
+describe('Git process construction', () => {
+    it('uses git argv with hidden-window options for merger worktree setup', async () => {
+        const repoRoot = makeRepoRoot();
+        try {
+            const cfg = defaultConfig(repoRoot);
+            defaultHappyPath(repoRoot, cfg.leaderBranch);
+            const handle = await startMergeOrchestrator(cfg);
+            await handle.drainAndStop();
+            expect(mocks.calls).not.toHaveLength(0);
+            for (const call of mocks.calls) {
+                expect(call.cmd).toBe('git');
+                expect(Array.isArray(call.args)).toBe(true);
+                expect(call.options).toEqual(expect.objectContaining({ windowsHide: true }));
+            }
+            expect(mocks.calls).toContainEqual(expect.objectContaining({
+                cmd: 'git',
+                args: ['worktree', 'add', '--force', expect.any(String), cfg.leaderBranch],
+                cwd: repoRoot,
+                options: expect.objectContaining({ stdio: 'pipe', windowsHide: true }),
+            }));
+        }
+        finally {
+            rmSync(repoRoot, { recursive: true, force: true });
+        }
+    });
 });
 afterEach(() => {
     delete process.env.OMC_RUNTIME_V2;
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
+    if (previousOmcStateDir === undefined)
+        delete process.env.OMC_STATE_DIR;
+    else
+        process.env.OMC_STATE_DIR = previousOmcStateDir;
 });
 // ---------------------------------------------------------------------------
 // M3: branch-name guard
@@ -278,7 +329,7 @@ describe('commit watcher + auto-merge', () => {
             const handle = await startMergeOrchestrator(cfg);
             await handle.registerWorker(workerName);
             await new Promise((r) => setTimeout(r, 200));
-            const persistedPath = join(repoRoot, '.omcp', 'state', 'team', sanitizeName(cfg.teamName), 'auto-merge-state.json');
+            const persistedPath = omcPath(repoRoot, 'state', 'team', sanitizeName(cfg.teamName), 'auto-merge-state.json');
             expect(existsSync(persistedPath)).toBe(true);
             const parsed = JSON.parse(readFileSync(persistedPath, 'utf-8'));
             expect(parsed.lastShas[workerName]).toMatch(/sha/);
@@ -409,7 +460,7 @@ describe('commit watcher + auto-merge', () => {
             const handle = await startMergeOrchestrator(cfg);
             await handle.registerWorker('alice');
             await new Promise((r) => setTimeout(r, 200));
-            const eventLog = join(repoRoot, '.omcp', 'state', 'team', sanitizeName(cfg.teamName), 'orchestrator-events.jsonl');
+            const eventLog = omcPath(repoRoot, 'state', 'team', sanitizeName(cfg.teamName), 'orchestrator-events.jsonl');
             expect(existsSync(eventLog)).toBe(true);
             const lines = readFileSync(eventLog, 'utf-8')
                 .trim()
@@ -465,7 +516,7 @@ describe('M1 existing-rebase short-circuit', () => {
             const cfg = defaultConfig(repoRoot);
             defaultHappyPath(repoRoot, cfg.leaderBranch);
             // Create a fake worktree dir with .git/rebase-merge for "bob".
-            const bobWtPath = join(repoRoot, '.omcp', 'team', sanitizeName(cfg.teamName), 'worktrees', sanitizeName('bob'));
+            const bobWtPath = omcPath(repoRoot, 'team', sanitizeName(cfg.teamName), 'worktrees', sanitizeName('bob'));
             mkdirSync(join(bobWtPath, '.git', 'rebase-merge'), { recursive: true });
             const branchA = `omc-team/demo-team/${sanitizeName('alice')}`;
             const branchB = `omc-team/demo-team/${sanitizeName('bob')}`;
@@ -484,7 +535,7 @@ describe('M1 existing-rebase short-circuit', () => {
             const rebaseCalls = mocks.calls.filter((c) => c.cmd === 'git' && c.args[0] === 'rebase' && c.cwd === bobWtPath);
             expect(rebaseCalls.length).toBe(0);
             // The skip event should be in the orchestrator event log.
-            const eventLog = join(repoRoot, '.omcp', 'state', 'team', sanitizeName(cfg.teamName), 'orchestrator-events.jsonl');
+            const eventLog = omcPath(repoRoot, 'state', 'team', sanitizeName(cfg.teamName), 'orchestrator-events.jsonl');
             const lines = existsSync(eventLog)
                 ? readFileSync(eventLog, 'utf-8')
                     .trim()
@@ -513,7 +564,7 @@ describe('M4 dirty-tree audit', () => {
             // Pre-stage: bob's worktree exists and we'll simulate a rebase that
             // conflicts (rebase command throws), then we remove .git/rebase-merge to
             // simulate the worker resolving it. The status mock returns dirty files.
-            const bobWtPath = join(repoRoot, '.omcp', 'team', sanitizeName(cfg.teamName), 'worktrees', sanitizeName('bob'));
+            const bobWtPath = omcPath(repoRoot, 'team', sanitizeName(cfg.teamName), 'worktrees', sanitizeName('bob'));
             mkdirSync(bobWtPath, { recursive: true });
             const branchA = `omc-team/demo-team/${sanitizeName('alice')}`;
             const branchB = `omc-team/demo-team/${sanitizeName('bob')}`;
@@ -553,7 +604,7 @@ describe('M4 dirty-tree audit', () => {
             // Wait for the resolution watcher to detect.
             await new Promise((r) => setTimeout(r, 250));
             // Inbox should contain the audit message.
-            const inboxPath = join(repoRoot, '.omcp', 'state', 'team', cfg.teamName, 'workers', 'bob', 'inbox.md');
+            const inboxPath = omcPath(repoRoot, 'state', 'team', cfg.teamName, 'workers', 'bob', 'inbox.md');
             expect(existsSync(inboxPath)).toBe(true);
             const inboxContent = readFileSync(inboxPath, 'utf-8');
             expect(inboxContent).toContain('Auto-commit audit');
@@ -574,15 +625,15 @@ describe('M6 recoverFromRestart', () => {
         try {
             const cfg = defaultConfig(repoRoot);
             // Seed persisted state.
-            const persistedPath = join(repoRoot, '.omcp', 'state', 'team', sanitizeName(cfg.teamName), 'auto-merge-state.json');
-            mkdirSync(join(repoRoot, '.omcp', 'state', 'team', sanitizeName(cfg.teamName)), {
+            const persistedPath = omcPath(repoRoot, 'state', 'team', sanitizeName(cfg.teamName), 'auto-merge-state.json');
+            mkdirSync(omcPath(repoRoot, 'state', 'team', sanitizeName(cfg.teamName)), {
                 recursive: true,
             });
             atomicWriteJson(persistedPath, { lastShas: { alice: 'sha-1', bob: 'sha-2' } });
             // Seed worktrees.json metadata.
-            const worktreesMetaPath = join(repoRoot, '.omcp', 'state', 'team', sanitizeName(cfg.teamName), 'worktrees.json');
-            const aliceWtPath = join(repoRoot, '.omcp', 'team', sanitizeName(cfg.teamName), 'worktrees', 'alice');
-            const bobWtPath = join(repoRoot, '.omcp', 'team', sanitizeName(cfg.teamName), 'worktrees', 'bob');
+            const worktreesMetaPath = omcPath(repoRoot, 'state', 'team', sanitizeName(cfg.teamName), 'worktrees.json');
+            const aliceWtPath = omcPath(repoRoot, 'team', sanitizeName(cfg.teamName), 'worktrees', 'alice');
+            const bobWtPath = omcPath(repoRoot, 'team', sanitizeName(cfg.teamName), 'worktrees', 'bob');
             mkdirSync(aliceWtPath, { recursive: true });
             mkdirSync(bobWtPath, { recursive: true });
             // Bob is mid-rebase.
@@ -607,7 +658,7 @@ describe('M6 recoverFromRestart', () => {
             expect(result.persistedShasLoaded).toBe(2);
             expect(result.orphanedRebases).toEqual(['bob']);
             // Bob should have received the recovery message.
-            const bobInbox = join(repoRoot, '.omcp', 'state', 'team', cfg.teamName, 'workers', 'bob', 'inbox.md');
+            const bobInbox = omcPath(repoRoot, 'state', 'team', cfg.teamName, 'workers', 'bob', 'inbox.md');
             expect(existsSync(bobInbox)).toBe(true);
             const content = readFileSync(bobInbox, 'utf-8');
             expect(content).toContain('Runtime restart recovery');
@@ -660,7 +711,7 @@ describe('drainAndStop', () => {
             expect(result.unmerged.length).toBeGreaterThanOrEqual(1);
             expect(result.unmerged[0].workerName).toBe('alice');
             // Teardown audit row should have been written.
-            const auditPath = join(repoRoot, '.omcp', 'state', 'team', sanitizeName(cfg.teamName), 'teardown-audit.jsonl');
+            const auditPath = omcPath(repoRoot, 'state', 'team', sanitizeName(cfg.teamName), 'teardown-audit.jsonl');
             expect(existsSync(auditPath)).toBe(true);
             const auditContent = readFileSync(auditPath, 'utf-8');
             expect(auditContent).toContain('"type":"unmerged_at_shutdown"');
@@ -760,7 +811,7 @@ describe('drainAndStop suppresses fan-out rebase', () => {
             await handle.drainAndStop();
             // Read the orchestrator event log: there must be no rebase_triggered or
             // rebase_succeeded events emitted (fan-out is suppressed after stop).
-            const eventLog = join(repoRoot, '.omcp', 'state', 'team', sanitizeName(cfg.teamName), 'orchestrator-events.jsonl');
+            const eventLog = omcPath(repoRoot, 'state', 'team', sanitizeName(cfg.teamName), 'orchestrator-events.jsonl');
             const lines = existsSync(eventLog)
                 ? readFileSync(eventLog, 'utf-8')
                     .trim()

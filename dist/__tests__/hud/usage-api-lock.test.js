@@ -1,32 +1,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
-const COPILOT_CONFIG_DIR = '/tmp/test-copilot';
+const COPILOT_CONFIG_DIR = '/tmp/test-claude';
 const CACHE_PATH = `${COPILOT_CONFIG_DIR}/plugins/oh-my-copilot/.usage-cache-zai.json`;
 const LOCK_PATH = `${CACHE_PATH}.lock`;
-function normalizePath(p) {
-    return String(p).replace(/\\/g, '/');
-}
 function createFsMock(initialFiles) {
     const files = new Map(Object.entries(initialFiles));
     const directories = new Set([COPILOT_CONFIG_DIR]);
-    const existsSync = vi.fn((path) => files.has(normalizePath(path)) || directories.has(normalizePath(path)));
+    const existsSync = vi.fn((path) => files.has(String(path)) || directories.has(String(path)));
     const readFileSync = vi.fn((path) => {
-        const content = files.get(normalizePath(path));
+        const content = files.get(String(path));
         if (content == null)
             throw new Error(`ENOENT: ${path}`);
         return content;
     });
     const writeFileSync = vi.fn((path, content) => {
-        files.set(normalizePath(path), String(content));
+        files.set(String(path), String(content));
     });
     const mkdirSync = vi.fn((path) => {
-        directories.add(normalizePath(path));
+        directories.add(String(path));
     });
     const unlinkSync = vi.fn((path) => {
-        files.delete(normalizePath(path));
+        files.delete(String(path));
     });
     const openSync = vi.fn((path) => {
-        const normalized = normalizePath(path);
+        const normalized = String(path);
         if (files.has(normalized)) {
             const err = new Error(`EEXIST: ${normalized}`);
             err.code = 'EEXIST';
@@ -36,7 +33,7 @@ function createFsMock(initialFiles) {
         return 1;
     });
     const statSync = vi.fn((path) => {
-        if (!files.has(normalizePath(path)))
+        if (!files.has(String(path)))
             throw new Error(`ENOENT: ${path}`);
         return { mtimeMs: Date.now() };
     });
@@ -72,7 +69,6 @@ describe('getUsage lock failure fallback', () => {
     });
     afterEach(() => {
         process.env = { ...originalEnv };
-        vi.unmock('../../utils/paths.js');
         vi.unmock('../../utils/config-dir.js');
         vi.unmock('../../utils/ssrf-guard.js');
         vi.unmock('fs');
@@ -100,19 +96,15 @@ describe('getUsage lock failure fallback', () => {
                 return true;
             return originalKill.call(process, pid, signal);
         });
-        vi.doMock('../../utils/paths.js', () => ({
-            getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
-        }));
         vi.doMock('../../utils/config-dir.js', () => ({
             getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
         }));
         vi.doMock('../../utils/ssrf-guard.js', () => ({
             validateAnthropicBaseUrl: () => ({ allowed: true }),
         }));
-        vi.doMock('child_process', () => ({
+        vi.doMock('child_process', async () => ({
+            ...(await vi.importActual('child_process')),
             execSync: vi.fn(),
-            execFile: vi.fn(),
-            execFileSync: vi.fn(),
         }));
         vi.doMock('fs', () => fsModule);
         vi.doMock('https', () => ({
@@ -145,19 +137,15 @@ describe('getUsage lock failure fallback', () => {
                 return true;
             return originalKill.call(process, pid, signal);
         });
-        vi.doMock('../../utils/paths.js', () => ({
-            getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
-        }));
         vi.doMock('../../utils/config-dir.js', () => ({
             getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
         }));
         vi.doMock('../../utils/ssrf-guard.js', () => ({
             validateAnthropicBaseUrl: () => ({ allowed: true }),
         }));
-        vi.doMock('child_process', () => ({
+        vi.doMock('child_process', async () => ({
+            ...(await vi.importActual('child_process')),
             execSync: vi.fn(),
-            execFile: vi.fn(),
-            execFileSync: vi.fn(),
         }));
         vi.doMock('fs', () => fsModule);
         vi.doMock('https', () => ({
@@ -173,7 +161,7 @@ describe('getUsage lock failure fallback', () => {
         process.kill = originalKill;
     });
 });
-describe.skipIf(process.platform === 'win32')('getUsage lock behavior', () => {
+describe('getUsage lock behavior', () => {
     const originalEnv = { ...process.env };
     beforeEach(() => {
         vi.resetModules();
@@ -184,7 +172,6 @@ describe.skipIf(process.platform === 'win32')('getUsage lock behavior', () => {
     });
     afterEach(() => {
         process.env = { ...originalEnv };
-        vi.unmock('../../utils/paths.js');
         vi.unmock('../../utils/config-dir.js');
         vi.unmock('../../utils/ssrf-guard.js');
         vi.unmock('fs');
@@ -202,19 +189,15 @@ describe.skipIf(process.platform === 'win32')('getUsage lock behavior', () => {
         });
         const { files, fsModule } = createFsMock({ [CACHE_PATH]: expiredCache });
         let requestSawLock = false;
-        vi.doMock('../../utils/paths.js', () => ({
-            getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
-        }));
         vi.doMock('../../utils/config-dir.js', () => ({
             getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
         }));
         vi.doMock('../../utils/ssrf-guard.js', () => ({
             validateAnthropicBaseUrl: () => ({ allowed: true }),
         }));
-        vi.doMock('child_process', () => ({
+        vi.doMock('child_process', async () => ({
+            ...(await vi.importActual('child_process')),
             execSync: vi.fn(),
-            execFile: vi.fn(),
-            execFileSync: vi.fn(),
         }));
         vi.doMock('fs', () => fsModule);
         vi.doMock('https', () => ({

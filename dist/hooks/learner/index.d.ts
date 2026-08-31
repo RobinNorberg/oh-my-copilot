@@ -39,7 +39,7 @@ export declare function clearSkillSession(sessionId: string): void;
  */
 export declare function getAllSkills(projectRoot: string | null): LearnedSkill[];
 /**
- * Create the learned skills hook for Copilot CLI.
+ * Create the learned skills hook for Claude Code.
  */
 export declare function createLearnedSkillsHook(projectRoot: string | null): {
     /**

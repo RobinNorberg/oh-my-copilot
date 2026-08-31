@@ -13,7 +13,7 @@ function resolvePromptOpenQuestionsPath(openQuestionsPathOrConfig) {
  * Generate the expansion phase prompt (Phase 0)
  * Analyst extracts requirements, Architect creates technical spec
  */
-export function getExpansionPrompt(idea, openQuestionsPathOrConfig) {
+export function getExpansionPrompt(idea, openQuestionsPathOrConfig, includeLegacyCompletion = true) {
     const openQuestionsPath = resolvePromptOpenQuestionsPath(openQuestionsPathOrConfig);
     return `## AUTOPILOT PHASE 0: IDEA EXPANSION
 
@@ -76,11 +76,11 @@ The Analyst is read-only and cannot write files, so you must persist its open qu
 ### Step 3: Save Combined Spec
 
 Combine Analyst requirements + Architect technical spec into a single document.
-Save to: \`.omcp/autopilot/spec.md\`
+Save to: \`.omg/autopilot/spec.md\`
 
-### Step 4: Signal Completion
+${includeLegacyCompletion ? `### Step 4: Signal Completion
 
-When the spec is saved, signal: EXPANSION_COMPLETE
+When the spec is saved, signal: EXPANSION_COMPLETE` : ''}
 `;
 }
 /**
@@ -172,11 +172,11 @@ When Critic approves: PLANNING_COMPLETE
 export function getExecutionPrompt(planPath) {
     return `## AUTOPILOT PHASE 2: EXECUTION
 
-Execute the plan at ${planPath} using Ralph+Ultrawork mode.
+Execute the plan at ${planPath} using executor agents with Ralph persistence.
 
 ### Activation
 
-Ralph and Ultrawork are now active. Execute tasks in parallel where possible.
+Ralph persistence is active. Delegate independent tasks to executor agents or a coordinated Team where appropriate.
 
 ### Execution Rules
 
@@ -215,10 +215,10 @@ When all tasks from the plan are complete: EXECUTION_COMPLETE
 /**
  * Generate the QA phase prompt (Phase 3)
  */
-export function getQAPrompt() {
+export function getQAPrompt(includeLegacyCompletion = true) {
     return `## AUTOPILOT PHASE 3: QUALITY ASSURANCE
 
-Run UltraQA cycles until build/lint/tests pass.
+Run build/lint/test cycles until all pass.
 
 ### QA Sequence
 
@@ -267,11 +267,11 @@ Task(
 
 ### Exit Conditions
 
-- All checks pass → QA_COMPLETE
+- All checks pass${includeLegacyCompletion ? ' → QA_COMPLETE' : ''}
 - Max cycles reached → Report failures
 - Same error 3 times → Escalate to user
 
-When all checks pass: QA_COMPLETE
+${includeLegacyCompletion ? 'When all checks pass: QA_COMPLETE' : ''}
 `;
 }
 /**
@@ -361,10 +361,10 @@ When all approve: AUTOPILOT_COMPLETE
  */
 function escapeForPrompt(text) {
     return text
-        .replace(/\\/g, '\\\\')
+        .replace(/\\/g, "\\\\")
         .replace(/"/g, '\\"')
-        .replace(/`/g, '\\`')
-        .replace(/\$/g, '\\$');
+        .replace(/`/g, "\\`")
+        .replace(/\$/g, "\\$");
 }
 /**
  * Get the prompt for the current phase
@@ -374,13 +374,13 @@ export function getPhasePrompt(phase, context) {
         case "expansion":
             return getExpansionPrompt(context.idea || "", context.openQuestionsPath || resolveOpenQuestionsPlanPath());
         case "planning":
-            return getDirectPlanningPrompt(context.specPath || ".omcp/autopilot/spec.md", context.planPath || resolveAutopilotPlanPath());
+            return getDirectPlanningPrompt(context.specPath || ".omg/autopilot/spec.md", context.planPath || resolveAutopilotPlanPath());
         case "execution":
             return getExecutionPrompt(context.planPath || resolveAutopilotPlanPath());
         case "qa":
             return getQAPrompt();
         case "validation":
-            return getValidationPrompt(context.specPath || ".omcp/autopilot/spec.md");
+            return getValidationPrompt(context.specPath || ".omg/autopilot/spec.md");
         default:
             return "";
     }

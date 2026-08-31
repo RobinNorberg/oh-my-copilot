@@ -133,6 +133,14 @@ export declare function getReplyListenerPlatformConfig(config: NotificationConfi
 export declare function getReplyConfig(): import("./types.js").ReplyConfig | null;
 import type { CustomIntegration, CustomIntegrationsConfig } from "./types.js";
 /**
+ * Detect if legacy OpenClaw configuration exists.
+ */
+export declare function detectLegacyOpenClawConfig(): boolean;
+/**
+ * Read and migrate legacy OpenClaw config to new custom integration format.
+ */
+export declare function migrateLegacyOpenClawConfig(): CustomIntegration | null;
+/**
  * Read custom integrations configuration from .omc-config.json.
  */
 export declare function getCustomIntegrationsConfig(): CustomIntegrationsConfig | null;

@@ -1,3 +1,6 @@
+import type { MailboxNotificationTarget, MailboxTargetOwnership } from './mailbox-notification-guard.js';
+import type { CliAgentType } from './model-contract.js';
+import { type WorkerLaunchAttempt, type WorkerLaunchContext } from './worker-launch-ack.js';
 export type TeamMultiplexerContext = 'tmux' | 'cmux' | 'none';
 export declare function detectTeamMultiplexerContext(env?: NodeJS.ProcessEnv): TeamMultiplexerContext;
 /**
@@ -5,7 +8,45 @@ export declare function detectTeamMultiplexerContext(env?: NodeJS.ProcessEnv): T
  * Tmux panes run bash in this environment, not cmd.exe.
  */
 export declare function isUnixLikeOnWindows(): boolean;
-export declare function applyMainVerticalLayout(teamTarget: string): Promise<void>;
+export declare function applyMainVerticalLayout(teamTarget: string, options?: {
+    required?: boolean;
+}): Promise<void>;
+type MailboxOwnershipCommand = (args: string[]) => Promise<{
+    stdout: string;
+    stderr: string;
+}>;
+export interface MailboxTargetOwnershipDependencies {
+    tmuxExec: MailboxOwnershipCommand;
+    cmuxExec: MailboxOwnershipCommand;
+}
+/**
+ * Proves that a configured direct-mailbox target still belongs to its exact
+ * provider target. This performs read-only provider queries and never touches
+ * a candidate pane/surface.
+ */
+export declare function verifyTeamTargetOwnership(target: MailboxNotificationTarget, dependencies?: MailboxTargetOwnershipDependencies): Promise<MailboxTargetOwnership>;
+export type DirectMailboxEffectResult = {
+    kind: 'not_attempted';
+    reason: string;
+} | {
+    kind: 'confirmed';
+    transport: 'tmux_send_keys';
+    reason: 'worker_pane_notified' | 'leader_pane_notified';
+} | {
+    kind: 'attempted_unconfirmed';
+    transport: 'tmux_send_keys';
+    reason: 'notification_delivery_uncertain';
+    cause: 'returned_false' | 'threw';
+};
+export interface DirectMailboxEffectDependencies {
+    sendWorker: typeof sendToWorker;
+    sendLeader: typeof injectToLeaderPane;
+}
+/**
+ * Direct-mailbox-only adapter. Once the public boolean transport has been
+ * called, a false result or exception is conservatively treated as uncertain.
+ */
+export declare function invokeDirectMailboxEffect(target: MailboxNotificationTarget, message: string, dependencies?: DirectMailboxEffectDependencies): Promise<DirectMailboxEffectResult>;
 export type TeamSessionMode = 'split-pane' | 'dedicated-window' | 'detached-session';
 export interface TeamSession {
     sessionName: string;
@@ -25,6 +66,11 @@ export interface WorkerPaneConfig {
     /** @deprecated Prefer launchBinary + launchArgs for safe argv handling */
     launchCmd?: string;
     cwd: string;
+    provider?: CliAgentType;
+    launchBootstrapPath?: string;
+    launchStateCwd?: string;
+    launchContext?: WorkerLaunchContext;
+    launchAttempt?: WorkerLaunchAttempt;
 }
 export declare function getDefaultShell(): string;
 /** Shell + rc file pair used for worker pane launch */
@@ -47,6 +93,7 @@ export declare function resolveSupportedShellAffinity(shellPath?: string): Worke
  *   5. Fallback: /bin/sh
  */
 export declare function buildWorkerLaunchSpec(shellPath?: string): WorkerLaunchSpec;
+export declare function redactBoundedDiagnostic(error: unknown, maxLength?: number): string;
 export interface WaitForShellReadyOptions {
     timeoutMs?: number;
     pollIntervalMs?: number;
@@ -78,14 +125,76 @@ export declare function spawnBridgeInSession(tmuxSession: string, bridgeScriptPa
  * is true, creates a detached dedicated tmux window first and then splits worker
  * panes there.
  *
- * When running inside cmux (CMUX_SURFACE_ID without TMUX) or a plain terminal,
- * falls back to a detached tmux session because the current surface cannot be
- * targeted as a normal tmux pane/window. Returns sessionName in "session:window"
- * form.
+ * When running inside cmux (CMUX_SURFACE_ID without TMUX), creates native
+ * cmux splits from the current surface. When running in a plain terminal, falls
+ * back to a detached tmux session. Returns sessionName in "session:window" form
+ * for tmux and "cmux:<workspace>" form for cmux.
  *
  * Layout: leader pane on the left, worker panes stacked vertically on the right.
  * IMPORTANT: Uses pane IDs (%N format) not pane indices for stable targeting.
  */
+/**
+ * Split a new worker pane off `splitTarget`, honoring the active multiplexer.
+ *
+ * Under cmux a worker MUST be a native cmux surface (UUID), not a tmux pane id
+ * (`%N`). Otherwise spawnWorkerInPane()/waitForShellReady() classify the worker
+ * as a tmux pane, poll tmux for shell readiness, and time out after 5s with
+ * `worker_start_shell_not_ready` — abandoning the worker's git worktree.
+ * createTeamSession() already branches this way for panes created up front; the
+ * on-demand worker spawns in both team runtimes must do the same. (#3267)
+ */
+export interface WorkerPaneSplitEvidence {
+    commandSucceeded: boolean;
+    provider: 'tmux' | 'cmux';
+    splitTarget: string;
+    direction: 'right' | 'down';
+    rawOutput: string;
+    stderr: string;
+    paneId: string | null;
+}
+export interface WorkerPaneOwnership {
+    provider: WorkerPaneSplitEvidence['provider'];
+    providerTarget: string;
+    paneId: string;
+    splitTarget: string;
+    leaderPaneId: string;
+    reservedPaneIds: readonly string[];
+    source: 'split' | 'adopted';
+}
+export type WorkerPaneOwnershipResult = {
+    ok: true;
+    ownership: WorkerPaneOwnership;
+} | {
+    ok: false;
+    reason: 'split_failed' | 'pane_id_missing' | 'pane_id_malformed' | 'leader_alias' | 'split_target_alias' | 'reserved_worker_alias' | 'pane_foreign' | 'pane_membership_unavailable';
+};
+export interface StartupPaneContext {
+    ownership: WorkerPaneOwnership;
+    attempt: WorkerLaunchAttempt;
+    provider: CliAgentType;
+}
+export declare function proveWorkerPaneOwnership(evidence: WorkerPaneSplitEvidence, constraints: {
+    providerTarget: string;
+    leaderPaneId: string;
+    reservedPaneIds: readonly string[];
+    requireNewFromSplitTarget?: boolean;
+}): WorkerPaneOwnershipResult;
+export declare function adoptWorkerPaneOwnership(input: {
+    provider: WorkerPaneSplitEvidence['provider'];
+    providerTarget: string;
+    paneId: string;
+    leaderPaneId: string;
+    reservedPaneIds: readonly string[];
+    dependencies?: MailboxTargetOwnershipDependencies;
+}): Promise<WorkerPaneOwnershipResult>;
+export declare function workerPaneBelongsToProviderTarget(input: {
+    provider: WorkerPaneSplitEvidence['provider'];
+    providerTarget: string;
+    paneId: string;
+    dependencies?: MailboxTargetOwnershipDependencies;
+}): Promise<boolean>;
+export declare function splitTeamWorkerPaneWithEvidence(splitTarget: string, direction: 'right' | 'down', cwd: string, provider?: WorkerPaneSplitEvidence['provider']): Promise<WorkerPaneSplitEvidence>;
+export declare function splitTeamWorkerPane(splitTarget: string, direction: 'right' | 'down', cwd: string): Promise<string | null>;
 export declare function createTeamSession(teamName: string, workerCount: number, cwd: string, options?: CreateTeamSessionOptions): Promise<TeamSession>;
 /**
  * Spawn a CLI agent in a specific pane.
@@ -93,14 +202,58 @@ export declare function createTeamSession(teamName: string, workerCount: number,
  * Worker startup: env OMC_TEAM_WORKER={teamName}/workerName shell -lc "exec agentCmd"
  */
 export declare function spawnWorkerInPane(sessionName: string, paneId: string, config: WorkerPaneConfig): Promise<void>;
-export declare function paneHasTrustPrompt(captured: string): boolean;
-export declare function paneHasActiveTask(captured: string): boolean;
-export declare function paneLooksReady(captured: string): boolean;
+export declare function spawnOwnedWorkerInPane(sessionName: string, ownership: WorkerPaneOwnership, config: WorkerPaneConfig): Promise<StartupPaneContext>;
+export type PaneCaptureObservation = {
+    ok: true;
+    captured: string;
+} | {
+    ok: false;
+    error: string;
+};
+export declare function captureTeamPane(paneId: string): Promise<string>;
+export declare function sendTeamPaneKey(paneId: string, key: string): Promise<void>;
+export declare function killTeamPane(paneId: string): Promise<void>;
+export declare function killOwnedWorkerPane(ownership: WorkerPaneOwnership): Promise<void>;
+export declare function paneHasTrustPrompt(captured: string, provider?: CliAgentType): boolean;
+export declare function paneHasCursorWorkspaceTrustPrompt(captured: string): boolean;
+export declare function paneHasActiveTask(captured: string, provider?: CliAgentType): boolean;
+export declare function paneLooksReady(captured: string, provider?: CliAgentType): boolean;
 export interface WaitForPaneReadyOptions {
     timeoutMs?: number;
     pollIntervalMs?: number;
+    attemptAlreadyFenced?: boolean;
+    provider?: CliAgentType;
 }
 export declare function waitForPaneReady(paneId: string, opts?: WaitForPaneReadyOptions): Promise<boolean>;
+export type StartupPaneReadyResult = {
+    ok: true;
+} | {
+    ok: false;
+    reason: 'attempt_inactive' | 'ownership_mismatch' | 'copy_mode' | 'copy_mode_unknown' | 'capture_failed' | 'selector_unsupported' | 'selector_persistent' | 'cursor_workspace_untrusted' | 'pane_busy' | 'readiness_timeout';
+};
+export declare function waitForStartupPaneReady(context: StartupPaneContext, opts?: WaitForPaneReadyOptions): Promise<StartupPaneReadyResult>;
+export declare function deliverStartupInbox(context: StartupPaneContext, message: string, options?: {
+    attemptAlreadyFenced?: boolean;
+}): Promise<{
+    ok: true;
+    kind: 'attempted_unconfirmed';
+} | {
+    ok: false;
+    reason: string;
+}>;
+/**
+ * Outcome of a startup-inbox resubmit probe:
+ * - `resubmitted` — the trigger was still visibly pending and Enter was re-sent.
+ * - `pane_busy` — the owned pane shows an active task: the worker consumed the
+ *   trigger and is working, so resubmitting would duplicate the inbox. Callers
+ *   must keep waiting for startup evidence instead of tearing the launch down.
+ * - `unavailable` — the pane cannot be re-submitted into (inactive attempt,
+ *   copy mode, capture failure, selector, or the trigger text is gone).
+ */
+export type StartupInboxResubmitOutcome = 'resubmitted' | 'pane_busy' | 'unavailable';
+export declare function retryStartupInboxSubmit(context: StartupPaneContext, message: string, options?: {
+    attemptAlreadyFenced?: boolean;
+}): Promise<StartupInboxResubmitOutcome>;
 export declare function shouldAttemptAdaptiveRetry(args: {
     paneBusy: boolean;
     latestCapture: string | null;
@@ -142,7 +295,7 @@ export declare function killWorkerPanes(opts: {
     cwd: string;
     graceMs?: number;
 }): Promise<void>;
-export declare function resolveSplitPaneWorkerPaneIds(sessionName: string, recordedPaneIds?: string[], leaderPaneId?: string): Promise<string[]>;
+export declare function resolveSplitPaneWorkerPaneIds(_sessionName: string, recordedPaneIds?: string[], leaderPaneId?: string): Promise<string[]>;
 /**
  * Kill the team tmux session or just the worker panes, depending on how the
  * team was created.
@@ -153,5 +306,6 @@ export declare function resolveSplitPaneWorkerPaneIds(sessionName: string, recor
  */
 export declare function killTeamSession(sessionName: string, workerPaneIds?: string[], leaderPaneId?: string, options?: {
     sessionMode?: TeamSessionMode;
-}): Promise<void>;
+}): Promise<boolean>;
+export {};
 //# sourceMappingURL=tmux-session.d.ts.map

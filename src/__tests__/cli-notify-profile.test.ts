@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
+import { describe, it, expect } from 'vitest';
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { tmpdir } from 'os';
 import { spawnSync } from 'child_process';
@@ -7,17 +7,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
-const BUNDLED_CLI_ENTRY = join(REPO_ROOT, 'bridge', 'cli.cjs');
-const DIST_CLI_ENTRY = join(REPO_ROOT, 'dist', 'cli', 'index.js');
-const SRC_CLI_ENTRY = join(REPO_ROOT, 'src', 'cli', 'index.ts');
-
-// Prefer the bundled single-file CLI (~1s cold) over dist (~2.8s) over tsx
-// (~10-15s) to keep per-spawn cost reasonable on Windows.
-let cliMode: 'bundle' | 'dist' | 'tsx' = 'tsx';
-beforeAll(() => {
-  if (existsSync(BUNDLED_CLI_ENTRY)) cliMode = 'bundle';
-  else if (existsSync(DIST_CLI_ENTRY)) cliMode = 'dist';
-});
+const CLI_ENTRY = join(REPO_ROOT, 'src', 'cli', 'index.ts');
 
 interface CliRunResult {
   status: number | null;
@@ -26,19 +16,12 @@ interface CliRunResult {
 }
 
 function runCli(args: string[], homeDir: string): CliRunResult {
-  const spawnArgs =
-    cliMode === 'bundle'
-      ? [BUNDLED_CLI_ENTRY, ...args]
-      : cliMode === 'dist'
-        ? [DIST_CLI_ENTRY, ...args]
-        : ['--import', 'tsx', SRC_CLI_ENTRY, ...args];
-
-  const result = spawnSync(process.execPath, spawnArgs, {
+  const result = spawnSync(process.execPath, ['--import', 'tsx', CLI_ENTRY, ...args], {
     cwd: REPO_ROOT,
     env: {
       ...process.env,
       HOME: homeDir,
-      COPILOT_CONFIG_DIR: join(homeDir, '.copilot'),
+      COPILOT_CONFIG_DIR: join(homeDir, '.claude'),
     },
     encoding: 'utf-8',
   });
@@ -57,8 +40,8 @@ function readConfig(configPath: string) {
 describe('omc config-stop-callback --profile', () => {
   it('creates a discord profile and stores it in notificationProfiles', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-profile-'));
-    const configPath = join(homeDir, '.copilot', '.omc-config.json');
-    mkdirSync(join(homeDir, '.copilot'), { recursive: true });
+    const configPath = join(homeDir, '.claude', '.omc-config.json');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({ silentAutoUpdate: false }, null, 2));
 
     const result = runCli([
@@ -81,8 +64,8 @@ describe('omc config-stop-callback --profile', () => {
 
   it('creates a telegram profile', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-profile-'));
-    const configPath = join(homeDir, '.copilot', '.omc-config.json');
-    mkdirSync(join(homeDir, '.copilot'), { recursive: true });
+    const configPath = join(homeDir, '.claude', '.omc-config.json');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({ silentAutoUpdate: false }, null, 2));
 
     const result = runCli([
@@ -103,8 +86,8 @@ describe('omc config-stop-callback --profile', () => {
 
   it('creates a discord-bot profile with --channel-id', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-profile-'));
-    const configPath = join(homeDir, '.copilot', '.omc-config.json');
-    mkdirSync(join(homeDir, '.copilot'), { recursive: true });
+    const configPath = join(homeDir, '.claude', '.omc-config.json');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({ silentAutoUpdate: false }, null, 2));
 
     const result = runCli([
@@ -125,8 +108,8 @@ describe('omc config-stop-callback --profile', () => {
 
   it('adds multiple platforms to the same profile', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-profile-'));
-    const configPath = join(homeDir, '.copilot', '.omc-config.json');
-    mkdirSync(join(homeDir, '.copilot'), { recursive: true });
+    const configPath = join(homeDir, '.claude', '.omc-config.json');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({ silentAutoUpdate: false }, null, 2));
 
     // Add discord first
@@ -153,8 +136,8 @@ describe('omc config-stop-callback --profile', () => {
 
   it('does not affect legacy stopHookCallbacks when using --profile', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-profile-'));
-    const configPath = join(homeDir, '.copilot', '.omc-config.json');
-    mkdirSync(join(homeDir, '.copilot'), { recursive: true });
+    const configPath = join(homeDir, '.claude', '.omc-config.json');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({
       silentAutoUpdate: false,
       stopHookCallbacks: {
@@ -178,8 +161,8 @@ describe('omc config-stop-callback --profile', () => {
 
   it('shows profile config with --show', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-profile-'));
-    const configPath = join(homeDir, '.copilot', '.omc-config.json');
-    mkdirSync(join(homeDir, '.copilot'), { recursive: true });
+    const configPath = join(homeDir, '.claude', '.omc-config.json');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({
       silentAutoUpdate: false,
       notificationProfiles: {
@@ -204,8 +187,8 @@ describe('omc config-stop-callback --profile', () => {
 describe('omc config-notify-profile', () => {
   it('lists all profiles', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-profile-'));
-    const configPath = join(homeDir, '.copilot', '.omc-config.json');
-    mkdirSync(join(homeDir, '.copilot'), { recursive: true });
+    const configPath = join(homeDir, '.claude', '.omc-config.json');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({
       silentAutoUpdate: false,
       notificationProfiles: {
@@ -222,8 +205,8 @@ describe('omc config-notify-profile', () => {
 
   it('shows a specific profile', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-profile-'));
-    const configPath = join(homeDir, '.copilot', '.omc-config.json');
-    mkdirSync(join(homeDir, '.copilot'), { recursive: true });
+    const configPath = join(homeDir, '.claude', '.omc-config.json');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({
       silentAutoUpdate: false,
       notificationProfiles: {
@@ -238,8 +221,8 @@ describe('omc config-notify-profile', () => {
 
   it('deletes a profile', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-profile-'));
-    const configPath = join(homeDir, '.copilot', '.omc-config.json');
-    mkdirSync(join(homeDir, '.copilot'), { recursive: true });
+    const configPath = join(homeDir, '.claude', '.omc-config.json');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({
       silentAutoUpdate: false,
       notificationProfiles: {
@@ -259,8 +242,8 @@ describe('omc config-notify-profile', () => {
 
   it('shows helpful message when no profiles exist', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-profile-'));
-    const configPath = join(homeDir, '.copilot', '.omc-config.json');
-    mkdirSync(join(homeDir, '.copilot'), { recursive: true });
+    const configPath = join(homeDir, '.claude', '.omc-config.json');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
     writeFileSync(configPath, JSON.stringify({ silentAutoUpdate: false }, null, 2));
 
     const result = runCli(['config-notify-profile', '--list'], homeDir);

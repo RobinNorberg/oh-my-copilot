@@ -14,6 +14,7 @@ import { wakeGateway, wakeCommandGateway, interpolateInstruction, isCommandGatew
 import { buildOpenClawSignal } from "./signal.js";
 import { shouldCollapseOpenClawBurst } from "./dedupe.js";
 import { basename, join } from "path";
+import { getOmcRoot } from "../lib/worktree-paths.js";
 import { getCurrentTmuxSession } from "../notifications/tmux.js";
 import { parseTmuxTail } from "../notifications/formatter.js";
 /** Whether debug logging is enabled */
@@ -102,7 +103,7 @@ export async function wakeOpenClaw(event, context) {
                 const paneId = process.env.TMUX_PANE;
                 const projectPath = context.projectPath;
                 if (paneId && projectPath) {
-                    const stateDir = join(projectPath, ".omc", "state");
+                    const stateDir = join(getOmcRoot(projectPath), "state");
                     const fresh = getNewPaneTail(paneId, stateDir, 15);
                     tmuxTail = fresh || undefined;
                 }

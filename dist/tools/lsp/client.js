@@ -26,7 +26,7 @@ function readPositiveIntEnv(name, fallback) {
         return fallback;
     }
     const parsed = parseInt(env, 10);
-    return isNaN(parsed) || parsed <= 0 ? fallback : parsed;
+    return !isNaN(parsed) && parsed > 0 ? parsed : fallback;
 }
 /** Convert a file path to a valid file:// URI (cross-platform) */
 function fileUri(filePath) {
@@ -36,6 +36,7 @@ function fileUri(filePath) {
  * LSP Client class
  */
 export class LspClient {
+    static MAX_BUFFER_SIZE = 50 * 1024 * 1024; // 50MB
     process = null;
     requestId = 0;
     pendingRequests = new Map();
@@ -68,6 +69,10 @@ export class LspClient {
                 : `Language server '${this.serverConfig.command}' not found.\nInstall with: ${this.serverConfig.installHint}`);
         }
         return new Promise((resolve, reject) => {
+            // On Windows, npm-installed binaries are .cmd scripts that require
+            // shell execution. Without this, spawn() fails with ENOENT. (#569)
+            // Safe: server commands come from a hardcoded registry (servers.ts),
+            // not user input, so shell metacharacter injection is not a concern.
             const command = this.devContainerContext ? 'docker' : this.serverConfig.command;
             const args = this.devContainerContext
                 ? ['exec', '-i', '-w', this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args]
@@ -75,8 +80,6 @@ export class LspClient {
             this.process = spawn(command, args, {
                 cwd: this.workspaceRoot,
                 stdio: ['pipe', 'pipe', 'pipe'],
-                // On Windows, npm-installed binaries are .cmd scripts that require
-                // shell execution. Without this, spawn() fails with ENOENT. (#569)
                 shell: !this.devContainerContext && process.platform === 'win32'
             });
             this.process.stdout?.on('data', (data) => {
@@ -136,24 +139,30 @@ export class LspClient {
         if (!this.process)
             return;
         try {
-            await this.request('shutdown', null);
+            // Short timeout for graceful shutdown — don't block forever
+            await this.request('shutdown', null, 3000);
             this.notify('exit', null);
         }
         catch {
             // Ignore errors during shutdown
         }
-        this.process.kill();
-        this.process = null;
-        this.initialized = false;
-        this.pendingRequests.clear();
-        this.openDocuments.clear();
-        this.diagnostics.clear();
-        // Wake all diagnostic waiters so their setTimeout closures can be GC'd
-        for (const waiters of this.diagnosticWaiters.values()) {
-            for (const wake of waiters)
-                wake();
+        finally {
+            // Always kill the process regardless of shutdown success
+            if (this.process) {
+                this.process.kill();
+                this.process = null;
+            }
+            this.initialized = false;
+            this.rejectPendingRequests(new Error('Client disconnected'));
+            this.openDocuments.clear();
+            this.diagnostics.clear();
+            // Wake all diagnostic waiters so their setTimeout closures can be GC'd
+            for (const waiters of this.diagnosticWaiters.values()) {
+                for (const wake of waiters)
+                    wake();
+            }
+            this.diagnosticWaiters.clear();
         }
-        this.diagnosticWaiters.clear();
     }
     /**
      * Reject all pending requests with the given error.
@@ -171,6 +180,13 @@ export class LspClient {
      */
     handleData(data) {
         this.buffer = Buffer.concat([this.buffer, data]);
+        // Prevent unbounded buffer growth from misbehaving LSP server
+        if (this.buffer.length > LspClient.MAX_BUFFER_SIZE) {
+            console.error('[LSP] Response buffer exceeded 50MB limit, resetting');
+            this.buffer = Buffer.alloc(0);
+            this.rejectPendingRequests(new Error('LSP response buffer overflow'));
+            return;
+        }
         while (true) {
             // Look for Content-Length header
             const headerEnd = this.buffer.indexOf('\r\n\r\n');
@@ -204,24 +220,44 @@ export class LspClient {
      * Handle a parsed JSON-RPC message
      */
     handleMessage(message) {
-        if ('id' in message && message.id !== undefined) {
+        const record = message;
+        const hasOwnMethod = Object.prototype.hasOwnProperty.call(message, 'method');
+        const hasOwnId = Object.prototype.hasOwnProperty.call(message, 'id');
+        if (hasOwnMethod && typeof record.method === 'string') {
+            const id = record.id;
+            if (hasOwnId) {
+                if (typeof id === 'string' || (typeof id === 'number' && Number.isInteger(id))) {
+                    this.handleServerRequest(message);
+                }
+                return;
+            }
+            this.handleNotification(message);
+            return;
+        }
+        if (!hasOwnMethod && hasOwnId && typeof record.id === 'number') {
             // Response to a request
-            const pending = this.pendingRequests.get(message.id);
+            const response = message;
+            const pending = this.pendingRequests.get(response.id);
             if (pending) {
                 clearTimeout(pending.timeout);
-                this.pendingRequests.delete(message.id);
-                if (message.error) {
-                    pending.reject(new Error(message.error.message));
+                this.pendingRequests.delete(response.id);
+                if (response.error) {
+                    pending.reject(new Error(response.error.message));
                 }
                 else {
-                    pending.resolve(message.result);
+                    pending.resolve(response.result);
                 }
             }
         }
-        else if ('method' in message) {
-            // Notification from server
-            this.handleNotification(message);
-        }
+    }
+    /** Reply to unsupported server requests without claiming they succeeded. */
+    handleServerRequest(request) {
+        const error = request.method === 'client/registerCapability'
+            ? { code: -32803, message: 'Dynamic capability registration is not supported' }
+            : { code: -32601, message: 'Method not found' };
+        const response = { jsonrpc: '2.0', id: request.id, error };
+        const content = JSON.stringify(response);
+        this.process?.stdin?.write(`Content-Length: ${Buffer.byteLength(content)}\r\n\r\n${content}`);
     }
     /**
      * Handle server notifications
@@ -608,17 +644,18 @@ export class LspClient {
     }
 }
 /** Idle timeout: disconnect LSP clients unused for 5 minutes */
-export const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+export const IDLE_TIMEOUT_MS = readPositiveIntEnv('OMC_LSP_IDLE_TIMEOUT_MS', 5 * 60 * 1000);
 /** Check for idle clients every 60 seconds */
-export const IDLE_CHECK_INTERVAL_MS = 60 * 1000;
+export const IDLE_CHECK_INTERVAL_MS = readPositiveIntEnv('OMC_LSP_IDLE_CHECK_INTERVAL_MS', 60 * 1000);
 /**
  * Client manager - maintains a pool of LSP clients per workspace/server
  * with idle eviction to free resources and in-flight request protection.
  */
-class LspClientManager {
+export class LspClientManager {
     clients = new Map();
     lastUsed = new Map();
     inFlightCount = new Map();
+    idleDeadlines = new Map();
     idleTimer = null;
     constructor() {
         this.startIdleCheck();
@@ -627,10 +664,18 @@ class LspClientManager {
     /**
      * Register process exit/signal handlers to kill all spawned LSP server processes.
      * Prevents orphaned language server processes (e.g. kotlin-language-server)
-     * when the MCP bridge process exits or a copilot session ends.
+     * when the MCP bridge process exits or a claude session ends.
      */
     registerCleanupHandlers() {
         const forceKillAll = () => {
+            if (this.idleTimer) {
+                clearInterval(this.idleTimer);
+                this.idleTimer = null;
+            }
+            for (const timer of this.idleDeadlines.values()) {
+                clearTimeout(timer);
+            }
+            this.idleDeadlines.clear();
             for (const client of this.clients.values()) {
                 try {
                     client.forceKill();
@@ -645,24 +690,21 @@ class LspClientManager {
         };
         // 'exit' handler must be synchronous — forceKill() is sync
         process.on('exit', forceKillAll);
-        // For signals, force-kill all LSP servers then exit
+        // For signals, force-kill LSP servers but do NOT call process.exit()
+        // to allow other signal handlers (e.g., Python bridge cleanup) to run
         for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
-            process.on(sig, () => {
-                forceKillAll();
-                process.exit(0);
-            });
+            process.on(sig, forceKillAll);
         }
     }
     /**
      * Get or create a client for a file
      */
     async getClientForFile(filePath) {
-        const serverConfig = getServerForFile(filePath);
+        const workspaceRoot = this.findWorkspaceRoot(filePath);
+        const serverConfig = getServerForFile(filePath, workspaceRoot);
         if (!serverConfig) {
             return null;
         }
-        // Find workspace root
-        const workspaceRoot = this.findWorkspaceRoot(filePath);
         const devContainerContext = resolveDevContainerContext(workspaceRoot);
         const key = `${workspaceRoot}:${serverConfig.command}:${devContainerContext?.containerId ?? 'host'}`;
         let client = this.clients.get(key);
@@ -676,8 +718,7 @@ class LspClientManager {
                 throw error;
             }
         }
-        // Track last-used timestamp
-        this.lastUsed.set(key, Date.now());
+        this.touchClient(key);
         return client;
     }
     /**
@@ -686,11 +727,11 @@ class LspClientManager {
      * The lastUsed timestamp is refreshed on both entry and exit.
      */
     async runWithClientLease(filePath, fn) {
-        const serverConfig = getServerForFile(filePath);
+        const workspaceRoot = this.findWorkspaceRoot(filePath);
+        const serverConfig = getServerForFile(filePath, workspaceRoot);
         if (!serverConfig) {
             throw new Error(`No language server available for: ${filePath}`);
         }
-        const workspaceRoot = this.findWorkspaceRoot(filePath);
         const devContainerContext = resolveDevContainerContext(workspaceRoot);
         const key = `${workspaceRoot}:${serverConfig.command}:${devContainerContext?.containerId ?? 'host'}`;
         let client = this.clients.get(key);
@@ -705,7 +746,7 @@ class LspClientManager {
             }
         }
         // Touch timestamp and increment in-flight counter
-        this.lastUsed.set(key, Date.now());
+        this.touchClient(key);
         this.inFlightCount.set(key, (this.inFlightCount.get(key) || 0) + 1);
         try {
             return await fn(client);
@@ -719,8 +760,31 @@ class LspClientManager {
             else {
                 this.inFlightCount.set(key, count);
             }
-            this.lastUsed.set(key, Date.now());
+            this.touchClient(key);
         }
+    }
+    touchClient(key) {
+        this.lastUsed.set(key, Date.now());
+        this.scheduleIdleDeadline(key);
+    }
+    scheduleIdleDeadline(key) {
+        this.clearIdleDeadline(key);
+        const timer = setTimeout(() => {
+            this.idleDeadlines.delete(key);
+            this.evictClientIfIdle(key);
+        }, IDLE_TIMEOUT_MS);
+        if (typeof timer === 'object' && 'unref' in timer) {
+            timer.unref();
+        }
+        this.idleDeadlines.set(key, timer);
+    }
+    clearIdleDeadline(key) {
+        const timer = this.idleDeadlines.get(key);
+        if (!timer) {
+            return;
+        }
+        clearTimeout(timer);
+        this.idleDeadlines.delete(key);
     }
     /**
      * Find the workspace root for a file
@@ -768,23 +832,38 @@ class LspClientManager {
      * Clients with in-flight requests are never evicted.
      */
     evictIdleClients() {
-        const now = Date.now();
-        for (const [key, lastUsedTime] of this.lastUsed.entries()) {
-            if (now - lastUsedTime > IDLE_TIMEOUT_MS) {
-                // Skip eviction if there are in-flight requests
-                if ((this.inFlightCount.get(key) || 0) > 0) {
-                    continue;
-                }
-                const client = this.clients.get(key);
-                if (client) {
-                    client.disconnect().catch(() => {
-                        // Ignore disconnect errors during eviction
-                    });
-                    this.clients.delete(key);
-                    this.lastUsed.delete(key);
-                    this.inFlightCount.delete(key);
-                }
+        for (const key of this.lastUsed.keys()) {
+            this.evictClientIfIdle(key);
+        }
+    }
+    evictClientIfIdle(key) {
+        const lastUsedTime = this.lastUsed.get(key);
+        if (lastUsedTime === undefined) {
+            this.clearIdleDeadline(key);
+            return;
+        }
+        const idleFor = Date.now() - lastUsedTime;
+        if (idleFor <= IDLE_TIMEOUT_MS) {
+            const hasDeadline = this.idleDeadlines.has(key);
+            if (!hasDeadline) {
+                this.scheduleIdleDeadline(key);
             }
+            return;
+        }
+        // Skip eviction if there are in-flight requests
+        if ((this.inFlightCount.get(key) || 0) > 0) {
+            this.scheduleIdleDeadline(key);
+            return;
+        }
+        const client = this.clients.get(key);
+        this.clearIdleDeadline(key);
+        this.clients.delete(key);
+        this.lastUsed.delete(key);
+        this.inFlightCount.delete(key);
+        if (client) {
+            client.disconnect().catch(() => {
+                // Ignore disconnect errors during eviction
+            });
         }
     }
     /**
@@ -797,6 +876,10 @@ class LspClientManager {
             clearInterval(this.idleTimer);
             this.idleTimer = null;
         }
+        for (const timer of this.idleDeadlines.values()) {
+            clearTimeout(timer);
+        }
+        this.idleDeadlines.clear();
         const entries = Array.from(this.clients.entries());
         const results = await Promise.allSettled(entries.map(([, client]) => client.disconnect()));
         // Log any per-client failures at warn level
@@ -825,8 +908,13 @@ class LspClientManager {
         this.evictIdleClients();
     }
 }
-// Export a singleton instance
-export const lspClientManager = new LspClientManager();
+const LSP_CLIENT_MANAGER_KEY = '__omcLspClientManager';
+// Export a process-global singleton instance. This protects against duplicate
+// manager instances if the module is loaded more than once in the same process
+// (for example after module resets in tests or bundle indirection).
+const globalWithLspClientManager = globalThis;
+export const lspClientManager = globalWithLspClientManager[LSP_CLIENT_MANAGER_KEY]
+    ?? (globalWithLspClientManager[LSP_CLIENT_MANAGER_KEY] = new LspClientManager());
 /**
  * Disconnect all LSP clients and free resources.
  * Exported for use in session-end hooks.

@@ -54,7 +54,7 @@ export function adaptPromptForOpus(basePrompt: string): string {
  */
 export const OPUS_DELEGATION_TEMPLATE = `## HIGH-TIER TASK DELEGATION
 
-**Model**: Copilot Opus (deep reasoning)
+**Model**: Claude Opus (deep reasoning)
 **Expectations**: Thorough analysis, strategic thinking, edge case handling
 
 ### Task

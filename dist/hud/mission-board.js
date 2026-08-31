@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
-import { getOmcRoot } from '../lib/worktree-paths.js';
+import { withFileLockSync } from '../lib/file-lock.js';
+import { getOmcRoot, getProcessSessionId, isLegacyStateMigrationEnabled, resolveSessionStatePaths, } from '../lib/worktree-paths.js';
 import { truncateToWidth } from '../utils/string-width.js';
 import { canonicalizeWorkers } from '../team/worker-canonicalization.js';
 const DEFAULT_CONFIG = {
@@ -24,9 +25,6 @@ function resolveConfig(config) {
         ...config,
         enabled: config?.enabled ?? DEFAULT_CONFIG.enabled,
     };
-}
-function stateFilePath(directory) {
-    return join(getOmcRoot(directory), 'state', 'mission-state.json');
 }
 function readJsonSafe(path) {
     if (!existsSync(path))
@@ -52,12 +50,51 @@ function readJsonLinesSafe(path) {
         return [];
     }
 }
-function writeState(directory, state) {
-    const stateDir = join(getOmcRoot(directory), 'state');
+/**
+ * Perform a one-shot legacy → session-scoped migration when:
+ *   - OMC_MIGRATE_LEGACY_STATE=1 is set, AND
+ *   - the session-scoped file does not yet exist, AND
+ *   - a legacy file exists.
+ * Uses a `.migrating` sentinel + atomic rename for crash safety.
+ * No caller opt-in is exposed — gated solely on the env var because
+ * mission-board callers don't thread a migration flag through the call stack.
+ */
+function maybeMigrateLegacy(paths) {
+    if (!isLegacyStateMigrationEnabled())
+        return;
+    if (!paths.sessionScoped)
+        return;
+    if (existsSync(paths.sessionScoped))
+        return;
+    if (!existsSync(paths.legacy))
+        return;
+    const sentinel = paths.sessionScoped + '.migrating';
+    try {
+        const sessionDir = join(paths.sessionScoped, '..');
+        if (!existsSync(sessionDir)) {
+            mkdirSync(sessionDir, { recursive: true });
+        }
+        copyFileSync(paths.legacy, sentinel);
+        renameSync(sentinel, paths.sessionScoped);
+    }
+    catch {
+        // migration is best-effort; ignore failures so normal write proceeds
+        try {
+            renameSync(sentinel, sentinel + '.failed');
+        }
+        catch { /* ignore */ }
+    }
+}
+function writeState(directory, state, sessionId) {
+    const paths = resolveSessionStatePaths('mission-state', sessionId, directory);
+    const writePath = paths.effectiveWrite;
+    const stateDir = join(writePath, '..');
     if (!existsSync(stateDir)) {
         mkdirSync(stateDir, { recursive: true });
     }
-    atomicWriteJsonSync(stateFilePath(directory), state);
+    withFileLockSync(writePath + '.lock', () => {
+        atomicWriteJsonSync(writePath, state);
+    });
     return state;
 }
 function parseTime(value) {
@@ -136,12 +173,23 @@ function recalcSessionMission(mission) {
     };
     mission.status = deriveSessionStatus(mission);
 }
-export function readMissionBoardState(directory) {
-    return readJsonSafe(stateFilePath(directory));
+export function readMissionBoardState(directory, sessionId) {
+    const effectiveSessionId = sessionId ?? getProcessSessionId();
+    const paths = resolveSessionStatePaths('mission-state', effectiveSessionId, directory);
+    maybeMigrateLegacy(paths);
+    if (effectiveSessionId) {
+        // Session-scoped read: read sessionScoped path EXCLUSIVELY (no legacy fallback).
+        // Legacy fallback would leak missions from a pre-session file into a fresh session
+        // on its first read — the RMW path (read → mutate → write) would then bleed
+        // legacy data into the new session-scoped file.
+        return readJsonSafe(paths.sessionScoped);
+    }
+    return readJsonSafe(paths.effectiveRead);
 }
-export function recordMissionAgentStart(directory, input) {
+export function recordMissionAgentStart(directory, input, sessionId) {
+    const effectiveSessionId = sessionId ?? getProcessSessionId();
     const now = input.at || new Date().toISOString();
-    const state = readMissionBoardState(directory) || { updatedAt: now, missions: [] };
+    const state = readMissionBoardState(directory, effectiveSessionId) || { updatedAt: now, missions: [] };
     const mission = ensureSessionMission(state, input);
     const agentName = sessionAgentName(input.agentType, input.agentId);
     const agent = mission.agents.find((entry) => entry.ownership === input.agentId) || {
@@ -174,11 +222,12 @@ export function recordMissionAgentStart(directory, input) {
     mission.timeline = mission.timeline.slice(-DEFAULT_CONFIG.maxTimelineEvents);
     recalcSessionMission(mission);
     state.updatedAt = now;
-    return writeState(directory, state);
+    return writeState(directory, state, effectiveSessionId);
 }
-export function recordMissionAgentStop(directory, input) {
+export function recordMissionAgentStop(directory, input, sessionId) {
+    const effectiveSessionId = sessionId ?? getProcessSessionId();
     const now = input.at || new Date().toISOString();
-    const state = readMissionBoardState(directory) || { updatedAt: now, missions: [] };
+    const state = readMissionBoardState(directory, effectiveSessionId) || { updatedAt: now, missions: [] };
     const mission = state.missions
         .filter((entry) => entry.source === 'session' && entry.id.startsWith(`session:${input.sessionId}:`))
         .sort((left, right) => parseTime(right.updatedAt) - parseTime(left.updatedAt))[0];
@@ -205,7 +254,7 @@ export function recordMissionAgentStop(directory, input) {
     });
     recalcSessionMission(mission);
     state.updatedAt = now;
-    return writeState(directory, state);
+    return writeState(directory, state, effectiveSessionId);
 }
 function deriveTeamStatus(taskCounts, agents) {
     if (taskCounts.inProgress > 0 || agents.some((agent) => agent.status === 'running')) {
@@ -366,9 +415,10 @@ function mergeMissions(previous, teamMissions, config) {
     })
         .slice(0, config.maxMissions);
 }
-export function refreshMissionBoardState(directory, rawConfig = DEFAULT_CONFIG) {
+export function refreshMissionBoardState(directory, rawConfig = DEFAULT_CONFIG, sessionId) {
+    const effectiveSessionId = sessionId ?? getProcessSessionId();
     const config = resolveConfig(rawConfig);
-    const previous = readMissionBoardState(directory);
+    const previous = readMissionBoardState(directory, effectiveSessionId);
     const teamsRoot = join(getOmcRoot(directory), 'state', 'team');
     const teamMissions = existsSync(teamsRoot)
         ? readdirSync(teamsRoot, { withFileTypes: true })
@@ -380,7 +430,7 @@ export function refreshMissionBoardState(directory, rawConfig = DEFAULT_CONFIG) 
         updatedAt: new Date().toISOString(),
         missions: mergeMissions(previous, teamMissions, config),
     };
-    return writeState(directory, state);
+    return writeState(directory, state, effectiveSessionId);
 }
 export function renderMissionBoard(state, rawConfig = DEFAULT_CONFIG) {
     if (!state || !Array.isArray(state.missions) || state.missions.length === 0)

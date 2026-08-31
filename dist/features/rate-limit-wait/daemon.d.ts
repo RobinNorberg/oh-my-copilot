@@ -2,7 +2,7 @@
  * Rate Limit Wait Daemon
  *
  * Background daemon that monitors rate limits and auto-resumes
- * Copilot CLI sessions when rate limits reset.
+ * Claude Code sessions when rate limits reset.
  *
  * Security considerations:
  * - State/PID/log files use restrictive permissions (0600)

@@ -28,6 +28,140 @@ export function ensureDirSync(dir) {
         throw err;
     }
 }
+function writeAllSync(fd, content, label) {
+    const bytes = Buffer.from(content, "utf-8");
+    let offset = 0;
+    while (offset < bytes.length) {
+        const written = fsSync.writeSync(fd, bytes, offset, bytes.length - offset);
+        if (!Number.isInteger(written) || written <= 0) {
+            throw new Error(`${label} made no progress`);
+        }
+        offset += written;
+    }
+    if (fsSync.fstatSync(fd).size !== bytes.length) {
+        throw new Error(`${label} size verification failed`);
+    }
+}
+/**
+ * Verify the unpublished generation before it can be renamed into place.
+ * The descriptor check prevents writes through a special file or a hardlink;
+ * comparing the pathname identity with the open descriptor also rejects an
+ * attacker that replaced the temporary pathname after creation.
+ */
+function verifyPrivateTempFile(fd, tempPath, label) {
+    const fdStats = fsSync.fstatSync(fd);
+    let pathStats;
+    try {
+        pathStats = fsSync.lstatSync(tempPath);
+    }
+    catch {
+        throw new Error(`${label} temporary file was replaced before rename`);
+    }
+    const isWindows = process.platform === "win32";
+    const isPrivateRegularSingleLink = (stats) => stats.isFile() &&
+        (isWindows ? stats.nlink <= 1 : stats.nlink === 1) &&
+        (isWindows || (stats.mode & 0o777) === 0o600);
+    if (!isPrivateRegularSingleLink(fdStats) ||
+        !isPrivateRegularSingleLink(pathStats)) {
+        throw new Error(`${label} temporary file must be a private regular single-link file`);
+    }
+    if (fdStats.dev !== pathStats.dev || fdStats.ino !== pathStats.ino) {
+        throw new Error(`${label} temporary file was replaced before rename`);
+    }
+}
+/** Verify that publication installed the exact inode we opened and wrote. */
+function verifyPublishedFile(fd, filePath, label) {
+    const fdStats = fsSync.fstatSync(fd);
+    let pathStats;
+    try {
+        pathStats = fsSync.lstatSync(filePath);
+    }
+    catch {
+        throw new Error(`${label} target was replaced at publication`);
+    }
+    if (!pathStats.isFile() ||
+        fdStats.dev !== pathStats.dev ||
+        fdStats.ino !== pathStats.ino) {
+        throw new Error(`${label} target was replaced at publication`);
+    }
+}
+/** Keep a hard-link to the prior target so failed publication can roll back. */
+function preservePriorTarget(filePath) {
+    const backupPath = `${filePath}.rollback.${crypto.randomUUID()}`;
+    try {
+        const stats = fsSync.lstatSync(filePath);
+        const isWindows = process.platform === "win32";
+        if (!stats.isFile() ||
+            (isWindows ? stats.nlink > 1 : stats.nlink !== 1)) {
+            return null;
+        }
+        fsSync.linkSync(filePath, backupPath);
+        return backupPath;
+    }
+    catch (error) {
+        if (error.code !== "ENOENT") {
+            try {
+                fsSync.unlinkSync(backupPath);
+            }
+            catch {
+                // Best effort cleanup of an uncreated backup.
+            }
+        }
+        return null;
+    }
+}
+function currentFileIdentity(filePath) {
+    try {
+        const stats = fsSync.lstatSync(filePath);
+        return { dev: stats.dev, ino: stats.ino };
+    }
+    catch {
+        return null;
+    }
+}
+function descriptorIdentity(fd) {
+    try {
+        const stats = fsSync.fstatSync(fd);
+        return { dev: stats.dev, ino: stats.ino };
+    }
+    catch {
+        return null;
+    }
+}
+function rollbackPriorTarget(filePath, backupPath, expectedIdentity) {
+    // Without a positively identified published inode, the target may be a
+    // concurrent foreign replacement. Leave it untouched and fail closed.
+    if (expectedIdentity === null)
+        return;
+    const current = currentFileIdentity(filePath);
+    if (current === null)
+        return;
+    if (expectedIdentity !== null &&
+        (current.dev !== expectedIdentity.dev || current.ino !== expectedIdentity.ino)) {
+        return;
+    }
+    try {
+        if (backupPath === null) {
+            fsSync.unlinkSync(filePath);
+        }
+        else {
+            fsSync.renameSync(backupPath, filePath);
+        }
+    }
+    catch {
+        // The caller still fails closed; retain whichever durable target remains.
+    }
+}
+function removeBackup(backupPath) {
+    if (backupPath === null)
+        return;
+    try {
+        fsSync.unlinkSync(backupPath);
+    }
+    catch {
+        // Best effort cleanup after a successful publication.
+    }
+}
 /**
  * Write JSON data atomically to a file.
  * Uses temp file + atomic rename pattern to ensure durability.
@@ -36,30 +170,55 @@ export function ensureDirSync(dir) {
  * @param data Data to serialize as JSON
  * @throws Error if JSON serialization fails or write operation fails
  */
-export async function atomicWriteJson(filePath, data) {
+export async function atomicWriteJson(filePath, data, hooks) {
     const dir = path.dirname(filePath);
     const base = path.basename(filePath);
     const tempPath = path.join(dir, `.${base}.tmp.${crypto.randomUUID()}`);
     let success = false;
+    let backupPath = null;
+    let fd = null;
     try {
         // Ensure parent directory exists
         ensureDirSync(dir);
         // Serialize data to JSON
-        const jsonContent = JSON.stringify(data, null, 2);
+        const jsonContent = Buffer.from(JSON.stringify(data, null, 2), "utf-8");
         // Write to temp file with exclusive creation (wx = O_CREAT | O_EXCL | O_WRONLY)
-        const fd = await fs.open(tempPath, "wx", 0o600);
+        fd = await fs.open(tempPath, "wx", 0o600);
         try {
-            await fd.write(jsonContent, 0, "utf-8");
+            let offset = 0;
+            while (offset < jsonContent.length) {
+                const { bytesWritten } = await fd.write(jsonContent, offset, jsonContent.length - offset, offset);
+                if (bytesWritten === 0) {
+                    throw new Error("Failed to write complete JSON payload");
+                }
+                offset += bytesWritten;
+            }
             // Sync file data to disk before rename
             await fd.sync();
+            verifyPrivateTempFile(fd.fd, tempPath, "atomic JSON write");
+            backupPath = preservePriorTarget(filePath);
+            hooks?.beforeRename?.();
+            // Keep the opened descriptor live through rename so publication can be
+            // checked against the inode that was actually written.
+            await fs.rename(tempPath, filePath);
+            let publishedIdentity = null;
+            try {
+                verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
+                publishedIdentity = descriptorIdentity(fd.fd);
+                hooks?.afterRename?.();
+                verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
+            }
+            catch (error) {
+                rollbackPriorTarget(filePath, backupPath, publishedIdentity);
+                throw error;
+            }
         }
         finally {
             await fd.close();
+            fd = null;
         }
-        // Atomic rename - replaces target file if it exists
-        // On Windows, fs.rename uses MoveFileExW with MOVEFILE_REPLACE_EXISTING
-        await fs.rename(tempPath, filePath);
         success = true;
+        removeBackup(backupPath);
         // Best-effort directory fsync to ensure rename is durable
         try {
             const dirFd = await fs.open(dir, "r");
@@ -78,6 +237,7 @@ export async function atomicWriteJson(filePath, data) {
         // Clean up temp file on error
         if (!success) {
             await fs.unlink(tempPath).catch(() => { });
+            removeBackup(backupPath);
         }
     }
 }
@@ -89,52 +249,8 @@ export async function atomicWriteJson(filePath, data) {
  * @param content Text content to write
  * @throws Error if write operation fails
  */
-export function atomicWriteSync(filePath, content) {
-    const dir = path.dirname(filePath);
-    const base = path.basename(filePath);
-    const tempPath = path.join(dir, `.${base}.tmp.${crypto.randomUUID()}`);
-    let success = false;
-    try {
-        // Ensure parent directory exists
-        ensureDirSync(dir);
-        // Write to temp file with exclusive creation
-        const fd = fsSync.openSync(tempPath, 'wx', 0o600);
-        try {
-            fsSync.writeSync(fd, content, 0, 'utf-8');
-            // Sync file data to disk before rename
-            fsSync.fsyncSync(fd);
-        }
-        finally {
-            fsSync.closeSync(fd);
-        }
-        // Atomic rename - replaces target file if it exists
-        fsSync.renameSync(tempPath, filePath);
-        success = true;
-        // Best-effort directory fsync to ensure rename is durable
-        try {
-            const dirFd = fsSync.openSync(dir, 'r');
-            try {
-                fsSync.fsyncSync(dirFd);
-            }
-            finally {
-                fsSync.closeSync(dirFd);
-            }
-        }
-        catch {
-            // Some platforms don't support directory fsync - that's okay
-        }
-    }
-    finally {
-        // Clean up temp file on error
-        if (!success) {
-            try {
-                fsSync.unlinkSync(tempPath);
-            }
-            catch {
-                // Ignore cleanup errors
-            }
-        }
-    }
+export function atomicWriteSync(filePath, content, hooks) {
+    atomicWriteFileSync(filePath, content, hooks);
 }
 /**
  * Read and parse JSON file with error handling.
@@ -151,27 +267,43 @@ export function atomicWriteSync(filePath, content) {
  * @param content String content to write
  * @throws Error if write operation fails
  */
-export function atomicWriteFileSync(filePath, content) {
+export function atomicWriteFileSync(filePath, content, hooks) {
     const dir = path.dirname(filePath);
     const base = path.basename(filePath);
     const tempPath = path.join(dir, `.${base}.tmp.${crypto.randomUUID()}`);
     let fd = null;
     let success = false;
+    let backupPath = null;
     try {
         // Ensure parent directory exists
         ensureDirSync(dir);
         // Open temp file with exclusive creation (O_CREAT | O_EXCL | O_WRONLY)
         fd = fsSync.openSync(tempPath, "wx", 0o600);
         // Write content
-        fsSync.writeSync(fd, content, 0, "utf-8");
+        writeAllSync(fd, content, "atomic write");
         // Sync file data to disk before rename
         fsSync.fsyncSync(fd);
-        // Close before rename
+        verifyPrivateTempFile(fd, tempPath, "atomic write");
+        backupPath = preservePriorTarget(filePath);
+        hooks?.beforeRename?.();
+        // Keep the opened descriptor live through rename so publication can be
+        // checked against the inode that was actually written.
+        fsSync.renameSync(tempPath, filePath);
+        let publishedIdentity = null;
+        try {
+            verifyPublishedFile(fd, filePath, "atomic write");
+            publishedIdentity = descriptorIdentity(fd);
+            hooks?.afterRename?.();
+            verifyPublishedFile(fd, filePath, "atomic write");
+        }
+        catch (error) {
+            rollbackPriorTarget(filePath, backupPath, publishedIdentity);
+            throw error;
+        }
         fsSync.closeSync(fd);
         fd = null;
-        // Atomic rename - replaces target file if it exists
-        fsSync.renameSync(tempPath, filePath);
         success = true;
+        removeBackup(backupPath);
         // Best-effort directory fsync to ensure rename is durable
         try {
             const dirFd = fsSync.openSync(dir, "r");
@@ -204,6 +336,7 @@ export function atomicWriteFileSync(filePath, content) {
             catch {
                 // Ignore cleanup errors
             }
+            removeBackup(backupPath);
         }
     }
 }
@@ -215,9 +348,124 @@ export function atomicWriteFileSync(filePath, content) {
  * @param data Data to serialize as JSON
  * @throws Error if JSON serialization fails or write operation fails
  */
-export function atomicWriteJsonSync(filePath, data) {
+export function atomicWriteJsonSync(filePath, data, hooks) {
     const jsonContent = JSON.stringify(data, null, 2);
-    atomicWriteFileSync(filePath, jsonContent);
+    atomicWriteFileSync(filePath, jsonContent, hooks);
+}
+const ATOMIC_BATCH_MAX_WRITES = 64;
+const ATOMIC_BATCH_MAX_CONTENT_BYTES = 1024 * 1024;
+export function atomicWriteBatchSync(writes, hooks) {
+    if (writes.length > ATOMIC_BATCH_MAX_WRITES) {
+        throw new Error(`Atomic batch exceeds ${ATOMIC_BATCH_MAX_WRITES} writes`);
+    }
+    const targets = new Set();
+    let totalBytes = 0;
+    const pending = writes.map((write) => {
+        if (!write.path || typeof write.content !== "string") {
+            throw new TypeError("Atomic batch writes require a path and string content");
+        }
+        if (write.mode !== undefined && (!Number.isInteger(write.mode) || write.mode < 0 || write.mode > 0o777)) {
+            throw new RangeError("Atomic batch write mode must be a valid file mode");
+        }
+        if (targets.has(write.path)) {
+            throw new Error(`Atomic batch contains duplicate target: ${write.path}`);
+        }
+        targets.add(write.path);
+        totalBytes += Buffer.byteLength(write.content, "utf-8");
+        if (totalBytes > ATOMIC_BATCH_MAX_CONTENT_BYTES) {
+            throw new Error(`Atomic batch exceeds ${ATOMIC_BATCH_MAX_CONTENT_BYTES} bytes`);
+        }
+        const dir = path.dirname(write.path);
+        ensureDirSync(dir);
+        return {
+            ...write,
+            dir,
+            tempPath: path.join(dir, `.${path.basename(write.path)}.tmp.${crypto.randomUUID()}`),
+            fd: null,
+            backupPath: null,
+        };
+    });
+    const renamedDirectories = new Set();
+    try {
+        for (const write of pending) {
+            // Keep the unpublished generation private regardless of the requested
+            // target mode; the latter is applied only after the atomic replacement.
+            const fd = fsSync.openSync(write.tempPath, "wx", 0o600);
+            write.fd = fd;
+            try {
+                writeAllSync(fd, write.content, "atomic batch write");
+                fsSync.fsyncSync(fd);
+                verifyPrivateTempFile(fd, write.tempPath, "atomic batch write");
+            }
+            catch (error) {
+                fsSync.closeSync(fd);
+                write.fd = null;
+                throw error;
+            }
+        }
+        for (const write of pending) {
+            if (write.fd === null) {
+                throw new Error("atomic batch write descriptor was closed before rename");
+            }
+            write.backupPath = preservePriorTarget(write.path);
+            hooks?.beforeRename?.();
+            fsSync.renameSync(write.tempPath, write.path);
+            let publishedIdentity = null;
+            try {
+                verifyPublishedFile(write.fd, write.path, "atomic batch write");
+                publishedIdentity = descriptorIdentity(write.fd);
+                if (write.mode !== undefined && write.mode !== 0o600) {
+                    fsSync.chmodSync(write.path, write.mode);
+                }
+                hooks?.afterRename?.();
+                verifyPublishedFile(write.fd, write.path, "atomic batch write");
+            }
+            catch (error) {
+                rollbackPriorTarget(write.path, write.backupPath, publishedIdentity);
+                throw error;
+            }
+            fsSync.closeSync(write.fd);
+            write.fd = null;
+            removeBackup(write.backupPath);
+            write.backupPath = null;
+            renamedDirectories.add(write.dir);
+        }
+        for (const dir of renamedDirectories) {
+            try {
+                const dirFd = fsSync.openSync(dir, "r");
+                try {
+                    fsSync.fsyncSync(dirFd);
+                }
+                finally {
+                    fsSync.closeSync(dirFd);
+                }
+            }
+            catch {
+                // Some platforms do not support directory fsync.
+            }
+        }
+    }
+    finally {
+        for (const write of pending) {
+            if (write.fd !== null) {
+                try {
+                    fsSync.closeSync(write.fd);
+                }
+                catch {
+                    // Best effort descriptor cleanup.
+                }
+                write.fd = null;
+            }
+            removeBackup(write.backupPath);
+            write.backupPath = null;
+            try {
+                fsSync.unlinkSync(write.tempPath);
+            }
+            catch {
+                // The temp file was renamed or could not be created.
+            }
+        }
+    }
 }
 export async function safeReadJson(filePath) {
     try {

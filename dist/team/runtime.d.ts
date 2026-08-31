@@ -30,7 +30,7 @@ export interface TeamRuntime {
     cwd: string;
     /** Preflight-validated absolute binary paths, keyed by agent type */
     resolvedBinaryPaths?: Partial<Record<CliAgentType, string>>;
-    stopWatchdog?: () => void;
+    stopWatchdog?: () => Promise<void>;
 }
 export interface WorkerStatus {
     workerName: string;
@@ -76,7 +76,7 @@ export declare function monitorTeam(teamName: string, cwd: string, workerPaneIds
  * Runtime-owned worker watchdog/orchestrator loop.
  * Handles done.json completion, dead pane failures, and next-task spawning.
  */
-export declare function watchdogCliWorkers(runtime: TeamRuntime, intervalMs: number): () => void;
+export declare function watchdogCliWorkers(runtime: TeamRuntime, intervalMs: number): () => Promise<void>;
 /**
  * Spawn a worker pane for an explicit task assignment.
  */
@@ -84,7 +84,9 @@ export declare function spawnWorkerForTask(runtime: TeamRuntime, workerNameValue
 /**
  * Kill a single worker pane and update runtime state.
  */
-export declare function killWorkerPane(runtime: TeamRuntime, workerNameValue: string, paneId: string): Promise<void>;
+export declare function killWorkerPane(runtime: TeamRuntime, workerNameValue: string, paneId: string, options?: {
+    strict?: boolean;
+}): Promise<void>;
 /**
  * Assign a task to a specific worker via inbox + tmux trigger.
  */
@@ -92,7 +94,7 @@ export declare function assignTask(teamName: string, taskId: string, targetWorke
 /**
  * Gracefully shut down all workers and clean up.
  */
-export declare function shutdownTeam(teamName: string, sessionName: string, cwd: string, timeoutMs?: number, workerPaneIds?: string[], leaderPaneId?: string, ownsWindow?: boolean): Promise<void>;
+export declare function shutdownTeam(teamName: string, sessionName: string, cwd: string, timeoutMs?: number, workerPaneIds?: string[], leaderPaneId?: string, ownsWindow?: boolean): Promise<boolean>;
 /**
  * Resume an existing team from persisted state.
  * Reconstructs activeWorkers by scanning task files for in_progress tasks

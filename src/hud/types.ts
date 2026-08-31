@@ -6,11 +6,13 @@
 
 import type { AutopilotStateForHud } from './elements/autopilot.js';
 import type { ApiKeySource } from './elements/api-key-source.js';
+import type { SessionSummaryState } from './elements/session-summary.js';
+import type { PayloadEstimate } from './payload-estimate.js';
 import type { MissionBoardConfig, MissionBoardState } from './mission-board.js';
 import { DEFAULT_MISSION_BOARD_CONFIG } from './mission-board.js';
-import type { SessionSummaryState } from './elements/session-summary.js';
 
 // Re-export for convenience
+import type { AgentKind, IncomingAgentMessage } from './agent-kind.js';
 export type { AutopilotStateForHud, ApiKeySource, SessionSummaryState };
 
 // ============================================================================
@@ -40,12 +42,19 @@ export interface OmcHudState {
 }
 
 // ============================================================================
-// Stdin from Copilot CLI
+// Stdin from Claude Code
 // ============================================================================
 
 export interface StatuslineStdin {
   /** Transcript path for parsing conversation history */
   transcript_path?: string;
+
+  /**
+   * Claude Code version, e.g. "2.1.232". Claude Code puts this in every
+   * statusline payload; it is the version the session is actually running, and
+   * it is what the usage API's User-Agent must name (see buildUserAgent).
+   */
+  version?: string;
 
   /** Current working directory */
   cwd?: string;
@@ -95,12 +104,26 @@ export interface ActiveAgent {
   id: string;
   type: string;
   model?: string;
+  /** Native Claude Code teammate name when spawned with Agent/Task name="..." */
+  name?: string;
   description?: string;
   status: 'running' | 'completed';
   startTime: Date;
   endTime?: Date;
+  /**
+   * Which mechanism owns this agent (issue #3666). Deterministically derived
+   * from the spawning tool call: named spawns are teammates, unnamed spawns
+   * are subagents. Absent on legacy data that predates this field.
+   */
+  kind?: AgentKind;
+  /**
+   * Session id that issued the spawning tool call, when observable. Absent for
+   * legacy transcripts or when the spawner cannot be determined.
+   */
+  spawnedBy?: string;
 }
 
+/** Fork-specific: backing type for the RecentTools HUD element. */
 export interface RecentTool {
   /** Tool name (e.g., "Read", "Bash", "Edit") */
   name: string;
@@ -143,6 +166,13 @@ export interface LastRequestTokenUsage {
 
 export interface TranscriptData {
   agents: ActiveAgent[];
+  /**
+   * Classified incoming agent wrapper messages observed in the transcript
+   * (issue #3666). Each entry identifies the sender's kind and identity from
+   * the wrapper's own attributes with the payload redacted. Never populated
+   * from tool_result content, so agent outputs cannot spoof a message.
+   */
+  incomingMessages?: IncomingAgentMessage[];
   todos: TodoItem[];
   sessionStart?: Date;
   lastActivatedSkill?: SkillInvocation;
@@ -155,7 +185,10 @@ export interface TranscriptData {
   skillCallCount: number;
   /** Name of the last tool_use block seen in transcript */
   lastToolName: string | null;
-  /** Rolling list of recent tool calls with status and target info */
+  /**
+   * Fork-specific: recent tool invocations, oldest first, for the RecentTools
+   * HUD element. Excludes internal/meta tools (TodoWrite, Skill, Task, ...).
+   */
   recentTools: RecentTool[];
 }
 
@@ -188,8 +221,8 @@ export interface PrdStateForHud {
 // ============================================================================
 
 export interface RateLimits {
-  /** 5-hour rolling window usage percentage (0-100) - all models combined */
-  fiveHourPercent: number;
+  /** 5-hour rolling window usage percentage (0-100) - all models combined; absent when provider omitted this bucket */
+  fiveHourPercent?: number;
   /** Weekly usage percentage (0-100) - all models combined (undefined if not applicable) */
   weeklyPercent?: number;
   /** When the 5-hour limit resets (null if unavailable) */
@@ -206,6 +239,25 @@ export interface RateLimits {
   opusWeeklyPercent?: number;
   /** Opus weekly reset time */
   opusWeeklyResetsAt?: Date | null;
+
+  /**
+   * Weekly scoped per-model quotas from `limits[]` (`kind: "weekly_scoped"`) that
+   * did not map onto the recognized Sonnet/Opus families above — e.g. new/unnamed
+   * tiers such as "Fable". Rendered generically so new tiers don't need a source
+   * release (see issue #3576). Deduped by normalized `scope.model.display_name`.
+   */
+  scopedWeeklyBuckets?: Array<{
+    /** Stable identifier for the bucket: `scope.model.id` when present, else the normalized display name */
+    id: string;
+    /** Display label as returned by the API (e.g. "Fable") */
+    label: string;
+    /** Usage percentage (0-100) */
+    percent: number;
+    /** When this bucket resets (null if unavailable) */
+    resetsAt: Date | null;
+    /** Whether the API flagged this bucket as the currently-active/limiting one */
+    isActive: boolean;
+  }>;
 
   /** Monthly usage percentage (0-100), if available from API */
   monthlyPercent?: number;
@@ -229,6 +281,8 @@ export interface RateLimits {
   enterpriseUtilization?: number;
   /** Enterprise billing currency (e.g. 'USD') */
   enterpriseCurrency?: string;
+  /** Minor-unit exponent for the billing currency (USD=2, JPY=0, BHD=3); how many decimals to render */
+  enterpriseDecimalPlaces?: number;
   /** When the enterprise billing period resets (null if unavailable or not returned by API) */
   enterpriseResetsAt?: Date | null;
 }
@@ -330,8 +384,11 @@ export interface HudRenderContext {
   /** Stable display scope for context smoothing (e.g. session/worktree key) */
   contextDisplayScope?: string | null;
 
-  /** Model display name */
-  modelName: string;
+  /** Model display name from Claude Code statusline stdin; null when unavailable */
+  modelName: string | null;
+
+  /** Raw model id from Claude Code statusline stdin; used when full model format is requested */
+  modelId?: string | null;
 
   /** Ralph loop state */
   ralph: RalphStateForHud | null;
@@ -381,6 +438,12 @@ export interface HudRenderContext {
   /** Session health metrics */
   sessionHealth: SessionHealth | null;
 
+  /** Last-request token usage parsed from transcript message.usage */
+  lastRequestTokenUsage?: LastRequestTokenUsage | null;
+
+  /** Session token total (input + output) when transcript parsing is reliable enough to calculate it */
+  sessionTotalTokens?: number | null;
+
   /** Installed OMC version (e.g. "4.1.10") */
   omcVersion: string | null;
 
@@ -396,17 +459,14 @@ export interface HudRenderContext {
   /** Total Skill/proxy_Skill calls seen in transcript */
   skillCallCount: number;
 
-  /** Last-request token usage parsed from transcript message.usage */
-  lastRequestTokenUsage?: LastRequestTokenUsage | null;
-
-  /** Session token total (input + output) when transcript parsing is reliable enough to calculate it */
-  sessionTotalTokens?: number | null;
-
   /** Last prompt submission time (from HUD state) */
   promptTime: Date | null;
 
   /** API key source: 'project', 'global', or 'env' */
   apiKeySource: ApiKeySource | null;
+
+  /** True when an Anthropic API key is active (no OAuth subscription); used to surface a usage hint when built-in usage cannot be fetched */
+  apiKeyMode?: boolean;
 
   /** OAuth subscription type (e.g. 'enterprise'), null when unavailable */
   subscriptionType?: string | null;
@@ -417,14 +477,17 @@ export interface HudRenderContext {
   /** Active profile name (derived from COPILOT_CONFIG_DIR), null if default */
   profileName: string | null;
 
-  /** Session summary state (AI-generated brief summary) */
+  /** Cached session summary state (generated by scripts/session-summary.mjs) */
   sessionSummary: SessionSummaryState | null;
 
   /** Name of the last tool called in this session */
   lastToolName?: string | null;
 
-  /** Rolling list of recent tool calls with status and target info */
+  /** Recent tool invocations (oldest first) backing the RecentTools element */
   recentTools?: RecentTool[];
+
+  /** Best-effort local transcript-backed request payload pressure estimate. */
+  payloadEstimate?: PayloadEstimate | null;
 }
 
 // ============================================================================
@@ -465,8 +528,8 @@ export type CwdFormat = 'relative' | 'absolute' | 'folder';
 /**
  * Model name format options:
  * - short: 'Opus', 'Sonnet', 'Haiku'
- * - versioned: 'Opus 4.6', 'Sonnet 4.5', 'Haiku 4.5'
- * - full: raw model ID like 'claude-opus-4-6-20260205'
+ * - versioned: 'Opus 4.8', 'Sonnet 4.5', 'Haiku 4.5'
+ * - full: raw model ID like 'claude-opus-4-8-20260528'
  */
 export type ModelFormat = 'short' | 'versioned' | 'full';
 
@@ -483,6 +546,7 @@ export interface HudLabels {
   ralph: string;
   background: string;
   thinking: string;
+  model: string;
   staged: string;
   modified: string;
   untracked: string;
@@ -499,6 +563,7 @@ export const DEFAULT_HUD_LABELS: HudLabels = {
   ralph: 'ralph',
   background: 'bg',
   thinking: 'thinking',
+  model: 'Model',
   staged: '+',
   modified: '!',
   untracked: '?',
@@ -517,6 +582,7 @@ export const HUD_LOCALE_LABELS: Record<HudLocale, HudLabels> = {
     ralph: '循环',
     background: '后台',
     thinking: '思考',
+    model: '模型',
     staged: '已暂存',
     modified: '已修改',
     untracked: '未跟踪',
@@ -594,21 +660,20 @@ export interface HudElementConfig {
   sessionHealth: boolean;     // Show session health/duration
   showSessionDuration?: boolean;  // Show session:19m duration display (default: true if sessionHealth is true)
   showHealthIndicator?: boolean;  // Show 🟢/🟡/🔴 health indicator (default: true if sessionHealth is true)
-  showTokens?: boolean;           // Show token count like 79.3k (default: true if sessionHealth is true)
+  showTokens?: boolean;           // Show last-request token usage when enabled (tok:i1.2k/o340)
   enterpriseMode?: boolean;       // Explicit override for enterprise mode (undefined = auto-detect)
   showEnterpriseCost?: boolean;   // Whether to render enterprise billing cost (default: true when enterprise)
   useBars: boolean;           // Show visual progress bars instead of/alongside percentages
   showCallCounts?: boolean;   // Show tool/agent/skill call counts on the right of the status line (default: true)
   callCountsFormat?: CallCountsFormat; // Controls call count icon rendering: auto (platform default), emoji, or ascii
   showLastTool?: boolean;      // Show name of last tool called (tool:Read)
-  showRecentTools?: boolean;   // Show rolling list of recent tools with status icons
-  recentToolsMax?: number;     // Max recent tools to display (default 5)
-  recentToolsShowTarget?: boolean; // Show target summary next to tool name (default true)
-  maxAgents?: number;          // Max agents to display (default 10)
+  showRecentTools?: boolean;   // Show a rolling list of recent tool calls with status icons
+  recentToolsMax?: number;     // Max collapsed entries to display (default: 5)
+  recentToolsShowTarget?: boolean; // Append target summary (file/command) to each entry
+  sessionSummary: boolean;    // Show AI-generated session summary (<20 chars) - generated every 10 turns via claude -p
   maxOutputLines: number;     // Max total output lines to prevent input field shrinkage
   safeMode: boolean;          // Strip ANSI codes and use ASCII-only output to prevent terminal rendering corruption (Issue #346).
                               // Default true. Set to false to explicitly disable even on Windows (e.g. Windows Terminal with ANSI support).
-  sessionSummary: boolean;    // Show AI-generated session summary
 }
 
 export interface HudThresholds {
@@ -654,14 +719,14 @@ export interface LayoutConfig {
  * Used as fallback when no layout is configured.
  */
 export const DEFAULT_ELEMENT_ORDER: Required<LayoutConfig> = {
-  line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'model', 'apiKeySource', 'profile'],
+  line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'apiKeySource', 'profile'],
   main: [
-    'omcLabel', 'enterpriseCost', 'rateLimits', 'customBuckets', 'permission', 'thinking',
+    'omcLabel', 'model', 'enterpriseCost', 'rateLimits', 'customBuckets', 'permission', 'thinking',
     'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'prd',
     'skills', 'lastSkill', 'contextBar', 'agents', 'background',
-    'callCounts', 'recentTools', 'lastTool', 'sessionSummary',
+    'callCounts', 'lastTool', 'recentTools', 'sessionSummary',
   ],
-  detail: ['missionBoard', 'agents', 'contextWarning', 'todos'],
+  detail: ['missionBoard', 'agents', 'contextWarning', 'payloadWarning', 'todos'],
 };
 
 export interface HudConfig {
@@ -693,7 +758,7 @@ export interface HudConfig {
 export const DEFAULT_HUD_USAGE_POLL_INTERVAL_MS = 90 * 1000;
 
 export const DEFAULT_HUD_CONFIG: HudConfig = {
-  preset: 'full',
+  preset: 'focused',
   locale: 'en',
   labels: DEFAULT_HUD_LABELS,
   elements: {
@@ -704,8 +769,8 @@ export const DEFAULT_HUD_CONFIG: HudConfig = {
     gitBranch: false,         // Disabled by default for backward compatibility
     gitStatus: false,         // Disabled by default for backward compatibility
     gitInfoPosition: 'above',  // Git info above main HUD line (backward compatible)
-    model: false,             // Disabled by default for backward compatibility
-    modelFormat: 'short',     // Short names by default for backward compatibility
+    model: true,              // Show only when Claude Code statusline stdin provides a model
+    modelFormat: 'versioned', // Preserve model version by default
     omcLabel: true,
     updateNotification: true, // Preserve existing update prompt behavior by default
     rateLimits: true,  // Show rate limits by default
@@ -731,17 +796,17 @@ export const DEFAULT_HUD_CONFIG: HudConfig = {
     sessionHealth: true,
     showSessionDuration: true,
     showHealthIndicator: true,
+    showTokens: false,
     useBars: false,  // Disabled by default for backwards compatibility
     showCallCounts: true,  // Show tool/agent/skill call counts by default (Issue #710)
     callCountsFormat: 'auto',  // Preserve platform-based emoji/ASCII defaults unless explicitly overridden
     showLastTool: false,
-    showRecentTools: true,
+    showRecentTools: false,
     recentToolsMax: 5,
     recentToolsShowTarget: true,
-    maxAgents: 10,
+    sessionSummary: false, // Disabled by default - opt-in AI-generated session summary
     maxOutputLines: 4,
     safeMode: true,  // Enabled by default to prevent terminal rendering corruption (Issue #346)
-    sessionSummary: false,
   },
   thresholds: {
     contextWarning: 70,
@@ -768,8 +833,8 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     gitBranch: false,
     gitStatus: false,
     gitInfoPosition: 'above',
-    model: false,
-    modelFormat: 'short',
+    model: true,
+    modelFormat: 'versioned',
     omcLabel: true,
     updateNotification: true,
     rateLimits: true,
@@ -782,7 +847,6 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'count',
     agentsMaxLines: 0,
-    maxAgents: 5,
     backgroundTasks: false,
     todos: true,
     permissionStatus: false,
@@ -796,15 +860,16 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     sessionHealth: false,
     showSessionDuration: true,
     showHealthIndicator: true,
+    showTokens: false,
     useBars: false,
     showCallCounts: false,
     showLastTool: false,
     showRecentTools: false,
-    recentToolsMax: 3,
-    recentToolsShowTarget: false,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
+    sessionSummary: false,
     maxOutputLines: 2,
     safeMode: true,
-    sessionSummary: false,
   },
   focused: {
     cwd: false,
@@ -814,8 +879,8 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     gitBranch: true,
     gitStatus: true,
     gitInfoPosition: 'above',
-    model: false,
-    modelFormat: 'short',
+    model: true,
+    modelFormat: 'versioned',
     omcLabel: true,
     updateNotification: true,
     rateLimits: true,
@@ -828,7 +893,6 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'multiline',
     agentsMaxLines: 3,
-    maxAgents: 10,
     backgroundTasks: true,
     todos: true,
     permissionStatus: false,
@@ -842,15 +906,16 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     sessionHealth: true,
     showSessionDuration: true,
     showHealthIndicator: true,
+    showTokens: false,
     useBars: true,
     showCallCounts: true,
     showLastTool: false,
-    showRecentTools: true,
+    showRecentTools: false,
     recentToolsMax: 5,
     recentToolsShowTarget: true,
+    sessionSummary: false, // Opt-in: sends transcript to claude -p
     maxOutputLines: 4,
     safeMode: true,
-    sessionSummary: false,
   },
   full: {
     cwd: false,
@@ -860,8 +925,8 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     gitBranch: true,
     gitStatus: true,
     gitInfoPosition: 'above',
-    model: false,
-    modelFormat: 'short',
+    model: true,
+    modelFormat: 'versioned',
     omcLabel: true,
     updateNotification: true,
     rateLimits: true,
@@ -874,7 +939,6 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'multiline',
     agentsMaxLines: 10,
-    maxAgents: 15,
     backgroundTasks: true,
     todos: true,
     permissionStatus: false,
@@ -888,15 +952,16 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     sessionHealth: true,
     showSessionDuration: true,
     showHealthIndicator: true,
+    showTokens: false,
     useBars: true,
     showCallCounts: true,
     showLastTool: false,
-    showRecentTools: true,
-    recentToolsMax: 8,
+    showRecentTools: false,
+    recentToolsMax: 5,
     recentToolsShowTarget: true,
+    sessionSummary: false, // Opt-in: sends transcript to claude -p
     maxOutputLines: 12,
     safeMode: true,
-    sessionSummary: false,
   },
   opencode: {
     cwd: false,
@@ -906,8 +971,8 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     gitBranch: true,
     gitStatus: false,
     gitInfoPosition: 'above',
-    model: false,
-    modelFormat: 'short',
+    model: true,
+    modelFormat: 'versioned',
     omcLabel: true,
     updateNotification: true,
     rateLimits: false,
@@ -920,7 +985,6 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'codes',
     agentsMaxLines: 0,
-    maxAgents: 10,
     backgroundTasks: false,
     todos: true,
     permissionStatus: false,
@@ -934,15 +998,16 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     sessionHealth: true,
     showSessionDuration: true,
     showHealthIndicator: true,
+    showTokens: false,
     useBars: false,
     showCallCounts: true,
     showLastTool: false,
     showRecentTools: false,
     recentToolsMax: 5,
     recentToolsShowTarget: true,
+    sessionSummary: false,
     maxOutputLines: 4,
     safeMode: true,
-    sessionSummary: false,
   },
   dense: {
     cwd: false,
@@ -952,8 +1017,8 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     gitBranch: true,
     gitStatus: true,
     gitInfoPosition: 'above',
-    model: false,
-    modelFormat: 'short',
+    model: true,
+    modelFormat: 'versioned',
     omcLabel: true,
     updateNotification: true,
     rateLimits: true,
@@ -966,7 +1031,6 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'multiline',
     agentsMaxLines: 5,
-    maxAgents: 10,
     backgroundTasks: true,
     todos: true,
     permissionStatus: false,
@@ -980,14 +1044,15 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     sessionHealth: true,
     showSessionDuration: true,
     showHealthIndicator: true,
+    showTokens: false,
     useBars: true,
     showCallCounts: true,
     showLastTool: false,
-    showRecentTools: true,
+    showRecentTools: false,
     recentToolsMax: 5,
     recentToolsShowTarget: true,
+    sessionSummary: false, // Opt-in: sends transcript to claude -p
     maxOutputLines: 6,
     safeMode: true,
-    sessionSummary: false,
   },
 };

@@ -8,7 +8,6 @@ export declare const MODES: {
     readonly AUTOPILOT: "autopilot";
     readonly RALPH: "ralph";
     readonly ULTRAWORK: "ultrawork";
-    readonly ULTRAQA: "ultraqa";
     readonly TEAM: "team";
     readonly RALPLAN: "ralplan";
 };
@@ -22,8 +21,10 @@ export declare const TOOL_CATEGORIES: {
     readonly MEMORY: "memory";
     readonly TRACE: "trace";
     readonly SKILLS: "skills";
+    readonly INTEROP: "interop";
     readonly CODEX: "codex";
     readonly GEMINI: "gemini";
+    readonly ANTIGRAVITY: "antigravity";
     readonly SHARED_MEMORY: "shared-memory";
     readonly DEEPINIT: "deepinit";
     readonly WIKI: "wiki";

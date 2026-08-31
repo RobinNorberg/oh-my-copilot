@@ -5,8 +5,10 @@
  */
 import type { AutopilotStateForHud } from './elements/autopilot.js';
 import type { ApiKeySource } from './elements/api-key-source.js';
-import type { MissionBoardConfig, MissionBoardState } from './mission-board.js';
 import type { SessionSummaryState } from './elements/session-summary.js';
+import type { PayloadEstimate } from './payload-estimate.js';
+import type { MissionBoardConfig, MissionBoardState } from './mission-board.js';
+import type { AgentKind, IncomingAgentMessage } from './agent-kind.js';
 export type { AutopilotStateForHud, ApiKeySource, SessionSummaryState };
 export interface BackgroundTask {
     id: string;
@@ -31,6 +33,12 @@ export interface OmcHudState {
 export interface StatuslineStdin {
     /** Transcript path for parsing conversation history */
     transcript_path?: string;
+    /**
+     * Claude Code version, e.g. "2.1.232". Claude Code puts this in every
+     * statusline payload; it is the version the session is actually running, and
+     * it is what the usage API's User-Agent must name (see buildUserAgent).
+     */
+    version?: string;
     /** Current working directory */
     cwd?: string;
     /** Model information from Claude Code statusline stdin */
@@ -70,11 +78,25 @@ export interface ActiveAgent {
     id: string;
     type: string;
     model?: string;
+    /** Native Claude Code teammate name when spawned with Agent/Task name="..." */
+    name?: string;
     description?: string;
     status: 'running' | 'completed';
     startTime: Date;
     endTime?: Date;
+    /**
+     * Which mechanism owns this agent (issue #3666). Deterministically derived
+     * from the spawning tool call: named spawns are teammates, unnamed spawns
+     * are subagents. Absent on legacy data that predates this field.
+     */
+    kind?: AgentKind;
+    /**
+     * Session id that issued the spawning tool call, when observable. Absent for
+     * legacy transcripts or when the spawner cannot be determined.
+     */
+    spawnedBy?: string;
 }
+/** Fork-specific: backing type for the RecentTools HUD element. */
 export interface RecentTool {
     /** Tool name (e.g., "Read", "Bash", "Edit") */
     name: string;
@@ -111,6 +133,13 @@ export interface LastRequestTokenUsage {
 }
 export interface TranscriptData {
     agents: ActiveAgent[];
+    /**
+     * Classified incoming agent wrapper messages observed in the transcript
+     * (issue #3666). Each entry identifies the sender's kind and identity from
+     * the wrapper's own attributes with the payload redacted. Never populated
+     * from tool_result content, so agent outputs cannot spoof a message.
+     */
+    incomingMessages?: IncomingAgentMessage[];
     todos: TodoItem[];
     sessionStart?: Date;
     lastActivatedSkill?: SkillInvocation;
@@ -123,7 +152,10 @@ export interface TranscriptData {
     skillCallCount: number;
     /** Name of the last tool_use block seen in transcript */
     lastToolName: string | null;
-    /** Rolling list of recent tool calls with status and target info */
+    /**
+     * Fork-specific: recent tool invocations, oldest first, for the RecentTools
+     * HUD element. Excludes internal/meta tools (TodoWrite, Skill, Task, ...).
+     */
     recentTools: RecentTool[];
 }
 export interface RalphStateForHud {
@@ -143,8 +175,8 @@ export interface PrdStateForHud {
     total: number;
 }
 export interface RateLimits {
-    /** 5-hour rolling window usage percentage (0-100) - all models combined */
-    fiveHourPercent: number;
+    /** 5-hour rolling window usage percentage (0-100) - all models combined; absent when provider omitted this bucket */
+    fiveHourPercent?: number;
     /** Weekly usage percentage (0-100) - all models combined (undefined if not applicable) */
     weeklyPercent?: number;
     /** When the 5-hour limit resets (null if unavailable) */
@@ -159,6 +191,24 @@ export interface RateLimits {
     opusWeeklyPercent?: number;
     /** Opus weekly reset time */
     opusWeeklyResetsAt?: Date | null;
+    /**
+     * Weekly scoped per-model quotas from `limits[]` (`kind: "weekly_scoped"`) that
+     * did not map onto the recognized Sonnet/Opus families above — e.g. new/unnamed
+     * tiers such as "Fable". Rendered generically so new tiers don't need a source
+     * release (see issue #3576). Deduped by normalized `scope.model.display_name`.
+     */
+    scopedWeeklyBuckets?: Array<{
+        /** Stable identifier for the bucket: `scope.model.id` when present, else the normalized display name */
+        id: string;
+        /** Display label as returned by the API (e.g. "Fable") */
+        label: string;
+        /** Usage percentage (0-100) */
+        percent: number;
+        /** When this bucket resets (null if unavailable) */
+        resetsAt: Date | null;
+        /** Whether the API flagged this bucket as the currently-active/limiting one */
+        isActive: boolean;
+    }>;
     /** Monthly usage percentage (0-100), if available from API */
     monthlyPercent?: number;
     /** When the monthly limit resets (null if unavailable) */
@@ -179,6 +229,8 @@ export interface RateLimits {
     enterpriseUtilization?: number;
     /** Enterprise billing currency (e.g. 'USD') */
     enterpriseCurrency?: string;
+    /** Minor-unit exponent for the billing currency (USD=2, JPY=0, BHD=3); how many decimals to render */
+    enterpriseDecimalPlaces?: number;
     /** When the enterprise billing period resets (null if unavailable or not returned by API) */
     enterpriseResetsAt?: Date | null;
 }
@@ -263,8 +315,10 @@ export interface HudRenderContext {
     contextPercent: number;
     /** Stable display scope for context smoothing (e.g. session/worktree key) */
     contextDisplayScope?: string | null;
-    /** Model display name */
-    modelName: string;
+    /** Model display name from Claude Code statusline stdin; null when unavailable */
+    modelName: string | null;
+    /** Raw model id from Claude Code statusline stdin; used when full model format is requested */
+    modelId?: string | null;
     /** Ralph loop state */
     ralph: RalphStateForHud | null;
     /** Ultrawork state */
@@ -297,6 +351,10 @@ export interface HudRenderContext {
     thinkingState: ThinkingState | null;
     /** Session health metrics */
     sessionHealth: SessionHealth | null;
+    /** Last-request token usage parsed from transcript message.usage */
+    lastRequestTokenUsage?: LastRequestTokenUsage | null;
+    /** Session token total (input + output) when transcript parsing is reliable enough to calculate it */
+    sessionTotalTokens?: number | null;
     /** Installed OMC version (e.g. "4.1.10") */
     omcVersion: string | null;
     /** Latest available version from npm registry (null if up to date or unknown) */
@@ -307,26 +365,26 @@ export interface HudRenderContext {
     agentCallCount: number;
     /** Total Skill/proxy_Skill calls seen in transcript */
     skillCallCount: number;
-    /** Last-request token usage parsed from transcript message.usage */
-    lastRequestTokenUsage?: LastRequestTokenUsage | null;
-    /** Session token total (input + output) when transcript parsing is reliable enough to calculate it */
-    sessionTotalTokens?: number | null;
     /** Last prompt submission time (from HUD state) */
     promptTime: Date | null;
     /** API key source: 'project', 'global', or 'env' */
     apiKeySource: ApiKeySource | null;
+    /** True when an Anthropic API key is active (no OAuth subscription); used to surface a usage hint when built-in usage cannot be fetched */
+    apiKeyMode?: boolean;
     /** OAuth subscription type (e.g. 'enterprise'), null when unavailable */
     subscriptionType?: string | null;
     /** OAuth rate limit tier (e.g. 'default_claude_zero'), null when unavailable */
     rateLimitTier?: string | null;
     /** Active profile name (derived from COPILOT_CONFIG_DIR), null if default */
     profileName: string | null;
-    /** Session summary state (AI-generated brief summary) */
+    /** Cached session summary state (generated by scripts/session-summary.mjs) */
     sessionSummary: SessionSummaryState | null;
     /** Name of the last tool called in this session */
     lastToolName?: string | null;
-    /** Rolling list of recent tool calls with status and target info */
+    /** Recent tool invocations (oldest first) backing the RecentTools element */
     recentTools?: RecentTool[];
+    /** Best-effort local transcript-backed request payload pressure estimate. */
+    payloadEstimate?: PayloadEstimate | null;
 }
 export type HudPreset = 'minimal' | 'focused' | 'full' | 'opencode' | 'dense';
 /**
@@ -358,8 +416,8 @@ export type CwdFormat = 'relative' | 'absolute' | 'folder';
 /**
  * Model name format options:
  * - short: 'Opus', 'Sonnet', 'Haiku'
- * - versioned: 'Opus 4.6', 'Sonnet 4.5', 'Haiku 4.5'
- * - full: raw model ID like 'claude-opus-4-6-20260205'
+ * - versioned: 'Opus 4.8', 'Sonnet 4.5', 'Haiku 4.5'
+ * - full: raw model ID like 'claude-opus-4-8-20260528'
  */
 export type ModelFormat = 'short' | 'versioned' | 'full';
 export type CallCountsFormat = 'auto' | 'emoji' | 'ascii';
@@ -373,6 +431,7 @@ export interface HudLabels {
     ralph: string;
     background: string;
     thinking: string;
+    model: string;
     staged: string;
     modified: string;
     untracked: string;
@@ -430,10 +489,9 @@ export interface HudElementConfig {
     showRecentTools?: boolean;
     recentToolsMax?: number;
     recentToolsShowTarget?: boolean;
-    maxAgents?: number;
+    sessionSummary: boolean;
     maxOutputLines: number;
     safeMode: boolean;
-    sessionSummary: boolean;
 }
 export interface HudThresholds {
     /** Context percentage that triggers warning color (default: 70) */

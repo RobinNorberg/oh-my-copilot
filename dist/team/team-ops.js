@@ -8,15 +8,18 @@
  *
  * Modeled after oh-my-codex/src/team/team-ops.ts.
  */
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { TeamPaths, absPath } from './state-paths.js';
-import { normalizeTeamManifest } from './governance.js';
+import { normalizeTeamManifest, resolveMaxWorkers } from './governance.js';
 import { normalizeTeamGovernance } from './governance.js';
+import { isValidPersistedMaxWorkers, migrateTeamConfigRevision, readRevisionedTeamConfig, saveTeamConfigAtRevision } from './monitor.js';
+import { withProcessIdentityFileLock } from './process-identity-lock.js';
 import { isTerminalTeamTaskStatus, canTransitionTeamTaskStatus, } from './contracts.js';
-import { claimTask as claimTaskImpl, transitionTaskStatus as transitionTaskStatusImpl, releaseTaskClaim as releaseTaskClaimImpl, listTasks as listTasksImpl, } from './state/tasks.js';
+import { adoptRecoveryReservations as adoptRecoveryReservationsImpl, claimTask as claimTaskImpl, requeueRecoveredTask as requeueRecoveredTaskImpl, transitionTaskStatus as transitionTaskStatusImpl, releaseTaskClaim as releaseTaskClaimImpl, listTasks as listTasksImpl, } from './state/tasks.js';
+import { publishTaskRecoveryCheckpoint as publishTaskRecoveryCheckpointImpl, readTaskRecoveryCheckpoint, selectTaskRecoveryCheckpoint, } from './task-recovery-checkpoint.js';
 import { canonicalizeTeamConfigWorkers } from './worker-canonicalization.js';
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -68,49 +71,19 @@ function isTeamTask(value) {
     const v = value;
     return typeof v.id === 'string' && typeof v.subject === 'string' && typeof v.status === 'string';
 }
-// Simple file-based lock (best-effort, non-blocking)
-async function withLock(lockDir, fn) {
-    const STALE_MS = 30_000;
-    await mkdir(dirname(lockDir), { recursive: true });
+// Process-identity lock: live holders are never stolen by elapsed time alone.
+async function withLock(lockPath, fn) {
     try {
-        await mkdir(lockDir, { recursive: false });
+        const value = await withProcessIdentityFileLock(lockPath, fn, 1);
+        return { ok: true, value };
     }
-    catch (err) {
-        if (err.code === 'EEXIST') {
-            // Check staleness
-            try {
-                const { stat } = await import('node:fs/promises');
-                const s = await stat(lockDir);
-                if (Date.now() - s.mtimeMs > STALE_MS) {
-                    await rm(lockDir, { recursive: true, force: true });
-                    try {
-                        await mkdir(lockDir, { recursive: false });
-                    }
-                    catch {
-                        return { ok: false };
-                    }
-                }
-                else {
-                    return { ok: false };
-                }
-            }
-            catch {
-                return { ok: false };
-            }
-        }
-        else {
-            throw err;
-        }
-    }
-    try {
-        const result = await fn();
-        return { ok: true, value: result };
-    }
-    finally {
-        await rm(lockDir, { recursive: true, force: true }).catch(() => { });
+    catch (error) {
+        if (error instanceof Error && error.message === 'process_identity_lock_timeout')
+            return { ok: false };
+        throw error;
     }
 }
-async function withTaskClaimLock(teamName, taskId, cwd, fn) {
+export async function withTaskClaimLock(teamName, taskId, cwd, fn) {
     const lockDir = join(teamDir(teamName, cwd), 'tasks', `.lock-${taskId}`);
     return withLock(lockDir, fn);
 }
@@ -159,6 +132,9 @@ function configFromManifest(manifest) {
 function mergeTeamConfigSources(config, manifest) {
     if (!config && !manifest)
         return null;
+    if (config && typeof config.state_revision === 'number' && Number.isSafeInteger(config.state_revision)) {
+        return canonicalizeTeamConfigWorkers(config);
+    }
     if (!manifest)
         return config ? canonicalizeTeamConfigWorkers(config) : null;
     if (!config)
@@ -169,19 +145,46 @@ function mergeTeamConfigSources(config, manifest) {
         workers: [...(config.workers ?? []), ...(manifest.workers ?? [])],
         worker_count: Math.max(config.worker_count ?? 0, manifest.worker_count ?? 0),
         next_task_id: Math.max(config.next_task_id ?? 1, manifest.next_task_id ?? 1),
-        max_workers: Math.max(config.max_workers ?? 0, 20),
+        max_workers: resolveMaxWorkers(config.max_workers),
     });
 }
 export async function teamReadConfig(teamName, cwd) {
+    const configPath = absPath(cwd, TeamPaths.config(teamName));
+    const manifestPath = absPath(cwd, TeamPaths.manifest(teamName));
     const [manifest, config] = await Promise.all([
         teamReadManifest(teamName, cwd),
-        readJsonSafe(absPath(cwd, TeamPaths.config(teamName))),
+        readJsonSafe(configPath),
     ]);
+    if (!config && existsSync(configPath))
+        throw new Error('invalid_persisted_state');
+    if (config && !isValidPersistedMaxWorkers(config.max_workers))
+        throw new Error('invalid_persisted_state');
+    // Preserve raw V1 agentTypes provenance before any worker canonicalization.
+    // Canonicalization must not erase the only signal used to route legacy cleanup.
+    if (config && Array.isArray(config.agentTypes)) {
+        const agentTypes = config.agentTypes;
+        // Do not inject empty workers that would reclassify this as V2.
+        const { workers: _drop, ...rest } = config;
+        // Preserve agentTypes provenance; only keep workers if the raw file already had them.
+        const rawWorkers = config.workers;
+        return {
+            ...rest,
+            agentTypes,
+            workers: Array.isArray(rawWorkers) ? rawWorkers : [],
+        };
+    }
+    if (config && typeof config.state_revision === 'number' && Number.isSafeInteger(config.state_revision)) {
+        return canonicalizeTeamConfigWorkers(config);
+    }
+    if (!manifest && existsSync(manifestPath))
+        throw new Error('invalid_persisted_state');
     return mergeTeamConfigSources(config, manifest);
 }
 export async function teamReadManifest(teamName, cwd) {
     const manifestPath = absPath(cwd, TeamPaths.manifest(teamName));
     const manifest = await readJsonSafe(manifestPath);
+    if (!manifest && existsSync(manifestPath))
+        throw new Error('invalid_persisted_state');
     return manifest ? normalizeTeamManifest(manifest) : null;
 }
 export async function teamCleanup(teamName, cwd) {
@@ -222,10 +225,13 @@ export async function teamCreateTask(teamName, task, cwd) {
     let delayMs = 20;
     while (Date.now() < deadline) {
         const result = await withLock(lockDir, async () => {
-            const cfg = await teamReadConfig(teamName, cwd);
-            if (!cfg)
+            const revisioned = await migrateTeamConfigRevision(teamName, cwd);
+            if (!revisioned)
                 throw new Error(`Team ${teamName} not found`);
-            const nextId = String(cfg.next_task_id ?? 1);
+            if (revisioned.config.lifecycle_state === 'shutting_down' || revisioned.config.lifecycle_state === 'stopped') {
+                throw new Error('team_mutation_busy');
+            }
+            const nextId = String(revisioned.config.next_task_id ?? 1);
             const created = {
                 ...task,
                 id: nextId,
@@ -234,13 +240,37 @@ export async function teamCreateTask(teamName, task, cwd) {
                 version: 1,
                 created_at: new Date().toISOString(),
             };
-            const taskPath = absPath(cwd, TeamPaths.tasks(teamName));
-            await mkdir(taskPath, { recursive: true });
-            await writeAtomic(join(taskPath, `task-${nextId}.json`), JSON.stringify(created, null, 2));
-            // Advance counter
-            cfg.next_task_id = Number(nextId) + 1;
-            await writeAtomic(absPath(cwd, TeamPaths.config(teamName)), JSON.stringify(cfg, null, 2));
-            return created;
+            const serializedTask = JSON.stringify(created, null, 2);
+            const createdTaskPath = join(absPath(cwd, TeamPaths.tasks(teamName)), `task-${nextId}.json`);
+            const taskLock = await withTaskClaimLock(teamName, nextId, cwd, async () => {
+                await mkdir(dirname(createdTaskPath), { recursive: true });
+                await writeAtomic(createdTaskPath, serializedTask);
+                const nextConfig = {
+                    ...revisioned.config,
+                    next_task_id: Number(nextId) + 1,
+                    state_revision: revisioned.stateRevision + 1,
+                };
+                try {
+                    if (!await saveTeamConfigAtRevision(nextConfig, revisioned.stateRevision, cwd)) {
+                        throw new Error('stale_state_revision');
+                    }
+                }
+                catch (error) {
+                    // A manifest projection can fail after config.json commits. Preserve a task
+                    // that the authoritative counter/revision already admits.
+                    const persisted = await readRevisionedTeamConfig(teamName, cwd).catch(() => null);
+                    const configCommitted = persisted?.stateRevision === nextConfig.state_revision
+                        && persisted?.config.next_task_id === nextConfig.next_task_id;
+                    if (!configCommitted && await readFile(createdTaskPath, 'utf8').catch(() => null) === serializedTask) {
+                        await rm(createdTaskPath, { force: true });
+                    }
+                    throw error;
+                }
+                return created;
+            });
+            if (!taskLock.ok)
+                throw new Error(`Failed to acquire task claim lock for task ${nextId}`);
+            return taskLock.value;
         });
         if (result.ok)
             return result.value;
@@ -293,8 +323,8 @@ export async function teamUpdateTask(teamName, taskId, updates, cwd) {
     throw new Error(`Failed to acquire task update lock for task ${taskId} in team ${teamName} after ${timeoutMs}ms`);
 }
 export async function teamClaimTask(teamName, taskId, workerName, expectedVersion, cwd) {
-    const manifest = await teamReadManifest(teamName, cwd);
-    const governance = normalizeTeamGovernance(manifest?.governance, manifest?.policy);
+    const config = await teamReadConfig(teamName, cwd);
+    const governance = normalizeTeamGovernance(config?.governance, config?.policy);
     if (governance.plan_approval_required) {
         const task = await teamReadTask(teamName, taskId, cwd);
         if (task?.requires_code_change) {
@@ -308,7 +338,7 @@ export async function teamClaimTask(teamName, taskId, workerName, expectedVersio
         teamName,
         cwd,
         readTask: teamReadTask,
-        readTeamConfig: (async (tn, c) => {
+        readTeamConfig: async (tn, c) => {
             const cfg = await teamReadConfig(tn, c);
             if (!cfg)
                 return null;
@@ -325,12 +355,13 @@ export async function teamClaimTask(teamName, taskId, workerName, expectedVersio
                 };
             }
             return cfg;
-        }),
+        },
         withTaskClaimLock,
         normalizeTask,
         isTerminalTaskStatus: isTerminalTeamTaskStatus,
         taskFilePath: (tn, tid, c) => canonicalTaskFilePath(tn, tid, c),
         writeAtomic,
+        launchAttemptId: process.env.OMC_WORKER_LAUNCH_ATTEMPT_ID,
     });
 }
 export async function teamTransitionTaskStatus(teamName, taskId, from, to, claimToken, cwd, terminalData) {
@@ -362,6 +393,42 @@ export async function teamReleaseTaskClaim(teamName, taskId, claimToken, workerN
         taskFilePath: (tn, tid, c) => canonicalTaskFilePath(tn, tid, c),
         writeAtomic,
     });
+}
+function recoveryTransitionDeps(teamName, cwd, launchAttemptId) {
+    return {
+        teamName, cwd, readTask: teamReadTask,
+        readTeamConfig: teamReadConfig,
+        withTaskClaimLock, normalizeTask, isTerminalTaskStatus: isTerminalTeamTaskStatus,
+        taskFilePath: (tn, tid, c) => canonicalTaskFilePath(tn, tid, c), writeAtomic,
+        ...(launchAttemptId ? { launchAttemptId } : {}),
+        readRecoverySidecar: async (tn, recoveryId, tid, c) => {
+            const path = absPath(c, TeamPaths.taskRecoverySidecar(tn, recoveryId, tid));
+            if (!existsSync(path))
+                return null;
+            try {
+                return JSON.parse(await readFile(path, 'utf8'));
+            }
+            catch {
+                return 'malformed';
+            }
+        },
+        writeRecoverySidecar: (tn, recoveryId, tid, sidecar, c) => writeAtomic(absPath(c, TeamPaths.taskRecoverySidecar(tn, recoveryId, tid)), JSON.stringify(sidecar, null, 2)),
+        selectRecoveryCheckpoint: selectTaskRecoveryCheckpoint, readRecoveryCheckpoint: readTaskRecoveryCheckpoint,
+        verifyAdoptionToken: (token, hash) => createHash('sha256').update(token).digest('hex') === hash,
+    };
+}
+export async function teamPublishTaskRecoveryCheckpoint(input, cwd) {
+    return publishTaskRecoveryCheckpointImpl(input, cwd, { readTask: async (tn, tid, c) => {
+            const task = await teamReadTask(tn, tid, c);
+            return task ? normalizeTask(task) : null;
+        }, withTaskLock: withTaskClaimLock });
+}
+export async function teamRequeueRecoveredTask(teamName, cwd, input) {
+    return requeueRecoveredTaskImpl(input, recoveryTransitionDeps(teamName, cwd));
+}
+/** Runtime-owner-only continuation adoption; call before provider launch. */
+export async function teamAdoptRecoveryReservations(teamName, cwd, taskIds, workerName, proof, launchAttemptId) {
+    return adoptRecoveryReservationsImpl(taskIds, workerName, proof, recoveryTransitionDeps(teamName, cwd, launchAttemptId));
 }
 // ---------------------------------------------------------------------------
 // Messaging
@@ -432,6 +499,106 @@ async function readMailbox(teamName, workerName, cwd) {
         return { worker: workerName, messages: mailbox.messages };
     }
     return readLegacyMailboxJsonl(teamName, workerName, cwd);
+}
+function isStrictCanonicalMailboxRecord(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+        && Object.getPrototypeOf(value) === Object.prototype;
+}
+function isStrictCanonicalMailboxText(value) {
+    return typeof value === 'string' && value.trim() !== '' && value === value.trim();
+}
+function isStrictCanonicalMailboxTimestamp(value) {
+    return isStrictCanonicalMailboxText(value) && Number.isFinite(Date.parse(value));
+}
+function materializeStrictCanonicalMailboxMessage(raw) {
+    const message = {
+        message_id: raw.message_id,
+        from_worker: raw.from_worker,
+        to_worker: raw.to_worker,
+        body: raw.body,
+        created_at: raw.created_at,
+    };
+    if ('notified_at' in raw)
+        message.notified_at = raw.notified_at;
+    if ('delivered_at' in raw)
+        message.delivered_at = raw.delivered_at;
+    return message;
+}
+function validateStrictCanonicalMailboxMessage(raw, messageIndex) {
+    if (!isStrictCanonicalMailboxRecord(raw))
+        return { kind: 'malformed_message', messageIndex, field: '$' };
+    if (!isStrictCanonicalMailboxText(raw.message_id))
+        return { kind: 'malformed_message', messageIndex, field: 'message_id' };
+    if (!isStrictCanonicalMailboxText(raw.from_worker))
+        return { kind: 'malformed_message', messageIndex, field: 'from_worker' };
+    if (!isStrictCanonicalMailboxText(raw.to_worker))
+        return { kind: 'malformed_message', messageIndex, field: 'to_worker' };
+    if (!isStrictCanonicalMailboxText(raw.body))
+        return { kind: 'malformed_message', messageIndex, field: 'body' };
+    if (!isStrictCanonicalMailboxTimestamp(raw.created_at))
+        return { kind: 'malformed_message', messageIndex, field: 'created_at' };
+    if ('notified_at' in raw && !isStrictCanonicalMailboxTimestamp(raw.notified_at)) {
+        return { kind: 'malformed_message', messageIndex, field: 'notified_at' };
+    }
+    if ('delivered_at' in raw && !isStrictCanonicalMailboxTimestamp(raw.delivered_at)) {
+        return { kind: 'malformed_message', messageIndex, field: 'delivered_at' };
+    }
+    return materializeStrictCanonicalMailboxMessage(raw);
+}
+/**
+ * Reads one exact message from the canonical JSON mailbox without using the
+ * compatibility JSONL fallback. It validates every canonical record first so
+ * a corrupt or ambiguous mailbox cannot authorize a pane notification.
+ */
+export async function teamReadCanonicalMailboxMessageStrict(teamName, workerName, messageId, cwd) {
+    const path = absPath(cwd, TeamPaths.mailbox(teamName, workerName));
+    let parsed;
+    try {
+        parsed = JSON.parse(await readFile(path, 'utf8'));
+    }
+    catch (error) {
+        const code = error.code;
+        return code === 'ENOENT'
+            ? { kind: 'store_missing' }
+            : { kind: 'malformed_store', cause: 'json' };
+    }
+    if (!isStrictCanonicalMailboxRecord(parsed))
+        return { kind: 'malformed_store', cause: 'non_object' };
+    if (parsed.worker !== workerName)
+        return { kind: 'wrong_owner' };
+    if (!Array.isArray(parsed.messages))
+        return { kind: 'malformed_store', cause: 'messages_non_array' };
+    const messages = [];
+    for (let messageIndex = 0; messageIndex < parsed.messages.length; messageIndex += 1) {
+        const validated = validateStrictCanonicalMailboxMessage(parsed.messages[messageIndex], messageIndex);
+        if (!('message_id' in validated))
+            return validated;
+        messages.push(validated);
+    }
+    const indexesByMessageId = new Map();
+    for (const [messageIndex, message] of messages.entries()) {
+        const indexes = indexesByMessageId.get(message.message_id) ?? [];
+        indexes.push(messageIndex);
+        indexesByMessageId.set(message.message_id, indexes);
+    }
+    const requestedIndexes = indexesByMessageId.get(messageId) ?? [];
+    if (requestedIndexes.length > 1) {
+        return { kind: 'duplicate_message_id', messageId, messageIndexes: requestedIndexes };
+    }
+    const duplicate = [...indexesByMessageId.entries()].find(([, indexes]) => indexes.length > 1);
+    if (duplicate)
+        return { kind: 'duplicate_message_id', messageId: duplicate[0], messageIndexes: duplicate[1] };
+    if (requestedIndexes.length === 0)
+        return { kind: 'message_missing' };
+    const messageIndex = requestedIndexes[0];
+    const message = messages[messageIndex];
+    if (message.to_worker !== workerName)
+        return { kind: 'recipient_mismatch', messageIndex };
+    if (message.notified_at)
+        return { kind: 'replay_suppressed', message: { ...message }, marker: 'notified_at' };
+    if (message.delivered_at)
+        return { kind: 'replay_suppressed', message: { ...message }, marker: 'delivered_at' };
+    return { kind: 'valid', message: { ...message } };
 }
 async function writeMailbox(teamName, workerName, mailbox, cwd) {
     const p = absPath(cwd, TeamPaths.mailbox(teamName, workerName));

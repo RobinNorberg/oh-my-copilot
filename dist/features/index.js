@@ -34,10 +34,12 @@ getBackgroundManager, resetBackgroundManager } from './background-agent/index.js
 export { 
 // Functions
 createBuiltinSkills, getBuiltinSkill, listBuiltinSkillNames } from './builtin-skills/index.js';
+// Session Friction Report - local context-bloat and operator-friction summaries
+export { generateSessionFrictionReport, } from './session-friction-report/index.js';
 // Model Routing - intelligent model tier routing
 export { 
 // Main functions
-routeTask, routeAndAdaptTask, escalateModel, canEscalate, explainRouting, quickTierForAgent, 
+routeTask, routeWithEscalation, routeAndAdaptTask, escalateModel, canEscalate, explainRouting, quickTierForAgent, 
 // Signal extraction
 extractLexicalSignals, extractStructuralSignals, extractContextSignals, extractAllSignals, 
 // Scoring
@@ -63,7 +65,7 @@ export {
 // Classes
 StateManager, createStateManager, 
 // Functions
-getStatePath, ensureStateDir, readState, writeState, clearState, listStates, cleanupOrphanedStates, 
+getStatePath, getLegacyPaths, ensureStateDir, readState, writeState, clearState, migrateState, listStates, cleanupOrphanedStates, 
 // Enums/Constants
 StateLocation, isStateLocation, DEFAULT_STATE_CONFIG } from './state-manager/index.js';
 // Verification - verification protocol for ralph, ultrawork, autopilot
@@ -76,4 +78,8 @@ STANDARD_CHECKS } from './verification/index.js';
 export { 
 // Functions
 decomposeTask, analyzeTask, identifyComponents, generateSubtasks, assignFileOwnership, identifySharedFiles } from './task-decomposer/index.js';
+// Session History Search - local transcript/session artifact search
+export { searchSessionHistory, parseSinceSpec, } from './session-history-search/index.js';
+// Agent Addressability & Discoverability - unnamed agent addressing/listing contract (#3665)
+export { shortId, hasExplicitName, hasDescription, addressFor, listingLabel, notificationReference, resolveAgent, formatAgentList, SHORT_ID_LENGTH, } from './agent-addressability/index.js';
 //# sourceMappingURL=index.js.map

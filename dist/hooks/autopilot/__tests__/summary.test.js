@@ -6,11 +6,25 @@ import { generateSummary, formatSummary, formatCompactSummary, formatFailureSumm
 import { initAutopilot, updateExecution, updateQA, transitionPhase, readAutopilotState } from '../state.js';
 describe('AutopilotSummary', () => {
     let testDir;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), 'autopilot-summary-test-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = testDir;
+        process.env.USERPROFILE = testDir;
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
     });
     describe('generateSummary', () => {
         it('should return null when no state exists', () => {

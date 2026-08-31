@@ -9,17 +9,18 @@
  */
 export const DEFAULT_DELEGATION_CONFIG = {
     enabled: false,
-    defaultProvider: 'copilot',
+    defaultProvider: 'claude',
     roles: {},
 };
 /**
- * Role category to default Copilot subagent mapping
+ * Role category to default Claude subagent mapping
  */
 export const ROLE_CATEGORY_DEFAULTS = {
     // Exploration roles
     explore: 'explore',
     'document-specialist': 'document-specialist',
     researcher: 'document-specialist',
+    'tdd-guide': 'test-engineer',
     // Advisory roles (high complexity)
     architect: 'architect',
     planner: 'planner',
@@ -44,6 +45,7 @@ export const ROLE_CATEGORY_DEFAULTS = {
  */
 export const DEPRECATED_ROLE_ALIASES = {
     researcher: 'document-specialist',
+    'tdd-guide': 'test-engineer',
     'api-reviewer': 'code-reviewer',
     'performance-reviewer': 'code-reviewer',
     'dependency-expert': 'document-specialist',

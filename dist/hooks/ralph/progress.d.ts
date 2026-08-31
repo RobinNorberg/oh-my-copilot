@@ -43,11 +43,11 @@ export declare const ENTRY_SEPARATOR = "---";
  */
 export declare function getProgressPath(directory: string): string;
 /**
- * Get the path to progress.txt in .omcp subdirectory
+ * Get the path to progress.txt in .omc subdirectory
  */
 export declare function getOmcProgressPath(directory: string): string;
 /**
- * Find progress.txt in a directory (checks both root and .omcp)
+ * Find progress.txt in a directory (checks both root and .omc)
  */
 export declare function findProgressPath(directory: string): string | null;
 /**

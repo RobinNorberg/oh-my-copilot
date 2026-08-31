@@ -2,7 +2,7 @@
  * PreCompact Hook - State Preservation Before Context Compaction
  *
  * Creates checkpoints before compaction to preserve critical state including:
- * - Active mode states (autopilot, ralph, ultrawork)
+ * - Active mode states (autopilot, ralph, ultraqa)
  * - TODO summary
  * - Wisdom from notepads
  *
@@ -19,6 +19,7 @@ export interface PreCompactInput {
 }
 export interface CompactCheckpoint {
     created_at: string;
+    session_id?: string;
     trigger: "manual" | "auto";
     active_modes: {
         autopilot?: {
@@ -27,13 +28,6 @@ export interface CompactCheckpoint {
         };
         ralph?: {
             iteration: number;
-            prompt: string;
-        };
-        ultrawork?: {
-            original_prompt: string;
-        };
-        ultraqa?: {
-            cycle: number;
             prompt: string;
         };
     };
@@ -65,10 +59,35 @@ export interface CompactCheckpoint {
             failed: number;
         } | null;
     };
+    /**
+     * Durable plan anchors captured at compaction time (issue #3730).
+     *
+     * These are references to already-persisted OMC plan artifacts — a PRD
+     * (ralph PRD mode) and/or the boulder plan — plus bounded counts. They are
+     * pointers, not a copy of plan content, and never conversation data.
+     */
+    plan_refs?: {
+        prd?: {
+            path: string;
+            title: string;
+            status: string;
+            stories_total: number;
+            stories_completed: number;
+        };
+        boulder?: {
+            active_plan: string;
+            plan_name: string;
+            progress: {
+                total: number;
+                completed: number;
+                isComplete: boolean;
+            };
+        };
+    };
 }
 export interface HookOutput {
     continue: boolean;
-    /** System message for context injection (Copilot CLI compatible) */
+    /** System message for context injection (Claude Code compatible) */
     systemMessage?: string;
 }
 /**
@@ -87,9 +106,21 @@ export declare function exportWisdomToNotepad(directory: string): Promise<{
  */
 export declare function saveModeSummary(directory: string): Promise<Record<string, unknown>>;
 /**
+ * Collect durable plan anchors (issue #3730).
+ *
+ * Captures references to already-persisted plan artifacts so a restored
+ * checkpoint can point the post-compaction session back at its plan:
+ * - the active PRD (ralph PRD mode), via findPrdPath
+ * - the active boulder plan (OMC orchestrator)
+ *
+ * Only pointers and bounded counts are recorded. Plan file contents are
+ * never copied into the checkpoint.
+ */
+export declare function collectPlanRefs(directory: string, sessionId?: string): CompactCheckpoint["plan_refs"];
+/**
  * Create a compact checkpoint
  */
-export declare function createCompactCheckpoint(directory: string, trigger: "manual" | "auto"): Promise<CompactCheckpoint>;
+export declare function createCompactCheckpoint(directory: string, trigger: "manual" | "auto", sessionId?: string): Promise<CompactCheckpoint>;
 /**
  * Format checkpoint summary for context injection
  */

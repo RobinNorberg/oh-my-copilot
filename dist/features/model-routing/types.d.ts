@@ -11,7 +11,7 @@ import type { ModelType } from '../../shared/types.js';
  */
 export type ComplexityTier = 'LOW' | 'MEDIUM' | 'HIGH';
 /**
- * Model tier mapping to actual Copilot models.
+ * Model tier mapping to actual Claude models.
  *
  * Reads from environment variables (OMC_MODEL_HIGH, OMC_MODEL_MEDIUM,
  * OMC_MODEL_LOW) with built-in fallbacks. User/project config overrides

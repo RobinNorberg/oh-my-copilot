@@ -30,13 +30,12 @@ export declare function sendSlack(config: SlackNotificationConfig, payload: Noti
  */
 export declare function sendSlackBot(config: SlackBotNotificationConfig, payload: NotificationPayload): Promise<NotificationResult>;
 /**
- * Send notification via Microsoft Teams incoming webhook.
- * Sends an Adaptive Card via Power Automate Workflows or legacy O365 Connector webhook.
- */
-export declare function sendTeams(config: TeamsNotificationConfig, payload: NotificationPayload): Promise<NotificationResult>;
-/**
  * Send notification via generic webhook (POST JSON).
  */
+/**
+ * Send notification to Microsoft Teams as an Adaptive Card.
+ */
+export declare function sendTeams(config: TeamsNotificationConfig, payload: NotificationPayload): Promise<NotificationResult>;
 export declare function sendWebhook(config: WebhookNotificationConfig, payload: NotificationPayload): Promise<NotificationResult>;
 /**
  * Dispatch notifications to all enabled platforms for an event.

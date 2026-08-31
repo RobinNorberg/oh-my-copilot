@@ -185,7 +185,7 @@ export function detectEditErrorInOutput(output: string): boolean {
 }
 
 /**
- * Create unified recovery hook for Copilot CLI
+ * Create unified recovery hook for Claude Code
  *
  * This hook provides a single entry point for all recovery mechanisms.
  */
@@ -272,33 +272,3 @@ export function detectEditErrorInText(text: string): boolean {
 export function isSessionRecoverable(error: unknown): boolean {
   return isRecoverableError(error);
 }
-
-// ============================================================================
-// Orchestration Recovery (Feature 4)
-// ============================================================================
-
-// Re-export orchestration recovery types
-export type {
-  OrchestrationFailureType,
-  RecoveryAction,
-  AttemptRecord,
-  AttemptHistory,
-  RecoveryActionResult,
-} from './types.js';
-
-export { ORCHESTRATION_RECOVERY_CONFIG } from './types.js';
-
-// Re-export orchestration recovery functions
-export {
-  classifyOrchestrationFailure,
-  determineRecoveryAction,
-} from './orchestration-recovery.js';
-
-// Re-export attempt tracker functions
-export {
-  recordAttempt,
-  getAttemptCount,
-  readAttemptHistory,
-  writeAttemptHistory,
-  clearAttemptHistory,
-} from './attempt-tracker.js';

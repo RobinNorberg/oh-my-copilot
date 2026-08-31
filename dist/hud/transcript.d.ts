@@ -1,8 +1,8 @@
 /**
  * OMC HUD - Transcript Parser
  *
- * Parse JSONL transcript from Copilot CLI to extract agents and todos.
- * Based on copilot-hud reference implementation.
+ * Parse JSONL transcript from Claude Code to extract agents and todos.
+ * Based on claude-hud reference implementation.
  *
  * Performance optimizations:
  * - Tail-based parsing: reads only the last ~500KB of large transcripts

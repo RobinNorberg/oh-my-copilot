@@ -42,6 +42,9 @@ from typing import Any, Dict, List, Optional, Callable, Tuple
 # =============================================================================
 
 JSON_RPC_VERSION = "2.0"
+PARENT_WATCH_INTERVAL_S = max(
+    float(os.environ.get("OMC_PARENT_POLL_INTERVAL_MS", "1000")) / 1000.0, 0.25
+)
 
 # JSON-RPC 2.0 Error Codes
 ERROR_PARSE = -32700  # Invalid JSON
@@ -430,7 +433,6 @@ SANDBOX_BLOCKED_BUILTINS = frozenset(
         "vars",
     }
 )
-
 
 class GyoshuSecurityError(Exception):
     """Raised when submitted code uses blocked bridge execution features."""
@@ -962,6 +964,20 @@ def _get_port_file(socket_path: str) -> str:
     return os.path.join(os.path.dirname(socket_path), "bridge.port")
 
 
+def _get_expected_parent_pid() -> Optional[int]:
+    """Return the expected parent PID provided by the spawning Node process."""
+    raw_value = os.environ.get("OMC_PARENT_PID")
+    if not raw_value:
+        return None
+
+    try:
+        parent_pid = int(raw_value)
+    except ValueError:
+        return None
+
+    return parent_pid if parent_pid > 1 else None
+
+
 def _bind_unix(server: socket_module.socket, socket_path: str) -> None:
     """Bind a Unix socket with umask and post-bind security checks."""
     safe_unlink_socket(socket_path)
@@ -998,10 +1014,13 @@ def run_socket_server(socket_path: str) -> None:
     global _protocol_out
 
     port_file: Optional[str] = None
+    stop_event = threading.Event()
+    expected_parent_pid = _get_expected_parent_pid()
 
     if HAS_AF_UNIX:
         server = socket_module.socket(socket_module.AF_UNIX, socket_module.SOCK_STREAM)
         _bind_unix(server, socket_path)
+        server.settimeout(PARENT_WATCH_INTERVAL_S)
         server.listen(1)
         print(
             f"[gyoshu_bridge] Socket server started at {socket_path}, PID={os.getpid()}",
@@ -1011,6 +1030,7 @@ def run_socket_server(socket_path: str) -> None:
         # TCP localhost fallback (Windows / platforms without AF_UNIX)
         server = socket_module.socket(socket_module.AF_INET, socket_module.SOCK_STREAM)
         server.setsockopt(socket_module.SOL_SOCKET, socket_module.SO_REUSEADDR, 1)
+        server.settimeout(PARENT_WATCH_INTERVAL_S)
         server.bind(("127.0.0.1", 0))
         port = server.getsockname()[1]
         server.listen(1)
@@ -1024,33 +1044,57 @@ def run_socket_server(socket_path: str) -> None:
 
     sys.stderr.flush()
 
-    def shutdown_handler(signum, frame):
-        print("[gyoshu_bridge] Shutdown signal received", file=sys.stderr)
+    def request_shutdown(message: str) -> None:
+        if stop_event.is_set():
+            return
+        stop_event.set()
+        print(message, file=sys.stderr)
         sys.stderr.flush()
-        server.close()
-        if HAS_AF_UNIX:
-            safe_unlink_socket(socket_path)
-        elif port_file:
-            try:
-                os.unlink(port_file)
-            except OSError:
-                pass
-        sys.exit(0)
+
+        try:
+            server.close()
+        except OSError:
+            pass
+
+    def shutdown_handler(signum, frame):
+        request_shutdown("[gyoshu_bridge] Shutdown signal received")
 
     signal.signal(signal.SIGTERM, shutdown_handler)
     signal.signal(signal.SIGINT, shutdown_handler)
 
+    if expected_parent_pid is not None:
+
+        def watch_parent() -> None:
+            while not stop_event.wait(PARENT_WATCH_INTERVAL_S):
+                current_parent_pid = os.getppid()
+                if current_parent_pid <= 1 or current_parent_pid != expected_parent_pid:
+                    request_shutdown(
+                        "[gyoshu_bridge] Parent process exited; shutting down bridge"
+                    )
+                    return
+
+        parent_watch = threading.Thread(target=watch_parent, daemon=True)
+        parent_watch.start()
+
     try:
-        while True:
-            conn, addr = server.accept()
+        while not stop_event.is_set():
+            try:
+                conn, addr = server.accept()
+            except socket_module.timeout:
+                continue
+            except OSError:
+                if stop_event.is_set():
+                    break
+                raise
             # TCP security: only accept connections from localhost
             if not HAS_AF_UNIX and addr and addr[0] != "127.0.0.1":
                 conn.close()
                 continue
             handle_socket_connection(conn)
     except Exception as e:
-        print(f"[gyoshu_bridge] Server error: {e}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
+        if not stop_event.is_set():
+            print(f"[gyoshu_bridge] Server error: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
     finally:
         server.close()
         if HAS_AF_UNIX:

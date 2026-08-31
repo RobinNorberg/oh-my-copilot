@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
+import { describe, it, expect } from 'vitest';
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { tmpdir } from 'os';
 import { spawnSync } from 'child_process';
@@ -7,19 +7,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
-const BUNDLED_CLI_ENTRY = join(REPO_ROOT, 'bridge', 'cli.cjs');
-const DIST_CLI_ENTRY = join(REPO_ROOT, 'dist', 'cli', 'index.js');
-const SRC_CLI_ENTRY = join(REPO_ROOT, 'src', 'cli', 'index.ts');
-
-// Spawning `node --import tsx src/cli/index.ts` cold-compiles the full CLI
-// module graph on every call (~10-15s each on Windows). Prefer the bundled
-// single-file `bridge/cli.cjs` (~1s cold) when present, then the unbundled
-// `dist/cli/index.js` (~2.8s cold), and finally fall back to tsx for dev.
-let cliMode: 'bundle' | 'dist' | 'tsx' = 'tsx';
-beforeAll(() => {
-  if (existsSync(BUNDLED_CLI_ENTRY)) cliMode = 'bundle';
-  else if (existsSync(DIST_CLI_ENTRY)) cliMode = 'dist';
-});
+const CLI_ENTRY = join(REPO_ROOT, 'src', 'cli', 'index.ts');
 
 interface CliRunResult {
   status: number | null;
@@ -28,19 +16,12 @@ interface CliRunResult {
 }
 
 function runCli(args: string[], homeDir: string): CliRunResult {
-  const spawnArgs =
-    cliMode === 'bundle'
-      ? [BUNDLED_CLI_ENTRY, ...args]
-      : cliMode === 'dist'
-        ? [DIST_CLI_ENTRY, ...args]
-        : ['--import', 'tsx', SRC_CLI_ENTRY, ...args];
-
-  const result = spawnSync(process.execPath, spawnArgs, {
+  const result = spawnSync(process.execPath, ['--import', 'tsx', CLI_ENTRY, ...args], {
     cwd: REPO_ROOT,
     env: {
       ...process.env,
       HOME: homeDir,
-      COPILOT_CONFIG_DIR: join(homeDir, '.copilot'),
+      COPILOT_CONFIG_DIR: join(homeDir, '.claude'),
     },
     encoding: 'utf-8',
   });
@@ -86,8 +67,8 @@ function readConfig(configPath: string) {
 describe('omc config-stop-callback tag options', () => {
   it('updates telegram tagList options and preserves existing config fields', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-stop-callback-home-'));
-    const configPath = join(homeDir, '.copilot', '.omc-config.json');
-    mkdirSync(join(homeDir, '.copilot'), { recursive: true });
+    const configPath = join(homeDir, '.claude', '.omc-config.json');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
 
     writeFileSync(configPath, JSON.stringify({
       silentAutoUpdate: false,
@@ -129,8 +110,8 @@ describe('omc config-stop-callback tag options', () => {
 
   it('applies and clears discord tags and ignores tag options for file callback', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-stop-callback-home-'));
-    const configPath = join(homeDir, '.copilot', '.omc-config.json');
-    mkdirSync(join(homeDir, '.copilot'), { recursive: true });
+    const configPath = join(homeDir, '.claude', '.omc-config.json');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
 
     writeFileSync(configPath, JSON.stringify({
       silentAutoUpdate: false,
@@ -173,8 +154,8 @@ describe('omc config-stop-callback tag options', () => {
 
   it('configures slack stop-callback with webhook and tags', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-stop-callback-home-'));
-    const configPath = join(homeDir, '.copilot', '.omc-config.json');
-    mkdirSync(join(homeDir, '.copilot'), { recursive: true });
+    const configPath = join(homeDir, '.claude', '.omc-config.json');
+    mkdirSync(join(homeDir, '.claude'), { recursive: true });
 
     writeFileSync(configPath, JSON.stringify({
       silentAutoUpdate: false,
@@ -209,5 +190,35 @@ describe('omc config-stop-callback tag options', () => {
     expect(show.status).toBe(0);
     expect(show.stdout).toContain('"webhookUrl"');
     expect(show.stdout).toContain('"tagList"');
+  });
+
+  it('uses COPILOT_CONFIG_DIR for the default file callback path', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-stop-callback-home-'));
+    const claudeConfigDir = join(homeDir, '.claude-isolated-workspace');
+    const configPath = join(claudeConfigDir, '.omc-config.json');
+    mkdirSync(claudeConfigDir, { recursive: true });
+
+    writeFileSync(configPath, JSON.stringify({
+      silentAutoUpdate: false,
+      stopHookCallbacks: {},
+    }, null, 2));
+
+    const result = spawnSync(process.execPath, ['--import', 'tsx', CLI_ENTRY, 'config-stop-callback', 'file', '--enable'], {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        HOME: homeDir,
+        COPILOT_CONFIG_DIR: claudeConfigDir,
+      },
+      encoding: 'utf-8',
+    });
+    expect(result.status).toBe(0);
+
+    const config = readConfig(configPath);
+    expect(config.stopHookCallbacks?.file).toEqual({
+      enabled: true,
+      path: join(claudeConfigDir, 'session-logs/{session_id}.md'),
+      format: 'markdown',
+    });
   });
 });

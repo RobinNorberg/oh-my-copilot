@@ -3,23 +3,56 @@
  * Scans for and reports plugin coexistence issues.
  */
 
-import { readFileSync, existsSync, readdirSync } from 'fs';
+import { existsSync, lstatSync, readdirSync, readFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { isOmcHook } from '../../installer/index.js';
+import { analyzeLegacyClaudeMd, decodeClaudeMdUtf8 } from '../../installer/claude-md-analysis.js';
 import { colors } from '../utils/formatting.js';
 import { getSkillsDir, listBuiltinSkillNames } from '../../features/builtin-skills/skills.js';
+import { inspectUnifiedMcpRegistrySync } from '../../installer/mcp-registry.js';
+import { findWorkspaceRoot, WORKSPACE_MARKER } from '../../lib/worktree-paths.js';
+
+export interface WorkspaceMarkerStatus {
+  /** Absolute path to the directory containing .omc-workspace, or null if absent. */
+  markerRoot: string | null;
+  /** True when OMC_STATE_DIR env var is set. */
+  stateDirEnvSet: boolean;
+  /** Value of OMC_STATE_DIR, or null when unset. */
+  stateDirEnvValue: string | null;
+  /** When both OMC_STATE_DIR and .omc-workspace are active, this is true (warn: OMC_STATE_DIR wins). */
+  precedenceConflict: boolean;
+}
 
 export interface ConflictReport {
   hookConflicts: { event: string; command: string; isOmc: boolean }[];
-  claudeMdStatus: { hasMarkers: boolean; hasUserContent: boolean; path: string; companionFile?: string } | null;
+  claudeMdStatus: {
+    hasMarkers: boolean;
+    hasUserContent: boolean;
+    path: string;
+    companionFile?: string;
+    files: ClaudeMdFileStatus[];
+    dirtyFiles: string[];
+    exactLegacyPaths: string[];
+    manualReviewPaths: string[];
+  } | null;
   legacySkills: { name: string; path: string }[];
   envFlags: { disableOmc: boolean; skipHooks: string[] };
   configIssues: { unknownFields: string[] };
   windowsUnsafePluginHooks: { pluginRoot: string; event: string; command: string }[];
+  mcpRegistrySync: ReturnType<typeof inspectUnifiedMcpRegistrySync>;
+  workspaceMarker: WorkspaceMarkerStatus;
   hasConflicts: boolean;
 }
 
+export interface ClaudeMdFileStatus {
+  path: string;
+  hasMarkers: boolean;
+  hasUserContent: boolean;
+  markerState: 'none' | 'complete' | 'corrupt' | 'symlink' | 'unreadable' | 'invalid-utf8';
+  exactLegacy: boolean;
+  manualReview: boolean;
+}
 /**
  * Collect hook entries from a single settings.json file.
  */
@@ -68,11 +101,11 @@ function collectHooksFromSettings(settingsPath: string): ConflictReport['hookCon
  * Check for hook conflicts in both profile-level (~/.copilot/settings.json)
  * and project-level (./.copilot/settings.json).
  *
- * Copilot CLI settings precedence: project > profile > defaults.
+ * Claude Code settings precedence: project > profile > defaults.
  * We check both levels so the diagnostic is complete.
  */
 export function checkHookConflicts(): ConflictReport['hookConflicts'] {
-  const profileSettingsPath = join(getClaudeConfigDir(), 'settings.json');
+  const profileSettingsPath = join(getCopilotConfigDir(), 'settings.json');
   const projectSettingsPath = join(process.cwd(), '.copilot', 'settings.json');
 
   const profileHooks = collectHooksFromSettings(profileSettingsPath);
@@ -103,11 +136,6 @@ function isWindowsUnsafePluginHookCommand(command: string): boolean {
  * Native Windows cannot execute plugin hooks that still route through sh/find-node.
  * Detect stale cache manifests so doctor can point users at setup/update repair
  * instead of reporting a generic hook conflict.
- *
- * Fork note: the shipped hooks/hooks.json uses a Copilot dual-shell manifest with
- * `bash`/`powershell` keys (not a single `command`), but stale cache manifests from
- * older OMC versions may still carry a single `command` routed through sh/find-node.
- * We inspect all three keys so legacy and current manifest shapes both surface.
  */
 export function checkWindowsUnsafePluginHooks(): ConflictReport['windowsUnsafePluginHooks'] {
   if (process.platform !== 'win32') {
@@ -128,18 +156,15 @@ export function checkWindowsUnsafePluginHooks(): ConflictReport['windowsUnsafePl
 
     try {
       const parsed = JSON.parse(readFileSync(hooksJsonPath, 'utf-8')) as {
-        hooks?: Record<string, Array<{ hooks?: Array<{ type?: string; command?: string; bash?: string; powershell?: string }> }>>;
+        hooks?: Record<string, Array<{ hooks?: Array<{ type?: string; command?: string }> }>>;
       };
 
       for (const [event, groups] of Object.entries(parsed.hooks ?? {})) {
         for (const group of groups) {
           for (const hook of group.hooks ?? []) {
-            if (hook.type !== 'command') continue;
-            for (const command of [hook.command, hook.bash, hook.powershell]) {
-              if (typeof command !== 'string') continue;
-              if (isWindowsUnsafePluginHookCommand(command)) {
-                unsafe.push({ pluginRoot, event, command });
-              }
+            if (hook.type !== 'command' || typeof hook.command !== 'string') continue;
+            if (isWindowsUnsafePluginHookCommand(hook.command)) {
+              unsafe.push({ pluginRoot, event, command: hook.command });
             }
           }
         }
@@ -152,111 +177,159 @@ export function checkWindowsUnsafePluginHooks(): ConflictReport['windowsUnsafePl
   return unsafe;
 }
 
-/**
- * Check a single file for OMC markers.
- * Returns { hasMarkers, hasUserContent } or null on error.
- */
-function checkFileForOmcMarkers(filePath: string): { hasMarkers: boolean; hasUserContent: boolean } | null {
-  if (!existsSync(filePath)) return null;
-  try {
-    const content = readFileSync(filePath, 'utf-8');
-    const hasStartMarker = content.includes('<!-- OMG:START -->');
-    const hasEndMarker = content.includes('<!-- OMG:END -->');
-    const hasMarkers = hasStartMarker && hasEndMarker;
+interface ClaudeMdReadResult {
+  status: ClaudeMdFileStatus;
+  references: string[];
+}
 
-    let hasUserContent = false;
-    if (hasMarkers) {
-      const startIdx = content.indexOf('<!-- OMG:START -->');
-      const endIdx = content.indexOf('<!-- OMG:END -->');
-      const beforeMarker = content.substring(0, startIdx).trim();
-      const afterMarker = content.substring(endIdx + '<!-- OMG:END -->'.length).trim();
-      hasUserContent = beforeMarker.length > 0 || afterMarker.length > 0;
-    } else {
-      hasUserContent = content.trim().length > 0;
+function hasOutsideUserContent(
+  content: string,
+  outsideRanges: readonly { start: number; end: number }[],
+  excludedRanges: readonly { start: number; end: number }[] = [],
+): boolean {
+  for (const outside of outsideRanges) {
+    let remaining = [outside];
+    for (const excluded of excludedRanges) {
+      const next: { start: number; end: number }[] = [];
+      for (const range of remaining) {
+        if (excluded.end <= range.start || excluded.start >= range.end) {
+          next.push(range);
+          continue;
+        }
+        if (range.start < excluded.start) next.push({ start: range.start, end: excluded.start });
+        if (excluded.end < range.end) next.push({ start: excluded.end, end: range.end });
+      }
+      remaining = next;
     }
-    return { hasMarkers, hasUserContent };
+    if (remaining.some(range => content.slice(range.start, range.end).trim().length > 0)) return true;
+  }
+  return false;
+}
+
+function directClaudeMdReferences(content: string, configDir: string): string[] {
+  const references = new Set<string>();
+  for (const line of content.split(/\r?\n/)) {
+    if (/^@CLAUDE-[A-Za-z0-9][A-Za-z0-9_-]*\.md$/i.test(line)) {
+      references.add(join(configDir, line.slice(1)));
+    }
+  }
+  return [...references].sort();
+}
+function pathExistsWithoutFollowingSymlinks(filePath: string): boolean {
+  try {
+    lstatSync(filePath);
+    return true;
   } catch {
-    return null;
+    return false;
   }
 }
 
-/**
- * Find companion CLAUDE-*.md files in the config directory.
- * These are files like CLAUDE-omg.md that users create as part of a
- * file-split pattern to keep OMC config separate from their own copilot-instructions.md.
- */
-function findCompanionInstructionFiles(configDir: string): string[] {
+
+function inspectClaudeMdFile(filePath: string, configDir: string, isMain: boolean): ClaudeMdReadResult {
+  let stats;
+  try {
+    stats = lstatSync(filePath);
+  } catch {
+    return {
+      status: { path: filePath, hasMarkers: false, hasUserContent: false, markerState: 'unreadable', exactLegacy: false, manualReview: false },
+      references: []
+    };
+  }
+  if (stats.isSymbolicLink()) {
+    return {
+      status: { path: filePath, hasMarkers: false, hasUserContent: false, markerState: 'symlink', exactLegacy: false, manualReview: false },
+      references: []
+    };
+  }
+  if (!stats.isFile()) {
+    return {
+      status: { path: filePath, hasMarkers: false, hasUserContent: false, markerState: 'unreadable', exactLegacy: false, manualReview: false },
+      references: []
+    };
+  }
+
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(filePath);
+  } catch {
+    return {
+      status: { path: filePath, hasMarkers: false, hasUserContent: false, markerState: 'unreadable', exactLegacy: false, manualReview: false },
+      references: []
+    };
+  }
+
+  let content: string;
+  try {
+    content = decodeClaudeMdUtf8(bytes, filePath);
+  } catch {
+    return {
+      status: { path: filePath, hasMarkers: false, hasUserContent: false, markerState: 'invalid-utf8', exactLegacy: false, manualReview: false },
+      references: []
+    };
+  }
+
+  const analysis = analyzeLegacyClaudeMd(content);
+  const corrupt = analysis.markers.state === 'corrupt';
+  return {
+    status: {
+      path: filePath,
+      hasMarkers: analysis.markers.state === 'complete',
+      hasUserContent: corrupt
+        ? content.trim().length > 0
+        : hasOutsideUserContent(content, analysis.markers.outsideRanges, analysis.exactMatches),
+      markerState: analysis.markers.state,
+      exactLegacy: analysis.exactMatches.length > 0,
+      manualReview: corrupt || analysis.manualFindings.length > 0
+    },
+    references: isMain ? directClaudeMdReferences(content, configDir) : []
+  };
+}
+
+function genericClaudeMdFiles(configDir: string): string[] {
   try {
     return readdirSync(configDir)
-      .filter(f => /^CLAUDE-.+\.md$/i.test(f))
-      .map(f => join(configDir, f));
+      .filter(name => /^CLAUDE-.+\.md$/i.test(name) && name.toLowerCase() !== 'claude-omc.md')
+      .sort()
+      .map(name => join(configDir, name));
   } catch {
     return [];
   }
 }
 
-/**
- * Check copilot-instructions.md for OMC markers and user content.
- * Also checks companion files (CLAUDE-omg.md, etc.) for the file-split pattern
- * where users keep OMC config in a separate file.
- */
-export function checkCopilotMdStatus(): ConflictReport['claudeMdStatus'] {
-  const configDir = getClaudeConfigDir();
-  const claudeMdPath = join(configDir, 'copilot-instructions.md');
+/** Analyze main and companion CLAUDE files without following symlinks. */
+export function checkClaudeMdStatus(): ConflictReport['claudeMdStatus'] {
+  const configDir = getCopilotConfigDir();
+  const claudeMdPath = join(configDir, 'CLAUDE.md');
+  const activePath = join(configDir, 'CLAUDE-omc.md');
+  const genericPaths = genericClaudeMdFiles(configDir);
+  const mainExists = pathExistsWithoutFollowingSymlinks(claudeMdPath);
+  if (!mainExists && !pathExistsWithoutFollowingSymlinks(activePath) && genericPaths.length === 0) return null;
 
-  if (!existsSync(claudeMdPath)) {
-    return null;
+  const main = mainExists ? inspectClaudeMdFile(claudeMdPath, configDir, true) : null;
+  const candidatePaths: string[] = [...(mainExists ? [claudeMdPath] : []), activePath, ...(main?.references ?? []), ...genericPaths];
+  const seen = new Set<string>();
+  const files: ClaudeMdFileStatus[] = [];
+  for (const filePath of candidatePaths) {
+    if (seen.has(filePath)) continue;
+    seen.add(filePath);
+    if (filePath !== claudeMdPath && !pathExistsWithoutFollowingSymlinks(filePath)) continue;
+    files.push(filePath === claudeMdPath ? main!.status : inspectClaudeMdFile(filePath, configDir, false).status);
   }
 
-  try {
-    // Check the main copilot-instructions.md first
-    const mainResult = checkFileForOmcMarkers(claudeMdPath);
-    if (!mainResult) return null;
-
-    if (mainResult.hasMarkers) {
-      return {
-        hasMarkers: true,
-        hasUserContent: mainResult.hasUserContent,
-        path: claudeMdPath
-      };
-    }
-
-    // No markers in main file - check companion files (file-split pattern)
-    const companions = findCompanionInstructionFiles(configDir);
-    for (const companionPath of companions) {
-      const companionResult = checkFileForOmcMarkers(companionPath);
-      if (companionResult?.hasMarkers) {
-        return {
-          hasMarkers: true,
-          hasUserContent: mainResult.hasUserContent,
-          path: claudeMdPath,
-          companionFile: companionPath
-        };
-      }
-    }
-
-    // No markers in main or companions - check if copilot-instructions.md references a companion
-    const content = readFileSync(claudeMdPath, 'utf-8');
-    const companionRefPattern = /CLAUDE-[^\s)]+\.md/i;
-    const refMatch = content.match(companionRefPattern);
-    if (refMatch) {
-      // copilot-instructions.md references a companion file but it doesn't have markers yet
-      return {
-        hasMarkers: false,
-        hasUserContent: mainResult.hasUserContent,
-        path: claudeMdPath,
-        companionFile: join(configDir, refMatch[0])
-      };
-    }
-
-    return {
-      hasMarkers: false,
-      hasUserContent: mainResult.hasUserContent,
-      path: claudeMdPath
-    };
-  } catch (_error) {
-    return null;
-  }
+  const markerFile = files.find(file => file.hasMarkers);
+  const companionFile = markerFile
+    ? markerFile.path === claudeMdPath ? undefined : markerFile.path
+    : main?.references[0];
+  return {
+    hasMarkers: markerFile !== undefined,
+    hasUserContent: files.some(file => file.hasUserContent),
+    path: claudeMdPath,
+    companionFile,
+    files,
+    dirtyFiles: files.filter(file => file.hasUserContent).map(file => file.path),
+    exactLegacyPaths: files.filter(file => file.exactLegacy).map(file => file.path),
+    manualReviewPaths: files.filter(file => file.manualReview || file.markerState === 'symlink' || file.markerState === 'unreadable' || file.markerState === 'invalid-utf8').map(file => file.path)
+  };
 }
 
 /**
@@ -273,7 +346,7 @@ export function checkEnvFlags(): ConflictReport['envFlags'] {
   return { disableOmc, skipHooks };
 }
 
-const SETUP_FALLBACK_SKILL_NAMES = new Set(['omc-reference']);
+const SETUP_FALLBACK_SKILL_NAMES = new Set(['omc-reference', 'wiki']);
 
 function parseSemverLikeVersion(version: string): number[] | null {
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
@@ -305,7 +378,7 @@ function isValidSetupPluginRoot(pluginRoot: string): boolean {
 }
 
 function readInstalledPluginRoots(): string[] {
-  const installedPluginsPath = join(getClaudeConfigDir(), 'plugins', 'installed_plugins.json');
+  const installedPluginsPath = join(getCopilotConfigDir(), 'plugins', 'installed_plugins.json');
   if (!existsSync(installedPluginsPath)) {
     return [];
   }
@@ -388,9 +461,10 @@ function isSupportedSetupFallbackSkill(legacySkillsDir: string, entry: string, b
   }
 
   // scripts/setup-claude-md.sh intentionally syncs the raw bundled
-  // skills/omc-reference/SKILL.md file into ~/.copilot/skills/omc-reference/SKILL.md
-  // as a Copilot CLI fallback. Suppress only that exact, unmodified sync so real
-  // legacy collisions and user-edited omc-reference copies still surface.
+  // skills/wiki/SKILL.md file into ~/.copilot/skills/wiki/SKILL.md. Keep the
+  // retired omc-reference fallback for already-installed 4.x upgrades.
+  // as a Claude CLI fallback. Suppress only that exact, unmodified sync so real
+  // legacy collisions and user-edited fallback copies still surface.
   if (entry.toLowerCase() !== baseName) {
     return false;
   }
@@ -417,7 +491,7 @@ function isSupportedSetupFallbackSkill(legacySkillsDir: string, entry: string, b
  * false positives for user's custom skills.
  */
 export function checkLegacySkills(): ConflictReport['legacySkills'] {
-  const legacySkillsDir = join(getClaudeConfigDir(), 'skills');
+  const legacySkillsDir = join(getCopilotConfigDir(), 'skills');
   if (!existsSync(legacySkillsDir)) return [];
 
   const collisions: ConflictReport['legacySkills'] = [];
@@ -447,7 +521,7 @@ export function checkLegacySkills(): ConflictReport['legacySkills'] {
  */
 export function checkConfigIssues(): ConflictReport['configIssues'] {
   const unknownFields: string[] = [];
-  const configPath = join(getClaudeConfigDir(), '.omc-config.json');
+  const configPath = join(getCopilotConfigDir(), '.omc-config.json');
 
   if (!existsSync(configPath)) {
     return { unknownFields };
@@ -456,7 +530,12 @@ export function checkConfigIssues(): ConflictReport['configIssues'] {
   try {
     const config = JSON.parse(readFileSync(configPath, 'utf-8'));
 
-    // Known top-level fields from PluginConfig type
+    // Known top-level fields from the current config surfaces:
+    // - PluginConfig (src/shared/types.ts)
+    // - OMCConfig (src/features/auto-update.ts)
+    // - direct .omc-config.json readers/writers (notifications, auto-invoke,
+    //   delegation enforcement, omc-setup team config)
+    // - preserved legacy compatibility keys that still appear in user configs
     const knownFields = new Set([
       // PluginConfig fields
       'agents',
@@ -471,14 +550,25 @@ export function checkConfigIssues(): ConflictReport['configIssues'] {
       'configVersion',
       'taskTool',
       'taskToolConfig',
-      'defaultExecutionMode',
+      // 'defaultExecutionMode' intentionally NOT known: ultrawork and the
+      // generic execution-mode routing were removed in 5.0.0 and no runtime
+      // reads this key. A persisted value is stale and should surface here.
       'bashHistory',
       'agentTiers',
       'setupCompleted',
       'setupVersion',
       'stopHookCallbacks',
       'notifications',
+      'notificationProfiles',
+      'hudEnabled',
       'autoUpgradePrompt',
+      'nodeBinary',
+      // Direct config readers / writers outside OMCConfig
+      'customIntegrations',
+      'delegationEnforcementLevel',
+      'enforcementLevel',
+      'autoInvoke',
+      'team',
     ]);
 
     for (const field of Object.keys(config)) {
@@ -494,15 +584,37 @@ export function checkConfigIssues(): ConflictReport['configIssues'] {
 }
 
 /**
+ * Check for .omc-workspace marker presence and OMC_STATE_DIR precedence.
+ *
+ * Reports:
+ *  - Whether a .omc-workspace marker was found (and where).
+ *  - Whether OMC_STATE_DIR is set.
+ *  - When both are set, emits a precedenceConflict flag (OMC_STATE_DIR wins per
+ *    the resolution-order principle: OMC_STATE_DIR > .omc-workspace > git > cwd).
+ */
+export function checkWorkspaceMarker(): WorkspaceMarkerStatus {
+  const markerRoot = findWorkspaceRoot();
+  const stateDirEnvValue = process.env.OMC_STATE_DIR && process.env.OMC_STATE_DIR.trim()
+    ? process.env.OMC_STATE_DIR.trim()
+    : null;
+  const stateDirEnvSet = stateDirEnvValue !== null;
+  const precedenceConflict = stateDirEnvSet && markerRoot !== null;
+
+  return { markerRoot, stateDirEnvSet, stateDirEnvValue, precedenceConflict };
+}
+
+/**
  * Run complete conflict check
  */
 export function runConflictCheck(): ConflictReport {
   const hookConflicts = checkHookConflicts();
-  const claudeMdStatus = checkCopilotMdStatus();
+  const claudeMdStatus = checkClaudeMdStatus();
   const legacySkills = checkLegacySkills();
   const envFlags = checkEnvFlags();
   const configIssues = checkConfigIssues();
   const windowsUnsafePluginHooks = checkWindowsUnsafePluginHooks();
+  const mcpRegistrySync = inspectUnifiedMcpRegistrySync();
+  const workspaceMarker = checkWorkspaceMarker();
 
   // Determine if there are actual conflicts
   const hasConflicts =
@@ -511,8 +623,14 @@ export function runConflictCheck(): ConflictReport {
     envFlags.disableOmc || // OMC is disabled
     envFlags.skipHooks.length > 0 || // Hooks are being skipped
     configIssues.unknownFields.length > 0 || // Unknown config fields
-    windowsUnsafePluginHooks.length > 0; // Stale plugin hooks still use sh/find-node on Windows
+    windowsUnsafePluginHooks.length > 0 || // Stale plugin hooks still use sh/find-node on Windows
+    mcpRegistrySync.claudeMissing.length > 0 ||
+    mcpRegistrySync.claudeMismatched.length > 0 ||
+    mcpRegistrySync.codexMissing.length > 0 ||
+    mcpRegistrySync.codexMismatched.length > 0 ||
+    (claudeMdStatus !== null && (claudeMdStatus.exactLegacyPaths.length > 0 || claudeMdStatus.manualReviewPaths.length > 0));
     // Note: Missing OMC markers is informational (normal for fresh install), not a conflict
+    // Note: workspaceMarker.precedenceConflict is a WARN, not a hard conflict
 
   return {
     hookConflicts,
@@ -521,6 +639,8 @@ export function runConflictCheck(): ConflictReport {
     envFlags,
     configIssues,
     windowsUnsafePluginHooks,
+    mcpRegistrySync,
+    workspaceMarker,
     hasConflicts
   };
 }
@@ -557,9 +677,9 @@ export function formatReport(report: ConflictReport, json: boolean): string {
     lines.push('');
   }
 
-  // copilot-instructions.md status
+  // CLAUDE.md status
   if (report.claudeMdStatus) {
-    lines.push(colors.bold('📄 copilot-instructions.md Status'));
+    lines.push(colors.bold('📄 CLAUDE.md Status'));
     lines.push('');
 
     if (report.claudeMdStatus.hasMarkers) {
@@ -569,21 +689,29 @@ export function formatReport(report: ConflictReport, json: boolean): string {
       } else {
         lines.push(`  ${colors.green('✓')} OMC markers present`);
       }
-      if (report.claudeMdStatus.hasUserContent) {
-        lines.push(`  ${colors.green('✓')} User content preserved outside markers`);
+      if (report.claudeMdStatus.dirtyFiles.length > 0) {
+        lines.push(`  ${colors.green('✓')} User content outside managed ranges: ${report.claudeMdStatus.dirtyFiles.join(', ')}`);
       }
     } else {
       lines.push(`  ${colors.yellow('⚠')} No OMC markers found`);
-      lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup to add markers')}`);
-      if (report.claudeMdStatus.hasUserContent) {
-        lines.push(`  ${colors.blue('ℹ')} User content present - will be preserved`);
+      lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup to add markers to the selected guide')}`);
+      if (report.claudeMdStatus.dirtyFiles.length > 0) {
+        lines.push(`  ${colors.blue('ℹ')} User content present: ${report.claudeMdStatus.dirtyFiles.join(', ')}`);
       }
     }
     lines.push(`  ${colors.gray(`Path: ${report.claudeMdStatus.path}`)}`);
+    if (report.claudeMdStatus.exactLegacyPaths.length > 0) {
+      lines.push(`  ${colors.yellow('⚠')} Exact legacy guide content: ${report.claudeMdStatus.exactLegacyPaths.join(', ')}`);
+      lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup for coordinator-backed cleanup with a verified backup.')}`);
+    }
+    if (report.claudeMdStatus.manualReviewPaths.length > 0) {
+      lines.push(`  ${colors.yellow('⚠')} Inspection-only review required: ${report.claudeMdStatus.manualReviewPaths.join(', ')}`);
+      lines.push(`    ${colors.gray('Manual, corrupt, symlinked, unreadable, or invalid UTF-8 files are never deleted automatically.')}`);
+    }
     lines.push('');
   } else {
-    lines.push(colors.bold('📄 copilot-instructions.md Status'));
-    lines.push(`  ${colors.gray('No copilot-instructions.md found')}`);
+    lines.push(colors.bold('📄 CLAUDE.md Status'));
+    lines.push(`  ${colors.gray('No CLAUDE.md found')}`);
     lines.push('');
   }
 
@@ -624,7 +752,8 @@ export function formatReport(report: ConflictReport, json: boolean): string {
       lines.push(`    - ${hook.event} ${colors.gray(`(${hook.pluginRoot})`)}`);
       lines.push(`      ${colors.gray(hook.command)}`);
     }
-    lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup or update/reinstall the plugin to rewrite hooks to direct node run.cjs commands.')}`);
+    lines.push(`    ${colors.gray("cmd.exe answers these with \"'sh' is not recognized\", so every hook silently fails.")}`);
+    lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup to restore the portable node run.cjs commands.')}`);
     lines.push('');
   }
 
@@ -638,6 +767,61 @@ export function formatReport(report: ConflictReport, json: boolean): string {
     }
     lines.push('');
   }
+
+  // Unified MCP registry sync
+  lines.push(colors.bold('🧩 Unified MCP Registry'));
+  lines.push('');
+  if (!report.mcpRegistrySync.registryExists) {
+    lines.push(`  ${colors.gray('No unified MCP registry found')}`);
+    lines.push(`    ${colors.gray(`Expected path: ${report.mcpRegistrySync.registryPath}`)}`);
+  } else if (report.mcpRegistrySync.serverNames.length === 0) {
+    lines.push(`  ${colors.gray('Registry exists but has no MCP servers')}`);
+    lines.push(`    ${colors.gray(`Path: ${report.mcpRegistrySync.registryPath}`)}`);
+  } else {
+    lines.push(`  ${colors.green('✓')} Registry servers: ${report.mcpRegistrySync.serverNames.join(', ')}`);
+    lines.push(`    ${colors.gray(`Registry: ${report.mcpRegistrySync.registryPath}`)}`);
+    lines.push(`    ${colors.gray(`Claude MCP: ${report.mcpRegistrySync.claudeConfigPath}`)}`);
+    lines.push(`    ${colors.gray(`Codex: ${report.mcpRegistrySync.codexConfigPath}`)}`);
+
+    if (report.mcpRegistrySync.claudeMissing.length > 0) {
+      lines.push(`  ${colors.yellow('⚠')} Missing from Claude MCP config: ${report.mcpRegistrySync.claudeMissing.join(', ')}`);
+    } else if (report.mcpRegistrySync.claudeMismatched.length > 0) {
+      lines.push(`  ${colors.yellow('⚠')} Mismatched in Claude MCP config: ${report.mcpRegistrySync.claudeMismatched.join(', ')}`);
+    } else {
+      lines.push(`  ${colors.green('✓')} Claude MCP config is in sync`);
+    }
+
+    if (report.mcpRegistrySync.codexMissing.length > 0) {
+      lines.push(`  ${colors.yellow('⚠')} Missing from Codex config.toml: ${report.mcpRegistrySync.codexMissing.join(', ')}`);
+    } else if (report.mcpRegistrySync.codexMismatched.length > 0) {
+      lines.push(`  ${colors.yellow('⚠')} Mismatched in Codex config.toml: ${report.mcpRegistrySync.codexMismatched.join(', ')}`);
+    } else {
+      lines.push(`  ${colors.green('✓')} Codex config.toml is in sync`);
+    }
+  }
+  lines.push('');
+
+  // Workspace marker
+  lines.push(colors.bold('🗂  Workspace Marker (.omc-workspace)'));
+  lines.push('');
+  const wm = report.workspaceMarker;
+  if (wm.markerRoot) {
+    lines.push(`  ${colors.green('✓')} ${WORKSPACE_MARKER} found`);
+    lines.push(`    ${colors.gray(`Marker root: ${wm.markerRoot}`)}`);
+  } else {
+    lines.push(`  ${colors.gray('ℹ')} No ${WORKSPACE_MARKER} marker found (single-repo mode)`);
+  }
+  if (wm.stateDirEnvSet) {
+    lines.push(`  ${colors.green('✓')} OMC_STATE_DIR is set: ${wm.stateDirEnvValue}`);
+  } else {
+    lines.push(`  ${colors.gray('ℹ')} OMC_STATE_DIR not set`);
+  }
+  if (wm.precedenceConflict) {
+    lines.push(`  ${colors.yellow('⚠')} Both OMC_STATE_DIR and ${WORKSPACE_MARKER} are active.`);
+    lines.push(`    ${colors.gray('OMC_STATE_DIR takes precedence (resolution order: OMC_STATE_DIR > .omc-workspace > git > cwd).')}`);
+    lines.push(`    ${colors.gray('If you intended .omc-workspace to anchor state, unset OMC_STATE_DIR.')}`);
+  }
+  lines.push('');
 
   // Summary
   lines.push(colors.gray('━'.repeat(60)));

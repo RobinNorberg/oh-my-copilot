@@ -4,7 +4,12 @@ vi.mock('../features/auto-update.js', () => ({
     isTeamEnabled: () => true,
 }));
 import { getPrimaryKeyword } from '../hooks/keyword-detector/index.js';
-const TIER0_SKILLS = ['team', 'ralph', 'ultrawork', 'autopilot'];
+/**
+ * Keyword mode types, which are independent of shipped skill files.
+ */
+const TIER0_KEYWORD_MODES = ['team', 'ralph', 'autopilot'];
+/** Skills that must exist as canonical unprefixed entries in the catalog. */
+const TIER0_SKILLS = ['team', 'execute', 'ultragoal', 'autopilot'];
 describe('Tier-0 contract: skill aliases and canonical entrypoints', () => {
     beforeEach(() => {
         clearSkillsCache();
@@ -33,7 +38,6 @@ describe('Tier-0 contract: keyword routing fidelity', () => {
         // to prevent infinite spawning in team workers
         const cases = [
             { prompt: 'autopilot build a dashboard', expected: 'autopilot' },
-            { prompt: 'ultrawork fix these lint errors', expected: 'ultrawork' },
             { prompt: 'ralph finish this refactor', expected: 'ralph' },
         ];
         for (const { prompt, expected } of cases) {
@@ -42,6 +46,15 @@ describe('Tier-0 contract: keyword routing fidelity', () => {
     });
     it('team keyword is explicit-only (no auto-detection)', () => {
         expect(getPrimaryKeyword('team 3:executor ship this feature')).toBeNull();
+    });
+    it('does not route retired ultrawork, ulw, or ccg keywords', () => {
+        for (const prompt of [
+            'ultrawork fix these lint errors',
+            'ulw fix these lint errors',
+            'ccg fix these lint errors',
+        ]) {
+            expect(getPrimaryKeyword(prompt)).toBeNull();
+        }
     });
 });
 //# sourceMappingURL=tier0-contracts.test.js.map

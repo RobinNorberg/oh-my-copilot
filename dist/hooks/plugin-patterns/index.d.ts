@@ -1,7 +1,7 @@
 /**
  * Popular Plugin Patterns
  *
- * Common hook patterns from the Copilot CLI community:
+ * Common hook patterns from the Claude Code community:
  * - Auto-format on file save
  * - Lint validation before commit
  * - Commit message validation

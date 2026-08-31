@@ -6,14 +6,14 @@
  *
  * Adapted from oh-my-opencode's preemptive-compaction hook.
  *
- * Note: This is a simplified version for Copilot CLI's shell hook system.
+ * Note: This is a simplified version for Claude Code's shell hook system.
  * The original uses OpenCode's plugin event system for automatic summarization.
  * This version injects warning messages to prompt manual compaction.
  */
 import * as fs from 'fs';
 import * as path from 'path';
 import { tmpdir } from 'os';
-import { DEFAULT_THRESHOLD, CRITICAL_THRESHOLD, COMPACTION_COOLDOWN_MS, MAX_WARNINGS, COPILOT_DEFAULT_CONTEXT_LIMIT, CHARS_PER_TOKEN, CONTEXT_WARNING_MESSAGE, CONTEXT_CRITICAL_MESSAGE, } from './constants.js';
+import { DEFAULT_THRESHOLD, CRITICAL_THRESHOLD, COMPACTION_COOLDOWN_MS, MAX_WARNINGS, CLAUDE_DEFAULT_CONTEXT_LIMIT, CHARS_PER_TOKEN, CONTEXT_WARNING_MESSAGE, CONTEXT_CRITICAL_MESSAGE, } from './constants.js';
 const DEBUG = process.env.PREEMPTIVE_COMPACTION_DEBUG === '1';
 const DEBUG_FILE = path.join(tmpdir(), 'preemptive-compaction-debug.log');
 /**
@@ -75,7 +75,7 @@ export function estimateTokens(text) {
 export function analyzeContextUsage(content, config) {
     const warningThreshold = config?.warningThreshold ?? DEFAULT_THRESHOLD;
     const criticalThreshold = config?.criticalThreshold ?? CRITICAL_THRESHOLD;
-    const contextLimit = COPILOT_DEFAULT_CONTEXT_LIMIT;
+    const contextLimit = CLAUDE_DEFAULT_CONTEXT_LIMIT;
     const totalTokens = estimateTokens(content);
     const usageRatio = totalTokens / contextLimit;
     const isWarning = usageRatio >= warningThreshold;
@@ -274,5 +274,5 @@ export function clearRapidFireDebounce(sessionId) {
     lastAnalysisTime.delete(sessionId);
 }
 export { RAPID_FIRE_DEBOUNCE_MS };
-export { DEFAULT_THRESHOLD, CRITICAL_THRESHOLD, COMPACTION_COOLDOWN_MS, MAX_WARNINGS, COPILOT_DEFAULT_CONTEXT_LIMIT, CHARS_PER_TOKEN, CONTEXT_WARNING_MESSAGE, CONTEXT_CRITICAL_MESSAGE, } from './constants.js';
+export { DEFAULT_THRESHOLD, CRITICAL_THRESHOLD, COMPACTION_COOLDOWN_MS, MAX_WARNINGS, CLAUDE_DEFAULT_CONTEXT_LIMIT, CHARS_PER_TOKEN, CONTEXT_WARNING_MESSAGE, CONTEXT_CRITICAL_MESSAGE, } from './constants.js';
 //# sourceMappingURL=index.js.map

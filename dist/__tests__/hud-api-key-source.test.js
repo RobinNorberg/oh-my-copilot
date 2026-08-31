@@ -12,7 +12,7 @@ vi.mock('fs', () => ({
 }));
 // Mock config-dir utility
 vi.mock('../utils/config-dir.js', () => ({
-    getCopilotConfigDir: vi.fn(() => '/home/user/.copilot'),
+    getCopilotConfigDir: vi.fn(() => '/home/user/.claude'),
 }));
 import { existsSync, readFileSync } from 'fs';
 const mockedExistsSync = vi.mocked(existsSync);
@@ -38,7 +38,7 @@ describe('API Key Source Element', () => {
             expect(detectApiKeySource('/my/project')).toBe('project');
         });
         it('should return "global" when key is in global settings', () => {
-            mockedExistsSync.mockImplementation((path) => String(path) === '/home/user/.copilot/settings.json');
+            mockedExistsSync.mockImplementation((path) => String(path) === '/home/user/.claude/settings.json');
             mockedReadFileSync.mockReturnValue(JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-ant-xxx' } }));
             expect(detectApiKeySource('/my/project')).toBe('global');
         });
@@ -58,7 +58,7 @@ describe('API Key Source Element', () => {
         });
         it('should prioritize global over env', () => {
             process.env.ANTHROPIC_API_KEY = 'sk-ant-xxx';
-            mockedExistsSync.mockImplementation((path) => String(path) === '/home/user/.copilot/settings.json');
+            mockedExistsSync.mockImplementation((path) => String(path) === '/home/user/.claude/settings.json');
             mockedReadFileSync.mockReturnValue(JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-ant-xxx' } }));
             expect(detectApiKeySource('/my/project')).toBe('global');
         });
@@ -74,7 +74,7 @@ describe('API Key Source Element', () => {
             expect(detectApiKeySource('/my/project')).toBeNull();
         });
         it('should handle null cwd', () => {
-            mockedExistsSync.mockImplementation((path) => String(path) === '/home/user/.copilot/settings.json');
+            mockedExistsSync.mockImplementation((path) => String(path) === '/home/user/.claude/settings.json');
             mockedReadFileSync.mockReturnValue(JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-ant-xxx' } }));
             expect(detectApiKeySource()).toBe('global');
         });

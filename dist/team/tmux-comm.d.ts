@@ -1,7 +1,7 @@
 /**
  * Send a short trigger to a worker via tmux send-keys.
  * Uses literal mode (-l) to avoid stdin buffer interference.
- * Message MUST be < 500 chars.
+ * Message MUST be < 200 chars.
  * Returns false on error — never throws.
  * File state is written BEFORE this is called (write-then-notify pattern).
  */

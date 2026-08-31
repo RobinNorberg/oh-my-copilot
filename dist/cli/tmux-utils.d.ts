@@ -2,7 +2,7 @@
  * tmux utility functions for omc native shell launch
  * Adapted from oh-my-codex patterns for omc
  */
-import { type ExecFileSyncOptionsWithStringEncoding, type ExecSyncOptionsWithStringEncoding, type SpawnSyncOptionsWithStringEncoding, type SpawnSyncReturns } from 'child_process';
+import { type ExecFileSyncOptionsWithStringEncoding, type SpawnSyncOptionsWithStringEncoding, type SpawnSyncReturns } from 'child_process';
 export interface TmuxExecOptions {
     /** Strip TMUX env var so the command targets the default tmux server.
      *  Default: false — preserves TMUX (targets the current server).
@@ -20,10 +20,19 @@ export declare function tmuxExecAsync(args: string[], opts?: TmuxExecOptions & {
     stdout: string;
     stderr: string;
 }>;
-export declare function tmuxShell(command: string, opts?: TmuxExecOptions & Omit<ExecSyncOptionsWithStringEncoding, 'env' | 'encoding'> & {
+/**
+ * Argv-based tmux call for commands that carry format strings.
+ *
+ * These used to run as a `tmux <command>` shell string, which skipped the
+ * win32 .cmd/COMSPEC wrapping in resolveTmuxInvocation and forced callers to
+ * POSIX-quote format args — quotes that cmd.exe passes through literally.
+ * @deprecated Prefer tmuxExec; this remains for existing callers.
+ */
+export declare function tmuxShell(args: string[], opts?: TmuxExecOptions & Omit<ExecFileSyncOptionsWithStringEncoding, 'env' | 'encoding'> & {
     encoding?: BufferEncoding;
 }): string;
-export declare function tmuxShellAsync(command: string, opts?: TmuxExecOptions & {
+/** @deprecated Prefer tmuxExecAsync; this remains for existing callers. */
+export declare function tmuxShellAsync(args: string[], opts?: TmuxExecOptions & {
     timeout?: number;
 }): Promise<{
     stdout: string;
@@ -32,6 +41,10 @@ export declare function tmuxShellAsync(command: string, opts?: TmuxExecOptions &
 export declare function tmuxSpawn(args: string[], opts?: TmuxExecOptions & Omit<SpawnSyncOptionsWithStringEncoding, 'env' | 'encoding'> & {
     encoding?: BufferEncoding;
 }): SpawnSyncReturns<string>;
+/**
+ * Argv execution carries `#{...}` format args to tmux verbatim on every
+ * platform, so no shell — and therefore no per-platform quoting — is involved.
+ */
 export declare function tmuxCmdAsync(args: string[], opts?: TmuxExecOptions & {
     timeout?: number;
 }): Promise<{
@@ -53,13 +66,21 @@ export declare function isTmuxAvailable(): boolean;
  */
 export declare function isCopilotAvailable(): boolean;
 /**
+ * Options for `resolveLaunchPolicy`. `requireTmux=true` makes
+ * CMUX_SURFACE_ID stop demoting to 'direct'. The caller is responsible for
+ * gating on platform/flag combinations (e.g. macOS + --madmax).
+ */
+export interface ResolveLaunchPolicyOptions {
+    requireTmux?: boolean;
+}
+/**
  * Resolve launch policy based on environment and args
  * - inside-tmux: Already in tmux session, split pane for HUD
  * - outside-tmux: Not in tmux, create new session
  * - direct: tmux not available, run directly
  * - direct: print mode requested so stdout can flow to parent process
  */
-export declare function resolveLaunchPolicy(env?: NodeJS.ProcessEnv, args?: string[]): ClaudeLaunchPolicy;
+export declare function resolveLaunchPolicy(env?: NodeJS.ProcessEnv, args?: string[], options?: ResolveLaunchPolicyOptions): ClaudeLaunchPolicy;
 /**
  * Build tmux session name from directory, git branch, and UTC timestamp
  * Format: omc-{dir}-{branch}-{utctimestamp}

@@ -8,16 +8,18 @@
 
 import { existsSync, readFileSync, readdirSync, rmSync, mkdirSync, writeFileSync, symlinkSync, lstatSync, readlinkSync, unlinkSync, renameSync } from 'fs';
 import { spawn } from 'child_process';
-import { join, dirname, basename } from 'path';
+import { join, dirname, basename, resolve, relative, isAbsolute } from 'path';
+import { homedir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { getClaudeConfigDir, getUpdateCheckCachePath } from './lib/config-dir.mjs';
+import { getCopilotConfigDir, getUpdateCheckCachePath } from './lib/config-dir.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
+import { pathIdentity, publishCacheOccupancy, readOccupiedPluginRoots } from './lib/cache-occupancy.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-/** Claude config directory (respects CLAUDE_CONFIG_DIR env var) */
-const configDir = getClaudeConfigDir();
+/** Claude config directory (respects COPILOT_CONFIG_DIR env var) */
+const configDir = getCopilotConfigDir();
 
 // Import timeout-protected stdin reader (prevents hangs on Linux/Windows, see issue #240, #524)
 let readStdin;
@@ -224,7 +226,7 @@ function reconcileAbandonedSessionStarts(omcRoot, currentSessionId) {
 }
 
 function getRuntimeBaseDir() {
-  return process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || join(__dirname, '..');
+  return process.env.CLAUDE_PLUGIN_ROOT || join(__dirname, '..');
 }
 
 async function loadProjectMemoryModules() {
@@ -287,6 +289,25 @@ function dispatchSessionStartNotificationInBackground(pluginRoot, payload) {
   }
 }
 
+function reconcileSessionEndJobsInBackground(pluginRoot, directory) {
+  const workerModuleUrl = pathToFileURL(join(pluginRoot, 'dist', 'hooks', 'session-end', 'worker.js')).href;
+  const childSource = `import(${JSON.stringify(workerModuleUrl)})\n`
+    + `  .then(({ reconcileSessionEndJobs }) => reconcileSessionEndJobs?.(${JSON.stringify(directory)}))\n`
+    + `  .catch(() => {});`;
+
+  try {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', childSource], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      env: { ...process.env, OMC_HOOK_BACKGROUND_CHILD: '1' },
+    });
+    child.unref();
+  } catch {
+    // Reconciliation is best-effort and must not delay SessionStart.
+  }
+}
+
 function hasProjectMemoryContent(memory) {
   return Boolean(
     memory &&
@@ -338,14 +359,38 @@ async function resolveProjectMemorySummary(directory, projectMemoryModules) {
   return formatContextSummary(memory)?.trim() || '';
 }
 
-// Semantic version comparison (for cache cleanup sorting)
+// Semantic version comparison (for cache cleanup sorting and update checks)
+function parseSemver(version) {
+  if (typeof version !== 'string') return null;
+  const match = version.trim().match(/^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/);
+  if (!match) return null;
+  return {
+    core: match.slice(1, 4).map(Number),
+    prerelease: match[4]?.split('.') ?? [],
+  };
+}
+
 function semverCompare(a, b) {
-  const pa = a.replace(/^v/, '').split('.').map(s => parseInt(s, 10) || 0);
-  const pb = b.replace(/^v/, '').split('.').map(s => parseInt(s, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const na = pa[i] || 0;
-    const nb = pb[i] || 0;
-    if (na !== nb) return na - nb;
+  const pa = parseSemver(a);
+  const pb = parseSemver(b);
+  if (!pa || !pb) return 0;
+  for (let i = 0; i < 3; i++) {
+    if (pa.core[i] !== pb.core[i]) return pa.core[i] - pb.core[i];
+  }
+  if (pa.prerelease.length === 0 || pb.prerelease.length === 0) {
+    return pb.prerelease.length - pa.prerelease.length;
+  }
+  for (let i = 0; i < Math.max(pa.prerelease.length, pb.prerelease.length); i++) {
+    const aPart = pa.prerelease[i];
+    const bPart = pb.prerelease[i];
+    if (aPart === undefined) return -1;
+    if (bPart === undefined) return 1;
+    if (aPart === bPart) continue;
+    const aNumeric = /^\d+$/.test(aPart);
+    const bNumeric = /^\d+$/.test(bPart);
+    if (aNumeric && bNumeric) return Number(aPart) - Number(bPart);
+    if (aNumeric !== bNumeric) return aNumeric ? -1 : 1;
+    return aPart.localeCompare(bPart);
   }
   return 0;
 }
@@ -370,6 +415,43 @@ const SESSION_END_MODE_STATE_FILES = [
 
 import { MODEL_ROUTING_OVERRIDE_MESSAGE } from './lib/model-routing-override-message.mjs';
 export { MODEL_ROUTING_OVERRIDE_MESSAGE };
+
+/**
+ * Validate that a candidate cwd is a real OMC workspace anchor.
+ * Returns the candidate unchanged if it is non-empty AND contains a
+ * `.omc-workspace` marker OR a `.git` directory.
+ * Otherwise emits a one-line warning to stderr and returns null,
+ * signalling the caller to skip all state mutations.
+ */
+function validateCwd(candidate) {
+  if (!candidate || typeof candidate !== 'string') {
+    process.stderr.write(
+      `[OMC] session-start: refusing to use cwd '${candidate}' as workspace anchor (no .omc-workspace or .git marker)\n`
+    );
+    return null;
+  }
+  // cwd is commonly a subdirectory of the repo/workspace root, so walk up
+  // looking for a `.omc-workspace` marker or `.git` dir. Stop before scanning
+  // $HOME (or above) so a stray marker/repo in $HOME cannot validate an
+  // unrelated directory. Returns the original candidate so downstream root
+  // resolution (getOmcRoot/resolveOmcStateRoot) can anchor it.
+  let home = null;
+  try { home = homedir(); } catch { home = null; }
+  let cursor = candidate;
+  while (true) {
+    if (home && cursor === home) break;
+    if (existsSync(join(cursor, '.omc-workspace')) || existsSync(join(cursor, '.git'))) {
+      return candidate;
+    }
+    const parent = dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  process.stderr.write(
+    `[OMC] session-start: refusing to use cwd '${candidate}' as workspace anchor (no .omc-workspace or .git marker)\n`
+  );
+  return null;
+}
 
 function isTruthyProviderFlag(value) {
   return value === '1' || value === 'true';
@@ -403,7 +485,7 @@ function isVertexSession() {
 function readRoutingForceInheritFromConfig(directory) {
   const configPaths = [
     join(configDir, '.omc-config.json'),
-    join(directory, '.omc', 'config.json'),
+    join(directory, '.omg', 'config.json'),
   ];
 
   for (const configPath of configPaths) {
@@ -441,9 +523,11 @@ function compactBudgetedText(text, maxChars) {
 function formatUpdateNoticeForUser(updateInfo, options = {}) {
   const latestVersion = updateInfo?.latestVersion || 'latest';
   const currentVersion = updateInfo?.currentVersion || 'unknown';
-  const action = options.autoUpgradePrompt === false
-    ? 'To update later, run: omc update'
-    : 'Run /update to upgrade now, or use /plugin install oh-my-copilot';
+  const action = updateInfo?.source === 'marketplace'
+    ? 'To update the plugin channel, run: /plugin marketplace update omc && /omc-setup'
+    : (options.autoUpgradePrompt === false
+      ? 'To update later, run: omc update'
+      : 'Run /update to upgrade now, or use /plugin install oh-my-copilot');
   return `[OMC UPDATE AVAILABLE] oh-my-copilot v${latestVersion} is available (current: v${currentVersion}). ${action}`;
 }
 
@@ -454,7 +538,6 @@ function buildSessionStartAdditionalContext(messages) {
   const priorityOrder = [
     /\[MODEL ROUTING OVERRIDE/,
     /\[AUTOPILOT MODE RESTORED\]/,
-    /\[ULTRAWORK MODE RESTORED\]/,
     /\[RALPH LOOP RESTORED\]/,
     /\[PROJECT MEMORY\]/,
     /\[NOTEPAD - Priority Context\]/,
@@ -498,12 +581,83 @@ function extractOmcVersion(content) {
   return match ? match[1] : null;
 }
 
-// Get plugin version from PLUGIN_ROOT
+function getPluginCacheBase() {
+  return join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
+}
+
+function isPathInsideOrEqual(parent, child) {
+  const relativePath = relative(resolve(parent), resolve(child));
+  return relativePath === '' || (relativePath && !relativePath.startsWith('..') && !isAbsolute(relativePath));
+}
+
+function isManagedPluginCacheRoot(pluginRoot) {
+  const normalizedRoot = pluginRoot.replace(/[\\/]+$/, '');
+  const cacheBase = getPluginCacheBase();
+  if (isPathInsideOrEqual(cacheBase, normalizedRoot)) return true;
+
+  // A stale root can come from an older config-dir location; the canonical
+  // cache path shape still proves it is an OMC managed cache version.
+  const unixRoot = normalizedRoot.replace(/\\/g, '/');
+  return /\/plugins\/cache\/omc\/oh-my-copilot\/\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(unixRoot);
+}
+
+function getLatestPluginCacheVersion() {
+  try {
+    const cacheBase = getPluginCacheBase();
+    if (!existsSync(cacheBase)) return null;
+    const versions = readdirSync(cacheBase)
+      .filter(v => /^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(v))
+      .filter(v => readJsonFile(join(cacheBase, v, 'package.json'))?.version === v)
+      .sort(semverCompare)
+      .reverse();
+    return versions[0] || null;
+  } catch { return null; }
+}
+
+function getMarketplaceCloneVersion() {
+  try {
+    const marketplaceRoot = join(configDir, 'plugins', 'marketplaces', 'omc');
+    if (!existsSync(marketplaceRoot)) return null;
+
+    const marketplaceManifest = readJsonFile(join(marketplaceRoot, '.claude-plugin', 'marketplace.json'));
+    const pluginEntry = Array.isArray(marketplaceManifest?.plugins)
+      ? marketplaceManifest.plugins.find(plugin => plugin?.name === 'oh-my-copilot')
+      : null;
+    const version = typeof pluginEntry?.version === 'string' ? pluginEntry.version.trim() : '';
+    return parseSemver(version) ? version : null;
+  } catch { return null; }
+}
+
+function writeUpdateCheckCache(latestVersion, currentVersion, updateAvailable, source) {
+  try {
+    const dir = join(configDir, '.omg');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(getUpdateCheckCachePath(), JSON.stringify({
+      timestamp: Date.now(),
+      latestVersion,
+      currentVersion,
+      updateAvailable,
+      source,
+    }));
+  } catch {}
+}
+
+function getPluginUpdateChannelVersion() {
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+  if (!pluginRoot || !isManagedPluginCacheRoot(pluginRoot)) return { managed: false, version: null };
+  return { managed: true, version: getMarketplaceCloneVersion() };
+}
+
+// Get plugin version from CLAUDE_PLUGIN_ROOT
 function getPluginVersion() {
   try {
-    const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
+    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
     if (!pluginRoot) return null;
     const pkg = readJsonFile(join(pluginRoot, 'package.json'));
+    const latestCacheVersion = isManagedPluginCacheRoot(pluginRoot) ? getLatestPluginCacheVersion() : null;
+    if (latestCacheVersion && (!pkg?.version || semverCompare(latestCacheVersion, pkg.version) > 0)) {
+      return latestCacheVersion;
+    }
     return pkg?.version || null;
   } catch { return null; }
 }
@@ -533,13 +687,16 @@ function detectVersionDrift() {
   const pluginVersion = getPluginVersion();
   const npmVersion = getNpmVersion();
   const claudeMdVersion = getClaudeMdVersion();
+  const marketplaceChannel = getPluginUpdateChannelVersion();
 
   // Need at least plugin version to detect drift
   if (!pluginVersion) return null;
 
   const drift = [];
 
-  if (npmVersion && npmVersion !== pluginVersion) {
+  // Managed plugin installs are intentionally governed by the marketplace clone,
+  // so a newer npm CLI/cache version is not proof that the plugin channel can act.
+  if (!marketplaceChannel.managed && npmVersion && npmVersion !== pluginVersion) {
     drift.push({ component: 'npm package (omc CLI)', current: npmVersion, expected: pluginVersion });
   }
 
@@ -559,12 +716,18 @@ function detectVersionDrift() {
 
   if (drift.length === 0) return null;
 
-  return { pluginVersion, npmVersion, claudeMdVersion, drift };
+  return {
+    pluginVersion,
+    npmVersion,
+    claudeMdVersion,
+    drift,
+    source: marketplaceChannel.managed ? 'marketplace' : 'npm',
+  };
 }
 
 // Check if we should notify (once per unique drift combination)
 function shouldNotifyDrift(driftInfo) {
-  const stateFile = join(configDir, '.omc', 'update-state.json');
+  const stateFile = join(configDir, '.omg', 'update-state.json');
   const driftKey = `plugin:${driftInfo.pluginVersion}-npm:${driftInfo.npmVersion}-claude:${driftInfo.claudeMdVersion}`;
 
   try {
@@ -576,7 +739,7 @@ function shouldNotifyDrift(driftInfo) {
 
   // Save new drift state
   try {
-    const dir = join(configDir, '.omc');
+    const dir = join(configDir, '.omg');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(stateFile, JSON.stringify({
       lastNotifiedDrift: driftKey,
@@ -587,8 +750,23 @@ function shouldNotifyDrift(driftInfo) {
   return true;
 }
 
-// Check npm registry for available update (with 24h cache)
+// Check the actionable update channel for the active install (with 24h npm cache).
+// Plugin marketplace installs update from the marketplace clone (usually origin/main),
+// not from the npm package. Keep those channels separate so HUD/session notices do
+// not advertise npm-only releases that `/plugin marketplace update` cannot install.
 async function checkNpmUpdate(currentVersion) {
+  const marketplaceChannel = getPluginUpdateChannelVersion();
+  if (marketplaceChannel.managed) {
+    const marketplaceVersion = marketplaceChannel.version;
+    if (!marketplaceVersion) {
+      writeUpdateCheckCache(currentVersion, currentVersion, false, 'marketplace-unavailable');
+      return null;
+    }
+    const updateAvailable = semverCompare(marketplaceVersion, currentVersion) > 0;
+    writeUpdateCheckCache(marketplaceVersion, currentVersion, updateAvailable, 'marketplace');
+    return updateAvailable ? { currentVersion, latestVersion: marketplaceVersion, source: 'marketplace' } : null;
+  }
+
   const cacheFile = getUpdateCheckCachePath();
   const CACHE_DURATION = 24 * 60 * 60 * 1000;
   const now = Date.now();
@@ -597,9 +775,9 @@ async function checkNpmUpdate(currentVersion) {
   try {
     if (existsSync(cacheFile)) {
       const cached = JSON.parse(readFileSync(cacheFile, 'utf-8'));
-      if (cached.timestamp && (now - cached.timestamp) < CACHE_DURATION) {
+      if (cached.timestamp && (now - cached.timestamp) < CACHE_DURATION && (!cached.source || cached.source === 'npm')) {
         return (cached.updateAvailable && semverCompare(cached.latestVersion, currentVersion) > 0)
-          ? { currentVersion, latestVersion: cached.latestVersion }
+          ? { currentVersion, latestVersion: cached.latestVersion, source: 'npm' }
           : null;
       }
     }
@@ -609,7 +787,7 @@ async function checkNpmUpdate(currentVersion) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);
   try {
-    const response = await fetch('https://registry.npmjs.org/oh-my-claude-sisyphus/latest', {
+    const response = await fetch('https://registry.npmjs.org/oh-my-copilot/latest', {
       signal: controller.signal
     });
     if (!response.ok) return null;
@@ -618,14 +796,9 @@ async function checkNpmUpdate(currentVersion) {
     const latestVersion = data.version;
     const updateAvailable = semverCompare(latestVersion, currentVersion) > 0;
 
-    // Update cache
-    try {
-      const dir = join(configDir, '.omc');
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      writeFileSync(cacheFile, JSON.stringify({ timestamp: now, latestVersion, currentVersion, updateAvailable }));
-    } catch {}
+    writeUpdateCheckCache(latestVersion, currentVersion, updateAvailable, 'npm');
 
-    return updateAvailable ? { currentVersion, latestVersion } : null;
+    return updateAvailable ? { currentVersion, latestVersion, source: 'npm' } : null;
   } catch { return null; } finally { clearTimeout(timeoutId); }
 }
 
@@ -677,7 +850,7 @@ async function checkHudInstallation(retryCount = 0) {
 
       // If OMC HUD wrapper is configured, ensure at least one plugin cache version is built.
       if (statusLineCommand?.includes('omcp-hud')) {
-        const pluginCacheBase = join(configDir, 'plugins', 'cache', 'omg', 'oh-my-copilot');
+        const pluginCacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
         if (existsSync(pluginCacheBase)) {
           const versions = readdirSync(pluginCacheBase)
             .filter(version => !version.startsWith('.'))
@@ -720,15 +893,62 @@ async function main() {
     let data = {};
     try { data = JSON.parse(input); } catch {}
 
-    const directory = data.cwd || data.directory || process.cwd();
+    const rawDirectory = data.cwd || data.directory || process.cwd();
+    const directory = validateCwd(rawDirectory);
+    if (directory === null) {
+      console.log(JSON.stringify({ continue: true }));
+      return;
+    }
     const sessionId = data.session_id || data.sessionId || '';
     const omcRoot = await resolveOmcStateRoot(directory);
-    const messages = [];
+    let messages = [];
     const userMessages = [];
+    let pendingRestore = null;
+    let pendingRestoreMessage = null;
+
+    // Restore the newest PreCompact checkpoint after compaction (issue #3730).
+    // Only fires when Claude Code signals the session resumed from compaction
+    // (source === 'compact'); never on startup, resume, or clear.
+    if (data.source === 'compact' && sessionId) {
+      try {
+        const { preparePreCompactCheckpointRestore, claimPreCompactCheckpointRestore } = await import(
+          pathToFileURL(join(__dirname, 'lib', 'precompact-restore.mjs')).href
+        );
+        const prepared = preparePreCompactCheckpointRestore(omcRoot, sessionId);
+        if (prepared) {
+          pendingRestore = { ...prepared, preparePreCompactCheckpointRestore, claimPreCompactCheckpointRestore };
+          pendingRestoreMessage = `<session-restore>\n\n${prepared.text}\n\n</session-restore>\n\n---\n`;
+          messages.push(pendingRestoreMessage);
+        }
+      } catch {
+        // Restore is advisory: never break session start on a checkpoint error.
+      }
+    }
+
+    // Fire sibling-retrofit warning once per session (lifted off getOmcRoot hot path)
+    try {
+      const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+      if (pluginRoot) {
+        const { findWorkspaceRoot, warnSiblingRetrofit } = await import(
+          pathToFileURL(join(pluginRoot, 'dist', 'lib', 'worktree-paths.js')).href
+        );
+        const anchor = findWorkspaceRoot(directory);
+        if (anchor) warnSiblingRetrofit(anchor, sessionId || undefined);
+      }
+    } catch { /* non-fatal — dist unavailable or no workspace anchor */ }
     const projectMemoryModules = await loadProjectMemoryModules();
 
     writeSessionStartedMarker(omcRoot, directory, sessionId);
+    if (process.env.CLAUDE_PLUGIN_ROOT) {
+      const configuredOwnerPid = Number(process.env.OMC_SESSION_OWNER_PID);
+      publishCacheOccupancy(
+        process.env.CLAUDE_PLUGIN_ROOT,
+        configDir,
+        Number.isSafeInteger(configuredOwnerPid) && configuredOwnerPid > 1 ? configuredOwnerPid : process.ppid,
+      );
+    }
     reconcileAbandonedSessionStarts(omcRoot, sessionId);
+    reconcileSessionEndJobsInBackground(getRuntimeBaseDir(), directory);
 
     // Check for version drift between components
     const driftInfo = detectVersionDrift();
@@ -737,7 +957,9 @@ async function main() {
       for (const d of driftInfo.drift) {
         driftMsg += `${d.component}: ${d.current} (expected ${d.expected})\n`;
       }
-      driftMsg += `\nRun 'omc update' to sync all components.`;
+      driftMsg += driftInfo.source === 'marketplace'
+        ? `\nRun '/plugin marketplace update omc && /omc-setup' to sync plugin-managed components.`
+        : `\nRun 'omc update' to sync all components.`;
 
       messages.push(`<session-restore>\n\n${driftMsg}\n\n</session-restore>\n\n---\n`);
     }
@@ -755,7 +977,7 @@ async function main() {
     } catch {}
 
     // Warn if silentAutoUpdate is enabled but running in plugin mode (#1773)
-    if (process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT) {
+    if (process.env.CLAUDE_PLUGIN_ROOT) {
       try {
         const omcConfigPath = join(configDir, '.omc-config.json');
         const omcConfig = readJsonFile(omcConfigPath);
@@ -773,35 +995,8 @@ async function main() {
 </system-reminder>`);
     }
 
-    // Check for ultrawork state - only restore if session matches (issue #311)
-    // Session-scoped ONLY when session_id exists — no legacy fallback
-    let ultraworkState = null;
-    if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
-      // Session-scoped ONLY — no legacy fallback
-      ultraworkState = readJsonFile(join(omcRoot, 'state', 'sessions', sessionId, 'ultrawork-state.json'));
-      // Validate session identity
-      if (ultraworkState && ultraworkState.session_id && ultraworkState.session_id !== sessionId) {
-        ultraworkState = null;
-      }
-    } else {
-      // No session_id — legacy behavior for backward compat
-      ultraworkState = readJsonFile(join(omcRoot, 'state', 'ultrawork-state.json'));
-    }
-
-    if (shouldRestoreModeState(omcRoot, 'ultrawork', ultraworkState, sessionId)) {
-      messages.push(`<session-restore>
-
-[ULTRAWORK MODE RESTORED]
-
-You have an active ultrawork session from ${ultraworkState.started_at}.
-Original task: ${ultraworkState.original_prompt}
-
-Treat this as prior-session context only. Prioritize the user's newest request, and resume ultrawork only if the user explicitly asks to continue it.
-
-</session-restore>
-
----
-`);
+    if (shouldEmitModelRoutingOverride(directory)) {
+      messages.push(MODEL_ROUTING_OVERRIDE_MESSAGE);
     }
 
     // Check for ralph loop state
@@ -839,9 +1034,9 @@ Treat this as prior-session context only. Prioritize the user's newest request, 
     }
 
     // Check for incomplete todos (project-local only, not global
-    // [$CLAUDE_CONFIG_DIR|~/.claude]/todos/)
+    // [$COPILOT_CONFIG_DIR|~/.claude]/todos/)
     // NOTE: We intentionally do NOT scan the global
-    // [$CLAUDE_CONFIG_DIR|~/.claude]/todos/ directory.
+    // [$COPILOT_CONFIG_DIR|~/.claude]/todos/ directory.
     // That directory accumulates todo files from ALL past sessions across all
     // projects, causing phantom task counts in fresh sessions (see issue #354).
     const localTodoPaths = [
@@ -920,7 +1115,8 @@ ${cleanContent}
     // This prevents "Cannot find module" errors for sessions started before a
     // plugin update whose CLAUDE_PLUGIN_ROOT still points to the old version.
     try {
-      const cacheBase = join(configDir, 'plugins', 'cache', 'omg', 'oh-my-copilot');
+      const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
+      const occupancy = readOccupiedPluginRoots(configDir);
       let versions = [];
       if (existsSync(cacheBase)) {
         versions = readdirSync(cacheBase)
@@ -962,6 +1158,7 @@ ${cleanContent}
                   }
                 }
               } else if (stat.isDirectory()) {
+                if (occupancy.unavailable || occupancy.roots.has(pathIdentity(versionPath))) continue;
                 // Directory → symlink: cannot be atomic, but run.cjs now
                 // handles missing targets gracefully (issue #1007).
                 rmSync(versionPath, { recursive: true, force: true });
@@ -981,18 +1178,17 @@ ${cleanContent}
         }
       }
 
-      // Guard against PLUGIN_ROOT pointing to a stale/deleted version.
+      // Guard against CLAUDE_PLUGIN_ROOT pointing to a stale/deleted version.
       // When an old version directory is removed during upgrade but a running
-      // session still has the old PLUGIN_ROOT in its environment, the
+      // session still has the old CLAUDE_PLUGIN_ROOT in its environment, the
       // directory won't exist. Create a symlink so subsequent hook invocations
       // via run.cjs resolve correctly.
-      const pluginRootEnv = (process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || '')
-        .replace(/[\/\\]+$/, ''); // strip trailing separators
-      if (pluginRootEnv && !existsSync(pluginRootEnv)) {
-        const pluginRootVersion = basename(pluginRootEnv);
+      const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT?.replace(/[\/\\]+$/, ''); // strip trailing separators
+      if (pluginRoot && !existsSync(pluginRoot)) {
+        const pluginRootVersion = basename(pluginRoot);
         if (/^\d+\.\d+\.\d+/.test(pluginRootVersion) && versions.length > 0) {
           const latest = versions[0];
-          const stalePath = pluginRootEnv;
+          const stalePath = pluginRoot;
           const isWin = process.platform === 'win32';
           // Always use absolute path to avoid symlink target resolution issues
           // when stalePath is not under cacheBase (e.g., after config-dir move)
@@ -1024,7 +1220,7 @@ ${cleanContent}
     // Notification transports/custom integrations must never write into this
     // foreground hook's stdout JSON protocol or stderr CI checks.
     try {
-      const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
+      const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
       if (pluginRoot) {
         dispatchSessionStartNotificationInBackground(pluginRoot, {
           sessionId,
@@ -1047,6 +1243,58 @@ ${cleanContent}
       // Notification module not available, skip silently
     }
 
+    let additionalContext = '';
+    if (pendingRestore && pendingRestoreMessage) {
+      additionalContext = buildSessionStartAdditionalContext(messages);
+      if (additionalContext.includes(pendingRestoreMessage)) {
+        let markerStatus = null;
+        const waitCell = new Int32Array(new SharedArrayBuffer(4));
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const status = pendingRestore.claimPreCompactCheckpointRestore(
+            omcRoot,
+            sessionId,
+            pendingRestore.path,
+            pendingRestore.created_at,
+            pendingRestore.mtime_ms,
+            pendingRestore.checkpoint_sha256,
+          );
+          if (status === 'written') {
+            markerStatus = status;
+            break;
+          }
+          if (status !== 'contended') break;
+          Atomics.wait(waitCell, 0, 0, 10);
+          const refreshed = pendingRestore.preparePreCompactCheckpointRestore(omcRoot, sessionId);
+          if (!refreshed) break;
+          const refreshedMessage = `<session-restore>\n\n${refreshed.text}\n\n</session-restore>\n\n---\n`;
+          const refreshedMessages = messages.map((message) => (
+            message === pendingRestoreMessage ? refreshedMessage : message
+          ));
+          const refreshedContext = buildSessionStartAdditionalContext(refreshedMessages);
+          if (!refreshedContext.includes(refreshedMessage)) break;
+          pendingRestore = {
+            ...refreshed,
+            preparePreCompactCheckpointRestore: pendingRestore.preparePreCompactCheckpointRestore,
+            claimPreCompactCheckpointRestore: pendingRestore.claimPreCompactCheckpointRestore,
+          };
+          pendingRestoreMessage = refreshedMessage;
+          messages = refreshedMessages;
+          additionalContext = refreshedContext;
+        }
+        if (!markerStatus) {
+          messages = messages.filter((message) => message !== pendingRestoreMessage);
+          additionalContext = buildSessionStartAdditionalContext(messages);
+        }
+      } else {
+        // The complete restore sentinel did not fit the aggregate budget;
+        // do not commit a replay marker for context that was not delivered.
+        messages = messages.filter((message) => message !== pendingRestoreMessage);
+        additionalContext = buildSessionStartAdditionalContext(messages);
+      }
+    } else if (messages.length > 0) {
+      additionalContext = buildSessionStartAdditionalContext(messages);
+    }
+
     if (messages.length > 0 || userMessages.length > 0) {
       const output = {
         continue: true,
@@ -1057,7 +1305,7 @@ ${cleanContent}
       if (messages.length > 0) {
         output.hookSpecificOutput = {
           hookEventName: 'SessionStart',
-          additionalContext: buildSessionStartAdditionalContext(messages)
+          additionalContext,
         };
       }
       console.log(JSON.stringify(output));

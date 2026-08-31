@@ -92,7 +92,7 @@ describe('capabilities', () => {
     it('ranks workers by fitness score descending', () => {
       const w1 = makeMember('codex', 'mcp-codex', ['code-review', 'security-review']);
       const w2 = makeMember('gemini', 'mcp-gemini', ['ui-design', 'documentation']);
-      const w3 = makeMember('copilot', 'copilot-native', ['code-edit', 'testing', 'general']);
+      const w3 = makeMember('claude', 'copilot-native', ['code-edit', 'testing', 'general']);
 
       const ranked = rankWorkersForTask([w1, w2, w3], ['code-review', 'security-review']);
       expect(ranked[0].name).toBe('codex'); // perfect match

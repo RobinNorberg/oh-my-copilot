@@ -13,7 +13,33 @@ export {
 } from '../agents/prompt-helpers.js';
 export type { AgentRole } from '../agents/prompt-helpers.js';
 
-import { resolve } from 'path';
+import path from 'path';
+
+function isWindowsStylePath(value: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\');
+}
+
+function selectPathApi(baseDir: string, candidatePath: string): path.PlatformPath {
+  if (process.platform === 'win32') {
+    return path.win32;
+  }
+  if (isWindowsStylePath(baseDir) || isWindowsStylePath(candidatePath)) {
+    return path.win32;
+  }
+  return path;
+}
+
+function isPathWithinBaseDir(baseDir: string, candidatePath: string): boolean {
+  const pathApi = selectPathApi(baseDir, candidatePath);
+  const resolvedBase = pathApi.resolve(baseDir);
+  const resolvedCandidate = pathApi.resolve(baseDir, candidatePath);
+  const caseInsensitive = pathApi === path.win32 || process.platform === 'darwin';
+  const baseForCompare = caseInsensitive ? resolvedBase.toLowerCase() : resolvedBase;
+  const candidateForCompare = caseInsensitive ? resolvedCandidate.toLowerCase() : resolvedCandidate;
+  const rel = pathApi.relative(baseForCompare, candidateForCompare);
+
+  return rel === '' || (!rel.startsWith('..') && !pathApi.isAbsolute(rel));
+}
 
 /**
  * Subagent mode marker prepended to all prompts sent to external CLI agents.
@@ -35,7 +61,6 @@ export function validateContextFilePaths(
 ): { validPaths: string[]; errors: string[] } {
   const validPaths: string[] = [];
   const errors: string[] = [];
-  const resolvedBase = resolve(baseDir);
 
   for (const p of paths) {
     // Injection check: reject control characters (\n, \r, \0)
@@ -46,11 +71,8 @@ export function validateContextFilePaths(
 
     if (!allowExternal) {
       // Traversal check: resolved absolute path must remain within baseDir
-      const abs = resolve(baseDir, p);
-      // Normalize to forward slashes for cross-platform comparison
-      const absNorm = abs.replace(/\\/g, '/');
-      const baseNorm = resolvedBase.replace(/\\/g, '/');
-      if (!absNorm.startsWith(baseNorm + '/') && absNorm !== baseNorm) {
+      // using separator-aware relative checks (works for both POSIX and Win32 paths).
+      if (!isPathWithinBaseDir(baseDir, p)) {
         errors.push(`E_CONTEXT_FILE_TRAVERSAL: Path escapes baseDir: ${p}`);
         continue;
       }

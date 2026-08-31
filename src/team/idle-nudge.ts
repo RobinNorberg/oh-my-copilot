@@ -11,8 +11,7 @@
  * @see https://github.com/anthropics/oh-my-copilot/issues/1047
  */
 
-import { tmuxExecAsync } from '../cli/tmux-utils.js';
-import { paneLooksReady, paneHasActiveTask, sendToWorker } from './tmux-session.js';
+import { paneLooksReady, paneHasActiveTask, sendToWorker, captureTeamPane } from './tmux-session.js';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -30,21 +29,16 @@ export interface NudgeConfig {
 export const DEFAULT_NUDGE_CONFIG: NudgeConfig = {
   delayMs: 30_000,
   maxCount: 3,
-  message: 'Continue working on your assigned task.',
+  message: 'Continue working on your assigned task and report concrete progress (not ACK-only).',
 };
 
 // ---------------------------------------------------------------------------
 // Pane capture + idle detection
 // ---------------------------------------------------------------------------
 
-/** Capture the last 80 lines of a tmux pane. Returns '' on error. */
+/** Capture the last 80 lines of a team pane. Returns '' on error. */
 export async function capturePane(paneId: string): Promise<string> {
-  try {
-    const { stdout } = await tmuxExecAsync(['capture-pane', '-t', paneId, '-p', '-S', '-80']);
-    return stdout;
-  } catch {
-    return '';
-  }
+  return captureTeamPane(paneId);
 }
 
 /**

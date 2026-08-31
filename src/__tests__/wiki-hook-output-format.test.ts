@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 const NODE = process.execPath;
@@ -12,11 +12,11 @@ describe('wiki hook wrapper output', () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'omc-wiki-hook-format-'));
-    mkdirSync(join(tempDir, '.omcp', 'wiki'), { recursive: true });
+    tempDir = mkdtempSync(join(homedir(), 'omc-wiki-hook-format-'));
+    mkdirSync(join(tempDir, '.omg', 'wiki'), { recursive: true });
 
     writeFileSync(
-      join(tempDir, '.omcp', 'wiki', 'test-page.md'),
+      join(tempDir, '.omg', 'wiki', 'test-page.md'),
       [
         '---',
         'title: "Test Page"',
@@ -34,7 +34,7 @@ describe('wiki hook wrapper output', () => {
       ].join('\n'),
     );
 
-    writeFileSync(join(tempDir, '.omcp', 'wiki', 'index.md'), '# Wiki Index\n- test-page.md\n');
+    writeFileSync(join(tempDir, '.omg', 'wiki', 'index.md'), '# Wiki Index\n- test-page.md\n');
   });
 
   afterEach(() => {
@@ -47,6 +47,7 @@ describe('wiki hook wrapper output', () => {
       input: JSON.stringify({ cwd: tempDir }),
       encoding: 'utf-8',
       timeout: 15000,
+      env: { ...process.env, HOME: tempDir, USERPROFILE: tempDir },
     }).trim();
 
     return JSON.parse(raw) as {
@@ -68,7 +69,7 @@ describe('wiki hook wrapper output', () => {
     expect(output.additionalContext).toBeUndefined();
     expect(output.hookSpecificOutput).toEqual({
       hookEventName: 'SessionStart',
-      additionalContext: expect.stringContaining('[LLM Wiki: 1 pages at .omcp/wiki/]'),
+      additionalContext: expect.stringContaining('[LLM Wiki: 1 pages at .omg/wiki/]'),
     });
   });
 

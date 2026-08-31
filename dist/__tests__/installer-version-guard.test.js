@@ -19,8 +19,8 @@ function withUnixPaths(pathLike) {
     return String(pathLike).replace(/\\/g, '/');
 }
 describe('install downgrade protection (issue #1382)', () => {
-    const claudeMdPath = join(COPILOT_CONFIG_DIR, 'copilot-instructions.md');
-    const homeClaudeMdPath = join(homedir(), 'copilot-instructions.md');
+    const claudeMdPath = join(COPILOT_CONFIG_DIR, 'CLAUDE.md');
+    const homeClaudeMdPath = join(homedir(), 'CLAUDE.md');
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -35,7 +35,7 @@ describe('install downgrade protection (issue #1382)', () => {
                 return JSON.stringify({ version: '4.7.5' });
             }
             if (path === withUnixPaths(claudeMdPath)) {
-                return '<!-- OMG:START -->\n<!-- OMC:VERSION:4.7.5 -->\n# OMC\n<!-- OMG:END -->\n';
+                return '<!-- OMC:START -->\n<!-- OMC:VERSION:4.7.5 -->\n# OMC\n<!-- OMC:END -->\n';
             }
             throw new Error(`Unexpected read: ${path}`);
         });
@@ -49,7 +49,7 @@ describe('install downgrade protection (issue #1382)', () => {
         expect(result.message).toContain('4.5.1');
         expect(mockedWriteFileSync).not.toHaveBeenCalled();
     });
-    it('falls back to the existing copilot-instructions.md version marker when metadata is missing', () => {
+    it('falls back to the existing CLAUDE.md version marker when metadata is missing', () => {
         mockedExistsSync.mockImplementation((pathLike) => {
             const path = withUnixPaths(pathLike);
             return path === withUnixPaths(homeClaudeMdPath);
@@ -57,7 +57,7 @@ describe('install downgrade protection (issue #1382)', () => {
         mockedReadFileSync.mockImplementation((pathLike) => {
             const path = withUnixPaths(pathLike);
             if (path === withUnixPaths(homeClaudeMdPath)) {
-                return '<!-- OMG:START -->\n<!-- OMC:VERSION:4.7.5 -->\n# OMC\n<!-- OMG:END -->\n';
+                return '<!-- OMC:START -->\n<!-- OMC:VERSION:4.7.5 -->\n# OMC\n<!-- OMC:END -->\n';
             }
             throw new Error(`Unexpected read: ${path}`);
         });

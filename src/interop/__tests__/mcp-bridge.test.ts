@@ -113,9 +113,8 @@ describe('interop mcp bridge artifact surfacing', () => {
     const readText = readResponse.content[0]?.text ?? '';
     expect(readText).toContain('Description artifact:');
     expect(readText).toContain('Result artifact:');
-    const normalized = readText.replace(/\\/g, '/');
-    expect(normalized).toContain('.omcp/state/interop/artifacts/task-description/');
-    expect(normalized).toContain('.omcp/state/interop/artifacts/task-result/');
+    expect(readText).toContain('.omg/state/interop/artifacts/task-description/');
+    expect(readText).toContain('.omg/state/interop/artifacts/task-result/');
   });
 
   it('reports artifact-backed shared messages', async () => {
@@ -137,6 +136,6 @@ describe('interop mcp bridge artifact surfacing', () => {
 
     const readText = readResponse.content[0]?.text ?? '';
     expect(readText).toContain('Content artifact:');
-    expect(readText.replace(/\\/g, '/')).toContain('.omcp/state/interop/artifacts/message-content/');
+    expect(readText).toContain('.omg/state/interop/artifacts/message-content/');
   });
 });

@@ -58,7 +58,7 @@ export declare function getGlobalOmcStateCandidates(...segments: string[]): stri
  * Get the plugin cache base directory for oh-my-copilot.
  * This is the directory containing version subdirectories.
  *
- * Structure: <configDir>/plugins/cache/omg/oh-my-copilot/
+ * Structure: <configDir>/plugins/cache/omc/oh-my-copilot/
  */
 export declare function getPluginCacheBase(): string;
 /**
@@ -82,6 +82,14 @@ export interface PurgeCacheResult {
     symlinked: number;
     /** Paths that were converted to symlinks */
     symlinkPaths: string[];
+    /** Number of version directories restored from an interrupted relink */
+    restored: number;
+    /** Version paths that were restored from an interrupted relink */
+    restoredPaths: string[];
+    /** Number of backups left in place because their owning purge is still running */
+    skipped: number;
+    /** Backup paths left to their live owner, with the version path they belong to */
+    skippedPaths: string[];
     /** Errors encountered (non-fatal) */
     errors: string[];
 }

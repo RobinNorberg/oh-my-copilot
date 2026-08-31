@@ -17,11 +17,11 @@ import type {
 import { resolveAutopilotPlanPath } from "../../../config/plan-output.js";
 import { getExpansionPrompt, getDirectPlanningPrompt } from "../prompts.js";
 
-export const RALPLAN_COMPLETION_SIGNAL = 'PIPELINE_RALPLAN_COMPLETE';
+export const RALPLAN_COMPLETION_SIGNAL = "PIPELINE_RALPLAN_COMPLETE";
 
 export const ralplanAdapter: PipelineStageAdapter = {
-  id: 'ralplan',
-  name: 'Planning (RALPLAN)',
+  id: "ralplan",
+  name: "Planning (RALPLAN)",
   completionSignal: RALPLAN_COMPLETION_SIGNAL,
 
   shouldSkip(config: PipelineConfig): boolean {
@@ -29,7 +29,7 @@ export const ralplanAdapter: PipelineStageAdapter = {
   },
 
   getPrompt(context: PipelineContext): string {
-    const specPath = context.specPath || ".omcp/autopilot/spec.md";
+    const specPath = context.specPath || ".omg/autopilot/spec.md";
     const planPath = context.planPath || resolveAutopilotPlanPath();
 
     if (context.config.planning === "ralplan") {
@@ -41,7 +41,7 @@ Your task: Expand the idea into a detailed spec and implementation plan using co
 
 ### Part 1: Idea Expansion (Spec Creation)
 
-${getExpansionPrompt(context.idea)}
+${getExpansionPrompt(context.idea, undefined, false)}
 
 ### Part 2: Consensus Planning
 
@@ -73,7 +73,7 @@ Your task: Expand the idea into a spec and create an implementation plan.
 
 ### Part 1: Idea Expansion
 
-${getExpansionPrompt(context.idea)}
+${getExpansionPrompt(context.idea, undefined, false)}
 
 ### Part 2: Direct Planning
 

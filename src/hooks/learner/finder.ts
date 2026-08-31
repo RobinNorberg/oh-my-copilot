@@ -7,7 +7,7 @@
 
 import { existsSync, readdirSync, realpathSync, mkdirSync } from 'fs';
 import { join, normalize, sep } from 'path';
-import { USER_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, SKILL_EXTENSION, DEBUG_ENABLED, GLOBAL_SKILLS_DIR, MAX_RECURSION_DEPTH } from './constants.js';
+import { USER_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, PROJECT_AGENT_SKILLS_SUBDIR, SKILL_EXTENSION, DEBUG_ENABLED, GLOBAL_SKILLS_DIR, MAX_RECURSION_DEPTH } from './constants.js';
 import type { SkillFileCandidate } from './types.js';
 
 /**
@@ -71,28 +71,34 @@ export function findSkillFiles(
 
   // 1. Search project-level skills (if scope allows)
   if (projectRoot && (scope === 'project' || scope === 'all')) {
-    const projectSkillsDir = join(projectRoot, PROJECT_SKILLS_SUBDIR);
-    const projectFiles: string[] = [];
-    findSkillFilesRecursive(projectSkillsDir, projectFiles);
+    const projectSkillDirs = [
+      join(projectRoot, PROJECT_SKILLS_SUBDIR),
+      join(projectRoot, PROJECT_AGENT_SKILLS_SUBDIR),
+    ];
 
-    for (const filePath of projectFiles) {
-      const realPath = safeRealpathSync(filePath);
-      if (seenRealPaths.has(realPath)) continue;
-      // Symlink boundary check
-      if (!isWithinBoundary(realPath, projectSkillsDir)) {
-        if (DEBUG_ENABLED) {
-          console.warn('[learner] Symlink escape blocked:', filePath);
+    for (const projectSkillsDir of projectSkillDirs) {
+      const projectFiles: string[] = [];
+      findSkillFilesRecursive(projectSkillsDir, projectFiles);
+
+      for (const filePath of projectFiles) {
+        const realPath = safeRealpathSync(filePath);
+        if (seenRealPaths.has(realPath)) continue;
+        // Symlink boundary check
+        if (!isWithinBoundary(realPath, projectSkillsDir)) {
+          if (DEBUG_ENABLED) {
+            console.warn('[learner] Symlink escape blocked:', filePath);
+          }
+          continue;
         }
-        continue;
-      }
-      seenRealPaths.add(realPath);
+        seenRealPaths.add(realPath);
 
-      candidates.push({
-        path: filePath,
-        realPath,
-        scope: 'project',
-        sourceDir: projectSkillsDir,
-      });
+        candidates.push({
+          path: filePath,
+          realPath,
+          scope: 'project',
+          sourceDir: projectSkillsDir,
+        });
+      }
     }
   }
 

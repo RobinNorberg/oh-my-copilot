@@ -2,14 +2,14 @@
  * Basic Usage Example
  *
  * This example demonstrates how to use Oh-My-Copilot
- * with the Copilot Agent SDK.
+ * with the Claude Agent SDK.
  */
 
 // Note: In real usage, import from 'oh-my-copilot'
 import { createOmcSession, enhancePrompt } from '../src/index.js';
 
-// For demonstration - in real usage, import from '@github/copilot'
-// import { query } from '@github/copilot';
+// For demonstration - in real usage, import from '@anthropic-ai/claude-agent-sdk'
+// import { query } from '@anthropic-ai/claude-agent-sdk';
 
 async function main() {
   console.log('=== Oh-My-Copilot Example ===\n');
@@ -52,11 +52,11 @@ async function main() {
   console.log('Enhanced prompt:');
   console.log(session.processPrompt(searchPrompt) + '\n');
 
-  // Example 4: Using with Copilot Agent SDK (pseudo-code)
-  console.log('Example 4: Using with Copilot Agent SDK');
+  // Example 4: Using with Claude Agent SDK (pseudo-code)
+  console.log('Example 4: Using with Claude Agent SDK');
   console.log(`
-// Real usage with Copilot Agent SDK:
-import { query } from '@github/copilot';
+// Real usage with Claude Agent SDK:
+import { query } from '@anthropic-ai/claude-agent-sdk';
 
 const session = createOmcSession();
 

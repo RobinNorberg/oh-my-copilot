@@ -7,11 +7,12 @@
  * NOTE: Token counts are not available from Codex/Gemini CLI output.
  * Character counts serve as a rough proxy for usage estimation.
  *
- * Storage: append-only JSONL at .omcp/logs/team-usage-{team}.jsonl
+ * Storage: append-only JSONL at .omg/logs/team-usage-{team}.jsonl
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 import { appendFileWithMode, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
 
 export interface TaskUsageRecord {
@@ -44,7 +45,7 @@ export interface TeamUsageReport {
 }
 
 function getUsageLogPath(workingDirectory: string, teamName: string): string {
-  return join(workingDirectory, '.omcp', 'logs', `team-usage-${teamName}.jsonl`);
+  return join(getOmcRoot(workingDirectory), 'logs', `team-usage-${teamName}.jsonl`);
 }
 
 /**
@@ -56,8 +57,11 @@ export function recordTaskUsage(
   record: TaskUsageRecord
 ): void {
   const logPath = getUsageLogPath(workingDirectory, teamName);
-  const dir = join(workingDirectory, '.omcp', 'logs');
-  validateResolvedPath(logPath, workingDirectory);
+  const dir = join(getOmcRoot(workingDirectory), 'logs');
+  // logPath lives under getOmcRoot(...)/logs, which in a .omc-workspace layout
+  // is ABOVE workingDirectory. Validate against the shared logs dir (still
+  // catches teamName traversal) instead of the sub-repo.
+  validateResolvedPath(logPath, dir);
   ensureDirWithMode(dir);
   appendFileWithMode(logPath, JSON.stringify(record) + '\n');
 }

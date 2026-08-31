@@ -9,6 +9,16 @@ import { z } from 'zod';
 import type { ToolCategory } from '../constants/index.js';
 
 /**
+ * Tool Definition interface for MCP tools.
+ *
+ * Each tool defines:
+ * - name: Tool identifier (used as mcp__t__{name})
+ * - description: Human-readable description for tool discovery
+ * - schema: Zod schema defining input parameters
+ * - handler: Async function that processes the tool call
+ * - category: Tool category for filtering (lsp, ast, state, etc.)
+ */
+/**
  * MCP Tool Annotations per the MCP specification.
  * Used by clients (e.g. Claude Code) to prioritize tool loading
  * and avoid deferring critical tools.
@@ -24,16 +34,6 @@ export interface ToolAnnotations {
   openWorldHint?: boolean;
 }
 
-/**
- * Tool Definition interface for MCP tools.
- *
- * Each tool defines:
- * - name: Tool identifier (used as mcp__t__{name})
- * - description: Human-readable description for tool discovery
- * - schema: Zod schema defining input parameters
- * - handler: Async function that processes the tool call
- * - category: Tool category for filtering (lsp, ast, state, etc.)
- */
 export interface ToolDefinition<T extends z.ZodRawShape> {
   name: string;
   description: string;
@@ -42,14 +42,3 @@ export interface ToolDefinition<T extends z.ZodRawShape> {
   schema: T;
   handler: (args: z.infer<z.ZodObject<T>>) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }>;
 }
-
-/**
- * Escape hatch for tool definitions that include Zod v4 enum schemas.
- * Use when the schema contains z.ZodEnum (which changed internal representation in v4),
- * making the precise generic type annotation impossible.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyToolDefinition = ToolDefinition<any> & {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handler: (args: any) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }>;
-};

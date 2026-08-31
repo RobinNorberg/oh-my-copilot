@@ -1,17 +1,17 @@
 /**
  * Repro test for Bedrock model routing bug
  *
- * Bug: On Bedrock, workers get model ID "claude-sonnet-4-6" (bare builtin default)
+ * Bug: On Bedrock, workers get model ID "claude-sonnet-5" (bare builtin default)
  * instead of inheriting the parent model. On Bedrock, this bare ID is invalid
  * — Bedrock requires full IDs like "us.anthropic.claude-sonnet-4-6-v1:0".
  *
  * Root cause chain:
- * 1. buildDefaultConfig() → config.agents.executor.model = 'claude-sonnet-4-6'
- *    (from CLAUDE_FAMILY_DEFAULTS.SONNET, because no Bedrock env vars found)
- * 2. getAgentDefinitions() resolves executor.model = 'claude-sonnet-4-6'
+ * 1. buildDefaultConfig() → config.agents.executor.model = 'claude-sonnet-5'
+ *    (from COPILOT_FAMILY_DEFAULTS.SONNET, because no Bedrock env vars found)
+ * 2. getAgentDefinitions() resolves executor.model = 'claude-sonnet-5'
  *    (configuredModel from config takes precedence over agent's defaultModel)
- * 3. enforceModel() injects 'claude-sonnet-4-6' into Task calls
- * 4. Copilot CLI passes it to Bedrock API → 400 invalid model
+ * 3. enforceModel() injects 'claude-sonnet-5' into Task calls
+ * 4. Claude Code passes it to Bedrock API → 400 invalid model
  *
  * The defense (forceInherit) works IF CLAUDE_CODE_USE_BEDROCK=1 is in the env.
  * But if that env var doesn't propagate to the MCP server / hook process,
@@ -40,9 +40,6 @@ const BEDROCK_ENV_KEYS = [
   'OMC_ROUTING_FORCE_INHERIT',
   'OMC_ROUTING_ENABLED',
 ] as const;
-
-/** Bedrock model ID pattern (same regex as models.ts isBedrock) */
-const BEDROCK_MODEL_PATTERN = /^((us|eu|ap|global)\.anthropic\.|anthropic\.claude)/i;
 
 function saveAndClear(): Record<string, string | undefined> {
   const saved: Record<string, string | undefined> = {};
@@ -106,10 +103,10 @@ describe('Bedrock model routing repro', () => {
       expect(getDefaultModelMedium()).toBe('global.anthropic.claude-sonnet-4-6-v1:0');
     });
 
-    it('falls back to bare "claude-sonnet-4-6" without env vars', async () => {
+    it('falls back to bare "claude-sonnet-5" without env vars', async () => {
       const { getDefaultModelMedium } = await import('../config/models.js');
       // getDefaultModelMedium returns the raw config value (not normalized)
-      expect(getDefaultModelMedium()).toBe('claude-sonnet-4-6');
+      expect(getDefaultModelMedium()).toBe('claude-sonnet-5');
     });
   });
 
@@ -119,7 +116,7 @@ describe('Bedrock model routing repro', () => {
   describe('SCENARIO A: CLAUDE_CODE_USE_BEDROCK not propagated to hook process', () => {
     it('full chain: Task call injects invalid model for Bedrock', async () => {
       // ── Setup: simulate MCP server process that did NOT inherit
-      //    CLAUDE_CODE_USE_BEDROCK from parent Copilot CLI process ──
+      //    CLAUDE_CODE_USE_BEDROCK from parent Claude Code process ──
       // (all Bedrock env vars already cleared by beforeEach)
 
       // 1. Bedrock detection fails
@@ -135,7 +132,7 @@ describe('Bedrock model routing repro', () => {
       // 3. Agent definitions use full builtin model IDs from config
       const { getAgentDefinitions } = await import('../agents/definitions.js');
       const defs = getAgentDefinitions({ config });
-      expect(defs['executor'].model).toBe('claude-sonnet-4-6');
+      expect(defs['executor'].model).toBe('claude-sonnet-5');
       expect(defs['explore'].model).toBe('claude-haiku-4-5');
       expect(defs['architect'].model).toBe('claude-opus-4-8');
 
@@ -206,18 +203,17 @@ describe('Bedrock model routing repro', () => {
   // but CLAUDE_CODE_USE_BEDROCK and CLAUDE_MODEL/ANTHROPIC_MODEL are missing
 
   describe('SCENARIO B: Bedrock tier env vars set without session model env vars', () => {
-    // TODO(port-2866 path-B): chain depends on enforceModel preserving tier-env Bedrock IDs.
-    it.skip('full chain: tier env Bedrock models do not globally force inherit', async () => {
+    it('full chain: tier env Bedrock models do not globally force inherit', async () => {
       // ── Setup: user has Bedrock-format models in ANTHROPIC_DEFAULT_*_MODEL
       //    (as shown in their settings) but CLAUDE_CODE_USE_BEDROCK is not set ──
       process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'global.anthropic.claude-sonnet-4-6-v1:0';
       process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = 'global.anthropic.claude-opus-4-6-v1:0';
       process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = 'global.anthropic.claude-haiku-4-5-v1:0';
 
-      // 1. isBedrock does NOT check ANTHROPIC_DEFAULT_*_MODEL env vars
+      // 1. isBedrock now checks tier model env vars too.
       const { isBedrock, isNonCopilotProvider } = await import('../config/models.js');
-      expect(isBedrock()).toBe(false);
-      expect(isNonCopilotProvider()).toBe(false);
+      expect(isBedrock()).toBe(true);
+      expect(isNonCopilotProvider()).toBe(true);
 
       // 2. tier-only provider IDs do not globally force all spawned agents to inherit.
       const { loadConfig } = await import('../config/loader.js');
@@ -249,8 +245,7 @@ describe('Bedrock model routing repro', () => {
       expect(result.modifiedInput.model).toBe('global.anthropic.claude-sonnet-4-6-v1:0');
     });
 
-    // TODO(port-2866 path-B): tier-env scanning in isBedrock not in fork.
-    it.skip('isBedrock detects Bedrock patterns in tier env vars', async () => {
+    it('isBedrock detects Bedrock patterns in tier env vars', async () => {
       // ANTHROPIC_DEFAULT_*_MODEL values can be the only Bedrock signal
       // when CLAUDE_MODEL/ANTHROPIC_MODEL are unset.
       process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'global.anthropic.claude-sonnet-4-6-v1:0';
@@ -270,7 +265,7 @@ describe('Bedrock model routing repro', () => {
   describe('SCENARIO C: LLM passes explicit model in Task call', () => {
     it('bridge hook strips model when forceInherit is enabled', async () => {
       // When forceInherit IS enabled, the bridge pre-tool-use hook at
-      // bridge.ts denies the call when model param is present.
+      // bridge.ts:1082-1093 strips the model param from Task calls.
       // This works correctly.
       process.env.CLAUDE_CODE_USE_BEDROCK = '1';
 
@@ -283,10 +278,10 @@ describe('Bedrock model routing repro', () => {
         description: 'Implement feature',
         prompt: 'Write the code',
         subagent_type: 'oh-my-copilot:executor',
-        model: 'sonnet', // LLM passes this based on copilot-instructions.md instructions
+        model: 'sonnet', // LLM passes this based on CLAUDE.md instructions
       };
 
-      // Bridge logic (bridge.ts):
+      // Bridge logic (bridge.ts:1082-1093):
       const nextTaskInput = { ...taskInput };
       if (nextTaskInput.model && config.routing?.forceInherit) {
         delete nextTaskInput.model;
@@ -309,7 +304,7 @@ describe('Bedrock model routing repro', () => {
         description: 'Implement feature',
         prompt: 'Write the code',
         subagent_type: 'oh-my-copilot:executor',
-        model: 'sonnet', // LLM passes this based on copilot-instructions.md instructions
+        model: 'sonnet', // LLM passes this based on CLAUDE.md instructions
       };
 
       const nextTaskInput = { ...taskInput };
@@ -317,18 +312,18 @@ describe('Bedrock model routing repro', () => {
         delete nextTaskInput.model;
       }
 
-      // Model NOT stripped → 'sonnet' passes through to Copilot CLI
+      // Model NOT stripped → 'sonnet' passes through to Claude Code
       expect(nextTaskInput.model).toBe('sonnet');
-      // Copilot CLI resolves 'sonnet' → 'claude-sonnet-4-6' → Bedrock 400
+      // Claude Code resolves 'sonnet' → 'claude-sonnet-4-6' → Bedrock 400
     });
 
     it('even when enforceModel strips, LLM can still pass model directly', async () => {
       // The LLM can pass model: "sonnet" in the Task call because the
-      // copilot-instructions.md instructions say: "Pass model on Task calls: haiku, sonnet, opus"
+      // CLAUDE.md instructions say: "Pass model on Task calls: haiku, sonnet, opus"
       //
       // enforceModel only runs when model is NOT specified (it injects default).
       // If the LLM explicitly passes model, enforceModel preserves it (line 83-90).
-      // Only the bridge hook deny catches explicit models.
+      // Only the bridge hook strip (lines 1082-1093) catches explicit models.
 
       // Without forceInherit, explicit model from LLM passes straight through
       const { enforceModel } = await import('../features/delegation-enforcer.js');
@@ -342,7 +337,7 @@ describe('Bedrock model routing repro', () => {
       // enforceModel preserves explicit model (doesn't override it)
       expect(result.injected).toBe(false);
       expect(result.modifiedInput.model).toBe('sonnet');
-      // → Copilot CLI resolves 'sonnet' → Bedrock can't handle it → 400
+      // → Claude Code resolves 'sonnet' → Bedrock can't handle it → 400
     });
   });
 

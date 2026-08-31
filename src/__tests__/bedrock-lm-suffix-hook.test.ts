@@ -224,8 +224,8 @@ function runHook(
   for (const line of lines) {
     try {
       const parsed = JSON.parse(line);
-      if (parsed?.permissionDecision === 'deny') {
-        return { denied: true, reason: parsed.permissionDecisionReason };
+      if (parsed?.hookSpecificOutput?.permissionDecision === 'deny') {
+        return { denied: true, reason: parsed.hookSpecificOutput.permissionDecisionReason };
       }
     } catch {
       // non-JSON line — skip

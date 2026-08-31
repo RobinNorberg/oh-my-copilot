@@ -10,13 +10,13 @@ vi.mock('../../lib/worktree-paths.js', async () => {
     const { join } = await import('path');
     return {
         validateWorkingDirectory: (dir) => dir || testDir,
-        getOmcRoot: (dir) => join(dir || testDir, '.omcp'),
+        getOmcRoot: (dir) => join(dir || testDir, '.omg'),
     };
 });
 describe('trace-tools', () => {
     beforeEach(() => {
         testDir = join(tmpdir(), `trace-tools-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        mkdirSync(join(testDir, '.omcp', 'state'), { recursive: true });
+        mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
         resetSessionStartTimes();
     });
     afterEach(() => {
@@ -43,6 +43,17 @@ describe('trace-tools', () => {
             expect(text).toContain('Fix bug');
             expect(text).toContain('TOOL');
             expect(text).toContain('Read');
+        });
+        it('formats untracked synthetic agent stops distinctly', async () => {
+            appendReplayEvent(testDir, 'untracked-sess', {
+                agent: 'native-', event: 'agent_stop', agent_type: 'untracked-native-fork', success: true,
+                synthetic: true, telemetry_status: 'unmatched_stop', reason: 'SubagentStop arrived without a matching SubagentStart',
+            });
+            const result = await traceTimelineTool.handler({ sessionId: 'untracked-sess', workingDirectory: testDir });
+            const text = result.content[0].text;
+            expect(text).toContain('UNTRACKED_STOP');
+            expect(text).toContain('untracked-native-fork');
+            expect(text).not.toContain('completed (0.0s)');
         });
         it('should format flow trace events in timeline', async () => {
             appendReplayEvent(testDir, 'flow-sess', { agent: 'system', event: 'hook_fire', hook: 'keyword-detector', hook_event: 'UserPromptSubmit' });
@@ -103,6 +114,28 @@ describe('trace-tools', () => {
             expect(text).toContain('Total Events');
             expect(text).toContain('Agents');
             expect(text).toContain('1 spawned');
+        });
+        it('counts untracked synthetic agent stops separately from completions', async () => {
+            appendReplayEvent(testDir, 'untracked-sum', {
+                agent: 'native-', event: 'agent_stop', agent_type: 'untracked-native-fork', success: true,
+                synthetic: true, telemetry_status: 'unmatched_stop',
+            });
+            const result = await traceSummaryTool.handler({ sessionId: 'untracked-sum', workingDirectory: testDir });
+            const text = result.content[0].text;
+            expect(text).toContain('0 spawned, 0 completed, 0 failed, 1 untracked stop(s)');
+            expect(text).toContain('untracked-native-fork agent stop was untracked');
+        });
+        it('surfaces dirty-worktree stops from abnormal termination (issue #3663)', async () => {
+            appendReplayEvent(testDir, 'dirty-sum', {
+                agent: 'ab12345', event: 'agent_stop', agent_type: 'executor', success: false,
+                dirty_worktree: { tracked: 1, untracked: 2, ignored: 0, worktree_root: '/tmp/wt-1', truncated: false },
+            });
+            const result = await traceSummaryTool.handler({ sessionId: 'dirty-sum', workingDirectory: testDir });
+            const text = result.content[0].text;
+            expect(text).toContain('1 failed');
+            expect(text).toContain('Dirty worktrees on stop');
+            expect(text).toContain('1 agent(s) terminated leaving uncommitted work');
+            expect(text).toContain('preserve before reset/cleanup');
         });
         it('should show flow trace statistics', async () => {
             appendReplayEvent(testDir, 'flow-sum', { agent: 'system', event: 'hook_fire', hook: 'test' });
@@ -204,7 +237,7 @@ describe('trace-tools', () => {
     });
     describe('edge cases', () => {
         it('should handle malformed JSONL lines gracefully', async () => {
-            const replayPath = join(testDir, '.omcp', 'state', 'agent-replay-malformed.jsonl');
+            const replayPath = join(testDir, '.omg', 'state', 'agent-replay-malformed.jsonl');
             writeFileSync(replayPath, [
                 '{"t":0,"agent":"a1","event":"agent_start","agent_type":"executor"}',
                 'THIS IS NOT JSON',
@@ -222,13 +255,13 @@ describe('trace-tools', () => {
         });
         it('should auto-detect latest session from multiple replay files', async () => {
             // Create older session
-            const oldPath = join(testDir, '.omcp', 'state', 'agent-replay-old-sess.jsonl');
+            const oldPath = join(testDir, '.omg', 'state', 'agent-replay-old-sess.jsonl');
             writeFileSync(oldPath, '{"t":0,"agent":"a1","event":"agent_start","agent_type":"planner"}\n');
             // Wait a tick to ensure different mtime
             const now = Date.now();
             while (Date.now() - now < 50) { /* spin */ }
             // Create newer session
-            const newPath = join(testDir, '.omcp', 'state', 'agent-replay-new-sess.jsonl');
+            const newPath = join(testDir, '.omg', 'state', 'agent-replay-new-sess.jsonl');
             writeFileSync(newPath, '{"t":0,"agent":"a1","event":"agent_start","agent_type":"executor"}\n');
             // Call without sessionId — should auto-detect the newest
             const result = await traceTimelineTool.handler({ workingDirectory: testDir });

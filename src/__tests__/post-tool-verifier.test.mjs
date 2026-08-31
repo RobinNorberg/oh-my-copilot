@@ -4,14 +4,15 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { join } from 'path';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import process from 'process';
-import { detectBashFailure, detectWriteFailure, isCopilotCliWriteSuccess, isNonZeroExitWithOutput, summarizeAgentResult } from '../../scripts/post-tool-verifier.mjs';
+import { detectAnnouncedBackgroundLaunch, detectBashFailure, detectWriteFailure, isBackgroundToolInvocation, isClaudeCodeWriteSuccess, isNonZeroExitWithOutput, summarizeAgentResult } from '../../scripts/post-tool-verifier.mjs';
 
 const SCRIPT_PATH = join(process.cwd(), 'scripts', 'post-tool-verifier.mjs');
+const TEMPLATE_HOOK_PATH = join(process.cwd(), 'templates', 'hooks', 'post-tool-use.mjs');
 const PYTEST_RED_RUN_OUTPUT = [
   'Error: Exit code 1',
   '============================= test session starts ==============================',
@@ -37,14 +38,50 @@ function runPostToolVerifier(input, env = {}) {
   return runHookScript(SCRIPT_PATH, input, env);
 }
 
+function scopedHookEnvironment(cwd, env) {
+  const homeDir = mkdtempSync(join(tmpdir(), 'post-tool-verifier-home-'));
+  if (cwd && cwd !== process.cwd() && !existsSync(join(cwd, '.git'))) {
+    execFileSync('git', ['init', '--quiet'], { cwd, stdio: 'pipe' });
+  }
+
+  const effectiveHome = env.HOME || homeDir;
+  const childEnv = {
+    ...process.env,
+    NODE_ENV: 'test',
+    DISABLE_OMC: '',
+    OMC_SKIP_HOOKS: '',
+    OMC_QUIET: '0',
+    OMC_STATE_DIR: '',
+    CLAUDE_PLUGIN_ROOT: '',
+    HOME: effectiveHome,
+    USERPROFILE: env.USERPROFILE || effectiveHome,
+    COPILOT_CONFIG_DIR: env.COPILOT_CONFIG_DIR || join(effectiveHome, '.claude'),
+    ...env,
+  };
+
+  return {
+    childEnv,
+    cleanup() {
+      rmSync(homeDir, { recursive: true, force: true });
+    },
+  };
+}
+
 function runHookScript(scriptPath, input, env = {}) {
-  const stdout = execSync(`node "${scriptPath}"`, {
-    input: JSON.stringify(input),
-    encoding: 'utf-8',
-    timeout: 5000,
-    env: { ...process.env, NODE_ENV: 'test', ...env },
-  });
-  return JSON.parse(stdout.trim());
+  const cwd = typeof input?.cwd === 'string' && input.cwd.length > 0 ? input.cwd : process.cwd();
+  const fixture = scopedHookEnvironment(cwd, env);
+  try {
+    const stdout = execSync(`node "${scriptPath}"`, {
+      cwd,
+      input: JSON.stringify(input),
+      encoding: 'utf-8',
+      timeout: 5000,
+      env: fixture.childEnv,
+    });
+    return JSON.parse(stdout.trim());
+  } finally {
+    fixture.cleanup();
+  }
 }
 
 function withTempDir(fn) {
@@ -56,6 +93,56 @@ function withTempDir(fn) {
   }
 }
 
+function skillStatePath(tempDir, sessionId) {
+  return join(tempDir, '.omg', 'state', 'sessions', sessionId, 'skill-active-state.json');
+}
+
+function legacySkillStatePath(tempDir) {
+  return join(tempDir, '.omg', 'state', 'skill-active-state.json');
+}
+
+function ralplanStatePath(tempDir, sessionId) {
+  return join(tempDir, '.omg', 'state', 'sessions', sessionId, 'ralplan-state.json');
+}
+
+function writeSkillStateFixtures(tempDir, sessionId, skillName = 'plan') {
+  mkdirSync(join(tempDir, '.omg', 'state', 'sessions', sessionId), { recursive: true });
+  writeFileSync(
+    skillStatePath(tempDir, sessionId),
+    JSON.stringify({
+      active: true,
+      skill_name: skillName,
+      session_id: sessionId,
+      started_at: '2026-04-01T00:00:00.000Z',
+      last_checked_at: '2026-04-01T00:00:00.000Z',
+      reinforcement_count: 0,
+      max_reinforcements: 5,
+      stale_ttl_ms: 900000,
+    }),
+  );
+  mkdirSync(join(tempDir, '.omg', 'state'), { recursive: true });
+  writeFileSync(
+    legacySkillStatePath(tempDir),
+    JSON.stringify({
+      active: true,
+      skill_name: skillName,
+    }),
+  );
+}
+
+function writeRalplanStateFixture(tempDir, sessionId, overrides = {}) {
+  mkdirSync(join(tempDir, '.omg', 'state', 'sessions', sessionId), { recursive: true });
+  writeFileSync(
+    ralplanStatePath(tempDir, sessionId),
+    JSON.stringify({
+      active: true,
+      session_id: sessionId,
+      current_phase: 'ralplan',
+      started_at: '2026-04-01T00:00:00.000Z',
+      ...overrides,
+    }),
+  );
+}
 
 describe('detectBashFailure', () => {
   describe('Claude Code temp CWD false positives (issue #696)', () => {
@@ -131,13 +218,13 @@ describe('detectBashFailure', () => {
       expect(detectBashFailure(output)).toBe(false);
     });
 
-    it('should not flag pytest red-phase output as a bash tool failure', () => {
-      expect(detectBashFailure(PYTEST_RED_RUN_OUTPUT)).toBe(false);
-    });
-
     it('should not flag successful grep output containing "Command failed" text', () => {
       const output = 'scripts/post-tool-verifier.mjs:683:        message = \'Command failed. Please investigate the error and fix before continuing.\'';
       expect(detectBashFailure(output)).toBe(false);
+    });
+
+    it('should not flag pytest red-phase output as a bash tool failure', () => {
+      expect(detectBashFailure(PYTEST_RED_RUN_OUTPUT)).toBe(false);
     });
 
     it('should not flag successful output when the word "error" appears mid-line', () => {
@@ -277,17 +364,17 @@ describe('isNonZeroExitWithOutput (issue #960)', () => {
   });
 });
 
-describe('isCopilotCliWriteSuccess', () => {
+describe('isClaudeCodeWriteSuccess', () => {
   it('detects canonical edit success output', () => {
-    expect(isCopilotCliWriteSuccess('The file /tmp/doc.md has been updated successfully.')).toBe(true);
+    expect(isClaudeCodeWriteSuccess('The file /tmp/doc.md has been updated successfully.')).toBe(true);
   });
 
   it('detects canonical write success output with location suffix', () => {
-    expect(isCopilotCliWriteSuccess('File created successfully at: /tmp/doc.md')).toBe(true);
+    expect(isClaudeCodeWriteSuccess('File created successfully at: /tmp/doc.md')).toBe(true);
   });
 
   it('detects file-state confirmation output', () => {
-    expect(isCopilotCliWriteSuccess('The file state is current in your context window.')).toBe(true);
+    expect(isClaudeCodeWriteSuccess('The file state is current in your context window.')).toBe(true);
   });
 
   it('ignores arbitrary markdown diagnostic prose without a success marker', () => {
@@ -297,7 +384,7 @@ describe('isCopilotCliWriteSuccess', () => {
       '$ ls graphify-out',
       'No such file or directory',
     ].join('\n');
-    expect(isCopilotCliWriteSuccess(content)).toBe(false);
+    expect(isClaudeCodeWriteSuccess(content)).toBe(false);
   });
 });
 
@@ -492,7 +579,7 @@ describe('post-tool hook regression coverage (issue #2615)', () => {
       cwd: process.cwd(),
     });
 
-    expect(isCopilotCliWriteSuccess('The file has been updated successfully.')).toBe(true);
+    expect(isClaudeCodeWriteSuccess('The file has been updated successfully.')).toBe(true);
     expect(out.hookSpecificOutput?.additionalContext).toContain('Code modified.');
     expect(out.hookSpecificOutput?.additionalContext).not.toContain('Edit operation failed');
   });
@@ -845,9 +932,9 @@ describe('OMC_QUIET hook message suppression (issue #1646)', () => {
       .toContain('produced valid output');
 
     const taskSummary = withTempDir((tempDir) => {
-      mkdirSync(join(tempDir, '.omc', 'state'), { recursive: true });
+      mkdirSync(join(tempDir, '.omg', 'state'), { recursive: true });
       writeFileSync(
-        join(tempDir, '.omc', 'state', 'subagent-tracking.json'),
+        join(tempDir, '.omg', 'state', 'subagent-tracking.json'),
         JSON.stringify({
           agents: [{ status: 'running', agent_type: 'oh-my-copilot:executor' }],
           total_completed: 1,
@@ -870,3 +957,322 @@ describe('OMC_QUIET hook message suppression (issue #1646)', () => {
   });
 });
 
+describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
+  it('clears session and legacy skill-active-state files for Skill completion in post-tool-verifier', () => {
+    withTempDir((tempDir) => {
+      const sessionId = 'skill-clear-script';
+      writeSkillStateFixtures(tempDir, sessionId, 'plan');
+
+      const out = runPostToolVerifier({
+        tool_name: 'Skill',
+        tool_input: { skill: 'oh-my-copilot:plan' },
+        tool_response: { ok: true },
+        session_id: sessionId,
+        cwd: tempDir,
+      });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(false);
+      expect(existsSync(legacySkillStatePath(tempDir))).toBe(false);
+    });
+  });
+
+  it('does not clear parent-owned skill-active-state for nested child Skill completion in post-tool-verifier', () => {
+    withTempDir((tempDir) => {
+      const sessionId = 'skill-nested-script';
+      writeSkillStateFixtures(tempDir, sessionId, 'omc-setup');
+
+      const out = runPostToolVerifier({
+        tool_name: 'Skill',
+        tool_input: { skill: 'oh-my-copilot:mcp-setup' },
+        tool_response: { ok: true },
+        session_id: sessionId,
+        cwd: tempDir,
+      });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(true);
+      expect(existsSync(legacySkillStatePath(tempDir))).toBe(true);
+    });
+  });
+
+  it('clears session and legacy skill-active-state files for the template post-tool hook path', () => {
+    withTempDir((tempDir) => {
+      const sessionId = 'skill-clear-template';
+      writeSkillStateFixtures(tempDir, sessionId, 'plan');
+
+      const out = runHookScript(TEMPLATE_HOOK_PATH, {
+        tool_name: 'Skill',
+        tool_input: { skill: 'oh-my-copilot:plan' },
+        tool_response: { ok: true },
+        session_id: sessionId,
+        cwd: tempDir,
+      });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(false);
+      expect(existsSync(legacySkillStatePath(tempDir))).toBe(false);
+    });
+  });
+
+  it('activates only ralph state for the template post-tool hook path', () => {
+    withTempDir((tempDir) => {
+      const sessionId = 'ralph-template-no-ultrawork';
+      // Redirect HOME so the template hook's shared-home global fallback write
+      // (~/.omg/state/ralph-state.json) lands in the sandbox instead of the
+      // real home. Leaving it in the real home leaks active ralph state into
+      // other suites (e.g. cancel-integration's broad-clear location count).
+      const homeDir = join(tempDir, 'home');
+      mkdirSync(homeDir, { recursive: true });
+      const out = runHookScript(TEMPLATE_HOOK_PATH, {
+        tool_name: 'Skill',
+        tool_input: { skill: 'oh-my-copilot:ralph' },
+        tool_response: { ok: true },
+        session_id: sessionId,
+        cwd: tempDir,
+      }, { HOME: homeDir });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+      expect(existsSync(join(stateDir, 'ralph-state.json'))).toBe(true);
+      expect(existsSync(join(stateDir, 'ultrawork-state.json'))).toBe(false);
+    });
+  });
+
+  it('deactivates ralplan state when the ralplan skill completes in post-tool-verifier', () => {
+    withTempDir((tempDir) => {
+      const sessionId = 'ralplan-complete-script';
+      writeRalplanStateFixture(tempDir, sessionId);
+
+      const out = runPostToolVerifier({
+        tool_name: 'Skill',
+        tool_input: { skill: 'oh-my-copilot:ralplan' },
+        tool_response: { ok: true },
+        session_id: sessionId,
+        cwd: tempDir,
+      });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+
+      const state = JSON.parse(readFileSync(ralplanStatePath(tempDir, sessionId), 'utf-8'));
+      expect(state.active).toBe(false);
+      expect(state.current_phase).toBe('complete');
+      expect(state.deactivated_reason).toBe('skill_completed');
+      expect(typeof state.completed_at).toBe('string');
+    });
+  });
+
+  it('deactivates ralplan state when the consensus plan alias completes in the template hook path', () => {
+    withTempDir((tempDir) => {
+      const sessionId = 'ralplan-complete-template';
+      writeRalplanStateFixture(tempDir, sessionId);
+
+      const out = runHookScript(TEMPLATE_HOOK_PATH, {
+        tool_name: 'Skill',
+        tool_input: {
+          skill: 'oh-my-copilot:plan',
+          args: '--consensus issue #2368',
+        },
+        tool_response: { ok: true },
+        session_id: sessionId,
+        cwd: tempDir,
+      });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+
+      const state = JSON.parse(readFileSync(ralplanStatePath(tempDir, sessionId), 'utf-8'));
+      expect(state.active).toBe(false);
+      expect(state.current_phase).toBe('complete');
+      expect(state.deactivated_reason).toBe('skill_completed');
+      expect(typeof state.completed_at).toBe('string');
+    });
+  });
+
+  it('clears skill-active-state when deep-interview Skill completes', () => {
+    withTempDir((tempDir) => {
+      const sessionId = 'deep-interview-complete-01';
+      writeSkillStateFixtures(tempDir, sessionId, 'deep-interview');
+
+      const out = runPostToolVerifier({
+        tool_name: 'Skill',
+        tool_input: { skill: 'oh-my-copilot:deep-interview' },
+        tool_response: { ok: true },
+        session_id: sessionId,
+        cwd: tempDir,
+      });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(false);
+      expect(existsSync(legacySkillStatePath(tempDir))).toBe(false);
+    });
+  });
+
+  it('clears skill-active-state when self-improve Skill completes', () => {
+    withTempDir((tempDir) => {
+      const sessionId = 'self-improve-complete-01';
+      writeSkillStateFixtures(tempDir, sessionId, 'self-improve');
+
+      const out = runPostToolVerifier({
+        tool_name: 'Skill',
+        tool_input: { skill: 'oh-my-copilot:self-improve' },
+        tool_response: { ok: true },
+        session_id: sessionId,
+        cwd: tempDir,
+      });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(false);
+      expect(existsSync(legacySkillStatePath(tempDir))).toBe(false);
+    });
+  });
+});
+
+describe('background operation detection (issue #3578)', () => {
+  const TRIGGER_WORDS = ['started', 'running', 'background', 'async', 'task_id', 'spawned'];
+
+  describe('isBackgroundToolInvocation', () => {
+    it('is true only when run_in_background is exactly true', () => {
+      expect(isBackgroundToolInvocation({ run_in_background: true })).toBe(true);
+      expect(isBackgroundToolInvocation({ run_in_background: false })).toBe(false);
+      expect(isBackgroundToolInvocation({ run_in_background: 'true' })).toBe(false);
+      expect(isBackgroundToolInvocation({ command: 'echo running' })).toBe(false);
+    });
+
+    it('fails safe on malformed or missing tool_input', () => {
+      expect(isBackgroundToolInvocation(undefined)).toBe(false);
+      expect(isBackgroundToolInvocation(null)).toBe(false);
+      expect(isBackgroundToolInvocation('run_in_background')).toBe(false);
+      expect(isBackgroundToolInvocation([{ run_in_background: true }])).toBe(false);
+      expect(isBackgroundToolInvocation(42)).toBe(false);
+    });
+  });
+
+  describe('detectAnnouncedBackgroundLaunch', () => {
+    it('matches the harness announcement only at the start of output', () => {
+      expect(detectAnnouncedBackgroundLaunch('Async agent launched successfully\nagentId: a8de3dd')).toBe(true);
+      expect(detectAnnouncedBackgroundLaunch('  Background task launched\n')).toBe(true);
+      expect(detectAnnouncedBackgroundLaunch('Background task resumed')).toBe(true);
+    });
+
+    it('does not match the phrase quoted elsewhere in the output', () => {
+      expect(
+        detectAnnouncedBackgroundLaunch('Report: the parser checks for Async agent launched strings.'),
+      ).toBe(false);
+    });
+
+    it('is case-sensitive by design', () => {
+      expect(detectAnnouncedBackgroundLaunch('async agent launched successfully')).toBe(false);
+    });
+
+    it('fails safe on non-string output', () => {
+      expect(detectAnnouncedBackgroundLaunch(undefined)).toBe(false);
+      expect(detectAnnouncedBackgroundLaunch(null)).toBe(false);
+      expect(detectAnnouncedBackgroundLaunch({ text: 'Async agent launched' })).toBe(false);
+    });
+  });
+
+  describe('foreground Bash never reports a background operation', () => {
+    for (const word of TRIGGER_WORDS) {
+      it(`does not fire when foreground output contains "${word}"`, () => {
+        const out = runPostToolVerifier({
+          tool_name: 'Bash',
+          tool_input: { command: 'echo demo' },
+          tool_response: `the service is ${word} normally`,
+          session_id: `bg-fp-${word}`,
+        });
+
+        expect(out).toEqual({ continue: true, suppressOutput: true });
+      });
+    }
+
+    it('does not fire when foreground output contains every trigger word at once', () => {
+      const out = runPostToolVerifier({
+        tool_name: 'Bash',
+        tool_input: { command: 'cat notes.txt' },
+        tool_response: TRIGGER_WORDS.join(' '),
+        session_id: 'bg-fp-all',
+      });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+    });
+
+    it('does not fire for the reported repro payload', () => {
+      const out = runPostToolVerifier({
+        tool_name: 'Bash',
+        tool_input: { command: 'echo "the service is running"' },
+        tool_response: 'the service is running',
+        session_id: 'bg-fp-repro',
+      });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+    });
+  });
+
+  describe('genuine background invocations still fire', () => {
+    it('fires for Bash with run_in_background=true', () => {
+      const out = runPostToolVerifier({
+        tool_name: 'Bash',
+        tool_input: { command: 'sleep 100', run_in_background: true },
+        tool_response: 'ok',
+        session_id: 'bg-real-bash',
+      });
+
+      expect(out.hookSpecificOutput.additionalContext).toContain('Background operation detected');
+    });
+
+    it('fires for Task with run_in_background=true', () => {
+      const out = runPostToolVerifier({
+        tool_name: 'Task',
+        tool_input: { description: 'explore', run_in_background: true },
+        tool_response: 'ok',
+        session_id: 'bg-real-task',
+      });
+
+      expect(out.hookSpecificOutput.additionalContext).toContain('Background task launched');
+    });
+
+    it('fires for a Task output leading with the launch announcement', () => {
+      const out = runPostToolVerifier({
+        tool_name: 'Task',
+        tool_input: { description: 'explore' },
+        tool_response: 'Async agent launched successfully\nagentId: a8de3dd',
+        session_id: 'bg-real-announce',
+      });
+
+      expect(out.hookSpecificOutput.additionalContext).toContain('Background task launched');
+    });
+
+    it('does not fire for a foreground Task result that merely quotes the announcement', () => {
+      const out = runPostToolVerifier({
+        tool_name: 'Task',
+        tool_input: { description: 'investigate' },
+        tool_response: 'Investigation report: the parser matches "Async agent launched" text.',
+        session_id: 'bg-fg-task-quote',
+      });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+    });
+  });
+
+  describe('malformed tool_input fails safely', () => {
+    for (const [label, toolInput] of [
+      ['missing', undefined],
+      ['null', null],
+      ['string', 'run_in_background=true'],
+      ['array', [{ run_in_background: true }]],
+    ]) {
+      it(`does not fire and still continues for ${label} tool_input`, () => {
+        const payload = {
+          tool_name: 'Bash',
+          tool_response: TRIGGER_WORDS.join(' '),
+          session_id: `bg-malformed-${label}`,
+        };
+        if (toolInput !== undefined) payload.tool_input = toolInput;
+
+        const out = runPostToolVerifier(payload);
+
+        expect(out).toEqual({ continue: true, suppressOutput: true });
+      });
+    }
+  });
+});

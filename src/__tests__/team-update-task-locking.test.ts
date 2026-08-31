@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { clearWorktreeCache } from '../lib/worktree-paths.js';
 
 // ---------------------------------------------------------------------------
 // BUG: teamUpdateTask must use locking to prevent concurrent stale overwrites
@@ -9,10 +10,13 @@ import { tmpdir } from "os";
 
 describe('team-ops teamUpdateTask locking', () => {
   let tempDir: string;
+  let previousStateDir: string | undefined;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
   const teamName = 'update-lock-test-team';
 
   function setupTeam(dir: string, tid: string) {
-    const root = join(dir, '.omcp', 'state', 'team', teamName);
+    const root = join(dir, '.omg', 'state', 'team', teamName);
     mkdirSync(join(root, 'tasks'), { recursive: true });
     writeFileSync(join(root, 'config.json'), JSON.stringify({
       name: teamName,
@@ -43,11 +47,26 @@ describe('team-ops teamUpdateTask locking', () => {
   }
 
   beforeEach(() => {
+    previousStateDir = process.env.OMC_STATE_DIR;
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
     tempDir = mkdtempSync(join(tmpdir(), 'team-update-lock-test-'));
+    writeFileSync(join(tempDir, '.omc-workspace'), '{}');
+    process.env.OMC_STATE_DIR = '';
+    process.env.HOME = tempDir;
+    process.env.USERPROFILE = tempDir;
+    clearWorktreeCache();
     setupTeam(tempDir, '1');
   });
 
   afterEach(() => {
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    clearWorktreeCache();
     rmSync(tempDir, { recursive: true, force: true });
   });
 

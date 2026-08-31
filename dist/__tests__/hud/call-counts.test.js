@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderCallCounts } from '../../hud/elements/call-counts.js';
 import { DEFAULT_HUD_CONFIG, PRESET_CONFIGS } from '../../hud/types.js';
-describe.skipIf(process.platform === 'win32')('renderCallCounts', () => {
+describe('renderCallCounts', () => {
     describe('basic rendering', () => {
         it('renders all three counts when all are non-zero', () => {
             const result = renderCallCounts(42, 7, 3);
@@ -48,6 +48,14 @@ describe.skipIf(process.platform === 'win32')('renderCallCounts', () => {
         });
     });
     describe('output format', () => {
+        it('supports explicit ASCII rendering overrides', () => {
+            const result = renderCallCounts(5, 2, 1, 'ascii');
+            expect(result).toBe('T:5 A:2 S:1');
+        });
+        it('supports explicit emoji rendering overrides', () => {
+            const result = renderCallCounts(5, 2, 1, 'emoji');
+            expect(result).toBe('🔧5 🤖2 ⚡1');
+        });
         it('separates parts with a space', () => {
             const result = renderCallCounts(5, 2, 1);
             expect(result).toBe('🔧5 🤖2 ⚡1');
@@ -61,6 +69,9 @@ describe.skipIf(process.platform === 'win32')('renderCallCounts', () => {
     });
 });
 describe('showCallCounts config option', () => {
+    it('DEFAULT_HUD_CONFIG uses auto call-count icon selection', () => {
+        expect(DEFAULT_HUD_CONFIG.elements.callCountsFormat).toBe('auto');
+    });
     it('DEFAULT_HUD_CONFIG has showCallCounts enabled', () => {
         expect(DEFAULT_HUD_CONFIG.elements.showCallCounts).toBe(true);
     });

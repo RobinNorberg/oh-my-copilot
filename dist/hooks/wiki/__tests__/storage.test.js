@@ -28,16 +28,30 @@ function makePage(overrides = {}) {
 }
 describe('Wiki Storage', () => {
     let tempDir;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(async () => {
-        tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'wiki-storage-test-'));
+        tempDir = await fsp.mkdtemp(path.join(os.homedir(), 'wiki-storage-test-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = tempDir;
+        process.env.USERPROFILE = tempDir;
     });
     afterEach(async () => {
         await fsp.rm(tempDir, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
     });
     describe('getWikiDir', () => {
-        it('should return .omcp/wiki path', () => {
+        it('should return .omg/wiki path', () => {
             const dir = getWikiDir(tempDir);
-            expect(dir).toBe(path.join(tempDir, '.omcp', 'wiki'));
+            expect(dir).toBe(path.join(tempDir, '.omg', 'wiki'));
         });
     });
     describe('ensureWikiDir', () => {
@@ -47,12 +61,12 @@ describe('Wiki Storage', () => {
         });
         it('should create .gitignore with wiki/ entry', () => {
             ensureWikiDir(tempDir);
-            const gitignorePath = path.join(tempDir, '.omcp', '.gitignore');
+            const gitignorePath = path.join(tempDir, '.omg', '.gitignore');
             expect(fs.existsSync(gitignorePath)).toBe(true);
             expect(fs.readFileSync(gitignorePath, 'utf-8')).toContain('wiki/');
         });
         it('should append to existing .gitignore', () => {
-            const omcDir = path.join(tempDir, '.omcp');
+            const omcDir = path.join(tempDir, '.omg');
             fs.mkdirSync(omcDir, { recursive: true });
             fs.writeFileSync(path.join(omcDir, '.gitignore'), 'state/\n');
             ensureWikiDir(tempDir);
@@ -61,7 +75,7 @@ describe('Wiki Storage', () => {
             expect(content).toContain('wiki/');
         });
         it('should not duplicate wiki/ in .gitignore', () => {
-            const omcDir = path.join(tempDir, '.omcp');
+            const omcDir = path.join(tempDir, '.omg');
             fs.mkdirSync(omcDir, { recursive: true });
             fs.writeFileSync(path.join(omcDir, '.gitignore'), 'wiki/\n');
             ensureWikiDir(tempDir);

@@ -8,7 +8,8 @@ import { z } from 'zod';
 import { readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { readReplayEvents, getReplaySummary, } from '../hooks/subagent-tracker/session-replay.js';
-import { validateWorkingDirectory, } from '../lib/worktree-paths.js';
+import { validateWorkingDirectory, getOmcRoot, } from '../lib/worktree-paths.js';
+import { sessionSearchTool } from './session-history-tools.js';
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -17,7 +18,7 @@ const REPLAY_PREFIX = 'agent-replay-';
  * Find the latest session ID from replay files
  */
 function findLatestSessionId(directory) {
-    const stateDir = join(directory, '.omcp', 'state');
+    const stateDir = join(getOmcRoot(directory), 'state');
     try {
         const files = readdirSync(stateDir)
             .filter(f => f.startsWith(REPLAY_PREFIX) && f.endsWith('.jsonl'))
@@ -70,9 +71,16 @@ function formatTimelineEvent(event) {
                 detail += ` (${event.model})`;
             break;
         case 'agent_stop':
-            detail = `[${event.agent}] ${event.agent_type || 'unknown'} ${event.success ? 'completed' : 'FAILED'}`;
-            if (event.duration_ms)
-                detail += ` (${(event.duration_ms / 1000).toFixed(1)}s)`;
+            if (event.synthetic || event.telemetry_status === 'unmatched_stop') {
+                detail = `[${event.agent}] ${event.agent_type || 'untracked-native-fork'} UNTRACKED_STOP`;
+                if (event.reason)
+                    detail += ` - ${event.reason}`;
+            }
+            else {
+                detail = `[${event.agent}] ${event.agent_type || 'unknown'} ${event.success ? 'completed' : 'FAILED'}`;
+                if (event.duration_ms)
+                    detail += ` (${(event.duration_ms / 1000).toFixed(1)}s)`;
+            }
             break;
         case 'tool_start':
             detail = `[${event.agent}] ${event.tool} started`;
@@ -96,15 +104,17 @@ function formatTimelineEvent(event) {
         case 'hook_fire':
             detail = `${event.hook} fired (${event.hook_event})`;
             break;
-        case 'hook_result':
+        case 'hook_result': {
             detail = `${event.hook} result`;
+            const hookParts = [];
             if (event.duration_ms)
-                detail += ` (${event.duration_ms}ms`;
+                hookParts.push(`${event.duration_ms}ms`);
             if (event.context_injected)
-                detail += `, context: ${event.context_length || '?'}B`;
-            if (event.duration_ms)
-                detail += ')';
+                hookParts.push(`context: ${event.context_length || '?'}B`);
+            if (hookParts.length)
+                detail += ` (${hookParts.join(', ')})`;
             break;
+        }
         case 'keyword_detected':
             detail = `"${event.keyword}" detected`;
             break;
@@ -178,6 +188,10 @@ function buildExecutionFlow(events) {
             }
             case 'agent_stop': {
                 const type = event.agent_type || 'unknown';
+                if (event.synthetic || event.telemetry_status === 'unmatched_stop') {
+                    flow.push(`${type} agent stop was untracked (${event.agent})`);
+                    break;
+                }
                 const status = event.success ? 'completed' : 'FAILED';
                 const dur = event.duration_ms ? ` ${(event.duration_ms / 1000).toFixed(1)}s` : '';
                 flow.push(`${type} agent ${status} (${event.agent}${dur})`);
@@ -193,7 +207,6 @@ function buildExecutionFlow(events) {
 export const traceTimelineTool = {
     name: 'trace_timeline',
     description: 'Show chronological agent flow trace timeline. Displays hooks, keywords, skills, agents, and tools in time order. Use filter to show specific event types.',
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         sessionId: z.string().optional().describe('Session ID (auto-detects latest if omitted)'),
         filter: z.enum(['all', 'hooks', 'skills', 'agents', 'keywords', 'tools', 'modes']).optional().describe('Filter to show specific event types (default: all)'),
@@ -262,7 +275,6 @@ export const traceTimelineTool = {
 export const traceSummaryTool = {
     name: 'trace_summary',
     description: 'Show aggregate statistics for an agent flow trace session. Includes hook stats, keyword frequencies, skill activations, mode transitions, and tool bottlenecks.',
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         sessionId: z.string().optional().describe('Session ID (auto-detects latest if omitted)'),
         workingDirectory: z.string().optional().describe('Working directory (defaults to cwd)'),
@@ -295,7 +307,10 @@ export const traceSummaryTool = {
                 `### Overview`,
                 `- **Duration:** ${summary.duration_seconds.toFixed(1)}s`,
                 `- **Total Events:** ${summary.total_events}`,
-                `- **Agents:** ${summary.agents_spawned} spawned, ${summary.agents_completed} completed, ${summary.agents_failed} failed`,
+                `- **Agents:** ${summary.agents_spawned} spawned, ${summary.agents_completed} completed, ${summary.agents_failed} failed${summary.agents_untracked_stops ? `, ${summary.agents_untracked_stops} untracked stop(s)` : ''}`,
+                ...(summary.dirty_worktrees
+                    ? [`- **Dirty worktrees on stop:** ${summary.dirty_worktrees} agent(s) terminated leaving uncommitted work (issue #3663) — preserve before reset/cleanup; see subagent-tracking state`]
+                    : []),
                 '',
             ];
             // Agent Activity breakdown
@@ -410,5 +425,5 @@ export const traceSummaryTool = {
 /**
  * All trace tools for registration
  */
-export const traceTools = [traceTimelineTool, traceSummaryTool];
+export const traceTools = [traceTimelineTool, traceSummaryTool, sessionSearchTool];
 //# sourceMappingURL=trace-tools.js.map

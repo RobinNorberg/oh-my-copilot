@@ -3,7 +3,7 @@ export * from "./constants.js";
 export * from "./detector.js";
 export * from "./types.js";
 /**
- * Non-interactive environment hook for Copilot CLI.
+ * Non-interactive environment hook for Claude Code.
  *
  * Detects and handles non-interactive environments (CI, cron, etc.) by:
  * - Warning about banned interactive commands (vim, less, etc.)

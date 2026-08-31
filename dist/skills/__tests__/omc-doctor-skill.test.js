@@ -2,29 +2,20 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 describe('omc-doctor skill (issue #2254)', () => {
-    it('documents copilot-instructions.md OMC version drift check against cached plugin version', () => {
+    it('documents CLAUDE.md OMC version drift check against cached plugin version', () => {
         const skillPath = join(process.cwd(), 'skills', 'omc-doctor', 'SKILL.md');
         const content = readFileSync(skillPath, 'utf8');
-        expect(content).toContain('copilot-instructions.md OMC version:');
+        expect(content).toContain('CLAUDE.md OMC version:');
         expect(content).toContain('OMC version source:');
         expect(content).toContain('Latest cached plugin version:');
-        expect(content).toContain('VERSION DRIFT: copilot-instructions.md and plugin versions differ');
-        expect(content).toContain('VERSION CHECK SKIPPED: missing OMC marker or plugin cache');
-        expect(content).toContain('VERSION MATCH: copilot-instructions.md and plugin cache are aligned');
-        expect(content).toContain('copilot-*.md');
+        expect(content).toContain('VERSION DRIFT: CLAUDE.md and plugin versions differ');
+        expect(content).toContain('VERSION CHECK SKIPPED: missing CLAUDE marker or plugin cache');
+        expect(content).toContain('VERSION MATCH: CLAUDE and plugin cache are aligned');
+        expect(content).toContain('CLAUDE-*.md');
         expect(content).toContain('deterministic companion');
-        expect(content).toContain('scanned deterministic copilot-instructions sources');
+        expect(content).toContain('scanned deterministic CLAUDE sources');
         expect(content).not.toContain('!==');
-        expect(content).toContain('If `copilot-instructions.md OMC version` != `Latest cached plugin version`: WARN - version drift detected');
-    });
-});
-describe('omc-doctor skill package version diagnostic (issue #2981)', () => {
-    it('checks the canonical published npm package for latest version', () => {
-        const skillPath = join(process.cwd(), 'skills', 'omc-doctor', 'SKILL.md');
-        const content = readFileSync(skillPath, 'utf8');
-        // OMC publishes as `oh-my-copilot` (not upstream's `oh-my-claude-sisyphus`).
-        expect(content).toContain('npm view oh-my-copilot version');
-        expect(content).not.toContain('npm view oh-my-claudecode version');
+        expect(content).toContain('If `CLAUDE.md OMC version` != `Latest cached plugin version`: WARN - version drift detected');
     });
 });
 describe('omc-doctor skill Ralph Ruby dependency check (issue #2969)', () => {
@@ -36,6 +27,17 @@ describe('omc-doctor skill Ralph Ruby dependency check (issue #2969)', () => {
         expect(content).toContain('Ralph workflows require Ruby');
         expect(content).toContain('sudo apt update && sudo apt install ruby-full');
         expect(content).toContain('Ralph Ruby Dependency');
+    });
+});
+describe('omc-doctor skill package version diagnostic (issue #2981)', () => {
+    it('checks the canonical published npm package for latest version', () => {
+        const skillPath = join(process.cwd(), 'skills', 'omc-doctor', 'SKILL.md');
+        const content = readFileSync(skillPath, 'utf8');
+        // The second assertion here used to negate the first verbatim, so this test
+        // could never pass. The check that matters is that the diagnostic queries the
+        // canonical published package name, which it now does through an argument
+        // array rather than a shell string.
+        expect(content).toContain("spawnSync('npm',['view','oh-my-copilot','version']");
     });
 });
 //# sourceMappingURL=omc-doctor-skill.test.js.map

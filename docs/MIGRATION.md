@@ -1,18 +1,291 @@
 # Migration Guide
 
-This guide covers all migration paths for oh-my-claudecode. Find your current version below.
+This guide covers all migration paths for oh-my-copilot. Find your current version below.
 
 ---
 
 ## Table of Contents
 
+- [v4.13.102 → v5.0.0: Fork Upgrade Guide](#v413102--v500-fork-upgrade-guide)
+- [v4.x → v5.0: Workflow Retirement](#v4x--v50-workflow-retirement)
 - [Unreleased: Team MCP Runtime Deprecation (CLI-Only)](#unreleased-team-mcp-runtime-deprecation-cli-only)
 - [Unreleased: Native Team Worktree Mode (Opt-In)](#unreleased-native-team-worktree-mode-opt-in)
+- [Unreleased: Git-less State Root Recovery](#unreleased-git-less-state-root-recovery)
 - [v3.5.3 → v3.5.5: Test Fixes & Cleanup](#v353--v355-test-fixes--cleanup)
 - [v3.5.2 → v3.5.3: Skill Consolidation](#v352--v353-skill-consolidation)
 - [v2.x → v3.0: Package Rename & Auto-Activation](#v2x--v30-package-rename--auto-activation)
 - [v3.0 → v3.1: Notepad Wisdom & Enhanced Features](#v30--v31-notepad-wisdom--enhanced-features)
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
+
+---
+
+## Unreleased: Git-less State Root Recovery
+
+### TL;DR
+
+Sessions launched outside a Git repository no longer create a separate `.omg/`
+directory for every cwd. OMC uses one canonical `~/.omg/` root, or
+`$OMC_STATE_DIR/non-git` when centralized state is configured. Protected
+locations and descendants of system temp/OS roots are never used as roots.
+
+### Migration and compatibility
+
+- Existing non-git `.omg/` roots remain untouched and are not adopted implicitly.
+  Use `state_migrate_non_git` with the owning `session_id` to copy matching JSON
+  records into the canonical root without overwriting or deleting sources.
+- Existing state under protected locations is never moved or deleted
+  automatically, and cannot be used as a migration source.
+- `OMC_STATE_DIR` remains the explicit centralized option. In git-less sessions
+  it uses one fixed `non-git` child rather than hashing each cwd.
+- `workingDirectory` on state tools is honored within the validated context;
+  foreign repositories and failed Git probes are rejected visibly.
+- Session-scoped state remains owned by its `session_id`. No time-based cleanup
+  or cancellation was added.
+
+---
+
+## v4.13.102 → v5.0.0: Fork Upgrade Guide
+
+This section is specific to **oh-my-copilot** (binaries `oh-my-copilot` and
+`omcp`), the downstream fork maintained at
+[RobinNorberg/oh-my-copilot](https://github.com/RobinNorberg/oh-my-copilot).
+It covers the concrete upgrade path from fork **v4.13.102** to fork
+**v5.0.0**. The section below it, [v4.x → v5.0: Workflow
+Retirement](#v4x--v50-workflow-retirement), documents the same skill/command
+retirement in more detail (including declared-only and alias entries); read
+this section first for what's fork-specific about the jump.
+
+### TL;DR
+
+v5.0.0 rebases the fork onto the upstream `plan → execute → review → verify`
+workflow surface, and — the single most important thing for anyone
+upgrading — **moves two directories that OMC and the host CLI both read
+from, with no automatic migration.** Eleven skill names and seven command
+files are also retired outright (not aliased), three skills are new, one
+hook subsystem is gone with no replacement, and two opt-in features are
+added. Fork-exclusive skills (Azure DevOps, GitHub, and four standalone
+skills) are unaffected.
+
+### Directory moves: `.claude/` → `.copilot/`, `.omc/` → `.omg/`
+
+**v5.0.0 does not auto-migrate either directory.** Whatever you leave behind
+in the old locations is simply ignored, not read, and not merged — you must
+move it yourself before your existing config, skills, and state are picked
+up again.
+
+**1. `.claude/` → `.copilot/`.** oh-my-copilot is a GitHub Copilot CLI
+plugin, and it now reads the host CLI's own surface from `.copilot/` instead
+of `.claude/`: `settings.json`, `settings.local.json`, hooks, commands,
+skills, plugins, rules, tasks, and worktrees.
+
+- Project config moves from `.claude/omc.jsonc` to `.copilot/omg.jsonc`.
+  Move that file yourself:
+  ```bash
+  mkdir -p .copilot
+  mv .claude/omc.jsonc .copilot/omg.jsonc
+  ```
+- Context files are the one exception with a built-in fallback: the plugin
+  now *prefers* `copilot-instructions.md` and `.copilot/AGENTS.md`, but it
+  still falls back to `.claude/CLAUDE.md` / `.claude/AGENTS.md` when running
+  under Claude Code. You don't have to move those two immediately, though
+  moving them (or adding `copilot-instructions.md`) is recommended going
+  forward.
+- Everything else under `.claude/` — settings, hooks, commands, skills,
+  plugins, rules, tasks, worktrees — is **not** read from `.claude/` anymore
+  and must be moved to `.copilot/` to keep working.
+- Your user-level OMC config, `.omc-config.json`, now resolves to
+  `${COPILOT_CONFIG_DIR:-~/.copilot}/.omc-config.json`. This one you do *not*
+  have to move: if `~/.claude/.omc-config.json` is the only copy you have,
+  `/oh-my-copilot:omc-setup` adopts it into the new location when setup
+  completes, copying rather than moving so nothing is destroyed.
+  `/oh-my-copilot:omc-doctor` reports a stranded copy and can adopt it on its
+  own, and setting `COPILOT_CONFIG_DIR` overrides the location entirely.
+
+**2. `.omc/` → `.omg/`.** All oh-my-copilot runtime files move: state,
+sessions, logs, plans, research, `notepad.md`, `project-memory.json`,
+drafts, and autopilot/team state. Move the whole tree:
+
+```bash
+mv .omc .omg
+```
+
+If you pin `planOutput.directory` explicitly in config, note its **default**
+changed from `.omc/plans` to `.omg/plans` — update an explicit pin
+accordingly (an unpinned config picks up the new default automatically).
+
+**Unchanged:** the multi-repo workspace marker file is still named
+`.omc-workspace` at the workspace root — it does not need renaming.
+
+### Retired skill and command names
+
+If any of these are in your scripts, hooks, `CLAUDE.md`, or muscle memory,
+switch to the replacement — the old name no longer resolves:
+
+| Retired name       | Replacement                              |
+| ------------------- | ----------------------------------------- |
+| `ultrawork`         | `/oh-my-copilot:execute`                 |
+| `ultraqa`           | `/oh-my-copilot:verify`                  |
+| `deep-dive`         | `/oh-my-copilot:plan` then `execute`, or `/oh-my-copilot:research` for investigation |
+| `sciomc`            | `/oh-my-copilot:research`                |
+| `cccg` skill (invoked as `/ccg`) | `/oh-my-copilot:execute`   |
+| `omc-teams`         | `/oh-my-copilot:team`                    |
+| `setup`             | `/oh-my-copilot:omc-setup`               |
+| `mcp-setup`         | `/oh-my-copilot:omc-setup`               |
+| `omc-reference`     | `/oh-my-copilot:wiki`                    |
+| `learner`           | `/oh-my-copilot:skillify` or `/oh-my-copilot:remember` |
+| `writer-memory`     | `/oh-my-copilot:remember`                |
+
+Seven command files were removed alongside their skills: `ccg.md`,
+`deep-dive.md`, `learner.md`, `mcp-setup.md`, `omc-teams.md`, `sciomc.md`,
+`writer-memory.md`.
+
+### New Tier-0 workflow shape
+
+The canonical chain is now `plan → execute → review → verify`. Three skills
+are newly adopted: `execute`, `research`, and `review`. `review` installs as
+`omc-review` (it would otherwise collide with a native Claude Code command
+name). A new `/oh-my-copilot:compact` command is also added — it does not
+trigger Claude Code's native `/compact` itself, it prepares OMC context and
+hands you the bare `/compact` command to run.
+
+### Known regression: `stagger-launch` is gone
+
+The `ultrawork` / `ultraqa` / `ultrapilot` hook subsystems are removed, and
+the `stagger-launch` hook goes with them. `stagger-launch`'s only trigger was
+`ultrawork` mode, and it throttled rapid parallel agent launches to avoid a
+rate-limit thundering herd. That protection is **not** carried over to the
+new `execute`/`team` workflow surface in 5.0.0 — this is a known regression,
+not an oversight. If you relied on `ultrawork` specifically for its launch
+throttling, there is currently no equivalent in the new workflow surface.
+
+### Upgrading
+
+oh-my-copilot is a GitHub Copilot CLI plugin (binaries `oh-my-copilot`,
+`omcp`). To upgrade:
+
+```bash
+npm i -g oh-my-copilot@5
+```
+
+or, via the plugin marketplace:
+
+```bash
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
+/plugin install oh-my-copilot
+```
+
+Then run `/oh-my-copilot:omc-setup` (or say "setup omc") to refresh installed
+skills and prune retired ones.
+
+**Stale agent files from v4 are now correctly cleaned up.** The 4.x agent
+ownership inventory wrongly contained upstream's agent-file hashes instead of
+the fork's own, so agent files installed by v4 could fail the installer's
+ownership check and be left behind on upgrade instead of being reclaimed.
+5.0.0 fixes this by regenerating the inventory from the fork's own release
+history, so a v4.13.102 → v5.0.0 upgrade should no longer leave orphaned
+agent files behind.
+
+### New opt-in features
+
+Neither of these is enabled by default — turn them on if you want them:
+
+- **Microsoft Teams notifications.** Set `OMC_MICROSOFT_TEAMS_WEBHOOK_URL` to
+  a Power Automate Workflows or legacy O365 Connector webhook URL (or add a
+  `teams` block to your notification config) to receive OMC notifications in
+  Teams.
+- **RecentTools HUD element.** Enable `showRecentTools` in your HUD config to
+  show a rolling list of recent tool calls with status icons in the
+  statusline; tune it with `recentToolsMax` (default 5) and
+  `recentToolsShowTarget`.
+
+### Unchanged
+
+Fork-exclusive skills are not affected by the retirement or the upstream
+rebase: the five `omc-ado-*` Azure DevOps skills, the five `omc-gh-*` GitHub
+skills, plus `critique`, `deep-review`, `discover`, and `ralph-experiment`.
+
+---
+
+## v4.x → v5.0: Workflow Retirement
+
+### TL;DR
+
+17 workflow names were **removed outright**, not kept as aliases. The public
+surface is now four canonical workflows — `plan` → `execute` → `review` →
+`verify` — plus a small set of independent workflows and utilities.
+
+If you use `/ultrawork`, `/ultraqa`, `/ccg`, `/sciomc`, `/deep-dive`,
+`/omc-teams`, `/setup`, `/mcp-setup`, `/learner`, or `/writer-memory`, those
+names no longer resolve. Use the replacement in the table below.
+
+### Removed skills and commands
+
+| Removed                | Replacement                              | Notes                                                        |
+| ---------------------- | ---------------------------------------- | ------------------------------------------------------------ |
+| `ultrawork`            | `/oh-my-copilot:execute` or `/team`   | Use `/team` when you want coordinated parallel workers        |
+| `ultrapilot`           | `/oh-my-copilot:team`                 | Declared-only; never shipped as a skill file                  |
+| `swarm`                | `/oh-my-copilot:team`                 | Declared-only                                                 |
+| `pipeline`             | `/oh-my-copilot:execute`              | Declared-only                                                 |
+| `ultraqa`              | `/oh-my-copilot:verify`               |                                                               |
+| `merge-readiness`      | `/oh-my-copilot:review`               | Advisory review; release hard checks are unchanged            |
+| `deep-dive`            | `/oh-my-copilot:research`             |                                                               |
+| `sciomc`               | `/oh-my-copilot:research`             |                                                               |
+| `ccg`                  | `/oh-my-copilot:ask` + `/team`        | Run `/ask codex` and `/ask antigravity`, then synthesize      |
+| `omc-teams`            | `/oh-my-copilot:team` or `omc team`   |                                                               |
+| `setup`                | `/oh-my-copilot:omc-setup`            |                                                               |
+| `mcp-setup`            | Claude Code native MCP configuration     | Use `claude mcp add <name> ...` or the path selected by `CLAUDE_MCP_CONFIG_PATH`. |
+| `omc-reference`        | `/oh-my-copilot:wiki`                 | Model-routing reference moved into the wiki skill             |
+| `learner`              | `/oh-my-copilot:remember`             |                                                               |
+| `writer-memory`        | `/oh-my-copilot:remember`             |                                                               |
+| `local-build-reminder` | —                                        | Removed; docs and CI cover the rebuild signal                 |
+| `understanding-gate`   | `/oh-my-copilot:review`               | Frontmatter alias of the removed merge-readiness              |
+
+Command files removed alongside their skills: `ccg.md`, `deep-dive.md`,
+`learner.md`, `mcp-setup.md`, `omc-teams.md`, `sciomc.md`, `writer-memory.md`.
+
+### What is kept
+
+These were **not** retired, despite routing into the canonical workflows:
+
+- **Canonical Tier-0**: `plan`, `execute`, `review`, `verify`
+- **Independent Tier-0 planning**: `deep-interview`, `ralplan`
+- **Directly invocable workflows**: `autopilot`, `autoresearch`, `ultragoal`, `ralph`
+- **Internal lanes**: `team`, `research`
+- **Surviving aliases**: `psm` → `project-session-manager`, `release` → maintainer-only `omc release`
+
+### Newly available to everyone
+
+`verify`, `remember`, and `debug` were previously gated behind an internal
+entitlement (`USER_TYPE=ant`). They now install for all users — `verify`
+completes the canonical chain and `remember` is the target for the retired
+`learner`/`writer-memory`.
+
+### Installed names
+
+Two skills install under an `omc-` prefix because their names collide with
+Claude Code native commands:
+
+| Skill    | Installed as |
+| -------- | ------------ |
+| `plan`   | `omc-plan`   |
+| `review` | `omc-review` |
+
+### Migration Steps
+
+1. Update any scripts, docs, or prompts that invoke a removed name.
+2. Run `omc setup` (or `/oh-my-copilot:omc-setup`). The installer prunes the
+   retired skill directories automatically — no manual cleanup needed.
+3. If you pinned a removed skill in `.claude/settings.json` or a project
+   `CLAUDE.md`, replace it using the table above.
+
+### Why these were removed rather than aliased
+
+The alias retirement policy normally requires ≥2 minor releases, ≥90 days, and
+≥95% canonical usage before a name can be removed. A major version is the
+sanctioned place for breaking removals, so 5.0.0 applies a major-boundary
+carve-out (`isMajorBoundaryRemoval`). The carve-out does **not** waive the
+critical-integrations check — an alias with a known critical consumer still
+blocks.
 
 ---
 
@@ -68,12 +341,12 @@ omc team api list-tasks --input '{"team_name":"review-auth-flow"}' --json
 
 ### TL;DR
 
-`omc team` runtime-v2 is gaining an opt-in worker worktree mode. Worktree-backed workers run from dedicated git worktrees while task lifecycle, mailbox, status, and manifest files stay under the leader workspace's team-specific coordination root (`<repo>/.omc/state/team/<team-name>`).
+`omc team` runtime-v2 is gaining an opt-in worker worktree mode. Worktree-backed workers run from dedicated git worktrees while task lifecycle, mailbox, status, and manifest files stay under the leader workspace's team-specific coordination root (`<repo>/.omg/state/team/<team-name>`).
 
 ### Contract
 
-- Worktree paths use `<repo>/.omc/team/<team-name>/worktrees/<worker-name>`.
-- `OMC_TEAM_STATE_ROOT` points workers back to `<repo>/.omc/state/team/<team-name>`.
+- Worktree paths use `<repo>/.omg/team/<team-name>/worktrees/<worker-name>`.
+- `OMC_TEAM_STATE_ROOT` points workers back to `<repo>/.omg/state/team/<team-name>`.
 - Status/config/manifest/identity surfaces should expose `workspace_mode`, `worktree_mode`, `team_state_root`, and worker worktree metadata.
 - Dirty worker worktrees are preserved and reported; they are not force-cleaned by shutdown/cleanup.
 
@@ -191,15 +464,15 @@ Your old commands still work! But now you don't need them.
 
 The project was rebranded to better reflect its purpose and improve discoverability.
 
-- **Project/brand name**: `oh-my-claudecode` (GitHub repo, plugin name, commands)
-- **npm package name**: `oh-my-claude-sisyphus` (unchanged)
+- **Project/brand name**: `oh-my-copilot` (GitHub repo, plugin name, commands)
+- **npm package name**: `oh-my-copilot` (unchanged)
 
-> **Why the difference?** The npm package name `oh-my-claude-sisyphus` was kept for backward compatibility with existing installations. The project, GitHub repository, plugin, and all commands use `oh-my-claudecode`.
+> **Why the difference?** The npm package name `oh-my-copilot` was kept for backward compatibility with existing installations. The project, GitHub repository, plugin, and all commands use `oh-my-copilot`.
 
 #### NPM Install Command (unchanged)
 
 ```bash
-npm i -g oh-my-claude-sisyphus@latest
+npm i -g oh-my-copilot@latest
 ```
 
 ### What Changed
@@ -239,45 +512,17 @@ Agent naming is now strictly descriptive and role-based (for example: `architect
 
 Use canonical role names across prompts, commands, docs, and scripts. Avoid introducing alternate myth-style or legacy aliases in new content.
 
-### Directory Migration
+### Directory and Environment Migration
 
-Directory structures have been renamed for consistency with the new package name:
+No directory rename is required for the current OMC state paths. Keep existing `.omg/` project state and `~/.omg/` global state directories in place.
 
-#### Local Project Directories
+Only update genuinely legacy or custom paths that predate the OMC layout:
 
-- **Old**: `.omc/`
-- **New**: `.omc/`
+| Area | Old | New |
+| ---- | --- | --- |
+| Config file | `~/.claude/omc/mnemosyne.json` | `~/.claude/omc/learner.json` |
 
-#### Global Directories
-
-- **Old**: `~/.omc/`
-- **New**: `~/.omc/`
-
-#### Skills Directory
-
-- **Old**: `~/.claude/skills/omc-learned/`
-- **New**: `~/.claude/skills/omc-learned/`
-
-#### Config Files
-
-- **Old**: `~/.claude/omc/mnemosyne.json`
-- **New**: `~/.claude/omc/learner.json`
-
-### Environment Variables
-
-All environment variables have been renamed from `OMC_*` to `OMC_*`:
-
-| Old                      | New                      |
-| ------------------------ | ------------------------ |
-| OMC_USE_NODE_HOOKS       | OMC_USE_NODE_HOOKS       |
-| OMC_USE_BASH_HOOKS       | OMC_USE_BASH_HOOKS       |
-| OMC_PARALLEL_EXECUTION   | OMC_PARALLEL_EXECUTION   |
-| OMC_LSP_TOOLS            | OMC_LSP_TOOLS            |
-| OMC_MAX_BACKGROUND_TASKS | OMC_MAX_BACKGROUND_TASKS |
-| OMC_ROUTING_ENABLED      | OMC_ROUTING_ENABLED      |
-| OMC_ROUTING_DEFAULT_TIER | OMC_ROUTING_DEFAULT_TIER |
-| OMC_ESCALATION_ENABLED   | OMC_ESCALATION_ENABLED   |
-| OMC_DEBUG                | OMC_DEBUG                |
+Environment variables that already use the `OMC_` prefix do not need renaming. Continue using the existing documented variables such as `OMC_LSP_TOOLS`, `OMC_PARALLEL_EXECUTION`, and `OMC_DEBUG`.
 
 ### Command Mapping
 
@@ -357,62 +602,36 @@ Follow these steps to migrate your existing setup:
 #### 1. Uninstall Old Package (if installed via npm)
 
 ```bash
-npm uninstall -g oh-my-claudecode
+npm uninstall -g oh-my-copilot
 ```
 
-#### 2. Install via Plugin System (Required)
+#### 2. Install via Plugin System
 
 ```bash
 # In Claude Code:
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-claudecode
-/plugin install oh-my-claudecode
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
+/plugin install oh-my-copilot
 ```
 
-> **Note**: npm/bun global installs are no longer supported. Use the plugin system.
+> **Note**: npm/bun global installs no longer provide the in-session plugin surface by themselves. Use the plugin system for slash commands, hooks, and skills; use the published npm package `oh-my-copilot` when you need the terminal `omc` CLI.
 
-#### 3. Rename Local Project Directories
+#### 3. Preserve Existing OMC Directories
 
-If you have existing projects using the old directory structure:
+Do not rename current OMC directories. Existing project state in `.omg/` and global state in `~/.omg/` are already on the current paths.
+
+#### 4. Update Legacy Config Names
+
+If you still have the pre-3.0 learner config filename, rename only that file:
 
 ```bash
-# In each project directory
-mv .omc .omc
+mv ~/.claude/omc/mnemosyne.json ~/.claude/omc/learner.json
 ```
 
-#### 4. Rename Global Directories
+#### 5. Review Scripts and Configurations
 
-```bash
-# Global configuration directory
-mv ~/.omc ~/.omc
+Search your local scripts and docs for stale references to removed commands or the old config filename. Keep the npm package name as `oh-my-copilot` for npm/bun installs; do not rewrite it to the project/plugin brand name.
 
-# Skills directory
-mv ~/.claude/skills/omc-learned ~/.claude/skills/omc-learned
-
-# Config directory
-mv ~/.claude/omc ~/.claude/omc
-```
-
-#### 5. Update Environment Variables
-
-Update your shell configuration files (`.bashrc`, `.zshrc`, etc.):
-
-```bash
-# Replace all OMC_* variables with OMC_*
-# Example:
-# OLD: export OMC_ROUTING_ENABLED=true
-# NEW: export OMC_ROUTING_ENABLED=true
-```
-
-#### 6. Update Scripts and Configurations
-
-Search for and update any references to:
-
-- Package name: `oh-my-claudecode` → `oh-my-claudecode`
-- Agent names: Use the mapping table above
-- Commands: Use the new slash commands
-- Directory paths: Update `.omc` → `.omc`
-
-#### 7. Run One-Time Setup
+#### 6. Run One-Time Setup
 
 In Claude Code, just say "setup omc", "omc setup", or any natural language equivalent.
 
@@ -428,17 +647,17 @@ This:
 
 After migration, verify your setup:
 
-1. **Check installation**:
+1. **Check CLI installation, if you use the npm CLI surface**:
 
    ```bash
-   npm list -g oh-my-claudecode
+   npm list -g oh-my-copilot
    ```
 
 2. **Verify directories exist**:
 
    ```bash
-   ls -la .omc/  # In project directory
-   ls -la ~/.omc/  # Global directory
+   ls -la .omg/  # In project directory
+   ls -la ~/.omg/  # Global directory
    ```
 
 3. **Test a simple command**:
@@ -488,7 +707,7 @@ Next time keywords match → Solution auto-injects
 
 Storage:
 
-- **Project-level**: `.omc/skills/` (intended to be committed with the repo; uncommitted worktree-local skills disappear when that worktree is removed)
+- **Project-level**: `.omg/skills/` (intended to be committed with the repo; uncommitted worktree-local skills disappear when that worktree is removed)
 - **User-level**: `~/.claude/skills/omc-learned/` (portable)
 
 #### 4. HUD Statusline (Real-Time Orchestration)
@@ -565,7 +784,7 @@ Version 3.1 is a minor release adding powerful new features while maintaining fu
 
 Plan-scoped wisdom capture for learnings, decisions, issues, and problems.
 
-**Location:** `.omc/notepads/{plan-name}/`
+**Location:** `.omg/notepads/{plan-name}/`
 
 | File           | Purpose                            |
 | -------------- | ---------------------------------- |
@@ -619,7 +838,7 @@ Background agents can be resumed with full context via `resume-session` tool.
 Version 3.1 is a drop-in upgrade. No migration required!
 
 ```bash
-npm update -g oh-my-claudecode
+npm update -g oh-my-copilot
 ```
 
 All existing configurations, plans, and workflows continue working unchanged.
@@ -669,7 +888,7 @@ Smart cancellation that auto-detects active mode:
 # Or just say: "stop", "cancel", "abort"
 ```
 
-**Auto-detects and cancels:** autopilot, ralph, ultrawork, ultraqa, pipeline
+**Auto-detects and cancels:** autopilot, ralph, ultrawork, pipeline (ultraqa is retired; stale pre-5.0.0 `ultraqa-state.json` is still cleared)
 
 **Deprecation Notice:**
 Individual cancel commands are deprecated but still work:
@@ -687,7 +906,7 @@ Opus-powered architectural search for complex codebase exploration:
 
 ```typescript
 Task(
-  (subagent_type = "oh-my-claudecode:explore-high"),
+  (subagent_type = "oh-my-copilot:explore-high"),
   (model = "opus"),
   (prompt = "Find all authentication-related code patterns..."),
 );
@@ -701,8 +920,8 @@ State files now use standardized paths:
 
 **Standard paths:**
 
-- Local: `.omc/state/{name}.json`
-- Global: `~/.omc/state/{name}.json`
+- Local: `.omg/state/{name}.json`
+- Global: `~/.omg/state/{name}.json`
 
 Legacy locations are auto-migrated on read.
 
@@ -727,7 +946,7 @@ Users set their default mode preference via `/oh-my-copilot:omc-setup`.
 Version 3.4.0 is a drop-in upgrade. No migration required!
 
 ```bash
-npm update -g oh-my-claudecode
+npm update -g oh-my-copilot
 ```
 
 All existing configurations, plans, and workflows continue working unchanged.
@@ -736,7 +955,7 @@ All existing configurations, plans, and workflows continue working unchanged.
 
 #### Default Execution Mode
 
-Set your preferred execution mode in `~/.claude/.omc-config.json`:
+Set your preferred execution mode in `${COPILOT_CONFIG_DIR:-~/.copilot}/.omc-config.json`:
 
 ```json
 {
@@ -793,10 +1012,10 @@ Once upgraded, you automatically gain access to:
 
 After upgrading, verify new features:
 
-1. **Check installation**:
+1. **Check CLI installation, if you use the npm CLI surface**:
 
    ```bash
-   npm list -g oh-my-claudecode
+   npm list -g oh-my-copilot
    ```
 
 2. **Test unified cancel**:
@@ -807,7 +1026,7 @@ After upgrading, verify new features:
 
 3. **Check state directory**:
    ```bash
-   ls -la .omc/state/
+   ls -la .omg/state/
    ```
 
 ---
@@ -851,7 +1070,7 @@ Expected timeline: Q1 2026
 
 ### Stay Updated
 
-- Watch the [GitHub repository](https://github.com/Yeachan-Heo/oh-my-claudecode) for announcements
+- Watch the [GitHub repository](https://github.com/RobinNorberg/oh-my-copilot) for announcements
 - Check [CHANGELOG.md](../CHANGELOG.md) for detailed release notes
 - Join discussions in GitHub Issues
 
@@ -937,7 +1156,7 @@ Interview begins automatically
 
 ### Project-Scoped Configuration (Recommended)
 
-Apply oh-my-claudecode to current project only:
+Apply oh-my-copilot to current project only:
 
 ```
 /oh-my-copilot:omc-default
@@ -1000,4 +1219,4 @@ Now that you understand the migration:
 3. **For advanced usage**: Check [docs/ARCHITECTURE.md](ARCHITECTURE.md) for deep dives
 4. **For team onboarding**: Share this guide with teammates
 
-Welcome to oh-my-claudecode!
+Welcome to oh-my-copilot!

@@ -13,17 +13,17 @@
  * ```
  */
 import { pathToFileURL } from "url";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync, unlinkSync, writeFileSync, } from "fs";
+import { existsSync, readFileSync, readdirSync, rmdirSync, } from "fs";
 import { dirname, join } from "path";
-import { resolveToWorktreeRoot, getOmcRoot } from "../lib/worktree-paths.js";
-import { readModeState, writeModeState } from "../lib/mode-state-io.js";
+import { resolveToWorktreeRoot, getOmcRoot, getSessionStateDir as resolveSessionStateDir, listSessionIds, resolveStatePath, resolveSessionStatePath, } from "../lib/worktree-paths.js";
+import { canClearStateForSession, clearStateFileLockedIf, readModeState, readModeStateWithMeta, writeModeState, writeStateFileLockedCreateIf, writeStateFileLockedIf, } from "../lib/mode-state-io.js";
 import { SESSION_END_MODE_STATE_FILES } from "../lib/mode-names.js";
 import { formatOmcCliInvocation } from "../utils/omc-cli-rendering.js";
 import { createSwallowedErrorLogger } from "../lib/swallowed-error.js";
 import { dispatchNotificationInBackground } from "./background-notifications.js";
 import { readCanonicalTeamStateCandidate } from "./team-canonical-state.js";
 // Hot-path imports: needed on every/most hook invocations (keyword-detector, pre/post-tool-use)
-import { removeCodeBlocks, getAllKeywordsWithSizeCheck, applyRalplanGate, sanitizeForKeywordDetection, NON_LATIN_SCRIPT_PATTERN, } from "./keyword-detector/index.js";
+import { removeCodeBlocks, getAllKeywordsWithSizeCheck, applyRalplanGate, sanitizeForKeywordDetection, NON_LATIN_SCRIPT_PATTERN, parseExplicitWorkflowSlashInvocation, isRetiredWorkflowSlashInvocation, } from "./keyword-detector/index.js";
 import { processOrchestratorPreTool, processOrchestratorPostTool, } from "./omc-orchestrator/index.js";
 import { normalizeHookInput } from "./bridge-normalize.js";
 import { addBackgroundTask, completeBackgroundTask, completeMostRecentMatchingBackgroundTask, getRunningTaskCount, remapBackgroundTaskId, remapMostRecentMatchingBackgroundTaskId, } from "../hud/background-tasks.js";
@@ -33,9 +33,8 @@ import { activatePromptPrerequisiteState, buildPromptPrerequisiteDenyReason, bui
 import { resolveAutopilotPlanPath, resolveOpenQuestionsPlanPath, } from "../config/plan-output.js";
 import { formatAutopilotRuntimeInsight } from "./autopilot/runtime-insight.js";
 import { writeSkillActiveState, isCanonicalWorkflowSkill, upsertWorkflowSkillSlot, markWorkflowSkillCompleted, pruneExpiredWorkflowSkillTombstones, readSkillActiveStateNormalized, writeSkillActiveStateCopies, } from "./skill-state/index.js";
-import { parseExplicitWorkflowSlashInvocation } from "./keyword-detector/index.js";
+import { resolveWorkflowInputWithWarning } from "../workflow/alias-resolver.js";
 import { ULTRATHINK_MESSAGE, SEARCH_MESSAGE, ANALYZE_MESSAGE, TDD_MESSAGE, CODE_REVIEW_MESSAGE, SECURITY_REVIEW_MESSAGE, RALPH_MESSAGE, PROMPT_TRANSLATION_MESSAGE, } from "../installer/hooks.js";
-import { getUltraworkMessage } from "./keyword-detector/ultrawork/index.js";
 // Agent dashboard is used in pre/post-tool-use hot path
 import { getAgentDashboard } from "./subagent-tracker/index.js";
 // Session replay recordFileTouch is used in pre-tool-use hot path
@@ -43,11 +42,13 @@ import { recordFileTouch } from "./subagent-tracker/session-replay.js";
 import { getBackgroundBashPermissionFallback, getBackgroundTaskPermissionFallback, } from "./permission-handler/index.js";
 // Security: wrap untrusted file content to prevent prompt injection
 import { wrapUntrustedFileContent } from "../agents/prompt-helpers.js";
+import { isHookShadowEnabled, runShadowObservation, } from "./registry/index.js";
+import { isFamilyCutoverEnabled, hasHookProtocolDeny, recordDispatchTelemetry, shouldLoosenOrdinaryEnforcement, } from "./registry/cutover.js";
 const PKILL_F_FLAG_PATTERN = /\bpkill\b.*\s-f\b/;
 const PKILL_FULL_FLAG_PATTERN = /\bpkill\b.*--full\b/;
 const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+/i;
-const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom(?:cp?|x)\s+team\b(?!\s+api\b)/i;
-const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|ultrawork|autopilot|ralph)\b/i;
+const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cx]\s+team\b(?!\s+api\b)/i;
+const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|autopilot|ralph)\b/i;
 const TEAM_TERMINAL_VALUES = new Set([
     "completed",
     "complete",
@@ -84,8 +85,7 @@ const TASK_OUTPUT_ID_PATTERN = /<task_id>([^<]+)<\/task_id>/i;
 const TASK_OUTPUT_STATUS_PATTERN = /<status>([^<]+)<\/status>/i;
 const SAFE_SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 const MODE_CONFIRMATION_SKILL_MAP = {
-    ralph: ["ralph", "ultrawork"],
-    ultrawork: ["ultrawork"],
+    ralph: ["ralph"],
     autopilot: ["autopilot"],
     ralplan: ["ralplan"],
 };
@@ -107,7 +107,6 @@ function buildSessionStartAdditionalContext(messages) {
     const priorityOrder = [
         /\[MODEL ROUTING OVERRIDE/,
         /\[AUTOPILOT MODE RESTORED\]/,
-        /\[ULTRAWORK MODE RESTORED\]/,
         /\[RALPLAN MODE RESTORED\]/,
         /\[TEAM MODE RESTORED\]/,
         /\[ROOT AGENTS\.md LOADED\]/,
@@ -139,11 +138,9 @@ function buildSessionStartAdditionalContext(messages) {
     return selected.join("\n");
 }
 function readLinuxBootId() {
-    if (process.env.NODE_ENV === "test") {
-        const testBootId = process.env.OMC_TEST_LINUX_BOOT_ID?.trim();
-        if (testBootId)
-            return testBootId;
-    }
+    const testBootId = process.env.OMC_TEST_BOOT_ID?.trim();
+    if (testBootId)
+        return testBootId;
     try {
         if (!existsSync(LINUX_BOOT_ID_PATH))
             return undefined;
@@ -155,7 +152,7 @@ function readLinuxBootId() {
     }
 }
 function sessionStateDir(directory, sessionId) {
-    return join(getOmcRoot(directory), "state", "sessions", sessionId);
+    return resolveSessionStateDir(sessionId, directory);
 }
 function sessionStartedMarkerPath(directory, sessionId) {
     return join(sessionStateDir(directory, sessionId), SESSION_STARTED_MARKER_FILE);
@@ -177,8 +174,6 @@ function writeSessionStartedMarker(directory, sessionId) {
     if (!sessionId || !SAFE_SESSION_ID_PATTERN.test(sessionId))
         return;
     try {
-        const dir = sessionStateDir(directory, sessionId);
-        mkdirSync(dir, { recursive: true });
         const marker = {
             session_id: sessionId,
             started_at: new Date().toISOString(),
@@ -190,10 +185,8 @@ function writeSessionStartedMarker(directory, sessionId) {
             // later SessionStart hooks to falsely clean live session state.
             boot_id: readLinuxBootId(),
         };
-        writeFileSync(sessionStartedMarkerPath(directory, sessionId), JSON.stringify(marker, null, 2), {
-            encoding: "utf-8",
-            mode: 0o600,
-        });
+        const markerPath = sessionStartedMarkerPath(directory, sessionId);
+        writeStateFileLockedCreateIf(markerPath, (current) => current === null || canClearStateForSession(current, sessionId), () => marker);
     }
     catch {
         // SessionStart markers are best-effort and must never block startup.
@@ -204,9 +197,7 @@ function removeSessionStartedMarker(directory, sessionId) {
         return;
     try {
         const markerPath = sessionStartedMarkerPath(directory, sessionId);
-        if (existsSync(markerPath)) {
-            unlinkSync(markerPath);
-        }
+        clearStateFileLockedIf(markerPath, (current) => current.session_id === sessionId && canClearStateForSession(current, sessionId));
     }
     catch {
         // Best-effort marker cleanup only.
@@ -216,40 +207,53 @@ function hasSessionEndSummary(directory, sessionId) {
     return existsSync(join(getOmcRoot(directory), "sessions", `${sessionId}.json`));
 }
 function cleanupSessionModeStateFiles(directory, sessionId) {
-    const dir = sessionStateDir(directory, sessionId);
-    for (const { file } of SESSION_END_MODE_STATE_FILES) {
-        const filePath = join(dir, file);
-        const state = readJsonObject(filePath);
+    for (const { file, mode } of SESSION_END_MODE_STATE_FILES) {
+        let filePath;
+        try {
+            filePath = resolveSessionStatePath(mode, sessionId, directory);
+        }
+        catch {
+            continue;
+        }
         // SessionStart reconciliation is intentionally narrower than SessionEnd:
         // only remove files inside the explicit stale session directory. Do not
         // touch legacy/global state, even if it is unowned or shares a mode name.
-        if (state?.active === true || file === "skill-active-state.json") {
-            try {
-                unlinkSync(filePath);
-            }
-            catch {
-                // Leave files in place when deletion fails.
-            }
-        }
+        // Re-check ownership while holding the mutation lock so metadata-only
+        // foreign state cannot be removed by a stale-session cleanup.
+        clearStateFileLockedIf(filePath, (current) => !Array.isArray(current) &&
+            (current.active === true || file === "skill-active-state.json") &&
+            canClearStateForSession(current, sessionId));
     }
 }
 function cleanupMissionStateForSession(directory, sessionId) {
-    const missionStatePath = join(getOmcRoot(directory), "state", "mission-state.json");
-    const parsed = readJsonObject(missionStatePath);
-    if (!Array.isArray(parsed?.missions))
-        return;
-    const before = parsed.missions.length;
-    parsed.missions = parsed.missions.filter((mission) => {
-        if (mission.source !== "session")
-            return true;
-        const missionId = typeof mission.id === "string" ? mission.id : "";
-        return !missionId.includes(sessionId);
-    });
-    if (parsed.missions.length === before)
-        return;
     try {
-        parsed.updatedAt = new Date().toISOString();
-        writeFileSync(missionStatePath, JSON.stringify(parsed, null, 2));
+        const missionStatePath = resolveStatePath("mission-state", directory);
+        writeStateFileLockedIf(missionStatePath, (current) => {
+            if (!canClearStateForSession(current, sessionId) || !Array.isArray(current.missions)) {
+                return false;
+            }
+            return current.missions.some((mission) => {
+                if (!mission || typeof mission !== "object" || mission.source !== "session") {
+                    return false;
+                }
+                const missionId = typeof mission.id === "string"
+                    ? mission.id
+                    : "";
+                return missionId === `session:${sessionId}` || missionId.startsWith(`session:${sessionId}:`) || missionId.endsWith(`-${sessionId}`);
+            });
+        }, (current) => ({
+            ...current,
+            updatedAt: new Date().toISOString(),
+            missions: current.missions.filter((mission) => {
+                if (!mission || typeof mission !== "object" || mission.source !== "session") {
+                    return true;
+                }
+                const missionId = typeof mission.id === "string"
+                    ? mission.id
+                    : "";
+                return !(missionId === `session:${sessionId}` || missionId.startsWith(`session:${sessionId}:`) || missionId.endsWith(`-${sessionId}`));
+            }),
+        }));
     }
     catch {
         // Best-effort cleanup only.
@@ -278,18 +282,8 @@ function hasDurableAbandonmentEvidence(marker) {
     return false;
 }
 async function reconcileAbandonedSessionStarts(directory, currentSessionId) {
-    const sessionsDir = join(getOmcRoot(directory), "state", "sessions");
-    if (!existsSync(sessionsDir))
-        return;
-    let entries;
-    try {
-        entries = readdirSync(sessionsDir);
-    }
-    catch {
-        return;
-    }
-    for (const sessionId of entries) {
-        if (!SAFE_SESSION_ID_PATTERN.test(sessionId) || sessionId === currentSessionId)
+    for (const sessionId of listSessionIds(directory)) {
+        if (sessionId === currentSessionId)
             continue;
         const markerPath = sessionStartedMarkerPath(directory, sessionId);
         const marker = readJsonObject(markerPath);
@@ -327,15 +321,6 @@ function getExtraField(input, key) {
 function getHookToolUseId(input) {
     const value = getExtraField(input, "tool_use_id");
     return typeof value === "string" && value.trim().length > 0 ? value : undefined;
-}
-function getHookContextString(input, ...keys) {
-    for (const key of keys) {
-        const value = getExtraField(input, key);
-        if (typeof value === "string" && value.trim().length > 0) {
-            return value.trim();
-        }
-    }
-    return undefined;
 }
 function extractAsyncAgentId(toolOutput) {
     if (typeof toolOutput !== "string") {
@@ -382,11 +367,13 @@ function taskLaunchDidFail(toolOutput) {
     return normalized.includes("error") || normalized.includes("failed");
 }
 function getSessionStateDir(directory, sessionId) {
-    const stateDir = join(getOmcRoot(directory), "state");
     if (sessionId && SAFE_SESSION_ID_PATTERN.test(sessionId)) {
-        return join(stateDir, "sessions", sessionId);
+        return resolveSessionStateDir(sessionId, directory);
     }
-    return stateDir;
+    return dirname(resolveStatePath("session-state", directory));
+}
+function getStateDir(directory) {
+    return dirname(resolveStatePath("team", directory));
 }
 function getScheduledWakeupStatePath(directory, sessionId) {
     return join(getSessionStateDir(directory, sessionId), "scheduled-wakeup-state.json");
@@ -419,54 +406,51 @@ function parseWakeupDueAt(toolInput) {
 function recordScheduledWakeup(directory, sessionId, toolInput) {
     try {
         const statePath = getScheduledWakeupStatePath(directory, sessionId);
-        mkdirSync(dirname(statePath), { recursive: true });
-        writeFileSync(statePath, JSON.stringify({
+        writeStateFileLockedCreateIf(statePath, (current) => current === null ||
+            !sessionId ||
+            canClearStateForSession(current, sessionId), () => ({
             active: true,
             pending: true,
             status: "pending",
             session_id: sessionId,
             created_at: new Date().toISOString(),
             due_at: parseWakeupDueAt(toolInput),
-        }, null, 2));
+        }));
     }
     catch {
         // Wakeup state is best-effort; never fail the hook.
     }
 }
 function getModeStatePaths(directory, modeName, sessionId) {
-    const stateDir = join(getOmcRoot(directory), "state");
     const safeSessionId = typeof sessionId === "string" && SAFE_SESSION_ID_PATTERN.test(sessionId)
         ? sessionId
         : undefined;
     return [
-        safeSessionId ? join(stateDir, "sessions", safeSessionId, `${modeName}-state.json`) : null,
-        join(stateDir, `${modeName}-state.json`),
+        safeSessionId ? resolveSessionStatePath(modeName, safeSessionId, directory) : null,
+        resolveStatePath(modeName, directory),
     ].filter((statePath) => Boolean(statePath));
 }
 function updateModeAwaitingConfirmation(directory, modeName, sessionId, awaitingConfirmation) {
     for (const statePath of getModeStatePaths(directory, modeName, sessionId)) {
-        if (!existsSync(statePath)) {
-            continue;
-        }
         try {
-            const state = JSON.parse(readFileSync(statePath, "utf-8"));
-            if (!state || typeof state !== "object") {
-                continue;
-            }
-            if (awaitingConfirmation) {
-                state.awaiting_confirmation = true;
-                state.awaiting_confirmation_set_at = new Date().toISOString();
-            }
-            else if (state.awaiting_confirmation === true) {
-                delete state.awaiting_confirmation;
-                delete state.awaiting_confirmation_set_at;
-            }
-            else {
-                continue;
-            }
-            const tmpPath = `${statePath}.${process.pid}.${Date.now()}.tmp`;
-            writeFileSync(tmpPath, JSON.stringify(state, null, 2));
-            renameSync(tmpPath, statePath);
+            writeStateFileLockedIf(statePath, (state) => {
+                if (sessionId && !canClearStateForSession(state, sessionId)) {
+                    return false;
+                }
+                return awaitingConfirmation || state.awaiting_confirmation === true;
+            }, (state) => {
+                if (awaitingConfirmation) {
+                    return {
+                        ...state,
+                        awaiting_confirmation: true,
+                        awaiting_confirmation_set_at: new Date().toISOString(),
+                    };
+                }
+                const next = { ...state };
+                delete next.awaiting_confirmation;
+                delete next.awaiting_confirmation_set_at;
+                return next;
+            });
         }
         catch {
             // Best-effort state sync only.
@@ -560,7 +544,7 @@ function seedRalplanStartupState(directory, sessionId) {
     markModeAwaitingConfirmation(directory, sessionId, "ralplan");
 }
 async function seedAutopilotStartupState(directory, prompt, sessionId) {
-    const { readAutopilotState, writeAutopilotState, DEFAULT_CONFIG } = await import("./autopilot/index.js");
+    const { readAutopilotState, writeAutopilotState, DEFAULT_CONFIG, resolvePipelineConfig, buildPipelineTracking, } = await import("./autopilot/index.js");
     const existingState = readAutopilotState(directory, sessionId);
     const existingAutopilotRecord = existingState;
     if (existingState?.active === true) {
@@ -569,8 +553,9 @@ async function seedAutopilotStartupState(directory, prompt, sessionId) {
         }
         return;
     }
+    const config = loadConfig();
     const now = new Date().toISOString();
-    const wrote = writeAutopilotState(directory, {
+    const state = {
         active: true,
         phase: "expansion",
         current_phase: "expansion",
@@ -591,14 +576,12 @@ async function seedAutopilotStartupState(directory, prompt, sessionId) {
         },
         execution: {
             ralph_iterations: 0,
-            ultrawork_active: false,
             tasks_completed: 0,
             tasks_total: 0,
             files_created: [],
             files_modified: [],
         },
         qa: {
-            ultraqa_cycles: 0,
             build_status: "pending",
             lint_status: "pending",
             test_status: "pending",
@@ -616,40 +599,42 @@ async function seedAutopilotStartupState(directory, prompt, sessionId) {
         wisdom_entries: 0,
         session_id: sessionId,
         project_path: directory,
-    }, sessionId);
+    };
+    const autopilotConfig = config.autopilot;
+    const shouldUsePipeline = autopilotConfig?.execution === "team";
+    if (shouldUsePipeline) {
+        const pipelineConfig = resolvePipelineConfig(autopilotConfig);
+        state.pipeline =
+            buildPipelineTracking(pipelineConfig);
+    }
+    const wrote = writeAutopilotState(directory, state, sessionId);
     if (wrote) {
         markModeAwaitingConfirmation(directory, sessionId, "autopilot");
     }
 }
 function readTeamStagedState(directory, sessionId) {
-    const stateDir = join(getOmcRoot(directory), "state");
-    const statePaths = sessionId
+    const stateCandidates = sessionId
         ? [
-            join(stateDir, "sessions", sessionId, "team-state.json"),
-            join(stateDir, "team-state.json"),
+            readModeStateWithMeta("team", directory, sessionId),
+            readModeStateWithMeta("team", directory),
         ]
-        : [join(stateDir, "team-state.json")];
+        : [readModeStateWithMeta("team", directory)];
     let coarseState = null;
-    for (const statePath of statePaths) {
-        if (!existsSync(statePath)) {
+    for (const candidate of stateCandidates) {
+        if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
             continue;
         }
-        try {
-            const parsed = JSON.parse(readFileSync(statePath, "utf-8"));
-            if (typeof parsed !== "object" || parsed === null) {
-                continue;
-            }
-            const stateSessionId = parsed.session_id || parsed.sessionId;
-            if (sessionId && stateSessionId && stateSessionId !== sessionId) {
-                continue;
-            }
-            coarseState = parsed;
-            if (parsed.active === true && !isTeamStateTerminal(parsed)) {
-                return parsed;
-            }
-        }
-        catch {
+        if (sessionId && !canClearStateForSession(candidate, sessionId)) {
             continue;
+        }
+        const parsed = candidate;
+        const stateSessionId = parsed.session_id || parsed.sessionId;
+        if (sessionId && stateSessionId && stateSessionId !== sessionId) {
+            continue;
+        }
+        coarseState = parsed;
+        if (parsed.active === true && !isTeamStateTerminal(parsed)) {
+            return parsed;
         }
     }
     const canonical = readCanonicalTeamStateCandidate(directory, sessionId);
@@ -699,15 +684,17 @@ function getTeamStageForEnforcement(state) {
     return alias && TEAM_ACTIVE_STAGES.has(alias) ? alias : null;
 }
 function readTeamStopBreakerCount(directory, sessionId) {
-    const stateDir = join(getOmcRoot(directory), "state");
     const breakerPath = sessionId
-        ? join(stateDir, "sessions", sessionId, "team-stop-breaker.json")
-        : join(stateDir, "team-stop-breaker.json");
+        ? join(getSessionStateDir(directory, sessionId), "team-stop-breaker.json")
+        : join(dirname(resolveStatePath("team", directory)), "team-stop-breaker.json");
     try {
         if (!existsSync(breakerPath)) {
             return 0;
         }
         const parsed = JSON.parse(readFileSync(breakerPath, "utf-8"));
+        if (sessionId && !canClearStateForSession(parsed, sessionId)) {
+            return 0;
+        }
         if (typeof parsed.updated_at === "string") {
             const updatedAt = new Date(parsed.updated_at).getTime();
             if (Number.isFinite(updatedAt) &&
@@ -723,16 +710,13 @@ function readTeamStopBreakerCount(directory, sessionId) {
     }
 }
 function writeTeamStopBreakerCount(directory, sessionId, count) {
-    const stateDir = join(getOmcRoot(directory), "state");
     const breakerPath = sessionId
-        ? join(stateDir, "sessions", sessionId, "team-stop-breaker.json")
-        : join(stateDir, "team-stop-breaker.json");
+        ? join(getSessionStateDir(directory, sessionId), "team-stop-breaker.json")
+        : join(dirname(resolveStatePath("team", directory)), "team-stop-breaker.json");
     const safeCount = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
     if (safeCount === 0) {
         try {
-            if (existsSync(breakerPath)) {
-                unlinkSync(breakerPath);
-            }
+            clearStateFileLockedIf(breakerPath, (current) => !sessionId || canClearStateForSession(current, sessionId));
         }
         catch {
             // no-op
@@ -740,8 +724,9 @@ function writeTeamStopBreakerCount(directory, sessionId, count) {
         return;
     }
     try {
-        mkdirSync(dirname(breakerPath), { recursive: true });
-        writeFileSync(breakerPath, JSON.stringify({ count: safeCount, updated_at: new Date().toISOString() }, null, 2), "utf-8");
+        writeStateFileLockedCreateIf(breakerPath, (current) => current === null ||
+            !sessionId ||
+            canClearStateForSession(current, sessionId), () => ({ count: safeCount, updated_at: new Date().toISOString() }));
     }
     catch {
         // no-op
@@ -791,7 +776,7 @@ function workerBashBlockReason(command) {
         return `Team worker cannot run team orchestration commands. Use only \`${formatOmcCliInvocation("team api ... --json")}\`.`;
     }
     if (WORKER_BLOCKED_SKILL_PATTERN.test(command)) {
-        return "Team worker cannot invoke orchestration skills (`$team`, `$ultrawork`, `$autopilot`, `$ralph`).";
+        return "Team worker cannot invoke orchestration skills (`$team`, `$autopilot`, `$ralph`).";
     }
     return null;
 }
@@ -888,7 +873,7 @@ function getPromptText(input) {
     return "";
 }
 function isExplicitAskSlashInvocation(promptText) {
-    return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini|grok)\b/i.test(promptText);
+    return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini|antigravity|agy|grok|cursor)\b/i.test(promptText);
 }
 function activateRalplanStartupState(directory, sessionId) {
     const now = new Date().toISOString();
@@ -902,24 +887,11 @@ function activateRalplanStartupState(directory, sessionId) {
         last_checked_at: now,
     }, directory, sessionId);
 }
-function resolveStatePathSafe(stateName, directory) {
-    try {
-        return join(getOmcRoot(directory), "state", `${stateName}-state.json`);
-    }
-    catch {
-        return "";
-    }
-}
-function resolveSessionStatePathSafe(stateName, sessionId, directory) {
-    try {
-        return join(getOmcRoot(directory), "state", "sessions", sessionId, `${stateName}-state.json`);
-    }
-    catch {
-        return "";
-    }
-}
 /**
- * Resolve the on-disk path of the mode-specific state file for a workflow skill.
+ * Resolve the on-disk path of the mode-specific state file for a workflow
+ * skill. Returns the session-scoped path when a session id is available, else
+ * the root path. Used to persist `mode_state_path` on the workflow slot so
+ * downstream consumers can locate the mode payload.
  */
 function resolveWorkflowSlotModeStatePath(directory, skillName, sessionId) {
     const paths = getModeStatePaths(directory, skillName, sessionId);
@@ -937,6 +909,8 @@ function seedWorkflowSlotForSkill(directory, skillName, sessionId, source, paren
     try {
         const current = readSkillActiveStateNormalized(directory, sessionId);
         const pruned = pruneExpiredWorkflowSkillTombstones(current);
+        // Resolve mode-state file pointers eagerly so downstream readers can
+        // locate the mode payload without re-deriving the path.
         const rootStatePath = resolveStatePathSafe("skill-active", directory);
         const sessionStatePath = sessionId
             ? resolveSessionStatePathSafe("skill-active", sessionId, directory)
@@ -983,7 +957,9 @@ function confirmWorkflowSlot(directory, skillName, sessionId) {
     }
 }
 /**
- * Soft-tombstone a workflow slot on completion.
+ * Soft-tombstone a workflow slot on completion. The slot is retained until
+ * the TTL pruner removes it, so late-arriving stop hooks see consistent
+ * state.
  */
 function tombstoneWorkflowSlot(directory, skillName, sessionId) {
     if (!isCanonicalWorkflowSkill(skillName))
@@ -1000,9 +976,27 @@ function tombstoneWorkflowSlot(directory, skillName, sessionId) {
         return false;
     }
 }
+function resolveStatePathSafe(stateName, directory) {
+    try {
+        return resolveStatePath(stateName, directory);
+    }
+    catch {
+        return "";
+    }
+}
+function resolveSessionStatePathSafe(stateName, sessionId, directory) {
+    try {
+        return resolveSessionStatePath(stateName, sessionId, directory);
+    }
+    catch {
+        return "";
+    }
+}
 /**
  * Mode-specific seeding entrypoints invoked alongside the workflow slot when
- * the user issues an explicit slash command.
+ * the user issues an explicit slash command. Each branch is a no-op when the
+ * mode does not require pre-skill state (e.g. `team`, where the team skill
+ * itself owns initial state via worker spawning).
  */
 async function seedModeStateForExplicitWorkflowSlash(skill, directory, promptText, sessionId) {
     switch (skill) {
@@ -1013,15 +1007,18 @@ async function seedModeStateForExplicitWorkflowSlash(skill, directory, promptTex
             await seedAutopilotStartupState(directory, promptText, sessionId);
             return;
         default:
-            // ralph / ultrawork / team / ultraqa / deep-interview / self-improve
+            // ralph / team / deep-interview / self-improve
             // own their state activation inside their own Skill PostToolUse handlers.
+            // Pre-Skill seeding for these would clobber existing in-flight state
+            // (e.g. nested `autopilot → ralph`); the workflow slot alone is enough
+            // to keep stop-hook enforcement from premature termination.
             return;
     }
 }
 /**
  * Process keyword detection hook
  * Detects magic keywords and returns injection message
- * Also activates persistent state for modes that require it (ralph, ultrawork)
+ * Also activates persistent state for modes that require it.
  */
 async function processKeywordDetector(input) {
     // Team worker guard: prevent keyword detection inside team workers to avoid
@@ -1031,6 +1028,9 @@ async function processKeywordDetector(input) {
     }
     const promptText = getPromptText(input);
     if (!promptText) {
+        return { continue: true };
+    }
+    if (isRetiredWorkflowSlashInvocation(promptText)) {
         return { continue: true };
     }
     // `/ask <provider> ...` delegates the remainder of the prompt to an
@@ -1044,15 +1044,37 @@ async function processKeywordDetector(input) {
     const sessionId = input.sessionId;
     const directory = resolveToWorktreeRoot(input.directory);
     const messages = [];
-    // Unified explicit slash invocation handler — covers all 8 canonical
-    // workflow skills (autopilot, ralph, team, ultrawork, ultraqa,
-    // deep-interview, ralplan, self-improve). Seeds the workflow slot via the
+    // Unified explicit slash invocation handler for active workflow skills.
+    // Seeds the workflow slot via the
     // sanctioned dual-copy helper BEFORE the Skill tool fires, and seeds the
     // mode-specific state file when the mode requires pre-Skill state. The
     // ralplan path additionally returns the legacy [RALPLAN INIT] context
     // injection so existing routing tests remain green.
     const explicitSlash = parseExplicitWorkflowSlashInvocation(promptText);
+    // Named autopilot workflows are activated atomically by the installed
+    // plugin/template hook runtime. This bridge has no equivalent authenticated
+    // activation API, so reject every explicit --workflow form before the
+    // generic slash and keyword paths can seed legacy autopilot state.
+    if (explicitSlash?.skill === "autopilot" &&
+        /^--workflow(?:\s|$|=)/.test(explicitSlash.args)) {
+        return {
+            continue: true,
+            message: "[AUTOPILOT NAMED WORKFLOW UNSUPPORTED] Named workflow activation is unavailable through the TypeScript bridge. State was left unchanged; use the installed keyword-detector hook.",
+        };
+    }
     if (explicitSlash) {
+        // Alias resolver: route slash invocations through Tier-0 mapping, emit once/session warning, retain diagnostics/telemetry.
+        // For explicit slash, we record alias telemetry and optionally emit a concise actionable warning.
+        // The underlying skill name remains the alias for compatibility (no breaking invocation), but telemetry maps it.
+        try {
+            const aliasRes = resolveWorkflowInputWithWarning(explicitSlash.skill, sessionId ?? undefined, directory);
+            if (aliasRes.warningToEmit && aliasRes.canonical && aliasRes.canonical !== explicitSlash.skill.toLowerCase()) {
+                messages.push(aliasRes.warningToEmit);
+            }
+        }
+        catch {
+            // never break slash flow on alias resolver failure
+        }
         seedWorkflowSlotForSkill(directory, explicitSlash.skill, sessionId, "prompt-submit:explicit-slash");
         await seedModeStateForExplicitWorkflowSlash(explicitSlash.skill, directory, promptText, sessionId);
         if (explicitSlash.skill === "ralplan") {
@@ -1145,6 +1167,25 @@ async function processKeywordDetector(input) {
     if (NON_LATIN_SCRIPT_PATTERN.test(sanitizedText)) {
         messages.push(PROMPT_TRANSLATION_MESSAGE);
     }
+    // Alias resolver: concise actionable warning once/session, diagnostics retain full mapping.
+    // Telemetry/receipts are recorded inside resolveWorkflowInputWithWarning; explicit slash
+    // invocations are also covered via the invocation path below. For keyword-detected paths,
+    // emit at most one alias warning per detected keyword (deduped per session).
+    {
+        const aliasWarnings = [];
+        for (const kw of keywords) {
+            // normalize to resolver input form (keyword detector already lowercases)
+            const res = resolveWorkflowInputWithWarning(kw, sessionId ?? undefined, directory);
+            if (res.warningToEmit)
+                aliasWarnings.push(res.warningToEmit);
+            // also handle explicit release via keyword-like "release" if ever surfaced as keyword — defensive
+        }
+        // Dedupe alias warnings across multiple keywords that map to same canonical
+        const uniqueAliasWarnings = [...new Set(aliasWarnings)];
+        for (const w of uniqueAliasWarnings) {
+            messages.push(w);
+        }
+    }
     // Wake OpenClaw gateway for keyword-detector (non-blocking, fires for all prompts)
     if (input.sessionId) {
         _openclaw.wake("keyword-detector", {
@@ -1167,26 +1208,15 @@ async function processKeywordDetector(input) {
                 const { createRalphLoopHook, detectCriticModeFlag, stripCriticModeFlag, } = await import("./ralph/index.js");
                 const criticMode = detectCriticModeFlag(promptText) ?? undefined;
                 const cleanPrompt = stripCriticModeFlag(promptText);
-                // Activate ralph state which also auto-activates ultrawork
+                // Activate Ralph state.
                 const hook = createRalphLoopHook(directory);
                 const started = hook.startLoop(sessionId, cleanPrompt, {
                     ...(criticMode ? { criticMode } : {}),
                 });
                 if (started) {
-                    markModeAwaitingConfirmation(directory, sessionId, 'ralph', 'ultrawork');
+                    markModeAwaitingConfirmation(directory, sessionId, 'ralph');
                 }
                 messages.push(RALPH_MESSAGE);
-                break;
-            }
-            case "ultrawork": {
-                // Lazy-load ultrawork module
-                const { activateUltrawork } = await import("./ultrawork/index.js");
-                // Activate persistent ultrawork state
-                const activated = activateUltrawork(promptText, sessionId, directory);
-                if (activated) {
-                    markModeAwaitingConfirmation(directory, sessionId, 'ultrawork');
-                }
-                messages.push(getUltraworkMessage(getHookContextString(input, "agentName", "agent_name"), getHookContextString(input, "model", "modelId", "model_id")));
                 break;
             }
             case "ultrathink":
@@ -1222,7 +1252,9 @@ async function processKeywordDetector(input) {
                 messages.push(`[MODE: ${keywordType.toUpperCase()}] Skill invocation handled by UserPromptSubmit hook.`);
                 break;
             case "codex":
-            case "gemini": {
+            case "gemini":
+            case "cursor":
+            case "antigravity": {
                 const teamStartCommand = formatOmcCliInvocation(`team start --agent ${keywordType} --count N --task "<task from user message>"`);
                 messages.push(`[MAGIC KEYWORD: team]\n` +
                     `User intent: delegate to ${keywordType} CLI workers via ${formatOmcCliInvocation('team')}.\n` +
@@ -1254,13 +1286,13 @@ async function processStopContinuation(_input) {
 }
 /**
  * Process persistent mode hook (enhanced stop continuation)
- * Unified handler for ultrawork, ralph, and todo-continuation.
+ * Unified handler for ralph and todo-continuation.
  *
  * NOTE: The legacy `processRalph` function was removed in issue #1058.
  * Ralph is now handled exclusively by `checkRalphLoop` inside
  * `persistent-mode/index.ts`, which has richer logic (PRD checks,
  * team pipeline coordination, tool-error injection, cancel caching,
- * ultrawork self-heal, and architect rejection handling).
+ * architect rejection handling).
  */
 async function processPersistentMode(input) {
     const rawSessionId = input.session_id;
@@ -1309,7 +1341,7 @@ async function processPersistentMode(input) {
             if (!isAbort && !isContextLimit) {
                 // Per-session cooldown: prevent notification spam when the session idles repeatedly.
                 // Uses session-scoped state so one session does not suppress another.
-                const stateDir = join(getOmcRoot(directory), "state");
+                const stateDir = getStateDir(directory);
                 const { getIdleNotificationRepoState } = await import("./persistent-mode/idle-repo-state.js");
                 const idleRepoState = getIdleNotificationRepoState(directory);
                 if (shouldWakeOpenClawOnStop(stateDir, sessionId, idleRepoState)) {
@@ -1386,10 +1418,12 @@ async function processSessionStart(input) {
     const directory = resolveToWorktreeRoot(input.directory);
     writeSessionStartedMarker(directory, sessionId);
     await reconcileAbandonedSessionStarts(directory, sessionId);
+    void import('./session-end/worker.js')
+        .then(({ reconcileSessionEndJobs }) => reconcileSessionEndJobs(directory))
+        .catch(() => undefined);
     // Lazy-load session-start dependencies
     const { initSilentAutoUpdate } = await import("../features/auto-update.js");
     const { readAutopilotState } = await import("./autopilot/index.js");
-    const { readUltraworkState } = await import("./ultrawork/index.js");
     const { checkIncompleteTodos } = await import("./todo-continuation/index.js");
     const { buildAgentsOverlay } = await import("./agents-overlay.js");
     // Trigger silent auto-update check (non-blocking, checks config internally)
@@ -1446,24 +1480,6 @@ Original idea: ${autopilotState.originalIdea}
 Current phase: ${autopilotState.phase}
 
 Treat this as prior-session context only. Prioritize the user's newest request, and resume autopilot only if the user explicitly asks to continue it.
-
-</session-restore>
-
----
-
-`);
-    }
-    // Check for active ultrawork state - only restore if it belongs to this session
-    const ultraworkState = readUltraworkState(directory, sessionId);
-    if (ultraworkState?.active && ultraworkState.session_id === sessionId) {
-        messages.push(`<session-restore>
-
-[ULTRAWORK MODE RESTORED]
-
-You have an active ultrawork session from ${ultraworkState.started_at}.
-Original task: ${ultraworkState.original_prompt}
-
-Treat this as prior-session context only. Prioritize the user's newest request, and resume ultrawork only if the user explicitly asks to continue it.
 
 </session-restore>
 
@@ -1597,7 +1613,7 @@ Please continue working on these tasks.
 This environment uses a non-standard model provider (AWS Bedrock, Google Vertex AI, or a proxy such as CC Switch / LiteLLM).
 
 How to pass \`model\` on Task/Agent calls:
-- Prefer a tier alias: \`model: "sonnet"\`, \`model: "opus"\`, or \`model: "haiku"\`. OMC's pre-tool enforcer resolves these to provider-safe IDs when one of these env vars is set: \`ANTHROPIC_DEFAULT_SONNET_MODEL\` (and sibling \`ANTHROPIC_DEFAULT_OPUS_MODEL\` / \`ANTHROPIC_DEFAULT_HAIKU_MODEL\`), \`CLAUDE_CODE_BEDROCK_SONNET_MODEL\` (and sibling \`CLAUDE_CODE_BEDROCK_OPUS_MODEL\` / \`CLAUDE_CODE_BEDROCK_HAIKU_MODEL\`), or \`OMC_SUBAGENT_MODEL\`.
+- Prefer a tier alias: \`model: "sonnet"\`, \`model: "opus"\`, \`model: "haiku"\`, or \`model: "fable"\` (Claude Fable 5, above Opus). OMC's pre-tool enforcer resolves these to provider-safe IDs when one of these env vars is set: \`ANTHROPIC_DEFAULT_SONNET_MODEL\` (and siblings \`ANTHROPIC_DEFAULT_OPUS_MODEL\` / \`ANTHROPIC_DEFAULT_HAIKU_MODEL\` / \`ANTHROPIC_DEFAULT_FABLE_MODEL\`), \`CLAUDE_CODE_BEDROCK_SONNET_MODEL\` (and siblings \`CLAUDE_CODE_BEDROCK_OPUS_MODEL\` / \`CLAUDE_CODE_BEDROCK_HAIKU_MODEL\` / \`CLAUDE_CODE_BEDROCK_FABLE_MODEL\`), or \`OMC_SUBAGENT_MODEL\`.
 - If none of those env vars are configured, the enforcer will deny the tier alias with an env-var configuration hint — set one of them in your \`settings.json\` env or shell profile.
 - The enforcer denies tier aliases it cannot resolve. It also denies provider-specific IDs that carry a \`[1m]\` context-window suffix or otherwise fail subagent-safe validation (sub-agents cannot inherit \`[1m]\`). Valid provider-specific IDs without extended-context suffixes are allowed.
 
@@ -1621,22 +1637,63 @@ The CLAUDE.md instruction "Pass model on Task calls: haiku, sonnet, opus" applie
     }
     return { continue: true };
 }
+function stringOrUndefined(value) {
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+export function extractAskUserQuestionPrompts(toolInput) {
+    const input = toolInput;
+    const questions = Array.isArray(input?.questions) ? input.questions : [];
+    return questions
+        .map((question) => {
+        const questionText = stringOrUndefined(question.question);
+        if (!questionText)
+            return null;
+        const rawOptions = Array.isArray(question.options) ? question.options : [];
+        const options = rawOptions
+            .map((option) => {
+            const label = stringOrUndefined(option.label);
+            if (!label)
+                return null;
+            const value = stringOrUndefined(option.value);
+            const description = stringOrUndefined(option.description);
+            return {
+                label,
+                ...(value ? { value } : {}),
+                ...(description ? { description } : {}),
+            };
+        })
+            .filter((option) => option !== null);
+        const allowOther = question.allowOther ?? question.allow_other;
+        const otherLabel = stringOrUndefined(question.otherLabel ?? question.other_label);
+        const multiSelect = question.multiSelect ?? question.multi_select;
+        const header = stringOrUndefined(question.header);
+        return {
+            question: questionText,
+            ...(header ? { header } : {}),
+            options,
+            allowOther: allowOther === false ? false : true,
+            otherLabel: otherLabel ?? "Other",
+            multiSelect: multiSelect === true,
+        };
+    })
+        .filter((question) => question !== null);
+}
 /**
  * Fire-and-forget notification for AskUserQuestion (issue #597).
  * Extracted for testability; the dynamic import makes direct assertion
  * on the notify() call timing-sensitive, so tests spy on this wrapper instead.
  */
 export function dispatchAskUserQuestionNotification(sessionId, directory, toolInput) {
-    const input = toolInput;
-    const questions = input?.questions || [];
-    const questionText = questions
-        .map((q) => q.question || "")
+    const prompts = extractAskUserQuestionPrompts(toolInput);
+    const questionText = prompts
+        .map((q) => q.question)
         .filter(Boolean)
         .join("; ") || "User input requested";
     dispatchNotificationInBackground("ask-user-question", {
         sessionId,
         projectPath: directory,
         question: questionText,
+        askUserQuestionPrompts: prompts,
         profileName: process.env.OMC_NOTIFY_PROFILE,
     });
 }
@@ -1698,14 +1755,17 @@ function processPreToolUse(input) {
             }
         }
     }
-    // Check delegation enforcement FIRST
+    // Check delegation enforcement FIRST — material delegation/security
+    // boundaries remain hard per owner direction; only duplicated
+    // injection/procedure (prompt prerequisites) collapses to advisory
+    // behind the dispatcher. Routing/instrumentation exceptions fail open,
+    // handler-produced block/deny results propagate unchanged.
     const enforcementResult = processOrchestratorPreTool({
         toolName: input.toolName || "",
         toolInput: input.toolInput || {},
         sessionId: input.sessionId,
         directory,
     });
-    // If enforcement blocks, return immediately
     if (!enforcementResult.continue) {
         return {
             continue: false,
@@ -1720,17 +1780,40 @@ function processPreToolUse(input) {
     // Check blocking BEFORE recording progress — otherwise a denied tool
     // (e.g. Edit) that also matches a prerequisite would have its progress
     // persisted even though the tool never actually executed.
+    // Under dispatcher cutover (#3708) ordinary prompt prerequisites are
+    // advisory — collapsed behind the dispatcher per owner direction; only
+    // material-risk families stay hard. Preserve hookSpecificOutput deny only
+    // when PreToolUse is not in cutover (rollback) so hard permission/security
+    // semantics remain; otherwise demote to an advisory warning.
     const promptPrerequisiteState = readPromptPrerequisiteState(directory, input.sessionId);
     if (promptPrerequisiteState?.active
         && isPromptPrerequisiteBlockingTool(input.toolName, promptPrerequisiteConfig)) {
-        return {
-            continue: true,
-            hookSpecificOutput: {
-                hookEventName: "PreToolUse",
-                permissionDecision: "deny",
-                permissionDecisionReason: buildPromptPrerequisiteDenyReason(promptPrerequisiteState, input.toolName),
-            },
-        };
+        if (shouldLoosenOrdinaryEnforcement('PreToolUse')) {
+            const advisoryReason = buildPromptPrerequisiteDenyReason(promptPrerequisiteState, input.toolName);
+            preToolMessages.push(`[ADVISORY] ${advisoryReason}`);
+            recordDispatchTelemetry({
+                schemaVersion: 1,
+                event: 'PreToolUse',
+                hookType: 'pre-tool-use',
+                hookId: 'PreToolUse:*:prompt-prerequisites',
+                riskClass: 'advisory',
+                failMode: 'fail-open',
+                appliedDecision: 'advisory',
+                durationMs: 0,
+                verdict: 'advisory-demoted',
+                recordedAt: new Date().toISOString(),
+            }, directory);
+        }
+        else {
+            return {
+                continue: true,
+                hookSpecificOutput: {
+                    hookEventName: "PreToolUse",
+                    permissionDecision: "deny",
+                    permissionDecisionReason: buildPromptPrerequisiteDenyReason(promptPrerequisiteState, input.toolName),
+                },
+            };
+        }
     }
     const promptPrerequisiteProgress = recordPromptPrerequisiteProgress(directory, input.sessionId, input.toolName, input.toolInput);
     if (promptPrerequisiteProgress?.isComplete) {
@@ -1743,7 +1826,7 @@ function processPreToolUse(input) {
     // src/**/__tests__/. The emitted message here is kept wording-aligned with the
     // enforcer to prevent accidental drift, but must NOT be relied on to shape LLM
     // behavior in production. Tracked for deletion — see the Open Questions entry
-    // at `.omc/plans/open-questions.md` under the model-routing alignment section.
+    // at `.omg/plans/open-questions.md` under the model-routing alignment section.
     // Force-inherit: deny Task/Agent calls that carry a `model` parameter when
     // forceInherit is enabled (Bedrock, Vertex, CC Switch, etc.).
     // Claude Code's hook protocol does not support modifiedInput, so we cannot
@@ -1997,7 +2080,7 @@ function getInvokedSkillName(toolInput) {
  * Extract the raw (un-normalized) skill name from Skill tool input.
  * Used to distinguish OMC built-in skills (prefixed with 'oh-my-copilot:')
  * from project custom skills or other plugin skills with the same bare name.
- * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/1581
+ * See: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/1581
  */
 function getRawSkillName(toolInput) {
     if (!toolInput || typeof toolInput !== "object")
@@ -2039,15 +2122,15 @@ async function processPostToolUse(input) {
         if (!currentState || !currentState.active || currentState.skill_name === completingSkill) {
             clearSkillActiveState(directory, input.sessionId);
         }
-        if (isConsensusPlanningSkillInvocation(skillName, input.toolInput)) {
-            deactivateRalplanState(directory, input.sessionId);
-        }
         // Workflow-slot ledger: tombstone the canonical workflow slot when its
         // Skill invocation completes. Soft-tombstoning (rather than hard delete)
         // preserves the slot until the TTL pruner removes it — late-arriving
         // stop hooks see consistent state instead of a missing slot.
         if (skillName && isCanonicalWorkflowSkill(skillName)) {
             tombstoneWorkflowSlot(directory, skillName, input.sessionId);
+        }
+        if (isConsensusPlanningSkillInvocation(skillName, input.toolInput)) {
+            deactivateRalplanState(directory, input.sessionId);
         }
     }
     // Run orchestrator post-tool processing (remember tags, verification reminders, etc.)
@@ -2151,16 +2234,28 @@ async function processPostToolUse(input) {
 async function processAutopilot(input) {
     const directory = resolveToWorktreeRoot(input.directory);
     // Lazy-load autopilot module
-    const { readAutopilotState, getPhasePrompt } = await import("./autopilot/index.js");
+    const { readAutopilotState, getPhasePrompt, hasPipelineTracking, generatePipelinePrompt, } = await import("./autopilot/index.js");
     const state = readAutopilotState(directory, input.sessionId);
     if (!state || !state.active) {
         return { continue: true };
     }
-    // Check phase and inject appropriate prompt
     const config = loadConfig();
+    if (hasPipelineTracking(state)) {
+        const pipelinePrompt = generatePipelinePrompt(directory, input.sessionId);
+        const runtimeInsight = formatAutopilotRuntimeInsight(directory, input.sessionId);
+        if (pipelinePrompt || runtimeInsight) {
+            const detailParts = [runtimeInsight, pipelinePrompt].filter(Boolean);
+            return {
+                continue: true,
+                message: `[AUTOPILOT - Pipeline]\n\n${detailParts.join("\n\n")}`,
+            };
+        }
+        return { continue: true };
+    }
+    // Check phase and inject appropriate prompt
     const context = {
         idea: state.originalIdea,
-        specPath: state.expansion.spec_path || ".omc/autopilot/spec.md",
+        specPath: state.expansion.spec_path || ".omg/autopilot/spec.md",
         planPath: state.planning.plan_path || resolveAutopilotPlanPath(config),
         openQuestionsPath: resolveOpenQuestionsPlanPath(config),
     };
@@ -2198,7 +2293,7 @@ export function resetSkipHooksCache() {
  * Main hook processor
  * Routes to specific hook handler based on type
  */
-export async function processHook(hookType, rawInput) {
+async function processHookImpl(hookType, rawInput) {
     // Environment kill-switches for plugin coexistence
     if (process.env.DISABLE_OMC === "1" || process.env.DISABLE_OMC === "true") {
         return { continue: true };
@@ -2247,11 +2342,6 @@ export async function processHook(hookType, rawInput) {
                     reason: rawSE.reason ?? "other",
                 };
                 const result = await handleSessionEnd(sessionEndInput);
-                _openclaw.wake("session-end", {
-                    sessionId: sessionEndInput.session_id,
-                    projectPath: sessionEndInput.cwd,
-                    reason: sessionEndInput.reason,
-                });
                 return result;
             }
             case "subagent-start": {
@@ -2273,6 +2363,8 @@ export async function processHook(hookType, rawInput) {
                     hook_event_name: "SubagentStart",
                     prompt: normalized.prompt,
                     model: normalized.model,
+                    name: normalized.name,
+                    description: normalized.description,
                 };
                 // recordAgentStart is already called inside processSubagentStart,
                 // so we don't call it here to avoid duplicate session replay entries.
@@ -2361,7 +2453,7 @@ export async function processHook(hookType, rawInput) {
             }
             case "code-simplifier": {
                 const directory = input.directory ?? process.cwd();
-                const stateDir = join(resolveToWorktreeRoot(directory), ".omcp", "state");
+                const stateDir = join(getOmcRoot(directory), "state");
                 const { processCodeSimplifier } = await import("./code-simplifier/index.js");
                 const result = processCodeSimplifier(directory, stateDir);
                 if (result.shouldBlock) {
@@ -2378,6 +2470,69 @@ export async function processHook(hookType, rawInput) {
         console.error(`[hook-bridge] Error in ${hookType}:`, error);
         return { continue: true };
     }
+}
+/**
+ * Main hook processor (epic #3698, issues #3707 + #3708).
+ *
+ * Thin wrapper over the legacy dispatcher: runs the legacy path unchanged,
+ * then records shadow and cutover observations. Shadow mode is gated behind
+ * OMC_HOOK_SHADOW; cutover dispatch telemetry is recorded boundedly per
+ * event family (with advisory fail-open by default, hard only for approved
+ * risk classes) and per-family rollback via OMC_HOOK_ROLLBACK /
+ * OMC_HOOK_DISPATCHER_ROLLBACK. Unknown failures remain advisory.
+ */
+export async function processHook(hookType, rawInput) {
+    const legacyStarted = performance.now();
+    const rawRecord = rawInput && typeof rawInput === "object"
+        ? rawInput
+        : {};
+    const inputDirectory = typeof rawRecord.cwd === "string"
+        ? rawRecord.cwd
+        : typeof rawRecord.directory === "string"
+            ? rawRecord.directory
+            : undefined;
+    const projectDirectory = resolveToWorktreeRoot(inputDirectory);
+    const output = await processHookImpl(hookType, rawInput);
+    // Cutover telemetry: one bounded privacy-preserving record per invocation
+    // when the hook's family is cut over (event-family cutover, advisory default).
+    try {
+        const evt = (hookType === 'keyword-detector' ? 'UserPromptSubmit'
+            : hookType === 'session-start' || hookType === 'setup-init' || hookType === 'setup-maintenance' ? 'SessionStart'
+                : hookType === 'pre-tool-use' ? 'PreToolUse'
+                    : hookType === 'permission-request' ? 'PermissionRequest'
+                        : hookType === 'post-tool-use' ? 'PostToolUse'
+                            : hookType === 'subagent-start' ? 'SubagentStart'
+                                : hookType === 'subagent-stop' ? 'SubagentStop'
+                                    : hookType === 'pre-compact' ? 'PreCompact'
+                                        : hookType === 'stop-continuation' || hookType === 'persistent-mode' || hookType === 'ralph' || hookType === 'code-simplifier' ? 'Stop'
+                                            : hookType === 'session-end' ? 'SessionEnd'
+                                                : null);
+        if (evt && isFamilyCutoverEnabled(evt)) {
+            const hard = evt === 'PermissionRequest' || evt === 'PreToolUse';
+            const hasHardDecision = output.continue === false || hasHookProtocolDeny(output);
+            const applied = hasHardDecision ? (hard ? 'hard' : 'advisory') : 'none';
+            recordDispatchTelemetry({
+                schemaVersion: 1,
+                event: evt,
+                hookType,
+                appliedDecision: applied,
+                durationMs: performance.now() - legacyStarted,
+                recordedAt: new Date().toISOString(),
+            }, projectDirectory);
+        }
+    }
+    catch {
+        // telemetry is bounded and advisory-only
+    }
+    if (isHookShadowEnabled()) {
+        try {
+            await runShadowObservation(hookType, output, performance.now() - legacyStarted);
+        }
+        catch {
+            // Shadow observation is advisory and must never change hook behavior.
+        }
+    }
+    return output;
 }
 /**
  * CLI entry point for shell script invocation

@@ -5,9 +5,9 @@
  * Handles read/write/status operations for ralphthon-prd.json.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { join } from 'path';
-import { getOmcRoot } from '../lib/worktree-paths.js';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { join } from "path";
+import { getOmcRoot } from "../lib/worktree-paths.js";
 import {
   type RalphthonPRD,
   type RalphthonStory,
@@ -21,7 +21,7 @@ import {
 } from "./types.js";
 
 // ============================================================================
-// Planning Context
+// File Operations
 // ============================================================================
 
 export const DEFAULT_PLANNING_CONTEXT: RalphthonPlanningContext = {
@@ -46,10 +46,6 @@ export function normalizePlanningContext(
       : [...DEFAULT_PLANNING_CONTEXT.knownConstraints],
   };
 }
-
-// ============================================================================
-// File Operations
-// ============================================================================
 
 /**
  * Get the path to the ralphthon PRD file in .omc
@@ -79,7 +75,7 @@ export function readRalphthonPrd(directory: string): RalphthonPRD | null {
   if (!prdPath) return null;
 
   try {
-    const content = readFileSync(prdPath, 'utf-8');
+    const content = readFileSync(prdPath, "utf-8");
     const prd = JSON.parse(content) as RalphthonPRD;
 
     if (!prd.stories || !Array.isArray(prd.stories)) return null;
@@ -96,7 +92,10 @@ export function readRalphthonPrd(directory: string): RalphthonPRD | null {
 /**
  * Write ralphthon PRD to disk
  */
-export function writeRalphthonPrd(directory: string, prd: RalphthonPRD): boolean {
+export function writeRalphthonPrd(
+  directory: string,
+  prd: RalphthonPRD,
+): boolean {
   let prdPath = findRalphthonPrdPath(directory);
 
   if (!prdPath) {
@@ -169,28 +168,37 @@ export function getRalphthonPrdStatus(prd: RalphthonPRD): RalphthonPrdStatus {
       allTasks.push({ storyId: story.id, task });
     }
 
-    const allDone = storyTasks.length > 0 &&
-      storyTasks.every(t => t.status === 'done' || t.status === 'skipped');
+    const allDone =
+      storyTasks.length > 0 &&
+      storyTasks.every((t) => t.status === "done" || t.status === "skipped");
     if (allDone) completedStories++;
   }
 
-  const completedTasks = allTasks.filter(t => t.task.status === 'done').length;
-  const pendingTasks = allTasks.filter(t =>
-    t.task.status === 'pending' || t.task.status === 'in_progress'
+  const completedTasks = allTasks.filter(
+    (t) => t.task.status === "done",
   ).length;
-  const failedOrSkippedTasks = allTasks.filter(t =>
-    t.task.status === 'failed' || t.task.status === 'skipped'
+  const pendingTasks = allTasks.filter(
+    (t) => t.task.status === "pending" || t.task.status === "in_progress",
+  ).length;
+  const failedOrSkippedTasks = allTasks.filter(
+    (t) => t.task.status === "failed" || t.task.status === "skipped",
   ).length;
 
   // Find next pending task (by story priority order)
-  const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+  const priorityOrder: Record<string, number> = {
+    critical: 0,
+    high: 1,
+    medium: 2,
+    low: 3,
+  };
   const sortedStories = [...prd.stories].sort(
-    (a, b) => (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3)
+    (a, b) =>
+      (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3),
   );
 
   let nextTask: { storyId: string; task: RalphthonTask } | null = null;
   for (const story of sortedStories) {
-    const pending = story.tasks.find(t => t.status === 'pending');
+    const pending = story.tasks.find((t) => t.status === "pending");
     if (pending) {
       nextTask = { storyId: story.id, task: pending };
       break;
@@ -199,11 +207,14 @@ export function getRalphthonPrdStatus(prd: RalphthonPRD): RalphthonPrdStatus {
 
   // Hardening status
   const hardeningTasks = prd.hardening || [];
-  const completedHardening = hardeningTasks.filter(t => t.status === 'done').length;
-  const pendingHardening = hardeningTasks.filter(t =>
-    t.status === 'pending' || t.status === 'in_progress'
+  const completedHardening = hardeningTasks.filter(
+    (t) => t.status === "done",
   ).length;
-  const nextHardeningTask = hardeningTasks.find(t => t.status === 'pending') || null;
+  const pendingHardening = hardeningTasks.filter(
+    (t) => t.status === "pending" || t.status === "in_progress",
+  ).length;
+  const nextHardeningTask =
+    hardeningTasks.find((t) => t.status === "pending") || null;
 
   return {
     totalStories: prd.stories.length,
@@ -212,7 +223,8 @@ export function getRalphthonPrdStatus(prd: RalphthonPRD): RalphthonPrdStatus {
     completedTasks,
     pendingTasks,
     failedOrSkippedTasks,
-    allStoriesDone: completedStories === prd.stories.length && prd.stories.length > 0,
+    allStoriesDone:
+      completedStories === prd.stories.length && prd.stories.length > 0,
     nextTask,
     totalHardeningTasks: hardeningTasks.length,
     completedHardeningTasks: completedHardening,
@@ -252,10 +264,10 @@ export function updateTaskStatus(
   const prd = readRalphthonPrd(directory);
   if (!prd) return false;
 
-  const story = prd.stories.find(s => s.id === storyId);
+  const story = prd.stories.find((s) => s.id === storyId);
   if (!story) return false;
 
-  const task = story.tasks.find(t => t.id === taskId);
+  const task = story.tasks.find((t) => t.id === taskId);
   if (!task) return false;
 
   task.status = status;
@@ -276,10 +288,10 @@ export function incrementTaskRetry(
   const prd = readRalphthonPrd(directory);
   if (!prd) return { retries: 0, skipped: false };
 
-  const story = prd.stories.find(s => s.id === storyId);
+  const story = prd.stories.find((s) => s.id === storyId);
   if (!story) return { retries: 0, skipped: false };
 
-  const task = story.tasks.find(t => t.id === taskId);
+  const task = story.tasks.find((t) => t.id === taskId);
   if (!task) return { retries: 0, skipped: false };
 
   const result = incrementRetry(task, maxRetries);
@@ -299,7 +311,7 @@ export function updateHardeningTaskStatus(
   const prd = readRalphthonPrd(directory);
   if (!prd) return false;
 
-  const task = prd.hardening.find(t => t.id === taskId);
+  const task = prd.hardening.find((t) => t.id === taskId);
   if (!task) return false;
 
   task.status = status;
@@ -319,7 +331,7 @@ export function incrementHardeningTaskRetry(
   const prd = readRalphthonPrd(directory);
   if (!prd) return { retries: 0, skipped: false };
 
-  const task = prd.hardening.find(t => t.id === taskId);
+  const task = prd.hardening.find((t) => t.id === taskId);
   if (!task) return { retries: 0, skipped: false };
 
   const result = incrementRetry(task, maxRetries);
@@ -332,14 +344,14 @@ export function incrementHardeningTaskRetry(
  */
 export function addHardeningTasks(
   directory: string,
-  tasks: Omit<HardeningTask, 'status' | 'retries'>[],
+  tasks: Omit<HardeningTask, "status" | "retries">[],
 ): boolean {
   const prd = readRalphthonPrd(directory);
   if (!prd) return false;
 
-  const newTasks: HardeningTask[] = tasks.map(t => ({
+  const newTasks: HardeningTask[] = tasks.map((t) => ({
     ...t,
-    status: 'pending' as TaskStatus,
+    status: "pending" as TaskStatus,
     retries: 0,
   }));
 
@@ -427,9 +439,14 @@ If you find additional issues during this hardening pass, note them — they'll 
 /**
  * Format the hardening wave generation prompt
  */
-export function formatHardeningGenerationPrompt(wave: number, prd: RalphthonPRD): string {
-  const completedTasks = prd.stories.flatMap(s => s.tasks).filter(t => t.status === 'done');
-  const completedHardening = prd.hardening.filter(t => t.status === 'done');
+export function formatHardeningGenerationPrompt(
+  wave: number,
+  prd: RalphthonPRD,
+): string {
+  const completedTasks = prd.stories
+    .flatMap((s) => s.tasks)
+    .filter((t) => t.status === "done");
+  const completedHardening = prd.hardening.filter((t) => t.status === "done");
 
   return `You are in HARDENING WAVE ${wave} of a ralphthon session.
 
@@ -444,7 +461,7 @@ Completed story tasks: ${completedTasks.length}
 Completed hardening tasks: ${completedHardening.length}
 
 Write new hardening tasks to the ralphthon PRD (ralphthon-prd.json) in the hardening array.
-Each task needs: id (H-${String(wave).padStart(2, '0')}-NNN), title, description, category, wave: ${wave}.
+Each task needs: id (H-${String(wave).padStart(2, "0")}-NNN), title, description, category, wave: ${wave}.
 Set status to "pending" and retries to 0.
 
 If you find NO new issues, write an empty set of new tasks. This signals the code is solid.`;
@@ -458,20 +475,30 @@ export function formatRalphthonStatus(prd: RalphthonPRD): string {
   const lines: string[] = [];
 
   lines.push(`[Ralphthon: ${prd.project}]`);
-  lines.push(`Stories: ${status.completedStories}/${status.totalStories} complete`);
-  lines.push(`Tasks: ${status.completedTasks}/${status.totalTasks} done, ${status.failedOrSkippedTasks} skipped`);
+  lines.push(
+    `Stories: ${status.completedStories}/${status.totalStories} complete`,
+  );
+  lines.push(
+    `Tasks: ${status.completedTasks}/${status.totalTasks} done, ${status.failedOrSkippedTasks} skipped`,
+  );
 
   if (status.totalHardeningTasks > 0) {
-    lines.push(`Hardening: ${status.completedHardeningTasks}/${status.totalHardeningTasks} done`);
+    lines.push(
+      `Hardening: ${status.completedHardeningTasks}/${status.totalHardeningTasks} done`,
+    );
   }
 
   if (status.nextTask) {
-    lines.push(`Next: [${status.nextTask.storyId}] ${status.nextTask.task.id} - ${status.nextTask.task.title}`);
+    lines.push(
+      `Next: [${status.nextTask.storyId}] ${status.nextTask.task.id} - ${status.nextTask.task.title}`,
+    );
   } else if (status.nextHardeningTask) {
-    lines.push(`Next hardening: ${status.nextHardeningTask.id} - ${status.nextHardeningTask.title}`);
+    lines.push(
+      `Next hardening: ${status.nextHardeningTask.id} - ${status.nextHardeningTask.title}`,
+    );
   } else if (status.allStoriesDone) {
-    lines.push('All stories complete — ready for hardening');
+    lines.push("All stories complete — ready for hardening");
   }
 
-  return lines.join('\n');
+  return lines.join("\n");
 }

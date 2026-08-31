@@ -40,7 +40,7 @@ afterAll(() => {
 });
 
 const EXPECTED_DEFAULTS: Record<CanonicalTeamRole, { model: string; agent: string }> = {
-  orchestrator: { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'omcp' },
+  orchestrator: { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'omc' },
   planner: { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'planner' },
   analyst: { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'analyst' },
   architect: { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'architect' },
@@ -113,6 +113,29 @@ describe('stage-router resolveRoleAssignment', () => {
       expect(out.agent).toBe('critic');
     });
 
+    it('respects provider=cursor and resolves to empty model (cursor-agent owns model selection)', () => {
+      const cfg: PluginConfig = {
+        team: { roleRouting: { executor: { provider: 'cursor' } } },
+      };
+      const out = resolveRoleAssignment('executor', cfg);
+      expect(out.provider).toBe('cursor');
+      expect(out.model).toBe('');
+      expect(out.model).not.toBe(COPILOT_FAMILY_DEFAULTS.OPUS);
+      expect(out.agent).toBe('executor');
+    });
+
+
+    it('accepts provider=cursor for reviewer/verdict roles (issue #3880)', () => {
+      // Cursor reviewers emit the verdict-file contract like every other
+      // non-Claude provider, so the role gate that used to throw here is gone.
+      for (const role of ['code-reviewer', 'critic', 'security-reviewer', 'test-engineer'] as const) {
+        const cfg: PluginConfig = {
+          team: { roleRouting: { [role]: { provider: 'cursor' } } },
+        };
+        expect(resolveRoleAssignment(role, cfg).provider).toBe('cursor');
+      }
+    });
+
     it('grok resolves configured externalModels.defaults.grokModel when model omitted', () => {
       const cfg: PluginConfig = {
         externalModels: { defaults: { grokModel: 'grok-code-fast-1' } },
@@ -177,7 +200,7 @@ describe('stage-router resolveRoleAssignment', () => {
       };
       const out = resolveRoleAssignment('orchestrator', cfg);
       expect(out.provider).toBe('claude');
-      expect(out.agent).toBe('omcp');
+      expect(out.agent).toBe('omc');
     });
   });
 

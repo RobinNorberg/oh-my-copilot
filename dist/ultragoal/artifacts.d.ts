@@ -1,7 +1,25 @@
-export declare const ULTRAGOAL_DIR = ".omcp/ultragoal";
+export declare const ULTRAGOAL_DIR = ".omg/ultragoal";
 export declare const ULTRAGOAL_BRIEF = "brief.md";
 export declare const ULTRAGOAL_GOALS = "goals.json";
 export declare const ULTRAGOAL_LEDGER = "ledger.jsonl";
+export declare const ULTRAGOAL_PLANS_SUBDIR = "plans";
+/**
+ * Multi-plan support (Wave 2 — multi-repo workspace parallelism).
+ *
+ * Legacy layout (single plan per repo, default for backwards compatibility):
+ *   .omg/ultragoal/{brief.md, goals.json, ledger.jsonl}
+ *
+ * Multi-plan layout (opt-in via planId argument or --plan-id / --auto-plan-id CLI flag):
+ *   .omg/ultragoal/plans/{planId}/{brief.md, goals.json, ledger.jsonl}
+ *
+ * planId is a stable string. Auto-generated form: "{ms}-{slug}" where slug is
+ * derived from the first non-empty title in the brief.
+ *
+ * Plan resolution order when planId is not passed:
+ *   1. legacy goals.json if present (covers monorepo single-session)
+ *   2. exactly one plan under plans/ → use it
+ *   3. zero or many → caller must pass planId
+ */
 export type UltragoalStatus = 'pending' | 'in_progress' | 'complete' | 'failed' | 'review_blocked';
 export type UltragoalClaudeGoalMode = 'aggregate' | 'per_story';
 export interface UltragoalItem {
@@ -28,6 +46,12 @@ export interface UltragoalAggregateCompletion {
 }
 export interface UltragoalPlan {
     version: 1;
+    /**
+     * Stable plan identifier. When undefined, the plan uses the legacy
+     * single-plan layout (.omg/ultragoal/{brief.md,goals.json,ledger.jsonl}).
+     * When set, artifacts live under .omg/ultragoal/plans/{planId}/.
+     */
+    planId?: string;
     createdAt: string;
     updatedAt: string;
     briefPath: string;
@@ -59,10 +83,23 @@ export interface CreateUltragoalOptions {
     claudeGoalMode?: UltragoalClaudeGoalMode;
     now?: Date;
     force?: boolean;
+    /**
+     * Explicit plan id; writes to .omg/ultragoal/plans/{planId}/. Mutually
+     * exclusive with autoPlanId. When both omitted, plan uses legacy layout.
+     */
+    planId?: string;
+    /**
+     * Auto-generate a plan id from the brief title and current time.
+     * Format: "{epochMs}-{slug}". Enables safe parallel ultragoal runs in
+     * multi-repo workspaces sharing one .omg/.
+     */
+    autoPlanId?: boolean;
 }
 export interface StartNextOptions {
     now?: Date;
     retryFailed?: boolean;
+    goalId?: string;
+    planId?: string;
 }
 export interface CheckpointOptions {
     goalId: string;
@@ -72,12 +109,14 @@ export interface CheckpointOptions {
     qualityGate?: unknown;
     allowActiveFinalClaudeGoal?: boolean;
     now?: Date;
+    planId?: string;
 }
 export interface AddUltragoalGoalOptions {
     title: string;
     objective: string;
     evidence?: string;
     now?: Date;
+    planId?: string;
 }
 export interface RecordFinalReviewBlockersOptions extends AddUltragoalGoalOptions {
     goalId: string;
@@ -101,17 +140,31 @@ export interface UltragoalQualityGate {
 }
 export declare class UltragoalError extends Error {
 }
-export declare function ultragoalDir(cwd: string): string;
-export declare function ultragoalBriefPath(cwd: string): string;
-export declare function ultragoalGoalsPath(cwd: string): string;
-export declare function ultragoalLedgerPath(cwd: string): string;
+export declare function ultragoalDir(cwd: string, planId?: string): string;
+export declare function ultragoalBriefPath(cwd: string, planId?: string): string;
+export declare function ultragoalGoalsPath(cwd: string, planId?: string): string;
+export declare function ultragoalLedgerPath(cwd: string, planId?: string): string;
+/**
+ * List all multi-plan IDs under .omg/ultragoal/plans/.
+ * Returns an empty array when the plans/ subdir doesn't exist.
+ */
+export declare function listUltragoalPlanIds(cwd: string): Promise<string[]>;
+/**
+ * Resolve which plan a CLI command should target.
+ *
+ *  - explicitPlanId wins.
+ *  - Legacy goals.json (no planId) wins next, for backwards compat.
+ *  - If exactly one multi-plan exists, that one is selected.
+ *  - Otherwise throws UltragoalError with the list of candidate planIds.
+ */
+export declare function resolveActivePlanId(cwd: string, explicitPlanId?: string): Promise<string | undefined>;
 export declare function isFinalRunCompletionCandidate(plan: UltragoalPlan, goal: UltragoalItem): boolean;
 export declare function isUltragoalDone(plan: UltragoalPlan): boolean;
 export declare function deriveGoalCandidates(brief: string): Array<{
     title: string;
     objective: string;
 }>;
-export declare function readUltragoalPlan(cwd: string): Promise<UltragoalPlan>;
+export declare function readUltragoalPlan(cwd: string, planId?: string): Promise<UltragoalPlan>;
 export declare function createUltragoalPlan(cwd: string, options: CreateUltragoalOptions): Promise<UltragoalPlan>;
 export declare function summarizeUltragoalPlan(plan: UltragoalPlan): {
     total: number;

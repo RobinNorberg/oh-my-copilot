@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { tmpdir } from 'os';
+import { homedir } from 'os';
 import {
   mergeTrackerStates,
   readDiskState,
@@ -26,15 +26,25 @@ function makeState(overrides: Partial<SubagentTrackingState> = {}): SubagentTrac
 
 describe('flush-race', () => {
   let testDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `flush-race-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    mkdirSync(join(testDir, '.omcp', 'state'), { recursive: true });
+    testDir = mkdtempSync(join(homedir(), 'flush-race-test-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
+    mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
   });
 
   afterEach(() => {
     flushPendingWrites();
     rmSync(testDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 
   describe('mergeTrackerStates', () => {
@@ -415,8 +425,8 @@ describe('flush-race', () => {
     });
 
     it('should return empty state when no file exists', () => {
-      const emptyDir = join(tmpdir(), `empty-test-${Date.now()}`);
-      mkdirSync(join(emptyDir, '.omcp', 'state'), { recursive: true });
+      const emptyDir = mkdtempSync(join(testDir, 'empty-test-'));
+      mkdirSync(join(emptyDir, '.omg', 'state'), { recursive: true });
 
       try {
         const result = readDiskState(emptyDir);

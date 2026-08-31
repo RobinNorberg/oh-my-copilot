@@ -10,6 +10,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
 import { spawn } from 'child_process';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
@@ -45,10 +46,10 @@ type DeprecatedTeamToolName =
   | 'omc_run_team_cleanup';
 
 const TEAM_CLI_REPLACEMENT_HINTS: Record<DeprecatedTeamToolName, string> = {
-  omc_run_team_start: 'omcp team start',
-  omc_run_team_status: 'omcp team status <job_id>',
-  omc_run_team_wait: 'omcp team wait <job_id>',
-  omc_run_team_cleanup: 'omcp team cleanup <job_id>',
+  omc_run_team_start: 'omc team start',
+  omc_run_team_status: 'omc team status <job_id>',
+  omc_run_team_wait: 'omc team wait <job_id>',
+  omc_run_team_cleanup: 'omc team cleanup <job_id>',
 };
 
 function isDeprecatedTeamToolName(name: string): name is DeprecatedTeamToolName {
@@ -119,21 +120,21 @@ function buildCliReplacement(toolName: DeprecatedTeamToolName, args: unknown): s
 
   const jobId = typeof parsed.job_id === 'string' ? parsed.job_id.trim() : '<job_id>';
   if (toolName === 'omc_run_team_status') {
-    return `omcp team status --job-id ${quoteCliValue(jobId)}`;
+    return `omc team status --job-id ${quoteCliValue(jobId)}`;
   }
 
   if (toolName === 'omc_run_team_wait') {
     const timeoutMs = typeof parsed.timeout_ms === 'number' && Number.isFinite(parsed.timeout_ms)
       ? ` --timeout-ms ${Math.floor(parsed.timeout_ms)}`
       : '';
-    return `omcp team wait --job-id ${quoteCliValue(jobId)}${timeoutMs}`;
+    return `omc team wait --job-id ${quoteCliValue(jobId)}${timeoutMs}`;
   }
 
   if (toolName === 'omc_run_team_cleanup') {
     const graceMs = typeof parsed.grace_ms === 'number' && Number.isFinite(parsed.grace_ms)
       ? ` --grace-ms ${Math.floor(parsed.grace_ms)}`
       : '';
-    return `omcp team cleanup --job-id ${quoteCliValue(jobId)}${graceMs}`;
+    return `omc team cleanup --job-id ${quoteCliValue(jobId)}${graceMs}`;
   }
 
   return TEAM_CLI_REPLACEMENT_HINTS[toolName];
@@ -154,7 +155,7 @@ export function createDeprecatedCliOnlyEnvelopeWithArgs(
       text: JSON.stringify({
         code: DEPRECATION_CODE,
         tool: toolName,
-        message: 'Legacy team MCP runtime tools are deprecated. Use the omcp team CLI instead.',
+        message: 'Legacy team MCP runtime tools are deprecated. Use the omc team CLI instead.',
         cli_replacement: cliReplacement,
       }),
     }],
@@ -244,7 +245,7 @@ function makeJobResponse(jobId: string, job: OmcTeamJob, extra: Record<string, u
 
 const startSchema = z.object({
   teamName: z.string().describe('Slug name for the team (e.g. "auth-review")'),
-  agentTypes: z.array(z.string()).describe('Agent type per worker: "claude", "codex", or "gemini"'),
+  agentTypes: z.array(z.string()).describe('Agent type per worker: "claude", "codex", "gemini", or "antigravity"'),
   tasks: z.array(z.object({
     subject: z.string().describe('Brief task title'),
     description: z.string().describe('Full task description'),
@@ -283,7 +284,7 @@ async function handleStart(args: unknown): Promise<{ content: Array<{ type: 'tex
 
   const input = startSchema.parse(args);
   validateTeamName(input.teamName);
-  const jobId = `omc-${Date.now().toString(36)}`;
+  const jobId = `omc-${Date.now().toString(36)}${randomUUID().slice(0, 8)}`;
   const runtimeCliPath = join(__ownDir, 'runtime-cli.cjs');
 
   const job: OmcTeamJob = { status: 'running', startedAt: Date.now(), teamName: input.teamName, cwd: input.cwd };
@@ -546,12 +547,12 @@ export async function handleCleanup(args: unknown): Promise<{ content: Array<{ t
 const TOOLS = [
   {
     name: 'omc_run_team_start',
-    description: '[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omcp team start`.',
+    description: '[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omc team start`.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         teamName: { type: 'string', description: 'Slug name for the team' },
-        agentTypes: { type: 'array', items: { type: 'string' }, description: '"claude", "codex", or "gemini" per worker' },
+        agentTypes: { type: 'array', items: { type: 'string' }, description: '"claude", "codex", "gemini", or "antigravity" per worker' },
         tasks: {
           type: 'array',
           items: {
@@ -572,7 +573,7 @@ const TOOLS = [
   },
   {
     name: 'omc_run_team_status',
-    description: '[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omcp team status <job_id>`.',
+    description: '[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omc team status <job_id>`.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -583,7 +584,7 @@ const TOOLS = [
   },
   {
     name: 'omc_run_team_wait',
-    description: '[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omcp team wait <job_id>`.',
+    description: '[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omc team wait <job_id>`.',
     inputSchema: {
       type: 'object' as const,
       properties: {

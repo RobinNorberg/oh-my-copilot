@@ -18,6 +18,10 @@ import { existsSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 import { tmuxExecAsync } from '../cli/tmux-utils.js';
+import { getOmcRoot } from '../lib/worktree-paths.js';
+import type { CliAgentType } from '../team/model-contract.js';
+import { isCliAgentType, paneLineLooksLikeIdlePrompt } from '../team/pane-readiness.js';
+import { paneHasCursorWorkspaceTrustPrompt } from '../team/tmux-session.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -281,6 +285,30 @@ function defaultInjectTarget(
   return null;
 }
 
+type TargetProviderResolution =
+  | { ok: true; provider?: CliAgentType }
+  | { ok: false };
+
+function resolveTargetProvider(request: DispatchRequest, config: TeamConfig): TargetProviderResolution {
+  if (request.to_worker === 'leader-fixed' || !Array.isArray(config.workers)) return { ok: true };
+
+  const byName = config.workers.find((worker) => worker.name === request.to_worker);
+  const byPane = request.pane_id
+    ? config.workers.find((worker) => worker.pane_id === request.pane_id)
+    : undefined;
+  const byIndex = typeof request.worker_index === 'number'
+    ? config.workers.find((worker) => Number(worker.index) === request.worker_index)
+    : undefined;
+
+  const candidates = [byName, byPane, byIndex].filter((worker) => worker !== undefined);
+  const identitiesConflict = candidates.some((worker) => worker !== candidates[0]);
+  const cursorIdentityIncomplete = candidates.some((worker) => worker.worker_cli === 'cursor')
+    && (!byName || !byPane || !byIndex);
+  if (identitiesConflict || cursorIdentityIncomplete) return { ok: false };
+  if (!byName || !byPane || !byIndex) return { ok: true };
+  return isCliAgentType(byName.worker_cli) ? { ok: true, provider: byName.worker_cli } : { ok: true };
+}
+
 function normalizeCaptureText(value: string): string {
   return safeString(value).replace(/\r/g, '').replace(/\s+/g, ' ').trim();
 }
@@ -303,12 +331,13 @@ function capturedPaneContainsTriggerNearTail(captured: string, trigger: string, 
   return normalizeCaptureText(tail).includes(normalizedTrigger);
 }
 
-function paneHasActiveTask(captured: string): boolean {
+function paneHasActiveTask(captured: string, provider?: CliAgentType): boolean {
   const lines = safeString(captured)
     .split('\n')
     .map((line) => line.replace(/\r/g, '').trim())
     .filter((line) => line.length > 0);
   const tail = lines.slice(-40);
+  if (provider === 'cursor' && tail.some((line) => /ctrl\+c\s+to\s+stop/i.test(line))) return true;
   if (tail.some((line) => /\b\d+\s+background terminal running\b/i.test(line))) return true;
   if (tail.some((line) => /esc to interrupt/i.test(line))) return true;
   if (tail.some((line) => /\bbackground terminal running\b/i.test(line))) return true;
@@ -328,15 +357,7 @@ function paneIsBootstrapping(captured: string): boolean {
   );
 }
 
-function paneLineLooksLikeIdlePrompt(line: string): boolean {
-  // Claude Code can render its idle input prompt inside a box/left gutter
-  // (for example "│ ❯"). Treat that as ready while still requiring the prompt
-  // glyph to be at the visual start of the line, not embedded in arbitrary
-  // output text.
-  return /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/u.test(line);
-}
-
-function paneLooksReady(captured: string): boolean {
+function paneLooksReady(captured: string, provider?: CliAgentType): boolean {
   const content = safeString(captured).trimEnd();
   if (content === '') return false;
   const lines = content
@@ -345,25 +366,24 @@ function paneLooksReady(captured: string): boolean {
     .filter((line) => line.trim() !== '');
   if (paneIsBootstrapping(content)) return false;
   const lastLine = lines.length > 0 ? lines[lines.length - 1]! : '';
-  if (paneLineLooksLikeIdlePrompt(lastLine)) return true;
-  return lines.some(paneLineLooksLikeIdlePrompt);
+  if (paneLineLooksLikeIdlePrompt(lastLine, provider)) return true;
+  return lines.some((line) => paneLineLooksLikeIdlePrompt(line, provider));
 }
 
-function resolveWorkerCliForRequest(request: DispatchRequest, config: TeamConfig): string {
-  const workers = Array.isArray(config.workers) ? config.workers : [];
-  const idx = Number.isFinite(request.worker_index) ? Number(request.worker_index) : null;
-  if (idx !== null) {
-    const worker = workers.find((c) => Number(c.index) === idx);
-    const workerCli = safeString(worker?.worker_cli).trim().toLowerCase();
-    if (workerCli === 'claude' || workerCli === 'copilot') return workerCli;
-  }
-  return 'codex';
+async function runProcess(cmd: string, args: string[], timeoutMs: number): Promise<{ stdout: string; stderr: string }> {
+  const { execFile } = await import('child_process');
+  const { promisify } = await import('util');
+  const execFileAsync = promisify(execFile);
+  const result = await execFileAsync(cmd, args, { timeout: timeoutMs });
+  return { stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }
 
-
-async function defaultInjector(request: DispatchRequest, config: TeamConfig, cwd: string): Promise<InjectionResult> {
+async function defaultInjector(request: DispatchRequest, config: TeamConfig, _cwd: string): Promise<InjectionResult> {
   const target = defaultInjectTarget(request, config);
   if (!target) return { ok: false, reason: 'missing_tmux_target' };
+  const providerResolution = resolveTargetProvider(request, config);
+  if (!providerResolution.ok) return { ok: false, reason: 'provider_identity_unverified' };
+  const targetProvider = providerResolution.provider;
 
   const paneTarget = target.value;
   try {
@@ -373,18 +393,28 @@ async function defaultInjector(request: DispatchRequest, config: TeamConfig, cwd
     }
   } catch { /* best effort */ }
 
-  const workerCli = resolveWorkerCliForRequest(request, config);
-  const submitKeyPresses = (workerCli === 'claude' || workerCli === 'copilot') ? 1 : 2;
+  // Claude Code v2.1.x sometimes swallows a single Enter during TUI state
+  // transitions (input-handler bind race) — same root cause documented at
+  // runtime-v2.ts:788-793 for the startup path. Send 2 Enters here too so
+  // the dispatch path does not stall with the trigger text typed but never
+  // submitted.
+  const submitKeyPresses = 2;
   const attemptCountAtStart = Number.isFinite(request.attempt_count) ? Math.max(0, Math.floor(request.attempt_count)) : 0;
 
   let preCaptureHasTrigger = false;
-  if (attemptCountAtStart >= 1) {
-    try {
-      const preCapture = await tmuxExecAsync(['capture-pane', '-t', paneTarget, '-p', '-S', '-8'], { timeout: 2000 });
-      preCaptureHasTrigger = capturedPaneContainsTrigger(preCapture.stdout, request.trigger_message);
-    } catch {
-      preCaptureHasTrigger = false;
+  let preCapture = '';
+  try {
+    const captured = await tmuxExecAsync(['capture-pane', '-t', paneTarget, '-p', '-S', '-8'], { timeout: 2000 });
+    preCapture = safeString(captured.stdout);
+    if (targetProvider === 'cursor' && paneHasCursorWorkspaceTrustPrompt(preCapture)) {
+      return { ok: false, reason: 'cursor_workspace_untrusted' };
     }
+    if (attemptCountAtStart >= 1) {
+      preCaptureHasTrigger = capturedPaneContainsTrigger(preCapture, request.trigger_message);
+    }
+  } catch {
+    preCapture = '';
+    preCaptureHasTrigger = false;
   }
 
   const shouldTypePrompt = attemptCountAtStart === 0 || !preCaptureHasTrigger;
@@ -414,10 +444,10 @@ async function defaultInjector(request: DispatchRequest, config: TeamConfig, cwd
       const narrowCap = await tmuxExecAsync(['capture-pane', '-t', paneTarget, '-p', '-S', '-8'], { timeout: 2000 });
       const wideCap = await tmuxExecAsync(['capture-pane', '-t', paneTarget, '-p'], { timeout: 2000 });
 
-      if (paneHasActiveTask(wideCap.stdout)) {
+      if (paneHasActiveTask(wideCap.stdout, targetProvider)) {
         return { ok: true, reason: 'tmux_send_keys_confirmed_active_task', pane: paneTarget };
       }
-      if (request.to_worker !== 'leader-fixed' && !paneLooksReady(wideCap.stdout)) {
+      if (request.to_worker !== 'leader-fixed' && !paneLooksReady(wideCap.stdout, targetProvider)) {
         continue;
       }
       const triggerInNarrow = capturedPaneContainsTrigger(narrowCap.stdout, request.trigger_message);
@@ -547,8 +577,9 @@ export async function drainPendingTeamDispatch(options: {
   injector?: Injector;
 } = { cwd: '' }): Promise<DrainResult> {
   const { cwd } = options;
-  const stateDir = options.stateDir ?? join(cwd, '.omcp', 'state');
-  const logsDir = options.logsDir ?? join(cwd, '.omcp', 'logs');
+  const omcRoot = getOmcRoot(cwd);
+  const stateDir = options.stateDir ?? join(omcRoot, 'state');
+  const logsDir = options.logsDir ?? join(omcRoot, 'logs');
   const maxPerTick = options.maxPerTick ?? 5;
   const injector = options.injector ?? defaultInjector;
 
@@ -653,17 +684,6 @@ export async function drainPendingTeamDispatch(options: {
         }
 
         const result = await injector(request, config, resolve(cwd));
-        if (issueKey && issueCooldownMs > 0) {
-          issueCooldownByIssue[issueKey] = Date.now();
-          mutated = true;
-        }
-        if (triggerKey && triggerCooldownMs > 0) {
-          triggerCooldownByKey[triggerKey] = {
-            at: Date.now(),
-            last_request_id: safeString(request.request_id).trim(),
-          };
-          mutated = true;
-        }
         const nowIso = new Date().toISOString();
         request.attempt_count = Number.isFinite(request.attempt_count) ? Math.max(0, request.attempt_count + 1) : 1;
         request.updated_at = nowIso;
@@ -704,6 +724,19 @@ export async function drainPendingTeamDispatch(options: {
           request.status = 'notified';
           request.notified_at = nowIso;
           request.last_reason = result.reason;
+          // Only stamp issue/trigger cooldowns once a dispatch is actually
+          // delivered. Stamping on failure (or before an unconfirmed retry)
+          // would gate legitimate re-dispatch for the cooldown window and
+          // strand the worker — the dispatch gap from #3224.
+          if (issueKey && issueCooldownMs > 0) {
+            issueCooldownByIssue[issueKey] = Date.now();
+          }
+          if (triggerKey && triggerCooldownMs > 0) {
+            triggerCooldownByKey[triggerKey] = {
+              at: Date.now(),
+              last_request_id: safeString(request.request_id).trim(),
+            };
+          }
           if (request.kind === 'mailbox' && request.message_id) {
             await updateMailboxNotified(stateDir, teamName, request.to_worker, request.message_id).catch(logMailboxSyncFailure);
           }

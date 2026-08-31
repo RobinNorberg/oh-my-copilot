@@ -9,10 +9,11 @@
  * Core bridge process that runs in a tmux session alongside a Codex/Gemini CLI.
  * Polls task files, builds prompts, spawns CLI processes, reports results.
  */
-import { spawn, execSync } from "child_process";
+import { spawn, execFileSync } from "child_process";
 import { existsSync, openSync, readSync, closeSync } from "fs";
 import { join } from "path";
 import { writeFileWithMode, ensureDirWithMode } from "./fs-utils.js";
+import { getOmcRoot } from "../lib/worktree-paths.js";
 import { findNextTask, updateTask, writeTaskFailure } from "./task-file-ops.js";
 import { readNewInboxMessages, appendOutbox, rotateOutboxIfNeeded, rotateInboxIfNeeded, checkShutdownSignal, deleteShutdownSignal, checkDrainSignal, deleteDrainSignal, } from "./inbox-outbox.js";
 import { unregisterMcpWorker } from "./team-registration.js";
@@ -50,45 +51,6 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 /**
- * Allowlist of environment variables safe to pass to child processes.
- * This prevents leaking sensitive variables like ANTHROPIC_API_KEY, GITHUB_TOKEN, etc.
- */
-const ENV_ALLOWLIST = [
-    // Core system paths
-    'PATH', 'HOME', 'USERPROFILE',
-    // User identification
-    'USER', 'USERNAME', 'LOGNAME',
-    // Locale settings
-    'LANG', 'LC_ALL', 'LC_CTYPE',
-    // Terminal/tmux
-    'TERM', 'TMUX', 'TMUX_PANE',
-    // Temp directories
-    'TMPDIR', 'TMP', 'TEMP',
-    // XDG directories (Linux)
-    'XDG_RUNTIME_DIR', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME',
-    // Shell
-    'SHELL',
-    // Node.js
-    'NODE_ENV',
-    // Proxy settings
-    'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy',
-    // Windows system
-    'SystemRoot', 'SYSTEMROOT', 'windir', 'COMSPEC',
-];
-/**
- * Create a minimal environment for child processes.
- * Only includes allowlisted variables to prevent credential leakage.
- */
-function createMinimalEnv() {
-    const env = {};
-    for (const key of ENV_ALLOWLIST) {
-        if (process.env[key] !== undefined) {
-            env[key] = process.env[key];
-        }
-    }
-    return env;
-}
-/**
  * Capture a snapshot of tracked/modified/untracked files in the working directory.
  * Uses `git status --porcelain` + `git ls-files --others --exclude-standard`.
  * Returns a Set of relative file paths that currently exist or are modified.
@@ -97,10 +59,11 @@ export function captureFileSnapshot(cwd) {
     const files = new Set();
     try {
         // Get all tracked files that are modified, added, or staged
-        const statusOutput = execSync("git status --porcelain", {
+        const statusOutput = execFileSync("git", ["status", "--porcelain"], {
             cwd,
             encoding: "utf-8",
             timeout: 10000,
+            windowsHide: true,
         });
         for (const line of statusOutput.split("\n")) {
             if (!line.trim())
@@ -112,7 +75,7 @@ export function captureFileSnapshot(cwd) {
             files.add(fileName.trim());
         }
         // Get untracked files
-        const untrackedOutput = execSync("git ls-files --others --exclude-standard", { cwd, encoding: "utf-8", timeout: 10000 });
+        const untrackedOutput = execFileSync("git", ["ls-files", "--others", "--exclude-standard"], { cwd, encoding: "utf-8", timeout: 10000, windowsHide: true });
         for (const line of untrackedOutput.split("\n")) {
             if (line.trim())
                 files.add(line.trim());
@@ -267,7 +230,7 @@ function buildTaskPrompt(task, messages, config) {
 }
 /** Write prompt to a file for audit trail */
 function writePromptFile(config, taskId, prompt) {
-    const dir = join(config.workingDirectory, ".omcp", "prompts");
+    const dir = join(getOmcRoot(config.workingDirectory), "prompts");
     ensureDirWithMode(dir);
     const filename = `team-${config.teamName}-task-${taskId}-${Date.now()}.md`;
     const filePath = join(dir, filename);
@@ -276,7 +239,7 @@ function writePromptFile(config, taskId, prompt) {
 }
 /** Get output file path for a task */
 function getOutputPath(config, taskId) {
-    const dir = join(config.workingDirectory, ".omcp", "outputs");
+    const dir = join(getOmcRoot(config.workingDirectory), "outputs");
     ensureDirWithMode(dir);
     const suffix = Math.random().toString(36).slice(2, 8);
     return join(dir, `team-${config.teamName}-task-${taskId}-${Date.now()}-${suffix}.md`);

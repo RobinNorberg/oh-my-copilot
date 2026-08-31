@@ -1,7 +1,7 @@
 /**
  * Session Recovery
  *
- * Helps recover session state when Copilot CLI restarts or crashes.
+ * Helps recover session state when Claude Code restarts or crashes.
  * Detects and fixes various error conditions that can cause session failures.
  */
 import type { MessageData, RecoveryResult, RecoveryConfig } from './types.js';

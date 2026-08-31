@@ -1,8 +1,8 @@
 /**
- * Hook Scripts for Copilot CLI
- * Hook system inspired by oh-my-opencode, adapted for Copilot CLI's native hooks
+ * Hook Scripts for Claude Code
+ * Hook system inspired by oh-my-opencode, adapted for Claude Code's native hooks
  *
- * Copilot CLI hooks are configured in settings.json and run as shell commands.
+ * Claude Code hooks are configured in settings.json and run as shell commands.
  * These scripts receive JSON input via stdin and output JSON to modify behavior.
  *
  * This module provides Node.js scripts (.mjs) for cross-platform support (Windows, macOS, Linux).
@@ -13,7 +13,6 @@ import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
 import { getCopilotConfigDir } from '../utils/config-dir.js';
-import { getDefaultUltraworkMessage } from '../hooks/keyword-detector/ultrawork/index.js';
 // =============================================================================
 // TEMPLATE LOADER (loads hook scripts from templates/hooks/)
 // =============================================================================
@@ -63,13 +62,6 @@ export const MIN_NODE_VERSION = 20;
 export function isWindows() {
     return process.platform === "win32";
 }
-/**
- * Check if Node.js hooks should be used.
- * @deprecated Always returns true. Bash hooks were removed in v3.9.0.
- */
-export function shouldUseNodeHooks() {
-    return true;
-}
 /** Get the hooks directory path */
 export function getHooksDir() {
     return join(getCopilotConfigDir(), "hooks");
@@ -84,7 +76,7 @@ export function getHomeEnvVar() {
 function normalizePath(value) {
     return value.replace(/\\/g, '/').replace(/\/+$/, '');
 }
-function isDefaultCopilotConfigDir() {
+function isDefaultClaudeConfigDir() {
     return normalizePath(getCopilotConfigDir()) === normalizePath(join(homedir(), '.copilot'));
 }
 function quoteCommandPath(path) {
@@ -92,23 +84,13 @@ function quoteCommandPath(path) {
 }
 function buildHookCommand(filename) {
     if (isWindows()) {
-        if (isDefaultCopilotConfigDir()) {
-            return `node "\${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/${filename}"`;
-        }
         return `node ${quoteCommandPath(join(getCopilotConfigDir(), 'hooks', filename).replace(/\\/g, '/'))}`;
     }
-    if (isDefaultCopilotConfigDir()) {
+    if (isDefaultClaudeConfigDir()) {
         return `node "\${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/${filename}"`;
     }
     return `node ${quoteCommandPath(join(getCopilotConfigDir(), 'hooks', filename).replace(/\\/g, '/'))}`;
 }
-/**
- * Ultrawork message - injected when ultrawork/ulw keyword detected
- * Sourced from the centralized ultrawork module (default variant) so that
- * installer/bridge/keyword-detector surfaces stay in sync. Variant-aware
- * callers should use getUltraworkMessage(agentName, modelId) directly.
- */
-export const ULTRAWORK_MESSAGE = getDefaultUltraworkMessage();
 /**
  * Ultrathink/Think mode message
  * Ported from oh-my-opencode's think-mode hook
@@ -230,16 +212,15 @@ Incomplete tasks remain in your todo list. Continue working on the next pending 
 - Do not stop until all tasks are done`;
 /**
  * Ralph mode message - injected when ralph keyword detected
- * Auto-activates ultrawork for parallel execution
  */
-export const RALPH_MESSAGE = `[RALPH + ULTRAWORK MODE ACTIVATED]
+export const RALPH_MESSAGE = `[RALPH MODE ACTIVATED]
 
-Ralph mode auto-activates Ultrawork for maximum parallel execution. Follow these rules:
+Ralph mode persists until the requested work is verified complete. Follow these rules:
 
-### Parallel Execution
-- **PARALLEL**: Fire independent calls simultaneously - NEVER wait sequentially
-- **BACKGROUND FIRST**: Use Task(run_in_background=true) for long operations
-- **DELEGATE**: Route tasks to specialist agents immediately
+### Execution
+- Work through every remaining requirement
+- Delegate independent specialist work when it improves correctness
+- Keep the durable Ralph state aligned with actual progress
 
 ### Completion Requirements
 - Verify ALL requirements from the original task are met
@@ -359,31 +340,5 @@ export const HOOKS_SETTINGS_CONFIG_NODE = {
  */
 export function getHooksSettingsConfig() {
     return HOOKS_SETTINGS_CONFIG_NODE;
-}
-// =============================================================================
-// HOOK SCRIPTS EXPORTS
-// =============================================================================
-/**
- * Get Node.js hook scripts (Cross-platform)
- * Returns a record of filename -> content for all Node.js hooks
- *
- * @deprecated Hook scripts are no longer installed to ~/.copilot/hooks/.
- * All hooks are delivered via the plugin's hooks/hooks.json + scripts/.
- * Kept for test compatibility only.
- */
-export function getHookScripts() {
-    return {
-        "keyword-detector.mjs": loadTemplate("keyword-detector.mjs"),
-        "stop-continuation.mjs": loadTemplate("stop-continuation.mjs"),
-        "persistent-mode.mjs": loadTemplate("persistent-mode.mjs"),
-        "session-start.mjs": loadTemplate("session-start.mjs"),
-        "pre-tool-use.mjs": loadTemplate("pre-tool-use.mjs"),
-        "post-tool-use.mjs": loadTemplate("post-tool-use.mjs"),
-        "post-tool-use-failure.mjs": loadTemplate("post-tool-use-failure.mjs"),
-        "code-simplifier.mjs": loadTemplate("code-simplifier.mjs"),
-        // Shared library modules (in lib/ subdirectory)
-        "lib/stdin.mjs": loadTemplate("lib/stdin.mjs"),
-        "lib/atomic-write.mjs": loadTemplate("lib/atomic-write.mjs"),
-    };
 }
 //# sourceMappingURL=hooks.js.map

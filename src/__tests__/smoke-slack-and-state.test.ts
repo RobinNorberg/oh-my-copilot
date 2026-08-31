@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -26,6 +26,7 @@ vi.mock('../lib/worktree-paths.js', async (importOriginal) => {
     ...actual,
     getOmcRoot: (...args: [string?]) => mockGetOmcRoot(...args),
     validateWorkingDirectory: (dir?: string) => dir || '/tmp',
+    resolveStateWorkingDirectory: (dir?: string) => dir || '/tmp',
   };
 });
 
@@ -515,19 +516,32 @@ import {
 describe('SMOKE: State Cancel Cleanup — session-scoped I/O (issue #1143)', () => {
   let testDir: string;
   let omcDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousStateDir: string | undefined;
 
   beforeEach(() => {
-    testDir = join(
-      tmpdir(),
-      `smoke-state-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    );
-    omcDir = join(testDir, '.omcp');
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
+    testDir = mkdtempSync(join(tmpdir(), 'smoke-state-'));
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
+    delete process.env.OMC_STATE_DIR;
+    omcDir = join(testDir, '.omg');
     mkdirSync(omcDir, { recursive: true });
     mockGetOmcRoot.mockReturnValue(omcDir);
   });
 
   afterEach(() => {
     if (existsSync(testDir)) rmSync(testDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
+    mockGetOmcRoot.mockReset();
   });
 
   // Helper: call a tool handler with merged defaults
@@ -642,7 +656,7 @@ describe('SMOKE: State Cancel Cleanup — session-scoped I/O (issue #1143)', () 
       mode: 'ultrawork',
       session_id: sessionId,
     });
-    expect(clearResult).toContain('ghost legacy file also removed');
+    expect(clearResult).toContain('Successfully cleared state');
     expect(existsSync(legacyPath)).toBe(false);
   });
 

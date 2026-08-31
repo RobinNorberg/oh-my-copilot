@@ -9,10 +9,10 @@
  *   import { notify } from '../notifications/index.js';
  *   await notify('session-start', { sessionId, projectPath, ... });
  */
-export type { NotificationEvent, NotificationPlatform, NotificationConfig, NotificationProfilesConfig, NotificationPayload, NotificationResult, DispatchResult, DiscordNotificationConfig, DiscordBotNotificationConfig, TelegramNotificationConfig, SlackNotificationConfig, SlackBotNotificationConfig, TeamsNotificationConfig, WebhookNotificationConfig, EventNotificationConfig, } from "./types.js";
+export type { NotificationEvent, NotificationPlatform, NotificationConfig, NotificationProfilesConfig, NotificationPayload, NotificationResult, DispatchResult, DiscordNotificationConfig, DiscordBotNotificationConfig, TelegramNotificationConfig, SlackNotificationConfig, SlackBotNotificationConfig, WebhookNotificationConfig, EventNotificationConfig, } from "./types.js";
 export type { HookNotificationConfig, HookEventConfig, PlatformTemplateOverride, TemplateVariable, } from "./hook-config-types.js";
-export { dispatchNotifications, sendDiscord, sendDiscordBot, sendTelegram, sendSlack, sendSlackBot, sendTeams, sendWebhook, } from "./dispatcher.js";
-export { formatNotification, formatSessionStart, formatSessionStop, formatSessionEnd, formatSessionIdle, formatAskUserQuestion, formatAgentCall, } from "./formatter.js";
+export { dispatchNotifications, sendDiscord, sendDiscordBot, sendTelegram, sendSlack, sendSlackBot, sendWebhook, } from "./dispatcher.js";
+export { formatNotification, formatSessionStart, formatSessionStop, formatSessionEnd, formatSessionIdle, formatAskUserQuestion, formatAgentCall, parseTmuxTail, } from "./formatter.js";
 export { getCurrentTmuxSession, getCurrentTmuxPaneId, getTeamTmuxSessions, formatTmuxInfo, } from "./tmux.js";
 export { getNotificationConfig, isEventEnabled, getEnabledPlatforms, getVerbosity, getTmuxTailLines, isEventAllowedByVerbosity, shouldIncludeTmuxTail, } from "./config.js";
 export { getHookConfig, resolveEventTemplate, resetHookConfigCache, mergeHookConfigIntoNotificationConfig, } from "./hook-config.js";
@@ -37,7 +37,7 @@ export declare function notify(event: NotificationEvent, data: Partial<Notificat
 }): Promise<DispatchResult | null>;
 export type { CustomIntegration, CustomIntegrationType, WebhookIntegrationConfig, CliIntegrationConfig, CustomIntegrationsConfig, ExtendedNotificationConfig, } from "./types.js";
 export { sendCustomWebhook, sendCustomCli, dispatchCustomIntegrations, } from "./dispatcher.js";
-export { getCustomIntegrationsConfig, getCustomIntegrationsForEvent, hasCustomIntegrationsEnabled, } from "./config.js";
+export { getCustomIntegrationsConfig, getCustomIntegrationsForEvent, hasCustomIntegrationsEnabled, detectLegacyOpenClawConfig, migrateLegacyOpenClawConfig, } from "./config.js";
 export { CUSTOM_INTEGRATION_PRESETS, getPresetList, getPreset, isValidPreset, type PresetConfig, type PresetName, } from "./presets.js";
 export { TEMPLATE_VARIABLES, getVariablesForEvent, getVariableDocumentation, type TemplateVariableName, } from "./template-variables.js";
 export { validateCustomIntegration, checkDuplicateIds, sanitizeArgument, type ValidationResult, } from "./validation.js";

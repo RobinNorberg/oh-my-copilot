@@ -9,11 +9,13 @@ export interface WorkerBootstrapParams {
         description: string;
     }>;
     bootstrapInstructions?: string;
+    /** Whether the runtime assigned this worker a reviewer-style verdict role. */
+    reviewerRole?: boolean;
     cwd: string;
     /**
      * Worker-facing root used in instructions. The default is the leader cwd
-     * relative global state root (`.omcp/state`); non-default values are treated as
-     * a team-specific root (`.../.omcp/state/team/<team>`), matching
+     * relative global state root (`.omg/state`); non-default values are treated as
+     * a team-specific root (`.../.omg/state/team/<team>`), matching
      * `OMC_TEAM_STATE_ROOT` and `teamStateRoot()` semantics.
      */
     instructionStateRoot?: string;
@@ -21,6 +23,18 @@ export interface WorkerBootstrapParams {
 export declare function generateTriggerMessage(teamName: string, workerName: string, teamStateRoot?: string): string;
 export declare function generatePromptModeStartupPrompt(teamName: string, workerName: string, teamStateRoot?: string, cliOutputContract?: string): string;
 export declare function generateMailboxTriggerMessage(teamName: string, workerName: string, count?: number, teamStateRoot?: string): string;
+export interface RecoveryContinuationInstruction {
+    teamName: string;
+    workerName: string;
+    taskId: string;
+    claimToken: string;
+    taskVersion: number;
+    sequence: number;
+    resumePayload: unknown;
+}
+/** Render owner-adopted continuation data only after the activation gate opens. */
+export declare function renderRecoveryContinuationInstruction(instruction: RecoveryContinuationInstruction): string;
+export declare function renderCursorWorkerGuidance(reviewerRole?: boolean): string;
 /**
  * Generate the worker overlay markdown.
  * This is injected as AGENTS.md content for the worker agent.

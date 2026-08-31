@@ -6,7 +6,6 @@ export interface LayoutStabilizerOptions {
   debounceMs?: number;
 }
 
-
 export class LayoutStabilizer {
   private pending: NodeJS.Timeout | null = null;
   private running = false;

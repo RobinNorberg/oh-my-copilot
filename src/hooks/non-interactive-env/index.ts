@@ -48,7 +48,7 @@ function buildEnvPrefix(env: Record<string, string>): string {
 }
 
 /**
- * Non-interactive environment hook for Copilot CLI.
+ * Non-interactive environment hook for Claude Code.
  *
  * Detects and handles non-interactive environments (CI, cron, etc.) by:
  * - Warning about banned interactive commands (vim, less, etc.)

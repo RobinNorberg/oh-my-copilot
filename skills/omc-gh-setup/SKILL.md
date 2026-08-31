@@ -2,15 +2,15 @@
 name: omc-gh-setup
 description: >
   Configure GitHub integration for the current project.
-  WHEN: User wants to set up GitHub integration, connect a project to GitHub, configure .omcp/config.json for GitHub, or troubleshoot GitHub connection issues.
+  WHEN: User wants to set up GitHub integration, connect a project to GitHub, configure .omg/config.json for GitHub, or troubleshoot GitHub connection issues.
   DO NOT USE FOR: Issue triage (use omc-gh-triage), project board management (use omc-gh-project), PR review (use omc-gh-review), or Azure DevOps configuration (use omc-ado-setup).
 role: config-writer
-scope: .omcp/**
+scope: .omg/**
 ---
 
 # OMC GitHub Setup
 
-Configure GitHub integration for the current project. Detects the owner and repo from the git remote URL, verifies `gh` authentication, and writes `.omcp/config.json` with all required settings.
+Configure GitHub integration for the current project. Detects the owner and repo from the git remote URL, verifies `gh` authentication, and writes `.omg/config.json` with all required settings.
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
@@ -75,10 +75,10 @@ If no GitHub remote is detected, inform the user and ask whether they want to co
 
 ## Step 2: Probe Existing Configuration
 
-Check if `.omcp/config.json` already exists:
+Check if `.omg/config.json` already exists:
 
 ```bash
-cat .omcp/config.json 2>/dev/null || echo "NOT_FOUND"
+node -e "const f=require('fs');try{process.stdout.write(f.readFileSync('.omg/config.json','utf8'))}catch{console.log('NOT_FOUND')}"
 ```
 
 If it exists and contains `github` settings, ask the user whether to update or keep the existing configuration (use AskUserQuestion).
@@ -119,17 +119,17 @@ Show available labels and ask the user which label (if any) should mark untriage
 
 ---
 
-## Step 5: Write `.omcp/config.json`
+## Step 5: Write `.omg/config.json`
 
 Create or update the config file. Preserve any existing keys (e.g. `ado`).
 
-First, ensure the `.omcp/` directory exists:
+First, ensure the `.omg/` directory exists:
 
 ```bash
-mkdir -p .omc
+node -e "require('fs').mkdirSync('.omg',{recursive:true});console.log('Ensured .omg/')"
 ```
 
-Write `.omcp/config.json` using the Write (or Edit) tool. The schema is:
+Write `.omg/config.json` using the Write (or Edit) tool. The schema is:
 
 ```json
 {
@@ -194,7 +194,7 @@ Owner        : {owner}
 Repository   : {repo}
 Default Branch: {defaultBranch}
 Triage Label : {labelTriage or "none"}
-Config file  : .omcp/config.json
+Config file  : .omg/config.json
 
 Next steps:
   /oh-my-copilot:omc-gh-triage   — run a full triage of issues, PRs, and CI

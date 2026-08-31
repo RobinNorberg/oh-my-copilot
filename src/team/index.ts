@@ -195,6 +195,11 @@ export {
   buildLaunchArgs,
   buildWorkerCommand,
   parseCliOutput,
+  // Deprecated backward-compat exports kept for downstream consumers.
+  shouldLoadShellRc,
+  validateCliBinaryPath,
+  resolveCliBinaryPath,
+  clearResolvedPathCache,
 } from './model-contract.js';
 export type { CliBinaryValidation } from './model-contract.js';
 
@@ -213,6 +218,29 @@ export {
   writeWorkerOverlay,
 } from './worker-bootstrap.js';
 
+export type {
+  WorkerLaunchAttempt,
+  WorkerLaunchBootstrapSpec,
+  WorkerLaunchAcceptance,
+  WorkerLaunchBootstrapResult,
+  WorkerLaunchContext,
+  ProviderSpawnInvocation,
+} from './worker-launch-ack.js';
+export {
+  prepareWorkerLaunchAttempt,
+  loadWorkerLaunchAttempt,
+  loadCurrentWorkerLaunchAttempt,
+  buildWorkerLaunchBootstrapSpec,
+  revokeWorkerLaunchAttempt,
+  awaitWorkerLaunchAcknowledgement,
+  isWorkerLaunchAttemptAccepted,
+  runWorkerLaunchBootstrap,
+  isWorkerLaunchProviderStarted,
+  isWorkerLaunchAttemptCurrent,
+  withWorkerLaunchAttemptFence,
+  buildProviderSpawnInvocation,
+} from './worker-launch-ack.js';
+
 // tmux-comm
 export {
   sendTmuxTrigger,
@@ -221,6 +249,10 @@ export {
   queueBroadcastMessage,
   readMailbox,
 } from './tmux-comm.js';
+
+// Deprecated backward-compat exports for older layout APIs.
+export { LayoutStabilizer } from './layout-stabilizer.js';
+export type { LayoutStabilizerOptions } from './layout-stabilizer.js';
 
 // phase-controller
 export type { TeamPhase, PhaseableTask } from './phase-controller.js';
@@ -235,12 +267,37 @@ export type {
   WatchdogCompletionEvent,
 } from './runtime.js';
 export { startTeam, monitorTeam, assignTask, shutdownTeam, resumeTeam, watchdogCliWorkers } from './runtime.js';
+export {
+  setRuntimeOwnerRecoveryClient,
+  recoverDeadWorkerV2,
+  readRecoverDeadWorkerV2Outcome,
+  readRecoverDeadWorkerV2Result,
+} from './runtime-v2.js';
+export type {
+  RecoverDeadWorkerV2Options,
+  RuntimeOwnerRecoveryClient,
+} from './runtime-v2.js';
+export type {
+  RecoverDeadWorkerV2Error,
+  RecoverDeadWorkerV2Result,
+  RecoverDeadWorkerV2Success,
+  RecoverDeadWorkerV2Failure,
+} from './types.js';
+export type {
+  RecoveryDurableOutcome,
+  RecoveryOutcomePending,
+  RecoveryOutcomeFinal,
+} from './recovery-request-store.js';
+
+export { teamPublishTaskRecoveryCheckpoint } from './team-ops.js';
+export type { PublishTaskRecoveryCheckpointInput, PublishTaskRecoveryCheckpointResult } from './task-recovery-checkpoint.js';
 
 export { injectToLeaderPane } from './tmux-session.js';
 
 // api-interop (CLI API for workers)
 export {
   TEAM_API_OPERATIONS,
+  LEGACY_TEAM_MCP_TOOLS,
   resolveTeamApiOperation,
   executeTeamApiOperation,
   buildLegacyTeamDeprecationHint,
@@ -287,6 +344,8 @@ export type {
   TeamTaskV2,
   TeamTaskClaim,
   TeamLeader,
+  TeamTransportPolicy,
+  TeamGovernance,
   TeamPolicy,
   PermissionsSnapshot,
   TeamManifestV2,
@@ -313,3 +372,12 @@ export type {
   WorkerStatus as TeamWorkerStatus,
   WorkerHeartbeat as TeamWorkerHeartbeat,
 } from './types.js';
+
+export {
+  DEFAULT_TEAM_TRANSPORT_POLICY,
+  DEFAULT_TEAM_GOVERNANCE,
+  normalizeTeamTransportPolicy,
+  normalizeTeamGovernance,
+  normalizeTeamManifest,
+  getConfigGovernance,
+} from './governance.js';

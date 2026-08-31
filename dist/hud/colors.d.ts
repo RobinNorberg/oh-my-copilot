@@ -2,7 +2,7 @@
  * OMC HUD - ANSI Color Utilities
  *
  * Terminal color codes for statusline rendering.
- * Based on copilot-hud reference implementation.
+ * Based on claude-hud reference implementation.
  */
 export declare const RESET = "\u001B[0m";
 export declare function green(text: string): string;

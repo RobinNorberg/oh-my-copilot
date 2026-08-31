@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   isPathAllowed,
   isCommandAllowed,
@@ -93,6 +93,86 @@ describe('permissions', () => {
       // Brackets should be treated literally, not as regex character classes
       expect(isPathAllowed(perms, 'src/[utils]/index.ts', workDir)).toBe(true);
       expect(isPathAllowed(perms, 'src/u/index.ts', workDir)).toBe(false);
+    });
+
+    describe('on Windows', () => {
+      const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+      const winWorkDir = 'C:\\repo';
+
+      beforeEach(() => {
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      });
+
+      afterEach(() => {
+        if (originalPlatform) Object.defineProperty(process, 'platform', originalPlatform);
+      });
+
+      it('denies a target on another volume', () => {
+        // relative('C:\\repo', 'D:\\x') has no relative route and returns the
+        // absolute target, which does not start with '..'.
+        const perms = getDefaultPermissions('worker1');
+        expect(isPathAllowed(perms, 'D:\\loot\\steal.txt', winWorkDir)).toBe(false);
+      });
+
+      it('denies a UNC share target', () => {
+        const perms = getDefaultPermissions('worker1');
+        expect(isPathAllowed(perms, '\\\\server\\share\\steal.txt', winWorkDir)).toBe(false);
+      });
+
+      it('denies a cross-volume target even with an explicit allow list', () => {
+        const perms: WorkerPermissions = {
+          workerName: 'worker1',
+          allowedPaths: ['**'],
+          deniedPaths: [],
+          allowedCommands: [],
+          maxFileSize: Infinity,
+        };
+        expect(isPathAllowed(perms, 'D:\\loot\\steal.txt', winWorkDir)).toBe(false);
+      });
+
+      it('applies deny patterns case-insensitively, as NTFS does', () => {
+        const perms: WorkerPermissions = {
+          workerName: 'worker1',
+          allowedPaths: [],
+          deniedPaths: ['.github/**'],
+          allowedCommands: [],
+          maxFileSize: Infinity,
+        };
+        expect(isPathAllowed(perms, '.github/workflows/ci.yml', winWorkDir)).toBe(false);
+        // Same file on NTFS, different case — must not evade the deny rule.
+        expect(isPathAllowed(perms, '.GITHUB/workflows/ci.yml', winWorkDir)).toBe(false);
+        expect(isPathAllowed(perms, '.GitHub/Workflows/CI.yml', winWorkDir)).toBe(false);
+      });
+
+      it('still allows unrelated paths under a case-insensitive deny list', () => {
+        const perms: WorkerPermissions = {
+          workerName: 'worker1',
+          allowedPaths: [],
+          deniedPaths: ['.github/**'],
+          allowedCommands: [],
+          maxFileSize: Infinity,
+        };
+        expect(isPathAllowed(perms, 'src/index.ts', winWorkDir)).toBe(true);
+      });
+    });
+
+    it('keeps deny patterns case-sensitive on POSIX', () => {
+      const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+      Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+      try {
+        const perms: WorkerPermissions = {
+          workerName: 'worker1',
+          allowedPaths: [],
+          deniedPaths: ['.github/**'],
+          allowedCommands: [],
+          maxFileSize: Infinity,
+        };
+        expect(isPathAllowed(perms, '.github/workflows/ci.yml', workDir)).toBe(false);
+        // On a case-sensitive filesystem these are genuinely different files.
+        expect(isPathAllowed(perms, '.GITHUB/workflows/ci.yml', workDir)).toBe(true);
+      } finally {
+        if (originalPlatform) Object.defineProperty(process, 'platform', originalPlatform);
+      }
     });
   });
 

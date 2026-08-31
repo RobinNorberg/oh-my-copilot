@@ -3,41 +3,43 @@
  *
  * Composes statusline output from render context.
  */
-import { DEFAULT_HUD_CONFIG, DEFAULT_ELEMENT_ORDER, DEFAULT_HUD_LABELS } from './types.js';
-import { bold, dim } from './colors.js';
-import { stringWidth, getCharWidth } from '../utils/string-width.js';
-import { renderRalph } from './elements/ralph.js';
-import { renderAgentsByFormat, renderAgentsMultiLine } from './elements/agents.js';
-import { renderTodosWithCurrent } from './elements/todos.js';
-import { renderSkills, renderLastSkill } from './elements/skills.js';
-import { renderContext, renderContextWithBar } from './elements/context.js';
-import { renderBackground } from './elements/background.js';
-import { renderPrd } from './elements/prd.js';
-import { renderRateLimits, renderRateLimitsWithBar, renderRateLimitsError, renderCustomBuckets } from './elements/limits.js';
-import { renderPermission } from './elements/permission.js';
-import { renderThinking } from './elements/thinking.js';
-import { renderSession } from './elements/session.js';
-import { renderTokenUsage } from './elements/token-usage.js';
-import { renderEnterpriseCost } from './elements/enterprise-cost.js';
-import { renderPromptTime } from './elements/prompt-time.js';
-import { renderAutopilot } from './elements/autopilot.js';
-import { renderCwd } from './elements/cwd.js';
-import { renderHostname } from './elements/hostname.js';
-import { renderGitRepo, renderGitBranch, renderGitStatus } from './elements/git.js';
-import { renderModel } from './elements/model.js';
-import { renderApiKeySource } from './elements/api-key-source.js';
-import { renderCallCounts } from './elements/call-counts.js';
-import { renderContextLimitWarning } from './elements/context-warning.js';
-import { renderMissionBoard } from './mission-board.js';
-import { renderSessionSummary } from './elements/session-summary.js';
-import { renderLastTool } from './elements/last-tool.js';
-import { renderRecentTools } from './elements/recent-tools.js';
+import { DEFAULT_HUD_CONFIG, DEFAULT_ELEMENT_ORDER, DEFAULT_HUD_LABELS } from "./types.js";
+import { bold, dim } from "./colors.js";
+import { isRuntimePackageLocal } from "../lib/version.js";
+import { stringWidth, getCharWidth } from "../utils/string-width.js";
+import { renderRalph } from "./elements/ralph.js";
+import { renderAgentsByFormat, renderAgentsMultiLine, } from "./elements/agents.js";
+import { renderTodosWithCurrent } from "./elements/todos.js";
+import { renderSkills, renderLastSkill } from "./elements/skills.js";
+import { renderContext, renderContextWithBar } from "./elements/context.js";
+import { renderBackground } from "./elements/background.js";
+import { renderPrd } from "./elements/prd.js";
+import { renderRateLimits, renderRateLimitsWithBar, renderRateLimitsError, renderApiKeyUsageHint, renderCustomBuckets, } from "./elements/limits.js";
+import { renderPermission } from "./elements/permission.js";
+import { renderThinking } from "./elements/thinking.js";
+import { renderSession } from "./elements/session.js";
+import { renderTokenUsage } from "./elements/token-usage.js";
+import { renderEnterpriseCost } from "./elements/enterprise-cost.js";
+import { renderPromptTime } from "./elements/prompt-time.js";
+import { renderAutopilot } from "./elements/autopilot.js";
+import { renderCwd } from "./elements/cwd.js";
+import { renderHostname } from "./elements/hostname.js";
+import { renderGitRepo, renderGitBranch, renderGitStatus } from "./elements/git.js";
+import { renderMultiRepo } from "./elements/multi-repo.js";
+import { renderModel } from "./elements/model.js";
+import { renderApiKeySource } from "./elements/api-key-source.js";
+import { renderCallCounts } from "./elements/call-counts.js";
+import { renderContextLimitWarning, renderPayloadLimitWarning, } from "./elements/context-warning.js";
+import { renderMissionBoard } from "./mission-board.js";
+import { renderSessionSummary } from "./elements/session-summary.js";
+import { renderLastTool } from "./elements/last-tool.js";
+import { renderRecentTools } from "./elements/recent-tools.js";
 /**
  * ANSI escape sequence regex (matches SGR and other CSI sequences).
  * Used to skip escape codes when measuring/truncating visible width.
  */
 const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/;
-const PLAIN_SEPARATOR = ' | ';
+const PLAIN_SEPARATOR = " | ";
 const DIM_SEPARATOR = dim(PLAIN_SEPARATOR);
 function buildMainElementOrder(elementOrder) {
     if (!Array.isArray(elementOrder) || elementOrder.length === 0) {
@@ -65,14 +67,14 @@ function buildMainElementOrder(elementOrder) {
  */
 export function truncateLineToMaxWidth(line, maxWidth) {
     if (maxWidth <= 0)
-        return '';
+        return "";
     if (stringWidth(line) <= maxWidth)
         return line;
-    const ELLIPSIS = '...';
+    const ELLIPSIS = "...";
     const ellipsisWidth = 3;
     const targetWidth = Math.max(0, maxWidth - ellipsisWidth);
     let visibleWidth = 0;
-    let result = '';
+    let result = "";
     let hasAnsi = false;
     let i = 0;
     while (i < line.length) {
@@ -88,7 +90,7 @@ export function truncateLineToMaxWidth(line, maxWidth) {
         }
         // Read the full code point (handles surrogate pairs for astral-plane chars like emoji)
         const codePoint = line.codePointAt(i);
-        const codeUnits = codePoint > 0xFFFF ? 2 : 1;
+        const codeUnits = codePoint > 0xffff ? 2 : 1;
         const char = line.slice(i, i + codeUnits);
         const charWidth = getCharWidth(char);
         if (visibleWidth + charWidth > targetWidth)
@@ -99,7 +101,7 @@ export function truncateLineToMaxWidth(line, maxWidth) {
     }
     // Append ANSI reset before ellipsis if any escape codes were seen,
     // to prevent color/style bleed into subsequent terminal output
-    const reset = hasAnsi ? '\x1b[0m' : '';
+    const reset = hasAnsi ? "\x1b[0m" : "";
     return result + reset + ELLIPSIS;
 }
 /**
@@ -112,7 +114,7 @@ export function truncateLineToMaxWidth(line, maxWidth) {
  */
 function wrapLineToMaxWidth(line, maxWidth) {
     if (maxWidth <= 0)
-        return [''];
+        return [""];
     if (stringWidth(line) <= maxWidth)
         return [line];
     const separator = line.includes(DIM_SEPARATOR)
@@ -128,9 +130,9 @@ function wrapLineToMaxWidth(line, maxWidth) {
         return [truncateLineToMaxWidth(line, maxWidth)];
     }
     const wrapped = [];
-    let current = segments[0] ?? '';
+    let current = segments[0] ?? "";
     for (let i = 1; i < segments.length; i += 1) {
-        const nextSegment = segments[i] ?? '';
+        const nextSegment = segments[i] ?? "";
         const candidate = `${current}${separator}${nextSegment}`;
         if (stringWidth(candidate) <= maxWidth) {
             current = candidate;
@@ -158,10 +160,10 @@ function wrapLineToMaxWidth(line, maxWidth) {
 function applyMaxWidthByMode(lines, maxWidth, wrapMode) {
     if (!maxWidth || maxWidth <= 0)
         return lines;
-    if (wrapMode === 'wrap') {
-        return lines.flatMap(line => wrapLineToMaxWidth(line, maxWidth));
+    if (wrapMode === "wrap") {
+        return lines.flatMap((line) => wrapLineToMaxWidth(line, maxWidth));
     }
-    return lines.map(line => truncateLineToMaxWidth(line, maxWidth));
+    return lines.map((line) => truncateLineToMaxWidth(line, maxWidth));
 }
 /**
  * Limit output lines to prevent input field shrinkage (Issue #222).
@@ -197,46 +199,63 @@ export async function render(context, config) {
             rendered.set("hostname", hostnameElement);
     }
     if (enabledElements.cwd) {
-        const cwdElement = renderCwd(context.cwd, enabledElements.cwdFormat || 'relative', enabledElements.useHyperlinks ?? false);
+        const cwdElement = renderCwd(context.cwd, enabledElements.cwdFormat || "relative", enabledElements.useHyperlinks ?? false);
         if (cwdElement)
-            rendered.set('cwd', cwdElement);
+            rendered.set("cwd", cwdElement);
     }
-    if (enabledElements.gitRepo) {
-        const gitRepoElement = renderGitRepo(context.cwd);
-        if (gitRepoElement)
-            rendered.set('gitRepo', gitRepoElement);
+    // Multi-repo parent dir: replace the per-repo chips with a single
+    // workspace summary. When cwd is itself a git repo, renderMultiRepo
+    // returns null and the normal git elements take over.
+    const multiRepoElement = enabledElements.gitRepo
+        ? renderMultiRepo(context.cwd)
+        : null;
+    if (multiRepoElement) {
+        rendered.set("gitRepo", multiRepoElement);
     }
-    if (enabledElements.gitBranch) {
-        const gitBranchElement = renderGitBranch(context.cwd);
-        if (gitBranchElement)
-            rendered.set('gitBranch', gitBranchElement);
+    else {
+        if (enabledElements.gitRepo) {
+            const gitRepoElement = renderGitRepo(context.cwd);
+            if (gitRepoElement)
+                rendered.set("gitRepo", gitRepoElement);
+        }
+        if (enabledElements.gitBranch) {
+            const gitBranchElement = renderGitBranch(context.cwd);
+            if (gitBranchElement)
+                rendered.set("gitBranch", gitBranchElement);
+        }
+        if (enabledElements.gitStatus) {
+            const gitStatusElement = renderGitStatus(context.cwd, hudLabels);
+            if (gitStatusElement)
+                rendered.set("gitStatus", gitStatusElement);
+        }
     }
-    if (enabledElements.gitStatus) {
-        const gitStatusElement = renderGitStatus(context.cwd, hudLabels);
-        if (gitStatusElement)
-            rendered.set("gitStatus", gitStatusElement);
-    }
-    if (enabledElements.model && context.modelName) {
-        const modelElement = renderModel(context.modelName, enabledElements.modelFormat);
+    const modelSource = enabledElements.modelFormat === 'full'
+        ? context.modelId ?? context.modelName
+        : context.modelName;
+    if (enabledElements.model && modelSource) {
+        const modelElement = renderModel(modelSource, enabledElements.modelFormat, hudLabels);
         if (modelElement)
-            rendered.set('model', modelElement);
+            rendered.set("model", modelElement);
     }
     if (enabledElements.apiKeySource && context.apiKeySource) {
         const keySource = renderApiKeySource(context.apiKeySource);
         if (keySource)
-            rendered.set('apiKeySource', keySource);
+            rendered.set("apiKeySource", keySource);
     }
     if (enabledElements.profile && context.profileName) {
-        rendered.set('profile', bold(`profile:${context.profileName}`));
+        rendered.set("profile", bold(`profile:${context.profileName}`));
     }
     // -- main-group elements (default: main statusline) --
     if (enabledElements.omcLabel) {
-        const versionTag = context.omcVersion ? `#${context.omcVersion}` : '';
+        const localSuffix = isRuntimePackageLocal() ? "L" : "";
+        const versionTag = context.omcVersion
+            ? `#${context.omcVersion}${localSuffix}`
+            : (localSuffix ? `#${localSuffix}` : "");
         if (enabledElements.updateNotification !== false && context.updateAvailable) {
-            rendered.set('omcLabel', bold(`[OMC${versionTag}] -> ${context.updateAvailable} omc update`));
+            rendered.set("omcLabel", bold(`[OMC${versionTag}] -> ${context.updateAvailable} omc update`));
         }
         else {
-            rendered.set('omcLabel', bold(`[OMC${versionTag}]`));
+            rendered.set("omcLabel", bold(`[OMC${versionTag}]`));
         }
     }
     // Determine effective enterprise mode before rendering limits: only real
@@ -259,153 +278,160 @@ export async function render(context, config) {
                 ? renderRateLimitsWithBar(context.rateLimitsResult.rateLimits, undefined, stale)
                 : renderRateLimits(context.rateLimitsResult.rateLimits, stale);
             if (limits)
-                rendered.set('rateLimits', limits);
+                rendered.set("rateLimits", limits);
         }
         else {
             const errorIndicator = renderRateLimitsError(context.rateLimitsResult);
-            if (errorIndicator)
-                rendered.set('rateLimits', errorIndicator);
+            if (errorIndicator) {
+                rendered.set("rateLimits", errorIndicator);
+            }
+            else {
+                const hint = renderApiKeyUsageHint(context.rateLimitsResult, context.apiKeyMode ?? false, config.rateLimitsProvider?.type === "custom");
+                if (hint)
+                    rendered.set("rateLimits", hint);
+            }
         }
     }
     if (context.customBuckets) {
         const thresholdPercent = config.rateLimitsProvider?.resetsAtDisplayThresholdPercent;
         const custom = renderCustomBuckets(context.customBuckets, thresholdPercent);
         if (custom)
-            rendered.set('customBuckets', custom);
+            rendered.set("customBuckets", custom);
     }
     if (enabledElements.permissionStatus && context.pendingPermission) {
         const permission = renderPermission(context.pendingPermission);
         if (permission)
-            rendered.set('permission', permission);
+            rendered.set("permission", permission);
     }
     if (enabledElements.thinking && context.thinkingState) {
         const thinking = renderThinking(context.thinkingState, enabledElements.thinkingFormat, hudLabels);
         if (thinking)
-            rendered.set('thinking', thinking);
+            rendered.set("thinking", thinking);
     }
     if (enabledElements.promptTime) {
         const prompt = renderPromptTime(context.promptTime, new Date());
         if (prompt)
-            rendered.set('promptTime', prompt);
+            rendered.set("promptTime", prompt);
     }
     if (enabledElements.sessionHealth && context.sessionHealth) {
         const showDuration = enabledElements.showSessionDuration ?? true;
         if (showDuration) {
             const session = renderSession(context.sessionHealth);
             if (session)
-                rendered.set('session', session);
+                rendered.set("session", session);
         }
     }
     if (isEnterprise && enabledElements.showEnterpriseCost !== false) {
         const stale = context.rateLimitsResult?.stale;
         const cost = renderEnterpriseCost(context.rateLimitsResult?.rateLimits, stale);
         if (cost) {
-            rendered.set('enterpriseCost', cost);
+            rendered.set("enterpriseCost", cost);
         }
         else if (enabledElements.showTokens === true) {
             // Enterprise but no cost data — fall back to token usage
             const tokenUsage = renderTokenUsage(context.lastRequestTokenUsage, context.sessionTotalTokens, hudLabels);
             if (tokenUsage)
-                rendered.set('tokens', tokenUsage);
+                rendered.set("tokens", tokenUsage);
         }
     }
     else if (enabledElements.showTokens === true) {
         const tokenUsage = renderTokenUsage(context.lastRequestTokenUsage, context.sessionTotalTokens, hudLabels);
         if (tokenUsage)
-            rendered.set('tokens', tokenUsage);
+            rendered.set("tokens", tokenUsage);
     }
     if (enabledElements.ralph && context.ralph) {
         const ralph = renderRalph(context.ralph, config.thresholds, hudLabels);
         if (ralph)
-            rendered.set('ralph', ralph);
+            rendered.set("ralph", ralph);
     }
     if (enabledElements.autopilot && context.autopilot) {
         const autopilot = renderAutopilot(context.autopilot, config.thresholds);
         if (autopilot)
-            rendered.set('autopilot', autopilot);
+            rendered.set("autopilot", autopilot);
     }
     if (enabledElements.prdStory && context.prd) {
         const prd = renderPrd(context.prd);
         if (prd)
-            rendered.set('prd', prd);
+            rendered.set("prd", prd);
     }
     if (enabledElements.activeSkills) {
         const skills = renderSkills(context.ultrawork, context.ralph, (enabledElements.lastSkill ?? true) ? context.lastSkill : null);
         if (skills)
-            rendered.set('skills', skills);
+            rendered.set("skills", skills);
     }
     if ((enabledElements.lastSkill ?? true) && !enabledElements.activeSkills) {
         const lastSkillElement = renderLastSkill(context.lastSkill);
         if (lastSkillElement)
-            rendered.set('lastSkill', lastSkillElement);
+            rendered.set("lastSkill", lastSkillElement);
     }
     if (enabledElements.contextBar) {
         const ctx = enabledElements.useBars
             ? renderContextWithBar(context.contextPercent, config.thresholds, 10, context.contextDisplayScope, hudLabels)
             : renderContext(context.contextPercent, config.thresholds, context.contextDisplayScope, hudLabels);
         if (ctx)
-            rendered.set('contextBar', ctx);
+            rendered.set("contextBar", ctx);
     }
     // Active agents - handle multi-line format specially
     if (enabledElements.agents) {
-        const format = enabledElements.agentsFormat || 'codes';
-        const maxAgents = enabledElements.maxAgents ?? 10;
-        const cappedAgents = context.activeAgents.slice(0, maxAgents);
-        if (format === 'multiline') {
+        const format = enabledElements.agentsFormat || "codes";
+        if (format === "multiline") {
             const maxLines = enabledElements.agentsMaxLines || 5;
-            const result = renderAgentsMultiLine(cappedAgents, maxLines);
+            const result = renderAgentsMultiLine(context.activeAgents, maxLines);
             if (result.headerPart)
-                rendered.set('agents', result.headerPart);
+                rendered.set("agents", result.headerPart);
             if (result.detailLines.length > 0) {
-                renderedDetail.set('agents', result.detailLines);
+                renderedDetail.set("agents", result.detailLines);
             }
         }
         else {
-            const agents = renderAgentsByFormat(cappedAgents, format);
+            const agents = renderAgentsByFormat(context.activeAgents, format);
             if (agents)
-                rendered.set('agents', agents);
+                rendered.set("agents", agents);
         }
     }
     if (enabledElements.backgroundTasks) {
         const bg = renderBackground(context.backgroundTasks, hudLabels);
         if (bg)
-            rendered.set('background', bg);
+            rendered.set("background", bg);
     }
     const showCounts = enabledElements.showCallCounts ?? true;
     if (showCounts) {
         const counts = renderCallCounts(context.toolCallCount, context.agentCallCount, context.skillCallCount, enabledElements.callCountsFormat ?? 'auto', hudLabels);
         if (counts)
-            rendered.set('callCounts', counts);
-    }
-    if (enabledElements.showRecentTools === true) {
-        const tools = renderRecentTools(context.recentTools ?? [], enabledElements.recentToolsMax ?? 5, enabledElements.recentToolsShowTarget !== false, enabledElements.safeMode);
-        if (tools)
-            rendered.set('recentTools', tools);
+            rendered.set("callCounts", counts);
     }
     if (enabledElements.showLastTool === true) {
         const tool = renderLastTool(context.lastToolName ?? null);
         if (tool)
-            rendered.set('lastTool', tool);
+            rendered.set("lastTool", tool);
+    }
+    if (enabledElements.showRecentTools === true) {
+        const tools = renderRecentTools(context.recentTools ?? [], enabledElements.recentToolsMax ?? 5, enabledElements.recentToolsShowTarget !== false, enabledElements.safeMode);
+        if (tools)
+            rendered.set("recentTools", tools);
     }
     if (enabledElements.sessionSummary && context.sessionSummary) {
         const summary = renderSessionSummary(context.sessionSummary);
         if (summary)
-            rendered.set('sessionSummary', summary);
+            rendered.set("sessionSummary", summary);
     }
     // -- detail-group elements --
     if (context.missionBoard &&
         (config.missionBoard?.enabled ?? config.elements.missionBoard ?? false)) {
         const mbLines = renderMissionBoard(context.missionBoard, config.missionBoard);
         if (mbLines.length > 0)
-            renderedDetail.set('missionBoard', mbLines);
+            renderedDetail.set("missionBoard", mbLines);
     }
     const ctxWarning = renderContextLimitWarning(context.contextPercent, config.contextLimitWarning.threshold, config.contextLimitWarning.autoCompact);
     if (ctxWarning)
-        renderedDetail.set('contextWarning', [ctxWarning]);
+        renderedDetail.set("contextWarning", [ctxWarning]);
+    const payloadWarning = renderPayloadLimitWarning(context.payloadEstimate);
+    if (payloadWarning)
+        renderedDetail.set("payloadWarning", [payloadWarning]);
     if (enabledElements.todos) {
         const todos = renderTodosWithCurrent(context.todos);
         if (todos)
-            renderedDetail.set('todos', [todos]);
+            renderedDetail.set("todos", [todos]);
     }
     // ── Assemble output using layout order ─────────────────────────────
     const safeArray = (v, fallback) => Array.isArray(v) ? v : fallback;
@@ -430,7 +456,7 @@ export async function render(context, config) {
                 // Detail elements moved to an inline group render as joined inline
                 const lines = renderedDetail.get(name);
                 if (lines && lines.length > 0)
-                    result.push(lines.join(' '));
+                    result.push(lines.join(" "));
             }
         }
         return result;
@@ -463,8 +489,8 @@ export async function render(context, config) {
     const outputLines = [];
     const gitInfoLine = gitElements.length > 0 ? gitElements.join(dim(PLAIN_SEPARATOR)) : null;
     const headerLine = elements.length > 0 ? elements.join(dim(PLAIN_SEPARATOR)) : null;
-    const gitPosition = config.elements.gitInfoPosition ?? 'above';
-    if (gitPosition === 'above') {
+    const gitPosition = config.elements.gitInfoPosition ?? "above";
+    if (gitPosition === "above") {
         if (gitInfoLine) {
             outputLines.push(gitInfoLine);
         }
@@ -485,8 +511,8 @@ export async function render(context, config) {
     const limitedLines = limitOutputLines(widthAdjustedLines, config.elements.maxOutputLines);
     // Ensure line-limit indicator and all other lines still respect maxWidth.
     const finalLines = config.maxWidth && config.maxWidth > 0
-        ? limitedLines.map(line => truncateLineToMaxWidth(line, config.maxWidth))
+        ? limitedLines.map((line) => truncateLineToMaxWidth(line, config.maxWidth))
         : limitedLines;
-    return finalLines.join('\n');
+    return finalLines.join("\n");
 }
 //# sourceMappingURL=render.js.map

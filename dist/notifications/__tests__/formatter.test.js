@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatSessionIdle, formatSessionEnd, formatAgentCall, formatNotification, formatTeamsAdaptiveCard, parseTmuxTail, } from "../formatter.js";
+import { formatSessionIdle, formatSessionEnd, formatAgentCall, formatNotification, parseTmuxTail, formatAskUserQuestion, formatTeamsAdaptiveCard, } from "../formatter.js";
 describe("formatSessionIdle", () => {
     const basePayload = {
         event: "session-idle",
@@ -258,6 +258,134 @@ describe("parseTmuxTail noise filters", () => {
         ].join("\n");
         expect(parseTmuxTail(input)).toBe("Build complete\nTests passed: 42");
     });
+    it("drops seeded PR review outcome instructions that would trip keyword alerts", () => {
+        const input = [
+            "Review PR #2498 and reply with exactly one verdict:",
+            "- approve",
+            "- request-changes",
+            "- follow-up-fix",
+            "- BLOCKED",
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("");
+    });
+    it("prefers later runtime output over seeded PR review instructions", () => {
+        const input = [
+            "Review PR #2498 and reply with exactly one verdict:",
+            "- approve",
+            "- request-changes",
+            "- follow-up-fix",
+            "- BLOCKED",
+            "Traceback (most recent call last):",
+            "ValueError: boom",
+            "BLOCKED: evaluator crashed at runtime",
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("Traceback (most recent call last):\nValueError: boom\nBLOCKED: evaluator crashed at runtime");
+    });
+    it("preserves real runtime blocked output when no seeded review prefix exists", () => {
+        const input = [
+            "BLOCKED: missing baseline snapshot",
+            "Traceback (most recent call last):",
+            "RuntimeError: boom",
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe(input);
+    });
+    it("drops grep/source lines that only contain static error markers", () => {
+        const input = [
+            'skills/project-session-manager/lib/tmux.sh:16:        echo "error|tmux not found"',
+            'skills/project-session-manager/lib/tmux.sh:28:        echo "error|Failed to create tmux session"',
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("");
+    });
+    it("drops usage/help source text that would otherwise trip error alerts", () => {
+        const input = [
+            'Usage: psm review <ref>',
+            'if [[ "$tmux_status" == "error" ]]; then',
+            'log_error "Usage: psm fix <ref>"',
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("");
+    });
+    it("drops review prose enumerating error/fail/conflict verdicts", () => {
+        const input = [
+            "Review the run and reply with one outcome:",
+            "1. error",
+            "2. fail",
+            "3. conflict",
+            "4. blocked",
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("");
+    });
+    it("drops diff and code literal lines that only mention alert keywords", () => {
+        const input = [
+            "diff --git a/src/app.ts b/src/app.ts",
+            '+ throw new Error("worker_notify_failed");',
+            '+ const payload = { status: "failed", error: "claim_conflict" };',
+            '@@ -10,4 +10,4 @@',
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("");
+    });
+    it("drops MCP payload literals that only contain structured failure markers", () => {
+        const input = [
+            'mcp: {"jsonrpc":"2.0","error":{"code":"operation_failed","message":"claim_conflict"}}',
+            'response: {"ok":false,"reason":"worker_notify_failed"}',
+            'payload: {"status":"failed","details":["invalid_transition"]}',
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("");
+    });
+    it("preserves actionable runtime failures written as normal prose", () => {
+        const input = [
+            "worker_notify_failed while dispatching startup inbox",
+            "Task failed after retry budget exhausted",
+            "Resolve the merge conflict in src/team/runtime-v2.ts before rerunning tests",
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe(input);
+    });
+    it("preserves real runtime errors even when adjacent to MCP-ish context", () => {
+        const input = [
+            'payload: {"status":"completed"}',
+            "Runtime error: worker crashed after SIGTERM",
+            "The failure is actionable: restart the pane and rerun the task",
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("Runtime error: worker crashed after SIGTERM\nThe failure is actionable: restart the pane and rerun the task");
+    });
+    it("preserves vitest runtime failure prose while collapsing structured literals", () => {
+        const input = [
+            'mcp: {"jsonrpc":"2.0","error":{"code":"operation_failed","message":"claim_conflict"}}',
+            '+ const payload = { status: "failed", error: "claim_conflict" };',
+            "Error: Cannot find module vitest",
+            "failed to load config from /tmp/x/vitest.config.ts",
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("Error: Cannot find module vitest\nfailed to load config from /tmp/x/vitest.config.ts");
+    });
+    it("drops search queries that intentionally look for alert keywords", () => {
+        const input = [
+            '❯ rg -n "error|fail|conflict|blocked" src tests',
+            "ripgrep --glob '*.ts' 'worker_notify_failed|claim_conflict' src",
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("");
+    });
+    it("drops zero-error diagnostic summaries", () => {
+        const input = [
+            "TypeScript check passed: 0 errors, 0 warnings",
+            "totalErrors: 0, totalWarnings: 3",
+            "LSP check passed: 0 errors, 0 warnings (42 files)",
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("");
+    });
+    it("drops regex literals that only encode alert keywords", () => {
+        const input = [
+            "const alertPattern = /error|fail|conflict|blocked/i;",
+            "matcher: new RegExp('worker_notify_failed|claim_conflict')",
+            'src/alert-monitor.ts:88: const alertPattern = /error|fail|conflict|blocked/i;',
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("");
+    });
+    it("drops generic hook failure prose when it is just prompt/setup residue", () => {
+        const input = [
+            "The Bash output indicates a command/setup failure that should be fixed before retrying.",
+            "Fix issue #2583: harden the live tmux keyword alert path so injected prompts stop firing fake error/fail/conflict alerts.",
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("");
+    });
     it("drops permission-denied scan noise and clean diagnostic queries", () => {
         const input = [
             "find: ../systemd-private-123: Permission denied",
@@ -275,6 +403,14 @@ describe("parseTmuxTail noise filters", () => {
             "Restart the watcher and rerun the focused checks",
         ].join("\n");
         expect(parseTmuxTail(input)).toBe("Runtime error: review watchdog crashed\nRestart the watcher and rerun the focused checks");
+    });
+    it("preserves actionable runtime failures next to zero-error summaries", () => {
+        const input = [
+            "TypeScript check passed: 0 errors, 0 warnings",
+            "Runtime error: tmux watcher crashed after SIGTERM",
+            "Restart the live pane monitor before rerunning diagnostics",
+        ].join("\n");
+        expect(parseTmuxTail(input)).toBe("Runtime error: tmux watcher crashed after SIGTERM\nRestart the live pane monitor before rerunning diagnostics");
     });
 });
 describe("tmuxTail in formatters", () => {
@@ -316,6 +452,35 @@ describe("tmuxTail in formatters", () => {
         expect(result).toContain("**Recent output:**");
         expect(result).toContain("Build complete");
         expect(result).toContain("Done in 5.2s");
+    });
+});
+describe("formatAskUserQuestion", () => {
+    it("includes AskUserQuestion options and the free-text Other choice", () => {
+        const result = formatAskUserQuestion({
+            event: "ask-user-question",
+            sessionId: "sess-3039",
+            message: "",
+            timestamp: new Date("2026-05-19T00:00:00Z").toISOString(),
+            projectPath: "/tmp/project",
+            question: "Which database should we use?",
+            askUserQuestionPrompts: [
+                {
+                    question: "Which database should we use?",
+                    header: "Database",
+                    options: [
+                        { label: "PostgreSQL", description: "Relational DB" },
+                        { label: "MongoDB", description: "Document DB" },
+                    ],
+                    allowOther: true,
+                    otherLabel: "Other",
+                    multiSelect: false,
+                },
+            ],
+        });
+        expect(result).toContain("**Options:**");
+        expect(result).toContain("1. PostgreSQL — Relational DB");
+        expect(result).toContain("2. MongoDB — Document DB");
+        expect(result).toContain("3. Other — reply with free text");
     });
 });
 describe("formatTeamsAdaptiveCard", () => {

@@ -60,6 +60,18 @@ describe('SSRF Guard', () => {
                 expect(validateUrlForSSRF('http://169.254.169.254/latest/meta-data/').allowed).toBe(false);
             });
         });
+        describe('blocks encoded IP bypass forms', () => {
+            it('blocks decimal-encoded IPv4 hostnames', () => {
+                const result = validateUrlForSSRF('http://2130706433/');
+                expect(result.allowed).toBe(false);
+                expect(String(result.reason)).toMatch(/decimal-encoded IP address|blocked internal\/private address/);
+            });
+            it('blocks octal-encoded IPv4 hostnames', () => {
+                const result = validateUrlForSSRF('http://0177.0.0.1/');
+                expect(result.allowed).toBe(false);
+                expect(String(result.reason)).toMatch(/octal-encoded IP address|blocked internal\/private address/);
+            });
+        });
         describe('allows valid URLs', () => {
             it('allows https://api.anthropic.com', () => {
                 expect(validateUrlForSSRF('https://api.anthropic.com/v1').allowed).toBe(true);

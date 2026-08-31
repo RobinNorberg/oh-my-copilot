@@ -1,11 +1,10 @@
 export declare const ASK_USAGE: string;
-declare const ASK_PROVIDERS: readonly ["claude", "copilot", "codex", "gemini", "grok"];
+declare const ASK_PROVIDERS: readonly ["claude", "codex", "gemini", "antigravity", "grok", "cursor"];
 export type AskProvider = (typeof ASK_PROVIDERS)[number];
 export interface ParsedAskArgs {
     provider: AskProvider;
     prompt: string;
     agentPromptRole?: string;
-    promptFile?: string;
 }
 export declare function parseAskArgs(args: readonly string[]): ParsedAskArgs;
 export declare function resolveAskAdvisorScriptPath(packageRoot?: string, env?: NodeJS.ProcessEnv): string;

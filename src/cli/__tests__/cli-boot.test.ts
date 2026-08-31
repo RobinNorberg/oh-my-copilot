@@ -69,8 +69,8 @@ describe('CLI runtime boot', () => {
   });
 
   it('omc --madmax does not throw duplicate command error', () => {
-    // --madmax maps to --dangerously-skip-permissions for copilot launch.
-    // In test env, copilot binary isn't available so it may fail for other reasons,
+    // --madmax maps to --dangerously-skip-permissions for claude launch.
+    // In test env, claude binary isn't available so it may fail for other reasons,
     // but it must NOT fail with "cannot add command 'X' as already have command 'X'".
     try {
       execFileSync('node', [CLI_ENTRY, '--madmax'], {

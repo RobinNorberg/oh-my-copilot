@@ -1,25 +1,30 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { recordValidationVerdict, getValidationStatus, startValidationRound, shouldRetryValidation, getIssuesToFix, getValidationSpawnPrompt, formatValidationResults } from '../validation.js';
 import { initAutopilot, transitionPhase } from '../state.js';
-// One tmp dir per file, reused across tests. Between tests we only clear the
-// autopilot state subtree instead of running mkdtemp+rmSync per test — on
-// Windows (Defender real-time scans) that cycle was ~1.5s per test, dominating
-// the file's wallclock. Isolation is preserved because each test initializes
-// its own state before operating.
 describe('AutopilotValidation', () => {
     let testDir;
-    beforeAll(() => {
-        testDir = mkdtempSync(join(tmpdir(), 'autopilot-validation-test-'));
-    });
-    afterAll(() => {
-        rmSync(testDir, { recursive: true, force: true });
-    });
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
-        rmSync(join(testDir, '.omc'), { recursive: true, force: true });
-        rmSync(join(testDir, '.omcp'), { recursive: true, force: true });
+        testDir = mkdtempSync(join(tmpdir(), 'autopilot-validation-test-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = testDir;
+        process.env.USERPROFILE = testDir;
+    });
+    afterEach(() => {
+        rmSync(testDir, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
     });
     describe('recordValidationVerdict', () => {
         it('should return false when state does not exist', () => {

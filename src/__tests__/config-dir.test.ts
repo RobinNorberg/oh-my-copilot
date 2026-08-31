@@ -29,8 +29,8 @@ describe('getCopilotConfigDir', () => {
   });
 
   it('returns an absolute custom path unchanged aside from normalization', () => {
-    process.env.COPILOT_CONFIG_DIR = join(tmpdir(), 'custom-copilot-config', '..', 'custom-copilot-config');
-    expect(getCopilotConfigDir()).toBe(normalize(join(tmpdir(), 'custom-copilot-config', '..', 'custom-copilot-config')));
+    process.env.COPILOT_CONFIG_DIR = join(tmpdir(), 'custom-claude-config', '..', 'custom-claude-config');
+    expect(getCopilotConfigDir()).toBe(normalize(join(tmpdir(), 'custom-claude-config', '..', 'custom-claude-config')));
   });
 
   it('expands a bare tilde to the home directory', () => {
@@ -39,13 +39,13 @@ describe('getCopilotConfigDir', () => {
   });
 
   it('expands a ~-prefixed config path', () => {
-    process.env.COPILOT_CONFIG_DIR = '~/.copilot-alt';
-    expect(getCopilotConfigDir()).toBe(normalize(join(homedir(), '.copilot-alt')));
+    process.env.COPILOT_CONFIG_DIR = '~/.claude-alt';
+    expect(getCopilotConfigDir()).toBe(normalize(join(homedir(), '.claude-alt')));
   });
 
   it('strips a trailing separator from custom paths', () => {
-    process.env.COPILOT_CONFIG_DIR = join(tmpdir(), 'custom-copilot-config') + '/';
-    expect(getCopilotConfigDir()).toBe(normalize(join(tmpdir(), 'custom-copilot-config')));
+    process.env.COPILOT_CONFIG_DIR = join(tmpdir(), 'custom-claude-config') + '/';
+    expect(getCopilotConfigDir()).toBe(normalize(join(tmpdir(), 'custom-claude-config')));
     expect(getCopilotConfigDir().endsWith('/')).toBe(false);
   });
 
@@ -68,27 +68,58 @@ describe('getCopilotConfigDir', () => {
     }
   });
 
+  it('keeps every surface on the same default when COPILOT_CONFIG_DIR is unset', () => {
+    // The .mjs and .cjs mirrors silently drifted to ~/.claude while the
+    // TypeScript and shell surfaces used ~/.copilot, so the bash setup
+    // lifecycle wrote .omc-config.json where the Node hooks never looked.
+    // Only the tilde branch was covered, which is why the drift survived.
+    delete process.env.COPILOT_CONFIG_DIR;
+    const expected = normalize(join(homedir(), '.copilot'));
+    const env = { ...process.env };
+    delete env.COPILOT_CONFIG_DIR;
+
+    const mjs = execFileSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        "import { getCopilotConfigDir } from './scripts/lib/config-dir.mjs'; process.stdout.write(getCopilotConfigDir());",
+      ],
+      { cwd: process.cwd(), env, encoding: 'utf-8' },
+    );
+    const cjsPath = join(process.cwd(), 'scripts', 'lib', 'config-dir.cjs');
+    const cjs = execFileSync(
+      process.execPath,
+      ['-e', `const { getCopilotConfigDir } = require(${JSON.stringify(cjsPath)}); process.stdout.write(getCopilotConfigDir());`],
+      { cwd: process.cwd(), env, encoding: 'utf-8' },
+    );
+
+    expect(getCopilotConfigDir()).toBe(expected);
+    expect(mjs).toBe(expected);
+    expect(cjs).toBe(expected);
+  });
+
   it('keeps the script helper aligned with the TypeScript helper', async () => {
-    process.env.COPILOT_CONFIG_DIR = '~/.copilot-alt';
+    process.env.COPILOT_CONFIG_DIR = '~/.claude-alt';
     const output = execFileSync(
       process.execPath,
       [
         '--input-type=module',
         '-e',
-        "import { getClaudeConfigDir } from './scripts/lib/config-dir.mjs'; process.stdout.write(getClaudeConfigDir());",
+        "import { getCopilotConfigDir } from './scripts/lib/config-dir.mjs'; process.stdout.write(getCopilotConfigDir());",
       ],
       {
         cwd: process.cwd(),
-        env: { ...process.env, CLAUDE_CONFIG_DIR: process.env.COPILOT_CONFIG_DIR },
+        env: process.env,
         encoding: 'utf-8',
       },
     );
-    expect(output).toBe(normalize(join(homedir(), '.copilot-alt')));
+    expect(output).toBe(normalize(join(homedir(), '.claude-alt')));
   });
 
-  it.skipIf(process.platform === 'win32')('find-node.sh resolves a ~-prefixed COPILOT_CONFIG_DIR before reading .omc-config.json', () => {
+  it('find-node.sh resolves a ~-prefixed COPILOT_CONFIG_DIR before reading .omc-config.json', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-find-node-home-'));
-    const configDir = join(homeDir, '.copilot-alt');
+    const configDir = join(homeDir, '.claude-alt');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, '.omc-config.json'), JSON.stringify({ nodeBinary: process.execPath }));
 
@@ -101,7 +132,7 @@ describe('getCopilotConfigDir', () => {
           ...process.env,
           HOME: homeDir,
           PATH: '/bin:/usr/bin',
-          COPILOT_CONFIG_DIR: '~/.copilot-alt',
+          COPILOT_CONFIG_DIR: '~/.claude-alt',
         },
         encoding: 'utf-8',
       },
@@ -110,34 +141,49 @@ describe('getCopilotConfigDir', () => {
     expect(output).toBe('ok');
   });
 
-  it.skipIf(process.platform === 'win32')('shared shell helper expands a ~-prefixed COPILOT_CONFIG_DIR', () => {
+  it('shared shell helper expands a ~-prefixed COPILOT_CONFIG_DIR', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-uninstall-home-'));
-    const output = execFileSync('bash', ['-lc', `. "${join(process.cwd(), 'scripts', 'lib', 'config-dir.sh')}"; resolve_copilot_config_dir`], {
+    const output = execFileSync('bash', ['-lc', `. "${join(process.cwd(), 'scripts', 'lib', 'config-dir.sh')}"; resolve_claude_config_dir`], {
       cwd: process.cwd(),
       env: {
         ...process.env,
         HOME: homeDir,
-        COPILOT_CONFIG_DIR: '~/.copilot-alt',
+        COPILOT_CONFIG_DIR: '~/.claude-alt',
       },
       encoding: 'utf-8',
     });
 
-    expect(output.trim()).toBe(join(homeDir, '.copilot-alt'));
+    expect(output.trim()).toBe(join(homeDir, '.claude-alt'));
+  });
+
+  it('shared shell helper expands a backslash-tilde-prefixed COPILOT_CONFIG_DIR', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'omc-uninstall-home-'));
+    const output = execFileSync('bash', ['-lc', `. "${join(process.cwd(), 'scripts', 'lib', 'config-dir.sh')}"; resolve_claude_config_dir`], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HOME: homeDir,
+        COPILOT_CONFIG_DIR: '~\\.claude-alt',
+      },
+      encoding: 'utf-8',
+    });
+
+    expect(output.trim()).toBe(join(homeDir, '.claude-alt'));
   });
 
   it('keeps the CJS helper aligned with the TypeScript helper', () => {
-    process.env.COPILOT_CONFIG_DIR = '~/.copilot-alt';
+    process.env.COPILOT_CONFIG_DIR = '~/.claude-alt';
     const cjsPath = join(process.cwd(), 'scripts', 'lib', 'config-dir.cjs');
     const output = execFileSync(
       process.execPath,
-      ['-e', `const { getClaudeConfigDir } = require(${JSON.stringify(cjsPath)}); process.stdout.write(getClaudeConfigDir());`],
+      ['-e', `const { getCopilotConfigDir } = require(${JSON.stringify(cjsPath)}); process.stdout.write(getCopilotConfigDir());`],
       {
         cwd: process.cwd(),
-        env: { ...process.env, CLAUDE_CONFIG_DIR: process.env.COPILOT_CONFIG_DIR },
+        env: process.env,
         encoding: 'utf-8',
       },
     );
-    expect(output).toBe(normalize(join(homedir(), '.copilot-alt')));
+    expect(output).toBe(normalize(join(homedir(), '.claude-alt')));
   });
 });
 
@@ -172,8 +218,8 @@ describe('COPILOT_CONFIG_DIR downstream integration', () => {
   });
 
   it('accepts transcript paths under custom COPILOT_CONFIG_DIR', () => {
-    process.env.COPILOT_CONFIG_DIR = '/opt/custom-copilot-config';
-    const transcriptPath = '/opt/custom-copilot-config/projects/-foo/bar/session.jsonl';
+    process.env.COPILOT_CONFIG_DIR = '/opt/custom-claude-config';
+    const transcriptPath = '/opt/custom-claude-config/projects/-foo/bar/session.jsonl';
     expect(isValidTranscriptPath(transcriptPath)).toBe(true);
   });
 
@@ -197,7 +243,7 @@ describe('COPILOT_CONFIG_DIR downstream integration', () => {
     expect(globalRules.some(c => c.path.includes('my-rule.md'))).toBe(true);
   });
 
-  it('uses the active config dir rather than default ~/.copilot/rules for user rules', () => {
+  it('uses the active config dir rather than default ~/.claude/rules for user rules', () => {
     const customRulesDir = join(tempDir, 'rules');
     mkdirSync(customRulesDir, { recursive: true });
     writeFileSync(join(customRulesDir, 'custom-rule.md'), '# Custom Rule');

@@ -6,7 +6,7 @@
  */
 
 import { homedir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname } from 'node:path';
 import { dim } from '../colors.js';
 import type { CwdFormat } from '../types.js';
 
@@ -52,10 +52,20 @@ export function renderCwd(
 
   switch (format) {
     case 'relative': {
-      const home = homedir();
-      displayPath = cwd.startsWith(home)
-        ? '~' + cwd.slice(home.length)
-        : cwd;
+      // cwd reaches here from `git rev-parse --show-toplevel` (via
+      // resolveToWorktreeRoot), which emits forward slashes even on Windows,
+      // while homedir() emits backslashes. Compare on normalized separators,
+      // but only abbreviate when cwd is exactly home or crosses a real path
+      // boundary so sibling prefixes like /Users/testuser2 do not fold to ~2.
+      const home = homedir().replace(/\\/g, '/');
+      const normalizedCwd = cwd.replace(/\\/g, '/');
+      if (normalizedCwd === home) {
+        displayPath = '~';
+      } else if (normalizedCwd.startsWith(`${home}/`)) {
+        displayPath = '~' + normalizedCwd.slice(home.length);
+      } else {
+        displayPath = cwd;
+      }
       break;
     }
     case 'absolute':
@@ -66,7 +76,10 @@ export function renderCwd(
       // directory names like src/, test/, docs/, packages/core, apps/web.
       const parent = basename(dirname(cwd));
       const folder = basename(cwd);
-      displayPath = parent ? join(parent, folder) : folder;
+      // Join with a literal "/" rather than join(), whose win32 separator would
+      // render "parent\leaf" and break display consistency with the rest of the
+      // HUD (which uses forward slashes everywhere).
+      displayPath = parent ? `${parent}/${folder}` : folder;
       break;
     }
     default:

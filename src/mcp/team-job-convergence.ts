@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
-import { validateTeamName } from '../team/team-name.js';
 import { cleanupTeamWorktrees } from '../team/git-worktree.js';
+import { validateTeamName } from '../team/team-name.js';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 
 export interface OmcTeamJob {
   status: 'running' | 'completed' | 'failed' | 'timeout';
@@ -117,7 +118,7 @@ export function clearScopedTeamState(job: Pick<OmcTeamJob, 'cwd' | 'teamName'>):
     };
   }
 
-  const stateDir = join(job.cwd, '.omcp', 'state', 'team', job.teamName);
+  const stateDir = join(getOmcRoot(job.cwd), 'state', 'team', job.teamName);
   let worktreeMessage = 'worktree cleanup skipped.';
   try {
     const cleanup = cleanupTeamWorktrees(job.teamName, job.cwd);

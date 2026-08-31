@@ -11,7 +11,7 @@ export type { DelegationProvider, DelegationTool, DelegationRoute, DelegationRou
  */
 export declare const DEFAULT_DELEGATION_CONFIG: DelegationRoutingConfig;
 /**
- * Role category to default Copilot subagent mapping
+ * Role category to default Claude subagent mapping
  */
 export declare const ROLE_CATEGORY_DEFAULTS: Record<string, string>;
 /**

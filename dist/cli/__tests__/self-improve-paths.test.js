@@ -1,14 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { join, normalize } from 'node:path';
+import { execFileSync } from 'node:child_process';
 const RESOLVER = join(process.cwd(), 'skills', 'self-improve', 'scripts', 'resolve-paths.mjs');
 const VALIDATE = join(process.cwd(), 'skills', 'self-improve', 'scripts', 'validate.sh');
-function hasJq() {
-    return spawnSync('jq', ['--version'], { stdio: 'ignore' }).status === 0;
-}
-const itWithJq = hasJq() ? it : it.skip;
 function readJson(command, args) {
     return JSON.parse(execFileSync(command, args, { encoding: 'utf-8' }));
 }
@@ -16,6 +12,7 @@ describe('self-improve path scoping helpers', () => {
     let root;
     beforeEach(() => {
         root = mkdtempSync(join(tmpdir(), 'omc-self-improve-paths-'));
+        execFileSync('git', ['init'], { cwd: root, stdio: 'pipe' });
     });
     afterEach(() => {
         rmSync(root, { recursive: true, force: true });
@@ -24,22 +21,22 @@ describe('self-improve path scoping helpers', () => {
         const result = readJson('node', [RESOLVER, '--project-root', root]);
         expect(result.topic_slug).toBe('default');
         expect(result.scope_mode).toBe('default-scoped');
-        expect(result.root).toBe(join(root, '.omc', 'self-improve', 'topics', 'default'));
+        expect(result.root).toBe(join(root, '.omg', 'self-improve', 'topics', 'default'));
     });
     it('uses a slugified topic-specific root when topic text is provided', () => {
         const result = readJson('node', [RESOLVER, '--project-root', root, '--topic', 'Latency & Throughput']);
         expect(result.topic_slug).toBe('latency-throughput');
         expect(result.scope_mode).toBe('topic-scoped');
-        expect(result.root).toBe(join(root, '.omc', 'self-improve', 'topics', 'latency-throughput'));
+        expect(result.root).toBe(join(root, '.omg', 'self-improve', 'topics', 'latency-throughput'));
     });
     it('falls back to the legacy flat root when legacy state already exists and no topic is provided', () => {
-        const legacyConfigDir = join(root, '.omc', 'self-improve', 'config');
+        const legacyConfigDir = join(root, '.omg', 'self-improve', 'config');
         mkdirSync(legacyConfigDir, { recursive: true });
         writeFileSync(join(legacyConfigDir, 'settings.json'), '{}\n', 'utf-8');
         const result = readJson('node', [RESOLVER, '--project-root', root]);
         expect(result.topic_slug).toBe('default');
         expect(result.scope_mode).toBe('legacy-flat-root');
-        expect(result.root).toBe(join(root, '.omc', 'self-improve'));
+        expect(result.root).toBe(join(root, '.omg', 'self-improve'));
     });
     it('creates the resolved scoped directories when asked', () => {
         const result = readJson('node', [RESOLVER, '--project-root', root, '--slug', 'perf-track', '--ensure-dirs']);
@@ -47,21 +44,22 @@ describe('self-improve path scoping helpers', () => {
         expect(existsSync(result.state_dir)).toBe(true);
         expect(existsSync(result.tracking_dir)).toBe(true);
     });
-    itWithJq('validate.sh auto-discovers a single scoped settings file', () => {
-        const scopedConfigDir = join(root, '.omc', 'self-improve', 'topics', 'perf-track', 'config');
-        const expectedSettingsPath = join(realpathSync(root), '.omc', 'self-improve', 'topics', 'perf-track', 'config', 'settings.json');
+    it('validate.sh auto-discovers a single scoped settings file', () => {
+        const scopedConfigDir = join(root, '.omg', 'self-improve', 'topics', 'perf-track', 'config');
         mkdirSync(scopedConfigDir, { recursive: true });
         writeFileSync(join(scopedConfigDir, 'settings.json'), JSON.stringify({ sealed_files: [] }), 'utf-8');
         const output = execFileSync('bash', [VALIDATE], {
             cwd: root,
             encoding: 'utf-8',
         });
-        expect(output).toContain(`Settings: ${expectedSettingsPath}`);
+        const expectedSettings = normalize(join(scopedConfigDir, 'settings.json')).replace(/^\/private(?=\/var\/)/, '');
+        const normalizedOutput = normalize(output).replace(/^Settings: \/private(?=\/var\/)/m, 'Settings: ');
+        expect(normalizedOutput).toContain(`Settings: ${expectedSettings}`);
         expect(output).toContain('All checks passed');
     });
-    itWithJq('validate.sh errors when multiple scoped topics exist without an explicit selector', () => {
-        const configA = join(root, '.omc', 'self-improve', 'topics', 'alpha', 'config');
-        const configB = join(root, '.omc', 'self-improve', 'topics', 'beta', 'config');
+    it('validate.sh errors when multiple scoped topics exist without an explicit selector', () => {
+        const configA = join(root, '.omg', 'self-improve', 'topics', 'alpha', 'config');
+        const configB = join(root, '.omg', 'self-improve', 'topics', 'beta', 'config');
         mkdirSync(configA, { recursive: true });
         mkdirSync(configB, { recursive: true });
         writeFileSync(join(configA, 'settings.json'), JSON.stringify({ sealed_files: [] }), 'utf-8');
@@ -72,7 +70,7 @@ describe('self-improve path scoping helpers', () => {
             stdio: ['ignore', 'pipe', 'pipe'],
         })).toThrow(/Multiple self-improve topics exist/);
     });
-    itWithJq('validate.sh resolves a selected topic via project root and slug', () => {
+    it('validate.sh resolves a selected topic via project root and slug', () => {
         const selected = readJson('node', [RESOLVER, '--project-root', root, '--slug', 'alpha', '--ensure-dirs']);
         writeFileSync(selected.settings_path, JSON.stringify({ sealed_files: [] }), 'utf-8');
         const output = execFileSync('bash', [VALIDATE, '--project-root', root, '--slug', 'alpha'], {

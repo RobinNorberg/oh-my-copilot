@@ -23,80 +23,78 @@ function resolveParentPid(
   if (typeof overrideParentPid === 'number') {
     return overrideParentPid;
   }
+
   if (typeof processRef.ppid === 'number') {
     return processRef.ppid;
   }
+
   if (typeof process.ppid === 'number') {
     return process.ppid;
   }
+
   return undefined;
 }
 
 /**
  * Register MCP-server shutdown hooks for both explicit signals and the implicit
- * "parent process died" case. The MCP standalone server runs as a detached child
- * and may outlive its parent (Claude Code) if signals are not forwarded.
- *
- * Strategy:
- *   1. SIGTERM / SIGINT / stdin-close: call onShutdown immediately.
- *   2. Parent-PID polling: check every `pollIntervalMs` whether the parent is
- *      still alive. If it disappeared, call onShutdown. This covers cases where
- *      the parent crashes without sending a signal.
+ * "parent went away" cases that background agents hit when their stdio pipes
+ * are closed without forwarding SIGTERM/SIGINT.
  */
 export function registerStandaloneShutdownHandlers(
-  options: RegisterStandaloneShutdownHandlersOptions,
-): void {
-  const {
-    onShutdown,
-    processRef = process,
-    parentPid: parentPidOverride,
-    pollIntervalMs = 5_000,
-    getParentPid,
-    setIntervalFn = setInterval,
-    clearIntervalFn = clearInterval,
-  } = options;
+  options: RegisterStandaloneShutdownHandlersOptions
+): { shutdown: (reason: string) => Promise<void> } {
+  const processRef = options.processRef ?? process;
+  const pollIntervalMs = Math.max(100, options.pollIntervalMs ?? 1000);
+  const setIntervalFn = options.setIntervalFn ?? setInterval;
+  const clearIntervalFn = options.clearIntervalFn ?? clearInterval;
+  let shutdownPromise: Promise<void> | null = null;
+  let parentWatch: ReturnType<typeof setInterval> | null = null;
 
-  let shutdownTriggered = false;
-  function triggerOnce(reason: string): void {
-    if (shutdownTriggered) return;
-    shutdownTriggered = true;
-    if (parentPollTimer != null) {
-      clearIntervalFn(parentPollTimer);
-      parentPollTimer = null;
+  const stopParentWatch = (): void => {
+    if (parentWatch !== null) {
+      clearIntervalFn(parentWatch);
+      parentWatch = null;
     }
-    onShutdown(reason);
-  }
+  };
 
-  // 1. Explicit signals
-  processRef.once('SIGTERM', () => triggerOnce('SIGTERM'));
-  processRef.once('SIGINT', () => triggerOnce('SIGINT'));
+  const shutdown = async (reason: string): Promise<void> => {
+    stopParentWatch();
+    if (!shutdownPromise) {
+      shutdownPromise = Promise.resolve(options.onShutdown(reason));
+    }
+    return shutdownPromise;
+  };
 
-  // stdin close — MCP uses stdio transport; when the parent drops the pipe
-  // the server should exit.
-  if (processRef.stdin) {
-    processRef.stdin.once('close', () => triggerOnce('stdin-close'));
-  }
+  const register = (event: string, reason: string): void => {
+    processRef.once(event, () => {
+      void shutdown(reason);
+    });
+  };
 
-  // 2. Parent-PID polling
-  const parentPid = getParentPid
-    ? getParentPid()
-    : resolveParentPid(processRef, parentPidOverride);
+  register('SIGTERM', 'SIGTERM');
+  register('SIGINT', 'SIGINT');
+  register('disconnect', 'parent disconnect');
+  processRef.stdin?.once('end', () => {
+    void shutdown('stdin end');
+  });
+  processRef.stdin?.once('close', () => {
+    void shutdown('stdin close');
+  });
 
-  let parentPollTimer: ReturnType<typeof setInterval> | null = null;
-
-  if (typeof parentPid === 'number' && parentPid > 0) {
-    parentPollTimer = setIntervalFn(() => {
-      try {
-        // process.kill(pid, 0) throws if the process doesn't exist.
-        process.kill(parentPid, 0);
-      } catch {
-        triggerOnce('parent-exit');
+  const expectedParentPid = resolveParentPid(processRef, options.parentPid);
+  if (typeof expectedParentPid === 'number' && expectedParentPid > 1) {
+    const getParentPid = options.getParentPid ?? (() => resolveParentPid(processRef));
+    parentWatch = setIntervalFn(() => {
+      const currentParentPid = getParentPid();
+      if (typeof currentParentPid !== 'number') {
+        return;
+      }
+      if (currentParentPid <= 1 || currentParentPid !== expectedParentPid) {
+        void shutdown(`parent pid changed (${expectedParentPid} -> ${currentParentPid})`);
       }
     }, pollIntervalMs);
-
-    // Unref so the timer doesn't keep the process alive on its own.
-    if (parentPollTimer && typeof (parentPollTimer as NodeJS.Timeout).unref === 'function') {
-      (parentPollTimer as NodeJS.Timeout).unref();
-    }
+    (parentWatch as { unref?: () => void }).unref?.();
   }
+
+  return { shutdown };
 }

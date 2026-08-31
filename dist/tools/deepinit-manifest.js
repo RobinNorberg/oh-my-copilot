@@ -9,6 +9,8 @@
  * - diff: Compare current filesystem to saved manifest
  * - save: Write current filesystem state as manifest
  * - check: Return whether manifest exists and is valid
+ *
+ * @see https://github.com/Yeachan-Heo/oh-my-claudecode/issues/1719
  */
 import { z } from 'zod';
 import { readdirSync, statSync, readFileSync, existsSync, realpathSync } from 'node:fs';
@@ -324,7 +326,6 @@ export const deepinitManifestTool = {
     description: 'Manage the deepinit manifest for incremental AGENTS.md regeneration. ' +
         'Compares directory file lists (not file contents) to detect structural changes. ' +
         'Actions: diff (find changed directories), save (persist current state), check (validate manifest).',
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     category: TOOL_CATEGORIES.DEEPINIT,
     schema: deepinitManifestSchema,
     handler: async (args) => {

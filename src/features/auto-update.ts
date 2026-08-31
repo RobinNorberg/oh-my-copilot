@@ -10,7 +10,7 @@
  * - Configurable update notifications
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
 import { execSync, execFileSync } from 'child_process';
 import { TaskTool } from '../hooks/beads-context/types.js';
@@ -22,20 +22,21 @@ import {
   copyPluginSyncPayload,
   syncInstalledPluginPayload,
 } from '../installer/index.js';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { purgeStalePluginCacheVersions } from '../utils/paths.js';
 import type { NotificationConfig } from '../notifications/types.js';
 import { isAutoUpdateDisabled } from '../lib/security-config.js';
+import { OMC_CONFIG_FILE_REL } from '../lib/paths.js';
 
 /** GitHub repository information */
-export const REPO_OWNER = 'RobinNorberg';
+export const REPO_OWNER = 'Yeachan-Heo';
 export const REPO_NAME = 'oh-my-copilot';
 export const GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
 export const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}`;
 
-const COPILOT_CLI_NPM_PACKAGE = '@github/copilot';
+const CLAUDE_CODE_NPM_PACKAGE = '@anthropic-ai/claude-code';
 
-interface GlobalCopilotCliInstall {
+interface GlobalClaudeCodeInstall {
   status: 'present' | 'absent' | 'unknown';
   version?: string;
   installMethod?: 'npm' | 'native' | 'manual';
@@ -73,7 +74,7 @@ function npmInstallGlobalPackage(packageSpec: string, verbose: boolean = false):
   execFileSync('npm', ['install', '-g', packageSpec], npmExecOptions(verbose));
 }
 
-function parseCopilotCliVersion(output: string): string | undefined {
+function parseClaudeCodeVersion(output: string): string | undefined {
   const trimmed = output.trim();
   if (!trimmed) {
     return undefined;
@@ -82,7 +83,7 @@ function parseCopilotCliVersion(output: string): string | undefined {
   return trimmed.match(/\b(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)\b/)?.[1];
 }
 
-function getFirstResolvedBinaryLine(output: string, binaryName: string): string {
+function getFirstResolvedBinaryPath(output: string, binaryName: string): string {
   const resolved = output
     .split(/\r?\n/)
     .map(line => line.trim())
@@ -95,45 +96,39 @@ function getFirstResolvedBinaryLine(output: string, binaryName: string): string 
   return resolved;
 }
 
-function resolveCopilotBinaryPath(): string | undefined {
+function resolveClaudeBinaryPath(): string | undefined {
   try {
     if (process.platform === 'win32') {
-      return getFirstResolvedBinaryLine(execFileSync('where.exe', ['copilot'], {
+      return getFirstResolvedBinaryPath(execFileSync('where.exe', ['claude'], {
         encoding: 'utf-8',
         stdio: 'pipe',
         timeout: 5000,
         windowsHide: true,
-      }), 'copilot');
+      }), 'claude');
     }
 
-    return getFirstResolvedBinaryLine(execSync('command -v copilot 2>/dev/null || which copilot 2>/dev/null', {
+    return getFirstResolvedBinaryPath(execSync('command -v claude 2>/dev/null || which claude 2>/dev/null', {
       encoding: 'utf-8',
       stdio: 'pipe',
       timeout: 5000,
-    }), 'copilot');
+    }), 'claude');
   } catch {
     return undefined;
   }
 }
 
-/**
- * Detect a Copilot CLI install through the `copilot` executable when npm
- * package metadata is absent. Native (non-npm) Copilot CLI installs do not
- * provide @github/copilot npm package metadata, so they must be treated as
- * native/manual and excluded from npm restoration. (Ported from upstream #3111)
- */
-function detectCopilotCliFromBinary(npmRoot?: string): GlobalCopilotCliInstall {
+function detectClaudeCodeFromBinary(npmRoot?: string): GlobalClaudeCodeInstall {
   try {
-    const versionOutput = String(execFileSync('copilot', ['--version'], {
+    const versionOutput = String(execFileSync('claude', ['--version'], {
       encoding: 'utf-8',
       stdio: 'pipe',
       timeout: 10000,
       ...(process.platform === 'win32' ? { shell: true, windowsHide: true } : {}),
     }) ?? '');
-    const binaryPath = resolveCopilotBinaryPath();
-    const version = parseCopilotCliVersion(versionOutput);
+    const binaryPath = resolveClaudeBinaryPath();
+    const version = parseClaudeCodeVersion(versionOutput);
     if (!version && !binaryPath) {
-      return { status: 'unknown', error: 'copilot --version returned no parseable version and binary path could not be resolved' };
+      return { status: 'unknown', error: 'claude --version returned no parseable version and binary path could not be resolved' };
     }
 
     const normalizedBinaryPath = binaryPath?.replace(/\\/g, '/').toLowerCase();
@@ -158,7 +153,7 @@ function detectCopilotCliFromBinary(npmRoot?: string): GlobalCopilotCliInstall {
   }
 }
 
-function detectGlobalCopilotCliInstall(): GlobalCopilotCliInstall {
+function detectGlobalClaudeCodeInstall(): GlobalClaudeCodeInstall {
   let npmRoot: string | undefined;
 
   try {
@@ -169,15 +164,15 @@ function detectGlobalCopilotCliInstall(): GlobalCopilotCliInstall {
       ...(process.platform === 'win32' ? { windowsHide: true } : {}),
     }) ?? '').trim();
     if (!npmRoot) {
-      const binaryInstall = detectCopilotCliFromBinary();
+      const binaryInstall = detectClaudeCodeFromBinary();
       return binaryInstall.status === 'present'
         ? binaryInstall
         : { status: 'unknown', error: 'npm root -g returned an empty path' };
     }
 
-    const packageJsonPath = join(npmRoot, '@github', 'copilot', 'package.json');
+    const packageJsonPath = join(npmRoot, '@anthropic-ai', 'claude-code', 'package.json');
     if (!existsSync(packageJsonPath)) {
-      const binaryInstall = detectCopilotCliFromBinary(npmRoot);
+      const binaryInstall = detectClaudeCodeFromBinary(npmRoot);
       return binaryInstall.status === 'present' ? binaryInstall : { status: 'absent' };
     }
 
@@ -192,7 +187,7 @@ function detectGlobalCopilotCliInstall(): GlobalCopilotCliInstall {
       installMethod: 'npm',
     };
   } catch (error) {
-    const binaryInstall = detectCopilotCliFromBinary(npmRoot);
+    const binaryInstall = detectClaudeCodeFromBinary(npmRoot);
     if (binaryInstall.status === 'present') {
       return binaryInstall;
     }
@@ -204,20 +199,20 @@ function detectGlobalCopilotCliInstall(): GlobalCopilotCliInstall {
   }
 }
 
-function restoreGlobalCopilotCliIfNeeded(
-  beforeUpdate: GlobalCopilotCliInstall,
+function restoreGlobalClaudeCodeIfNeeded(
+  beforeUpdate: GlobalClaudeCodeInstall,
   verbose: boolean = false,
 ): { restored: boolean } {
   if (beforeUpdate.status !== 'present' || beforeUpdate.installMethod !== 'npm') {
     return { restored: false };
   }
 
-  if (detectGlobalCopilotCliInstall().status === 'present') {
+  if (detectGlobalClaudeCodeInstall().status === 'present') {
     return { restored: false };
   }
 
   const versionSuffix = beforeUpdate.version ? `@${beforeUpdate.version}` : '@latest';
-  const packageSpec = `${COPILOT_CLI_NPM_PACKAGE}${versionSuffix}`;
+  const packageSpec = `${CLAUDE_CODE_NPM_PACKAGE}${versionSuffix}`;
 
   if (verbose) {
     console.log(`[omc update] Restoring global ${packageSpec} after npm update...`);
@@ -225,32 +220,33 @@ function restoreGlobalCopilotCliIfNeeded(
 
   npmInstallGlobalPackage(packageSpec, verbose);
 
-  const afterRestore = detectGlobalCopilotCliInstall();
+  const afterRestore = detectGlobalClaudeCodeInstall();
   if (afterRestore.status !== 'present') {
-    throw new Error(`Global ${COPILOT_CLI_NPM_PACKAGE} was present before update but is still missing after restore`);
+    throw new Error(`Global ${CLAUDE_CODE_NPM_PACKAGE} was present before update but is still missing after restore`);
   }
 
   if (verbose) {
-    console.log(`[omc update] Restored global ${COPILOT_CLI_NPM_PACKAGE}`);
+    console.log(`[omc update] Restored global ${CLAUDE_CODE_NPM_PACKAGE}`);
   }
 
   return { restored: true };
 }
 
 /**
- * Best-effort sync of the Copilot CLI marketplace clone.
- * The marketplace clone at ~/.copilot/plugins/marketplaces/omg/ is used by
- * Copilot CLI to populate the plugin cache. If it's stale, `/plugin install`
+ * Best-effort sync of the Claude Code marketplace clone.
+ * The marketplace clone at ~/.copilot/plugins/marketplaces/omc/ is used by
+ * Claude Code to populate the plugin cache. If it's stale, `/plugin install`
  * and cache rebuilds reinstall old versions. (See #506)
  */
 function syncMarketplaceClone(verbose: boolean = false): { ok: boolean; message: string } {
-  const marketplacePath = join(getClaudeConfigDir(), 'plugins', 'marketplaces', 'omg');
+  const marketplacePath = join(getCopilotConfigDir(), 'plugins', 'marketplaces', 'omc');
   if (!existsSync(marketplacePath)) {
     return { ok: true, message: 'Marketplace clone not found; skipping' };
   }
 
   const stdio = verbose ? 'inherit' : 'pipe';
-  const execOpts = { encoding: 'utf-8' as const, stdio: stdio as any, timeout: 60000 };
+  const execOpts = { encoding: 'utf-8' as const, stdio: stdio as any, timeout: 60000, windowsHide: true };
+  const queryExecOpts = { encoding: 'utf-8' as const, stdio: 'pipe' as const, timeout: 60000, windowsHide: true };
 
   try {
     execFileSync('git', ['-C', marketplacePath, 'fetch', '--all', '--prune'], execOpts);
@@ -258,26 +254,181 @@ function syncMarketplaceClone(verbose: boolean = false): { ok: boolean; message:
     return { ok: false, message: `Failed to fetch marketplace clone: ${err instanceof Error ? err.message : err}` };
   }
 
-  // Ensure we're on main (ignore errors for older clones on different branches)
-  try { execFileSync('git', ['-C', marketplacePath, 'checkout', 'main'], { ...execOpts, timeout: 15000 }); } catch { /* ignore checkout errors on older clones */ }
-
-  // Reset to upstream state -- the marketplace clone is a managed read-only
-  // checkout, so any local modifications (e.g. regenerated dist files) can be
-  // safely discarded.  This avoids the "dirty worktree" failure that
-  // `git pull --ff-only` would hit when untracked/modified files exist (#978).
   try {
-    execFileSync('git', ['-C', marketplacePath, 'reset', '--hard', 'origin/main'], execOpts);
+    execFileSync('git', ['-C', marketplacePath, 'checkout', 'main'], { ...execOpts, timeout: 15000 });
+  } catch {
+    // Fall through to explicit branch verification below.
+  }
+
+  let currentBranch = '';
+  try {
+    currentBranch = String(
+      execFileSync('git', ['-C', marketplacePath, 'rev-parse', '--abbrev-ref', 'HEAD'], queryExecOpts) ?? ''
+    ).trim();
   } catch (err) {
-    return { ok: false, message: `Failed to reset marketplace clone: ${err instanceof Error ? err.message : err}` };
+    return { ok: false, message: `Failed to inspect marketplace clone branch: ${err instanceof Error ? err.message : err}` };
+  }
+
+  if (currentBranch !== 'main') {
+    return {
+      ok: false,
+      message: `Skipped marketplace clone update: expected branch main but found ${currentBranch || 'unknown'}`,
+    };
+  }
+
+  let statusOutput = '';
+  try {
+    statusOutput = String(
+      execFileSync('git', ['-C', marketplacePath, 'status', '--porcelain', '--untracked-files=normal'], queryExecOpts) ?? ''
+    ).trim();
+  } catch (err) {
+    return { ok: false, message: `Failed to inspect marketplace clone status: ${err instanceof Error ? err.message : err}` };
+  }
+
+  if (statusOutput.length > 0) {
+    return {
+      ok: false,
+      message: 'Skipped marketplace clone update: repo has local modifications; commit, stash, or clean it first',
+    };
+  }
+
+  let aheadCount = 0;
+  let behindCount = 0;
+  try {
+    const revListOutput = String(
+      execFileSync('git', ['-C', marketplacePath, 'rev-list', '--left-right', '--count', 'HEAD...origin/main'], queryExecOpts) ?? ''
+    ).trim();
+    const [aheadRaw = '0', behindRaw = '0'] = revListOutput.split(/\s+/);
+    aheadCount = Number.parseInt(aheadRaw, 10) || 0;
+    behindCount = Number.parseInt(behindRaw, 10) || 0;
+  } catch (err) {
+    return { ok: false, message: `Failed to inspect marketplace clone divergence: ${err instanceof Error ? err.message : err}` };
+  }
+
+  if (aheadCount > 0) {
+    return {
+      ok: false,
+      message: 'Skipped marketplace clone update: repo has local commits on main; manual reconciliation required',
+    };
+  }
+
+  if (behindCount === 0) {
+    return { ok: true, message: 'Marketplace clone already up to date' };
   }
 
   try {
-    execFileSync('git', ['-C', marketplacePath, 'clean', '-fd'], execOpts);
-  } catch {
-    // clean is best-effort; untracked leftovers won't break anything
+    execFileSync('git', ['-C', marketplacePath, 'merge', '--ff-only', 'origin/main'], execOpts);
+  } catch (err) {
+    return { ok: false, message: `Failed to fast-forward marketplace clone: ${err instanceof Error ? err.message : err}` };
   }
 
   return { ok: true, message: 'Marketplace clone updated' };
+}
+
+function replaceLastPathSegmentPreservingSeparators(pathValue: string, nextSegment: string): string {
+  const trimmed = pathValue.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  const trailingSeparator = /[\\/]$/.test(trimmed) ? trimmed.slice(-1) : '';
+  const withoutTrailingSeparator = trailingSeparator ? trimmed.slice(0, -1) : trimmed;
+  const lastSeparatorIndex = Math.max(withoutTrailingSeparator.lastIndexOf('/'), withoutTrailingSeparator.lastIndexOf('\\'));
+
+  if (lastSeparatorIndex < 0) {
+    return `${nextSegment}${trailingSeparator}`;
+  }
+
+  return `${withoutTrailingSeparator.slice(0, lastSeparatorIndex + 1)}${nextSegment}${trailingSeparator}`;
+}
+
+function deriveUpdatedPluginInstallPath(
+  existingInstallPath: string | undefined,
+  fallbackInstallPath: string,
+  newVersion: string,
+): string {
+  if (existingInstallPath?.trim()) {
+    const normalized = existingInstallPath.replace(/\\/g, '/').toLowerCase();
+    if (normalized.includes('/plugins/cache/') && normalized.includes('/oh-my-copilot/')) {
+      return replaceLastPathSegmentPreservingSeparators(existingInstallPath, newVersion);
+    }
+  }
+
+  return fallbackInstallPath;
+}
+
+function writeJsonAtomically(path: string, value: unknown): void {
+  const tempPath = `${path}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`);
+    renameSync(tempPath, path);
+  } catch (error) {
+    try {
+      rmSync(tempPath, { force: true });
+    } catch {
+      // Best-effort cleanup only; preserve the original registry on failure.
+    }
+    throw error;
+  }
+}
+
+function syncInstalledPluginRegistryVersion(
+  newVersion: string,
+  fallbackInstallPath: string,
+): { updated: boolean; errors: string[] } {
+  const installedPluginsPath = join(getCopilotConfigDir(), 'plugins', 'installed_plugins.json');
+  if (!existsSync(installedPluginsPath)) {
+    return { updated: false, errors: [] };
+  }
+
+  try {
+    const rawText = readFileSync(installedPluginsPath, 'utf-8');
+    if (!rawText.trim()) {
+      return { updated: false, errors: [] };
+    }
+
+    const raw = JSON.parse(rawText) as unknown;
+    if (!raw || typeof raw !== 'object') {
+      return { updated: false, errors: ['installed_plugins.json has unexpected top-level structure'] };
+    }
+
+    const root = raw as Record<string, unknown>;
+    const pluginsValue = root.plugins && typeof root.plugins === 'object' ? root.plugins : root;
+    const plugins = pluginsValue as Record<string, unknown>;
+    let updated = false;
+
+    for (const [pluginId, entriesValue] of Object.entries(plugins)) {
+      const normalizedPluginId = pluginId.toLowerCase();
+      const isOmcPlugin = normalizedPluginId === 'oh-my-copilot@omc'
+        || normalizedPluginId === 'oh-my-copilot';
+      if (!isOmcPlugin || !Array.isArray(entriesValue)) {
+        continue;
+      }
+
+      for (const entry of entriesValue) {
+        if (!entry || typeof entry !== 'object') {
+          continue;
+        }
+        const pluginEntry = entry as Record<string, unknown>;
+        const existingInstallPath = typeof pluginEntry.installPath === 'string' ? pluginEntry.installPath : undefined;
+        pluginEntry.version = newVersion;
+        pluginEntry.installPath = deriveUpdatedPluginInstallPath(existingInstallPath, fallbackInstallPath, newVersion);
+        updated = true;
+      }
+    }
+
+    if (!updated) {
+      return { updated: false, errors: [] };
+    }
+
+    writeJsonAtomically(installedPluginsPath, raw);
+    return { updated: true, errors: [] };
+  } catch (error) {
+    return {
+      updated: false,
+      errors: [`Failed to update installed_plugins.json: ${error instanceof Error ? error.message : error}`],
+    };
+  }
 }
 
 function syncActivePluginCache(): { synced: boolean; errors: string[] } {
@@ -309,7 +460,7 @@ export function shouldBlockStandaloneUpdateInCurrentSession(): boolean {
 }
 
 export function syncPluginCache(verbose: boolean = false): { synced: boolean; skipped: boolean; errors: string[] } {
-  const pluginCacheRoot = join(getClaudeConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-copilot');
+  const pluginCacheRoot = join(getCopilotConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-copilot');
   if (!existsSync(pluginCacheRoot)) {
     return { synced: false, skipped: true, errors: [] };
   }
@@ -346,6 +497,17 @@ export function syncPluginCache(verbose: boolean = false): { synced: boolean; sk
       }
     }
 
+    if (result.synced && result.errors.length === 0) {
+      // Keep Claude Code's plugin registry update after a successful cache copy.
+      // If copying fails, installed_plugins.json is left untouched so sessions do
+      // not point at a partially refreshed version directory.
+      const registryResult = syncInstalledPluginRegistryVersion(version, versionedPluginCacheRoot);
+      result.errors.push(...registryResult.errors);
+      if (registryResult.updated && verbose) {
+        console.log('[omc update] Updated Claude plugin registry');
+      }
+    }
+
     if (result.synced) {
       console.log('[omc update] Plugin cache synced');
     }
@@ -363,9 +525,9 @@ export function syncPluginCache(verbose: boolean = false): { synced: boolean; sk
 }
 
 /** Installation paths (respects COPILOT_CONFIG_DIR env var) */
-export const COPILOT_CONFIG_DIR = getClaudeConfigDir();
+export const COPILOT_CONFIG_DIR = getCopilotConfigDir();
 export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omc-version.json');
-export const CONFIG_FILE = join(COPILOT_CONFIG_DIR, '.omc-config.json');
+export const CONFIG_FILE = join(COPILOT_CONFIG_DIR, OMC_CONFIG_FILE_REL);
 
 /**
  * Stop hook callback configuration for file logging
@@ -414,17 +576,6 @@ export interface StopCallbackSlackConfig {
 }
 
 /**
- * Stop hook callback configuration for Teams
- */
-export interface StopCallbackTeamsConfig {
-  enabled: boolean;
-  /** Teams incoming webhook URL */
-  webhookUrl?: string;
-  /** Optional tags/mentions — each entry is "DisplayName:AAD-Object-ID" */
-  tagList?: string[];
-}
-
-/**
  * Stop hook callbacks configuration
  */
 export interface StopHookCallbacksConfig {
@@ -432,7 +583,6 @@ export interface StopHookCallbacksConfig {
   telegram?: StopCallbackTelegramConfig;
   discord?: StopCallbackDiscordConfig;
   slack?: StopCallbackSlackConfig;
-  teams?: StopCallbackTeamsConfig;
 }
 
 /**
@@ -499,6 +649,7 @@ export function getOMCConfig(): OMCConfig {
       notificationProfiles: config.notificationProfiles,
       hudEnabled: config.hudEnabled,
       autoUpgradePrompt: config.autoUpgradePrompt,
+      nodeBinary: config.nodeBinary,
     };
   } catch {
     // If config file is invalid, default to disabled for security
@@ -817,15 +968,15 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
  * This is safe to run repeatedly and refreshes local runtime artifacts that may
  * lag behind an updated package or plugin cache.
  */
-export function reconcileUpdateRuntime(options?: { verbose?: boolean }): UpdateReconcileResult {
+export function reconcileUpdateRuntime(options?: { verbose?: boolean; skipGracePeriod?: boolean }): UpdateReconcileResult {
   const errors: string[] = [];
 
   const projectScopedPlugin = isProjectScopedPlugin();
   // Plugin installs execute hooks from <pluginRoot>/hooks/hooks.json. Re-running
-  // the standalone settings.json hook merge during `omcp update` re-injects the
+  // the standalone settings.json hook merge during `omc update` re-injects the
   // legacy ~/.copilot/hooks/* entries and causes duplicate hook execution.
   //
-  // Reconciliation should still refresh shared installer artifacts (copilot-instructions.md,
+  // Reconciliation should still refresh shared installer artifacts (CLAUDE.md,
   // HUD, MCP registry, statusLine, etc.), but it must leave settings.json hook
   // ownership alone for plugin installs so the plugin hook manifest remains the
   // single source of truth.
@@ -879,14 +1030,24 @@ export function reconcileUpdateRuntime(options?: { verbose?: boolean }): UpdateR
 
   // Purge stale plugin cache versions (non-fatal)
   try {
-    const purgeResult = purgeStalePluginCacheVersions();
+    const purgeResult = purgeStalePluginCacheVersions({ skipGracePeriod: options?.skipGracePeriod });
     if (purgeResult.removed > 0 && options?.verbose) {
-      console.log(`[omg] Purged ${purgeResult.removed} stale plugin cache version(s)`);
+      console.log(`[omc] Purged ${purgeResult.removed} stale plugin cache version(s)`);
     }
-    if (purgeResult.errors.length > 0 && options?.verbose) {
-      for (const err of purgeResult.errors) {
-        console.warn(`[omg] Cache purge warning: ${err}`);
-      }
+    if (purgeResult.restored > 0 && options?.verbose) {
+      console.log(`[omc] Restored ${purgeResult.restored} plugin cache version(s) from an interrupted relink`);
+    }
+    // Always surface purge errors and skipped backups, even without --verbose.
+    // Both leave a version path that live sessions resolve through, so a silent
+    // line here reads as a successful update while hooks are broken: a skipped
+    // backup keeps the pinned path unusable for as long as its owner runs, and
+    // forever if that pid was recycled by an unrelated process.
+    // Kept non-fatal — reconciliation must not fail on best-effort cleanup.
+    for (const skipped of purgeResult.skippedPaths) {
+      console.warn(`[omc] Cache purge warning: left a backup to its running owner: ${skipped}`);
+    }
+    for (const err of purgeResult.errors) {
+      console.warn(`[omc] Cache purge warning: ${err}`);
     }
   } catch {
     // Cache purge is best-effort; never block reconciliation
@@ -906,6 +1067,23 @@ export function reconcileUpdateRuntime(options?: { verbose?: boolean }): UpdateR
   };
 }
 
+function resolveOmcBinaryPath(): string {
+  if (process.platform === 'win32') {
+    return getFirstResolvedBinaryPath(execFileSync('where.exe', ['omc.cmd'], {
+      encoding: 'utf-8',
+      stdio: 'pipe',
+      timeout: 5000,
+      windowsHide: true,
+    }), 'omc');
+  }
+
+  return getFirstResolvedBinaryPath(execSync('which omc 2>/dev/null || where omc 2>NUL', {
+    encoding: 'utf-8',
+    stdio: 'pipe',
+    timeout: 5000,
+  }), 'omc');
+}
+
 /**
  * Download and execute the install script to perform an update
  */
@@ -913,6 +1091,7 @@ export async function performUpdate(options?: {
   skipConfirmation?: boolean;
   verbose?: boolean;
   standalone?: boolean;
+  clean?: boolean;
 }): Promise<UpdateResult> {
   const installed = getInstalledVersion();
   const previousVersion = installed?.version ?? null;
@@ -932,25 +1111,25 @@ export async function performUpdate(options?: {
     // Fetch the latest release to get the version
     const release = await fetchLatestRelease();
     const newVersion = release.tag_name.replace(/^v/, '');
-    const copilotCliBeforeUpdate = detectGlobalCopilotCliInstall();
+    const claudeCodeBeforeUpdate = detectGlobalClaudeCodeInstall();
 
     // Use npm for updates on all platforms (install.sh was removed)
     try {
       execSync('npm install -g oh-my-copilot@latest', npmExecOptions(options?.verbose ?? false));
 
       try {
-        restoreGlobalCopilotCliIfNeeded(copilotCliBeforeUpdate, options?.verbose ?? false);
+        restoreGlobalClaudeCodeIfNeeded(claudeCodeBeforeUpdate, options?.verbose ?? false);
       } catch (restoreError) {
         return {
           success: false,
           previousVersion,
           newVersion,
-          message: `Updated to ${newVersion}, but failed to restore global ${COPILOT_CLI_NPM_PACKAGE}`,
+          message: `Updated to ${newVersion}, but failed to restore global ${CLAUDE_CODE_NPM_PACKAGE}`,
           errors: [restoreError instanceof Error ? restoreError.message : String(restoreError)],
         };
       }
 
-      // Sync Copilot CLI marketplace clone so plugin cache picks up new version (#506)
+      // Sync Claude Code marketplace clone so plugin cache picks up new version (#506)
       const marketplaceSync = syncMarketplaceClone(options?.verbose ?? false);
       if (!marketplaceSync.ok && options?.verbose) {
         console.warn(`[omc update] ${marketplaceSync.message}`);
@@ -970,15 +1149,12 @@ export async function performUpdate(options?: {
         // Set flag to prevent infinite loop
         process.env.OMC_UPDATE_RECONCILE = '1';
 
-        // Find the omcp binary path (try omcp first, fall back to omg for compat)
-        const omcPath = execSync('which omcp 2>/dev/null || where omcp 2>NUL || which omg 2>/dev/null || where omg 2>NUL', {
-          encoding: 'utf-8',
-          stdio: 'pipe',
-        }).trim().split('\n')[0];
+        // Find the omc binary path
+        const omcPath = resolveOmcBinaryPath();
 
         // Re-exec with reconcile subcommand
         try {
-          execFileSync(omcPath, ['update-reconcile'], {
+          execFileSync(omcPath, ['update-reconcile', ...(options?.clean ? ['--skip-grace-period'] : [])], {
             encoding: 'utf-8',
             stdio: options?.verbose ? 'inherit' : 'pipe',
             timeout: 60000,
@@ -1011,7 +1187,7 @@ export async function performUpdate(options?: {
         };
       } else {
         // We're in the re-exec'd process - run reconciliation directly
-        const reconcileResult = reconcileUpdateRuntime({ verbose: options?.verbose });
+        const reconcileResult = reconcileUpdateRuntime({ verbose: options?.verbose, skipGracePeriod: options?.clean });
         if (!reconcileResult.success) {
           return {
             success: false,
@@ -1147,7 +1323,7 @@ export async function interactiveUpdate(): Promise<void> {
 
     if (result.success) {
       console.log(`\n✓ ${result.message}`);
-      console.log('\nPlease restart your Copilot CLI session to use the new version.');
+      console.log('\nPlease restart your Claude Code session to use the new version.');
     } else {
       console.error(`\n✗ ${result.message}`);
       if (result.errors) {

@@ -1,7 +1,7 @@
 import { validateAnthropicBaseUrl } from '../utils/ssrf-guard.js';
 const DIRECT_MODEL_ENV_KEYS = ['CLAUDE_MODEL', 'ANTHROPIC_MODEL'];
 const INHERIT_TIER_PRIORITY = ['MEDIUM', 'HIGH', 'LOW'];
-const CLAUDE_TIER_ALIASES = new Set(['sonnet', 'opus', 'haiku']);
+const CLAUDE_TIER_ALIASES = new Set(['sonnet', 'opus', 'haiku', 'fable']);
 const TIER_ENV_KEYS = {
     LOW: [
         'OMC_MODEL_LOW',
@@ -20,13 +20,14 @@ const TIER_ENV_KEYS = {
     ],
 };
 /**
- * Canonical Copilot family defaults.
+ * Canonical Claude family defaults.
  * Keep these date-less so version bumps are a one-line edit per family.
  */
 export const COPILOT_FAMILY_DEFAULTS = {
     HAIKU: 'claude-haiku-4-5',
-    SONNET: 'claude-sonnet-4-6',
+    SONNET: 'claude-sonnet-5',
     OPUS: 'claude-opus-4-8',
+    FABLE: 'claude-fable-5',
 };
 /** Canonical tier->model mapping used as built-in defaults */
 export const BUILTIN_TIER_MODEL_DEFAULTS = {
@@ -34,16 +35,18 @@ export const BUILTIN_TIER_MODEL_DEFAULTS = {
     MEDIUM: COPILOT_FAMILY_DEFAULTS.SONNET,
     HIGH: COPILOT_FAMILY_DEFAULTS.OPUS,
 };
-/** Canonical Copilot high-reasoning variants by family */
-export const COPILOT_FAMILY_HIGH_VARIANTS = {
+/** Canonical Claude high-reasoning variants by family */
+export const CLAUDE_FAMILY_HIGH_VARIANTS = {
     HAIKU: `${COPILOT_FAMILY_DEFAULTS.HAIKU}-high`,
     SONNET: `${COPILOT_FAMILY_DEFAULTS.SONNET}-high`,
     OPUS: `${COPILOT_FAMILY_DEFAULTS.OPUS}-high`,
+    FABLE: `${COPILOT_FAMILY_DEFAULTS.FABLE}-high`,
 };
 /** Built-in defaults for external provider models */
 export const BUILTIN_EXTERNAL_MODEL_DEFAULTS = {
     codexModel: 'gpt-5.3-codex',
     geminiModel: 'gemini-3.1-pro-preview',
+    antigravityModel: 'Gemini 3.1 Pro (High)',
 };
 /**
  * Centralized Model ID Constants
@@ -56,7 +59,7 @@ export const BUILTIN_EXTERNAL_MODEL_DEFAULTS = {
  *   OMC_MODEL_MEDIUM  - Model ID for MEDIUM tier (sonnet-class)
  *   OMC_MODEL_LOW     - Model ID for LOW tier (haiku-class)
  *
- * User config (~/.config/copilot-omg/config.jsonc) can also override
+ * User config (~/.config/claude-omc/config.jsonc) can also override
  * via `routing.tierModels` or per-agent `agents.<name>.model`.
  */
 /**
@@ -64,7 +67,7 @@ export const BUILTIN_EXTERNAL_MODEL_DEFAULTS = {
  *
  * Resolution order:
  * 1. OMC tier env vars (OMC_MODEL_HIGH / OMC_MODEL_MEDIUM / OMC_MODEL_LOW)
- * 2. Copilot CLI provider env vars (for example Bedrock app-profile model IDs)
+ * 2. Claude Code provider env vars (for example Bedrock app-profile model IDs)
  * 3. Anthropic family-default env vars
  * 4. Built-in fallback
  *
@@ -150,7 +153,7 @@ export function getDefaultTierModels() {
     };
 }
 /**
- * Resolve a Copilot family from an arbitrary model ID.
+ * Resolve a Claude family from an arbitrary model ID.
  * Supports Anthropic IDs and provider-prefixed forms (e.g. vertex_ai/...).
  */
 export function resolveClaudeFamily(modelId) {
@@ -163,21 +166,25 @@ export function resolveClaudeFamily(modelId) {
         return 'OPUS';
     if (lower.includes('haiku'))
         return 'HAIKU';
+    if (lower.includes('fable'))
+        return 'FABLE';
     return null;
 }
 /**
- * Resolve a canonical Copilot high variant from a Copilot model ID.
- * Returns null for non-Copilot model IDs.
+ * Resolve a canonical Claude high variant from a Claude model ID.
+ * Returns null for non-Claude model IDs.
  */
 export function getClaudeHighVariantFromModel(modelId) {
     const family = resolveClaudeFamily(modelId);
-    return family ? COPILOT_FAMILY_HIGH_VARIANTS[family] : null;
+    return family ? CLAUDE_FAMILY_HIGH_VARIANTS[family] : null;
 }
 /** Get built-in default model for an external provider */
 export function getBuiltinExternalDefaultModel(provider) {
-    return provider === 'codex'
-        ? BUILTIN_EXTERNAL_MODEL_DEFAULTS.codexModel
-        : BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel;
+    if (provider === 'codex')
+        return BUILTIN_EXTERNAL_MODEL_DEFAULTS.codexModel;
+    if (provider === 'antigravity')
+        return BUILTIN_EXTERNAL_MODEL_DEFAULTS.antigravityModel;
+    return BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel;
 }
 function hasBedrockModelId(modelIds) {
     for (const modelId of modelIds) {
@@ -193,9 +200,9 @@ function hasBedrockModelId(modelIds) {
     return false;
 }
 /**
- * Detect whether Copilot CLI is running on AWS Bedrock.
+ * Detect whether Claude Code is running on AWS Bedrock.
  *
- * Copilot CLI sets CLAUDE_CODE_USE_BEDROCK=1 when configured for Bedrock.
+ * Claude Code sets CLAUDE_CODE_USE_BEDROCK=1 when configured for Bedrock.
  * As a fallback, Bedrock model IDs use prefixed formats like:
  *   - us.anthropic.claude-sonnet-4-6-v1:0
  *   - global.anthropic.claude-sonnet-4-6-v1:0
@@ -206,7 +213,7 @@ function hasBedrockModelId(modelIds) {
  * model IDs with region/inference-profile prefixes.
  */
 export function isBedrock() {
-    // Primary signal: Copilot CLI's own env var
+    // Primary signal: Claude Code's own env var
     if (process.env.CLAUDE_CODE_USE_BEDROCK === '1') {
         return true;
     }
@@ -214,15 +221,32 @@ export function isBedrock() {
     // Direct session model env vars win over lower-precedence tier defaults, so a
     // stale tier/default env must not mark a standard Claude session as Bedrock.
     // Covers region prefixes (us, eu, ap), cross-region (global), and bare (anthropic.)
-    const modelId = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || '';
-    if (modelId && /^((us|eu|ap|global)\.anthropic\.|anthropic\.claude)/i.test(modelId)) {
+    return hasBedrockModelId(getProviderDetectionModelEnvValues());
+}
+/**
+ * Check whether a model ID is a provider-specific identifier that should NOT
+ * be normalized to a bare alias (sonnet/opus/haiku).
+ *
+ * Provider-specific IDs include:
+ *   - Bedrock prefixed: us.anthropic.claude-*, global.anthropic.claude-*, anthropic.claude-*
+ *   - Bedrock ARN: arn:aws:bedrock:...
+ *   - Vertex AI: vertex_ai/...
+ *
+ * These IDs must be passed through to the CLI as-is because normalizing them
+ * to aliases like "sonnet" causes Claude Code to expand them to Anthropic API
+ * model names (e.g. claude-sonnet-5) which are invalid on Bedrock/Vertex.
+ */
+export function isProviderSpecificModelId(modelId) {
+    // Bedrock prefixed formats (region.anthropic.claude-*, anthropic.claude-*)
+    if (/^((us|eu|ap|global)\.anthropic\.|anthropic\.claude)/i.test(modelId)) {
         return true;
     }
-    // Also recognize Bedrock ARN-based inference profiles (ported from upstream #2866).
-    if (modelId
-        && /^arn:aws(-[^:]+)?:bedrock:/i.test(modelId)
-        && /:(inference-profile|application-inference-profile)\//i.test(modelId)
-        && modelId.toLowerCase().includes('claude')) {
+    // Bedrock ARN formats
+    if (/^arn:aws(-[^:]+)?:bedrock:/i.test(modelId)) {
+        return true;
+    }
+    // Vertex AI prefixed format
+    if (modelId.toLowerCase().startsWith('vertex_ai/')) {
         return true;
     }
     return false;
@@ -234,7 +258,7 @@ export function isBedrock() {
  * The `[1m]` suffix is a Claude Code internal annotation for the 1M context
  * window variant. It is valid for the parent session's API path but is
  * rejected by the sub-agent spawning runtime, which strips it to a bare
- * Anthropic model ID (e.g., `claude-sonnet-4-6`) that is invalid on Bedrock.
+ * Anthropic model ID (e.g., `claude-sonnet-5`) that is invalid on Bedrock.
  */
 export function hasExtendedContextSuffix(modelId) {
     return /\[\d+[mk]\]$/i.test(modelId);
@@ -251,9 +275,9 @@ export function isSubagentSafeModelId(modelId) {
     return isProviderSpecificModelId(modelId) && !hasExtendedContextSuffix(modelId);
 }
 /**
- * Detect whether Copilot CLI is running on Google Vertex AI.
+ * Detect whether Claude Code is running on Google Vertex AI.
  *
- * Copilot CLI sets CLAUDE_CODE_USE_VERTEX=1 when configured for Vertex AI.
+ * Claude Code sets CLAUDE_CODE_USE_VERTEX=1 when configured for Vertex AI.
  * Vertex model IDs typically use a "vertex_ai/" prefix.
  *
  * On Vertex, passing bare tier names causes errors because the provider
@@ -279,38 +303,14 @@ function hasNonClaudeModelId(modelIds) {
     return false;
 }
 /**
- * Check whether a model ID string is a provider-specific identifier that
- * should NOT be normalized to a bare alias (sonnet/opus/haiku).
- *
- * Provider-specific IDs include:
- *   - Bedrock prefixed: us.anthropic.claude-*, global.anthropic.claude-*, anthropic.claude-*
- *   - Bedrock ARN: arn:aws:bedrock:...
- *   - Vertex AI: vertex_ai/...
- *
- * These IDs must be passed through to the CLI as-is because normalizing them
- * would produce invalid model names on the target provider. (issue #1695)
- */
-export function isProviderSpecificModelId(modelId) {
-    return isBedrockModelId(modelId) || isVertexModelId(modelId);
-}
-/** Check if a model ID string matches Bedrock patterns */
-export function isBedrockModelId(modelId) {
-    return /^(us\.|global\.|eu\.|ap\.)?anthropic\.claude-/.test(modelId)
-        || modelId.startsWith('arn:aws:bedrock:');
-}
-/** Check if a model ID string matches Vertex AI patterns */
-export function isVertexModelId(modelId) {
-    return modelId.startsWith('vertex_ai/');
-}
-/**
- * Detect whether OMC should avoid passing Copilot-specific model tier
+ * Detect whether OMC should avoid passing Claude-specific model tier
  * names (sonnet/opus/haiku) to the Agent tool.
  *
  * Returns true when:
  * - User explicitly set OMC_ROUTING_FORCE_INHERIT=true
  * - Running on AWS Bedrock — needs full Bedrock model IDs, not bare tier names
  * - Running on Google Vertex AI — needs full Vertex model paths
- * - A non-Copilot model ID is detected (CC Switch, LiteLLM, etc.)
+ * - A non-Claude model ID is detected (CC Switch, LiteLLM, etc.)
  * - A custom ANTHROPIC_BASE_URL points to a non-Anthropic endpoint
  */
 export function isNonCopilotProvider() {
@@ -318,20 +318,20 @@ export function isNonCopilotProvider() {
     if (process.env.OMC_ROUTING_FORCE_INHERIT === 'true') {
         return true;
     }
-    // AWS Bedrock: Copilot via AWS, but needs full Bedrock model IDs
+    // AWS Bedrock: Claude via AWS, but needs full Bedrock model IDs
     if (isBedrock()) {
         return true;
     }
-    // Google Vertex AI: Copilot via GCP, needs full Vertex model paths
+    // Google Vertex AI: Claude via GCP, needs full Vertex model paths
     if (isVertexAI()) {
         return true;
     }
-    // Check CLAUDE_MODEL / ANTHROPIC_MODEL for non-Copilot model IDs
+    // Check the active model env value for non-Claude model IDs.
+    // Direct CLAUDE_MODEL/ANTHROPIC_MODEL env vars intentionally short-circuit
+    // lower-precedence tier defaults so stale tier envs do not force inheritance.
     // Note: this check comes AFTER Bedrock/Vertex because their model IDs
-    // contain "copilot" and would incorrectly return false here.
-    const modelId = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || '';
-    const modelLower = modelId.toLowerCase();
-    if (modelId && !modelLower.includes('claude') && !modelLower.includes('copilot')) {
+    // contain "claude" and would incorrectly return false here.
+    if (hasNonClaudeModelId(getProviderDetectionModelEnvValues())) {
         return true;
     }
     // Custom base URL suggests a proxy/gateway (CC Switch, LiteLLM, OneAPI, etc.)
@@ -341,7 +341,7 @@ export function isNonCopilotProvider() {
         const validation = validateAnthropicBaseUrl(baseUrl);
         if (!validation.allowed) {
             console.error(`[SSRF Guard] Rejecting ANTHROPIC_BASE_URL: ${validation.reason}`);
-            // Treat invalid URLs as non-Copilot to prevent potential SSRF
+            // Treat invalid URLs as non-Claude to prevent potential SSRF
             return true;
         }
         if (!baseUrl.includes('anthropic.com')) {

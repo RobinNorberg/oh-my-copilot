@@ -1,4 +1,5 @@
-export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok';
+import type { WorkerLaunchDescriptor } from './types.js';
+export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
 export interface CliAgentContract {
     agentType: CliAgentType;
     binary: string;
@@ -35,6 +36,7 @@ export interface CliBinaryValidation {
     resolvedPath?: string;
     reason?: string;
 }
+declare function untrustedPathPatterns(): RegExp[];
 declare function getTrustedPrefixes(): string[];
 declare function isTrustedPrefix(resolvedPath: string): boolean;
 /** @deprecated Backward-compat shim; non-interactive shells should generally skip RC files. */
@@ -47,6 +49,7 @@ export declare function clearResolvedPathCache(): void;
 export declare function validateCliBinaryPath(binary: string): CliBinaryValidation;
 export declare const _testInternals: {
     UNTRUSTED_PATH_PATTERNS: RegExp[];
+    untrustedPathPatterns: typeof untrustedPathPatterns;
     getTrustedPrefixes: typeof getTrustedPrefixes;
     isTrustedPrefix: typeof isTrustedPrefix;
 };
@@ -64,6 +67,8 @@ export declare function validateCliAvailable(agentType: CliAgentType): void;
 export declare function resolveValidatedBinaryPath(agentType: CliAgentType): string;
 export declare function buildLaunchArgs(agentType: CliAgentType, config: WorkerLaunchConfig): string[];
 export declare function buildWorkerArgv(agentType: CliAgentType, config: WorkerLaunchConfig): string[];
+export declare function validateWorkerLaunchDescriptor(value: unknown): WorkerLaunchDescriptor;
+export declare function buildValidatedWorkerLaunchDescriptor(agentType: CliAgentType, config: WorkerLaunchConfig, appendedArgs?: readonly string[]): WorkerLaunchDescriptor;
 export declare function buildWorkerCommand(agentType: CliAgentType, config: WorkerLaunchConfig): string;
 export declare function getWorkerEnv(teamName: string, workerName: string, agentType: CliAgentType, env?: NodeJS.ProcessEnv): Record<string, string>;
 export declare function parseCliOutput(agentType: CliAgentType, rawOutput: string): string;
@@ -76,7 +81,7 @@ export declare function isPromptModeAgent(agentType: CliAgentType): boolean;
  *
  * When running on a non-standard provider (Bedrock, Vertex), workers need
  * the provider-specific model ID passed explicitly via --model. Without it,
- * Claude Code falls back to its built-in default (claude-sonnet-4-6) which
+ * Claude Code falls back to its built-in default (claude-sonnet-5) which
  * is invalid on these providers.
  *
  * Resolution order:
@@ -92,6 +97,16 @@ export declare function resolveClaudeWorkerModel(env?: NodeJS.ProcessEnv): strin
  * Get the extra CLI args needed to pass an instruction in prompt mode.
  * Returns empty array if the agent does not support prompt mode.
  */
+/**
+ * Whether a CLI agent's headless/prompt mode is supported on the given platform.
+ * Antigravity (`agy`) `-p`/`--print` takes the prompt as an argv value and cannot
+ * read it from stdin; on Windows that argv path is unreliable and `agy` has known
+ * upstream Windows `-p` limitations. This centralizes the same platform support
+ * decision the advisor (`scripts/run-provider-advisor.js`) enforces for `omc ask`.
+ */
+export declare function isHeadlessSupportedOnPlatform(agentType: CliAgentType, platform?: NodeJS.Platform): boolean;
+/** Throw a clear, actionable error if the agent's headless mode is unsupported here. */
+export declare function assertHeadlessSupported(agentType: CliAgentType): void;
 export declare function getPromptModeArgs(agentType: CliAgentType, instruction: string): string[];
 export {};
 //# sourceMappingURL=model-contract.d.ts.map

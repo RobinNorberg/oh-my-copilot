@@ -47,13 +47,14 @@ describe('Agent Registry Validation', () => {
   });
   test('agent count matches documentation', () => {
     const agentsDir = path.join(__dirname, '../../agents');
-    const promptFiles = fs.readdirSync(agentsDir).filter((file) => file.endsWith('.agent.md'));
-    expect(promptFiles.length).toBe(19);
+    const promptFiles = fs.readdirSync(agentsDir).filter((file) => file.endsWith('.md') && file !== 'AGENTS.md');
+    expect(promptFiles.length).toBe(20);
   });
 
-  test('agent count is always 19 (no conditional agents)', () => {
+  test('agent count is always 20 (no conditional agents)', () => {
     const agents = getAgentDefinitions();
-    expect(Object.keys(agents).length).toBe(19);
+    expect(Object.keys(agents).length).toBe(20);
+    expect(Object.keys(agents)).toContain('tracer');
     // Consolidated agents should not be in registry
     expect(Object.keys(agents)).not.toContain('harsh-critic');
     expect(Object.keys(agents)).not.toContain('quality-reviewer');
@@ -61,12 +62,12 @@ describe('Agent Registry Validation', () => {
     expect(Object.keys(agents)).not.toContain('build-fixer');
   });
 
-  test('all agents have .agent.md prompt files', () => {
+  test('all agents have .md prompt files', () => {
     const agents = Object.keys(getAgentDefinitions());
     const agentsDir = path.join(__dirname, '../../agents');
-    const promptFiles = fs.readdirSync(agentsDir).filter((file) => file.endsWith('.agent.md'));
+    const promptFiles = fs.readdirSync(agentsDir).filter((file) => file.endsWith('.md') && file !== 'AGENTS.md');
     for (const file of promptFiles) {
-      const name = file.replace(/\.agent\.md$/, '');
+      const name = file.replace(/\.md$/, '');
       expect(agents, `Missing registry entry for agent: ${name}`).toContain(name);
     }
   });
@@ -74,7 +75,7 @@ describe('Agent Registry Validation', () => {
   test('all registry agents are exported from index.ts', async () => {
     const registryAgents = Object.keys(getAgentDefinitions());
     const exports = await import('../agents/index.js') as Record<string, unknown>;
-    const deprecatedAliases = ['researcher'];
+    const deprecatedAliases = ['researcher', 'tdd-guide'];
     for (const name of registryAgents) {
       if (deprecatedAliases.includes(name)) continue;
       const exportName = name.replace(/-([a-z])/g, (_: string, c: string) => c.toUpperCase()) + 'Agent';
@@ -94,7 +95,7 @@ describe('Agent Registry Validation', () => {
     expect(agents.architect?.model).toBe('us.anthropic.claude-opus-4-6-v1:0');
     expect(agents.executor?.model).toBe('us.anthropic.claude-sonnet-4-6-v1:0');
     expect(agents.explore?.model).toBe('us.anthropic.claude-haiku-4-5-v1:0');
-    // tracer agent is upstream-only; fork doesn't ship it.
+    expect(agents.tracer?.model).toBe('us.anthropic.claude-sonnet-4-6-v1:0');
   });
 
 

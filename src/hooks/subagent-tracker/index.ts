@@ -7,6 +7,9 @@
  * - Detect stuck/stale agents (>5 min without progress)
  * - HUD integration for agent status display
  * - Automatic cleanup of orphaned agent state
+ *
+ * Storage: session-scoped under .omg/state/sessions/{sessionId}/subagent-tracking-state.json
+ * Locking:  withFileLockSync from file-lock.ts (O_CREAT|O_EXCL advisory lock)
  */
 
 import {
@@ -15,12 +18,19 @@ import {
   writeFileSync,
   mkdirSync,
   unlinkSync,
+  readdirSync,
 } from "fs";
-import { join } from "path";
-import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { dirname, join } from "path";
+import { getOmcRoot, resolveSessionStatePaths } from '../../lib/worktree-paths.js';
+import { resolveSessionId } from '../../lib/session-id.js';
+import { withFileLockSync, lockPathFor } from '../../lib/file-lock.js';
 import { recordAgentStart, recordAgentStop } from './session-replay.js';
 import { recordMissionAgentStart, recordMissionAgentStop } from '../../hud/mission-board.js';
-import { isProcessAlive } from '../../platform/process-utils.js';
+import {
+  collectWorktreeDirtyEvidence,
+  isAbnormalTermination,
+  type WorktreeDirtyEvidence,
+} from './worktree-evidence.js';
 
 // ============================================================================
 // Types
@@ -32,6 +42,10 @@ export interface SubagentInfo {
   started_at: string;
   parent_mode: string; // 'autopilot' | 'ultrawork' | 'team' | 'ralph' | 'none'
   task_description?: string;
+  /** Explicit user-chosen name (Agent tool `name`) — authoritative address. */
+  name?: string;
+  /** User-supplied description (Agent tool `description`) — display/address fallback (#3665). */
+  description?: string;
   file_ownership?: string[];
   status: "running" | "completed" | "failed";
   completed_at?: string;
@@ -40,6 +54,11 @@ export interface SubagentInfo {
   tool_usage?: ToolUsageEntry[];
   token_usage?: TokenUsage;
   model?: string;
+  synthetic?: boolean;
+  telemetry_status?: "unmatched_stop";
+  telemetry_note?: string;
+  /** Bounded dirty-worktree evidence recorded on abnormal termination (#3663). */
+  worktree_evidence?: WorktreeDirtyEvidence;
 }
 
 export interface ToolUsageEntry {
@@ -88,6 +107,10 @@ export interface SubagentStartInput {
   hook_event_name: "SubagentStart";
   agent_id: string;
   agent_type: string;
+  /** Explicit user-chosen name (Agent tool `name`) — authoritative address. */
+  name?: string;
+  /** User-supplied description (Agent tool `description`) — display/address fallback (#3665). */
+  description?: string;
   prompt?: string;
   model?: string;
 }
@@ -98,8 +121,8 @@ export interface SubagentStopInput {
   cwd: string;
   permission_mode: string;
   hook_event_name: "SubagentStop";
-  agent_id: string;
-  agent_type: string;
+  agent_id?: string;
+  agent_type?: string;
   output?: string;
   /** @deprecated The SDK does not provide a success field. Use inferred status instead. */
   success?: boolean;
@@ -113,6 +136,7 @@ export interface HookOutput {
     agent_count?: number;
     stale_agents?: string[];
   };
+  suppressOutput?: boolean;
 }
 
 export interface AgentIntervention {
@@ -131,26 +155,33 @@ export const DEADLOCK_CHECK_THRESHOLD = 3;
 // Constants
 // ============================================================================
 
-const STATE_FILE = "subagent-tracking.json";
+const STATE_NAME = "subagent-tracking";
 const STALE_THRESHOLD_MS = 5 * 60 * 1000;
 const MAX_COMPLETED_AGENTS = 100;
-// Split lock timings: acquisition stays short to avoid long Atomics.wait
-// stalls, while stale detection stays generous so healthy writers are not
-// treated as abandoned during slow disk read/merge/write sequences.
-const LOCK_ACQUIRE_TIMEOUT_MS = 500;
-const LOCK_STALE_MS = 30_000;
-const LOCK_RETRY_MS = 50;
 const WRITE_DEBOUNCE_MS = 100;
 const MAX_FLUSH_RETRIES = 3;
 const FLUSH_RETRY_BASE_MS = 50;
+const UNTRACKED_NATIVE_FORK_AGENT_TYPE = "untracked-native-fork";
+const UNMATCHED_STOP_TELEMETRY_NOTE =
+  "SubagentStop arrived without a matching SubagentStart; native Agent/Task start telemetry was not observed.";
 
-// Per-directory debounce state for batching writes (avoids race conditions)
+// Lock options — short timeout for hot-path writes; stale detection generous
+// so healthy writers aren't mistakenly treated as abandoned.
+const LOCK_OPTS = {
+  timeoutMs: 500,
+  retryDelayMs: 50,
+  staleLockMs: 30_000,
+};
+
+// Per write-path debounce state for batching writes (avoids race conditions).
+// Key: resolved write path (session-scoped when sessionId present, legacy otherwise).
+// Each session gets its own slot so concurrent sessions don't overwrite each other.
 const pendingWrites = new Map<
   string,
-  { state: SubagentTrackingState; timeout: ReturnType<typeof setTimeout> }
+  { state: SubagentTrackingState; sessionId: string | undefined; directory: string; timeout: ReturnType<typeof setTimeout> }
 >();
 
-// Guard against duplicate concurrent flushes per directory
+// Guard against duplicate concurrent flushes per write path
 const flushInProgress = new Set<string>();
 
 /**
@@ -166,6 +197,38 @@ function syncSleep(ms: number): void {
     // Main thread: Atomics.wait throws on Node <22
     const waitUntil = Date.now() + ms;
     while (Date.now() < waitUntil) { /* spin */ }
+  }
+}
+
+// ============================================================================
+// Path helpers
+// ============================================================================
+
+/**
+ * Resolve the effective write path for subagent-tracking given a cwd and
+ * optional session ID. This is the canonical path used for all I/O.
+ */
+function resolveWritePath(directory: string, sessionId?: string): string {
+  const paths = resolveSessionStatePaths(STATE_NAME, sessionId, directory);
+  return paths.effectiveWrite as string;
+}
+
+/**
+ * Resolve the effective read path for subagent-tracking given a cwd and
+ * optional session ID (probes session-scoped first, then legacy fallback).
+ */
+function resolveReadPath(directory: string, sessionId?: string): string {
+  const paths = resolveSessionStatePaths(STATE_NAME, sessionId, directory);
+  return paths.effectiveRead as string;
+}
+
+/**
+ * Ensure the directory for a file path exists.
+ */
+function ensureParentDir(filePath: string): void {
+  const dir = dirname(filePath);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
   }
 }
 
@@ -237,146 +300,116 @@ export function mergeTrackerStates(
 // ============================================================================
 
 /**
- * Acquire file lock with timeout and stale lock detection
+ * Get the state file path for a given directory and optional session ID.
+ * Creates the parent directory if it does not exist.
+ *
+ * @deprecated Use resolveWritePath / resolveReadPath for new code.
  */
-function acquireLock(directory: string): boolean {
-  const lockPath = join(getOmcRoot(directory), "state", "subagent-tracker.lock");
-  const lockDir = join(getOmcRoot(directory), "state");
-
-  if (!existsSync(lockDir)) {
-    mkdirSync(lockDir, { recursive: true });
-  }
-
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < LOCK_ACQUIRE_TIMEOUT_MS) {
-    try {
-      // Check for stale lock (older than timeout or dead process)
-      if (existsSync(lockPath)) {
-        const lockContent = readFileSync(lockPath, "utf-8");
-        const lockParts = lockContent.split(":");
-        if (lockParts.length < 2) {
-          // Malformed lock content, treat as corrupted: best-effort remove and backoff
-          try {
-            unlinkSync(lockPath);
-          } catch {
-            /* ignore */
-          }
-          syncSleep(LOCK_RETRY_MS);
-          continue;
-        }
-        const [lockPidStr, lockTimeStr] = lockParts;
-        const lockPid = parseInt(lockPidStr, 10);
-        const lockTime = parseInt(lockTimeStr, 10);
-        // Non-integer PID or timestamp indicates corrupted lock; remove and retry with backoff
-        if (isNaN(lockPid) || isNaN(lockTime)) {
-          try {
-            unlinkSync(lockPath);
-          } catch {
-            /* ignore */
-          }
-          syncSleep(LOCK_RETRY_MS);
-          continue;
-        }
-        const isStale = Date.now() - lockTime > LOCK_STALE_MS;
-        const isDeadProcess = !isNaN(lockPid) && !isProcessAlive(lockPid);
-
-        if (isStale || isDeadProcess) {
-          // Stale lock or dead process, remove it
-          try {
-            unlinkSync(lockPath);
-          } catch {
-            /* ignore stale lock removal errors */
-          }
-        } else {
-          // Lock is held by a live process, wait and retry
-          syncSleep(LOCK_RETRY_MS);
-          continue;
-        }
-      }
-
-      // Try to create lock atomically with PID:timestamp
-      writeFileSync(lockPath, `${process.pid}:${Date.now()}`, { flag: "wx" });
-      return true;
-    } catch (e: any) {
-      if (e.code === "EEXIST") {
-        // Lock exists, retry
-        syncSleep(LOCK_RETRY_MS);
-        continue;
-      }
-      return false;
-    }
-  }
-
-  return false; // Timeout
-}
-
-/**
- * Release file lock
- */
-function releaseLock(directory: string): void {
-  const lockPath = join(getOmcRoot(directory), "state", "subagent-tracker.lock");
-  try {
-    unlinkSync(lockPath);
-  } catch {
-    // Ignore errors
-  }
-}
-
-/**
- * Get the state file path
- */
-export function getStateFilePath(directory: string): string {
-  const stateDir = join(getOmcRoot(directory), "state");
-  if (!existsSync(stateDir)) {
-    mkdirSync(stateDir, { recursive: true });
-  }
-  return join(stateDir, STATE_FILE);
+export function getStateFilePath(directory: string, sessionId?: string): string {
+  const p = resolveWritePath(directory, sessionId);
+  ensureParentDir(p);
+  return p;
 }
 
 /**
  * Read tracking state directly from disk, bypassing the pending writes cache.
  * Used during flush to get the latest on-disk state for merging.
+ *
+ * When sessionId is provided, reads the session-scoped file (or legacy fallback).
+ * When sessionId is absent, reads the legacy file. If the legacy file doesn't exist
+ * but session-scoped files do exist under this directory, merges them all — this
+ * preserves backward-compat for callers that read without a session ID after state
+ * was written exclusively to session-scoped paths.
  */
-export function readDiskState(directory: string): SubagentTrackingState {
-  const statePath = getStateFilePath(directory);
+export function readDiskState(directory: string, sessionId?: string): SubagentTrackingState {
+  const empty = (): SubagentTrackingState => ({
+    agents: [],
+    total_spawned: 0,
+    total_completed: 0,
+    total_failed: 0,
+    last_updated: new Date().toISOString(),
+  });
 
-  if (!existsSync(statePath)) {
-    return {
-      agents: [],
-      total_spawned: 0,
-      total_completed: 0,
-      total_failed: 0,
-      last_updated: new Date().toISOString(),
-    };
+  const readFile = (p: string): SubagentTrackingState | null => {
+    if (!existsSync(p)) return null;
+    try {
+      return JSON.parse(readFileSync(p, "utf-8")) as SubagentTrackingState;
+    } catch (error) {
+      console.error("[SubagentTracker] Error reading disk state:", error);
+      return null;
+    }
+  };
+
+  if (sessionId) {
+    // Session-scoped read: read sessionScoped path EXCLUSIVELY (no legacy fallback).
+    // Legacy fallback would leak agents/counters from the pre-session file into a
+    // fresh session on its first read — see executeFlush which calls this before
+    // merging a delta into disk state.
+    const paths = resolveSessionStatePaths(STATE_NAME, sessionId, directory);
+    return readFile(paths.sessionScoped) ?? empty();
   }
 
+  // Legacy read: try the legacy path first
+  const legacyState = readFile(resolveReadPath(directory, undefined));
+  if (legacyState) return legacyState;
+
+  // Legacy file absent — scan session-scoped files and merge them all.
+  // This handles the backward-compat case where a hook wrote to session-scoped paths
+  // but the caller reads without a session ID (e.g. after flushPendingWrites).
+  const sessionsDir = join(getOmcRoot(directory), 'state', 'sessions');
+  if (!existsSync(sessionsDir)) return empty();
+
+  let merged = empty();
   try {
-    const content = readFileSync(statePath, "utf-8");
-    return JSON.parse(content);
-  } catch (error) {
-    console.error("[SubagentTracker] Error reading disk state:", error);
-    return {
-      agents: [],
-      total_spawned: 0,
-      total_completed: 0,
-      total_failed: 0,
-      last_updated: new Date().toISOString(),
-    };
+    const entries = readdirSync(sessionsDir, { withFileTypes: true });
+    const normalizedName = `${STATE_NAME}-state.json`;
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const sessionState = readFile(join(sessionsDir, entry.name, normalizedName));
+      if (sessionState) {
+        merged = mergeTrackerStates(merged, sessionState);
+      }
+    }
+  } catch {
+    // readdirSync failed — return empty
   }
+
+  return merged;
 }
 
 /**
  * Read tracking state from file.
- * If there's a pending write for this directory, returns it instead of reading disk.
+ * If there's a pending write for this directory/session, returns it instead of reading disk.
+ *
+ * When sessionId is provided, looks for a pending write keyed by the exact session-scoped
+ * write path (precise, no cross-session contamination).
+ *
+ * When sessionId is absent, returns the pending write for the legacy path if present,
+ * then falls back to checking if any pending write belongs to this directory (any session)
+ * — this preserves backward-compat for callers that wrote with a session ID (e.g. via a
+ * hook) and then read back without one immediately afterward.
  */
-export function readTrackingState(directory: string): SubagentTrackingState {
-  const pending = pendingWrites.get(directory);
+export function readTrackingState(directory: string, sessionId?: string): SubagentTrackingState {
+  // Pending writes are keyed by write path (session-scoped when sid present)
+  const writePath = resolveWritePath(directory, sessionId);
+  const pending = pendingWrites.get(writePath);
   if (pending) {
     return pending.state;
   }
 
-  return readDiskState(directory);
+  // When no sessionId is given, check if there is a pending write associated with this
+  // exact directory (any session). Each entry stores its origin directory so we can
+  // match without string prefix heuristics.
+  if (!sessionId) {
+    const normalizedDir = join(directory); // normalize separators via path.join
+    for (const entry of pendingWrites.values()) {
+      if (entry.directory === normalizedDir) {
+        return entry.state;
+      }
+    }
+  }
+
+  return readDiskState(directory, sessionId);
 }
 
 /**
@@ -385,8 +418,10 @@ export function readTrackingState(directory: string): SubagentTrackingState {
 function writeTrackingStateImmediate(
   directory: string,
   state: SubagentTrackingState,
+  sessionId?: string,
 ): void {
-  const statePath = getStateFilePath(directory);
+  const statePath = resolveWritePath(directory, sessionId);
+  ensureParentDir(statePath);
   state.last_updated = new Date().toISOString();
 
   try {
@@ -398,22 +433,65 @@ function writeTrackingStateImmediate(
 
 /**
  * Execute the flush: lock -> re-read disk -> merge -> write -> unlock.
+ * Uses withFileLockSync from file-lock.ts for proper O_CREAT|O_EXCL locking.
  * Returns true on success, false if lock could not be acquired.
  */
-export function executeFlush(directory: string, pendingState: SubagentTrackingState): boolean {
-  if (!acquireLock(directory)) {
-    return false;
-  }
+export function executeFlush(
+  directory: string,
+  pendingState: SubagentTrackingState,
+  sessionId?: string,
+): boolean {
+  const writePath = resolveWritePath(directory, sessionId);
+  ensureParentDir(writePath);
+  const lockPath = lockPathFor(writePath);
 
   try {
-    // Re-read latest disk state to avoid overwriting concurrent changes
-    const diskState = readDiskState(directory);
-    const merged = mergeTrackerStates(diskState, pendingState);
-    writeTrackingStateImmediate(directory, merged);
+    withFileLockSync(lockPath, () => {
+      // Re-read latest disk state to avoid overwriting concurrent changes
+      const diskState = readDiskState(directory, sessionId);
+      const merged = mergeTrackerStates(diskState, pendingState);
+      writeTrackingStateImmediate(directory, merged, sessionId);
+    }, LOCK_OPTS);
     return true;
-  } finally {
-    releaseLock(directory);
+  } catch {
+    return false;
   }
+}
+
+/**
+ * Durable merge-and-write for a caller that ALREADY holds the state lock.
+ *
+ * R1 (#3663): the state lock is a non-reentrant O_CREAT|O_EXCL advisory lock
+ * (src/lib/file-lock.ts) and isLockStale() sees the CURRENT process as alive, so
+ * a nested acquisition can never succeed. Routing through writeTrackingState +
+ * flushPendingWrites from inside a lock scope therefore busy-spins for the whole
+ * LOCK_OPTS.timeoutMs (500ms of wasted hook budget, and Atomics.wait throws on
+ * the main thread so the wait is a spin) and then degrades to an UNLOCKED,
+ * NON-MERGE-AWARE writeTrackingStateImmediate fallback that overwrites whatever
+ * a concurrent writer landed on disk.
+ *
+ * This helper does the same disk re-read + merge + atomic write as executeFlush
+ * without re-entering the lock, so an in-lock caller gets a durable, merged
+ * write at zero lock-contention cost.
+ *
+ * Any debounced pending write for the same path is consumed: `state` is derived
+ * from readTrackingState(), which already serves the pending snapshot, so
+ * dropping it cannot lose data and stops a later debounce from resurrecting a
+ * pre-mutation snapshot.
+ */
+function writeTrackingStateLocked(
+  directory: string,
+  state: SubagentTrackingState,
+  sessionId?: string,
+): void {
+  const writePath = resolveWritePath(directory, sessionId);
+  const pending = pendingWrites.get(writePath);
+  if (pending) {
+    clearTimeout(pending.timeout);
+    pendingWrites.delete(writePath);
+  }
+  const merged = mergeTrackerStates(readDiskState(directory, sessionId), state);
+  writeTrackingStateImmediate(directory, merged, sessionId);
 }
 
 /**
@@ -421,41 +499,49 @@ export function executeFlush(directory: string, pendingState: SubagentTrackingSt
  * The flush callback acquires the lock, re-reads disk state, merges with
  * the pending in-memory delta, and writes atomically.
  * If the lock cannot be acquired, retries with exponential backoff (max 3 retries).
+ *
+ * Keyed by write path (session-scoped when sessionId is present) so different
+ * sessions never share a debounce slot.
  */
 export function writeTrackingState(
   directory: string,
   state: SubagentTrackingState,
+  sessionId?: string,
 ): void {
-  const existing = pendingWrites.get(directory);
+  const writePath = resolveWritePath(directory, sessionId);
+  const normalizedDir = join(directory); // normalize separators
+  const existing = pendingWrites.get(writePath);
   if (existing) {
     clearTimeout(existing.timeout);
   }
 
   const timeout = setTimeout(() => {
-    const pending = pendingWrites.get(directory);
+    const pending = pendingWrites.get(writePath);
     if (!pending) return;
 
-    pendingWrites.delete(directory);
+    pendingWrites.delete(writePath);
 
-    // Guard against duplicate concurrent flushes for the same directory
-    if (flushInProgress.has(directory)) {
+    // Guard against duplicate concurrent flushes for the same path
+    if (flushInProgress.has(writePath)) {
       // Re-queue: put it back and let the next debounce cycle handle it
-      pendingWrites.set(directory, {
+      pendingWrites.set(writePath, {
         state: pending.state,
+        sessionId,
+        directory: normalizedDir,
         timeout: setTimeout(() => {
-          writeTrackingState(directory, pending.state);
+          writeTrackingState(directory, pending.state, sessionId);
         }, WRITE_DEBOUNCE_MS),
       });
       return;
     }
 
-    flushInProgress.add(directory);
+    flushInProgress.add(writePath);
 
     try {
       // Try flush with bounded retries on lock failure
       let success = false;
       for (let attempt = 0; attempt < MAX_FLUSH_RETRIES; attempt++) {
-        success = executeFlush(directory, pending.state);
+        success = executeFlush(directory, pending.state, sessionId);
         if (success) break;
         // Exponential backoff before retry
         syncSleep(FLUSH_RETRY_BASE_MS * Math.pow(2, attempt));
@@ -466,19 +552,21 @@ export function writeTrackingState(
           `[SubagentTracker] Failed to flush after ${MAX_FLUSH_RETRIES} retries for ${directory}. Data retained in memory for next attempt.`,
         );
         // Put data back in pending so the next writeTrackingState call will retry
-        pendingWrites.set(directory, {
+        pendingWrites.set(writePath, {
           state: pending.state,
+          sessionId,
+          directory: normalizedDir,
           timeout: setTimeout(() => {
             // No-op: data is just stored, will be picked up by next write or flushPendingWrites
           }, 0),
         });
       }
     } finally {
-      flushInProgress.delete(directory);
+      flushInProgress.delete(writePath);
     }
   }, WRITE_DEBOUNCE_MS);
 
-  pendingWrites.set(directory, { state, timeout });
+  pendingWrites.set(writePath, { state, sessionId, directory: normalizedDir, timeout });
 }
 
 /**
@@ -486,12 +574,17 @@ export function writeTrackingState(
  * Call this in tests before cleanup to ensure state is persisted.
  */
 export function flushPendingWrites(): void {
-  for (const [directory, pending] of pendingWrites) {
+  for (const pending of pendingWrites.values()) {
     clearTimeout(pending.timeout);
-    // Use executeFlush for merge-aware writes; fall back to direct write
-    // only if lock acquisition fails (test environments with no contention)
-    if (!executeFlush(directory, pending.state)) {
-      writeTrackingStateImmediate(directory, pending.state);
+    try {
+      // Use the same merge-aware locked flush as the debounced path.
+      // On lock failure, fall back to a direct write so tests with no
+      // contention still persist state.
+      if (!executeFlush(pending.directory, pending.state, pending.sessionId)) {
+        writeTrackingStateImmediate(pending.directory, pending.state, pending.sessionId);
+      }
+    } catch (error) {
+      console.error("[SubagentTracker] Error during flushPendingWrites:", error);
     }
   }
   pendingWrites.clear();
@@ -570,185 +663,363 @@ export function getStaleAgents(state: SubagentTrackingState): SubagentInfo[] {
  * Process SubagentStart event
  */
 export function processSubagentStart(input: SubagentStartInput): HookOutput {
-  if (!acquireLock(input.cwd)) {
-    return { continue: true }; // Fail gracefully
-  }
+  const sessionId = resolveSessionId({ context: 'hook', hookPayload: input });
+  const writePath = resolveWritePath(input.cwd, sessionId);
+  ensureParentDir(writePath);
+  const lockPath = lockPathFor(writePath);
 
   try {
-    const state = readTrackingState(input.cwd);
-    const parentMode = detectParentMode(input.cwd);
-    const startedAt = new Date().toISOString();
-    const taskDescription = input.prompt?.substring(0, 200); // Truncate for storage
-    const existingAgent = state.agents.find((agent) => agent.agent_id === input.agent_id);
-    const isDuplicateRunningStart = existingAgent?.status === "running";
-    let trackedAgent: SubagentInfo;
+    return withFileLockSync(lockPath, () => {
+      const state = readTrackingState(input.cwd, sessionId);
+      const parentMode = detectParentMode(input.cwd);
+      const startedAt = new Date().toISOString();
+      const taskDescription = input.prompt?.substring(0, 200); // Truncate for storage
+      // Agent-tool name/description (may be absent for legacy hook payloads).
+      const agentName = input.name?.trim() || undefined;
+      const agentDescription = input.description?.trim() || undefined;
+      const existingAgent = state.agents.find((agent) => agent.agent_id === input.agent_id);
+      const isDuplicateRunningStart = existingAgent?.status === "running";
+      let trackedAgent: SubagentInfo;
 
-    if (existingAgent) {
-      existingAgent.agent_type = input.agent_type;
-      existingAgent.parent_mode = parentMode;
-      existingAgent.task_description = taskDescription;
-      existingAgent.model = input.model;
+      if (existingAgent) {
+        existingAgent.agent_type = input.agent_type;
+        existingAgent.parent_mode = parentMode;
+        existingAgent.task_description = taskDescription;
+        existingAgent.model = input.model;
+        // Only overwrite identity fields when the payload carries them, so a
+        // legacy/partial payload cannot wipe previously recorded name/description.
+        if (agentName) existingAgent.name = agentName;
+        if (agentDescription) existingAgent.description = agentDescription;
 
-      if (existingAgent.status !== "running") {
-        existingAgent.status = "running";
-        existingAgent.started_at = startedAt;
-        existingAgent.completed_at = undefined;
-        existingAgent.duration_ms = undefined;
-        existingAgent.output_summary = undefined;
+        if (existingAgent.status !== "running") {
+          existingAgent.status = "running";
+          existingAgent.started_at = startedAt;
+          existingAgent.completed_at = undefined;
+          existingAgent.duration_ms = undefined;
+          existingAgent.output_summary = undefined;
+          // B4 (#3663): a reused agent ID must not carry stale dirty-worktree
+          // evidence from a previous abnormal termination into the new run.
+          // Clearing on the transition to running guarantees a later NORMAL
+          // stop cannot surface stale dirty state/counts that belong to an
+          // older lifecycle.
+          existingAgent.worktree_evidence = undefined;
+          state.total_spawned++;
+        }
+        trackedAgent = existingAgent;
+      } else {
+        // Create new agent entry
+        const agentInfo: SubagentInfo = {
+          agent_id: input.agent_id,
+          agent_type: input.agent_type,
+          started_at: startedAt,
+          parent_mode: parentMode,
+          task_description: taskDescription,
+          status: "running",
+          model: input.model,
+          name: agentName,
+          description: agentDescription,
+        };
+
+        // Add to state
+        state.agents.push(agentInfo);
         state.total_spawned++;
+        trackedAgent = agentInfo;
       }
-      trackedAgent = existingAgent;
-    } else {
-      // Create new agent entry
-      const agentInfo: SubagentInfo = {
-        agent_id: input.agent_id,
-        agent_type: input.agent_type,
-        started_at: startedAt,
-        parent_mode: parentMode,
-        task_description: taskDescription,
-        status: "running",
-        model: input.model,
+
+      // Write updated state (debounced; outside lock scope intentionally — flush is fine)
+      writeTrackingState(input.cwd, state, sessionId);
+
+      if (!isDuplicateRunningStart) {
+        // Record to session replay JSONL for /trace
+        try {
+          recordAgentStart(input.cwd, input.session_id, input.agent_id, input.agent_type, input.prompt, parentMode, input.model, input.description, input.name);
+        } catch { /* best-effort */ }
+
+        try {
+          recordMissionAgentStart(input.cwd, {
+            sessionId: input.session_id,
+            agentId: input.agent_id,
+            agentType: input.agent_type,
+            parentMode,
+            taskDescription: input.prompt,
+            at: trackedAgent.started_at,
+          }, sessionId);
+        } catch { /* best-effort */ }
+      }
+
+      // Check for stale agents
+      const staleAgents = getStaleAgents(state);
+
+      return {
+        continue: true,
+        hookSpecificOutput: {
+          hookEventName: "SubagentStart",
+          additionalContext: `Agent ${input.agent_type} started (${input.agent_id})`,
+          agent_count: state.agents.filter((a) => a.status === "running").length,
+          stale_agents: staleAgents.map((a) => a.agent_id),
+        },
       };
-
-      // Add to state
-      state.agents.push(agentInfo);
-      state.total_spawned++;
-      trackedAgent = agentInfo;
-    }
-
-    // Write updated state
-    writeTrackingState(input.cwd, state);
-
-    if (!isDuplicateRunningStart) {
-      // Record to session replay JSONL for /trace
-      try {
-        recordAgentStart(input.cwd, input.session_id, input.agent_id, input.agent_type, input.prompt, parentMode, input.model);
-      } catch { /* best-effort */ }
-
-      try {
-        recordMissionAgentStart(input.cwd, {
-          sessionId: input.session_id,
-          agentId: input.agent_id,
-          agentType: input.agent_type,
-          parentMode,
-          taskDescription: input.prompt,
-          at: trackedAgent.started_at,
-        });
-      } catch { /* best-effort */ }
-    }
-
-    // Check for stale agents
-    const staleAgents = getStaleAgents(state);
-
-    return {
-      continue: true,
-      hookSpecificOutput: {
-        hookEventName: "SubagentStart",
-        additionalContext: `Agent ${input.agent_type} started (${input.agent_id})`,
-        agent_count: state.agents.filter((a) => a.status === "running").length,
-        stale_agents: staleAgents.map((a) => a.agent_id),
-      },
-    };
-  } finally {
-    releaseLock(input.cwd);
+    }, LOCK_OPTS);
+  } catch {
+    return { continue: true }; // Fail gracefully if lock cannot be acquired
   }
+}
+
+/**
+ * Find a single running agent that can be safely reconciled against an
+ * unmatched Stop event. The tracking state is already session-scoped, so any
+ * running entry here belongs to the current session. Reconciliation is only
+ * considered reliable when there is exactly one candidate (optionally narrowed
+ * by agent_type metadata) — otherwise the choice would be ambiguous and could
+ * close the wrong agent. Returns the index of the candidate, or -1.
+ */
+function findReconcilableRunningAgent(
+  state: SubagentTrackingState,
+  agentType?: string,
+): number {
+  const candidates: number[] = [];
+  for (let i = 0; i < state.agents.length; i++) {
+    const agent = state.agents[i];
+    if (agent.status !== "running") continue;
+    if (agentType && agent.agent_type !== agentType) continue;
+    candidates.push(i);
+  }
+  return candidates.length === 1 ? candidates[0] : -1;
+}
+
+/**
+ * Mark running agents that have exceeded the stale threshold as failed. Used
+ * during unmatched Stop reconciliation so native fork stop events carrying an
+ * unknown agent_id cannot leave running entries lingering forever. Returns the
+ * number of agents reaped.
+ */
+function reapStaleRunningAgents(
+  state: SubagentTrackingState,
+  nowIso: string,
+): number {
+  const now = new Date(nowIso).getTime();
+  let reaped = 0;
+  for (const agent of state.agents) {
+    if (agent.status !== "running") continue;
+    const startTime = new Date(agent.started_at).getTime();
+    if (now - startTime > STALE_THRESHOLD_MS) {
+      agent.status = "failed";
+      agent.completed_at = nowIso;
+      agent.duration_ms = now - startTime;
+      agent.output_summary =
+        "Marked as stale during unmatched stop reconciliation - exceeded timeout";
+      state.total_failed++;
+      reaped++;
+    }
+  }
+  return reaped;
 }
 
 /**
  * Process SubagentStop event
  */
 export function processSubagentStop(input: SubagentStopInput): HookOutput {
-  if (!acquireLock(input.cwd)) {
-    return { continue: true }; // Fail gracefully
+  const sessionId = resolveSessionId({ context: 'hook', hookPayload: input });
+  const writePath = resolveWritePath(input.cwd, sessionId);
+  ensureParentDir(writePath);
+  const lockPath = lockPathFor(writePath);
+
+  // Issue #3663: collect dirty-worktree evidence OUTSIDE the session-state
+  // lock. The collector is bounded by EVIDENCE_DEADLINE_MS (4s) — comfortably
+  // below the 5s SubagentStop hook budget with the 500ms run.cjs cushion — so
+  // the durable state write below can never be starved (B5). Holding the lock
+  // that long would also drop concurrent stop hooks (LOCK_OPTS.timeoutMs is
+  // 500ms). READ-ONLY, fail-closed, fail-open: a budget timeout degrades to a
+  // non-dirty evidence kind, never a thrown hook, and never commits/resets/
+  // removes anything.
+  let abnormalEvidence: WorktreeDirtyEvidence | undefined;
+  if (isAbnormalTermination(input)) {
+    try {
+      abnormalEvidence = collectWorktreeDirtyEvidence(input.cwd);
+    } catch { /* evidence is best-effort; never break the stop hook */ }
   }
 
   try {
-    const state = readTrackingState(input.cwd);
+    return withFileLockSync(lockPath, () => {
+      const state = readTrackingState(input.cwd, sessionId);
 
-    // Find the agent
-    const agentIndex = state.agents.findIndex(
-      (a) => a.agent_id === input.agent_id,
-    );
+      // B2 (#3663): lifecycle success derives consistently from the abnormal
+      // classification — never from the unreliable SDK `success` field (which
+      // defaults to "completed" when undefined, even for API-error/stalled
+      // terminations). The same classification already gates the dirty-evidence
+      // collection above, so tracking status, counters, replay, and mission
+      // surfaces can never disagree about whether a stop was abnormal.
+      const abnormal = isAbnormalTermination(input);
+      const succeeded = !abnormal;
+      const nowIso = new Date().toISOString();
 
-    // SDK does not provide `success` field, so default to 'completed' when undefined (Bug #1 fix)
-    const succeeded = input.success !== false;
+      // Find the agent by exact agent_id first.
+      let agentIndex = input.agent_id
+        ? state.agents.findIndex((a) => a.agent_id === input.agent_id)
+        : -1;
 
-    if (agentIndex !== -1) {
-      const agent = state.agents[agentIndex];
-      agent.status = succeeded ? "completed" : "failed";
-      agent.completed_at = new Date().toISOString();
-
-      // Calculate duration
-      const startTime = new Date(agent.started_at).getTime();
-      const endTime = new Date(agent.completed_at).getTime();
-      agent.duration_ms = endTime - startTime;
-
-      // Store output summary (truncated)
-      if (input.output) {
-        agent.output_summary = input.output.substring(0, 500);
+      // Native fork stop events can arrive with an agent_id that was never
+      // registered by SubagentStart (#3252). When the exact lookup misses,
+      // attempt a safe fallback reconciliation against running agents in this
+      // (session-scoped) state before falling back to reap + create-and-close,
+      // so the running entry cannot leak as "running" forever.
+      if (agentIndex === -1 && input.agent_id) {
+        agentIndex = findReconcilableRunningAgent(state, input.agent_type);
       }
 
-      // Update counters
-      if (succeeded) {
-        state.total_completed++;
-      } else {
-        state.total_failed++;
+      if (agentIndex !== -1) {
+        const agent = state.agents[agentIndex];
+        agent.status = succeeded ? "completed" : "failed";
+        agent.completed_at = nowIso;
+
+        // Calculate duration
+        const startTime = new Date(agent.started_at).getTime();
+        agent.duration_ms = new Date(nowIso).getTime() - startTime;
+
+        // Store output summary (truncated)
+        if (input.output) {
+          agent.output_summary = input.output.substring(0, 500);
+        }
+
+        // Update counters
+        if (succeeded) {
+          state.total_completed++;
+        } else {
+          state.total_failed++;
+        }
+      } else if (input.agent_id) {
+        // No exact or fallback match. Reap any stale running agents so unmatched
+        // fork stops cannot accumulate "running" entries forever, then record
+        // this stop as an explicitly synthetic closed entry. Avoid duration_ms: 0
+        // and agent_type: "unknown" because those look like real telemetry.
+        reapStaleRunningAgents(state, nowIso);
+
+        const synthetic: SubagentInfo = {
+          agent_id: input.agent_id,
+          agent_type: input.agent_type || UNTRACKED_NATIVE_FORK_AGENT_TYPE,
+          started_at: nowIso,
+          parent_mode: detectParentMode(input.cwd),
+          status: succeeded ? "completed" : "failed",
+          completed_at: nowIso,
+          output_summary: input.output ? input.output.substring(0, 500) : undefined,
+          synthetic: true,
+          telemetry_status: "unmatched_stop",
+          telemetry_note: UNMATCHED_STOP_TELEMETRY_NOTE,
+        };
+        state.agents.push(synthetic);
+        agentIndex = state.agents.length - 1;
+
+        if (succeeded) {
+          state.total_completed++;
+        } else {
+          state.total_failed++;
+        }
       }
-    }
 
-    // Evict oldest completed agents if over limit
-    const completedAgents = state.agents.filter(
-      (a) => a.status === "completed" || a.status === "failed",
-    );
-    if (completedAgents.length > MAX_COMPLETED_AGENTS) {
-      // Sort by completed_at and keep only the most recent
-      completedAgents.sort((a, b) => {
-        const timeA = a.completed_at ? new Date(a.completed_at).getTime() : 0;
-        const timeB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
-        return timeB - timeA; // Newest first
-      });
+      // Capture the closed agent before eviction may reorder/remove entries.
+      const stoppedAgent =
+        agentIndex !== -1 ? state.agents[agentIndex] : undefined;
 
-      const toRemove = new Set(
-        completedAgents.slice(MAX_COMPLETED_AGENTS).map((a) => a.agent_id),
+      // Issue #3663: attach the dirty-worktree evidence collected outside the
+      // lock to the closed agent entry BEFORE the state write so the
+      // coordinator can see uncommitted work in the agent's (isolated) worktree
+      // before running destructive cleanup. READ-ONLY and fail-closed.
+      if (stoppedAgent && abnormalEvidence) {
+        stoppedAgent.worktree_evidence = abnormalEvidence;
+      }
+
+      // B3 (#3663): synthetic native-fork stops must increment the replay dirty
+      // counter BEFORE the replay write (which is the last statement before the
+      // hook returns). If the state write is durable and the replay write
+      // happens to be slow, the hook's fail-open timeout could otherwise return
+      // with the trace summary never having seen the dirty stop. recordAgentStop
+      // is sync + append-only and is the replay surface's own counter; calling it
+      // immediately after the state write (same lock scope) makes the ordering
+      // deterministic.
+
+      // Evict oldest completed agents if over limit
+      const completedAgents = state.agents.filter(
+        (a) => a.status === "completed" || a.status === "failed",
       );
-      state.agents = state.agents.filter((a) => !toRemove.has(a.agent_id));
-    }
+      if (completedAgents.length > MAX_COMPLETED_AGENTS) {
+        // Sort by completed_at and keep only the most recent
+        completedAgents.sort((a, b) => {
+          const timeA = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+          const timeB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+          return timeB - timeA; // Newest first
+        });
 
-    // Write updated state
-    writeTrackingState(input.cwd, state);
+        const toRemove = new Set(
+          completedAgents.slice(MAX_COMPLETED_AGENTS).map((a) => a.agent_id),
+        );
+        state.agents = state.agents.filter((a) => !toRemove.has(a.agent_id));
+      }
 
-    // Record to session replay JSONL for /trace
-    // Fix: SDK doesn't populate agent_type in SubagentStop, so use tracked state
-    try {
-      const trackedAgent = agentIndex !== -1 ? state.agents[agentIndex] : undefined;
-      const agentType = trackedAgent?.agent_type || input.agent_type || 'unknown';
-      recordAgentStop(input.cwd, input.session_id, input.agent_id, agentType, succeeded, trackedAgent?.duration_ms);
-    } catch { /* best-effort */ }
+      // B8 + R1 (#3663): write the tracking state DURABLY before the hook
+      // returns. writeTrackingState alone is debounced (100ms) and its flush can
+      // be re-queued on lock contention, so the hook could otherwise return with
+      // the evidence still only in memory.
+      //
+      // R1: the durable write must NOT route through writeTrackingState +
+      // flushPendingWrites from here. This whole body runs inside
+      // withFileLockSync on the state lock, the lock is non-reentrant
+      // (O_CREAT|O_EXCL) and its staleness check sees this very process as alive,
+      // so the nested acquisition burned the full LOCK_OPTS.timeoutMs (500ms) of
+      // hook budget spinning and then degraded to an unlocked, non-merge-aware
+      // overwrite that could clobber a concurrent writer's disk state.
+      // writeTrackingStateLocked does the identical disk re-read + merge +
+      // atomic write under the lock this frame already holds, so the state is
+      // durable and merged with no reacquisition and no fallback path.
+      writeTrackingStateLocked(input.cwd, state, sessionId);
 
-    try {
-      recordMissionAgentStop(input.cwd, {
-        sessionId: input.session_id,
-        agentId: input.agent_id,
-        success: succeeded,
-        outputSummary: agentIndex !== -1 ? state.agents[agentIndex]?.output_summary : input.output,
-        at: agentIndex !== -1 ? state.agents[agentIndex]?.completed_at : new Date().toISOString(),
-      });
-    } catch { /* best-effort */ }
+      if (input.agent_id) {
+        // Record to session replay JSONL for /trace
+        // Fix: SDK doesn't populate agent_type in SubagentStop, so use tracked state
+        try {
+          const agentType = stoppedAgent?.agent_type || input.agent_type || UNTRACKED_NATIVE_FORK_AGENT_TYPE;
+          const baseStopMetadata = stoppedAgent?.synthetic
+            ? { synthetic: true, telemetry_status: stoppedAgent.telemetry_status, reason: stoppedAgent.telemetry_note }
+            : undefined;
+          const evidence = stoppedAgent?.worktree_evidence;
+          const stopMetadata = evidence && evidence.kind === "dirty"
+            ? {
+                ...(baseStopMetadata ?? {}),
+                dirty_worktree: {
+                  tracked: evidence.trackedCount,
+                  untracked: evidence.untrackedCount,
+                  ignored: evidence.ignoredCount,
+                  worktree_root: evidence.worktreeRoot ?? "",
+                  truncated: evidence.truncated,
+                },
+              }
+            : baseStopMetadata;
+          recordAgentStop(input.cwd, input.session_id, input.agent_id, agentType, succeeded, stoppedAgent?.duration_ms, stopMetadata);
+        } catch { /* best-effort */ }
 
-    const runningCount = state.agents.filter(
-      (a) => a.status === "running",
-    ).length;
+        try {
+          recordMissionAgentStop(input.cwd, {
+            sessionId: input.session_id,
+            agentId: input.agent_id,
+            success: succeeded,
+            outputSummary: stoppedAgent?.output_summary ?? input.output,
+            at: stoppedAgent?.completed_at ?? nowIso,
+          }, sessionId);
+        } catch { /* best-effort */ }
+      }
 
-    return {
-      continue: true,
-      hookSpecificOutput: {
-        hookEventName: "SubagentStop",
-        additionalContext: `Agent ${input.agent_type} ${succeeded ? "completed" : "failed"} (${input.agent_id})`,
-        agent_count: runningCount,
-      },
-    };
-  } finally {
-    releaseLock(input.cwd);
+      // B3 (#3663): the replay surface must already have observed the stop
+      // before the hook returns. recordAgentStop above (sync, append-only)
+      // runs inside the lock scope immediately after the durable state write;
+      // on a synthetic native-fork stop whose dirty worktree is recorded, the
+      // replay's dirty counter is incremented BEFORE the hook's fail-open
+      // return path, so a slow replay write can never swallow the evidence.
+      return {
+        continue: true,
+        suppressOutput: true,
+      };
+    }, LOCK_OPTS);
+  } catch {
+    return { continue: true }; // Fail gracefully if lock cannot be acquired
   }
 }
 
@@ -759,37 +1030,39 @@ export function processSubagentStop(input: SubagentStopInput): HookOutput {
 /**
  * Cleanup stale agents (mark as failed)
  */
-export function cleanupStaleAgents(directory: string): number {
-  if (!acquireLock(directory)) {
-    return 0; // Could not acquire lock
-  }
+export function cleanupStaleAgents(directory: string, sessionId?: string): number {
+  const writePath = resolveWritePath(directory, sessionId);
+  ensureParentDir(writePath);
+  const lockPath = lockPathFor(writePath);
 
   try {
-    const state = readTrackingState(directory);
-    const staleAgents = getStaleAgents(state);
+    return withFileLockSync(lockPath, () => {
+      const state = readTrackingState(directory, sessionId);
+      const staleAgents = getStaleAgents(state);
 
-    if (staleAgents.length === 0) {
-      return 0;
-    }
-
-    for (const stale of staleAgents) {
-      const agentIndex = state.agents.findIndex(
-        (a) => a.agent_id === stale.agent_id,
-      );
-      if (agentIndex !== -1) {
-        state.agents[agentIndex].status = "failed";
-        state.agents[agentIndex].completed_at = new Date().toISOString();
-        state.agents[agentIndex].output_summary =
-          "Marked as stale - exceeded timeout";
-        state.total_failed++;
+      if (staleAgents.length === 0) {
+        return 0;
       }
-    }
 
-    writeTrackingState(directory, state);
+      for (const stale of staleAgents) {
+        const agentIndex = state.agents.findIndex(
+          (a) => a.agent_id === stale.agent_id,
+        );
+        if (agentIndex !== -1) {
+          state.agents[agentIndex].status = "failed";
+          state.agents[agentIndex].completed_at = new Date().toISOString();
+          state.agents[agentIndex].output_summary =
+            "Marked as stale - exceeded timeout";
+          state.total_failed++;
+        }
+      }
 
-    return staleAgents.length;
-  } finally {
-    releaseLock(directory);
+      writeTrackingState(directory, state, sessionId);
+
+      return staleAgents.length;
+    }, LOCK_OPTS);
+  } catch {
+    return 0; // Could not acquire lock
   }
 }
 
@@ -805,16 +1078,16 @@ export interface ActiveAgentSnapshot {
   lastUpdatedAt?: string;
 }
 
-export function getActiveAgentSnapshot(directory: string): ActiveAgentSnapshot {
-  const state = readTrackingState(directory);
+export function getActiveAgentSnapshot(directory: string, sessionId?: string): ActiveAgentSnapshot {
+  const state = readTrackingState(directory, sessionId);
   return {
     count: state.agents.filter((a) => a.status === "running").length,
     lastUpdatedAt: state.last_updated,
   };
 }
 
-export function getActiveAgentCount(directory: string): number {
-  return getActiveAgentSnapshot(directory).count;
+export function getActiveAgentCount(directory: string, sessionId?: string): number {
+  return getActiveAgentSnapshot(directory, sessionId).count;
 }
 
 /**
@@ -823,29 +1096,30 @@ export function getActiveAgentCount(directory: string): number {
 export function getAgentsByType(
   directory: string,
   agentType: string,
+  sessionId?: string,
 ): SubagentInfo[] {
-  const state = readTrackingState(directory);
+  const state = readTrackingState(directory, sessionId);
   return state.agents.filter((a) => a.agent_type === agentType);
 }
 
 /**
  * Get all running agents
  */
-export function getRunningAgents(directory: string): SubagentInfo[] {
-  const state = readTrackingState(directory);
+export function getRunningAgents(directory: string, sessionId?: string): SubagentInfo[] {
+  const state = readTrackingState(directory, sessionId);
   return state.agents.filter((a) => a.status === "running");
 }
 
 /**
  * Get tracking stats
  */
-export function getTrackingStats(directory: string): {
+export function getTrackingStats(directory: string, sessionId?: string): {
   running: number;
   completed: number;
   failed: number;
   total: number;
 } {
-  const state = readTrackingState(directory);
+  const state = readTrackingState(directory, sessionId);
   return {
     running: state.agents.filter((a) => a.status === "running").length,
     completed: state.total_completed,
@@ -863,31 +1137,34 @@ export function recordToolUsage(
   agentId: string,
   toolName: string,
   success?: boolean,
+  sessionId?: string,
 ): void {
-  if (!acquireLock(directory)) return;
+  const writePath = resolveWritePath(directory, sessionId);
+  ensureParentDir(writePath);
+  const lockPath = lockPathFor(writePath);
 
   try {
-    const state = readTrackingState(directory);
-    const agent = state.agents.find(
-      (a) => a.agent_id === agentId && a.status === "running",
-    );
+    withFileLockSync(lockPath, () => {
+      const state = readTrackingState(directory, sessionId);
+      const agent = state.agents.find(
+        (a) => a.agent_id === agentId && a.status === "running",
+      );
 
-    if (agent) {
-      if (!agent.tool_usage) agent.tool_usage = [];
-      // Keep last 50 tool usages per agent to prevent unbounded growth
-      if (agent.tool_usage.length >= 50) {
-        agent.tool_usage = agent.tool_usage.slice(-49);
+      if (agent) {
+        if (!agent.tool_usage) agent.tool_usage = [];
+        // Keep last 50 tool usages per agent to prevent unbounded growth
+        if (agent.tool_usage.length >= 50) {
+          agent.tool_usage = agent.tool_usage.slice(-49);
+        }
+        agent.tool_usage.push({
+          tool_name: toolName,
+          timestamp: new Date().toISOString(),
+          success,
+        });
+        writeTrackingState(directory, state, sessionId);
       }
-      agent.tool_usage.push({
-        tool_name: toolName,
-        timestamp: new Date().toISOString(),
-        success,
-      });
-      writeTrackingState(directory, state);
-    }
-  } finally {
-    releaseLock(directory);
-  }
+    }, LOCK_OPTS);
+  } catch { /* best-effort */ }
 }
 
 /**
@@ -900,39 +1177,42 @@ export function recordToolUsageWithTiming(
   toolName: string,
   durationMs: number,
   success: boolean,
+  sessionId?: string,
 ): void {
-  if (!acquireLock(directory)) return;
+  const writePath = resolveWritePath(directory, sessionId);
+  ensureParentDir(writePath);
+  const lockPath = lockPathFor(writePath);
 
   try {
-    const state = readTrackingState(directory);
-    const agent = state.agents.find(
-      (a) => a.agent_id === agentId && a.status === "running",
-    );
+    withFileLockSync(lockPath, () => {
+      const state = readTrackingState(directory, sessionId);
+      const agent = state.agents.find(
+        (a) => a.agent_id === agentId && a.status === "running",
+      );
 
-    if (agent) {
-      if (!agent.tool_usage) agent.tool_usage = [];
-      if (agent.tool_usage.length >= 50) {
-        agent.tool_usage = agent.tool_usage.slice(-49);
+      if (agent) {
+        if (!agent.tool_usage) agent.tool_usage = [];
+        if (agent.tool_usage.length >= 50) {
+          agent.tool_usage = agent.tool_usage.slice(-49);
+        }
+        agent.tool_usage.push({
+          tool_name: toolName,
+          timestamp: new Date().toISOString(),
+          duration_ms: durationMs,
+          success,
+        });
+        writeTrackingState(directory, state, sessionId);
       }
-      agent.tool_usage.push({
-        tool_name: toolName,
-        timestamp: new Date().toISOString(),
-        duration_ms: durationMs,
-        success,
-      });
-      writeTrackingState(directory, state);
-    }
-  } finally {
-    releaseLock(directory);
-  }
+    }, LOCK_OPTS);
+  } catch { /* best-effort */ }
 }
 
 /**
  * Generate a formatted dashboard of all running agents
  * Used for debugging parallel agent execution in ultrawork mode
  */
-export function getAgentDashboard(directory: string): string {
-  const state = readTrackingState(directory);
+export function getAgentDashboard(directory: string, sessionId?: string): string {
+  const state = readTrackingState(directory, sessionId);
   const running = state.agents.filter((a) => a.status === "running");
 
   if (running.length === 0) return "";
@@ -948,9 +1228,13 @@ export function getAgentDashboard(directory: string): string {
     const toolCount = agent.tool_usage?.length || 0;
     const lastTool =
       agent.tool_usage?.[agent.tool_usage.length - 1]?.tool_name || "-";
-    const desc = agent.task_description
-      ? ` "${agent.task_description.substring(0, 60)}"`
-      : "";
+    // Prefer the Agent-tool description (with short id for disambiguation,
+    // #3665) over the prompt-derived task description when available.
+    const desc = agent.description
+      ? ` "${agent.description.substring(0, 60)} (${agent.agent_id.substring(0, 7)})"`
+      : agent.task_description
+        ? ` "${agent.task_description.substring(0, 60)}"`
+        : "";
 
     lines.push(
       `  [${agent.agent_id.substring(0, 7)}] ${shortType} (${elapsed}s) tools:${toolCount} last:${lastTool}${desc}`,
@@ -970,7 +1254,7 @@ export function getAgentDashboard(directory: string): string {
  * Includes: performance metrics, token usage, file ownership, bottlenecks
  * For HUD integration and debugging parallel agent execution
  */
-export function getAgentObservatory(directory: string): {
+export function getAgentObservatory(directory: string, sessionId?: string): {
   header: string;
   lines: string[];
   summary: {
@@ -980,10 +1264,10 @@ export function getAgentObservatory(directory: string): {
     interventions: number;
   };
 } {
-  const state = readTrackingState(directory);
+  const state = readTrackingState(directory, sessionId);
   const running = state.agents.filter((a) => a.status === "running");
-  const efficiency = calculateParallelEfficiency(directory);
-  const interventions = suggestInterventions(directory);
+  const efficiency = calculateParallelEfficiency(directory, sessionId);
+  const interventions = suggestInterventions(directory, sessionId);
 
   const now = Date.now();
   const lines: string[] = [];
@@ -1013,7 +1297,7 @@ export function getAgentObservatory(directory: string): {
     const status = stale ? "🔴" : hasIntervention ? "🟡" : "🟢";
 
     // Bottleneck detection
-    const perf = getAgentPerformance(directory, agent.agent_id);
+    const perf = getAgentPerformance(directory, agent.agent_id, sessionId);
     const bottleneck = perf?.bottleneck || "";
 
     // File ownership
@@ -1057,8 +1341,8 @@ export function getAgentObservatory(directory: string): {
  * Suggest interventions for problematic agents
  * Checks for: stale agents, cost limit exceeded, file conflicts
  */
-export function suggestInterventions(directory: string): AgentIntervention[] {
-  const state = readTrackingState(directory);
+export function suggestInterventions(directory: string, sessionId?: string): AgentIntervention[] {
+  const state = readTrackingState(directory, sessionId);
   const interventions: AgentIntervention[] = [];
   const running = state.agents.filter((a) => a.status === "running");
 
@@ -1128,13 +1412,13 @@ export function suggestInterventions(directory: string): AgentIntervention[] {
  * Calculate parallel efficiency score (0-100)
  * 100 = all agents actively running, 0 = all stale/waiting
  */
-export function calculateParallelEfficiency(directory: string): {
+export function calculateParallelEfficiency(directory: string, sessionId?: string): {
   score: number;
   active: number;
   stale: number;
   total: number;
 } {
-  const state = readTrackingState(directory);
+  const state = readTrackingState(directory, sessionId);
   const running = state.agents.filter((a) => a.status === "running");
   const stale = getStaleAgents(state);
 
@@ -1159,42 +1443,45 @@ export function recordFileOwnership(
   directory: string,
   agentId: string,
   filePath: string,
+  sessionId?: string,
 ): void {
-  if (!acquireLock(directory)) return;
+  const writePath = resolveWritePath(directory, sessionId);
+  ensureParentDir(writePath);
+  const lockPath = lockPathFor(writePath);
 
   try {
-    const state = readTrackingState(directory);
-    const agent = state.agents.find(
-      (a) => a.agent_id === agentId && a.status === "running",
-    );
+    withFileLockSync(lockPath, () => {
+      const state = readTrackingState(directory, sessionId);
+      const agent = state.agents.find(
+        (a) => a.agent_id === agentId && a.status === "running",
+      );
 
-    if (agent) {
-      if (!agent.file_ownership) agent.file_ownership = [];
-      // Normalize and deduplicate
-      const normalized = filePath.replace(directory, "").replace(/^\//, "");
-      if (!agent.file_ownership.includes(normalized)) {
-        agent.file_ownership.push(normalized);
-        // Cap at 100 files per agent
-        if (agent.file_ownership.length > 100) {
-          agent.file_ownership = agent.file_ownership.slice(-100);
+      if (agent) {
+        if (!agent.file_ownership) agent.file_ownership = [];
+        // Normalize and deduplicate
+        const normalized = filePath.replace(directory, "").replace(/^\//, "").replace(/^\\/, "");
+        if (!agent.file_ownership.includes(normalized)) {
+          agent.file_ownership.push(normalized);
+          // Cap at 100 files per agent
+          if (agent.file_ownership.length > 100) {
+            agent.file_ownership = agent.file_ownership.slice(-100);
+          }
+          writeTrackingState(directory, state, sessionId);
         }
-        writeTrackingState(directory, state);
       }
-    }
-  } finally {
-    releaseLock(directory);
-  }
+    }, LOCK_OPTS);
+  } catch { /* best-effort */ }
 }
 
 /**
  * Check for file conflicts between running agents
  * Returns files being modified by more than one agent
  */
-export function detectFileConflicts(directory: string): Array<{
+export function detectFileConflicts(directory: string, sessionId?: string): Array<{
   file: string;
   agents: string[];
 }> {
-  const state = readTrackingState(directory);
+  const state = readTrackingState(directory, sessionId);
   const running = state.agents.filter((a) => a.status === "running");
 
   const fileToAgents = new Map<string, string[]>();
@@ -1223,8 +1510,8 @@ export function detectFileConflicts(directory: string): Array<{
 /**
  * Get all file ownership for running agents
  */
-export function getFileOwnershipMap(directory: string): Map<string, string> {
-  const state = readTrackingState(directory);
+export function getFileOwnershipMap(directory: string, sessionId?: string): Map<string, string> {
+  const state = readTrackingState(directory, sessionId);
   const running = state.agents.filter((a) => a.status === "running");
   const map = new Map<string, string>();
 
@@ -1248,8 +1535,9 @@ export function getFileOwnershipMap(directory: string): Map<string, string> {
 export function getAgentPerformance(
   directory: string,
   agentId: string,
+  sessionId?: string,
 ): AgentPerformance | null {
-  const state = readTrackingState(directory);
+  const state = readTrackingState(directory, sessionId);
   const agent = state.agents.find((a) => a.agent_id === agentId);
   if (!agent) return null;
 
@@ -1301,11 +1589,11 @@ export function getAgentPerformance(
 /**
  * Get performance for all running agents
  */
-export function getAllAgentPerformance(directory: string): AgentPerformance[] {
-  const state = readTrackingState(directory);
+export function getAllAgentPerformance(directory: string, sessionId?: string): AgentPerformance[] {
+  const state = readTrackingState(directory, sessionId);
   return state.agents
     .filter((a) => a.status === "running")
-    .map((a) => getAgentPerformance(directory, a.agent_id))
+    .map((a) => getAgentPerformance(directory, a.agent_id, sessionId))
     .filter((p): p is AgentPerformance => p !== null);
 }
 
@@ -1316,34 +1604,37 @@ export function updateTokenUsage(
   directory: string,
   agentId: string,
   tokens: Partial<TokenUsage>,
+  sessionId?: string,
 ): void {
-  if (!acquireLock(directory)) return;
+  const writePath = resolveWritePath(directory, sessionId);
+  ensureParentDir(writePath);
+  const lockPath = lockPathFor(writePath);
 
   try {
-    const state = readTrackingState(directory);
-    const agent = state.agents.find((a) => a.agent_id === agentId);
+    withFileLockSync(lockPath, () => {
+      const state = readTrackingState(directory, sessionId);
+      const agent = state.agents.find((a) => a.agent_id === agentId);
 
-    if (agent) {
-      if (!agent.token_usage) {
-        agent.token_usage = {
-          input_tokens: 0,
-          output_tokens: 0,
-          cache_read_tokens: 0,
-          cost_usd: 0,
-        };
+      if (agent) {
+        if (!agent.token_usage) {
+          agent.token_usage = {
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cost_usd: 0,
+          };
+        }
+        if (tokens.input_tokens !== undefined)
+          agent.token_usage.input_tokens += tokens.input_tokens;
+        if (tokens.output_tokens !== undefined)
+          agent.token_usage.output_tokens += tokens.output_tokens;
+        if (tokens.cache_read_tokens !== undefined)
+          agent.token_usage.cache_read_tokens += tokens.cache_read_tokens;
+        if (tokens.cost_usd !== undefined) agent.token_usage.cost_usd += tokens.cost_usd;
+        writeTrackingState(directory, state, sessionId);
       }
-      if (tokens.input_tokens !== undefined)
-        agent.token_usage.input_tokens += tokens.input_tokens;
-      if (tokens.output_tokens !== undefined)
-        agent.token_usage.output_tokens += tokens.output_tokens;
-      if (tokens.cache_read_tokens !== undefined)
-        agent.token_usage.cache_read_tokens += tokens.cache_read_tokens;
-      if (tokens.cost_usd !== undefined) agent.token_usage.cost_usd += tokens.cost_usd;
-      writeTrackingState(directory, state);
-    }
-  } finally {
-    releaseLock(directory);
-  }
+    }, LOCK_OPTS);
+  } catch { /* best-effort */ }
 }
 
 // ============================================================================
@@ -1371,8 +1662,8 @@ export async function handleSubagentStop(
 /**
  * Clear all tracking state (for testing or cleanup)
  */
-export function clearTrackingState(directory: string): void {
-  const statePath = getStateFilePath(directory);
+export function clearTrackingState(directory: string, sessionId?: string): void {
+  const statePath = resolveWritePath(directory, sessionId);
   if (existsSync(statePath)) {
     try {
       unlinkSync(statePath);

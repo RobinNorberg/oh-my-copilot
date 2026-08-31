@@ -3,7 +3,7 @@
  * Session Summary Generator
  *
  * Standalone script that generates a brief (<20 char) summary of the current
- * Copilot CLI session using `claude -p`.
+ * Claude Code session using `claude -p`.
  *
  * Usage:
  *   node session-summary.mjs <transcript_path> <state_dir> <session_id> [--verbose]
@@ -144,8 +144,8 @@ function generateSummary(conversationContext) {
 
 Examples of good labels:
 - "auth bug fix"
-- "API test coverage"
-- "refactor utils"
+- "API 테스트 추가"
+- "리팩토링 utils"
 - "deploy pipeline"
 - "DB migration"
 
@@ -155,8 +155,7 @@ ${conversationContext}
 Label:`;
 
   try {
-    // Use copilot binary (this fork's default host CLI)
-    const result = execFileSync('copilot', ['-p', prompt], {
+    const result = execFileSync('claude', ['-p', prompt], {
       encoding: 'utf-8',
       timeout: 30_000,
       stdio: ['pipe', 'pipe', 'pipe'],

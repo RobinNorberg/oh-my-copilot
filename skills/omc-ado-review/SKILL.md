@@ -8,7 +8,7 @@ description: >
 
 # OMC ADO Review
 
-Perform a full Azure DevOps pull request review cycle. Reads `.omcp/config.json` for connection settings, lists open PRs, surfaces existing review threads, and supports adding comments, managing reviewers, and updating PR status.
+Perform a full Azure DevOps pull request review cycle. Reads `.omg/config.json` for connection settings, lists open PRs, surfaces existing review threads, and supports adding comments, managing reviewers, and updating PR status.
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
@@ -27,10 +27,10 @@ Perform a full Azure DevOps pull request review cycle. Reads `.omcp/config.json`
 
 ## Step 1: Load Configuration
 
-Read `.omcp/config.json`:
+Read `.omg/config.json`:
 
 ```bash
-cat .omcp/config.json 2>/dev/null || echo "NOT_FOUND"
+node -e "const f=require('fs');try{process.stdout.write(f.readFileSync('.omg/config.json','utf8'))}catch{console.log('NOT_FOUND')}"
 ```
 
 Extract from the `ado` key:
@@ -381,7 +381,7 @@ az repos pr update --id {prId} --status {status} --org "{org}" -o json
 
 | Error | Action |
 |-------|--------|
-| `.omcp/config.json` missing | Tell user to run `/oh-my-copilot:omc-ado-setup` first |
+| `.omg/config.json` missing | Tell user to run `/oh-my-copilot:omc-ado-setup` first |
 | `az login` required | Prompt user to authenticate; do not abort — skip that section |
 | PR not found | Verify PR ID and that the repository name in config matches ADO |
 | Reviewer identity not found | Use `core_get_identity_ids` to look up the user by email; prompt user to provide full email address |

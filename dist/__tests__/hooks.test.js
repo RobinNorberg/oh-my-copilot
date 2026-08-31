@@ -14,9 +14,14 @@ vi.mock('../features/auto-update.js', async (importOriginal) => {
 import { extractPromptText, removeCodeBlocks, detectKeywordsWithType, hasKeyword, getPrimaryKeyword } from '../hooks/keyword-detector/index.js';
 import { formatTodoStatus, getNextPendingTodo } from '../hooks/todo-continuation/index.js';
 import { resetTodoContinuationAttempts } from '../hooks/persistent-mode/index.js';
-import { startUltraQA, clearUltraQAState, isRalphLoopActive } from '../hooks/ultraqa/index.js';
-import { createRalphLoopHook, clearRalphState, isUltraQAActive } from '../hooks/ralph/index.js';
 import { processHook } from '../hooks/bridge.js';
+function writeTranscriptWithContext(filePath, contextWindow, inputTokens) {
+    writeFileSync(filePath, `${JSON.stringify({
+        usage: { context_window: contextWindow, input_tokens: inputTokens },
+        context_window: contextWindow,
+        input_tokens: inputTokens,
+    })}\n`);
+}
 describe('Keyword Detector', () => {
     describe('extractPromptText', () => {
         it('should extract text from text parts', () => {
@@ -99,17 +104,13 @@ describe('Keyword Detector', () => {
         });
     });
     describe('detectKeywordsWithType', () => {
-        it('should detect ultrawork keyword', () => {
+        it('should NOT detect retired ultrawork keyword', () => {
             const detected = detectKeywordsWithType('I need ultrawork mode');
-            expect(detected).toHaveLength(1);
-            expect(detected[0].type).toBe('ultrawork');
-            expect(detected[0].keyword).toBe('ultrawork');
+            expect(detected).toEqual([]);
         });
-        it('should detect ulw abbreviation', () => {
+        it('should NOT detect retired ulw abbreviation', () => {
             const detected = detectKeywordsWithType('Use ulw for this task');
-            expect(detected).toHaveLength(1);
-            expect(detected[0].type).toBe('ultrawork');
-            expect(detected[0].keyword).toBe('ulw');
+            expect(detected).toEqual([]);
         });
         it('should detect ultrathink keyword', () => {
             const detected = detectKeywordsWithType('I need to ultrathink this');
@@ -151,16 +152,14 @@ describe('Keyword Detector', () => {
             const variants = ['ULTRAWORK', 'UltraWork', 'uLtRaWoRk'];
             for (const variant of variants) {
                 const detected = detectKeywordsWithType(variant);
-                expect(detected).toHaveLength(1);
-                expect(detected[0].type).toBe('ultrawork');
+                expect(detected).toEqual([]);
             }
         });
         it('should respect word boundaries', () => {
             // Should not match partial words
             const text = 'multiwork is not ultrawork';
             const detected = detectKeywordsWithType(text);
-            expect(detected).toHaveLength(1);
-            expect(detected[0].keyword).toBe('ultrawork');
+            expect(detected).toEqual([]);
         });
         it('should include position information', () => {
             const detected = detectKeywordsWithType('Start search the codebase here');
@@ -295,10 +294,15 @@ describe('Keyword Detector', () => {
                 expect(hasAnalyze).toBe(false);
             }
         });
+        it('should NOT trigger autopilot for "오토파일럿 설명" (bare 설명 is informational)', () => {
+            const detected = detectKeywordsWithType('오토파일럿 설명');
+            const hasAutopilot = detected.some(d => d.type === 'autopilot');
+            expect(hasAutopilot).toBe(false);
+        });
     });
     describe('hasKeyword', () => {
         it('should return true when keyword exists', () => {
-            expect(hasKeyword('use ultrawork mode')).toBe(true);
+            expect(hasKeyword('use ultrawork mode')).toBe(false);
             expect(hasKeyword('search the codebase')).toBe(true);
             expect(hasKeyword('deep analyze the bug')).toBe(true);
         });
@@ -320,11 +324,11 @@ describe('Keyword Detector', () => {
     });
     describe('getPrimaryKeyword', () => {
         it('should return highest priority keyword', () => {
-            // ultrawork has highest priority
-            const text = 'search and analyze with ultrawork';
+            // Retired ultrawork must not displace surviving search detection.
+            const text = 'search the codebase and analyze with ultrawork';
             const primary = getPrimaryKeyword(text);
             expect(primary).not.toBeNull();
-            expect(primary.type).toBe('ultrawork');
+            expect(primary.type).toBe('deepsearch');
         });
         it('should return ultrathink when present', () => {
             const text = 'ultrathink about this problem';
@@ -444,15 +448,15 @@ describe('Team staged workflow integration', () => {
     let testDir;
     const sessionId = 'team-session-test';
     beforeEach(() => {
-        testDir = join(tmpdir(), `omcp-team-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        mkdirSync(join(testDir, '.omcp', 'state', 'sessions', sessionId), { recursive: true });
+        testDir = join(tmpdir(), `omc-team-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        mkdirSync(join(testDir, '.omg', 'state', 'sessions', sessionId), { recursive: true });
         execSync('git init', { cwd: testDir });
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
     });
     it('restores active Team stage on session-start', async () => {
-        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-exec',
@@ -467,8 +471,47 @@ describe('Team staged workflow integration', () => {
         expect(result.message || '').toContain('delivery-team');
         expect(result.message || '').toContain('team-exec');
     });
+    it('compacts OMC-style root AGENTS guidance on session-start without dropping key sections', async () => {
+        const agentsContent = `# oh-my-copilot - Intelligent Multi-Agent Orchestration
+
+<guidance_schema_contract>
+schema
+</guidance_schema_contract>
+
+<operating_principles>
+- preserve this
+</operating_principles>
+
+<agent_catalog>
+- drop verbose catalog
+</agent_catalog>
+
+<skills>
+- drop verbose skills list
+</skills>
+
+<team_compositions>
+- drop verbose team compositions
+</team_compositions>
+
+<verification>
+- preserve verification
+</verification>`;
+        writeFileSync(join(testDir, 'AGENTS.md'), agentsContent);
+        const result = await processHook('session-start', {
+            sessionId,
+            directory: testDir,
+        });
+        expect(result.continue).toBe(true);
+        expect(result.message || '').toContain('[ROOT AGENTS.md LOADED]');
+        expect(result.message || '').toContain('<operating_principles>');
+        expect(result.message || '').toContain('<verification>');
+        expect(result.message || '').not.toContain('<agent_catalog>');
+        expect(result.message || '').not.toContain('<skills>');
+        expect(result.message || '').not.toContain('<team_compositions>');
+    });
     it('keeps session-start under budget when only a tiny omission remainder remains', async () => {
-        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'ultrawork-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'ultrawork-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             started_at: '2026-04-23T00:00:00.000Z',
@@ -489,7 +532,7 @@ ${'- preserve this startup guidance\n'.repeat(400)}
         expect((result.message || '').length).toBeLessThanOrEqual(6000);
     });
     it('keeps combined session-start restore context under aggregate budget', async () => {
-        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-exec',
@@ -515,7 +558,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect((result.message || '').length).toBeLessThanOrEqual(6000);
     });
     it('emits terminal Team restore guidance on cancelled stage', async () => {
-        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-fix',
@@ -531,7 +574,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(result.message || '').toContain('cancel');
     });
     it('enforces verify stage continuation while active and non-terminal', async () => {
-        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-verify',
@@ -548,7 +591,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(result.message).toContain('Continue working');
     });
     it('enforces fix stage continuation while active and non-terminal', async () => {
-        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-fix',
@@ -565,7 +608,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(result.message).toContain('Continue working');
     });
     it('skips Team stage continuation on authentication stop reasons', async () => {
-        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-verify',
@@ -581,7 +624,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(result.message || '').toContain('AUTHENTICATION ERROR');
     });
     it('allows terminal cleanup when Team stage is cancelled', async () => {
-        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-verify',
@@ -596,7 +639,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(result.message || '').not.toContain('[TEAM MODE CONTINUATION]');
     });
     it('fails open when Team stage is missing', async () => {
-        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             team_name: 'delivery-team'
@@ -609,7 +652,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(result.message || '').not.toContain('[TEAM MODE CONTINUATION]');
     });
     it('fails open when Team stage is unknown or malformed', async () => {
-        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: { bad: true },
@@ -621,7 +664,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         });
         expect(malformedResult.continue).toBe(true);
         expect(malformedResult.message || '').not.toContain('[TEAM MODE CONTINUATION]');
-        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-unknown',
@@ -635,19 +678,41 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(unknownResult.message || '').not.toContain('[TEAM MODE CONTINUATION]');
     });
     it('trips Team continuation circuit breaker after max stop reinforcements', async () => {
-        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-exec',
             team_name: 'delivery-team'
         }));
-        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-pipeline-stop-breaker.json'), JSON.stringify({ count: 20, updated_at: new Date().toISOString() }, null, 2));
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-pipeline-stop-breaker.json'), JSON.stringify({ count: 20, updated_at: new Date().toISOString() }, null, 2));
         const result = await processHook('persistent-mode', {
             sessionId,
             directory: testDir,
         });
         expect(result.continue).toBe(true);
         expect(result.message || '').not.toContain('[TEAM MODE CONTINUATION]');
+    });
+    it('bypasses autopilot continuation when transcript context is critically exhausted', async () => {
+        const transcriptPath = join(testDir, 'transcript.jsonl');
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'autopilot-state.json'), JSON.stringify({
+            active: true,
+            phase: 'execution',
+            session_id: sessionId,
+            iteration: 2,
+            max_iterations: 20,
+            reinforcement_count: 0,
+            last_checked_at: new Date().toISOString(),
+            started_at: new Date().toISOString(),
+        }));
+        writeTranscriptWithContext(transcriptPath, 1000, 960);
+        const result = await processHook('persistent-mode', {
+            sessionId,
+            directory: testDir,
+            transcript_path: transcriptPath,
+            stopReason: 'end_turn',
+        });
+        expect(result.continue).toBe(true);
+        expect(result.message).toBeUndefined();
     });
 });
 describe('Persistent-mode reply cleanup behavior', () => {
@@ -672,8 +737,8 @@ describe('Persistent-mode reply cleanup behavior', () => {
         rmSync(tempHome, { recursive: true, force: true });
     });
     it('does not remove reply-session registry on idle Stop/persistent-mode', async () => {
-        const registryPath = join(homedir(), '.omcp', 'state', 'reply-session-registry.jsonl');
-        mkdirSync(join(homedir(), '.omcp', 'state'), { recursive: true });
+        const registryPath = join(homedir(), '.omg', 'state', 'reply-session-registry.jsonl');
+        mkdirSync(join(homedir(), '.omg', 'state'), { recursive: true });
         writeFileSync(registryPath, `${JSON.stringify({
             platform: 'telegram',
             messageId: '123',
@@ -947,12 +1012,12 @@ describe('Hook Output Structure', () => {
         it('should serialize to valid JSON', () => {
             const output = {
                 continue: true,
-                message: 'ULTRAWORK MODE ACTIVATED'
+                message: 'AUTOPILOT MODE ACTIVATED'
             };
             const json = JSON.stringify(output);
             const parsed = JSON.parse(json);
             expect(parsed.continue).toBe(true);
-            expect(parsed.message).toBe('ULTRAWORK MODE ACTIVATED');
+            expect(parsed.message).toBe('AUTOPILOT MODE ACTIVATED');
         });
         it('should handle multiline messages', () => {
             const output = {
@@ -990,12 +1055,12 @@ describe('Hook Output Structure', () => {
         });
         it('should format keyword detection message', () => {
             const keyword = {
-                type: 'ultrawork',
-                keyword: 'ultrawork',
+                type: 'autopilot',
+                keyword: 'autopilot',
                 position: 0
             };
-            const message = `ULTRAWORK MODE ACTIVATED - Detected keyword: ${keyword.keyword}`;
-            expect(message).toContain('ULTRAWORK MODE');
+            const message = `AUTOPILOT MODE ACTIVATED - Detected keyword: ${keyword.keyword}`;
+            expect(message).toContain('AUTOPILOT MODE');
             expect(message).toContain(keyword.keyword);
         });
         it('should format todo status message', () => {
@@ -1041,12 +1106,12 @@ Now deep analyze the bug
         // The phrase 'find in codebase' should still be detected
         expect(detected.some(d => d.type === 'deepsearch')).toBe(true);
     });
-    it('should prioritize ultrawork even with other keywords', () => {
+    it('should preserve surviving search detection alongside retired ultrawork', () => {
         const text = 'search the codebase, deep analyze the bug, and use ultrawork mode';
         const primary = getPrimaryKeyword(text);
         expect(primary).not.toBeNull();
-        expect(primary.type).toBe('ultrawork');
-        expect(primary.keyword).toBe('ultrawork');
+        expect(primary.type).toBe('deepsearch');
+        expect(primary.keyword).toBe('search the codebase');
     });
 });
 describe('Edge Cases', () => {
@@ -1101,108 +1166,6 @@ describe('Edge Cases', () => {
         });
     });
 });
-describe('UltraQA Loop', () => {
-    describe('State Management', () => {
-        it('should define valid UltraQA goal types', () => {
-            const validGoalTypes = ['tests', 'build', 'lint', 'typecheck', 'custom'];
-            validGoalTypes.forEach(goalType => {
-                expect(typeof goalType).toBe('string');
-            });
-        });
-        it('should have valid state structure', () => {
-            const state = {
-                active: true,
-                goal_type: 'tests',
-                goal_pattern: null,
-                cycle: 1,
-                max_cycles: 5,
-                failures: [],
-                started_at: new Date().toISOString(),
-                session_id: 'test-session'
-            };
-            expect(state.active).toBe(true);
-            expect(state.goal_type).toBe('tests');
-            expect(state.cycle).toBe(1);
-            expect(state.max_cycles).toBe(5);
-            expect(Array.isArray(state.failures)).toBe(true);
-        });
-        it('should track failure history', () => {
-            const failures = ['Error 1', 'Error 2', 'Error 1'];
-            expect(failures).toHaveLength(3);
-            expect(failures.filter(f => f === 'Error 1')).toHaveLength(2);
-        });
-    });
-    describe('Cycle Limits', () => {
-        it('should respect max cycles limit', () => {
-            const state = {
-                cycle: 5,
-                max_cycles: 5
-            };
-            expect(state.cycle).toBe(state.max_cycles);
-            expect(state.cycle <= state.max_cycles).toBe(true);
-        });
-        it('should allow incrementing cycles within limit', () => {
-            let cycle = 1;
-            const maxCycles = 5;
-            while (cycle < maxCycles) {
-                cycle++;
-                expect(cycle <= maxCycles).toBe(true);
-            }
-            expect(cycle).toBe(maxCycles);
-        });
-    });
-    describe('Result Types', () => {
-        it('should have valid success result', () => {
-            const result = {
-                success: true,
-                cycles: 3,
-                reason: 'goal_met'
-            };
-            expect(result.success).toBe(true);
-            expect(result.reason).toBe('goal_met');
-        });
-        it('should have valid failure result', () => {
-            const result = {
-                success: false,
-                cycles: 5,
-                reason: 'max_cycles',
-                diagnosis: 'Unable to fix recurring issue'
-            };
-            expect(result.success).toBe(false);
-            expect(result.reason).toBe('max_cycles');
-            expect(result.diagnosis).toBeDefined();
-        });
-        it('should detect same failure pattern', () => {
-            const failures = ['Error A', 'Error A', 'Error A'];
-            const allSame = failures.every(f => f === failures[0]);
-            expect(allSame).toBe(true);
-        });
-    });
-    describe('Goal Commands', () => {
-        it('should map goal types to commands', () => {
-            const goalCommands = {
-                tests: 'npm test',
-                build: 'npm run build',
-                lint: 'npm run lint',
-                typecheck: 'npm run typecheck || tsc --noEmit'
-            };
-            expect(goalCommands.tests).toBe('npm test');
-            expect(goalCommands.build).toBe('npm run build');
-            expect(goalCommands.lint).toBe('npm run lint');
-        });
-    });
-    describe('Progress Formatting', () => {
-        it('should format progress message', () => {
-            const cycle = 2;
-            const maxCycles = 5;
-            const status = 'Running tests...';
-            const message = `[ULTRAQA Cycle ${cycle}/${maxCycles}] ${status}`;
-            expect(message).toBe('[ULTRAQA Cycle 2/5] Running tests...');
-            expect(message).toContain('ULTRAQA');
-            expect(message).toContain(`${cycle}/${maxCycles}`);
-        });
-    });
-});
 describe('Persistent Mode - Max Attempts Counter', () => {
     const testSessionId = 'test-session-123';
     beforeEach(() => {
@@ -1227,138 +1190,6 @@ describe('Persistent Mode - Max Attempts Counter', () => {
         expect(true).toBe(true);
     });
 });
-describe('Mutual Exclusion - UltraQA and Ralph', () => {
-    let testDir;
-    beforeEach(() => {
-        // Create a unique temp directory for each test
-        testDir = join(tmpdir(), `omc-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        mkdirSync(testDir, { recursive: true });
-        mkdirSync(join(testDir, '.omcp'), { recursive: true });
-        mkdirSync(join(testDir, '.omcp', 'state'), { recursive: true });
-    });
-    afterEach(() => {
-        // Clean up temp directory
-        try {
-            rmSync(testDir, { recursive: true, force: true });
-        }
-        catch {
-            // Ignore cleanup errors
-        }
-    });
-    describe('isUltraQAActive', () => {
-        it('should return false when no ultraqa state exists', () => {
-            expect(isUltraQAActive(testDir)).toBe(false);
-        });
-        it('should return true when ultraqa is active', () => {
-            const stateFile = join(testDir, '.omcp', 'state', 'ultraqa-state.json');
-            writeFileSync(stateFile, JSON.stringify({ active: true }));
-            expect(isUltraQAActive(testDir)).toBe(true);
-        });
-        it('should return false when ultraqa is not active', () => {
-            const stateFile = join(testDir, '.omcp', 'state', 'ultraqa-state.json');
-            writeFileSync(stateFile, JSON.stringify({ active: false }));
-            expect(isUltraQAActive(testDir)).toBe(false);
-        });
-        it('should return false for invalid JSON', () => {
-            const stateFile = join(testDir, '.omcp', 'state', 'ultraqa-state.json');
-            writeFileSync(stateFile, 'invalid json');
-            expect(isUltraQAActive(testDir)).toBe(false);
-        });
-    });
-    describe('isRalphLoopActive', () => {
-        it('should return false when no ralph state exists', () => {
-            expect(isRalphLoopActive(testDir)).toBe(false);
-        });
-        it('should return true when ralph is active', () => {
-            const stateFile = join(testDir, '.omcp', 'state', 'ralph-state.json');
-            writeFileSync(stateFile, JSON.stringify({ active: true }));
-            expect(isRalphLoopActive(testDir)).toBe(true);
-        });
-        it('should return false when ralph is not active', () => {
-            const stateFile = join(testDir, '.omcp', 'state', 'ralph-state.json');
-            writeFileSync(stateFile, JSON.stringify({ active: false }));
-            expect(isRalphLoopActive(testDir)).toBe(false);
-        });
-    });
-    describe('UltraQA mutual exclusion', () => {
-        it('should fail to start UltraQA when Ralph is active', () => {
-            // Activate Ralph first - write to session-scoped path since startUltraQA
-            // passes sessionId which makes readRalphState check session path only
-            const sessionDir = join(testDir, '.omcp', 'state', 'sessions', 'test-session');
-            mkdirSync(sessionDir, { recursive: true });
-            const ralphStateFile = join(sessionDir, 'ralph-state.json');
-            writeFileSync(ralphStateFile, JSON.stringify({ active: true }));
-            // Try to start UltraQA
-            const result = startUltraQA(testDir, 'tests', 'test-session');
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('Cannot start UltraQA while Ralph Loop is active');
-        });
-        it('should succeed starting UltraQA when Ralph is not active', () => {
-            const result = startUltraQA(testDir, 'tests', 'test-session');
-            expect(result.success).toBe(true);
-            expect(result.error).toBeUndefined();
-            // Clean up
-            clearUltraQAState(testDir);
-        });
-        it('should succeed starting UltraQA when ralph state exists but inactive', () => {
-            const ralphStateFile = join(testDir, '.omcp', 'state', 'ralph-state.json');
-            writeFileSync(ralphStateFile, JSON.stringify({ active: false }));
-            const result = startUltraQA(testDir, 'tests', 'test-session');
-            expect(result.success).toBe(true);
-            // Clean up
-            clearUltraQAState(testDir);
-        });
-    });
-    describe('Ralph mutual exclusion', () => {
-        it('should fail to start Ralph when UltraQA is active', () => {
-            // Activate UltraQA first - write to session-scoped path since startLoop
-            // passes sessionId which makes isUltraQAActive check session path only
-            const sessionDir = join(testDir, '.omcp', 'state', 'sessions', 'test-session');
-            mkdirSync(sessionDir, { recursive: true });
-            const ultraqaStateFile = join(sessionDir, 'ultraqa-state.json');
-            writeFileSync(ultraqaStateFile, JSON.stringify({ active: true }));
-            // Try to start Ralph
-            const hook = createRalphLoopHook(testDir);
-            const result = hook.startLoop('test-session', 'test prompt');
-            expect(result).toBe(false);
-        });
-        it('should succeed starting Ralph when UltraQA is not active', () => {
-            const hook = createRalphLoopHook(testDir);
-            const result = hook.startLoop('test-session', 'test prompt');
-            expect(result).toBe(true);
-            // Clean up
-            clearRalphState(testDir);
-        });
-        it('should succeed starting Ralph when ultraqa state exists but inactive', () => {
-            const ultraqaStateFile = join(testDir, '.omcp', 'state', 'ultraqa-state.json');
-            writeFileSync(ultraqaStateFile, JSON.stringify({ active: false }));
-            const hook = createRalphLoopHook(testDir);
-            const result = hook.startLoop('test-session', 'test prompt');
-            expect(result).toBe(true);
-            // Clean up
-            clearRalphState(testDir);
-        });
-    });
-    describe('State cleanup', () => {
-        it('should clear UltraQA state properly', () => {
-            const result = startUltraQA(testDir, 'tests', 'test-session');
-            expect(result.success).toBe(true);
-            const cleared = clearUltraQAState(testDir);
-            expect(cleared).toBe(true);
-            expect(isRalphLoopActive(testDir)).toBe(false);
-        });
-        it('should clear Ralph state properly', () => {
-            const hook = createRalphLoopHook(testDir);
-            hook.startLoop('test-session', 'test prompt');
-            const cleared = clearRalphState(testDir);
-            expect(cleared).toBe(true);
-            expect(isUltraQAActive(testDir)).toBe(false);
-        });
-    });
-});
-// ===========================================================================
-// Skill-Active State Clearing on Skill Completion
-// ===========================================================================
 describe('Skill-active state lifecycle', () => {
     let testDir;
     beforeEach(() => {
@@ -1369,19 +1200,18 @@ describe('Skill-active state lifecycle', () => {
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
     });
-    it('clearSkillActiveState removes active skill state', async () => {
+    it('clearSkillActiveState is a no-op for legacy/external skills without protection', async () => {
         const { writeSkillActiveState, readSkillActiveState, clearSkillActiveState } = await import('../hooks/skill-state/index.js');
         const sessionId = 'test-skill-clear-session';
-        writeSkillActiveState(testDir, 'code-review', sessionId);
-        // Verify state exists
+        const written = writeSkillActiveState(testDir, 'code-review', sessionId);
+        expect(written).toBeNull();
+        // Verify legacy/external skill state is not created
         const stateBefore = readSkillActiveState(testDir, sessionId);
-        expect(stateBefore).not.toBeNull();
-        expect(stateBefore?.active).toBe(true);
-        expect(stateBefore?.skill_name).toBe('code-review');
-        // Clear the state (as bridge.ts processPostToolUse does on Skill completion)
+        expect(stateBefore).toBeNull();
+        // Clear remains safe when no state exists
         const cleared = clearSkillActiveState(testDir, sessionId);
         expect(cleared).toBe(true);
-        // Verify state is cleared
+        // Verify state remains absent
         const stateAfter = readSkillActiveState(testDir, sessionId);
         expect(stateAfter).toBeNull();
     });

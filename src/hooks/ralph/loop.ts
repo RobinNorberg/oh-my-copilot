@@ -10,11 +10,11 @@
  * Ported from oh-my-opencode's ralph hook.
  */
 
-import { execSync } from "child_process";
-import { readFileSync } from "fs";
-import { basename, join } from "path";
+import { execFileSync } from "child_process";
+import { basename } from "path";
 import {
   writeModeState,
+  writeModeStateIfAbsent,
   readModeState,
   clearModeStateFile,
 } from "../../lib/mode-state-io.js";
@@ -29,6 +29,11 @@ import {
   type UserStory,
 } from "./prd.js";
 import {
+  detectStalePrd,
+  formatStalePrdWarning,
+  reconcileStalePrdForStartup,
+} from "./stale-prd.js";
+import {
   findProgressPath,
   getProgressContext,
   appendProgress,
@@ -36,55 +41,12 @@ import {
   addPattern,
 } from "./progress.js";
 import {
-  UltraworkState,
-  readUltraworkState as readUltraworkStateFromModule,
-  writeUltraworkState as writeUltraworkStateFromModule,
-} from "../ultrawork/index.js";
-import {
   resolveSessionStatePath,
   getOmcRoot,
 } from "../../lib/worktree-paths.js";
 import { readTeamPipelineState } from "../team-pipeline/state.js";
 import type { TeamPipelinePhase } from "../team-pipeline/types.js";
 
-// Forward declaration to avoid circular import - check ultraqa state file directly
-export function isUltraQAActive(
-  directory: string,
-  sessionId?: string,
-): boolean {
-  // When sessionId is provided, ONLY check session-scoped path — no legacy fallback
-  if (sessionId) {
-    const sessionFile = resolveSessionStatePath(
-      "ultraqa",
-      sessionId,
-      directory,
-    );
-    try {
-      const content = readFileSync(sessionFile, "utf-8");
-      const state = JSON.parse(content);
-      return state && state.active === true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return false;
-      }
-      return false; // NO legacy fallback
-    }
-  }
-
-  // No sessionId: legacy path (backward compat)
-  const omcDir = getOmcRoot(directory);
-  const stateFile = join(omcDir, "state", "ultraqa-state.json");
-  try {
-    const content = readFileSync(stateFile, "utf-8");
-    const state = JSON.parse(content);
-    return state && state.active === true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return false;
-    }
-    return false;
-  }
-}
 
 export interface RalphLoopState {
   /** Whether the loop is currently active */
@@ -105,8 +67,6 @@ export interface RalphLoopState {
   prd_mode?: boolean;
   /** Current story being worked on */
   current_story_id?: string;
-  /** Whether ultrawork is linked/auto-activated with ralph */
-  linked_ultrawork?: boolean;
   /** Reviewer mode for Ralph completion verification */
   critic_mode?: RalphCriticMode;
 }
@@ -117,8 +77,6 @@ export type RalphCriticMode = typeof RALPH_CRITIC_MODES[number];
 export interface RalphLoopOptions {
   /** Maximum iterations (default: 10) */
   maxIterations?: number;
-  /** Disable auto-activation of ultrawork (default: false - ultrawork is enabled) */
-  disableUltrawork?: boolean;
   /** Reviewer mode for Ralph completion verification */
   criticMode?: RalphCriticMode;
 }
@@ -174,31 +132,23 @@ export function writeRalphState(
   );
 }
 
+export function restoreRalphStateIfAbsent(
+  directory: string,
+  state: RalphLoopState,
+  sessionId?: string,
+): boolean {
+  return writeModeStateIfAbsent('ralph', state as unknown as Record<string, unknown>, directory, sessionId);
+}
+
 /**
  * Clear Ralph Loop state (includes ghost-legacy cleanup)
  */
 export function clearRalphState(
   directory: string,
   sessionId?: string,
+  expectedState?: RalphLoopState,
 ): boolean {
-  return clearModeStateFile("ralph", directory, sessionId);
-}
-
-/**
- * Clear ultrawork state (only if linked to ralph)
- */
-export function clearLinkedUltraworkState(
-  directory: string,
-  sessionId?: string,
-): boolean {
-  const state = readUltraworkStateFromModule(directory, sessionId);
-
-  // Only clear if it was linked to ralph (auto-activated)
-  if (!state || !state.linked_to_ralph) {
-    return true;
-  }
-
-  return clearModeStateFile("ultrawork", directory, sessionId);
+  return clearModeStateFile("ralph", directory, sessionId, expectedState as Record<string, unknown> | undefined);
 }
 
 /**
@@ -285,24 +235,16 @@ export function createRalphLoopHook(directory: string): RalphLoopHook {
     prompt: string,
     options?: RalphLoopOptions,
   ): boolean => {
-    // Mutual exclusion check: cannot start Ralph Loop if UltraQA is active
-    if (isUltraQAActive(directory, sessionId)) {
-      console.error(
-        "Cannot start Ralph Loop while UltraQA is active. Cancel UltraQA first with /oh-my-copilot:cancel.",
-      );
-      return false;
-    }
-
-    const enableUltrawork = !options?.disableUltrawork;
     const now = new Date().toISOString();
     const normalizedPrompt = stripCriticModeFlag(stripNoPrdFlag(prompt));
 
     let branchName = "ralph/task";
     try {
-      branchName = execSync("git rev-parse --abbrev-ref HEAD", {
+      branchName = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
         cwd: directory,
         encoding: "utf-8",
         timeout: 5000,
+        windowsHide: true,
       }).trim();
     } catch {
       // Fallback outside git repos.
@@ -322,6 +264,15 @@ export function createRalphLoopHook(directory: string): RalphLoopHook {
       return false;
     }
 
+    // Stale-state reconciliation (#3669): if the active PRD was left unfinished
+    // by an abnormal/non-Step 8 exit, reconcile it from configured observable
+    // evidence (bounded: content checks only, never PR/merge status) and
+    // surface any remaining divergence at the moment it is cheapest to fix.
+    const staleReconcile = reconcileStalePrdForStartup(directory, sessionId);
+    if (staleReconcile.warning) {
+      console.error(staleReconcile.warning);
+    }
+
     if (!findProgressPath(directory)) {
       initProgress(directory);
     }
@@ -334,7 +285,6 @@ export function createRalphLoopHook(directory: string): RalphLoopHook {
       prompt: normalizedPrompt,
       session_id: sessionId,
       project_path: directory,
-      linked_ultrawork: enableUltrawork,
       critic_mode: options?.criticMode ?? detectCriticModeFlag(prompt) ?? DEFAULT_RALPH_CRITIC_MODE,
       prd_mode: true,
     };
@@ -344,25 +294,7 @@ export function createRalphLoopHook(directory: string): RalphLoopHook {
       state.current_story_id = prdCompletion.nextStory.id;
     }
 
-    const ralphSuccess = writeRalphState(directory, state, sessionId);
-
-    // Auto-activate ultrawork (linked to ralph) by default
-    // Include session_id and project_path for proper isolation
-    if (ralphSuccess && enableUltrawork) {
-      const ultraworkState: UltraworkState = {
-        active: true,
-        reinforcement_count: 0,
-        original_prompt: normalizedPrompt,
-        started_at: now,
-        last_checked_at: now,
-        linked_to_ralph: true,
-        session_id: sessionId,
-        project_path: directory,
-      };
-      writeUltraworkStateFromModule(ultraworkState, directory, sessionId);
-    }
-
-    return ralphSuccess;
+    return writeRalphState(directory, state, sessionId);
   };
 
   const cancelLoop = (sessionId: string): boolean => {
@@ -370,11 +302,6 @@ export function createRalphLoopHook(directory: string): RalphLoopHook {
 
     if (!state || state.session_id !== sessionId) {
       return false;
-    }
-
-    // Also clear linked ultrawork state if it was auto-activated
-    if (state.linked_ultrawork) {
-      clearLinkedUltraworkState(directory, sessionId);
     }
 
     return clearRalphState(directory, sessionId);
@@ -439,6 +366,14 @@ export function getPrdCompletionStatus(directory: string, sessionId?: string): {
  */
 export function getRalphContext(directory: string, sessionId?: string): string {
   const parts: string[] = [];
+
+  // Add stale-unfinished-PRD warning (#3669): the live loop excludes the
+  // active-ralph-state signal (it is the normal case here) and only reports
+  // divergence backed by age / stale-pointer signals.
+  const staleDetection = detectStalePrd(directory, sessionId, { includeAbnormalExit: false });
+  if (staleDetection?.stale) {
+    parts.push(`<stale-prd-warning>\n${formatStalePrdWarning(staleDetection)}\n</stale-prd-warning>\n`);
+  }
 
   // Add progress context (patterns, learnings)
   const progressContext = getProgressContext(directory);

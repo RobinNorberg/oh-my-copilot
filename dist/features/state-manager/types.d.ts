@@ -2,15 +2,15 @@
  * State Manager Types
  *
  * Type definitions for unified state management across
- * local (.omcp/state/) and global (XDG-aware user OMC state with legacy ~/.omcp/state fallback) locations.
+ * local (.omg/state/) and global (XDG-aware user OMC state with legacy ~/.omg/state fallback) locations.
  */
 /**
  * Location where state should be stored
  */
 export declare enum StateLocation {
-    /** Local project state: .omcp/state/{name}.json */
+    /** Local project state: .omg/state/{name}.json */
     LOCAL = "local",
-    /** Global user state: XDG-aware OMC state path with legacy ~/.omcp/state fallback on reads */
+    /** Global user state: XDG-aware OMC state path with legacy ~/.omg/state fallback on reads */
     GLOBAL = "global"
 }
 /**
@@ -23,6 +23,8 @@ export interface StateConfig {
     location: StateLocation;
     /** Whether to create directories if they don't exist */
     createDirs?: boolean;
+    /** Whether to check legacy locations when reading */
+    checkLegacy?: boolean;
 }
 /**
  * Result of a state read operation

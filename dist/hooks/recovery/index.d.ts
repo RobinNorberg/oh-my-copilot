@@ -50,7 +50,7 @@ export declare function detectRecoverableError(error: unknown): {
  */
 export declare function detectEditErrorInOutput(output: string): boolean;
 /**
- * Create unified recovery hook for Copilot CLI
+ * Create unified recovery hook for Claude Code
  *
  * This hook provides a single entry point for all recovery mechanisms.
  */
@@ -99,8 +99,4 @@ export declare function detectEditErrorInText(text: string): boolean;
  * Check if session error is recoverable
  */
 export declare function isSessionRecoverable(error: unknown): boolean;
-export type { OrchestrationFailureType, RecoveryAction, AttemptRecord, AttemptHistory, RecoveryActionResult, } from './types.js';
-export { ORCHESTRATION_RECOVERY_CONFIG } from './types.js';
-export { classifyOrchestrationFailure, determineRecoveryAction, } from './orchestration-recovery.js';
-export { recordAttempt, getAttemptCount, readAttemptHistory, writeAttemptHistory, clearAttemptHistory, } from './attempt-tracker.js';
 //# sourceMappingURL=index.d.ts.map

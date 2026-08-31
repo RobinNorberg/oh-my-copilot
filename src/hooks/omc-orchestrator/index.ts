@@ -2,14 +2,14 @@
  * OMC Orchestrator Hook
  *
  * Enforces orchestrator behavior - delegation over direct implementation.
- * When an orchestrator agent tries to directly modify files outside .omcp/,
+ * When an orchestrator agent tries to directly modify files outside .omg/,
  * this hook injects reminders to delegate to subagents instead.
  *
  * Adapted from oh-my-opencode's omc-orchestrator hook for shell-based hooks.
  */
 
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getOmcRoot, getWorktreeRoot } from '../../lib/worktree-paths.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { toForwardSlash } from '../../utils/paths.js';
@@ -54,7 +54,7 @@ export function clearEnforcementCache(): void {
 
 /**
  * Read enforcement level from config.
- * Checks: .omcp/config.json → [$COPILOT_CONFIG_DIR|~/.copilot]/.omc-config.json → default (warn)
+ * Checks: .omg/config.json → [$COPILOT_CONFIG_DIR|~/.claude]/.omc-config.json → default (warn)
  */
 function getEnforcementLevel(directory: string): EnforcementLevel {
   const now = Date.now();
@@ -177,18 +177,20 @@ function isDelegationToolName(toolName: string): boolean {
  */
 export function getGitDiffStats(directory: string): GitFileStat[] {
   try {
-    const output = execSync('git diff --numstat HEAD', {
+    const output = execFileSync('git', ['diff', '--numstat', 'HEAD'], {
       cwd: directory,
       encoding: 'utf-8',
       timeout: 5000,
+      windowsHide: true,
     }).trim();
 
     if (!output) return [];
 
-    const statusOutput = execSync('git status --porcelain', {
+    const statusOutput = execFileSync('git', ['status', '--porcelain'], {
       cwd: directory,
       encoding: 'utf-8',
       timeout: 5000,
+      windowsHide: true,
     }).trim();
 
     const statusMap = new Map<string, 'modified' | 'added' | 'deleted'>();
@@ -386,7 +388,7 @@ export function processOrchestratorPreTool(input: ToolExecuteInput): ToolExecute
   }
 
   // Extract file path from tool input.
-  // Copilot CLI sends file_path (snake_case) for Write/Edit tools and notebook_path for NotebookEdit.
+  // Claude Code sends file_path (snake_case) for Write/Edit tools and notebook_path for NotebookEdit.
   // toolInput is the tool's own parameter object, NOT normalized by normalizeHookInput.
   const filePath = (toolInput?.file_path ?? toolInput?.filePath ?? toolInput?.path ?? toolInput?.file ?? toolInput?.notebook_path) as string | undefined;
 
@@ -533,7 +535,7 @@ export function checkBoulderContinuation(directory: string): {
 }
 
 /**
- * Create omg orchestrator hook handlers
+ * Create omc orchestrator hook handlers
  */
 export function createOmcOrchestratorHook(directory: string) {
   return {

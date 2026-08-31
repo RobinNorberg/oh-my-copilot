@@ -2,7 +2,7 @@
 
 This is a tiny runnable reference server for the company-context contract documented in:
 
-- [`docs/company-context-interface.md`](/mnt/offloading/Workspace/oh-my-claudecode.omx-worktrees/issue-2692-company-context-mcp-interface/docs/company-context-interface.md)
+- [`docs/company-context-interface.md`](../../docs/company-context-interface.md)
 
 It exposes exactly one tool:
 

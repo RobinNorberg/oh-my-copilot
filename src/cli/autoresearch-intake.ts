@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { type AutoresearchKeepPolicy, parseSandboxContract, slugifyMissionName } from '../autoresearch/contracts.js';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 
 export interface AutoresearchSeedInputs {
   topic?: string;
@@ -104,11 +105,11 @@ function normalizeKeepPolicy(raw: string): AutoresearchKeepPolicy {
 }
 
 function buildArtifactDir(repoRoot: string, slug: string): string {
-  return join(repoRoot, '.omcp', 'specs', `${AUTORESEARCH_ARTIFACT_DIR_PREFIX}${slug}`);
+  return join(getOmcRoot(repoRoot), 'specs', `${AUTORESEARCH_ARTIFACT_DIR_PREFIX}${slug}`);
 }
 
 function buildDraftArtifactPath(repoRoot: string, slug: string): string {
-  return join(repoRoot, '.omcp', 'specs', `${DEEP_INTERVIEW_DRAFT_PREFIX}${slug}.md`);
+  return join(getOmcRoot(repoRoot), 'specs', `${DEEP_INTERVIEW_DRAFT_PREFIX}${slug}.md`);
 }
 
 function buildResultPath(repoRoot: string, slug: string): string {
@@ -219,7 +220,7 @@ export async function writeAutoresearchDraftArtifact(input: {
   }
 
   const launchReady = blockedReasons.length === 0;
-  const specsDir = join(input.repoRoot, '.omcp', 'specs');
+  const specsDir = join(getOmcRoot(input.repoRoot), 'specs');
   await mkdir(specsDir, { recursive: true });
   const path = buildDraftArtifactPath(input.repoRoot, slug);
   const content = buildAutoresearchDraftArtifactContent(compileTarget, input.seedInputs || {}, launchReady, blockedReasons);
@@ -353,7 +354,7 @@ async function readPersistedResult(resultPath: string): Promise<AutoresearchDeep
 }
 
 async function listMarkdownDraftPaths(repoRoot: string): Promise<string[]> {
-  const specsDir = join(repoRoot, '.omcp', 'specs');
+  const specsDir = join(getOmcRoot(repoRoot), 'specs');
   if (!existsSync(specsDir)) return [];
   const entries = await readdir(specsDir, { withFileTypes: true });
   return entries
@@ -362,7 +363,7 @@ async function listMarkdownDraftPaths(repoRoot: string): Promise<string[]> {
 }
 
 export async function listAutoresearchDeepInterviewResultPaths(repoRoot: string): Promise<string[]> {
-  const specsDir = join(repoRoot, '.omcp', 'specs');
+  const specsDir = join(getOmcRoot(repoRoot), 'specs');
   if (!existsSync(specsDir)) return [];
 
   const entries = await readdir(specsDir, { withFileTypes: true });

@@ -8,11 +8,11 @@
 
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
-import { getClaudeConfigDir } from "../utils/config-dir.js";
+import { getCopilotConfigDir } from "../utils/config-dir.js";
 import type { OpenClawConfig, OpenClawHookEvent, OpenClawGatewayConfig, OpenClawCommandGatewayConfig } from "./types.js";
 
 const CONFIG_FILE = process.env.OMC_OPENCLAW_CONFIG
-  || join(getClaudeConfigDir(), "omc_config.openclaw.json");
+  || join(getCopilotConfigDir(), "omc_config.openclaw.json");
 
 /** Cached config (null = not yet read, undefined = read but file missing/invalid) */
 let _cachedConfig: OpenClawConfig | undefined | null = null;

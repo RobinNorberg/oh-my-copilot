@@ -44,6 +44,10 @@ function mergeEventHooks(existingGroups, newOmcGroups, options) {
             logMessages.push(`Updated ${eventType} hook (--force)`);
         }
     }
+    else if (existingGroups.length === 0) {
+        merged = newOmcGroups;
+        logMessages.push(`Installed ${eventType} hook`);
+    }
     else {
         if (hasNonOmcHook) {
             logMessages.push(`Warning: ${eventType} hook has non-OMC hook. Skipping. Use --force-hooks to override.`);
@@ -65,36 +69,36 @@ function omcGroup(command) {
 function userGroup(command) {
     return { hooks: [{ type: 'command', command }] };
 }
-const OMC_CMD = 'node "$HOME/.copilot/hooks/keyword-detector.mjs"';
+const OMC_CMD = 'node "$HOME/.claude/hooks/keyword-detector.mjs"';
 const USER_CMD = '/usr/local/bin/my-custom-hook.sh';
-const NEW_OMC_CMD = 'node "$HOME/.copilot/hooks/session-start.mjs"';
+const NEW_OMC_CMD = 'node "$HOME/.claude/hooks/session-start.mjs"';
 // ---------------------------------------------------------------------------
 // isOmcHook unit tests
 // ---------------------------------------------------------------------------
 describe('isOmcHook()', () => {
     it('recognises OMC keyword-detector command', () => {
-        expect(isOmcHook('node "$HOME/.copilot/hooks/keyword-detector.mjs"')).toBe(true);
+        expect(isOmcHook('node "$HOME/.claude/hooks/keyword-detector.mjs"')).toBe(true);
     });
     it('recognises OMC session-start command', () => {
-        expect(isOmcHook('node "$HOME/.copilot/hooks/session-start.mjs"')).toBe(true);
+        expect(isOmcHook('node "$HOME/.claude/hooks/session-start.mjs"')).toBe(true);
     });
     it('recognises OMC pre-tool-use command', () => {
-        expect(isOmcHook('node "$HOME/.copilot/hooks/pre-tool-use.mjs"')).toBe(true);
+        expect(isOmcHook('node "$HOME/.claude/hooks/pre-tool-use.mjs"')).toBe(true);
     });
     it('recognises OMC post-tool-use command', () => {
-        expect(isOmcHook('node "$HOME/.copilot/hooks/post-tool-use.mjs"')).toBe(true);
+        expect(isOmcHook('node "$HOME/.claude/hooks/post-tool-use.mjs"')).toBe(true);
     });
     it('recognises OMC persistent-mode command', () => {
-        expect(isOmcHook('node "$HOME/.copilot/hooks/persistent-mode.mjs"')).toBe(true);
+        expect(isOmcHook('node "$HOME/.claude/hooks/persistent-mode.mjs"')).toBe(true);
     });
     it('recognises OMC code-simplifier command', () => {
-        expect(isOmcHook('node "$HOME/.copilot/hooks/code-simplifier.mjs"')).toBe(true);
+        expect(isOmcHook('node "$HOME/.claude/hooks/code-simplifier.mjs"')).toBe(true);
     });
     it('recognises Windows-style OMC path', () => {
-        expect(isOmcHook('node "%USERPROFILE%\\.copilot\\hooks\\keyword-detector.mjs"')).toBe(true);
+        expect(isOmcHook('node "%USERPROFILE%\\.claude\\hooks\\keyword-detector.mjs"')).toBe(true);
     });
     it('recognises custom-profile hook paths by known filename', () => {
-        expect(isOmcHook('node "/tmp/custom-copilot/hooks/keyword-detector.mjs"')).toBe(true);
+        expect(isOmcHook('node "/tmp/custom-claude/hooks/keyword-detector.mjs"')).toBe(true);
     });
     it('recognises COPILOT_CONFIG_DIR-aware hook commands', () => {
         expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/keyword-detector.mjs"')).toBe(true);
@@ -112,9 +116,9 @@ describe('isOmcHook()', () => {
     it('does not recognise a random shell script', () => {
         expect(isOmcHook('bash /home/user/scripts/notify.sh')).toBe(false);
     });
-    it('does not match "omg" inside an unrelated word', () => {
+    it('does not match "omc" inside an unrelated word', () => {
         // "nomc" or "omcr" should NOT match the omc path-segment pattern
-        expect(isOmcHook('/usr/bin/nomp-thing')).toBe(false);
+        expect(isOmcHook('/usr/bin/nomc-thing')).toBe(false);
     });
 });
 // ---------------------------------------------------------------------------
@@ -254,6 +258,14 @@ describe('Hook merge during omc update', () => {
             const { conflicts } = mergeEventHooks(existing, newOmc, { force: true });
             // The webhook group has no command-type hooks → nonOmcGroups is empty
             expect(conflicts).toHaveLength(0);
+        });
+        it('installs hooks when none exist yet and no force flag is set', () => {
+            const existing = [];
+            const newOmc = [omcGroup(NEW_OMC_CMD)];
+            const { merged, conflicts, logMessages } = mergeEventHooks(existing, newOmc, {});
+            expect(merged).toEqual(newOmc);
+            expect(conflicts).toHaveLength(0);
+            expect(logMessages[0]).not.toMatch(/already configured/);
         });
     });
 });

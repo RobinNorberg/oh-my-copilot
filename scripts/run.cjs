@@ -1,93 +1,89 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * OMC Cross-platform hook runner (run.cjs)
+ * OMC Cross-platform hook runner (run.cjs).
  *
  * Uses process.execPath (the Node binary already running this script) to spawn
- * the target .mjs hook, bypassing PATH / shell discovery issues.
- *
- * Replaces the `sh + find-node.sh` chain that fails on Windows because
- * /usr/bin/sh is a PE32+ binary the OS refuses to execute natively.
- * Fixes issues #909, #899, #892, #869.
- *
- * Usage (from hooks.json):
- *   /abs/path/to/node "${PLUGIN_ROOT}/scripts/run.cjs" \
- *       "${PLUGIN_ROOT}/scripts/<hook>.mjs" [args...]
- *
- * During post-install setup, the leading `node` token is replaced with
- * process.execPath so nvm/fnm users and Windows users all get the right binary.
+ * ordinary hooks. The two trusted UserPromptSubmit hooks run in a Worker so the
+ * runner retains ownership of their synchronous timeout boundary.
  */
 
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const { existsSync, readFileSync, realpathSync } = require('fs');
-const { join, basename, dirname } = require('path');
+const path = require('path');
+const { join, basename, dirname } = path;
+const { pathToFileURL } = require('url');
+const { Worker } = require('worker_threads');
 
-const target = process.argv[2];
-if (!target) {
-  // Nothing to run — exit cleanly so hooks are never blocked.
-  process.exit(0);
+
+function isPluginRoot(pluginRoot) {
+  return existsSync(join(pluginRoot, 'hooks', 'hooks.json')) &&
+    existsSync(join(pluginRoot, 'scripts', 'run.cjs')) &&
+    existsSync(join(pluginRoot, 'scripts'));
+}
+
+function canonicalPluginRoot(pluginRoot) {
+  try {
+    const canonicalRoot = path.resolve(realpathSync(pluginRoot));
+    return isPluginRoot(canonicalRoot) ? canonicalRoot : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Resolve the hook script target path, handling stale PLUGIN_ROOT.
+ * Resolve the hook script target path, handling stale CLAUDE_PLUGIN_ROOT.
  *
- * When a plugin update replaces an old version directory with a symlink (or
- * deletes it entirely), sessions that still reference the old version via
- * PLUGIN_ROOT will fail with MODULE_NOT_FOUND.
- *
- * Resolution strategy:
- *   1. Use the target as-is if it exists.
- *   2. Try resolving through realpathSync (follows symlinks).
- *   3. Scan the plugin cache for the latest available version that has the
- *      same script name and use that instead.
- *   4. If all else fails, return null (caller exits cleanly).
- *
- * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/1007
+ * A direct target remains valid for the generic child path even without a
+ * trusted plugin root. Worker eligibility receives only independently proven
+ * configured-root or selected-cache-version provenance.
  */
 function resolveTarget(targetPath) {
-  // Fast path: target exists (common case)
-  if (existsSync(targetPath)) return targetPath;
+  const configuredRoot = canonicalPluginRoot(process.env.CLAUDE_PLUGIN_ROOT);
 
-  // Try realpath resolution (handles broken symlinks that resolve elsewhere)
   try {
-    const resolved = realpathSync(targetPath);
-    if (existsSync(resolved)) return resolved;
+    if (existsSync(targetPath)) {
+      return {
+        targetPath: path.resolve(realpathSync(targetPath)),
+        trustedPluginRoot: configuredRoot,
+      };
+    }
   } catch {
-    // realpathSync throws if the path doesn't exist at all — expected
+    // Continue to stale-cache recovery.
   }
 
-  // Fallback: scan plugin cache for the same script in the latest version.
-  // PLUGIN_ROOT is e.g. ~/.copilot/plugins/cache/omc/oh-my-copilot/4.2.14
-  // We look one level up for sibling version directories.
   try {
-    const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
-    if (!pluginRoot) return null;
+    const configuredPath = process.env.CLAUDE_PLUGIN_ROOT;
+    if (!configuredPath) return null;
 
-    const cacheBase = dirname(pluginRoot);          // .../oh-my-copilot/
-    const scriptRelative = targetPath.slice(pluginRoot.length); // /scripts/persistent-mode.cjs
-
+    const cacheBase = dirname(configuredPath);
+    const scriptRelative = targetPath.slice(configuredPath.length);
     if (!scriptRelative || !existsSync(cacheBase)) return null;
 
-    // Find version directories (real dirs or valid symlinks), pick latest
-    const { readdirSync, lstatSync, readlinkSync } = require('fs');
-    const entries = readdirSync(cacheBase).filter(v => /^\d+\.\d+\.\d+/.test(v));
-
-    // Sort descending by semver
+    const { readdirSync } = require('fs');
+    const entries = readdirSync(cacheBase).filter(version => /^\d+\.\d+\.\d+/.test(version));
     entries.sort((a, b) => {
       const pa = a.split('.').map(Number);
       const pb = b.split('.').map(Number);
-      for (let i = 0; i < 3; i++) {
-        if ((pa[i] || 0) !== (pb[i] || 0)) return (pb[i] || 0) - (pa[i] || 0);
+      for (let index = 0; index < 3; index++) {
+        if ((pa[index] || 0) !== (pb[index] || 0)) return (pb[index] || 0) - (pa[index] || 0);
       }
       return 0;
     });
 
     for (const version of entries) {
-      const candidate = join(cacheBase, version) + scriptRelative;
-      if (existsSync(candidate)) return candidate;
+      const selectedRoot = join(cacheBase, version);
+      const candidate = selectedRoot + scriptRelative;
+      if (!existsSync(candidate)) continue;
+      const trustedPluginRoot = canonicalPluginRoot(selectedRoot);
+      return {
+        targetPath: path.resolve(realpathSync(candidate)),
+        trustedPluginRoot,
+      };
+
     }
   } catch {
-    // Any error in fallback scan — give up gracefully
+    // Any stale-cache recovery error remains fail-open.
   }
 
   return null;
@@ -99,11 +95,51 @@ function escapeRegex(value) {
 
 function flattenHookEntries(rawHooks) {
   if (!rawHooks || typeof rawHooks !== 'object') return [];
-  return Object.values(rawHooks).flatMap((entries) => Array.isArray(entries) ? entries : []);
+  return Object.entries(rawHooks).flatMap(([event, entries]) => {
+    if (!Array.isArray(entries)) return [];
+    return entries.map((entry) => ({ event, entry }));
+  });
 }
 
-function resolveHookTimeoutMs(targetPath, extraArgs) {
-  const pluginRoot = dirname(dirname(targetPath));
+function isDebugHooksEnabled() {
+  return process.env.OMC_DEBUG_HOOKS === '1' ||
+    process.env.OMC_DEBUG === '1' ||
+    process.env.OMC_DEBUG === 'true';
+}
+
+function resolveTimeoutCushionMs(manifestTimeoutMs, hookEvent) {
+  if (hookEvent !== 'UserPromptSubmit') return TIMEOUT_CUSHION_MS;
+  const promptCushion = Math.floor(manifestTimeoutMs * 0.2);
+  return Math.min(3000, Math.max(1000, promptCushion));
+}
+
+const TIMEOUT_CUSHION_MS = 500;
+// = max declared manifest budget (60000ms, setup-maintenance) minus the 500ms cushion; applied ONLY when manifest resolution is null so long legit hooks are not prematurely reaped.
+const DEFAULT_GENERIC_TIMEOUT_MS = 59500;
+
+
+function resolveInnerTimeoutMs(manifestHook) {
+  if (!manifestHook) return null;
+  return Math.max(1, manifestHook.timeoutMs - resolveTimeoutCushionMs(manifestHook.timeoutMs, manifestHook.event));
+}
+
+// Call only after resolveWorkerTarget has verified an exact canonical trusted prompt target.
+function resolveTrustedPromptWorkerTimeoutMs(targetPath, manifestHook, trustedPluginRoot) {
+  const calculatedTimeoutMs = resolveInnerTimeoutMs(manifestHook);
+  const canonicalTarget = normalizedComparisonPath(targetPath);
+  const capsByCanonicalTarget = new Map([
+    [normalizedComparisonPath(join(trustedPluginRoot, 'scripts', 'keyword-detector.mjs')), 8000],
+    [normalizedComparisonPath(join(trustedPluginRoot, 'scripts', 'skill-injector.mjs')), 12000],
+  ]);
+  const capMs = capsByCanonicalTarget.get(canonicalTarget);
+  return capMs ? Math.min(calculatedTimeoutMs, capMs) : calculatedTimeoutMs;
+}
+
+function resolveGenericTimeoutMs(manifestHook) {
+  return manifestHook ? resolveInnerTimeoutMs(manifestHook) : DEFAULT_GENERIC_TIMEOUT_MS;
+}
+
+function resolveHookTimeoutMsFromRoot(pluginRoot, targetPath, extraArgs) {
   const hooksJsonPath = join(pluginRoot, 'hooks', 'hooks.json');
   if (!existsSync(hooksJsonPath)) return null;
 
@@ -111,17 +147,17 @@ function resolveHookTimeoutMs(targetPath, extraArgs) {
     const hooksJson = JSON.parse(readFileSync(hooksJsonPath, 'utf-8'));
     const scriptName = basename(targetPath);
     const scriptPattern = new RegExp(`[/\\\\]scripts[/\\\\]${escapeRegex(scriptName)}(?:\\s|$)`);
-    const argNeedles = extraArgs.filter((arg) => typeof arg === 'string' && arg.length > 0);
+    const argNeedles = extraArgs.filter(arg => typeof arg === 'string' && arg.length > 0);
 
-    for (const entry of flattenHookEntries(hooksJson?.hooks)) {
+    for (const { event, entry } of flattenHookEntries(hooksJson?.hooks)) {
       const hooks = Array.isArray(entry?.hooks) ? entry.hooks : [];
       for (const hook of hooks) {
         const command = typeof hook?.command === 'string' ? hook.command : '';
         const timeout = Number(hook?.timeout);
         if (!scriptPattern.test(command)) continue;
         if (!Number.isFinite(timeout) || timeout <= 0) continue;
-        if (!argNeedles.every((arg) => command.includes(` ${arg}`) || command.endsWith(` ${arg}`))) continue;
-        return Math.floor(timeout * 1000);
+        if (!argNeedles.every(arg => command.includes(` ${arg}`) || command.endsWith(` ${arg}`))) continue;
+        return { event, timeoutMs: Math.floor(timeout * 1000) };
       }
     }
   } catch {
@@ -131,32 +167,399 @@ function resolveHookTimeoutMs(targetPath, extraArgs) {
   return null;
 }
 
-const resolved = resolveTarget(target);
-if (!resolved) {
-  // Target not found anywhere — exit cleanly so hooks are never blocked.
-  // This is the graceful fallback for stale PLUGIN_ROOT paths.
-  process.exit(0);
+function resolveHookTimeoutMs(targetPath, extraArgs) {
+  return resolveHookTimeoutMsFromRoot(dirname(dirname(targetPath)), targetPath, extraArgs);
 }
 
-const timeoutMs = resolveHookTimeoutMs(resolved, process.argv.slice(3));
+function normalizedComparisonPath(value) {
+  const canonical = path.resolve(realpathSync(value));
+  return process.platform === 'win32'
+    ? path.win32.normalize(canonical).toLowerCase()
+    : path.normalize(canonical);
+}
 
-const result = spawnSync(
-  process.execPath,
-  [resolved, ...process.argv.slice(3)],
-  {
-    stdio: 'inherit',
-    env: process.env,
-    windowsHide: true,
-    ...(timeoutMs ? {
-      timeout: timeoutMs,
-      killSignal: process.platform === 'win32' ? 'SIGTERM' : 'SIGKILL',
-    } : {}),
+function isContainedBy(root, targetPath) {
+  const pathApi = process.platform === 'win32' ? path.win32 : path;
+  const relative = pathApi.relative(root, targetPath);
+  return relative !== '' && !pathApi.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${pathApi.sep}`);
+}
+
+function resolveWorkerTarget(resolution, extraArgs) {
+  const trustedRoot = resolution.trustedPluginRoot;
+  if (!trustedRoot || extraArgs.length !== 0) return null;
+
+  try {
+    const canonicalRoot = normalizedComparisonPath(trustedRoot);
+    const canonicalTarget = normalizedComparisonPath(resolution.targetPath);
+    if (!isContainedBy(canonicalRoot, canonicalTarget)) return null;
+
+    const expectedTargets = ['keyword-detector.mjs', 'skill-injector.mjs']
+      .map(script => normalizedComparisonPath(join(trustedRoot, 'scripts', script)));
+    if (!expectedTargets.includes(canonicalTarget)) return null;
+
+    const manifestHook = resolveHookTimeoutMsFromRoot(trustedRoot, resolution.targetPath, []);
+    if (manifestHook?.event !== 'UserPromptSubmit') return null;
+    return manifestHook;
+  } catch {
+    return null;
   }
-);
-
-if (result.error?.code === 'ETIMEDOUT' && timeoutMs) {
-  process.stderr.write(`[run.cjs] Hook ${basename(resolved)} timed out after ${timeoutMs}ms; exiting fail-open.\n`);
 }
 
-// Propagate the child exit code (null → 0 to avoid blocking hooks).
-process.exit(result.status ?? 0);
+function resolveTrustedSessionEndTarget(resolution, extraArgs) {
+  const trustedRoot = resolution.trustedPluginRoot;
+  if (!trustedRoot || extraArgs.length !== 0) return null;
+  try {
+    const canonicalTarget = normalizedComparisonPath(resolution.targetPath);
+    const canonicalRoot = normalizedComparisonPath(trustedRoot);
+    if (!isContainedBy(canonicalRoot, canonicalTarget)) return null;
+    const expectedTargets = ['session-end.mjs', 'wiki-session-end.mjs']
+      .map(script => normalizedComparisonPath(join(trustedRoot, 'scripts', script)));
+    if (!expectedTargets.includes(canonicalTarget)) return null;
+    const manifestHook = resolveHookTimeoutMsFromRoot(trustedRoot, resolution.targetPath, []);
+    return manifestHook?.event === 'SessionEnd' ? manifestHook : null;
+  } catch {
+    return null;
+  }
+}
+
+
+function writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs) {
+  const message = `[run.cjs] Hook ${basename(targetPath)} timed out after ${timeoutMs}ms; exiting fail-open.\n`;
+  if (manifestHook?.event !== 'UserPromptSubmit' || isDebugHooksEnabled()) {
+    process.stderr.write(message);
+  }
+}
+
+function captureProcessStartIdentity(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  if (process.platform === 'linux') {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+      const closeParen = stat.lastIndexOf(')');
+      if (closeParen === -1) return null;
+      const fields = stat.substring(closeParen + 2).split(' ');
+      const startTime = parseInt(fields[19], 10);
+      return isNaN(startTime) ? null : String(startTime);
+    } catch {
+      return null;
+    }
+  }
+  if (process.platform === 'darwin') {
+    try {
+      const { status, stdout } = spawnSync('ps', ['-p', String(pid), '-o', 'lstart='],
+        { env: { ...process.env, LC_ALL: 'C' }, timeout: 2000, windowsHide: true });
+      if (status !== 0) return null;
+      const time = new Date(stdout.trim()).getTime();
+      return isNaN(time) ? null : `mac:${time}`;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function processIdentityMatches(pid, expectedIdentity) {
+  if (!expectedIdentity) return false;
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+  return captureProcessStartIdentity(pid) === expectedIdentity;
+}
+
+function reapTree(child, childIdentity) {
+  // Identity-safe reap: verify the PID still belongs to the child we spawned
+  // before killing its process group. If the PID was reused by the OS after
+  // the child exited, processIdentityMatches returns false and we skip the
+  // kill entirely, relying on child.unref() for fail-open exit.
+  if (childIdentity && !processIdentityMatches(child.pid, childIdentity)) return;
+  if (process.platform === 'win32') {
+    // Fire-and-forget: a slow, denied, or missing taskkill must not block the
+    // runner past the outer hooks.json budget. The runner still exits fail-open
+    // via child.unref() on the timeout path; taskkill reaps the tree best-effort.
+    try {
+      const killer = spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], {
+        windowsHide: true,
+        detached: true,
+        stdio: 'ignore',
+      });
+      killer.on('error', () => {});
+      killer.unref();
+    } catch {
+      // best-effort; child.unref() still guarantees the runner exits
+    }
+    return;
+  }
+
+  try {
+    process.kill(-child.pid, 'SIGKILL');
+  } catch {
+    try {
+      process.kill(child.pid, 'SIGKILL');
+    } catch {
+      // best-effort; child.unref() still guarantees the runner exits
+    }
+  }
+}
+
+const RUNNER_TERMINATION_SIGNALS = ['SIGTERM', 'SIGINT', 'SIGHUP'];
+function resolveGenericChildCommand(targetPath, extraArgs, platform = process.platform) {
+  return platform === 'win32'
+    ? [__filename, '--generic-child-supervisor', targetPath, ...extraArgs]
+    : [targetPath, ...extraArgs];
+}
+
+function releaseGenericChild(child) {
+  try {
+    if (child.connected) child.disconnect();
+  } catch {
+    // The child may already have exited or closed its IPC channel.
+  }
+  try { child.unref(); } catch { /* handle already released */ }
+}
+
+function superviseGenericChild(targetPath, extraArgs) {
+  let terminal = false;
+  const child = spawn(process.execPath, [targetPath, ...extraArgs], {
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      OMC_SESSION_OWNER_PID: process.env.OMC_SESSION_OWNER_PID || String(process.ppid),
+    },
+    windowsHide: true,
+    detached: process.platform !== 'win32',
+  });
+  const childIdentity = child.pid ? captureProcessStartIdentity(child.pid) : null;
+  const finish = (status) => {
+    if (terminal) return;
+    terminal = true;
+    process.exitCode = status;
+    if (process.connected) process.disconnect();
+  };
+
+  // The supervisor is a detached Windows child of run.cjs. Its IPC channel is
+  // closed by the OS even when run.cjs is externally terminated without JS
+  // cleanup, so it can reap only the hook tree that it created.
+  process.once('disconnect', () => {
+    if (terminal) return;
+    terminal = true;
+    reapTree(child, childIdentity);
+    try { child.unref(); } catch { /* handle already released */ }
+  });
+  child.once('exit', code => finish(typeof code === 'number' ? code : 0));
+  child.once('error', () => finish(0));
+}
+
+
+function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
+  return new Promise(resolve => {
+    let terminal = false;
+    let timer;
+    const child = spawn(process.execPath, resolveGenericChildCommand(targetPath, extraArgs), {
+      stdio: process.platform === 'win32' ? ['inherit', 'inherit', 'inherit', 'ipc'] : 'inherit',
+      env: {
+        ...process.env,
+        OMC_SESSION_OWNER_PID: process.env.OMC_SESSION_OWNER_PID || String(process.ppid),
+      },
+      windowsHide: true,
+      detached: true,
+    });
+    // Capture the durable start identity immediately so reapTree can reject
+    // a PID that was reused after the child exited.
+    const childIdentity = child.pid ? captureProcessStartIdentity(child.pid) : null;
+
+    // The generic child is detached into its own process group (POSIX). If the
+    // runner is terminated or cancelled BEFORE the inner timer fires (outer
+    // hooks.json timeout, Ctrl-C, parent kill), reap the tree so the detached
+    // hook cannot be orphaned — the exact failure class #3493 must not leave open.
+    const detachHandlers = () => {
+      clearTimeout(timer);
+      for (const signal of RUNNER_TERMINATION_SIGNALS) process.off(signal, onRunnerSignal);
+      process.off('exit', onRunnerExit);
+    };
+    function onRunnerSignal() {
+      if (terminal) return;
+      terminal = true;
+      detachHandlers();
+      reapTree(child, childIdentity);
+      process.exit(0);
+    }
+    function onRunnerExit() {
+      if (terminal) return;
+      terminal = true;
+      reapTree(child, childIdentity);
+    }
+
+    timer = setTimeout(() => {
+      if (terminal) return;
+      terminal = true;
+      detachHandlers();
+      reapTree(child, childIdentity);
+      // The runner MUST exit fail-open even if the tree reap did not (or could
+      // not) complete — the core #3493 symptom is run.cjs parents living for
+      // tens of minutes. Closing the Windows IPC channel also tells the
+      // supervisor to reap the hook tree if taskkill did not complete.
+      releaseGenericChild(child);
+      writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs);
+      resolve(0);
+    }, timeoutMs);
+
+    child.once('exit', (code) => {
+      if (terminal) return;
+      terminal = true;
+      detachHandlers();
+      resolve(typeof code === 'number' ? code : 0);
+    });
+    child.once('error', () => {
+      if (terminal) return;
+      terminal = true;
+      detachHandlers();
+      resolve(0);
+    });
+
+    for (const signal of RUNNER_TERMINATION_SIGNALS) process.on(signal, onRunnerSignal);
+    process.on('exit', onRunnerExit);
+  });
+}
+
+async function runWorker(targetPath, manifestHook, timeoutMs) {
+  let worker;
+  let terminal = false;
+  let timer;
+  let discardOutput = false;
+  const stdout = [];
+  const stderr = [];
+
+  const cleanupInput = () => {
+    if (!worker) return;
+    process.stdin.unpipe(worker.stdin);
+    worker.stdin.destroy();
+  };
+  const waitForOutputEnd = stream => stream.readableEnded
+    ? Promise.resolve()
+    : new Promise(resolve => stream.once('end', resolve));
+  const writeBuffer = (stream, buffer) => new Promise(resolve => {
+    stream.write(buffer, () => resolve());
+  });
+  const forwardBuffers = async (workerError) => {
+    if (stdout.length) await writeBuffer(process.stdout, Buffer.concat(stdout));
+    if (stderr.length) await writeBuffer(process.stderr, Buffer.concat(stderr));
+    if (workerError) {
+      const diagnostic = workerError.stack || workerError.message || String(workerError);
+      await writeBuffer(process.stderr, Buffer.from(`${diagnostic}\n`));
+    }
+  };
+  const waitForWorkerOutput = () => Promise.all([
+    waitForOutputEnd(worker.stdout),
+    waitForOutputEnd(worker.stderr),
+  ]);
+
+  try {
+    return await new Promise((resolve) => {
+      const finish = async (status, workerError) => {
+        if (terminal) return;
+        terminal = true;
+        clearTimeout(timer);
+        cleanupInput();
+        if (worker) await waitForWorkerOutput();
+        await forwardBuffers(workerError);
+        resolve(status);
+      };
+
+      timer = setTimeout(async () => {
+        if (terminal) return;
+        discardOutput = true;
+        terminal = true;
+        cleanupInput();
+        try {
+          await worker.terminate();
+        } catch {
+          // Termination is best-effort; the hook must still fail open.
+        }
+        writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs);
+        resolve(0);
+      }, timeoutMs);
+
+      try {
+        worker = new Worker(pathToFileURL(targetPath), {
+          stdin: true,
+          stdout: true,
+          stderr: true,
+          env: process.env,
+        });
+        if (process.stdin.readableEnded) worker.stdin.end();
+        else process.stdin.pipe(worker.stdin);
+        worker.stdout.on('data', chunk => { if (!discardOutput) stdout.push(chunk); });
+        worker.stderr.on('data', chunk => { if (!discardOutput) stderr.push(chunk); });
+        worker.once('error', error => {
+          void finish(1, error);
+        });
+        worker.once('exit', code => {
+          void finish(code ?? 0);
+        });
+      } catch (error) {
+        void finish(1, error);
+      }
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+if (require.main === module) {
+  const target = process.argv[2];
+  if (target === '--generic-child-supervisor') {
+    const supervisedTarget = process.argv[3];
+    if (supervisedTarget) superviseGenericChild(supervisedTarget, process.argv.slice(4));
+    else process.exitCode = 0;
+  } else if (!target) {
+    process.exit(0);
+  } else {
+    const resolution = resolveTarget(target);
+    if (!resolution) {
+      process.exitCode = 0;
+    } else {
+      const extraArgs = process.argv.slice(3);
+      const workerManifestHook = resolveWorkerTarget(resolution, extraArgs);
+      if (workerManifestHook) {
+        const workerTimeoutMs = resolveTrustedPromptWorkerTimeoutMs(resolution.targetPath, workerManifestHook, resolution.trustedPluginRoot);
+        runWorker(resolution.targetPath, workerManifestHook, workerTimeoutMs).then(status => {
+          process.exitCode = status;
+        });
+      } else {
+        const sessionEndManifestHook = resolveTrustedSessionEndTarget(resolution, extraArgs);
+        if (sessionEndManifestHook) {
+          const requestedTestTimeout = process.env.NODE_ENV === 'test'
+            ? Number(process.env.OMC_SESSION_END_TEST_FOREGROUND_TIMEOUT_MS)
+            : NaN;
+          const timeoutMs = Number.isFinite(requestedTestTimeout) && requestedTestTimeout > 0
+            ? Math.min(resolveGenericTimeoutMs(sessionEndManifestHook), requestedTestTimeout)
+            : Math.min(resolveGenericTimeoutMs(sessionEndManifestHook), 300);
+          runWorker(resolution.targetPath, sessionEndManifestHook, timeoutMs).then(status => {
+            process.exitCode = status;
+          });
+        } else {
+          const manifestHook = resolveHookTimeoutMs(resolution.targetPath, extraArgs);
+          const timeoutMs = resolveGenericTimeoutMs(manifestHook);
+          runGenericChild(resolution.targetPath, extraArgs, timeoutMs, manifestHook).then(status => {
+            process.exitCode = status;
+          });
+        }
+      }
+    }
+  }
+}
+
+module.exports = {
+  resolveInnerTimeoutMs,
+  resolveTrustedPromptWorkerTimeoutMs,
+  resolveWorkerTarget,
+  resolveHookTimeoutMs,
+  resolveGenericTimeoutMs,
+  runGenericChild,
+  resolveGenericChildCommand,
+  releaseGenericChild,
+  DEFAULT_GENERIC_TIMEOUT_MS,
+  resolveTrustedSessionEndTarget,
+};

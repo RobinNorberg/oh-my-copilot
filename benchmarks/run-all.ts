@@ -11,7 +11,7 @@
  *   --compare            Compare current results against the latest baseline
  *   --agent <name>       Run only one agent benchmark (critic|code-reviewer|debugger|executor)
  *   --fixture <id>       Run a single fixture only (within the selected agent)
- *   --model <model>      Copilot model to use (default: claude-opus-4-6)
+ *   --model <model>      Claude model to use (default: claude-opus-4-6)
  *   --dry-run            Validate pipeline without API calls
  */
 

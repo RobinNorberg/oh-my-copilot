@@ -21,6 +21,8 @@ const BLOCKED_HOST_PATTERNS = [
     /^\[?::1\]?$/, // IPv6 loopback
     /^\[?fc00:/i, // IPv6 unique local
     /^\[?fe80:/i, // IPv6 link-local
+    /^\[?::ffff:/i, // IPv6-mapped IPv4 (all private ranges accessible via this prefix)
+    /^\[?0{0,4}:{0,2}ffff:/i, // IPv6-mapped IPv4 expanded forms
 ];
 // Blocked URL schemes
 const ALLOWED_SCHEMES = ['https:', 'http:'];
@@ -54,6 +56,26 @@ export function validateUrlForSSRF(urlString) {
                 reason: `Hostname '${hostname}' resolves to a blocked internal/private address`,
             };
         }
+    }
+    if (/^0x[0-9a-f]+$/i.test(hostname)) {
+        return {
+            allowed: false,
+            reason: `Hostname '${hostname}' looks like a hex-encoded IP address`,
+        };
+    }
+    // Block pure decimal IP notation (e.g., 2130706433 = 127.0.0.1)
+    if (/^\d+$/.test(hostname) && hostname.length > 3) {
+        return {
+            allowed: false,
+            reason: `Hostname '${hostname}' looks like a decimal-encoded IP address`,
+        };
+    }
+    // Block octal IP notation (segments starting with 0, e.g., 0177.0.0.1 = 127.0.0.1)
+    if (/^0\d+\./.test(hostname)) {
+        return {
+            allowed: false,
+            reason: `Hostname '${hostname}' looks like an octal-encoded IP address`,
+        };
     }
     // Block URLs with credentials (user:pass@host)
     if (parsed.username || parsed.password) {

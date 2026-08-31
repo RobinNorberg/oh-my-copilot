@@ -63,7 +63,7 @@ describe('drainAndStop — clean + conflicting work', () => {
         // The important assertion: drainAndStop returns structured results.
         expect(Array.isArray(result.unmerged)).toBe(true);
         // Teardown audit file should exist if there were unmerged workers.
-        const auditPath = join(fixture.repoRoot, '.omcp', 'state', 'team', fixture.teamName, 'teardown-audit.jsonl');
+        const auditPath = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName, 'teardown-audit.jsonl');
         if (result.unmerged.length > 0) {
             expect(existsSync(auditPath)).toBe(true);
             const auditContent = readFileSync(auditPath, 'utf-8');
@@ -74,7 +74,7 @@ describe('drainAndStop — clean + conflicting work', () => {
                 expect(auditContent).toContain(`"reason":"${u.reason}"`);
             }
             // Leader inbox should contain the teardown audit message
-            const leaderInboxPath = join(fixture.repoRoot, '.omcp', 'state', 'team', fixture.teamName, 'leader', 'inbox.md');
+            const leaderInboxPath = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName, 'leader', 'inbox.md');
             expect(existsSync(leaderInboxPath)).toBe(true);
             const leaderInbox = readFileSync(leaderInboxPath, 'utf-8');
             expect(leaderInbox).toContain('Teardown audit');
@@ -113,12 +113,12 @@ describe('drainAndStop — drain timeout', () => {
         // unmerged may be empty — both are valid outcomes.
         if (result.unmerged.length > 0) {
             expect(result.unmerged.some((u) => u.reason === 'drain-timeout')).toBe(true);
-            const auditPath = join(fixture.repoRoot, '.omcp', 'state', 'team', fixture.teamName, 'teardown-audit.jsonl');
+            const auditPath = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName, 'teardown-audit.jsonl');
             expect(existsSync(auditPath)).toBe(true);
             const auditContent = readFileSync(auditPath, 'utf-8');
             expect(auditContent).toContain('"drain-timeout"');
             // Leader inbox should have the audit message
-            const leaderInboxPath = join(fixture.repoRoot, '.omcp', 'state', 'team', fixture.teamName, 'leader', 'inbox.md');
+            const leaderInboxPath = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName, 'leader', 'inbox.md');
             expect(existsSync(leaderInboxPath)).toBe(true);
             const leaderInbox = readFileSync(leaderInboxPath, 'utf-8');
             expect(leaderInbox).toContain('Teardown audit');
@@ -163,7 +163,7 @@ describe('drainAndStop — one audit row per unmerged worker', () => {
         const result = await handle.drainAndStop();
         // With drainTimeoutMs=1, both workers should fail to drain
         if (result.unmerged.length > 0) {
-            const auditPath = join(fixture.repoRoot, '.omcp', 'state', 'team', fixture.teamName, 'teardown-audit.jsonl');
+            const auditPath = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName, 'teardown-audit.jsonl');
             expect(existsSync(auditPath)).toBe(true);
             const lines = readFileSync(auditPath, 'utf-8')
                 .split('\n')

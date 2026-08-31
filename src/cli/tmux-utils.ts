@@ -4,18 +4,16 @@
  */
 
 import {
-  exec,
   execFile,
   execFileSync,
-  execSync,
   spawnSync,
   type ExecFileSyncOptionsWithStringEncoding,
-  type ExecSyncOptionsWithStringEncoding,
   type SpawnSyncOptionsWithStringEncoding,
   type SpawnSyncReturns,
 } from 'child_process';
-import { basename, isAbsolute, win32 as win32Path } from 'path';
+import { basename } from 'path';
 import { promisify } from 'util';
+import { resolveExecutable } from '../platform/executable-resolution.js';
 
 // ── tmux environment & execution wrappers ────────────────────────────────────
 
@@ -27,7 +25,11 @@ export interface TmuxExecOptions {
 }
 
 export function tmuxEnv(): NodeJS.ProcessEnv {
-  const { TMUX: _, ...env } = process.env;
+  // Strip both TMUX (real tmux) and PSMUX_SESSION (psmux's drop-in tmux on
+  // native Windows). psmux gates `new-session -d` nesting on PSMUX_SESSION,
+  // not TMUX, so dropping only TMUX leaves psmux silently no-op'ing detached
+  // session creation. See issue #3265.
+  const { TMUX: _, PSMUX_SESSION: __, ...env } = process.env;
   return env;
 }
 
@@ -97,23 +99,27 @@ export async function tmuxExecAsync(
   });
 }
 
+/**
+ * Argv-based tmux call for commands that carry format strings.
+ *
+ * These used to run as a `tmux <command>` shell string, which skipped the
+ * win32 .cmd/COMSPEC wrapping in resolveTmuxInvocation and forced callers to
+ * POSIX-quote format args — quotes that cmd.exe passes through literally.
+ * @deprecated Prefer tmuxExec; this remains for existing callers.
+ */
 export function tmuxShell(
-  command: string,
-  opts?: TmuxExecOptions & Omit<ExecSyncOptionsWithStringEncoding, 'env' | 'encoding'> & { encoding?: BufferEncoding },
+  args: string[],
+  opts?: TmuxExecOptions & Omit<ExecFileSyncOptionsWithStringEncoding, 'env' | 'encoding'> & { encoding?: BufferEncoding },
 ): string {
-  const { stripTmux: _, ...execOpts } = opts ?? {};
-  return execSync(`tmux ${command}`, { encoding: 'utf-8', ...execOpts, env: resolveEnv(opts) }) as string;
+  return tmuxExec(args, opts);
 }
 
+/** @deprecated Prefer tmuxExecAsync; this remains for existing callers. */
 export async function tmuxShellAsync(
-  command: string,
+  args: string[],
   opts?: TmuxExecOptions & { timeout?: number },
 ): Promise<{ stdout: string; stderr: string }> {
-  const { stripTmux: _, timeout, ...rest } = opts ?? {};
-  return promisify(exec)(`tmux ${command}`, {
-    encoding: 'utf-8', env: resolveEnv(opts),
-    ...(timeout !== undefined ? { timeout } : {}), ...rest,
-  });
+  return tmuxExecAsync(args, opts);
 }
 
 export function tmuxSpawn(
@@ -125,14 +131,14 @@ export function tmuxSpawn(
   return spawnSync(invocation.command, invocation.args, { encoding: 'utf-8', ...spawnOpts, env: resolveEnv(opts) });
 }
 
+/**
+ * Argv execution carries `#{...}` format args to tmux verbatim on every
+ * platform, so no shell — and therefore no per-platform quoting — is involved.
+ */
 export async function tmuxCmdAsync(
   args: string[],
   opts?: TmuxExecOptions & { timeout?: number },
 ): Promise<{ stdout: string; stderr: string }> {
-  if (args.some(a => a.includes('#{'))) {
-    const escaped = args.map(a => "'" + a.replace(/'/g, "'\\''") + "'").join(' ');
-    return tmuxShellAsync(escaped, opts);
-  }
   return tmuxExecAsync(args, opts);
 }
 
@@ -149,26 +155,7 @@ function resolveTmuxBinaryPath(): string {
     return 'tmux';
   }
 
-  try {
-    const result = spawnSync('where', ['tmux'], {
-      timeout: 5000,
-      encoding: 'utf8',
-    });
-    if (result.status !== 0) return 'tmux';
-
-    const candidates = result.stdout
-      ?.split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean) ?? [];
-    const first = candidates[0];
-    if (first && (isAbsolute(first) || win32Path.isAbsolute(first))) {
-      return first;
-    }
-  } catch {
-    // Fall back to plain tmux lookup below.
-  }
-
-  return 'tmux';
+  return resolveExecutable('tmux') ?? 'tmux';
 }
 
 /**
@@ -176,15 +163,15 @@ function resolveTmuxBinaryPath(): string {
  */
 export function isTmuxAvailable(): boolean {
   try {
-    const resolvedBinary = resolveTmuxBinaryPath();
-    if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedBinary)) {
-      const comspec = process.env.COMSPEC || 'cmd.exe';
-      const result = spawnSync(comspec, ['/d', '/s', '/c', `"${resolvedBinary}" -V`], { timeout: 5000 });
-      return result.status === 0;
-    }
-
     if (process.platform === 'win32') {
-      const result = spawnSync(resolvedBinary, ['-V'], { timeout: 5000, shell: true });
+      // shell:false keeps an install path with spaces ("C:\Program Files\...")
+      // from splitting into separate arguments.
+      const invocation = resolveTmuxInvocation(['-V']);
+      const result = spawnSync(invocation.command, invocation.args, {
+        timeout: 5000,
+        shell: false,
+        windowsHide: true,
+      });
       return result.status === 0;
     }
 
@@ -211,6 +198,15 @@ export function isCopilotAvailable(): boolean {
 }
 
 /**
+ * Options for `resolveLaunchPolicy`. `requireTmux=true` makes
+ * CMUX_SURFACE_ID stop demoting to 'direct'. The caller is responsible for
+ * gating on platform/flag combinations (e.g. macOS + --madmax).
+ */
+export interface ResolveLaunchPolicyOptions {
+  requireTmux?: boolean;
+}
+
+/**
  * Resolve launch policy based on environment and args
  * - inside-tmux: Already in tmux session, split pane for HUD
  * - outside-tmux: Not in tmux, create new session
@@ -220,17 +216,18 @@ export function isCopilotAvailable(): boolean {
 export function resolveLaunchPolicy(
   env: NodeJS.ProcessEnv = process.env,
   args: string[] = [],
+  options: ResolveLaunchPolicyOptions = {},
 ): ClaudeLaunchPolicy {
   if (args.some((arg) => arg === '--print' || arg === '-p')) {
     return 'direct';
   }
   if (env.TMUX) return 'inside-tmux';
   // Terminal emulators that embed their own multiplexer (e.g. cmux, a
-  // Ghostty-based terminal) set CMUX_SURFACE_ID but not TMUX.  tmux
+  // Ghostty-based terminal) set CMUX_SURFACE_ID but not TMUX. tmux
   // attach-session fails in these environments because the host PTY is
   // not directly compatible, leaving orphaned detached sessions.
-  // Fall back to direct mode so Claude launches without tmux wrapping.
-  if (env.CMUX_SURFACE_ID) return 'direct';
+  // Demote to direct unless the caller explicitly requires tmux.
+  if (env.CMUX_SURFACE_ID && !options.requireTmux) return 'direct';
   if (!isTmuxAvailable()) {
     return 'direct';
   }
@@ -251,6 +248,7 @@ export function buildTmuxSessionName(cwd: string): string {
       cwd,
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
     }).trim();
     if (branch) {
       branchToken = sanitizeTmuxToken(branch);

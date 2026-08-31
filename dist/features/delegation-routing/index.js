@@ -5,7 +5,7 @@
  * to use for a given agent role based on configuration.
  */
 // Main resolver
-export { resolveDelegation, parseFallbackChain } from './resolver.js';
+export { resolveDelegation, parseFallbackChain, isDeprecatedMcpProvider, DEPRECATED_MCP_PROVIDER_WARNING, } from './resolver.js';
 // Types and constants
 export { DEFAULT_DELEGATION_CONFIG, ROLE_CATEGORY_DEFAULTS, isDelegationEnabled, } from './types.js';
 //# sourceMappingURL=index.js.map

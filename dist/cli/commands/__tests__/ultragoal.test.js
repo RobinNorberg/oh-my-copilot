@@ -6,12 +6,24 @@ import { ultragoalCommand } from '../ultragoal.js';
 async function withTempCwd(run) {
     const cwd = await mkdtemp(join(tmpdir(), 'omc-ultragoal-cli-'));
     const original = process.cwd();
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
     process.chdir(cwd);
+    process.env.HOME = cwd;
+    process.env.USERPROFILE = cwd;
     try {
         return await run(cwd);
     }
     finally {
         process.chdir(original);
+        if (originalHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = originalHome;
+        if (originalUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = originalUserProfile;
         await rm(cwd, { recursive: true, force: true });
     }
 }
@@ -33,7 +45,7 @@ function captureConsole() {
         },
     };
 }
-describe('omcp ultragoal CLI', () => {
+describe('omc ultragoal CLI', () => {
     let captured;
     beforeEach(() => {
         captured = captureConsole();
@@ -46,22 +58,22 @@ describe('omcp ultragoal CLI', () => {
     it('prints help when invoked with no subcommand', async () => {
         await ultragoalCommand([]);
         const joined = captured.out.join('\n');
-        expect(joined).toMatch(/omcp ultragoal/);
-        expect(joined).toMatch(/Artifacts:[\s\S]*\.omcp\/ultragoal\/brief\.md/);
+        expect(joined).toMatch(/omc ultragoal/);
+        expect(joined).toMatch(/Artifacts[^\n]*[\s\S]*\.omg\/ultragoal\/brief\.md/);
         expect(joined).toMatch(/Claude \/goal integration/);
         expect(joined).not.toMatch(/\bomx\b/);
     });
-    it('create-goals from positional brief writes .omcp/ultragoal artifacts', async () => {
+    it('create-goals from positional brief writes .omg/ultragoal artifacts', async () => {
         await withTempCwd(async (cwd) => {
             await ultragoalCommand(['create-goals', '- First story\n- Second story']);
             expect(process.exitCode).toBe(0);
-            const goals = JSON.parse(await readFile(join(cwd, '.omcp/ultragoal/goals.json'), 'utf-8'));
+            const goals = JSON.parse(await readFile(join(cwd, '.omg/ultragoal/goals.json'), 'utf-8'));
             expect(goals.claudeGoalMode).toBe('aggregate');
             expect(goals.goals.map((g) => g.id)).toEqual(['G001-first-story', 'G002-second-story']);
-            const brief = await readFile(join(cwd, '.omcp/ultragoal/brief.md'), 'utf-8');
+            const brief = await readFile(join(cwd, '.omg/ultragoal/brief.md'), 'utf-8');
             expect(brief).toMatch(/First story/);
             expect(brief).toMatch(/Second story/);
-            const ledger = await readFile(join(cwd, '.omcp/ultragoal/ledger.jsonl'), 'utf-8');
+            const ledger = await readFile(join(cwd, '.omg/ultragoal/ledger.jsonl'), 'utf-8');
             expect(ledger).toMatch(/"event":"plan_created"/);
         });
     });
@@ -80,9 +92,33 @@ describe('omcp ultragoal CLI', () => {
             expect(joined).toMatch(/Ultragoal aggregate-goal handoff/);
             expect(joined).toMatch(/invoke \/goal/);
             expect(joined).toMatch(/--claude-goal-json/);
+            expect(joined).toMatch(/does not satisfy the PreToolUse \/goal guard/);
             expect(joined).toMatch(/Complete first milestone/);
             expect(joined).not.toMatch(/\bomx\b/);
             expect(joined).not.toMatch(/get_goal|create_goal|update_goal/);
+        });
+    });
+    it('complete-goals positional id starts exactly the named pending goal', async () => {
+        await withTempCwd(async (cwd) => {
+            await ultragoalCommand(['create-goals', '--brief', 'brief', '--goal', 'First::first', '--goal', 'Second::second', '--goal', 'Third::third']);
+            captured.out.length = 0;
+            await ultragoalCommand(['complete-goals', 'G003-third', '--json']);
+            const result = JSON.parse(captured.out.join(''));
+            expect(result.goal.id).toBe('G003-third');
+            const plan = JSON.parse(await readFile(join(cwd, '.omg/ultragoal/goals.json'), 'utf-8'));
+            expect(plan.activeGoalId).toBe('G003-third');
+            expect(plan.goals.find((goal) => goal.id === 'G001-first')?.status).toBe('pending');
+            expect(plan.goals.find((goal) => goal.id === 'G003-third')?.attempt).toBe(1);
+        });
+    });
+    it('rejects an unknown positional id without mutating artifacts', async () => {
+        await withTempCwd(async (cwd) => {
+            await ultragoalCommand(['create-goals', '--brief', 'brief', '--goal', 'First::first', '--goal', 'Second::second']);
+            const before = await readFile(join(cwd, '.omg/ultragoal/goals.json'), 'utf-8');
+            await ultragoalCommand(['complete-goals', 'G999-missing']);
+            expect(process.exitCode).toBe(1);
+            expect(captured.err.join('\n')).toMatch(/Unknown ultragoal id: G999-missing/);
+            expect(await readFile(join(cwd, '.omg/ultragoal/goals.json'), 'utf-8')).toBe(before);
         });
     });
     it('checkpoint accepts a Claude /goal snapshot via inline JSON', async () => {
@@ -93,7 +129,7 @@ describe('omcp ultragoal CLI', () => {
                 '--goal', 'First::Complete first milestone.',
                 '--goal', 'Second::Complete second milestone.',
             ]);
-            const plan = JSON.parse(await readFile(join(cwd, '.omcp/ultragoal/goals.json'), 'utf-8'));
+            const plan = JSON.parse(await readFile(join(cwd, '.omg/ultragoal/goals.json'), 'utf-8'));
             await ultragoalCommand(['complete-goals']);
             captured.out.length = 0;
             const snapshot = JSON.stringify({ goal: { objective: plan.claudeObjective, status: 'active' } });
@@ -105,7 +141,7 @@ describe('omcp ultragoal CLI', () => {
                 '--claude-goal-json', snapshot,
             ]);
             expect(process.exitCode).toBe(0);
-            const updated = JSON.parse(await readFile(join(cwd, '.omcp/ultragoal/goals.json'), 'utf-8'));
+            const updated = JSON.parse(await readFile(join(cwd, '.omg/ultragoal/goals.json'), 'utf-8'));
             expect(updated.goals.find((g) => g.id === 'G001-first')?.status).toBe('complete');
             expect(updated.goals.find((g) => g.id === 'G002-second')?.status).toBe('pending');
         });
@@ -117,7 +153,7 @@ describe('omcp ultragoal CLI', () => {
                 '--brief', 'brief',
                 '--goal', 'First::Complete first milestone.',
             ]);
-            const plan = JSON.parse(await readFile(join(cwd, '.omcp/ultragoal/goals.json'), 'utf-8'));
+            const plan = JSON.parse(await readFile(join(cwd, '.omg/ultragoal/goals.json'), 'utf-8'));
             await ultragoalCommand(['complete-goals']);
             const snapshotPath = join(cwd, 'goal-snapshot.json');
             await writeFile(snapshotPath, JSON.stringify({ goal: { objective: plan.claudeObjective, status: 'complete' } }));
@@ -138,7 +174,7 @@ describe('omcp ultragoal CLI', () => {
                 '--quality-gate-json', 'quality.json',
             ]);
             expect(process.exitCode).toBe(0);
-            const updated = JSON.parse(await readFile(join(cwd, '.omcp/ultragoal/goals.json'), 'utf-8'));
+            const updated = JSON.parse(await readFile(join(cwd, '.omg/ultragoal/goals.json'), 'utf-8'));
             expect(updated.goals[0]?.status).toBe('complete');
         });
     });

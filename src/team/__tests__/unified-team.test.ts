@@ -1,21 +1,46 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs';
+import { mkdtempSync, rmSync } from 'fs';
 import { join } from 'path';
-import { tmpdir, homedir } from 'os';
+import { tmpdir } from 'os';
 import { getTeamMembers } from '../unified-team.js';
 import { registerMcpWorker } from '../team-registration.js';
 import { writeHeartbeat } from '../heartbeat.js';
 
+function isolateFixtureRoot(root: string): () => void {
+  const home = process.env.HOME;
+  const userProfile = process.env.USERPROFILE;
+  const stateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  delete process.env.OMC_STATE_DIR;
+  return () => {
+    if (home === undefined) delete process.env.HOME;
+    else process.env.HOME = home;
+    if (userProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = userProfile;
+    if (stateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = stateDir;
+  };
+}
+
 describe('unified-team', () => {
   let testDir: string;
+  let restoreFixtureEnv: (() => void) | undefined;
   const teamName = 'test-unified';
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'unified-team-test-'));
+    restoreFixtureEnv = isolateFixtureRoot(testDir);
   });
 
   afterEach(() => {
-    rmSync(testDir, { recursive: true, force: true });
+    const restore = restoreFixtureEnv;
+    restoreFixtureEnv = undefined;
+    try {
+      restore?.();
+    } finally {
+      rmSync(testDir, { recursive: true, force: true });
+    }
   });
 
   function registerWorker(name: string, agentType: string = 'mcp-codex') {

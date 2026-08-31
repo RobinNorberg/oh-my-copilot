@@ -1,8 +1,8 @@
 /**
- * Hook Scripts for Copilot CLI
- * Hook system inspired by oh-my-opencode, adapted for Copilot CLI's native hooks
+ * Hook Scripts for Claude Code
+ * Hook system inspired by oh-my-opencode, adapted for Claude Code's native hooks
  *
- * Copilot CLI hooks are configured in settings.json and run as shell commands.
+ * Claude Code hooks are configured in settings.json and run as shell commands.
  * These scripts receive JSON input via stdin and output JSON to modify behavior.
  *
  * This module provides Node.js scripts (.mjs) for cross-platform support (Windows, macOS, Linux).
@@ -12,11 +12,6 @@
 export declare const MIN_NODE_VERSION = 20;
 /** Check if running on Windows */
 export declare function isWindows(): boolean;
-/**
- * Check if Node.js hooks should be used.
- * @deprecated Always returns true. Bash hooks were removed in v3.9.0.
- */
-export declare function shouldUseNodeHooks(): boolean;
 /** Get the hooks directory path */
 export declare function getHooksDir(): string;
 /**
@@ -24,13 +19,6 @@ export declare function getHooksDir(): string;
  * Returns the appropriate syntax for the current platform.
  */
 export declare function getHomeEnvVar(): string;
-/**
- * Ultrawork message - injected when ultrawork/ulw keyword detected
- * Sourced from the centralized ultrawork module (default variant) so that
- * installer/bridge/keyword-detector surfaces stay in sync. Variant-aware
- * callers should use getUltraworkMessage(agentName, modelId) directly.
- */
-export declare const ULTRAWORK_MESSAGE: string;
 /**
  * Ultrathink/Think mode message
  * Ported from oh-my-opencode's think-mode hook
@@ -68,9 +56,8 @@ export declare const TDD_MESSAGE = "<tdd-mode>\n[TDD MODE ACTIVATED]\n\nTHE IRON
 export declare const TODO_CONTINUATION_PROMPT = "[SYSTEM REMINDER - TODO CONTINUATION]\n\nIncomplete tasks remain in your todo list. Continue working on the next pending task.\n\n- Proceed without asking for permission\n- Mark each task complete when finished\n- Do not stop until all tasks are done";
 /**
  * Ralph mode message - injected when ralph keyword detected
- * Auto-activates ultrawork for parallel execution
  */
-export declare const RALPH_MESSAGE = "[RALPH + ULTRAWORK MODE ACTIVATED]\n\nRalph mode auto-activates Ultrawork for maximum parallel execution. Follow these rules:\n\n### Parallel Execution\n- **PARALLEL**: Fire independent calls simultaneously - NEVER wait sequentially\n- **BACKGROUND FIRST**: Use Task(run_in_background=true) for long operations\n- **DELEGATE**: Route tasks to specialist agents immediately\n\n### Completion Requirements\n- Verify ALL requirements from the original task are met\n- Architect verification is MANDATORY before claiming completion\n- When FULLY complete, run `/oh-my-copilot:cancel` to cleanly exit and clean up state files\n\nContinue working until the task is truly done.\n";
+export declare const RALPH_MESSAGE = "[RALPH MODE ACTIVATED]\n\nRalph mode persists until the requested work is verified complete. Follow these rules:\n\n### Execution\n- Work through every remaining requirement\n- Delegate independent specialist work when it improves correctness\n- Keep the durable Ralph state aligned with actual progress\n\n### Completion Requirements\n- Verify ALL requirements from the original task are met\n- Architect verification is MANDATORY before claiming completion\n- When FULLY complete, run `/oh-my-copilot:cancel` to cleanly exit and clean up state files\n\nContinue working until the task is truly done.\n";
 /**
  * Prompt translation message - injected when non-English input detected
  * Reminds users to write prompts in English for consistent agent routing
@@ -140,13 +127,4 @@ export declare const HOOKS_SETTINGS_CONFIG_NODE: {
  * Kept for test compatibility only.
  */
 export declare function getHooksSettingsConfig(): typeof HOOKS_SETTINGS_CONFIG_NODE;
-/**
- * Get Node.js hook scripts (Cross-platform)
- * Returns a record of filename -> content for all Node.js hooks
- *
- * @deprecated Hook scripts are no longer installed to ~/.copilot/hooks/.
- * All hooks are delivered via the plugin's hooks/hooks.json + scripts/.
- * Kept for test compatibility only.
- */
-export declare function getHookScripts(): Record<string, string>;
 //# sourceMappingURL=hooks.d.ts.map

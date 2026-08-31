@@ -80,7 +80,7 @@ export function loadAgentPrompt(agentName) {
     // Runtime fallback: read from filesystem (dev/test environments)
     try {
         const agentsDir = join(getPackageDir(), 'agents');
-        const agentPath = join(agentsDir, `${agentName}.agent.md`);
+        const agentPath = join(agentsDir, `${agentName}.md`);
         // Security: Verify resolved path is within the agents directory
         const resolvedPath = resolve(agentPath);
         const resolvedAgentsDir = resolve(agentsDir);
@@ -241,7 +241,7 @@ export function parseDisallowedTools(agentName) {
     }
     try {
         const agentsDir = join(getPackageDir(), 'agents');
-        const agentPath = join(agentsDir, `${agentName}.agent.md`);
+        const agentPath = join(agentsDir, `${agentName}.md`);
         // Security: Verify resolved path is within the agents directory
         const resolvedPath = resolve(agentPath);
         const resolvedAgentsDir = resolve(agentsDir);
@@ -268,7 +268,7 @@ export function parseDisallowedTools(agentName) {
 /**
  * Standard path for open questions file
  */
-export const OPEN_QUESTIONS_PATH = '.omcp/plans/open-questions.md';
+export const OPEN_QUESTIONS_PATH = '.omg/plans/open-questions.md';
 /**
  * Format open questions for appending to the standard open-questions.md file.
  *

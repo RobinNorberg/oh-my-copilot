@@ -13,7 +13,7 @@
  * - Inline array: globs: ["**\/*.py", "src/**\/*.ts"]
  * - Multi-line array with dashes
  * - Comma-separated: globs: "**\/*.py, src/**\/*.ts"
- * - Copilot CLI 'paths' field (alias for globs)
+ * - Claude Code 'paths' field (alias for globs)
  */
 export function parseRuleFrontmatter(content) {
     const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
@@ -35,7 +35,10 @@ export function parseRuleFrontmatter(content) {
  * Parse YAML content without external library.
  */
 function parseYamlContent(yamlContent) {
-    const lines = yamlContent.split('\n');
+    // Split on CRLF or LF so a trailing "\r" from a Windows-authored rule file
+    // never leaks into a line. The multi-line array matcher (/^\s+-\s*(.*)$/)
+    // stops at "\r", which would otherwise collapse a "  - pattern" list to ''.
+    const lines = yamlContent.split(/\r?\n/);
     const metadata = {};
     let i = 0;
     while (i < lines.length) {
@@ -55,7 +58,7 @@ function parseYamlContent(yamlContent) {
         }
         else if (key === 'globs' || key === 'paths' || key === 'applyTo') {
             const { value, consumed } = parseArrayOrStringValue(rawValue, lines, i);
-            // Merge paths into globs (Copilot CLI compatibility)
+            // Merge paths into globs (Claude Code compatibility)
             metadata.globs = mergeGlobs(metadata.globs, value);
             i += consumed;
             continue;

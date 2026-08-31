@@ -3,11 +3,13 @@ import {
   isBedrock,
   isVertexAI,
   isNonCopilotProvider,
-  resolveClaudeFamily,
-  hasExtendedContextSuffix,
   isProviderSpecificModelId,
+  resolveClaudeFamily,
+  COPILOT_FAMILY_DEFAULTS,
+  hasExtendedContextSuffix,
   isSubagentSafeModelId,
   resolveInheritedModelFromEnv,
+  shouldAutoForceInherit,
 } from '../models.js';
 import { saveAndClear, restore } from './test-helpers.js';
 
@@ -80,8 +82,18 @@ describe('isBedrock()', () => {
     expect(isBedrock()).toBe(true);
   });
 
-  it('detects bare anthropic.copilot prefix (legacy Bedrock IDs)', () => {
+  it('detects bare anthropic.claude prefix (legacy Bedrock IDs)', () => {
     process.env.ANTHROPIC_MODEL = 'anthropic.claude-3-haiku-20240307-v1:0';
+    expect(isBedrock()).toBe(true);
+  });
+
+  it('detects Bedrock inference-profile ARNs', () => {
+    process.env.ANTHROPIC_MODEL = 'arn:aws:bedrock:us-east-2:123456789012:inference-profile/global.anthropic.claude-opus-4-6-v1:0';
+    expect(isBedrock()).toBe(true);
+  });
+
+  it('detects Bedrock application-inference-profile ARNs', () => {
+    process.env.CLAUDE_MODEL = 'arn:aws:bedrock:us-west-2:123456789012:application-inference-profile/abc123/global.anthropic.claude-sonnet-4-6-v1:0';
     expect(isBedrock()).toBe(true);
   });
 
@@ -90,8 +102,7 @@ describe('isBedrock()', () => {
     expect(isBedrock()).toBe(true);
   });
 
-  // TODO(port-2866 path-B): tier env scanning not in fork's isBedrock.
-  it.skip('detects Bedrock model IDs from tier model env vars', () => {
+  it('detects Bedrock model IDs from tier model env vars', () => {
     process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'global.anthropic.claude-sonnet-4-6-v1:0';
     expect(isBedrock()).toBe(true);
   });
@@ -159,6 +170,11 @@ describe('isNonCopilotProvider()', () => {
     expect(isNonCopilotProvider()).toBe(true);
   });
 
+  it('returns true for Bedrock inference-profile ARNs', () => {
+    process.env.ANTHROPIC_MODEL = 'arn:aws:bedrock:us-east-2:123456789012:inference-profile/global.anthropic.claude-opus-4-6-v1:0';
+    expect(isNonCopilotProvider()).toBe(true);
+  });
+
   it('returns true when CLAUDE_CODE_USE_BEDROCK=1', () => {
     process.env.CLAUDE_CODE_USE_BEDROCK = '1';
     expect(isNonCopilotProvider()).toBe(true);
@@ -174,33 +190,28 @@ describe('isNonCopilotProvider()', () => {
     expect(isNonCopilotProvider()).toBe(true);
   });
 
-  // TODO(port-2866 path-B): tier env scanning not in fork's isNonCopilotProvider.
-  it.skip('returns true when Anthropic tier defaults target a non-Claude provider', () => {
+  it('returns true when Anthropic tier defaults target a non-Claude provider', () => {
     process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'kimi-k2.6:cloud';
     expect(isNonCopilotProvider()).toBe(true);
   });
 
-  it.skip('returns true when OMC tier defaults target a non-Claude provider', () => {
+  it('returns true when OMC tier defaults target a non-Claude provider', () => {
     process.env.OMC_MODEL_MEDIUM = 'glm-5.1:cloud';
     expect(isNonCopilotProvider()).toBe(true);
   });
 
-  // TODO(port-2866 path-B): re-enable when/if fork adopts upstream's
-  // shouldAutoForceInherit() helper. Current fork uses isNonCopilotProvider()
-  // for both "is non-Claude" and "auto force-inherit" decisions, which conflates
-  // the broad and narrow signals these tests pull apart.
-  it.skip('does not globally force inheritance for tier-only non-Claude defaults', () => {
+  it('does not globally force inheritance for tier-only non-Claude defaults', () => {
     process.env.OMC_MODEL_HIGH = 'glm-5.1:cloud';
 
     expect(isNonCopilotProvider()).toBe(true);
-    // expect(shouldAutoForceInherit()).toBe(false);
+    expect(shouldAutoForceInherit()).toBe(false);
   });
 
-  it.skip('does globally force inheritance for direct non-Claude session models', () => {
+  it('does globally force inheritance for direct non-Claude session models', () => {
     process.env.CLAUDE_MODEL = 'glm-5.1:cloud';
 
     expect(isNonCopilotProvider()).toBe(true);
-    // expect(shouldAutoForceInherit()).toBe(true);
+    expect(shouldAutoForceInherit()).toBe(true);
   });
 
   it('lets a direct Claude CLAUDE_MODEL beat a stale non-Claude ANTHROPIC_MODEL', () => {
@@ -333,13 +344,107 @@ describe('resolveClaudeFamily() — Bedrock inference profile IDs', () => {
   });
 
   it('resolves bare Anthropic model IDs', () => {
-    expect(resolveClaudeFamily('claude-sonnet-4-6')).toBe('SONNET');
+    expect(resolveClaudeFamily('claude-sonnet-5')).toBe('SONNET');
     expect(resolveClaudeFamily('claude-opus-4-6')).toBe('OPUS');
     expect(resolveClaudeFamily('claude-haiku-4-5')).toBe('HAIKU');
+    expect(resolveClaudeFamily('claude-fable-5')).toBe('FABLE');
   });
 
-  it('returns null for non-Copilot model IDs', () => {
+  it('resolves fable provider profile IDs to FABLE (issue #3246)', () => {
+    expect(resolveClaudeFamily('us.anthropic.claude-fable-5-v1:0')).toBe('FABLE');
+    expect(resolveClaudeFamily('global.anthropic.claude-fable-5[1m]')).toBe('FABLE');
+  });
+
+  it('maps the FABLE family default to claude-fable-5 (issue #3246)', () => {
+    expect(COPILOT_FAMILY_DEFAULTS.FABLE).toBe('claude-fable-5');
+  });
+
+  it('returns null for non-Claude model IDs', () => {
     expect(resolveClaudeFamily('gpt-4o')).toBeNull();
     expect(resolveClaudeFamily('gemini-1.5-pro')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hasExtendedContextSuffix() — issue: [1m] suffix breaks Bedrock sub-agents
+// ---------------------------------------------------------------------------
+describe('hasExtendedContextSuffix()', () => {
+  it('detects [1m] suffix (1M context window annotation)', () => {
+    expect(hasExtendedContextSuffix('global.anthropic.claude-sonnet-4-6[1m]')).toBe(true);
+  });
+
+  it('detects [200k] suffix (200k context window annotation)', () => {
+    expect(hasExtendedContextSuffix('global.anthropic.claude-sonnet-4-6[200k]')).toBe(true);
+  });
+
+  it('detects [100k] suffix', () => {
+    expect(hasExtendedContextSuffix('us.anthropic.claude-opus-4-6[100k]')).toBe(true);
+  });
+
+  it('returns false for standard Bedrock cross-region profile ID', () => {
+    expect(hasExtendedContextSuffix('global.anthropic.claude-sonnet-4-6-v1:0')).toBe(false);
+  });
+
+  it('returns false for versioned Bedrock ID without suffix', () => {
+    expect(hasExtendedContextSuffix('global.anthropic.claude-opus-4-6-v1')).toBe(false);
+  });
+
+  it('returns false for bare Anthropic model ID', () => {
+    expect(hasExtendedContextSuffix('claude-sonnet-4-6')).toBe(false);
+  });
+
+  it('returns false for tier aliases', () => {
+    expect(hasExtendedContextSuffix('sonnet')).toBe(false);
+    expect(hasExtendedContextSuffix('opus')).toBe(false);
+    expect(hasExtendedContextSuffix('haiku')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isSubagentSafeModelId() — safe to pass as `model` param on Bedrock/Vertex
+// ---------------------------------------------------------------------------
+describe('isSubagentSafeModelId()', () => {
+  it('accepts global. cross-region Bedrock profile without suffix', () => {
+    expect(isSubagentSafeModelId('global.anthropic.claude-sonnet-4-6-v1:0')).toBe(true);
+  });
+
+  it('accepts us. regional Bedrock profile', () => {
+    expect(isSubagentSafeModelId('us.anthropic.claude-sonnet-4-5-20250929-v1:0')).toBe(true);
+  });
+
+  it('accepts eu. regional Bedrock profile', () => {
+    expect(isSubagentSafeModelId('eu.anthropic.claude-haiku-4-5-v1:0')).toBe(true);
+  });
+
+  it('accepts Bedrock ARN format', () => {
+    expect(isSubagentSafeModelId('arn:aws:bedrock:us-east-2:123456789012:inference-profile/global.anthropic.claude-opus-4-6-v1:0')).toBe(true);
+  });
+
+  it('accepts Vertex AI model ID', () => {
+    expect(isSubagentSafeModelId('vertex_ai/claude-sonnet-4-6@20250514')).toBe(true);
+  });
+
+  it('rejects [1m]-suffixed model ID — the core bug case', () => {
+    expect(isSubagentSafeModelId('global.anthropic.claude-sonnet-4-6[1m]')).toBe(false);
+  });
+
+  it('rejects [200k]-suffixed model ID', () => {
+    expect(isSubagentSafeModelId('global.anthropic.claude-sonnet-4-6[200k]')).toBe(false);
+  });
+
+  it('rejects bare Anthropic model ID (not provider-specific)', () => {
+    expect(isSubagentSafeModelId('claude-sonnet-4-6')).toBe(false);
+  });
+
+  it('rejects tier alias "sonnet"', () => {
+    expect(isSubagentSafeModelId('sonnet')).toBe(false);
+  });
+
+  it('rejects tier alias "opus"', () => {
+    expect(isSubagentSafeModelId('opus')).toBe(false);
+  });
+
+  it('rejects tier alias "haiku"', () => {
+    expect(isSubagentSafeModelId('haiku')).toBe(false);
   });
 });

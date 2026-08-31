@@ -1,8 +1,8 @@
 /**
  * OMC HUD - Transcript Parser
  *
- * Parse JSONL transcript from Copilot CLI to extract agents and todos.
- * Based on copilot-hud reference implementation.
+ * Parse JSONL transcript from Claude Code to extract agents and todos.
+ * Based on claude-hud reference implementation.
  *
  * Performance optimizations:
  * - Tail-based parsing: reads only the last ~500KB of large transcripts
@@ -25,8 +25,10 @@ import type {
   ActiveAgent,
   TodoItem,
   PendingPermission,
+  LastRequestTokenUsage,
   RecentTool,
 } from "./types.js";
+import { classifyAgentSpawn, parseIncomingAgentWrapper } from "./agent-kind.js";
 
 // Performance constants
 // 4MB tail window: enough to catch the full tool_use → tool_result → task-notification
@@ -35,11 +37,19 @@ import type {
 // agents in long sessions, leaving them stuck as "running" in the HUD.
 const MAX_TAIL_BYTES = 4 * 1024 * 1024;
 const MAX_AGENT_MAP_SIZE = 100; // Cap agent tracking
+const MAX_RECENT_TOOLS = 20; // Track last 20 tool calls for the RecentTools element
+
+/** Internal/meta tools excluded from the RecentTools element. */
+const RECENT_TOOLS_SKIP = [
+  "TodoWrite", "Skill", "proxy_Skill", "Task", "proxy_Task",
+  "Agent", "proxy_Agent",
+  "report_intent", "task_complete", "thinking",
+  "read_agent", "list_agents", "write_agent",
+];
 const _MIN_RUNNING_AGENTS_THRESHOLD = 10; // Early termination threshold
-const MAX_RECENT_TOOLS = 20; // Track last 20 tool calls for recentTools display
 
 /**
- * Tools known to require permission approval in Copilot CLI.
+ * Tools known to require permission approval in Claude Code.
  * Only these tools will trigger the "APPROVE?" indicator.
  */
 const PERMISSION_TOOLS = [
@@ -102,6 +112,7 @@ export async function parseTranscript(
   const result: TranscriptData = {
     agents: [],
     todos: [],
+    incomingMessages: [],
     lastActivatedSkill: undefined,
     toolCallCount: 0,
     agentCallCount: 0,
@@ -130,11 +141,14 @@ export async function parseTranscript(
   const agentMap = new Map<string, ActiveAgent>();
   const backgroundAgentMap: BackgroundAgentMap = new Map();
   const latestTodos: TodoItem[] = [];
-  const recentToolMap = new Map<string, RecentTool & { id: string }>();
-
+  const sessionTokenTotals = {
+    inputTokens: 0,
+    outputTokens: 0,
+    seenUsage: false,
+  };
   let sessionTotalsReliable = false;
-  const sessionTokenTotals = { inputTokens: 0, outputTokens: 0, seenUsage: false };
   const observedSessionIds = new Set<string>();
+  const recentToolMap = new Map<string, RecentTool & { id: string }>();
 
   try {
     const stat = statSync(transcriptPath);
@@ -153,6 +167,8 @@ export async function parseTranscript(
             result,
             MAX_AGENT_MAP_SIZE,
             backgroundAgentMap,
+            sessionTokenTotals,
+            observedSessionIds,
             recentToolMap,
           );
         } catch {
@@ -181,12 +197,15 @@ export async function parseTranscript(
             result,
             MAX_AGENT_MAP_SIZE,
             backgroundAgentMap,
+            sessionTokenTotals,
+            observedSessionIds,
             recentToolMap,
           );
         } catch {
           // Skip malformed lines
         }
       }
+
       sessionTotalsReliable = observedSessionIds.size <= 1;
     }
   } catch {
@@ -204,8 +223,10 @@ export async function parseTranscript(
     ...completed.slice(-(10 - running.length)),
   ].slice(0, 10);
   result.todos = latestTodos;
-  result.recentTools = Array.from(recentToolMap.values())
-    .map(({ id: _id, ...rest }) => rest);
+  // Map preserves insertion order, so this is oldest-first.
+  result.recentTools = Array.from(recentToolMap.values()).map(
+    ({ id: _id, ...tool }) => tool,
+  );
   if (sessionTotalsReliable && sessionTokenTotals.seenUsage) {
     result.sessionTotalTokens = sessionTokenTotals.inputTokens + sessionTokenTotals.outputTokens;
   }
@@ -226,6 +247,10 @@ export async function parseTranscript(
   return finalized;
 }
 
+/**
+ * Read the tail portion of a file and split into lines.
+ * Handles partial first line (from mid-file start).
+ */
 function cloneDate(value: Date | undefined): Date | undefined {
   return value ? new Date(value.getTime()) : undefined;
 }
@@ -246,6 +271,11 @@ function cloneTranscriptData(result: TranscriptData): TranscriptData {
       endTime: cloneDate(agent.endTime),
     })),
     todos: result.todos.map((todo) => ({ ...todo })),
+    recentTools: result.recentTools.map((tool) => ({
+      ...tool,
+      timestamp: new Date(tool.timestamp.getTime()),
+    })),
+    incomingMessages: result.incomingMessages?.map((message) => ({ ...message })),
     sessionStart: cloneDate(result.sessionStart),
     lastActivatedSkill: result.lastActivatedSkill
       ? {
@@ -265,10 +295,6 @@ function cloneTranscriptData(result: TranscriptData): TranscriptData {
     lastRequestTokenUsage: result.lastRequestTokenUsage
       ? { ...result.lastRequestTokenUsage }
       : undefined,
-    recentTools: result.recentTools.map((t) => ({
-      ...t,
-      timestamp: new Date(t.timestamp.getTime()),
-    })),
   };
 }
 
@@ -308,10 +334,6 @@ function finalizeTranscriptResult(
   return result;
 }
 
-/**
- * Read the tail portion of a file and split into lines.
- * Handles partial first line (from mid-file start).
- */
 function readTailLines(
   filePath: string,
   fileSize: number,
@@ -434,9 +456,28 @@ function processEntry(
   result: TranscriptData,
   maxAgentMapSize: number = 50,
   backgroundAgentMap?: BackgroundAgentMap,
+  sessionTokenTotals?: {
+    inputTokens: number;
+    outputTokens: number;
+    seenUsage: boolean;
+  },
+  observedSessionIds?: Set<string>,
   recentToolMap?: Map<string, RecentTool & { id: string }>,
 ): void {
   const timestamp = entry.timestamp ? new Date(entry.timestamp) : new Date();
+  if (entry.sessionId) {
+    observedSessionIds?.add(entry.sessionId);
+  }
+
+  const usage = extractLastRequestTokenUsage(entry.message?.usage);
+  if (usage) {
+    result.lastRequestTokenUsage = usage;
+    if (sessionTokenTotals) {
+      sessionTokenTotals.inputTokens += usage.inputTokens;
+      sessionTokenTotals.outputTokens += usage.outputTokens;
+      sessionTokenTotals.seenUsage = true;
+    }
+  }
 
   // Set session start time from first entry
   if (!result.sessionStart && entry.timestamp) {
@@ -453,7 +494,15 @@ function processEntry(
   // run_in_background, Explore/Plan/general-purpose, etc.) never transition
   // from "running" to "completed" in the HUD.
   if (typeof content === "string") {
-    if (content.includes("<task-notification>") || content.includes("<task_id>") || content.includes("<task-id>")) {
+    // Backward-compatible completion handling. Claude Code emits background
+    // completion as a `<task-notification>` envelope today; older transcripts
+    // carry the bare `<task_id>`/`<task-id>` tag sequence instead. Both must
+    // still transition the background agent to "completed".
+    if (
+      content.includes("<task-notification>") ||
+      content.includes("<task_id>") ||
+      content.includes("<task-id>")
+    ) {
       const taskOutput = parseTaskOutputResult(content);
       if (taskOutput && taskOutput.status === "completed") {
         // Prefer direct tool-use-id lookup (skips the backgroundAgentMap
@@ -473,6 +522,14 @@ function processEntry(
         }
       }
     }
+
+    // Classify the sender of an incoming agent wrapper (issue #3666) and
+    // record it with the payload redacted. Bare legacy tag sequences (no
+    // envelope) classify as nothing — they only carry completion signals.
+    const wrapper = parseIncomingAgentWrapper(content, entry.sessionId);
+    if (wrapper) {
+      result.incomingMessages?.push(wrapper);
+    }
     return;
   }
 
@@ -491,43 +548,61 @@ function processEntry(
       };
     }
 
+    // Incoming agent wrapper messages arrive as plain text blocks (teammate /
+    // peer messages are not tool results). tool_result blocks are deliberately
+    // excluded so an agent quoting a wrapper inside its output cannot spoof an
+    // incoming message (issue #3666).
+    if (block.type === "text") {
+      const text = (block as { text?: string }).text;
+      if (text) {
+        const wrapper = parseIncomingAgentWrapper(text, entry.sessionId);
+        if (wrapper) result.incomingMessages?.push(wrapper);
+      }
+    }
     // Track tool_use for Task (agents) and TodoWrite
     if (block.type === "tool_use" && block.id && block.name) {
       result.toolCallCount++;
       result.lastToolName = block.name;
 
-      // Track for recentTools (skip internal/meta tools)
-      if (recentToolMap) {
-        const SKIP_TOOLS = [
-          'TodoWrite', 'Skill', 'proxy_Skill', 'Task', 'proxy_Task',
-          'report_intent', 'task_complete', 'thinking',
-          'read_agent', 'list_agents', 'write_agent',
-        ];
-        if (!SKIP_TOOLS.includes(block.name)) {
-          if (recentToolMap.size >= MAX_RECENT_TOOLS) {
-            const oldestKey = recentToolMap.keys().next().value;
-            if (oldestKey) recentToolMap.delete(oldestKey);
-          }
-          recentToolMap.set(block.id, {
-            id: block.id,
-            name: block.name.replace('proxy_', ''),
-            target: extractTargetSummary(block.input, block.name),
-            status: 'running',
-            timestamp,
-          });
+      // Track for the RecentTools HUD element (skip internal/meta tools).
+      if (recentToolMap && !RECENT_TOOLS_SKIP.includes(block.name)) {
+        if (recentToolMap.size >= MAX_RECENT_TOOLS) {
+          const oldestKey = recentToolMap.keys().next().value;
+          if (oldestKey) recentToolMap.delete(oldestKey);
         }
+        recentToolMap.set(block.id, {
+          id: block.id,
+          name: block.name.replace("proxy_", ""),
+          target: extractTargetSummary(block.input, block.name),
+          status: "running",
+          timestamp,
+        });
       }
 
-      if (block.name === "Task" || block.name === "proxy_Task") {
+      if (
+        block.name === "Task" ||
+        block.name === "proxy_Task" ||
+        block.name === "Agent" ||
+        block.name === "proxy_Agent"
+      ) {
         result.agentCallCount++;
         const input = block.input as TaskInput | undefined;
+        // Named Task/Agent spawns are teammates on the native agent team;
+        // unnamed spawns are anonymous subagents (issue #3666).
+        const spawn = classifyAgentSpawn({
+          hasName: Boolean(input?.name),
+          sessionId: entry.sessionId,
+        });
         const agentEntry: ActiveAgent = {
           id: block.id,
           type: input?.subagent_type ?? "unknown",
           model: input?.model,
+          name: input?.name,
           description: input?.description,
           status: "running",
           startTime: timestamp,
+          kind: spawn.kind,
+          spawnedBy: spawn.spawnedBy,
         };
 
         // Bounded agent map: evict oldest completed agents if at capacity
@@ -550,7 +625,7 @@ function processEntry(
         }
 
         agentMap.set(block.id, agentEntry);
-      } else if (block.name === "TodoWrite") {
+      } else if (block.name === "TodoWrite" || block.name === "proxy_TodoWrite") {
         const input = block.input as TodoWriteInput | undefined;
         if (input?.todos && Array.isArray(input.todos)) {
           // Replace latest todos with new ones
@@ -595,13 +670,15 @@ function processEntry(
       // Clear from pending permissions when tool_result arrives
       pendingPermissionMap.delete(block.tool_use_id);
 
-      // Update recentTools status
+      // Resolve RecentTools status for this invocation.
       if (recentToolMap) {
         const trackedTool = recentToolMap.get(block.tool_use_id);
         if (trackedTool) {
-          const isError = block.is_error === true ||
-            (typeof block.content === 'string' && block.content.toLowerCase().includes('error'));
-          trackedTool.status = isError ? 'failure' : 'success';
+          const isError =
+            block.is_error === true ||
+            (typeof block.content === "string" &&
+              block.content.toLowerCase().includes("error"));
+          trackedTool.status = isError ? "failure" : "success";
         }
       }
 
@@ -678,7 +755,24 @@ function processEntry(
 // Type Definitions for Transcript Parsing
 // ============================================================================
 
+interface TranscriptUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+  reasoning_tokens?: number;
+  output_tokens_details?: {
+    reasoning_tokens?: number;
+    reasoningTokens?: number;
+  };
+  completion_tokens_details?: {
+    reasoning_tokens?: number;
+    reasoningTokens?: number;
+  };
+}
+
 interface TranscriptEntry {
+  sessionId?: string;
   timestamp?: string;
   message?: {
     // Claude Code writes assistant/user messages with either a content-block
@@ -686,6 +780,7 @@ interface TranscriptEntry {
     // `<task-notification>` blocks land as user-role messages with
     // `content: "<task-notification>...</task-notification>"`).
     content?: ContentBlock[] | string;
+    usage?: TranscriptUsage;
   };
 }
 
@@ -702,6 +797,7 @@ interface ContentBlock {
 interface TaskInput {
   subagent_type?: string;
   model?: string;
+  name?: string;
   description?: string;
 }
 
@@ -716,6 +812,40 @@ interface TodoWriteInput {
 interface SkillInput {
   skill: string;
   args?: string;
+}
+
+
+function extractLastRequestTokenUsage(usage: TranscriptUsage | undefined): LastRequestTokenUsage | null {
+  if (!usage) return null;
+
+  const inputTokens = getNumericUsageValue(usage.input_tokens);
+  const outputTokens = getNumericUsageValue(usage.output_tokens);
+  const reasoningTokens = getNumericUsageValue(
+    usage.reasoning_tokens
+      ?? usage.output_tokens_details?.reasoning_tokens
+      ?? usage.output_tokens_details?.reasoningTokens
+      ?? usage.completion_tokens_details?.reasoning_tokens
+      ?? usage.completion_tokens_details?.reasoningTokens,
+  );
+
+  if (inputTokens == null && outputTokens == null) {
+    return null;
+  }
+
+  const normalized: LastRequestTokenUsage = {
+    inputTokens: Math.max(0, Math.round(inputTokens ?? 0)),
+    outputTokens: Math.max(0, Math.round(outputTokens ?? 0)),
+  };
+
+  if (reasoningTokens != null && reasoningTokens > 0) {
+    normalized.reasoningTokens = Math.max(0, Math.round(reasoningTokens));
+  }
+
+  return normalized;
+}
+
+function getNumericUsageValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 // ============================================================================

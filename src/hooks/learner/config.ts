@@ -60,7 +60,7 @@ const DEFAULT_CONFIG: LearnerConfig = {
   },
 };
 
-const CONFIG_PATH = join(getCopilotConfigDir(), 'omg', 'learner.json');
+const CONFIG_PATH = join(getCopilotConfigDir(), 'omc', 'learner.json');
 
 /**
  * Load configuration from disk.
@@ -89,7 +89,7 @@ export function saveConfig(config: Partial<LearnerConfig>): boolean {
   const merged = mergeConfig(DEFAULT_CONFIG, config);
 
   try {
-    const dir = join(getCopilotConfigDir(), 'omg');
+    const dir = join(getCopilotConfigDir(), 'omc');
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }

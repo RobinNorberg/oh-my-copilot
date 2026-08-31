@@ -1,7 +1,7 @@
 /**
  * Unified Recovery Types
  *
- * Type definitions for all recovery mechanisms in Copilot CLI.
+ * Type definitions for all recovery mechanisms in Claude Code.
  */
 /**
  * Configuration for retry behavior

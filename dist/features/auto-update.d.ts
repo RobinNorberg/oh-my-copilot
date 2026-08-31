@@ -12,10 +12,10 @@
 import { TaskTool } from '../hooks/beads-context/types.js';
 import type { NotificationConfig } from '../notifications/types.js';
 /** GitHub repository information */
-export declare const REPO_OWNER = "RobinNorberg";
+export declare const REPO_OWNER = "Yeachan-Heo";
 export declare const REPO_NAME = "oh-my-copilot";
-export declare const GITHUB_API_URL = "https://api.github.com/repos/RobinNorberg/oh-my-copilot";
-export declare const GITHUB_RAW_URL = "https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot";
+export declare const GITHUB_API_URL = "https://api.github.com/repos/Yeachan-Heo/oh-my-copilot";
+export declare const GITHUB_RAW_URL = "https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot";
 export declare function shouldBlockStandaloneUpdateInCurrentSession(): boolean;
 export declare function syncPluginCache(verbose?: boolean): {
     synced: boolean;
@@ -69,16 +69,6 @@ export interface StopCallbackSlackConfig {
     tagList?: string[];
 }
 /**
- * Stop hook callback configuration for Teams
- */
-export interface StopCallbackTeamsConfig {
-    enabled: boolean;
-    /** Teams incoming webhook URL */
-    webhookUrl?: string;
-    /** Optional tags/mentions — each entry is "DisplayName:AAD-Object-ID" */
-    tagList?: string[];
-}
-/**
  * Stop hook callbacks configuration
  */
 export interface StopHookCallbacksConfig {
@@ -86,7 +76,6 @@ export interface StopHookCallbacksConfig {
     telegram?: StopCallbackTelegramConfig;
     discord?: StopCallbackDiscordConfig;
     slack?: StopCallbackSlackConfig;
-    teams?: StopCallbackTeamsConfig;
 }
 /**
  * OMC configuration (stored in .omc-config.json)
@@ -230,6 +219,7 @@ export declare function checkForUpdates(): Promise<UpdateCheckResult>;
  */
 export declare function reconcileUpdateRuntime(options?: {
     verbose?: boolean;
+    skipGracePeriod?: boolean;
 }): UpdateReconcileResult;
 /**
  * Download and execute the install script to perform an update
@@ -238,6 +228,7 @@ export declare function performUpdate(options?: {
     skipConfirmation?: boolean;
     verbose?: boolean;
     standalone?: boolean;
+    clean?: boolean;
 }): Promise<UpdateResult>;
 /**
  * Get a formatted update notification message

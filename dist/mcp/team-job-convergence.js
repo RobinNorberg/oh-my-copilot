@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
-import { validateTeamName } from '../team/team-name.js';
 import { cleanupTeamWorktrees } from '../team/git-worktree.js';
+import { validateTeamName } from '../team/team-name.js';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 function readResultArtifact(omcJobsDir, jobId) {
     const artifactPath = join(omcJobsDir, `${jobId}-result.json`);
     if (!existsSync(artifactPath))
@@ -81,7 +82,7 @@ export function clearScopedTeamState(job) {
             message: `team state cleanup skipped (invalid teamName): ${error instanceof Error ? error.message : String(error)}`,
         };
     }
-    const stateDir = join(job.cwd, '.omcp', 'state', 'team', job.teamName);
+    const stateDir = join(getOmcRoot(job.cwd), 'state', 'team', job.teamName);
     let worktreeMessage = 'worktree cleanup skipped.';
     try {
         const cleanup = cleanupTeamWorktrees(job.teamName, job.cwd);

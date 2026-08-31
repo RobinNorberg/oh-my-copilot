@@ -20,11 +20,15 @@ describe('runtime types', () => {
 
   it('monitorTeam returns performance telemetry', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'team-runtime-monitor-'));
+    const previousHome = process.env.HOME;
+    const previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = cwd;
+    process.env.USERPROFILE = cwd;
     const teamName = 'monitor-team';
-    const tasksDir = join(cwd, '.omcp', 'state', 'team', teamName, 'tasks');
+    const tasksDir = join(cwd, '.omg', 'state', 'team', teamName, 'tasks');
     mkdirSync(tasksDir, { recursive: true });
-    writeFileSync(join(tasksDir, '1.json'), JSON.stringify({ status: 'pending' }), 'utf-8');
-    writeFileSync(join(tasksDir, '2.json'), JSON.stringify({ status: 'completed' }), 'utf-8');
+    writeFileSync(join(tasksDir, 'task-1.json'), JSON.stringify({ status: 'pending' }), 'utf-8');
+    writeFileSync(join(tasksDir, 'task-2.json'), JSON.stringify({ status: 'completed' }), 'utf-8');
 
     const snapshot = await monitorTeam(teamName, cwd, []);
     expect(snapshot.taskCounts.pending).toBe(1);
@@ -33,6 +37,10 @@ describe('runtime types', () => {
     expect(snapshot.monitorPerformance.workerScanMs).toBeGreaterThanOrEqual(0);
     expect(snapshot.monitorPerformance.totalMs).toBeGreaterThanOrEqual(snapshot.monitorPerformance.listTasksMs);
 
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     rmSync(cwd, { recursive: true, force: true });
   });
 

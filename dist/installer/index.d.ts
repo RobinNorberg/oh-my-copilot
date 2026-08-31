@@ -15,7 +15,6 @@ export declare const SKILLS_DIR: string;
 export declare const HOOKS_DIR: string;
 export declare const HUD_DIR: string;
 export declare const SETTINGS_FILE: string;
-export declare const COPILOT_CONFIG_FILE: string;
 export declare const VERSION_FILE: string;
 /**
  * Core commands - DISABLED for v3.0+
@@ -53,7 +52,7 @@ export interface InstallOptions {
      * Dev plugin-dir mode: skip copying agents and bundled skills into
      * `<configDir>` because the user is launching OMC via
      * `claude --plugin-dir <path>` (or `omc --plugin-dir <path>`) and the
-     * plugin already provides them at runtime. HUD, hooks, copilot-instructions.md, and
+     * plugin already provides them at runtime. HUD, hooks, CLAUDE.md, and
      * `.omc-config.json` are still installed. Mutually exclusive with
      * `noPlugin` (the CLI gives `noPlugin` precedence).
      */
@@ -96,7 +95,7 @@ export declare function checkNodeVersion(): {
     required: number;
 };
 /**
- * Check if Copilot CLI is installed
+ * Check if Claude Code is installed
  * Uses 'where' on Windows, 'which' on Unix
  */
 export declare function isCopilotInstalled(): boolean;
@@ -126,26 +125,15 @@ export declare function isRunningAsPlugin(): boolean;
  */
 export declare function isProjectScopedPlugin(): boolean;
 /**
- * Remove stale OMC-created agent files from the config agents directory.
- *
- * When OMC drops an agent definition in a new version, the old .md file
- * lingers in ~/.claude/agents/. This function compares the installed files
- * against the current package's agent definitions and removes any that:
- *   1. Are .md files (OMC agent naming convention)
- *   2. Were previously shipped by OMC (match the frontmatter `name:` pattern)
- *   3. No longer exist in the current package's agents/ directory
- *
- * User-created files (those whose filename does not match any historically
- * known OMC agent) are preserved.
+ * Remove stale OMC agents only when their exact raw bytes match the bounded,
+ * release-authenticated historical inventory and their basename is absent from
+ * both the resolved active payload and the current package. All uncertain ownership
+ * and filesystem states preserve.
  */
 export declare function cleanupStaleAgents(log: (msg: string) => void): string[];
 /**
- * Remove standalone agent files that duplicate plugin-provided agents (#2252).
- *
- * When the plugin is the canonical agent source, standalone copies in
- * ~/.claude/agents/ from a prior `omc setup` cause agent definitions to
- * appear twice. Removes standalone copies with OMC frontmatter whose
- * filename matches a current package agent.
+ * Remove standalone plugin duplicates only when an active payload still exposes
+ * the basename and the standalone file exactly matches authenticated history.
  */
 export declare function prunePluginDuplicateAgents(log: (msg: string) => void): string[];
 /**
@@ -155,7 +143,9 @@ export declare function prunePluginDuplicateAgents(log: (msg: string) => void): 
  * that contain a SKILL.md with OMC frontmatter but are no longer shipped by
  * the current package version. User-created skills are preserved.
  */
-export declare function cleanupStaleSkills(log: (msg: string) => void): string[];
+export declare function cleanupStaleSkills(log: (msg: string) => void, options?: {
+    safeStandaloneNames?: boolean;
+}): string[];
 /**
  * Remove standalone skill directories that duplicate plugin-provided skills.
  *
@@ -169,6 +159,11 @@ export declare function prunePluginDuplicateSkills(log: (msg: string) => void): 
 export declare function getInstalledOmcPluginRoots(): string[];
 export declare function validatePluginCachePayload(root: string): {
     valid: boolean;
+    errors: string[];
+};
+export declare function compactPluginSkillPayload(targetRoot: string): {
+    compacted: number;
+    totalBytes: number;
     errors: string[];
 };
 export declare function copyPluginSyncPayload(sourceRoot: string, targetRoots: string[]): {
@@ -191,7 +186,7 @@ export declare function hasPluginProvidedHookFiles(): boolean;
 export declare function hasEnabledOmcPlugin(): boolean;
 export declare function getRuntimePackageRoot(): string;
 /**
- * Extract the embedded OMC version from a copilot-instructions.md file.
+ * Extract the embedded OMC version from a CLAUDE.md file.
  *
  * Primary source of truth is the injected `<!-- OMC:VERSION:x.y.z -->` marker.
  * Falls back to legacy headings that may include a version string inline.
@@ -211,8 +206,8 @@ export declare function syncPersistedSetupVersion(options?: {
     onlyIfConfigured?: boolean;
 }): boolean;
 /**
- * Merge OMC content into existing copilot-instructions.md using markers
- * @param existingContent - Existing copilot-instructions.md content (null if file doesn't exist)
+ * Merge OMC content into existing CLAUDE.md using markers
+ * @param existingContent - Existing CLAUDE.md content (null if file doesn't exist)
  * @param omcContent - New OMC content to inject
  * @returns Merged content with markers
  */

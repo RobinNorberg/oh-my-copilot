@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { canonicalizeTeamConfigWorkers } from '../worker-canonicalization.js';
 const mocks = vi.hoisted(() => ({
     getWorkerLiveness: vi.fn(async () => 'alive'),
     execFile: vi.fn(),
@@ -30,6 +31,29 @@ vi.mock('../tmux-session.js', async (importOriginal) => {
 });
 describe('monitorTeamV2 pane-based stall inference', () => {
     let cwd;
+    let restoreFixtureEnv;
+    function isolateFixtureRoot(root) {
+        const previousHome = process.env.HOME;
+        const previousUserProfile = process.env.USERPROFILE;
+        const previousOmcStateDir = process.env.OMC_STATE_DIR;
+        process.env.HOME = root;
+        process.env.USERPROFILE = root;
+        delete process.env.OMC_STATE_DIR;
+        restoreFixtureEnv = () => {
+            if (previousHome === undefined)
+                delete process.env.HOME;
+            else
+                process.env.HOME = previousHome;
+            if (previousUserProfile === undefined)
+                delete process.env.USERPROFILE;
+            else
+                process.env.USERPROFILE = previousUserProfile;
+            if (previousOmcStateDir === undefined)
+                delete process.env.OMC_STATE_DIR;
+            else
+                process.env.OMC_STATE_DIR = previousOmcStateDir;
+        };
+    }
     beforeEach(() => {
         vi.resetModules();
         mocks.getWorkerLiveness.mockReset();
@@ -51,11 +75,13 @@ describe('monitorTeamV2 pane-based stall inference', () => {
         });
     });
     afterEach(async () => {
+        restoreFixtureEnv?.();
+        restoreFixtureEnv = undefined;
         if (cwd)
             await rm(cwd, { recursive: true, force: true });
     });
     async function writeConfigAndTask(taskStatus = 'pending') {
-        const teamRoot = join(cwd, '.omcp', 'state', 'team', 'demo-team');
+        const teamRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
         await mkdir(join(teamRoot, 'tasks'), { recursive: true });
         await mkdir(join(teamRoot, 'workers', 'worker-1'), { recursive: true });
         await writeFile(join(teamRoot, 'config.json'), JSON.stringify({
@@ -80,7 +106,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
             resize_hook_name: null,
             resize_hook_target: null,
             next_task_id: 2,
-            team_state_root: join(cwd, '.omcp', 'state', 'team', 'demo-team'),
+            team_state_root: join(cwd, '.omg', 'state', 'team', 'demo-team'),
             workspace_mode: 'single',
         }, null, 2), 'utf-8');
         await writeFile(join(teamRoot, 'tasks', '1.json'), JSON.stringify({
@@ -94,6 +120,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     }
     it('flags pane-idle workers with assigned work but no work-start evidence', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-'));
+        isolateFixtureRoot(cwd);
         await writeConfigAndTask('pending');
         const { monitorTeamV2 } = await import('../runtime-v2.js');
         const snapshot = await monitorTeamV2('demo-team', cwd);
@@ -102,8 +129,9 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     });
     it('surfaces missing blocker task ids in monitor recommendations', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-missing-blocker-'));
+        isolateFixtureRoot(cwd);
         await writeConfigAndTask('pending');
-        const teamRoot = join(cwd, '.omcp', 'state', 'team', 'demo-team');
+        const teamRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
         await writeFile(join(teamRoot, 'tasks', '1.json'), JSON.stringify({
             id: '1',
             subject: 'Blocked task',
@@ -122,6 +150,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     });
     it('does not flag a worker when pane evidence shows active work despite missing reports', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-active-'));
+        isolateFixtureRoot(cwd);
         await writeConfigAndTask('in_progress');
         mocks.execFile.mockImplementation((_cmd, args, cb) => {
             if (args[0] === 'capture-pane') {
@@ -142,8 +171,9 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     });
     it('does not mark unknown pane liveness as dead or recommend reassignment', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-unknown-liveness-'));
+        isolateFixtureRoot(cwd);
         await writeConfigAndTask('in_progress');
-        const teamRoot = join(cwd, '.omcp', 'state', 'team', 'demo-team');
+        const teamRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
         await writeFile(join(teamRoot, 'monitor-snapshot.json'), JSON.stringify({
             taskStatusById: { 1: 'in_progress' },
             workerAliveByName: { 'worker-1': true },
@@ -166,6 +196,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     });
     it('does not flag a worker when pane evidence shows startup bootstrapping instead of idle readiness', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-bootstrap-'));
+        isolateFixtureRoot(cwd);
         await writeConfigAndTask('pending');
         mocks.execFile.mockImplementation((_cmd, args, cb) => {
             if (args[0] === 'capture-pane') {
@@ -184,11 +215,12 @@ describe('monitorTeamV2 pane-based stall inference', () => {
         const snapshot = await monitorTeamV2('demo-team', cwd);
         expect(snapshot?.nonReportingWorkers).toEqual([]);
     });
-    it('deduplicates duplicate worker rows from persisted config during monitoring', async () => {
+    it('monitors a valid config canonicalized from duplicate legacy worker rows', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-dedup-'));
+        isolateFixtureRoot(cwd);
         await writeConfigAndTask('pending');
-        const root = join(cwd, '.omcp', 'state', 'team', 'demo-team');
-        await writeFile(join(root, 'config.json'), JSON.stringify({
+        const root = join(cwd, '.omg', 'state', 'team', 'demo-team');
+        const config = canonicalizeTeamConfigWorkers({
             name: 'demo-team',
             task: 'demo',
             agent_type: 'claude',
@@ -206,9 +238,13 @@ describe('monitorTeamV2 pane-based stall inference', () => {
             resize_hook_name: null,
             resize_hook_target: null,
             next_task_id: 2,
-            team_state_root: join(cwd, '.omcp', 'state', 'team', 'demo-team'),
+            team_state_root: join(cwd, '.omg', 'state', 'team', 'demo-team'),
             workspace_mode: 'single',
-        }, null, 2), 'utf-8');
+        });
+        expect(config.workers).toEqual([expect.objectContaining({
+                name: 'worker-1', index: 1, pane_id: '%2', assigned_tasks: ['1'],
+            })]);
+        await writeFile(join(root, 'config.json'), JSON.stringify(config, null, 2), 'utf-8');
         const { monitorTeamV2 } = await import('../runtime-v2.js');
         const snapshot = await monitorTeamV2('demo-team', cwd);
         expect(snapshot?.workers).toHaveLength(1);

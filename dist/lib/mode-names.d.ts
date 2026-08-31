@@ -11,11 +11,19 @@ export declare const MODE_NAMES: {
     readonly AUTORESEARCH: "autoresearch";
     readonly TEAM: "team";
     readonly RALPH: "ralph";
-    readonly ULTRAWORK: "ultrawork";
-    readonly ULTRAQA: "ultraqa";
     readonly RALPLAN: "ralplan";
     readonly DEEP_INTERVIEW: "deep-interview";
+    readonly MERGE_READINESS: "merge-readiness";
     readonly SELF_IMPROVE: "self-improve";
+};
+/**
+ * Deprecated mode names removed in #1131 (pipeline unification).
+ * Kept as constants for deprecation warnings and migration paths.
+ */
+export declare const DEPRECATED_MODE_NAMES: {
+    readonly ULTRAPILOT: "ultrapilot";
+    readonly SWARM: "swarm";
+    readonly PIPELINE: "pipeline";
 };
 /** Union type derived from the constant map. */
 export type ModeName = typeof MODE_NAMES[keyof typeof MODE_NAMES];
@@ -26,7 +34,7 @@ export type ModeName = typeof MODE_NAMES[keyof typeof MODE_NAMES];
 export declare const ALL_MODE_NAMES: readonly ModeName[];
 /**
  * Mode state file mapping — the canonical filename for each mode's state file
- * relative to `.omcp/state/`.
+ * relative to `.omg/state/`.
  */
 export declare const MODE_STATE_FILE_MAP: Readonly<Record<ModeName, string>>;
 /**

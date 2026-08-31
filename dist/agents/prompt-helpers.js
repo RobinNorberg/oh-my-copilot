@@ -33,6 +33,10 @@ function getPackageDir() {
     try {
         const __filename = fileURLToPath(import.meta.url);
         const __dirname = dirname(__filename);
+        const currentDirName = basename(__dirname);
+        if (currentDirName === 'bridge') {
+            return join(__dirname, '..');
+        }
         // From src/agents/ or dist/agents/ go up to package root
         return join(__dirname, '..', '..');
     }
@@ -80,8 +84,8 @@ export function getValidAgentRoles() {
         const agentsDir = join(getPackageDir(), 'agents');
         const files = readdirSync(agentsDir);
         _cachedRoles = files
-            .filter(f => f.endsWith('.md') && f !== 'AGENTS.md')
-            .map(f => basename(f, '.md').replace(/\.agent$/, ''))
+            .filter(f => f.endsWith('.md'))
+            .map(f => basename(f, '.md'))
             .sort();
     }
     catch (err) {

@@ -7,15 +7,25 @@ import { pruneOldStateFiles } from '../index.js';
 describe('pruneOldStateFiles', () => {
   let testDir: string;
   let stateDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'prune-test-'));
-    stateDir = join(testDir, '.omcp', 'state');
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
+    stateDir = join(testDir, '.omg', 'state');
     mkdirSync(stateDir, { recursive: true });
   });
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 
   function writeStateFile(name: string, content: object, ageDays: number = 0) {

@@ -6,9 +6,13 @@ import { stateTools } from '../tools/state-tools.js';
 import { notepadTools } from '../tools/notepad-tools.js';
 import { memoryTools } from '../tools/memory-tools.js';
 import { traceTools } from '../tools/trace-tools.js';
+import { sharedMemoryTools } from '../tools/shared-memory-tools.js';
+import { deepinitManifestTool } from '../tools/deepinit-manifest.js';
+import { wikiTools } from '../tools/wiki-tools.js';
+import { skillsTools } from '../tools/skills-tools.js';
 describe('standalone-server tool composition', () => {
-    // These are the exact same tool arrays that standalone-server.ts imports
-    // This test validates our expectations about tool counts
+    // These are the raw tool arrays aggregated by tool-registry.ts into allTools.
+    // This test validates per-array counts; for the live MCP surface use standalone-listtools.test.ts.
     const expectedTools = [
         ...lspTools,
         ...astTools,
@@ -17,13 +21,19 @@ describe('standalone-server tool composition', () => {
         ...notepadTools,
         ...memoryTools,
         ...traceTools,
+        ...sharedMemoryTools,
+        deepinitManifestTool,
+        ...wikiTools,
+        ...skillsTools,
     ];
-    it('should have the expected total tool count', () => {
-        // 12 LSP + 2 AST + 1 python + 5 state + 6 notepad + 4 memory + 2 trace = 32
-        expect(expectedTools).toHaveLength(32);
+    it('should have at least the expected total tool count', () => {
+        // 12 LSP + 2 AST + 1 python + 5 state + 6 notepad + 4 memory + 3 trace
+        // + 5 shared_memory + 1 deepinit + 7 wiki + 3 skills = 49 baseline.
+        // Use ≥ so this guard doesn't break when new tools are legitimately added.
+        expect(expectedTools.length).toBeGreaterThanOrEqual(49);
     });
-    it('should include 2 trace tools', () => {
-        expect(traceTools).toHaveLength(2);
+    it('should include 3 trace tools', () => {
+        expect(traceTools).toHaveLength(3);
     });
     it('should include trace_timeline tool', () => {
         const names = traceTools.map(t => t.name);
@@ -32,6 +42,46 @@ describe('standalone-server tool composition', () => {
     it('should include trace_summary tool', () => {
         const names = traceTools.map(t => t.name);
         expect(names).toContain('trace_summary');
+    });
+    it('should include session_search tool', () => {
+        const names = traceTools.map(t => t.name);
+        expect(names).toContain('session_search');
+    });
+    it('should include 7 wiki tools', () => {
+        expect(wikiTools).toHaveLength(7);
+    });
+    it('should include wiki_ingest tool', () => {
+        const names = wikiTools.map(t => t.name);
+        expect(names).toContain('wiki_ingest');
+    });
+    it('should include wiki_query tool', () => {
+        const names = wikiTools.map(t => t.name);
+        expect(names).toContain('wiki_query');
+    });
+    it('should include 5 shared_memory tools', () => {
+        expect(sharedMemoryTools).toHaveLength(5);
+    });
+    it('should include shared_memory_write tool', () => {
+        const names = sharedMemoryTools.map(t => t.name);
+        expect(names).toContain('shared_memory_write');
+    });
+    it('should include shared_memory_read tool', () => {
+        const names = sharedMemoryTools.map(t => t.name);
+        expect(names).toContain('shared_memory_read');
+    });
+    it('should include 3 skills tools', () => {
+        expect(skillsTools).toHaveLength(3);
+    });
+    it('should include load_omc_skills_local tool', () => {
+        const names = skillsTools.map(t => t.name);
+        expect(names).toContain('load_omc_skills_local');
+    });
+    it('should include list_omc_skills tool', () => {
+        const names = skillsTools.map(t => t.name);
+        expect(names).toContain('list_omc_skills');
+    });
+    it('should include deepinit_manifest tool', () => {
+        expect(deepinitManifestTool.name).toBe('deepinit_manifest');
     });
     it('should have no duplicate tool names', () => {
         const names = expectedTools.map(t => t.name);

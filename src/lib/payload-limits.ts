@@ -4,7 +4,7 @@
  * Configurable limits for memory/state write payloads to prevent
  * OOM and disk exhaustion from oversized writes.
  *
- * @see https://github.com/anthropics/copilot-cli/issues/1169
+ * @see https://github.com/anthropics/claude-code/issues/1169
  */
 
 export interface PayloadLimits {

@@ -2,12 +2,13 @@
  * State Manager
  *
  * Unified state management that standardizes state file locations:
- * - Local state: .omcp/state/{name}.json
- * - Global state: XDG-aware user OMC state with legacy ~/.omcp/state fallback
+ * - Local state: .omg/state/{name}.json
+ * - Global state: XDG-aware user OMC state with legacy ~/.omg/state fallback
  *
  * Features:
  * - Type-safe read/write operations
  * - Auto-create directories
+ * - Legacy location support (for migration)
  * - State cleanup utilities
  */
 
@@ -15,16 +16,19 @@ import * as fs from "fs";
 import * as path from "path";
 import { atomicWriteJsonSync } from "../../lib/atomic-write.js";
 import {
-  OmgPaths,
+  OmcPaths,
+  getWorktreeRoot,
+  getOmcRoot,
   validateWorkingDirectory,
 } from "../../lib/worktree-paths.js";
-import * as os from "os";
+import { getGlobalOmcStateRoot, getLegacyOmcPath } from "../../utils/paths.js";
 import {
   StateLocation,
   StateConfig,
   StateReadResult,
   StateWriteResult,
   StateClearResult,
+  StateMigrationResult,
   StateFileInfo,
   ListStatesOptions,
   CleanupOptions,
@@ -36,13 +40,13 @@ import {
 // Standard state directories
 /** Get the absolute path to the local state directory, resolved from the git worktree root. */
 function getLocalStateDir(): string {
-  return path.join(validateWorkingDirectory(), OmgPaths.STATE);
+  return path.join(validateWorkingDirectory(), OmcPaths.STATE);
 }
 /**
  * @deprecated for mode state. Global state directory is only used for analytics and daemon state.
  * Mode state should use LOCAL_STATE_DIR exclusively.
  */
-const GLOBAL_STATE_DIR = path.join(os.homedir(), ".omcp", "state");
+const GLOBAL_STATE_DIR = getGlobalOmcStateRoot();
 
 /** Maximum age for state files before they are considered stale (4 hours) */
 const MAX_STATE_AGE_MS = 4 * 60 * 60 * 1000;
@@ -65,6 +69,22 @@ export function clearStateCache(): void {
   stateCache.clear();
 }
 
+// Legacy state locations (for backward compatibility)
+const LEGACY_LOCATIONS: Record<string, string[]> = {
+  boulder: [".omg/state/boulder.json"],
+  autopilot: [".omg/state/autopilot-state.json"],
+  "autopilot-state": [".omg/state/autopilot-state.json"],
+  ralph: [".omg/state/ralph-state.json"],
+  "ralph-state": [".omg/state/ralph-state.json"],
+  "ralph-verification": [".omg/state/ralph-verification.json"],
+  ultrawork: [".omg/state/ultrawork-state.json"],
+  "ultrawork-state": [".omg/state/ultrawork-state.json"],
+  ultraqa: [".omg/state/ultraqa-state.json"],
+  "ultraqa-state": [".omg/state/ultraqa-state.json"],
+  "hud-state": [".omg/state/hud-state.json"],
+  prd: [".omg/state/prd.json"],
+};
+
 /**
  * Get the standard path for a state file
  */
@@ -72,6 +92,19 @@ export function getStatePath(name: string, location: StateLocation): string {
   const baseDir =
     location === StateLocation.LOCAL ? getLocalStateDir() : GLOBAL_STATE_DIR;
   return path.join(baseDir, `${name}.json`);
+}
+
+/**
+ * Get legacy paths for a state file (for migration)
+ */
+export function getLegacyPaths(name: string, location: StateLocation = StateLocation.LOCAL): string[] {
+  const legacyPaths = [...(LEGACY_LOCATIONS[name] || [])];
+
+  if (location === StateLocation.GLOBAL) {
+    legacyPaths.push(getLegacyOmcPath("state", `${name}.json`));
+  }
+
+  return legacyPaths;
 }
 
 /**
@@ -85,18 +118,32 @@ export function ensureStateDir(location: StateLocation): void {
   }
 }
 
+function resolveLegacyStatePath(legacyPath: string): string {
+  return path.isAbsolute(legacyPath)
+    ? legacyPath
+    : path.join(getWorktreeRoot() || process.cwd(), legacyPath);
+}
+
+function warnStateReadFailure(kind: "state" | "legacy state", filePath: string, error: unknown): void {
+  console.warn(`Failed to read ${kind} from ${filePath}:`, error);
+}
+
 /**
  * Read state from file
  *
- * Reads from the standard location only.
+ * Checks standard location first, then legacy locations if enabled.
  * Returns both the data and where it was found.
  */
 export function readState<T = StateData>(
   name: string,
   location: StateLocation = StateLocation.LOCAL,
+  options?: { checkLegacy?: boolean },
 ): StateReadResult<T> {
+  const checkLegacy = options?.checkLegacy ?? DEFAULT_STATE_CONFIG.checkLegacy;
   const standardPath = getStatePath(name, location);
+  const legacyPaths = checkLegacy ? getLegacyPaths(name, location) : [];
 
+  // Try standard location first
   if (fs.existsSync(standardPath)) {
     try {
       // Get mtime BEFORE reading to prevent TOCTOU cache poisoning.
@@ -152,13 +199,35 @@ export function readState<T = StateData>(
       };
     } catch (error) {
       // Invalid JSON or read error - treat as not found
-      console.warn(`Failed to read state from ${standardPath}:`, error);
+      warnStateReadFailure("state", standardPath, error);
+    }
+  }
+
+  // Try legacy locations
+  if (checkLegacy) {
+    for (const legacyPath of legacyPaths) {
+      const resolvedPath = resolveLegacyStatePath(legacyPath);
+
+      if (fs.existsSync(resolvedPath)) {
+        try {
+          const content = fs.readFileSync(resolvedPath, "utf-8");
+          const data = JSON.parse(content) as T;
+          return {
+            exists: true,
+            data: structuredClone(data) as T,
+            foundAt: resolvedPath,
+            legacyLocations: legacyPaths,
+          };
+        } catch (error) {
+          warnStateReadFailure("legacy state", resolvedPath, error);
+        }
+      }
     }
   }
 
   return {
     exists: false,
-    legacyLocations: [],
+    legacyLocations: checkLegacy ? legacyPaths : [],
   };
 }
 
@@ -248,7 +317,89 @@ export function clearState(
     }
   }
 
+  // Remove from legacy locations
+  const legacyPaths = getLegacyPaths(name, location ?? StateLocation.LOCAL);
+  for (const legacyPath of legacyPaths) {
+    const resolvedPath = resolveLegacyStatePath(legacyPath);
+
+    try {
+      if (fs.existsSync(resolvedPath)) {
+        fs.unlinkSync(resolvedPath);
+        result.removed.push(resolvedPath);
+      } else {
+        result.notFound.push(resolvedPath);
+      }
+    } catch (error) {
+      result.errors.push({
+        path: resolvedPath,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   return result;
+}
+
+/**
+ * Migrate state from legacy location to standard location
+ *
+ * Finds state in legacy locations and moves it to the standard location.
+ * Deletes the legacy file after successful migration.
+ */
+export function migrateState(
+  name: string,
+  location: StateLocation = StateLocation.LOCAL,
+): StateMigrationResult {
+  // Check if already in standard location
+  const standardPath = getStatePath(name, location);
+  if (fs.existsSync(standardPath)) {
+    return {
+      migrated: false,
+    };
+  }
+
+  // Look for legacy state
+  const readResult = readState(name, location, { checkLegacy: true });
+  if (!readResult.exists || !readResult.foundAt || !readResult.data) {
+    return {
+      migrated: false,
+      error: "No legacy state found",
+    };
+  }
+
+  // Check if it's actually from a legacy location
+  const isLegacy = readResult.foundAt !== standardPath;
+  if (!isLegacy) {
+    return {
+      migrated: false,
+    };
+  }
+
+  // Write to standard location
+  const writeResult = writeState(name, readResult.data, location);
+  if (!writeResult.success) {
+    return {
+      migrated: false,
+      error: `Failed to write to standard location: ${writeResult.error}`,
+    };
+  }
+
+  // Delete legacy file
+  try {
+    fs.unlinkSync(readResult.foundAt);
+  } catch (error) {
+    // Migration succeeded but cleanup failed - not critical
+    console.warn(
+      `Failed to delete legacy state at ${readResult.foundAt}:`,
+      error,
+    );
+  }
+
+  return {
+    migrated: true,
+    from: readResult.foundAt,
+    to: writeResult.path,
+  };
 }
 
 /**
@@ -436,7 +587,7 @@ export function cleanupStaleStates(
   maxAgeMs: number = MAX_STATE_AGE_MS,
 ): number {
   const stateDir = directory
-    ? path.join(directory, ".omcp", "state")
+    ? path.join(getOmcRoot(directory), "state")
     : getLocalStateDir();
 
   if (!fs.existsSync(stateDir)) return 0;
@@ -490,10 +641,10 @@ export function cleanupStaleStates(
     }
   };
 
-  // Scan top-level state files (.omcp/state/*.json)
+  // Scan top-level state files (.omg/state/*.json)
   scanDir(stateDir);
 
-  // Scan session directories (.omcp/state/sessions/*/*.json)
+  // Scan session directories (.omg/state/sessions/*/*.json)
   const sessionsDir = path.join(stateDir, "sessions");
   if (fs.existsSync(sessionsDir)) {
     try {
@@ -589,7 +740,7 @@ function withFileLock<R>(filePath: string, fn: () => R): R {
  *
  * Object-oriented interface for managing a specific state.
  *
- * @deprecated For mode state (autopilot, ralph, ultrawork, etc.), use `writeModeState`/`readModeState` from `src/lib/mode-state-io.ts` instead. StateManager is retained for non-mode state (analytics, daemon, etc.) only.
+ * @deprecated For mode state (autopilot, ralph, ultrawork, etc.), use `writeModeState`/`readModeState` from `src/lib/mode-state-io.ts` instead. StateManager is retained for non-mode state only.
  */
 export class StateManager<T = StateData> {
   constructor(
@@ -597,8 +748,8 @@ export class StateManager<T = StateData> {
     private location: StateLocation = StateLocation.LOCAL,
   ) {}
 
-  read(): StateReadResult<T> {
-    return readState<T>(this.name, this.location);
+  read(options?: { checkLegacy?: boolean }): StateReadResult<T> {
+    return readState<T>(this.name, this.location, options);
   }
 
   write(data: T, options?: { createDirs?: boolean }): StateWriteResult {
@@ -609,8 +760,12 @@ export class StateManager<T = StateData> {
     return clearState(this.name, this.location);
   }
 
+  migrate(): StateMigrationResult {
+    return migrateState(this.name, this.location);
+  }
+
   exists(): boolean {
-    return this.read().exists;
+    return this.read({ checkLegacy: false }).exists;
   }
 
   get(): T | undefined {
@@ -650,6 +805,7 @@ export type {
   StateReadResult,
   StateWriteResult,
   StateClearResult,
+  StateMigrationResult,
   StateFileInfo,
   ListStatesOptions,
   CleanupOptions,

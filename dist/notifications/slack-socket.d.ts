@@ -33,7 +33,7 @@ export interface SlackValidationResult {
 }
 /** Slack Socket Mode message envelope */
 export interface SlackSocketEnvelope {
-    envelope_id: string;
+    envelope_id?: string;
     type: string;
     payload?: Record<string, unknown>;
     accepts_response_payload?: boolean;

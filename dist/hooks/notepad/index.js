@@ -24,7 +24,7 @@
  */
 import { existsSync, readFileSync, mkdirSync } from "fs";
 import { join } from "path";
-import { getSharedOmcRoot } from "../../lib/worktree-paths.js";
+import { getOmcRoot } from "../../lib/worktree-paths.js";
 import { atomicWriteFileSync } from "../../lib/atomic-write.js";
 import { lockPathFor, withFileLockSync } from "../../lib/file-lock.js";
 // ============================================================================
@@ -58,19 +58,16 @@ function getSectionRegexSet(header) {
 // File Operations
 // ============================================================================
 /**
- * Get the path to notepad.md.
- *
- * Notepad lives under the cross-plugin shared root (`.omc/notepad.md`)
- * so it compounds across oh-my-copilot and oh-my-claudecode sessions.
+ * Get the path to notepad.md in .omc subdirectory
  */
 export function getNotepadPath(directory) {
-    return join(getSharedOmcRoot(directory), NOTEPAD_FILENAME);
+    return join(getOmcRoot(directory), NOTEPAD_FILENAME);
 }
 /**
  * Initialize notepad.md if it doesn't exist
  */
 export function initNotepad(directory) {
-    const omcDir = getSharedOmcRoot(directory);
+    const omcDir = getOmcRoot(directory);
     if (!existsSync(omcDir)) {
         try {
             mkdirSync(omcDir, { recursive: true });

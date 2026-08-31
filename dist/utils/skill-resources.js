@@ -2,14 +2,15 @@ import { existsSync, readdirSync } from 'fs';
 import { dirname, relative } from 'path';
 const MAX_RESOURCE_ENTRIES = 12;
 function toDisplayPath(pathValue) {
-    const relativeToCwd = relative(process.cwd(), pathValue);
+    // Display-only paths use POSIX separators so rendered skill docs are identical on all platforms.
+    const relativeToCwd = relative(process.cwd(), pathValue).replace(/\\/g, '/');
     if (relativeToCwd &&
         relativeToCwd !== '' &&
         !relativeToCwd.startsWith('..') &&
         relativeToCwd !== '.') {
         return relativeToCwd;
     }
-    return pathValue;
+    return pathValue.replace(/\\/g, '/');
 }
 export function summarizeSkillResources(skillFilePath) {
     const skillDirectory = dirname(skillFilePath);

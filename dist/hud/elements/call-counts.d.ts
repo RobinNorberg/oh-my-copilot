@@ -17,7 +17,6 @@ import type { CallCountsFormat, HudLabels } from '../types.js';
  * @param toolCalls - Total tool_use blocks seen in transcript
  * @param agentInvocations - Total Task/proxy_Task calls seen in transcript
  * @param skillUsages - Total Skill/proxy_Skill calls seen in transcript
- * @param format - Icon format: auto (platform default), emoji, or ascii
  */
 export declare function renderCallCounts(toolCalls: number, agentInvocations: number, skillUsages: number, format?: CallCountsFormat, labels?: Pick<HudLabels, 'tool' | 'agent' | 'skill'>): string | null;
 //# sourceMappingURL=call-counts.d.ts.map

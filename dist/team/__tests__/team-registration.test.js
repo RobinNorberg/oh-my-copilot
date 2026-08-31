@@ -3,18 +3,40 @@ import { mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { readProbeResult, writeProbeResult, getRegistrationStrategy, registerMcpWorker, unregisterMcpWorker, isMcpWorker, listMcpWorkers } from '../team-registration.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 const TEST_DIR = join(tmpdir(), '__test_team_reg__');
 const TEST_TEAM = 'test-team-reg-team';
-const CONFIG_DIR = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
+let configDir;
+let previousHome;
+let previousUserProfile;
+let previousOmcStateDir;
 beforeEach(() => {
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousOmcStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = TEST_DIR;
+    process.env.USERPROFILE = TEST_DIR;
+    delete process.env.OMC_STATE_DIR;
     mkdirSync(TEST_DIR, { recursive: true });
-    mkdirSync(join(TEST_DIR, '.omcp', 'state'), { recursive: true });
-    mkdirSync(CONFIG_DIR, { recursive: true });
+    mkdirSync(join(TEST_DIR, '.omg', 'state'), { recursive: true });
+    configDir = join(getCopilotConfigDir(), 'teams', TEST_TEAM);
+    mkdirSync(configDir, { recursive: true });
 });
 afterEach(() => {
     rmSync(TEST_DIR, { recursive: true, force: true });
-    rmSync(CONFIG_DIR, { recursive: true, force: true });
+    rmSync(configDir, { recursive: true, force: true });
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
+    if (previousOmcStateDir === undefined)
+        delete process.env.OMC_STATE_DIR;
+    else
+        process.env.OMC_STATE_DIR = previousOmcStateDir;
 });
 describe('probeResult', () => {
     it('writes and reads probe result', () => {

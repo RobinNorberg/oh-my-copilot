@@ -3,7 +3,7 @@
  * OMC HUD - Main Entry Point
  *
  * Statusline command that visualizes oh-my-copilot state.
- * Receives stdin JSON from Copilot CLI and outputs formatted statusline.
+ * Receives stdin JSON from Claude Code and outputs formatted statusline.
  */
 /** @internal Reset spawn guard — used by tests only. */
 export declare function _resetSummarySpawnTimestamp(): void;

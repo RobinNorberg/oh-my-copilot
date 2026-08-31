@@ -2,7 +2,7 @@
  * Agents Overlay
  *
  * Integration layer that injects startup context (codebase map, project hints)
- * into the Copilot CLI session before the first agent message.
+ * into the Claude Code session before the first agent message.
  *
  * Called from processSessionStart in bridge.ts.
  * Issue #804 - Startup codebase map injection hook

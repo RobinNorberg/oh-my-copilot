@@ -1,9 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+
+const tmuxMocks = vi.hoisted(() => ({ getWorkerLiveness: vi.fn(async () => 'dead' as const) }));
+vi.mock('../tmux-session.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../tmux-session.js')>(),
+  getWorkerLiveness: tmuxMocks.getWorkerLiveness,
+}));
 import { processCliWorkerVerdicts } from '../runtime-v2.js';
 
 /**
@@ -28,10 +34,16 @@ const SHOULD_RUN = codexAvailable();
 
 describe.skipIf(!SHOULD_RUN)('critic CLI worker integration (AC-7)', () => {
   it('verdict.json from codex critic worker drives task to completed', async () => {
-    const cwd = mkdtempSync(join(tmpdir(), 'omcp-critic-integration-'));
+    const cwd = mkdtempSync(join(tmpdir(), 'omc-critic-integration-'));
+    const previousHome = process.env.HOME;
+    const previousUserProfile = process.env.USERPROFILE;
+    const previousStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = cwd;
+    process.env.USERPROFILE = cwd;
+    delete process.env.OMC_STATE_DIR;
     try {
       const teamName = 'critic-int';
-      const teamRoot = join(cwd, '.omcp', 'state', 'team', teamName);
+      const teamRoot = join(cwd, '.omg', 'state', 'team', teamName);
       mkdirSync(join(teamRoot, 'tasks'), { recursive: true });
       mkdirSync(join(teamRoot, 'workers', 'worker-critic'), { recursive: true });
 
@@ -54,7 +66,7 @@ describe.skipIf(!SHOULD_RUN)('critic CLI worker integration (AC-7)', () => {
                 role: 'critic',
                 worker_cli: 'codex',
                 assigned_tasks: ['1'],
-                pane_id: undefined,
+                pane_id: '%dead',
                 working_dir: cwd,
                 output_file: outputFile,
               },
@@ -107,7 +119,10 @@ describe.skipIf(!SHOULD_RUN)('critic CLI worker integration (AC-7)', () => {
         'utf-8',
       );
 
+      const { readTeamConfig } = await import('../monitor.js');
+      expect((await readTeamConfig(teamName, cwd))?.workers[0]?.output_file).toBe(outputFile);
       const results = await processCliWorkerVerdicts(teamName, cwd);
+      expect(tmuxMocks.getWorkerLiveness).toHaveBeenCalledWith('%dead');
       expect(results).toHaveLength(1);
       expect(results[0].status).toBe('completed');
 
@@ -117,6 +132,12 @@ describe.skipIf(!SHOULD_RUN)('critic CLI worker integration (AC-7)', () => {
       expect(finalTask.metadata?.verdict_role).toBe('critic');
       expect(existsSync(outputFile + '.processed')).toBe(true);
     } finally {
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = previousUserProfile;
+      if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+      else process.env.OMC_STATE_DIR = previousStateDir;
       rmSync(cwd, { recursive: true, force: true });
     }
   });

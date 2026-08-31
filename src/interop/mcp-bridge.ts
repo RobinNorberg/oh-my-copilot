@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod';
-import { ToolDefinition, AnyToolDefinition } from '../tools/types.js';
+import { ToolDefinition } from '../tools/types.js';
 import type { ArtifactDescriptor } from '../shared/artifact-descriptor.js';
 import {
   addSharedTask,
@@ -82,7 +82,14 @@ function formatArtifactDescriptorLines(label: string, descriptor?: ArtifactDescr
 // interop_send_task - Send a task to the other tool
 // ============================================================================
 
-export const interopSendTaskTool: AnyToolDefinition = {
+export const interopSendTaskTool: ToolDefinition<{
+  target: z.ZodEnum<['omc', 'omx']>;
+  type: z.ZodEnum<['analyze', 'implement', 'review', 'test', 'custom']>;
+  description: z.ZodString;
+  context: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+  files: z.ZodOptional<z.ZodArray<z.ZodString>>;
+  workingDirectory: z.ZodOptional<z.ZodString>;
+}> = {
   name: 'interop_send_task',
   description: 'Send a task to the other tool (OMC -> OMX or OMX -> OMC) for execution. The task will be queued in shared state for the target tool to pick up.',
   schema: {
@@ -133,7 +140,12 @@ export const interopSendTaskTool: AnyToolDefinition = {
 // interop_read_results - Read task results from the other tool
 // ============================================================================
 
-export const interopReadResultsTool: AnyToolDefinition = {
+export const interopReadResultsTool: ToolDefinition<{
+  source: z.ZodOptional<z.ZodEnum<['omc', 'omx']>>;
+  status: z.ZodOptional<z.ZodEnum<['pending', 'in_progress', 'completed', 'failed']>>;
+  limit: z.ZodOptional<z.ZodNumber>;
+  workingDirectory: z.ZodOptional<z.ZodString>;
+}> = {
   name: 'interop_read_results',
   description: 'Read task results from the shared interop state. Can filter by source tool and status.',
   schema: {
@@ -217,7 +229,12 @@ export const interopReadResultsTool: AnyToolDefinition = {
 // interop_send_message - Send a message to the other tool
 // ============================================================================
 
-export const interopSendMessageTool: AnyToolDefinition = {
+export const interopSendMessageTool: ToolDefinition<{
+  target: z.ZodEnum<['omc', 'omx']>;
+  content: z.ZodString;
+  metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+  workingDirectory: z.ZodOptional<z.ZodString>;
+}> = {
   name: 'interop_send_message',
   description: 'Send a message to the other tool for informational purposes or coordination.',
   schema: {
@@ -261,7 +278,13 @@ export const interopSendMessageTool: AnyToolDefinition = {
 // interop_read_messages - Read messages from the other tool
 // ============================================================================
 
-export const interopReadMessagesTool: AnyToolDefinition = {
+export const interopReadMessagesTool: ToolDefinition<{
+  source: z.ZodOptional<z.ZodEnum<['omc', 'omx']>>;
+  unreadOnly: z.ZodOptional<z.ZodBoolean>;
+  limit: z.ZodOptional<z.ZodNumber>;
+  markAsRead: z.ZodOptional<z.ZodBoolean>;
+  workingDirectory: z.ZodOptional<z.ZodString>;
+}> = {
   name: 'interop_read_messages',
   description: 'Read messages from the shared interop state. Can filter by source tool and read status.',
   schema: {
@@ -525,7 +548,12 @@ export const interopReadOmxMessagesTool: ToolDefinition<{
 // interop_read_omx_tasks - Read omx team tasks
 // ============================================================================
 
-export const interopReadOmxTasksTool: AnyToolDefinition = {
+export const interopReadOmxTasksTool: ToolDefinition<{
+  teamName: z.ZodString;
+  status: z.ZodOptional<z.ZodEnum<['pending', 'blocked', 'in_progress', 'completed', 'failed']>>;
+  limit: z.ZodOptional<z.ZodNumber>;
+  workingDirectory: z.ZodOptional<z.ZodString>;
+}> = {
   name: 'interop_read_omx_tasks',
   description: 'Read tasks from an OMX team. Can filter by status.',
   schema: {

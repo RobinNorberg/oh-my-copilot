@@ -4,7 +4,7 @@
  * Handles notifications for background tasks completing.
  * Integrates with the BackgroundManager to show task completion status.
  *
- * Adapted from oh-my-opencode's background-notification hook for Copilot CLI's
+ * Adapted from oh-my-opencode's background-notification hook for Claude Code's
  * shell hooks system.
  */
 import type { BackgroundManager, BackgroundTask } from '../../features/background-agent/index.js';

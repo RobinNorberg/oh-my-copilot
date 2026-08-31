@@ -5,7 +5,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { createGitFixture, orchestratorEventLogPath, readEventLog, } from './helpers/git-fixture.js';
+import { createGitFixture, orchestratorEventLogPath, readEventLog, waitForEventInLog, } from './helpers/git-fixture.js';
 import { startMergeOrchestrator, } from '../merge-orchestrator.js';
 beforeAll(() => {
     process.env.OMC_RUNTIME_V2 = '1';
@@ -126,28 +126,35 @@ describe('rebase conflict mailbox delivery', () => {
         await fixture.commitFile('worker-2', 'shared.ts', '// version B\nexport const x = 99;\n');
         await handle.pollOnce();
         const eventLog = orchestratorEventLogPath(fixture.repoRoot, fixture.teamName);
-        expectEvent(eventLog, 'merge_succeeded', 'worker-1');
-        expectEvent(eventLog, 'rebase_triggered', 'worker-2');
+        await waitForEventInLog({ eventLogPath: eventLog, eventType: 'merge_succeeded', timeoutMs: 8000 });
+        const mergedWorker = readEventLog(eventLog).find((e) => e.type === 'merge_succeeded')?.worker;
+        const rebasingWorkerName = mergedWorker === 'worker-2' ? 'worker-1' : 'worker-2';
+        await waitForEventInLog({
+            eventLogPath: eventLog,
+            eventType: 'rebase_triggered',
+            worker: rebasingWorkerName,
+            timeoutMs: 8000,
+        });
         // Wait for either rebase_conflict or rebase_succeeded
         const deadline = Date.now() + 5000;
         let gotConflict = false;
         while (Date.now() < deadline) {
             const events = readEventLog(eventLog);
-            if (events.some((e) => e.type === 'rebase_conflict' && e.worker === 'worker-2')) {
+            if (events.some((e) => e.type === 'rebase_conflict' && e.worker === rebasingWorkerName)) {
                 gotConflict = true;
                 break;
             }
-            if (events.some((e) => e.type === 'rebase_succeeded' && e.worker === 'worker-2')) {
+            if (events.some((e) => e.type === 'rebase_succeeded' && e.worker === rebasingWorkerName)) {
                 // Clean rebase (git was able to merge without conflict) — test passes vacuously
                 break;
             }
             await new Promise((r) => setTimeout(r, 100));
         }
         if (gotConflict) {
-            // Check worker-2 inbox has conflict message
-            const worker2InboxPath = join(fixture.repoRoot, '.omcp', 'state', 'team', fixture.teamName, 'workers', 'worker-2', 'inbox.md');
-            expect(existsSync(worker2InboxPath)).toBe(true);
-            const inboxContent = readFileSync(worker2InboxPath, 'utf-8');
+            // Check rebasing worker inbox has conflict message
+            const rebasingWorkerInboxPath = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName, 'workers', rebasingWorkerName, 'inbox.md');
+            expect(existsSync(rebasingWorkerInboxPath)).toBe(true);
+            const inboxContent = readFileSync(rebasingWorkerInboxPath, 'utf-8');
             // Inbox should mention rebase and provide git instructions
             expect(inboxContent.toLowerCase()).toMatch(/rebase/);
             expect(inboxContent).toMatch(/git rebase/);
@@ -224,41 +231,49 @@ describe('M4: dirty-tree audit on rebase resolution', () => {
         await fixture.commitFile('worker-2', 'shared.ts', '// worker-2 version\nexport const v = 2;\n');
         await handle.pollOnce();
         const eventLog = orchestratorEventLogPath(fixture.repoRoot, fixture.teamName);
-        expectEvent(eventLog, 'merge_succeeded', 'worker-1');
-        expectEvent(eventLog, 'rebase_triggered', 'worker-2');
+        await handle.pollOnce();
+        await waitForEventInLog({ eventLogPath: eventLog, eventType: 'merge_succeeded', timeoutMs: 8000 });
+        const mergedWorker = readEventLog(eventLog).find((e) => e.type === 'merge_succeeded')?.worker;
+        const rebasingWorkerName = mergedWorker === 'worker-2' ? 'worker-1' : 'worker-2';
+        await waitForEventInLog({
+            eventLogPath: eventLog,
+            eventType: 'rebase_triggered',
+            worker: rebasingWorkerName,
+            timeoutMs: 8000,
+        });
         // Check if we got a conflict
         await new Promise((r) => setTimeout(r, 500));
         const events = readEventLog(eventLog);
-        const hasConflict = events.some((e) => e.type === 'rebase_conflict' && e.worker === 'worker-2');
+        const hasConflict = events.some((e) => e.type === 'rebase_conflict' && e.worker === rebasingWorkerName);
         if (!hasConflict) {
             // Rebase resolved cleanly — M4 won't fire without a conflict. Skip assertion.
             return;
         }
-        // Worker-2 is paused mid-rebase (orchestrator detected rebase-merge dir).
-        // Simulate resolution: worker-2 resolves the rebase abort (remove rebase-merge dir)
+        // The second worker is paused mid-rebase (orchestrator detected rebase-merge dir).
+        // Simulate resolution: the worker resolves the rebase abort (remove rebase-merge dir)
         // and also has some dirty uncommitted files.
-        const worker2 = fixture.workers.find((w) => w.name === 'worker-2');
+        const rebasingWorker = fixture.workers.find((w) => w.name === rebasingWorkerName);
         // Find the real rebase-merge location via git
         try {
             const { execFileSync } = await import('node:child_process');
-            const rebaseMergePath = execFileSync('git', ['-C', worker2.worktreePath, 'rev-parse', '--git-path', 'rebase-merge'], {
+            const rebaseMergePath = execFileSync('git', ['-C', rebasingWorker.worktreePath, 'rev-parse', '--git-path', 'rebase-merge'], {
                 encoding: 'utf-8',
                 stdio: 'pipe',
             }).trim();
             // Abort the rebase (simulates worker resolving via --abort)
             if (existsSync(rebaseMergePath)) {
-                execFileSync('git', ['rebase', '--abort'], { cwd: worker2.worktreePath, stdio: 'pipe' });
+                execFileSync('git', ['rebase', '--abort'], { cwd: rebasingWorker.worktreePath, stdio: 'pipe' });
             }
             // Leave a dirty file in the worktree (M4 should audit it)
-            const dirtyFile = join(worker2.worktreePath, 'dirty-scratch.txt');
+            const dirtyFile = join(rebasingWorker.worktreePath, 'dirty-scratch.txt');
             writeFileSync(dirtyFile, 'dirty uncommitted work\n', 'utf-8');
             // Run orchestrator once to detect rebase-merge gone and fire M4 audit
             await handle.pollOnce();
-            expectEvent(eventLog, 'rebase_resolved', 'worker-2');
+            await waitForEventInLog({ eventLogPath: eventLog, eventType: 'rebase_resolved', worker: rebasingWorkerName, timeoutMs: 8000 });
             // Check inbox for audit message
-            const worker2InboxPath = join(fixture.repoRoot, '.omcp', 'state', 'team', fixture.teamName, 'workers', 'worker-2', 'inbox.md');
-            if (existsSync(worker2InboxPath)) {
-                const inboxContent = readFileSync(worker2InboxPath, 'utf-8');
+            const rebasingWorkerInboxPath = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName, 'workers', rebasingWorkerName, 'inbox.md');
+            if (existsSync(rebasingWorkerInboxPath)) {
+                const inboxContent = readFileSync(rebasingWorkerInboxPath, 'utf-8');
                 // Should mention dirty files
                 expect(inboxContent).toMatch(/Auto-commit audit|dirty/i);
             }

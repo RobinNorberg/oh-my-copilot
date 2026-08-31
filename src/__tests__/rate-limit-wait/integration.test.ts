@@ -16,8 +16,8 @@ vi.mock('../../hud/usage-api.js', () => ({
   getUsage: vi.fn(),
 }));
 
-vi.mock('child_process', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('child_process')>();
+vi.mock('child_process', async () => {
+  const actual = await vi.importActual<typeof import('child_process')>('child_process');
   return {
     ...actual,
     execSync: vi.fn(),
@@ -174,10 +174,10 @@ describe('Rate Limit Wait Integration Tests', () => {
   });
 
   describe('Scenario: tmux pane analysis accuracy', () => {
-    it('should correctly identify Copilot CLI rate limit message', () => {
+    it('should correctly identify Claude Code rate limit message', () => {
       const realWorldContent = `
 ╭─────────────────────────────────────────────────────────────────╮
-│  Copilot CLI                                                     │
+│  Claude Code                                                     │
 ╰─────────────────────────────────────────────────────────────────╯
 
 You've reached your usage limit for the 5-hour period.
@@ -202,7 +202,7 @@ What would you like to do?
 
     it('should correctly identify weekly rate limit message', () => {
       const weeklyLimitContent = `
-Copilot CLI v1.0.0
+Claude Code v1.0.0
 
 ⚠️  Weekly usage limit reached
 
@@ -223,9 +223,9 @@ Enter choice: `;
       expect(result.rateLimitType).toBe('weekly');
     });
 
-    it('should NOT flag normal Copilot CLI output as blocked', () => {
+    it('should NOT flag normal Claude Code output as blocked', () => {
       const normalContent = `
-Copilot CLI
+Claude Code
 
 > What would you like to build today?
 
@@ -258,7 +258,7 @@ $ `;
 
       expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
-      expect(result.isBlocked).toBe(false); // No Copilot context
+      expect(result.isBlocked).toBe(false); // No Claude context
     });
 
     it('should handle edge case: old rate limit message scrolled up', () => {
@@ -308,7 +308,7 @@ Assistant: I can help with more tasks.
             id: '%0',
             session: 'dev',
             windowIndex: 0,
-            windowName: 'copilot',
+            windowName: 'claude',
             paneIndex: 0,
             isActive: true,
             analysis: {
@@ -424,7 +424,7 @@ Assistant: I can help with more tasks.
   describe('Scenario: Confidence scoring', () => {
     it('should give higher confidence for multiple indicators', () => {
       const highConfidenceContent = `
-Copilot CLI
+Claude Code
 Rate limit reached
 5-hour usage limit
 [1] Continue
@@ -432,7 +432,7 @@ Rate limit reached
 `;
 
       const lowConfidenceContent = `
-Copilot
+Claude
 rate limit
 `;
 
@@ -444,7 +444,7 @@ rate limit
 
     it('should require minimum confidence to mark as blocked', () => {
       const ambiguousContent = `
-some copilot reference
+some claude reference
 limit mentioned
 `;
 

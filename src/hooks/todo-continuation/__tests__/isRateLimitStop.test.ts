@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isRateLimitStop, type StopContext } from '../index.js';
+import { isRateLimitStop, isScheduledWakeupStop, type StopContext } from '../index.js';
 
 describe('isRateLimitStop (fix #777 - ralph infinite retry loop)', () => {
   it('should return false for undefined context', () => {
@@ -106,5 +106,28 @@ describe('isRateLimitStop (fix #777 - ralph infinite retry loop)', () => {
   it('should handle null stop_reason gracefully', () => {
     const context: StopContext = { stop_reason: null as unknown as string };
     expect(isRateLimitStop(context)).toBe(false);
+  });
+});
+
+describe('isScheduledWakeupStop (fix #2693 - scheduled resume should bypass persistent continuation)', () => {
+  it('should return false for undefined context', () => {
+    expect(isScheduledWakeupStop()).toBe(false);
+  });
+
+  it('should detect ScheduleWakeup stop_reason variants', () => {
+    expect(isScheduledWakeupStop({ stop_reason: 'ScheduleWakeup' })).toBe(true);
+    expect(isScheduledWakeupStop({ stop_reason: 'scheduled_task' })).toBe(true);
+    expect(isScheduledWakeupStop({ endTurnReason: 'loop_resume' })).toBe(true);
+  });
+
+  it('should detect scheduled wakeup from tool name', () => {
+    expect(isScheduledWakeupStop({ tool_name: 'ScheduleWakeup' })).toBe(true);
+    expect(isScheduledWakeupStop({ toolName: 'native.schedule_wakeup' })).toBe(true);
+  });
+
+  it('should return false for ordinary stop reasons', () => {
+    expect(isScheduledWakeupStop({ stop_reason: 'end_turn' })).toBe(false);
+    expect(isScheduledWakeupStop({ stop_reason: 'rate_limit' })).toBe(false);
+    expect(isScheduledWakeupStop({ tool_name: 'Task' })).toBe(false);
   });
 });

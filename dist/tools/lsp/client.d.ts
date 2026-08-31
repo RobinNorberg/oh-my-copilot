@@ -87,6 +87,7 @@ export interface CodeAction {
  * LSP Client class
  */
 export declare class LspClient {
+    private static readonly MAX_BUFFER_SIZE;
     private process;
     private requestId;
     private pendingRequests;
@@ -127,6 +128,8 @@ export declare class LspClient {
      * Handle a parsed JSON-RPC message
      */
     private handleMessage;
+    /** Reply to unsupported server requests without claiming they succeeded. */
+    private handleServerRequest;
     /**
      * Handle server notifications
      */
@@ -226,16 +229,17 @@ export declare const IDLE_CHECK_INTERVAL_MS: number;
  * Client manager - maintains a pool of LSP clients per workspace/server
  * with idle eviction to free resources and in-flight request protection.
  */
-declare class LspClientManager {
+export declare class LspClientManager {
     private clients;
     private lastUsed;
     private inFlightCount;
+    private idleDeadlines;
     private idleTimer;
     constructor();
     /**
      * Register process exit/signal handlers to kill all spawned LSP server processes.
      * Prevents orphaned language server processes (e.g. kotlin-language-server)
-     * when the MCP bridge process exits or a copilot session ends.
+     * when the MCP bridge process exits or a claude session ends.
      */
     private registerCleanupHandlers;
     /**
@@ -248,6 +252,9 @@ declare class LspClientManager {
      * The lastUsed timestamp is refreshed on both entry and exit.
      */
     runWithClientLease<T>(filePath: string, fn: (client: LspClient) => Promise<T>): Promise<T>;
+    private touchClient;
+    private scheduleIdleDeadline;
+    private clearIdleDeadline;
     /**
      * Find the workspace root for a file
      */
@@ -261,6 +268,7 @@ declare class LspClientManager {
      * Clients with in-flight requests are never evicted.
      */
     private evictIdleClients;
+    private evictClientIfIdle;
     /**
      * Disconnect all clients and stop idle checking.
      * Uses Promise.allSettled so one failing disconnect doesn't block others.
@@ -280,5 +288,4 @@ export declare const lspClientManager: LspClientManager;
  * Exported for use in session-end hooks.
  */
 export declare function disconnectAll(): Promise<void>;
-export {};
 //# sourceMappingURL=client.d.ts.map

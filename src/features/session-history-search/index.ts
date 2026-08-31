@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { createReadStream, existsSync, readdirSync, statSync } from 'fs';
 import { dirname, join, normalize, resolve } from 'path';
 import { createInterface } from 'readline';
@@ -9,6 +9,7 @@ import {
   getOmcRoot,
 } from '../../lib/worktree-paths.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
+import { encodeProjectPath } from '../../utils/encode-project-path.js';
 import type {
   SessionHistoryMatch,
   SessionHistorySearchOptions,
@@ -66,16 +67,13 @@ function parseSinceSpec(since?: string): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
-function encodeProjectPath(projectPath: string): string {
-  return projectPath.replace(/[/\\.]/g, '-');
-}
-
 function getMainRepoRoot(projectRoot: string): string | null {
   try {
-    const gitCommonDir = execSync('git rev-parse --git-common-dir', {
+    const gitCommonDir = execFileSync('git', ['rev-parse', '--git-common-dir'], {
       cwd: projectRoot,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     }).trim();
     const absoluteCommonDir = resolve(projectRoot, gitCommonDir);
     const mainRepoRoot = dirname(absoluteCommonDir);
@@ -85,7 +83,7 @@ function getMainRepoRoot(projectRoot: string): string | null {
   }
 }
 
-function getCopilotWorktreeParent(projectRoot: string): string | null {
+function getClaudeWorktreeParent(projectRoot: string): string | null {
   const marker = `${normalize('/.copilot/worktrees/')}`;
   const normalizedRoot = normalize(projectRoot);
   const idx = normalizedRoot.indexOf(marker);
@@ -141,24 +139,26 @@ function uniqueSortedTargets(targets: SearchTarget[]): SearchTarget[] {
     });
 }
 
-function buildCurrentProjectTargets(projectRoot: string): SearchTarget[] {
-  const copilotDir = getCopilotConfigDir();
-  const projectRoots = new Set<string>([projectRoot]);
-  const mainRepoRoot = getMainRepoRoot(projectRoot);
-  if (mainRepoRoot) projectRoots.add(mainRepoRoot);
-  const copilotWorktreeParent = getCopilotWorktreeParent(projectRoot);
-  if (copilotWorktreeParent) projectRoots.add(copilotWorktreeParent);
+function buildCurrentProjectTargets(projectRoot: string, transcriptProjectRoots: string[] = [projectRoot]): SearchTarget[] {
+  const claudeDir = getCopilotConfigDir();
+  const projectRoots = new Set<string>(transcriptProjectRoots);
+  for (const root of transcriptProjectRoots) {
+    const mainRepoRoot = getMainRepoRoot(root);
+    if (mainRepoRoot) projectRoots.add(mainRepoRoot);
+    const claudeWorktreeParent = getClaudeWorktreeParent(root);
+    if (claudeWorktreeParent) projectRoots.add(claudeWorktreeParent);
+  }
 
   const targets: SearchTarget[] = [];
 
   for (const root of projectRoots) {
-    const encodedDir = join(copilotDir, 'projects', encodeProjectPath(root));
+    const encodedDir = join(claudeDir, 'projects', encodeProjectPath(root));
     for (const filePath of listJsonlFiles(encodedDir)) {
       targets.push({ filePath, sourceType: 'project-transcript' });
     }
   }
 
-  const legacyTranscriptsDir = join(copilotDir, 'transcripts');
+  const legacyTranscriptsDir = join(claudeDir, 'transcripts');
   for (const filePath of listJsonlFiles(legacyTranscriptsDir)) {
     targets.push({ filePath, sourceType: 'legacy-transcript' });
   }
@@ -182,14 +182,14 @@ function buildCurrentProjectTargets(projectRoot: string): SearchTarget[] {
 }
 
 function buildAllProjectTargets(): SearchTarget[] {
-  const copilotDir = getCopilotConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const targets: SearchTarget[] = [];
 
-  for (const filePath of listJsonlFiles(join(copilotDir, 'projects'))) {
+  for (const filePath of listJsonlFiles(join(claudeDir, 'projects'))) {
     targets.push({ filePath, sourceType: 'project-transcript' });
   }
 
-  for (const filePath of listJsonlFiles(join(copilotDir, 'transcripts'))) {
+  for (const filePath of listJsonlFiles(join(claudeDir, 'transcripts'))) {
     targets.push({ filePath, sourceType: 'legacy-transcript' });
   }
 
@@ -201,9 +201,9 @@ function isWithinProject(projectPath: string | undefined, projectRoots: string[]
     return false;
   }
 
-  const normalizedProjectPath = normalize(resolve(projectPath));
+  const normalizedProjectPath = normalize(resolve(projectPath)).replace(/\\/g, '/');
   return projectRoots.some((root) => {
-    const normalizedRoot = normalize(resolve(root));
+    const normalizedRoot = normalize(resolve(root)).replace(/\\/g, '/');
     return normalizedProjectPath === normalizedRoot || normalizedProjectPath.startsWith(`${normalizedRoot}/`);
   });
 }
@@ -514,15 +514,18 @@ export async function searchSessionHistory(
   const currentProjectRoot = resolveToWorktreeRoot(workingDirectory);
   const scopeMode = buildScopeMode(rawOptions.project);
   const projectFilter = scopeMode === 'project' ? rawOptions.project : undefined;
+  const literalWorkingDirectory = rawOptions.workingDirectory ? resolve(rawOptions.workingDirectory) : workingDirectory;
 
-  const currentProjectRoots = [currentProjectRoot]
+  const currentProjectRoots = [currentProjectRoot, literalWorkingDirectory]
     .concat(getMainRepoRoot(currentProjectRoot) ?? [])
-    .concat(getCopilotWorktreeParent(currentProjectRoot) ?? [])
+    .concat(getClaudeWorktreeParent(currentProjectRoot) ?? [])
     .filter((value, index, arr): value is string => Boolean(value) && arr.indexOf(value) === index);
+
+  const transcriptProjectRoots = currentProjectRoots.filter((root) => isWithinProject(root, [currentProjectRoot]));
 
   const targets = scopeMode === 'all'
     ? buildAllProjectTargets()
-    : buildCurrentProjectTargets(currentProjectRoot);
+    : buildCurrentProjectTargets(currentProjectRoot, transcriptProjectRoots);
 
   const allMatches: SessionHistoryMatch[] = [];
   for (const target of targets) {
@@ -560,7 +563,7 @@ export async function searchSessionHistory(
   };
 }
 
-export { parseSinceSpec };
+export { encodeProjectPath, isWithinProject as __testingIsWithinProject, parseSinceSpec };
 export type {
   SessionHistoryMatch,
   SessionHistorySearchOptions,

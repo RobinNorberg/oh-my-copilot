@@ -12,6 +12,7 @@ import { join } from 'path';
 
 import { registerBeadsContext } from '../beads-context/index.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 
 // ============================================================================
 // Types
@@ -46,11 +47,11 @@ export interface HookOutput {
 // ============================================================================
 
 const REQUIRED_DIRECTORIES = [
-  '.omcp/state',
-  '.omcp/logs',
-  '.omcp/notepads',
-  '.omcp/state/checkpoints',
-  '.omcp/plans',
+  '.omg/state',
+  '.omg/logs',
+  '.omg/notepads',
+  '.omg/state/checkpoints',
+  '.omg/plans',
 ];
 
 const CONFIG_FILES = [
@@ -131,14 +132,18 @@ export function setEnvironmentVariables(): string[] {
  *
  * The sh->find-node.sh->node chain introduced in v4.3.4 (issue #892) is only
  * needed on Unix where nvm/fnm may not expose `node` on PATH in non-interactive
- * shells.  On Windows (MSYS2 / Git Bash) the same chain triggers Copilot CLI UI
+ * shells.  On Windows (MSYS2 / Git Bash) the same chain triggers Claude Code UI
  * bug #17088, which mislabels every successful hook as an error.
  *
  * This function reads the plugin's hooks.json and rewrites every command of the
- * form:
+ * current form:
+ *   sh "$CLAUDE_PLUGIN_ROOT"/scripts/find-node.sh "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/X.mjs [args]
+ * or stale absolute-shell cache form:
+ *   "/bin/sh" "$CLAUDE_PLUGIN_ROOT"/scripts/find-node.sh "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/X.mjs [args]
+ * or legacy form:
  *   sh "${CLAUDE_PLUGIN_ROOT}/scripts/find-node.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/X.mjs" [args]
  * to:
- *   node "${CLAUDE_PLUGIN_ROOT}/scripts/X.mjs" [args]
+ *   node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/X.mjs [args]
  *
  * The file is only written when at least one command was actually changed, so
  * the function is safe to call on every init (idempotent after first patch).
@@ -153,40 +158,27 @@ export function patchHooksJsonForWindows(pluginRoot: string): void {
       hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>;
     };
 
-    // Matches the current portable bootstrap form (and the older "/bin/sh"
-    // hotfix variant) that routes run.cjs through find-node.sh:
-    //   sh "$CLAUDE_PLUGIN_ROOT"/scripts/find-node.sh "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/X.mjs [optional args]
-    // The trailing quote is optional and [^"\s] avoids greedily eating args.
+    // Matches current hooks.json:
+    // sh "$CLAUDE_PLUGIN_ROOT"/scripts/find-node.sh "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/X.mjs [optional args]
+    // Also matches older hotfix cache entries that hardcoded "/bin/sh".
     const currentPattern =
       /^(?:"\/bin\/sh"|sh) "\$CLAUDE_PLUGIN_ROOT"\/scripts\/find-node\.sh "\$CLAUDE_PLUGIN_ROOT"\/scripts\/run\.cjs "\$CLAUDE_PLUGIN_ROOT"\/scripts\/([^"\s]+)"?(.*)$/;
 
-    // Matches the legacy form:
-    //   sh "${CLAUDE_PLUGIN_ROOT}/scripts/find-node.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/X.mjs" [optional args]
+    // Matches legacy hooks.json:
+    // sh "${CLAUDE_PLUGIN_ROOT}/scripts/find-node.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/X.mjs" [optional args]
     const legacyPattern =
-      /^sh "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/find-node\.sh" "(\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[^"\s]+)"?(.*)$/;
+      /^sh "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/find-node\.sh" "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/([^"\s]+)"?(.*)$/;
 
     let patched = false;
     for (const groups of Object.values(data.hooks ?? {})) {
       for (const group of groups) {
         for (const hook of group.hooks ?? []) {
-          if (typeof hook.command !== 'string') continue;
-
-          // Current portable form: rewrite to direct node run.cjs (no sh).
-          const current = hook.command.match(currentPattern);
-          if (current) {
-            const next = `node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/${current[1]}${current[2]}`;
-            if (hook.command !== next) {
-              hook.command = next;
+          if (typeof hook.command === 'string') {
+            const m = hook.command.match(currentPattern) ?? hook.command.match(legacyPattern);
+            if (m) {
+              hook.command = `node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/${m[1]}${m[2]}`;
               patched = true;
             }
-            continue;
-          }
-
-          // Legacy find-node.sh form: rewrite to direct node call.
-          const legacy = hook.command.match(legacyPattern);
-          if (legacy) {
-            hook.command = `node "${legacy[1]}"${legacy[2]}`;
-            patched = true;
           }
         }
       }
@@ -298,7 +290,7 @@ export async function processSetupInit(input: SetupInput): Promise<HookOutput> {
   };
 
   // On Windows, patch hooks.json to use direct node invocation (no sh wrapper).
-  // The sh->find-node.sh->node chain triggers Copilot CLI UI bug #17088 on
+  // The sh->find-node.sh->node chain triggers Claude Code UI bug #17088 on
   // MSYS2/Git Bash, mislabeling every successful hook as an error (issue #899).
   // find-node.sh is only needed on Unix for nvm/fnm PATH discovery.
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
@@ -362,10 +354,10 @@ export async function processSetupInit(input: SetupInput): Promise<HookOutput> {
 // ============================================================================
 
 /**
- * Prune old state files from .omcp/state directory
+ * Prune old state files from .omg/state directory
  */
 export function pruneOldStateFiles(directory: string, maxAgeDays: number = DEFAULT_STATE_MAX_AGE_DAYS): number {
-  const stateDir = join(directory, '.omcp/state');
+  const stateDir = join(getOmcRoot(directory), 'state');
   if (!existsSync(stateDir)) {
     return 0;
   }
@@ -428,7 +420,7 @@ export function pruneOldStateFiles(directory: string, maxAgeDays: number = DEFAU
  * Clean up orphaned state files (state files without corresponding active sessions)
  */
 export function cleanupOrphanedState(directory: string): number {
-  const stateDir = join(directory, '.omcp/state');
+  const stateDir = join(getOmcRoot(directory), 'state');
   if (!existsSync(stateDir)) {
     return 0;
   }

@@ -2,13 +2,13 @@
  * OMC HUD - Output Sanitizer
  *
  * Sanitizes HUD output to prevent terminal rendering corruption
- * when Copilot CLI's Ink renderer is concurrently updating the display.
+ * when Claude Code's Ink renderer is concurrently updating the display.
  *
  * Issue #346: Terminal rendering corruption during AI generation with HUD enabled.
  *
  * Root cause: Multi-line output containing ANSI escape sequences and
  * variable-width Unicode characters (progress bar blocks) can interfere
- * with Copilot CLI's terminal cursor positioning during active rendering.
+ * with Claude Code's terminal cursor positioning during active rendering.
  *
  * This module provides:
  * - Terminal control sequence stripping (preserving color/style codes)

@@ -2,7 +2,7 @@
  * OMC Orchestrator Hook
  *
  * Enforces orchestrator behavior - delegation over direct implementation.
- * When an orchestrator agent tries to directly modify files outside .omcp/,
+ * When an orchestrator agent tries to directly modify files outside .omg/,
  * this hook injects reminders to delegate to subagents instead.
  *
  * Adapted from oh-my-opencode's omc-orchestrator hook for shell-based hooks.
@@ -94,7 +94,7 @@ export declare function checkBoulderContinuation(directory: string): {
     message?: string;
 };
 /**
- * Create omg orchestrator hook handlers
+ * Create omc orchestrator hook handlers
  */
 export declare function createOmcOrchestratorHook(directory: string): {
     /**

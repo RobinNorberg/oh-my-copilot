@@ -6,7 +6,6 @@
  */
 
 import type { MagicKeyword, PluginConfig } from '../shared/types.js';
-import { getUltraworkMessage } from '../hooks/keyword-detector/ultrawork/index.js';
 
 /**
  * Code block pattern for stripping from detection
@@ -23,6 +22,9 @@ function removeCodeBlocks(text: string): string {
 
 const INFORMATIONAL_INTENT_PATTERNS: RegExp[] = [
   /\b(?:what(?:'s|\s+is)|what\s+are|how\s+(?:to|do\s+i)\s+use|explain|explanation|tell\s+me\s+about|describe)\b/i,
+  /(?:뭐야|무엇(?:이야|인가요)?|어떻게|설명|사용법)/u,
+  /(?:とは|って何|使い方|説明)/u,
+  /(?:什么是|什麼是|怎(?:么|樣)用|如何使用|解释|說明|说明)/u,
 ];
 const INFORMATIONAL_CONTEXT_WINDOW = 80;
 
@@ -58,38 +60,14 @@ function hasActionableTrigger(text: string, trigger: string): boolean {
   return false;
 }
 
-
 /**
- * Ultrawork mode enhancement
- * Activates maximum performance with parallel agent orchestration
- */
-const ultraworkEnhancement: MagicKeyword = {
-  triggers: ['ultrawork', 'ulw', 'uw'],
-  description: 'Activates maximum performance mode with parallel agent orchestration',
-  action: (prompt: string, agentName?: string, modelId?: string) => {
-    // Remove the trigger word and add enhancement instructions
-    const cleanPrompt = removeTriggerWords(prompt, ['ultrawork', 'ulw', 'uw']);
-    return getUltraworkMessage(agentName, modelId) + cleanPrompt;
-  }
-};
-
-/**
- * Search mode enhancement
+ * Search mode enhancement - multilingual support
  * Maximizes search effort and thoroughness
  */
 const searchEnhancement: MagicKeyword = {
   triggers: ['search', 'find', 'locate', 'lookup', 'explore', 'discover', 'scan', 'grep', 'query', 'browse', 'detect', 'trace', 'seek', 'track', 'pinpoint', 'hunt'],
   description: 'Maximizes search effort and thoroughness',
   action: (prompt: string) => {
-    // Multi-language search pattern
-    const searchPattern = /\b(search|find|locate|lookup|look\s*up|explore|discover|scan|grep|query|browse|detect|trace|seek|track|pinpoint|hunt)\b|where\s+is|show\s+me|list\s+all/i;
-
-    const hasSearchCommand = searchPattern.test(removeCodeBlocks(prompt));
-
-    if (!hasSearchCommand) {
-      return prompt;
-    }
-
     return `${prompt}
 
 [search-mode]
@@ -102,22 +80,13 @@ NEVER stop at first result - be exhaustive.`;
 };
 
 /**
- * Analyze mode enhancement
+ * Analyze mode enhancement - multilingual support
  * Activates deep analysis and investigation mode
  */
 const analyzeEnhancement: MagicKeyword = {
   triggers: ['analyze', 'analyse', 'investigate', 'examine', 'study', 'deep-dive', 'inspect', 'audit', 'evaluate', 'assess', 'review', 'diagnose', 'scrutinize', 'dissect', 'debug', 'comprehend', 'interpret', 'breakdown', 'understand'],
   description: 'Activates deep analysis and investigation mode',
   action: (prompt: string) => {
-    // Multi-language analyze pattern
-    const analyzePattern = /\b(analyze|analyse|investigate|examine|study|deep[\s-]?dive|inspect|audit|evaluate|assess|review|diagnose|scrutinize|dissect|debug|comprehend|interpret|breakdown|understand)\b|why\s+is|how\s+does|how\s+to/i;
-
-    const hasAnalyzeCommand = analyzePattern.test(removeCodeBlocks(prompt));
-
-    if (!hasAnalyzeCommand) {
-      return prompt;
-    }
-
     return `${prompt}
 
 [analyze-mode]
@@ -143,15 +112,7 @@ const ultrathinkEnhancement: MagicKeyword = {
   triggers: ['ultrathink', 'think', 'reason', 'ponder'],
   description: 'Activates extended thinking mode for deep reasoning',
   action: (prompt: string) => {
-    // Check if ultrathink-related triggers are present
-    const hasThinkCommand = /\b(ultrathink|think|reason|ponder)\b/i.test(removeCodeBlocks(prompt));
-
-    if (!hasThinkCommand) {
-      return prompt;
-    }
-
-    const cleanPrompt = removeTriggerWords(prompt, ['ultrathink', 'think', 'reason', 'ponder']);
-
+    const cleanPrompt = removeTriggerWords(prompt, ultrathinkEnhancement.triggers);
     return `[ULTRATHINK MODE - EXTENDED REASONING ACTIVATED]
 
 ${cleanPrompt}
@@ -177,7 +138,7 @@ Use maximum cognitive effort before responding.`;
 function removeTriggerWords(prompt: string, triggers: string[]): string {
   let result = prompt;
   for (const trigger of triggers) {
-    const regex = new RegExp(`\\b${trigger}\\b`, 'gi');
+    const regex = new RegExp(`\\b${escapeRegExp(trigger)}\\b`, 'gi');
     result = result.replace(regex, '');
   }
   return result.trim();
@@ -187,7 +148,6 @@ function removeTriggerWords(prompt: string, triggers: string[]): string {
  * All built-in magic keyword definitions
  */
 export const builtInMagicKeywords: MagicKeyword[] = [
-  ultraworkEnhancement,
   searchEnhancement,
   analyzeEnhancement,
   ultrathinkEnhancement
@@ -201,12 +161,6 @@ export function createMagicKeywordProcessor(config?: PluginConfig['magicKeywords
 
   // Override triggers from config
   if (config) {
-    if (config.ultrawork) {
-      const ultrawork = keywords.find(k => k.triggers.includes('ultrawork'));
-      if (ultrawork) {
-        ultrawork.triggers = config.ultrawork;
-      }
-    }
     if (config.search) {
       const search = keywords.find(k => k.triggers.includes('search'));
       if (search) {
@@ -232,8 +186,7 @@ export function createMagicKeywordProcessor(config?: PluginConfig['magicKeywords
 
     for (const keyword of keywords) {
       const hasKeyword = keyword.triggers.some(trigger => {
-        const regex = new RegExp(`\\b${trigger}\\b`, 'i');
-        return regex.test(removeCodeBlocks(result));
+        return hasActionableTrigger(removeCodeBlocks(result), trigger);
       });
 
       if (hasKeyword) {
@@ -250,15 +203,11 @@ export function createMagicKeywordProcessor(config?: PluginConfig['magicKeywords
  */
 export function detectMagicKeywords(prompt: string, config?: PluginConfig['magicKeywords']): string[] {
   const detected: string[] = [];
-  const keywords = [...builtInMagicKeywords];
+  const keywords = builtInMagicKeywords.map(k => ({ ...k, triggers: [...k.triggers] }));
   const cleanedPrompt = removeCodeBlocks(prompt);
 
   // Apply config overrides
   if (config) {
-    if (config.ultrawork) {
-      const ultrawork = keywords.find(k => k.triggers.includes('ultrawork'));
-      if (ultrawork) ultrawork.triggers = config.ultrawork;
-    }
     if (config.search) {
       const search = keywords.find(k => k.triggers.includes('search'));
       if (search) search.triggers = config.search;
@@ -275,8 +224,7 @@ export function detectMagicKeywords(prompt: string, config?: PluginConfig['magic
 
   for (const keyword of keywords) {
     for (const trigger of keyword.triggers) {
-      const regex = new RegExp(`\\b${trigger}\\b`, 'i');
-      if (regex.test(cleanedPrompt)) {
+      if (hasActionableTrigger(cleanedPrompt, trigger)) {
         detected.push(trigger);
         break;
       }

@@ -17,13 +17,13 @@ describe('Consolidation contracts', () => {
       const names = listBuiltinSkillNames();
 
       expect(names).toContain('autopilot');
-      expect(names).toContain('ultrawork');
-      expect(names).toContain('ralph');
+      expect(names).toContain('execute');
+      expect(names).toContain('ultragoal');
       expect(names).toContain('team');
     });
 
     it('resolves Tier-0 skills via getBuiltinSkill()', () => {
-      const tier0 = ['autopilot', 'ultrawork', 'ralph', 'team'] as const;
+      const tier0 = ['autopilot', 'execute', 'ultragoal', 'team'] as const;
 
       for (const name of tier0) {
         const skill = getBuiltinSkill(name);
@@ -76,6 +76,7 @@ describe('Consolidation contracts', () => {
       expect(agents['test-engineer']).toBeDefined();
       expect(agents['document-specialist']).toBeDefined();
       expect(agents['researcher']).toBeUndefined();
+      expect(agents['tdd-guide']).toBeUndefined();
       // Agent consolidation: absorbed agents removed from registry
       expect(agents['quality-reviewer']).toBeUndefined();
       expect(agents['deep-executor']).toBeUndefined();
@@ -90,10 +91,15 @@ describe('Consolidation contracts', () => {
 
     it('normalizes deprecated agent aliases in delegation routing', () => {
       const researcherRoute = resolveDelegation({ agentRole: 'researcher' });
+      const tddGuideRoute = resolveDelegation({ agentRole: 'tdd-guide' });
 
       expect(researcherRoute.provider).toBe('claude');
       expect(researcherRoute.tool).toBe('Task');
       expect(researcherRoute.agentOrModel).toBe('document-specialist');
+
+      expect(tddGuideRoute.provider).toBe('claude');
+      expect(tddGuideRoute.tool).toBe('Task');
+      expect(tddGuideRoute.agentOrModel).toBe('test-engineer');
     });
 
     it('normalizes consolidated agent aliases in delegation routing', () => {

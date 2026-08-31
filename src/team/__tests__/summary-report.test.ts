@@ -8,13 +8,28 @@ import { recordTaskUsage } from '../usage-tracker.js';
 
 describe('summary-report', () => {
   let testDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousStateDir: string | undefined;
   const teamName = 'test-report';
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'summary-report-test-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
+    delete process.env.OMC_STATE_DIR;
   });
 
   afterEach(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
     rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -189,14 +204,11 @@ describe('summary-report', () => {
 
       const filePath = saveTeamReport(testDir, teamName);
       expect(existsSync(filePath)).toBe(true);
-      // Normalize separators for cross-platform path assertion
-      expect(filePath.split('\\').join('/')).toContain('.omcp/reports/');
+      expect(filePath).toContain('.omg/reports/');
       expect(filePath).toContain(teamName);
 
-      if (process.platform !== 'win32') {
-        const stat = statSync(filePath);
-        expect(stat.mode & 0o777).toBe(0o600);
-      }
+      const stat = statSync(filePath);
+      expect(stat.mode & 0o777).toBe(0o600);
 
       const content = readFileSync(filePath, 'utf-8');
       expect(content).toContain('# Team Report');

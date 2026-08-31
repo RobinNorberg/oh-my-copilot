@@ -5,13 +5,15 @@
  * command templates and expanding them with arguments.
  */
 import { readFileSync, existsSync, readdirSync } from 'fs';
-import { join } from 'path';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
+const PACKAGED_COMMANDS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'commands');
 /**
  * Get the commands directory path
  */
 export function getCommandsDir() {
-    return join(getClaudeConfigDir(), 'commands');
+    return join(getCopilotConfigDir(), 'commands');
 }
 /**
  * Parse command frontmatter and content
@@ -28,13 +30,20 @@ function parseCommandFile(content) {
     const description = descMatch ? descMatch[1].trim() : '';
     return { description, template };
 }
+function getCommandFilePath(name) {
+    const configPath = join(getCommandsDir(), `${name}.md`);
+    if (existsSync(configPath)) {
+        return configPath;
+    }
+    const packagedPath = join(PACKAGED_COMMANDS_DIR, `${name}.md`);
+    return existsSync(packagedPath) ? packagedPath : null;
+}
 /**
  * Get a specific command by name
  */
 export function getCommand(name) {
-    const commandsDir = getCommandsDir();
-    const filePath = join(commandsDir, `${name}.md`);
-    if (!existsSync(filePath)) {
+    const filePath = getCommandFilePath(name);
+    if (!filePath) {
         return null;
     }
     try {
@@ -56,26 +65,23 @@ export function getCommand(name) {
  * Get all available commands
  */
 export function getAllCommands() {
-    const commandsDir = getCommandsDir();
-    if (!existsSync(commandsDir)) {
-        return [];
-    }
-    try {
-        const files = readdirSync(commandsDir).filter(f => f.endsWith('.md'));
-        const commands = [];
-        for (const file of files) {
-            const name = file.replace('.md', '');
-            const command = getCommand(name);
-            if (command) {
-                commands.push(command);
+    const commandNames = new Set();
+    for (const commandsDir of [PACKAGED_COMMANDS_DIR, getCommandsDir()]) {
+        if (!existsSync(commandsDir)) {
+            continue;
+        }
+        try {
+            for (const file of readdirSync(commandsDir).filter(f => f.endsWith('.md'))) {
+                commandNames.add(file.replace('.md', ''));
             }
         }
-        return commands;
+        catch (error) {
+            console.error(`Error listing commands in ${commandsDir}:`, error);
+        }
     }
-    catch (error) {
-        console.error('Error listing commands:', error);
-        return [];
-    }
+    return Array.from(commandNames)
+        .map(name => getCommand(name))
+        .filter((c) => c !== null);
 }
 /**
  * List available command names
@@ -114,13 +120,15 @@ export function expandCommand(name, args = '') {
 /**
  * Expand a command and return just the prompt string
  * Convenience function for direct use with SDK query
+ * This is a Node.js library helper for programmatic Agent SDK usage;
+ * it does not invoke Claude Code slash commands or require the VS Code extension.
  *
  * @example
  * ```typescript
  * import { expandCommandPrompt } from 'oh-my-copilot';
- * import { query } from '@github/copilot';
+ * import { query } from '@anthropic-ai/claude-agent-sdk';
  *
- * const prompt = expandCommandPrompt('ultrawork', 'Refactor the auth module');
+ * const prompt = expandCommandPrompt('team', 'Refactor the auth module');
  *
  * for await (const msg of query({ prompt })) {
  *   console.log(msg);

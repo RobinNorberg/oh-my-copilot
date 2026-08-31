@@ -20,6 +20,13 @@
  */
 import type { RateLimitsProviderConfig, CustomProviderResult } from './types.js';
 /**
+ * Spawn a command with a hard timeout.
+ *
+ * Sends SIGTERM when the timeout fires, then SIGKILL after 200 ms if still
+ * alive. The returned promise rejects on non-zero exit or timeout.
+ */
+export declare function spawnWithTimeout(cmd: string | string[], timeoutMs: number): Promise<string>;
+/**
  * Execute the custom rate limit provider and return buckets.
  *
  * Behaviour:

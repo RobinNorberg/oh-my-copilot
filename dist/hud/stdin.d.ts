@@ -1,8 +1,8 @@
 /**
  * OMC HUD - Stdin Parser
  *
- * Parse stdin JSON from Copilot CLI statusline interface.
- * Based on copilot-hud reference implementation.
+ * Parse stdin JSON from Claude Code statusline interface.
+ * Based on claude-hud reference implementation.
  */
 import type { RateLimits, StatuslineStdin } from './types.js';
 /**
@@ -17,15 +17,15 @@ export declare function writeStdinCache(stdin: StatuslineStdin): void;
  * path is authoritative. Otherwise — e.g. `omc hud --watch` running as a
  * detached CLI/tmux process that never inherited the parent's session
  * env — we still need a way to surface the active session's cache; we
- * fall back first to the legacy flat path, and then to the most recently
- * updated `state/sessions/{id}/hud-stdin-cache.json` so the watch pane
- * does not stay stuck on an empty/starting view.
+ * prefer the most recently updated valid `state/sessions/{id}/hud-stdin-cache.json`
+ * and then fall back to the legacy flat path so the watch pane does not stay
+ * stuck on an empty/starting view.
  *
  * Returns null if no cache exists or it is unreadable.
  */
 export declare function readStdinCache(): StatuslineStdin | null;
 /**
- * Read and parse stdin JSON from Copilot CLI.
+ * Read and parse stdin JSON from Claude Code.
  * Returns null if stdin is not available or invalid.
  */
 export declare function readStdin(): Promise<StatuslineStdin | null>;
@@ -49,6 +49,9 @@ export declare function getRateLimitsFromStdin(stdin: StatuslineStdin): RateLimi
 /**
  * Get model display name from stdin.
  * Prefer the official display name field, then fall back to the raw model id.
+ * Returns null when Claude Code does not provide model metadata so the HUD
+ * omits the model instead of guessing or showing a fake placeholder.
  */
-export declare function getModelName(stdin: StatuslineStdin): string;
+export declare function getModelId(stdin: StatuslineStdin): string | null;
+export declare function getModelName(stdin: StatuslineStdin): string | null;
 //# sourceMappingURL=stdin.d.ts.map

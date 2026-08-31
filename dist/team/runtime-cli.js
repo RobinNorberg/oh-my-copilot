@@ -5,15 +5,485 @@
  *
  * Bundled as CJS via esbuild (scripts/build-runtime-cli.mjs).
  */
-import { readdirSync, readFileSync } from 'fs';
+import { createHash } from 'node:crypto';
+import { lstatSync, readdirSync, readFileSync, statSync } from 'fs';
 import { readFile, rename, unlink, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { basename, join } from 'path';
 import { startTeam, monitorTeam, shutdownTeam } from './runtime.js';
 import { appendTeamEvent } from './events.js';
 import { deriveTeamLeaderGuidance } from './leader-nudge-guidance.js';
 import { waitForSentinelReadiness } from './sentinel-gate.js';
-import { isRuntimeV2Enabled, startTeamV2, monitorTeamV2, shutdownTeamV2 } from './runtime-v2.js';
+import { isRuntimeV2Enabled, startTeamV2, monitorTeamV2, shutdownTeamV2, executeRecoverDeadWorkerV2Owner, prepareRecoveryOwnerBootstrap, reconcileCommittedTeamServices } from './runtime-v2.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
+import { parseRecoveryIntent, setRuntimeOwnerDispatch } from './runtime-owner-client.js';
+import { absPath, TeamPaths, teamStateRoot } from './state-paths.js';
+import { canonicalRecoveryPayloadHash, isSafeRecoveryRequestId, readRecoveryFinalState, readRecoveryOutcome, readRecoveryRequestReservation } from './recovery-request-store.js';
+import { runWorkerActivationGate } from './worker-activation-gate.js';
+import { readAndConsumeWorkerLaunchDescriptor, runWorkerLaunchBootstrap } from './worker-launch-ack.js';
+import { readRevisionedTeamConfig, saveTeamConfigAtRevision } from './monitor.js';
+import { withProcessIdentityFileLock } from './process-identity-lock.js';
+import { checkOwnerFence, currentProcessStartIdentity, requireOwnerProcessIdentity } from './team-owner-epoch.js';
+/**
+ * Retain startup panes for explicit cleanup, but include committed recovery
+ * replacements from the revisioned config before publishing cleanup evidence.
+ */
+export async function refreshRuntimeWorkerPaneIds(runtime, teamName, cwd) {
+    const current = await readRevisionedTeamConfig(teamName, cwd);
+    if (!current)
+        return null;
+    const authoritativePaneIds = current.config.workers
+        .map(worker => worker.pane_id)
+        .filter((paneId) => typeof paneId === 'string' && paneId.length > 0);
+    runtime.workerPaneIds = [...new Set([...runtime.workerPaneIds, ...authoritativePaneIds])];
+    return {
+        authoritativePaneIds,
+        allWorkerPaneIdsKnown: authoritativePaneIds.length === current.config.workers.length,
+    };
+}
+export function classifyAllDeadRecoveryEvidence(refresh, workers, hasOutstanding) {
+    if (!hasOutstanding)
+        return 'clear';
+    if (!refresh.allWorkerPaneIdsKnown || refresh.authoritativePaneIds.length === 0
+        || workers.length !== refresh.authoritativePaneIds.length)
+        return 'unknown';
+    if (workers.some(worker => worker.liveness === 'alive'))
+        return 'alive';
+    if (workers.some(worker => worker.liveness === 'unknown'))
+        return 'unknown';
+    return hasOutstanding && workers.every(worker => worker.liveness === 'dead') ? 'all_dead' : 'unknown';
+}
+export function areAllAuthoritativeWorkersDead(refresh, workers) {
+    return classifyAllDeadRecoveryEvidence(refresh, workers, true) === 'all_dead';
+}
+function validateCanonicalRecoveryIntent(teamName, cwd, pathRecoveryId, path) {
+    const intent = parseRecoveryIntent(readFileSync(path, 'utf8'));
+    if (intent.team_name !== teamName || intent.recovery_id !== pathRecoveryId)
+        throw new Error('invalid_persisted_state');
+    const reservation = readRecoveryRequestReservation(cwd, intent.request_id);
+    const workspaceHash = createHash('sha256').update(cwd).digest('hex');
+    const expectedPayloadHash = canonicalRecoveryPayloadHash({ operation: 'recover-worker', workspaceHash,
+        teamName: intent.team_name, workerName: intent.worker_name });
+    if (!reservation || reservation.kind !== 'reservation' || reservation.operation !== intent.operation
+        || reservation.request_id !== intent.request_id || reservation.recovery_id !== intent.recovery_id
+        || reservation.team_name !== intent.team_name || reservation.worker_name !== intent.worker_name
+        || reservation.workspace_hash !== workspaceHash || intent.workspace_hash !== workspaceHash
+        || reservation.payload_hash !== expectedPayloadHash || intent.payload_hash !== expectedPayloadHash) {
+        throw new Error('invalid_persisted_state');
+    }
+    return intent;
+}
+/** Private owner dispatch entry point used by durable recovery admission. */
+export async function handleRecoverDeadWorkerV2Owner(input, execute = executeRecoverDeadWorkerV2Owner) {
+    const reservation = readRecoveryRequestReservation(input.cwd, input.requestId);
+    if (!reservation || reservation.kind !== 'reservation')
+        throw new Error('invalid_persisted_state');
+    const path = absPath(input.cwd, TeamPaths.recoveryIntent(input.teamName, reservation.recovery_id));
+    const intent = validateCanonicalRecoveryIntent(input.teamName, input.cwd, reservation.recovery_id, path);
+    if (intent.request_id !== input.requestId || intent.worker_name !== input.workerName)
+        throw new Error('invalid_persisted_state');
+    return execute(input);
+}
+export async function processPendingRecoveryIntents(teamName, cwd, execute = handleRecoverDeadWorkerV2Owner) {
+    const root = absPath(cwd, TeamPaths.recoveryIntents(teamName));
+    let names;
+    try {
+        names = readdirSync(root).filter(name => name.endsWith('.json')).sort();
+    }
+    catch {
+        return;
+    }
+    for (const name of names) {
+        const path = join(root, name);
+        try {
+            const pathRecoveryId = basename(name, '.json');
+            const intent = validateCanonicalRecoveryIntent(teamName, cwd, pathRecoveryId, path);
+            const finalState = readRecoveryFinalState(cwd, intent.request_id);
+            if (finalState.kind === 'invalid')
+                throw new Error('invalid_persisted_state');
+            let outcome = readRecoveryOutcome(cwd, intent.request_id);
+            if (!outcome || outcome.kind !== 'final') {
+                await execute({ teamName, cwd, workerName: intent.worker_name, requestId: intent.request_id });
+                outcome = readRecoveryOutcome(cwd, intent.request_id);
+            }
+            if (outcome?.kind === 'final' && outcome.request_id === intent.request_id
+                && outcome.recovery_id === intent.recovery_id && outcome.team_name === intent.team_name
+                && outcome.worker_name === intent.worker_name) {
+                await unlink(path).catch(() => undefined);
+            }
+        }
+        catch (error) {
+            process.stderr.write(`[runtime-cli/v2] recovery intent ${name} failed: ${error}\n`);
+        }
+    }
+}
+export async function updateAllDeadRecoveryGrace(teamName, cwd, evidence, nowMs = Date.now()) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const current = await readRevisionedTeamConfig(teamName, cwd);
+        if (!current)
+            return { deadlineAt: null, expired: false };
+        const existingDeadline = Date.parse(current.config.all_dead_recovery?.deadline_at ?? '');
+        if (evidence === 'unknown') {
+            return { deadlineAt: Number.isFinite(existingDeadline) ? existingDeadline : null, expired: false };
+        }
+        if (evidence === 'all_dead' && Number.isFinite(existingDeadline)) {
+            return { deadlineAt: existingDeadline, expired: nowMs >= existingDeadline };
+        }
+        if ((evidence === 'alive' || evidence === 'clear') && !current.config.all_dead_recovery)
+            return { deadlineAt: null, expired: false };
+        const nextRevision = current.stateRevision + 1;
+        const deadlineAt = nowMs + 300_000;
+        const nextConfig = { ...current.config, state_revision: nextRevision,
+            all_dead_recovery: evidence === 'all_dead'
+                ? { detected_at: new Date(nowMs).toISOString(), deadline_at: new Date(deadlineAt).toISOString(), state_revision: nextRevision }
+                : undefined };
+        if (await saveTeamConfigAtRevision(nextConfig, current.stateRevision, cwd, undefined, {
+            ...(current.config.all_dead_recovery && evidence !== 'all_dead'
+                ? { release: { all_dead_recovery: true } }
+                : {}),
+            ...(current.config.all_dead_recovery && evidence === 'all_dead'
+                && current.config.all_dead_recovery.deadline_at !== nextConfig.all_dead_recovery?.deadline_at
+                ? { reclaim: { all_dead_recovery: true } }
+                : {}),
+        })) {
+            return { deadlineAt: evidence === 'all_dead' ? deadlineAt : null, expired: false };
+        }
+    }
+    throw new Error('stale_state_revision');
+}
+function canonicalRecoveryIntentEntryId(name, path) {
+    if (!name.endsWith('.json'))
+        return null;
+    const recoveryId = basename(name, '.json');
+    if (name !== `${recoveryId}.json` || !isSafeRecoveryRequestId(recoveryId))
+        return null;
+    try {
+        return lstatSync(path).isFile() ? recoveryId : null;
+    }
+    catch {
+        return null;
+    }
+}
+function hasVerifiedTerminalRepairForMalformedIntent(teamName, cwd, recoveryId, path) {
+    try {
+        const raw = JSON.parse(readFileSync(path, 'utf8'));
+        if (raw.team_name !== teamName || raw.recovery_id !== recoveryId
+            || typeof raw.request_id !== 'string' || !isSafeRecoveryRequestId(raw.request_id)
+            || typeof raw.worker_name !== 'string' || raw.worker_name.length === 0)
+            return false;
+        const final = readRecoveryFinalState(cwd, raw.request_id);
+        return final.kind === 'valid' && final.final.recovery_id === recoveryId
+            && final.final.team_name === teamName && final.final.worker_name === raw.worker_name;
+    }
+    catch {
+        return false;
+    }
+}
+function malformedIntentMayPredateDeadline(path, deadlineAt) {
+    try {
+        const metadata = lstatSync(path);
+        // mtime can establish that a record is old, but cannot prove that an
+        // otherwise unverifiable record was created after the deadline.
+        if (Number.isFinite(metadata.mtimeMs) && metadata.mtimeMs <= deadlineAt)
+            return true;
+        // Only a filesystem creation timestamp can make a malformed record
+        // clearly new; any unavailable or ambiguous timestamp fails closed.
+        if (Number.isFinite(metadata.birthtimeMs) && metadata.birthtimeMs > 0) {
+            return metadata.birthtimeMs <= deadlineAt;
+        }
+        return true;
+    }
+    catch {
+        return true;
+    }
+}
+function canonicalRecoveryAdmissionEntryId(name, path) {
+    if (!name.endsWith('.pending.json'))
+        return null;
+    const requestId = name.slice(0, -'.pending.json'.length);
+    if (name !== `${requestId}.pending.json` || !isSafeRecoveryRequestId(requestId))
+        return null;
+    try {
+        return lstatSync(path).isFile() ? requestId : null;
+    }
+    catch {
+        return null;
+    }
+}
+function malformedAdmissionMayPredateDeadline(path, deadlineAt) {
+    try {
+        const metadata = lstatSync(path);
+        if (!metadata.isFile())
+            return true;
+        // An old mtime proves the admission predated the deadline. A later mtime
+        // may be a repair or corruption touch, so only a trustworthy birthtime
+        // strictly after the deadline can prove it is new.
+        if (Number.isFinite(metadata.mtimeMs) && metadata.mtimeMs <= deadlineAt)
+            return true;
+        if (Number.isFinite(metadata.birthtimeMs) && metadata.birthtimeMs > 0) {
+            return metadata.birthtimeMs <= deadlineAt;
+        }
+        return true;
+    }
+    catch {
+        return true;
+    }
+}
+export function hasPendingRecoveryIntentBeforeDeadline(teamName, cwd, deadlineAt) {
+    const root = absPath(cwd, TeamPaths.recoveryIntents(teamName));
+    let names;
+    try {
+        names = readdirSync(root).filter(name => name.endsWith('.json'));
+    }
+    catch {
+        return false;
+    }
+    for (const name of names) {
+        const path = join(root, name);
+        const recoveryId = canonicalRecoveryIntentEntryId(name, path);
+        if (!recoveryId)
+            continue;
+        try {
+            const intent = validateCanonicalRecoveryIntent(teamName, cwd, recoveryId, path);
+            const createdAt = Date.parse(intent.created_at);
+            const outcome = readRecoveryOutcome(cwd, intent.request_id);
+            if (createdAt <= deadlineAt && (!outcome || outcome.kind !== 'final'))
+                return true;
+        }
+        catch {
+            if (malformedIntentMayPredateDeadline(path, deadlineAt)
+                && !hasVerifiedTerminalRepairForMalformedIntent(teamName, cwd, recoveryId, path))
+                return true;
+        }
+    }
+    return false;
+}
+export function hasPendingRecoveryAdmissionBeforeDeadline(teamName, cwd, deadlineAt) {
+    const workspaceHash = createHash('sha256').update(cwd).digest('hex');
+    const root = absPath(cwd, TeamPaths.recoveryRequestsRoot());
+    let names;
+    try {
+        names = readdirSync(root).filter(name => name.endsWith('.pending.json'));
+    }
+    catch {
+        return false;
+    }
+    for (const name of names) {
+        const path = join(root, name);
+        const requestId = canonicalRecoveryAdmissionEntryId(name, path);
+        if (!requestId)
+            continue;
+        try {
+            const reservation = readRecoveryRequestReservation(cwd, requestId);
+            if (!reservation)
+                throw new Error('invalid_persisted_state');
+            if (reservation.team_name !== teamName || reservation.workspace_hash !== workspaceHash
+                || Date.parse(reservation.created_at) > deadlineAt)
+                continue;
+            const outcome = readRecoveryOutcome(cwd, requestId);
+            if (!outcome || outcome.kind !== 'final')
+                return true;
+        }
+        catch {
+            // Only a fully validated reservation can establish that this canonical
+            // entry belongs to another team or workspace. An invalid tuple/hash is
+            // indistinguishable from a corrupted predeadline local admission.
+            if (malformedAdmissionMayPredateDeadline(path, deadlineAt))
+                return true;
+        }
+    }
+    return false;
+}
+export async function fenceAllDeadRecoveryExpiry(teamName, cwd, deadlineAt) {
+    const workspaceHash = createHash('sha256').update(cwd).digest('hex');
+    return withProcessIdentityFileLock(absPath(cwd, TeamPaths.recoveryLifecycleLock(workspaceHash, teamName)), async () => {
+        const current = await readRevisionedTeamConfig(teamName, cwd);
+        if (!current || Date.parse(current.config.all_dead_recovery?.deadline_at ?? '') !== deadlineAt
+            || Date.now() < deadlineAt || current.config.lifecycle_state === 'shutting_down' || current.config.lifecycle_state === 'stopped')
+            return false;
+        if (hasPendingRecoveryAdmissionBeforeDeadline(teamName, cwd, deadlineAt)
+            || hasPendingRecoveryIntentBeforeDeadline(teamName, cwd, deadlineAt))
+            return false;
+        const nextRevision = current.stateRevision + 1;
+        const processStartedAt = currentProcessStartIdentity();
+        if (!processStartedAt)
+            return false;
+        const expiryNonce = `all-dead-expiry:${deadlineAt}`;
+        return saveTeamConfigAtRevision({ ...current.config, lifecycle_state: 'shutting_down', all_dead_recovery: undefined,
+            shutdown_attempt: { nonce: expiryNonce, pid: process.pid, process_started_at: processStartedAt,
+                state_revision: nextRevision, created_at: new Date().toISOString() },
+            state_revision: nextRevision }, current.stateRevision, cwd, undefined, {
+            release: { all_dead_recovery: true },
+            ...(current.config.shutdown_attempt ? { reclaim: { shutdown_attempt: true } } : {}),
+        });
+    });
+}
+function ownsPersistentRecoveryFence(input, fence, expectedEpoch) {
+    if (expectedEpoch !== undefined && fence.epoch !== expectedEpoch)
+        return false;
+    const owner = checkOwnerFence(input.cwd, input.teamName, fence);
+    if (!owner.ok || owner.record.pid !== process.pid || owner.record.process_started_at !== currentProcessStartIdentity())
+        return false;
+    try {
+        requireOwnerProcessIdentity(owner.record);
+    }
+    catch {
+        return false;
+    }
+    return true;
+}
+/**
+ * Keep a detached successor alive as a normal v2 owner. It never starts a
+ * team: it drains durable recovery intent, reconciles durable services, and
+ * maintains persisted all-dead grace while its exact epoch is authoritative.
+ */
+export async function runPersistentRecoveryOwnerLoop(input, options = {}) {
+    const execute = options.execute ?? handleRecoverDeadWorkerV2Owner;
+    const processIntents = options.processIntents ?? processPendingRecoveryIntents;
+    const reconcileServices = options.reconcileServices ?? reconcileCommittedTeamServices;
+    const monitor = options.monitor ?? monitorTeamV2;
+    const sleep = options.sleep ?? (async (ms) => { await new Promise(resolve => setTimeout(resolve, ms)); });
+    const shutdown = options.shutdown ?? shutdownTeamV2;
+    let iteration = 0;
+    let bootstrapBindingRequired = Boolean(input.bootstrap);
+    let bootstrapPending = true;
+    while (options.shouldContinue?.(iteration) ?? true) {
+        let current;
+        try {
+            current = await readRevisionedTeamConfig(input.teamName, input.cwd);
+        }
+        catch (error) {
+            process.stderr.write(`[runtime-cli/v2] recovery owner config maintenance failed: ${error}\n`);
+            await sleep(options.pollIntervalMs ?? 250);
+            continue;
+        }
+        if (!current || current.config.lifecycle_state === 'stopped')
+            return;
+        const configured = current.config.runtime_owner_epoch;
+        if (!configured || (options.expectedEpoch !== undefined && configured.epoch !== options.expectedEpoch)
+            || (input.bootstrap && (configured.pid !== input.bootstrap.pid || configured.process_started_at !== input.bootstrap.processStartedAt
+                || configured.nonce !== input.bootstrap.nonce)))
+            return;
+        const activeRecovery = current.config.active_recovery;
+        if (bootstrapBindingRequired && input.bootstrap && (configured.epoch !== input.bootstrap.expectedEpoch || configured.nonce !== input.bootstrap.nonce
+            || configured.pid !== input.bootstrap.pid || configured.process_started_at !== input.bootstrap.processStartedAt
+            || activeRecovery?.request_id !== input.requestId || activeRecovery?.recovery_id !== input.bootstrap.recoveryId
+            || activeRecovery?.worker_name !== input.workerName || activeRecovery?.owner_epoch !== configured.epoch
+            || activeRecovery?.owner_nonce !== configured.nonce))
+            return;
+        const fence = { epoch: configured.epoch, nonce: configured.nonce };
+        const fenceOwned = options.verifyFence?.(input, fence, options.expectedEpoch)
+            ?? ownsPersistentRecoveryFence(input, fence, options.expectedEpoch);
+        if (!fenceOwned)
+            return;
+        if (current.config.lifecycle_state === 'shutting_down') {
+            try {
+                await shutdown(input.teamName, input.cwd, { force: true });
+            }
+            catch (error) {
+                process.stderr.write(`[runtime-cli/v2] recovery owner terminal cleanup failed: ${error}\n`);
+            }
+            iteration += 1;
+            if (!(options.shouldContinue?.(iteration) ?? true))
+                return;
+            await sleep(options.pollIntervalMs ?? 250);
+            continue;
+        }
+        if (bootstrapPending) {
+            bootstrapPending = false;
+            try {
+                await execute(input);
+                const afterBootstrap = await readRevisionedTeamConfig(input.teamName, input.cwd);
+                const afterActive = afterBootstrap?.config.active_recovery;
+                if (afterBootstrap?.config.runtime_owner_epoch?.epoch === fence.epoch
+                    && afterBootstrap.config.runtime_owner_epoch.nonce === fence.nonce
+                    && (!afterActive || afterActive.request_id !== input.requestId || afterActive.recovery_id !== input.bootstrap?.recoveryId)) {
+                    bootstrapBindingRequired = false;
+                }
+            }
+            catch (error) {
+                process.stderr.write(`[runtime-cli/v2] recovery owner bootstrap intent failed: ${error}\n`);
+            }
+        }
+        try {
+            await reconcileServices(current.config, input.cwd);
+        }
+        catch (error) {
+            process.stderr.write(`[runtime-cli/v2] recovery owner service maintenance failed: ${error}\n`);
+        }
+        try {
+            await processIntents(input.teamName, input.cwd);
+        }
+        catch (error) {
+            process.stderr.write(`[runtime-cli/v2] recovery owner intent maintenance failed: ${error}\n`);
+        }
+        let afterIntents;
+        try {
+            afterIntents = await readRevisionedTeamConfig(input.teamName, input.cwd);
+        }
+        catch (error) {
+            process.stderr.write(`[runtime-cli/v2] recovery owner config maintenance failed: ${error}\n`);
+            await sleep(options.pollIntervalMs ?? 250);
+            continue;
+        }
+        if (!afterIntents || afterIntents.config.lifecycle_state === 'stopped')
+            return;
+        const afterOwner = afterIntents.config.runtime_owner_epoch;
+        const afterActive = afterIntents.config.active_recovery;
+        if (bootstrapBindingRequired && input.bootstrap && afterOwner?.epoch === fence.epoch
+            && afterOwner.nonce === fence.nonce && afterOwner.pid === input.bootstrap.pid
+            && afterOwner.process_started_at === input.bootstrap.processStartedAt
+            && (!afterActive || afterActive.request_id !== input.requestId || afterActive.recovery_id !== input.bootstrap.recoveryId)) {
+            bootstrapBindingRequired = false;
+        }
+        if (afterOwner?.epoch !== fence.epoch || afterOwner?.nonce !== fence.nonce
+            || (input.bootstrap && (afterOwner?.pid !== input.bootstrap.pid || afterOwner?.process_started_at !== input.bootstrap.processStartedAt
+                || afterOwner?.nonce !== input.bootstrap.nonce))
+            || (bootstrapBindingRequired && input.bootstrap && (afterActive?.request_id !== input.requestId || afterActive?.recovery_id !== input.bootstrap.recoveryId
+                || afterActive?.owner_epoch !== afterOwner?.epoch || afterActive?.owner_nonce !== afterOwner?.nonce))
+            || !(options.verifyFence?.(input, fence, options.expectedEpoch)
+                ?? ownsPersistentRecoveryFence(input, fence, options.expectedEpoch)))
+            return;
+        if (afterIntents.config.lifecycle_state === 'shutting_down') {
+            try {
+                await shutdown(input.teamName, input.cwd, { force: true });
+            }
+            catch (error) {
+                process.stderr.write(`[runtime-cli/v2] recovery owner terminal cleanup failed: ${error}\n`);
+            }
+            iteration += 1;
+            if (!(options.shouldContinue?.(iteration) ?? true))
+                return;
+            await sleep(options.pollIntervalMs ?? 250);
+            continue;
+        }
+        const panes = afterIntents.config.workers.map(worker => worker.pane_id).filter((pane) => Boolean(pane));
+        const refresh = { authoritativePaneIds: panes, allWorkerPaneIdsKnown: panes.length === afterIntents.config.workers.length };
+        let snapshot = null;
+        try {
+            snapshot = await monitor(input.teamName, input.cwd);
+        }
+        catch (error) {
+            process.stderr.write(`[runtime-cli/v2] recovery owner monitor maintenance failed: ${error}\n`);
+        }
+        if (snapshot) {
+            const outstanding = snapshot.tasks.pending + snapshot.tasks.in_progress > 0;
+            const evidence = classifyAllDeadRecoveryEvidence(refresh, snapshot.workers, outstanding);
+            try {
+                const grace = await updateAllDeadRecoveryGrace(input.teamName, input.cwd, evidence);
+                if (evidence === 'all_dead' && grace.expired && grace.deadlineAt !== null) {
+                    await fenceAllDeadRecoveryExpiry(input.teamName, input.cwd, grace.deadlineAt);
+                }
+            }
+            catch (error) {
+                process.stderr.write(`[runtime-cli/v2] recovery owner all-dead maintenance failed: ${error}\n`);
+            }
+        }
+        iteration += 1;
+        if (!(options.shouldContinue?.(iteration) ?? true))
+            return;
+        await sleep(options.pollIntervalMs ?? 250);
+    }
+}
 export function assertAutoMergeRuntimeSupported(useV2, autoMerge) {
     if (autoMerge && !useV2) {
         throw new Error('--auto-merge requires runtime v2; unset OMC_RUNTIME_V2=0 or disable --auto-merge');
@@ -111,18 +581,99 @@ async function writePanesFile(jobId, paneIds, leaderPaneId, sessionName, ownsWin
     await writeFile(panesPath + '.tmp', JSON.stringify({ paneIds: [...paneIds], leaderPaneId, sessionName, ownsWindow }));
     await rename(panesPath + '.tmp', panesPath);
 }
+const MAX_FALLBACK_SUMMARY_CHARS = 2000;
+/**
+ * A task "final" is terse when it carries no substantive content: empty/
+ * whitespace, or a bare acknowledgement like "Done." / "Ready." / "OK".
+ * Such finals hide the real work that lives in the task's `.output` file,
+ * so they are candidates for substitution. Anything else is treated as a
+ * substantive final and preserved as-is.
+ */
+export function isTerseFinalSummary(summary) {
+    const trimmed = summary.trim();
+    if (trimmed.length === 0)
+        return true;
+    const normalized = trimmed.toLowerCase().replace(/[\s.!]+$/g, '');
+    const TERSE_ACKS = new Set([
+        'done',
+        'ready',
+        'ok',
+        'okay',
+        'complete',
+        'completed',
+        'finished',
+        'success',
+        'all done',
+        'task complete',
+        'task completed',
+    ]);
+    return TERSE_ACKS.has(normalized);
+}
+/**
+ * Locate the newest `.output` file recorded for a task under the team's
+ * outputs directory and return its (bounded) content. Returns null when no
+ * non-empty output file exists. Best-effort: never throws.
+ */
+export function readTaskOutputFallback(outputsDir, teamName, taskId) {
+    let entries;
+    try {
+        entries = readdirSync(outputsDir);
+    }
+    catch {
+        return null;
+    }
+    const prefix = `team-${teamName}-task-${taskId}-`;
+    const candidates = entries.filter(f => f.startsWith(prefix) && f.endsWith('.md'));
+    if (candidates.length === 0)
+        return null;
+    let newest = null;
+    for (const name of candidates) {
+        const full = join(outputsDir, name);
+        try {
+            const mtime = statSync(full).mtimeMs;
+            if (!newest || mtime > newest.mtime)
+                newest = { path: full, mtime };
+        }
+        catch {
+            // skip unreadable entry
+        }
+    }
+    if (!newest)
+        return null;
+    try {
+        const content = readFileSync(newest.path, 'utf-8').trim();
+        if (content.length === 0)
+            return null;
+        return content.length > MAX_FALLBACK_SUMMARY_CHARS
+            ? content.slice(0, MAX_FALLBACK_SUMMARY_CHARS) + '\n... (truncated)'
+            : content;
+    }
+    catch {
+        return null;
+    }
+}
 function collectTaskResults(stateRoot) {
     const tasksDir = join(stateRoot, 'tasks');
+    const teamName = basename(stateRoot);
+    // stateRoot is `<omcRoot>/state/team/<teamName>`; outputs live at `<omcRoot>/outputs`.
+    const outputsDir = join(stateRoot, '..', '..', '..', 'outputs');
     try {
         const files = readdirSync(tasksDir).filter(f => f.endsWith('.json'));
         return files.map(f => {
             try {
                 const raw = readFileSync(join(tasksDir, f), 'utf-8');
                 const task = JSON.parse(raw);
+                const taskId = task.id ?? f.replace('.json', '');
+                let summary = (task.result ?? task.summary) ?? '';
+                if (isTerseFinalSummary(summary)) {
+                    const fallback = readTaskOutputFallback(outputsDir, teamName, taskId);
+                    if (fallback)
+                        summary = fallback;
+                }
                 return {
-                    taskId: task.id ?? f.replace('.json', ''),
+                    taskId,
                     status: task.status ?? 'unknown',
-                    summary: (task.result ?? task.summary) ?? '',
+                    summary,
                 };
             }
             catch {
@@ -133,6 +684,42 @@ function collectTaskResults(stateRoot) {
     catch {
         return [];
     }
+}
+async function stopLegacyWatchdog(runtime, useV2) {
+    if (!useV2 && runtime?.stopWatchdog) {
+        await runtime.stopWatchdog();
+    }
+}
+/**
+ * Preserve watchdog quiescence before capturing terminal output, then tear down
+ * the team and publish that immutable snapshot. Shutdown may remove v1 state.
+ */
+export async function finalizeRuntimeShutdown(runtime, useV2, collectOutput, shutdown, publishOutput) {
+    await stopLegacyWatchdog(runtime, useV2);
+    const output = await collectOutput();
+    await shutdown();
+    await publishOutput(output);
+    return output;
+}
+export function createRuntimeStartupShutdownBarrier() {
+    let settled = false;
+    let requested = false;
+    let resolveCompletion;
+    const completion = new Promise(resolve => { resolveCompletion = resolve; });
+    return {
+        requestShutdown: () => { requested = true; },
+        settleStartup: () => {
+            if (settled)
+                return;
+            settled = true;
+            resolveCompletion();
+        },
+        waitForStartup: async () => {
+            if (!settled)
+                await completion;
+        },
+        isShutdownRequested: () => requested,
+    };
 }
 async function main() {
     const startTime = Date.now();
@@ -167,7 +754,7 @@ async function main() {
     }
     const { teamName, agentTypes, tasks, cwd, newWindow = false, pollIntervalMs = 5000, sentinelGateTimeoutMs = 30_000, sentinelGatePollIntervalMs = 250, autoMerge = false, } = input;
     const workerCount = input.workerCount ?? agentTypes.length;
-    const stateRoot = join(cwd, `.omcp/state/team/${teamName}`);
+    const stateRoot = teamStateRoot(cwd, teamName);
     const config = {
         teamName,
         workerCount,
@@ -187,39 +774,50 @@ async function main() {
     let runtime = null;
     let finalStatus = 'failed';
     let pollActive = true;
-    async function doShutdown(status) {
+    const startupShutdown = createRuntimeStartupShutdownBarrier();
+    let shutdownInFlight = null;
+    async function performShutdown(status) {
+        await startupShutdown.waitForStartup();
         pollActive = false;
         finalStatus = status;
-        // 1. Stop watchdog first (v1 only) — prevents late tick from racing with result collection
-        if (!useV2 && runtime?.stopWatchdog) {
-            runtime.stopWatchdog();
-        }
-        // 2. Shutdown team
-        if (runtime) {
+        const output = await finalizeRuntimeShutdown(runtime, useV2, async () => buildCliOutput(stateRoot, teamName, finalStatus, workerCount, startTime), async () => {
+            if (!runtime)
+                return;
             try {
                 if (useV2) {
-                    await shutdownTeamV2(runtime.teamName, runtime.cwd, { force: true });
+                    const shutdown = await shutdownTeamV2(runtime.teamName, runtime.cwd, { force: true });
+                    if (shutdown.outcome !== 'cleaned') {
+                        throw new Error(`team_shutdown_${shutdown.outcome}:${shutdown.reason}`);
+                    }
                 }
                 else {
-                    await shutdownTeam(runtime.teamName, runtime.sessionName, runtime.cwd, 2_000, runtime.workerPaneIds, runtime.leaderPaneId, runtime.ownsWindow);
+                    const cleaned = await shutdownTeam(runtime.teamName, runtime.sessionName, runtime.cwd, 2_000, runtime.workerPaneIds, runtime.leaderPaneId, runtime.ownsWindow);
+                    if (!cleaned)
+                        throw new Error('team_shutdown_failed:legacy_cleanup_unverified');
                 }
             }
             catch (err) {
                 process.stderr.write(`[runtime-cli] shutdown error: ${err}\n`);
+                throw err;
             }
-        }
-        const output = buildCliOutput(stateRoot, teamName, finalStatus, workerCount, startTime);
-        const finishedAt = new Date().toISOString();
-        try {
-            await writeResultArtifact(output, finishedAt);
-        }
-        catch (err) {
-            process.stderr.write(`[runtime-cli] Failed to persist result artifact: ${err}\n`);
-        }
+        }, async (publishedOutput) => {
+            const finishedAt = new Date().toISOString();
+            try {
+                await writeResultArtifact(publishedOutput, finishedAt);
+            }
+            catch (err) {
+                process.stderr.write(`[runtime-cli] Failed to persist result artifact: ${err}\n`);
+            }
+        });
         // 3. Write result to stdout
         process.stdout.write(JSON.stringify(output) + '\n');
         // 4. Exit
         process.exit(status === 'completed' ? 0 : 1);
+    }
+    function doShutdown(status) {
+        if (!shutdownInFlight)
+            shutdownInFlight = performShutdown(status);
+        return shutdownInFlight;
     }
     function exitWithoutShutdown(phase) {
         pollActive = false;
@@ -231,10 +829,12 @@ async function main() {
     }
     // Register signal handlers before poll loop
     process.on('SIGINT', () => {
+        startupShutdown.requestShutdown();
         process.stderr.write('[runtime-cli] Received SIGINT, shutting down...\n');
         doShutdown('failed').catch(() => process.exit(1));
     });
     process.on('SIGTERM', () => {
+        startupShutdown.requestShutdown();
         process.stderr.write('[runtime-cli] Received SIGTERM, shutting down...\n');
         doShutdown('failed').catch(() => process.exit(1));
     });
@@ -264,6 +864,7 @@ async function main() {
                 activeWorkers: new Map(),
                 cwd,
             };
+            setRuntimeOwnerDispatch(handleRecoverDeadWorkerV2Owner);
         }
         else {
             runtime = await startTeam(config);
@@ -271,8 +872,15 @@ async function main() {
     }
     catch (err) {
         process.stderr.write(`[runtime-cli] startTeam failed: ${err}\n`);
-        process.exit(1);
+        if (!startupShutdown.isShutdownRequested())
+            process.exit(1);
+        return;
     }
+    finally {
+        startupShutdown.settleStartup();
+    }
+    if (startupShutdown.isShutdownRequested())
+        return;
     // Persist pane IDs so MCP server can clean up explicitly via omc_run_team_cleanup.
     const jobId = process.env.OMC_JOB_ID;
     const expectedTaskCount = tasks.length;
@@ -287,10 +895,24 @@ async function main() {
     if (useV2) {
         process.stderr.write('[runtime-cli] Using runtime v2 (event-driven, no watchdog)\n');
         let lastLeaderNudgeReason = '';
+        // Recovery grace is persisted in revisioned config and survives owner restart.
         while (pollActive) {
             await new Promise(r => setTimeout(r, pollIntervalMs));
             if (!pollActive)
                 break;
+            await processPendingRecoveryIntents(teamName, cwd);
+            let paneRefresh;
+            try {
+                paneRefresh = await refreshRuntimeWorkerPaneIds(runtime, teamName, cwd);
+            }
+            catch (err) {
+                process.stderr.write(`[runtime-cli/v2] Failed to read authoritative pane evidence: ${err}\n`);
+                continue;
+            }
+            if (!paneRefresh) {
+                process.stderr.write('[runtime-cli/v2] Authoritative pane evidence missing; preserving team state\n');
+                continue;
+            }
             let snap;
             try {
                 snap = await monitorTeamV2(teamName, cwd);
@@ -387,11 +1009,14 @@ async function main() {
                 }
                 return;
             }
-            // Dead worker heuristic
-            const allDead = runtime.workerPaneIds.length > 0 && snap.deadWorkers.length === runtime.workerPaneIds.length;
+            // An all-dead team can be resumed by a replacement owner. Keep the durable
+            // state intact for the full recovery grace interval before terminal cleanup.
             const hasOutstanding = (snap.tasks.pending + snap.tasks.in_progress) > 0;
-            if (allDead && hasOutstanding) {
-                process.stderr.write('[runtime-cli/v2] All workers dead with outstanding work — failing\n');
+            const evidence = classifyAllDeadRecoveryEvidence(paneRefresh, snap.workers, hasOutstanding);
+            const grace = await updateAllDeadRecoveryGrace(teamName, cwd, evidence);
+            if (evidence === 'all_dead' && grace.expired && grace.deadlineAt !== null
+                && await fenceAllDeadRecoveryExpiry(teamName, cwd, grace.deadlineAt)) {
+                process.stderr.write('[runtime-cli/v2] All-worker recovery grace expired\n');
                 await doShutdown('failed');
                 return;
             }
@@ -399,6 +1024,7 @@ async function main() {
         return;
     }
     // ── V1 poll loop (legacy watchdog-based) ────────────────────────────────
+    let allDeadSince = null;
     while (pollActive) {
         await new Promise(r => setTimeout(r, pollIntervalMs));
         if (!pollActive)
@@ -462,20 +1088,125 @@ async function main() {
             await doShutdown('failed');
             return;
         }
-        // Check failure heuristics
+        // Preserve durable team state for a 300s owner-recovery grace rather than
+        // treating the first all-dead observation as terminal.
         const allWorkersDead = runtime.workerPaneIds.length > 0 && snap.deadWorkers.length === runtime.workerPaneIds.length;
         const hasOutstandingWork = (snap.taskCounts.pending + snap.taskCounts.inProgress) > 0;
-        const deadWorkerFailure = allWorkersDead && hasOutstandingWork;
-        const fixingWithNoWorkers = snap.phase === 'fixing' && allWorkersDead;
-        if (deadWorkerFailure || fixingWithNoWorkers) {
-            process.stderr.write(`[runtime-cli] Failure detected: deadWorkerFailure=${deadWorkerFailure} fixingWithNoWorkers=${fixingWithNoWorkers}\n`);
-            exitWithoutShutdown('failed');
-            return;
+        const allDeadWithWork = allWorkersDead && (hasOutstandingWork || snap.phase === 'fixing');
+        if (allDeadWithWork) {
+            allDeadSince ??= Date.now();
+            if (Date.now() - allDeadSince >= 300_000) {
+                process.stderr.write('[runtime-cli] All-worker recovery grace expired\n');
+                exitWithoutShutdown('failed');
+                return;
+            }
+        }
+        else {
+            allDeadSince = null;
         }
     }
 }
+async function runRecoveryGateFromEnvironment() {
+    const raw = process.env.OMC_RECOVERY_GATE_SPEC
+        ?? (process.env.OMC_RECOVERY_GATE_SPEC_B64
+            ? Buffer.from(process.env.OMC_RECOVERY_GATE_SPEC_B64, 'base64').toString('utf8')
+            : undefined);
+    if (!raw)
+        throw new Error('OMC_RECOVERY_GATE_SPEC is required');
+    const gate = JSON.parse(raw);
+    const result = await runWorkerActivationGate(gate);
+    if (result.outcome !== 'ran')
+        throw new Error(`recovery_gate_${result.outcome}`);
+    if (result.signal)
+        process.kill(process.pid, result.signal);
+    process.exit(result.exitCode ?? 0);
+}
+export async function runWorkerLaunchFromEnvironment() {
+    const descriptorPath = process.env.OMC_WORKER_LAUNCH_SPEC_FILE;
+    const raw = process.env.OMC_WORKER_LAUNCH_SPEC
+        ?? (process.env.OMC_WORKER_LAUNCH_SPEC_B64
+            ? Buffer.from(process.env.OMC_WORKER_LAUNCH_SPEC_B64, 'base64').toString('utf8')
+            : undefined);
+    if (descriptorPath && raw)
+        throw new Error('worker_launch_spec_source_conflict');
+    if (!descriptorPath) {
+        if (!raw)
+            throw new Error('OMC_WORKER_LAUNCH_SPEC is required');
+        try {
+            JSON.parse(raw);
+        }
+        catch {
+            throw new Error('worker_launch_invalid_spec_json');
+        }
+        throw new Error('worker_launch_descriptor_required');
+    }
+    const spec = await readAndConsumeWorkerLaunchDescriptor(descriptorPath);
+    const result = await runWorkerLaunchBootstrap(spec);
+    if (result.outcome !== 'ran')
+        throw new Error(`worker_launch_${result.outcome}`);
+    if (result.signal)
+        process.kill(process.pid, result.signal);
+    process.exit(result.exitCode ?? 0);
+}
+/** Detached durable recovery-owner entry point. It remains the persistent v2 owner until its fence or team lifecycle is lost. */
+export async function runRecoveryOwnerFromEnvironment() {
+    const raw = process.env.OMC_RECOVERY_OWNER_INPUT;
+    if (!raw)
+        throw new Error('OMC_RECOVERY_OWNER_INPUT is required');
+    const input = JSON.parse(raw);
+    if (typeof input.teamName !== 'string' || typeof input.cwd !== 'string' || typeof input.workerName !== 'string'
+        || typeof input.requestId !== 'string')
+        throw new Error('invalid_recovery_owner_input');
+    const expectedEpoch = Number(process.env.OMC_RECOVERY_OWNER_EXPECTED_EPOCH);
+    const predecessorEpoch = Number(process.env.OMC_RECOVERY_OWNER_PREDECESSOR_EPOCH);
+    const predecessorNonce = process.env.OMC_RECOVERY_OWNER_PREDECESSOR_NONCE;
+    const bootstrapNonce = process.env.OMC_RECOVERY_OWNER_NONCE;
+    const predecessorPid = Number(process.env.OMC_RECOVERY_OWNER_PREDECESSOR_PID);
+    const predecessorStartedAt = process.env.OMC_RECOVERY_OWNER_PREDECESSOR_STARTED_AT;
+    const recoveryId = process.env.OMC_RECOVERY_OWNER_RECOVERY_ID;
+    const processStartedAt = currentProcessStartIdentity();
+    if (!Number.isSafeInteger(expectedEpoch) || expectedEpoch < 1 || !Number.isSafeInteger(predecessorEpoch)
+        || predecessorEpoch < 0 || expectedEpoch !== predecessorEpoch + 1 || typeof bootstrapNonce !== 'string' || bootstrapNonce.length === 0
+        || typeof recoveryId !== 'string' || recoveryId.length === 0 || !processStartedAt
+        || (predecessorEpoch === 0 && (predecessorNonce || predecessorPid !== 0 || predecessorStartedAt))
+        || (predecessorEpoch > 0 && (typeof predecessorNonce !== 'string' || predecessorNonce.length === 0
+            || !Number.isSafeInteger(predecessorPid) || predecessorPid < 1
+            || typeof predecessorStartedAt !== 'string' || predecessorStartedAt.length === 0))) {
+        throw new Error('invalid_recovery_owner_bootstrap');
+    }
+    // This contract is process-bound before the executor can publish a successor or run maintenance.
+    const bootstrap = { expectedEpoch, predecessorEpoch,
+        predecessorNonce: predecessorEpoch === 0 ? null : predecessorNonce,
+        predecessorPid: predecessorEpoch === 0 ? null : predecessorPid,
+        predecessorProcessStartedAt: predecessorEpoch === 0 ? null : predecessorStartedAt,
+        pid: process.pid, processStartedAt, nonce: bootstrapNonce, recoveryId };
+    await prepareRecoveryOwnerBootstrap({ teamName: input.teamName, cwd: input.cwd, workerName: input.workerName,
+        requestId: input.requestId, bootstrap });
+    setRuntimeOwnerDispatch(handleRecoverDeadWorkerV2Owner);
+    await runPersistentRecoveryOwnerLoop({
+        teamName: input.teamName,
+        cwd: input.cwd,
+        workerName: input.workerName,
+        requestId: input.requestId,
+        bootstrap,
+    }, { expectedEpoch });
+}
+export function selectRuntimeCliMode(argv = process.argv, env = process.env) {
+    if (argv.includes('--worker-launch'))
+        return 'worker-launch';
+    if (argv.includes('--recovery-gate'))
+        return 'recovery-gate';
+    if (env.OMC_RECOVERY_OWNER_INPUT)
+        return 'recovery-owner';
+    return 'main';
+}
 if (require.main === module) {
-    main().catch(err => {
+    const mode = selectRuntimeCliMode();
+    const entry = mode === 'worker-launch' ? runWorkerLaunchFromEnvironment
+        : mode === 'recovery-gate' ? runRecoveryGateFromEnvironment
+            : mode === 'recovery-owner' ? runRecoveryOwnerFromEnvironment
+                : main;
+    entry().catch(err => {
         process.stderr.write(`[runtime-cli] Fatal error: ${err}\n`);
         process.exit(1);
     });

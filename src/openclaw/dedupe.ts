@@ -16,7 +16,7 @@ import { atomicWriteJsonSync } from "../lib/atomic-write.js";
 import { isProcessAlive } from "../platform/index.js";
 import type { OpenClawContext, OpenClawHookEvent, OpenClawSignal } from "./types.js";
 
-const STATE_DIR = [".omc", "state"];
+const STATE_DIR = [".omg", "state"];
 const STATE_FILE = "openclaw-event-dedupe.json";
 const LOCK_FILE = "openclaw-event-dedupe.lock";
 

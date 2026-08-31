@@ -46,8 +46,6 @@ export async function runHudWatchLoop(options: HudWatchLoopOptions): Promise<voi
         wakeSleep = null;
         resolve();
       };
-
-      (timer as { unref?: () => void }).unref?.();
     });
   }
 }

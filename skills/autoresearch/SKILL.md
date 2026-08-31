@@ -12,7 +12,7 @@ Autoresearch is a stateful skill for bounded, evaluator-driven iterative improve
 <Use_When>
 - You already have a mission and evaluator from `/deep-interview --autoresearch`
 - You want persistent single-mission improvement with strict evaluation
-- You need durable experiment logs under `.omcp/autoresearch/`
+- You need durable experiment logs under `.omg/autoresearch/`
 - You want a supported path for periodic reruns via Claude Code native cron
 </Use_When>
 
@@ -26,12 +26,13 @@ Autoresearch is a stateful skill for bounded, evaluator-driven iterative improve
 - Single-mission only in v1
 - Mission setup/evaluator generation stays in `deep-interview --autoresearch`
 - Evaluator output must be structured JSON with required boolean `pass` and optional numeric `score`
+- Evaluator commands are interpreted as POSIX `sh`. Prefer shell-neutral commands (`node eval.js`, `npm run eval`) so the mission runs everywhere; POSIX-only forms (`FOO=1 ./eval.sh`, `2>/dev/null`) require a POSIX shell such as Git Bash on Windows, and the run records an error when none is installed
 - Non-passing iterations do **not** stop the run
 - Stop conditions are explicit and bounded, with max-runtime as the primary strict stop hook
 </Contract>
 
 <Required_Artifacts>
-Canonical persistent storage lives under `.omcp/autoresearch/<mission-slug>/` and/or `.omcp/logs/autoresearch/<run-id>/`.
+Canonical persistent storage lives under `.omg/autoresearch/<mission-slug>/` and/or `.omg/logs/autoresearch/<run-id>/`.
 
 Minimum required artifacts:
 - mission spec
@@ -41,7 +42,7 @@ Minimum required artifacts:
 
 Recommended canonical shape:
 ```text
-.omcp/autoresearch/<mission-slug>/
+.omg/autoresearch/<mission-slug>/
   mission.md
   evaluator.json
   runs/<run-id>/

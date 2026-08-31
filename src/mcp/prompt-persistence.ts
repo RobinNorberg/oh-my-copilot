@@ -1,22 +1,19 @@
 /**
  * Prompt Persistence - Audit trail for external model prompts and responses
  *
- * Writes assembled prompts and model responses to .omcp/prompts/ before/after
+ * Writes assembled prompts and model responses to .omg/prompts/ before/after
  * sending to Codex/Gemini, providing visibility, debugging, and compliance audit trail.
  */
 
 import { mkdirSync, writeFileSync, readFileSync, existsSync, renameSync, readdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { randomBytes } from 'crypto';
-import { getWorktreeRoot } from '../lib/worktree-paths.js';
+import { getWorktreeRoot, getOmcRoot } from '../lib/worktree-paths.js';
 import {
   createArtifactDescriptorFromPath,
   type ArtifactDescriptor,
 } from '../shared/artifact-descriptor.js';
 import { initJobDb, isJobDbInitialized, upsertJob, getJob, getActiveJobs as getActiveJobsFromDb, cleanupOldJobs as cleanupOldJobsInDb } from '../lib/job-state-db.js';
-
-const PROMPT_PERSISTENCE_PRODUCER = { system: 'omc', component: 'prompt-persistence' } as const;
-type PromptPersistenceArtifactKind = 'prompt' | 'response';
 
 // Lazy-init guard: fires initJobDb at most once per process.
 // initJobDb is async (dynamic import of better-sqlite3). If it hasn't resolved
@@ -28,6 +25,8 @@ let _dbInitAttempted = false;
 // Allows job management handlers to find JSON status files for cross-directory jobs.
 // Keyed by provider:jobId to avoid collisions (8-hex IDs are short).
 const jobWorkingDirs = new Map<string, string>();
+const PROMPT_PERSISTENCE_PRODUCER = { system: 'omc', component: 'prompt-persistence' } as const;
+type PromptPersistenceArtifactKind = 'prompt' | 'response';
 
 function ensureJobDb(workingDirectory?: string): void {
   if (_dbInitAttempted || isJobDbInitialized()) return;
@@ -172,7 +171,7 @@ export interface BackgroundJobMeta {
  */
 export function getPromptsDir(workingDirectory?: string): string {
   const root = getWorktreeRoot(workingDirectory) || workingDirectory || process.cwd();
-  return join(root, '.omcp', 'prompts');
+  return join(getOmcRoot(root), 'prompts');
 }
 
 /**
@@ -220,22 +219,6 @@ function buildResponseFrontmatter(options: PersistResponseOptions): string {
   lines.push('---');
 
   return lines.join('\n');
-}
-
-function describePersistedArtifact(path: string, kind: PromptPersistenceArtifactKind): ArtifactDescriptor {
-  return createArtifactDescriptorFromPath(path, {
-    kind,
-    producer: PROMPT_PERSISTENCE_PRODUCER,
-    retention: 'persistent',
-  });
-}
-
-export function describePromptArtifact(path: string): ArtifactDescriptor {
-  return describePersistedArtifact(path, 'prompt');
-}
-
-export function describeResponseArtifact(path: string): ArtifactDescriptor {
-  return describePersistedArtifact(path, 'response');
 }
 
 /**
@@ -293,13 +276,33 @@ export function getExpectedResponsePath(provider: 'codex' | 'gemini', slug: stri
  * @param options - The response details to persist
  * @returns The file path, or undefined on failure
  */
+function describePersistedArtifact(path: string, kind: PromptPersistenceArtifactKind): ArtifactDescriptor {
+  return createArtifactDescriptorFromPath(path, {
+    kind,
+    producer: PROMPT_PERSISTENCE_PRODUCER,
+    retention: 'persistent',
+  });
+}
+
+export function describePromptArtifact(path: string): ArtifactDescriptor {
+  return describePersistedArtifact(path, 'prompt');
+}
+
+export function describeResponseArtifact(path: string): ArtifactDescriptor {
+  return describePersistedArtifact(path, 'response');
+}
+
 export function persistResponse(options: PersistResponseOptions): string | undefined {
   try {
     const promptsDir = getPromptsDir(options.workingDirectory);
     mkdirSync(promptsDir, { recursive: true });
 
-    const filename = `${options.provider}-response-${options.slug}-${options.promptId}.md`;
-    const filePath = join(promptsDir, filename);
+    const filePath = getExpectedResponsePath(
+      options.provider,
+      options.slug,
+      options.promptId,
+      options.workingDirectory,
+    );
 
     const frontmatter = buildResponseFrontmatter(options);
     const content = `${frontmatter}\n\n${options.response}`;

@@ -192,7 +192,7 @@ export function getAllSkills(projectRoot: string | null): LearnedSkill[] {
 }
 
 /**
- * Create the learned skills hook for Copilot CLI.
+ * Create the learned skills hook for Claude Code.
  */
 export function createLearnedSkillsHook(projectRoot: string | null) {
   return {

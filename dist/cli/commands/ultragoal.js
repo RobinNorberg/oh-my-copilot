@@ -1,23 +1,35 @@
 import { readFile } from 'node:fs/promises';
 import { ClaudeGoalSnapshotError, formatClaudeGoalReconciliation, readClaudeGoalSnapshotInput, reconcileClaudeGoalSnapshot, } from '../../goal-workflows/claude-goal-snapshot.js';
-import { addUltragoalGoal, buildClaudeGoalInstruction, checkpointUltragoal, createUltragoalPlan, readUltragoalPlan, recordFinalReviewBlockers, startNextUltragoal, summarizeUltragoalPlan, UltragoalError, } from '../../ultragoal/artifacts.js';
-export const ULTRAGOAL_HELP = `omcp ultragoal - Durable repo-native multi-goal workflow with Claude Code /goal handoff
+import { addUltragoalGoal, buildClaudeGoalInstruction, checkpointUltragoal, createUltragoalPlan, listUltragoalPlanIds, readUltragoalPlan, recordFinalReviewBlockers, resolveActivePlanId, startNextUltragoal, summarizeUltragoalPlan, UltragoalError, } from '../../ultragoal/artifacts.js';
+export const ULTRAGOAL_HELP = `omc ultragoal - Durable repo-native multi-goal workflow with Claude Code /goal handoff
 
 Usage:
-  omcp ultragoal create-goals [--brief <text> | --brief-file <path> | --from-stdin] [--goal <title::objective>] [--claude-goal-mode <aggregate|per-story>] [--force] [--json]
-  omcp ultragoal complete-goals [--retry-failed] [--json]
-  omcp ultragoal add-goal --title <title> --objective <text> [--evidence <text>] [--json]
-  omcp ultragoal record-review-blockers --goal-id <id> --title <title> --objective <text> --evidence <review-findings> --claude-goal-json <active-json-or-path> [--json]
-  omcp ultragoal checkpoint --goal-id <id> --status <complete|failed|blocked> [--evidence <text>] [--claude-goal-json <json-or-path>] [--quality-gate-json <json-or-path>] [--json]
-  omcp ultragoal status [--claude-goal-json <json-or-path>] [--json]
+  omc ultragoal create-goals [--brief <text> | --brief-file <path> | --from-stdin] [--goal <title::objective>] [--claude-goal-mode <aggregate|per-story>] [--force] [--plan-id <id> | --auto-plan-id] [--json]
+  omc ultragoal complete-goals [<goal-id>] [--retry-failed] [--plan-id <id>] [--json]
+  omc ultragoal add-goal --title <title> --objective <text> [--evidence <text>] [--plan-id <id>] [--json]
+  omc ultragoal record-review-blockers --goal-id <id> --title <title> --objective <text> --evidence <review-findings> --claude-goal-json <active-json-or-path> [--plan-id <id>] [--json]
+  omc ultragoal checkpoint --goal-id <id> --status <complete|failed|blocked> [--evidence <text>] [--claude-goal-json <json-or-path>] [--quality-gate-json <json-or-path>] [--plan-id <id>] [--json]
+  omc ultragoal status [--claude-goal-json <json-or-path>] [--plan-id <id>] [--json]
+  omc ultragoal list-plans [--json]
 
 Aliases:
   create -> create-goals, complete|next|start-next -> complete-goals
 
-Artifacts:
-  .omcp/ultragoal/brief.md
-  .omcp/ultragoal/goals.json
-  .omcp/ultragoal/ledger.jsonl
+Artifacts (single-plan, default for monorepo / single session):
+  .omg/ultragoal/brief.md
+  .omg/ultragoal/goals.json
+  .omg/ultragoal/ledger.jsonl
+
+Artifacts (multi-plan, enabled by --plan-id or --auto-plan-id):
+  .omg/ultragoal/plans/{planId}/brief.md
+  .omg/ultragoal/plans/{planId}/goals.json
+  .omg/ultragoal/plans/{planId}/ledger.jsonl
+
+Multi-plan resolution:
+  When --plan-id is omitted, ultragoal selects the legacy plan if present,
+  otherwise the single multi-plan if there's exactly one. If multiple plans
+  exist, --plan-id becomes required. Use multi-plan mode for parallel
+  ultragoal runs in a shared .omg/ (multi-repo workspaces; see .omc-workspace).
 
 Claude /goal integration:
   This command cannot directly invoke the Claude Code /goal slash command from a shell;
@@ -69,7 +81,7 @@ async function readStdin() {
     return Buffer.concat(chunks).toString('utf-8');
 }
 function positionalText(args) {
-    const valueTaking = new Set(['--brief', '--brief-file', '--goal', '--goal-id', '--status', '--evidence', '--claude-goal-json', '--claude-goal-mode', '--title', '--objective', '--quality-gate-json']);
+    const valueTaking = new Set(['--brief', '--brief-file', '--goal', '--goal-id', '--status', '--evidence', '--claude-goal-json', '--claude-goal-mode', '--title', '--objective', '--quality-gate-json', '--plan-id']);
     const words = [];
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
@@ -77,6 +89,8 @@ function positionalText(args) {
             i += 1;
             continue;
         }
+        if ([...valueTaking].some((flag) => arg.startsWith(`${flag}=`)))
+            continue;
         if (arg.startsWith('--'))
             continue;
         words.push(arg);
@@ -152,19 +166,39 @@ export async function ultragoalCommand(args) {
                 goals,
                 claudeGoalMode: normalizeClaudeGoalMode(readValue(rest, '--claude-goal-mode')),
                 force: hasFlag(rest, '--force'),
+                planId: readValue(rest, '--plan-id'),
+                autoPlanId: hasFlag(rest, '--auto-plan-id'),
             });
             if (json)
-                printJson({ ok: true, plan, summary: summarizeUltragoalPlan(plan) });
+                printJson({ ok: true, plan, planId: plan.planId, summary: summarizeUltragoalPlan(plan) });
             else {
                 console.log(`ultragoal plan created: ${plan.goals.length} goal(s)`);
+                if (plan.planId)
+                    console.log(`plan id: ${plan.planId}`);
                 console.log(`brief: ${plan.briefPath}`);
                 console.log(`goals: ${plan.goalsPath}`);
                 console.log(`ledger: ${plan.ledgerPath}`);
+                if (plan.planId) {
+                    console.log('');
+                    console.log(`Subsequent commands MUST pass --plan-id ${plan.planId} (or run in a workspace where this is the only plan).`);
+                }
             }
             return;
         }
+        if (command === 'list-plans') {
+            const ids = await listUltragoalPlanIds(cwd);
+            if (json)
+                printJson({ ok: true, plans: ids });
+            else if (ids.length === 0)
+                console.log('ultragoal: no multi-plans (use --plan-id or --auto-plan-id with create-goals to create one).');
+            else
+                for (const id of ids)
+                    console.log(id);
+            return;
+        }
         if (command === 'status') {
-            const plan = await readUltragoalPlan(cwd);
+            const planId = await resolveActivePlanId(cwd, readValue(rest, '--plan-id'));
+            const plan = await readUltragoalPlan(cwd, planId);
             const snapshot = await readClaudeGoalSnapshotInput(readValue(rest, '--claude-goal-json'), cwd);
             const activeGoal = plan.goals.find((goal) => goal.id === plan.activeGoalId || goal.status === 'in_progress');
             const expectedObjective = plan.claudeGoalMode === 'aggregate'
@@ -195,7 +229,8 @@ export async function ultragoalCommand(args) {
                 throw new UltragoalError('Missing --title.');
             if (!objective?.trim())
                 throw new UltragoalError('Missing --objective.');
-            const result = await addUltragoalGoal(cwd, { title, objective, evidence: readValue(rest, '--evidence') });
+            const planId = await resolveActivePlanId(cwd, readValue(rest, '--plan-id'));
+            const result = await addUltragoalGoal(cwd, { title, objective, evidence: readValue(rest, '--evidence'), planId });
             if (json)
                 printJson({ ok: true, plan: result.plan, addedGoal: result.goal, summary: summarizeUltragoalPlan(result.plan) });
             else {
@@ -218,7 +253,8 @@ export async function ultragoalCommand(args) {
             if (!evidence?.trim())
                 throw new UltragoalError('Missing --evidence.');
             const claudeGoal = await parseClaudeGoalJson(readValue(rest, '--claude-goal-json'));
-            const result = await recordFinalReviewBlockers(cwd, { goalId, title, objective, evidence, claudeGoal });
+            const planId = await resolveActivePlanId(cwd, readValue(rest, '--plan-id'));
+            const result = await recordFinalReviewBlockers(cwd, { goalId, title, objective, evidence, claudeGoal, planId });
             if (json)
                 printJson({ ok: true, plan: result.plan, blockedGoal: result.blockedGoal, addedGoal: result.addedGoal, summary: summarizeUltragoalPlan(result.plan) });
             else {
@@ -228,7 +264,11 @@ export async function ultragoalCommand(args) {
             return;
         }
         if (command === 'complete' || command === 'complete-goals' || command === 'next' || command === 'start-next') {
-            const result = await startNextUltragoal(cwd, { retryFailed: hasFlag(rest, '--retry-failed') });
+            const planId = await resolveActivePlanId(cwd, readValue(rest, '--plan-id'));
+            const goalId = positionalText(rest);
+            if (goalId.split(/\s+/).filter(Boolean).length > 1)
+                throw new UltragoalError('Expected at most one positional ultragoal id.');
+            const result = await startNextUltragoal(cwd, { retryFailed: hasFlag(rest, '--retry-failed'), goalId: goalId || undefined, planId });
             if (!result.goal) {
                 if (json)
                     printJson({ ok: true, done: result.done, summary: summarizeUltragoalPlan(result.plan) });
@@ -253,7 +293,8 @@ export async function ultragoalCommand(args) {
             const evidence = readValue(rest, '--evidence');
             const claudeGoal = await parseClaudeGoalJson(readValue(rest, '--claude-goal-json'));
             const qualityGate = await readJsonInput(readValue(rest, '--quality-gate-json'));
-            const plan = await checkpointUltragoal(cwd, { goalId, status, evidence, claudeGoal, qualityGate });
+            const planId = await resolveActivePlanId(cwd, readValue(rest, '--plan-id'));
+            const plan = await checkpointUltragoal(cwd, { goalId, status, evidence, claudeGoal, qualityGate, planId });
             if (json)
                 printJson({ ok: true, plan, summary: summarizeUltragoalPlan(plan) });
             else {

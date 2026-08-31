@@ -58,7 +58,7 @@ export interface TmuxPane {
 }
 
 export interface PaneAnalysisResult {
-  /** Whether this pane appears to have Copilot CLI */
+  /** Whether this pane appears to have Claude Code */
   hasCopilotCode: boolean;
   /** Whether rate limit message is visible */
   hasRateLimitMessage: boolean;

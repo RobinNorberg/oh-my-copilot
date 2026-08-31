@@ -29,7 +29,7 @@ import {
 
 /** Map canonical team role → KnownAgentName key (matches PluginConfig.agents.*). */
 const ROLE_TO_AGENT: Record<CanonicalTeamRole, KnownAgentName> = {
-  orchestrator: 'omcp',
+  orchestrator: 'omc',
   planner: 'planner',
   analyst: 'analyst',
   architect: 'architect',
@@ -127,12 +127,12 @@ function resolveClaudeModel(
 /**
  * Resolve a user-supplied `model` value for an external provider worker.
  *
- * Tier names are Claude-centric and not meaningful for codex/gemini, so tier
- * input (or absent input) maps to the provider's builtin default. Only an
- * explicit non-tier model ID is passed through.
+ * Tier names are Claude-centric and not meaningful for codex/gemini/grok/cursor/antigravity,
+ * so tier input (or absent input) maps to the provider's builtin default. Only
+ * an explicit non-tier model ID is passed through.
  */
 function resolveExternalModel(
-  provider: 'codex' | 'gemini' | 'grok',
+  provider: 'codex' | 'gemini' | 'grok' | 'cursor' | 'antigravity',
   raw: string | undefined,
   cfg: PluginConfig,
 ): string {
@@ -145,6 +145,12 @@ function resolveExternalModel(
   }
   if (provider === 'grok') {
     return defaults?.grokModel ?? '';
+  }
+  if (provider === 'cursor') {
+    return '';
+  }
+  if (provider === 'antigravity') {
+    return defaults?.antigravityModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.antigravityModel;
   }
   return defaults?.geminiModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel;
 }
@@ -177,8 +183,9 @@ export function resolveRoleAssignment(
   const provider: TeamRoleProvider = isOrchestrator
     ? 'claude'
     : (spec?.provider ?? 'claude');
-
-  const model = provider === 'claude'
+  // 'copilot' is this fork's host CLI, not an external provider, so it resolves
+  // through the host model path alongside 'claude'.
+  const model = provider === 'claude' || provider === 'copilot'
     ? resolveClaudeModel(canonical, spec?.model, cfg)
     : resolveExternalModel(provider, spec?.model, cfg);
   const agent: KnownAgentName = spec?.agent ?? ROLE_TO_AGENT[canonical];

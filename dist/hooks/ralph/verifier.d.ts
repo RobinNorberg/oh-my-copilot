@@ -11,7 +11,7 @@
  * 4. If architect approves -> truly complete, use /oh-my-copilot:cancel to exit
  * 5. If architect finds flaws -> continue ralph with architect feedback
  */
-import type { UserStory } from './prd.js';
+import { type UserStory } from './prd.js';
 import type { RalphCriticMode } from './loop.js';
 export interface VerificationState {
     /** Whether verification is pending */
@@ -38,6 +38,8 @@ export interface VerificationState {
     critic_mode?: RalphCriticMode;
     /** Unique request id used to correlate approvals to the current verification attempt */
     request_id?: string;
+    /** Canonical criteria revision submitted to the reviewer for a story. */
+    criteria_revision?: string;
 }
 /**
  * Read verification state
@@ -53,6 +55,10 @@ export declare function writeVerificationState(directory: string, state: Verific
  * @param sessionId - When provided, clears session-scoped state only
  */
 export declare function clearVerificationState(directory: string, sessionId?: string): boolean;
+/** Clear only the verification request whose approval was consumed. */
+export declare function consumeVerificationRequest(directory: string, requestId: string | undefined, sessionId?: string): boolean;
+/** Restore a consumed verification request only when no newer request exists. */
+export declare function restoreVerificationRequestIfAbsent(directory: string, state: VerificationState, sessionId?: string): boolean;
 /**
  * Start verification process
  */

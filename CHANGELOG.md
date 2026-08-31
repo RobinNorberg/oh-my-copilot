@@ -2,14 +2,229 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [5.0.0] - 2026-08-31 - 2026-08-31
+
+The fork was at v4.13.102. It has now been rebased onto upstream
+`yeachan-heo/oh-my-claudecode` v5.0.2 and is being released as the fork's own
+**v5.0.0**, adopting upstream's canonical Tier-0 workflow surface
+(`plan` → `execute` → `review` → `verify`) and retiring a set of legacy skill
+and command names outright rather than aliasing them.
+
+### Breaking Changes
+
+- **Retired 11 skills, removed outright (not aliased):** `ultrawork`,
+  `ultraqa`, `deep-dive`, `sciomc`, the `cccg` skill (invoked as `/ccg`),
+  `omc-teams`, `setup`, `mcp-setup`, `omc-reference`, `learner`,
+  `writer-memory`. Their behavior now lives in `execute`, `verify`, `review`,
+  `research`, `omc-setup`, `wiki`, `remember`, and `team`.
+- **Retired 7 commands:** `ccg.md`, `deep-dive.md`, `learner.md`,
+  `mcp-setup.md`, `omc-teams.md`, `sciomc.md`, `writer-memory.md`.
+- **Canonical Tier-0 workflows are now `plan → execute → review → verify`.**
+  Three new skills are adopted from upstream: `execute`, `research`, and
+  `review`. `review` installs as `omc-review` to avoid colliding with a native
+  command. A new `compact` command is also added.
+- **The `ultrawork` / `ultraqa` / `ultrapilot` hook subsystems are removed**,
+  along with the `stagger-launch` hook. `stagger-launch`'s only trigger was
+  `ultrawork` mode, and its thundering-herd protection for parallel agent
+  launches is **not** carried over to the new workflow surface — this is a
+  known regression, not an oversight.
+- Post-retirement inventory: **46 skills, 20 agents, 21 commands**.
+- **Host CLI surface moved `.claude/` → `.copilot/`.** oh-my-copilot is a
+  GitHub Copilot CLI plugin, so it now reads the host's settings, hooks,
+  commands, skills, plugins, rules, tasks, and worktrees from `.copilot/`
+  instead of `.claude/`. Project config moved to `.copilot/omg.jsonc` (was
+  `.claude/omc.jsonc`). Context-file discovery now prefers
+  `copilot-instructions.md` and `.copilot/AGENTS.md`, while still falling
+  back to `.claude/CLAUDE.md` and `.claude/AGENTS.md` so the plugin keeps
+  working when run under Claude Code. A small number of genuine Claude Code
+  interop paths still read `.claude/` on purpose (credentials, installer
+  agent/command ownership, todo-continuation task files).
+- **OMC runtime root moved `.omc/` → `.omg/`.** All oh-my-copilot runtime
+  files now live under `.omg/`: state, sessions, logs, plans, research,
+  notepad, project memory, drafts, autopilot, and team state. **This release
+  does not auto-migrate existing `.omc/` content** — if you have runtime
+  state under `.omc/`, moving it to `.omg/` is a manual step.
+  `WORKSPACE_MARKER` is still `.omc-workspace` (unchanged in this release),
+  so multi-repo workspace anchors keep working.
+
+### Added
+
+- **Microsoft Teams notifications**, sent as Adaptive Card payloads with
+  `@mention` support via `tagList` entries in `"DisplayName:AAD-Object-ID"`
+  format. Configure with `OMC_MICROSOFT_TEAMS_WEBHOOK_URL` or a `teams`
+  config block. Supports both Power Automate Workflows and legacy O365
+  Connector webhook URLs.
+- **RecentTools HUD element**: a rolling list of recent tool calls with
+  status icons and target summaries. Opt-in via `showRecentTools`; tunable
+  with `recentToolsMax` (default 5) and `recentToolsShowTarget`.
+- **Team: per-role provider and model routing** via `.copilot/omg.jsonc`,
+  with a resolved-routing snapshot. Declare which provider (`claude`,
+  `codex`, `gemini`, `grok`, `cursor`, `antigravity`) and model tier backs
+  each canonical role (critic, code-reviewer, executor, planner, etc.) in
+  `team.roleRouting`. Routing resolves once at team creation, persists in
+  `TeamConfig.resolved_routing`, and is reused across spawn/scale-up/restart.
+  Env override via `OMCP_TEAM_ROLE_OVERRIDES`. New `omc doctor team-routing`
+  command probes CLI presence for every provider referenced by
+  `team.roleRouting`. See `skills/team/SKILL.md` § Per-Role Provider & Model
+  Routing.
+
+### Fixed
+
+- **Agent ownership inventory** (`src/installer/historical-agent-ownership.ts`)
+  was regenerated from the fork's own 23 v4 release tags (57 records).
+  Previously it held upstream's agent file hashes, so every fork-installed
+  agent failed authentication and would never be reclaimed when upgrading
+  4.13.102 → 5.0.0. A new generator script,
+  `scripts/generate-historical-agent-ownership.mjs` (with `--verify`), plus
+  npm scripts `generate:agent-ownership` / `verify:agent-ownership`, keep the
+  inventory reproducible going forward.
+- **Plugin manifest (`.claude-plugin/plugin.json`) previously listed only 32
+  skills** — upstream's set — so all 14 fork-exclusive skills (five
+  `omc-ado-*`, five `omc-gh-*`, plus `critique`, `deep-review`, `discover`,
+  and `ralph-experiment`) were never registered with the plugin host. The
+  manifest now lists all 46.
+- **Team: alias-keyed role routing is honored, and `team.ops.defaultAgentType`
+  is restricted to runtime-supported CLI providers.** Role keys accepted as
+  aliases (e.g. `reviewer`) now resolve correctly against `team.roleRouting`
+  during validation and stage routing, instead of being silently rejected or
+  ignored.
+- **State-file locking works on Windows and macOS.** `flockPath()` probed only
+  `/usr/bin/flock` and `/bin/flock`, so off Linux `acquireLockAt()` returned
+  `unlocked: true` while the caller was still told the lock was acquired —
+  there was no inter-process exclusion at all. A portable lockfile fallback
+  now runs wherever `flock` is absent: `O_EXCL` temp plus `linkSync`
+  publication, an `O_EXCL` guard marker serializing reclaim and release, and
+  stale owners cleared by a PID liveness probe with a 60s age ceiling. The
+  result reports `acquired: false` rather than claiming exclusivity it does
+  not have, and `flock` stays the fast path where it exists. Applied
+  identically to `scripts/lib/atomic-write.mjs`,
+  `templates/hooks/lib/atomic-write.mjs`, and `src/lib/mode-state-io.ts`.
+  `OMC_TEST_STATE_LOCK_MODE` selects `none` or `portable` for tests.
+- **Named autopilot workflows are no longer refused off Linux.**
+  `isWorkflowRuntimeSupported()` required `process.platform === 'linux'` plus
+  an `flock` binary, and `namedWorkflowRuntimeSupported()` additionally
+  required `/proc/self/fd`, so named workflow profiles were rejected outright
+  on Windows and macOS while state writes skipped integrity validation. Both
+  gates now ask whether a working state-file lock exists rather than which
+  platform is running. The `/proc/self/fd` transcript walk is kept verbatim on
+  Linux; elsewhere each path component is rejected up front if it is a symlink
+  and the opened file is confirmed by device and inode, preserving the
+  no-follow contract.
+- **Setup and uninstall no longer require bash or jq.** `/omc-setup` drove
+  `scripts/setup-claude-md.sh` and `scripts/setup-progress.sh`, the latter
+  exiting when `jq` was missing, and `scripts/uninstall.sh` had no non-bash
+  equivalent — so a Windows user without Git Bash could never complete setup
+  and had no supported uninstall, and resume broke on a stock macOS install.
+  `scripts/setup-claude-md.mjs`, `scripts/setup-progress.mjs`, and
+  `scripts/uninstall.mjs` are the documented entry points; `uninstall.mjs`
+  takes `--dry-run` and `--yes`. The shell scripts remain for back-compat.
+- **A fresh plugin cache is runnable on Windows without a rewrite.** The shipped
+  `hooks/hooks.json` uses `node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs`, the one
+  launcher cmd.exe and POSIX sh resolve the same way, and the install-time
+  rewrite now self-heals a manifest left in the `sh`/`find-node.sh` form by an
+  install on another OS — which previously failed every hook on Windows with
+  `'sh' is not recognized`. POSIX installs still take the `find-node.sh`
+  bootstrap unconditionally: it resolves `node` from `PATH` when it is there
+  and from the nvm/fnm/volta locations when it is not, so it is correct in both
+  cases (issue #892).
+- **Skill instructions run on Windows.** Eighteen skills, across 21 markdown
+  files, embedded POSIX-only command blocks with no Windows variant — including
+  the cancel skill's emergency stop-hook escape (a sha256 shell function, GNU
+  `date -u -d`, and a python3 heredoc) and the hud install step, whose
+  `mkdir -p` and `cp` meant `omcp-hud.mjs` was never installed while
+  `statusLine` pointed at it. Those blocks are now `node -e` one-liners. The
+  cancel escape reuses `scripts/lib/state-root.mjs`, so it honours
+  `OMC_STATE_DIR` and workspace markers exactly as the state tools do.
+- **Autoresearch evaluator commands run on Windows.** Evaluator commands are
+  user-authored POSIX `sh`; running them through `spawnSync` with `shell:true`
+  handed them to `cmd.exe`, so every iteration recorded `error` and no mission
+  could pass. `src/platform/posix-shell.ts` discovers a real POSIX shell and
+  routes the command through `bash -lc`; when none exists the record carries
+  an actionable message instead of an inscrutable `cmd.exe` failure.
+- **Workflow integrity checks accept NTFS file ids.** Windows file ids
+  routinely exceed `Number.MAX_SAFE_INTEGER`, but the transcript identity was
+  built with `Number(stat.ino)` and then validated with
+  `Number.isSafeInteger`, so the producer emitted values its own validator
+  rejected and named workflow Stop handling answered
+  `workflow_descriptor_integrity_failed`. Rounding also let two distinct files
+  compare equal. Device and inode now travel as decimal strings, matching what
+  `mtimeNs` and `ctimeNs` already did; validation still accepts a legacy safe
+  integer, so existing state keeps validating.
+- **Windows path matching in team permissions, the bridge daemon, and worktree
+  cleanup.** Three defects of the same shape: `isPathAllowed` compared a
+  `relative()` result carrying backslashes against `/`-written globs, so
+  `allowedPaths` denied everything and — more seriously — `deniedPaths` stopped
+  denying anything; `validateConfigPath` built containment by concatenating
+  `homeDir + '/'`, which no resolved Windows path matches, so the bridge daemon
+  could not start at all; and `assertCleanLeaderWorktree` still filtered
+  untracked `.omc` after the runtime root was renamed, so OMC's own metadata
+  made the leader look dirty and blocked a second worker. All three now go
+  through `path.relative` with segment boundaries preserved.
+- **The OMC config directory is unified on `${COPILOT_CONFIG_DIR:-~/.copilot}`.**
+  `scripts/lib/config-dir.mjs` and `.cjs` defaulted to `~/.claude` while
+  `src/utils/config-dir.ts` and `scripts/lib/config-dir.sh` — which their own
+  header names as mirrors — defaulted to `~/.copilot`. The bash lifecycle
+  therefore wrote `.omc-config.json` where the Node hooks never looked, so
+  settings written by one half of the install were invisible to the other.
+  Setup now also adopts a stranded pre-unification `~/.claude/.omc-config.json`
+  when the resolved location has none, copying rather than moving; the
+  `omc-doctor` skill reports one it finds.
+- **Background daemons start under Volta and nvm-windows.** The rate-limit-wait
+  daemon and the notification reply-listener spawned themselves as
+  `spawn('node', ...)` with a stripped env, so where the `node` on the
+  forwarded `PATH` did not exist the spawn failed and the daemon silently never
+  started. Both now use `process.execPath`, which needs nothing from `PATH`.
+  `resolveDaemonModulePath` also follows the shape of the path it is given
+  rather than the host platform.
+- **The CLI trust check understands Windows.** Trusted prefixes were POSIX-only
+  paths joined onto `$HOME`, `OMC_TRUSTED_CLI_DIRS` was split on `:` (shredding
+  `C:\Tools\bin`), and matching was a case-sensitive `startsWith`, so every CLI
+  resolution on Windows warned about a non-standard path with no way to silence
+  it. Home now comes from `USERPROFILE` on Windows, Windows contributes its own
+  trusted roots, the override splits on the platform delimiter, and boundary
+  matching uses `path.relative`.
+- **Every tmux call goes through argv.** `tmuxShell` built a bare
+  `tmux <command>` string, skipping the win32 `.cmd`/`COMSPEC` wrapping
+  `resolveTmuxInvocation` exists to apply and forcing callers to POSIX-quote
+  format arguments — `cmd.exe` passes single quotes through literally, so
+  `-F '#{pane_id}'` came back quote-wrapped and pane matching never fired.
+  `isTmuxAvailable` also probes with `shell:false`, so an install path
+  containing a space no longer reports tmux as missing. This removes the last
+  shell-string assumptions from the tmux surface, which is what a Windows
+  tmux-compatible binary such as psmux needs; it was verified with unit tests
+  against mocked spawns rather than a live tmux session.
+
+### Changed
+
+- **Fork-exclusive skills preserved through the rebase (14):** the five
+  `omc-ado-*` Azure DevOps skills, the five `omc-gh-*` GitHub skills, plus
+  `critique`, `deep-review`, `discover`, and `ralph-experiment`.
+- **Publishing is unchanged:** a `v*` tag still produces a GitHub Release and
+  npm publish via `release.yml`. Upstream moved to OIDC Trusted Publishing;
+  this fork deliberately did not adopt that change.
+- **Executable resolution is consolidated into `src/platform`.** The Windows
+  resolution ritual (`where`/`which`, `.cmd` shim handling, `COMSPEC`
+  fallback) had been reimplemented independently in six places, most without a
+  timeout — a hook checking for a formatter could hang on an unreachable
+  network-drive `PATH` entry. `src/platform/executable-resolution.ts` now
+  exposes `resolveExecutable`, `isExecutableAvailable`, and `probeExecutable`,
+  and the copies in `src/team/cli-detection.ts`, `src/team/model-contract.ts`,
+  `src/mcp/cli-detection.ts`, `src/hooks/plugin-patterns/index.ts`,
+  `src/tools/lsp/servers.ts`, and `src/cli/tmux-utils.ts` all delegate to it.
+  Importers are unchanged. The `COMSPEC` retry validates its arguments against
+  a closed grammar before they reach `cmd.exe`.
+
+### Install
+
+```bash
+npm install -g oh-my-copilot@5.0.0
+```
+
 ## Unreleased
 
 ### New Features
 
 - **Deep Interview: Round 0 topology enumeration** (#2919) — confirms and locks top-level components before ambiguity scoring, rotates multi-component targeting, and includes confirmed components plus deferrals in generated specs.
-- **feat(paths): cross-plugin shared-content root at `.omc/`** — Notepad, project memory, plans, research, and plan-scoped notepads now resolve under `<worktree>/.omc/`, shared with oh-my-claudecode. Plugin-private state (mode-state files, sessions, autoresearch outputs, logs) stays under `<worktree>/.omcp/`. New `getSharedOmcRoot()` and `migrateOmcpContentToOmc()` helpers in `src/lib/worktree-paths.ts` handle path resolution and one-time relocation of pre-existing content. With `OMC_STATE_DIR` set, the shared root is `<state>/<projectId>/.omc/`. Migration is idempotent and runs on every `getOmcRoot()` / `getSharedOmcRoot()` call until complete.
-- **feat(team): per-role provider and model routing via `.copilot/omg.jsonc` with resolved-routing snapshot** — declare which provider (`claude`/`codex`/`gemini`) and model tier backs each canonical role (critic, code-reviewer, executor, planner, etc.) in `team.roleRouting`. Routing resolves once at team creation, persists in `TeamConfig.resolved_routing`, and is reused across spawn/scale-up/restart. Env override via `OMCP_TEAM_ROLE_OVERRIDES`. Missing CLIs fall back to Claude with a visible warning. See `skills/team/SKILL.md` § Per-Role Provider & Model Routing.
-- **fix(team): honor alias-keyed role routing and restrict `ops.defaultAgentType` to runtime-supported CLI providers** — accepted aliases like `reviewer` now affect resolved snapshot/stage routing, and `team.ops.defaultAgentType` now matches actual `/team` launcher semantics (`claude`/`codex`/`gemini` only).
 
 ### Migration Notes
 

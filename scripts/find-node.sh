@@ -3,29 +3,38 @@
 #
 # Locates the Node.js binary and executes it with the provided arguments.
 # Designed for nvm/fnm users where `node` is not on PATH in non-interactive
-# shells (e.g. Copilot CLI hook invocations). Fixes issue #892.
+# shells (e.g. Claude Code hook invocations). Fixes issue #892.
 #
 # Priority:
-#   1. nodeBinary stored in ~/.copilot/.omg-config.json (set at setup time)
+#   1. nodeBinary stored in ~/.claude/.omc-config.json (set at setup time)
 #   2. `which node` (node is on PATH)
 #   3. nvm versioned paths  (~/.nvm/versions/node/*/bin/node)
 #   4. fnm versioned paths and aliases
 #   5. volta/asdf/nodenv shims
 #   6. Homebrew / system paths (/opt/homebrew/bin/node, /usr/local/bin/node)
 #
-# Exits 0 on failure so it never blocks Copilot CLI hook processing.
+# Exits 0 on failure so it never blocks Claude Code hook processing.
 
 NODE_BIN=""
-# Shims that rely on shell init (volta/asdf/nodenv) are deferred: prefer a
-# concrete versioned binary first, falling back to the shim only if nothing
-# else resolves.
 DEFERRED_NODE_BIN=""
+
+case "$0" in
+  */*)
+    SCRIPT_DIR="${0%/*}"
+    ;;
+  *)
+    SCRIPT_DIR='.'
+    ;;
+esac
+
+SCRIPT_DIR="$(cd "$SCRIPT_DIR" && pwd)"
+. "$SCRIPT_DIR/lib/config-dir.sh"
 
 # ---------------------------------------------------------------------------
 # 1. Read stored node path from OMC config
 # ---------------------------------------------------------------------------
-CLAUDE_DIR="${COPILOT_CONFIG_DIR:-$HOME/.copilot}"
-CONFIG_FILE="$CLAUDE_DIR/.omg-config.json"
+CLAUDE_DIR="$(resolve_claude_config_dir)"
+CONFIG_FILE="$CLAUDE_DIR/.omc-config.json"
 if [ -f "$CONFIG_FILE" ]; then
   # POSIX-safe extraction without requiring jq
   _stored=$(grep -o '"nodeBinary" *: *"[^"]*"' "$CONFIG_FILE" 2>/dev/null \
@@ -137,7 +146,7 @@ fi
 # ---------------------------------------------------------------------------
 if [ -z "$NODE_BIN" ]; then
   printf '[OMC] Error: Could not find node binary. Run /oh-my-copilot:omc-setup to fix.\n' >&2
-  exit 0  # exit 0 so this hook does not block Copilot CLI
+  exit 0  # exit 0 so this hook does not block Claude Code
 fi
 
 exec "$NODE_BIN" "$@"

@@ -3,69 +3,45 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const originalCopilotConfigDir = process.env.COPILOT_CONFIG_DIR;
-const originalPluginRoot = process.env.PLUGIN_ROOT;
+const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+const originalPluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
 const originalHome = process.env.HOME;
 
 let tempRoot: string;
-let testCopilotDir: string;
+let testClaudeDir: string;
 let testHomeDir: string;
 
-// In vitest __dirname resolves to src/installer, so getPackageDir() returns
-// src/ — but docs/copilot-instructions.md lives at the repo root.  Create a
-// symlink (or copy) so the installer can find it during tests.
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __test_dirname = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url));
-// __test_dirname = src/installer/__tests__  →  ../.. = src/  (matches getPackageDir() in vitest)
-const packageDir = join(__test_dirname, '..', '..');
-const docsDir = join(packageDir, 'docs');
-const docsSource = join(packageDir, '..', 'docs', 'copilot-instructions.md');
-
 async function loadInstaller() {
-  // Ensure src/docs/copilot-instructions.md exists so loadClaudeMdContent() succeeds
-  if (!existsSync(join(docsDir, 'copilot-instructions.md')) && existsSync(docsSource)) {
-    mkdirSync(docsDir, { recursive: true });
-    writeFileSync(
-      join(docsDir, 'copilot-instructions.md'),
-      readFileSync(docsSource, 'utf-8'),
-    );
-  }
   vi.resetModules();
   return import('../index.js');
 }
 
-describe('install() copilot-instructions.md target resolution', () => {
+describe('install() CLAUDE.md target resolution', () => {
   beforeEach(() => {
-    tempRoot = mkdtempSync(join(tmpdir(), 'omc-copilot-target-'));
-    testCopilotDir = join(tempRoot, 'global-copilot');
+    tempRoot = mkdtempSync(join(tmpdir(), 'omc-claude-target-'));
+    testClaudeDir = join(tempRoot, 'global-claude');
     testHomeDir = join(tempRoot, 'home');
 
-    mkdirSync(testCopilotDir, { recursive: true });
+    mkdirSync(testClaudeDir, { recursive: true });
     mkdirSync(testHomeDir, { recursive: true });
 
-    process.env.COPILOT_CONFIG_DIR = testCopilotDir;
+    process.env.COPILOT_CONFIG_DIR = testClaudeDir;
     process.env.HOME = testHomeDir;
-    delete process.env.PLUGIN_ROOT;
     delete process.env.CLAUDE_PLUGIN_ROOT;
   });
 
   afterEach(() => {
     rmSync(tempRoot, { recursive: true, force: true });
-    // Clean up src/docs/ created by loadInstaller()
-    rmSync(docsDir, { recursive: true, force: true });
 
-    if (originalCopilotConfigDir !== undefined) {
-      process.env.COPILOT_CONFIG_DIR = originalCopilotConfigDir;
+    if (originalClaudeConfigDir !== undefined) {
+      process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
     } else {
       delete process.env.COPILOT_CONFIG_DIR;
     }
 
     if (originalPluginRoot !== undefined) {
-      process.env.PLUGIN_ROOT = originalPluginRoot;
+      process.env.CLAUDE_PLUGIN_ROOT = originalPluginRoot;
     } else {
-      delete process.env.PLUGIN_ROOT;
       delete process.env.CLAUDE_PLUGIN_ROOT;
     }
 
@@ -76,14 +52,14 @@ describe('install() copilot-instructions.md target resolution', () => {
     }
   });
 
-  it('updates ~/.copilot/copilot-instructions.md even when ~/copilot-instructions.md exists', async () => {
-    const configInstructionsPath = join(testCopilotDir, 'copilot-instructions.md');
-    const homeInstructionsPath = join(testHomeDir, 'copilot-instructions.md');
+  it('updates ~/.claude/CLAUDE.md even when ~/CLAUDE.md exists', async () => {
+    const configClaudePath = join(testClaudeDir, 'CLAUDE.md');
+    const homeClaudePath = join(testHomeDir, 'CLAUDE.md');
 
-    writeFileSync(homeInstructionsPath, '# Home copilot-instructions\nkeep me\n');
+    writeFileSync(homeClaudePath, '# Home CLAUDE\nkeep me\n');
     writeFileSync(
-      configInstructionsPath,
-      '<!-- OMG:START -->\n<!-- OMC:VERSION:0.0.1 -->\n# Old OMC\nstale installer content\n<!-- OMG:END -->\n',
+      configClaudePath,
+      '<!-- OMC:START -->\n<!-- OMC:VERSION:0.0.1 -->\n# Old OMC\nstale installer content\n<!-- OMC:END -->\n',
     );
 
     const { install, VERSION } = await loadInstaller();
@@ -93,20 +69,20 @@ describe('install() copilot-instructions.md target resolution', () => {
       skipHud: true,
     });
 
-    const updatedConfig = readFileSync(configInstructionsPath, 'utf-8');
+    const updatedConfig = readFileSync(configClaudePath, 'utf-8');
 
     expect(result.success).toBe(true);
     expect(updatedConfig).toContain(`<!-- OMC:VERSION:${VERSION} -->`);
     expect(updatedConfig).not.toContain('stale installer content');
-    expect(readFileSync(homeInstructionsPath, 'utf-8')).toBe('# Home copilot-instructions\nkeep me\n');
+    expect(readFileSync(homeClaudePath, 'utf-8')).toBe('# Home CLAUDE\nkeep me\n');
 
-    const backups = readdirSync(testCopilotDir).filter(name => name.startsWith('copilot-instructions.md.backup.'));
+    const backups = readdirSync(testClaudeDir).filter(name => name.startsWith('CLAUDE.md.backup.'));
     expect(backups).toHaveLength(1);
   });
 
-  it('preserves project-scoped behavior by skipping global copilot-instructions.md writes', async () => {
-    process.env.PLUGIN_ROOT = join(tempRoot, 'project', '.copilot', 'plugins', 'oh-my-copilot');
-    writeFileSync(join(testHomeDir, 'copilot-instructions.md'), '# Home copilot-instructions\nkeep me\n');
+  it('preserves project-scoped behavior by skipping global CLAUDE.md writes', async () => {
+    process.env.CLAUDE_PLUGIN_ROOT = join(tempRoot, 'project', '.claude', 'plugins', 'oh-my-copilot');
+    writeFileSync(join(testHomeDir, 'CLAUDE.md'), '# Home CLAUDE\nkeep me\n');
 
     const { install } = await loadInstaller();
     const result = install({
@@ -116,6 +92,6 @@ describe('install() copilot-instructions.md target resolution', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(existsSync(join(testCopilotDir, 'copilot-instructions.md'))).toBe(false);
+    expect(existsSync(join(testClaudeDir, 'CLAUDE.md'))).toBe(false);
   });
 });

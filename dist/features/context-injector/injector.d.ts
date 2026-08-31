@@ -21,7 +21,7 @@ export declare function injectContextIntoText(collector: ContextCollector, sessi
 };
 /**
  * Create a hook handler for context injection.
- * This is a factory function for creating Copilot CLI compatible hooks.
+ * This is a factory function for creating Claude Code compatible hooks.
  */
 export declare function createContextInjectorHook(collector: ContextCollector): {
     /**

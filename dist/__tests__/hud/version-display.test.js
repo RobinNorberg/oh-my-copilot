@@ -1,6 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render } from '../../hud/render.js';
 import { DEFAULT_HUD_CONFIG } from '../../hud/types.js';
+// The HUD banner appends an "L" suffix when running from a local/dev checkout
+// (isRuntimePackageLocal). Under test the package root has src/ and .git, so it
+// would always report local. Force false for deterministic banner assertions.
+vi.mock('../../lib/version.js', async (importOriginal) => ({
+    ...(await importOriginal()),
+    isRuntimePackageLocal: () => false,
+}));
 function createMinimalContext(overrides = {}) {
     return {
         contextPercent: 30,

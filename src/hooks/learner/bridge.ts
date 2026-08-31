@@ -18,8 +18,9 @@ import {
 } from "fs";
 import { join, dirname, basename } from "path";
 import { homedir } from "os";
-import { OmgPaths } from "../../lib/worktree-paths.js";
+import { OmcPaths, getOmcRoot } from "../../lib/worktree-paths.js";
 import { parseYamlMetadata } from "./parser.js";
+import { expandTriggers } from "./transliteration-map.js";
 
 // Re-export constants
 export const USER_SKILLS_DIR = join(
@@ -28,8 +29,9 @@ export const USER_SKILLS_DIR = join(
   "skills",
   "omc-learned",
 );
-export const GLOBAL_SKILLS_DIR = join(homedir(), ".omcp", "skills");
-export const PROJECT_SKILLS_SUBDIR = OmgPaths.SKILLS;
+export const GLOBAL_SKILLS_DIR = join(homedir(), ".omg", "skills");
+export const PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
+export const PROJECT_AGENT_SKILLS_SUBDIR = join(".agents", "skills");
 export const SKILL_EXTENSION = ".md";
 
 /** Session TTL: 1 hour */
@@ -137,7 +139,7 @@ function getSkillMetadataCache(projectRoot: string): CachedSkillData[] {
         path: candidate.path,
         name,
         triggers,
-        triggersLower: triggers.map((t) => t.toLowerCase()),
+        triggersLower: expandTriggers(triggers.map((t) => t.toLowerCase())),
         matching: parsed.metadata.matching,
         content: parsed.content,
         description: parsed.metadata.description,
@@ -179,9 +181,6 @@ function summarizeSkillContent(content: string): string {
     .find((line) => line && !line.startsWith("---"));
   return (firstUsefulLine || content.replace(/\s+/g, " ").trim()).slice(0, 240);
 }
-
-/** State file path */
-const STATE_FILE = `${OmgPaths.STATE}/skill-sessions.json`;
 
 // =============================================================================
 // Types
@@ -240,7 +239,7 @@ interface SessionState {
  * Get state file path for a project.
  */
 function getStateFilePath(projectRoot: string): string {
-  return join(projectRoot, STATE_FILE);
+  return join(getOmcRoot(projectRoot), "state", "skill-sessions.json");
 }
 
 /**
@@ -395,22 +394,28 @@ export function findSkillFiles(
 
   // 1. Search project-level skills (higher priority)
   if (scope === "project" || scope === "all") {
-    const projectSkillsDir = join(projectRoot, PROJECT_SKILLS_SUBDIR);
-    const projectFiles: string[] = [];
-    findSkillFilesRecursive(projectSkillsDir, projectFiles);
+    const projectSkillDirs = [
+      join(projectRoot, PROJECT_SKILLS_SUBDIR),
+      join(projectRoot, PROJECT_AGENT_SKILLS_SUBDIR),
+    ];
 
-    for (const filePath of projectFiles) {
-      const realPath = safeRealpathSync(filePath);
-      if (seenRealPaths.has(realPath)) continue;
-      if (!isWithinBoundary(realPath, projectSkillsDir)) continue;
-      seenRealPaths.add(realPath);
+    for (const projectSkillsDir of projectSkillDirs) {
+      const projectFiles: string[] = [];
+      findSkillFilesRecursive(projectSkillsDir, projectFiles);
 
-      candidates.push({
-        path: filePath,
-        realPath,
-        scope: "project",
-        sourceDir: projectSkillsDir,
-      });
+      for (const filePath of projectFiles) {
+        const realPath = safeRealpathSync(filePath);
+        if (seenRealPaths.has(realPath)) continue;
+        if (!isWithinBoundary(realPath, projectSkillsDir)) continue;
+        seenRealPaths.add(realPath);
+
+        candidates.push({
+          path: filePath,
+          realPath,
+          scope: "project",
+          sourceDir: projectSkillsDir,
+        });
+      }
     }
   }
 

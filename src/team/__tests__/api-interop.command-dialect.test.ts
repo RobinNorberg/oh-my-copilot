@@ -5,26 +5,33 @@ import {
 } from '../api-interop.js';
 
 describe('team api command dialect resolution', () => {
-  it('defaults to omcp team api', () => {
-    expect(resolveTeamApiCliCommand({} as NodeJS.ProcessEnv)).toBe('omcp team api');
+  it('defaults to omc team api', () => {
+    expect(resolveTeamApiCliCommand({} as NodeJS.ProcessEnv)).toBe('omc team api');
   });
 
-  it('returns omcp team api when running in OMC worker context', () => {
+  it('uses omx team api when running in OMX worker context', () => {
+    expect(resolveTeamApiCliCommand({
+      OMX_TEAM_WORKER: 'demo-team/worker-1',
+    } as NodeJS.ProcessEnv)).toBe('omx team api');
+
+    expect(resolveTeamApiCliCommand({
+      OMX_TEAM_STATE_ROOT: '/tmp/project/.omx/state',
+    } as NodeJS.ProcessEnv)).toBe('omx team api');
+  });
+
+  it('prefers omc team api when both contexts are present', () => {
     expect(resolveTeamApiCliCommand({
       OMC_TEAM_WORKER: 'demo-team/worker-1',
-    } as NodeJS.ProcessEnv)).toBe('omcp team api');
-
-    expect(resolveTeamApiCliCommand({
-      OMC_TEAM_STATE_ROOT: '/tmp/project/.omcp/state',
-    } as NodeJS.ProcessEnv)).toBe('omcp team api');
+      OMX_TEAM_WORKER: 'demo-team/worker-2',
+    } as NodeJS.ProcessEnv)).toBe('omc team api');
   });
 
-  it('builds legacy deprecation hint with omc command', () => {
+  it('builds legacy deprecation hint with omx command in OMX context', () => {
     const hint = buildLegacyTeamDeprecationHint(
       'team_claim_task',
       { team_name: 'demo', task_id: '1', worker: 'worker-1' },
-      { OMC_TEAM_WORKER: 'demo/worker-1' } as NodeJS.ProcessEnv,
+      { OMX_TEAM_WORKER: 'demo/worker-1' } as NodeJS.ProcessEnv,
     );
-    expect(hint).toContain('Use CLI interop: omcp team api claim-task');
+    expect(hint).toContain('Use CLI interop: omx team api claim-task');
   });
 });

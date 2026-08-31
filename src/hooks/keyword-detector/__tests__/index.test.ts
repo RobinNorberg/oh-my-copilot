@@ -11,6 +11,7 @@ import {
   isUnderspecifiedForExecution,
   applyRalplanGate,
   NON_LATIN_SCRIPT_PATTERN,
+  parseExplicitWorkflowSlashInvocation,
 } from '../index.js';
 
 // Mock isTeamEnabled
@@ -136,6 +137,21 @@ Why did this happen?`);
       expect(result).not.toContain('<br');
     });
 
+    it('should strip HTML comments that contain keyword triggers', () => {
+      const result = sanitizeForKeywordDetection(`Please review this draft document for tone and clarity:
+
+<!-- ralph: rewrite intro section with more urgency -->
+<!-- autopilot note: Why Artificially Inflating GitHub Star Counts Is Harmful:
+popularity without merit misleads developers, distorts discovery, unfairly rewards dishonest projects, and erodes trust in GitHub stars as a community signal. -->
+
+Final draft.`);
+
+      expect(result).not.toContain('ralph');
+      expect(result).not.toContain('autopilot');
+      expect(result).toContain('Please review this draft document for tone and clarity:');
+      expect(result).toContain('Final draft.');
+    });
+
     it('should strip URLs', () => {
       const result = sanitizeForKeywordDetection('see https://example.com/codex/path');
       expect(result).not.toContain('codex');
@@ -149,6 +165,17 @@ Why did this happen?`);
     it('should strip markdown code blocks', () => {
       const result = sanitizeForKeywordDetection('```\nask codex\n```');
       expect(result).not.toContain('codex');
+    });
+
+    it('should strip markdown blockquotes that contain keywords', () => {
+      const result = sanitizeForKeywordDetection('> ultrawork comparison\nactual question below');
+      expect(result).not.toContain('ultrawork');
+      expect(result).toContain('actual question below');
+    });
+
+    it('should strip markdown tables that contain keywords', () => {
+      const result = sanitizeForKeywordDetection('| mode | note |\n| --- | --- |\n| ultrawork | reference |');
+      expect(result).not.toContain('ultrawork');
     });
 
     it('should strip inline code', () => {
@@ -263,6 +290,176 @@ Why did this happen?`);
         expect(ralphMatch?.keyword).toBe('ralph');
       });
 
+      it('should NOT detect informational Korean questions about ralph and ralplan', () => {
+        const result = detectKeywordsWithType('ralph 와 ralplan 은 뭐야?');
+        expect(result).toEqual([]);
+      });
+
+      it('should NOT detect Korean ralph banter as activation', () => {
+        const result = detectKeywordsWithType('너도 ralph라도 쥐어줘야해?ㅋㅋ');
+        expect(result).toEqual([]);
+      });
+
+      it('should still detect explicit ralph imperative activation', () => {
+        expect(detectKeywordsWithType('/ralph fix parser').find((r) => r.type === 'ralph')).toBeDefined();
+        expect(detectKeywordsWithType('run ralph on this issue').find((r) => r.type === 'ralph')).toBeDefined();
+        expect(detectKeywordsWithType('랄프 켜').find((r) => r.type === 'ralph')).toBeDefined();
+      });
+
+      it('should NOT detect informational English questions about ralph', () => {
+        const result = detectKeywordsWithType('What is ralph and how do I use it?');
+        expect(result).toEqual([]);
+      });
+
+      it('should NOT detect informational mode/now phrasing', () => {
+        expect(detectKeywordsWithType('What is autopilot mode now?')).toEqual([]);
+        expect(detectKeywordsWithType('what is ralph mode now?')).toEqual([]);
+      });
+
+      it('should NOT detect help-style use questions for autopilot', () => {
+        expect(detectKeywordsWithType('How do I use autopilot?')).toEqual([]);
+      });
+
+      it('should NOT detect what-is plus how-to-use phrasing for autopilot', () => {
+        expect(detectKeywordsWithType("What's autopilot and how to use it?")).toEqual([]);
+      });
+
+      it('should detect explicit activation even when a nearby help question exists', () => {
+        const result = detectKeywordsWithType('Use autopilot to fix bug in payments. What is the expected output?');
+        expect(result.find((r) => r.type === 'autopilot')).toBeDefined();
+      });
+
+      it('should NOT detect informational Japanese questions about ralplan', () => {
+        const result = detectKeywordsWithType('ralplan とは？ 使い方を教えて');
+        expect(result).toEqual([]);
+      });
+
+      it('should NOT detect Japanese "違いを教えて" difference questions', () => {
+        // "...の違いを教えて" (explain the difference) is informational, not an activation.
+        expect(
+          detectKeywordsWithType('ディープサーチと普通の検索の違いを教えて').find(
+            (r) => r.type === 'deepsearch',
+          ),
+        ).toBeUndefined();
+        expect(
+          detectKeywordsWithType('ディープアナライズと分析の違いを教えて').find(
+            (r) => r.type === 'analyze',
+          ),
+        ).toBeUndefined();
+        expect(
+          detectKeywordsWithType('何が違うのか教えて').length,
+        ).toBe(0);
+      });
+
+      it('Japanese "違い" with a work verb (修正) is NOT suppressed', () => {
+        // "違いを修正して" is a work request, not a difference question — must still fire.
+        const result = detectKeywordsWithType('コードレビューの違いを修正して');
+        expect(result.find((r) => r.type === 'code-review')).toBeDefined();
+      });
+
+      it('should NOT detect informational Chinese questions about ralph', () => {
+        const result = detectKeywordsWithType('ralph 是什么？怎么用？');
+        expect(result).toEqual([]);
+      });
+
+      it('should NOT detect informational Thai prompts with English mode names', () => {
+        expect(detectKeywordsWithType('ทำไม autopilot มันชอบทำงานเองนะ')).toEqual([]);
+        expect(
+          detectKeywordsWithType('ผมอยากเพิ่ม rule ให้ถามกลับเหมือน skill deep interview แต่ระบบเดิมก็ทำได้อยู่แล้วถูกมั้ย'),
+        ).toEqual([]);
+        expect(detectKeywordsWithType('autopilot คืออะไร ใช้งานยังไง')).toEqual([]);
+      });
+
+      it.each([
+        'autopilot: build me a todo app',
+        'autopilot: ทำเว็บเหมือน Trello',
+        'autopilot: แก้บั๊กเกี่ยวกับ auth',
+      ])('should detect explicit Thai-adjacent autopilot command "%s"', (prompt) => {
+        expect(detectKeywordsWithType(prompt).find((r) => r.type === 'autopilot')).toBeDefined();
+      });
+
+      it.each([
+        'build me a website เหมือน Airbnb',
+        'I want a dashboard เกี่ยวกับ sales',
+      ])('should detect Thai-adjacent autopilot creation alias "%s"', (prompt) => {
+        expect(detectKeywordsWithType(prompt).find((r) => r.type === 'autopilot')).toBeDefined();
+      });
+
+      it('should NOT detect colon-prefixed autopilot heading help question', () => {
+        expect(detectKeywordsWithType('autopilot: what is it and how do I use it?')).toEqual([]);
+      });
+
+      it('Korean informational prompt does not trigger keyword', () => {
+        // "알려줘" (tell me about) is informational
+        expect(detectKeywordsWithType('오토파일럿 기능 알려줘')).toHaveLength(0);
+        expect(detectKeywordsWithType('랄프 뭐야')).toHaveLength(0);
+        expect(detectKeywordsWithType('울트라워크 사용법 설명해줘')).toHaveLength(0);
+        expect(detectKeywordsWithType('딥인터뷰 방법 소개해줘')).toHaveLength(0);
+      });
+
+      it('Korean expanded informational phrases do not trigger keyword', () => {
+        // "뭔데" (what is it), "어떤 기능이야", "소개 부탁", "알려줄래", "뭐가 달라" are informational
+        expect(detectKeywordsWithType('오토파일럿이 뭔데')).toHaveLength(0);
+        expect(detectKeywordsWithType('안티슬롭이 뭐야')).toHaveLength(0);
+        expect(detectKeywordsWithType('오토파일럿 어떤 기능이야')).toHaveLength(0);
+        expect(detectKeywordsWithType('랄프 소개 부탁해')).toHaveLength(0);
+        expect(detectKeywordsWithType('울트라워크 알려줄래')).toHaveLength(0);
+        expect(detectKeywordsWithType('오토파일럿이 랄프랑 뭐가 달라')).toHaveLength(0);
+      });
+
+      it('Korean imperative command with 기능/방법 SHOULD trigger keyword (not filtered)', () => {
+        // "기능 켜줘" / "기능으로 진행해줘" — 기능 alone without a question verb is NOT informational
+        const autopilotResult = detectKeywordsWithType('오토파일럿 기능 켜고 버그 고쳐줘');
+        expect(autopilotResult.find((r) => r.type === 'autopilot')).toBeDefined();
+
+        const ralphResult = detectKeywordsWithType('랄프 기능으로 끝까지 진행해줘');
+        expect(ralphResult.find((r) => r.type === 'ralph')).toBeDefined();
+      });
+
+      it('should NOT detect diagnostic mentions of keywords as activation requests', () => {
+        expect(detectKeywordsWithType('ralph keeps looping, investigate')).toEqual([]);
+        expect(detectKeywordsWithType("there's an issue with ultrawork")).toEqual([]);
+        expect(detectKeywordsWithType('autopilot has a bug in this repo')).toEqual([]);
+        expect(detectKeywordsWithType('ralph-loop이 자꾸 재실행되는 문제가 있어. 점검해줘')).toEqual([]);
+      });
+
+      it('should still detect explicit activation requests that mention bug/issue context', () => {
+        const autopilot = detectKeywordsWithType('use autopilot to fix bug in payments');
+        expect(autopilot.find((r) => r.type === 'autopilot')).toBeDefined();
+
+        const ralph = detectKeywordsWithType('run ralph on issue in parser module');
+        expect(ralph.find((r) => r.type === 'ralph')).toBeDefined();
+
+        const autopilotIssue = detectKeywordsWithType('fix issue with autopilot in parser module');
+        expect(autopilotIssue.find((r) => r.type === 'autopilot')).toBeDefined();
+
+        const ralphProblem = detectKeywordsWithType('investigate problem with ralph state');
+        expect(ralphProblem.find((r) => r.type === 'ralph')).toBeDefined();
+      });
+
+      it('should detect later directive occurrence after earlier informational same keyword mention', () => {
+        const result = detectKeywordsWithType(
+          'The old docs call ralph deprecated. Please ralph and fix the flaky tests.',
+        );
+        expect(result).toEqual([
+          expect.objectContaining({ type: 'ralph', keyword: 'ralph' }),
+        ]);
+      });
+
+      it('should NOT detect earlier informational ralph because a later quoted phrase says please ralph', () => {
+        const result = detectKeywordsWithType(
+          'The docs say ralph is triggered by the phrase "please ralph".',
+        );
+        expect(result.find((r) => r.type === 'ralph')).toBeUndefined();
+      });
+
+      it('should NOT detect earlier informational autopilot because a later quoted phrase says please autopilot', () => {
+        const result = detectKeywordsWithType(
+          'The docs say autopilot is triggered by the phrase "please autopilot".',
+        );
+        expect(result.find((r) => r.type === 'autopilot')).toBeUndefined();
+      });
+
       it('should NOT detect "don\'t stop" phrase', () => {
         const result = detectKeywordsWithType("Don't stop until done");
         const ralphMatch = result.find((r) => r.type === 'ralph');
@@ -313,10 +510,10 @@ Why did this happen?`);
         expect(autopilotMatch).toBeDefined();
       });
 
-      it('should NOT detect "build me" phrase', () => {
-        const result = detectKeywordsWithType('build me a web app');
+      it('should detect documented "build me" autopilot alias', () => {
+        const result = detectKeywordsWithType('build me a website');
         const autopilotMatch = result.find((r) => r.type === 'autopilot');
-        expect(autopilotMatch).toBeUndefined();
+        expect(autopilotMatch).toBeDefined();
       });
 
       it('should NOT detect "autonomous" keyword', () => {
@@ -327,28 +524,72 @@ Why did this happen?`);
     });
 
     describe('ultrawork keyword', () => {
-      it('should detect ultrawork keyword', () => {
-        const result = detectKeywordsWithType('Do ultrawork on this');
-        const ultraworkMatch = result.find((r) => r.type === 'ultrawork');
-        expect(ultraworkMatch).toBeDefined();
+      it('should NOT detect retired ultrawork keyword', () => {
+        expect(detectKeywordsWithType('Do ultrawork on this')).toEqual([]);
       });
 
-      it('should detect ulw abbreviation', () => {
-        const result = detectKeywordsWithType('ulw this code');
-        const ultraworkMatch = result.find((r) => r.type === 'ultrawork');
-        expect(ultraworkMatch).toBeDefined();
+      it('should NOT detect retired ulw abbreviation', () => {
+        expect(detectKeywordsWithType('ulw this code')).toEqual([]);
       });
 
       it('should NOT detect uw abbreviation', () => {
-        const result = detectKeywordsWithType('uw this code');
-        const ultraworkMatch = result.find((r) => r.type === 'ultrawork');
-        expect(ultraworkMatch).toBeUndefined();
+        expect(detectKeywordsWithType('uw this code')).toEqual([]);
       });
 
       it('should NOT detect deprecated pipeline phrases', () => {
         const keywordResult = detectKeywordsWithType('agent pipeline the task and chain agents');
         const pipelineLikeMatches = keywordResult.filter((r) => (r as { type: string }).type === 'pipeline');
         expect(pipelineLikeMatches).toHaveLength(0);
+      });
+
+      it('should NOT detect explanatory comparison prose from issue #2474', () => {
+        const result = detectKeywordsWithType(`🦌 DeerFlow vs ⚡ OMC Ultrawork - 완전 비교!
+...
+OMC Ultrawork = "특수부대 작전 반"
+...
+결론: "순식간에 많은 작업" → OMC Ultrawork ⚡
+이런대화가 한번이라면 몇번할수있을까 오픈라우터 20달러 결제기준 api로`);
+        expect(result).toEqual([]);
+      });
+
+      it('should NOT detect quoted follow-up references after a bad activation', () => {
+        const result = detectKeywordsWithType('The article said "OMC Ultrawork", but why is the answer the same?');
+        expect(result).toEqual([]);
+      });
+
+      it('should NOT detect Korean ultrawork/ralph relationship meta-question as activation', () => {
+        const result = detectKeywordsWithType('울트라워크랑 랄프는 무슨 관계야?');
+        expect(result).toEqual([]);
+      });
+
+      it('should NOT detect retired ultrawork imperative activation', () => {
+        expect(detectKeywordsWithType('start ultrawork on this issue')).toEqual([]);
+        expect(detectKeywordsWithType('울트라워크 돌려')).toEqual([]);
+      });
+
+      it('should preserve surviving ralph detection in mixed Korean retired-plus-imperative prompts', () => {
+        expect(detectKeywordsWithType('랄프랑 울트라워크는 무슨 관계야? 랄프 켜')).toEqual([
+          expect.objectContaining({ type: 'ralph', keyword: '랄프' }),
+        ]);
+      });
+
+      it('should NOT detect single-mode explanatory definitions followed by an unrelated question', () => {
+        const result = detectKeywordsWithType('OMC Ultrawork = "special ops". how much would it cost?');
+        expect(result).toEqual([]);
+      });
+
+      it('should NOT detect retired activation after a single-mode explanatory definition', () => {
+        const result = detectKeywordsWithType(
+          'OMC Ultrawork = "special ops". then use ultrawork on issue #2474 in src/hooks/keyword-detector/index.ts',
+        );
+        expect(result).toEqual([]);
+      });
+
+      it('should preserve surviving detection after retired comparison text', () => {
+        const result = detectKeywordsWithType(
+          'Compare DeerFlow vs ultrawork, then use ralph on issue #2474 in src/hooks/keyword-detector/index.ts',
+        );
+        expect(result.find((r) => r.type === 'ralph')).toBeDefined();
       });
 
       it('should NOT detect pasted skill transcript blocks as fresh activations', () => {
@@ -587,42 +828,6 @@ diff --git a/a b/b
       });
     });
 
-    describe('informational intent filtering', () => {
-      it('should NOT detect informational mode/now phrasing', () => {
-        expect(detectKeywordsWithType('What is autopilot mode now?')).toEqual([]);
-        expect(detectKeywordsWithType('what is ralph mode now?')).toEqual([]);
-      });
-
-      it('should NOT detect help-style use questions for autopilot', () => {
-        expect(detectKeywordsWithType('How do I use autopilot?')).toEqual([]);
-      });
-
-      it('should detect explicit activation even when a nearby help question exists', () => {
-        const result = detectKeywordsWithType('Use autopilot to fix bug in payments. What is the expected output?');
-        expect(result.find((r) => r.type === 'autopilot')).toBeDefined();
-      });
-
-      it('should NOT detect diagnostic mentions of keywords as activation requests', () => {
-        expect(detectKeywordsWithType('ralph keeps looping, investigate')).toEqual([]);
-        expect(detectKeywordsWithType("there's an issue with ultrawork")).toEqual([]);
-        expect(detectKeywordsWithType('autopilot has a bug in this repo')).toEqual([]);
-      });
-
-      it('should still detect explicit activation requests that mention bug/issue context', () => {
-        const autopilot = detectKeywordsWithType('use autopilot to fix bug in payments');
-        expect(autopilot.find((r) => r.type === 'autopilot')).toBeDefined();
-
-        const ralph = detectKeywordsWithType('run ralph on issue in parser module');
-        expect(ralph.find((r) => r.type === 'ralph')).toBeDefined();
-
-        const autopilotIssue = detectKeywordsWithType('fix issue with autopilot in parser module');
-        expect(autopilotIssue.find((r) => r.type === 'autopilot')).toBeDefined();
-
-        const ralphProblem = detectKeywordsWithType('investigate problem with ralph state');
-        expect(ralphProblem.find((r) => r.type === 'ralph')).toBeDefined();
-      });
-    });
-
     describe('code block exclusion', () => {
       it('should not detect keyword inside fenced code block', () => {
         const text = '```\nautopilot\n```';
@@ -648,6 +853,25 @@ diff --git a/a b/b
         const result = detectKeywordsWithType(text);
         const ralphMatch = result.find((r) => r.type === 'ralph');
         expect(ralphMatch).toBeUndefined();
+      });
+
+      it('should not detect keywords inside HTML comments', () => {
+        const text = `Please review this draft document for tone and clarity:
+
+<!-- ralph: rewrite intro section with more urgency -->
+<!-- autopilot note: Why Artificially Inflating GitHub Star Counts Is Harmful:
+popularity without merit misleads developers, distorts discovery, unfairly rewards dishonest projects, and erodes trust in GitHub stars as a community signal. -->
+
+Final draft:
+
+Why Artificially Inflating GitHub Star Counts Is Harmful
+=========================================================
+
+This article argues that fake popularity signals damage trust in open source.`;
+        const result = detectKeywordsWithType(text);
+
+        expect(result.find((r) => r.type === 'ralph')).toBeUndefined();
+        expect(result.find((r) => r.type === 'autopilot')).toBeUndefined();
       });
     });
 
@@ -701,42 +925,32 @@ diff --git a/a b/b
       });
     });
 
-    describe('cccg keyword', () => {
-      it('should detect "cccg" keyword', () => {
-        const result = detectKeywordsWithType('cccg this feature');
-        const cccgMatch = result.find((r) => r.type === 'cccg');
-        expect(cccgMatch).toBeDefined();
-        expect(cccgMatch?.keyword).toMatch(/cccg/i);
+    describe('ccg keyword', () => {
+      it('should NOT detect retired "ccg" keyword', () => {
+        expect(detectKeywordsWithType('ccg this feature')).toEqual([]);
       });
 
-      it('should detect "copilot-claude-codex-gemini" keyword', () => {
-        const result = detectKeywordsWithType('use copilot-claude-codex-gemini to build this');
-        const match = result.find((r) => r.type === 'cccg');
-        expect(match).toBeDefined();
+      it('should NOT detect retired "claude-codex-gemini" keyword', () => {
+        expect(detectKeywordsWithType('use claude-codex-gemini to build this')).toEqual([]);
       });
 
-      it('should detect CCCG in uppercase', () => {
-        const result = detectKeywordsWithType('CCCG add user profile page');
-        const match = result.find((r) => r.type === 'cccg');
-        expect(match).toBeDefined();
+      it('should NOT detect retired CCG in uppercase', () => {
+        expect(detectKeywordsWithType('CCG add user profile page')).toEqual([]);
       });
 
-      it('should NOT detect cccg inside code block', () => {
-        const result = detectKeywordsWithType('```\ncccg mode\n```');
-        const match = result.find((r) => r.type === 'cccg');
-        expect(match).toBeUndefined();
+      it('should NOT detect ccg inside code block', () => {
+        const result = detectKeywordsWithType('```\nccg mode\n```');
+        expect(result).toEqual([]);
       });
 
-      it('should NOT detect cccg inside inline code', () => {
-        const result = detectKeywordsWithType('use `cccg` command');
-        const match = result.find((r) => r.type === 'cccg');
-        expect(match).toBeUndefined();
+      it('should NOT detect ccg inside inline code', () => {
+        const result = detectKeywordsWithType('use `ccg` command');
+        expect(result).toEqual([]);
       });
 
-      it('should detect cccg with other text around it', () => {
-        const result = detectKeywordsWithType('please cccg this full-stack feature');
-        const match = result.find((r) => r.type === 'cccg');
-        expect(match).toBeDefined();
+      it('should preserve surviving codex detection in a mixed retired ccg prompt', () => {
+        const result = detectKeywordsWithType('ccg ask codex to review this full-stack feature');
+        expect(result.find((r) => r.type === 'codex')).toBeDefined();
       });
     });
 
@@ -772,6 +986,32 @@ diff --git a/a b/b
       });
     });
 
+    describe('cursor keyword', () => {
+      it('should detect "ask cursor"', () => {
+        const result = detectKeywordsWithType('ask cursor to implement');
+        const cursorMatch = result.find((r) => r.type === 'cursor');
+        expect(cursorMatch).toBeDefined();
+      });
+
+      it('should detect "use cursor"', () => {
+        const result = detectKeywordsWithType('use cursor for edits');
+        const cursorMatch = result.find((r) => r.type === 'cursor');
+        expect(cursorMatch).toBeDefined();
+      });
+
+      it('should detect "delegate to cursor"', () => {
+        const result = detectKeywordsWithType('delegate to cursor');
+        const cursorMatch = result.find((r) => r.type === 'cursor');
+        expect(cursorMatch).toBeDefined();
+      });
+
+      it('should NOT detect bare cursor keyword', () => {
+        const result = detectKeywordsWithType('move the cursor there');
+        const cursorMatch = result.find((r) => r.type === 'cursor');
+        expect(cursorMatch).toBeUndefined();
+      });
+    });
+
     describe('sanitization false-positive prevention', () => {
       it('should NOT detect codex in URL', () => {
         const result = detectKeywordsWithType('see https://example.com/gpt');
@@ -789,6 +1029,109 @@ diff --git a/a b/b
         const result = detectKeywordsWithType('`ask codex`');
         const codexMatch = result.find((r) => r.type === 'codex');
         expect(codexMatch).toBeUndefined();
+      });
+    });
+
+    describe('quoted-span exemption (issue #3380)', () => {
+      it('should NOT detect autopilot inside a quoted example sentence', () => {
+        const text =
+          'Your last message contained "I thought if I told it to use autopilot, it would just continue..." — that\'s reported speech about a hypothetical.';
+        const result = detectKeywordsWithType(text);
+        const autopilotMatch = result.find((r) => r.type === 'autopilot');
+        expect(autopilotMatch).toBeUndefined();
+      });
+
+      it('should still detect autopilot when unquoted', () => {
+        const result = detectKeywordsWithType('use autopilot on this task');
+        const autopilotMatch = result.find((r) => r.type === 'autopilot');
+        expect(autopilotMatch).toBeDefined();
+      });
+
+      it('should NOT detect ralph inside a quoted example sentence', () => {
+        const text = 'The docs give "run ralph on this" as an example of an activating phrase.';
+        const result = detectKeywordsWithType(text);
+        const ralphMatch = result.find((r) => r.type === 'ralph');
+        expect(ralphMatch).toBeUndefined();
+      });
+
+      it('should still detect ralph when quoted for emphasis alongside an execution directive', () => {
+        const result = detectKeywordsWithType('"ralph" fix the auth bug');
+        const ralphMatch = result.find((r) => r.type === 'ralph');
+        expect(ralphMatch).toBeDefined();
+      });
+
+      it('should still detect autopilot when quoted for emphasis alongside an execution directive', () => {
+        const result = detectKeywordsWithType('"autopilot" implement the login page');
+        const autopilotMatch = result.find((r) => r.type === 'autopilot');
+        expect(autopilotMatch).toBeDefined();
+      });
+
+      it('should NOT detect the quoted keyword when an unrelated genuine command with a directive appears elsewhere in the same message', () => {
+        const result = detectKeywordsWithType(
+          'Docs say "use autopilot" as an example, but can you run ralph now to fix the deployment script?',
+        );
+        const autopilotMatch = result.find((r) => r.type === 'autopilot');
+        const ralphMatch = result.find((r) => r.type === 'ralph');
+        expect(autopilotMatch).toBeUndefined();
+        expect(ralphMatch).toBeDefined();
+      });
+
+      it('should NOT detect autopilot when a bug-report prompt describes fixing the false positive itself', () => {
+        const result = detectKeywordsWithType(
+          'Please fix the detector: it activates when the user writes "use autopilot" in a bug report.',
+        );
+        const autopilotMatch = result.find((r) => r.type === 'autopilot');
+        expect(autopilotMatch).toBeUndefined();
+      });
+
+      it('should NOT detect autopilot when asked to implement a regression test for the quoted phrase', () => {
+        const result = detectKeywordsWithType(
+          'Implement a regression test for the sentence "use autopilot" so it no longer activates.',
+        );
+        const autopilotMatch = result.find((r) => r.type === 'autopilot');
+        expect(autopilotMatch).toBeUndefined();
+      });
+
+      it('should NOT detect ralph when asked to address a false positive describing the quoted phrase', () => {
+        const result = detectKeywordsWithType(
+          'Please address this false positive: "run ralph on this" should be treated as docs text.',
+        );
+        const ralphMatch = result.find((r) => r.type === 'ralph');
+        expect(ralphMatch).toBeUndefined();
+      });
+
+      it('should NOT detect autopilot when the execution directive is INSIDE the quoted text itself', () => {
+        const result = detectKeywordsWithType(
+          'The old ticket said "please fix autopilot" and closed without action.',
+        );
+        const autopilotMatch = result.find((r) => r.type === 'autopilot');
+        expect(autopilotMatch).toBeUndefined();
+      });
+
+      it('should NOT detect autopilot for a narrated quote containing a directive, while still detecting an unrelated genuine command', () => {
+        const result = detectKeywordsWithType(
+          'The FAQ says "please fix autopilot" is a common typo people made in 2023. Separately, ralph the test suite until it passes.',
+        );
+        const autopilotMatch = result.find((r) => r.type === 'autopilot');
+        const ralphMatch = result.find((r) => r.type === 'ralph');
+        expect(autopilotMatch).toBeUndefined();
+        expect(ralphMatch).toBeDefined();
+      });
+
+      it('should still detect ralph when the mode name alone is quoted for emphasis after an activation verb', () => {
+        const result = detectKeywordsWithType('run "ralph" on this issue');
+        const ralphMatch = result.find((r) => r.type === 'ralph');
+        expect(ralphMatch).toBeDefined();
+      });
+
+      it('should still detect autopilot when the mode name alone is quoted for emphasis after an activation verb', () => {
+        const result = detectKeywordsWithType('use "autopilot" on this task');
+        const autopilotMatch = result.find((r) => r.type === 'autopilot');
+        expect(autopilotMatch).toBeDefined();
+      });
+
+      it('should NOT detect retired ultrawork when the mode name alone is quoted after an activation verb', () => {
+        expect(detectKeywordsWithType('start "ultrawork" on this repo')).toEqual([]);
       });
     });
 
@@ -863,9 +1206,9 @@ diff --git a/a b/b
         expect(result?.type).toBe('autopilot');
       });
 
-      it('should return ultrawork over ultrathink', () => {
+      it('should ignore retired ultrawork and return ultrathink', () => {
         const result = getPrimaryKeyword('ultrawork and ultrathink');
-        expect(result?.type).toBe('ultrawork');
+        expect(result?.type).toBe('ultrathink');
       });
 
       it('should return code-review over ultrathink', () => {
@@ -900,7 +1243,7 @@ diff --git a/a b/b
         expect(result?.type).toBe('cancel');
       });
 
-      it('should return ralph over ultrawork', () => {
+      it('should preserve ralph while ignoring retired ultrawork', () => {
         const result = getPrimaryKeyword('ralph ulw fix errors');
         expect(result?.type).toBe('ralph');
       });
@@ -908,7 +1251,7 @@ diff --git a/a b/b
       it('should detect all keywords even when multiple present', () => {
         const result = detectKeywordsWithType('ulw ralph fix errors');
         const types = result.map(r => r.type);
-        expect(types).toContain('ultrawork');
+        expect(types).not.toContain('ultrawork');
         expect(types).toContain('ralph');
       });
     });
@@ -950,7 +1293,7 @@ diff --git a/a b/b
     });
 
     it('should return multiple non-conflicting keywords in priority order', () => {
-      expect(getAllKeywords('ulw ralph fix errors')).toEqual(['ralph', 'ultrawork']);
+      expect(getAllKeywords('ulw ralph fix errors')).toEqual(['ralph']);
     });
 
     it('should return cancel exclusively when present', () => {
@@ -969,10 +1312,10 @@ diff --git a/a b/b
       expect(result).not.toContain('swarm');
     });
 
-    it('should return ralph with ultrawork (not mutually exclusive)', () => {
+    it('should preserve ralph while ignoring retired ultrawork', () => {
       const result = getAllKeywords('ralph ultrawork fix');
       expect(result).toContain('ralph');
-      expect(result).toContain('ultrawork');
+      expect(result).not.toContain('ultrawork');
     });
 
     it('should return ralph with codex', () => {
@@ -987,33 +1330,25 @@ diff --git a/a b/b
       expect(result).toContain('gemini');
     });
 
-    it('should return cccg when cccg keyword present', () => {
-      const result = getAllKeywords('cccg add a user profile feature');
-      expect(result).toContain('cccg');
+    it('should not return retired ccg when ccg keyword is present', () => {
+      const result = getAllKeywords('ccg add a user profile feature');
+      expect(result).not.toContain('ccg');
     });
 
-    it('should return cccg with higher priority than codex/gemini', () => {
-      const result = getAllKeywords('cccg ask codex to review');
-      const cccgIdx = result.indexOf('cccg');
-      const codexIdx = result.indexOf('codex');
-      expect(cccgIdx).toBeGreaterThanOrEqual(0);
-      expect(codexIdx).toBeGreaterThanOrEqual(0);
-      expect(cccgIdx).toBeLessThan(codexIdx);
+    it('should preserve codex while ignoring retired ccg', () => {
+      const result = getAllKeywords('ccg ask codex to review');
+      expect(result).toEqual(['codex']);
     });
 
-    it('should return ralph before cccg in priority order', () => {
-      const result = getAllKeywords('ralph cccg build the app');
-      const ralphIdx = result.indexOf('ralph');
-      const cccgIdx = result.indexOf('cccg');
-      expect(ralphIdx).toBeGreaterThanOrEqual(0);
-      expect(cccgIdx).toBeGreaterThanOrEqual(0);
-      expect(ralphIdx).toBeLessThan(cccgIdx);
+    it('should preserve ralph while ignoring retired ccg', () => {
+      const result = getAllKeywords('ralph ccg build the app');
+      expect(result).toEqual(['ralph']);
     });
 
-    it('should not return cccg when cancel is present', () => {
-      const result = getAllKeywords('cancelomc cccg build');
+    it('should not return ccg when cancel is present', () => {
+      const result = getAllKeywords('cancelomc ccg build');
       expect(result).toEqual(['cancel']);
-      expect(result).not.toContain('cccg');
+      expect(result).not.toContain('ccg');
     });
 
     it('should return ralph over codex in priority', () => {
@@ -1045,7 +1380,7 @@ diff --git a/a b/b
     });
 
     // Team keyword detection disabled — team is now explicit-only via /team skill
-    // to prevent infinite spawning when Copilot workers receive prompts containing "team".
+    // to prevent infinite spawning when Claude workers receive prompts containing "team".
     it('should NOT detect team keyword (explicit-only mode)', () => {
       const result = getAllKeywords('team build the API');
       expect(result).not.toContain('team');
@@ -1331,13 +1666,13 @@ diff --git a/a b/b
     });
 
     it('should gate multiple execution keywords at once', () => {
-      const result = applyRalplanGate(['ralph', 'ultrawork'], 'ralph ultrawork fix it');
+      const result = applyRalplanGate(['ralph', 'autopilot'], 'ralph autopilot fix it');
       expect(result.gateApplied).toBe(true);
       expect(result.keywords).toContain('ralplan');
       expect(result.keywords).not.toContain('ralph');
-      expect(result.keywords).not.toContain('ultrawork');
+      expect(result.keywords).not.toContain('autopilot');
       expect(result.gatedKeywords).toContain('ralph');
-      expect(result.gatedKeywords).toContain('ultrawork');
+      expect(result.gatedKeywords).toContain('autopilot');
     });
 
     it('should not gate with force: escape hatch', () => {
@@ -1609,42 +1944,873 @@ diff --git a/a b/b
     });
   });
 
-  describe('Ouroboros CLI invocation skip (issue #2954)', () => {
-    // The bare brand name `ouroboros`/`ooo` at the start of a prompt is a
-    // deterministic upstream CLI command, not a routing request for
-    // deep-interview. The skip predicate defers to the upstream CLI in those
-    // cases. Natural-language mentions where the brand appears mid-sentence
-    // are unaffected.
-    it('should NOT detect "ouroboros auto" as deep-interview (upstream CLI invocation)', () => {
-      const result = detectKeywordsWithType('ouroboros auto "Add /healthz endpoint"');
-      const match = result.find((r) => r.type === 'deep-interview');
-      expect(match).toBeUndefined();
+  describe('Korean cross-script keyword detection', () => {
+    describe('Korean keyword detection (basic matching)', () => {
+      it('should detect "오토파일럿" as autopilot', () => {
+        const result = detectKeywordsWithType('오토파일럿');
+        const match = result.find((r) => r.type === 'autopilot');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "오토파일럿 해줘" as autopilot', () => {
+        const result = detectKeywordsWithType('오토파일럿 해줘');
+        const match = result.find((r) => r.type === 'autopilot');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "랄프" as ralph', () => {
+        const result = detectKeywordsWithType('랄프');
+        const match = result.find((r) => r.type === 'ralph');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "랄프 모드" as ralph', () => {
+        const result = detectKeywordsWithType('랄프 모드');
+        const match = result.find((r) => r.type === 'ralph');
+        expect(match).toBeDefined();
+      });
+
+      it('should NOT detect "취소" as cancel (generic Korean word, too common)', () => {
+        const result = detectKeywordsWithType('취소');
+        const match = result.find((r) => r.type === 'cancel');
+        expect(match).toBeUndefined();
+      });
+
+      it('should NOT detect "캔슬" as cancel (generic Korean word, too common)', () => {
+        const result = detectKeywordsWithType('캔슬');
+        const match = result.find((r) => r.type === 'cancel');
+        expect(match).toBeUndefined();
+      });
+
+      it('should NOT detect "스톱" as cancel (generic Korean word, too common)', () => {
+        const result = detectKeywordsWithType('스톱');
+        const match = result.find((r) => r.type === 'cancel');
+        expect(match).toBeUndefined();
+      });
+
+      it('should NOT trigger cancel for "설정 취소 방법 알려줘" (false positive example)', () => {
+        const result = detectKeywordsWithType('설정 취소 방법 알려줘');
+        const match = result.find((r) => r.type === 'cancel');
+        expect(match).toBeUndefined();
+      });
+
+      it('should NOT detect retired "울트라워크" as ultrawork', () => {
+        expect(detectKeywordsWithType('울트라워크')).toEqual([]);
+      });
+
+      it('should detect "랄플랜" as ralplan', () => {
+        const result = detectKeywordsWithType('랄플랜');
+        const match = result.find((r) => r.type === 'ralplan');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "코드리뷰 해줘" as code-review', () => {
+        const result = detectKeywordsWithType('코드리뷰 해줘');
+        const match = result.find((r) => r.type === 'code-review');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "코드 리뷰 해줘" (spaced) as code-review', () => {
+        const result = detectKeywordsWithType('코드 리뷰 해줘');
+        const match = result.find((r) => r.type === 'code-review');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "보안리뷰" as security-review', () => {
+        const result = detectKeywordsWithType('보안리뷰');
+        const match = result.find((r) => r.type === 'security-review');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "보안 리뷰" (spaced) as security-review', () => {
+        const result = detectKeywordsWithType('보안 리뷰');
+        const match = result.find((r) => r.type === 'security-review');
+        expect(match).toBeDefined();
+      });
+
+      it('should NOT detect "코드리뷰어 추천해줘" as code-review (reviewer false positive)', () => {
+        const result = detectKeywordsWithType('코드리뷰어 추천해줘');
+        const match = result.find((r) => r.type === 'code-review');
+        expect(match).toBeUndefined();
+      });
+
+      it('should NOT detect "보안리뷰어가 필요해" as security-review (reviewer false positive)', () => {
+        const result = detectKeywordsWithType('보안리뷰어가 필요해');
+        const match = result.find((r) => r.type === 'security-review');
+        expect(match).toBeUndefined();
+      });
+
+      it('should detect "울트라씽크" as ultrathink', () => {
+        const result = detectKeywordsWithType('울트라씽크');
+        const match = result.find((r) => r.type === 'ultrathink');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "딥서치" as deepsearch', () => {
+        const result = detectKeywordsWithType('딥서치');
+        const match = result.find((r) => r.type === 'deepsearch');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "딥 서치" (spaced) as deepsearch', () => {
+        const result = detectKeywordsWithType('딥 서치');
+        const match = result.find((r) => r.type === 'deepsearch');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "딥분석" as analyze', () => {
+        const result = detectKeywordsWithType('딥분석');
+        const match = result.find((r) => r.type === 'analyze');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "딥 분석" (spaced) as analyze', () => {
+        const result = detectKeywordsWithType('딥 분석');
+        const match = result.find((r) => r.type === 'analyze');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "딥인터뷰" as deep-interview', () => {
+        const result = detectKeywordsWithType('딥인터뷰');
+        const match = result.find((r) => r.type === 'deep-interview');
+        expect(match).toBeDefined();
+      });
+
+      it('should NOT detect "딥 인터뷰" (spaced) as deep-interview', () => {
+        const result = detectKeywordsWithType('딥 인터뷰');
+        const match = result.find((r) => r.type === 'deep-interview');
+        expect(match).toBeUndefined();
+      });
+
+      it('should NOT detect "고객 딥 인터뷰 질문지를 만들어줘" as deep-interview', () => {
+        const result = detectKeywordsWithType('고객 딥 인터뷰 질문지를 만들어줘');
+        const match = result.find((r) => r.type === 'deep-interview');
+        expect(match).toBeUndefined();
+      });
+
+      // Ouroboros CLI invocation skip — the bare brand name `ouroboros`/`ooo`
+      // at the start of a prompt is a deterministic upstream CLI command,
+      // not a routing request for deep-interview. The skip predicate defers
+      // to the upstream CLI in those cases. Natural-language mentions where
+      // the brand appears mid-sentence are unaffected.
+      it('should NOT detect "ouroboros auto" as deep-interview (upstream CLI invocation)', () => {
+        const result = detectKeywordsWithType('ouroboros auto "Add /healthz endpoint"');
+        const match = result.find((r) => r.type === 'deep-interview');
+        expect(match).toBeUndefined();
+      });
+
+      it('should NOT detect "ooo auto" as deep-interview (upstream CLI shortcut)', () => {
+        const result = detectKeywordsWithType('ooo auto "Build a habit tracker"');
+        const match = result.find((r) => r.type === 'deep-interview');
+        expect(match).toBeUndefined();
+      });
+
+      it('should NOT detect "/ouroboros:auto" as deep-interview (upstream CLI slash form)', () => {
+        const result = detectKeywordsWithType('/ouroboros:auto "Refactor logger"');
+        const match = result.find((r) => r.type === 'deep-interview');
+        expect(match).toBeUndefined();
+      });
+
+      it('should NOT detect "ouroboros run" as deep-interview', () => {
+        const result = detectKeywordsWithType('ouroboros run');
+        const match = result.find((r) => r.type === 'deep-interview');
+        expect(match).toBeUndefined();
+      });
+
+      it('should still detect natural-language ouroboros mention as deep-interview', () => {
+        const result = detectKeywordsWithType(
+          'please use ouroboros to clarify my requirements'
+        );
+        const match = result.find((r) => r.type === 'deep-interview');
+        expect(match).toBeDefined();
+      });
+
+      it('should still detect "딥인터뷰" as deep-interview when CLI guard does not apply', () => {
+        const result = detectKeywordsWithType('딥인터뷰 좀 해줘');
+        const match = result.find((r) => r.type === 'deep-interview');
+        expect(match).toBeDefined();
+      });
+
+      it('should NOT detect retired "씨씨지" as ccg', () => {
+        expect(detectKeywordsWithType('씨씨지')).toEqual([]);
+      });
+
+      it('should detect "테스트퍼스트" as tdd', () => {
+        const result = detectKeywordsWithType('테스트퍼스트');
+        const match = result.find((r) => r.type === 'tdd');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "테스트 퍼스트" (spaced) as tdd', () => {
+        const result = detectKeywordsWithType('테스트 퍼스트');
+        const match = result.find((r) => r.type === 'tdd');
+        expect(match).toBeDefined();
+      });
     });
 
-    it('should NOT detect "ooo auto" as deep-interview (upstream CLI shortcut)', () => {
-      const result = detectKeywordsWithType('ooo auto "ship the feature"');
-      const match = result.find((r) => r.type === 'deep-interview');
-      expect(match).toBeUndefined();
+    describe('Japanese keyword detection (basic matching — KO parity)', () => {
+      it('should detect "コードレビュー" as code-review', () => {
+        const result = detectKeywordsWithType('コードレビューして');
+        const match = result.find((r) => r.type === 'code-review');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "コード レビュー" (spaced) as code-review', () => {
+        const result = detectKeywordsWithType('コード レビュー お願い');
+        const match = result.find((r) => r.type === 'code-review');
+        expect(match).toBeDefined();
+      });
+
+      it('should NOT detect "コードレビューアー募集" as code-review (reviewer false positive)', () => {
+        const result = detectKeywordsWithType('コードレビューアー募集');
+        const match = result.find((r) => r.type === 'code-review');
+        expect(match).toBeUndefined();
+      });
+
+      it('should detect "セキュリティレビュー" as security-review', () => {
+        const result = detectKeywordsWithType('セキュリティレビューして');
+        const match = result.find((r) => r.type === 'security-review');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "セキュリティーレビュー" (long vowel) as security-review', () => {
+        const result = detectKeywordsWithType('セキュリティーレビューして');
+        const match = result.find((r) => r.type === 'security-review');
+        expect(match).toBeDefined();
+      });
+
+      it('should NOT detect "セキュリティレビューアー募集" as security-review (reviewer false positive)', () => {
+        const result = detectKeywordsWithType('セキュリティレビューアー募集');
+        const match = result.find((r) => r.type === 'security-review');
+        expect(match).toBeUndefined();
+      });
+
+      it('should detect "ディープサーチ" as deepsearch', () => {
+        const result = detectKeywordsWithType('ディープサーチして');
+        const match = result.find((r) => r.type === 'deepsearch');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "ディープ サーチ" (spaced) as deepsearch', () => {
+        const result = detectKeywordsWithType('ディープ サーチ して');
+        const match = result.find((r) => r.type === 'deepsearch');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "ディープアナライズ" as analyze', () => {
+        const result = detectKeywordsWithType('ディープアナライズして');
+        const match = result.find((r) => r.type === 'analyze');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "ディープ アナライズ" (spaced) as analyze', () => {
+        const result = detectKeywordsWithType('ディープ アナライズ して');
+        const match = result.find((r) => r.type === 'analyze');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "ディープインタビュー" as deep-interview', () => {
+        const result = detectKeywordsWithType('ディープインタビューしたい');
+        const match = result.find((r) => r.type === 'deep-interview');
+        expect(match).toBeDefined();
+      });
+
+      it('should NOT detect retired "シーシージー" as ccg', () => {
+        expect(detectKeywordsWithType('シーシージーで実装して')).toEqual([]);
+      });
+
+      it('should detect "テストファースト" as tdd', () => {
+        const result = detectKeywordsWithType('テストファーストで実装して');
+        const match = result.find((r) => r.type === 'tdd');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "テスト ファースト" (spaced) as tdd (KO \\s? parity)', () => {
+        const result = detectKeywordsWithType('テスト ファースト で実装して');
+        const match = result.find((r) => r.type === 'tdd');
+        expect(match).toBeDefined();
+      });
+
+      it('should NOT trigger code-review for informational "コードレビューとは何ですか"', () => {
+        const result = detectKeywordsWithType('コードレビューとは何ですか');
+        const match = result.find((r) => r.type === 'code-review');
+        expect(match).toBeUndefined();
+      });
+
+      it('should NOT trigger tdd for informational "テストファーストの使い方を教えて"', () => {
+        const result = detectKeywordsWithType('テストファーストの使い方を教えて');
+        const match = result.find((r) => r.type === 'tdd');
+        expect(match).toBeUndefined();
+      });
     });
 
-    it('should NOT detect "/ouroboros:auto" as deep-interview (upstream CLI slash form)', () => {
-      const result = detectKeywordsWithType('/ouroboros:auto "Refactor logger"');
-      const match = result.find((r) => r.type === 'deep-interview');
-      expect(match).toBeUndefined();
+    describe('CJK file-path stripping (no false activation)', () => {
+      it('should NOT detect code-review for a Japanese file path "docs/コードレビュー.mdを読んで"', () => {
+        const result = detectKeywordsWithType('docs/コードレビュー.mdを読んで');
+        expect(result.find((r) => r.type === 'code-review')).toBeUndefined();
+      });
+
+      it('should NOT detect code-review for a leading-slash path "/docs/コードレビュー.md"', () => {
+        const result = detectKeywordsWithType('/docs/コードレビュー.md を確認して');
+        expect(result.find((r) => r.type === 'code-review')).toBeUndefined();
+      });
+
+      it('should NOT detect security-review for "src/セキュリティレビュー.ts"', () => {
+        const result = detectKeywordsWithType('src/セキュリティレビュー.ts を開いて');
+        expect(result.find((r) => r.type === 'security-review')).toBeUndefined();
+      });
+
+      it('should NOT detect deepsearch for "docs/ディープサーチ.md"', () => {
+        const result = detectKeywordsWithType('docs/ディープサーチ.md を読む');
+        expect(result.find((r) => r.type === 'deepsearch')).toBeUndefined();
+      });
+
+      it('should NOT detect analyze for "notes/ディープアナライズ.md"', () => {
+        const result = detectKeywordsWithType('notes/ディープアナライズ.md を見て');
+        expect(result.find((r) => r.type === 'analyze')).toBeUndefined();
+      });
+
+      it('control: bare "コードレビューして" (no path) STILL detects code-review', () => {
+        const result = detectKeywordsWithType('コードレビューして');
+        expect(result.find((r) => r.type === 'code-review')).toBeDefined();
+      });
+
+      it('control: bare "ディープアナライズして" (no path) STILL detects analyze', () => {
+        const result = detectKeywordsWithType('ディープアナライズして');
+        expect(result.find((r) => r.type === 'analyze')).toBeDefined();
+      });
+
+      // r3367755945: a no-space directive after a path must not be swallowed — the .ext
+      // anchor bounds the path at the file name, so the trailing alias still activates.
+      it('detects code-review for "src/auth.tsをコードレビューして" (directive after path)', () => {
+        const result = detectKeywordsWithType('src/auth.tsをコードレビューして');
+        expect(result.find((r) => r.type === 'code-review')).toBeDefined();
+      });
+
+      // A CJK-only, extensionless final segment is intentionally NOT treated as a path
+      // (the final segment must be `stem.ext` or ASCII-extensionless), so the alias fires.
+      it('detects code-review for "src/コードレビューして" (CJK extensionless, not a path)', () => {
+        const result = detectKeywordsWithType('src/コードレビューして');
+        expect(result.find((r) => r.type === 'code-review')).toBeDefined();
+      });
+
+      // Leading-slash / relative paths must also bound at the extension (parity with the
+      // runtime .mjs) — the directive after the path must still activate the alias.
+      it('detects code-review for "/src/auth.tsをコードレビューして" (leading-slash path)', () => {
+        const result = detectKeywordsWithType('/src/auth.tsをコードレビューして');
+        expect(result.find((r) => r.type === 'code-review')).toBeDefined();
+      });
+
+      it('detects analyze for "./lib/parser.tsをディープアナライズして" (relative path)', () => {
+        const result = detectKeywordsWithType('./lib/parser.tsをディープアナライズして');
+        expect(result.find((r) => r.type === 'analyze')).toBeDefined();
+      });
+
+      // Extensionless multi-segment paths are stripped (parity with the .mjs), so a keyword
+      // that is merely a directory name does not false-fire — for CJK aliases and ASCII alike.
+      it('does NOT detect code-review for "lib/コードレビュー/index を見て" (alias as a directory name)', () => {
+        const result = detectKeywordsWithType('lib/コードレビュー/index を見て');
+        expect(result.find((r) => r.type === 'code-review')).toBeUndefined();
+      });
+
+      it('does NOT detect ralph for "lib/ralph/index を見て" (keyword as a directory name)', () => {
+        const result = detectKeywordsWithType('lib/ralph/index を見て');
+        expect(result.find((r) => r.type === 'ralph')).toBeUndefined();
+      });
     });
 
-    it('should NOT detect "ouroboros run" as deep-interview', () => {
-      const result = detectKeywordsWithType('ouroboros run');
-      const match = result.find((r) => r.type === 'deep-interview');
-      expect(match).toBeUndefined();
+    describe('Regression — English keywords still work', () => {
+      it('should detect "autopilot mode" as autopilot (unchanged)', () => {
+        const result = detectKeywordsWithType('autopilot mode');
+        const match = result.find((r) => r.type === 'autopilot');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "ralph해줘" (English keyword + Korean particle)', () => {
+        const result = detectKeywordsWithType('ralph해줘');
+        const match = result.find((r) => r.type === 'ralph');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "autopilot으로" (English keyword + Korean particle)', () => {
+        const result = detectKeywordsWithType('autopilot으로');
+        const match = result.find((r) => r.type === 'autopilot');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "tdd로 해줘" (English keyword + Korean particle)', () => {
+        const result = detectKeywordsWithType('tdd로 해줘');
+        const match = result.find((r) => r.type === 'tdd');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "cancelomc" as cancel (unchanged)', () => {
+        const result = detectKeywordsWithType('cancelomc');
+        const match = result.find((r) => r.type === 'cancel');
+        expect(match).toBeDefined();
+      });
+
+      it('should NOT detect retired "ultrawork mode"', () => {
+        expect(detectKeywordsWithType('ultrawork mode')).toEqual([]);
+      });
+
+      it('should detect "code review this" as code-review (unchanged)', () => {
+        const result = detectKeywordsWithType('code review this');
+        const match = result.find((r) => r.type === 'code-review');
+        expect(match).toBeDefined();
+      });
+
+      it('should detect "deepsearch the codebase" as deepsearch (unchanged)', () => {
+        const result = detectKeywordsWithType('deepsearch the codebase');
+        const match = result.find((r) => r.type === 'deepsearch');
+        expect(match).toBeDefined();
+      });
     });
 
-    it('should still detect natural-language ouroboros mention as deep-interview', () => {
-      const result = detectKeywordsWithType(
-        'please use ouroboros to clarify my requirements'
-      );
-      const match = result.find((r) => r.type === 'deep-interview');
+    describe('Negative tests — no false positives', () => {
+      it('should NOT match unrelated Korean text "오늘 날씨가 좋네요"', () => {
+        const result = detectKeywordsWithType('오늘 날씨가 좋네요');
+        expect(result.length).toBe(0);
+      });
+
+      it('should NOT match "프로그래밍을 배우고 싶어요"', () => {
+        const result = detectKeywordsWithType('프로그래밍을 배우고 싶어요');
+        expect(result.length).toBe(0);
+      });
+
+      it('should NOT match "코드를 작성해주세요" (contains 코드 but not 코드리뷰)', () => {
+        const result = detectKeywordsWithType('코드를 작성해주세요');
+        const codeReviewMatch = result.find((r) => r.type === 'code-review');
+        expect(codeReviewMatch).toBeUndefined();
+      });
+
+      it('should NOT match empty string', () => {
+        const result = detectKeywordsWithType('');
+        expect(result.length).toBe(0);
+      });
+    });
+
+    describe('Korean in code blocks should NOT match', () => {
+      it('should NOT detect "오토파일럿" inside fenced code block', () => {
+        const result = detectKeywordsWithType('```오토파일럿```');
+        const match = result.find((r) => r.type === 'autopilot');
+        expect(match).toBeUndefined();
+      });
+
+      it('should NOT detect "랄프" inside inline code', () => {
+        const result = detectKeywordsWithType('Use `랄프` command');
+        const match = result.find((r) => r.type === 'ralph');
+        expect(match).toBeUndefined();
+      });
+    });
+
+    describe('Korean priority ordering', () => {
+      it('should return cancel over autopilot when "cancelomc 오토파일럿"', () => {
+        const result = getPrimaryKeyword('cancelomc 오토파일럿');
+        expect(result?.type).toBe('cancel');
+      });
+
+      it('should preserve ralph while ignoring retired "랄프 울트라워크"', () => {
+        const result = getAllKeywords('랄프 울트라워크');
+        expect(result).toEqual(['ralph']);
+      });
+
+      it('should detect both keywords for "오토파일럿 코드리뷰"', () => {
+        const result = detectKeywordsWithType('오토파일럿 코드리뷰');
+        const types = result.map((r) => r.type);
+        expect(types).toContain('autopilot');
+        expect(types).toContain('code-review');
+      });
+    });
+
+    describe('Korean + English mixed keywords', () => {
+      it('should return cancel as primary for "ralph cancelomc"', () => {
+        const result = getPrimaryKeyword('ralph cancelomc');
+        expect(result?.type).toBe('cancel');
+      });
+
+      it('should detect both keywords for "autopilot 코드리뷰"', () => {
+        const result = getAllKeywords('autopilot 코드리뷰');
+        expect(result).toContain('autopilot');
+        expect(result).toContain('code-review');
+      });
+
+      it('should preserve ralph while ignoring retired "랄프 ultrawork"', () => {
+        const result = getAllKeywords('랄프 ultrawork');
+        expect(result).toEqual(['ralph']);
+      });
+    });
+
+    describe('getAllKeywords and getPrimaryKeyword with Korean', () => {
+      it('getAllKeywords("랄프 코드리뷰") should return ["ralph", "code-review"]', () => {
+        expect(getAllKeywords('랄프 코드리뷰')).toEqual(['ralph', 'code-review']);
+      });
+
+      it('getPrimaryKeyword("오토파일럿")?.type should be "autopilot"', () => {
+        expect(getPrimaryKeyword('오토파일럿')?.type).toBe('autopilot');
+      });
+
+      it('hasKeyword("울트라워크") should be false for retired keyword', () => {
+        expect(hasKeyword('울트라워크')).toBe(false);
+      });
+
+      it('hasKeyword("오토파일럿") should be true', () => {
+        expect(hasKeyword('오토파일럿')).toBe(true);
+      });
+    });
+  });
+
+  // Japanese full-width katakana variants mirror the existing Korean (Hangul)
+  // alternates in KEYWORD_PATTERNS exactly: raw match, no \b word boundary
+  // (ASCII-only), negative lookahead for the Ralph Lauren collision. Half-width
+  // katakana (ﾗﾙﾌ) is intentionally unsupported — full-width only, no NFKC.
+  describe('Japanese katakana triggers', () => {
+    it('should detect "ラルフ 起動" as ralph', () => {
+      const result = detectKeywordsWithType('ラルフ 起動');
+      const match = result.find((r) => r.type === 'ralph');
       expect(match).toBeDefined();
+    });
+
+    it('should detect "オートパイロットで実装して" as autopilot', () => {
+      const result = detectKeywordsWithType('オートパイロットで実装して');
+      const match = result.find((r) => r.type === 'autopilot');
+      expect(match).toBeDefined();
+    });
+
+    it('should NOT detect retired "ウルトラワークで並列実行して" as ultrawork', () => {
+      expect(detectKeywordsWithType('ウルトラワークで並列実行して')).toEqual([]);
+    });
+
+    it('should detect "ウルトラシンクで設計して" as ultrathink', () => {
+      const result = detectKeywordsWithType('ウルトラシンクで設計して');
+      const match = result.find((r) => r.type === 'ultrathink');
+      expect(match).toBeDefined();
+    });
+
+    // ralplan routes through the explicit-invocation gate. A bare keyword at
+    // position 0 has an empty prefix, which counts as a direct invocation —
+    // identical to bare Korean "랄플랜" (see the Korean basic-matching block).
+    it('should detect bare "ラルプラン" as ralplan (parity with bare "랄플랜")', () => {
+      const result = detectKeywordsWithType('ラルプラン');
+      const match = result.find((r) => r.type === 'ralplan');
+      expect(match).toBeDefined();
+    });
+
+    it('should NOT detect "ラルフローレンのシャツ" as ralph (Ralph Lauren)', () => {
+      const result = detectKeywordsWithType('ラルフローレンのシャツ');
+      const match = result.find((r) => r.type === 'ralph');
+      expect(match).toBeUndefined();
+    });
+
+    it('should NOT detect "ラルフ・ローレンについて" as ralph (nakaguro Ralph Lauren)', () => {
+      const result = detectKeywordsWithType('ラルフ・ローレンについて');
+      const match = result.find((r) => r.type === 'ralph');
+      expect(match).toBeUndefined();
+    });
+
+    it('should NOT detect informational "ラルフ とは？ 使い方を教えて"', () => {
+      const result = detectKeywordsWithType('ラルフ とは？ 使い方を教えて');
+      expect(result).toEqual([]);
+    });
+
+    it.each([
+      ['ウルトラワークについて教えて', 'ultrawork'],
+      ['オートパイロットについて教えて', 'autopilot'],
+      ['ラルフについて教えて', 'ralph'],
+    ] as const)('should NOT detect informational "%s" as %s', (prompt, type) => {
+      const result = detectKeywordsWithType(prompt);
+      expect(result.find((r) => r.type === type)).toBeUndefined();
+    });
+
+    it('should detect Japanese ralph execution request that asks for the result', () => {
+      const result = detectKeywordsWithType('ラルフを実行して結果を教えて');
+      expect(result.find((r) => r.type === 'ralph')).toBeDefined();
+    });
+
+    // Japanese diagnostic/complaint prompts must not fire execution modes,
+    // mirroring the Korean 자꾸/계속 suppression.
+    it('should NOT detect ralph for complaint "ラルフ、また失敗した"', () => {
+      const result = detectKeywordsWithType('ラルフ、また失敗した');
+      expect(result.find((r) => r.type === 'ralph')).toBeUndefined();
+    });
+
+    it('should NOT detect ralph for complaint "ラルフが何度も再実行されて困る"', () => {
+      const result = detectKeywordsWithType('ラルフが何度も再実行されて困る');
+      expect(result.find((r) => r.type === 'ralph')).toBeUndefined();
+    });
+
+    // Retired workflow names never activate, including in complaint prompts.
+    it('should not activate retired ultrawork for "ウルトラワークがループしてる"', () => {
+      expect(detectKeywordsWithType('ウルトラワークがループしてる')).toEqual([]);
+    });
+
+    // P2 removed for Korean parity — Korean does not suppress adverb-less complaints either.
+    // See follow-up: language-agnostic topic/subject-particle complaint pattern.
+    it('should now activate ralph for adverb-less "ラルフは失敗しやすい" (P2 removed, Korean parity)', () => {
+      const result = detectKeywordsWithType('ラルフは失敗しやすい');
+      expect(result.find((r) => r.type === 'ralph')).toBeDefined();
+    });
+
+    // Regression guard: legitimate activations must still fire.
+    it('should STILL detect ralph for "ラルフ 起動" (regression)', () => {
+      const result = detectKeywordsWithType('ラルフ 起動');
+      expect(result.find((r) => r.type === 'ralph')).toBeDefined();
+    });
+
+    it('should STILL detect ralph for "ラルフで認証バグを直して" (regression)', () => {
+      const result = detectKeywordsWithType('ラルフで認証バグを直して');
+      expect(result.find((r) => r.type === 'ralph')).toBeDefined();
+    });
+
+    // Work-request still activates (representative guard; the P2 escape was removed for Korean parity).
+    it('should STILL detect ralph for work-request "ラルフは無限ループ検出機能を実装して"', () => {
+      const result = detectKeywordsWithType('ラルフは無限ループ検出機能を実装して');
+      expect(result.find((r) => r.type === 'ralph')).toBeDefined();
+    });
+
+    // Half-width katakana is unsupported by design (full-width only, no NFKC).
+    it('should NOT detect half-width "ﾗﾙﾌ 起動" as ralph (unsupported boundary)', () => {
+      const result = detectKeywordsWithType('ﾗﾙﾌ 起動');
+      const match = result.find((r) => r.type === 'ralph');
+      expect(match).toBeUndefined();
+    });
+
+    it('should NOT detect "私たちのチームはリリースした" as team (common word)', () => {
+      const result = detectKeywordsWithType('私たちのチームはリリースした');
+      const match = result.find((r) => r.type === 'team');
+      expect(match).toBeUndefined();
+    });
+
+    it('should NOT detect "チームで作業" as team (common word)', () => {
+      const result = detectKeywordsWithType('チームで作業');
+      const match = result.find((r) => r.type === 'team');
+      expect(match).toBeUndefined();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Intent-pattern guards (spec h) — file paths, code fences, and backticks
+  // must NOT trigger keyword detection
+  // -------------------------------------------------------------------------
+
+  describe('intent-pattern guards: file paths and code blocks (spec h)', () => {
+    it('file path /ralph-logs/foo.txt does NOT detect ralph', () => {
+      const result = detectKeywordsWithType('/ralph-logs/foo.txt');
+      expect(result.find((r) => r.type === 'ralph')).toBeUndefined();
+    });
+
+    it('path segment /path/to/ralph-config.json does NOT detect ralph', () => {
+      const result = detectKeywordsWithType('check /path/to/ralph-config.json for settings');
+      expect(result.find((r) => r.type === 'ralph')).toBeUndefined();
+    });
+
+    it('fenced code block containing /ralph does NOT detect ralph', () => {
+      const result = detectKeywordsWithType('```\n/ralph fix the bug\n```');
+      expect(result.find((r) => r.type === 'ralph')).toBeUndefined();
+    });
+
+    it('inline backtick `/ralph` does NOT detect ralph', () => {
+      const result = detectKeywordsWithType('use `/ralph` to start the loop');
+      expect(result.find((r) => r.type === 'ralph')).toBeUndefined();
+    });
+
+    it('inline backtick `/oh-my-copilot:ralph` does NOT detect ralph', () => {
+      const result = detectKeywordsWithType('run `/oh-my-copilot:ralph` if needed');
+      expect(result.find((r) => r.type === 'ralph')).toBeUndefined();
+    });
+
+    it('file path /autopilot-runs/log.txt does NOT detect autopilot', () => {
+      const result = detectKeywordsWithType('/autopilot-runs/log.txt');
+      expect(result.find((r) => r.type === 'autopilot')).toBeUndefined();
+    });
+
+    it('fenced code block containing /ultrawork does NOT detect ultrawork', () => {
+      expect(detectKeywordsWithType('```bash\n/ultrawork search codebase\n```')).toEqual([]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Unified prefix detector (spec g) — /skill, /omc:skill, /oh-my-copilot:skill
+  // all seed the same canonical state (T3 implementation required)
+  // -------------------------------------------------------------------------
+
+  describe('unified prefix detector: /omc: and /oh-my-copilot: forms (spec g)', () => {
+    it('/omc:ralph fix auth detects ralph', () => {
+      const result = detectKeywordsWithType('/omc:ralph fix auth');
+      expect(result.find((r) => r.type === 'ralph')).toBeDefined();
+    });
+
+    it('/oh-my-copilot:ralph fix auth detects ralph', () => {
+      const result = detectKeywordsWithType('/oh-my-copilot:ralph fix auth');
+      expect(result.find((r) => r.type === 'ralph')).toBeDefined();
+    });
+
+    it('/omc:autopilot implement feature detects autopilot', () => {
+      const result = detectKeywordsWithType('/omc:autopilot implement feature');
+      expect(result.find((r) => r.type === 'autopilot')).toBeDefined();
+    });
+
+    it('/omc:ultrawork search codebase does not detect retired ultrawork', () => {
+      expect(detectKeywordsWithType('/omc:ultrawork search codebase')).toEqual([]);
+    });
+
+    it('/ralph fix auth at message start detects ralph (explicit slash command)', () => {
+      const result = detectKeywordsWithType('/ralph fix auth');
+      expect(result.find((r) => r.type === 'ralph')).toBeDefined();
+    });
+
+    it('/autopilot at message start detects autopilot', () => {
+      const result = detectKeywordsWithType('/autopilot ship the new feature end to end');
+      expect(result.find((r) => r.type === 'autopilot')).toBeDefined();
+    });
+
+    it('/ultrawork at message start does not detect retired ultrawork', () => {
+      expect(detectKeywordsWithType('/ultrawork investigate this report')).toEqual([]);
+    });
+
+    it.each([
+      '/ultrawork build me an app',
+      '/ulw ask codex to review',
+      '/uw build me an app',
+      '/ccg build me an app',
+      '/claude-codex-gemini ask codex to review',
+      '/울트라워크 build me an app',
+      '/ウルトラワーク build me an app',
+      '/씨씨지 ask codex to review',
+      '/シーシージー build me an app',
+      '/omc:ultrawork build me an app',
+      '/oh-my-copilot:ulw ask codex to review',
+      '/omc:ccg build me an app',
+      '/oh-my-copilot:claude-codex-gemini ask codex to review',
+      '/omc:울트라워크 build me an app',
+      '/oh-my-copilot:ウルトラワーク ask codex to review',
+      '/omc:씨씨지 build me an app',
+      '/oh-my-copilot:シーシージー ask codex to review',
+    ])('passes retired slash command %s through without scanning active arguments', (prompt) => {
+      expect(detectKeywordsWithType(prompt)).toEqual([]);
+    });
+
+    it('preserves surviving detections for non-slash prompts containing retired names', () => {
+      expect(detectKeywordsWithType('ultrawork build me an app').find((r) => r.type === 'autopilot')).toBeDefined();
+      expect(detectKeywordsWithType('ccg ask codex to review').find((r) => r.type === 'codex')).toBeDefined();
+    });
+
+    it('/deep-interview at message start detects deep-interview', () => {
+      const result = detectKeywordsWithType('/deep-interview about the architecture');
+      expect(result.find((r) => r.type === 'deep-interview')).toBeDefined();
+    });
+
+    it('/ralplan at message start detects ralplan', () => {
+      const result = detectKeywordsWithType('/ralplan issue #2622');
+      expect(result.find((r) => r.type === 'ralplan')).toBeDefined();
+    });
+
+    it('explicit slash detection does not duplicate the same keyword type', () => {
+      const result = detectKeywordsWithType('/ralph fix auth');
+      const ralphMatches = result.filter((r) => r.type === 'ralph');
+      expect(ralphMatches.length).toBe(1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // parseExplicitWorkflowSlashInvocation — unit tests (spec g)
+  // -------------------------------------------------------------------------
+  describe('parseExplicitWorkflowSlashInvocation — parser unit tests (spec g)', () => {
+    it('returns null for empty string', () => {
+      expect(parseExplicitWorkflowSlashInvocation('')).toBeNull();
+    });
+
+    it('returns null for non-slash prompt', () => {
+      expect(parseExplicitWorkflowSlashInvocation('ralph fix auth')).toBeNull();
+    });
+
+    it('parses bare /ralph with args', () => {
+      const result = parseExplicitWorkflowSlashInvocation('/ralph fix the auth flow');
+      expect(result).not.toBeNull();
+      expect(result!.skill).toBe('ralph');
+      expect(result!.args).toBe('fix the auth flow');
+    });
+
+    it('parses /omc:ralph and normalizes skill name', () => {
+      const result = parseExplicitWorkflowSlashInvocation('/omc:ralph debug this');
+      expect(result).not.toBeNull();
+      expect(result!.skill).toBe('ralph');
+    });
+
+    it('parses /oh-my-copilot:ralph and normalizes skill name', () => {
+      const result = parseExplicitWorkflowSlashInvocation('/oh-my-copilot:ralph debug this');
+      expect(result).not.toBeNull();
+      expect(result!.skill).toBe('ralph');
+    });
+
+    it('parses /autopilot with args', () => {
+      const result = parseExplicitWorkflowSlashInvocation('/autopilot ship the feature');
+      expect(result!.skill).toBe('autopilot');
+      expect(result!.args).toBe('ship the feature');
+    });
+
+    it('parses /deep-interview at message start', () => {
+      const result = parseExplicitWorkflowSlashInvocation('/deep-interview about system design');
+      expect(result!.skill).toBe('deep-interview');
+    });
+
+    it('parses /self-improve at message start', () => {
+      const result = parseExplicitWorkflowSlashInvocation('/self-improve');
+      expect(result!.skill).toBe('self-improve');
+      expect(result!.args).toBe('');
+    });
+
+    it('continues to parse UltraQA until #3826 owns its removal', () => {
+      expect(parseExplicitWorkflowSlashInvocation('/ultraqa run tests')?.skill).toBe('ultraqa');
+      expect(parseExplicitWorkflowSlashInvocation('/oh-my-copilot:ultraqa run tests')?.skill).toBe('ultraqa');
+    });
+
+    it('does not parse retired workflow invocations', () => {
+      expect(parseExplicitWorkflowSlashInvocation('/ultrawork investigate this report')).toBeNull();
+      expect(parseExplicitWorkflowSlashInvocation('/ulw investigate this report')).toBeNull();
+      expect(parseExplicitWorkflowSlashInvocation('/uw investigate this report')).toBeNull();
+      expect(parseExplicitWorkflowSlashInvocation('/ccg review this')).toBeNull();
+      expect(parseExplicitWorkflowSlashInvocation('/claude-codex-gemini review this')).toBeNull();
+      expect(parseExplicitWorkflowSlashInvocation('/omc:ultrawork investigate this report')).toBeNull();
+      expect(parseExplicitWorkflowSlashInvocation('/omc:ccg review this')).toBeNull();
+      expect(parseExplicitWorkflowSlashInvocation('/oh-my-copilot:claude-codex-gemini review this')).toBeNull();
+    });
+
+    it('returns null for /ralph-logs/foo.txt (path lookahead prevents match)', () => {
+      expect(parseExplicitWorkflowSlashInvocation('/ralph-logs/foo.txt')).toBeNull();
+    });
+
+    it('returns null for /ralph inside fenced code block', () => {
+      expect(parseExplicitWorkflowSlashInvocation('```\n/ralph fix this\n```')).toBeNull();
+    });
+
+    it('returns null for /ralph inside inline backtick', () => {
+      expect(parseExplicitWorkflowSlashInvocation('use `/ralph` to start')).toBeNull();
+    });
+
+    it('is case-insensitive: /RALPH is detected', () => {
+      const result = parseExplicitWorkflowSlashInvocation('/RALPH fix auth');
+      expect(result!.skill).toBe('ralph');
+    });
+
+    it('leading whitespace before / is allowed', () => {
+      const result = parseExplicitWorkflowSlashInvocation('  /ralph fix auth');
+      expect(result!.skill).toBe('ralph');
+    });
+
+    it('/ralph with no args returns empty args string', () => {
+      const result = parseExplicitWorkflowSlashInvocation('/ralph');
+      expect(result!.skill).toBe('ralph');
+      expect(result!.args).toBe('');
+    });
+
+    it('all three prefix forms produce the same skill name for autopilot', () => {
+      const bare = parseExplicitWorkflowSlashInvocation('/autopilot go');
+      const omc = parseExplicitWorkflowSlashInvocation('/omc:autopilot go');
+      const full = parseExplicitWorkflowSlashInvocation('/oh-my-copilot:autopilot go');
+      expect(bare!.skill).toBe('autopilot');
+      expect(omc!.skill).toBe('autopilot');
+      expect(full!.skill).toBe('autopilot');
     });
   });
 });

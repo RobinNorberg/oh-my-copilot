@@ -17,7 +17,7 @@ psm_init() {
 {
   "aliases": {
     "omc": {
-      "repo": "RobinNorberg/oh-my-copilot",
+      "repo": "Yeachan-Heo/oh-my-copilot",
       "local": "~/Workspace/oh-my-copilot",
       "default_base": "main"
     }

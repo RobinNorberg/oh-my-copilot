@@ -1,7 +1,7 @@
 /**
  * Job State Database - SQLite-based persistent state for Codex/Gemini background jobs
  *
- * Provides a single shared database at .omcp/state/jobs.db for both providers.
+ * Provides a single shared database at .omg/state/jobs.db for both providers.
  * Uses better-sqlite3 with WAL mode for safe concurrent access from multiple
  * MCP server instances. Only job metadata is stored here; prompt/response
  * content remains as files on disk.
@@ -18,6 +18,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from "fs";
 import { join, resolve } from "path";
 import type BetterSqlite3 from "better-sqlite3";
 import type { JobStatus } from "../mcp/prompt-persistence.js";
+import { getOmcRoot } from "./worktree-paths.js";
 
 // Schema version - bump when adding migrations
 const DB_SCHEMA_VERSION = 1;
@@ -66,14 +67,14 @@ function getDb(cwd?: string): BetterSqlite3.Database | null {
  * Get the database file path
  */
 function getDbPath(cwd: string): string {
-  return join(cwd, ".omcp", "state", "jobs.db");
+  return join(getOmcRoot(cwd), "state", "jobs.db");
 }
 
 /**
  * Ensure the state directory exists
  */
 function ensureStateDir(cwd: string): void {
-  const stateDir = join(cwd, ".omcp", "state");
+  const stateDir = join(getOmcRoot(cwd), "state");
   if (!existsSync(stateDir)) {
     mkdirSync(stateDir, { recursive: true });
   }
@@ -583,7 +584,7 @@ export function deleteJob(
  * Scans the prompts directory for *-status-*.json files, parses each,
  * and upserts into the jobs table. Existing records are overwritten.
  *
- * @param promptsDir - Path to the .omcp/prompts/ directory
+ * @param promptsDir - Path to the .omg/prompts/ directory
  * @returns Object with imported and error counts
  */
 export function migrateFromJsonFiles(

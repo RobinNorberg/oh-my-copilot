@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 describe('Type Tests', () => {
     describe('ModelType', () => {
         it('should accept valid model types', () => {
-            const validTypes = ['sonnet', 'opus', 'haiku', 'inherit'];
-            expect(validTypes).toHaveLength(4);
+            const validTypes = ['sonnet', 'opus', 'haiku', 'fable', 'inherit'];
+            expect(validTypes).toHaveLength(5);
         });
     });
     describe('AgentConfig', () => {
@@ -46,13 +46,13 @@ describe('Type Tests', () => {
         it('should support agent configuration', () => {
             const config = {
                 agents: {
-                    omg: { model: 'claude-sonnet-4-6' },
+                    omc: { model: 'claude-sonnet-5' },
                     architect: { model: 'claude-opus-4-8' },
                     explore: { model: 'claude-haiku-4-5' },
                     documentSpecialist: { model: 'claude-haiku-4-5' },
                 },
             };
-            expect(config.agents?.omg?.model).toBe('claude-sonnet-4-6');
+            expect(config.agents?.omc?.model).toBe('claude-sonnet-5');
             expect(config.agents?.architect?.model).toBe('claude-opus-4-8');
         });
         it('should support routing configuration', () => {
@@ -64,7 +64,7 @@ describe('Type Tests', () => {
                     maxEscalations: 2,
                     tierModels: {
                         LOW: 'claude-haiku-4',
-                        MEDIUM: 'claude-sonnet-4-6',
+                        MEDIUM: 'claude-sonnet-5',
                         HIGH: 'claude-opus-4-8',
                     },
                 },

@@ -11,7 +11,7 @@
  *   --agent <name>       Run a single agent variant only
  *   --fixture <id>       Run a single fixture only
  *   --output-dir <path>  Where to write results
- *   --model <model>      Copilot model to use (default: claude-opus-4-6)
+ *   --model <model>      Claude model to use (default: claude-opus-4-6)
  *   --dry-run            Validate pipeline without API calls
  */
 
@@ -25,6 +25,7 @@ import {
   runBenchmark,
   printSummaryTable,
   writeReports,
+  exitCodeForResults,
 } from '../shared/runner.ts';
 import { parseGenericOutput } from '../shared/parser.ts';
 import type { ParsedAgentOutput } from '../shared/types.ts';
@@ -53,7 +54,7 @@ function buildUserMessage(fixtureContent: string): string {
 // Parser
 // ============================================================
 
-function parseOutput(rawOutput: string, _agentType: string): ParsedAgentOutput {
+function parseOutput(rawOutput: string): ParsedAgentOutput {
   return parseGenericOutput(rawOutput);
 }
 
@@ -104,6 +105,8 @@ async function main(): Promise<void> {
     cliArgs.agents[1] ?? cliArgs.agents[0],
     cliArgs.model,
   );
+
+  process.exitCode = exitCodeForResults(results);
 
   console.log('\nBenchmark complete.\n');
 }

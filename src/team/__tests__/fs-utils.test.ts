@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { statSync, mkdirSync, rmSync, existsSync } from 'fs';
+import { statSync, mkdirSync, rmSync, existsSync, readFileSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
@@ -8,6 +8,17 @@ import {
 
 const TEST_DIR = join(tmpdir(), '__test_fs_utils__');
 
+/**
+ * NTFS does not implement POSIX mode bits — Node reports 0o666 whatever mode
+ * was requested — so the exact bits are only meaningful on POSIX. Windows gets
+ * the assertion that still means something there: the entry was created.
+ */
+function expectRestrictiveMode(path: string, posixMode: number): void {
+  expect(existsSync(path)).toBe(true);
+  if (process.platform === 'win32') return;
+  expect(statSync(path).mode & 0o777).toBe(posixMode);
+}
+
 afterEach(() => {
   if (existsSync(TEST_DIR)) {
     rmSync(TEST_DIR, { recursive: true, force: true });
@@ -15,13 +26,13 @@ afterEach(() => {
 });
 
 describe('atomicWriteJson', () => {
-  it.skipIf(process.platform === 'win32')('creates files with 0o600 permissions', () => {
+  it('creates files with 0o600 permissions', () => {
     mkdirSync(TEST_DIR, { recursive: true });
     const filePath = join(TEST_DIR, 'test.json');
     atomicWriteJson(filePath, { key: 'value' });
-    const stat = statSync(filePath);
-    // Check owner-only read/write (0o600)
-    expect(stat.mode & 0o777).toBe(0o600);
+    // Owner-only read/write (0o600), plus the content actually landing.
+    expectRestrictiveMode(filePath, 0o600);
+    expect(JSON.parse(readFileSync(filePath, 'utf-8'))).toEqual({ key: 'value' });
   });
 
   it('temp file names contain both PID and timestamp pattern', () => {
@@ -47,34 +58,48 @@ describe('atomicWriteJson', () => {
 });
 
 describe('writeFileWithMode', () => {
-  it.skipIf(process.platform === 'win32')('creates files with 0o600 permissions', () => {
+  it('creates files with 0o600 permissions', () => {
     mkdirSync(TEST_DIR, { recursive: true });
     const filePath = join(TEST_DIR, 'write-test.txt');
     writeFileWithMode(filePath, 'hello');
-    const stat = statSync(filePath);
-    expect(stat.mode & 0o777).toBe(0o600);
+    expectRestrictiveMode(filePath, 0o600);
+    expect(readFileSync(filePath, 'utf-8')).toBe('hello');
   });
 });
 
 describe('ensureDirWithMode', () => {
-  it.skipIf(process.platform === 'win32')('creates directories with 0o700 permissions', () => {
+  it('creates directories with 0o700 permissions', () => {
     const dirPath = join(TEST_DIR, 'secure-dir');
     ensureDirWithMode(dirPath);
-    const stat = statSync(dirPath);
-    expect(stat.mode & 0o777).toBe(0o700);
+    expectRestrictiveMode(dirPath, 0o700);
+    expect(statSync(dirPath).isDirectory()).toBe(true);
   });
 });
 
 describe('validateResolvedPath', () => {
+  const VALIDATE_DIR = join(tmpdir(), '__validate_test__');
+
+  afterEach(() => {
+    if (existsSync(VALIDATE_DIR)) {
+      rmSync(VALIDATE_DIR, { recursive: true, force: true });
+    }
+  });
+
   it('rejects paths that escape base via ../', () => {
-    expect(() => validateResolvedPath('/home/user/../escape', '/home/user')).toThrow('Path traversal');
+    mkdirSync(VALIDATE_DIR, { recursive: true });
+    const base = realpathSync(VALIDATE_DIR);
+    expect(() => validateResolvedPath(join(base, '..', 'escape'), base)).toThrow('Path traversal');
   });
 
   it('accepts paths within base directory', () => {
-    expect(() => validateResolvedPath('/home/user/project/file.ts', '/home/user')).not.toThrow();
+    mkdirSync(VALIDATE_DIR, { recursive: true });
+    const base = realpathSync(VALIDATE_DIR);
+    expect(() => validateResolvedPath(join(base, 'project', 'file.ts'), base)).not.toThrow();
   });
 
   it('accepts exact base path', () => {
-    expect(() => validateResolvedPath('/home/user', '/home/user')).not.toThrow();
+    mkdirSync(VALIDATE_DIR, { recursive: true });
+    const base = realpathSync(VALIDATE_DIR);
+    expect(() => validateResolvedPath(base, base)).not.toThrow();
   });
 });

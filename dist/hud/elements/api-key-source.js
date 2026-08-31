@@ -16,12 +16,10 @@ import { getCopilotConfigDir } from '../../utils/config-dir.js';
  * Check whether a settings file defines ANTHROPIC_API_KEY in its env block.
  */
 function settingsFileHasApiKey(filePath) {
-    // Normalize to forward slashes for cross-platform mock compatibility
-    const normalizedPath = filePath.replace(/\\/g, '/');
     try {
-        if (!existsSync(normalizedPath))
+        if (!existsSync(filePath))
             return false;
-        const content = readFileSync(normalizedPath, 'utf-8');
+        const content = readFileSync(filePath, 'utf-8');
         const settings = JSON.parse(content);
         const env = settings?.env;
         if (typeof env !== 'object' || env === null)

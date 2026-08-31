@@ -27,8 +27,8 @@
  *   1. `writeSkillActiveStateCopies()` is the only helper allowed to persist
  *      workflow-slot state. Every workflow-slot write, confirm, tombstone, TTL
  *      pruning, and hard-clear must update BOTH
- *        - `.omc/state/skill-active-state.json`
- *        - `.omc/state/sessions/{sessionId}/skill-active-state.json`
+ *        - `.omg/state/skill-active-state.json`
+ *        - `.omg/state/sessions/{sessionId}/skill-active-state.json`
  *      together through this single helper.
  *   2. Support-skill writes go through the same helper so the shared file
  *      never drops the `active_skills` branch.
@@ -43,7 +43,7 @@ export declare const WORKFLOW_TOMBSTONE_TTL_MS: number;
  * Non-workflow skills keep today's `light/medium/heavy` protection via the
  * `support_skill` branch.
  */
-export declare const CANONICAL_WORKFLOW_SKILLS: readonly ["autopilot", "ralph", "team", "ultrawork", "ultraqa", "deep-interview", "ralplan", "self-improve"];
+export declare const CANONICAL_WORKFLOW_SKILLS: readonly ["autopilot", "ralph", "team", "deep-interview", "ralplan", "self-improve"];
 export type CanonicalWorkflowSkill = typeof CANONICAL_WORKFLOW_SKILLS[number];
 export declare function isCanonicalWorkflowSkill(skillName: string): skillName is CanonicalWorkflowSkill;
 export type SkillProtectionLevel = 'none' | 'light' | 'medium' | 'heavy';
@@ -131,10 +131,14 @@ export declare function pruneExpiredWorkflowSkillTombstones(state: SkillActiveSt
 export declare function resolveAuthoritativeWorkflowSkill(state: SkillActiveStateV2): ActiveSkillSlot | null;
 /**
  * Pure query: is the workflow slot for `skillName` live (non-tombstoned)?
+ * Returns false when no slot exists at all, so callers can distinguish
+ * "no ledger entry" from "tombstoned" via `isWorkflowSkillTombstoned`.
  */
 export declare function isWorkflowSkillLive(state: SkillActiveStateV2, skillName: string): boolean;
 /**
  * Pure query: is the slot tombstoned (has `completed_at`) and not yet expired?
+ * Used by stop enforcement to suppress noisy re-handoff on completed workflows
+ * until TTL pruning removes the slot or a fresh invocation reactivates it.
  */
 export declare function isWorkflowSkillTombstoned(state: SkillActiveStateV2, skillName: string, ttlMs?: number, now?: number): boolean;
 /**
@@ -143,16 +147,21 @@ export declare function isWorkflowSkillTombstoned(state: SkillActiveStateV2, ski
  *
  * When `sessionId` is provided, the session copy is authoritative for
  * session-local reads. No fall-through to the root copy, to prevent
- * cross-session leakage.
+ * cross-session leakage. When no session copy exists for the session, the
+ * ledger is treated as empty for that session's local reads.
  *
  * When `sessionId` is omitted (legacy/global path), the root copy is read.
+ *
+ * Logs a reconciliation warning when the session copy diverges from the root
+ * for slots belonging to the same session. The next mutation through
+ * `writeSkillActiveStateCopies()` re-synchronizes both copies.
  */
 export declare function readSkillActiveStateNormalized(directory: string, sessionId?: string): SkillActiveStateV2;
 /**
  * THE ONLY HELPER allowed to persist workflow-slot state.
  *
- * Writes BOTH root `.omc/state/skill-active-state.json` AND session
- * `.omc/state/sessions/{sessionId}/skill-active-state.json` together. When a
+ * Writes BOTH root `.omg/state/skill-active-state.json` AND session
+ * `.omg/state/sessions/{sessionId}/skill-active-state.json` together. When a
  * resolved state is empty (no slots, no support_skill), the corresponding
  * file is removed instead — the absence of a file is the canonical empty
  * state.
@@ -175,23 +184,22 @@ export declare function readSkillActiveState(directory: string, sessionId?: stri
  * Preserves the `active_skills` workflow ledger — every write reads the full
  * v2 state, updates only the `support_skill` branch, and re-writes both
  * copies together via `writeSkillActiveStateCopies()`.
+ *
+ * @param rawSkillName - Original skill name as invoked. When provided without
+ *   the `oh-my-copilot:` prefix, protection returns 'none' to avoid
+ *   confusion with user-defined project skills of the same name (#1581).
  */
 export declare function writeSkillActiveState(directory: string, skillName: string, sessionId?: string, rawSkillName?: string): SkillActiveState | null;
 /**
  * Clear support-skill state while preserving workflow slots.
  */
 export declare function clearSkillActiveState(directory: string, sessionId?: string): boolean;
-/**
- * Check if the skill state is stale (exceeded its TTL).
- */
 export declare function isSkillStateStale(state: SkillActiveState): boolean;
 /**
  * Stop-hook integration for support skills.
  *
  * Reinforcement increments go through `writeSkillActiveStateCopies()` so the
  * workflow-slot ledger is never clobbered by support-skill writes.
- *
- * Called by checkPersistentModes() in the persistent-mode hook.
  */
 export declare function checkSkillActiveState(directory: string, sessionId?: string): {
     shouldBlock: boolean;

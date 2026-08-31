@@ -25,6 +25,16 @@ describe('Signal Extraction', () => {
             const signals = extractLexicalSignals(prompt);
             expect(signals.codeBlockCount).toBe(2);
         });
+        it('should count a single indented code block', () => {
+            const prompt = 'Here is code:\n    const x = 1;\n    return x;\ndone';
+            const signals = extractLexicalSignals(prompt);
+            expect(signals.codeBlockCount).toBe(1);
+        });
+        it('should count two separate indented code blocks', () => {
+            const prompt = 'First:\n    const a = 1;\n\nSecond:\n    const b = 2;';
+            const signals = extractLexicalSignals(prompt);
+            expect(signals.codeBlockCount).toBe(2);
+        });
         it('should detect architecture keywords', () => {
             const signals = extractLexicalSignals('We need to refactor the architecture');
             expect(signals.hasArchitectureKeywords).toBe(true);
@@ -541,6 +551,16 @@ describe('Router', () => {
             };
             const decision = routeTask(context);
             expect(decision.tier).toBe('LOW');
+            expect(decision.reasons[0]).toContain('Explicit model');
+        });
+        it('should route explicit fable model to HIGH tier (issue #3726)', () => {
+            const context = {
+                taskPrompt: 'Complex architectural task',
+                explicitModel: 'fable',
+            };
+            const decision = routeTask(context);
+            expect(decision.tier).toBe('HIGH');
+            expect(decision.modelType).toBe('fable');
             expect(decision.reasons[0]).toContain('Explicit model');
         });
         it('should respect agent overrides', () => {

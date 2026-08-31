@@ -47,7 +47,7 @@ describe('EDGE: Pipeline Orchestrator (issue #1132)', () => {
         // Pipeline state uses getOmcRoot(worktreeRoot) — mock returns <dir>/.omc for any arg
         mockGetOmcRoot.mockImplementation((dir) => {
             const base = dir || testDir;
-            const omcDir = join(base, '.omcp');
+            const omcDir = join(base, '.omg');
             mkdirSync(omcDir, { recursive: true });
             return omcDir;
         });
@@ -72,18 +72,17 @@ describe('EDGE: Pipeline Orchestrator (issue #1132)', () => {
         const config = resolvePipelineConfig(undefined, undefined);
         expect(config).toEqual(DEFAULT_PIPELINE_CONFIG);
     });
-    it('deprecated mode ultrawork maps execution to team', () => {
+    it('retired mode ultrawork no longer maps execution to team', () => {
         const config = resolvePipelineConfig(undefined, 'ultrawork');
-        expect(config.execution).toBe('team');
+        expect(config.execution).toBe(DEFAULT_PIPELINE_CONFIG.execution);
     });
     it('deprecated mode ultrapilot maps execution to team', () => {
         const config = resolvePipelineConfig(undefined, 'ultrapilot');
         expect(config.execution).toBe('team');
     });
     it('user overrides take precedence over deprecated mode', () => {
-        // ultrawork sets execution=team, but explicit solo overrides it
-        const config = resolvePipelineConfig({ execution: 'solo' }, 'ultrawork');
-        expect(config.execution).toBe('solo');
+        // ultrapilot sets execution=team, but explicit solo overrides it
+        const config = resolvePipelineConfig({ execution: 'solo' }, 'ultrapilot');
     });
     it('getDeprecationWarning returns null for non-deprecated modes: autopilot', () => {
         expect(getDeprecationWarning('autopilot')).toBeNull();
@@ -204,7 +203,7 @@ describe('EDGE: Shared Memory (issue #1137)', () => {
     let testDir;
     beforeEach(() => {
         testDir = join(tmpdir(), `edge-shmem-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        const omcDir = join(testDir, '.omcp');
+        const omcDir = join(testDir, '.omg');
         mkdirSync(omcDir, { recursive: true });
         mockGetOmcRoot.mockReturnValue(omcDir);
     });
@@ -421,10 +420,8 @@ describe('EDGE: Mode Deprecation (issue #1131)', () => {
             expect(['team', 'solo'], `${mode}.config.execution should be a valid ExecutionBackend`).toContain(alias.config.execution);
         }
     });
-    it('ultrawork deprecation message references /autopilot migration path', () => {
-        const alias = DEPRECATED_MODE_ALIASES['ultrawork'];
-        expect(alias.message).toContain('deprecated');
-        expect(alias.message).toContain('/autopilot');
+    it('ultrawork has no deprecation message after retirement', () => {
+        expect(DEPRECATED_MODE_ALIASES['ultrawork']).toBeUndefined();
     });
     it('ultrapilot deprecation message references /autopilot migration path', () => {
         const alias = DEPRECATED_MODE_ALIASES['ultrapilot'];

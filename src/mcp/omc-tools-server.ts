@@ -1,17 +1,12 @@
 /**
  * OMC Tools Server - In-process MCP server for custom tools
  *
- * Exposes custom tools (LSP, AST, python_repl, skills, state, notepad, memory, etc.)
- * via the standard MCP SDK for use by subagents.
+ * Exposes 18 custom tools (12 LSP, 2 AST, 1 python_repl, 3 skills) via the Claude Agent SDK's
+ * createSdkMcpServer helper for local Node.js Agent SDK integrations. This is not a VS Code
+ * extension host or CI runner by itself.
  */
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
-import type { CallToolRequest, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
+import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { lspTools } from "../tools/lsp-tools.js";
 import { astTools } from "../tools/ast-tools.js";
 import { pythonReplTool } from "../tools/python-repl/index.js";
@@ -21,8 +16,12 @@ import { notepadTools } from "../tools/notepad-tools.js";
 import { memoryTools } from "../tools/memory-tools.js";
 import { traceTools } from "../tools/trace-tools.js";
 import { sharedMemoryTools } from "../tools/shared-memory-tools.js";
+import { getInteropTools } from "../interop/mcp-bridge.js";
+import { deepinitManifestTool } from "../tools/deepinit-manifest.js";
 import { wikiTools } from "../tools/wiki-tools.js";
 import { TOOL_CATEGORIES, type ToolCategory } from "../constants/index.js";
+import { filterDisabledTools, tagCategory } from "./disable-tools.js";
+export { DISABLE_TOOLS_GROUP_MAP, parseDisabledGroups } from "./disable-tools.js";
 
 // Type for our tool definitions
 interface ToolDef {
@@ -33,62 +32,13 @@ interface ToolDef {
   handler: (args: unknown) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }>;
 }
 
-// Tag each tool array with its category before aggregation
-function tagCategory<T extends { name: string }>(tools: T[], category: ToolCategory): (T & { category: ToolCategory })[] {
-  return tools.map(t => ({ ...t, category }));
-}
-
-/**
- * Map from user-facing OMC_DISABLE_TOOLS group names to ToolCategory values.
- * Supports both canonical names and common aliases.
- */
-export const DISABLE_TOOLS_GROUP_MAP: Record<string, ToolCategory> = {
-  'lsp': TOOL_CATEGORIES.LSP,
-  'ast': TOOL_CATEGORIES.AST,
-  'python': TOOL_CATEGORIES.PYTHON,
-  'python-repl': TOOL_CATEGORIES.PYTHON,
-  'trace': TOOL_CATEGORIES.TRACE,
-  'state': TOOL_CATEGORIES.STATE,
-  'notepad': TOOL_CATEGORIES.NOTEPAD,
-  'memory': TOOL_CATEGORIES.MEMORY,
-  'project-memory': TOOL_CATEGORIES.MEMORY,
-  'skills': TOOL_CATEGORIES.SKILLS,
-  'codex': TOOL_CATEGORIES.CODEX,
-  'gemini': TOOL_CATEGORIES.GEMINI,
-  'shared-memory': TOOL_CATEGORIES.SHARED_MEMORY,
-  'wiki': TOOL_CATEGORIES.WIKI,
-};
-
-/**
- * Parse OMC_DISABLE_TOOLS env var value into a Set of disabled ToolCategory values.
- *
- * Accepts a comma-separated list of group names (case-insensitive).
- * Unknown names are silently ignored.
- *
- * @param envValue - The env var value to parse. Defaults to process.env.OMC_DISABLE_TOOLS.
- * @returns Set of ToolCategory values that should be disabled.
- *
- * @example
- * // OMC_DISABLE_TOOLS=lsp,python-repl,project-memory
- * parseDisabledGroups(); // Set { 'lsp', 'python', 'memory' }
- */
-export function parseDisabledGroups(envValue?: string): Set<ToolCategory> {
-  const disabled = new Set<ToolCategory>();
-  const value = envValue ?? process.env.OMC_DISABLE_TOOLS;
-  if (!value || !value.trim()) return disabled;
-
-  for (const name of value.split(',')) {
-    const trimmed = name.trim().toLowerCase();
-    if (!trimmed) continue;
-    const category = DISABLE_TOOLS_GROUP_MAP[trimmed];
-    if (category !== undefined) {
-      disabled.add(category);
-    }
-  }
-  return disabled;
-}
 
 // Aggregate all custom tools with category metadata (full list, unfiltered)
+const interopToolsEnabled = process.env.OMC_INTEROP_TOOLS_ENABLED === '1';
+const interopTools: ToolDef[] = interopToolsEnabled
+  ? tagCategory(getInteropTools() as unknown as ToolDef[], TOOL_CATEGORIES.INTEROP)
+  : [];
+
 const allTools: ToolDef[] = [
   ...tagCategory(lspTools as unknown as ToolDef[], TOOL_CATEGORIES.LSP),
   ...tagCategory(astTools as unknown as ToolDef[], TOOL_CATEGORIES.AST),
@@ -99,99 +49,24 @@ const allTools: ToolDef[] = [
   ...tagCategory(memoryTools as unknown as ToolDef[], TOOL_CATEGORIES.MEMORY),
   ...tagCategory(traceTools as unknown as ToolDef[], TOOL_CATEGORIES.TRACE),
   ...tagCategory(sharedMemoryTools as unknown as ToolDef[], TOOL_CATEGORIES.SHARED_MEMORY),
+  { ...(deepinitManifestTool as unknown as ToolDef), category: TOOL_CATEGORIES.DEEPINIT },
   ...tagCategory(wikiTools as unknown as ToolDef[], TOOL_CATEGORIES.WIKI),
+  ...interopTools,
 ];
 
 // Read OMC_DISABLE_TOOLS once at startup and filter tools accordingly
-const _startupDisabledGroups = parseDisabledGroups();
-const enabledTools: ToolDef[] = _startupDisabledGroups.size === 0
-  ? allTools
-  : allTools.filter(t => !t.category || !_startupDisabledGroups.has(t.category));
+const enabledTools: ToolDef[] = filterDisabledTools(allTools);
 
-// Convert Zod schema to JSON Schema for MCP tool registration
-function zodToJsonSchema(schema: Record<string, unknown>): {
-  type: 'object';
-  properties: Record<string, unknown>;
-  required: string[];
-} {
-  const properties: Record<string, unknown> = {};
-  const required: string[] = [];
-
-  for (const [key, value] of Object.entries(schema)) {
-    const zodType = value as z.ZodTypeAny;
-    properties[key] = zodTypeToJsonSchema(zodType);
-    const isOptional = zodType && typeof zodType.isOptional === 'function' && zodType.isOptional();
-    if (!isOptional) {
-      required.push(key);
-    }
-  }
-
-  return { type: 'object', properties, required };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function zodTypeToJsonSchema(zodType: unknown): Record<string, unknown> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const zt = zodType as any;
-  const result: Record<string, unknown> = {};
-
-  if (!zt || !zt._def) {
-    return { type: 'string' };
-  }
-
-  // Handle optional wrapper
-  if (zodType instanceof z.ZodOptional) {
-    return zodTypeToJsonSchema(zt._def.innerType);
-  }
-
-  // Handle default wrapper
-  if (zodType instanceof z.ZodDefault) {
-    const inner = zodTypeToJsonSchema(zt._def.innerType);
-    if (zt._def.defaultValue !== undefined) {
-      inner.default = typeof zt._def.defaultValue === 'function' ? zt._def.defaultValue() : zt._def.defaultValue;
-    }
-    return inner;
-  }
-
-  if (zt.description) {
-    result.description = zt.description;
-  }
-
-  if (zodType instanceof z.ZodString) {
-    result.type = 'string';
-  } else if (zodType instanceof z.ZodNumber) {
-    const c = zt._def.checks || [];
-    result.type = c.some?.((check: { kind: string }) => check.kind === 'int') ? 'integer' : 'number';
-  } else if (zodType instanceof z.ZodBoolean) {
-    result.type = 'boolean';
-  } else if (zodType instanceof z.ZodArray) {
-    result.type = 'array';
-    result.items = zodTypeToJsonSchema(zt._def.element);
-  } else if (zodType instanceof z.ZodEnum) {
-    result.type = 'string';
-    result.enum = zt._def?.entries ? Object.keys(zt._def.entries) : [];
-  } else if (zodType instanceof z.ZodObject) {
-    return zodToJsonSchema(zt.shape);
-  } else if (zodType instanceof z.ZodRecord) {
-    result.type = 'object';
-    if (zt._def?.valueType) {
-      result.additionalProperties = zodTypeToJsonSchema(zt._def.valueType);
-    }
-  } else {
-    result.type = 'string';
-  }
-
-  return result;
-}
-
-type OmcCallToolHandler = (
-  request: CallToolRequest,
-) => Promise<CallToolResult>;
-
-type OmcCallToolRequestRegistrar = (
-  schema: typeof CallToolRequestSchema,
-  handler: OmcCallToolHandler,
-) => void;
+// Convert to SDK tool format
+// The SDK's tool() expects a ZodRawShape directly (not wrapped in z.object())
+const sdkTools = enabledTools.map(t =>
+  tool(
+    t.name,
+    t.description,
+    t.schema as Parameters<typeof tool>[2],
+    async (args: unknown) => await t.handler(args)
+  )
+);
 
 /**
  * In-process MCP server exposing all OMC custom tools
@@ -199,50 +74,10 @@ type OmcCallToolRequestRegistrar = (
  * Tools will be available as mcp__t__<tool_name>.
  * Tools in disabled groups (via OMC_DISABLE_TOOLS) are excluded at startup.
  */
-export const omcToolsServer = new Server(
-  { name: "t", version: "1.0.0" },
-  { capabilities: { tools: {} } }
-);
-
-// List available tools
-omcToolsServer.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: enabledTools.map(t => ({
-      name: t.name,
-      description: t.description,
-      inputSchema: zodToJsonSchema(t.schema),
-    })),
-  };
-});
-
-// Handle tool calls
-const setOmcCallToolRequestHandler =
-  (omcToolsServer.setRequestHandler as unknown as OmcCallToolRequestRegistrar).bind(omcToolsServer);
-
-setOmcCallToolRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-
-  const foundTool = enabledTools.find(t => t.name === name);
-  if (!foundTool) {
-    return {
-      content: [{ type: 'text', text: `Unknown tool: ${name}` }],
-      isError: true,
-    };
-  }
-
-  try {
-    const result = await foundTool.handler((args ?? {}) as unknown);
-    return {
-      content: result.content,
-      isError: result.isError ?? false,
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return {
-      content: [{ type: 'text', text: `Error: ${errorMessage}` }],
-      isError: true,
-    };
-  }
+export const omcToolsServer = createSdkMcpServer({
+  name: "t",
+  version: "1.0.0",
+  tools: sdkTools
 });
 
 /**
@@ -266,7 +101,7 @@ interface ToolNameFilterOptions {
   includeNotepad?: boolean;
   includeMemory?: boolean;
   includeTrace?: boolean;
-
+  includeInterop?: boolean;
   includeSharedMemory?: boolean;
   includeDeepinit?: boolean;
   includeWiki?: boolean;
@@ -282,7 +117,7 @@ function getExcludedCategories(options?: ToolNameFilterOptions): Set<ToolCategor
     includeNotepad = true,
     includeMemory = true,
     includeTrace = true,
-
+    includeInterop = true,
     includeSharedMemory = true,
     includeDeepinit = true,
     includeWiki = true,
@@ -297,7 +132,7 @@ function getExcludedCategories(options?: ToolNameFilterOptions): Set<ToolCategor
   if (!includeNotepad) excludedCategories.add(TOOL_CATEGORIES.NOTEPAD);
   if (!includeMemory) excludedCategories.add(TOOL_CATEGORIES.MEMORY);
   if (!includeTrace) excludedCategories.add(TOOL_CATEGORIES.TRACE);
-
+  if (!includeInterop) excludedCategories.add(TOOL_CATEGORIES.INTEROP);
   if (!includeSharedMemory) excludedCategories.add(TOOL_CATEGORIES.SHARED_MEMORY);
   if (!includeDeepinit) excludedCategories.add(TOOL_CATEGORIES.DEEPINIT);
   if (!includeWiki) excludedCategories.add(TOOL_CATEGORIES.WIKI);

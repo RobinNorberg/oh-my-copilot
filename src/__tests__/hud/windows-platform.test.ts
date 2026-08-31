@@ -3,6 +3,13 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
+vi.mock('node:child_process', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:child_process')>()),
+  execFileSync: vi.fn(),
+}));
+
+import { execFileSync } from 'node:child_process';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const packageRoot = join(__dirname, '..', '..', '..');
@@ -14,7 +21,7 @@ const packageRoot = join(__dirname, '..', '..', '..');
  * 1. Checking bridge NODE_PATH separator uses platform-aware logic
  * 2. Mocking process.platform to test Windows code paths
  * 3. Verifying ASCII fallback for emoji on Windows
- * 4. Verifying shell option for git execSync on Windows
+ * 4. Verifying git HUD uses shell-free execFileSync argv on Windows
  * 5. Verifying safe mode auto-enable on Windows
  *
  * Related: GitHub Issue #739
@@ -31,12 +38,8 @@ function getSeparator(platform: string): string {
   return isWin32(platform) ? ';' : ':';
 }
 
-function getShellOption(platform: string): string | undefined {
-  return isWin32(platform) ? 'cmd.exe' : undefined;
-}
-
 function getSafeMode(configSafeMode: boolean, platform: string): boolean {
-  return configSafeMode || isWin32(platform);
+  return configSafeMode !== false && (configSafeMode || isWin32(platform));
 }
 
 describe('Windows HUD Platform Fixes (#739)', () => {
@@ -130,7 +133,7 @@ describe('Windows HUD Platform Fixes (#739)', () => {
       vi.resetModules();
     });
 
-    it.skipIf(process.platform === 'win32')('should use emoji icons on macOS/Linux (current platform)', async () => {
+    it('should use emoji icons on macOS/Linux (current platform)', async () => {
       const { renderCallCounts } = await import('../../hud/elements/call-counts.js');
       const result = renderCallCounts(42, 7, 3);
       expect(result).toContain('\u{1F527}'); // wrench
@@ -138,7 +141,7 @@ describe('Windows HUD Platform Fixes (#739)', () => {
       expect(result).toContain('\u26A1');    // zap
     });
 
-    it('should use ASCII icons on Windows', async () => {
+    it('should use ASCII icons on Windows by default', async () => {
       Object.defineProperty(process, 'platform', { value: 'win32' });
       vi.resetModules();
 
@@ -148,6 +151,24 @@ describe('Windows HUD Platform Fixes (#739)', () => {
       expect(result).not.toContain('\u{1F527}');
       expect(result).not.toContain('\u{1F916}');
       expect(result).not.toContain('\u26A1');
+    });
+
+    it('should allow emoji icons on Windows when explicitly configured', async () => {
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      vi.resetModules();
+
+      const mod = await import('../../hud/elements/call-counts.js');
+      const result = mod.renderCallCounts(42, 7, 3, 'emoji');
+      expect(result).toBe('🔧42 🤖7 ⚡3');
+    });
+
+    it('should allow ASCII icons on Unix when explicitly configured', async () => {
+      Object.defineProperty(process, 'platform', { value: 'darwin' });
+      vi.resetModules();
+
+      const mod = await import('../../hud/elements/call-counts.js');
+      const result = mod.renderCallCounts(42, 7, 3, 'ascii');
+      expect(result).toBe('T:42 A:7 S:3');
     });
 
     it('should return null for zero counts on Windows', async () => {
@@ -170,27 +191,27 @@ describe('Windows HUD Platform Fixes (#739)', () => {
   });
 
   // =========================================================================
-  // P1: Git shell option on Windows
+  // P1: Git execFileSync argv on Windows
   // =========================================================================
-  describe('P1: Git execSync shell option', () => {
-    it('git.ts should use conditional shell option', () => {
-      const content = readFileSync(
-        join(packageRoot, 'src', 'hud', 'elements', 'git.ts'),
-        'utf-8',
+  describe('P1: Git shell-free execFileSync on Windows', () => {
+    it('invokes git with separate argv and hidden Windows process options', async () => {
+      const cwd = 'C:\\repo folder; & echo owned\\worktree';
+      vi.mocked(execFileSync).mockReturnValue('feature/space;name\\branch\n');
+      const { getGitBranch, resetGitCache } = await import('../../hud/elements/git.js');
+      resetGitCache();
+
+      expect(getGitBranch(cwd)).toBe('feature/space;name\\branch');
+      expect(execFileSync).toHaveBeenCalledWith(
+        'git',
+        ['branch', '--show-current'],
+        {
+          cwd,
+          encoding: 'utf-8',
+          timeout: 1000,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          windowsHide: true,
+        },
       );
-      expect(content).toContain("shell: process.platform === 'win32' ? 'cmd.exe' : undefined");
-    });
-
-    it('shell option logic should produce cmd.exe on win32', () => {
-      expect(getShellOption('win32')).toBe('cmd.exe');
-    });
-
-    it('shell option logic should produce undefined on darwin', () => {
-      expect(getShellOption('darwin')).toBeUndefined();
-    });
-
-    it('shell option logic should produce undefined on linux', () => {
-      expect(getShellOption('linux')).toBeUndefined();
     });
   });
 
@@ -204,15 +225,15 @@ describe('Windows HUD Platform Fixes (#739)', () => {
         'utf-8',
       );
       expect(content).toContain("process.platform === 'win32'");
-      expect(content).toMatch(/config\.elements\.safeMode \|\| process\.platform === 'win32'/);
+      expect(content).toContain('config.elements.safeMode !== false');
     });
 
     it('safe mode logic: config=false on Mac -> disabled', () => {
       expect(getSafeMode(false, 'darwin')).toBe(false);
     });
 
-    it('safe mode logic: config=false on Windows -> auto-enabled', () => {
-      expect(getSafeMode(false, 'win32')).toBe(true);
+    it('safe mode logic: config=false on Windows -> disabled (explicit override)', () => {
+      expect(getSafeMode(false, 'win32')).toBe(false);
     });
 
     it('safe mode logic: config=true on Mac -> enabled', () => {

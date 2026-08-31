@@ -1,8 +1,8 @@
 /**
  * Hook Input Normalization
  *
- * Handles snake_case -> camelCase field mapping for Copilot CLI hook inputs.
- * Copilot CLI sends snake_case fields: tool_name, tool_input, tool_response,
+ * Handles snake_case -> camelCase field mapping for Claude Code hook inputs.
+ * Claude Code sends snake_case fields: tool_name, tool_input, tool_response,
  * session_id, cwd, hook_event_name. This module normalizes them to camelCase
  * with snake_case-first fallback.
  *
@@ -18,7 +18,7 @@ import { resolveTranscriptPath } from '../lib/worktree-paths.js';
 
 /** Schema for the common hook input structure (supports both snake_case and camelCase) */
 const HookInputSchema = z.object({
-  // snake_case fields from Copilot CLI
+  // snake_case fields from Claude Code
   tool_name: z.string().optional(),
   tool_input: z.unknown().optional(),
   tool_response: z.unknown().optional(),
@@ -53,10 +53,10 @@ const HookInputSchema = z.object({
 }).passthrough();
 
 /**
- * Raw hook input as received from Copilot CLI (snake_case fields)
+ * Raw hook input as received from Claude Code (snake_case fields)
  */
 interface RawHookInput {
-  // snake_case fields from Copilot CLI
+  // snake_case fields from Claude Code
   tool_name?: string;
   tool_input?: unknown;
   tool_response?: unknown;
@@ -109,8 +109,10 @@ const KNOWN_FIELDS = new Set([
   // Subagent fields
   'agent_id', 'agent_name', 'agent_type', 'parent_session_id',
   'agentName', 'model', 'model_id', 'modelId',
-  // Common extra fields from Copilot CLI
+  // Common extra fields from Claude Code
   'input', 'output', 'result', 'error', 'status',
+  // Session-end fields
+  'reason',
 ]);
 
 // --- Fast-path detection ---
@@ -142,7 +144,7 @@ function isAlreadyCamelCase(obj: Record<string, unknown>): boolean {
 }
 
 /**
- * Normalize hook input from Copilot CLI's snake_case format to the
+ * Normalize hook input from Claude Code's snake_case format to the
  * camelCase HookInput interface used internally.
  *
  * Validates the input structure with Zod, then maps snake_case to camelCase.

@@ -11,12 +11,27 @@ import {
 
 const TEST_CWD = join(tmpdir(), `omc-test-leader-inbox-${process.pid}`);
 const TEST_TEAM = 'my-team';
+let previousHome: string | undefined;
+let previousUserProfile: string | undefined;
+let previousStateDir: string | undefined;
 
 beforeEach(() => {
+  previousHome = process.env.HOME;
+  previousUserProfile = process.env.USERPROFILE;
+  previousStateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = TEST_CWD;
+  process.env.USERPROFILE = TEST_CWD;
+  delete process.env.OMC_STATE_DIR;
   mkdirSync(TEST_CWD, { recursive: true });
 });
 
 afterEach(() => {
+  if (previousHome === undefined) delete process.env.HOME;
+  else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
+  if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+  else process.env.OMC_STATE_DIR = previousStateDir;
   rmSync(TEST_CWD, { recursive: true, force: true });
 });
 
@@ -27,7 +42,7 @@ afterEach(() => {
 describe('leaderInboxPath', () => {
   it('returns correct path under cwd', () => {
     const p = leaderInboxPath(TEST_TEAM, TEST_CWD);
-    expect(p).toBe(join(TEST_CWD, '.omcp/state/team/my-team/leader/inbox.md'));
+    expect(p).toBe(join(TEST_CWD, '.omg/state/team/my-team/leader/inbox.md'));
   });
 
   it('sanitizes team name (strips special chars)', () => {
@@ -35,7 +50,7 @@ describe('leaderInboxPath', () => {
     const p = leaderInboxPath('my team!', TEST_CWD);
     expect(p).not.toContain('!');
     expect(p).not.toContain(' ');
-    expect(p).toContain(join('leader', 'inbox.md'));
+    expect(p).toContain('leader/inbox.md');
   });
 
   it('prevents traversal via team name: dots and slashes stripped', () => {
@@ -57,7 +72,7 @@ describe('leaderInboxPath', () => {
 describe('ensureLeaderInbox', () => {
   it('creates the leader directory', async () => {
     await ensureLeaderInbox(TEST_TEAM, TEST_CWD);
-    const dir = join(TEST_CWD, '.omcp/state/team/my-team/leader');
+    const dir = join(TEST_CWD, '.omg/state/team/my-team/leader');
     expect(existsSync(dir)).toBe(true);
   });
 
@@ -145,7 +160,7 @@ describe('appendToLeaderInbox', () => {
 describe('extendLeaderBootstrapPrompt', () => {
   it('contains the canonical leader inbox path', () => {
     const prompt = extendLeaderBootstrapPrompt(TEST_TEAM);
-    expect(prompt).toContain('.omcp/state/team/my-team/leader/inbox.md');
+    expect(prompt).toContain('.omg/state/team/my-team/leader/inbox.md');
   });
 
   it('contains "check this file" instruction', () => {
@@ -165,7 +180,7 @@ describe('extendLeaderBootstrapPrompt', () => {
     // team-name segment of the path must not contain '!' or spaces.
     expect(prompt).not.toContain('!');
     // Extract the path segment from the prompt and verify no spaces in it
-    const pathMatch = prompt.match(/\.omcp\/state\/team\/([^/]+)\/leader\/inbox\.md/);
+    const pathMatch = prompt.match(/\.omg\/state\/team\/([^/]+)\/leader\/inbox\.md/);
     expect(pathMatch).not.toBeNull();
     expect(pathMatch![1]).not.toContain('!');
     expect(pathMatch![1]).not.toContain(' ');
@@ -175,9 +190,8 @@ describe('extendLeaderBootstrapPrompt', () => {
     const prompt = extendLeaderBootstrapPrompt(TEST_TEAM);
     const fullPath = leaderInboxPath(TEST_TEAM, TEST_CWD);
     // The prompt uses relative path; fullPath has cwd prefix
-    const relSegmentNative = join('.omcp', 'state', 'team', 'my-team', 'leader', 'inbox.md');
-    const relSegmentPosix = `.omcp/state/team/my-team/leader/inbox.md`;
-    expect(fullPath).toContain(relSegmentNative);
-    expect(prompt).toContain(relSegmentPosix);
+    const relSegment = `.omg/state/team/my-team/leader/inbox.md`;
+    expect(fullPath).toContain(relSegment);
+    expect(prompt).toContain(relSegment);
   });
 });

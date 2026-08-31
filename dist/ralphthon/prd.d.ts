@@ -83,7 +83,7 @@ export declare function incrementHardeningTaskRetry(directory: string, taskId: s
 /**
  * Add hardening tasks to the PRD for a new wave
  */
-export declare function addHardeningTasks(directory: string, tasks: Omit<HardeningTask, 'status' | 'retries'>[]): boolean;
+export declare function addHardeningTasks(directory: string, tasks: Omit<HardeningTask, "status" | "retries">[]): boolean;
 /**
  * Create a new RalphthonPRD from stories
  */

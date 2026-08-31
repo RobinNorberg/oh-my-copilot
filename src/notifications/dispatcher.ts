@@ -6,7 +6,10 @@
  * blocking hooks.
  */
 
-import { request as httpsRequest } from "https";
+import { request as httpsRequest, type RequestOptions } from "https";
+import { connect as netConnect } from "net";
+import { connect as tlsConnect } from "tls";
+import type { Socket } from "net";
 import type {
   DiscordNotificationConfig,
   DiscordBotNotificationConfig,
@@ -38,6 +41,172 @@ const DISPATCH_TIMEOUT_MS = 15_000;
 
 /** Discord maximum content length */
 const DISCORD_MAX_CONTENT_LENGTH = 2000;
+
+const TELEGRAM_API_HOST = "api.telegram.org";
+const TELEGRAM_API_PORT = 443;
+
+function firstEnvValue(names: string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function normalizeNoProxyEntry(entry: string): string {
+  if (!entry.startsWith("http://") && !entry.startsWith("https://")) {
+    return entry;
+  }
+  try {
+    return new URL(entry).host.toLowerCase();
+  } catch {
+    return entry;
+  }
+}
+
+function shouldBypassProxy(hostname: string, port: number): boolean {
+  const noProxy = firstEnvValue(["NO_PROXY", "no_proxy"]);
+  if (!noProxy) return false;
+
+  const host = hostname.toLowerCase();
+  const hostWithPort = `${host}:${port}`;
+
+  return noProxy.split(",").some((rawEntry) => {
+    const entry = rawEntry.trim().toLowerCase();
+    if (!entry) return false;
+    if (entry === "*") return true;
+
+    const normalizedEntry = normalizeNoProxyEntry(entry);
+    const entryHost = normalizedEntry.startsWith(".")
+      ? normalizedEntry.slice(1)
+      : normalizedEntry.split(":")[0];
+
+    return (
+      host === normalizedEntry ||
+      hostWithPort === normalizedEntry ||
+      host === entryHost ||
+      host.endsWith(`.${entryHost}`)
+    );
+  });
+}
+
+function getTelegramProxyUrl(): URL | undefined {
+  if (shouldBypassProxy(TELEGRAM_API_HOST, TELEGRAM_API_PORT)) return undefined;
+
+  const proxy = firstEnvValue([
+    "HTTPS_PROXY",
+    "https_proxy",
+    "HTTP_PROXY",
+    "http_proxy",
+  ]);
+  if (!proxy) return undefined;
+
+  try {
+    return new URL(proxy);
+  } catch {
+    return undefined;
+  }
+}
+
+function createTelegramProxyConnection(
+  proxyUrl: URL,
+): RequestOptions["createConnection"] {
+  return ((
+    _options: unknown,
+    callback: (err: Error | null, socket?: Socket) => void,
+  ) => {
+    const proxyHost = proxyUrl.hostname;
+    const proxyPort = Number(
+      proxyUrl.port || (proxyUrl.protocol === "https:" ? 443 : 80),
+    );
+    const connectSocket = proxyUrl.protocol === "https:"
+      ? tlsConnect({ host: proxyHost, port: proxyPort, servername: proxyHost })
+      : netConnect({ host: proxyHost, port: proxyPort });
+
+    let tlsSocket: Socket | undefined;
+    let settled = false;
+    const handshakeTimer = setTimeout(() => {
+      fail(new Error("Proxy CONNECT timeout"));
+    }, SEND_TIMEOUT_MS);
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(handshakeTimer);
+      connectSocket.destroy();
+      tlsSocket?.destroy();
+      callback(error);
+    };
+
+    connectSocket.once("error", fail);
+    connectSocket.once(proxyUrl.protocol === "https:" ? "secureConnect" : "connect", () => {
+      const auth = proxyUrl.username || proxyUrl.password
+        ? `Proxy-Authorization: Basic ${Buffer.from(
+            `${decodeURIComponent(proxyUrl.username)}:${decodeURIComponent(proxyUrl.password)}`,
+          ).toString("base64")}\r\n`
+        : "";
+      connectSocket.write(
+        `CONNECT ${TELEGRAM_API_HOST}:${TELEGRAM_API_PORT} HTTP/1.1\r\n` +
+          `Host: ${TELEGRAM_API_HOST}:${TELEGRAM_API_PORT}\r\n` +
+          auth +
+          "Connection: close\r\n\r\n",
+      );
+    });
+
+    let response = Buffer.alloc(0);
+    connectSocket.on("data", (chunk: Buffer) => {
+      response = Buffer.concat([response, chunk]);
+      const headerEnd = response.indexOf("\r\n\r\n");
+      if (headerEnd === -1) return;
+
+      const statusLine =
+        response.toString("ascii", 0, headerEnd).split("\r\n")[0] || "";
+      const status = /^HTTP\/\d(?:\.\d)?\s+(\d{3})/.exec(statusLine)?.[1];
+      if (!status || !status.startsWith("2")) {
+        fail(new Error(`Proxy CONNECT failed: ${status || "unknown"}`));
+        return;
+      }
+
+      connectSocket.removeAllListeners("data");
+      connectSocket.removeListener("error", fail);
+      tlsSocket = tlsConnect(
+        { socket: connectSocket, servername: TELEGRAM_API_HOST },
+        () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(handshakeTimer);
+          callback(null, tlsSocket);
+        },
+      );
+      tlsSocket.once("error", fail);
+    });
+
+    return undefined;
+  }) as RequestOptions["createConnection"];
+}
+
+function telegramRequestOptions(
+  bodyLength: number,
+  botToken: string,
+): RequestOptions {
+  const options: RequestOptions = {
+    hostname: TELEGRAM_API_HOST,
+    path: `/bot${botToken}/sendMessage`,
+    method: "POST",
+    family: 4, // Force IPv4 - fetch/undici has IPv6 issues on some systems
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Length": bodyLength,
+    },
+    timeout: SEND_TIMEOUT_MS,
+  };
+
+  const proxyUrl = getTelegramProxyUrl();
+  if (proxyUrl) {
+    options.createConnection = createTelegramProxyConnection(proxyUrl);
+  }
+
+  return options;
+}
 
 /**
  * Compose Discord message content with mention prefix.
@@ -137,7 +306,7 @@ function validateWebhookUrl(url: string): boolean {
 /**
  * Validate Microsoft Teams webhook URL.
  * Supports both:
- * - Power Automate Workflows: https://*.logic.azure.com/...  or https://*.webhook.office.com/...
+ * - Power Automate Workflows: https://*.logic.azure.com/... or https://*.webhook.office.com/...
  * - Legacy O365 Connectors: https://outlook.office.com/webhook/... or https://outlook.office365.com/webhook/...
  */
 function validateTeamsUrl(webhookUrl: string): boolean {
@@ -306,17 +475,7 @@ export async function sendTelegram(
 
     const result = await new Promise<NotificationResult>((resolve) => {
       const req = httpsRequest(
-        {
-          hostname: "api.telegram.org",
-          path: `/bot${config.botToken}/sendMessage`,
-          method: "POST",
-          family: 4, // Force IPv4 - fetch/undici has IPv6 issues on some systems
-          headers: {
-            "Content-Type": "application/json",
-            "Content-Length": Buffer.byteLength(body),
-          },
-          timeout: SEND_TIMEOUT_MS,
-        },
+        telegramRequestOptions(Buffer.byteLength(body), config.botToken),
         (res) => {
           // Collect response chunks to parse message_id
           const chunks: Buffer[] = [];
@@ -508,8 +667,10 @@ export async function sendSlackBot(
 }
 
 /**
- * Send notification via Microsoft Teams incoming webhook.
- * Sends an Adaptive Card via Power Automate Workflows or legacy O365 Connector webhook.
+ * Send notification via generic webhook (POST JSON).
+ */
+/**
+ * Send notification to Microsoft Teams as an Adaptive Card.
  */
 export async function sendTeams(
   config: TeamsNotificationConfig,
@@ -528,7 +689,6 @@ export async function sendTeams(
   }
 
   try {
-    // Import the Adaptive Card formatter
     const { formatTeamsAdaptiveCard } = await import("./formatter.js");
     const body = formatTeamsAdaptiveCard(payload, config.tagList);
 
@@ -557,9 +717,6 @@ export async function sendTeams(
   }
 }
 
-/**
- * Send notification via generic webhook (POST JSON).
- */
 export async function sendWebhook(
   config: WebhookNotificationConfig,
   payload: NotificationPayload,
@@ -598,6 +755,7 @@ export async function sendWebhook(
         reason: payload.reason,
         active_mode: payload.activeMode,
         question: payload.question,
+        ask_user_question_prompts: payload.askUserQuestionPrompts,
         ...(payload.replyChannel && { channel: payload.replyChannel }),
         ...(payload.replyTarget && { to: payload.replyTarget }),
         ...(payload.replyThread && { thread_id: payload.replyThread }),
@@ -704,6 +862,16 @@ export async function dispatchNotifications(
     promises.push(sendSlack(slackConfig, payloadFor("slack")));
   }
 
+  // Microsoft Teams
+  const teamsConfig = getEffectivePlatformConfig<TeamsNotificationConfig>(
+    "teams",
+    config,
+    event,
+  );
+  if (teamsConfig?.enabled) {
+    promises.push(sendTeams(teamsConfig, payloadFor("teams")));
+  }
+
   // Webhook
   const webhookConfig = getEffectivePlatformConfig<WebhookNotificationConfig>(
     "webhook",
@@ -734,16 +902,6 @@ export async function dispatchNotifications(
     );
   if (slackBotConfig?.enabled) {
     promises.push(sendSlackBot(slackBotConfig, payloadFor("slack-bot")));
-  }
-
-  // Teams
-  const teamsConfig = getEffectivePlatformConfig<TeamsNotificationConfig>(
-    "teams",
-    config,
-    event,
-  );
-  if (teamsConfig?.enabled) {
-    promises.push(sendTeams(teamsConfig, payloadFor("teams")));
   }
 
   if (promises.length === 0) {
@@ -841,7 +999,7 @@ export async function sendCustomWebhook(
     // Use native fetch (Node.js 18+)
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), config.timeout);
-
+    
     try {
       const response = await fetch(url, {
         method: config.method,
@@ -849,7 +1007,7 @@ export async function sendCustomWebhook(
         body: config.method !== 'GET' ? body : undefined,
         signal: controller.signal,
       });
-
+      
       if (!response.ok) {
         return {
           platform: "webhook",
@@ -857,7 +1015,7 @@ export async function sendCustomWebhook(
           error: `HTTP ${response.status}: ${response.statusText}`,
         };
       }
-
+      
       return {
         platform: "webhook",
         success: true,

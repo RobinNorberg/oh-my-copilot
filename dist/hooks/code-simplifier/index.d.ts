@@ -27,7 +27,8 @@ export interface CodeSimplifierHookResult {
 /** Marker filename used to prevent re-triggering within the same turn cycle */
 export declare const TRIGGER_MARKER_FILENAME = "code-simplifier-triggered.marker";
 /**
- * Read the global OMC config from the Copilot config directory.
+ * Read the global OMC config from the XDG-aware location, with legacy
+ * ~/.omg/config.json fallback for backward compatibility.
  * Returns null if the file does not exist or cannot be parsed.
  */
 export declare function readOmcConfig(): OmcGlobalConfig | null;
@@ -56,7 +57,7 @@ export declare function writeTriggerMarker(stateDir: string): void;
  */
 export declare function clearTriggerMarker(stateDir: string): void;
 /**
- * Build the message injected into Copilot's context when code-simplifier triggers.
+ * Build the message injected into Claude's context when code-simplifier triggers.
  */
 export declare function buildSimplifierMessage(files: string[]): string;
 /**

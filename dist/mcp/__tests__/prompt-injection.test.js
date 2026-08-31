@@ -81,6 +81,21 @@ describe('validateContextFilePaths', () => {
         expect(validPaths).toHaveLength(0);
         expect(errors[0]).toContain('E_CONTEXT_FILE_TRAVERSAL');
     });
+    it('accepts Windows absolute child path within baseDir', () => {
+        const windowsBaseDir = 'C:\\project\\root';
+        const windowsChildPath = 'C:\\project\\root\\src\\foo.ts';
+        const { validPaths, errors } = validateContextFilePaths([windowsChildPath], windowsBaseDir);
+        expect(validPaths).toEqual([windowsChildPath]);
+        expect(errors).toHaveLength(0);
+    });
+    it('rejects Windows absolute path outside baseDir', () => {
+        const windowsBaseDir = 'C:\\project\\root';
+        const windowsOutsidePath = 'C:\\project\\other\\foo.ts';
+        const { validPaths, errors } = validateContextFilePaths([windowsOutsidePath], windowsBaseDir);
+        expect(validPaths).toHaveLength(0);
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toContain('E_CONTEXT_FILE_TRAVERSAL');
+    });
     it('allows traversal paths when allowExternal is true', () => {
         const { validPaths, errors } = validateContextFilePaths(['../../../etc/passwd'], baseDir, true);
         expect(validPaths).toHaveLength(1);

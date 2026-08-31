@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, lstatSync, readlinkSync, readdirSync, symlinkSync } from 'fs';
-import { join, basename } from 'path';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, lstatSync, readlinkSync, readdirSync } from 'fs';
+import { join, relative } from 'path';
 import { tmpdir } from 'os';
 import { execFileSync } from 'child_process';
+import { pathIdentity, publishCacheOccupancy, readOccupiedPluginRoots } from '../utils/cache-occupancy.js';
+import { purgeStalePluginCacheVersions } from '../utils/paths.js';
 
 const SCRIPT_PATH = join(__dirname, '..', '..', 'scripts', 'session-start.mjs');
 const NODE = process.execPath;
@@ -10,7 +12,7 @@ const NODE = process.execPath;
 /**
  * Integration tests for the plugin cache cleanup logic in session-start.mjs.
  *
- * The script's cleanup block scans ~/.copilot/plugins/cache/omg/oh-my-copilot/
+ * The script's cleanup block scans ~/.claude/plugins/cache/omc/oh-my-copilot/
  * for version directories, keeps the latest 2 real directories, and replaces
  * older versions with symlinks pointing to the latest version. This prevents
  * "Cannot find module" errors when a running session's CLAUDE_PLUGIN_ROOT
@@ -25,11 +27,13 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'omc-cache-test-'));
     fakeHome = join(tmpDir, 'home');
-    fakeCacheBase = join(fakeHome, '.copilot', 'plugins', 'cache', 'omg', 'oh-my-copilot');
+    fakeCacheBase = join(fakeHome, '.claude', 'plugins', 'cache', 'omc', 'oh-my-copilot');
     fakeProject = join(tmpDir, 'project');
 
-    // Create fake project directory with .omcp
-    mkdirSync(join(fakeProject, '.omcp', 'state'), { recursive: true });
+    // Create fake project directory with .omc
+    mkdirSync(join(fakeProject, '.omg', 'state'), { recursive: true });
+    // session-start validateCwd requires a real workspace anchor (.git / .omc-workspace)
+    mkdirSync(join(fakeProject, '.git'), { recursive: true });
 
     // Create fake cache base
     mkdirSync(fakeCacheBase, { recursive: true });
@@ -44,6 +48,7 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
     mkdirSync(join(versionDir, 'scripts'), { recursive: true });
     writeFileSync(join(versionDir, 'scripts', 'run.cjs'), '// stub');
     writeFileSync(join(versionDir, 'scripts', 'session-start.mjs'), '// stub');
+    writeFileSync(join(versionDir, 'package.json'), JSON.stringify({ version }));
     return versionDir;
   }
 
@@ -63,6 +68,7 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
           ...process.env,
           HOME: fakeHome,
           USERPROFILE: fakeHome, // Windows compat
+          COPILOT_CONFIG_DIR: join(fakeHome, '.claude'), // Override to use fake home
           CLAUDE_PLUGIN_ROOT: join(fakeCacheBase, '4.4.3'),
           ...env,
         },
@@ -74,6 +80,52 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
       return err.stdout?.trim() || '';
     }
   }
+
+  function createExternalPluginRoot(version: string) {
+    const externalRoot = join(tmpDir, 'external-plugin-root');
+    mkdirSync(join(externalRoot, 'dist', 'notifications'), { recursive: true });
+    writeFileSync(join(externalRoot, 'package.json'), JSON.stringify({ version }));
+    writeFileSync(join(externalRoot, 'dist', 'notifications', 'index.js'), 'export async function notify() {}\n');
+    writeFileSync(join(externalRoot, 'dist', 'notifications', 'reply-listener.js'), 'export async function buildDaemonConfig() { return null; }\nexport function startReplyListener() {}\n');
+    return externalRoot;
+  }
+
+  it('keeps explicit external plugin roots authoritative for update checks', () => {
+    createFakeVersion('4.14.5');
+    const externalRoot = createExternalPluginRoot('4.14.4');
+    const updateCache = join(fakeHome, '.claude', '.omg', 'update-check.json');
+    mkdirSync(join(fakeHome, '.claude', '.omg'), { recursive: true });
+    writeFileSync(updateCache, JSON.stringify({
+      timestamp: Date.now(),
+      latestVersion: '4.14.5',
+      currentVersion: '4.14.4',
+      updateAvailable: true,
+    }));
+
+    const output = runSessionStart({ CLAUDE_PLUGIN_ROOT: externalRoot });
+    const parsed = JSON.parse(output);
+
+    expect(parsed.systemMessage).toContain('[OMC UPDATE AVAILABLE]');
+    expect(parsed.systemMessage).toContain('current: v4.14.4');
+  });
+
+  it('uses latest managed cache version for stale managed cache roots', () => {
+    createFakeVersion('4.14.4');
+    createFakeVersion('4.14.5');
+    const updateCache = join(fakeHome, '.claude', '.omg', 'update-check.json');
+    mkdirSync(join(fakeHome, '.claude', '.omg'), { recursive: true });
+    writeFileSync(updateCache, JSON.stringify({
+      timestamp: Date.now(),
+      latestVersion: '4.14.5',
+      currentVersion: '4.14.4',
+      updateAvailable: true,
+    }));
+
+    const output = runSessionStart({ CLAUDE_PLUGIN_ROOT: join(fakeCacheBase, '4.14.4') });
+    const parsed = JSON.parse(output);
+
+    expect(parsed.systemMessage).toBeUndefined();
+  });
 
   it('replaces old versions (beyond latest 2) with symlinks to the latest', () => {
     createFakeVersion('4.4.1');
@@ -96,8 +148,7 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
     expect(v1Stat.isSymbolicLink()).toBe(true);
 
     const target = readlinkSync(join(fakeCacheBase, '4.4.1'));
-    // Windows junctions return absolute paths; Unix symlinks return relative paths
-    expect(basename(target)).toBe('4.4.3');
+    expect(target).toBe('4.4.3');
   });
 
   it('with only 2 versions, no symlinks are created', () => {
@@ -142,10 +193,10 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
 
     // 4.4.1 and 4.4.0: symlinks to 4.4.3
     expect(lstatSync(join(fakeCacheBase, '4.4.1')).isSymbolicLink()).toBe(true);
-    expect(basename(readlinkSync(join(fakeCacheBase, '4.4.1')))).toBe('4.4.3');
+    expect(readlinkSync(join(fakeCacheBase, '4.4.1'))).toBe('4.4.3');
 
     expect(lstatSync(join(fakeCacheBase, '4.4.0')).isSymbolicLink()).toBe(true);
-    expect(basename(readlinkSync(join(fakeCacheBase, '4.4.0')))).toBe('4.4.3');
+    expect(readlinkSync(join(fakeCacheBase, '4.4.0'))).toBe('4.4.3');
   });
 
   it('updates an existing symlink pointing to a non-latest target', () => {
@@ -153,18 +204,15 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
     createFakeVersion('4.4.3');
 
     // Manually create a stale symlink: 4.4.1 -> 4.4.2 (not the latest 4.4.3)
-    // Use 'junction' on Windows (no elevation needed); relative target on Unix
-    const isWin = process.platform === 'win32';
-    const staleTarget = isWin ? join(fakeCacheBase, '4.4.2') : '4.4.2';
-    symlinkSync(staleTarget, join(fakeCacheBase, '4.4.1'), isWin ? 'junction' : undefined);
+    const { symlinkSync } = require('fs');
+    symlinkSync('4.4.2', join(fakeCacheBase, '4.4.1'));
 
     runSessionStart();
 
     // 4.4.1 should now be a symlink to 4.4.3 (updated from 4.4.2)
     const v1Stat = lstatSync(join(fakeCacheBase, '4.4.1'));
     expect(v1Stat.isSymbolicLink()).toBe(true);
-    // Windows junctions return absolute paths; Unix symlinks return relative paths
-    expect(basename(readlinkSync(join(fakeCacheBase, '4.4.1')))).toBe('4.4.3');
+    expect(readlinkSync(join(fakeCacheBase, '4.4.1'))).toBe('4.4.3');
 
     // 4.4.3 and 4.4.2 remain as real directories
     expect(lstatSync(join(fakeCacheBase, '4.4.3')).isSymbolicLink()).toBe(false);
@@ -183,5 +231,71 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
     const v3Stat = lstatSync(join(fakeCacheBase, '4.4.3'));
     expect(v3Stat.isDirectory()).toBe(true);
     expect(v3Stat.isSymbolicLink()).toBe(false);
+  });
+
+  it('retains a mixed-case occupied root in source purge on simulated Windows', async () => {
+    const staleVersion = createFakeVersion('4.4.1');
+    const configDir = join(fakeHome, '.claude');
+    const installedFile = join(configDir, 'plugins', 'installed_plugins.json');
+    mkdirSync(join(configDir, 'plugins'), { recursive: true });
+    writeFileSync(installedFile, JSON.stringify({
+      version: 2,
+      // Keep the only cache version outside an active sibling namespace so the
+      // purge reaches its destructive no-sibling branch.
+      plugins: { 'other-plugin@other': [{ installPath: join(tmpDir, 'other-plugin', '1.0.0') }] },
+    }));
+
+    const mixedCaseRoot = staleVersion.replace('oh-my-copilot', 'Oh-My-Copilot');
+    const originalPlatform = process.platform;
+    const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+    process.env.COPILOT_CONFIG_DIR = configDir;
+    try {
+      // Publish through the real occupancy writer so the record carries this
+      // process's live PID/start identity; only the path casing is simulated.
+      expect(await publishCacheOccupancy(mixedCaseRoot, configDir)).toBe(true);
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+
+      const occupancy = readOccupiedPluginRoots(configDir);
+      expect(occupancy.unavailable).toBe(false);
+      expect(occupancy.roots).toContain(pathIdentity(staleVersion));
+
+      const result = purgeStalePluginCacheVersions({ skipGracePeriod: true });
+
+      expect(result.removed).toBe(0);
+      expect(result.skippedPaths).toContain(staleVersion);
+      expect(lstatSync(staleVersion).isDirectory()).toBe(true);
+      expect(lstatSync(staleVersion).isSymbolicLink()).toBe(false);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      if (originalConfigDir === undefined) delete process.env.COPILOT_CONFIG_DIR;
+      else process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+    }
+  });
+
+  it('preserves lexical install-path comparison on non-Windows source purge', () => {
+    const staleVersion = createFakeVersion('4.4.1');
+    const configDir = join(fakeHome, '.claude');
+    mkdirSync(join(configDir, 'plugins'), { recursive: true });
+    writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
+      version: 2,
+      // This resolves to staleVersion, but the historical non-Windows
+      // comparison intentionally treats the relative spelling lexically.
+      plugins: { 'other-plugin@other': [{ installPath: relative(process.cwd(), staleVersion) }] },
+    }));
+
+    const originalPlatform = process.platform;
+    const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+    process.env.COPILOT_CONFIG_DIR = configDir;
+    try {
+      Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+      const result = purgeStalePluginCacheVersions({ skipGracePeriod: true });
+
+      expect(result.removed).toBe(1);
+      expect(result.removedPaths).toContain(staleVersion);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      if (originalConfigDir === undefined) delete process.env.COPILOT_CONFIG_DIR;
+      else process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+    }
   });
 });

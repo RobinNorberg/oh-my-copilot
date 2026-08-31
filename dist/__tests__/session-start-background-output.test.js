@@ -24,7 +24,7 @@ describe("session-start background output isolation", () => {
                 env: {
                     ...process.env,
                     CLAUDE_PLUGIN_ROOT: pluginRoot,
-                    CLAUDE_CONFIG_DIR: join(sandbox, "claude"),
+                    COPILOT_CONFIG_DIR: join(sandbox, "claude"),
                     OMC_NOTIFY: "1",
                 },
             });

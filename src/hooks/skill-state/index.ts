@@ -27,8 +27,8 @@
  *   1. `writeSkillActiveStateCopies()` is the only helper allowed to persist
  *      workflow-slot state. Every workflow-slot write, confirm, tombstone, TTL
  *      pruning, and hard-clear must update BOTH
- *        - `.omc/state/skill-active-state.json`
- *        - `.omc/state/sessions/{sessionId}/skill-active-state.json`
+ *        - `.omg/state/skill-active-state.json`
+ *        - `.omg/state/sessions/{sessionId}/skill-active-state.json`
  *      together through this single helper.
  *   2. Support-skill writes go through the same helper so the shared file
  *      never drops the `active_skills` branch.
@@ -36,12 +36,20 @@
  *      copy is authoritative for cross-session aggregation.
  */
 
-import { existsSync, readFileSync, unlinkSync } from 'fs';
+import { existsSync } from 'fs';
+import { readFileSync, unlinkSync } from 'fs';
+import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
+import {
+  canClearStateForSession,
+  clearStateFileLockedIf,
+  readModeStateWithMeta,
+  withStateFileMutationLock,
+  writeModeState,
+} from '../../lib/mode-state-io.js';
 import {
   resolveStatePath,
   resolveSessionStatePath,
 } from '../../lib/worktree-paths.js';
-import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
 import { readTrackingState, getStaleAgents } from '../subagent-tracker/index.js';
 
 // ---------------------------------------------------------------------------
@@ -61,8 +69,6 @@ export const CANONICAL_WORKFLOW_SKILLS = [
   'autopilot',
   'ralph',
   'team',
-  'ultrawork',
-  'ultraqa',
   'deep-interview',
   'ralplan',
   'self-improve',
@@ -97,7 +103,7 @@ const PROTECTION_CONFIGS: Record<SkillProtectionLevel, SkillStateConfig> = {
 /**
  * Maps each skill name to its support-skill protection level.
  *
- * Workflow skills (autopilot, ralph, ultrawork, team, ultraqa, ralplan,
+ * Workflow skills (autopilot, ralph, team, ralplan,
  * deep-interview, self-improve) have dedicated mode state and workflow slots,
  * so their support-skill protection is 'none'. They flow through the
  * `active_skills` branch instead.
@@ -107,55 +113,57 @@ const SKILL_PROTECTION: Record<string, SkillProtectionLevel> = {
   autopilot: 'none',
   autoresearch: 'none',
   ralph: 'none',
-  ultrawork: 'none',
   team: 'none',
   'omc-teams': 'none',
-  ultraqa: 'none',
-  cancel: 'none',
   ralplan: 'none',
   'self-improve': 'none',
-  'deep-interview': 'none',
+  cancel: 'none',
 
   // === Instant / read-only → no protection needed ===
   trace: 'none',
   hud: 'none',
   'omc-doctor': 'none',
   'omc-help': 'none',
-  'learn-about-omg': 'none',
+  'learn-about-omc': 'none',
   note: 'none',
 
   // === Light protection (simple shortcuts, 3 reinforcements) ===
   skill: 'light',
+  ask: 'light',
   'configure-notifications': 'light',
-  'build-fix': 'light',
-  analyze: 'light',
 
   // === Medium protection (review/planning, 5 reinforcements) ===
+  'omc-plan': 'medium',
   plan: 'medium',
+  'deep-interview': 'heavy',
   review: 'medium',
   'external-context': 'medium',
+  'ai-slop-cleaner': 'medium',
   sciomc: 'medium',
   skillify: 'medium',
   learner: 'medium',
   'omc-setup': 'medium',
+  setup: 'medium',
   'mcp-setup': 'medium',
   'project-session-manager': 'medium',
+  psm: 'medium',
   'writer-memory': 'medium',
   'ralph-init': 'medium',
-  cccg: 'medium',
-  setup: 'medium',
-  psm: 'medium',
+  release: 'medium',
 
   // === Heavy protection (long-running, 10 reinforcements) ===
   deepinit: 'heavy',
 };
+
+const RETIRED_SKILL_NAMES = new Set(['ultrawork', 'ccg']);
 
 export function getSkillProtection(skillName: string, rawSkillName?: string): SkillProtectionLevel {
   if (rawSkillName != null && !rawSkillName.toLowerCase().startsWith('oh-my-copilot:')) {
     return 'none';
   }
   const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, '');
-  return SKILL_PROTECTION[normalized] ?? 'light';
+  if (RETIRED_SKILL_NAMES.has(normalized)) return 'none';
+  return SKILL_PROTECTION[normalized] ?? 'none';
 }
 
 export function getSkillConfig(skillName: string, rawSkillName?: string): SkillStateConfig {
@@ -229,13 +237,27 @@ function isEmptyV2(state: SkillActiveStateV2): boolean {
   return Object.keys(state.active_skills).length === 0 && !state.support_skill;
 }
 
-function readRawFromPath(path: string): unknown {
-  if (!existsSync(path)) return null;
-  try {
-    return JSON.parse(readFileSync(path, 'utf-8'));
-  } catch {
-    return null;
+function mergeSharedSkillLedger(
+  current: Record<string, unknown> | null,
+  next: SkillActiveStateV2 | null,
+  sessionId: string,
+): SkillActiveStateV2 {
+  const existing = current ? normalizeToV2(current) : emptySkillActiveStateV2();
+  const mergedSlots = { ...existing.active_skills };
+  for (const [name, slot] of Object.entries(mergedSlots)) {
+    if (slot.session_id === sessionId) delete mergedSlots[name];
   }
+  if (next) {
+    for (const [name, slot] of Object.entries(next.active_skills)) {
+      if (!slot.session_id || slot.session_id === sessionId) mergedSlots[name] = slot;
+    }
+  }
+  const existingSupport = existing.support_skill;
+  const nextSupport = next?.support_skill;
+  const support = nextSupport && (!nextSupport.session_id || nextSupport.session_id === sessionId)
+    ? nextSupport
+    : existingSupport && existingSupport.session_id !== sessionId ? existingSupport : null;
+  return { version: 2, active_skills: mergedSlots, ...(support ? { support_skill: support } : {}) };
 }
 
 /**
@@ -405,7 +427,14 @@ export function pruneExpiredWorkflowSkillTombstones(
 export function resolveAuthoritativeWorkflowSkill(
   state: SkillActiveStateV2,
 ): ActiveSkillSlot | null {
-  const live = Object.values(state.active_skills).filter((s) => !s.completed_at);
+  const live = Object.entries(state.active_skills)
+    .filter(([name, slot]) =>
+      isCanonicalWorkflowSkill(name) &&
+      typeof slot.skill_name === 'string' &&
+      isCanonicalWorkflowSkill(slot.skill_name) &&
+      !slot.completed_at,
+    )
+    .map(([, slot]) => slot);
   if (live.length === 0) return null;
 
   const isLiveAncestor = (name: string | null | undefined): boolean => {
@@ -427,18 +456,23 @@ export function resolveAuthoritativeWorkflowSkill(
 
 /**
  * Pure query: is the workflow slot for `skillName` live (non-tombstoned)?
+ * Returns false when no slot exists at all, so callers can distinguish
+ * "no ledger entry" from "tombstoned" via `isWorkflowSkillTombstoned`.
  */
 export function isWorkflowSkillLive(
   state: SkillActiveStateV2,
   skillName: string,
 ): boolean {
   const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, '');
+  if (!isCanonicalWorkflowSkill(normalized)) return false;
   const slot = state.active_skills[normalized];
   return !!slot && !slot.completed_at;
 }
 
 /**
  * Pure query: is the slot tombstoned (has `completed_at`) and not yet expired?
+ * Used by stop enforcement to suppress noisy re-handoff on completed workflows
+ * until TTL pruning removes the slot or a fresh invocation reactivates it.
  */
 export function isWorkflowSkillTombstoned(
   state: SkillActiveStateV2,
@@ -464,24 +498,31 @@ export function isWorkflowSkillTombstoned(
  *
  * When `sessionId` is provided, the session copy is authoritative for
  * session-local reads. No fall-through to the root copy, to prevent
- * cross-session leakage.
+ * cross-session leakage. When no session copy exists for the session, the
+ * ledger is treated as empty for that session's local reads.
  *
  * When `sessionId` is omitted (legacy/global path), the root copy is read.
+ *
+ * Logs a reconciliation warning when the session copy diverges from the root
+ * for slots belonging to the same session. The next mutation through
+ * `writeSkillActiveStateCopies()` re-synchronizes both copies.
  */
 export function readSkillActiveStateNormalized(
   directory: string,
   sessionId?: string,
 ): SkillActiveStateV2 {
-  const rootPath = resolveStatePath('skill-active', directory);
-  const sessionPath = sessionId
-    ? resolveSessionStatePath('skill-active', sessionId, directory)
+  const sessionV2 = sessionId
+    ? normalizeToV2(
+      readModeStateWithMeta<Record<string, unknown>>(
+        SKILL_ACTIVE_STATE_MODE,
+        directory,
+        sessionId,
+      ),
+    )
     : null;
-
-  const sessionExists = !!(sessionPath && existsSync(sessionPath));
-  const rootExists = existsSync(rootPath);
-
-  const sessionV2 = sessionExists ? normalizeToV2(readRawFromPath(sessionPath!)) : null;
-  const rootV2 = rootExists ? normalizeToV2(readRawFromPath(rootPath)) : null;
+  const rootV2 = normalizeToV2(
+    readModeStateWithMeta<Record<string, unknown>>(SKILL_ACTIVE_STATE_MODE, directory),
+  );
 
   // Divergence detection — best-effort; logged but non-fatal.
   if (sessionV2 && rootV2 && sessionId) {
@@ -503,7 +544,8 @@ export function readSkillActiveStateNormalized(
   // Session copy authoritative for session-local reads.
   if (sessionV2) return sessionV2;
 
-  // sessionId provided but no session copy — do NOT fall back to root.
+  // sessionId provided but no session copy — do NOT fall back to root to
+  // prevent cross-session state leakage (#456).
   if (sessionId) return emptySkillActiveStateV2();
 
   // Legacy/global path: read root.
@@ -513,8 +555,8 @@ export function readSkillActiveStateNormalized(
 /**
  * THE ONLY HELPER allowed to persist workflow-slot state.
  *
- * Writes BOTH root `.omc/state/skill-active-state.json` AND session
- * `.omc/state/sessions/{sessionId}/skill-active-state.json` together. When a
+ * Writes BOTH root `.omg/state/skill-active-state.json` AND session
+ * `.omg/state/sessions/{sessionId}/skill-active-state.json` together. When a
  * resolved state is empty (no slots, no support_skill), the corresponding
  * file is removed instead — the absence of a file is the canonical empty
  * state.
@@ -528,47 +570,77 @@ export function writeSkillActiveStateCopies(
   options?: WriteSkillActiveStateCopiesOptions,
 ): boolean {
   const rootPath = resolveStatePath('skill-active', directory);
-  const sessionPath = sessionId
-    ? resolveSessionStatePath('skill-active', sessionId, directory)
-    : null;
 
   // Root defaults to the same payload as session. Explicit `null` deletes root.
   const rootState: SkillActiveStateV2 | null =
     options?.rootState === undefined ? nextState : options.rootState;
 
-  const writeOrRemove = (filePath: string, payload: SkillActiveStateV2 | null): boolean => {
-    const shouldRemove = payload === null || isEmptyV2(payload);
-    if (shouldRemove) {
-      if (!existsSync(filePath)) return true;
-      try {
-        unlinkSync(filePath);
-        return true;
-      } catch {
-        return false;
-      }
-    }
-    try {
-      const envelope: Record<string, unknown> = {
-        ...payload,
-        version: 2,
-        _meta: {
-          written_at: new Date().toISOString(),
-          mode: SKILL_ACTIVE_STATE_MODE,
-          ...(sessionId ? { sessionId } : {}),
-        },
-      };
-      atomicWriteJsonSync(filePath, envelope);
-      return true;
-    } catch {
-      return false;
-    }
+
+  const clearOwnedFile = (filePath: string): boolean => {
+    const result = clearStateFileLockedIf(
+      filePath,
+      current => !sessionId || canClearStateForSession(current, sessionId),
+    );
+    return result !== 'failed' && (result !== 'skipped' || !existsSync(filePath));
   };
 
-  let ok = writeOrRemove(rootPath, rootState);
-  if (sessionPath) {
-    ok = writeOrRemove(sessionPath, nextState) && ok;
+  const writeSessionState = (): boolean => {
+    if (!sessionId) return true;
+    if (isEmptyV2(nextState)) {
+      return clearOwnedFile(resolveSessionStatePath(SKILL_ACTIVE_STATE_MODE, sessionId, directory));
+    }
+    return writeModeState(
+      SKILL_ACTIVE_STATE_MODE,
+      nextState as unknown as Record<string, unknown>,
+      directory,
+      sessionId,
+    );
+  };
+
+  const writeRootState = (): boolean => {
+    if (!sessionId) {
+      if (rootState === null || isEmptyV2(rootState)) {
+        return clearOwnedFile(rootPath);
+      }
+      return writeModeState(
+        SKILL_ACTIVE_STATE_MODE,
+        rootState as unknown as Record<string, unknown>,
+        directory,
+      );
+    }
+
+    const transaction = withStateFileMutationLock(rootPath, () => {
+      let current: Record<string, unknown> | null = null;
+      if (existsSync(rootPath)) {
+        try { current = JSON.parse(readFileSync(rootPath, 'utf8')) as Record<string, unknown>; }
+        catch { return false; }
+      }
+      const merged = mergeSharedSkillLedger(current, rootState, sessionId);
+      if (isEmptyV2(merged)) {
+        if (existsSync(rootPath)) unlinkSync(rootPath);
+        return true;
+      }
+      atomicWriteJsonSync(rootPath, {
+        ...merged,
+        _meta: { written_at: new Date().toISOString(), mode: SKILL_ACTIVE_STATE_MODE },
+      });
+      return true;
+    });
+    return transaction.acquired && transaction.value === true;
+  };
+
+  // Serialize the paired session/root read-modify-write as one logical
+  // transaction. The per-file locks remain in place for callers that touch a
+  // single copy, while this transaction lock prevents two sessions using this
+  // helper from interleaving their session authentication and root merge.
+  if (sessionId) {
+    const transaction = withStateFileMutationLock(`${rootPath}.transaction`, () => {
+      if (!writeSessionState()) return false;
+      return writeRootState();
+    });
+    return transaction.acquired && transaction.value === true;
   }
-  return ok;
+  return writeRootState();
 }
 
 // ---------------------------------------------------------------------------
@@ -599,6 +671,10 @@ export function readSkillActiveState(
  * Preserves the `active_skills` workflow ledger — every write reads the full
  * v2 state, updates only the `support_skill` branch, and re-writes both
  * copies together via `writeSkillActiveStateCopies()`.
+ *
+ * @param rawSkillName - Original skill name as invoked. When provided without
+ *   the `oh-my-copilot:` prefix, protection returns 'none' to avoid
+ *   confusion with user-defined project skills of the same name (#1581).
  */
 export function writeSkillActiveState(
   directory: string,
@@ -617,6 +693,7 @@ export function writeSkillActiveState(
   const existing = existingV2.support_skill;
 
   // Nesting guard: a DIFFERENT support skill already owns the slot — skip.
+  // Same skill re-invocation is allowed (idempotent refresh).
   if (existing && existing.active && existing.skill_name !== normalized) {
     return null;
   }
@@ -646,9 +723,6 @@ export function clearSkillActiveState(directory: string, sessionId?: string): bo
   return writeSkillActiveStateCopies(directory, nextV2, sessionId);
 }
 
-/**
- * Check if the skill state is stale (exceeded its TTL).
- */
 export function isSkillStateStale(state: SkillActiveState): boolean {
   if (!state.active) return true;
 
@@ -671,8 +745,6 @@ export function isSkillStateStale(state: SkillActiveState): boolean {
  *
  * Reinforcement increments go through `writeSkillActiveStateCopies()` so the
  * workflow-slot ledger is never clobbered by support-skill writes.
- *
- * Called by checkPersistentModes() in the persistent-mode hook.
  */
 export function checkSkillActiveState(
   directory: string,
@@ -687,6 +759,15 @@ export function checkSkillActiveState(
   // Session isolation
   if (sessionId && state.session_id && state.session_id !== sessionId) {
     return { shouldBlock: false, message: '' };
+  }
+
+  // Retired skills may leave support-state records behind, but those records
+  // are cleanup-only and must never re-arm stop enforcement.
+  const normalizedSupportSkill = typeof state.skill_name === 'string'
+    ? state.skill_name.toLowerCase().replace(/^oh-my-copilot:/, '')
+    : '';
+  if (RETIRED_SKILL_NAMES.has(normalizedSupportSkill)) {
+    return { shouldBlock: false, message: '', skillName: state.skill_name };
   }
 
   // Staleness check

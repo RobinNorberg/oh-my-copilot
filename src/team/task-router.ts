@@ -12,6 +12,7 @@
 import type { TaskFile, WorkerCapability, WorkerBackend } from './types.js';
 import { getTeamMembers } from './unified-team.js';
 import { scoreWorkerFitness } from './capabilities.js';
+import { inferLaneIntent } from './role-router.js';
 
 export interface TaskRoutingDecision {
   taskId: string;
@@ -59,6 +60,9 @@ export function routeTasks(
   for (const task of unassignedTasks) {
     const caps = requiredCapabilities?.[task.id] || ['general'];
 
+    // Infer lane intent from the task description for role-based fitness bonus
+    const laneIntent = inferLaneIntent(task.description || task.subject || '');
+
     // Score each available worker
     const scored = available
       .map(worker => {
@@ -68,8 +72,10 @@ export function routeTasks(
         const loadPenalty = currentLoad * 0.2;
         // Prefer idle workers
         const idleBonus = worker.status === 'idle' ? 0.1 : 0;
+        // Apply +0.3 bonus when worker role matches high-confidence lane intent
+        const intentBonus = laneIntent !== 'unknown' && workerMatchesIntent(worker, laneIntent) ? 0.3 : 0;
         // Ensure final score stays in 0-1 range
-        const finalScore = Math.min(1, Math.max(0, fitnessScore - loadPenalty + idleBonus));
+        const finalScore = Math.min(1, Math.max(0, fitnessScore - loadPenalty + idleBonus + intentBonus));
 
         return { worker, score: finalScore, fitnessScore };
       })
@@ -95,4 +101,31 @@ export function routeTasks(
   }
 
   return decisions;
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/** Maps lane intents to the worker capabilities that best serve them */
+const INTENT_CAPABILITY_MAP: Record<string, WorkerCapability[]> = {
+  'build-fix': ['code-edit'],
+  debug: ['general'],
+  docs: ['documentation'],
+  design: ['architecture', 'ui-design'],
+  cleanup: ['refactoring'],
+  review: ['code-review', 'security-review'],
+  verification: ['testing'],
+  implementation: ['code-edit'],
+};
+
+/**
+ * Returns true when a worker's capabilities align with the detected lane intent.
+ * Used to apply the +0.3 fitness bonus for high-confidence intent matches.
+ */
+function workerMatchesIntent(worker: { capabilities: WorkerCapability[] }, intent: string): boolean {
+  const caps = INTENT_CAPABILITY_MAP[intent];
+  if (!caps) return false;
+  const workerCaps = new Set(worker.capabilities);
+  return caps.some(c => workerCaps.has(c));
 }

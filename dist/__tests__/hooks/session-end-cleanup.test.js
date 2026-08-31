@@ -5,15 +5,29 @@ import { join } from 'path';
 import { cleanupTransientState } from '../../hooks/session-end/index.js';
 describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
     let tmpRoot;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
         tmpRoot = mkdtempSync(join(tmpdir(), 'omc-session-end-cleanup-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = tmpRoot;
+        process.env.USERPROFILE = tmpRoot;
     });
     afterEach(() => {
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
         rmSync(tmpRoot, { recursive: true, force: true });
     });
     it('removes the ending session\'s hud-stdin-cache.json and prunes its empty directory', () => {
         // Simulate the tree that `writeStdinCache` leaves behind after a session.
-        const sessionDir = join(tmpRoot, '.omcp', 'state', 'sessions', 'session-aaa');
+        const sessionDir = join(tmpRoot, '.omg', 'state', 'sessions', 'session-aaa');
         mkdirSync(sessionDir, { recursive: true });
         const cacheFile = join(sessionDir, 'hud-stdin-cache.json');
         writeFileSync(cacheFile, '{}');
@@ -24,7 +38,7 @@ describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
         expect(removed).toBeGreaterThanOrEqual(2);
     });
     it('preserves the ending session\'s dir when it still has non-transient state', () => {
-        const sessionDir = join(tmpRoot, '.omcp', 'state', 'sessions', 'session-bbb');
+        const sessionDir = join(tmpRoot, '.omg', 'state', 'sessions', 'session-bbb');
         mkdirSync(sessionDir, { recursive: true });
         writeFileSync(join(sessionDir, 'hud-stdin-cache.json'), '{}');
         // A state file that should NOT be cleaned (only transient files are targeted).
@@ -38,7 +52,7 @@ describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
     });
     it('still removes the legacy top-level hud-stdin-cache.json', () => {
         // Regression: don't drop the old flat-path cleanup path used by session-less callers.
-        const stateDir = join(tmpRoot, '.omcp', 'state');
+        const stateDir = join(tmpRoot, '.omg', 'state');
         mkdirSync(stateDir, { recursive: true });
         const legacy = join(stateDir, 'hud-stdin-cache.json');
         writeFileSync(legacy, '{}');
@@ -50,8 +64,8 @@ describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
     // another concurrent session's HUD cache or prune its directory.
     // ---------------------------------------------------------------------------
     it('does not delete another running session\'s hud-stdin-cache.json', () => {
-        const ending = join(tmpRoot, '.omcp', 'state', 'sessions', 'session-ending');
-        const other = join(tmpRoot, '.omcp', 'state', 'sessions', 'session-other');
+        const ending = join(tmpRoot, '.omg', 'state', 'sessions', 'session-ending');
+        const other = join(tmpRoot, '.omg', 'state', 'sessions', 'session-other');
         mkdirSync(ending, { recursive: true });
         mkdirSync(other, { recursive: true });
         writeFileSync(join(ending, 'hud-stdin-cache.json'), '{}');
@@ -64,25 +78,24 @@ describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
         expect(existsSync(join(other, 'hud-stdin-cache.json'))).toBe(true);
         expect(existsSync(other)).toBe(true);
     });
-    it('still purges cancel-signal/stop-breaker across all session dirs', () => {
-        // These patterns are intentionally cross-session-safe because they are
-        // short-lived markers, not live per-session state. Guard against a
-        // future refactor accidentally scoping them too narrowly.
-        const ending = join(tmpRoot, '.omcp', 'state', 'sessions', 'session-ending');
-        const other = join(tmpRoot, '.omcp', 'state', 'sessions', 'session-other');
+    it('preserves cancel-signal/stop-breaker in other session dirs', () => {
+        // Transient markers can still be live cancellation state for another
+        // session; SessionEnd must not erase them across ownership boundaries.
+        const ending = join(tmpRoot, '.omg', 'state', 'sessions', 'session-ending');
+        const other = join(tmpRoot, '.omg', 'state', 'sessions', 'session-other');
         mkdirSync(ending, { recursive: true });
         mkdirSync(other, { recursive: true });
         writeFileSync(join(ending, 'cancel-signal-state.json'), '{}');
         writeFileSync(join(other, 'autopilot-stop-breaker.json'), '{}');
         cleanupTransientState(tmpRoot, 'session-ending');
         expect(existsSync(join(ending, 'cancel-signal-state.json'))).toBe(false);
-        expect(existsSync(join(other, 'autopilot-stop-breaker.json'))).toBe(false);
+        expect(existsSync(join(other, 'autopilot-stop-breaker.json'))).toBe(true);
     });
     it('is a no-op on other sessions\' HUD cache when no endingSessionId is provided (legacy compat)', () => {
         // Legacy callers that omit endingSessionId should not widen the blast
         // radius. HUD cache may only disappear when the caller identifies the
         // ending session explicitly.
-        const other = join(tmpRoot, '.omcp', 'state', 'sessions', 'session-other');
+        const other = join(tmpRoot, '.omg', 'state', 'sessions', 'session-other');
         mkdirSync(other, { recursive: true });
         writeFileSync(join(other, 'hud-stdin-cache.json'), '{"running":true}');
         cleanupTransientState(tmpRoot);
