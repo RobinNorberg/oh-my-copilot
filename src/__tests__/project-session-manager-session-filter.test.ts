@@ -17,7 +17,7 @@ function runShell(script: string, home: string): string {
   }).trim();
 }
 
-describe.skipIf(process.platform === 'win32')('project-session-manager session filtering', () => {
+describe('project-session-manager session filtering', () => {
   const tempDirs: string[] = [];
 
   afterEach(() => {
@@ -27,7 +27,7 @@ describe.skipIf(process.platform === 'win32')('project-session-manager session f
   });
 
   it('returns only active review/fix sessions for cleanup scans', () => {
-    const home = mkdtempSync(join(tmpdir(), 'omcp-psm-sessions-'));
+    const home = mkdtempSync(join(tmpdir(), 'omc-psm-sessions-'));
     tempDirs.push(home);
     const psmRoot = join(home, '.psm');
     mkdirSync(psmRoot, { recursive: true });

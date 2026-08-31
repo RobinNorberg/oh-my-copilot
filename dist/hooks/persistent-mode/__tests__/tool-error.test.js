@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { existsSync, readFileSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { readLastToolError, clearToolErrorState, getToolErrorRetryGuidance } from '../index.js';
 // Mock fs module
 vi.mock('fs', async () => {
@@ -18,8 +18,8 @@ vi.mock('fs', async () => {
 });
 // Functions are now imported from ../index.js
 describe('readLastToolError', () => {
-    const testDir = '/test';
-    const errorPath = join(testDir, '.omcp', 'state', 'last-tool-error.json');
+    const testDir = resolve('/test');
+    const errorPath = join(testDir, '.omg', 'state', 'last-tool-error.json');
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -85,8 +85,8 @@ describe('readLastToolError', () => {
     });
 });
 describe('clearToolErrorState', () => {
-    const testDir = '/test';
-    const errorPath = join(testDir, '.omcp', 'state', 'last-tool-error.json');
+    const testDir = resolve('/test');
+    const errorPath = join(testDir, '.omg', 'state', 'last-tool-error.json');
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -215,8 +215,8 @@ describe('Integration: Continuation message with tool error', () => {
         vi.clearAllMocks();
     });
     it('continuation message includes error context when tool error present', () => {
-        const testDir = '/test';
-        const _errorPath = join(testDir, '.omcp', 'state', 'last-tool-error.json');
+        const testDir = resolve('/test');
+        const _errorPath = join(testDir, '.omg', 'state', 'last-tool-error.json');
         const recentError = {
             tool_name: 'Bash',
             error: 'Command not found: invalid-command',
@@ -235,7 +235,7 @@ describe('Integration: Continuation message with tool error', () => {
         expect(fullMessage).toContain('[ULTRAWORK #5/50]');
     });
     it('continuation message is normal when no tool error', () => {
-        const testDir = '/test';
+        const testDir = resolve('/test');
         existsSync.mockReturnValue(false);
         // Simulate continuation message construction
         const toolError = readLastToolError(testDir);
@@ -246,8 +246,8 @@ describe('Integration: Continuation message with tool error', () => {
         expect(fullMessage).not.toContain('[TOOL ERROR');
     });
     it('error state is cleared after reading', () => {
-        const testDir = '/test';
-        const errorPath = join(testDir, '.omcp', 'state', 'last-tool-error.json');
+        const testDir = resolve('/test');
+        const errorPath = join(testDir, '.omg', 'state', 'last-tool-error.json');
         const recentError = {
             tool_name: 'Bash',
             error: 'Some error',

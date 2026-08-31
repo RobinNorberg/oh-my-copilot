@@ -1,12 +1,34 @@
 /**
  * Custom Integration Presets
  *
- * Pre-configured templates for popular integrations like n8n, generic webhooks, etc.
+ * Pre-configured templates for popular integrations like OpenClaw, n8n, etc.
  */
 /**
  * Built-in presets for popular integrations.
  */
 export const CUSTOM_INTEGRATION_PRESETS = {
+    openclaw: {
+        name: 'OpenClaw Gateway',
+        description: 'Wake external automations and AI agents on hook events',
+        type: 'webhook',
+        defaultConfig: {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            bodyTemplate: JSON.stringify({
+                event: '{{event}}',
+                instruction: 'Session {{sessionId}} {{event}} for project {{projectName}}',
+                timestamp: '{{timestamp}}',
+                context: {
+                    projectPath: '{{projectPath}}',
+                    projectName: '{{projectName}}',
+                    sessionId: '{{sessionId}}'
+                }
+            }, null, 2),
+            timeout: 10000
+        },
+        suggestedEvents: ['session-start', 'session-end', 'stop'],
+        documentationUrl: 'https://github.com/your-org/openclaw'
+    },
     n8n: {
         name: 'n8n Webhook',
         description: 'Trigger n8n workflows on OMC events',
@@ -27,9 +49,9 @@ export const CUSTOM_INTEGRATION_PRESETS = {
         suggestedEvents: ['session-end', 'ask-user-question'],
         documentationUrl: 'https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.webhook/'
     },
-    clawdbot: {
-        name: 'ClawdBot',
-        description: 'Send notifications to ClawdBot webhook',
+    customAgentGateway: {
+        name: 'Custom Agent Gateway',
+        description: 'Send notifications to a custom agent webhook',
         type: 'webhook',
         defaultConfig: {
             method: 'POST',
@@ -43,7 +65,7 @@ export const CUSTOM_INTEGRATION_PRESETS = {
             timeout: 5000
         },
         suggestedEvents: ['session-end', 'session-start'],
-        documentationUrl: 'https://github.com/your-org/clawdbot'
+        documentationUrl: 'https://code.claude.com/docs/en/hooks'
     },
     'generic-webhook': {
         name: 'Generic Webhook',

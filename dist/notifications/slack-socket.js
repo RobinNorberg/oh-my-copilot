@@ -102,12 +102,7 @@ export function validateSlackEnvelope(data) {
         return { valid: false, reason: 'Message is not an object' };
     }
     const envelope = data;
-    // envelope_id is required for Socket Mode messages
-    if (typeof envelope.envelope_id !== 'string' ||
-        !envelope.envelope_id.trim()) {
-        return { valid: false, reason: 'Missing or empty envelope_id' };
-    }
-    // type is required
+    // type is required and must be known before type-specific requirements.
     if (typeof envelope.type !== 'string' || !envelope.type.trim()) {
         return { valid: false, reason: 'Missing or empty message type' };
     }
@@ -117,6 +112,14 @@ export function validateSlackEnvelope(data) {
             valid: false,
             reason: `Unknown envelope type: ${envelope.type}`,
         };
+    }
+    const isControlFrame = envelope.type === 'hello' || envelope.type === 'disconnect';
+    // envelope_id is required for envelopes that Slack expects us to ACK.
+    // Protocol control frames may legitimately omit it.
+    if (!isControlFrame &&
+        (typeof envelope.envelope_id !== 'string' ||
+            !envelope.envelope_id.trim())) {
+        return { valid: false, reason: 'Missing or empty envelope_id' };
     }
     // events_api type must have a payload
     if (envelope.type === 'events_api') {

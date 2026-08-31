@@ -17,13 +17,21 @@ import {
   normalizeDelegationRole,
 } from './types.js';
 
+const DEPRECATED_MCP_PROVIDERS = new Set<DelegationRoute['provider']>([
+  'codex',
+  'gemini',
+]);
+
+export const DEPRECATED_MCP_PROVIDER_WARNING =
+  '[OMC] Codex/Gemini MCP delegation is deprecated. Use /team to coordinate CLI workers instead.';
+
 /**
  * Resolve delegation decision based on configuration and context
  *
  * Precedence (highest to lowest):
  * 1. Explicit tool invocation
  * 2. Configured routing (if enabled)
- * 3. Default heuristic (role category → Copilot subagent)
+ * 3. Default heuristic (role category → Claude subagent)
  * 4. defaultProvider
  */
 export function resolveDelegation(options: ResolveDelegationOptions): DelegationDecision {
@@ -73,17 +81,22 @@ function resolveFromConfig(
 ): DelegationDecision {
   const provider = route.provider;
   let tool = route.tool;
+  const agentOrModel = route.model || route.agentType || agentRole;
+  const fallbackChain = route.fallback;
 
-  // Warn and fall back to claude for deprecated codex/gemini providers
-  if (provider === 'codex' || provider === 'gemini') {
-    console.warn('[OMC] Codex/Gemini MCP delegation is deprecated. Use /team to coordinate CLI workers instead.');
-    const agentOrModel = route.model || route.agentType || agentRole;
-    const fallbackChain = route.fallback;
+  // Deprecated MCP providers are a compatibility input only. Preserve their
+  // fallback-chain evidence while routing to an executable Claude Task target.
+  // External model names are not valid Claude subagent roles, so route.model
+  // stays diagnostic-only via reason text instead of agentOrModel.
+  if (isDeprecatedMcpProvider(provider)) {
+    console.warn(DEPRECATED_MCP_PROVIDER_WARNING);
+    const claudeAgent = route.agentType || agentRole;
+    const modelEvidence = route.model ? `; ignored external model "${route.model}"` : '';
     return {
       provider: 'claude',
       tool: 'Task',
-      agentOrModel,
-      reason: `Configured routing for role "${agentRole}" (deprecated provider "${provider}", falling back to Claude Task)`,
+      agentOrModel: claudeAgent,
+      reason: `Configured routing for role "${agentRole}" (deprecated provider "${provider}", falling back to Claude Task${modelEvidence})`,
       fallbackChain,
     };
   }
@@ -93,9 +106,6 @@ function resolveFromConfig(
     console.warn(`[delegation-routing] Provider/tool mismatch: ${provider} with ${tool}. Correcting to Task.`);
     tool = 'Task';
   }
-
-  const agentOrModel = route.model || route.agentType || agentRole;
-  const fallbackChain = route.fallback;
 
   return {
     provider,
@@ -125,24 +135,30 @@ function resolveDefault(
     };
   }
 
-  // Fall back to default provider or copilot (this fork's default)
-  const defaultProvider = config?.defaultProvider || 'copilot';
+  // Fall back to default provider or claude
+  const defaultProvider = config?.defaultProvider || 'claude';
 
-  if (defaultProvider === 'codex' || defaultProvider === 'gemini') {
-    console.warn('[OMC] Codex/Gemini MCP delegation is deprecated. Use /team to coordinate CLI workers instead.');
+  if (isDeprecatedMcpProvider(defaultProvider)) {
+    console.warn(DEPRECATED_MCP_PROVIDER_WARNING);
   }
 
-  // Default to Claude Task (codex/gemini default providers fall back to claude)
+  // Default to claude Task (codex/gemini default providers fall back to claude)
   return {
     provider: 'claude',
     tool: 'Task',
     agentOrModel: agentRole,
-    reason: `Fallback to Copilot Task for role "${agentRole}"`,
+    reason: `Fallback to Claude Task for role "${agentRole}"`,
   };
 }
 
+export function isDeprecatedMcpProvider(
+  provider: DelegationRoute['provider'] | DelegationRoutingConfig['defaultProvider'],
+): provider is 'codex' | 'gemini' {
+  return provider ? DEPRECATED_MCP_PROVIDERS.has(provider) : false;
+}
+
 /**
- * Parse fallback chain format ["copilot:explore", "codex:gpt-5"]
+ * Parse fallback chain format ["claude:explore", "codex:gpt-5"]
  */
 export function parseFallbackChain(
   fallback: string[] | undefined
@@ -155,13 +171,10 @@ export function parseFallbackChain(
     .map((entry) => {
       const parts = entry.split(':');
       if (parts.length >= 2) {
-        const rawProvider = parts[0].trim();
+        const provider = parts[0].trim();
         const agentOrModel = parts.slice(1).join(':').trim(); // Handle cases like "codex:gpt-5.3-codex"
         // Skip entries with empty provider or empty agent/model
-        if (rawProvider && agentOrModel) {
-          // Normalize lowercase 'copilot' → 'claude' (migration: Copilot Task is now Claude Task)
-          // Only exact lowercase match is normalized; mixed-case like 'Copilot' is preserved as-is.
-          const provider = rawProvider === 'copilot' ? 'claude' : rawProvider;
+        if (provider && agentOrModel) {
           return {
             provider,
             agentOrModel,

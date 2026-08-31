@@ -1,5 +1,4 @@
 import { execFileSync } from 'child_process';
-import { getHostCliBinary } from '../utils/host-detection.js';
 import { existsSync, lstatSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join, relative, resolve, sep } from 'path';
@@ -222,6 +221,7 @@ function resolveMissionRepoRoot(missionDir) {
         cwd: missionDir,
         encoding: 'utf-8',
         stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
     }).trim();
 }
 function assertTmuxSessionAvailable(sessionName) {
@@ -300,10 +300,9 @@ export function spawnAutoresearchSetupTmux(repoRoot) {
     }
     const sessionName = `omc-autoresearch-setup-${Date.now().toString(36)}`;
     const codexHome = prepareAutoresearchSetupCodexHome(repoRoot, sessionName);
-    const hostBinary = getHostCliBinary();
-    const cliCommand = buildTmuxShellCommandWithEnv(hostBinary, [CLAUDE_BYPASS_FLAG], { CODEX_HOME: codexHome });
-    const wrappedCliCommand = wrapWithLoginShell(cliCommand);
-    const paneId = tmuxExec(['new-session', '-d', '-P', '-F', '#{pane_id}', '-s', sessionName, '-c', repoRoot, wrappedCliCommand], { stripTmux: true }).trim();
+    const claudeCommand = buildTmuxShellCommandWithEnv('claude', [CLAUDE_BYPASS_FLAG], { CODEX_HOME: codexHome });
+    const wrappedClaudeCommand = wrapWithLoginShell(claudeCommand);
+    const paneId = tmuxExec(['new-session', '-d', '-P', '-F', '#{pane_id}', '-s', sessionName, '-c', repoRoot, wrappedClaudeCommand], { stripTmux: true }).trim();
     try {
         configureTmuxClipboardForSession(sessionName, { stripTmux: true, stdio: 'ignore' });
     }

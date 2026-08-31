@@ -3,11 +3,12 @@ import type { CliAgentType } from '../team/model-contract.js';
 
 const availability = vi.hoisted(() => ({
   claude: true,
-  copilot: false,
   codex: false,
   gemini: false,
   cursor: false,
   grok: false,
+  antigravity: false,
+  copilot: false,
 }));
 
 vi.mock('../team/model-contract.js', () => ({
@@ -22,7 +23,6 @@ import {
 describe('runtime-guidance: ralplan/plan/ralph Codex availability', () => {
   beforeEach(() => {
     availability.claude = true;
-    availability.copilot = false;
     availability.codex = false;
     availability.gemini = false;
     availability.cursor = false;
@@ -75,13 +75,13 @@ describe('runtime-guidance: ralplan/plan/ralph Codex availability', () => {
       availability.codex = true;
       expect(renderSkillRuntimeGuidance('autopilot')).toBe('');
       expect(renderSkillRuntimeGuidance('ultrawork')).toBe('');
-      expect(renderSkillRuntimeGuidance('cccg')).toBe('');
+      expect(renderSkillRuntimeGuidance('ccg')).toBe('');
     });
   });
 
   describe('detectSkillRuntimeAvailability safety', () => {
     it('returns false for a provider whose detector throws instead of crashing', () => {
-      const throwingDetector = (agentType: string) => {
+      const throwingDetector = (agentType: CliAgentType) => {
         if (agentType === 'codex') {
           throw new Error(
             'External LLM provider "codex" is blocked by security policy (disableExternalLLM).',

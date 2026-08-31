@@ -234,13 +234,18 @@ describe("Template Variables", () => {
 });
 describe("Presets", () => {
     describe("CUSTOM_INTEGRATION_PRESETS", () => {
+        it("contains openclaw preset", () => {
+            expect(CUSTOM_INTEGRATION_PRESETS.openclaw).toBeDefined();
+            expect(CUSTOM_INTEGRATION_PRESETS.openclaw.type).toBe("webhook");
+            expect(CUSTOM_INTEGRATION_PRESETS.openclaw.defaultConfig.method).toBe("POST");
+        });
         it("contains n8n preset", () => {
             expect(CUSTOM_INTEGRATION_PRESETS.n8n).toBeDefined();
             expect(CUSTOM_INTEGRATION_PRESETS.n8n.type).toBe("webhook");
         });
-        it("contains clawdbot preset", () => {
-            expect(CUSTOM_INTEGRATION_PRESETS.clawdbot).toBeDefined();
-            expect(CUSTOM_INTEGRATION_PRESETS.clawdbot.type).toBe("webhook");
+        it("contains custom agent gateway preset", () => {
+            expect(CUSTOM_INTEGRATION_PRESETS.customAgentGateway).toBeDefined();
+            expect(CUSTOM_INTEGRATION_PRESETS.customAgentGateway.type).toBe("webhook");
         });
         it("contains generic webhook preset", () => {
             expect(CUSTOM_INTEGRATION_PRESETS["generic-webhook"]).toBeDefined();
@@ -252,9 +257,9 @@ describe("Presets", () => {
     });
     describe("getPreset", () => {
         it("returns preset by name", () => {
-            const preset = getPreset("n8n");
+            const preset = getPreset("openclaw");
             expect(preset).toBeDefined();
-            expect(preset?.name).toBe("n8n Webhook");
+            expect(preset?.name).toBe("OpenClaw Gateway");
         });
         it("returns undefined for unknown preset", () => {
             const preset = getPreset("unknown");

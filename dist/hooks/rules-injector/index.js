@@ -1,9 +1,9 @@
 /**
  * Rules Injector Hook
  *
- * Automatically injects relevant rule files when Copilot accesses files.
+ * Automatically injects relevant rule files when Claude accesses files.
  * Supports project-level (.copilot/rules, .github/instructions) and
- * user-level rules under [$COPILOT_CONFIG_DIR|~/.copilot].
+ * user-level rules under [$COPILOT_CONFIG_DIR|~/.claude].
  *
  * Ported from oh-my-opencode's rules-injector hook.
  */
@@ -22,7 +22,7 @@ export * from './parser.js';
 export * from './matcher.js';
 export * from './storage.js';
 /**
- * Create a rules injector hook for Copilot CLI.
+ * Create a rules injector hook for Claude Code.
  *
  * @param workingDirectory - The working directory for resolving paths
  * @returns Hook handlers for tool execution

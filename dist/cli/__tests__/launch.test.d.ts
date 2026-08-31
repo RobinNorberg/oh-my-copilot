@@ -2,7 +2,7 @@
  * Tests for src/cli/launch.ts
  *
  * Covers:
- * - Exit code propagation (runCopilot direct / inside-tmux)
+ * - Exit code propagation (runClaude direct / inside-tmux)
  * - No OMC HUD pane spawning in tmux launch paths
  */
 export {};

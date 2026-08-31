@@ -5,14 +5,35 @@ import { tmpdir } from 'os';
 import { logAuditEvent, readAuditLog, rotateAuditLog } from '../audit-log.js';
 describe('audit-log', () => {
     let testDir;
+    let previousHome;
+    let previousUserProfile;
+    let previousStateDir;
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), 'audit-log-test-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        previousStateDir = process.env.OMC_STATE_DIR;
+        process.env.HOME = testDir;
+        process.env.USERPROFILE = testDir;
+        delete process.env.OMC_STATE_DIR;
     });
     afterEach(() => {
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
+        if (previousStateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = previousStateDir;
         rmSync(testDir, { recursive: true, force: true });
     });
     describe('logAuditEvent', () => {
-        it.skipIf(process.platform === 'win32')('creates log file with 0o600 permissions', () => {
+        it('creates log file with 0o600 permissions', () => {
             const event = {
                 timestamp: new Date().toISOString(),
                 eventType: 'bridge_start',
@@ -20,7 +41,7 @@ describe('audit-log', () => {
                 workerName: 'worker1',
             };
             logAuditEvent(testDir, event);
-            const logPath = join(testDir, '.omcp', 'logs', 'team-bridge-team1.jsonl');
+            const logPath = join(testDir, '.omg', 'logs', 'team-bridge-team1.jsonl');
             const stat = statSync(logPath);
             expect(stat.mode & 0o777).toBe(0o600);
         });
@@ -40,7 +61,7 @@ describe('audit-log', () => {
             };
             logAuditEvent(testDir, event1);
             logAuditEvent(testDir, event2);
-            const logPath = join(testDir, '.omcp', 'logs', 'team-bridge-team1.jsonl');
+            const logPath = join(testDir, '.omg', 'logs', 'team-bridge-team1.jsonl');
             const content = readFileSync(logPath, 'utf-8');
             const lines = content.trim().split('\n');
             expect(lines).toHaveLength(2);
@@ -219,7 +240,7 @@ describe('audit-log', () => {
             };
             logAuditEvent(testDir, event);
             // Manually append malformed line (append only the bad line, not re-writing existing content)
-            const logPath = join(testDir, '.omcp', 'logs', 'team-bridge-team1.jsonl');
+            const logPath = join(testDir, '.omg', 'logs', 'team-bridge-team1.jsonl');
             writeFileSync(logPath, '{invalid json\n', { flag: 'a' });
             const events = readAuditLog(testDir, 'team1');
             expect(events).toHaveLength(1);
@@ -239,7 +260,7 @@ describe('audit-log', () => {
                 workerName: 'worker1',
             };
             logAuditEvent(testDir, event);
-            const logPath = join(testDir, '.omcp', 'logs', 'team-bridge-team1.jsonl');
+            const logPath = join(testDir, '.omg', 'logs', 'team-bridge-team1.jsonl');
             const sizeBefore = statSync(logPath).size;
             rotateAuditLog(testDir, 'team1', 5 * 1024 * 1024); // 5MB threshold
             const sizeAfter = statSync(logPath).size;
@@ -256,7 +277,6 @@ describe('audit-log', () => {
                 };
                 logAuditEvent(testDir, event);
             }
-            const logPath = join(testDir, '.omcp', 'logs', 'team-bridge-team1.jsonl');
             // Force rotation by setting low threshold
             rotateAuditLog(testDir, 'team1', 100);
             const events = readAuditLog(testDir, 'team1');
@@ -264,7 +284,7 @@ describe('audit-log', () => {
             expect(events[0].taskId).toBe('task5'); // Should keep task5-task9
             expect(events[4].taskId).toBe('task9');
         });
-        it.skipIf(process.platform === 'win32')('maintains 0o600 permissions after rotation', () => {
+        it('maintains 0o600 permissions after rotation', () => {
             for (let i = 0; i < 10; i++) {
                 const event = {
                     timestamp: `2026-01-01T00:${String(i).padStart(2, '0')}:00Z`,
@@ -276,7 +296,7 @@ describe('audit-log', () => {
                 logAuditEvent(testDir, event);
             }
             rotateAuditLog(testDir, 'team1', 100);
-            const logPath = join(testDir, '.omcp', 'logs', 'team-bridge-team1.jsonl');
+            const logPath = join(testDir, '.omg', 'logs', 'team-bridge-team1.jsonl');
             const stat = statSync(logPath);
             expect(stat.mode & 0o777).toBe(0o600);
         });
@@ -288,7 +308,7 @@ describe('audit-log', () => {
                 workerName: 'worker1',
             };
             logAuditEvent(testDir, event);
-            const logPath = join(testDir, '.omcp', 'logs', 'team-bridge-team1.jsonl');
+            const logPath = join(testDir, '.omg', 'logs', 'team-bridge-team1.jsonl');
             const size = statSync(logPath).size;
             // Set threshold just below current size
             rotateAuditLog(testDir, 'team1', size - 1);

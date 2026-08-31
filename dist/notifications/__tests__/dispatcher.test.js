@@ -3,10 +3,32 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("https", () => {
     const EventEmitter = require("events");
     return {
-        request: vi.fn((_opts, callback) => {
+        request: vi.fn((opts, callback) => {
             const req = new EventEmitter();
             req.write = vi.fn();
+            req.emit = req.emit.bind(req);
             req.end = vi.fn(() => {
+                if (typeof opts?.createConnection === "function") {
+                    opts.createConnection(opts, (error) => {
+                        if (error) {
+                            req.emit("error", error);
+                            return;
+                        }
+                        const res = new EventEmitter();
+                        res.statusCode = 200;
+                        res.resume = vi.fn();
+                        callback(res);
+                        setImmediate(() => {
+                            const responseBody = JSON.stringify({
+                                ok: true,
+                                result: { message_id: 12345 },
+                            });
+                            res.emit("data", Buffer.from(responseBody));
+                            res.emit("end");
+                        });
+                    });
+                    return;
+                }
                 // Simulate successful response by default
                 const res = new EventEmitter();
                 res.statusCode = 200;
@@ -27,7 +49,37 @@ vi.mock("https", () => {
         }),
     };
 });
-import { sendDiscord, sendDiscordBot, sendTelegram, sendSlack, sendWebhook, sendTeams, dispatchNotifications, } from "../dispatcher.js";
+vi.mock("net", () => {
+    const EventEmitter = require("events");
+    return {
+        connect: vi.fn(() => {
+            const socket = new EventEmitter();
+            socket.write = vi.fn(() => {
+                setImmediate(() => socket.emit("data", Buffer.from("HTTP/1.1 200 OK\r\n\r\n")));
+            });
+            socket.destroy = vi.fn();
+            setImmediate(() => socket.emit("connect"));
+            return socket;
+        }),
+    };
+});
+vi.mock("tls", () => {
+    const EventEmitter = require("events");
+    return {
+        connect: vi.fn((...args) => {
+            const socket = new EventEmitter();
+            socket.write = vi.fn();
+            socket.destroy = vi.fn();
+            const callback = args.find((arg) => typeof arg === "function");
+            setImmediate(() => {
+                socket.emit("secureConnect");
+                callback?.();
+            });
+            return socket;
+        }),
+    };
+});
+import { sendDiscord, sendDiscordBot, sendTelegram, sendSlack, sendWebhook, dispatchNotifications, } from "../dispatcher.js";
 describe("timeout constants invariant", () => {
     it("DISPATCH_TIMEOUT_MS >= SEND_TIMEOUT_MS in source", async () => {
         const fs = await import("fs");
@@ -314,8 +366,18 @@ describe("sendDiscordBot", () => {
     });
 });
 describe("sendTelegram", () => {
+    beforeEach(() => {
+        vi.stubEnv("HTTPS_PROXY", "");
+        vi.stubEnv("https_proxy", "");
+        vi.stubEnv("HTTP_PROXY", "");
+        vi.stubEnv("http_proxy", "");
+        vi.stubEnv("NO_PROXY", "");
+        vi.stubEnv("no_proxy", "");
+    });
     afterEach(() => {
         vi.restoreAllMocks();
+        vi.useRealTimers();
+        vi.unstubAllEnvs();
     });
     it("returns not configured when disabled", async () => {
         const config = {
@@ -373,6 +435,93 @@ describe("sendTelegram", () => {
         expect(request).toHaveBeenCalled();
         const callArgs = vi.mocked(request).mock.calls[0][0];
         expect(callArgs).toHaveProperty("family", 4);
+    });
+    it("adds createConnection when HTTPS_PROXY is configured", async () => {
+        vi.stubEnv("HTTPS_PROXY", "http://proxy.example:8080");
+        const { request } = await import("https");
+        const config = {
+            enabled: true,
+            botToken: "123456:ABCdef",
+            chatId: "999",
+        };
+        await sendTelegram(config, basePayload);
+        const callArgs = vi
+            .mocked(request)
+            .mock.calls.at(-1)[0];
+        expect(callArgs).toHaveProperty("createConnection");
+        expect(callArgs).not.toHaveProperty("agent");
+    });
+    it("falls back to HTTP_PROXY when HTTPS_PROXY is unset", async () => {
+        vi.stubEnv("HTTP_PROXY", "http://proxy.example:3128");
+        const { request } = await import("https");
+        const config = {
+            enabled: true,
+            botToken: "123456:ABCdef",
+            chatId: "999",
+        };
+        await sendTelegram(config, basePayload);
+        const callArgs = vi
+            .mocked(request)
+            .mock.calls.at(-1)[0];
+        expect(callArgs).toHaveProperty("createConnection");
+    });
+    it("bypasses proxy when NO_PROXY matches api.telegram.org", async () => {
+        vi.stubEnv("HTTPS_PROXY", "http://proxy.example:8080");
+        vi.stubEnv("NO_PROXY", "localhost,api.telegram.org");
+        const { request } = await import("https");
+        const config = {
+            enabled: true,
+            botToken: "123456:ABCdef",
+            chatId: "999",
+        };
+        await sendTelegram(config, basePayload);
+        const callArgs = vi
+            .mocked(request)
+            .mock.calls.at(-1)[0];
+        expect(callArgs).not.toHaveProperty("createConnection");
+        expect(callArgs).not.toHaveProperty("agent");
+    });
+    it("bypasses proxy when NO_PROXY matches parent domain", async () => {
+        vi.stubEnv("https_proxy", "http://proxy.example:8080");
+        vi.stubEnv("no_proxy", ".telegram.org");
+        const { request } = await import("https");
+        const config = {
+            enabled: true,
+            botToken: "123456:ABCdef",
+            chatId: "999",
+        };
+        await sendTelegram(config, basePayload);
+        const callArgs = vi
+            .mocked(request)
+            .mock.calls.at(-1)[0];
+        expect(callArgs).not.toHaveProperty("createConnection");
+    });
+    it("fails promptly when proxy accepts CONNECT but never responds", async () => {
+        vi.useFakeTimers();
+        vi.stubEnv("HTTPS_PROXY", "http://proxy.example:8080");
+        const { connect } = await import("net");
+        const EventEmitter = require("events");
+        const stalledSocket = new EventEmitter();
+        stalledSocket.write = vi.fn();
+        stalledSocket.destroy = vi.fn();
+        vi.mocked(connect).mockImplementationOnce(() => {
+            setImmediate(() => stalledSocket.emit("connect"));
+            return stalledSocket;
+        });
+        const config = {
+            enabled: true,
+            botToken: "123456:ABCdef",
+            chatId: "999",
+        };
+        const resultPromise = sendTelegram(config, basePayload);
+        await vi.advanceTimersByTimeAsync(10_000);
+        const result = await resultPromise;
+        expect(result).toEqual({
+            platform: "telegram",
+            success: false,
+            error: "Proxy CONNECT timeout",
+        });
+        expect(stalledSocket.destroy).toHaveBeenCalledOnce();
     });
     it("handles response parse failure gracefully", async () => {
         const { request } = await import("https");
@@ -1096,8 +1245,8 @@ describe("dispatcher mention separation", () => {
         const fs = await import("fs");
         const path = await import("path");
         const dispatcherSource = fs.readFileSync(path.join(import.meta.dirname, "..", "dispatcher.ts"), "utf-8");
-        // Dispatcher should not reference process.env at all - mention resolution is in config layer
-        expect(dispatcherSource).not.toContain("process.env");
+        // Dispatcher should not read mention env vars; mention resolution is in config layer.
+        expect(dispatcherSource).not.toContain("OMC_DISCORD_MENTION");
     });
     it("sendDiscordBot uses config.mention directly without env lookup", async () => {
         vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }));
@@ -1189,130 +1338,6 @@ describe("sendWebhook reply channel context", () => {
         expect(body.channel).toBe("#alerts");
         expect(body).not.toHaveProperty("to");
         expect(body).not.toHaveProperty("thread_id");
-    });
-});
-describe("sendTeams", () => {
-    beforeEach(() => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }));
-    });
-    afterEach(() => {
-        vi.restoreAllMocks();
-    });
-    it("should return success for valid Power Automate Workflows URL", async () => {
-        const config = {
-            enabled: true,
-            webhookUrl: "https://prod-01.westus.logic.azure.com/workflows/abc123/triggers/manual/paths/invoke",
-        };
-        const result = await sendTeams(config, basePayload);
-        expect(result.platform).toBe("teams");
-        expect(result.success).toBe(true);
-    });
-    it("should return success for valid webhook.office.com URL", async () => {
-        const config = {
-            enabled: true,
-            webhookUrl: "https://myorg.webhook.office.com/webhookb2/abc123/IncomingWebhook/def456",
-        };
-        const result = await sendTeams(config, basePayload);
-        expect(result.platform).toBe("teams");
-        expect(result.success).toBe(true);
-    });
-    it("should return success for legacy O365 Connector URL", async () => {
-        const config = {
-            enabled: true,
-            webhookUrl: "https://outlook.office.com/webhook/abc123",
-        };
-        const result = await sendTeams(config, basePayload);
-        expect(result.platform).toBe("teams");
-        expect(result.success).toBe(true);
-    });
-    it("should fail for non-HTTPS URL", async () => {
-        const config = {
-            enabled: true,
-            webhookUrl: "http://prod-01.westus.logic.azure.com/workflows/abc123",
-        };
-        const result = await sendTeams(config, basePayload);
-        expect(result.success).toBe(false);
-        expect(result.error).toContain("Invalid Teams webhook URL");
-    });
-    it("should fail for non-Teams URL", async () => {
-        const config = {
-            enabled: true,
-            webhookUrl: "https://example.com/webhook",
-        };
-        const result = await sendTeams(config, basePayload);
-        expect(result.success).toBe(false);
-        expect(result.error).toContain("Invalid Teams webhook URL");
-    });
-    it("should fail when not configured", async () => {
-        const config = {
-            enabled: false,
-            webhookUrl: "https://prod-01.westus.logic.azure.com/workflows/abc123",
-        };
-        const result = await sendTeams(config, basePayload);
-        expect(result.success).toBe(false);
-        expect(result.error).toBe("Not configured");
-    });
-    it("should fail when webhookUrl is empty", async () => {
-        const config = {
-            enabled: true,
-            webhookUrl: "",
-        };
-        const result = await sendTeams(config, basePayload);
-        expect(result.success).toBe(false);
-    });
-    it("should handle HTTP error responses", async () => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 400 }));
-        const config = {
-            enabled: true,
-            webhookUrl: "https://prod-01.westus.logic.azure.com/workflows/abc123",
-        };
-        const result = await sendTeams(config, basePayload);
-        expect(result.success).toBe(false);
-        expect(result.error).toBe("HTTP 400");
-    });
-    it("should handle network errors", async () => {
-        vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Network error")));
-        const config = {
-            enabled: true,
-            webhookUrl: "https://prod-01.westus.logic.azure.com/workflows/abc123",
-        };
-        const result = await sendTeams(config, basePayload);
-        expect(result.success).toBe(false);
-        expect(result.error).toBe("Network error");
-    });
-    it("should send Adaptive Card JSON body", async () => {
-        const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
-        vi.stubGlobal("fetch", mockFetch);
-        const config = {
-            enabled: true,
-            webhookUrl: "https://prod-01.westus.logic.azure.com/workflows/abc123",
-        };
-        await sendTeams(config, basePayload);
-        expect(mockFetch).toHaveBeenCalledOnce();
-        const [, fetchOpts] = mockFetch.mock.calls[0];
-        const body = JSON.parse(fetchOpts.body);
-        expect(body.type).toBe("message");
-        expect(body.attachments[0].contentType).toBe("application/vnd.microsoft.card.adaptive");
-        expect(body.attachments[0].content.type).toBe("AdaptiveCard");
-    });
-    it("should pass tagList to formatter for mentions", async () => {
-        const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
-        vi.stubGlobal("fetch", mockFetch);
-        const config = {
-            enabled: true,
-            webhookUrl: "https://prod-01.westus.logic.azure.com/workflows/abc123",
-            tagList: ["John Doe:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
-        };
-        await sendTeams(config, basePayload);
-        const [, fetchOpts] = mockFetch.mock.calls[0];
-        const body = JSON.parse(fetchOpts.body);
-        const content = body.attachments[0].content;
-        // Should have msteams entities for mentions
-        expect(content.msteams).toBeDefined();
-        expect(content.msteams.entities).toHaveLength(1);
-        expect(content.msteams.entities[0].type).toBe("mention");
-        expect(content.msteams.entities[0].text).toBe("<at>John Doe</at>");
-        expect(content.msteams.entities[0].mentioned.id).toBe("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
     });
 });
 //# sourceMappingURL=dispatcher.test.js.map

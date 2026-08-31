@@ -14,13 +14,13 @@ When worktree mode is active, OMC uses this stable layout:
 
 | Field | Contract |
 | --- | --- |
-| Worktree root | `<repo>/.omc/team/<team-name>/worktrees/<worker-name>` |
-| Team-specific coordination root | `<repo>/.omc/state/team/<team-name>` in the leader workspace |
+| Worktree root | `<repo>/.omg/team/<team-name>/worktrees/<worker-name>` |
+| Team-specific coordination root | `<repo>/.omg/state/team/<team-name>` in the leader workspace |
 | Worker cwd | The worker's `worktree_path` |
 | Worker coordination | `OMC_TEAM_STATE_ROOT` points back to the team-specific leader-owned coordination root |
 | Worker instructions | Worktree-root `AGENTS.md` is installed with backup/restore safeguards |
 
-Workers must keep using `omc team api ...` lifecycle and mailbox operations against the team-specific coordination root. They must not create or mutate a separate local `.omc/state` inside their worker worktree when `OMC_TEAM_STATE_ROOT` is available; for worktree-backed workers it should point at `<repo>/.omc/state/team/<team-name>`.
+Workers must keep using `omc team api ...` lifecycle and mailbox operations against the team-specific coordination root. They must not create or mutate a separate local `.omg/state` inside their worker worktree when `OMC_TEAM_STATE_ROOT` is available; for worktree-backed workers it should point at `<repo>/.omg/state/team/<team-name>`.
 
 ## Persisted fields
 
@@ -36,7 +36,7 @@ Config, manifest, worker identity, and status surfaces should expose the same lo
 - `worktree_detached`
 - `worktree_created`
 
-`workspace_mode` should be `worktree` for worktree-backed sessions and `single` for the existing shared-workspace behavior. `team_state_root` means the team-specific coordination root (`<repo>/.omc/state/team/<team-name>`); if a future feature needs the broader `.omc/state` base, use a separately named field such as `state_base_root`.
+`workspace_mode` should be `worktree` for worktree-backed sessions and `single` for the existing shared-workspace behavior. `team_state_root` means the team-specific coordination root (`<repo>/.omg/state/team/<team-name>`); if a future feature needs the broader `.omg/state` base, use a separately named field such as `state_base_root`.
 
 ## Safety rules
 

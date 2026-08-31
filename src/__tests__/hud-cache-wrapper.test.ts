@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const root = resolve(__dirname, '..', '..');
 const wrapperPath = join(root, 'scripts', 'lib', 'hud-cache-wrapper.sh');
-const shAvailable = spawnSync('sh', ['-c', 'exit 0']).status === 0;
 
 function makeOld(path: string): void {
   const old = new Date(Date.now() - 30_000);
@@ -14,9 +13,9 @@ function makeOld(path: string): void {
   utimesSync(path, old, old);
 }
 
-describe.skipIf(!shAvailable)('HUD cache wrapper stale render cleanup', () => {
+describe('HUD cache wrapper stale render cleanup', () => {
   it('removes stale render locks and zero-byte temp files without deleting diagnostics', () => {
-    const tempRoot = mkdtempSync(join(tmpdir(), 'omc-hud-cache-wrapper-'));
+    const tempRoot = mkdtempSync(join(tmpdir(), 'omcp-hud-cache-wrapper-'));
     const cacheDir = join(tempRoot, 'cache');
     mkdirSync(cacheDir, { recursive: true });
 

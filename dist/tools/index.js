@@ -2,7 +2,7 @@
  * Tool Registry and MCP Server Creation
  *
  * This module exports all custom tools and provides helpers
- * for creating MCP servers with the Copilot Agent SDK.
+ * for creating MCP servers with the Claude Agent SDK.
  */
 import { z } from 'zod';
 import { lspTools } from './lsp-tools.js';
@@ -75,21 +75,25 @@ function zodToJsonSchema(schema) {
  * Convert individual Zod types to JSON Schema
  */
 function zodTypeToJsonSchema(zodType) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const zt = zodType;
     const result = {};
-    // Handle optional wrapper
+    // Handle optional/default wrappers. `.optional()` / `.default()` normally run
+    // before `.describe()`, so the description sits on the wrapper and must be
+    // carried onto the unwrapped schema.
     if (zodType instanceof z.ZodOptional) {
-        return zodTypeToJsonSchema(zt._def.innerType);
+        const inner = zodTypeToJsonSchema(zodType._def.innerType);
+        if (zodType._def.description)
+            inner.description = zodType._def.description;
+        return inner;
     }
-    // Handle default wrapper
     if (zodType instanceof z.ZodDefault) {
-        const inner = zodTypeToJsonSchema(zt._def.innerType);
-        inner.default = zt._def.defaultValue;
+        const inner = zodTypeToJsonSchema(zodType._def.innerType);
+        inner.default = zodType._def.defaultValue();
+        if (zodType._def.description)
+            inner.description = zodType._def.description;
         return inner;
     }
     // Get description if available
-    const description = zt.description;
+    const description = zodType._def.description;
     if (description) {
         result.description = description;
     }
@@ -98,7 +102,7 @@ function zodTypeToJsonSchema(zodType) {
         result.type = 'string';
     }
     else if (zodType instanceof z.ZodNumber) {
-        result.type = zt._def.checks?.some((c) => c.isInt)
+        result.type = zodType._def.checks?.some((c) => c.kind === 'int')
             ? 'integer'
             : 'number';
     }
@@ -107,14 +111,14 @@ function zodTypeToJsonSchema(zodType) {
     }
     else if (zodType instanceof z.ZodArray) {
         result.type = 'array';
-        result.items = zodTypeToJsonSchema(zt._def.element);
+        result.items = zodTypeToJsonSchema(zodType._def.type);
     }
     else if (zodType instanceof z.ZodEnum) {
         result.type = 'string';
-        result.enum = Object.keys(zt._def.entries);
+        result.enum = zodType._def.values;
     }
     else if (zodType instanceof z.ZodObject) {
-        return zodToJsonSchema(zt);
+        return zodToJsonSchema(zodType);
     }
     else {
         // Fallback for unknown types

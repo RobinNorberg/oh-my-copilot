@@ -1,13 +1,13 @@
 {
   "aliases": {
     "omc": {
-      "repo": "RobinNorberg/oh-my-copilot",
+      "repo": "Yeachan-Heo/oh-my-copilot",
       "local": "~/Workspace/oh-my-copilot",
       "default_base": "main"
     },
     "cc": {
-      "repo": "microsoft/copilot-cli",
-      "local": "~/Workspace/copilot-cli",
+      "repo": "anthropics/claude-code",
+      "local": "~/Workspace/claude-code",
       "default_base": "main"
     }
   },

@@ -13,7 +13,7 @@
  *   omc wait status        - Show current rate limit and daemon status
  *   omc wait daemon start  - Start the background daemon
  *   omc wait daemon stop   - Stop the daemon
- *   omc wait detect        - Scan for blocked Copilot CLI sessions
+ *   omc wait detect        - Scan for blocked Claude Code sessions
  */
 export interface WaitOptions {
     json?: boolean;
@@ -46,7 +46,7 @@ export declare function waitStatusCommand(options: WaitStatusOptions): Promise<v
  */
 export declare function waitDaemonCommand(action: 'start' | 'stop', options: WaitDaemonOptions): Promise<void>;
 /**
- * Detect blocked Copilot CLI sessions
+ * Detect blocked Claude Code sessions
  */
 export declare function waitDetectCommand(options: WaitDetectOptions): Promise<void>;
 //# sourceMappingURL=wait.d.ts.map

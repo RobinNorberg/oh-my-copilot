@@ -6,7 +6,8 @@
  * processPreToolUse integration in bridge.ts
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { join } from 'path';
 import {
   processOrchestratorPreTool,
   isAllowedPath,
@@ -50,16 +51,51 @@ vi.mock('../hooks/notepad/index.js', () => ({
   setPriorityContext: vi.fn(),
 }));
 
+// Keep bridge integration focused on delegation and task tracking. The bridge's
+// prompt-prerequisite reader resolves runtime state roots through git, which is
+// intentionally unavailable in this suite's mocked filesystem. Stub that
+// unrelated stateful surface so each integration case observes only its own
+// enforcement/task inputs.
+vi.mock('../hooks/prompt-prerequisites/index.js', () => ({
+  activatePromptPrerequisiteState: vi.fn(),
+  buildPromptPrerequisiteDenyReason: vi.fn(() => ''),
+  buildPromptPrerequisiteReminder: vi.fn(() => ''),
+  clearPromptPrerequisiteState: vi.fn(),
+  getPromptPrerequisiteConfig: vi.fn(() => ({
+    enabled: false,
+    blockingTools: [],
+    executionKeywords: [],
+    sectionNames: {},
+  })),
+  isPromptPrerequisiteBlockingTool: vi.fn(() => false),
+  parsePromptPrerequisiteSections: vi.fn(),
+  readPromptPrerequisiteState: vi.fn(() => null),
+  recordPromptPrerequisiteProgress: vi.fn(() => null),
+  shouldEnforcePromptPrerequisites: vi.fn(() => false),
+}));
+
 import { existsSync, readFileSync } from 'fs';
 const mockExistsSync = vi.mocked(existsSync);
 const mockReadFileSync = vi.mocked(readFileSync);
 
 describe('delegation-enforcement-levels', () => {
+  const savedConfigDir = process.env.COPILOT_CONFIG_DIR;
+
   beforeEach(() => {
     vi.clearAllMocks();
     clearEnforcementCache();
+    // Ensure tests use the mocked homedir, not a custom COPILOT_CONFIG_DIR
+    delete process.env.COPILOT_CONFIG_DIR;
     // Default: no config files exist
     mockExistsSync.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    if (savedConfigDir !== undefined) {
+      process.env.COPILOT_CONFIG_DIR = savedConfigDir;
+    } else {
+      delete process.env.COPILOT_CONFIG_DIR;
+    }
   });
 
   // ─── 1. suggestAgentForFile (tested indirectly via warning messages) ───
@@ -126,7 +162,7 @@ describe('delegation-enforcement-levels', () => {
     const sourceFileInput: ToolExecuteInput = {
       toolName: 'Write',
       toolInput: { filePath: 'src/app.ts' },
-      directory: '/tmp/test-project',
+      directory: '/home/test-project',
     };
 
     it('defaults to warn when no config file exists', () => {
@@ -142,13 +178,13 @@ describe('delegation-enforcement-levels', () => {
       // Local config exists with 'off', global has 'strict'
       mockExistsSync.mockImplementation((p: unknown) => {
         const s = String(p);
-        if (/[\\/]tmp[\\/]test-project[\\/]\.omcp[\\/]config\.json$/.test(s)) return true;
+        if (/[\\/]\.omg[\\/]config\.json$/.test(s)) return true;
         if (/[\\/]mock[\\/]home[\\/]\.copilot[\\/]\.omc-config\.json$/.test(s)) return true;
         return false;
       });
       mockReadFileSync.mockImplementation((p: unknown) => {
         const s = String(p);
-        if (/[\\/]tmp[\\/]test-project[\\/]\.omcp[\\/]config\.json$/.test(s)) {
+        if (/[\\/]\.omg[\\/]config\.json$/.test(s)) {
           return JSON.stringify({ delegationEnforcementLevel: 'off' });
         }
         if (/[\\/]mock[\\/]home[\\/]\.copilot[\\/]\.omc-config\.json$/.test(s)) {
@@ -186,7 +222,7 @@ describe('delegation-enforcement-levels', () => {
     it('falls back to warn on invalid enforcement level in config', () => {
       mockExistsSync.mockImplementation((p: unknown) => {
         const s = String(p);
-        if (/[\\/]tmp[\\/]test-project[\\/]\.omcp[\\/]config\.json$/.test(s)) return true;
+        if (/[\\/]tmp[\\/]test-project[\\/]\.omg[\\/]config\.json$/.test(s)) return true;
         return false;
       });
       mockReadFileSync.mockImplementation(() => {
@@ -202,7 +238,7 @@ describe('delegation-enforcement-levels', () => {
     it('falls back to warn on malformed JSON config', () => {
       mockExistsSync.mockImplementation((p: unknown) => {
         const s = String(p);
-        if (/[\\/]tmp[\\/]test-project[\\/]\.omcp[\\/]config\.json$/.test(s)) return true;
+        if (/[\\/]tmp[\\/]test-project[\\/]\.omg[\\/]config\.json$/.test(s)) return true;
         return false;
       });
       mockReadFileSync.mockImplementation(() => {
@@ -218,7 +254,7 @@ describe('delegation-enforcement-levels', () => {
     it('supports enforcementLevel key as alternative', () => {
       mockExistsSync.mockImplementation((p: unknown) => {
         const s = String(p);
-        if (/[\\/]tmp[\\/]test-project[\\/]\.omcp[\\/]config\.json$/.test(s)) return true;
+        if (/[\\/]\.omg[\\/]config\.json$/.test(s)) return true;
         return false;
       });
       mockReadFileSync.mockImplementation(() => {
@@ -237,7 +273,7 @@ describe('delegation-enforcement-levels', () => {
     function setEnforcement(level: string) {
       mockExistsSync.mockImplementation((p: unknown) => {
         const s = String(p);
-        if (/[\\/]\.omcp[\\/]config\.json$/.test(s)) return true;
+        if (/[\\/]\.omg[\\/]config\.json$/.test(s)) return true;
         return false;
       });
       mockReadFileSync.mockImplementation(() => {
@@ -293,9 +329,9 @@ describe('delegation-enforcement-levels', () => {
 
     describe('allowed paths always continue', () => {
       const allowedPaths = [
-        '.omcp/plans/test.md',
-        '.copilot/settings.json',
-        'docs/copilot-instructions.md',
+        '.omg/plans/test.md',
+        '.claude/settings.json',
+        'docs/CLAUDE.md',
         'AGENTS.md',
       ];
 
@@ -408,7 +444,7 @@ describe('delegation-enforcement-levels', () => {
       const entry: AuditEntry = {
         timestamp: new Date().toISOString(),
         tool: 'Write',
-        filePath: '.omcp/plans/test.md',
+        filePath: '.omg/plans/test.md',
         decision: 'allowed',
         reason: 'allowed_path',
       };
@@ -442,6 +478,10 @@ describe('delegation-enforcement-levels', () => {
       vi.mock('../hud/background-tasks.js', () => ({
         addBackgroundTask: vi.fn(),
         completeBackgroundTask: vi.fn(),
+        completeMostRecentMatchingBackgroundTask: vi.fn(),
+        getRunningTaskCount: vi.fn(() => 0),
+        remapBackgroundTaskId: vi.fn(),
+        remapMostRecentMatchingBackgroundTaskId: vi.fn(),
       }));
       vi.mock('../hooks/ralph/index.js', () => ({
         readRalphState: vi.fn(() => null),
@@ -476,7 +516,7 @@ describe('delegation-enforcement-levels', () => {
         formatCompactSummary: vi.fn(),
       }));
       vi.mock('../installer/hooks.js', () => ({
-        ULTRAWORK_MESSAGE: 'ultrawork',
+
         ULTRATHINK_MESSAGE: 'ultrathink',
         SEARCH_MESSAGE: 'search',
         ANALYZE_MESSAGE: 'analyze',
@@ -493,7 +533,7 @@ describe('delegation-enforcement-levels', () => {
       // before any HUD tracking happens
       mockExistsSync.mockImplementation((p: unknown) => {
         const s = String(p);
-        if (/[\\/]\.omcp[\\/]config\.json$/.test(s)) return true;
+        if (/[\\/]\.omg[\\/]config\.json$/.test(s)) return true;
         return false;
       });
       mockReadFileSync.mockImplementation(() => {
@@ -513,7 +553,7 @@ describe('delegation-enforcement-levels', () => {
     it('blocks propagated from enforcement', async () => {
       mockExistsSync.mockImplementation((p: unknown) => {
         const s = String(p);
-        if (/[\\/]\.omcp[\\/]config\.json$/.test(s)) return true;
+        if (/[\\/]\.omg[\\/]config\.json$/.test(s)) return true;
         return false;
       });
       mockReadFileSync.mockImplementation(() => {
@@ -545,6 +585,9 @@ describe('delegation-enforcement-levels', () => {
     });
 
     it('Task tool tracking still works when enforcement passes', async () => {
+      const { addBackgroundTask } = await import('../hud/background-tasks.js');
+      const mockAddTask = vi.mocked(addBackgroundTask);
+
       mockExistsSync.mockReturnValue(false); // default warn, but Task is not a write tool
 
       const result = await processHook('pre-tool-use', {
@@ -558,25 +601,60 @@ describe('delegation-enforcement-levels', () => {
       });
 
       expect(result.continue).toBe(true);
-      // Verify Task tool was processed without error (background tracking is best-effort)
-      expect(result.continue).toBe(true);
+      expect(mockAddTask).toHaveBeenCalledWith(
+        expect.stringContaining('task-'),
+        'Test task',
+        'executor',
+        process.cwd(),
+        undefined
+      );
     });
   });
 
   // ─── Helper function unit tests ───
 
   describe('isAllowedPath', () => {
-    it('returns true for .omcp/ paths', () => {
-      expect(isAllowedPath('.omcp/plans/test.md')).toBe(true);
+    it('returns true for .omg/ paths', () => {
+      expect(isAllowedPath('.omg/plans/test.md')).toBe(true);
     });
 
-    it('returns true for .copilot/ paths', () => {
-      expect(isAllowedPath('.copilot/settings.json')).toBe(true);
+    it('returns true for .claude/ paths', () => {
+      expect(isAllowedPath('.claude/settings.json')).toBe(true);
     });
 
-    it('returns true for copilot-instructions.md', () => {
-      expect(isAllowedPath('copilot-instructions.md')).toBe(true);
-      expect(isAllowedPath('docs/copilot-instructions.md')).toBe(true);
+    it('returns true for absolute paths under COPILOT_CONFIG_DIR', () => {
+      const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+      process.env.COPILOT_CONFIG_DIR = '/custom/claude-config';
+      try {
+        expect(isAllowedPath('/custom/claude-config/settings.json')).toBe(true);
+        expect(isAllowedPath('/custom/claude-config/agents/test.md')).toBe(true);
+      } finally {
+        if (originalConfigDir === undefined) {
+          delete process.env.COPILOT_CONFIG_DIR;
+        } else {
+          process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+        }
+      }
+    });
+
+    it('returns true for absolute paths under a ~-prefixed COPILOT_CONFIG_DIR', () => {
+      const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+      process.env.COPILOT_CONFIG_DIR = '~/.claude-alt';
+      try {
+        expect(isAllowedPath(join('/mock/home', '.claude-alt', 'settings.json'))).toBe(true);
+        expect(isAllowedPath(join('/mock/home', '.claude-alt', 'agents', 'test.md'))).toBe(true);
+      } finally {
+        if (originalConfigDir === undefined) {
+          delete process.env.COPILOT_CONFIG_DIR;
+        } else {
+          process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+        }
+      }
+    });
+
+    it('returns true for CLAUDE.md', () => {
+      expect(isAllowedPath('CLAUDE.md')).toBe(true);
+      expect(isAllowedPath('docs/CLAUDE.md')).toBe(true);
     });
 
     it('returns true for AGENTS.md', () => {
@@ -592,12 +670,12 @@ describe('delegation-enforcement-levels', () => {
     });
 
     // Traversal bypass prevention
-    it('rejects .omcp/../src/file.ts traversal', () => {
-      expect(isAllowedPath('.omcp/../src/file.ts')).toBe(false);
+    it('rejects .omg/../src/file.ts traversal', () => {
+      expect(isAllowedPath('.omg/../src/file.ts')).toBe(false);
     });
 
-    it('rejects .copilot/../src/file.ts traversal', () => {
-      expect(isAllowedPath('.copilot/../src/file.ts')).toBe(false);
+    it('rejects .claude/../src/file.ts traversal', () => {
+      expect(isAllowedPath('.claude/../src/file.ts')).toBe(false);
     });
 
     it('rejects bare .. traversal', () => {
@@ -605,34 +683,34 @@ describe('delegation-enforcement-levels', () => {
     });
 
     // Windows backslash paths
-    it('handles Windows-style .omcp paths', () => {
-      expect(isAllowedPath('.omcp\\plans\\test.md')).toBe(true);
+    it('handles Windows-style .omg paths', () => {
+      expect(isAllowedPath('.omg\\plans\\test.md')).toBe(true);
     });
 
-    it('rejects Windows traversal .omcp\\..\\src\\file.ts', () => {
-      expect(isAllowedPath('.omcp\\..\\src\\file.ts')).toBe(false);
+    it('rejects Windows traversal .omg\\..\\src\\file.ts', () => {
+      expect(isAllowedPath('.omg\\..\\src\\file.ts')).toBe(false);
     });
 
-    // Nested .omcp in non-root position (should be rejected for relative paths)
-    it('rejects foo/.omcp/bar.ts as relative path', () => {
-      expect(isAllowedPath('foo/.omcp/bar.ts')).toBe(false);
+    // Nested .omg in non-root position (should be rejected for relative paths)
+    it('rejects foo/.omg/bar.ts as relative path', () => {
+      expect(isAllowedPath('foo/.omg/bar.ts')).toBe(false);
     });
 
     // Windows mixed-separator edge cases
-    it('rejects mixed separator traversal .omcp\\..\\..\\secret', () => {
-      expect(isAllowedPath('.omcp\\..\\..\\secret')).toBe(false);
+    it('rejects mixed separator traversal .omg\\..\\..\\secret', () => {
+      expect(isAllowedPath('.omg\\..\\..\\secret')).toBe(false);
     });
 
-    it('rejects double-dot with mixed separators .omcp/..\\src', () => {
-      expect(isAllowedPath('.omcp/..\\src')).toBe(false);
+    it('rejects double-dot with mixed separators .omg/..\\src', () => {
+      expect(isAllowedPath('.omg/..\\src')).toBe(false);
     });
 
     it('rejects UNC paths as not relative to project', () => {
-      expect(isAllowedPath('\\\\server\\share\\.omcp\\file')).toBe(false);
+      expect(isAllowedPath('\\\\server\\share\\.omg\\file')).toBe(false);
     });
 
     it('rejects absolute Windows drive paths without worktree root', () => {
-      expect(isAllowedPath('C:\\repo\\.omcp\\file')).toBe(false);
+      expect(isAllowedPath('C:\\repo\\.omg\\file')).toBe(false);
     });
   });
 

@@ -3,15 +3,26 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { clearWorktreeCache, resolveSessionStatePaths } from '../lib/worktree-paths.js';
 const SCRIPT_PATH = join(process.cwd(), 'scripts', 'keyword-detector.mjs');
 const NODE = process.execPath;
 const tempDirs = [];
+const fixtureEnvironments = new Map();
+const ROOT_ENV_KEYS = [
+    'HOME',
+    'USERPROFILE',
+    'OMC_STATE_DIR',
+    'COPILOT_CONFIG_DIR',
+    'CLAUDE_PLUGIN_ROOT',
+    'OMC_DISABLE_MULTIREPO',
+];
 function makeCwd(prefix) {
     const dir = mkdtempSync(join(tmpdir(), prefix));
     tempDirs.push(dir);
     return dir;
 }
 afterEach(() => {
+    fixtureEnvironments.clear();
     while (tempDirs.length > 0) {
         const dir = tempDirs.pop();
         if (dir) {
@@ -23,7 +34,30 @@ afterEach(() => {
     }
 });
 function runKeywordDetector(prompt, cwd, sessionId) {
+    // Hook subprocesses must not inherit the runner's state/config roots. A
+    // per-invocation OMC_STATE_DIR also exercises the same non-git canonical
+    // resolver path used in production without writing into the checkout or
+    // the host user's home directory.
+    const homeDir = mkdtempSync(join(tmpdir(), 'kd-echo-home-'));
+    tempDirs.push(homeDir);
+    const childEnv = {
+        ...process.env,
+        NODE_ENV: 'test',
+        DISABLE_OMC: '',
+        OMC_SKIP_HOOKS: '',
+        OMC_TEAM_WORKER: '',
+        OMC_DISABLE_MULTIREPO: '',
+        OMC_STATE_DIR: join(homeDir, 'omc-state'),
+        CLAUDE_PLUGIN_ROOT: '',
+        HOME: homeDir,
+        USERPROFILE: homeDir,
+        COPILOT_CONFIG_DIR: join(homeDir, '.claude'),
+        XDG_CONFIG_HOME: join(homeDir, '.config'),
+        APPDATA: join(homeDir, 'AppData', 'Roaming'),
+    };
+    fixtureEnvironments.set(cwd, childEnv);
     const raw = execFileSync(NODE, [SCRIPT_PATH], {
+        cwd,
         input: JSON.stringify({
             hook_event_name: 'UserPromptSubmit',
             cwd,
@@ -31,17 +65,42 @@ function runKeywordDetector(prompt, cwd, sessionId) {
             prompt,
         }),
         encoding: 'utf-8',
-        env: {
-            ...process.env,
-            NODE_ENV: 'test',
-            OMC_SKIP_HOOKS: '',
-        },
+        env: childEnv,
         timeout: 15000,
     }).trim();
     return JSON.parse(raw);
 }
 function stateFile(cwd, sessionId, name) {
-    return join(cwd, '.omcp', 'state', 'sessions', sessionId, `${name}-state.json`);
+    const fixtureEnv = fixtureEnvironments.get(cwd);
+    if (!fixtureEnv)
+        throw new Error(`Missing fixture environment for ${cwd}`);
+    const previousValues = new Map();
+    try {
+        for (const key of ROOT_ENV_KEYS) {
+            previousValues.set(key, process.env[key]);
+            const value = fixtureEnv[key];
+            if (value === undefined || value === '') {
+                delete process.env[key];
+            }
+            else {
+                process.env[key] = value;
+            }
+        }
+        clearWorktreeCache();
+        return resolveSessionStatePaths(name, sessionId, cwd).effectiveWrite;
+    }
+    finally {
+        for (const key of ROOT_ENV_KEYS) {
+            const value = previousValues.get(key);
+            if (value === undefined) {
+                delete process.env[key];
+            }
+            else {
+                process.env[key] = value;
+            }
+        }
+        clearWorktreeCache();
+    }
 }
 describe('keyword-detector.mjs — pasted system-echo re-entry guard', () => {
     // Primary regression: user pastes a bare [RALPH LOOP - ITERATION N] block
@@ -108,7 +167,7 @@ describe('keyword-detector.mjs — pasted system-echo re-entry guard', () => {
     it('STILL activates ralph for an explicit user request', () => {
         const cwd = makeCwd('kd-echo-real-invocation-');
         const sid = 'sess-real-ralph';
-        const output = runKeywordDetector('ralph로 이 문제 계속 고쳐주세요', cwd, sid);
+        const output = runKeywordDetector('/ralph 이 문제 계속 고쳐주세요', cwd, sid);
         const context = output.hookSpecificOutput?.additionalContext ?? '';
         expect(output.continue).toBe(true);
         expect(context).toContain('[MAGIC KEYWORD: RALPH]');
@@ -123,7 +182,7 @@ describe('keyword-detector.mjs — pasted system-echo re-entry guard', () => {
     it('STILL activates ralph for a user prompt that starts with "Task:" (no echo header)', () => {
         const cwd = makeCwd('kd-task-standalone-');
         const sid = 'sess-task-standalone';
-        const output = runKeywordDetector('Task: ralph로 이 문제 계속 고쳐주세요', cwd, sid);
+        const output = runKeywordDetector('Task: run ralph on 이 문제 계속 고쳐주세요', cwd, sid);
         const context = output.hookSpecificOutput?.additionalContext ?? '';
         expect(context).toContain('[MAGIC KEYWORD: RALPH]');
         expect(existsSync(stateFile(cwd, sid, 'ralph'))).toBe(true);
@@ -142,7 +201,7 @@ describe('keyword-detector.mjs — pasted system-echo re-entry guard', () => {
         const prompt = [
             '[RALPH LOOP - ITERATION 2/100] Work is NOT done.',
             'Task: previous task',
-            'ralph로 새 작업 계속 진행',
+            'run ralph on 새 작업 계속 진행',
         ].join('\n');
         const output = runKeywordDetector(prompt, cwd, sid);
         const context = output.hookSpecificOutput?.additionalContext ?? '';
@@ -166,7 +225,7 @@ describe('keyword-detector.mjs — pasted system-echo re-entry guard', () => {
             '[RALPH LOOP - ITERATION 4/100] Work is NOT done.',
             'Task: previous task',
             '',
-            'ralph로 새 작업 계속해줘',
+            'run ralph on 새 작업 계속해줘',
         ].join('\n');
         const output = runKeywordDetector(prompt, cwd, sid);
         const context = output.hookSpecificOutput?.additionalContext ?? '';
@@ -185,7 +244,7 @@ describe('keyword-detector.mjs — state.prompt sanitization', () => {
         const cwd = makeCwd('kd-prompt-len-');
         const sid = 'sess-prompt-len';
         const longTail = 'x'.repeat(2000);
-        const prompt = `ralph로 다음 긴 지시사항을 수행해주세요:\n${longTail}`;
+        const prompt = `/ralph 다음 긴 지시사항을 수행해주세요:\n${longTail}`;
         runKeywordDetector(prompt, cwd, sid);
         const path = stateFile(cwd, sid, 'ralph');
         expect(existsSync(path)).toBe(true);
@@ -196,7 +255,7 @@ describe('keyword-detector.mjs — state.prompt sanitization', () => {
     it('records awaiting_confirmation_set_at on ralph state (enables 2-min TTL)', () => {
         const cwd = makeCwd('kd-setat-ralph-');
         const sid = 'sess-setat-ralph';
-        runKeywordDetector('ralph로 시작해주세요', cwd, sid);
+        runKeywordDetector('/ralph 시작해주세요', cwd, sid);
         const path = stateFile(cwd, sid, 'ralph');
         expect(existsSync(path)).toBe(true);
         const state = JSON.parse(readFileSync(path, 'utf-8'));
@@ -204,15 +263,12 @@ describe('keyword-detector.mjs — state.prompt sanitization', () => {
         expect(typeof state.awaiting_confirmation_set_at).toBe('string');
         expect(Number.isFinite(new Date(state.awaiting_confirmation_set_at).getTime())).toBe(true);
     });
-    it('records awaiting_confirmation_set_at on ultrawork state', () => {
+    it('does not create ultrawork state for retired ulw alias', () => {
         const cwd = makeCwd('kd-setat-ultrawork-');
         const sid = 'sess-setat-uw';
         runKeywordDetector('ulw로 시작해주세요', cwd, sid);
         const path = stateFile(cwd, sid, 'ultrawork');
-        expect(existsSync(path)).toBe(true);
-        const state = JSON.parse(readFileSync(path, 'utf-8'));
-        expect(state.awaiting_confirmation).toBe(true);
-        expect(typeof state.awaiting_confirmation_set_at).toBe('string');
+        expect(existsSync(path)).toBe(false);
     });
 });
 //# sourceMappingURL=keyword-detector-echo-guard.test.js.map

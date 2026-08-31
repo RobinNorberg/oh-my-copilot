@@ -2,8 +2,8 @@
 name: hud
 description: Configure HUD display options (layout, presets, display elements)
 argument-hint: "[setup|minimal|focused|full|status]"
-role: config-writer  # DOCUMENTATION ONLY - This skill writes to ~/.claude/ paths
-scope: ~/.claude/**  # DOCUMENTATION ONLY - Allowed write scope
+role: config-writer  # DOCUMENTATION ONLY - This skill writes to ~/.copilot/ paths
+scope: ~/.copilot/**  # DOCUMENTATION ONLY - Allowed write scope
 level: 2
 ---
 
@@ -11,7 +11,7 @@ level: 2
 
 Configure the OMC HUD (Heads-Up Display) for the statusline.
 
-Note: All `~/.claude/...` paths in this guide respect `COPILOT_CONFIG_DIR` when that environment variable is set.
+Note: All `~/.copilot/...` paths in this guide respect `COPILOT_CONFIG_DIR` when that environment variable is set.
 
 ## Quick Commands
 
@@ -49,10 +49,7 @@ node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DI
 **Step 3:** If omcp-hud.mjs is MISSING or argument is `setup`, install the HUD wrapper and its dependency from the canonical template:
 
 ```bash
-HUD_DIR="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud"
-mkdir -p "$HUD_DIR/lib"
-cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/hud-wrapper-template.txt" "$HUD_DIR/omcp-hud.mjs"
-cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-dir.mjs" "$HUD_DIR/lib/config-dir.mjs"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),r=process.env.CLAUDE_PLUGIN_ROOT;if(r===undefined||r===''){console.error('ERROR: CLAUDE_PLUGIN_ROOT is not set');process.exit(1)}const hud=p.join(d,'hud');f.mkdirSync(p.join(hud,'lib'),{recursive:true});f.copyFileSync(p.join(r,'scripts','lib','hud-wrapper-template.txt'),p.join(hud,'omcp-hud.mjs'));f.copyFileSync(p.join(r,'scripts','lib','config-dir.mjs'),p.join(hud,'lib','config-dir.mjs'));console.log('Installed HUD wrapper to '+p.join(hud,'omcp-hud.mjs'))"
 ```
 
 **IMPORTANT:** Always copy from the canonical template at `scripts/lib/hud-wrapper-template.txt`. Do NOT write the wrapper content inline — the template is the single source of truth and is guarded by drift tests (`src/__tests__/hud-wrapper-template-sync.test.ts`, `src/__tests__/paths-consistency.test.ts`).
@@ -109,19 +106,19 @@ node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DI
 ### Minimal
 Shows only the essentials:
 ```
-[OMC] ralph | ultrawork | todos:2/5
+[OMC] ralph | todos:2/5
 ```
 
 ### Focused (Default)
 Shows all relevant elements:
 ```
-[OMC] branch:main | ralph:3/10 | US-002 | ultrawork skill:planner | ctx:67% | agents:2 | bg:3/5 | todos:2/5
+[OMC] branch:main | ralph:3/10 | US-002 | skill:planner | ctx:67% | agents:2 | bg:3/5 | todos:2/5
 ```
 
 ### Full
 Shows everything including multi-line agent details:
 ```
-[OMC] repo:oh-my-copilot branch:main | ralph:3/10 | US-002 (2/5) | ultrawork | ctx:[████░░]67% | agents:3 | bg:3/5 | todos:2/5
+[OMC] repo:oh-my-copilot branch:main | ralph:3/10 | US-002 (2/5) | ctx:[████░░]67% | agents:3 | bg:3/5 | todos:2/5
 ├─ O architect    2m   analyzing architecture patterns...
 ├─ e explore     45s   searching for test files
 └─ s executor     1m   implementing validation logic
@@ -144,7 +141,6 @@ When agents are running, the HUD shows detailed information on separate lines:
 | `branch:name` | Git branch name (cyan) |
 | `ralph:3/10` | Ralph loop iteration/max |
 | `US-002` | Current PRD story ID |
-| `ultrawork` | Active mode badge |
 | `skill:name` | Last activated skill (cyan) |
 | `ctx:67%` | Context window usage |
 | `agents:2` | Running subagent count |
@@ -161,7 +157,7 @@ When agents are running, the HUD shows detailed information on separate lines:
 
 HUD config is stored in `~/.copilot/settings.json` under the `omcHud` key (or your custom config directory if `COPILOT_CONFIG_DIR` is set).
 
-Legacy config location (deprecated): `~/.claude/.omcp/hud-config.json`
+Legacy config location (deprecated): `~/.claude/.omg/hud-config.json`
 
 ## Manual Configuration
 
@@ -238,7 +234,7 @@ If the HUD is not showing:
 2. Restart Claude Code after setup completes
 3. If still not working, run `/oh-my-copilot:omc-doctor` for full diagnostics
 
-**Legacy string format migration:** Older OMC versions wrote `statusLine` as a plain string (e.g., `"~/.copilot/hud/omcp-hud.mjs"`). Modern Claude Code (v2.1+) requires an object format. Running the installer or `/oh-my-copilot:hud setup` will auto-migrate legacy strings to the correct object format:
+**Legacy string format migration:** Older OMC versions wrote `statusLine` as a plain string (e.g., `"~/.claude/hud/omcp-hud.mjs"`). Modern Claude Code (v2.1+) requires an object format. Running the installer or `/oh-my-copilot:hud setup` will auto-migrate legacy strings to the correct object format:
 ```json
 {
   "statusLine": {

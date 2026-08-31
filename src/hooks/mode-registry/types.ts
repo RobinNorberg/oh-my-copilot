@@ -9,17 +9,16 @@ export type ExecutionMode =
   | 'autoresearch'
   | 'team'
   | 'ralph'
-  | 'ultrawork'
-  | 'ultraqa'
   | 'deep-interview'
+  | 'merge-readiness'
   | 'self-improve';
 
 export interface ModeConfig {
   /** Display name for the mode */
   name: string;
-  /** Primary state file path (relative to .omcp/state/) */
+  /** Primary state file path (relative to .omg/state/) */
   stateFile: string;
-  /** Alternative/marker file path (relative to .omcp/state/) */
+  /** Alternative/marker file path (relative to .omg/state/) */
   markerFile?: string;
   /** Property to check in JSON state (if JSON-based) */
   activeProperty?: string;

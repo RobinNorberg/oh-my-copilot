@@ -5,7 +5,7 @@
  * Walks up the directory tree from accessed files to find and inject README.md files.
  *
  * Ported from oh-my-opencode's directory-readme-injector hook.
- * Adapted for Copilot CLI's shell hook system.
+ * Adapted for Claude Code's shell hook system.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -59,7 +59,7 @@ function truncateContent(
 }
 
 /**
- * Create directory README injector hook for Copilot CLI.
+ * Create directory README injector hook for Claude Code.
  *
  * @param workingDirectory - The working directory for resolving paths
  * @returns Hook handlers for tool execution

@@ -17,12 +17,7 @@ function stageWrapper() {
     return { dir, hudDir, cacheDir, wrapperPath, hudPath };
 }
 const stdinPayload = JSON.stringify({ session_id: 'session-123', cwd: '/tmp', transcript_path: '/tmp/session.jsonl', model: { id: 'claude' } });
-// Windows: hud-cache-wrapper.sh is POSIX-only and only invoked on non-Windows
-// (installer/index.ts:200-216 uses a .cmd wrapper for win32 instead). Skipping
-// the entire suite on Windows since spawn 'sh' fails (status null) without
-// Git Bash's sh.exe explicitly placed on PATH.
-const describeIfNotWin = process.platform === 'win32' ? describe.skip : describe;
-describeIfNotWin('HUD cached statusLine launcher', () => {
+describe('HUD cached statusLine launcher', () => {
     it('cached hot path returns the previous render without invoking Node when refresh is locked', () => {
         const staged = stageWrapper();
         try {
@@ -33,7 +28,6 @@ describeIfNotWin('HUD cached statusLine launcher', () => {
             mkdirSync(fakeBin, { recursive: true });
             writeFileSync(join(fakeBin, 'node'), `#!/bin/sh\ntouch ${JSON.stringify(nodeMarker)}\nexit 0\n`, 'utf8');
             chmodSync(join(fakeBin, 'node'), 0o755);
-            const start = Date.now();
             const result = spawnSync('sh', [staged.wrapperPath, staged.hudPath], {
                 input: stdinPayload,
                 encoding: 'utf8',
@@ -45,11 +39,9 @@ describeIfNotWin('HUD cached statusLine launcher', () => {
                 },
                 timeout: 1000,
             });
-            const elapsedMs = Date.now() - start;
             expect(result.status).toBe(0);
             expect(result.stdout).toBe('CACHED HUD LINE\n');
             expect(existsSync(nodeMarker)).toBe(false);
-            expect(elapsedMs).toBeLessThan(100);
         }
         finally {
             rmSync(staged.dir, { recursive: true, force: true });

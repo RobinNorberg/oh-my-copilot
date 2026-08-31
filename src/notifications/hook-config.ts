@@ -1,8 +1,8 @@
 /**
  * Hook Notification Config Reader
  *
- * Reads omp_config.hook.json for user-customizable message templates.
- * File-based, cached config reader.
+ * Reads omc_config.hook.json for user-customizable message templates.
+ * Follows the OpenClaw config reader pattern (file-based, cached).
  */
 
 import { readFileSync, existsSync } from "fs";
@@ -15,7 +15,7 @@ import type {
   NotificationPlatform,
 } from "./types.js";
 
-const DEFAULT_CONFIG_PATH = join(getCopilotConfigDir(), "omp_config.hook.json");
+const DEFAULT_CONFIG_PATH = join(getCopilotConfigDir(), "omc_config.hook.json");
 
 /** Cached hook config. `undefined` = not yet read, `null` = read but absent/disabled. */
 let cachedConfig: HookNotificationConfig | null | undefined;

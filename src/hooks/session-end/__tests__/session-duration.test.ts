@@ -12,9 +12,11 @@ import { getSessionStartTime, recordSessionMetrics, type SessionEndInput } from 
  */
 
 let tmpDir: string;
+let previousHome: string | undefined;
+let previousUserProfile: string | undefined;
 
 function stateDir(): string {
-  return path.join(tmpDir, '.omcp', 'state');
+  return path.join(tmpDir, '.omg', 'state');
 }
 
 function writeState(filename: string, state: Record<string, unknown>): void {
@@ -37,10 +39,18 @@ function makeInput(overrides?: Partial<SessionEndInput>): SessionEndInput {
 
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-duration-test-'));
+  previousHome = process.env.HOME;
+  previousUserProfile = process.env.USERPROFILE;
+  process.env.HOME = tmpDir;
+  process.env.USERPROFILE = tmpDir;
 });
 
 afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
+  if (previousHome === undefined) delete process.env.HOME;
+  else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
 });
 
 describe('getSessionStartTime', () => {

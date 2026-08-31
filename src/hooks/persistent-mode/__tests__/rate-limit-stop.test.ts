@@ -1,9 +1,10 @@
 /**
- * Integration test for rate-limit stop guard in checkPersistentModes
-  *
- * Verifies that when Copilot CLI stops due to a rate limit (HTTP 429),
- * the persistent-mode hook does NOT block the stop — preventing an
- * infinite retry loop.
+ * Integration tests for stop-guard bypasses in checkPersistentModes.
+ *
+ * Fixes:
+ * - #777: rate-limit stop should not re-enter persistent continuation
+ * - #2693: ScheduleWakeup / scheduled resume should not re-enter stale
+ *   persistent continuation or inject cancel guidance ahead of scheduled work
  */
 import { describe, it, expect } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
@@ -16,7 +17,7 @@ describe('persistent-mode rate-limit stop guard (fix #777)', () => {
   function makeRalphWorktree(sessionId: string): string {
     const tempDir = mkdtempSync(join(tmpdir(), 'ralph-rate-limit-'));
     execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-    const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
+    const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
       join(stateDir, 'ralph-state.json'),
@@ -51,6 +52,13 @@ describe('persistent-mode rate-limit stop guard (fix #777)', () => {
     '403',
     'token_expired',
     'oauth_expired',
+  ];
+
+  const scheduledWakeupReasons = [
+    'ScheduleWakeup',
+    'scheduled_task',
+    'scheduled_resume',
+    'loop_resume',
   ];
 
   for (const reason of rateLimitReasons) {
@@ -89,6 +97,42 @@ describe('persistent-mode rate-limit stop guard (fix #777)', () => {
       }
     });
   }
+
+  for (const reason of scheduledWakeupReasons) {
+    it(`should NOT block stop when stop_reason is scheduled wakeup-related ("${reason}")`, async () => {
+      const sessionId = `session-2693-${reason.replace(/[^a-z0-9]/gi, '-')}`;
+      const tempDir = makeRalphWorktree(sessionId);
+      try {
+        const result = await checkPersistentModes(
+          sessionId,
+          tempDir,
+          { stop_reason: reason }
+        );
+        expect(result.shouldBlock).toBe(false);
+        expect(result.mode).toBe('none');
+        expect(result.message).toBe('');
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+  }
+
+  it('should NOT block stop when ScheduleWakeup arrives as tool_name', async () => {
+    const sessionId = 'session-2693-tool-name';
+    const tempDir = makeRalphWorktree(sessionId);
+    try {
+      const result = await checkPersistentModes(
+        sessionId,
+        tempDir,
+        { tool_name: 'ScheduleWakeup', stop_reason: 'end_turn' }
+      );
+      expect(result.shouldBlock).toBe(false);
+      expect(result.mode).toBe('none');
+      expect(result.message).toBe('');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 
   it('should still block stop for active ralph with no rate-limit context', async () => {
     const sessionId = 'session-777-no-rate-limit';

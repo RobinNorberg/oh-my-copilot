@@ -2,18 +2,12 @@
  * Skills Tools
  *
  * MCP tools for loading and listing OMC learned skills
- * from local (.omcp/skills/) and global (~/.omcp/skills/) directories.
+ * from local (.omg/skills/) and global (~/.omg/skills/) directories.
  */
 import { z } from 'zod';
 export declare const loadLocalTool: {
     name: string;
     description: string;
-    annotations: {
-        readOnlyHint: boolean;
-        destructiveHint: boolean;
-        idempotentHint: boolean;
-        openWorldHint: boolean;
-    };
     schema: {
         projectRoot: z.ZodOptional<z.ZodString>;
     };
@@ -29,12 +23,6 @@ export declare const loadLocalTool: {
 export declare const loadGlobalTool: {
     name: string;
     description: string;
-    annotations: {
-        readOnlyHint: boolean;
-        destructiveHint: boolean;
-        idempotentHint: boolean;
-        openWorldHint: boolean;
-    };
     schema: {};
     handler: (_args: Record<string, never>) => Promise<{
         content: {
@@ -46,12 +34,6 @@ export declare const loadGlobalTool: {
 export declare const listSkillsTool: {
     name: string;
     description: string;
-    annotations: {
-        readOnlyHint: boolean;
-        destructiveHint: boolean;
-        idempotentHint: boolean;
-        openWorldHint: boolean;
-    };
     schema: {
         projectRoot: z.ZodOptional<z.ZodString>;
     };
@@ -68,12 +50,6 @@ export declare const listSkillsTool: {
 export declare const skillsTools: ({
     name: string;
     description: string;
-    annotations: {
-        readOnlyHint: boolean;
-        destructiveHint: boolean;
-        idempotentHint: boolean;
-        openWorldHint: boolean;
-    };
     schema: {
         projectRoot: z.ZodOptional<z.ZodString>;
     };
@@ -88,12 +64,6 @@ export declare const skillsTools: ({
 } | {
     name: string;
     description: string;
-    annotations: {
-        readOnlyHint: boolean;
-        destructiveHint: boolean;
-        idempotentHint: boolean;
-        openWorldHint: boolean;
-    };
     schema: {};
     handler: (_args: Record<string, never>) => Promise<{
         content: {

@@ -2,7 +2,7 @@
  * Attempt Tracker
  *
  * Persists per-task attempt history for orchestration recovery.
- * Stored in .omcp/state/sessions/{sessionId}/attempt-history.json
+ * Stored in .omg/state/sessions/{sessionId}/attempt-history.json
  */
 
 import { writeModeState, readModeState } from '../../lib/mode-state-io.js';

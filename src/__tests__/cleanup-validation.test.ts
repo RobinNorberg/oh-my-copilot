@@ -25,15 +25,16 @@ describe('Cleanup Validation', () => {
     expect('DEPRECATED_KEYWORD_PATTERNS' in keywordModule).toBe(false);
   });
 
-  it('PluginConfig.agents matches 18-agent registry + omc', async () => {
+  it('PluginConfig.agents matches 19-agent registry + omc', async () => {
     const { DEFAULT_CONFIG } = await import('../config/loader.js');
     const agentKeys = Object.keys(DEFAULT_CONFIG.agents || {});
-    expect(agentKeys).toContain('omg');
+    expect(agentKeys).toContain('omc');
     expect(agentKeys).toContain('explore');
     expect(agentKeys).toContain('architect');
     expect(agentKeys).toContain('executor');
     expect(agentKeys).toContain('documentSpecialist');
     expect(agentKeys).toContain('critic');
+    expect(agentKeys).toContain('tracer');
     // Stale entries should NOT be present
     expect(agentKeys).not.toContain('frontendEngineer');
     expect(agentKeys).not.toContain('documentWriter');
@@ -45,9 +46,12 @@ describe('Cleanup Validation', () => {
     expect(agentKeys).not.toContain('buildFixer');
   });
 
-  it('agent registry has 19 agents', async () => {
+  it('agent registry has 20 agents', async () => {
+    // Upstream v5.0.2 ships 19; this fork adds devils-advocate.
     const { getAgentDefinitions } = await import('../agents/definitions.js');
     const defs = getAgentDefinitions();
-    expect(Object.keys(defs)).toHaveLength(19);
+    expect(Object.keys(defs)).toHaveLength(20);
+    expect(defs).toHaveProperty('tracer');
+    expect(defs).toHaveProperty('devils-advocate');
   });
 });

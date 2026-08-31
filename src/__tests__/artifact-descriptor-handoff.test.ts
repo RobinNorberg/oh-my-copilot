@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 type ArtifactModule = Record<string, unknown>;
 
-const ARTIFACT_DESCRIPTOR_SOURCE_PATH = join(process.cwd(), 'src', 'shared', 'artifact-descriptor.ts').replace(/\\/g, '/');
+const ARTIFACT_DESCRIPTOR_SOURCE_PATH = join(process.cwd(), 'src', 'shared', 'artifact-descriptor.ts');
 const ARTIFACT_DESCRIPTOR_IMPORT_PATH = '../shared/artifact-descriptor.js';
 
 function getExistingArtifactSource(): string {

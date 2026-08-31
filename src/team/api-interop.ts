@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
+import { getOmcRoot } from '../lib/worktree-paths.js';
+import { teamStateRoot } from './state-paths.js';
 import {
   TEAM_NAME_SAFE_PATTERN,
   WORKER_NAME_SAFE_PATTERN,
@@ -40,20 +42,51 @@ import {
   teamWriteMonitorSnapshot,
   teamReadTaskApproval,
   teamWriteTaskApproval,
+  teamPublishTaskRecoveryCheckpoint,
+  teamReadCanonicalMailboxMessageStrict,
   type TeamMonitorSnapshotState,
 } from './team-ops.js';
-import { queueBroadcastMailboxMessage, queueDirectMailboxMessage, type DispatchOutcome } from './mcp-comm.js';
-import { injectToLeaderPane, sendToWorker } from './tmux-session.js';
+import {
+  queueBroadcastMailboxMessage,
+  queueDirectMailboxMessage,
+  runMailboxNotificationAttempt,
+  type DispatchOutcome,
+} from './mcp-comm.js';
+import { verifyTeamTargetOwnership } from './tmux-session.js';
+import { readDispatchRequestStrict } from './dispatch-queue.js';
+import {
+  readCurrentMailboxNotificationGuard,
+  type MailboxNotificationGuardInput,
+  type MailboxNotificationGuardResult,
+} from './mailbox-notification-guard.js';
 import { listDispatchRequests, markDispatchRequestDelivered, markDispatchRequestNotified } from './dispatch-queue.js';
 import { generateMailboxTriggerMessage } from './worker-bootstrap.js';
 import { shutdownTeam } from './runtime.js';
-import { shutdownTeamV2 } from './runtime-v2.js';
+import { shutdownTeamV2, recoverDeadWorkerV2, readRecoverDeadWorkerV2Outcome } from './runtime-v2.js';
+import { isSafeRecoveryRequestId } from './recovery-request-store.js';
 import { inspectTeamWorktreeCleanupSafety } from './git-worktree.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
-import type { TeamTaskDelegationPlan } from './types.js';
+import type { RecoverDeadWorkerV2Result, TeamTaskDelegationPlan } from './types.js';
 
 const TEAM_UPDATE_TASK_MUTABLE_FIELDS = new Set(['subject', 'description', 'blocked_by', 'requires_code_change', 'delegation']);
 const TEAM_UPDATE_TASK_REQUEST_FIELDS = new Set(['team_name', 'task_id', 'workingDirectory', ...TEAM_UPDATE_TASK_MUTABLE_FIELDS]);
+const RECOVER_WORKER_REQUEST_FIELDS = new Set(['team_name', 'worker', 'request_id', 'timeout_ms']);
+const WRITE_TASK_CHECKPOINT_REQUEST_FIELDS = new Set([
+  'team_name', 'task_id', 'worker', 'claim_token', 'task_version', 'sequence', 'resume_payload',
+]);
+const READ_RECOVERY_RESULT_REQUEST_FIELDS = new Set(['team_name', 'request_id']);
+const RECOVERY_ERROR_CODES = new Set([
+  'invalid_input', 'team_not_found', 'worker_not_found', 'worker_not_dead', 'runtime_v2_required',
+  'invalid_persisted_state', 'runtime_owner_unavailable', 'runtime_owner_fence_lost',
+  'recovery_request_timeout', 'recovery_attempt_conflict', 'team_mutation_busy',
+  'team_mutation_resume_required', 'team_shutting_down', 'team_session_dead',
+  'worker_liveness_unknown', 'recovery_checkpoint_missing', 'recovery_checkpoint_malformed',
+  'recovery_checkpoint_ambiguous', 'recovery_checkpoint_stale', 'task_requeue_failed',
+  'launch_metadata_incomplete', 'launch_descriptor_unresolvable', 'spawn_failed',
+  'startup_ack_timeout', 'worker_activation_failed', 'auto_merge_unavailable',
+  'worker_cleanup_incomplete',
+  'stale_state_revision', 'config_commit_failed',
+]);
 
 export const LEGACY_TEAM_MCP_TOOLS = [
   'team_send_message',
@@ -116,6 +149,9 @@ export const TEAM_API_OPERATIONS = [
   'read-task-approval',
   'write-task-approval',
   'orphan-cleanup',
+  'recover-worker',
+  'write-task-checkpoint',
+  'read-recovery-result',
 ] as const;
 
 export type TeamApiOperation = typeof TEAM_API_OPERATIONS[number];
@@ -203,7 +239,7 @@ function parseTaskDelegationPlan(value: unknown): TeamTaskDelegationPlan {
 
 function teamStateExists(teamName: string, candidateCwd: string): boolean {
   if (!TEAM_NAME_SAFE_PATTERN.test(teamName)) return false;
-  const teamRoot = join(candidateCwd, '.omcp', 'state', 'team', teamName);
+  const teamRoot = join(getOmcRoot(candidateCwd), 'state', 'team', teamName);
   return existsSync(join(teamRoot, 'config.json')) || existsSync(join(teamRoot, 'tasks')) || existsSync(teamRoot);
 }
 
@@ -227,12 +263,12 @@ function readTeamStateRootFromEnv(env: NodeJS.ProcessEnv = process.env): string 
   return candidate || null;
 }
 
-export function resolveTeamApiCliCommand(env: NodeJS.ProcessEnv = process.env): 'omcp team api' | 'omx team api' {
+export function resolveTeamApiCliCommand(env: NodeJS.ProcessEnv = process.env): 'omc team api' | 'omx team api' {
   const hasOmcContext = (
     (typeof env.OMC_TEAM_WORKER === 'string' && env.OMC_TEAM_WORKER.trim() !== '')
     || (typeof env.OMC_TEAM_STATE_ROOT === 'string' && env.OMC_TEAM_STATE_ROOT.trim() !== '')
   );
-  if (hasOmcContext) return 'omcp team api';
+  if (hasOmcContext) return 'omc team api';
 
   const hasOmxContext = (
     (typeof env.OMX_TEAM_WORKER === 'string' && env.OMX_TEAM_WORKER.trim() !== '')
@@ -240,15 +276,32 @@ export function resolveTeamApiCliCommand(env: NodeJS.ProcessEnv = process.env): 
   );
   if (hasOmxContext) return 'omx team api';
 
-  return 'omcp team api';
+  return 'omc team api';
+}
+
+/**
+ * Classify team configs BEFORE relying on canonicalized shape.
+ * V1 (legacy) configs are identified by the durable `agentTypes` field.
+ * An empty `workers: []` array must NOT be treated as V2 provenance — that is
+ * often injected by canonicalizeTeamConfigWorkers on raw V1 configs.
+ */
+function isLegacyRuntimeConfig(config: unknown): config is {
+  agentTypes: unknown[];
+  tmuxSession?: string;
+  leaderPaneId?: string | null;
+  tmuxOwnsWindow?: boolean;
+} {
+  return !!config && typeof config === 'object'
+    && Array.isArray((config as { agentTypes?: unknown[] }).agentTypes);
 }
 
 function isRuntimeV2Config(config: unknown): config is { workers: unknown[] } {
-  return !!config && typeof config === 'object' && Array.isArray((config as { workers?: unknown[] }).workers);
-}
-
-function isLegacyRuntimeConfig(config: unknown): config is { tmuxSession?: string; leaderPaneId?: string | null; tmuxOwnsWindow?: boolean } {
-  return !!config && typeof config === 'object' && Array.isArray((config as { agentTypes?: unknown[] }).agentTypes);
+  if (!config || typeof config !== 'object') return false;
+  // Legacy agentTypes provenance wins over any workers array (including []).
+  // teamReadConfig preserves agentTypes for on-disk V1 configs so they never
+  // reach this branch after empty-workers canonicalization.
+  if (isLegacyRuntimeConfig(config)) return false;
+  return Array.isArray((config as { workers?: unknown[] }).workers);
 }
 
 function assertNoNativeWorktreeCleanupEvidence(teamName: string, cwd: string): void {
@@ -269,7 +322,13 @@ function assertNoNativeWorktreeCleanupEvidence(teamName: string, cwd: string): v
 }
 
 async function executeTeamCleanupViaRuntime(teamName: string, cwd: string): Promise<void> {
-  const config = await teamReadConfig(teamName, cwd) as unknown;
+  let config: unknown;
+  try {
+    config = await teamReadConfig(teamName, cwd) as unknown;
+  } catch (error) {
+    assertNoNativeWorktreeCleanupEvidence(teamName, cwd);
+    throw error;
+  }
 
   if (!config) {
     assertNoNativeWorktreeCleanupEvidence(teamName, cwd);
@@ -277,11 +336,7 @@ async function executeTeamCleanupViaRuntime(teamName: string, cwd: string): Prom
     return;
   }
 
-  if (isRuntimeV2Config(config)) {
-    await shutdownTeamV2(teamName, cwd);
-    return;
-  }
-
+  // Legacy first: agentTypes provenance must not be shadowed by empty workers[].
   if (isLegacyRuntimeConfig(config)) {
     const legacyConfig = config as { tmuxSession?: string; leaderPaneId?: string | null; tmuxOwnsWindow?: boolean };
     const sessionName = typeof legacyConfig.tmuxSession === 'string' && legacyConfig.tmuxSession.trim() !== ''
@@ -290,7 +345,14 @@ async function executeTeamCleanupViaRuntime(teamName: string, cwd: string): Prom
     const leaderPaneId = typeof legacyConfig.leaderPaneId === 'string' && legacyConfig.leaderPaneId.trim() !== ''
       ? legacyConfig.leaderPaneId.trim()
       : undefined;
-    await shutdownTeam(teamName, sessionName, cwd, 30_000, undefined, leaderPaneId, legacyConfig.tmuxOwnsWindow === true);
+    const cleaned = await shutdownTeam(teamName, sessionName, cwd, 30_000, undefined, leaderPaneId, legacyConfig.tmuxOwnsWindow === true);
+    if (!cleaned) throw new Error(`team_shutdown_failed:legacy_cleanup_unverified`);
+    return;
+  }
+
+  if (isRuntimeV2Config(config)) {
+    const shutdown = await shutdownTeamV2(teamName, cwd);
+    if (shutdown.outcome !== 'cleaned') throw new Error(`team_shutdown_${shutdown.outcome}:${shutdown.reason}`);
     return;
   }
 
@@ -314,7 +376,7 @@ function stateRootToWorkingDirectory(stateRoot: string): string {
   const absolute = resolvePath(stateRoot);
   const normalized = absolute.replaceAll('\\', '/');
 
-  for (const marker of ['/.omcp/state/team/', '/.omx/state/team/']) {
+  for (const marker of ['/.omg/state/team/', '/.omx/state/team/']) {
     const idx = normalized.lastIndexOf(marker);
     if (idx >= 0) {
       const workspaceRoot = absolute.slice(0, idx);
@@ -323,7 +385,7 @@ function stateRootToWorkingDirectory(stateRoot: string): string {
     }
   }
 
-  for (const marker of ['/.omcp/state', '/.omx/state']) {
+  for (const marker of ['/.omg/state', '/.omx/state']) {
     const idx = normalized.lastIndexOf(marker);
     if (idx >= 0) {
       const workspaceRoot = absolute.slice(0, idx);
@@ -340,7 +402,7 @@ function resolveTeamWorkingDirectoryFromMetadata(
   candidateCwd: string,
   workerContext: { teamName: string; workerName: string } | null,
 ): string | null {
-  const teamRoot = join(candidateCwd, '.omcp', 'state', 'team', teamName);
+  const teamRoot = join(getOmcRoot(candidateCwd), 'state', 'team', teamName);
   if (!existsSync(teamRoot)) return null;
 
   if (workerContext?.teamName === teamName) {
@@ -417,56 +479,73 @@ export function buildLegacyTeamDeprecationHint(
 }
 
 
-const QUEUED_FOR_HOOK_DISPATCH_REASON = 'queued_for_hook_dispatch';
-const LEADER_PANE_MISSING_MAILBOX_PERSISTED_REASON = 'leader_pane_missing_mailbox_persisted';
 const WORKTREE_TRIGGER_STATE_ROOT = '$OMC_TEAM_STATE_ROOT';
 
-function resolveInstructionStateRoot(worktreePath?: string | null): string | undefined {
-  return worktreePath ? WORKTREE_TRIGGER_STATE_ROOT : undefined;
+function resolveInstructionStateRoot(_worktreePath: string | null | undefined, cwd?: string, teamName?: string): string {
+  if (process.platform === 'win32' && cwd && teamName) return teamStateRoot(cwd, teamName);
+  return WORKTREE_TRIGGER_STATE_ROOT;
 }
 
-function queuedForHookDispatch(): DispatchOutcome {
-  return {
-    ok: true,
-    transport: 'hook',
-    reason: QUEUED_FOR_HOOK_DISPATCH_REASON,
-  };
+function hasExactText(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value === value.trim();
 }
 
-async function notifyMailboxTarget(
-  teamName: string,
-  toWorker: string,
-  triggerMessage: string,
+/**
+ * Older leader mailbox requests did not always persist pane_id. The leader
+ * target is canonical config metadata, so rehydrate only that optional legacy
+ * field for the strict guard; every durable identity field remains exact.
+ */
+async function readMailboxGuardWithCanonicalLeaderTarget(
+  input: MailboxNotificationGuardInput,
   cwd: string,
-): Promise<DispatchOutcome> {
-  const config = await teamReadConfig(teamName, cwd);
-  if (!config) return queuedForHookDispatch();
+): Promise<MailboxNotificationGuardResult> {
+  let configPromise: ReturnType<typeof teamReadConfig> | undefined;
+  const readConfig = () => {
+    configPromise ??= teamReadConfig(input.teamName, cwd);
+    return configPromise;
+  };
+  return readCurrentMailboxNotificationGuard(input, cwd, {
+    readConfig,
+    readStrictDispatchRequest: async (teamName, requestId, requestCwd) => {
+      const [dispatch, config] = await Promise.all([
+        readDispatchRequestStrict(teamName, requestId, requestCwd),
+        readConfig(),
+      ]);
+      const canonicalLeaderPaneId = config?.leader_pane_id;
+      if (
+        dispatch.kind === 'valid'
+        && input.recipient === 'leader-fixed'
+        && dispatch.request.to_worker === 'leader-fixed'
+        && dispatch.request.pane_id === undefined
+        && hasExactText(canonicalLeaderPaneId)
+      ) {
+        return { kind: 'valid', request: { ...dispatch.request, pane_id: canonicalLeaderPaneId } };
+      }
+      return dispatch;
+    },
+    readStrictMailboxMessage: teamReadCanonicalMailboxMessageStrict,
+    verifyProviderOwnership: verifyTeamTargetOwnership,
+  });
+}
 
-  const sessionName = typeof config.tmux_session === 'string' ? config.tmux_session.trim() : '';
-  if (!sessionName) return queuedForHookDispatch();
-
-  if (toWorker === 'leader-fixed') {
-    const leaderPaneId = typeof config.leader_pane_id === 'string' ? config.leader_pane_id.trim() : '';
-    if (!leaderPaneId) {
-      return {
-        ok: true,
-        transport: 'mailbox',
-        reason: LEADER_PANE_MISSING_MAILBOX_PERSISTED_REASON,
-      };
-    }
-    const injected = await injectToLeaderPane(sessionName, leaderPaneId, triggerMessage);
-    return injected
-      ? { ok: true, transport: 'tmux_send_keys', reason: 'leader_pane_notified' }
-      : queuedForHookDispatch();
-  }
-
-  const workerPaneId = config.workers.find((worker) => worker.name === toWorker)?.pane_id?.trim();
-  if (!workerPaneId) return queuedForHookDispatch();
-
-  const notified = await sendToWorker(sessionName, workerPaneId, triggerMessage);
-  return notified
-    ? { ok: true, transport: 'tmux_send_keys', reason: 'worker_pane_notified' }
-    : queuedForHookDispatch();
+async function notifyMailboxTarget(params: {
+  teamName: string;
+  toWorker: string;
+  triggerMessage: string;
+  requestId: string;
+  messageId: string;
+  cwd: string;
+}): Promise<DispatchOutcome> {
+  return runMailboxNotificationAttempt({
+    teamName: params.teamName,
+    recipient: params.toWorker,
+    requestId: params.requestId,
+    messageId: params.messageId,
+    triggerMessage: params.triggerMessage,
+    cwd: params.cwd,
+  }, {
+    readGuard: readMailboxGuardWithCanonicalLeaderTarget,
+  });
 }
 
 function findWorkerDispatchTarget(
@@ -476,11 +555,14 @@ function findWorkerDispatchTarget(
 ): Promise<{ paneId?: string; workerIndex?: number; instructionStateRoot?: string }>
 {
   return teamReadConfig(teamName, cwd).then((config) => {
+    if (toWorker === 'leader-fixed') {
+      return { paneId: config?.leader_pane_id ?? undefined };
+    }
     const recipient = config?.workers.find((worker) => worker.name === toWorker);
     return {
       paneId: recipient?.pane_id,
       workerIndex: recipient?.index,
-      instructionStateRoot: resolveInstructionStateRoot(recipient?.worktree_path),
+      instructionStateRoot: resolveInstructionStateRoot(recipient?.worktree_path, cwd, teamName),
     };
   });
 }
@@ -566,6 +648,15 @@ function validateCommonFields(args: Record<string, unknown>): void {
   }
 }
 
+function unsupportedFields(args: Record<string, unknown>, allowed: Set<string>): string[] {
+  return Object.keys(args).filter((field) => !allowed.has(field));
+}
+
+function requiredString(args: Record<string, unknown>, field: string): string | null {
+  const value = args[field];
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+}
+
 export async function executeTeamApiOperation(
   operation: TeamApiOperation,
   args: Record<string, unknown>,
@@ -577,6 +668,92 @@ export async function executeTeamApiOperation(
     const cwd = teamNameForCwd ? resolveTeamWorkingDirectory(teamNameForCwd, fallbackCwd) : fallbackCwd;
 
     switch (operation) {
+      case 'recover-worker': {
+        const unsupported = unsupportedFields(args, RECOVER_WORKER_REQUEST_FIELDS);
+        if (unsupported.length > 0) {
+          return { ok: false, operation, error: { code: 'invalid_input', message: `recover-worker received unsupported fields: ${unsupported.join(', ')}` } };
+        }
+        const teamName = requiredString(args, 'team_name');
+        const workerName = requiredString(args, 'worker');
+        const requestId = args.request_id;
+        const timeoutMs = args.timeout_ms;
+        const normalizedRequestId = typeof requestId === 'string' ? requestId.trim() : undefined;
+        if (!teamName || !workerName || (requestId !== undefined && (normalizedRequestId === undefined || !isSafeRecoveryRequestId(normalizedRequestId)))
+          || (timeoutMs !== undefined && (!isFiniteInteger(timeoutMs) || timeoutMs < 180_000 || timeoutMs > 300_000))) {
+          return { ok: false, operation, error: { code: 'invalid_input', message: 'team_name and worker are required; request_id must be a path-safe 1-128 character opaque identifier and timeout_ms must be an integer from 180000 through 300000 when provided' } };
+        }
+        let result: RecoverDeadWorkerV2Result;
+        try {
+          result = await recoverDeadWorkerV2(teamName, cwd, {
+            workerName,
+            requestId: normalizedRequestId,
+            timeoutMs: timeoutMs as number | undefined,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (RECOVERY_ERROR_CODES.has(message)) {
+            return { ok: false, operation, error: { code: message, message } };
+          }
+          throw error;
+        }
+        return { ok: true, operation, data: { result } };
+      }
+      case 'write-task-checkpoint': {
+        const unsupported = unsupportedFields(args, WRITE_TASK_CHECKPOINT_REQUEST_FIELDS);
+        if (unsupported.length > 0) {
+          return { ok: false, operation, error: { code: 'invalid_input', message: `write-task-checkpoint received unsupported fields: ${unsupported.join(', ')}` } };
+        }
+        const teamName = requiredString(args, 'team_name');
+        const taskId = requiredString(args, 'task_id');
+        const workerName = requiredString(args, 'worker');
+        const claimToken = requiredString(args, 'claim_token');
+        const taskVersion = args.task_version;
+        const sequence = args.sequence;
+        if (!teamName || !taskId || !workerName || !claimToken || !Object.hasOwn(args, 'resume_payload')
+          || !isFiniteInteger(taskVersion) || taskVersion <= 0 || !isFiniteInteger(sequence) || sequence <= 0) {
+          return { ok: false, operation, error: { code: 'invalid_input', message: 'team_name, task_id, worker, claim_token, positive task_version, positive sequence, and resume_payload are required' } };
+        }
+        const workerContext = parseTeamWorkerContextFromEnv();
+        if (!workerContext) {
+          return { ok: false, operation, error: { code: 'worker_auth_required', message: 'write-task-checkpoint requires OMC_TEAM_WORKER or OMX_TEAM_WORKER authentication' } };
+        }
+        if (workerContext.teamName !== teamName || workerContext.workerName !== workerName) {
+          return { ok: false, operation, error: { code: 'worker_auth_mismatch', message: 'authenticated worker does not match team_name and worker' } };
+        }
+        const result = await teamPublishTaskRecoveryCheckpoint({
+          teamName,
+          taskId,
+          workerName,
+          claimToken,
+          taskVersion,
+          sequence,
+          resumePayload: args.resume_payload,
+        }, cwd);
+        return result.ok
+          ? { ok: true, operation, data: result }
+          : { ok: false, operation, error: { code: result.error, message: result.error } };
+      }
+      case 'read-recovery-result': {
+        const unsupported = unsupportedFields(args, READ_RECOVERY_RESULT_REQUEST_FIELDS);
+        const teamName = requiredString(args, 'team_name');
+        const requestId = requiredString(args, 'request_id');
+        if (unsupported.length > 0 || !teamName || !requestId) {
+          return {
+            ok: false,
+            operation,
+            error: {
+              code: 'invalid_input',
+              message: unsupported.length > 0
+                ? `read-recovery-result received unsupported fields: ${unsupported.join(', ')}`
+                : 'team_name and request_id are required',
+            },
+          };
+        }
+        const outcome = readRecoverDeadWorkerV2Outcome(cwd, requestId);
+        return outcome
+          ? { ok: true, operation, data: { outcome } }
+          : { ok: false, operation, error: { code: 'recovery_result_not_found', message: 'recovery_result_not_found' } };
+      }
       case 'send-message': {
         const teamName = String(args.team_name || '').trim();
         const fromWorker = String(args.from_worker || '').trim();
@@ -591,7 +768,7 @@ export async function executeTeamApiOperation(
 
         let message: Awaited<ReturnType<typeof sendDirectMessage>> | null = null;
         const target = await findWorkerDispatchTarget(teamName, toWorker, cwd);
-        await queueDirectMailboxMessage({
+        const notificationOutcome = await queueDirectMailboxMessage({
           teamName,
           fromWorker,
           toWorker,
@@ -600,20 +777,26 @@ export async function executeTeamApiOperation(
           body,
           triggerMessage: generateMailboxTriggerMessage(teamName, toWorker, 1, target.instructionStateRoot),
           cwd,
-          notify: ({ workerName }, triggerMessage) => notifyMailboxTarget(teamName, workerName, triggerMessage, cwd),
+          notify: (_target, resolvedTriggerMessage, context) => notifyMailboxTarget({
+            teamName,
+            toWorker: context.request.to_worker,
+            triggerMessage: resolvedTriggerMessage,
+            requestId: context.request.request_id,
+            messageId: context.message_id ?? context.request.message_id ?? '',
+            cwd,
+          }),
           deps: {
             sendDirectMessage: async (resolvedTeamName, resolvedFromWorker, resolvedToWorker, resolvedBody, resolvedCwd) => {
               message = await sendDirectMessage(resolvedTeamName, resolvedFromWorker, resolvedToWorker, resolvedBody, resolvedCwd);
               return message;
             },
             broadcastMessage,
-            markMessageNotified: async (resolvedTeamName, workerName, messageId, resolvedCwd) => {
-              await markMessageNotified(resolvedTeamName, workerName, messageId, resolvedCwd);
-            },
+            markMessageNotified: (resolvedTeamName, workerName, messageId, resolvedCwd) =>
+              markMessageNotified(resolvedTeamName, workerName, messageId, resolvedCwd),
           },
         });
 
-        return { ok: true, operation, data: { message } };
+        return { ok: true, operation, data: { message, notification_outcome: notificationOutcome } };
       }
       case 'broadcast': {
         const teamName = String(args.team_name || '').trim();
@@ -623,18 +806,19 @@ export async function executeTeamApiOperation(
           return { ok: false, operation, error: { code: 'invalid_input', message: 'team_name, from_worker, body are required' } };
         }
 
-        let messages: Awaited<ReturnType<typeof broadcastMessage>> = [];
+        const messages: Awaited<ReturnType<typeof broadcastMessage>> = [];
         const config = await teamReadConfig(teamName, cwd);
-        const recipients = (config?.workers ?? [])
+        if (!config) throw new Error(`Team ${teamName} not found`);
+        const recipients = config.workers
           .filter((worker) => worker.name !== fromWorker)
           .map((worker) => ({
             workerName: worker.name,
             workerIndex: worker.index,
             paneId: worker.pane_id,
-            instructionStateRoot: resolveInstructionStateRoot(worker.worktree_path),
+            instructionStateRoot: resolveInstructionStateRoot(worker.worktree_path, cwd, teamName),
           }));
 
-        await queueBroadcastMailboxMessage({
+        const notificationOutcomes = await queueBroadcastMailboxMessage({
           teamName,
           fromWorker,
           recipients,
@@ -646,20 +830,34 @@ export async function executeTeamApiOperation(
             1,
             recipients.find((recipient) => recipient.workerName === workerName)?.instructionStateRoot,
           ),
-          notify: ({ workerName }, triggerMessage) => notifyMailboxTarget(teamName, workerName, triggerMessage, cwd),
+          notify: (_target, resolvedTriggerMessage, context) => notifyMailboxTarget({
+            teamName,
+            toWorker: context.request.to_worker,
+            triggerMessage: resolvedTriggerMessage,
+            requestId: context.request.request_id,
+            messageId: context.message_id ?? context.request.message_id ?? '',
+            cwd,
+          }),
           deps: {
-            sendDirectMessage,
-            broadcastMessage: async (resolvedTeamName, resolvedFromWorker, resolvedBody, resolvedCwd) => {
-              messages = await broadcastMessage(resolvedTeamName, resolvedFromWorker, resolvedBody, resolvedCwd);
-              return messages;
+            sendDirectMessage: async (resolvedTeamName, resolvedFromWorker, resolvedToWorker, resolvedBody, resolvedCwd) => {
+              const message = await sendDirectMessage(
+                resolvedTeamName,
+                resolvedFromWorker,
+                resolvedToWorker,
+                resolvedBody,
+                resolvedCwd,
+              );
+              messages.push(message);
+              return message;
             },
-            markMessageNotified: async (resolvedTeamName, workerName, messageId, resolvedCwd) => {
-              await markMessageNotified(resolvedTeamName, workerName, messageId, resolvedCwd);
-            },
+            // queueBroadcastMailboxMessage persists from the recipient snapshot via sendDirectMessage.
+            broadcastMessage: async () => [],
+            markMessageNotified: (resolvedTeamName, workerName, messageId, resolvedCwd) =>
+              markMessageNotified(resolvedTeamName, workerName, messageId, resolvedCwd),
           },
         });
 
-        return { ok: true, operation, data: { count: messages.length, messages } };
+        return { ok: true, operation, data: { count: messages.length, messages, notification_outcomes: notificationOutcomes } };
       }
       case 'mailbox-list': {
         const teamName = String(args.team_name || '').trim();

@@ -9,6 +9,8 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import { listTeamWorktrees } from './git-worktree.js';
 
 const BRANCH_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9/_.-]*$/;
@@ -22,6 +24,64 @@ export function validateBranchName(branch: string): void {
   if (!BRANCH_NAME_RE.test(branch)) {
     throw new Error(`Invalid branch name: "${branch}" — must match ${BRANCH_NAME_RE}`);
   }
+}
+
+/**
+ * Harness overlay files that OMC writes into every worker worktree
+ * (AGENTS.md and the .claude/ settings overlay). They are infrastructure,
+ * not task output, and differ per worker — so the auto-merge / auto-rebase
+ * fan-out collides on them (`UU AGENTS.md`) even when the actual task files
+ * are disjoint. See issue #3224.
+ */
+export const HARNESS_MERGE_PATHS = ['AGENTS.md', '.claude/**'] as const;
+
+/**
+ * Configure a trivial `merge=ours` driver for harness overlay files so the
+ * team auto-merge / auto-rebase never conflicts on infrastructure (#3224).
+ *
+ * Registers the built-in-style `ours` driver (`true` keeps the current
+ * version and exits 0) and writes `<path> merge=ours` lines into the repo's
+ * shared `info/attributes`. Both apply across every linked worktree because
+ * worktrees share the common git dir, so a single call from a team merge
+ * entry point covers the merger worktree and all worker worktrees.
+ *
+ * Idempotent: re-registers the driver (a no-op set) and only appends
+ * attribute lines that are not already present.
+ */
+export function configureHarnessMergeAttributes(repoRoot: string): void {
+  // Register the trivial "ours" merge driver. `true` always succeeds and
+  // leaves the current (HEAD-side) content in place.
+  execFileSync('git', ['config', 'merge.ours.driver', 'true'], {
+    cwd: repoRoot,
+    stdio: 'pipe',
+    windowsHide: true,
+  });
+
+  const commonDir = execFileSync('git', ['rev-parse', '--git-common-dir'], {
+    cwd: repoRoot,
+    encoding: 'utf-8',
+    stdio: 'pipe',
+    windowsHide: true,
+  }).trim();
+  const resolvedCommonDir = isAbsolute(commonDir) ? commonDir : join(repoRoot, commonDir);
+  const infoDir = join(resolvedCommonDir, 'info');
+  mkdirSync(infoDir, { recursive: true });
+
+  const attrPath = join(infoDir, 'attributes');
+  let existing = '';
+  try {
+    existing = readFileSync(attrPath, 'utf-8');
+  } catch {
+    // No attributes file yet — start fresh.
+  }
+  const existingLines = new Set(existing.split('\n').map((l) => l.trim()));
+  const missing = HARNESS_MERGE_PATHS.map((p) => `${p} merge=ours`).filter(
+    (line) => !existingLines.has(line),
+  );
+  if (missing.length === 0) return;
+
+  const prefix = existing.length > 0 && !existing.endsWith('\n') ? '\n' : '';
+  appendFileSync(attrPath, `${prefix}${missing.join('\n')}\n`, 'utf-8');
 }
 
 export interface MergeResult {
@@ -51,7 +111,7 @@ export function checkMergeConflicts(
   try {
     execFileSync(
       'git', ['merge-tree', '--write-tree', baseBranch, workerBranch],
-      { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+      { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }
     );
     // Exit code 0 means no conflicts
     return [];
@@ -75,16 +135,16 @@ export function checkMergeConflicts(
   // Fallback: file-overlap heuristic for Git < 2.38
   const mergeBase = execFileSync(
     'git', ['merge-base', baseBranch, workerBranch],
-    { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+    { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }
   ).trim();
 
   const baseDiff = execFileSync(
     'git', ['diff', '--name-only', mergeBase, baseBranch],
-    { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+    { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }
   ).trim();
   const workerDiff = execFileSync(
     'git', ['diff', '--name-only', mergeBase, workerBranch],
-    { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+    { cwd: repoRoot, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }
   ).trim();
 
   if (!baseDiff || !workerDiff) {
@@ -114,10 +174,10 @@ export function mergeWorkerBranch(
 
   try {
     // Abort if working tree has uncommitted changes to tracked files to prevent clobbering.
-    // Uses diff-index which ignores untracked files (e.g. .omcp/ worktree metadata).
+    // Uses diff-index which ignores untracked files (e.g. .omg/ worktree metadata).
     try {
       execFileSync('git', ['diff-index', '--quiet', 'HEAD', '--'], {
-        cwd: repoRoot, stdio: 'pipe'
+        cwd: repoRoot, stdio: 'pipe', windowsHide: true
       });
     } catch {
       throw new Error('Working tree has uncommitted changes — commit or stash before merging');
@@ -125,17 +185,17 @@ export function mergeWorkerBranch(
 
     // Ensure we're on the base branch
     execFileSync('git', ['checkout', baseBranch], {
-      cwd: repoRoot, stdio: 'pipe'
+      cwd: repoRoot, stdio: 'pipe', windowsHide: true
     });
 
     // Attempt merge
     execFileSync('git', ['merge', '--no-ff', '-m', `Merge ${workerBranch} into ${baseBranch}`, workerBranch], {
-      cwd: repoRoot, stdio: 'pipe'
+      cwd: repoRoot, stdio: 'pipe', windowsHide: true
     });
 
     // Get merge commit hash
     const mergeCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: repoRoot, encoding: 'utf-8', stdio: 'pipe'
+      cwd: repoRoot, encoding: 'utf-8', stdio: 'pipe', windowsHide: true
     }).trim();
 
     return {
@@ -148,7 +208,7 @@ export function mergeWorkerBranch(
   } catch (_err) {
     // Abort the failed merge
     try {
-      execFileSync('git', ['merge', '--abort'], { cwd: repoRoot, stdio: 'pipe' });
+      execFileSync('git', ['merge', '--abort'], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
     } catch { /* may not be in merge state */ }
 
     // Try to detect conflicting files
@@ -177,10 +237,14 @@ export function mergeAllWorkerBranches(
 
   // Determine base branch
   const base = baseBranch || execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-    cwd: repoRoot, encoding: 'utf-8', stdio: 'pipe'
+    cwd: repoRoot, encoding: 'utf-8', stdio: 'pipe', windowsHide: true
   }).trim();
 
   validateBranchName(base);
+
+  // Keep harness overlay files (AGENTS.md, .claude/**) from blocking the merge
+  // fan-out on infrastructure that has nothing to do with the task (#3224).
+  configureHarnessMergeAttributes(repoRoot);
 
   const results: MergeResult[] = [];
 

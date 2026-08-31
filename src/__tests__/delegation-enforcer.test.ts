@@ -10,12 +10,13 @@ import {
   getModelForAgent,
   type AgentInput
 } from '../features/delegation-enforcer.js';
+import { clearSkillsCache } from '../features/builtin-skills/skills.js';
 import { resolveDelegation } from '../features/delegation-routing/resolver.js';
 
 describe('delegation-enforcer', () => {
   let originalDebugEnv: string | undefined;
-  // Save/restore env vars that trigger non-Copilot provider detection (issue #1201)
-  // so existing tests run in a standard Copilot environment
+  // Save/restore env vars that trigger non-Claude provider detection (issue #1201)
+  // so existing tests run in a standard Claude environment
   const providerEnvKeys = ['ANTHROPIC_BASE_URL', 'CLAUDE_MODEL', 'ANTHROPIC_MODEL', 'OMC_ROUTING_FORCE_INHERIT', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'CLAUDE_CODE_BEDROCK_OPUS_MODEL', 'CLAUDE_CODE_BEDROCK_SONNET_MODEL', 'CLAUDE_CODE_BEDROCK_HAIKU_MODEL', 'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL', 'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'OMC_MODEL_HIGH', 'OMC_MODEL_MEDIUM', 'OMC_MODEL_LOW'];
   const savedProviderEnv: Record<string, string | undefined> = {};
 
@@ -43,7 +44,7 @@ describe('delegation-enforcer', () => {
   });
 
   describe('enforceModel', () => {
-    it('preserves explicitly specified model', () => {
+    it('preserves explicitly specified model (already an alias)', () => {
       const input: AgentInput = {
         description: 'Test task',
         prompt: 'Do something',
@@ -55,23 +56,34 @@ describe('delegation-enforcer', () => {
 
       expect(result.injected).toBe(false);
       expect(result.modifiedInput.model).toBe('haiku');
-      expect(result.modifiedInput).toEqual(input);
     });
 
-    // TODO(port-2866 path-B): fork's enforceModel doesn't pass user-supplied model
-    // through normalizeToCcAlias. Re-enable when wired.
-    it.skip('normalizes explicit full model ID to CC alias (issue #1415)', () => {
+    it('normalizes explicit full model ID to CC alias (issue #1415)', () => {
       const input: AgentInput = {
         description: 'Test task',
         prompt: 'Do something',
         subagent_type: 'oh-my-copilot:executor',
-        model: 'claude-sonnet-4-6'
+        model: 'claude-sonnet-5'
       };
 
       const result = enforceModel(input);
 
       expect(result.injected).toBe(false);
       expect(result.modifiedInput.model).toBe('sonnet');
+    });
+
+    it('normalizes claude-fable-5 to the fable tier alias (issue #3246)', () => {
+      const input: AgentInput = {
+        description: 'Test task',
+        prompt: 'Do something',
+        subagent_type: 'oh-my-copilot:executor',
+        model: 'claude-fable-5'
+      };
+
+      const result = enforceModel(input);
+
+      expect(result.injected).toBe(false);
+      expect(result.modifiedInput.model).toBe('fable');
     });
 
     it('preserves explicit provider-specific Bedrock model ID', () => {
@@ -98,7 +110,7 @@ describe('delegation-enforcer', () => {
       const result = enforceModel(input);
 
       expect(result.injected).toBe(true);
-      expect(result.modifiedInput.model).toBe('sonnet'); // executor defaults to claude-sonnet-4-6
+      expect(result.modifiedInput.model).toBe('sonnet'); // executor defaults to claude-sonnet-5
       expect(result.originalInput.model).toBeUndefined();
     });
 
@@ -112,7 +124,7 @@ describe('delegation-enforcer', () => {
       const result = enforceModel(input);
 
       expect(result.injected).toBe(true);
-      expect(result.modifiedInput.model).toBe('sonnet'); // debugger defaults to claude-sonnet-4-6
+      expect(result.modifiedInput.model).toBe('sonnet'); // debugger defaults to claude-sonnet-5
     });
 
     it('rewrites deprecated aliases to canonical agent names before injecting model', () => {
@@ -138,6 +150,192 @@ describe('delegation-enforcer', () => {
 
       expect(() => enforceModel(input)).toThrow('Unknown agent type');
     });
+    it('throws error for a bundled skill name with Skill-tool guidance (issue #3667)', () => {
+      const input: AgentInput = {
+        description: 'Deslop changed files',
+        prompt: 'Run the cleaner',
+        subagent_type: 'oh-my-copilot:ai-slop-cleaner'
+      };
+
+      let thrown: Error | undefined;
+      try {
+        enforceModel(input);
+      } catch (error) {
+        thrown = error as Error;
+      }
+
+      expect(thrown).toBeDefined();
+      expect(thrown!.message).toContain('Unknown agent type');
+      expect(thrown!.message).toContain('ai-slop-cleaner');
+      expect(thrown!.message).toContain('Skill');
+      expect(thrown!.message).toContain('Skill(skill="oh-my-copilot:ai-slop-cleaner")');
+      expect(thrown!.message).toContain('do NOT substitute a similarly-named agent');
+    });
+
+    it('does not add Skill guidance for genuinely unknown agents (no closest-match substitution)', () => {
+      const input: AgentInput = {
+        description: 'Test task',
+        prompt: 'Do something',
+        subagent_type: 'oh-my-copilot:ai-slop-cleanr'
+      };
+
+      let thrown: Error | undefined;
+      try {
+        enforceModel(input);
+      } catch (error) {
+        thrown = error as Error;
+      }
+
+      expect(thrown).toBeDefined();
+      expect(thrown!.message).toContain('Unknown agent type');
+      expect(thrown!.message).not.toContain('Skill');
+      expect(thrown!.message).not.toContain('closest match');
+    });
+
+    it('resolves the dir-only plan name to omc-plan in the guidance (hook parity)', () => {
+      const input: AgentInput = {
+        description: 'Plan task',
+        prompt: 'Run it',
+        subagent_type: 'oh-my-copilot:plan'
+      };
+
+      let thrown: Error | undefined;
+      try {
+        enforceModel(input);
+      } catch (error) {
+        thrown = error as Error;
+      }
+
+      expect(thrown).toBeDefined();
+      expect(thrown!.message).toContain('Skill(skill="oh-my-copilot:omc-plan")');
+    });
+    describe('bundled skill visibility (entitlement set empty since 5.0.0, issue #3667)', () => {
+      let savedUserType: string | undefined;
+
+      beforeEach(() => {
+        savedUserType = process.env.USER_TYPE;
+        clearSkillsCache();
+      });
+
+      afterEach(() => {
+        if (savedUserType === undefined) {
+          delete process.env.USER_TYPE;
+        } else {
+          process.env.USER_TYPE = savedUserType;
+        }
+        clearSkillsCache();
+      });
+
+      function thrownFor(subagentType: string): Error | undefined {
+        try {
+          enforceModel({ description: 't', prompt: 'p', subagent_type: subagentType });
+        } catch (error) {
+          return error as Error;
+        }
+        return undefined;
+      }
+
+      // Ungated in 5.0.0: remember/verify/debug are suggested for every user.
+      it.each(['remember', 'verify', 'debug'])(
+        'adds Skill guidance for the %s skill regardless of USER_TYPE',
+        (skillName) => {
+          delete process.env.USER_TYPE;
+          clearSkillsCache();
+          const thrown = thrownFor(`oh-my-copilot:${skillName}`);
+          expect(thrown).toBeDefined();
+          expect(thrown!.message).toContain(`Skill(skill="oh-my-copilot:${skillName}")`);
+        },
+      );
+
+      it.each(['remember', 'verify', 'debug'])(
+        'adds Skill guidance for the %s skill when USER_TYPE=ant',
+        (hiddenSkill) => {
+          process.env.USER_TYPE = 'ant';
+          clearSkillsCache();
+          const thrown = thrownFor(`oh-my-copilot:${hiddenSkill}`);
+          expect(thrown).toBeDefined();
+          expect(thrown!.message).toContain(`Skill(skill="oh-my-copilot:${hiddenSkill}")`);
+        },
+      );
+
+      it('keeps guidance for every bundled skill in the same process', () => {
+        delete process.env.USER_TYPE;
+        clearSkillsCache();
+        const visible = thrownFor('oh-my-copilot:ai-slop-cleaner');
+        const ungated = thrownFor('oh-my-copilot:remember');
+        expect(visible!.message).toContain('Skill(skill="oh-my-copilot:ai-slop-cleaner")');
+        expect(ungated!.message).toContain('Skill(skill="oh-my-copilot:remember")');
+      });
+
+      it('case-folds identifiers before visibility and resolution (Windows/macOS semantics, issue #3667)', () => {
+        delete process.env.USER_TYPE;
+        clearSkillsCache();
+        const ungatedMixedCase = thrownFor('oh-my-copilot:Remember');
+        expect(ungatedMixedCase!.message).toContain('Skill(skill="oh-my-copilot:remember")');
+
+        const visibleMixedCase = thrownFor('oh-my-copilot:Plan');
+        expect(visibleMixedCase!.message).toContain('Skill(skill="oh-my-copilot:omc-plan")');
+
+      });
+
+      it('case-folds the namespace prefix for USER_TYPE=ant', () => {
+        process.env.USER_TYPE = 'ant';
+        clearSkillsCache();
+        const hiddenMixedCase = thrownFor('oh-my-copilot:Remember');
+        expect(hiddenMixedCase!.message).toContain('Skill(skill="oh-my-copilot:remember")');
+        const omcPrefix = thrownFor('OMC:ai-slop-cleaner');
+        expect(omcPrefix!.message).toContain('Skill(skill="oh-my-copilot:ai-slop-cleaner")');
+      });
+      it('preserves bare native identifiers (no Skill guidance for plan/general-purpose, issue #3667 P1)', () => {
+        delete process.env.USER_TYPE;
+        clearSkillsCache();
+        for (const bare of ['plan', 'Plan', 'general-purpose']) {
+          const thrown = thrownFor(bare);
+          expect(thrown).toBeDefined();
+          expect(thrown!.message).toContain('Unknown agent type');
+          expect(thrown!.message).not.toContain('Skill(skill=');
+        }
+      });
+
+      it('validates skill names even with an explicit model (issue #3667 P2)', () => {
+        delete process.env.USER_TYPE;
+        clearSkillsCache();
+        let thrown: Error | undefined;
+        try {
+          enforceModel({
+            description: 't',
+            prompt: 'p',
+            subagent_type: 'oh-my-copilot:ai-slop-cleaner',
+            model: 'sonnet',
+          });
+        } catch (error) {
+          thrown = error as Error;
+        }
+        expect(thrown).toBeDefined();
+        expect(thrown!.message).toContain('Skill(skill="oh-my-copilot:ai-slop-cleaner")');
+      });
+
+      it('validates skill names under force-inherit routing (issue #3667 P2)', () => {
+        delete process.env.USER_TYPE;
+        process.env.OMC_ROUTING_FORCE_INHERIT = 'true';
+        clearSkillsCache();
+        let thrown: Error | undefined;
+        try {
+          enforceModel({ description: 't', prompt: 'p', subagent_type: 'oh-my-copilot:ai-slop-cleaner' });
+        } catch (error) {
+          thrown = error as Error;
+        }
+        expect(thrown).toBeDefined();
+        expect(thrown!.message).toContain('Skill(skill="oh-my-copilot:ai-slop-cleaner")');
+        delete process.env.OMC_ROUTING_FORCE_INHERIT;
+      });
+
+      it('keeps valid agents passing validation with an explicit model', () => {
+        const result = enforceModel({ description: 't', prompt: 'p', subagent_type: 'executor', model: 'haiku' });
+        expect(result.modifiedInput.model).toBe('haiku');
+        expect(result.injected).toBe(false);
+      });
+    });
 
     it('logs warning only when OMC_DEBUG=true', () => {
       const input: AgentInput = {
@@ -156,7 +354,7 @@ describe('delegation-enforcer', () => {
       const resultWithDebug = enforceModel(input);
       expect(resultWithDebug.warning).toBeDefined();
       expect(resultWithDebug.warning).toContain('Auto-injecting model');
-      expect(resultWithDebug.warning).toContain('claude-sonnet-4-6');
+      expect(resultWithDebug.warning).toContain('claude-sonnet-5');
       expect(resultWithDebug.warning).toContain('executor');
     });
 
@@ -327,6 +525,14 @@ describe('delegation-enforcer', () => {
     it('throws error for unknown agent', () => {
       expect(() => getModelForAgent('unknown')).toThrow('Unknown agent type');
     });
+
+    it('guides namespaced bundled skills to the canonical Skill invocation (issue #3667 P2)', () => {
+      for (const skillType of ['oh-my-copilot:plan', 'omc:plan']) {
+        expect(() => getModelForAgent(skillType)).toThrow(
+          'Skill(skill="oh-my-copilot:omc-plan")',
+        );
+      }
+    });
   });
 
   describe('deprecated alias routing', () => {
@@ -367,10 +573,7 @@ describe('delegation-enforcer', () => {
   });
 
   describe('env-resolved agent defaults (issue #1415)', () => {
-    // TODO(port-2866 path-B): fork's enforceModel uses tier-env-resolved family
-    // mapping that normalizes Bedrock IDs to aliases. Re-enable when fork
-    // adopts upstream's resolveInheritedModelFromEnv-based agent default flow.
-    it.skip('preserves Bedrock family env IDs without auto-enabling forceInherit from tier env alone', () => {
+    it('preserves Bedrock family env IDs without auto-enabling forceInherit from tier env alone', () => {
       process.env.CLAUDE_CODE_BEDROCK_SONNET_MODEL = 'us.anthropic.claude-sonnet-4-6-v1:0';
       const input: AgentInput = {
         description: 'Test task',
@@ -385,8 +588,7 @@ describe('delegation-enforcer', () => {
       expect(result.modifiedInput.model).toBe('us.anthropic.claude-sonnet-4-6-v1:0');
     });
 
-    // TODO(port-2866 path-B): same as above.
-    it.skip('preserves Bedrock family env model IDs when forceInherit is explicitly disabled', () => {
+    it('preserves Bedrock family env model IDs when forceInherit is explicitly disabled', () => {
       process.env.OMC_ROUTING_FORCE_INHERIT = 'false';
       process.env.CLAUDE_CODE_BEDROCK_SONNET_MODEL = 'us.anthropic.claude-sonnet-4-6-v1:0';
       const input: AgentInput = {
@@ -410,7 +612,7 @@ describe('delegation-enforcer', () => {
 
   describe('modelAliases config override (issue #1211)', () => {
     const savedEnv: Record<string, string | undefined> = {};
-    const aliasEnvKeys = ['OMC_MODEL_ALIAS_HAIKU', 'OMC_MODEL_ALIAS_SONNET', 'OMC_MODEL_ALIAS_OPUS'];
+    const aliasEnvKeys = ['OMC_MODEL_ALIAS_HAIKU', 'OMC_MODEL_ALIAS_SONNET', 'OMC_MODEL_ALIAS_OPUS', 'OMC_MODEL_ALIAS_FABLE'];
 
     beforeEach(() => {
       for (const key of aliasEnvKeys) {
@@ -492,6 +694,18 @@ describe('delegation-enforcer', () => {
       expect(result.modifiedInput.model).toBeUndefined();
     });
 
+    it('remaps opus agents to fable via env var (issue #3726)', () => {
+      process.env.OMC_MODEL_ALIAS_OPUS = 'fable';
+      const input: AgentInput = {
+        description: 'Test task',
+        prompt: 'Do something',
+        subagent_type: 'architect' // architect defaults to opus
+      };
+      const result = enforceModel(input);
+      expect(result.model).toBe('fable');
+      expect(result.modifiedInput.model).toBe('fable');
+    });
+
     it('remaps opus agents to inherit via env var', () => {
       process.env.OMC_MODEL_ALIAS_OPUS = 'inherit';
       const input: AgentInput = {
@@ -517,7 +731,7 @@ describe('delegation-enforcer', () => {
     });
   });
 
-  describe('non-Copilot provider support (issue #1201)', () => {
+  describe('non-Claude provider support (issue #1201)', () => {
     const savedEnv: Record<string, string | undefined> = {};
     const envKeys = ['CLAUDE_MODEL', 'ANTHROPIC_BASE_URL', 'OMC_ROUTING_FORCE_INHERIT'];
 
@@ -538,9 +752,22 @@ describe('delegation-enforcer', () => {
       }
     });
 
-    it('strips model when non-Copilot provider auto-enables forceInherit', () => {
+    it('strips model when Bedrock ARN auto-enables forceInherit', () => {
+      process.env.ANTHROPIC_MODEL = 'arn:aws:bedrock:us-east-2:123456789012:inference-profile/global.anthropic.claude-opus-4-6-v1:0';
+      const input: AgentInput = {
+        description: 'Test task',
+        prompt: 'Do something',
+        subagent_type: 'oh-my-copilot:executor',
+        model: 'sonnet'
+      };
+      const result = enforceModel(input);
+      expect(result.model).toBe('inherit');
+      expect(result.modifiedInput.model).toBeUndefined();
+    });
+
+    it('strips model when non-Claude provider auto-enables forceInherit', () => {
       process.env.CLAUDE_MODEL = 'glm-5';
-      // forceInherit is auto-enabled by loadConfig for non-Copilot providers
+      // forceInherit is auto-enabled by loadConfig for non-Claude providers
       const input: AgentInput = {
         description: 'Test task',
         prompt: 'Do something',
@@ -565,7 +792,7 @@ describe('delegation-enforcer', () => {
       expect(result.modifiedInput.model).toBeUndefined();
     });
 
-    it('does not strip model for standard Copilot setup', () => {
+    it('does not strip model for standard Claude setup', () => {
       const input: AgentInput = {
         description: 'Test task',
         prompt: 'Do something',

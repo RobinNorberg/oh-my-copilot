@@ -5,21 +5,20 @@
 ## Step 3.1: Verify Plugin Installation
 
 ```bash
-grep -q "oh-my-copilot" "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json" && echo "Plugin verified" || echo "Plugin NOT found - run: claude /install-plugin oh-my-copilot"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'settings.json');let c='';try{c=f.readFileSync(t,'utf8')}catch{};console.log(c.includes('oh-my-copilot')?'Plugin verified':'Plugin NOT found - run: claude /install-plugin oh-my-copilot')"
 ```
 
-## Step 3.2: Offer MCP Server Configuration
+## Step 3.2: MCP Server Configuration (Pointer Only)
 
-MCP servers extend Claude Code with additional tools (web search, GitHub, etc.).
+MCP servers extend Claude Code with additional tools (web search, GitHub, etc.). OMC no longer ships an MCP setup skill; servers are registered through Claude Code's native MCP surfaces.
 
-Use AskUserQuestion: "Would you like to configure MCP servers for enhanced capabilities? (Context7, Exa search, GitHub, etc.)"
+If the user asks about MCP servers, point them at the native registration path:
 
-If yes, invoke the mcp-setup skill:
-```
-/oh-my-copilot:mcp-setup
-```
+- Claude Code: `claude mcp add <name> ...` (see `claude mcp --help`), or the native MCP config selected by `CLAUDE_MCP_CONFIG_PATH` (by default, the sibling `.claude.json` next to `${COPILOT_CONFIG_DIR:-$HOME/.claude}`)
+- OMC keeps its own bundled MCP server (`bridge/mcp-server.cjs`) registered via `.mcp.json`; it requires no user action
+- Company-context guidance, if used, is documented in `docs/company-context-interface.md`
 
-If no, skip to next step.
+Do **not** try to invoke an MCP setup skill — `mcp-setup` was removed in 5.0.0 and has no replacement skill; the native surfaces above are the whole story.
 
 ## Step 3.3: Configure Agent Teams (Optional)
 
@@ -39,59 +38,27 @@ Use AskUserQuestion:
 
 #### 3.3.1: Enable Agent Teams in settings.json
 
-**CRITICAL**: Agent teams require `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` to be set in `~/.copilot/settings.json`. This must be done carefully to preserve existing user settings.
+**CRITICAL**: Agent teams require `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` to be set in `${COPILOT_CONFIG_DIR:-~/.copilot}/settings.json`. This must be done carefully to preserve existing user settings.
 
 First, read the current settings.json:
 
 ```bash
-SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
-
-if [ -f "$SETTINGS_FILE" ]; then
-  echo "Current settings.json found"
-  cat "$SETTINGS_FILE"
-else
-  echo "No settings.json found - will create one"
-fi
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'settings.json');try{process.stdout.write(f.readFileSync(t,'utf8'))}catch{console.log('(no settings.json at '+t+')')}"
 ```
 
 Then use the Read tool to read `${COPILOT_CONFIG_DIR:-~/.copilot}/settings.json` (if it exists). Use the Edit tool to merge the teams configuration while preserving ALL existing settings.
 
-Use jq to safely merge without overwriting existing settings:
+**MERGE_JSON_FILE** is the portable merge used throughout this phase. It deep-merges a
+JSON patch into a file under the active config directory, creates the file when it does
+not exist, writes through a temp file so a failure cannot truncate the original, and
+refuses to touch a file it cannot parse. It runs unchanged in bash, zsh, and PowerShell,
+with no external JSON tooling, no heredoc, and no shell redirection:
 
 ```bash
-SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
-
-if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR: jq is required to update $SETTINGS_FILE safely."
-  echo "Install jq and rerun setup. Existing settings were not modified."
-  exit 1
-fi
-
-if [ -f "$SETTINGS_FILE" ]; then
-  TEMP_FILE=$(mktemp "${SETTINGS_FILE}.tmp.XXXXXX")
-  trap 'rm -f "$TEMP_FILE"' EXIT
-  if jq '.env = (.env // {} | . + {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"})' "$SETTINGS_FILE" > "$TEMP_FILE"; then
-    mv "$TEMP_FILE" "$SETTINGS_FILE"
-  else
-    echo "ERROR: Failed to update $SETTINGS_FILE. Existing settings were not modified."
-    exit 1
-  fi
-  trap - EXIT
-  echo "Added CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS to existing settings.json"
-else
-  mkdir -p "$(dirname "$SETTINGS_FILE")"
-  cat > "$SETTINGS_FILE" << 'SETTINGS_EOF'
-{
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  }
-}
-SETTINGS_EOF
-  echo "Created settings.json with teams enabled"
-fi
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');const[name,raw]=process.argv.slice(1);const t=p.join(d,name);const patch=JSON.parse(raw);f.mkdirSync(p.dirname(t),{recursive:true});let c={};if(f.existsSync(t)){try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: '+t+' is not valid JSON. Existing file was not modified.');process.exit(1)}}const merge=(a,b)=>{for(const k of Object.keys(b)){const v=b[k];if(v&&typeof v==='object'&&Array.isArray(v)===false){a[k]=merge(a[k]&&typeof a[k]==='object'?a[k]:{},v)}else{a[k]=v}}return a};merge(c,patch);const tmp=t+'.tmp.'+process.pid;try{f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Updated '+t)}catch(e){f.rmSync(tmp,{force:true});console.error('ERROR: Failed to update '+t+'. Existing file was not modified.');process.exit(1)}" "settings.json" "{\"env\":{\"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS\":\"1\"}}"
 ```
 
-**IMPORTANT**: The Edit tool is preferred for modifying settings.json when possible, since it preserves formatting and comments. The jq approach above is the fallback for when the file needs structural merging.
+**IMPORTANT**: The Edit tool is preferred for modifying settings.json when possible, since it preserves formatting and comments. The merge command above is the fallback for when the file needs structural merging.
 
 #### 3.3.2: Configure Teammate Display Mode
 
@@ -106,27 +73,11 @@ Use AskUserQuestion:
 
 If user chooses anything other than "Auto", add `teammateMode` to settings.json:
 
-```bash
-SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
+Run **MERGE_JSON_FILE** with `settings.json` and this patch, where `TEAMMATE_MODE` is
+`in-process` or `tmux`. Skip this entirely if the user chose "Auto" (that is the default):
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR: jq is required to update $SETTINGS_FILE safely."
-  echo "Install jq and rerun setup. Existing settings were not modified."
-  exit 1
-fi
-
-# TEAMMATE_MODE is "in-process" or "tmux" based on user choice
-# Skip this if user chose "Auto" (that's the default)
-TEMP_FILE=$(mktemp "${SETTINGS_FILE}.tmp.XXXXXX")
-trap 'rm -f "$TEMP_FILE"' EXIT
-if jq --arg mode "TEAMMATE_MODE" '. + {teammateMode: $mode}' "$SETTINGS_FILE" > "$TEMP_FILE"; then
-  mv "$TEMP_FILE" "$SETTINGS_FILE"
-else
-  echo "ERROR: Failed to update $SETTINGS_FILE. Existing settings were not modified."
-  exit 1
-fi
-trap - EXIT
-echo "Teammate display mode set to: TEAMMATE_MODE"
+```json
+{"teammateMode":"TEAMMATE_MODE"}
 ```
 
 #### 3.3.3: Configure Team Defaults in omc-config
@@ -145,45 +96,20 @@ Use AskUserQuestion with multiple questions:
 **Options:**
 1. **claude (Recommended)** - Default provider with the widest compatibility
 2. **codex** - Use Codex CLI workers by default when installed
-3. **gemini** - Use Gemini CLI workers by default when installed
+3. **gemini** - Use Gemini CLI workers by default when installed (enterprise/API-key tier)
+4. **antigravity** - Use Antigravity CLI (`agy`) workers by default when installed; Google's successor to the Gemini CLI (install per the [official instructions](https://antigravity.google))
 
-Store the team configuration in `~/.copilot/.omcp-config.json`:
+Store the team configuration in the active Claude config directory's `.omc-config.json`:
 
-```bash
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
-mkdir -p "$(dirname "$CONFIG_FILE")"
+Run **MERGE_JSON_FILE** with `.omc-config.json` and this patch, substituting the user's
+choices for `MAX_AGENTS` (a number, unquoted) and `AGENT_TYPE`:
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR: jq is required to update $CONFIG_FILE safely."
-  echo "Install jq and rerun setup. Existing config was not modified."
-  exit 1
-fi
-
-if [ -f "$CONFIG_FILE" ]; then
-  EXISTING=$(cat "$CONFIG_FILE")
-else
-  EXISTING='{}'
-fi
-
-# Replace MAX_AGENTS, AGENT_TYPE with user choices
-TEMP_FILE=$(mktemp "${CONFIG_FILE}.tmp.XXXXXX")
-trap 'rm -f "$TEMP_FILE"' EXIT
-if printf '%s\n' "$EXISTING" | jq \
-  --argjson maxAgents MAX_AGENTS \
-  --arg agentType "AGENT_TYPE" \
-  '. + {team: {ops: {maxAgents: $maxAgents, defaultAgentType: $agentType, monitorIntervalMs: 30000, shutdownTimeoutMs: 15000}}}' > "$TEMP_FILE"; then
-  mv "$TEMP_FILE" "$CONFIG_FILE"
-else
-  echo "ERROR: Failed to update $CONFIG_FILE. Existing config was not modified."
-  exit 1
-fi
-trap - EXIT
-
-echo "Team configuration saved:"
-echo "  Max agents: MAX_AGENTS"
-echo "  Default provider: AGENT_TYPE"
-echo "  Model: teammates inherit your session model"
+```json
+{"team":{"ops":{"maxAgents":MAX_AGENTS,"defaultAgentType":"AGENT_TYPE","monitorIntervalMs":30000,"shutdownTimeoutMs":15000}}}
 ```
+
+Then report the saved team configuration: max agents, default provider, and that
+teammates inherit your session model.
 
 **Note:** Teammates do not have a separate model default. Each teammate is a full Claude Code session that inherits your configured model. Subagents spawned by teammates can use any model tier.
 
@@ -192,29 +118,12 @@ echo "  Model: teammates inherit your session model"
 After all modifications, verify settings.json is valid JSON and contains the expected keys:
 
 ```bash
-SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
-
-if jq empty "$SETTINGS_FILE" 2>/dev/null; then
-  echo "settings.json: valid JSON"
-else
-  echo "ERROR: settings.json is invalid JSON! Restoring from backup..."
-  exit 1
-fi
-
-if jq -e '.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS' "$SETTINGS_FILE" > /dev/null 2>&1; then
-  echo "Agent teams: ENABLED"
-else
-  echo "WARNING: Agent teams env var not found in settings.json"
-fi
-
-echo ""
-echo "Final settings.json:"
-jq '.' "$SETTINGS_FILE"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'settings.json');let c;try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: settings.json is invalid JSON or missing. Restore it from the backup before continuing.');process.exit(1)}console.log('settings.json: valid JSON');console.log((c.env||{}).CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS?'Agent teams: ENABLED':'WARNING: Agent teams env var not found in settings.json');console.log('');console.log('Final settings.json:');console.log(JSON.stringify(c,null,2))"
 ```
 
 ### If User Chooses NO:
 
-Skip this step. Agent teams will remain disabled. User can enable later by adding to `~/.copilot/settings.json`:
+Skip this step. Agent teams will remain disabled. User can enable later by adding to `~/.claude/settings.json`:
 ```json
 {
   "env": {
@@ -228,6 +137,7 @@ Or by running `/oh-my-copilot:omc-setup --force` and choosing to enable teams.
 ## Save Progress
 
 ```bash
-CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omcp/state/setup-state.json" 2>/dev/null || echo "unknown")
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-progress.sh" save 6 "$CONFIG_TYPE"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" save 6
 ```
+
+With no config type argument, `save` carries forward the one already recorded in `.omg/state/setup-state.json`.

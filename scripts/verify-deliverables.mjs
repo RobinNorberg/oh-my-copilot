@@ -8,30 +8,24 @@
  * that gap by verifying file existence and minimum content.
  *
  * Deliverable requirements are loaded from (in priority order):
- *   1. .omcp/deliverables.json (project-specific overrides)
- *   2. ${PLUGIN_ROOT}/templates/deliverables.json (OMC defaults)
+ *   1. .omg/deliverables.json (project-specific overrides)
+ *   2. ${CLAUDE_PLUGIN_ROOT}/templates/deliverables.json (OMC defaults)
  *
- * This hook is ADVISORY (non-blocking). It returns additionalContext warnings
- * when deliverables are missing, but never prevents the agent from stopping.
+ * This hook is ADVISORY (non-blocking) and never prevents the agent from
+ * stopping. Because it runs on SubagentStop, it does NOT emit
+ * hookSpecificOutput.additionalContext: that context would be reinjected into
+ * the finishing subagent (the regression fixed in #3209 / #3233). It always
+ * suppresses its own output.
  *
  * Hook output:
- *   - { continue: true, hookSpecificOutput: { additionalContext: "warning" } }
- *     when deliverables are missing
- *   - { continue: true, suppressOutput: true } when all checks pass or on error
+ *   - { continue: true, suppressOutput: true } in all cases (deliverables
+ *     missing, all checks pass, or on error)
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { join, normalize, isAbsolute, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, normalize, isAbsolute, resolve } from 'node:path';
 import { readStdin } from './lib/stdin.mjs';
-
-// Resolve plugin root: Copilot CLI sets PLUGIN_ROOT; legacy Claude CLI sets CLAUDE_PLUGIN_ROOT.
-// Fallback: derive from this script's own path (scripts/ -> parent = plugin root).
-const __filename = fileURLToPath(import.meta.url);
-const __scriptDir = dirname(__filename);
-const _resolvedPluginRoot = process.env.PLUGIN_ROOT
-  || process.env.CLAUDE_PLUGIN_ROOT
-  || dirname(__scriptDir);
+import { resolveOmcStateRoot } from './lib/state-root.mjs';
 
 /**
  * Sanitize a file path to prevent directory traversal attacks.
@@ -48,9 +42,10 @@ function sanitizePath(filePath) {
 /**
  * Load deliverable requirements from project config or OMC defaults.
  */
-function loadDeliverableConfig(directory) {
+function loadDeliverableConfig(directory, omcRoot) {
+  const _omcRoot = omcRoot;
   // Priority 1: Project-specific overrides
-  const projectConfig = join(directory, '.omcp', 'deliverables.json');
+  const projectConfig = join(_omcRoot, 'deliverables.json');
   if (existsSync(projectConfig)) {
     try {
       return JSON.parse(readFileSync(projectConfig, 'utf-8'));
@@ -58,7 +53,7 @@ function loadDeliverableConfig(directory) {
   }
 
   // Priority 2: OMC defaults
-  const pluginRoot = _resolvedPluginRoot;
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
   if (pluginRoot) {
     const defaultConfig = join(pluginRoot, 'templates', 'deliverables.json');
     if (existsSync(defaultConfig)) {
@@ -74,10 +69,11 @@ function loadDeliverableConfig(directory) {
 /**
  * Determine the current team stage from OMC state.
  */
-function detectStage(directory, sessionId) {
+function detectStage(directory, sessionId, omcRoot) {
+  const _omcRoot = omcRoot;
   // Try session-scoped state first
   if (sessionId) {
-    const sessionState = join(directory, '.omcp', 'state', 'sessions', sessionId, 'team-state.json');
+    const sessionState = join(_omcRoot, 'state', 'sessions', sessionId, 'team-state.json');
     if (existsSync(sessionState)) {
       try {
         const data = JSON.parse(readFileSync(sessionState, 'utf-8'));
@@ -87,7 +83,7 @@ function detectStage(directory, sessionId) {
   }
 
   // Fallback to legacy state
-  const legacyState = join(directory, '.omcp', 'state', 'team-state.json');
+  const legacyState = join(_omcRoot, 'state', 'team-state.json');
   if (existsSync(legacyState)) {
     try {
       const data = JSON.parse(readFileSync(legacyState, 'utf-8'));
@@ -156,9 +152,10 @@ async function main() {
 
     const directory = data.cwd || data.directory || process.cwd();
     const sessionId = data.session_id || data.sessionId || '';
+    const omcRoot = await resolveOmcStateRoot(directory);
 
     // Load deliverable config
-    const config = loadDeliverableConfig(directory);
+    const config = loadDeliverableConfig(directory, omcRoot);
     if (!config) {
       // No config found — nothing to verify
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
@@ -166,7 +163,7 @@ async function main() {
     }
 
     // Detect current stage
-    const stage = detectStage(directory, sessionId);
+    const stage = detectStage(directory, sessionId, omcRoot);
     if (!stage) {
       // No team stage detected — skip verification
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
@@ -221,19 +218,12 @@ async function main() {
       return;
     }
 
-    // Build advisory warning
-    const warnings = issues.map(i => `  - ${i.path}: ${i.reason}`).join('\n');
-    const message = `[OMC] Deliverable verification for stage "${stage}":\n` +
-      `${issues.length} issue(s) found:\n${warnings}\n` +
-      `These deliverables may be expected by the next stage.`;
-
-    console.log(JSON.stringify({
-      continue: true,
-      hookSpecificOutput: {
-        hookEventName: 'subagentStop',
-        additionalContext: message,
-      },
-    }));
+    // Deliverables are missing or incomplete. Do NOT emit
+    // hookSpecificOutput.additionalContext here: this hook runs on
+    // SubagentStop, and additionalContext would be reinjected into the
+    // finishing subagent's context (the regression fixed in #3209 for
+    // subagent-tracker). Suppress output and let the agent stop instead.
+    console.log(JSON.stringify({ continue: true, suppressOutput: true }));
   } catch {
     // On any error, allow the agent to stop (never block on hook failure)
     console.log(JSON.stringify({ continue: true, suppressOutput: true }));

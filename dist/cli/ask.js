@@ -1,27 +1,30 @@
 import { spawnSync } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { readFile, readdir } from 'fs/promises';
-import { constants as osConstants, tmpdir } from 'os';
+import { constants as osConstants } from 'os';
 import { basename, dirname, isAbsolute, join } from 'path';
 import { fileURLToPath } from 'url';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
 export const ASK_USAGE = [
-    'Usage: omcp ask <claude|copilot|codex|gemini|grok> <question or task>',
-    '   or: omcp ask <claude|copilot|codex|gemini|grok> -p "<prompt>"',
-    '   or: omcp ask <claude|copilot|codex|gemini|grok> --print "<prompt>"',
-    '   or: omcp ask <claude|copilot|codex|gemini|grok> --prompt "<prompt>"',
-    '   or: omcp ask <claude|copilot|codex|gemini|grok> --prompt-file <path>',
-    '   or: omcp ask <claude|copilot|codex|gemini|grok> --agent-prompt <role> "<prompt>"',
-    '   or: omcp ask <claude|copilot|codex|gemini|grok> --agent-prompt=<role> --prompt "<prompt>"',
+    'Usage: omc ask <claude|codex|gemini|antigravity|grok|cursor> <question or task>',
+    '   or: omc ask <claude|codex|gemini|antigravity|grok|cursor> -p "<prompt>"',
+    '   or: omc ask <claude|codex|gemini|antigravity|grok|cursor> --print "<prompt>"',
+    '   or: omc ask <claude|codex|gemini|antigravity|grok|cursor> --prompt "<prompt>"',
+    '   or: omc ask <claude|codex|gemini|antigravity|grok|cursor> --agent-prompt <role> "<prompt>"',
+    '   or: omc ask <claude|codex|gemini|antigravity|grok|cursor> --agent-prompt=<role> --prompt "<prompt>"',
 ].join('\n');
-const ASK_PROVIDERS = ['claude', 'copilot', 'codex', 'gemini', 'grok'];
+const ASK_PROVIDERS = ['claude', 'codex', 'gemini', 'antigravity', 'grok', 'cursor'];
 const ASK_PROVIDER_SET = new Set(ASK_PROVIDERS);
 const ASK_AGENT_PROMPT_FLAG = '--agent-prompt';
 const SAFE_ROLE_PATTERN = /^[a-z][a-z0-9-]*$/;
 const ASK_ADVISOR_SCRIPT_ENV = 'OMC_ASK_ADVISOR_SCRIPT';
+const ASK_ADVISOR_SCRIPT_ENV_ALIAS = 'OMX_ASK_ADVISOR_SCRIPT';
 const ASK_ORIGINAL_TASK_ENV = 'OMC_ASK_ORIGINAL_TASK';
 function askUsageError(reason) {
     return new Error(`${reason}\n${ASK_USAGE}`);
+}
+function warnDeprecatedAlias(alias, canonical) {
+    process.stderr.write(`[ask] DEPRECATED: ${alias} is deprecated; use ${canonical} instead.\n`);
 }
 function getPackageRoot() {
     if (typeof __dirname !== 'undefined' && __dirname) {
@@ -118,34 +121,6 @@ export function parseAskArgs(args) {
             agentPromptRole = role;
             continue;
         }
-        if (token === '--prompt-file') {
-            const filePath = rest[i + 1]?.trim();
-            if (!filePath || filePath.startsWith('-')) {
-                throw askUsageError('Missing file path after --prompt-file.');
-            }
-            if (!existsSync(filePath)) {
-                throw new Error(`[ask] --prompt-file not found: ${filePath}`);
-            }
-            prompt = readFileSync(filePath, 'utf-8').trim();
-            if (!prompt) {
-                throw new Error(`[ask] --prompt-file is empty: ${filePath}`);
-            }
-            return { provider: provider, prompt, ...(agentPromptRole ? { agentPromptRole } : {}), promptFile: filePath };
-        }
-        if (token.startsWith('--prompt-file=')) {
-            const filePath = token.slice('--prompt-file='.length).trim();
-            if (!filePath) {
-                throw askUsageError('Missing file path after --prompt-file=');
-            }
-            if (!existsSync(filePath)) {
-                throw new Error(`[ask] --prompt-file not found: ${filePath}`);
-            }
-            prompt = readFileSync(filePath, 'utf-8').trim();
-            if (!prompt) {
-                throw new Error(`[ask] --prompt-file is empty: ${filePath}`);
-            }
-            return { provider: provider, prompt, ...(agentPromptRole ? { agentPromptRole } : {}), promptFile: filePath };
-        }
         if (token === '-p' || token === '--print' || token === '--prompt') {
             prompt = rest.slice(i + 1).join(' ').trim();
             break;
@@ -172,6 +147,11 @@ export function resolveAskAdvisorScriptPath(packageRoot = getPackageRoot(), env 
     if (canonical) {
         return isAbsolute(canonical) ? canonical : join(packageRoot, canonical);
     }
+    const alias = env[ASK_ADVISOR_SCRIPT_ENV_ALIAS]?.trim();
+    if (alias) {
+        warnDeprecatedAlias(ASK_ADVISOR_SCRIPT_ENV_ALIAS, ASK_ADVISOR_SCRIPT_ENV);
+        return isAbsolute(alias) ? alias : join(packageRoot, alias);
+    }
     return join(packageRoot, 'scripts', 'run-provider-advisor.js');
 }
 function resolveSignalExitCode(signal) {
@@ -185,9 +165,9 @@ function resolveSignalExitCode(signal) {
 }
 export async function askCommand(args) {
     const parsed = parseAskArgs(args);
-    if (parsed.provider !== 'claude' && parsed.provider !== 'copilot' && isExternalLLMDisabled()) {
+    if (parsed.provider !== 'claude' && isExternalLLMDisabled()) {
         throw new Error(`[ask] External LLM provider "${parsed.provider}" is blocked by security policy ` +
-            `(disableExternalLLM). Only "claude" and "copilot" are allowed in the current security configuration.`);
+            `(disableExternalLLM). Only "claude" is allowed in the current security configuration.`);
     }
     const packageRoot = getPackageRoot();
     const advisorScriptPath = resolveAskAdvisorScriptPath(packageRoot);
@@ -200,44 +180,28 @@ export async function askCommand(args) {
         const agentPromptContent = await resolveAgentPromptContent(parsed.agentPromptRole, promptsDir);
         finalPrompt = `${agentPromptContent}\n\n${parsed.prompt}`;
     }
-    // Write prompt to a temp file to avoid Windows command-line length limits (~8KB).
-    // The advisor script reads from OMC_ASK_PROMPT_FILE env var instead of CLI args.
-    const promptTmpDir = join(tmpdir(), 'omcp-ask');
-    mkdirSync(promptTmpDir, { recursive: true });
-    const promptFile = join(promptTmpDir, `prompt-${Date.now()}-${process.pid}.txt`);
-    writeFileSync(promptFile, finalPrompt, 'utf-8');
-    try {
-        const child = spawnSync(process.execPath, [advisorScriptPath, parsed.provider], {
-            cwd: process.cwd(),
-            env: {
-                ...process.env,
-                [ASK_ORIGINAL_TASK_ENV]: parsed.prompt,
-                OMC_ASK_PROMPT_FILE: promptFile,
-            },
-            stdio: ['ignore', 'pipe', 'pipe'],
-        });
-        if (child.stdout && child.stdout.length > 0) {
-            process.stdout.write(child.stdout);
-        }
-        if (child.stderr && child.stderr.length > 0) {
-            process.stderr.write(child.stderr);
-        }
-        if (child.error) {
-            throw new Error(`[ask] failed to launch advisor script: ${child.error.message}`);
-        }
-        const status = typeof child.status === 'number'
-            ? child.status
-            : resolveSignalExitCode(child.signal);
-        if (status !== 0) {
-            process.exitCode = status;
-        }
+    const child = spawnSync(process.execPath, [advisorScriptPath, parsed.provider, finalPrompt], {
+        cwd: process.cwd(),
+        env: {
+            ...process.env,
+            [ASK_ORIGINAL_TASK_ENV]: parsed.prompt,
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    if (child.stdout && child.stdout.length > 0) {
+        process.stdout.write(child.stdout);
     }
-    finally {
-        // Clean up temp prompt file
-        try {
-            unlinkSync(promptFile);
-        }
-        catch { /* ignore */ }
+    if (child.stderr && child.stderr.length > 0) {
+        process.stderr.write(child.stderr);
+    }
+    if (child.error) {
+        throw new Error(`[ask] failed to launch advisor script: ${child.error.message}`);
+    }
+    const status = typeof child.status === 'number'
+        ? child.status
+        : resolveSignalExitCode(child.signal);
+    if (status !== 0) {
+        process.exitCode = status;
     }
 }
 //# sourceMappingURL=ask.js.map

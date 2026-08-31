@@ -93,7 +93,7 @@ describe('drainAndStop — clean + conflicting work', () => {
     // Teardown audit file should exist if there were unmerged workers.
     const auditPath = join(
       fixture.repoRoot,
-      '.omcp', 'state', 'team', fixture.teamName,
+      '.omg', 'state', 'team', fixture.teamName,
       'teardown-audit.jsonl',
     );
 
@@ -111,7 +111,7 @@ describe('drainAndStop — clean + conflicting work', () => {
       // Leader inbox should contain the teardown audit message
       const leaderInboxPath = join(
         fixture.repoRoot,
-        '.omcp', 'state', 'team', fixture.teamName,
+        '.omg', 'state', 'team', fixture.teamName,
         'leader', 'inbox.md',
       );
       expect(existsSync(leaderInboxPath)).toBe(true);
@@ -166,7 +166,7 @@ describe('drainAndStop — drain timeout', () => {
 
       const auditPath = join(
         fixture.repoRoot,
-        '.omcp', 'state', 'team', fixture.teamName,
+        '.omg', 'state', 'team', fixture.teamName,
         'teardown-audit.jsonl',
       );
       expect(existsSync(auditPath)).toBe(true);
@@ -176,7 +176,7 @@ describe('drainAndStop — drain timeout', () => {
       // Leader inbox should have the audit message
       const leaderInboxPath = join(
         fixture.repoRoot,
-        '.omcp', 'state', 'team', fixture.teamName,
+        '.omg', 'state', 'team', fixture.teamName,
         'leader', 'inbox.md',
       );
       expect(existsSync(leaderInboxPath)).toBe(true);
@@ -236,7 +236,7 @@ describe('drainAndStop — one audit row per unmerged worker', () => {
     if (result.unmerged.length > 0) {
       const auditPath = join(
         fixture.repoRoot,
-        '.omcp', 'state', 'team', fixture.teamName,
+        '.omg', 'state', 'team', fixture.teamName,
         'teardown-audit.jsonl',
       );
       expect(existsSync(auditPath)).toBe(true);

@@ -1,19 +1,17 @@
 {
-  "$schema": "https://github.com/copilot-cli/marketplace.schema.json",
-  "name": "omcp",
-  "description": "Copilot CLI native multi-agent orchestration - intelligent model routing, 18 agents, 32 skills",
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "omc",
+  "description": "GitHub Copilot CLI multi-agent orchestration - intelligent model routing, 20 agents, 46 skills",
   "owner": {
-    "name": "Robin Norberg",
-    "email": "github@platypus.se"
+    "name": "Robin Norberg"
   },
   "plugins": [
     {
       "name": "oh-my-copilot",
-      "description": "Copilot CLI native multi-agent orchestration with intelligent model routing, 18 agent variants, and 32 powerful skills. Zero learning curve. Maximum power.",
-      "version": "4.13.102",
+      "description": "Multi-agent orchestration for GitHub Copilot CLI with intelligent model routing, 20 agent variants, and 46 skills. Zero learning curve. Maximum power.",
+      "version": "5.0.0",
       "author": {
-        "name": "Robin Norberg",
-        "email": "github@platypus.se"
+        "name": "Robin Norberg"
       },
       "source": "./",
       "category": "productivity",
@@ -23,9 +21,9 @@
         "orchestration",
         "delegation",
         "todo-management",
-        "ultrawork"
+        "team"
       ]
     }
   ],
-  "version": "4.13.102"
+  "version": "5.0.0"
 }

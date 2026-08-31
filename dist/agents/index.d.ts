@@ -16,6 +16,7 @@ export { analystAgent, ANALYST_PROMPT_METADATA } from './analyst.js';
 export { plannerAgent, PLANNER_PROMPT_METADATA } from './planner.js';
 export { qaTesterAgent, QA_TESTER_PROMPT_METADATA } from './qa-tester.js';
 export { scientistAgent, SCIENTIST_PROMPT_METADATA } from './scientist.js';
+export { tracerAgent, TRACER_PROMPT_METADATA } from './tracer.js';
 export { documentSpecialistAgent, DOCUMENT_SPECIALIST_PROMPT_METADATA } from './document-specialist.js';
 export { debuggerAgent, verifierAgent } from './definitions.js';
 export { testEngineerAgent } from './definitions.js';

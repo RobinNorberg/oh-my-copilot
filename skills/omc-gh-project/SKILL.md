@@ -25,10 +25,10 @@ Manage GitHub Projects (v2) boards for the current repository. Lists project ite
 
 ## Step 1: Load Configuration
 
-Read `.omcp/config.json`:
+Read `.omg/config.json`:
 
 ```bash
-cat .omcp/config.json 2>/dev/null || echo "NOT_FOUND"
+node -e "const f=require('fs');try{process.stdout.write(f.readFileSync('.omg/config.json','utf8'))}catch{console.log('NOT_FOUND')}"
 ```
 
 Extract from the `github` key:
@@ -218,7 +218,7 @@ gh api graphql -f query='
 
 | Error | Action |
 |-------|--------|
-| `.omcp/config.json` missing | Tell user to run `/oh-my-copilot:omc-gh-setup` first |
+| `.omg/config.json` missing | Tell user to run `/oh-my-copilot:omc-gh-setup` first |
 | `gh auth` required | Prompt user to authenticate; stop execution |
 | No projects found | Suggest creating a project in the web UI |
 | Project item not found | Verify item ID; it may have been removed |

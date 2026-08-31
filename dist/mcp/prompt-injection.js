@@ -1,7 +1,29 @@
 // src/mcp/prompt-injection.ts
 // Re-export shared prompt utilities from agents/prompt-helpers
 export { resolveSystemPrompt, getValidAgentRoles, isValidAgentRoleName, VALID_AGENT_ROLES, wrapUntrustedFileContent, wrapUntrustedCliResponse, sanitizePromptContent, singleErrorBlock, inlineSuccessBlocks, } from '../agents/prompt-helpers.js';
-import { resolve } from 'path';
+import path from 'path';
+function isWindowsStylePath(value) {
+    return /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\');
+}
+function selectPathApi(baseDir, candidatePath) {
+    if (process.platform === 'win32') {
+        return path.win32;
+    }
+    if (isWindowsStylePath(baseDir) || isWindowsStylePath(candidatePath)) {
+        return path.win32;
+    }
+    return path;
+}
+function isPathWithinBaseDir(baseDir, candidatePath) {
+    const pathApi = selectPathApi(baseDir, candidatePath);
+    const resolvedBase = pathApi.resolve(baseDir);
+    const resolvedCandidate = pathApi.resolve(baseDir, candidatePath);
+    const caseInsensitive = pathApi === path.win32 || process.platform === 'darwin';
+    const baseForCompare = caseInsensitive ? resolvedBase.toLowerCase() : resolvedBase;
+    const candidateForCompare = caseInsensitive ? resolvedCandidate.toLowerCase() : resolvedCandidate;
+    const rel = pathApi.relative(baseForCompare, candidateForCompare);
+    return rel === '' || (!rel.startsWith('..') && !pathApi.isAbsolute(rel));
+}
 /**
  * Subagent mode marker prepended to all prompts sent to external CLI agents.
  * Prevents recursive subagent spawning within subagent tool calls.
@@ -17,7 +39,6 @@ Complete the task directly with your available tools.`;
 export function validateContextFilePaths(paths, baseDir, allowExternal = false) {
     const validPaths = [];
     const errors = [];
-    const resolvedBase = resolve(baseDir);
     for (const p of paths) {
         // Injection check: reject control characters (\n, \r, \0)
         if (/[\n\r\0]/.test(p)) {
@@ -26,11 +47,8 @@ export function validateContextFilePaths(paths, baseDir, allowExternal = false) 
         }
         if (!allowExternal) {
             // Traversal check: resolved absolute path must remain within baseDir
-            const abs = resolve(baseDir, p);
-            // Normalize to forward slashes for cross-platform comparison
-            const absNorm = abs.replace(/\\/g, '/');
-            const baseNorm = resolvedBase.replace(/\\/g, '/');
-            if (!absNorm.startsWith(baseNorm + '/') && absNorm !== baseNorm) {
+            // using separator-aware relative checks (works for both POSIX and Win32 paths).
+            if (!isPathWithinBaseDir(baseDir, p)) {
                 errors.push(`E_CONTEXT_FILE_TRAVERSAL: Path escapes baseDir: ${p}`);
                 continue;
             }

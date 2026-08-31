@@ -25,17 +25,17 @@ export { calculateComplexityScore, calculateComplexityTier, scoreToTier, getScor
 // Re-export rules
 export { DEFAULT_ROUTING_RULES, evaluateRules, getMatchingRules, createRule, mergeRules, } from './rules.js';
 // Re-export router
-export { routeTask, getRoutingRecommendation, getModelForTask, analyzeTaskComplexity, escalateModel, canEscalate, explainRouting, quickTierForAgent, } from './router.js';
-// Local imports for routeAndAdaptTask convenience function
-import { routeTask as routeTaskLocal } from './router.js';
-import { adaptPromptForTier } from './prompts/index.js';
+export { routeTask, routeWithEscalation, getRoutingRecommendation, getModelForTask, analyzeTaskComplexity, escalateModel, canEscalate, explainRouting, quickTierForAgent, } from './router.js';
 // Re-export prompt adaptations
 export { adaptPromptForTier, getPromptStrategy, getPromptPrefix, getPromptSuffix, createDelegationPrompt, getTaskInstructions, TIER_TASK_INSTRUCTIONS, } from './prompts/index.js';
+// Local imports for routeAndAdaptTask convenience function
+import { routeWithEscalation } from './router.js';
+import { adaptPromptForTier } from './prompts/index.js';
 /**
  * Convenience function to route and adapt prompt in one call
  */
 export function routeAndAdaptTask(taskPrompt, agentType, previousFailures) {
-    const decision = routeTaskLocal({
+    const decision = routeWithEscalation({
         taskPrompt,
         agentType,
         previousFailures,

@@ -8,12 +8,12 @@
 //   - Worker worktrees live at tmpDir/worktrees/{workerName}/
 //   - Worker branches are omc-team/{teamName}/{workerName} (matching getBranchName)
 //   - Leader branch must NOT be main/master (M3 hardening) — defaults to 'omc-team-test-leader'
-//   - State dir (.omcp/...) is created inside the repo root so orchestrator paths resolve
+//   - State dir (.omg/...) is created inside the repo root so orchestrator paths resolve
 //   - simulateRuntimeRestart does NOT clean up the repo; it only kills the orchestrator
 //     handle (if set externally) and can optionally create an orphan rebase-merge dir.
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { OrchestratorHandle } from '../../merge-orchestrator.js';
@@ -125,7 +125,7 @@ export async function createGitFixture(opts: CreateGitFixtureOpts): Promise<GitF
   }
 
   // Create worker worktrees
-  const workersDir = join(repoRoot, '.omcp', 'team', teamName, 'worktrees');
+  const workersDir = join(repoRoot, '.omg', 'team', teamName, 'worktrees');
   mkdirSync(workersDir, { recursive: true });
 
   const workers: WorkerFixture[] = [];
@@ -144,7 +144,7 @@ export async function createGitFixture(opts: CreateGitFixtureOpts): Promise<GitF
   }
 
   // Write worktrees.json metadata (needed by listTeamWorktrees / recoverFromRestart)
-  const worktreesMetaDir = join(repoRoot, '.omcp', 'state', 'team', teamName);
+  const worktreesMetaDir = join(repoRoot, '.omg', 'state', 'team', teamName);
   mkdirSync(worktreesMetaDir, { recursive: true });
   const worktreesMeta = workers.map((w) => ({
     path: w.worktreePath,
@@ -229,7 +229,7 @@ export async function createGitFixture(opts: CreateGitFixtureOpts): Promise<GitF
           }
         }
         // Remove merger worktree if it exists
-        const mergerPath = join(repoRoot, '.omcp', 'team', teamName, 'merger');
+        const mergerPath = join(repoRoot, '.omg', 'team', teamName, 'merger');
         if (existsSync(mergerPath)) {
           try {
             git(repoRoot, ['worktree', 'remove', '--force', mergerPath]);
@@ -240,9 +240,10 @@ export async function createGitFixture(opts: CreateGitFixtureOpts): Promise<GitF
       } catch {
         // ignore cleanup errors
       }
-      // Use rm -rf via shell to avoid Node's multi-step recursive walk racing
-      // with concurrent git object writes (ENOTEMPTY race under vitest threads).
-      execFileSync('rm', ['-rf', tmpBase], { stdio: 'pipe' });
+      // maxRetries covers the ENOTEMPTY/EBUSY race between Node's recursive
+      // walk and concurrent git object writes under vitest threads — the reason
+      // this used to shell out to `rm -rf`, which does not exist on Windows.
+      rmSync(tmpBase, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     },
   };
 }
@@ -272,9 +273,6 @@ export async function waitForEventInLog(opts: WaitForEventOpts): Promise<void> {
     if (existsSync(eventLogPath)) {
       try {
         const raw = readFileSync(eventLogPath, 'utf-8');
-        if (raw.includes(eventType) && (worker === undefined || raw.includes(worker))) {
-          return;
-        }
         const lines = raw
           .split('\n')
           .filter((l: string) => l.trim().length > 0);
@@ -337,5 +335,5 @@ export function readEventLog(eventLogPath: string): Array<{ type: string; worker
 
 /** Build the event log path for a team. */
 export function orchestratorEventLogPath(repoRoot: string, teamName: string): string {
-  return join(repoRoot, '.omcp', 'state', 'team', teamName, 'orchestrator-events.jsonl');
+  return join(repoRoot, '.omg', 'state', 'team', teamName, 'orchestrator-events.jsonl');
 }

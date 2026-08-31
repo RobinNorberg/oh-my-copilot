@@ -2,7 +2,7 @@
  * Context Window Limit Recovery
  *
  * Detects context window limit errors and injects recovery messages
- * to help Copilot recover gracefully.
+ * to help Claude recover gracefully.
  */
 import * as fs from 'fs';
 import { TOKEN_LIMIT_PATTERNS, TOKEN_LIMIT_KEYWORDS, CONTEXT_LIMIT_RECOVERY_MESSAGE, CONTEXT_LIMIT_SHORT_MESSAGE, NON_EMPTY_CONTENT_RECOVERY_MESSAGE, RECOVERY_FAILED_MESSAGE, DEBUG, DEBUG_FILE, } from './constants.js';

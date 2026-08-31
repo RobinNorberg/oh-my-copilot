@@ -3,7 +3,7 @@
  *
  * Constants, messages, and patterns for all recovery mechanisms.
  */
-export declare const COPILOT_CODE_STORAGE: string;
+export declare const CLAUDE_CODE_STORAGE: string;
 export declare const MESSAGE_STORAGE: string;
 export declare const PART_STORAGE: string;
 /**

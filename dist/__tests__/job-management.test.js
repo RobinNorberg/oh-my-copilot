@@ -282,7 +282,7 @@ describe('job-management', () => {
             const { getPromptsDir } = await import('../mcp/prompt-persistence.js');
             const fs = await import('fs');
             // Mock getPromptsDir to return different paths based on workingDirectory
-            getPromptsDir.mockImplementation((wd) => wd ? `${wd}/.omcp/prompts` : '/tmp/test-prompts');
+            getPromptsDir.mockImplementation((wd) => wd ? `${wd}/.omg/prompts` : '/tmp/test-prompts');
             fs.existsSync.mockReturnValue(true);
             fs.readdirSync.mockReturnValue(['codex-status-test-slug-ab12cd34.json']);
             fs.readFileSync.mockReturnValue(JSON.stringify({
@@ -353,33 +353,14 @@ describe('job-management', () => {
             // Always return not found
             fs.existsSync.mockReturnValue(true);
             fs.readdirSync.mockReturnValue([]);
-            // Fake timers let us advance the 500ms-2000ms exponential backoff
-            // synchronously — the production code sleeps real-time between the
-            // 10 retries (~16s cumulative), which would otherwise dominate the
-            // suite runtime without adding coverage.
-            vi.useFakeTimers();
-            try {
-                const start = Date.now();
-                const resultPromise = handleWaitForJob('codex', 'ab12cd34', 60000);
-                // Advance past the maximum cumulative backoff (10 * 2000ms) with
-                // slack. `advanceTimersByTimeAsync` flushes scheduled timers and
-                // drains microtasks between each step so the awaited setTimeout
-                // promise resolves and the while-loop moves to the next iteration.
-                for (let i = 0; i < 20; i++) {
-                    await vi.advanceTimersByTimeAsync(2000);
-                }
-                const result = await resultPromise;
-                const elapsed = Date.now() - start;
-                expect(result.isError).toBe(true);
-                expect(result.content[0].text).toContain('No job found');
-                // Should have waited through retries (not instant) — fake timers
-                // advance the mocked clock so Date.now() still reflects progression.
-                expect(elapsed).toBeGreaterThan(500);
-            }
-            finally {
-                vi.useRealTimers();
-            }
-        });
+            const start = Date.now();
+            const result = await handleWaitForJob('codex', 'ab12cd34', 60000);
+            const elapsed = Date.now() - start;
+            expect(result.isError).toBe(true);
+            expect(result.content[0].text).toContain('No job found');
+            // Should have waited through retries (not instant)
+            expect(elapsed).toBeGreaterThan(500);
+        }, 15000); // 15 second timeout for this test
     });
     describe('handleCheckJobStatus cross-directory', () => {
         it('resolves working directory from getJobWorkingDir', async () => {
@@ -387,7 +368,7 @@ describe('job-management', () => {
             const fs = await import('fs');
             // Mock getJobWorkingDir to return a cross-directory path
             getJobWd.mockReturnValue('/other/project');
-            getPromptsDir.mockImplementation((wd) => wd ? `${wd}/.omcp/prompts` : '/tmp/test-prompts');
+            getPromptsDir.mockImplementation((wd) => wd ? `${wd}/.omg/prompts` : '/tmp/test-prompts');
             fs.existsSync.mockReturnValue(true);
             fs.readdirSync.mockReturnValue(['codex-status-test-slug-ab12cd34.json']);
             const mockStatus = {

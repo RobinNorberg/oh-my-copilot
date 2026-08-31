@@ -2,7 +2,7 @@ name: PR Check
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
 
 permissions:
@@ -16,6 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Check PR size
@@ -62,6 +63,32 @@ jobs:
             }
 
             console.log(`PR Stats: +${additions} -${deletions} (${changedFiles} files) → ${sizeLabel}`);
+
+  base-branch-check:
+    name: Base Branch Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require allowed base branch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.notice('No pull_request payload; skipping base branch check');
+              return;
+            }
+
+            const base = pr.base.ref;
+            const allowedBaseBranches = new Set(['dev', 'main']);
+            const isReleaseBranch = /^release\/.+/.test(base);
+            const isHotfixBranch = /^hotfix\/.+/.test(base);
+
+            if (!allowedBaseBranches.has(base) && !isReleaseBranch && !isHotfixBranch) {
+              core.setFailed(
+                `PRs must target \`dev\`, \`main\`, \`release/*\`, or \`hotfix/*\`, not \`${base}\`. ` +
+                `Fix with: gh pr edit ${context.issue.number} --base <allowed-branch>`
+              );
+            }
 
   draft-check:
     name: Draft PR Check

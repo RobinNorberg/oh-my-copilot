@@ -11,6 +11,14 @@
  */
 import { Command } from 'commander';
 /**
+ * Apply a --plugin-dir option value: resolve to absolute path, warn if it
+ * disagrees with a pre-existing OMC_PLUGIN_ROOT env var, then set the env var
+ * so all subsequent code in this process sees the correct plugin root.
+ *
+ * No-op when `rawPath` is undefined/empty (option was not passed).
+ */
+export declare function applyPluginDirOption(rawPath: string | undefined): void;
+/**
  * Returns the fully-configured commander program.
  *
  * Exported so tests can drive the real CLI pipeline (e.g.

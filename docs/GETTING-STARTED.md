@@ -2,7 +2,7 @@
 
 > Quick start guide: from installation to your first OMC session.
 
-If you're new to Oh My ClaudeCode (OMC), follow the steps below in order.
+If you're new to Oh My Copilot (OMC), follow the steps below in order.
 
 1. [Installation](#installation) - Install the OMC plugin and run initial setup
 2. [First Session](#first-session) - Run your first task with autopilot
@@ -27,12 +27,12 @@ OMC ships two surfaces and they are designed to coexist:
 
 | Surface | What you get | Recommended install |
 |---|---|---|
-| **Copilot CLI plugin** (`oh-my-copilot@omcp`) | In-session skills, agents, hooks, statusline, MCP servers — the `/autopilot`, `/ralph`, `/ultrawork`, `/team` slash commands | Marketplace plugin install (Step 1–2 below) |
-| **Terminal CLI** (`omc` binary, package `oh-my-claude-sisyphus`) | Shell commands: `omc setup`, `omc update`, `omc team`, `omc ask`, `omc autoresearch`, etc. | `npm i -g oh-my-claude-sisyphus@latest` |
+| **Claude Code plugin** (`oh-my-copilot@omc`) | In-session skills, agents, hooks, statusline, MCP servers — the `/autopilot`, `/ralph`, `/execute`, `/team` slash commands | Marketplace plugin install (Step 1–2 below) |
+| **Terminal CLI** (`omc` binary, package `oh-my-copilot`) | Shell commands: `omc setup`, `omc update`, `omc team`, `omc ask`, and a hard-deprecated `omc autoresearch` shim | `npm i -g oh-my-copilot@latest` |
 
 Most users want **both**: the plugin for the in-session experience, and the npm CLI for shell-side automation and updates. Running them in parallel is fully supported — `omc update` and `omc setup` are idempotent and detect the plugin install to avoid duplicating in-session skills (#2252).
 
-> Older versions of this doc said OMC was "plugin-only". That was incorrect: the `omc` CLI is the canonical entry point for `omc setup`/`omc update` and is published on npm as `oh-my-claude-sisyphus`. See the [Quick Start in README.md](../README.md#quick-start) for the same two-path layout.
+> Older versions of this doc said OMC was "plugin-only". That was incorrect: the `omc` CLI is the canonical entry point for `omc setup`/`omc update` and is published on npm as `oh-my-copilot`. See the [Quick Start in README.md](../README.md#quick-start) for the same two-path layout.
 
 ### Step 1: Add the marketplace source
 
@@ -47,7 +47,7 @@ Run the following command inside Claude Code:
 After adding the marketplace, install the plugin:
 
 ```bash
-/plugin install oh-my-copilot@omcp
+/plugin install oh-my-copilot
 ```
 
 ### Step 2b (optional but recommended): install the terminal CLI
@@ -55,14 +55,14 @@ After adding the marketplace, install the plugin:
 If you want `omc setup`, `omc update`, `omc team`, `omc ask`, etc. on your shell:
 
 ```bash
-npm i -g oh-my-claude-sisyphus@latest
+npm i -g oh-my-copilot@latest
 ```
 
 > **Known npm warning:** npm may print `deprecated prebuild-install@7.1.3` during this CLI install.
 > The warning currently comes from the upstream `better-sqlite3` native-addon dependency
 > (`better-sqlite3 -> prebuild-install`); `prebuild-install@7.1.3` is still the latest
 > published version, so there is no safe repo-side dependency bump or override to remove it
-> yet. The warning is tracked in [yeachan-heo/oh-my-claudecode#2913](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/2913)
+> yet. The warning is tracked in [#2913](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/2913)
 > and does not by itself mean the OMC CLI install failed.
 
 Both can be installed at the same time. The CLI auto-detects the plugin install and will not double-register skills under `~/.claude/skills/` (if you previously hit the duplicate-skill bug, run `omc update` once on 4.11.2+ — it self-heals leftover standalone skills that the plugin now provides via `prunePluginDuplicateSkills`).
@@ -147,7 +147,7 @@ This loads agents, skills, and commands directly from your checkout without copy
 | Linux | Claude Code Plugin | Bash (.sh) |
 | Windows | WSL2 recommended | Node.js (.mjs) |
 
-> ℹ️ **Note:** Native Windows support is experimental. OMC requires tmux, which is not available on native Windows. Use WSL2 instead.
+> ℹ️ **Note:** Native Windows support is experimental. For tmux-backed Team workers, OMC checks for a tmux-compatible binary first; native [psmux](https://github.com/psmux/psmux) is supported for PowerShell 7+ users who want visible Claude Code teammate panes in interactive team workflows. WSL2 remains the fallback when no compatible tmux is available or native Windows behavior is insufficient. psmux does not force worktree agents, non-interactive/print-mode agents, or model-selected in-process agents into visible panes.
 
 ### Updates
 
@@ -158,7 +158,15 @@ OMC automatically checks for updates every 24 hours. To update manually, re-run 
 ### Uninstalling
 
 ```bash
-/plugin uninstall oh-my-copilot@omcp
+/plugin uninstall oh-my-copilot@oh-my-copilot
+```
+
+To also strip OMC files and hook entries from your host CLI config directory, run the Node uninstaller from the plugin root. It works on Windows, macOS, and Linux without bash or jq:
+
+```bash
+node scripts/uninstall.mjs --dry-run   # preview every change
+node scripts/uninstall.mjs             # confirm interactively
+node scripts/uninstall.mjs --yes       # no prompt
 ```
 
 ---
@@ -238,7 +246,7 @@ These keywords invoke a single appropriate agent directly, without running the f
 ### Next steps
 
 - [Configuration](#configuration) - Adjust agent models and features for your project
-- [Concepts](/docs/concepts) - Understand the relationship between agents, skills, and hooks
+- [Architecture](./ARCHITECTURE.md) - Understand the relationship between agents, skills, and hooks
 
 ---
 
@@ -404,6 +412,19 @@ OMC automatically selects a model tier based on task complexity:
 | LOW | haiku | Quick lookups, simple tasks |
 | MEDIUM | sonnet | Standard implementation, general tasks |
 | HIGH | opus | Architecture, deep analysis |
+| — | fable | Claude Fable 5 (above Opus); usable anywhere a tier alias is accepted |
+
+### Session model vs delegated agents (Fable and other models)
+
+The model selected with `/model` applies to the main conversation loop only. Delegated agents (planner, architect, executor, and the rest of the catalog) run on the tier pinned in their agent definition — `opus`, `sonnet`, or `haiku` — regardless of the session model. OMC's hooks cannot observe the `/model` selection; they only see provider environment variables, which is why session-family inheritance is not automatic on standard Anthropic auth.
+
+To run delegated work on a different model, use one of the supported surfaces (all three are honored by OMC's production `PreToolUse` enforcer):
+
+- **Per-call**: pass `model` explicitly on the `Task`/`Agent` call (e.g. `model: "fable"`); explicit models are always preserved.
+- **Per-agent override**: `"agents": { "planner": { "model": "fable" } }` — precise, applies to a single agent; the resolved tier alias is injected into the Task call automatically.
+- **Everything inherits**: `"routing": { "forceInherit": true }` — drops per-agent routing entirely (the "nuclear option"; auto-enabled on Bedrock/Vertex/proxy for provider compatibility).
+
+> ℹ️ `routing.modelAliases` / `OMC_MODEL_ALIAS_OPUS=fable` remaps a tier everywhere it is pinned (e.g. every opus agent resolves to Fable while haiku/sonnet pins stay untouched). It is honored by the SDK-side `enforceModel` API, but the plugin hook path does not apply it to `Task`/`Agent` calls, so in a Claude Code plugin session prefer the per-call or per-agent surfaces above.
 
 ### CLAUDE.md configuration
 

@@ -1,8 +1,8 @@
 /**
  * Shared State Management for Cross-Tool Interoperability
  *
- * Manages shared state files at .omcp/state/interop/ for communication
- * between OMC (Copilot CLI) and OMX (Codex CLI).
+ * Manages shared state files at .omg/state/interop/ for communication
+ * between OMC (Claude Code) and OMX (Codex CLI).
  *
  * Uses atomic writes for safety and supports task/message passing.
  */
@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync } from 'fs
 import { z } from 'zod';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { withFileLockSync } from '../lib/file-lock.js';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 import { createArtifactHandoff, writeTextArtifact, } from '../shared/artifact-descriptor.js';
 const INTEROP_ARTIFACT_THRESHOLD_BYTES = 2048;
 // Zod schemas for runtime validation
@@ -43,7 +44,7 @@ const SharedTaskSchema = z.object({
     type: z.enum(['analyze', 'implement', 'review', 'test', 'custom']),
     description: z.string(),
     descriptionArtifact: ArtifactDescriptorSchema.optional(),
-    context: z.record(z.string(), z.unknown()).optional(),
+    context: z.record(z.unknown()).optional(),
     files: z.array(z.string()).optional(),
     createdAt: z.string(),
     status: z.enum(['pending', 'in_progress', 'completed', 'failed']),
@@ -58,7 +59,7 @@ const SharedMessageSchema = z.object({
     target: z.enum(['omc', 'omx']),
     content: z.string(),
     contentArtifact: ArtifactDescriptorSchema.optional(),
-    metadata: z.record(z.string(), z.unknown()).optional(),
+    metadata: z.record(z.unknown()).optional(),
     timestamp: z.string(),
     read: z.boolean(),
 });
@@ -103,7 +104,7 @@ function unlinkArtifact(descriptor) {
  * Get the interop directory path for a worktree
  */
 export function getInteropDir(cwd) {
-    return join(cwd, '.omcp', 'state', 'interop');
+    return join(getOmcRoot(cwd), 'state', 'interop');
 }
 /**
  * Initialize an interop session

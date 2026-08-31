@@ -5,8 +5,9 @@
  * Supports auto-detection and installation hints.
  */
 
-import { spawnSync } from 'child_process';
-import { extname } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { dirname, extname, isAbsolute, join, parse, resolve } from 'path';
+import { isExecutableAvailable } from '../../platform/executable-resolution.js';
 
 export interface LspServerConfig {
   name: string;
@@ -18,17 +19,93 @@ export interface LspServerConfig {
   initializeTimeoutMs?: number;
 }
 
+const TYPESCRIPT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs'];
+
+const TYPESCRIPT_CLASSIC_SERVER: LspServerConfig = {
+  name: 'TypeScript Language Server',
+  command: 'typescript-language-server',
+  args: ['--stdio'],
+  extensions: TYPESCRIPT_EXTENSIONS,
+  installHint: 'npm install -g typescript-language-server typescript'
+};
+
+function getTypeScriptNativeBin(packageRoot: string): string {
+  const packageNodeModules = dirname(packageRoot);
+  const workspaceRoot = dirname(packageNodeModules);
+  const executable = process.platform === 'win32' ? 'tsc.cmd' : 'tsc';
+  return join(workspaceRoot, 'node_modules', '.bin', executable);
+}
+
+function findTypeScriptPackageRoot(workspaceRoot: string): string | null {
+  let dir = resolve(workspaceRoot);
+
+  while (true) {
+    const packageJsonPath = join(dir, 'node_modules', 'typescript', 'package.json');
+    if (existsSync(packageJsonPath)) {
+      return dirname(packageJsonPath);
+    }
+
+    const parsed = parse(dir);
+    if (parsed.root === dir) {
+      return null;
+    }
+
+    dir = dirname(dir);
+  }
+}
+
+function readTypeScriptMajorVersion(packageRoot: string): number | null {
+  try {
+    const packageJson = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as { version?: unknown };
+    if (typeof packageJson.version !== 'string') {
+      return null;
+    }
+
+    const major = Number.parseInt(packageJson.version.split('.')[0] ?? '', 10);
+    return Number.isNaN(major) ? null : major;
+  } catch {
+    return null;
+  }
+}
+
+function shouldUseNativeTypeScriptServer(packageRoot: string): boolean {
+  const majorVersion = readTypeScriptMajorVersion(packageRoot);
+  if (majorVersion !== null && majorVersion >= 7) {
+    return true;
+  }
+
+  if (existsSync(join(packageRoot, 'lib', 'getExePath.js'))) {
+    return true;
+  }
+
+  return !existsSync(join(packageRoot, 'lib', 'tsserver.js'));
+}
+
+export function getTypeScriptServerForWorkspace(workspaceRoot: string): LspServerConfig {
+  const packageRoot = findTypeScriptPackageRoot(workspaceRoot);
+  if (!packageRoot || !shouldUseNativeTypeScriptServer(packageRoot)) {
+    return TYPESCRIPT_CLASSIC_SERVER;
+  }
+
+  const localTsc = getTypeScriptNativeBin(packageRoot);
+  if (!existsSync(localTsc)) {
+    return TYPESCRIPT_CLASSIC_SERVER;
+  }
+
+  return {
+    name: 'TypeScript 7 Native Language Server (typescript-go)',
+    command: localTsc,
+    args: ['--lsp', '--stdio'],
+    extensions: TYPESCRIPT_EXTENSIONS,
+    installHint: 'Install TypeScript 7 locally so node_modules/.bin/tsc is available'
+  };
+}
+
 /**
  * Known LSP servers and their configurations
  */
 export const LSP_SERVERS: Record<string, LspServerConfig> = {
-  typescript: {
-    name: 'TypeScript Language Server',
-    command: 'typescript-language-server',
-    args: ['--stdio'],
-    extensions: ['.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs'],
-    installHint: 'npm install -g typescript-language-server typescript'
-  },
+  typescript: TYPESCRIPT_CLASSIC_SERVER,
   python: {
     name: 'Python Language Server (ty)',
     command: 'ty',
@@ -155,27 +232,54 @@ export const LSP_SERVERS: Record<string, LspServerConfig> = {
     args: [],
     extensions: ['.swift'],
     installHint: 'Install Swift from https://swift.org/download or via Xcode'
+  },
+  verilog: {
+    name: 'Verible Verilog Language Server',
+    command: 'verible-verilog-ls',
+    args: ['--rules_config_search'],
+    extensions: ['.v', '.vh', '.sv', '.svh'],
+    installHint: 'Download from https://github.com/chipsalliance/verible/releases'
   }
 };
+
+const BASEDPYRIGHT_SERVER: LspServerConfig = {
+  name: 'Python Language Server (basedpyright)',
+  command: 'basedpyright-langserver',
+  args: ['--stdio'],
+  extensions: ['.py', '.pyw'],
+  installHint: 'uv tool install basedpyright'
+};
+
+/** Resolve the supported Python language server. Only exact basedpyright opts in. */
+export function resolvePythonServer(): LspServerConfig {
+  return process.env.OMC_PYTHON_LSP === 'basedpyright'
+    ? BASEDPYRIGHT_SERVER
+    : LSP_SERVERS.python;
+}
 
 /**
  * Check if a command exists in PATH
  */
 export function commandExists(command: string): boolean {
-  const checkCommand = process.platform === 'win32' ? 'where' : 'which';
-  const result = spawnSync(checkCommand, [command], { stdio: 'ignore' });
-  return result.status === 0;
+  if (isAbsolute(command)) return existsSync(command);
+  return isExecutableAvailable(command);
 }
 
 /**
- * Get the LSP server config for a file based on its extension
+ * Get the LSP server config for a file based on its extension.
+ * When workspaceRoot is provided, TypeScript files prefer a project-local
+ * native TypeScript 7 language server (`tsc --lsp --stdio`) when available.
  */
-export function getServerForFile(filePath: string): LspServerConfig | null {
+export function getServerForFile(filePath: string, workspaceRoot?: string): LspServerConfig | null {
   const ext = extname(filePath).toLowerCase();
 
-  for (const [_, config] of Object.entries(LSP_SERVERS)) {
+  if (TYPESCRIPT_EXTENSIONS.includes(ext) && workspaceRoot) {
+    return getTypeScriptServerForWorkspace(workspaceRoot);
+  }
+
+  for (const [key, config] of Object.entries(LSP_SERVERS)) {
     if (config.extensions.includes(ext)) {
-      return config;
+      return key === 'python' ? resolvePythonServer() : config;
     }
   }
 
@@ -186,10 +290,13 @@ export function getServerForFile(filePath: string): LspServerConfig | null {
  * Get all available servers (installed and not installed)
  */
 export function getAllServers(): Array<LspServerConfig & { installed: boolean }> {
-  return Object.values(LSP_SERVERS).map(config => ({
-    ...config,
-    installed: commandExists(config.command)
-  }));
+  return Object.values(LSP_SERVERS).map(config => {
+    const selectedConfig = config === LSP_SERVERS.python ? resolvePythonServer() : config;
+    return {
+      ...selectedConfig,
+      installed: commandExists(selectedConfig.command)
+    };
+  });
 }
 
 /**
@@ -238,12 +345,16 @@ export function getServerForLanguage(language: string): LspServerConfig | null {
     'cs': 'csharp',
     'dart': 'dart',
     'flutter': 'dart',
-    'swift': 'swift'
+    'swift': 'swift',
+    'verilog': 'verilog',
+    'systemverilog': 'verilog',
+    'sv': 'verilog',
+    'v': 'verilog'
   };
 
   const serverKey = langMap[language.toLowerCase()];
   if (serverKey && LSP_SERVERS[serverKey]) {
-    return LSP_SERVERS[serverKey];
+    return serverKey === 'python' ? resolvePythonServer() : LSP_SERVERS[serverKey];
   }
 
   return null;

@@ -1,10 +1,10 @@
 /**
- * Tests for non-Copilot provider auto-detection (issue #1201)
+ * Tests for non-Claude provider auto-detection (issue #1201)
  * and Bedrock/Vertex AI auto-detection
  *
- * When CC Switch or similar tools route requests to non-Copilot providers,
+ * When CC Switch or similar tools route requests to non-Claude providers,
  * or when running on AWS Bedrock or Google Vertex AI, OMC should
- * auto-enable forceInherit to avoid passing Copilot-specific model tier
+ * auto-enable forceInherit to avoid passing Claude-specific model tier
  * names (sonnet/opus/haiku) that cause 400 errors.
  */
 
@@ -49,21 +49,21 @@ describe('isNonCopilotProvider (issue #1201)', () => {
     }
   });
 
-  it('returns false when no env vars are set (default Copilot provider)', () => {
+  it('returns false when no env vars are set (default Claude provider)', () => {
     expect(isNonCopilotProvider()).toBe(false);
   });
 
-  it('returns true when CLAUDE_MODEL is a non-Copilot model', () => {
+  it('returns true when CLAUDE_MODEL is a non-Claude model', () => {
     process.env.CLAUDE_MODEL = 'glm-5';
     expect(isNonCopilotProvider()).toBe(true);
   });
 
-  it('returns true when ANTHROPIC_MODEL is a non-Copilot model', () => {
+  it('returns true when ANTHROPIC_MODEL is a non-Claude model', () => {
     process.env.ANTHROPIC_MODEL = 'MiniMax-Text-01';
     expect(isNonCopilotProvider()).toBe(true);
   });
 
-  it('returns false when CLAUDE_MODEL contains "copilot"', () => {
+  it('returns false when CLAUDE_MODEL contains "claude"', () => {
     process.env.CLAUDE_MODEL = 'claude-sonnet-4-6';
     expect(isNonCopilotProvider()).toBe(false);
   });
@@ -83,26 +83,22 @@ describe('isNonCopilotProvider (issue #1201)', () => {
     expect(isNonCopilotProvider()).toBe(true);
   });
 
-  it('detects kimi model as non-Copilot', () => {
+  it('detects kimi model as non-Claude', () => {
     process.env.CLAUDE_MODEL = 'kimi-k2';
     expect(isNonCopilotProvider()).toBe(true);
   });
 
-  it('is case-insensitive for Copilot detection in model name', () => {
-    process.env.CLAUDE_MODEL = 'Copilot-Sonnet-4-6';
+  it('is case-insensitive for Claude detection in model name', () => {
+    process.env.CLAUDE_MODEL = 'Claude-Sonnet-4-6';
     expect(isNonCopilotProvider()).toBe(false);
   });
 
-  // TODO(port-2866 path-B): tier-env-based provider detection is upstream-only.
-  // Fork's isNonCopilotProvider() only checks CLAUDE_MODEL/ANTHROPIC_MODEL, not
-  // ANTHROPIC_DEFAULT_*_MODEL or OMC_MODEL_*. Re-enable if fork adopts upstream's
-  // hasNonClaudeModelId(getProviderDetectionModelEnvValues()) approach.
-  it.skip('returns true when ANTHROPIC_DEFAULT_SONNET_MODEL is non-Claude', () => {
+  it('returns true when ANTHROPIC_DEFAULT_SONNET_MODEL is non-Claude', () => {
     process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'kimi-k2.6:cloud';
     expect(isNonCopilotProvider()).toBe(true);
   });
 
-  it.skip('returns true when OMC_MODEL_MEDIUM is non-Claude', () => {
+  it('returns true when OMC_MODEL_MEDIUM is non-Claude', () => {
     process.env.OMC_MODEL_MEDIUM = 'glm-5.1:cloud';
     expect(isNonCopilotProvider()).toBe(true);
   });
@@ -182,37 +178,37 @@ describe('isBedrock()', () => {
     expect(isBedrock()).toBe(false);
   });
 
-  it('detects us.anthropic.copilot model ID pattern', () => {
+  it('detects us.anthropic.claude model ID pattern', () => {
     process.env.CLAUDE_MODEL = 'us.anthropic.claude-sonnet-4-6-v1:0';
     expect(isBedrock()).toBe(true);
   });
 
-  it('detects global.anthropic.copilot model ID pattern', () => {
+  it('detects global.anthropic.claude model ID pattern', () => {
     process.env.ANTHROPIC_MODEL = 'global.anthropic.claude-3-5-sonnet-20241022-v2:0';
     expect(isBedrock()).toBe(true);
   });
 
-  it('detects bare anthropic.copilot model ID pattern', () => {
+  it('detects bare anthropic.claude model ID pattern', () => {
     process.env.CLAUDE_MODEL = 'anthropic.claude-3-haiku-20240307-v1:0';
     expect(isBedrock()).toBe(true);
   });
 
-  it('detects eu.anthropic.copilot model ID pattern', () => {
+  it('detects eu.anthropic.claude model ID pattern', () => {
     process.env.CLAUDE_MODEL = 'eu.anthropic.claude-opus-4-6-v1:0';
     expect(isBedrock()).toBe(true);
   });
 
-  it('detects ap.anthropic.copilot model ID pattern', () => {
+  it('detects ap.anthropic.claude model ID pattern', () => {
     process.env.ANTHROPIC_MODEL = 'ap.anthropic.claude-sonnet-4-6-v1:0';
     expect(isBedrock()).toBe(true);
   });
 
-  it('does not match standard Copilot model IDs', () => {
+  it('does not match standard Claude model IDs', () => {
     process.env.CLAUDE_MODEL = 'claude-sonnet-4-6';
     expect(isBedrock()).toBe(false);
   });
 
-  it('does not match non-Copilot model IDs', () => {
+  it('does not match non-Claude model IDs', () => {
     process.env.CLAUDE_MODEL = 'glm-5';
     expect(isBedrock()).toBe(false);
   });
@@ -273,7 +269,7 @@ describe('isVertexAI()', () => {
     expect(isVertexAI()).toBe(true);
   });
 
-  it('does not match standard Copilot model IDs', () => {
+  it('does not match standard Claude model IDs', () => {
     process.env.CLAUDE_MODEL = 'claude-sonnet-4-6';
     expect(isVertexAI()).toBe(false);
   });
@@ -284,7 +280,7 @@ describe('isVertexAI()', () => {
   });
 });
 
-describe('loadConfig auto-enables forceInherit for non-Copilot providers (issue #1201)', () => {
+describe('loadConfig auto-enables forceInherit for non-Claude providers (issue #1201)', () => {
   const savedEnv: Record<string, string | undefined> = {};
   const envKeys = [
     'CLAUDE_MODEL',
@@ -321,7 +317,7 @@ describe('loadConfig auto-enables forceInherit for non-Copilot providers (issue 
     }
   });
 
-  it('auto-enables forceInherit when CLAUDE_MODEL is non-Copilot', () => {
+  it('auto-enables forceInherit when CLAUDE_MODEL is non-Claude', () => {
     process.env.CLAUDE_MODEL = 'glm-5';
     const config = loadConfig();
     expect(config.routing?.forceInherit).toBe(true);
@@ -342,12 +338,12 @@ describe('loadConfig auto-enables forceInherit for non-Copilot providers (issue 
     expect(config.routing?.forceInherit).toBe(true);
   });
 
-  it('does NOT auto-enable forceInherit for default Copilot setup', () => {
+  it('does NOT auto-enable forceInherit for default Claude setup', () => {
     const config = loadConfig();
     expect(config.routing?.forceInherit).toBe(false);
   });
 
-  it('respects explicit OMC_ROUTING_FORCE_INHERIT=false even with non-Copilot model', () => {
+  it('respects explicit OMC_ROUTING_FORCE_INHERIT=false even with non-Claude model', () => {
     process.env.CLAUDE_MODEL = 'glm-5';
     process.env.OMC_ROUTING_FORCE_INHERIT = 'false';
     const config = loadConfig();

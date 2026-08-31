@@ -9,27 +9,30 @@
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
-import { execSync } from 'child_process';
-import { getCopilotConfigDir } from '../../utils/config-dir.js';
+import { execFileSync } from 'child_process';
+import { getGlobalOmcConfigCandidates } from '../../utils/paths.js';
 const DEFAULT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs'];
 const DEFAULT_MAX_FILES = 10;
 /** Marker filename used to prevent re-triggering within the same turn cycle */
 export const TRIGGER_MARKER_FILENAME = 'code-simplifier-triggered.marker';
 /**
- * Read the global OMC config from the Copilot config directory.
+ * Read the global OMC config from the XDG-aware location, with legacy
+ * ~/.omg/config.json fallback for backward compatibility.
  * Returns null if the file does not exist or cannot be parsed.
  */
 export function readOmcConfig() {
-    const configPath = join(getCopilotConfigDir(), 'config.json');
-    if (!existsSync(configPath)) {
-        return null;
+    for (const configPath of getGlobalOmcConfigCandidates('config.json')) {
+        if (!existsSync(configPath)) {
+            continue;
+        }
+        try {
+            return JSON.parse(readFileSync(configPath, 'utf-8'));
+        }
+        catch {
+            return null;
+        }
     }
-    try {
-        return JSON.parse(readFileSync(configPath, 'utf-8'));
-    }
-    catch {
-        return null;
-    }
+    return null;
 }
 /**
  * Check whether the code-simplifier feature is enabled in config.
@@ -45,11 +48,12 @@ export function isCodeSimplifierEnabled() {
  */
 export function getModifiedFiles(cwd, extensions = DEFAULT_EXTENSIONS, maxFiles = DEFAULT_MAX_FILES) {
     try {
-        const output = execSync('git diff HEAD --name-only', {
+        const output = execFileSync('git', ['diff', 'HEAD', '--name-only'], {
             cwd,
             encoding: 'utf-8',
             stdio: ['ignore', 'pipe', 'ignore'],
             timeout: 5000,
+            windowsHide: true,
         });
         return output
             .trim()
@@ -99,7 +103,7 @@ export function clearTriggerMarker(stateDir) {
     }
 }
 /**
- * Build the message injected into Copilot's context when code-simplifier triggers.
+ * Build the message injected into Claude's context when code-simplifier triggers.
  */
 export function buildSimplifierMessage(files) {
     const fileList = files.map((f) => `  - ${f}`).join('\n');

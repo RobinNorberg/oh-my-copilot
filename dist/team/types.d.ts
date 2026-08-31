@@ -29,7 +29,7 @@ export interface BridgeWorkerPermissions {
     allowedCommands: string[];
     maxFileSize: number;
 }
-/** Mirrors the JSON structure of {cwd}/.omcp/state/team/{team}/tasks/{id}.json */
+/** Mirrors the JSON structure of {cwd}/.omg/state/team/{team}/tasks/{id}.json */
 export interface TaskFile {
     id: string;
     subject: string;
@@ -90,7 +90,7 @@ export interface McpWorkerMember {
 export interface HeartbeatData {
     workerName: string;
     teamName: string;
-    provider: 'codex' | 'gemini' | 'claude';
+    provider: 'codex' | 'gemini' | 'claude' | 'copilot' | 'cursor' | 'grok' | 'antigravity';
     pid: number;
     lastPollAt: string;
     currentTaskId?: string;
@@ -120,7 +120,7 @@ export interface TaskFailureSidecar {
     lastFailedAt: string;
 }
 /** Worker backend type */
-export type WorkerBackend = 'claude-native' | 'copilot-native' | 'mcp-codex' | 'mcp-gemini' | 'tmux-claude' | 'tmux-copilot' | 'tmux-codex' | 'tmux-gemini' | 'tmux-cursor' | 'tmux-grok';
+export type WorkerBackend = 'copilot-native' | 'mcp-codex' | 'mcp-gemini' | 'tmux-copilot' | 'tmux-codex' | 'tmux-gemini' | 'tmux-cursor' | 'tmux-grok' | 'tmux-antigravity';
 /** Worker capability tag */
 export type WorkerCapability = 'code-edit' | 'code-review' | 'security-review' | 'architecture' | 'testing' | 'documentation' | 'ui-design' | 'refactoring' | 'research' | 'general';
 /** Team task with required version for optimistic concurrency */
@@ -151,6 +151,7 @@ export interface TeamTaskClaim {
     owner: string;
     token: string;
     leased_until: string;
+    launch_attempt_id?: string;
 }
 /** Base team task matching OMX shape */
 export interface TeamTask {
@@ -163,6 +164,7 @@ export interface TeamTask {
     owner?: string;
     result?: string;
     error?: string;
+    metadata?: Record<string, unknown>;
     blocked_by?: string[];
     depends_on?: string[];
     version?: number;
@@ -171,6 +173,173 @@ export interface TeamTask {
     completed_at?: string;
     delegation?: TeamTaskDelegationPlan;
     delegation_compliance?: TeamTaskDelegationComplianceEvidence;
+    recovery_reservation?: TeamTaskRecoveryReservation;
+    recovery_adoption?: TaskRecoveryAdoption;
+}
+/** Immutable safe-boundary continuation checkpoint, scoped to one live claim. */
+export interface TaskRecoveryCheckpoint {
+    schema_version: 1;
+    team_name: string;
+    task_id: string;
+    worker_name: string;
+    sequence: number;
+    task_version: number;
+    claim_token: string;
+    resume_payload_hash: string;
+    resume_payload: unknown;
+    updated_at: string;
+}
+/** Reservation installed when a dead worker's claimed task is safely requeued. */
+export interface TeamTaskRecoveryReservation {
+    recovery_id: string;
+    request_id: string;
+    continuation_sequence: number;
+    checkpoint_path: string;
+    checkpoint_hash: string;
+    replacement_worker: string;
+    replacement_generation: number;
+    adoption_token_hash: string;
+    reserved_at: string;
+}
+/** Durable evidence that a reservation was consumed by its replacement claim. */
+export interface TaskRecoveryAdoption {
+    recovery_id: string;
+    request_id: string;
+    continuation_sequence: number;
+    checkpoint_path: string;
+    checkpoint_hash: string;
+    replacement_worker: string;
+    replacement_generation: number;
+    adopted_at: string;
+}
+export interface TaskRecoveryRequeueSidecar {
+    schema_version: 1;
+    recovery_id: string;
+    request_id: string;
+    task_id: string;
+    old_task_version: number;
+    old_owner: string;
+    old_claim_token: string;
+    old_claim_leased_until: string;
+    continuation_sequence: number;
+    checkpoint_path: string;
+    checkpoint_hash: string;
+    replacement_worker: string;
+    replacement_generation: number;
+    adoption_token_hash: string;
+    created_at: string;
+}
+export type TaskRecoveryCheckpointValidation = {
+    ok: true;
+    checkpoint: TaskRecoveryCheckpoint;
+    path: string;
+} | {
+    ok: false;
+    error: 'missing' | 'malformed' | 'stale' | 'ambiguous';
+};
+export interface TaskRecoveryAdoptionProof {
+    recoveryId: string;
+    requestId: string;
+    replacementGeneration: number;
+    adoptionToken: string;
+}
+export type TaskRecoveryRequeueResult = {
+    ok: true;
+    task: TeamTaskV2;
+    reservation: TeamTaskRecoveryReservation;
+    replayed: boolean;
+} | {
+    ok: false;
+    error: 'task_not_found' | 'task_requeue_failed' | 'checkpoint_missing' | 'checkpoint_malformed' | 'checkpoint_stale' | 'checkpoint_ambiguous' | 'claim_conflict';
+};
+export type TaskRecoveryAdoptionResult = {
+    ok: true;
+    task: TeamTaskV2;
+    claimToken: string;
+    checkpoint: TaskRecoveryCheckpoint;
+    replayed: boolean;
+} | {
+    ok: false;
+    error: 'task_not_found' | 'claim_conflict' | 'checkpoint_missing' | 'checkpoint_malformed' | 'checkpoint_stale' | 'checkpoint_ambiguous';
+};
+export type RecoverDeadWorkerV2Warning = 'projection_repair_required' | 'identity_repair_required' | 'services_pending' | 'event_repair_required' | 'result_repair_required';
+export type RecoverDeadWorkerV2Error = 'invalid_input' | 'team_not_found' | 'worker_not_found' | 'runtime_v2_required' | 'invalid_persisted_state' | 'runtime_owner_unavailable' | 'runtime_owner_fence_lost' | 'recovery_request_timeout' | 'recovery_attempt_conflict' | 'team_mutation_busy' | 'team_mutation_resume_required' | 'team_shutting_down' | 'team_session_dead' | 'worker_liveness_unknown' | 'recovery_checkpoint_missing' | 'recovery_checkpoint_malformed' | 'recovery_checkpoint_ambiguous' | 'recovery_checkpoint_stale' | 'task_requeue_failed' | 'launch_metadata_incomplete' | 'launch_descriptor_unresolvable' | 'spawn_failed' | 'startup_ack_timeout' | 'worker_activation_failed' | 'worker_cleanup_incomplete' | 'auto_merge_unavailable' | 'stale_state_revision' | 'config_commit_failed';
+export interface RecoverDeadWorkerV2OutcomeBase {
+    requestId: string;
+    recoveryId: string;
+    teamName: string;
+    workerName: string;
+    committed: boolean;
+    updatedAt: string;
+}
+export interface RecoverDeadWorkerV2Success extends RecoverDeadWorkerV2OutcomeBase {
+    outcome: 'recovered' | 'already_running';
+    committed: true;
+    oldPaneId: string | null;
+    newPaneId: string;
+    requeuedTaskIds: string[];
+    continuationSequenceByTask: Record<string, number>;
+    stateRevision: number;
+    activation: 'active' | 'services_pending';
+    manifestSync: 'synced' | 'repair_required';
+    servicesSync: 'synced' | 'repair_required';
+    warnings: RecoverDeadWorkerV2Warning[];
+}
+export interface RecoverDeadWorkerV2Failure extends RecoverDeadWorkerV2OutcomeBase {
+    outcome: 'failed' | 'commit_unknown';
+    committed: false;
+    error: RecoverDeadWorkerV2Error;
+    message?: string;
+    reservationsWritten?: boolean;
+}
+export type RecoverDeadWorkerV2Result = RecoverDeadWorkerV2Success | RecoverDeadWorkerV2Failure;
+export interface TeamRuntimeOwnerEpoch {
+    epoch: number;
+    nonce: string;
+    pid: number;
+    process_started_at: string;
+    created_at: string;
+}
+/** Durable lifecycle fence for a scale-up operation. */
+export interface TeamScaleUpAttempt {
+    operation_id: string;
+    phase: 'reserved' | 'effects' | 'committed' | 'failed';
+    pid: number;
+    process_started_at: string;
+    state_revision: number;
+    created_at: string;
+    updated_at: string;
+    failure_reason?: string;
+}
+export interface TeamRecoveryAttempt {
+    request_id: string;
+    recovery_id: string;
+    worker_name: string;
+    owner_epoch: number;
+    owner_nonce: string;
+    phase: 'reserved' | 'requeued' | 'ready' | 'active' | 'services_pending' | 'adopted' | 'failed';
+    /** Pane identity of the worker before a recovery replaces its config row. */
+    original_pane_id?: string;
+    state_revision: number;
+    created_at: string;
+    updated_at: string;
+}
+export interface WorkerLaunchDescriptor {
+    schema_version: 1;
+    provider: 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
+    model: string | null;
+    binary: string;
+    args: string[];
+}
+export type TeamCadencePolicy = 'disabled' | 'worker-auto-commit-v1';
+export interface TeamServiceDescriptor {
+    schema_version: 1;
+    service_generation: number;
+    service_attempt_id: string;
+    auto_merge_enabled: boolean;
+    workspace_root: string;
+    leader_branch?: string;
+    cadence_policy: TeamCadencePolicy;
 }
 /** Team leader identity */
 export interface TeamLeader {
@@ -205,6 +374,7 @@ export interface PermissionsSnapshot {
 /** V2 team manifest matching OMX schema */
 export interface TeamManifestV2 {
     schema_version: 2;
+    state_revision?: number;
     name: string;
     task: string;
     leader: TeamLeader;
@@ -226,13 +396,14 @@ export interface TeamManifestV2 {
     resize_hook_name: string | null;
     resize_hook_target: string | null;
     next_worker_index?: number;
+    service_descriptor?: TeamServiceDescriptor;
 }
 /** Worker info within a team config */
 export interface WorkerInfo {
     name: string;
     index: number;
     role: string;
-    worker_cli?: 'codex' | 'claude' | 'copilot' | 'gemini' | 'cursor' | 'grok';
+    worker_cli?: 'codex' | 'claude' | 'copilot' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
     assigned_tasks: string[];
     pid?: number;
     pane_id?: string;
@@ -245,10 +416,39 @@ export interface WorkerInfo {
     team_state_root?: string;
     /**
      * Verdict-output file path for CLI-worker output contract (AC-7).
-     * Set when the worker was spawned for a reviewer role on codex/gemini.
-     * Consumed by the worker-completion handler in runtime-v2.
+     * Set when the worker was spawned for a reviewer role on any non-Claude
+     * provider. Consumed by the worker-completion handler in runtime-v2.
      */
     output_file?: string;
+    recovery_id?: string;
+    replacement_generation?: number;
+    pane_attempt_id?: string;
+    launch_attempt_id?: string;
+    operational_state?: 'starting' | 'active' | 'dead' | 'stopped';
+    launch_descriptor?: WorkerLaunchDescriptor;
+}
+export interface TeamScaleDownAttempt {
+    operation_id: string;
+    phase: 'draining' | 'effects' | 'failed';
+    pid: number;
+    process_started_at: string;
+    workers: Array<{
+        name: string;
+        pane_id?: string;
+        worktree_path?: string;
+        worktree_created?: boolean;
+    }>;
+    state_revision: number;
+    created_at: string;
+    updated_at: string;
+    failure_reason?: string;
+}
+export interface TeamShutdownAttempt {
+    nonce: string;
+    pid: number;
+    process_started_at: string;
+    state_revision: number;
+    created_at: string;
 }
 /** Team configuration (V1 compat) */
 export interface TeamConfig {
@@ -284,6 +484,20 @@ export interface TeamConfig {
         primary: RoleAssignment;
         fallback: RoleAssignment;
     }>;
+    state_revision?: number;
+    runtime_owner_epoch?: TeamRuntimeOwnerEpoch;
+    active_recovery?: TeamRecoveryAttempt;
+    active_scale_down?: TeamScaleDownAttempt;
+    active_scale_up?: TeamScaleUpAttempt;
+    last_recovery?: TeamRecoveryAttempt;
+    all_dead_recovery?: {
+        detected_at: string;
+        deadline_at: string;
+        state_revision: number;
+    };
+    service_descriptor?: TeamServiceDescriptor;
+    lifecycle_state?: 'active' | 'shutting_down' | 'stopped';
+    shutdown_attempt?: TeamShutdownAttempt;
 }
 /** Dispatch request kinds */
 export type TeamDispatchRequestKind = 'inbox' | 'mailbox' | 'nudge';
@@ -335,6 +549,10 @@ export interface TeamEvent {
     reason?: string;
     next_action?: TeamLeaderNextAction;
     message?: string;
+    /** Undelivered directed messages addressed TO the worker (issue #3662). */
+    undelivered_inbound_count?: number;
+    /** Undelivered directed messages FROM the worker (owed reports/acks, issue #3662). */
+    undelivered_outbound_count?: number;
     created_at: string;
 }
 /** Mailbox message between workers */
@@ -476,6 +694,7 @@ export interface WorkerStatus {
     state: 'idle' | 'working' | 'blocked' | 'done' | 'failed' | 'draining' | 'unknown';
     current_task_id?: string;
     reason?: string;
+    launch_attempt_id?: string;
     updated_at: string;
 }
 /** Worker heartbeat for liveness detection */

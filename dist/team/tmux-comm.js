@@ -5,6 +5,39 @@ import { TeamPaths, absPath } from './state-paths.js';
 function mailboxPath(teamName, workerName, cwd) {
     return absPath(cwd, TeamPaths.mailbox(teamName, workerName));
 }
+function legacyMailboxPath(teamName, workerName, cwd) {
+    return mailboxPath(teamName, workerName, cwd).replace(/\.json$/i, '.jsonl');
+}
+function normalizeLegacyMessage(raw) {
+    if (raw.type === 'notified')
+        return null;
+    const messageId = typeof raw.message_id === 'string' && raw.message_id.trim() !== ''
+        ? raw.message_id
+        : (typeof raw.id === 'string' && raw.id.trim() !== '' ? raw.id : '');
+    const fromWorker = typeof raw.from_worker === 'string' && raw.from_worker.trim() !== ''
+        ? raw.from_worker
+        : (typeof raw.from === 'string' ? raw.from : '');
+    const toWorker = typeof raw.to_worker === 'string' && raw.to_worker.trim() !== ''
+        ? raw.to_worker
+        : (typeof raw.to === 'string' ? raw.to : '');
+    const body = typeof raw.body === 'string' ? raw.body : '';
+    const createdAt = typeof raw.created_at === 'string' && raw.created_at.trim() !== ''
+        ? raw.created_at
+        : (typeof raw.createdAt === 'string' ? raw.createdAt : '');
+    if (!messageId || !fromWorker || !toWorker || !body || !createdAt)
+        return null;
+    return {
+        message_id: messageId,
+        from_worker: fromWorker,
+        to_worker: toWorker,
+        body,
+        created_at: createdAt,
+        ...(typeof raw.notified_at === 'string' ? { notified_at: raw.notified_at } : {}),
+        ...(typeof raw.notifiedAt === 'string' ? { notified_at: raw.notifiedAt } : {}),
+        ...(typeof raw.delivered_at === 'string' ? { delivered_at: raw.delivered_at } : {}),
+        ...(typeof raw.deliveredAt === 'string' ? { delivered_at: raw.deliveredAt } : {}),
+    };
+}
 async function readMailboxFile(teamName, workerName, cwd) {
     const canonicalPath = mailboxPath(teamName, workerName, cwd);
     try {
@@ -15,9 +48,33 @@ async function readMailboxFile(teamName, workerName, cwd) {
         }
     }
     catch {
-        // file missing or malformed — return empty mailbox
+        // fallback to legacy JSONL below
     }
-    return { worker: workerName, messages: [] };
+    const legacyPath = legacyMailboxPath(teamName, workerName, cwd);
+    try {
+        const raw = await readFile(legacyPath, 'utf-8');
+        const messagesById = new Map();
+        const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
+        for (const line of lines) {
+            let parsed;
+            try {
+                parsed = JSON.parse(line);
+            }
+            catch {
+                continue;
+            }
+            if (!parsed || typeof parsed !== 'object')
+                continue;
+            const normalized = normalizeLegacyMessage(parsed);
+            if (!normalized)
+                continue;
+            messagesById.set(normalized.message_id, normalized);
+        }
+        return { worker: workerName, messages: [...messagesById.values()] };
+    }
+    catch {
+        return { worker: workerName, messages: [] };
+    }
 }
 async function writeMailboxFile(teamName, workerName, cwd, mailbox) {
     const canonicalPath = mailboxPath(teamName, workerName, cwd);
@@ -27,19 +84,18 @@ async function writeMailboxFile(teamName, workerName, cwd, mailbox) {
 /**
  * Send a short trigger to a worker via tmux send-keys.
  * Uses literal mode (-l) to avoid stdin buffer interference.
- * Message MUST be < 500 chars.
+ * Message MUST be < 200 chars.
  * Returns false on error — never throws.
  * File state is written BEFORE this is called (write-then-notify pattern).
  */
 export async function sendTmuxTrigger(paneId, triggerType, payload) {
     const message = payload ? `${triggerType}:${payload}` : triggerType;
-    if (message.length > 500) {
-        console.warn(`[tmux-comm] sendTmuxTrigger: message rejected (${message.length} chars > 500 limit)`);
+    if (message.length > 200) {
+        console.warn(`[tmux-comm] sendTmuxTrigger: message rejected (${message.length} chars exceeds 200 char limit)`);
         return false;
     }
-    const truncated = message;
     try {
-        return await sendToWorker('', paneId, truncated);
+        return await sendToWorker('', paneId, message);
     }
     catch {
         return false;
@@ -51,7 +107,7 @@ export async function sendTmuxTrigger(paneId, triggerType, payload) {
  * Notified flag set only on successful trigger.
  */
 export async function queueInboxInstruction(teamName, workerName, instruction, paneId, cwd) {
-    const inboxPath = join(cwd, `.omcp/state/team/${teamName}/workers/${workerName}/inbox.md`);
+    const inboxPath = absPath(cwd, TeamPaths.inbox(teamName, workerName));
     await mkdir(join(inboxPath, '..'), { recursive: true });
     // Write FIRST (write-then-notify)
     const entry = `\n\n---\n${instruction}\n_queued: ${new Date().toISOString()}_\n`;

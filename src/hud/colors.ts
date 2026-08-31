@@ -2,7 +2,7 @@
  * OMC HUD - ANSI Color Utilities
  *
  * Terminal color codes for statusline rendering.
- * Based on copilot-hud reference implementation.
+ * Based on claude-hud reference implementation.
  */
 
 // ANSI escape codes

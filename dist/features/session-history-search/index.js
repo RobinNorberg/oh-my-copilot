@@ -1,9 +1,10 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { createReadStream, existsSync, readdirSync, statSync } from 'fs';
 import { dirname, join, normalize, resolve } from 'path';
 import { createInterface } from 'readline';
 import { resolveToWorktreeRoot, validateSessionId, validateWorkingDirectory, getOmcRoot, } from '../../lib/worktree-paths.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
+import { encodeProjectPath } from '../../utils/encode-project-path.js';
 const DEFAULT_LIMIT = 10;
 const DEFAULT_CONTEXT_CHARS = 120;
 function compactWhitespace(text) {
@@ -35,15 +36,13 @@ function parseSinceSpec(since) {
     const parsed = Date.parse(trimmed);
     return Number.isNaN(parsed) ? undefined : parsed;
 }
-function encodeProjectPath(projectPath) {
-    return projectPath.replace(/[/\\.]/g, '-');
-}
 function getMainRepoRoot(projectRoot) {
     try {
-        const gitCommonDir = execSync('git rev-parse --git-common-dir', {
+        const gitCommonDir = execFileSync('git', ['rev-parse', '--git-common-dir'], {
             cwd: projectRoot,
             encoding: 'utf-8',
             stdio: ['pipe', 'pipe', 'pipe'],
+            windowsHide: true,
         }).trim();
         const absoluteCommonDir = resolve(projectRoot, gitCommonDir);
         const mainRepoRoot = dirname(absoluteCommonDir);
@@ -53,7 +52,7 @@ function getMainRepoRoot(projectRoot) {
         return null;
     }
 }
-function getCopilotWorktreeParent(projectRoot) {
+function getClaudeWorktreeParent(projectRoot) {
     const marker = `${normalize('/.copilot/worktrees/')}`;
     const normalizedRoot = normalize(projectRoot);
     const idx = normalizedRoot.indexOf(marker);
@@ -105,23 +104,25 @@ function uniqueSortedTargets(targets) {
         return bTime - aTime;
     });
 }
-function buildCurrentProjectTargets(projectRoot) {
-    const copilotDir = getCopilotConfigDir();
-    const projectRoots = new Set([projectRoot]);
-    const mainRepoRoot = getMainRepoRoot(projectRoot);
-    if (mainRepoRoot)
-        projectRoots.add(mainRepoRoot);
-    const copilotWorktreeParent = getCopilotWorktreeParent(projectRoot);
-    if (copilotWorktreeParent)
-        projectRoots.add(copilotWorktreeParent);
+function buildCurrentProjectTargets(projectRoot, transcriptProjectRoots = [projectRoot]) {
+    const claudeDir = getCopilotConfigDir();
+    const projectRoots = new Set(transcriptProjectRoots);
+    for (const root of transcriptProjectRoots) {
+        const mainRepoRoot = getMainRepoRoot(root);
+        if (mainRepoRoot)
+            projectRoots.add(mainRepoRoot);
+        const claudeWorktreeParent = getClaudeWorktreeParent(root);
+        if (claudeWorktreeParent)
+            projectRoots.add(claudeWorktreeParent);
+    }
     const targets = [];
     for (const root of projectRoots) {
-        const encodedDir = join(copilotDir, 'projects', encodeProjectPath(root));
+        const encodedDir = join(claudeDir, 'projects', encodeProjectPath(root));
         for (const filePath of listJsonlFiles(encodedDir)) {
             targets.push({ filePath, sourceType: 'project-transcript' });
         }
     }
-    const legacyTranscriptsDir = join(copilotDir, 'transcripts');
+    const legacyTranscriptsDir = join(claudeDir, 'transcripts');
     for (const filePath of listJsonlFiles(legacyTranscriptsDir)) {
         targets.push({ filePath, sourceType: 'legacy-transcript' });
     }
@@ -141,12 +142,12 @@ function buildCurrentProjectTargets(projectRoot) {
     return uniqueSortedTargets(targets);
 }
 function buildAllProjectTargets() {
-    const copilotDir = getCopilotConfigDir();
+    const claudeDir = getCopilotConfigDir();
     const targets = [];
-    for (const filePath of listJsonlFiles(join(copilotDir, 'projects'))) {
+    for (const filePath of listJsonlFiles(join(claudeDir, 'projects'))) {
         targets.push({ filePath, sourceType: 'project-transcript' });
     }
-    for (const filePath of listJsonlFiles(join(copilotDir, 'transcripts'))) {
+    for (const filePath of listJsonlFiles(join(claudeDir, 'transcripts'))) {
         targets.push({ filePath, sourceType: 'legacy-transcript' });
     }
     return uniqueSortedTargets(targets);
@@ -155,9 +156,9 @@ function isWithinProject(projectPath, projectRoots) {
     if (!projectPath) {
         return false;
     }
-    const normalizedProjectPath = normalize(resolve(projectPath));
+    const normalizedProjectPath = normalize(resolve(projectPath)).replace(/\\/g, '/');
     return projectRoots.some((root) => {
-        const normalizedRoot = normalize(resolve(root));
+        const normalizedRoot = normalize(resolve(root)).replace(/\\/g, '/');
         return normalizedProjectPath === normalizedRoot || normalizedProjectPath.startsWith(`${normalizedRoot}/`);
     });
 }
@@ -432,13 +433,15 @@ export async function searchSessionHistory(rawOptions) {
     const currentProjectRoot = resolveToWorktreeRoot(workingDirectory);
     const scopeMode = buildScopeMode(rawOptions.project);
     const projectFilter = scopeMode === 'project' ? rawOptions.project : undefined;
-    const currentProjectRoots = [currentProjectRoot]
+    const literalWorkingDirectory = rawOptions.workingDirectory ? resolve(rawOptions.workingDirectory) : workingDirectory;
+    const currentProjectRoots = [currentProjectRoot, literalWorkingDirectory]
         .concat(getMainRepoRoot(currentProjectRoot) ?? [])
-        .concat(getCopilotWorktreeParent(currentProjectRoot) ?? [])
+        .concat(getClaudeWorktreeParent(currentProjectRoot) ?? [])
         .filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
+    const transcriptProjectRoots = currentProjectRoots.filter((root) => isWithinProject(root, [currentProjectRoot]));
     const targets = scopeMode === 'all'
         ? buildAllProjectTargets()
-        : buildCurrentProjectTargets(currentProjectRoot);
+        : buildCurrentProjectTargets(currentProjectRoot, transcriptProjectRoots);
     const allMatches = [];
     for (const target of targets) {
         const fileMatches = await collectMatchesFromFile(target, {
@@ -473,5 +476,5 @@ export async function searchSessionHistory(rawOptions) {
         results: allMatches.slice(0, limit),
     };
 }
-export { parseSinceSpec };
+export { encodeProjectPath, isWithinProject as __testingIsWithinProject, parseSinceSpec };
 //# sourceMappingURL=index.js.map

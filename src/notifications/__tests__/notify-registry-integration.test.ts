@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Mock session-registry before importing notify
 const mockRegisterMessage = vi.fn();
@@ -20,6 +23,11 @@ vi.mock("../tmux.js", () => ({
 const mockCapturePaneContent = vi.fn<(paneId: string, lines?: number) => string>();
 vi.mock("../../features/rate-limit-wait/tmux-detector.js", () => ({
   capturePaneContent: (paneId: string, lines?: number) => mockCapturePaneContent(paneId, lines),
+}));
+const mockGetNewPaneTail = vi.fn<(paneId: string, stateDir: string, maxLines?: number) => string>();
+vi.mock("../../features/rate-limit-wait/pane-fresh-capture.js", () => ({
+  getNewPaneTail: (paneId: string, stateDir: string, maxLines?: number) =>
+    mockGetNewPaneTail(paneId, stateDir, maxLines),
 }));
 
 // Mock config - use forwarding fns so we can swap implementations per-test
@@ -80,7 +88,16 @@ const DEFAULT_CONFIG = {
 };
 
 describe("notify() -> session-registry integration", () => {
+  let fixtureHome: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+
   beforeEach(() => {
+    fixtureHome = mkdtempSync(join(tmpdir(), "omc-notify-registry-"));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = fixtureHome;
+    process.env.USERPROFILE = fixtureHome;
     vi.clearAllMocks();
     // Reset forwarding mocks to defaults
     mockGetCurrentTmuxPaneId.mockReturnValue("%42");
@@ -90,10 +107,16 @@ describe("notify() -> session-registry integration", () => {
     mockShouldIncludeTmuxTail.mockReturnValue(false);
     mockGetTmuxTailLines.mockReturnValue(15);
     mockCapturePaneContent.mockReturnValue("");
+    mockGetNewPaneTail.mockReturnValue("");
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    rmSync(fixtureHome, { recursive: true, force: true });
   });
 
   it("registers discord-bot messageId in session registry after dispatch", async () => {
@@ -212,7 +235,7 @@ describe("notify() -> session-registry integration", () => {
   it("captures tmux tail using the configured line count", async () => {
     mockShouldIncludeTmuxTail.mockReturnValue(true);
     mockGetTmuxTailLines.mockReturnValue(23);
-    mockCapturePaneContent.mockReturnValue("line 1\nline 2");
+    mockGetNewPaneTail.mockReturnValue("line 1\nline 2");
 
     vi.stubGlobal(
       "fetch",
@@ -229,7 +252,124 @@ describe("notify() -> session-registry integration", () => {
     });
 
     expect(result).not.toBeNull();
-    expect(mockCapturePaneContent).toHaveBeenCalledWith("%42", 23);
+    expect(mockGetNewPaneTail).toHaveBeenCalledWith("%42", join(fixtureHome, ".omg/state"), 23);
+    expect(mockCapturePaneContent).not.toHaveBeenCalled();
+  });
+
+  it("falls back to direct pane capture when projectPath is unavailable", async () => {
+    mockShouldIncludeTmuxTail.mockReturnValue(true);
+    mockGetTmuxTailLines.mockReturnValue(12);
+    mockCapturePaneContent.mockReturnValue("runtime failure");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ id: "discord-msg-tail-fallback" }),
+      }),
+    );
+
+    const result = await notify("session-idle", {
+      sessionId: "sess-tail-no-project",
+    });
+
+    expect(result).not.toBeNull();
+    expect(mockGetNewPaneTail).not.toHaveBeenCalled();
+    expect(mockCapturePaneContent).toHaveBeenCalledWith("%42", 12);
+  });
+
+  it("keeps vitest runtime failure prose in delivered tmux tails while filtering literal noise", async () => {
+    mockShouldIncludeTmuxTail.mockReturnValue(true);
+    mockGetTmuxTailLines.mockReturnValue(12);
+    mockGetNewPaneTail.mockReturnValue([
+      'mcp: {"jsonrpc":"2.0","error":{"code":"operation_failed","message":"claim_conflict"}}',
+      '+ const payload = { status: "failed", error: "claim_conflict" };',
+      "Error: Cannot find module vitest",
+      "failed to load config from /tmp/x/vitest.config.ts",
+    ].join("\n"));
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "discord-msg-vitest-tail" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await notify("session-idle", {
+      sessionId: "sess-tail-vitest",
+      projectPath: "/test/project",
+    });
+
+    expect(result).not.toBeNull();
+    const [, requestInit] = fetchMock.mock.calls[0] as [string, { body?: string }];
+    const body = JSON.parse(requestInit.body ?? "{}") as { content?: string };
+    expect(body.content).toContain("Error: Cannot find module vitest");
+    expect(body.content).toContain("failed to load config from /tmp/x/vitest.config.ts");
+    expect(body.content).not.toContain('mcp: {"jsonrpc":"2.0"');
+    expect(body.content).not.toContain('+ const payload = { status: "failed", error: "claim_conflict" };');
+  });
+
+  it("stores raw tmux tail before formatter sanitization", async () => {
+    mockShouldIncludeTmuxTail.mockReturnValue(true);
+    mockGetTmuxTailLines.mockReturnValue(12);
+    mockGetNewPaneTail.mockReturnValue([
+      "Error: Cannot find module vitest",
+      "failed to load config from /tmp/x/vitest.config.ts",
+    ].join("\n"));
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "discord-msg-raw-tail" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await notify("session-idle", {
+      sessionId: "sess-raw-tail",
+      projectPath: "/test/project",
+    });
+
+    expect(result).not.toBeNull();
+    const [, requestInit] = fetchMock.mock.calls[0] as [string, { body?: string }];
+    const body = JSON.parse(requestInit.body ?? "{}") as { content?: string };
+    expect(body.content).toContain("Error: Cannot find module vitest");
+    expect(body.content).toContain("failed to load config from /tmp/x/vitest.config.ts");
+  });
+
+  it("filters live pane prompt/search/diagnostic residue while keeping actionable failures", async () => {
+    mockShouldIncludeTmuxTail.mockReturnValue(true);
+    mockGetTmuxTailLines.mockReturnValue(12);
+    mockGetNewPaneTail.mockReturnValue([
+      "Fix issue #2583: stop fake error/fail/conflict alerts from prompt residue",
+      '❯ rg -n "error|fail|conflict" src tests',
+      "TypeScript check passed: 0 errors, 0 warnings",
+      "The Bash output indicates a command/setup failure that should be fixed before retrying.",
+      "Runtime error: worker crashed after SIGTERM",
+      "Restart the pane watcher and rerun the task",
+    ].join("\n"));
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "discord-msg-live-pane-filter" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await notify("session-idle", {
+      sessionId: "sess-live-pane-filter",
+      projectPath: "/test/project",
+    });
+
+    expect(result).not.toBeNull();
+    const [, requestInit] = fetchMock.mock.calls[0] as [string, { body?: string }];
+    const body = JSON.parse(requestInit.body ?? "{}") as { content?: string };
+    expect(body.content).toContain("Runtime error: worker crashed after SIGTERM");
+    expect(body.content).toContain("Restart the pane watcher and rerun the task");
+    expect(body.content).not.toContain("Fix issue #2583");
+    expect(body.content).not.toContain('rg -n "error|fail|conflict"');
+    expect(body.content).not.toContain("0 errors, 0 warnings");
+    expect(body.content).not.toContain("The Bash output indicates a command/setup failure");
   });
 
   it("does NOT register when tmuxPaneId is unavailable", async () => {
@@ -428,35 +568,6 @@ describe("notify() -> session-registry integration", () => {
 
     // messageId is undefined due to JSON parse failure, so no registration
     expect(mockRegisterMessage).not.toHaveBeenCalled();
-  });
-
-  it("stores raw tmux tail before formatter sanitization", async () => {
-    mockShouldIncludeTmuxTail.mockReturnValue(true);
-    mockGetTmuxTailLines.mockReturnValue(12);
-    mockCapturePaneContent.mockReturnValue(
-      [
-        "Error: Cannot find module vitest",
-        "failed to load config from /tmp/x/vitest.config.ts",
-      ].join("\n"),
-    );
-
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ id: "discord-msg-raw-tail" }),
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const result = await notify("session-idle", {
-      sessionId: "sess-raw-tail",
-      projectPath: "/test/project",
-    });
-
-    expect(result).not.toBeNull();
-    const [, requestInit] = fetchMock.mock.calls[0] as [string, { body?: string }];
-    const body = JSON.parse(requestInit.body ?? "{}") as { content?: string };
-    expect(body.content).toContain("Error: Cannot find module vitest");
-    expect(body.content).toContain("failed to load config from /tmp/x/vitest.config.ts");
   });
 });
 

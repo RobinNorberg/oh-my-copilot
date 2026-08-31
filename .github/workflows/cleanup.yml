@@ -13,6 +13,7 @@ permissions:
 jobs:
   cleanup-artifacts:
     name: Cleanup Old Artifacts
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Delete old artifacts
@@ -46,6 +47,7 @@ jobs:
 
   cleanup-caches:
     name: Cleanup Old Caches
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Cleanup caches

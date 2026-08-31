@@ -369,6 +369,24 @@ export function formatAskUserQuestion(payload) {
         lines.push(`**Question:** ${payload.question}`);
         lines.push("");
     }
+    if (payload.askUserQuestionPrompts?.length) {
+        for (const [promptIndex, prompt] of payload.askUserQuestionPrompts.entries()) {
+            if (payload.askUserQuestionPrompts.length > 1) {
+                lines.push(`**${prompt.header || `Question ${promptIndex + 1}`}:** ${prompt.question}`);
+            }
+            if (prompt.options.length > 0 || prompt.allowOther !== false) {
+                lines.push("**Options:**");
+                prompt.options.forEach((option, optionIndex) => {
+                    const description = option.description ? ` — ${option.description}` : "";
+                    lines.push(`${optionIndex + 1}. ${option.label}${description}`);
+                });
+                if (prompt.allowOther !== false) {
+                    lines.push(`${prompt.options.length + 1}. ${prompt.otherLabel || "Other"} — reply with free text`);
+                }
+                lines.push("");
+            }
+        }
+    }
     lines.push(`Copilot is waiting for your response.`);
     lines.push("");
     lines.push(buildFooter(payload, true));
@@ -576,8 +594,4 @@ export function formatTeamsAdaptiveCard(payload, tagList) {
     };
     return JSON.stringify(card);
 }
-/**
- * Format notification message based on event type.
- * Returns a markdown-formatted string suitable for Discord/Telegram.
- */
 //# sourceMappingURL=formatter.js.map

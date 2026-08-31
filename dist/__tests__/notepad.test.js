@@ -1,17 +1,36 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
+import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 import { initNotepad, readNotepad, getPriorityContext, getWorkingMemory, addWorkingMemoryEntry, setPriorityContext, addManualEntry, pruneOldEntries, getNotepadStats, formatNotepadContext, DEFAULT_CONFIG, PRIORITY_HEADER, WORKING_MEMORY_HEADER, MANUAL_HEADER, getManualSection, getNotepadPath } from '../hooks/notepad/index.js';
 describe('Notepad Module', () => {
     let testDir;
+    let previousHome;
+    let previousUserProfile;
+    let previousStateDir;
     beforeEach(() => {
-        // Create a unique temp directory for each test
-        testDir = join(tmpdir(), `notepad-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        mkdirSync(testDir, { recursive: true });
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        previousStateDir = process.env.OMC_STATE_DIR;
+        testDir = mkdtempSync(join(tmpdir(), 'notepad-test-'));
+        process.env.HOME = testDir;
+        process.env.USERPROFILE = testDir;
+        process.env.OMC_STATE_DIR = join(testDir, 'centralized-state');
     });
     afterEach(() => {
-        // Clean up test directory
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
+        if (previousStateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = previousStateDir;
         if (existsSync(testDir)) {
             rmSync(testDir, { recursive: true, force: true });
         }
@@ -30,13 +49,13 @@ describe('Notepad Module', () => {
             expect(content).toContain('Auto-managed by OMC');
         });
         it('should create .omc directory if not exists', () => {
-            const omcDir = join(testDir, '.omc');
+            const omcDir = getOmcRoot(testDir);
             expect(existsSync(omcDir)).toBe(false);
             initNotepad(testDir);
             expect(existsSync(omcDir)).toBe(true);
         });
         it('should not overwrite existing notepad', () => {
-            const omcDir = join(testDir, '.omc');
+            const omcDir = getOmcRoot(testDir);
             mkdirSync(omcDir, { recursive: true });
             const notepadPath = getNotepadPath(testDir);
             const existingContent = '# Existing content\nTest data';
@@ -75,6 +94,13 @@ describe('Notepad Module', () => {
             initNotepad(testDir);
             const result = getPriorityContext(testDir);
             expect(result).toBeNull();
+        });
+        it('should return consistent priority context across repeated reads', () => {
+            initNotepad(testDir);
+            setPriorityContext(testDir, 'Repeated content');
+            expect(getPriorityContext(testDir)).toBe('Repeated content');
+            expect(getPriorityContext(testDir)).toBe('Repeated content');
+            expect(getPriorityContext(testDir)).toBe('Repeated content');
         });
         it('should exclude HTML comments from content', () => {
             initNotepad(testDir);
@@ -117,6 +143,19 @@ describe('Notepad Module', () => {
             const context = getPriorityContext(testDir);
             expect(context).toBe('Second content');
             expect(context).not.toContain('First content');
+        });
+        it('should preserve section boundaries across repeated updates to known headers', () => {
+            setPriorityContext(testDir, 'Priority content');
+            addWorkingMemoryEntry(testDir, 'Working note');
+            addManualEntry(testDir, 'Manual note');
+            setPriorityContext(testDir, 'Updated priority');
+            addWorkingMemoryEntry(testDir, 'Second working note');
+            addManualEntry(testDir, 'Second manual note');
+            expect(getPriorityContext(testDir)).toBe('Updated priority');
+            expect(getWorkingMemory(testDir)).toContain('Working note');
+            expect(getWorkingMemory(testDir)).toContain('Second working note');
+            expect(getManualSection(testDir)).toContain('Manual note');
+            expect(getManualSection(testDir)).toContain('Second manual note');
         });
         it('should use custom config for max chars', () => {
             const customConfig = { ...DEFAULT_CONFIG, priorityMaxChars: 100 };

@@ -8,7 +8,7 @@
  *   --agent harsh-critic|critic|both   Which agent(s) to run (default: both)
  *   --fixture <fixture-id>             Run a single fixture only
  *   --output-dir <path>                Where to write results (default: benchmarks/harsh-critic/results)
- *   --model <model>                    Copilot model to use (default: claude-opus-4-6)
+ *   --model <model>                    Claude model to use (default: claude-opus-4-6)
  *   --dry-run                          Load fixtures and ground truth but skip API calls
  */
 
@@ -193,14 +193,14 @@ function loadGroundTruth(fixtureId: string): GroundTruth | null {
 }
 
 // ============================================================
-// Copilot API call
+// Claude API call
 // ============================================================
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function callCopilot(
+async function callClaude(
   client: Anthropic,
   systemPrompt: string,
   userMessage: string,
@@ -223,7 +223,7 @@ async function callCopilot(
 
       const textBlock = response.content.find((b) => b.type === 'text');
       if (!textBlock || textBlock.type !== 'text') {
-        throw new Error('No text content in Copilot response');
+        throw new Error('No text content in Claude response');
       }
       return textBlock.text;
     } catch (err: unknown) {
@@ -394,7 +394,7 @@ async function main(): Promise<void> {
 
       let rawOutput: string;
       try {
-        rawOutput = await callCopilot(
+        rawOutput = await callClaude(
           client,
           systemPrompt,
           `Review the following work:\n\n${fixture.content}`,
@@ -403,7 +403,7 @@ async function main(): Promise<void> {
       } catch (err) {
         const elapsedS = ((Date.now() - startMs) / 1000).toFixed(1);
         console.log(`FAILED (${elapsedS}s)`);
-        console.error(`  Error calling Copilot API: ${err}`);
+        console.error(`  Error calling Claude API: ${err}`);
         process.exit(1);
       }
 

@@ -17,7 +17,6 @@ import type {
   DiscordBotNotificationConfig,
   TelegramNotificationConfig,
   SlackBotNotificationConfig,
-  TeamsNotificationConfig,
   VerbosityLevel,
 } from "./types.js";
 import {
@@ -584,7 +583,6 @@ function isPlatformActivated(platform: NotificationPlatform): boolean {
     return process.env.OMC_DISCORD === "1";
   if (platform === "slack" || platform === "slack-bot")
     return process.env.OMC_SLACK === "1";
-  if (platform === "teams") return process.env.OMC_MICROSOFT_TEAMS === "1";
   if (platform === "webhook") return process.env.OMC_WEBHOOK === "1";
   return false;
 }
@@ -611,7 +609,6 @@ export function isEventEnabled(
       (isPlatformActivated("telegram") && config.telegram?.enabled) ||
       (isPlatformActivated("slack") && config.slack?.enabled) ||
       (isPlatformActivated("slack-bot") && config["slack-bot"]?.enabled) ||
-      (isPlatformActivated("teams") && config.teams?.enabled) ||
       (isPlatformActivated("webhook") && config.webhook?.enabled)
     );
   }
@@ -623,7 +620,6 @@ export function isEventEnabled(
     (isPlatformActivated("telegram") && eventConfig.telegram?.enabled) ||
     (isPlatformActivated("slack") && eventConfig.slack?.enabled) ||
     (isPlatformActivated("slack-bot") && eventConfig["slack-bot"]?.enabled) ||
-    (isPlatformActivated("teams") && eventConfig.teams?.enabled) ||
     (isPlatformActivated("webhook") && eventConfig.webhook?.enabled)
   ) {
     return true;
@@ -636,7 +632,6 @@ export function isEventEnabled(
     (isPlatformActivated("telegram") && config.telegram?.enabled) ||
     (isPlatformActivated("slack") && config.slack?.enabled) ||
     (isPlatformActivated("slack-bot") && config["slack-bot"]?.enabled) ||
-    (isPlatformActivated("teams") && config.teams?.enabled) ||
     (isPlatformActivated("webhook") && config.webhook?.enabled)
   );
 }
@@ -689,7 +684,6 @@ export function getEnabledPlatforms(
   checkPlatform("telegram");
   checkPlatform("slack");
   checkPlatform("slack-bot");
-  checkPlatform("teams");
   checkPlatform("webhook");
 
   return platforms;
@@ -848,6 +842,13 @@ function parseDiscordUserIds(
   return [];
 }
 
+/** Parse an integer from a string, returning undefined for invalid/empty input. */
+function parseIntSafe(value: string | undefined): number | undefined {
+  if (value == null || value === "") return undefined;
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 /**
  * Get reply injection configuration.
  *
@@ -913,9 +914,9 @@ export function getReplyConfig(): import("./types.js").ReplyConfig | null {
 
   return {
     enabled: true,
-    pollIntervalMs: parseInt(process.env.OMC_REPLY_POLL_INTERVAL_MS || "") || replyRaw?.pollIntervalMs || 3000,
-    maxMessageLength: replyRaw?.maxMessageLength || 500,
-    rateLimitPerMinute: parseInt(process.env.OMC_REPLY_RATE_LIMIT || "") || replyRaw?.rateLimitPerMinute || 10,
+    pollIntervalMs: parseIntSafe(process.env.OMC_REPLY_POLL_INTERVAL_MS) ?? replyRaw?.pollIntervalMs ?? 3000,
+    maxMessageLength: replyRaw?.maxMessageLength ?? 500,
+    rateLimitPerMinute: parseIntSafe(process.env.OMC_REPLY_RATE_LIMIT) ?? replyRaw?.rateLimitPerMinute ?? 10,
     includePrefix: process.env.OMC_REPLY_INCLUDE_PREFIX !== "false" && (replyRaw?.includePrefix !== false),
     authorizedDiscordUserIds,
     authorizedSlackUserIds,
@@ -931,6 +932,74 @@ import type {
   CustomIntegrationsConfig,
 } from "./types.js";
 import { validateCustomIntegration, checkDuplicateIds } from "./validation.js";
+
+const LEGACY_OPENCLAW_CONFIG = join(getCopilotConfigDir(), "omc_config.openclaw.json");
+
+/**
+ * Detect if legacy OpenClaw configuration exists.
+ */
+export function detectLegacyOpenClawConfig(): boolean {
+  return existsSync(LEGACY_OPENCLAW_CONFIG);
+}
+
+/**
+ * Read and migrate legacy OpenClaw config to new custom integration format.
+ */
+export function migrateLegacyOpenClawConfig(): CustomIntegration | null {
+  if (!existsSync(LEGACY_OPENCLAW_CONFIG)) return null;
+
+  try {
+    const legacy = JSON.parse(readFileSync(LEGACY_OPENCLAW_CONFIG, "utf-8"));
+    
+    // Get first gateway (legacy format supported multiple, we take the first)
+    const gateways = legacy.gateways as Record<string, any> | undefined;
+    if (!gateways || Object.keys(gateways).length === 0) return null;
+    
+    const gateway = Object.values(gateways)[0];
+    const gatewayName = Object.keys(gateways)[0];
+    
+    // Get enabled hooks as events
+    const hooks = legacy.hooks as Record<string, any> | undefined;
+    const events: string[] = [];
+    if (hooks) {
+      for (const [hookName, hookConfig] of Object.entries(hooks)) {
+        if ((hookConfig as any)?.enabled) {
+          // Normalize hook name to event name
+          const eventName = hookName.replace(/([A-Z])/g, '-$1').toLowerCase();
+          events.push(eventName);
+        }
+      }
+    }
+
+    const integration: CustomIntegration = {
+      id: `migrated-${gatewayName}`,
+      type: "webhook",
+      preset: "openclaw",
+      enabled: legacy.enabled !== false,
+      config: {
+        url: gateway.url || "",
+        method: (gateway.method as any) || "POST",
+        headers: gateway.headers || { "Content-Type": "application/json" },
+        bodyTemplate: JSON.stringify({
+          event: "{{event}}",
+          instruction: "Session {{sessionId}} {{event}}",
+          timestamp: "{{timestamp}}",
+          context: {
+            projectPath: "{{projectPath}}",
+            projectName: "{{projectName}}",
+            sessionId: "{{sessionId}}"
+          }
+        }, null, 2),
+        timeout: gateway.timeout || 10000,
+      },
+      events: events as any,
+    };
+
+    return integration;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Read custom integrations configuration from .omc-config.json.

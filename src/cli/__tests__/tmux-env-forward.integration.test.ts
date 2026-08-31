@@ -2,8 +2,8 @@
  * Integration test: tmux env var forwarding
  *
  * Verifies that env vars set on the omc process actually arrive inside
- * a tmux session created the same way runCopilotOutsideTmux does.
- * No Copilot CLI or API tokens are involved — the test runs `printenv`
+ * a tmux session created the same way runClaudeOutsideTmux does.
+ * No Claude CLI or API tokens are involved — the test runs `printenv`
  * inside the tmux pane and reads the output from a temp file.
  *
  * Skipped when tmux is not available (CI without tmux, Windows, etc.).
@@ -18,7 +18,6 @@ import { wrapWithLoginShell, quoteShellArg } from '../tmux-utils.js';
 import { buildEnvExportPrefix } from '../launch.js';
 
 function isTmuxAvailable(): boolean {
-  if (process.platform === 'win32') return false;
   try {
     execFileSync('tmux', ['-V'], { stdio: 'ignore' });
     return true;
@@ -52,7 +51,7 @@ describe.skipIf(!HAS_TMUX)('tmux env forwarding — integration', () => {
   it('COPILOT_CONFIG_DIR set via buildEnvExportPrefix reaches the tmux pane', () => {
     const testValue = '/tmp/omc-test-config-dir';
 
-    // Build the env export prefix the same way runCopilotOutsideTmux does,
+    // Build the env export prefix the same way runClaudeOutsideTmux does,
     // but with a controlled env snapshot instead of process.env
     const savedConfigDir = process.env.COPILOT_CONFIG_DIR;
     process.env.COPILOT_CONFIG_DIR = testValue;
@@ -68,7 +67,7 @@ describe.skipIf(!HAS_TMUX)('tmux env forwarding — integration', () => {
     const innerCmd = `${envPrefix}printenv COPILOT_CONFIG_DIR > ${quoteShellArg(outFile)}`;
     const shellCmd = wrapWithLoginShell(innerCmd);
 
-    // Create a detached tmux session (same as runCopilotOutsideTmux)
+    // Create a detached tmux session (same as runClaudeOutsideTmux)
     execFileSync('tmux', [
       'new-session', '-d', '-s', SESSION_NAME, shellCmd,
     ]);

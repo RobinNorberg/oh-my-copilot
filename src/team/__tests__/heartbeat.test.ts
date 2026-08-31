@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
@@ -8,8 +8,11 @@ import {
 } from '../heartbeat.js';
 import type { HeartbeatData } from '../types.js';
 
-const TEST_DIR = join(tmpdir(), '__test_heartbeat__');
 const TEST_TEAM = 'test-team';
+let TEST_DIR: string;
+let previousHome: string | undefined;
+let previousUserProfile: string | undefined;
+let previousOmcStateDir: string | undefined;
 
 function makeHeartbeat(overrides?: Partial<HeartbeatData>): HeartbeatData {
   return {
@@ -25,10 +28,24 @@ function makeHeartbeat(overrides?: Partial<HeartbeatData>): HeartbeatData {
 }
 
 beforeEach(() => {
-  mkdirSync(TEST_DIR, { recursive: true });
+  previousHome = process.env.HOME;
+  previousUserProfile = process.env.USERPROFILE;
+  previousOmcStateDir = process.env.OMC_STATE_DIR;
+
+  TEST_DIR = mkdtempSync(join(tmpdir(), '__test_heartbeat-'));
+  process.env.HOME = TEST_DIR;
+  process.env.USERPROFILE = TEST_DIR;
+  delete process.env.OMC_STATE_DIR;
 });
 
 afterEach(() => {
+  if (previousHome === undefined) delete process.env.HOME;
+  else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
+  if (previousOmcStateDir === undefined) delete process.env.OMC_STATE_DIR;
+  else process.env.OMC_STATE_DIR = previousOmcStateDir;
+
   rmSync(TEST_DIR, { recursive: true, force: true });
 });
 

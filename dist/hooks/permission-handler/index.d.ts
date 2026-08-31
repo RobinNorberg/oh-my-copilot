@@ -23,20 +23,19 @@ export interface HookOutput {
         };
     };
 }
-interface DenyTracker {
-    consecutiveDenials: number;
-    totalDenials: number;
-    totalAllows: number;
-    lastDecision: 'allow' | 'deny' | 'ask' | null;
-}
 export declare function getCopilotPermissionAllowEntries(directory: string): string[];
-export declare function hasCopilotPermissionApproval(directory: string, toolName: 'Edit' | 'Write' | 'Bash', command?: string): boolean;
+export declare function hasClaudePermissionApproval(directory: string, toolName: 'Edit' | 'Write' | 'Bash', command?: string): boolean;
+export declare function getCopilotPermissionAskEntries(directory: string): string[];
+export declare function hasClaudePermissionAsk(directory: string, toolName: 'Edit' | 'Write' | 'Bash', command?: string): boolean;
 export interface BackgroundPermissionFallbackResult {
     shouldFallback: boolean;
     missingTools: string[];
 }
 export declare function getBackgroundTaskPermissionFallback(directory: string, subagentType?: string): BackgroundPermissionFallbackResult;
 export declare function getBackgroundBashPermissionFallback(directory: string, command?: string): BackgroundPermissionFallbackResult;
+export declare function isSafeRepoInspectionCommand(command: string, cwd: string): boolean;
+export declare function isSafeTargetedLocalTestCommand(command: string, cwd: string): boolean;
+export declare function isSafeAutoApprovedCommand(command: string, cwd: string): boolean;
 /**
  * Check if a command matches safe patterns
  */
@@ -44,7 +43,7 @@ export declare function isSafeCommand(command: string): boolean;
 /**
  * Check if a command is a heredoc command with a safe base command.
  * Issue #608: Heredoc commands contain shell metacharacters (<<, \n, $, etc.)
- * that cause isSafeCommand() to reject them. When they fall through to Copilot
+ * that cause isSafeCommand() to reject them. When they fall through to Claude
  * Code's native permission flow and the user approves "Always allow", the entire
  * heredoc body (potentially hundreds of lines) gets stored in settings.local.json.
  *
@@ -53,31 +52,16 @@ export declare function isSafeCommand(command: string): boolean;
  * polluting settings.local.json.
  */
 export declare function isHeredocWithSafeBase(command: string): boolean;
-export declare function isSafeRepoInspectionCommand(command: string, cwd: string): boolean;
-export declare function isSafeTargetedLocalTestCommand(command: string, cwd: string): boolean;
-export declare function isSafeAutoApprovedCommand(command: string, cwd: string): boolean;
 /**
- * Check if an active mode (autopilot/ultrawork/ralph/team) is running
+ * Check if an active supported mode is running
  */
 export declare function isActiveModeRunning(directory: string): boolean;
 /**
- * Process permission request and decide whether to auto-allow.
- *
- * Decision flow:
- * 1. Escalation check — if too many denials, stop and escalate
- * 2. MCP tool annotations — readOnlyHint tools auto-approved
- * 3. Bash safe patterns — known-safe CLI commands auto-approved
- * 4. Bash heredoc — safe base commands with heredoc content auto-approved
- * 5. Default — pass through to Copilot CLI's native permission prompt
+ * Process permission request and decide whether to auto-allow
  */
 export declare function processPermissionRequest(input: PermissionRequestInput): HookOutput;
-/** Get current deny tracker state (for diagnostics/omc-doctor) */
-export declare function getPermissionDenyStats(): Readonly<DenyTracker>;
-/** Reset deny tracker (e.g., after user explicitly approves) */
-export declare function resetDenyTracker(): void;
 /**
  * Main hook entry point
  */
 export declare function handlePermissionRequest(input: PermissionRequestInput): Promise<HookOutput>;
-export {};
 //# sourceMappingURL=index.d.ts.map

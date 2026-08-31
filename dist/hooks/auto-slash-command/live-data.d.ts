@@ -12,13 +12,19 @@
  * - Once per session: `!only-once npm install`
  * - Output formats: `!json docker inspect ...`, `!table ...`, `!diff git diff`
  * - Multi-line: `!begin-script bash` ... `!end-script`
- * - Security allowlist via .omcp/config/live-data-policy.json
+ * - Security allowlist via .omg/config/live-data-policy.json
  */
 /** Clear all caches (useful for testing) */
 export declare function clearCache(): void;
 /** Reset cached policy (for testing) */
 export declare function resetSecurityPolicy(): void;
 export declare function isLiveDataLine(line: string): boolean;
+export declare function hasLiveDataScriptArgumentPlaceholder(content: string): boolean;
+/**
+ * Return whether placeholder replacement made a previously non-executable line
+ * become an executable live-data directive.
+ */
+export declare function introducesLiveDataDirective(templateContent: string, resolvedContent: string): boolean;
 /**
  * Resolve all live-data directives in content.
  * Lines inside fenced code blocks are skipped.

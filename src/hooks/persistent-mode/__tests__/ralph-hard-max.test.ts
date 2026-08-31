@@ -6,8 +6,7 @@ import { execFileSync } from 'child_process';
 import { checkPersistentModes } from '../index.js';
 import { clearSecurityConfigCache } from '../../../lib/security-config.js';
 
-// TODO: ralph hard max iterations not yet implemented in persistent-mode handler
-describe.skip('persistent-mode ralph hard max iterations', () => {
+describe('persistent-mode ralph hard max iterations', () => {
   const originalSecurity = process.env.OMC_SECURITY;
 
   afterEach(() => {
@@ -28,7 +27,7 @@ describe.skip('persistent-mode ralph hard max iterations', () => {
 
     try {
       execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-      const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
 
       writeFileSync(
@@ -64,7 +63,7 @@ describe.skip('persistent-mode ralph hard max iterations', () => {
 
     try {
       execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-      const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
 
       writeFileSync(

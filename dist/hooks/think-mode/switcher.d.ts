@@ -2,7 +2,7 @@
  * Think Mode Switcher
  *
  * Handles model switching to high-reasoning variants when think mode is activated.
- * Supports Copilot, GPT, and Gemini model families.
+ * Supports Claude, GPT, and Gemini model families.
  *
  * Ported from oh-my-opencode's think-mode hook.
  */
@@ -26,8 +26,8 @@ export declare function isAlreadyHighVariant(modelId: string): boolean;
  */
 export declare function getThinkingConfig(providerId: string, modelId: string): ThinkingConfig | null;
 /**
- * Get Copilot-specific thinking configuration.
- * This is used by Copilot CLI for extended thinking.
+ * Get Claude-specific thinking configuration.
+ * This is used by Claude Code for extended thinking.
  */
 export declare function getClaudeThinkingConfig(budgetTokens?: number): {
     thinking: {

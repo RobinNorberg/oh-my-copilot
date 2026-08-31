@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
 import { tmpdir } from 'os';
 import type { DaemonConfig } from '../../features/rate-limit-wait/types.js';
 
@@ -10,8 +11,8 @@ const { mockSpawn, mockResolveDaemonModulePath, mockIsTmuxAvailable } = vi.hoist
   mockIsTmuxAvailable: vi.fn(() => true),
 }));
 
-vi.mock('child_process', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('child_process')>();
+vi.mock('child_process', async () => {
+  const actual = await vi.importActual<typeof import('child_process')>('child_process');
   return {
     ...actual,
     spawn: mockSpawn,
@@ -32,6 +33,8 @@ vi.mock('../../features/rate-limit-wait/tmux-detector.js', async () => {
   };
 });
 
+const DAEMON_MODULE_PATH = '/repo/dist/features/rate-limit-wait/daemon.js';
+
 describe('daemon bootstrap', () => {
   const originalEnv = { ...process.env };
   const testDir = join(tmpdir(), `omc-daemon-bootstrap-test-${Date.now()}`);
@@ -43,7 +46,7 @@ describe('daemon bootstrap', () => {
     mockResolveDaemonModulePath.mockReset();
     mockIsTmuxAvailable.mockReset();
     mockIsTmuxAvailable.mockReturnValue(true);
-    mockResolveDaemonModulePath.mockReturnValue('/repo/dist/features/rate-limit-wait/daemon.js');
+    mockResolveDaemonModulePath.mockReturnValue(DAEMON_MODULE_PATH);
 
     ({ startDaemon } = await import('../../features/rate-limit-wait/daemon.js'));
   });
@@ -59,6 +62,10 @@ describe('daemon bootstrap', () => {
 
     process.env.PATH = '/usr/bin:/bin';
     process.env.TMUX = '/tmp/tmux-1000/default,100,0';
+    process.env.OMC_STATE_DIR = '/tmp/omc-central-state';
+    process.env.COPILOT_CONFIG_DIR = '/tmp/claude-profile';
+    process.env.CLAUDE_SESSION_ID = 'session-current';
+    process.env.CLAUDECODE_SESSION_ID = 'session-legacy-alias';
     process.env.ANTHROPIC_API_KEY = 'super-secret';
     process.env.GITHUB_TOKEN = 'token-should-not-leak';
 
@@ -84,20 +91,27 @@ describe('daemon bootstrap', () => {
 
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const [command, args, spawnOptions] = mockSpawn.mock.calls[0]!;
-    expect(command).toBe('node');
+    // The running interpreter, not a PATH lookup that a Volta/nvm shim can break.
+    expect(command).toBe(process.execPath);
     expect(args[0]).toBe('-e');
-    // pathToFileURL normalizes the resolved module path to a file:// URL. On
-    // Windows the POSIX-style mock path picks up the current drive letter
-    // (file:///C:/repo/...), so match the URL scheme + suffix instead of an
-    // absolute prefix to stay cross-platform. CI on Linux yields
-    // file:///repo/dist/features/rate-limit-wait/daemon.js.
-    expect(args[1]).toMatch(/import\("file:\/\/\/(?:[A-Za-z]:\/)?repo\/dist\/features\/rate-limit-wait\/daemon\.js"\)/);
+    // The URL is derived the same way the daemon derives it, so the assertion
+    // holds on Windows where a POSIX-looking path resolves under a drive root.
+    expect(args[1]).toContain(
+      `import(${JSON.stringify(pathToFileURL(DAEMON_MODULE_PATH).href)})`,
+    );
     expect(spawnOptions?.detached).toBe(true);
     expect(spawnOptions?.stdio).toBe('ignore');
 
     const childEnv = spawnOptions?.env as Record<string, string | undefined>;
     expect(childEnv.PATH).toBe('/usr/bin:/bin');
     expect(childEnv.TMUX).toBe('/tmp/tmux-1000/default,100,0');
+    expect(childEnv.OMC_STATE_DIR).toBe('/tmp/omc-central-state');
+    expect(childEnv.COPILOT_CONFIG_DIR).toBe('/tmp/claude-profile');
+    // A detached daemon must not pin itself to the launching session: that
+    // session's cache is removed at session end, while another live session
+    // may have the version the daemon should use on its next poll.
+    expect(childEnv.CLAUDE_SESSION_ID).toBeUndefined();
+    expect(childEnv.CLAUDECODE_SESSION_ID).toBeUndefined();
     expect(childEnv.ANTHROPIC_API_KEY).toBeUndefined();
     expect(childEnv.GITHUB_TOKEN).toBeUndefined();
 

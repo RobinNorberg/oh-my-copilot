@@ -1,44 +1,29 @@
 /**
- * `omcp doctor team-routing` — probe configured /team role-routing providers.
+ * `omc doctor team-routing` — probe configured /team role-routing providers.
  *
  * Iterates every unique provider referenced by `team.roleRouting` (falling back
  * to `claude` when config is empty) and checks CLI presence on PATH.
  * Emits warnings (not errors) for missing binaries — AC-11.
  */
-import { execSync } from 'child_process';
 import { colors } from '../utils/formatting.js';
 import { loadConfig } from '../../config/loader.js';
+import { probeCli } from '../../team/cli-detection.js';
 const PROVIDER_BINARY = {
     claude: 'claude',
+    copilot: 'copilot',
     codex: 'codex',
     gemini: 'gemini',
     grok: 'grok',
+    cursor: 'cursor-agent',
+    antigravity: 'agy',
 };
 function probeProvider(provider) {
     const binary = PROVIDER_BINARY[provider];
-    const probe = { provider, binary, found: false };
-    try {
-        const resolved = execSync(`command -v ${binary}`, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] })
-            .trim();
-        if (resolved) {
-            probe.found = true;
-            probe.path = resolved;
-            try {
-                const version = execSync(`${binary} --version`, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 })
-                    .trim()
-                    .split('\n')[0];
-                if (version)
-                    probe.version = version;
-            }
-            catch {
-                // Version probe is best-effort; binary found is enough.
-            }
-        }
-    }
-    catch (err) {
-        probe.error = err instanceof Error ? err.message : String(err);
-    }
-    return probe;
+    return {
+        provider,
+        binary,
+        ...probeCli(binary),
+    };
 }
 function collectConfiguredProviders() {
     const cfg = loadConfig();
@@ -48,7 +33,7 @@ function collectConfiguredProviders() {
     const roleRouting = cfg.team?.roleRouting ?? {};
     for (const spec of Object.values(roleRouting)) {
         const provider = spec?.provider;
-        if (provider === 'claude' || provider === 'codex' || provider === 'gemini' || provider === 'grok') {
+        if (provider === 'claude' || provider === 'codex' || provider === 'gemini' || provider === 'grok' || provider === 'cursor' || provider === 'antigravity') {
             providers.add(provider);
         }
     }
@@ -60,7 +45,7 @@ export async function doctorTeamRoutingCommand(options) {
         providers = collectConfiguredProviders();
     }
     catch (err) {
-        console.error(`[OMCP] Failed to load config: ${err instanceof Error ? err.message : String(err)}`);
+        console.error(`[OMC] Failed to load config: ${err instanceof Error ? err.message : String(err)}`);
         return 1;
     }
     const probes = [...providers].map(probeProvider);
@@ -72,21 +57,31 @@ export async function doctorTeamRoutingCommand(options) {
         }, null, 2));
     }
     else {
+        const claudeFound = probes.some((probe) => probe.provider === 'claude' && probe.found);
         console.log(colors.bold('Team role routing — provider CLI probe'));
         for (const p of probes) {
             if (p.found) {
-                const version = p.version ? ` (${p.version})` : '';
-                console.log(`  ${colors.green('✓')} ${p.provider}: ${p.path}${version}`);
+                const resolvedPath = p.path ? `: ${p.path}` : '';
+                const version = p.version ? ` (${p.version})` : p.error ? ' (version unavailable)' : '';
+                console.log(`  ${colors.green('✓')} ${p.provider}${resolvedPath}${version}`);
             }
             else {
-                console.log(`  ${colors.yellow('⚠')} ${p.provider}: not found on PATH — /team tasks routed to ${p.provider} will fall back to claude`);
+                const fallback = p.provider === 'claude'
+                    ? 'orchestrator/fallback unavailable'
+                    : claudeFound
+                        ? `/team tasks routed to ${p.provider} can fall back to Claude`
+                        : 'no available Claude fallback';
+                console.log(`  ${colors.yellow('⚠')} ${p.provider}: not found on PATH — ${fallback}`);
             }
         }
         if (missing.length === 0) {
             console.log(colors.green('\nAll configured providers are available.'));
         }
+        else if (!claudeFound) {
+            console.log(colors.yellow(`\n${missing.length} provider${missing.length === 1 ? '' : 's'} missing (warn only — no available Claude fallback; orchestrator/fallback unavailable).`));
+        }
         else {
-            console.log(colors.yellow(`\n${missing.length} provider${missing.length === 1 ? '' : 's'} missing (warn only — /team falls back to claude).`));
+            console.log(colors.yellow(`\n${missing.length} provider${missing.length === 1 ? '' : 's'} missing (warn only — /team can fall back to Claude).`));
         }
     }
     // Never error on missing providers — AC-11 says warn, not error.

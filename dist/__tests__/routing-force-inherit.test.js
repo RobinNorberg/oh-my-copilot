@@ -152,6 +152,37 @@ describe('routing.forceInherit (issue #1135)', () => {
             expect(modified.prompt).toBe('Do something');
             expect(modified.subagent_type).toBe('oh-my-copilot:executor');
         });
+        it('strips model from Agent calls when forceInherit is true', () => {
+            mockedLoadConfig.mockReturnValue({
+                routing: { forceInherit: true },
+            });
+            const toolInput = {
+                description: 'Test task',
+                prompt: 'Do something',
+                subagent_type: 'oh-my-copilot:executor',
+                model: 'opus',
+            };
+            const result = processPreToolUse('Agent', toolInput);
+            const modified = result.modifiedInput;
+            expect(modified.model).toBeUndefined();
+            expect(modified.prompt).toBe('Do something');
+            expect(modified.subagent_type).toBe('oh-my-copilot:executor');
+        });
+        it('strips model from lowercase agent calls when forceInherit is true', () => {
+            mockedLoadConfig.mockReturnValue({
+                routing: { forceInherit: true },
+            });
+            const toolInput = {
+                description: 'Test task',
+                prompt: 'Do something',
+                subagent_type: 'oh-my-copilot:executor',
+                model: 'opus',
+            };
+            const result = processPreToolUse('agent', toolInput);
+            const modified = result.modifiedInput;
+            expect(modified.model).toBeUndefined();
+            expect(modified.subagent_type).toBe('oh-my-copilot:executor');
+        });
         it('does not strip model when forceInherit is false', () => {
             mockedLoadConfig.mockReturnValue({
                 routing: { forceInherit: false },

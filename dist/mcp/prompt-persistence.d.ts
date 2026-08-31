@@ -1,7 +1,7 @@
 /**
  * Prompt Persistence - Audit trail for external model prompts and responses
  *
- * Writes assembled prompts and model responses to .omcp/prompts/ before/after
+ * Writes assembled prompts and model responses to .omg/prompts/ before/after
  * sending to Codex/Gemini, providing visibility, debugging, and compliance audit trail.
  */
 import { type ArtifactDescriptor } from '../shared/artifact-descriptor.js';
@@ -91,8 +91,6 @@ export interface BackgroundJobMeta {
  * Get the prompts directory path under the worktree
  */
 export declare function getPromptsDir(workingDirectory?: string): string;
-export declare function describePromptArtifact(path: string): ArtifactDescriptor;
-export declare function describeResponseArtifact(path: string): ArtifactDescriptor;
 /**
  * Persist a prompt to disk with YAML frontmatter
  *
@@ -111,12 +109,8 @@ export declare function persistPrompt(options: PersistPromptOptions): PersistPro
  * @returns The expected file path for the response
  */
 export declare function getExpectedResponsePath(provider: 'codex' | 'gemini', slug: string, promptId: string, workingDirectory?: string): string;
-/**
- * Persist a model response to disk with YAML frontmatter
- *
- * @param options - The response details to persist
- * @returns The file path, or undefined on failure
- */
+export declare function describePromptArtifact(path: string): ArtifactDescriptor;
+export declare function describeResponseArtifact(path: string): ArtifactDescriptor;
 export declare function persistResponse(options: PersistResponseOptions): string | undefined;
 /**
  * Get the status file path for a background job

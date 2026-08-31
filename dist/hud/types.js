@@ -13,6 +13,7 @@ export const DEFAULT_HUD_LABELS = {
     ralph: 'ralph',
     background: 'bg',
     thinking: 'thinking',
+    model: 'Model',
     staged: '+',
     modified: '!',
     untracked: '?',
@@ -30,6 +31,7 @@ export const HUD_LOCALE_LABELS = {
         ralph: '循环',
         background: '后台',
         thinking: '思考',
+        model: '模型',
         staged: '已暂存',
         modified: '已修改',
         untracked: '未跟踪',
@@ -65,18 +67,18 @@ export function resolveHudLabels(locale, labels) {
  * Used as fallback when no layout is configured.
  */
 export const DEFAULT_ELEMENT_ORDER = {
-    line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'model', 'apiKeySource', 'profile'],
+    line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'apiKeySource', 'profile'],
     main: [
-        'omcLabel', 'enterpriseCost', 'rateLimits', 'customBuckets', 'permission', 'thinking',
+        'omcLabel', 'model', 'enterpriseCost', 'rateLimits', 'customBuckets', 'permission', 'thinking',
         'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'prd',
         'skills', 'lastSkill', 'contextBar', 'agents', 'background',
-        'callCounts', 'recentTools', 'lastTool', 'sessionSummary',
+        'callCounts', 'lastTool', 'recentTools', 'sessionSummary',
     ],
-    detail: ['missionBoard', 'agents', 'contextWarning', 'todos'],
+    detail: ['missionBoard', 'agents', 'contextWarning', 'payloadWarning', 'todos'],
 };
 export const DEFAULT_HUD_USAGE_POLL_INTERVAL_MS = 90 * 1000;
 export const DEFAULT_HUD_CONFIG = {
-    preset: 'full',
+    preset: 'focused',
     locale: 'en',
     labels: DEFAULT_HUD_LABELS,
     elements: {
@@ -87,8 +89,8 @@ export const DEFAULT_HUD_CONFIG = {
         gitBranch: false, // Disabled by default for backward compatibility
         gitStatus: false, // Disabled by default for backward compatibility
         gitInfoPosition: 'above', // Git info above main HUD line (backward compatible)
-        model: false, // Disabled by default for backward compatibility
-        modelFormat: 'short', // Short names by default for backward compatibility
+        model: true, // Show only when Claude Code statusline stdin provides a model
+        modelFormat: 'versioned', // Preserve model version by default
         omcLabel: true,
         updateNotification: true, // Preserve existing update prompt behavior by default
         rateLimits: true, // Show rate limits by default
@@ -114,17 +116,17 @@ export const DEFAULT_HUD_CONFIG = {
         sessionHealth: true,
         showSessionDuration: true,
         showHealthIndicator: true,
+        showTokens: false,
         useBars: false, // Disabled by default for backwards compatibility
         showCallCounts: true, // Show tool/agent/skill call counts by default (Issue #710)
         callCountsFormat: 'auto', // Preserve platform-based emoji/ASCII defaults unless explicitly overridden
         showLastTool: false,
-        showRecentTools: true,
+        showRecentTools: false,
         recentToolsMax: 5,
         recentToolsShowTarget: true,
-        maxAgents: 10,
+        sessionSummary: false, // Disabled by default - opt-in AI-generated session summary
         maxOutputLines: 4,
         safeMode: true, // Enabled by default to prevent terminal rendering corruption (Issue #346)
-        sessionSummary: false,
     },
     thresholds: {
         contextWarning: 70,
@@ -150,8 +152,8 @@ export const PRESET_CONFIGS = {
         gitBranch: false,
         gitStatus: false,
         gitInfoPosition: 'above',
-        model: false,
-        modelFormat: 'short',
+        model: true,
+        modelFormat: 'versioned',
         omcLabel: true,
         updateNotification: true,
         rateLimits: true,
@@ -164,7 +166,6 @@ export const PRESET_CONFIGS = {
         agents: true,
         agentsFormat: 'count',
         agentsMaxLines: 0,
-        maxAgents: 5,
         backgroundTasks: false,
         todos: true,
         permissionStatus: false,
@@ -178,15 +179,16 @@ export const PRESET_CONFIGS = {
         sessionHealth: false,
         showSessionDuration: true,
         showHealthIndicator: true,
+        showTokens: false,
         useBars: false,
         showCallCounts: false,
         showLastTool: false,
         showRecentTools: false,
-        recentToolsMax: 3,
-        recentToolsShowTarget: false,
+        recentToolsMax: 5,
+        recentToolsShowTarget: true,
+        sessionSummary: false,
         maxOutputLines: 2,
         safeMode: true,
-        sessionSummary: false,
     },
     focused: {
         cwd: false,
@@ -196,8 +198,8 @@ export const PRESET_CONFIGS = {
         gitBranch: true,
         gitStatus: true,
         gitInfoPosition: 'above',
-        model: false,
-        modelFormat: 'short',
+        model: true,
+        modelFormat: 'versioned',
         omcLabel: true,
         updateNotification: true,
         rateLimits: true,
@@ -210,7 +212,6 @@ export const PRESET_CONFIGS = {
         agents: true,
         agentsFormat: 'multiline',
         agentsMaxLines: 3,
-        maxAgents: 10,
         backgroundTasks: true,
         todos: true,
         permissionStatus: false,
@@ -224,15 +225,16 @@ export const PRESET_CONFIGS = {
         sessionHealth: true,
         showSessionDuration: true,
         showHealthIndicator: true,
+        showTokens: false,
         useBars: true,
         showCallCounts: true,
         showLastTool: false,
-        showRecentTools: true,
+        showRecentTools: false,
         recentToolsMax: 5,
         recentToolsShowTarget: true,
+        sessionSummary: false, // Opt-in: sends transcript to claude -p
         maxOutputLines: 4,
         safeMode: true,
-        sessionSummary: false,
     },
     full: {
         cwd: false,
@@ -242,8 +244,8 @@ export const PRESET_CONFIGS = {
         gitBranch: true,
         gitStatus: true,
         gitInfoPosition: 'above',
-        model: false,
-        modelFormat: 'short',
+        model: true,
+        modelFormat: 'versioned',
         omcLabel: true,
         updateNotification: true,
         rateLimits: true,
@@ -256,7 +258,6 @@ export const PRESET_CONFIGS = {
         agents: true,
         agentsFormat: 'multiline',
         agentsMaxLines: 10,
-        maxAgents: 15,
         backgroundTasks: true,
         todos: true,
         permissionStatus: false,
@@ -270,15 +271,16 @@ export const PRESET_CONFIGS = {
         sessionHealth: true,
         showSessionDuration: true,
         showHealthIndicator: true,
+        showTokens: false,
         useBars: true,
         showCallCounts: true,
         showLastTool: false,
-        showRecentTools: true,
-        recentToolsMax: 8,
+        showRecentTools: false,
+        recentToolsMax: 5,
         recentToolsShowTarget: true,
+        sessionSummary: false, // Opt-in: sends transcript to claude -p
         maxOutputLines: 12,
         safeMode: true,
-        sessionSummary: false,
     },
     opencode: {
         cwd: false,
@@ -288,8 +290,8 @@ export const PRESET_CONFIGS = {
         gitBranch: true,
         gitStatus: false,
         gitInfoPosition: 'above',
-        model: false,
-        modelFormat: 'short',
+        model: true,
+        modelFormat: 'versioned',
         omcLabel: true,
         updateNotification: true,
         rateLimits: false,
@@ -302,7 +304,6 @@ export const PRESET_CONFIGS = {
         agents: true,
         agentsFormat: 'codes',
         agentsMaxLines: 0,
-        maxAgents: 10,
         backgroundTasks: false,
         todos: true,
         permissionStatus: false,
@@ -316,15 +317,16 @@ export const PRESET_CONFIGS = {
         sessionHealth: true,
         showSessionDuration: true,
         showHealthIndicator: true,
+        showTokens: false,
         useBars: false,
         showCallCounts: true,
         showLastTool: false,
         showRecentTools: false,
         recentToolsMax: 5,
         recentToolsShowTarget: true,
+        sessionSummary: false,
         maxOutputLines: 4,
         safeMode: true,
-        sessionSummary: false,
     },
     dense: {
         cwd: false,
@@ -334,8 +336,8 @@ export const PRESET_CONFIGS = {
         gitBranch: true,
         gitStatus: true,
         gitInfoPosition: 'above',
-        model: false,
-        modelFormat: 'short',
+        model: true,
+        modelFormat: 'versioned',
         omcLabel: true,
         updateNotification: true,
         rateLimits: true,
@@ -348,7 +350,6 @@ export const PRESET_CONFIGS = {
         agents: true,
         agentsFormat: 'multiline',
         agentsMaxLines: 5,
-        maxAgents: 10,
         backgroundTasks: true,
         todos: true,
         permissionStatus: false,
@@ -362,15 +363,16 @@ export const PRESET_CONFIGS = {
         sessionHealth: true,
         showSessionDuration: true,
         showHealthIndicator: true,
+        showTokens: false,
         useBars: true,
         showCallCounts: true,
         showLastTool: false,
-        showRecentTools: true,
+        showRecentTools: false,
         recentToolsMax: 5,
         recentToolsShowTarget: true,
+        sessionSummary: false, // Opt-in: sends transcript to claude -p
         maxOutputLines: 6,
         safeMode: true,
-        sessionSummary: false,
     },
 };
 //# sourceMappingURL=types.js.map

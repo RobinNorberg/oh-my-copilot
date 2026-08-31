@@ -1,7 +1,7 @@
 /**
  * Custom Integration Presets
  *
- * Pre-configured templates for popular integrations like n8n, generic webhooks, etc.
+ * Pre-configured templates for popular integrations like OpenClaw, n8n, etc.
  */
 export interface PresetConfig {
     name: string;

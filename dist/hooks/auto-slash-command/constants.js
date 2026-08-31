@@ -16,14 +16,14 @@ export const SLASH_COMMAND_PATTERN = /^\/([a-zA-Z][\w-]*)\s*(.*)/;
  * (they have special handling elsewhere or are now skills with oh-my-copilot: prefix)
  */
 export const EXCLUDED_COMMANDS = new Set([
-    'ralph',
+    // ralph / ultraqa / learner were retired in 5.0.0; execute and verify cover them.
     'oh-my-copilot:ralplan',
-    'oh-my-copilot:ultraqa',
+    'oh-my-copilot:execute',
+    'oh-my-copilot:verify',
     'oh-my-copilot:skillify',
-    'oh-my-copilot:learner',
     'oh-my-copilot:plan',
     'oh-my-copilot:cancel',
-    // Copilot CLI built-in commands that shouldn't be expanded
+    // Claude Code built-in commands that shouldn't be expanded
     'help',
     'clear',
     'compact',

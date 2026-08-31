@@ -55,8 +55,4 @@ export declare function formatNotification(payload: NotificationPayload): string
  * Adaptive Card schema: https://adaptivecards.io/schemas/adaptive-card.json
  */
 export declare function formatTeamsAdaptiveCard(payload: NotificationPayload, tagList?: string[]): string;
-/**
- * Format notification message based on event type.
- * Returns a markdown-formatted string suitable for Discord/Telegram.
- */
 //# sourceMappingURL=formatter.d.ts.map

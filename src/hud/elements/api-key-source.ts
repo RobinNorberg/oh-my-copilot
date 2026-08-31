@@ -20,11 +20,9 @@ export type ApiKeySource = 'project' | 'global' | 'env';
  * Check whether a settings file defines ANTHROPIC_API_KEY in its env block.
  */
 function settingsFileHasApiKey(filePath: string): boolean {
-  // Normalize to forward slashes for cross-platform mock compatibility
-  const normalizedPath = filePath.replace(/\\/g, '/');
   try {
-    if (!existsSync(normalizedPath)) return false;
-    const content = readFileSync(normalizedPath, 'utf-8');
+    if (!existsSync(filePath)) return false;
+    const content = readFileSync(filePath, 'utf-8');
     const settings = JSON.parse(content);
     const env = settings?.env;
     if (typeof env !== 'object' || env === null) return false;

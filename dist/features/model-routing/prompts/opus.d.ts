@@ -22,7 +22,7 @@ export declare function adaptPromptForOpus(basePrompt: string): string;
 /**
  * Opus-specific delegation template
  */
-export declare const OPUS_DELEGATION_TEMPLATE = "## HIGH-TIER TASK DELEGATION\n\n**Model**: Copilot Opus (deep reasoning)\n**Expectations**: Thorough analysis, strategic thinking, edge case handling\n\n### Task\n{TASK}\n\n### Required Analysis Depth\n- Consider multiple solution approaches\n- Evaluate tradeoffs explicitly\n- Identify potential risks and mitigations\n- Provide clear, actionable recommendations with reasoning\n\n### Deliverables\n{DELIVERABLES}\n\n### Success Criteria\n{SUCCESS_CRITERIA}\n\n### Context\n{CONTEXT}\n\n---\nApply your full reasoning capabilities. Quality over speed.\n";
+export declare const OPUS_DELEGATION_TEMPLATE = "## HIGH-TIER TASK DELEGATION\n\n**Model**: Claude Opus (deep reasoning)\n**Expectations**: Thorough analysis, strategic thinking, edge case handling\n\n### Task\n{TASK}\n\n### Required Analysis Depth\n- Consider multiple solution approaches\n- Evaluate tradeoffs explicitly\n- Identify potential risks and mitigations\n- Provide clear, actionable recommendations with reasoning\n\n### Deliverables\n{DELIVERABLES}\n\n### Success Criteria\n{SUCCESS_CRITERIA}\n\n### Context\n{CONTEXT}\n\n---\nApply your full reasoning capabilities. Quality over speed.\n";
 /**
  * Opus debugging template
  */

@@ -13,11 +13,12 @@
  */
 
 import { randomUUID } from 'crypto';
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { resolveSessionStatePath, ensureSessionStateDir, getOmcRoot } from '../../lib/worktree-paths.js';
+import { clearStateFileLocked, clearStateFileLockedIf, writeStateFileLocked, writeStateFileLockedCreateIf, writeStateFileLockedIf } from '../../lib/mode-state-io.js';
 import { formatOmcCliInvocation } from '../../utils/omc-cli-rendering.js';
-import type { UserStory } from './prd.js';
+import { getPrdGoverningCriteriaRevision, readPrd, type UserStory } from './prd.js';
 import type { RalphCriticMode } from './loop.js';
 
 export interface VerificationState {
@@ -45,6 +46,8 @@ export interface VerificationState {
   critic_mode?: RalphCriticMode;
   /** Unique request id used to correlate approvals to the current verification attempt */
   request_id?: string;
+  /** Canonical criteria revision submitted to the reviewer for a story. */
+  criteria_revision?: string;
 }
 
 const DEFAULT_MAX_VERIFICATION_ATTEMPTS = 3;
@@ -113,8 +116,15 @@ export function readVerificationState(directory: string, sessionId?: string): Ve
   try {
     const state = JSON.parse(readFileSync(statePath, 'utf-8')) as VerificationState;
     if (!state.request_id) {
-      state.request_id = createVerificationRequestId();
-      writeVerificationState(directory, state, sessionId);
+      const requestId = createVerificationRequestId();
+      const result = writeStateFileLockedIf(
+        statePath,
+        current => !current.request_id,
+        current => ({ ...current, request_id: requestId }),
+      );
+      if (result === 'written') state.request_id = requestId;
+      else if (result === 'skipped') return readVerificationState(directory, sessionId);
+      else return null;
     }
     return state;
   } catch {
@@ -141,12 +151,7 @@ export function writeVerificationState(directory: string, state: VerificationSta
     }
   }
 
-  try {
-    writeFileSync(statePath, JSON.stringify(state, null, 2));
-    return true;
-  } catch {
-    return false;
-  }
+  return writeStateFileLocked(statePath, state as unknown as Record<string, unknown>);
 }
 
 /**
@@ -155,15 +160,34 @@ export function writeVerificationState(directory: string, state: VerificationSta
  */
 export function clearVerificationState(directory: string, sessionId?: string): boolean {
   const statePath = getVerificationStatePath(directory, sessionId);
-  if (existsSync(statePath)) {
-    try {
-      unlinkSync(statePath);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  return true;
+  return clearStateFileLocked(statePath);
+}
+
+/** Clear only the verification request whose approval was consumed. */
+export function consumeVerificationRequest(
+  directory: string,
+  requestId: string | undefined,
+  sessionId?: string,
+): boolean {
+  if (!requestId) return false;
+  return clearStateFileLockedIf(
+    getVerificationStatePath(directory, sessionId),
+    current => current.request_id === requestId,
+  ) === 'cleared';
+}
+
+/** Restore a consumed verification request only when no newer request exists. */
+export function restoreVerificationRequestIfAbsent(
+  directory: string,
+  state: VerificationState,
+  sessionId?: string,
+): boolean {
+  const result = writeStateFileLockedCreateIf(
+    getVerificationStatePath(directory, sessionId),
+    current => current === null,
+    () => state as unknown as Record<string, unknown>,
+  );
+  return result === 'written';
 }
 
 /**
@@ -187,10 +211,26 @@ export function startVerification(
     verification_scope: currentStory ? 'story' : 'completion',
     story_id: currentStory?.id,
     critic_mode: getCriticMode(criticMode),
-    request_id: createVerificationRequestId()
+    request_id: createVerificationRequestId(),
+    criteria_revision: currentStory?.governingCriteriaRevision
+      ?? (() => {
+        const prd = readPrd(directory, sessionId);
+        return prd ? getPrdGoverningCriteriaRevision(prd) : undefined;
+      })(),
   };
 
-  writeVerificationState(directory, state, sessionId);
+  if (sessionId) {
+    ensureSessionStateDir(sessionId, directory);
+  } else {
+    mkdirSync(getOmcRoot(directory), { recursive: true });
+  }
+  const statePath = getVerificationStatePath(directory, sessionId);
+  const result = writeStateFileLockedCreateIf(
+    statePath,
+    current => current === null,
+    () => state as unknown as Record<string, unknown>,
+  );
+  if (result === 'skipped') return readVerificationState(directory, sessionId) ?? state;
   return state;
 }
 
@@ -236,13 +276,21 @@ export function recordArchitectFeedback(
 export function getArchitectVerificationPrompt(state: VerificationState, currentStory?: UserStory): string {
   const criticLabel = getCriticLabel(state.critic_mode);
   const approvalTag = `<ralph-approved critic="${getCriticMode(state.critic_mode)}" request-id="${state.request_id}"${state.story_id ? ` story-id="${state.story_id}"` : ''}>VERIFIED_COMPLETE</ralph-approved>`;
+  const amendmentLedger = currentStory?.criterionAmendments?.length
+    ? `
+
+**Amended/Superseded Criteria (evidence ledger — original criteria retained):**
+${currentStory.criterionAmendments.map((a, i) => `${i + 1}. ~~${a.original}~~ — ${a.kind === 'replaced' ? `replaced by: ${a.replacement}` : 'superseded'} (reason: ${a.reason}; evidence: ${a.evidence}; authority: ${a.authority}; at: ${a.timestamp})`).join('\n')}
+Verify that each amendment is justified by its cited evidence and that the active criteria below are the ones that govern.
+`
+    : '';
   const storySection = currentStory ? `
 **Current Story: ${currentStory.id} - ${currentStory.title}**
 ${currentStory.description}
 
 **Acceptance Criteria to Verify:**
 ${currentStory.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}
-
+${amendmentLedger}
 IMPORTANT: This review gates Ralph's progression to the next story/complete state. Verify EACH acceptance criterion above is met. Do not verify based on general impressions — check each criterion individually with concrete evidence.
 ` : '';
 

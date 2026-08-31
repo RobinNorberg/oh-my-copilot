@@ -74,7 +74,7 @@ function textResult(text: string, isError = false): { content: Array<{ type: 'te
 
 /**
  * Find the status file for a job by provider and jobId.
- * Scans .omcp/prompts/ for files matching the naming convention.
+ * Scans .omg/prompts/ for files matching the naming convention.
  *
  * Handles 0/1/many matches:
  * - 0 matches: returns undefined
@@ -690,7 +690,6 @@ export function getJobManagementToolSchemas(_provider?: 'codex' | 'gemini') {
       name: 'wait_for_job',
       description:
         'Block (poll) until a background job reaches a terminal state (completed, failed, or timeout). Uses exponential backoff. Returns the response preview on success. WARNING: This tool blocks the MCP server for the duration of the poll. Prefer check_job_status for non-blocking status checks.',
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -710,7 +709,6 @@ export function getJobManagementToolSchemas(_provider?: 'codex' | 'gemini') {
       name: 'check_job_status',
       description:
         'Non-blocking status check for a background job. Returns current status, metadata, and error information if available.',
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -726,7 +724,6 @@ export function getJobManagementToolSchemas(_provider?: 'codex' | 'gemini') {
       name: 'kill_job',
       description:
         'Send a signal to a running background job. Marks the job as failed. Only works on jobs in spawned or running state.',
-      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
       inputSchema: {
         type: 'object' as const,
         properties: {
@@ -747,7 +744,6 @@ export function getJobManagementToolSchemas(_provider?: 'codex' | 'gemini') {
       name: 'list_jobs',
       description:
         'List background jobs for this provider. Filter by status and limit results. Results sorted newest first.',
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       inputSchema: {
         type: 'object' as const,
         properties: {

@@ -1,6 +1,4 @@
 import { describe, it, expect, afterEach } from 'vitest';
-
-const isWindows = process.platform === 'win32';
 import { spawnSync } from 'node:child_process';
 import {
   existsSync,
@@ -28,14 +26,14 @@ afterEach(() => {
   }
 });
 
-describe.skipIf(isWindows)('setup-progress.sh', () => {
+describe('setup-progress.sh', () => {
   it('writes setup completion metadata to COPILOT_CONFIG_DIR', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-setup-progress-'));
     tempRoots.push(root);
 
     const projectRoot = join(root, 'project');
     const homeRoot = join(root, 'home');
-    const configDir = join(root, 'custom-copilot');
+    const configDir = join(root, 'custom-claude');
     mkdirSync(projectRoot, { recursive: true });
     mkdirSync(homeRoot, { recursive: true });
 
@@ -84,19 +82,19 @@ describe.skipIf(isWindows)('setup-progress.sh', () => {
     const originalConfig = '{\n  "existing": true\n}\n';
     writeFileSync(configPath, originalConfig);
 
-    const result = spawnSync('/usr/bin/bash', [SCRIPT_PATH, 'complete', 'v9.9.9'], {
+    const result = spawnSync('/bin/bash', [SCRIPT_PATH, 'complete', 'v9.9.9'], {
       cwd: projectRoot,
       env: {
         ...process.env,
         HOME: homeRoot,
-        CLAUDE_CONFIG_DIR: configDir,
+        COPILOT_CONFIG_DIR: configDir,
         PATH: binDir,
       },
       encoding: 'utf-8',
     });
 
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('jq is required');
+    expect(`${result.stderr ?? ''}${result.stdout ?? ''}`).toContain('jq is required');
     expect(readFileSync(configPath, 'utf-8')).toBe(originalConfig);
   });
 });

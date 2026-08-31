@@ -1,9 +1,9 @@
 // src/team/unified-team.ts
 
 /**
- * Unified team member view across Copilot native and MCP workers.
+ * Unified team member view across Claude native and MCP workers.
  *
- * Merges Copilot CLI's native team config with MCP shadow registry
+ * Merges Claude Code's native team config with MCP shadow registry
  * to provide a single coherent view of all team members.
  */
 
@@ -27,7 +27,7 @@ export interface UnifiedTeamMember {
 }
 
 /**
- * Get all team members from both Copilot native teams and MCP workers.
+ * Get all team members from both Claude native teams and MCP workers.
  */
 export function getTeamMembers(
   teamName: string,
@@ -35,7 +35,7 @@ export function getTeamMembers(
 ): UnifiedTeamMember[] {
   const members: UnifiedTeamMember[] = [];
 
-  // 1. Read Copilot native members from config.json
+  // 1. Read Claude native members from config.json
   try {
     const configPath = join(getCopilotConfigDir(), 'teams', teamName, 'config.json');
     if (existsSync(configPath)) {
@@ -52,7 +52,7 @@ export function getTeamMembers(
             model: member.model || 'unknown',
             capabilities: getDefaultCapabilities('copilot-native'),
             joinedAt: member.joinedAt || 0,
-            status: 'active', // Copilot native members are managed by CC
+            status: 'active', // Claude native members are managed by CC
             currentTaskId: null,
           });
         }
@@ -83,7 +83,7 @@ export function getTeamMembers(
       else if (worker.agentType === 'tmux-copilot') backend = 'tmux-copilot';
       else if (worker.agentType === 'tmux-codex') backend = 'tmux-codex';
       else if (worker.agentType === 'tmux-gemini') backend = 'tmux-gemini';
-      else if (worker.agentType === 'tmux-cursor') backend = 'tmux-cursor';
+      else if (worker.agentType === 'tmux-antigravity') backend = 'tmux-antigravity';
       else backend = 'mcp-codex';
       const capabilities = getDefaultCapabilities(backend);
 

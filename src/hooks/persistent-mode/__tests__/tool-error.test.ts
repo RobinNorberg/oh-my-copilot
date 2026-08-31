@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { existsSync, readFileSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import {
   readLastToolError,
   clearToolErrorState,
@@ -27,8 +27,8 @@ vi.mock('fs', async () => {
 // Functions are now imported from ../index.js
 
 describe('readLastToolError', () => {
-  const testDir = '/test';
-  const errorPath = join(testDir, '.omcp', 'state', 'last-tool-error.json');
+  const testDir = resolve('/test');
+  const errorPath = join(testDir, '.omg', 'state', 'last-tool-error.json');
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -125,8 +125,8 @@ describe('readLastToolError', () => {
 });
 
 describe('clearToolErrorState', () => {
-  const testDir = '/test';
-  const errorPath = join(testDir, '.omcp', 'state', 'last-tool-error.json');
+  const testDir = resolve('/test');
+  const errorPath = join(testDir, '.omg', 'state', 'last-tool-error.json');
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -290,8 +290,8 @@ describe('Integration: Continuation message with tool error', () => {
   });
 
   it('continuation message includes error context when tool error present', () => {
-    const testDir = '/test';
-    const _errorPath = join(testDir, '.omcp', 'state', 'last-tool-error.json');
+    const testDir = resolve('/test');
+    const _errorPath = join(testDir, '.omg', 'state', 'last-tool-error.json');
     const recentError: ToolErrorState = {
       tool_name: 'Bash',
       error: 'Command not found: invalid-command',
@@ -316,7 +316,7 @@ describe('Integration: Continuation message with tool error', () => {
   });
 
   it('continuation message is normal when no tool error', () => {
-    const testDir = '/test';
+    const testDir = resolve('/test');
 
     (existsSync as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
@@ -331,8 +331,8 @@ describe('Integration: Continuation message with tool error', () => {
   });
 
   it('error state is cleared after reading', () => {
-    const testDir = '/test';
-    const errorPath = join(testDir, '.omcp', 'state', 'last-tool-error.json');
+    const testDir = resolve('/test');
+    const errorPath = join(testDir, '.omg', 'state', 'last-tool-error.json');
     const recentError: ToolErrorState = {
       tool_name: 'Bash',
       error: 'Some error',

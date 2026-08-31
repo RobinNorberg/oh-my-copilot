@@ -1,14 +1,14 @@
 /**
  * Oh-My-Copilot
  *
- * A multi-agent orchestration system for the Copilot Agent SDK.
- * Inspired by oh-my-opencode, reimagined for Copilot CLI.
+ * A multi-agent orchestration library and Claude Code plugin runtime with Agent SDK helpers.
+ * Inspired by oh-my-opencode, reimagined for Claude Code.
  *
  * Main features:
  * - OMC: Primary orchestrator that delegates to specialized subagents
  * - Parallel execution: Background agents run concurrently
  * - LSP/AST tools: IDE-like capabilities for agents
- * - Context management: Auto-injection from AGENTS.md/copilot-instructions.md
+ * - Context management: Auto-injection from AGENTS.md/CLAUDE.md
  * - Continuation enforcement: Ensures tasks complete before stopping
  * - Magic keywords: Special triggers for enhanced behaviors
  */
@@ -70,6 +70,28 @@ export * from './shared/index.js';
 // Hooks module exports
 export * from './hooks/index.js';
 
+
+// Team recovery and worker checkpoint public clients.
+export {
+  recoverDeadWorkerV2,
+  readRecoverDeadWorkerV2Outcome,
+  readRecoverDeadWorkerV2Result,
+  teamPublishTaskRecoveryCheckpoint,
+} from './team/index.js';
+export type {
+  RecoverDeadWorkerV2Options,
+  RecoverDeadWorkerV2Error,
+  RecoverDeadWorkerV2Result,
+  RecoverDeadWorkerV2Success,
+  RecoverDeadWorkerV2Failure,
+  PublishTaskRecoveryCheckpointInput,
+  PublishTaskRecoveryCheckpointResult,
+} from './team/index.js';
+export type {
+  RecoveryDurableOutcome,
+  RecoveryOutcomePending,
+  RecoveryOutcomeFinal,
+} from './team/index.js';
 // Features module exports (boulder-state, context-injector)
 export {
   // Boulder State
@@ -111,6 +133,7 @@ export {
   type InjectionStrategy,
   type InjectionResult
 } from './features/index.js';
+export { searchSessionHistory, parseSinceSpec, type SessionHistoryMatch, type SessionHistorySearchOptions, type SessionHistorySearchReport } from './features/index.js';
 
 // Agent module exports (modular agent system)
 export {
@@ -146,6 +169,8 @@ export {
   exploreAgent,
   EXPLORE_PROMPT_METADATA,
   DOCUMENT_SPECIALIST_PROMPT_METADATA,
+  tracerAgent,
+  TRACER_PROMPT_METADATA,
   executorAgent,
   EXECUTOR_PROMPT_METADATA,
   designerAgent,
@@ -213,7 +238,7 @@ export interface OmcOptions {
  * Result of creating a OMC session
  */
 export interface OmcSession {
-  /** The query options to pass to Copilot Agent SDK */
+  /** The query options to pass to Claude Agent SDK */
   queryOptions: {
     options: {
       systemPrompt: string;
@@ -240,18 +265,24 @@ export interface OmcSession {
 /**
  * Create a OMC orchestration session
  *
- * This prepares all the configuration and options needed
- * to run a query with the Copilot Agent SDK.
+ * Prepare configuration and options needed to run a local Node.js query
+ * with the Claude Agent SDK. This helper does not install or drive the
+ * interactive Claude Code plugin UI.
  *
  * @example
  * ```typescript
  * import { createOmcSession } from 'oh-my-copilot';
+ * import { query } from '@anthropic-ai/claude-agent-sdk';
+ *
  * const session = createOmcSession();
  *
- * // Use the session's processed prompt and MCP tool servers
- * const prompt = session.processPrompt("ultrawork refactor the authentication module");
- * const { mcpServers, allowedTools } = session.queryOptions.options;
- * console.log(prompt, mcpServers, allowedTools);
+ * // Use with Claude Agent SDK
+ * for await (const message of query({
+ *   prompt: session.processPrompt("analyze the authentication module"),
+ *   ...session.queryOptions
+ * })) {
+ *   console.log(message);
+ * }
  * ```
  */
 export function createOmcSession(options?: OmcOptions): OmcSession {

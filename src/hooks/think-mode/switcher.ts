@@ -2,7 +2,7 @@
  * Think Mode Switcher
  *
  * Handles model switching to high-reasoning variants when think mode is activated.
- * Supports Copilot, GPT, and Gemini model families.
+ * Supports Claude, GPT, and Gemini model families.
  *
  * Ported from oh-my-opencode's think-mode hook.
  */
@@ -10,7 +10,7 @@
 import type { ThinkingConfig } from './types.js';
 import {
   COPILOT_FAMILY_DEFAULTS,
-  COPILOT_FAMILY_HIGH_VARIANTS,
+  CLAUDE_FAMILY_HIGH_VARIANTS,
   getClaudeHighVariantFromModel,
 } from '../../config/models.js';
 
@@ -39,13 +39,13 @@ function normalizeModelId(modelId: string): string {
 
 /**
  * Map of model IDs to their high-reasoning variants.
- * Copilot variants come from centralized family defaults.
+ * Claude variants come from centralized family defaults.
  */
 const HIGH_VARIANT_MAP: Record<string, string> = {
-  // Copilot canonical families
-  [COPILOT_FAMILY_DEFAULTS.SONNET]: COPILOT_FAMILY_HIGH_VARIANTS.SONNET,
-  [COPILOT_FAMILY_DEFAULTS.OPUS]: COPILOT_FAMILY_HIGH_VARIANTS.OPUS,
-  [COPILOT_FAMILY_DEFAULTS.HAIKU]: COPILOT_FAMILY_HIGH_VARIANTS.HAIKU,
+  // Claude canonical families
+  [COPILOT_FAMILY_DEFAULTS.SONNET]: CLAUDE_FAMILY_HIGH_VARIANTS.SONNET,
+  [COPILOT_FAMILY_DEFAULTS.OPUS]: CLAUDE_FAMILY_HIGH_VARIANTS.OPUS,
+  [COPILOT_FAMILY_DEFAULTS.HAIKU]: CLAUDE_FAMILY_HIGH_VARIANTS.HAIKU,
   // GPT-4
   'gpt-4': 'gpt-4-high',
   'gpt-4-turbo': 'gpt-4-turbo-high',
@@ -117,11 +117,11 @@ export function getHighVariant(modelId: string): string | null {
     return null;
   }
 
-  // Resolve Copilot families to canonical high variants.
+  // Resolve Claude families to canonical high variants.
   const claudeHighBase = getClaudeHighVariantFromModel(base);
   if (claudeHighBase) return prefix + claudeHighBase;
 
-  // Look up exact high variant for non-Copilot models
+  // Look up exact high variant for non-Claude models
   const highBase = HIGH_VARIANT_MAP[base];
   if (!highBase) return null;
 
@@ -145,7 +145,7 @@ function resolveProvider(providerId: string, modelId: string): string {
   // GitHub Copilot is a proxy - infer actual provider from model name
   if (providerId === 'github-copilot') {
     const modelLower = modelId.toLowerCase();
-    if (modelLower.includes('claude') || modelLower.includes('gh')) return 'anthropic';
+    if (modelLower.includes('claude')) return 'anthropic';
     if (modelLower.includes('gemini')) return 'google';
     if (modelLower.includes('gpt') || modelLower.includes('o1') || modelLower.includes('o3')) {
       return 'openai';
@@ -199,8 +199,8 @@ export function getThinkingConfig(
 }
 
 /**
- * Get Copilot-specific thinking configuration.
- * This is used by Copilot CLI for extended thinking.
+ * Get Claude-specific thinking configuration.
+ * This is used by Claude Code for extended thinking.
  */
 export function getClaudeThinkingConfig(budgetTokens: number = 64000) {
   return {

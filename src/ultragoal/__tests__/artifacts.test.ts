@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { execSync } from 'node:child_process';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
+import { clearWorktreeCache } from '../../lib/worktree-paths.js';
 import {
   addUltragoalGoal,
   buildClaudeGoalInstruction,
@@ -15,9 +18,21 @@ import {
 
 async function withTempRepo<T>(run: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'omc-ultragoal-'));
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalStateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = cwd;
+  process.env.USERPROFILE = cwd;
+  delete process.env.OMC_STATE_DIR;
   try {
     return await run(cwd);
   } finally {
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+    if (originalStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = originalStateDir;
     await rm(cwd, { recursive: true, force: true });
   }
 }
@@ -31,7 +46,7 @@ function cleanQualityGate(): object {
 }
 
 describe('ultragoal artifacts', () => {
-  it('creates brief, goals, and ledger artifacts under .omcp/ultragoal', async () => {
+  it('creates brief, goals, and ledger artifacts under .omg/ultragoal', async () => {
     await withTempRepo(async (cwd) => {
       const plan = await createUltragoalPlan(cwd, {
         brief: '- Build the CLI\n- Add tests\n- Write docs',
@@ -44,12 +59,12 @@ describe('ultragoal artifacts', () => {
       expect(plan.claudeObjective ?? '').toMatch(/G001-build-the-cli/);
       expect(plan.goals[0]?.id).toBe('G001-build-the-cli');
       expect(plan.goals[0]?.status).toBe('pending');
-      expect(plan.briefPath).toBe('.omcp/ultragoal/brief.md');
-      expect(plan.goalsPath).toBe('.omcp/ultragoal/goals.json');
-      expect(plan.ledgerPath).toBe('.omcp/ultragoal/ledger.jsonl');
-      expect(await readFile(join(cwd, '.omcp/ultragoal/brief.md'), 'utf-8')).toBe('- Build the CLI\n- Add tests\n- Write docs\n');
+      expect(plan.briefPath).toBe('.omg/ultragoal/brief.md');
+      expect(plan.goalsPath).toBe('.omg/ultragoal/goals.json');
+      expect(plan.ledgerPath).toBe('.omg/ultragoal/ledger.jsonl');
+      expect(await readFile(join(cwd, '.omg/ultragoal/brief.md'), 'utf-8')).toBe('- Build the CLI\n- Add tests\n- Write docs\n');
 
-      const ledger = await readFile(join(cwd, '.omcp/ultragoal/ledger.jsonl'), 'utf-8');
+      const ledger = await readFile(join(cwd, '.omg/ultragoal/ledger.jsonl'), 'utf-8');
       expect(ledger).toMatch(/"event":"plan_created"/);
     });
   });
@@ -74,8 +89,10 @@ describe('ultragoal artifacts', () => {
       expect(resumed.resumed).toBe(true);
 
       const instruction = buildClaudeGoalInstruction(started.goal!, started.plan);
-      expect(instruction).toMatch(/active Claude \/goal condition/i);
+      expect(instruction).toMatch(/first confirm the active Claude \/goal for this session/i);
       expect(instruction).toMatch(/invoke \/goal/i);
+      expect(instruction).toMatch(/ask the user to type it/i);
+      expect(instruction).toMatch(/does not satisfy the PreToolUse \/goal guard/i);
       expect(instruction).toMatch(/Claude \/goal = the whole ultragoal run/i);
       expect(instruction).toMatch(/same aggregate objective as active/i);
       expect(instruction).toMatch(/do not clear the \/goal yet/i);
@@ -87,6 +104,41 @@ describe('ultragoal artifacts', () => {
       expect(instruction).not.toMatch(/create_goal/);
       expect(instruction).not.toMatch(/update_goal/);
       expect(instruction).not.toMatch(/\bcodex\b/i);
+    });
+  });
+
+  it('targets named goals, preserves attempts on resume, and rejects conflicting or ineligible ids', async () => {
+    await withTempRepo(async (cwd) => {
+      await createUltragoalPlan(cwd, {
+        brief: 'brief',
+        goals: [
+          { title: 'First', objective: 'first' },
+          { title: 'Second', objective: 'second' },
+          { title: 'Third', objective: 'third' },
+        ],
+      });
+      const named = await startNextUltragoal(cwd, { goalId: 'G003-third' });
+      expect(named.goal?.id).toBe('G003-third');
+      expect(named.goal?.attempt).toBe(1);
+      const resumed = await startNextUltragoal(cwd, { goalId: 'G003-third' });
+      expect(resumed.resumed).toBe(true);
+      expect(resumed.goal?.attempt).toBe(1);
+      await expect(startNextUltragoal(cwd, { goalId: 'G002-second' })).rejects.toThrow(/active goal G003-third/);
+      const unchanged = await readUltragoalPlan(cwd);
+      expect(unchanged.activeGoalId).toBe('G003-third');
+      expect(unchanged.goals.find((goal) => goal.id === 'G002-second')?.status).toBe('pending');
+    });
+  });
+
+  it('requires explicit retry for a named failed goal', async () => {
+    await withTempRepo(async (cwd) => {
+      await createUltragoalPlan(cwd, { brief: 'brief', goals: [{ title: 'First', objective: 'first' }] });
+      const started = await startNextUltragoal(cwd);
+      await checkpointUltragoal(cwd, { goalId: started.goal!.id, status: 'failed', evidence: 'failed' });
+      await expect(startNextUltragoal(cwd, { goalId: started.goal!.id })).rejects.toThrow(/without --retry-failed/);
+      const retried = await startNextUltragoal(cwd, { goalId: started.goal!.id, retryFailed: true });
+      expect(retried.goal?.id).toBe(started.goal!.id);
+      expect(retried.goal?.attempt).toBe(2);
     });
   });
 
@@ -140,7 +192,7 @@ describe('ultragoal artifacts', () => {
 
       const plan = await readUltragoalPlan(cwd);
       expect(plan.goals[0]?.evidence).toBe('unit tests passed');
-      const ledger = await readFile(join(cwd, '.omcp/ultragoal/ledger.jsonl'), 'utf-8');
+      const ledger = await readFile(join(cwd, '.omg/ultragoal/ledger.jsonl'), 'utf-8');
       expect(ledger).toMatch(/"event":"goal_completed"/);
       expect(ledger).toMatch(/"event":"goal_failed"/);
       expect(ledger).toMatch(/"event":"goal_retried"/);
@@ -164,7 +216,7 @@ describe('ultragoal artifacts', () => {
       const reconciled = await checkpointUltragoal(cwd, {
         goalId: first.goal!.id,
         status: 'complete',
-        evidence: 'Actual planned work done for .omcp/ultragoal/goals.json G001-micro-goal-1; validation complete; reviews clean.',
+        evidence: 'Actual planned work done for .omg/ultragoal/goals.json G001-micro-goal-1; validation complete; reviews clean.',
         claudeGoal: { goal: { objective: taskObjective, status: 'complete' } },
         qualityGate: cleanQualityGate(),
         now: new Date('2026-05-04T10:04:00Z'),
@@ -182,7 +234,7 @@ describe('ultragoal artifacts', () => {
       expect(next.goal).toBeNull();
       expect(next.done).toBe(true);
 
-      const ledger = await readFile(join(cwd, '.omcp/ultragoal/ledger.jsonl'), 'utf-8');
+      const ledger = await readFile(join(cwd, '.omg/ultragoal/ledger.jsonl'), 'utf-8');
       expect(ledger).toMatch(/microgoal ledger progress remains independent/);
       expect((ledger.match(/"event":"aggregate_completed"/g) ?? []).length).toBe(1);
       expect((ledger.match(/"event":"goal_completed"/g) ?? []).length).toBe(0);
@@ -205,7 +257,7 @@ describe('ultragoal artifacts', () => {
         checkpointUltragoal(cwd, {
           goalId: first.goal!.id,
           status: 'complete',
-          evidence: 'Actual planned work done for .omcp/ultragoal/goals.json G001-first; validation complete; reviews clean.',
+          evidence: 'Actual planned work done for .omg/ultragoal/goals.json G001-first; validation complete; reviews clean.',
           claudeGoal: { goal: { objective: 'Unrelated completed task', status: 'complete' } },
           qualityGate: cleanQualityGate(),
         }),
@@ -225,7 +277,7 @@ describe('ultragoal artifacts', () => {
         checkpointUltragoal(cwd, {
           goalId: first.goal!.id,
           status: 'complete',
-          evidence: 'Actual planned work done for .omcp/ultragoal/goals.json G001-first; validation complete; reviews clean.',
+          evidence: 'Actual planned work done for .omg/ultragoal/goals.json G001-first; validation complete; reviews clean.',
           claudeGoal: { goal: { objective: taskObjective, status: 'complete' } },
         }),
       ).rejects.toThrow(/quality-gate-json|quality gate/i);
@@ -265,7 +317,7 @@ describe('ultragoal artifacts', () => {
         checkpointUltragoal(cwd, {
           goalId: 'G002-second',
           status: 'complete',
-          evidence: 'Actual planned work done for .omcp/ultragoal/goals.json G002-second; validation complete; reviews clean.',
+          evidence: 'Actual planned work done for .omg/ultragoal/goals.json G002-second; validation complete; reviews clean.',
           claudeGoal: { goal: { objective: taskObjective, status: 'complete' } },
           qualityGate: cleanQualityGate(),
         }),
@@ -277,7 +329,7 @@ describe('ultragoal artifacts', () => {
       expect(plan.goals.find((goal) => goal.id === 'G001-first')?.status).toBe('in_progress');
       expect(plan.goals.find((goal) => goal.id === 'G002-second')?.status).toBe('pending');
 
-      const ledger = await readFile(join(cwd, '.omcp/ultragoal/ledger.jsonl'), 'utf-8');
+      const ledger = await readFile(join(cwd, '.omg/ultragoal/ledger.jsonl'), 'utf-8');
       expect((ledger.match(/"event":"aggregate_completed"/g) ?? []).length).toBe(0);
     });
   });
@@ -327,12 +379,14 @@ describe('ultragoal artifacts', () => {
       });
       delete created.claudeGoalMode;
       delete created.claudeObjective;
-      await writeFile(join(cwd, '.omcp/ultragoal/goals.json'), `${JSON.stringify(created, null, 2)}\n`);
+      await writeFile(join(cwd, '.omg/ultragoal/goals.json'), `${JSON.stringify(created, null, 2)}\n`);
 
       const first = await startNextUltragoal(cwd);
       const instruction = buildClaudeGoalInstruction(first.goal!, first.plan);
       expect(instruction).toMatch(/Ultragoal active-goal handoff/);
       expect(instruction).toMatch(/fresh Claude Code session/);
+      expect(instruction).toMatch(/ask the user to type it/i);
+      expect(instruction).toMatch(/does not satisfy the PreToolUse \/goal guard/i);
 
       await checkpointUltragoal(cwd, {
         goalId: first.goal!.id,
@@ -364,7 +418,7 @@ describe('ultragoal artifacts', () => {
       expect(added.goal.status).toBe('pending');
       expect(added.plan.claudeObjective).toBe(objective);
 
-      const ledger = await readFile(join(cwd, '.omcp/ultragoal/ledger.jsonl'), 'utf-8');
+      const ledger = await readFile(join(cwd, '.omg/ultragoal/ledger.jsonl'), 'utf-8');
       expect(ledger).toMatch(/"event":"goal_added"/);
     });
   });
@@ -394,7 +448,7 @@ describe('ultragoal artifacts', () => {
       const next = await startNextUltragoal(cwd);
       expect(next.goal?.id).toBe(result.addedGoal.id);
 
-      const ledger = await readFile(join(cwd, '.omcp/ultragoal/ledger.jsonl'), 'utf-8');
+      const ledger = await readFile(join(cwd, '.omg/ultragoal/ledger.jsonl'), 'utf-8');
       expect(ledger).toMatch(/"event":"final_review_failed"/);
       expect(ledger).toMatch(/"event":"goal_review_blocked"/);
     });
@@ -475,7 +529,7 @@ describe('ultragoal artifacts', () => {
       });
       const plan = await readUltragoalPlan(cwd);
       expect(isUltragoalDone(plan)).toBe(true);
-      const ledger = await readFile(join(cwd, '.omcp/ultragoal/ledger.jsonl'), 'utf-8');
+      const ledger = await readFile(join(cwd, '.omg/ultragoal/ledger.jsonl'), 'utf-8');
       expect(ledger).toMatch(/"qualityGate"/);
       expect(ledger).toMatch(/"aiSlopCleaner"/);
       expect(ledger).toMatch(/"codeReview"/);
@@ -506,7 +560,7 @@ describe('ultragoal artifacts', () => {
       expect(blocked.goals[0]?.failureReason).toBeUndefined();
       expect(blocked.goals[0]?.failedAt).toBeUndefined();
 
-      const ledger = await readFile(join(cwd, '.omcp/ultragoal/ledger.jsonl'), 'utf-8');
+      const ledger = await readFile(join(cwd, '.omg/ultragoal/ledger.jsonl'), 'utf-8');
       expect(ledger).toMatch(/"event":"goal_blocked"/);
       expect(ledger).toMatch(/completed aggregate Claude \/goal blocks new \/goal/);
     });
@@ -562,6 +616,113 @@ describe('ultragoal artifacts', () => {
           claudeGoal: { goal: { objective: first.goal!.objective, status: 'complete' } },
         }),
       ).rejects.toThrow(/different completed legacy Claude goal/);
+    });
+  });
+
+  describe('plan-id support (multi-plan parallelism)', () => {
+    it('writes legacy paths when neither planId nor autoPlanId is set', async () => {
+      await withTempRepo(async (cwd) => {
+        const plan = await createUltragoalPlan(cwd, { brief: '- thing' });
+        expect(plan.planId).toBeUndefined();
+        expect(plan.goalsPath).toBe('.omg/ultragoal/goals.json');
+      });
+    });
+
+    it('writes under plans/{planId}/ when --plan-id is explicit', async () => {
+      await withTempRepo(async (cwd) => {
+        const plan = await createUltragoalPlan(cwd, { brief: '- thing', planId: 'feature-a' });
+        expect(plan.planId).toBe('feature-a');
+        expect(plan.goalsPath).toBe('.omg/ultragoal/plans/feature-a/goals.json');
+        expect(plan.briefPath).toBe('.omg/ultragoal/plans/feature-a/brief.md');
+        expect(plan.ledgerPath).toBe('.omg/ultragoal/plans/feature-a/ledger.jsonl');
+        expect(await readFile(join(cwd, '.omg/ultragoal/plans/feature-a/goals.json'), 'utf-8')).toMatch(/"planId": "feature-a"/);
+      });
+    });
+
+    it('autoPlanId generates {ts}-{slug} and stamps the plan', async () => {
+      await withTempRepo(async (cwd) => {
+        const plan = await createUltragoalPlan(cwd, { brief: 'Migrate the auth subsystem to OAuth', autoPlanId: true, now: new Date(1716393600000) });
+        expect(plan.planId).toMatch(/^1716393600000-migrate-the-auth-subsystem-to-oauth$/);
+        expect(plan.goalsPath).toContain('plans/1716393600000-migrate-the-auth-subsystem-to-oauth/goals.json');
+      });
+    });
+
+    it('rejects both --plan-id and --auto-plan-id', async () => {
+      await withTempRepo(async (cwd) => {
+        await expect(
+          createUltragoalPlan(cwd, { brief: 'x', planId: 'a', autoPlanId: true }),
+        ).rejects.toThrow(/either --plan-id or --auto-plan-id/);
+      });
+    });
+
+    it('two parallel plans share .omg/ultragoal/ without colliding', async () => {
+      await withTempRepo(async (cwd) => {
+        const a = await createUltragoalPlan(cwd, { brief: '- A1\n- A2', planId: 'session-a' });
+        const b = await createUltragoalPlan(cwd, { brief: '- B1\n- B2', planId: 'session-b' });
+        expect(a.goalsPath).toBe('.omg/ultragoal/plans/session-a/goals.json');
+        expect(b.goalsPath).toBe('.omg/ultragoal/plans/session-b/goals.json');
+        const readA = await readUltragoalPlan(cwd, 'session-a');
+        const readB = await readUltragoalPlan(cwd, 'session-b');
+        expect(readA.goals.length).toBe(2);
+        expect(readB.goals.length).toBe(2);
+        expect(readA.goals[0]!.id).toBe('G001-a1');
+        expect(readB.goals[0]!.id).toBe('G001-b1');
+      });
+    });
+
+    it('checkpoints route to the correct plan ledger', async () => {
+      await withTempRepo(async (cwd) => {
+        await createUltragoalPlan(cwd, { brief: '- Just one story', planId: 'p1' });
+        const start = await startNextUltragoal(cwd, { planId: 'p1' });
+        const aggregateObjective = start.plan.claudeObjective!;
+        await checkpointUltragoal(cwd, {
+          planId: 'p1',
+          goalId: start.goal!.id,
+          status: 'complete',
+          evidence: 'planned work done; tests passed clean; review APPROVED CLEAR',
+          claudeGoal: { goal: { objective: aggregateObjective, status: 'complete' } },
+          qualityGate: cleanQualityGate(),
+        });
+        const ledger = await readFile(join(cwd, '.omg/ultragoal/plans/p1/ledger.jsonl'), 'utf-8');
+        expect(ledger).toMatch(/"event":"plan_created"/);
+        expect(ledger).toMatch(/"event":"goal_started"/);
+        expect(ledger).toMatch(/"event":(?:"aggregate_completed"|"goal_completed")/);
+      });
+    });
+
+    it('rejects invalid plan-id with bad chars', async () => {
+      await withTempRepo(async (cwd) => {
+        await expect(
+          createUltragoalPlan(cwd, { brief: 'x', planId: '../escape' }),
+        ).rejects.toThrow(/Invalid plan id/);
+      });
+    });
+  });
+
+  describe('multi-repo workspace anchor', () => {
+    it('writes artifacts to the workspace anchor .omg/ when .omc-workspace marker exists in a parent dir', async () => {
+      const workspaceRoot = await mkdtemp(join(homedir(), 'omc-workspace-anchor-'));
+      try {
+        // Create workspace marker so getOmcRoot() anchors to workspaceRoot
+        writeFileSync(join(workspaceRoot, '.omc-workspace'), '{}');
+
+        // Create a sub-git-repo inside the workspace
+        const subDir = join(workspaceRoot, 'sub');
+        mkdirSync(subDir, { recursive: true });
+        execSync('git init', { cwd: subDir, stdio: 'pipe' });
+
+        // Clear the LRU caches so our new directories are picked up
+        clearWorktreeCache();
+
+        await createUltragoalPlan(subDir, { brief: 'test', planId: 'p1' });
+
+        // Artifacts must land in the workspace anchor, not in the sub-git-repo
+        expect(existsSync(join(workspaceRoot, '.omg', 'ultragoal', 'plans', 'p1', 'goals.json'))).toBe(true);
+        expect(existsSync(join(subDir, '.omg', 'ultragoal'))).toBe(false);
+      } finally {
+        clearWorktreeCache();
+        await rm(workspaceRoot, { recursive: true, force: true });
+      }
     });
   });
 });

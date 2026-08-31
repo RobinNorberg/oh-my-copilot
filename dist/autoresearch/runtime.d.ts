@@ -112,7 +112,7 @@ export declare function getAutoresearchMissionArtifactLayout(projectRoot: string
 export declare function buildAutoresearchRunTag(date?: Date): string;
 export declare function assertResetSafeWorktree(worktreePath: string, allowedDirtyPaths?: readonly string[]): void;
 /**
- * Assert no exclusive mode is already active (ralph, ultrawork, autopilot).
+ * Assert no exclusive mode is already active (ralph, autopilot).
  * Mirrors OMX assertModeStartAllowed semantics using OMC mode-state-io.
  */
 export declare function assertModeStartAllowed(mode: ExecutionMode, projectRoot: string): Promise<void>;

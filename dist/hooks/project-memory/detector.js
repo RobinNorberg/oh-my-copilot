@@ -158,10 +158,12 @@ async function detectBuildInfo(projectRoot) {
             devCommand = 'cargo run';
     }
     // Check Makefile
-    if (await fileExists(path.join(projectRoot, 'Makefile'))) {
-        if (!buildCommand)
+    const makefilePath = path.join(projectRoot, 'Makefile');
+    if (await fileExists(makefilePath)) {
+        const makeTargets = await detectMakefileTargets(makefilePath);
+        if (!buildCommand && makeTargets.has('build'))
             buildCommand = 'make build';
-        if (!testCommand)
+        if (!testCommand && makeTargets.has('test'))
             testCommand = 'make test';
     }
     // Check pyproject.toml
@@ -337,6 +339,32 @@ async function fileExists(filePath) {
     }
 }
 /**
+ * Helper: Detect explicit Makefile targets.
+ */
+async function detectMakefileTargets(filePath) {
+    const targets = new Set();
+    try {
+        const content = await fs.readFile(filePath, 'utf-8');
+        for (const line of content.split(/\r?\n/)) {
+            if (!line.trim() || line.startsWith('\t') || line.trimStart().startsWith('#')) {
+                continue;
+            }
+            const match = line.match(/^([^:=#\s][^:=#]*?)\s*:(?![=:])/);
+            if (!match) {
+                continue;
+            }
+            for (const target of match[1].trim().split(/\s+/)) {
+                if (target)
+                    targets.add(target);
+            }
+        }
+    }
+    catch (_error) {
+        // Skip unreadable Makefiles
+    }
+    return targets;
+}
+/**
  * Helper: Extract version from config file
  */
 async function extractVersion(filePath, _language) {
@@ -464,6 +492,7 @@ async function detectGitBranch(projectRoot) {
         // Get default branch
         const { stdout } = await execFileAsync('git', ['symbolic-ref', 'refs/remotes/origin/HEAD'], {
             cwd: projectRoot,
+            windowsHide: true,
         });
         const match = stdout.trim().match(/refs\/remotes\/origin\/(.+)/);
         if (match) {

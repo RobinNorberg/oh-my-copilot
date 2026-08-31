@@ -1,13 +1,13 @@
 /**
  * Rate Limit Wait Feature
  *
- * Auto-resume Copilot CLI sessions when rate limits reset.
+ * Auto-resume Claude Code sessions when rate limits reset.
  *
  * Usage:
  *   omc wait status         - Show current rate limit status
  *   omc wait daemon start   - Start the background daemon
  *   omc wait daemon stop    - Stop the daemon
- *   omc wait detect         - Scan for blocked Copilot CLI sessions
+ *   omc wait detect         - Scan for blocked Claude Code sessions
  */
 
 // Type exports

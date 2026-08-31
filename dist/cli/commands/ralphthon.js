@@ -1,23 +1,23 @@
 /**
- * omcp ralphthon CLI subcommand
+ * omc ralphthon CLI subcommand
  *
  * Autonomous hackathon lifecycle:
- *   omcp ralphthon "task"                  Start new ralphthon session
- *   omcp ralphthon --resume                Resume existing session
- *   omcp ralphthon --skip-interview "task" Skip deep-interview, use task directly
- *   omcp ralphthon --max-waves 5           Set max hardening waves
- *   omcp ralphthon --poll-interval 60      Set poll interval in seconds
+ *   omc ralphthon "task"                  Start new ralphthon session
+ *   omc ralphthon --resume                Resume existing session
+ *   omc ralphthon --skip-interview "task" Skip deep-interview, use task directly
+ *   omc ralphthon --max-waves 5           Set max hardening waves
+ *   omc ralphthon --poll-interval 60      Set poll interval in seconds
  */
-import chalk from 'chalk';
-import { tmuxShell } from '../tmux-utils.js';
-import { existsSync } from 'fs';
-import { readRalphthonPrd, readRalphthonState, writeRalphthonState, clearRalphthonState, initOrchestrator, startOrchestratorLoop, formatRalphthonStatus, getRalphthonPrdPath, initRalphthonPrd, sendKeysToPane, } from '../../ralphthon/index.js';
-import { RALPHTHON_DEFAULTS } from '../../ralphthon/types.js';
+import chalk from "chalk";
+import { tmuxShell } from "../../cli/tmux-utils.js";
+import { existsSync } from "fs";
+import { readRalphthonPrd, readRalphthonState, writeRalphthonState, clearRalphthonState, initOrchestrator, startOrchestratorLoop, formatRalphthonStatus, getRalphthonPrdPath, initRalphthonPrd, sendKeysToPane, } from "../../ralphthon/index.js";
+import { RALPHTHON_DEFAULTS } from "../../ralphthon/types.js";
 // ============================================================================
 // Help Text
 // ============================================================================
 const RALPHTHON_HELP = `
-Usage: omcp ralphthon [options] [task]
+Usage: omc ralphthon [options] [task]
 
 Autonomous hackathon lifecycle mode.
 Generates PRD via deep-interview, executes all tasks with ralph loop,
@@ -31,10 +31,10 @@ Options:
   --help, -h            Show this help
 
 Examples:
-  omcp ralphthon "Build a REST API for user management"
-  omcp ralphthon --skip-interview "Implement auth middleware"
-  omcp ralphthon --resume
-  omcp ralphthon --max-waves 5 --poll-interval 60 "Add caching layer"
+  omc ralphthon "Build a REST API for user management"
+  omc ralphthon --skip-interview "Implement auth middleware"
+  omc ralphthon --resume
+  omc ralphthon --max-waves 5 --poll-interval 60 "Add caching layer"
 `;
 // ============================================================================
 // Argument Parsing
@@ -53,38 +53,38 @@ export function parseRalphthonArgs(args) {
     for (let i = 0; i < args.length; i++) {
         const arg = args[i];
         switch (arg) {
-            case '--resume':
+            case "--resume":
                 options.resume = true;
                 break;
-            case '--skip-interview':
+            case "--skip-interview":
                 options.skipInterview = true;
                 break;
-            case '--max-waves': {
+            case "--max-waves": {
                 const val = parseInt(args[++i], 10);
                 if (!isNaN(val) && val > 0)
                     options.maxWaves = val;
                 break;
             }
-            case '--poll-interval': {
+            case "--poll-interval": {
                 const val = parseInt(args[++i], 10);
                 if (!isNaN(val) && val > 0)
                     options.pollInterval = val;
                 break;
             }
-            case '--help':
-            case '-h':
+            case "--help":
+            case "-h":
                 console.log(RALPHTHON_HELP);
                 process.exit(0);
                 break;
             default:
-                if (!arg.startsWith('--')) {
+                if (!arg.startsWith("--")) {
                     positional.push(arg);
                 }
                 break;
         }
     }
     if (positional.length > 0) {
-        options.task = positional.join(' ');
+        options.task = positional.join(" ");
     }
     return options;
 }
@@ -103,7 +103,7 @@ export function buildRalphthonInterviewPrompt(task, options) {
     const sanitizedTask = task.replace(/[\r\n\0]+/g, " ").trim();
     return `/deep-interview ${sanitizedTask}
 
-After the interview, generate a ralphthon-prd.json file in .omcp/ with this structure:
+After the interview, generate a ralphthon-prd.json file in .omg/ with this structure:
 {
   "project": "<project name>",
   "branchName": "<branch>",
@@ -161,34 +161,34 @@ function createEventLogger() {
     return (event) => {
         const ts = new Date().toLocaleTimeString();
         switch (event.type) {
-            case 'task_injected':
+            case "task_injected":
                 console.log(chalk.cyan(`[${ts}] Task injected: ${event.taskTitle}`));
                 break;
-            case 'task_completed':
+            case "task_completed":
                 console.log(chalk.green(`[${ts}] Task completed: ${event.taskId}`));
                 break;
-            case 'task_failed':
+            case "task_failed":
                 console.log(chalk.yellow(`[${ts}] Task failed: ${event.taskId} (retry ${event.retries})`));
                 break;
-            case 'task_skipped':
+            case "task_skipped":
                 console.log(chalk.red(`[${ts}] Task skipped: ${event.taskId} — ${event.reason}`));
                 break;
-            case 'phase_transition':
+            case "phase_transition":
                 console.log(chalk.magenta(`[${ts}] Phase: ${event.from} -> ${event.to}`));
                 break;
-            case 'hardening_wave_start':
+            case "hardening_wave_start":
                 console.log(chalk.blue(`[${ts}] Hardening wave ${event.wave} started`));
                 break;
-            case 'hardening_wave_end':
+            case "hardening_wave_end":
                 console.log(chalk.blue(`[${ts}] Hardening wave ${event.wave} ended — ${event.newIssues} new issues`));
                 break;
-            case 'idle_detected':
+            case "idle_detected":
                 console.log(chalk.gray(`[${ts}] Leader idle for ${Math.round(event.durationMs / 1000)}s`));
                 break;
-            case 'session_complete':
+            case "session_complete":
                 console.log(chalk.green.bold(`[${ts}] Ralphthon complete! ${event.tasksCompleted} done, ${event.tasksSkipped} skipped`));
                 break;
-            case 'error':
+            case "error":
                 console.log(chalk.red(`[${ts}] Error: ${event.message}`));
                 break;
         }
@@ -199,7 +199,9 @@ function createEventLogger() {
 // ============================================================================
 function getCurrentTmuxSession() {
     try {
-        return tmuxShell("display-message -p '#S'", { timeout: 5000 }).trim();
+        return tmuxShell(["display-message", "-p", "#S"], {
+            timeout: 5000,
+        }).trim();
     }
     catch {
         return null;
@@ -207,7 +209,9 @@ function getCurrentTmuxSession() {
 }
 function getCurrentTmuxPane() {
     try {
-        return tmuxShell("display-message -p '#{pane_id}'", { timeout: 5000 }).trim();
+        return tmuxShell(["display-message", "-p", "#{pane_id}"], {
+            timeout: 5000,
+        }).trim();
     }
     catch {
         return null;
@@ -229,10 +233,10 @@ export async function ralphthonCommand(args) {
     if (options.resume) {
         const state = readRalphthonState(cwd);
         if (!state || !state.active) {
-            console.error(chalk.red('No active ralphthon session found to resume.'));
+            console.error(chalk.red("No active ralphthon session found to resume."));
             process.exit(1);
         }
-        console.log(chalk.blue('Resuming ralphthon session...'));
+        console.log(chalk.blue("Resuming ralphthon session..."));
         const prd = readRalphthonPrd(cwd);
         if (prd) {
             console.log(formatRalphthonStatus(prd));
@@ -241,35 +245,35 @@ export async function ralphthonCommand(args) {
         const { stop } = startOrchestratorLoop(cwd, state.sessionId, eventLogger);
         // Handle graceful shutdown
         const shutdown = () => {
-            console.log(chalk.yellow('\nStopping ralphthon orchestrator...'));
+            console.log(chalk.yellow("\nStopping ralphthon orchestrator..."));
             stop();
             process.exit(0);
         };
-        process.on('SIGINT', shutdown);
-        process.on('SIGTERM', shutdown);
+        process.on("SIGINT", shutdown);
+        process.on("SIGTERM", shutdown);
         return;
     }
     // New session — need task description
     if (!options.task) {
-        console.error(chalk.red('Task description required. Usage: omcp ralphthon "your task"'));
+        console.error(chalk.red('Task description required. Usage: omc ralphthon "your task"'));
         console.log(RALPHTHON_HELP);
         process.exit(1);
     }
     // Must be inside tmux
     if (!isInsideTmux()) {
-        console.error(chalk.red('Ralphthon requires tmux. Run inside a tmux session or use `omc` to launch one.'));
+        console.error(chalk.red("Ralphthon requires tmux. Run inside a tmux session or use `omc` to launch one."));
         process.exit(1);
     }
     const tmuxSession = getCurrentTmuxSession();
     const leaderPane = getCurrentTmuxPane();
     if (!tmuxSession || !leaderPane) {
-        console.error(chalk.red('Could not detect tmux session/pane.'));
+        console.error(chalk.red("Could not detect tmux session/pane."));
         process.exit(1);
     }
     // Check for existing session
     const existingState = readRalphthonState(cwd);
     if (existingState?.active) {
-        console.error(chalk.red('A ralphthon session is already active. Use --resume or cancel it first.'));
+        console.error(chalk.red("A ralphthon session is already active. Use --resume or cancel it first."));
         process.exit(1);
     }
     const sessionId = `ralphthon-${Date.now()}`;
@@ -278,20 +282,20 @@ export async function ralphthonCommand(args) {
         pollIntervalMs: options.pollInterval * 1000,
         skipInterview: options.skipInterview,
     };
-    console.log(chalk.blue.bold('Starting Ralphthon'));
+    console.log(chalk.blue.bold("Starting Ralphthon"));
     console.log(chalk.gray(`Task: ${options.task}`));
     console.log(chalk.gray(`Max waves: ${options.maxWaves}, Poll: ${options.pollInterval}s`));
     console.log(chalk.gray(`Skip interview: ${options.skipInterview}`));
     // Phase 1: Interview (unless skipped)
     if (!options.skipInterview) {
-        console.log(chalk.cyan('\nPhase 1: Deep Interview — generating PRD...'));
-        console.log(chalk.gray('The leader pane will run deep-interview to generate the PRD.'));
+        console.log(chalk.cyan("\nPhase 1: Deep Interview — generating PRD..."));
+        console.log(chalk.gray("The leader pane will run deep-interview to generate the PRD."));
         // Inject deep-interview command to the leader pane
         // The orchestrator will wait for the PRD to appear
         const interviewPrompt = buildRalphthonInterviewPrompt(options.task, options);
         // Initialize state in interview phase
         const state = initOrchestrator(cwd, tmuxSession, leaderPane, getRalphthonPrdPath(cwd), sessionId, config);
-        state.phase = 'interview';
+        state.phase = "interview";
         writeRalphthonState(cwd, state, sessionId);
         // Send the deep-interview prompt to the leader pane
         if (!sendKeysToPane(leaderPane, interviewPrompt)) {
@@ -299,7 +303,7 @@ export async function ralphthonCommand(args) {
             clearRalphthonState(cwd, sessionId);
             process.exit(1);
         }
-        console.log(chalk.gray('Waiting for PRD generation...'));
+        console.log(chalk.gray("Waiting for PRD generation..."));
         // Poll for PRD file to appear
         const prdPath = getRalphthonPrdPath(cwd);
         const maxWaitMs = 600_000; // 10 minutes max wait for interview
@@ -309,7 +313,7 @@ export async function ralphthonCommand(args) {
             if (existsSync(prdPath)) {
                 const prd = readRalphthonPrd(cwd);
                 if (prd && prd.stories.length > 0) {
-                    console.log(chalk.green('PRD generated successfully!'));
+                    console.log(chalk.green("PRD generated successfully!"));
                     console.log(formatRalphthonStatus(prd));
                     break;
                 }
@@ -318,33 +322,33 @@ export async function ralphthonCommand(args) {
             waited += pollMs;
         }
         if (waited >= maxWaitMs) {
-            console.error(chalk.red('Timed out waiting for PRD generation.'));
+            console.error(chalk.red("Timed out waiting for PRD generation."));
             clearRalphthonState(cwd, sessionId);
             process.exit(1);
         }
     }
     else {
         // Skip interview — create a simple PRD from the task
-        console.log(chalk.cyan('\nSkipping interview — creating PRD from task...'));
+        console.log(chalk.cyan("\nSkipping interview — creating PRD from task..."));
         const defaultPrd = buildDefaultSkipInterviewPrdParams(options.task);
         initRalphthonPrd(cwd, defaultPrd.project, defaultPrd.branchName, defaultPrd.description, defaultPrd.stories, config, defaultPrd.planningContext);
         initOrchestrator(cwd, tmuxSession, leaderPane, getRalphthonPrdPath(cwd), sessionId, config);
     }
     // Phase 2: Execution — start the orchestrator loop
-    console.log(chalk.cyan('\nPhase 2: Execution — ralph loop active'));
+    console.log(chalk.cyan("\nPhase 2: Execution — ralph loop active"));
     const eventLogger = createEventLogger();
     const { stop } = startOrchestratorLoop(cwd, sessionId, eventLogger);
     // Handle graceful shutdown
     const shutdown = () => {
-        console.log(chalk.yellow('\nStopping ralphthon orchestrator...'));
+        console.log(chalk.yellow("\nStopping ralphthon orchestrator..."));
         stop();
         clearRalphthonState(cwd, sessionId);
         process.exit(0);
     };
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
     // Keep process alive
-    console.log(chalk.gray('Orchestrator running. Press Ctrl+C to stop.'));
+    console.log(chalk.gray("Orchestrator running. Press Ctrl+C to stop."));
 }
 // ============================================================================
 // Helpers

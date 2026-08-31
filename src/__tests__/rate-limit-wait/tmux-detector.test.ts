@@ -9,6 +9,7 @@ import {
   listTmuxPanes,
   capturePaneContent,
   formatBlockedPanesSummary,
+  scanForBlockedPanes,
 } from '../../features/rate-limit-wait/tmux-detector.js';
 import type { BlockedPane } from '../../features/rate-limit-wait/types.js';
 
@@ -18,7 +19,14 @@ vi.mock('../../cli/tmux-utils.js', async (importOriginal) => {
   return { ...actual, tmuxExec: vi.fn(), tmuxSpawn: vi.fn() };
 });
 
+// Mock pane-fresh-capture for scanForBlockedPanes cursor-tracking tests
+vi.mock('../../features/rate-limit-wait/pane-fresh-capture.js', () => ({
+  getNewPaneTail: vi.fn(),
+  getPaneHistorySize: vi.fn(),
+}));
+
 import { tmuxExec, tmuxSpawn } from '../../cli/tmux-utils.js';
+import { getNewPaneTail } from '../../features/rate-limit-wait/pane-fresh-capture.js';
 
 describe('tmux-detector', () => {
   beforeEach(() => {
@@ -26,9 +34,9 @@ describe('tmux-detector', () => {
   });
 
   describe('analyzePaneContent', () => {
-    it('should detect rate limit messages with Copilot CLI context', () => {
+    it('should detect rate limit messages with Claude Code context', () => {
       const content = `
-        Copilot CLI v1.2.3
+        Claude Code v1.2.3
         You've reached your rate limit. Please wait for the limit to reset.
         [1] Continue when ready
         [2] Exit
@@ -44,7 +52,7 @@ describe('tmux-detector', () => {
 
     it('should detect 5-hour rate limit', () => {
       const content = `
-        Copilot CLI assistant
+        Claude Code assistant
         5-hour usage limit reached
         [1] Wait for reset
       `;
@@ -57,7 +65,7 @@ describe('tmux-detector', () => {
 
     it('should detect weekly rate limit', () => {
       const content = `
-        Copilot CLI
+        Claude Code
         Weekly usage quota exceeded
         Please try again later
       `;
@@ -68,7 +76,7 @@ describe('tmux-detector', () => {
       expect(result.rateLimitType).toBe('weekly');
     });
 
-    it('should not flag content without Copilot CLI indicators', () => {
+    it('should not flag content without Claude Code indicators', () => {
       const content = `
         vim test.js
         Hello World
@@ -80,7 +88,7 @@ describe('tmux-detector', () => {
       expect(result.isBlocked).toBe(false);
     });
 
-    it('should not flag rate limit messages in non-Copilot contexts', () => {
+    it('should not flag rate limit messages in non-Claude contexts', () => {
       const content = `
         curl api.example.com
         Error: rate limit exceeded
@@ -90,7 +98,7 @@ describe('tmux-detector', () => {
 
       expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
-      expect(result.isBlocked).toBe(false); // No Copilot context
+      expect(result.isBlocked).toBe(false); // No Claude context
     });
 
     it('should handle empty content', () => {
@@ -104,7 +112,7 @@ describe('tmux-detector', () => {
 
     it('should detect waiting patterns', () => {
       const content = `
-        Copilot assistant
+        Claude assistant
         Rate limit reached
         [1] Continue
         [2] Cancel
@@ -115,9 +123,9 @@ describe('tmux-detector', () => {
       expect(result.confidence).toBeGreaterThan(0.6);
     });
 
-    it('should detect Copilot limit screen phrasing: hit your limit + numeric menu', () => {
+    it('should detect Claude limit screen phrasing: hit your limit + numeric menu', () => {
       const content = `
-        Copilot CLI
+        Claude Code
         You've hit your limit · resets Feb 17 at 2pm (Asia/Seoul)
         What do you want to do?
 
@@ -133,6 +141,218 @@ describe('tmux-detector', () => {
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(true);
       expect(result.confidence).toBeGreaterThanOrEqual(0.6);
+    });
+
+    it('should detect OMC HUD rate-limit pane without Claude branding', () => {
+      const content = `
+        ● You've hit your session limit · resets 12pm (Asia/Tokyo)
+        ─────────────────────────────────────────────
+        ❯
+        ─────────────────────────────────────────────
+          [OMC#4.15.1L] | Model: Opus 4.8 | 5h:100% wk:14% | thinking | session:80m | ctx:14%
+          ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasCopilotCode).toBe(true);
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.isBlocked).toBe(true);
+      expect(result.rateLimitType).toBe('unknown');
+      expect(result.confidence).toBeGreaterThanOrEqual(0.6);
+    });
+
+    it('should not treat cat output of a full blocked HUD transcript as a live blocked pane', () => {
+      const content = `
+        $ cat copied-hud.txt
+        ● You've hit your session limit · resets 12pm (Asia/Tokyo)
+        ─────────────────────────────────────────────
+        ❯
+        ─────────────────────────────────────────────
+          [OMC#4.15.1L] | Model: Opus 4.8 | 5h:100% wk:14% | thinking | session:80m | ctx:14%
+          ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasCopilotCode).toBe(false);
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.isBlocked).toBe(false);
+    });
+
+    it('should not treat labeled saved terminal output of a full blocked HUD transcript as live', () => {
+      const content = `
+        copied from saved terminal output:
+        ● You've hit your session limit · resets 12pm (Asia/Tokyo)
+        ─────────────────────────────────────────────
+        ❯
+        ─────────────────────────────────────────────
+          [OMC#4.15.1L] | Model: Opus 4.8 | 5h:100% wk:14% | thinking | session:80m | ctx:14%
+          ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasCopilotCode).toBe(false);
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.isBlocked).toBe(false);
+    });
+
+    it('should not treat copied footer, border, and mode with API rate-limit text as live', () => {
+      const content = `
+        copied from saved terminal output:
+        Error: rate limit exceeded
+        ─────────────────────────────────────────────
+        ❯
+        ─────────────────────────────────────────────
+          [OMC#4.15.1L] | Model: Opus 4.8 | 5h:100% wk:14% | thinking | session:80m | ctx:14%
+          ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasCopilotCode).toBe(false);
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.isBlocked).toBe(false);
+    });
+
+    it('should not treat copied HUD snippets plus rate-limit text as OMC pane evidence', () => {
+      const content = `
+        $ cat notes.txt
+        copied from another pane:
+        [OMC#4.15.1L] | Model: Opus 4.8 | 5h:100% wk:14% | thinking | session:80m | ctx:14%
+        unrelated API response: Error: rate limit exceeded
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasCopilotCode).toBe(false);
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.isBlocked).toBe(false);
+    });
+
+    it('should not treat copied full HUD block followed by rate-limit output as OMC pane evidence', () => {
+      const content = `
+        $ cat copied-hud.txt
+        [OMC#4.15.1L] | Model: Opus 4.8 | 5h:100% wk:14% | thinking | session:80m | ctx:14%
+        ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+        unrelated API response: Error: rate limit exceeded
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasCopilotCode).toBe(false);
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.isBlocked).toBe(false);
+    });
+
+    it('should not treat copied full HUD block without shell prompt as OMC pane evidence', () => {
+      const content = `
+        copied from saved terminal output:
+        unrelated API response: Error: rate limit exceeded
+        [OMC#4.15.1L] | Model: Opus 4.8 | 5h:100% wk:14% | thinking | session:80m | ctx:14%
+        ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasCopilotCode).toBe(false);
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.isBlocked).toBe(false);
+    });
+
+    it('should not treat copied HUD chrome without shell prompt as OMC pane evidence', () => {
+      const content = `
+        copied from saved terminal output:
+        unrelated API response: Error: rate limit exceeded
+        ─────────────────────────────────────────────
+        ❯
+        ─────────────────────────────────────────────
+        [OMC#4.15.1L] | Model: Opus 4.8 | 5h:100% wk:14% | thinking | session:80m | ctx:14%
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasCopilotCode).toBe(false);
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.isBlocked).toBe(false);
+    });
+
+    it('should not treat copied HUD chrome from cat output as OMC pane evidence', () => {
+      const content = `
+        $ cat copied-hud.txt
+        unrelated API response: Error: rate limit exceeded
+        ─────────────────────────────────────────────
+        ❯
+        ─────────────────────────────────────────────
+        [OMC#4.15.1L] | Model: Opus 4.8 | 5h:100% wk:14% | thinking | session:80m | ctx:14%
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasCopilotCode).toBe(false);
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.isBlocked).toBe(false);
+    });
+
+    it('should not treat search output containing HUD markers as OMC pane evidence', () => {
+      const content = `
+        $ rg "OMC#|shift\\+tab|rate limit" src
+        src/__tests__/rate-limit-wait/tmux-detector.test.ts
+        *152cz|          [OMC#4.15.1L] | Model: Opus 4.8 | 5h:100% wk:14% | thinking | session:80m | ctx:14%
+        *153lu|          ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+        *154aa|          Error: rate limit exceeded
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasCopilotCode).toBe(false);
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.isBlocked).toBe(false);
+    });
+
+    it('should not treat test output containing shift-tab HUD help as OMC pane evidence', () => {
+      const content = `
+        FAIL src/team/__tests__/tmux-session.test.ts
+        AssertionError: expected output to contain "⏵⏵ auto mode on (shift+tab to cycle)"
+        stderr | api-client.test.ts > retries after rate limit exceeded
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasCopilotCode).toBe(false);
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.isBlocked).toBe(false);
+    });
+
+    it('should not flag plain shell output without Claude or OMC evidence', () => {
+      const content = `
+        $ npm run build
+        Build completed successfully.
+        $ git status
+        On branch dev
+        nothing to commit, working tree clean
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasCopilotCode).toBe(false);
+      expect(result.hasRateLimitMessage).toBe(false);
+      expect(result.isBlocked).toBe(false);
+    });
+
+    it('should not treat model labels alone as Claude or OMC evidence', () => {
+      const content = `
+        $ echo "Model: Opus 4.8"
+        Model: Opus 4.8
+        Error: rate limit exceeded
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasCopilotCode).toBe(false);
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.isBlocked).toBe(false);
     });
   });
 
@@ -184,7 +404,7 @@ describe('tmux-detector', () => {
       });
 
       vi.mocked(tmuxExec).mockReturnValue(
-        'main:0.0 %0 1 dev Copilot\nmain:0.1 %1 0 dev Other\n'
+        'main:0.0 %0 1 dev Claude\nmain:0.1 %1 0 dev Other\n'
       );
 
       const panes = listTmuxPanes();
@@ -196,7 +416,7 @@ describe('tmux-detector', () => {
         windowIndex: 0,
         windowName: 'dev',
         paneIndex: 0,
-        title: 'Copilot',
+        title: 'Claude',
         isActive: true,
       });
       expect(panes[1]).toEqual({
@@ -330,7 +550,7 @@ describe('tmux-detector', () => {
   describe('formatBlockedPanesSummary', () => {
     it('should format empty list', () => {
       const result = formatBlockedPanesSummary([]);
-      expect(result).toBe('No blocked Copilot CLI sessions detected.');
+      expect(result).toBe('No blocked Claude Code sessions detected.');
     });
 
     it('should format blocked panes', () => {
@@ -386,6 +606,158 @@ describe('tmux-detector', () => {
       const result = formatBlockedPanesSummary(panes);
 
       expect(result).toContain('[RESUMED]');
+    });
+  });
+
+  // ── Regression: stale tmux keyword false-positives ────────────────────────
+  describe('analyzePaneContent — false-positive suppression', () => {
+    it('should NOT flag git log with "weekly" in a commit message as rate-limited', () => {
+      // Reproduces: running `git log` in a Claude Code session pane where a
+      // commit message contains "weekly" caused a false blocked-pane alert.
+      const content = `
+        Claude Code v1.0
+        $ git log --oneline -3
+        commit abc1234def5678901234
+        Author: Dev <dev@example.com>
+        Date:   Mon Jan 1 10:00:00 2024 +0000
+
+            Fix weekly report generation bug
+
+        commit def5678abc1234567890
+        Author: Dev <dev@example.com>
+        Date:   Sun Dec 31 09:00:00 2023 +0000
+
+            Update assistant configuration docs
+
+        > `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasRateLimitMessage).toBe(false);
+      expect(result.isBlocked).toBe(false);
+    });
+
+    it('should NOT flag git diff patch containing "weekly" in diff context', () => {
+      const content = `
+        claude
+        $ git diff HEAD~1
+        diff --git a/src/reports/weekly.ts b/src/reports/weekly.ts
+        --- a/src/reports/weekly.ts
+        +++ b/src/reports/weekly.ts
+        @@ -1,3 +1,4 @@
+        -// weekly report generator
+        +// weekly report generator (updated)
+        > `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasRateLimitMessage).toBe(false);
+      expect(result.isBlocked).toBe(false);
+    });
+
+    it('should STILL detect genuine "weekly usage limit" rate-limit message', () => {
+      // Positive control: genuine Claude Code rate-limit screen must still trigger.
+      const content = `
+        Claude Code
+
+        ⚠️  Weekly usage limit reached
+
+        You've used your weekly allocation of tokens.
+        Limit resets Monday at 12:00 AM UTC.
+
+        [1] Continue when limit resets
+        [2] Exit
+
+        Enter choice: `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.isBlocked).toBe(true);
+      expect(result.rateLimitType).toBe('weekly');
+    });
+
+    it('should STILL detect "weekly quota exceeded" phrasing', () => {
+      const content = `
+        Claude Code
+        Weekly usage quota exceeded
+        Please try again later
+      `;
+
+      const result = analyzePaneContent(content);
+
+      expect(result.hasRateLimitMessage).toBe(true);
+      expect(result.rateLimitType).toBe('weekly');
+    });
+  });
+
+  // ── Regression: scanForBlockedPanes stale-history via cursor tracking ──────
+  describe('scanForBlockedPanes — cursor-tracked stateDir path', () => {
+    const tmuxAvailableReturn = {
+      status: 0,
+      stdout: '/usr/bin/tmux',
+      stderr: '',
+      signal: null as null,
+      pid: 1234,
+      output: [] as string[],
+    };
+
+    it('skips panes with no new output when stateDir is provided (stale suppression)', () => {
+      vi.mocked(tmuxSpawn).mockReturnValue(tmuxAvailableReturn);
+      vi.mocked(tmuxExec).mockReturnValue('main:0.0 %0 1 dev Claude\n');
+      // getNewPaneTail returns '' → no new lines → pane should be skipped
+      vi.mocked(getNewPaneTail).mockReturnValue('');
+
+      const blocked = scanForBlockedPanes(15, '/project/.omg/state');
+
+      expect(blocked).toHaveLength(0);
+      // getNewPaneTail must be called with the provided stateDir
+      expect(getNewPaneTail).toHaveBeenCalledWith('%0', '/project/.omg/state', 15);
+    });
+
+    it('detects a blocked pane from fresh delta lines when stateDir is provided', () => {
+      vi.mocked(tmuxSpawn).mockReturnValue(tmuxAvailableReturn);
+      vi.mocked(tmuxExec).mockReturnValue('main:0.0 %0 1 dev Claude\n');
+      // getNewPaneTail returns new rate-limit content
+      vi.mocked(getNewPaneTail).mockReturnValue(
+        'Claude Code\nYou\'ve hit your limit · resets Feb 17 at 2pm\n❯ 1. Stop and wait\nEnter to confirm',
+      );
+
+      const blocked = scanForBlockedPanes(15, '/project/.omg/state');
+
+      expect(blocked).toHaveLength(1);
+      expect(blocked[0]!.id).toBe('%0');
+      expect(blocked[0]!.analysis.isBlocked).toBe(true);
+    });
+
+    it('falls back to capturePaneContent when no stateDir provided', () => {
+      vi.mocked(tmuxSpawn).mockReturnValue(tmuxAvailableReturn);
+      // listTmuxPanes + capturePaneContent both use tmuxExec
+      vi.mocked(tmuxExec)
+        .mockReturnValueOnce('main:0.0 %0 1 dev Claude\n') // listTmuxPanes
+        .mockReturnValueOnce('');                           // capturePaneContent → empty
+
+      const blocked = scanForBlockedPanes(15);
+
+      // capturePaneContent used, getNewPaneTail must NOT be called
+      expect(getNewPaneTail).not.toHaveBeenCalled();
+      expect(blocked).toHaveLength(0);
+    });
+
+    it('does not report non-Claude panes with copied HUD and rate-limit output', () => {
+      vi.mocked(tmuxSpawn).mockReturnValue(tmuxAvailableReturn);
+      vi.mocked(tmuxExec)
+        .mockReturnValueOnce('main:0.0 %0 1 dev shell\n')
+        .mockReturnValueOnce(`
+          $ cat copied-hud.txt
+          [OMC#4.15.1L] | Model: Opus 4.8 | 5h:100% wk:14% | thinking | session:80m | ctx:14%
+          ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+          unrelated API response: Error: rate limit exceeded
+        `);
+
+      const blocked = scanForBlockedPanes(15);
+
+      expect(blocked).toHaveLength(0);
     });
   });
 });

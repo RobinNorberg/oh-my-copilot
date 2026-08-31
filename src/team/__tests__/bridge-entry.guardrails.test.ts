@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { validateConfigPath } from '../bridge-entry.js';
+import { validateBridgeWorkingDirectory, validateConfigPath } from '../bridge-entry.js';
 
 describe('bridge-entry workdir guardrails (source contract)', () => {
   const source = readFileSync(join(__dirname, '..', 'bridge-entry.ts'), 'utf-8');
@@ -13,7 +13,12 @@ describe('bridge-entry workdir guardrails (source contract)', () => {
 
   it('requires working directory to stay under home directory', () => {
     expect(source).toContain('realpathSync(workingDirectory)');
-    expect(source).toContain("resolved.startsWith(home + '/')");
+    // Asserted through the function: grepping for the containment expression
+    // pinned a `home + '/'` prefix test that rejected every path on Windows.
+    const outsideHome = process.platform === 'win32'
+      ? (process.env.SystemRoot ?? 'C:\\Windows')
+      : '/etc';
+    expect(() => validateBridgeWorkingDirectory(outsideHome)).toThrow('outside home directory');
   });
 
   it('requires working directory to be inside a git worktree', () => {
@@ -24,10 +29,10 @@ describe('bridge-entry workdir guardrails (source contract)', () => {
 
 describe('validateConfigPath guardrails', () => {
   const home = '/home/user';
-  const claudeConfigDir = '/home/user/.copilot';
+  const claudeConfigDir = '/home/user/.claude';
 
   it('rejects path outside home', () => {
-    expect(validateConfigPath('/tmp/.omcp/config.json', home, claudeConfigDir)).toBe(false);
+    expect(validateConfigPath('/tmp/.omg/config.json', home, claudeConfigDir)).toBe(false);
   });
 
   it('rejects path not under trusted subpaths', () => {
@@ -35,7 +40,7 @@ describe('validateConfigPath guardrails', () => {
   });
 
   it('accepts trusted .omc path under home', () => {
-    expect(validateConfigPath('/home/user/project/.omcp/state/config.json', home, claudeConfigDir)).toBe(true);
+    expect(validateConfigPath('/home/user/project/.omg/state/config.json', home, claudeConfigDir)).toBe(true);
   });
 });
 

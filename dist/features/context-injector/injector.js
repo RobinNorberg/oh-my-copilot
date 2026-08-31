@@ -72,7 +72,7 @@ export function injectContextIntoText(collector, sessionId, text, strategy = 'pr
 }
 /**
  * Create a hook handler for context injection.
- * This is a factory function for creating Copilot CLI compatible hooks.
+ * This is a factory function for creating Claude Code compatible hooks.
  */
 export function createContextInjectorHook(collector) {
     return {

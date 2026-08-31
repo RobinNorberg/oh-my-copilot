@@ -10,8 +10,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync } from 'fs';
 import { readFile } from 'fs/promises';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 // ─── killWorkerPanes + killTeamSession ───────────────────────────────────────
 // Mock child_process so tmux calls don't require a real tmux install
 vi.mock('child_process', async (importOriginal) => {
@@ -41,6 +42,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
 });
 // ─── killWorkerPanes ─────────────────────────────────────────────────────────
 describe('killWorkerPanes', () => {
@@ -71,8 +73,14 @@ describe('killWorkerPanes', () => {
         expect(killedPanes).toContain('%3');
     });
     it('writes shutdown sentinel before force-killing', async () => {
-        const cwd = join(tmpdir(), `omc-cleanup-test-${process.pid}`);
-        const stateDir = join(cwd, '.omg', 'state', 'team', 'myteam');
+        const cwd = mkdtempSync(join(tmpdir(), 'omc-cleanup-test-'));
+        const previousHome = process.env.HOME;
+        const previousUserProfile = process.env.USERPROFILE;
+        const previousStateDir = process.env.OMC_STATE_DIR;
+        process.env.HOME = cwd;
+        process.env.USERPROFILE = cwd;
+        process.env.OMC_STATE_DIR = cwd;
+        const stateDir = join(getOmcRoot(cwd), 'state', 'team', 'myteam');
         mkdirSync(stateDir, { recursive: true });
         try {
             await killWorkerPanes({
@@ -88,6 +96,18 @@ describe('killWorkerPanes', () => {
             expect(typeof content.requestedAt).toBe('number');
         }
         finally {
+            if (previousHome === undefined)
+                delete process.env.HOME;
+            else
+                process.env.HOME = previousHome;
+            if (previousUserProfile === undefined)
+                delete process.env.USERPROFILE;
+            else
+                process.env.USERPROFILE = previousUserProfile;
+            if (previousStateDir === undefined)
+                delete process.env.OMC_STATE_DIR;
+            else
+                process.env.OMC_STATE_DIR = previousStateDir;
             rmSync(cwd, { recursive: true, force: true });
         }
     });
@@ -107,15 +127,14 @@ describe('killTeamSession', () => {
         await killTeamSession('mysession:1', ['%2', '%3'], '%1');
         expect(killedSessions).toHaveLength(0);
     });
-    it('kills worker panes in split-pane mode', async () => {
+    it('preserves worker panes when split-pane membership cannot be proven', async () => {
         await killTeamSession('mysession:1', ['%2', '%3'], '%1');
-        expect(killedPanes).toContain('%2');
-        expect(killedPanes).toContain('%3');
+        expect(killedPanes).toEqual([]);
     });
-    it('skips leaderPaneId in split-pane mode', async () => {
+    it('still skips the leader when split-pane membership is unavailable', async () => {
         await killTeamSession('mysession:1', ['%1', '%2'], '%1');
         expect(killedPanes).not.toContain('%1');
-        expect(killedPanes).toContain('%2');
+        expect(killedPanes).toEqual([]);
     });
     it('is a no-op in split-pane mode when paneIds is empty', async () => {
         await killTeamSession('mysession:1', [], '%1');
@@ -128,14 +147,15 @@ describe('killTeamSession', () => {
         expect(killedSessions).toHaveLength(0);
     });
     it('calls kill-session for session-mode sessions (no ":" in name)', async () => {
+        vi.stubEnv('TMUX', '');
         await killTeamSession('omc-team-myteam-worker1');
         expect(killedSessions).toContain('omc-team-myteam-worker1');
     });
 });
 // ─── validateJobId regex ──────────────────────────────────────────────────────
-// Re-test the regex rule from team-server.ts (spec: /^omc-[a-z0-9]{1,12}$/)
-const JOB_ID_RE = /^omc-[a-z0-9]{1,12}$/;
-describe('validateJobId regex (/^omc-[a-z0-9]{1,12}$/)', () => {
+// Re-test the regex rule from team-server.ts (spec: /^omc-[a-z0-9]{1,16}$/)
+const JOB_ID_RE = /^omc-[a-z0-9]{1,16}$/;
+describe('validateJobId regex (/^omc-[a-z0-9]{1,16}$/)', () => {
     it('accepts valid job IDs', () => {
         expect(JOB_ID_RE.test('omc-abc123')).toBe(true);
         expect(JOB_ID_RE.test('omc-a')).toBe(true);
@@ -150,8 +170,8 @@ describe('validateJobId regex (/^omc-[a-z0-9]{1,12}$/)', () => {
         expect(JOB_ID_RE.test('abc123')).toBe(false);
         expect(JOB_ID_RE.test('job-abc123')).toBe(false);
     });
-    it('rejects IDs longer than 12 chars after prefix', () => {
-        expect(JOB_ID_RE.test('omc-' + 'a'.repeat(13))).toBe(false);
+    it('rejects IDs longer than 16 chars after prefix', () => {
+        expect(JOB_ID_RE.test('omc-' + 'a'.repeat(17))).toBe(false);
     });
     it('rejects empty suffix', () => {
         expect(JOB_ID_RE.test('omc-')).toBe(false);
@@ -162,6 +182,11 @@ describe('team start validation wiring', () => {
         const source = readFileSync(join(__dirname, '..', 'team-server.ts'), 'utf-8');
         expect(source).toContain("import { validateTeamName } from '../team/team-name.js'");
         expect(source).toContain('validateTeamName(input.teamName);');
+    });
+    it('starts runtime-cli with process.execPath rather than bare PATH node', () => {
+        const source = readFileSync(join(__dirname, '..', 'team-server.ts'), 'utf-8');
+        expect(source).toContain('spawn(process.execPath, [runtimeCliPath]');
+        expect(source).not.toContain("spawn('node', [runtimeCliPath]");
     });
     it('contains timeoutSeconds deprecation guard in omc_run_team_start', () => {
         const source = readFileSync(join(__dirname, '..', 'team-server.ts'), 'utf-8');
@@ -184,7 +209,7 @@ describe('omc_run_team_start timeoutSeconds rejection', () => {
     it('throws when timeoutSeconds is present', () => {
         expect(() => handleStartGuard({
             teamName: 'test',
-            agentTypes: ['copilot'],
+            agentTypes: ['claude'],
             tasks: [{ subject: 'x', description: 'y' }],
             cwd: '/tmp',
             timeoutSeconds: 60,
@@ -193,7 +218,7 @@ describe('omc_run_team_start timeoutSeconds rejection', () => {
     it('error message includes migration guidance (omc_run_team_wait + omc_run_team_cleanup)', () => {
         expect(() => handleStartGuard({
             teamName: 'test',
-            agentTypes: ['copilot'],
+            agentTypes: ['claude'],
             tasks: [],
             cwd: '/tmp',
             timeoutSeconds: 30,
@@ -203,7 +228,7 @@ describe('omc_run_team_start timeoutSeconds rejection', () => {
         // Should not throw — the guard passes for well-formed input
         expect(() => handleStartGuard({
             teamName: 'test',
-            agentTypes: ['copilot'],
+            agentTypes: ['claude'],
             tasks: [],
             cwd: '/tmp',
         })).not.toThrow();

@@ -9,7 +9,7 @@ TypeScript source code for oh-my-copilot - the core library that powers multi-ag
 
 This directory contains all TypeScript source code organized into modules:
 
-- **agents/** - 18 specialized AI agent definitions with tiered variants
+- **agents/** - 32 specialized AI agent definitions with tiered variants
 - **tools/** - 15 LSP/AST/REPL tools for IDE-like capabilities
 - **hooks/** - 31 event-driven behaviors for execution modes
 - **features/** - Core features (model routing, state management, verification)
@@ -28,17 +28,16 @@ This directory contains all TypeScript source code organized into modules:
 
 | Directory | Purpose |
 |-----------|---------|
-| `agents/` | 18 agent definitions with prompts and tools (see `agents/AGENTS.md`) |
+| `agents/` | 32 agent definitions with prompts and tools (see `agents/AGENTS.md`) |
 | `tools/` | 15 LSP, AST, and Python REPL tools (see `tools/AGENTS.md`) |
 | `hooks/` | 31 hooks for execution modes (see `hooks/AGENTS.md`) |
 | `features/` | Core features like model routing, state (see `features/AGENTS.md`) |
 | `config/` | Configuration loading (`loader.ts`) |
 | `commands/` | Command expansion utilities |
 | `mcp/` | MCP server configuration and team runtime convergence helpers |
-| `cli/` | CLI entry points (`index.ts`, `analytics.ts`) |
+| `cli/` | CLI entry points and command surfaces |
 | `hud/` | Heads-up display components |
 | `installer/` | Installation system |
-| `analytics/` | Usage analytics collection |
 | `__tests__/` | Test files |
 
 ## For AI Agents
@@ -74,7 +73,7 @@ This directory contains all TypeScript source code organized into modules:
      return {
        architect: architectAgent,
        executor: executorAgent,
-       // ... all 18 agents
+       // ... all 32 agents
      };
    }
    ```

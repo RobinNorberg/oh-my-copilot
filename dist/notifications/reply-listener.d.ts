@@ -15,6 +15,7 @@
  *
  * Follows the daemon pattern from src/features/rate-limit-wait/daemon.ts
  */
+import { type SessionMapping } from './session-registry.js';
 import type { ReplyConfig } from './types.js';
 import { SlackConnectionStateTracker, type SlackValidationResult } from './slack-socket.js';
 /** Reply listener daemon state */
@@ -28,6 +29,10 @@ export interface ReplyListenerState {
     messagesInjected: number;
     errors: number;
     lastError?: string;
+    /** Unique per-launch generation used to reject stale PID/state pairs. */
+    generation?: string;
+    /** Platform-provided start identity that prevents PID-reuse signalling. */
+    processStartIdentity?: string;
 }
 /** Daemon configuration (written to state file) */
 export interface ReplyListenerDaemonConfig extends ReplyConfig {
@@ -85,6 +90,19 @@ declare class RateLimiter {
     reset(): void;
 }
 /**
+ * Inject reply text into a tmux pane after verification and sanitization.
+ *
+ * Returns true if injection succeeded, false otherwise.
+ */
+export type ReplyInjectionStep = {
+    kind: 'literal';
+    value: string;
+} | {
+    kind: 'key';
+    value: string;
+};
+export declare function buildReplyInjectionSteps(text: string, platform: string, config: Pick<ReplyListenerDaemonConfig, 'includePrefix' | 'maxMessageLength'>, mapping?: Pick<SessionMapping, 'event' | 'askUserQuestionOptionCount' | 'askUserQuestionAllowOther'>): ReplyInjectionStep[];
+/**
  * Main daemon polling loop
  */
 declare function pollLoop(): Promise<void>;
@@ -99,10 +117,8 @@ declare function pollLoop(): Promise<void>;
  * @param config - Daemon config (used only for validation, daemon reads config independently)
  */
 export declare function startReplyListener(_config: ReplyListenerDaemonConfig): DaemonResponse;
-/**
- * Stop the reply listener daemon
- */
-export declare function stopReplyListener(): DaemonResponse;
+/** Stop only the exact live listener generation; never signal a reused PID. */
+export declare function stopReplyListener(): Promise<DaemonResponse>;
 /**
  * Get daemon status
  */

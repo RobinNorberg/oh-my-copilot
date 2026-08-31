@@ -61,11 +61,11 @@ describe('WorkerInfo.worker_cli round-trip', () => {
             role: 'critic',
             worker_cli: 'codex',
             assigned_tasks: ['7'],
-            output_file: '.omc/state/team/x/workers/worker-4/verdict.json',
+            output_file: '.omg/state/team/x/workers/worker-4/verdict.json',
         };
         const out = roundtrip(w);
         expect(out.worker_cli).toBe('codex');
-        expect(out.output_file).toBe('.omc/state/team/x/workers/worker-4/verdict.json');
+        expect(out.output_file).toBe('.omg/state/team/x/workers/worker-4/verdict.json');
     });
 });
 //# sourceMappingURL=worker-cli-roundtrip.test.js.map

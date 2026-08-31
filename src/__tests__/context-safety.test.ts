@@ -1,25 +1,61 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 const SCRIPT_PATH = join(process.cwd(), 'scripts', 'context-safety.mjs');
+const HOOKS_PATH = join(process.cwd(), 'hooks', 'hooks.json');
 
-function runContextSafety(input: Record<string, unknown>): { stdout: string; exitCode: number } {
+const tempDirs: string[] = [];
+
+function makeTempDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'omc-context-safety-'));
+  tempDirs.push(dir);
+  return dir;
+}
+
+function writeTranscript(dir: string, inputTokens: number, contextWindow: number): string {
+  const transcriptPath = join(dir, 'transcript.jsonl');
+  writeFileSync(
+    transcriptPath,
+    `${JSON.stringify({ message: { usage: { input_tokens: inputTokens, context_window: contextWindow } } })}\n`,
+    'utf-8'
+  );
+  return transcriptPath;
+}
+
+function runContextSafety(
+  input: Record<string, unknown>,
+  env: NodeJS.ProcessEnv = {}
+): { stdout: string; stderr: string; exitCode: number } {
   try {
-    const stdout = execSync(`node "${SCRIPT_PATH}"`, {
+    const stdout = execFileSync('node', [SCRIPT_PATH], {
       input: JSON.stringify(input),
       encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 5000,
-      env: { ...process.env, NODE_ENV: 'test' },
+      env: { ...process.env, NODE_ENV: 'test', ...env },
     });
-    return { stdout: stdout.trim(), exitCode: 0 };
+    return { stdout: stdout.trim(), stderr: '', exitCode: 0 };
   } catch (err: unknown) {
-    const e = err as { status?: number; stdout?: string };
-    return { stdout: (e.stdout ?? '').trim(), exitCode: e.status ?? 1 };
+    const e = err as { status?: number; stdout?: string; stderr?: string };
+    return {
+      stdout: (e.stdout ?? '').trim(),
+      stderr: (e.stderr ?? '').trim(),
+      exitCode: e.status ?? 1,
+    };
   }
 }
 
-describe('context-safety hook (issue #1006)', () => {
+afterEach(() => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+describe('context-safety hook (issues #1006, #1597)', () => {
   it('does NOT block TeamCreate — removed from BLOCKED_TOOLS', () => {
     const result = runContextSafety({
       tool_name: 'TeamCreate',
@@ -29,25 +65,26 @@ describe('context-safety hook (issue #1006)', () => {
     });
 
     expect(result.exitCode).toBe(0);
-    const output = JSON.parse(result.stdout);
-    expect(output.permissionDecision).toBe('allow');
+    expect(JSON.parse(result.stdout)).toEqual({ continue: true, suppressOutput: true });
   });
 
-  it('still blocks ExitPlanMode when transcript shows high context', () => {
-    // Without a valid transcript_path, estimateContextPercent returns 0,
-    // so ExitPlanMode passes. This test verifies the tool is still in BLOCKED_TOOLS
-    // (it just can't reach the block threshold without a real transcript).
-    const result = runContextSafety({
-      tool_name: 'ExitPlanMode',
-      toolInput: {},
-      session_id: 'session-1006',
-      cwd: process.cwd(),
-    });
+  it('does NOT block ExitPlanMode even when transcript shows high context', () => {
+    const dir = makeTempDir();
+    const transcriptPath = writeTranscript(dir, 700, 1000);
 
-    // Should pass (0% < 55%) but ExitPlanMode is still checked
+    const result = runContextSafety(
+      {
+        tool_name: 'ExitPlanMode',
+        toolInput: {},
+        transcript_path: transcriptPath,
+        session_id: 'session-1597',
+        cwd: dir,
+      },
+      { OMC_CONTEXT_SAFETY_THRESHOLD: '55' }
+    );
+
     expect(result.exitCode).toBe(0);
-    const output = JSON.parse(result.stdout);
-    expect(output.permissionDecision).toBe('allow');
+    expect(JSON.parse(result.stdout)).toEqual({ continue: true, suppressOutput: true });
   });
 
   it('allows unknown tools through without blocking', () => {
@@ -59,7 +96,22 @@ describe('context-safety hook (issue #1006)', () => {
     });
 
     expect(result.exitCode).toBe(0);
-    const output = JSON.parse(result.stdout);
-    expect(output.permissionDecision).toBe('allow');
+    expect(JSON.parse(result.stdout)).toEqual({ continue: true, suppressOutput: true });
+  });
+});
+
+describe('context-safety hook matcher', () => {
+  it('does not register a dedicated ExitPlanMode context-safety matcher', () => {
+    const hooksJson = JSON.parse(readFileSync(HOOKS_PATH, 'utf-8')) as {
+      hooks: {
+        PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }>;
+      };
+    };
+
+    const contextSafetyHook = hooksJson.hooks.PreToolUse.find(entry =>
+      entry.hooks.some(hook => hook.command.includes('scripts/context-safety.mjs'))
+    );
+
+    expect(contextSafetyHook).toBeUndefined();
   });
 });

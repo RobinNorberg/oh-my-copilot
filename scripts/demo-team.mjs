@@ -8,15 +8,15 @@ import { startTeam } from '../dist/team/runtime.js';
 const config = {
   teamName: 'demo',
   workerCount: 2,
-  agentTypes: ['copilot', 'copilot'],
+  agentTypes: ['claude', 'claude'],
   tasks: [
     { subject: 'Write a haiku about tmux', description: 'Write a short haiku (3 lines, 5-7-5 syllables) about tmux split panes. Output it and exit.' },
-    { subject: 'Write a haiku about Copilot', description: 'Write a short haiku (3 lines, 5-7-5 syllables) about AI assistants. Output it and exit.' },
+    { subject: 'Write a haiku about Claude', description: 'Write a short haiku (3 lines, 5-7-5 syllables) about AI assistants. Output it and exit.' },
   ],
   cwd: process.cwd(),
 };
 
-console.log('Starting team "demo" with 2 Copilot workers...');
+console.log('Starting team "demo" with 2 Claude workers...');
 const runtime = await startTeam(config);
 console.log('\nTeam started!');
 console.log(`  tmux session: ${runtime.sessionName}`);

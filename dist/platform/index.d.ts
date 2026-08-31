@@ -18,4 +18,6 @@ export declare function isPathRoot(filepath: string): boolean;
  */
 export declare function isWSL(): boolean;
 export * from './process-utils.js';
+export * from './posix-shell.js';
+export * from './executable-resolution.js';
 //# sourceMappingURL=index.d.ts.map

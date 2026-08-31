@@ -5,14 +5,45 @@ import { tmpdir } from 'os';
 import { getTeamMembers } from '../unified-team.js';
 import { registerMcpWorker } from '../team-registration.js';
 import { writeHeartbeat } from '../heartbeat.js';
+function isolateFixtureRoot(root) {
+    const home = process.env.HOME;
+    const userProfile = process.env.USERPROFILE;
+    const stateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = root;
+    process.env.USERPROFILE = root;
+    delete process.env.OMC_STATE_DIR;
+    return () => {
+        if (home === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = home;
+        if (userProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = userProfile;
+        if (stateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = stateDir;
+    };
+}
 describe('unified-team', () => {
     let testDir;
+    let restoreFixtureEnv;
     const teamName = 'test-unified';
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), 'unified-team-test-'));
+        restoreFixtureEnv = isolateFixtureRoot(testDir);
     });
     afterEach(() => {
-        rmSync(testDir, { recursive: true, force: true });
+        const restore = restoreFixtureEnv;
+        restoreFixtureEnv = undefined;
+        try {
+            restore?.();
+        }
+        finally {
+            rmSync(testDir, { recursive: true, force: true });
+        }
     });
     function registerWorker(name, agentType = 'mcp-codex') {
         registerMcpWorker(teamName, name, agentType === 'mcp-codex' ? 'codex' : 'gemini', agentType === 'mcp-codex' ? 'gpt-5.3-codex' : 'gemini-3.1-pro-preview', `tmux-${name}`, testDir, testDir);

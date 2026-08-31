@@ -11,6 +11,31 @@
  * - passes: Boolean indicating completion
  * - notes: Optional notes from implementation
  */
+import type { PrdReconciliationConfig } from './stale-prd.js';
+export type CriterionAmendmentKind = 'replaced' | 'superseded';
+/**
+ * Evidence-preserving record of an acceptance criterion that no longer
+ * governs a story. The original criterion text is retained verbatim forever;
+ * it is never rewritten or deleted. Amending a criterion is the only
+ * sanctioned way for an empirically refuted criterion to stop governing the
+ * story's completion check.
+ */
+export interface CriterionAmendment {
+    /** Kind of amendment: 'replaced' (a corrected criterion now governs) or 'superseded' (no replacement governs). */
+    kind: CriterionAmendmentKind;
+    /** The verbatim original criterion text that was refuted. Retained forever. */
+    original: string;
+    /** Corrected criterion that now governs; required when kind === 'replaced'. */
+    replacement?: string;
+    /** Why the original criterion no longer governs (mandatory, non-empty). */
+    reason: string;
+    /** The bounded measurement/proof that refuted the original (mandatory, non-empty, >= MIN_CRITERION_EVIDENCE_LENGTH chars). */
+    evidence: string;
+    /** Authority that performed the amendment (mandatory, non-empty). */
+    authority: string;
+    /** ISO 8601 timestamp when the amendment was recorded. */
+    timestamp: string;
+}
 export interface UserStory {
     /** Unique identifier (e.g., "US-001") */
     id: string;
@@ -18,14 +43,22 @@ export interface UserStory {
     title: string;
     /** Full user story description */
     description: string;
-    /** List of acceptance criteria that must be met */
+    /** Acceptance criteria that currently govern this story. Amended/superseded originals are retained in criterionAmendments. */
     acceptanceCriteria: string[];
+    /** Evidence-preserving amendment ledger: originals retained with proof, reason, authority, and timestamp. */
+    criterionAmendments?: CriterionAmendment[];
     /** Execution priority (1 = highest) */
     priority: number;
     /** Whether this story passes (complete and verified) */
     passes: boolean;
     /** Whether architect verification has approved this story for progression */
     architectVerified?: boolean;
+    /** Canonical digest of this story's active criteria and amendment ledger. */
+    governingCriteriaRevision?: string;
+    /** Revision whose criteria were marked complete. */
+    completionCriteriaRevision?: string;
+    /** Revision whose completed criteria received architect approval. */
+    architectVerificationCriteriaRevision?: string;
     /** Optional notes from implementation */
     notes?: string;
 }
@@ -38,6 +71,12 @@ export interface PRD {
     description: string;
     /** List of user stories */
     userStories: UserStory[];
+    /**
+     * Optional stale-state reconciliation configuration (#3669). Carried inside
+     * the PRD so it travels with the stories and stays session-scoped. Legacy
+     * PRDs without this field read back as undefined and are fully supported.
+     */
+    reconciliation?: PrdReconciliationConfig;
 }
 export interface PRDStatus {
     /** Total number of stories */
@@ -55,6 +94,7 @@ export interface PRDStatus {
 }
 export declare const PRD_FILENAME = "prd.json";
 export declare const PRD_EXAMPLE_FILENAME = "prd.example.json";
+export declare const MIN_CRITERION_EVIDENCE_LENGTH = 10;
 export interface EnsurePrdForStartupResult {
     ok: boolean;
     created: boolean;
@@ -62,6 +102,39 @@ export interface EnsurePrdForStartupResult {
     prd?: PRD;
     error?: string;
 }
+/**
+ * Input for an evidence-preserving criterion amendment. `timestamp` defaults
+ * to the current time when omitted; all other fields are required so that no
+ * amendment can be recorded without bounded proof, a reason, and an authority.
+ */
+export interface CriterionAmendmentInput {
+    /** The verbatim original criterion text (must currently be active). */
+    original: string;
+    /** Corrected criterion for kind 'replaced'; must be absent for 'superseded'. */
+    replacement?: string;
+    /** Why the original criterion no longer governs. */
+    reason: string;
+    /** The bounded measurement/proof that refuted the original. */
+    evidence: string;
+    /** Authority that performed the amendment (e.g. the ralph session id). */
+    authority: string;
+    /** Optional explicit ISO 8601 timestamp; defaults to now. */
+    timestamp?: string;
+}
+export interface CriterionAmendmentResult {
+    ok: boolean;
+    /** Machine-readable closed error code on failure. */
+    error?: string;
+    /** The recorded amendment on success. */
+    amendment?: CriterionAmendment;
+}
+export declare function getStoryGoverningCriteriaRevision(story: Pick<UserStory, 'acceptanceCriteria' | 'criterionAmendments'>): string;
+export declare function getPrdGoverningCriteriaRevision(prd: PRD): string;
+export declare function getPrdRevision(prd: PRD): string;
+export declare function readPrdFromPath(prdPath: string): {
+    prd?: PRD;
+    error?: string;
+};
 /**
  * Get the path to the prd.json file in a directory
  */
@@ -90,9 +163,24 @@ export declare function findPrdPath(directory: string, sessionId?: string): stri
  */
 export declare function readPrd(directory: string, sessionId?: string): PRD | null;
 /**
- * Write PRD to disk
+ * Write PRD to disk.
+ *
+ * Omitting `expectedRevision` is the public non-CAS rewrite path and may
+ * replace an existing file. Passing `expectedRevision` keeps generation-safe
+ * CAS and refuses the write when the on-disk document has moved.
  */
-export declare function writePrd(directory: string, prd: PRD, sessionId?: string): boolean;
+export declare function writePrd(directory: string, prd: PRD, sessionId?: string, expectedRevision?: string): boolean;
+/** Publish a derived PRD only if its governing-criteria generation is still current. */
+export declare function writePrdIfRevision(directory: string, prd: PRD, expectedRevision: string, sessionId?: string): boolean;
+/**
+ * Consume an architect approval only when the story still has the exact
+ * governing-criteria revision that was submitted for review. The PRD lock is
+ * shared with amendments so a stale approval cannot overwrite an amendment's
+ * reset ledger with a full-file write.
+ */
+export declare function consumeStoryArchitectApproval(directory: string, storyId: string, expectedCriteriaRevision: string, sessionId?: string, beforeCommit?: () => void, notes?: string, consume?: () => boolean, afterRevalidation?: () => void): boolean;
+/** Atomically rechecks the complete PRD revision before final approval is consumed. */
+export declare function consumeCompletionArchitectApproval(directory: string, expectedCriteriaRevision: string, sessionId?: string, consume?: () => boolean, beforeCommit?: () => void, afterConsume?: () => boolean, afterRevalidation?: () => void): boolean;
 /**
  * Get the status of a PRD
  */
@@ -117,6 +205,17 @@ export declare function getStory(directory: string, storyId: string, sessionId?:
  * Get the next incomplete story (highest priority)
  */
 export declare function getNextStory(directory: string, sessionId?: string): UserStory | null;
+/**
+ * Amend (replace) an active acceptance criterion with a corrected one.
+ * The original is retained verbatim in the amendment ledger.
+ */
+export declare function amendCriterion(directory: string, storyId: string, input: CriterionAmendmentInput, sessionId?: string): CriterionAmendmentResult;
+/**
+ * Supersede an active acceptance criterion with no replacement. The original
+ * no longer governs completion, but is retained verbatim with proof, reason,
+ * authority, and timestamp in the amendment ledger.
+ */
+export declare function supersedeCriterion(directory: string, storyId: string, input: CriterionAmendmentInput, sessionId?: string): CriterionAmendmentResult;
 /**
  * Input type for creating user stories (priority is optional)
  */
@@ -145,6 +244,11 @@ export declare function ensurePrdForStartup(directory: string, project: string, 
  * Format PRD status as a string for display
  */
 export declare function formatPrdStatus(status: PRDStatus): string;
+/**
+ * Format a story's amendment ledger (struck-through originals with proof).
+ * Returns an empty string when the story has no amendments.
+ */
+export declare function formatCriterionAmendments(story: UserStory): string;
 /**
  * Format a story for display
  */

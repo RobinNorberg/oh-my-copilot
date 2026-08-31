@@ -9,14 +9,17 @@
 import { z } from "zod";
 /**
  * Validate that a tool path is within the project root boundary.
- * Only enforced when security.restrictToolPaths is enabled.
+ * Only enforced when OMC_RESTRICT_TOOL_PATHS=true.
+ *
+ * @param inputPath - The path parameter from tool invocation
+ * @returns The resolved absolute path
+ * @throws Error if path is outside project root when restriction is enabled
  */
 export declare function validateToolPath(inputPath: string): string;
 export interface AstToolDefinition<T extends z.ZodRawShape> {
     name: string;
     description: string;
     schema: T;
-    annotations?: import('./types.js').ToolAnnotations;
     handler: (args: z.infer<z.ZodObject<T>>) => Promise<{
         content: Array<{
             type: "text";
@@ -24,14 +27,6 @@ export interface AstToolDefinition<T extends z.ZodRawShape> {
         }>;
     }>;
 }
-export type AnyAstToolDefinition = AstToolDefinition<any> & {
-    handler: (args: any) => Promise<{
-        content: Array<{
-            type: "text";
-            text: string;
-        }>;
-    }>;
-};
 /**
  * Supported languages for AST analysis
  * Maps to ast-grep language identifiers
@@ -41,13 +36,37 @@ export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 /**
  * AST Grep Search Tool - Find code patterns using AST matching
  */
-export declare const astGrepSearchTool: AnyAstToolDefinition;
+export declare const astGrepSearchTool: AstToolDefinition<{
+    pattern: z.ZodString;
+    language: z.ZodEnum<[string, ...string[]]>;
+    path: z.ZodOptional<z.ZodString>;
+    context: z.ZodOptional<z.ZodNumber>;
+    maxResults: z.ZodOptional<z.ZodNumber>;
+}>;
 /**
  * AST Grep Replace Tool - Replace code patterns using AST matching
  */
-export declare const astGrepReplaceTool: AnyAstToolDefinition;
+export declare const astGrepReplaceTool: AstToolDefinition<{
+    pattern: z.ZodString;
+    replacement: z.ZodString;
+    language: z.ZodEnum<[string, ...string[]]>;
+    path: z.ZodOptional<z.ZodString>;
+    dryRun: z.ZodOptional<z.ZodBoolean>;
+}>;
 /**
  * Get all AST tool definitions
  */
-export declare const astTools: AnyAstToolDefinition[];
+export declare const astTools: (AstToolDefinition<{
+    pattern: z.ZodString;
+    language: z.ZodEnum<[string, ...string[]]>;
+    path: z.ZodOptional<z.ZodString>;
+    context: z.ZodOptional<z.ZodNumber>;
+    maxResults: z.ZodOptional<z.ZodNumber>;
+}> | AstToolDefinition<{
+    pattern: z.ZodString;
+    replacement: z.ZodString;
+    language: z.ZodEnum<[string, ...string[]]>;
+    path: z.ZodOptional<z.ZodString>;
+    dryRun: z.ZodOptional<z.ZodBoolean>;
+}>)[];
 //# sourceMappingURL=ast-tools.d.ts.map

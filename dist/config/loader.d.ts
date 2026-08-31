@@ -2,11 +2,11 @@
  * Configuration Loader
  *
  * Handles loading and merging configuration from multiple sources:
- * - User config: ~/.config/copilot-omg/config.jsonc
+ * - User config: ~/.config/claude-omc/config.jsonc
  * - Project config: .copilot/omg.jsonc
  * - Environment variables
  */
-import type { PluginConfig } from '../shared/types.js';
+import type { PluginConfig } from "../shared/types.js";
 /**
  * Default configuration.
  *
@@ -40,14 +40,17 @@ export declare function deepMerge<T extends object>(target: T, source: Partial<T
  */
 export declare function loadEnvConfig(): Partial<PluginConfig>;
 export declare function validateTeamConfig(config: PluginConfig): void;
+/** Validate the closed v1 workflow block without changing legacy config validation. */
+export declare function validateAutopilotWorkflows(config: unknown, source: string): void;
+export declare function validateAutopilotConfig(config: PluginConfig): void;
 export declare function loadConfig(): PluginConfig;
 export declare function compactOmcStartupGuidance(content: string): string;
 /**
- * Find and load AGENTS.md or copilot-instructions.md files for context injection
+ * Find and load AGENTS.md or CLAUDE.md files for context injection
  */
 export declare function findContextFiles(startDir?: string): string[];
 /**
- * Load context from AGENTS.md/copilot-instructions.md files
+ * Load context from AGENTS.md/CLAUDE.md files
  */
 export declare function loadContextFromFiles(files: string[]): string;
 /**

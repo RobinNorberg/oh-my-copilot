@@ -7,7 +7,10 @@
 
 import { z } from 'zod';
 import {
-  validateWorkingDirectoryOrLinkedWorktree,
+  resolveWorkingDirectoryOrLinkedWorktree,
+  ForeignWorkingDirectoryError,
+  getCanonicalWorkingDirectoryRoots,
+  type WorkingDirectoryResolution,
 } from '../lib/worktree-paths.js';
 import {
   readPage,
@@ -21,18 +24,57 @@ import { ingestKnowledge } from '../hooks/wiki/ingest.js';
 import { queryWiki } from '../hooks/wiki/query.js';
 import { lintWiki } from '../hooks/wiki/lint.js';
 import type { WikiCategory } from '../hooks/wiki/types.js';
-import { ToolDefinition, AnyToolDefinition } from './types.js';
+import { basename } from 'node:path';
+import { ToolDefinition } from './types.js';
 
 const WIKI_CATEGORIES: [string, ...string[]] = [
   'architecture', 'decision', 'pattern', 'debugging',
   'environment', 'session-log', 'reference', 'convention',
 ];
 
+/**
+ * Resolve the wiki root for a tool call, rejecting foreign-repository
+ * workingDirectory values visibly (#3858). The rejection reaches the MCP
+ * caller as isError. Canonical provided/trusted roots stay internal; the
+ * error message uses the caller-supplied label and a basename-only trusted
+ * root so host paths the caller did not supply are not disclosed.
+ */
+function resolveWikiRoot(
+  workingDirectory: string | undefined,
+): { ok: true; root: string } | { ok: false; error: ForeignWorkingDirectoryError } {
+  const resolution: WorkingDirectoryResolution = resolveWorkingDirectoryOrLinkedWorktree(workingDirectory);
+  if (resolution.status === 'foreign_repository') {
+    const roots = getCanonicalWorkingDirectoryRoots(resolution);
+    return {
+      ok: false,
+      error: new ForeignWorkingDirectoryError(
+        roots.providedRoot,
+        roots.trustedRoot,
+        resolution.callerLabel,
+      ),
+    };
+  }
+  return { ok: true, root: resolution.root };
+}
+
+/** Searched-root suffix for empty/no-match results: basename + corpus size (#3858). */
+function searchedSuffix(root: string, pages: number): string {
+  return ` (searched ${pages} page${pages === 1 ? '' : 's'} in ${basename(root)}/.omg/wiki)`;
+}
+
 // ============================================================================
 // wiki_ingest
 // ============================================================================
 
-export const wikiIngestTool: AnyToolDefinition = {
+export const wikiIngestTool: ToolDefinition<{
+  title: z.ZodString;
+  content: z.ZodString;
+  tags: z.ZodArray<z.ZodString>;
+  category: z.ZodEnum<typeof WIKI_CATEGORIES>;
+  sources: z.ZodOptional<z.ZodArray<z.ZodString>>;
+  confidence: z.ZodOptional<z.ZodEnum<['high', 'medium', 'low']>>;
+  workingDirectory: z.ZodOptional<z.ZodString>;
+}> = {
   name: 'wiki_ingest',
   description: 'Process knowledge into wiki pages. Creates new pages or merges into existing ones (append strategy — never replaces). A single ingest can update multiple pages via cross-references.',
   schema: {
@@ -46,7 +88,17 @@ export const wikiIngestTool: AnyToolDefinition = {
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Error ingesting into wiki: ${resolved.error.message}`,
+          }],
+          isError: true,
+        };
+      }
+      const root = resolved.root;
 
       const result = ingestKnowledge(root, {
         title: args.title,
@@ -79,7 +131,13 @@ export const wikiIngestTool: AnyToolDefinition = {
 // wiki_query
 // ============================================================================
 
-export const wikiQueryTool: AnyToolDefinition = {
+export const wikiQueryTool: ToolDefinition<{
+  query: z.ZodString;
+  tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
+  category: z.ZodOptional<z.ZodEnum<typeof WIKI_CATEGORIES>>;
+  limit: z.ZodOptional<z.ZodNumber>;
+  workingDirectory: z.ZodOptional<z.ZodString>;
+}> = {
   name: 'wiki_query',
   description: 'Search across all wiki pages by keywords and tags. Returns matching pages with relevance snippets. YOU synthesize answers with citations from the results — the tool returns raw matches only. NO vector embeddings.',
   schema: {
@@ -91,7 +149,17 @@ export const wikiQueryTool: AnyToolDefinition = {
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Error querying wiki: ${resolved.error.message}`,
+          }],
+          isError: true,
+        };
+      }
+      const root = resolved.root;
       const matches = queryWiki(root, args.query, {
         tags: args.tags,
         category: args.category as WikiCategory | undefined,
@@ -102,7 +170,7 @@ export const wikiQueryTool: AnyToolDefinition = {
         return {
           content: [{
             type: 'text' as const,
-            text: `No wiki pages match "${args.query}".`,
+            text: `No wiki pages match "${args.query}".${searchedSuffix(root, listPages(root).length)}`,
           }],
         };
       }
@@ -146,7 +214,17 @@ export const wikiLintTool: ToolDefinition<{
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Error linting wiki: ${resolved.error.message}`,
+          }],
+          isError: true,
+        };
+      }
+      const root = resolved.root;
       const report = lintWiki(root);
 
       if (report.issues.length === 0) {
@@ -189,7 +267,13 @@ export const wikiLintTool: ToolDefinition<{
 // wiki_add
 // ============================================================================
 
-export const wikiAddTool: AnyToolDefinition = {
+export const wikiAddTool: ToolDefinition<{
+  title: z.ZodString;
+  content: z.ZodString;
+  tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
+  category: z.ZodOptional<z.ZodEnum<typeof WIKI_CATEGORIES>>;
+  workingDirectory: z.ZodOptional<z.ZodString>;
+}> = {
   name: 'wiki_add',
   description: 'Quick-add a wiki page. Simpler than wiki_ingest — creates a single page directly.',
   schema: {
@@ -201,7 +285,17 @@ export const wikiAddTool: AnyToolDefinition = {
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Error adding wiki page: ${resolved.error.message}`,
+          }],
+          isError: true,
+        };
+      }
+      const root = resolved.root;
       const slug = titleToSlug(args.title);
 
       // Guard: reject if page already exists — use wiki_ingest to merge
@@ -226,7 +320,7 @@ export const wikiAddTool: AnyToolDefinition = {
       return {
         content: [{
           type: 'text' as const,
-          text: `Wiki page created: ${result.created[0]}\nPath: .omcp/wiki/${result.created[0]}`,
+          text: `Wiki page created: ${result.created[0]}\nPath: .omg/wiki/${result.created[0]}`,
         }],
       };
     } catch (error) {
@@ -255,7 +349,17 @@ export const wikiListTool: ToolDefinition<{
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Error listing wiki: ${resolved.error.message}`,
+          }],
+          isError: true,
+        };
+      }
+      const root = resolved.root;
       const index = readIndex(root);
 
       if (!index) {
@@ -264,7 +368,7 @@ export const wikiListTool: ToolDefinition<{
           return {
             content: [{
               type: 'text' as const,
-              text: 'Wiki is empty. Use wiki_add or wiki_ingest to create pages.',
+              text: `Wiki is empty.${searchedSuffix(root, 0)} Use wiki_add or wiki_ingest to create pages.`,
             }],
           };
         }
@@ -310,7 +414,17 @@ export const wikiReadTool: ToolDefinition<{
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Error reading wiki page: ${resolved.error.message}`,
+          }],
+          isError: true,
+        };
+      }
+      const root = resolved.root;
       const filename = args.page.endsWith('.md') ? args.page : `${args.page}.md`;
       const page = readPage(root, filename);
 
@@ -368,7 +482,17 @@ export const wikiDeleteTool: ToolDefinition<{
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Error deleting wiki page: ${resolved.error.message}`,
+          }],
+          isError: true,
+        };
+      }
+      const root = resolved.root;
       const filename = args.page.endsWith('.md') ? args.page : `${args.page}.md`;
       const deleted = deletePage(root, filename);
 

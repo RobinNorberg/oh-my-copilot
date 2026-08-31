@@ -3,7 +3,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import { cleanupStaleBridges } from '../bridge-manager.js';
+import {
+  cleanupOwnedBridgeSessions,
+  cleanupStaleBridges,
+  trackOwnedBridgeSession,
+} from '../bridge-manager.js';
 import { getBridgeMetaPath, getBridgeSocketPath, getSessionDir, getSessionLockPath, getRuntimeDir } from '../paths.js';
 import type { BridgeMeta } from '../types.js';
 
@@ -87,5 +91,49 @@ describe('bridge-manager cleanup', () => {
     expect(fs.existsSync(getBridgeMetaPath(sessionId))).toBe(true);
     expect(fs.existsSync(getBridgeSocketPath(sessionId))).toBe(true);
     expect(fs.existsSync(getSessionLockPath(sessionId))).toBe(true);
+  });
+
+  it('cleanupOwnedBridgeSessions only removes sessions tracked by this process', async () => {
+    const ownedSessionId = 'owned-session';
+    const foreignSessionId = 'foreign-session';
+
+    for (const sessionId of [ownedSessionId, foreignSessionId]) {
+      fs.mkdirSync(getSessionDir(sessionId), { recursive: true });
+      fs.writeFileSync(getBridgeMetaPath(sessionId), '{invalid-json', 'utf-8');
+      fs.writeFileSync(getBridgeSocketPath(sessionId), 'placeholder', 'utf-8');
+      fs.writeFileSync(getSessionLockPath(sessionId), 'lock', 'utf-8');
+    }
+
+    trackOwnedBridgeSession(ownedSessionId);
+
+    const result = await cleanupOwnedBridgeSessions();
+
+    expect(result.requestedSessions).toBe(1);
+    expect(result.foundSessions).toBe(1);
+    expect(result.errors).toEqual([]);
+
+    expect(fs.existsSync(getBridgeMetaPath(ownedSessionId))).toBe(false);
+    expect(fs.existsSync(getBridgeSocketPath(ownedSessionId))).toBe(false);
+    expect(fs.existsSync(getSessionLockPath(ownedSessionId))).toBe(false);
+
+    expect(fs.existsSync(getBridgeMetaPath(foreignSessionId))).toBe(true);
+    expect(fs.existsSync(getBridgeSocketPath(foreignSessionId))).toBe(true);
+    expect(fs.existsSync(getSessionLockPath(foreignSessionId))).toBe(true);
+  });
+
+  it('cleanupOwnedBridgeSessions clears tracked ownership after cleanup', async () => {
+    const sessionId = 'cleanup-once';
+    fs.mkdirSync(getSessionDir(sessionId), { recursive: true });
+    fs.writeFileSync(getBridgeMetaPath(sessionId), '{invalid-json', 'utf-8');
+    fs.writeFileSync(getBridgeSocketPath(sessionId), 'placeholder', 'utf-8');
+    fs.writeFileSync(getSessionLockPath(sessionId), 'lock', 'utf-8');
+
+    trackOwnedBridgeSession(sessionId);
+
+    const firstResult = await cleanupOwnedBridgeSessions();
+    const secondResult = await cleanupOwnedBridgeSessions();
+
+    expect(firstResult.requestedSessions).toBe(1);
+    expect(secondResult.requestedSessions).toBe(0);
   });
 });

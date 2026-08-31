@@ -1,5 +1,5 @@
 /**
- * Tests for hook notification config reader (omp_config.hook.json).
+ * Tests for hook notification config reader (omc_config.hook.json).
  *
  * Covers:
  * - File missing → null
@@ -25,7 +25,7 @@ import type { HookNotificationConfig } from "../hook-config-types.js";
 import type { NotificationConfig } from "../types.js";
 
 const TEST_DIR = join(tmpdir(), `omc-hook-config-test-${process.pid}`);
-const TEST_CONFIG_PATH = join(TEST_DIR, "omp_config.hook.json");
+const TEST_CONFIG_PATH = join(TEST_DIR, "omc_config.hook.json");
 
 function writeTestConfig(config: object): void {
   mkdirSync(TEST_DIR, { recursive: true });

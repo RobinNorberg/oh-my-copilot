@@ -5,11 +5,25 @@ import { tmpdir } from 'os';
 import { initAutopilot, transitionPhase, readAutopilotState, transitionRalphToUltraQA, transitionUltraQAToValidation, getTransitionPrompt } from '../state.js';
 describe('Phase Transitions', () => {
     let testDir;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), 'transition-test-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = testDir;
+        process.env.USERPROFILE = testDir;
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
     });
     describe('transitionRalphToUltraQA', () => {
         it('should fail if not in execution phase', () => {

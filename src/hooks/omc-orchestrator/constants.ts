@@ -9,17 +9,17 @@
 export const HOOK_NAME = 'omc-orchestrator';
 
 /** @deprecated Use ALLOWED_PATH_PATTERNS instead. Legacy single prefix. */
-export const ALLOWED_PATH_PREFIX = '.omcp/';
+export const ALLOWED_PATH_PREFIX = '.omg/';
 
 /** Path patterns that orchestrator IS allowed to modify directly.
  *  Paths are normalized to forward slashes before matching (via toForwardSlash). */
 export const ALLOWED_PATH_PATTERNS = [
-  /^\.omcp\//,                    // .omcp/**
-  /^\.copilot\//,                 // .copilot/** (local)
-  /^~?\/\.copilot\//,             // legacy ~/.copilot/** references
-  /\/\.copilot\//,                // any /.copilot/ path
-  /copilot-instructions\.md$/,                 // **/copilot-instructions.md
-  /AGENTS\.md$/,                 // **/AGENTS.md
+  /^\.omg\//,                        // .omg/**
+  /^\.(?:copilot|claude)\//,         // .copilot/** and .claude/** (local)
+  /^~?\/\.(?:copilot|claude)\//,     // ~/.copilot/** and ~/.claude/** references
+  /\/\.(?:copilot|claude)\//,        // any /.copilot/ or /.claude/ path
+  /CLAUDE\.md$/,                     // **/CLAUDE.md
+  /AGENTS\.md$/,                     // **/AGENTS.md
 ];
 
 /** Source file extensions that should trigger delegation warnings */
@@ -58,7 +58,7 @@ export const DIRECT_WORK_REMINDER = `
 
 [SYSTEM REMINDER - DELEGATION REQUIRED]
 
-You just performed direct file modifications outside \`.omcp/\`.
+You just performed direct file modifications outside \`.omg/\`.
 
 **You are an ORCHESTRATOR, not an IMPLEMENTER.**
 
@@ -68,8 +68,8 @@ As an orchestrator, you should:
 - **COORDINATE** multiple tasks and ensure completion
 
 You should NOT:
-- Write code directly (except for \`.omcp/\` files like plans and notepads)
-- Make direct file edits outside \`.omcp/\`
+- Write code directly (except for \`.omg/\` files like plans and notepads)
+- Make direct file edits outside \`.omg/\`
 - Implement features yourself
 
 **If you need to make changes:**
@@ -89,7 +89,7 @@ export const ORCHESTRATOR_DELEGATION_REQUIRED = `
 
 **STOP. YOU ARE VIOLATING ORCHESTRATOR PROTOCOL.**
 
-You (coordinator) are attempting to directly modify a file outside \`.omcp/\`.
+You (coordinator) are attempting to directly modify a file outside \`.omg/\`.
 
 **Path attempted:** $FILE_PATH
 
@@ -103,15 +103,15 @@ As an ORCHESTRATOR, you MUST:
 3. **COORDINATE** - you orchestrate, you don't implement
 
 **ALLOWED direct file operations:**
-- Files inside \`.omcp/\` (plans, notepads, drafts)
-- Files inside \`[$CLAUDE_CONFIG_DIR|~/.copilot]/\`
-- \`copilot-instructions.md\` and \`AGENTS.md\` files
+- Files inside \`.omg/\` (plans, notepads, drafts)
+- Files inside \`[$COPILOT_CONFIG_DIR|~/.claude]/\`
+- \`CLAUDE.md\` and \`AGENTS.md\` files
 - Reading files for verification
 - Running diagnostics/tests
 
 **FORBIDDEN direct file operations:**
 - Writing/editing source code
-- Creating new files outside \`.omcp/\`
+- Creating new files outside \`.omg/\`
 - Any implementation work
 
 ---
@@ -139,7 +139,7 @@ You have an active work plan with incomplete tasks. Continue working.
 RULES:
 - Proceed without asking for permission
 - Mark each checkbox [x] in the plan file when done
-- Use the notepad at .omcp/notepads/{PLAN_NAME}/ to record learnings
+- Use the notepad at .omg/notepads/{PLAN_NAME}/ to record learnings
 - Do not stop until all tasks are complete
 - If blocked, document the blocker and move to the next task`;
 

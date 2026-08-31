@@ -1,11 +1,13 @@
-import { spawnSync } from 'child_process';
-import { isAbsolute, normalize, sep, win32 as win32Path } from 'path';
+import { isAbsolute, posix as posixPath, win32 as win32Path } from 'path';
+import { homedir } from 'os';
 import { validateTeamName } from './team-name.js';
 import { normalizeToCcAlias } from '../features/delegation-enforcer.js';
 import { isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/models.js';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
+import { probeExecutable, resolveExecutable } from '../platform/executable-resolution.js';
+import type { WorkerLaunchDescriptor } from './types.js';
 
-export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok';
+export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
 
 export interface CliAgentContract {
   agentType: CliAgentType;
@@ -48,49 +50,107 @@ export interface CliBinaryValidation {
 
 const resolvedPathCache = new Map<string, string>();
 
+// Locations any process can write to, so a binary resolved there is not
+// trustworthy.
 const UNTRUSTED_PATH_PATTERNS: RegExp[] = [
   /^\/tmp(\/|$)/,
   /^\/var\/tmp(\/|$)/,
   /^\/dev\/shm(\/|$)/,
 ];
 
-function getTrustedPrefixes(): string[] {
-  const trusted = [
-    '/usr/local/bin',
-    '/usr/bin',
-    '/opt/homebrew/',
-  ];
+// The POSIX list never matches a Windows path, so drops like C:\Users\me\
+// AppData\Local\Temp\claude.exe sailed through. These match by path segment
+// because %TEMP% and Downloads sit under the user profile, wherever that is,
+// and case-insensitively because the filesystem is.
+const UNTRUSTED_WINDOWS_PATH_PATTERNS: RegExp[] = [
+  /[\\/]Temp[\\/]/i,
+  /[\\/]Tmp[\\/]/i,
+  /[\\/]Downloads[\\/]/i,
+];
 
-  const home = process.env.HOME;
-  if (home) {
-    trusted.push(`${home}/.local/bin`);
-    trusted.push(`${home}/.nvm/`);
-    trusted.push(`${home}/.cargo/bin`);
-    trusted.push(`${home}/.grok/bin`);
+function untrustedPathPatterns(): RegExp[] {
+  return process.platform === 'win32'
+    ? [...UNTRUSTED_PATH_PATTERNS, ...UNTRUSTED_WINDOWS_PATH_PATTERNS]
+    : UNTRUSTED_PATH_PATTERNS;
+}
+
+/**
+ * Path semantics for the host platform. Selected per call rather than bound at
+ * import time so a platform-stubbed test exercises the matching rules it means to.
+ */
+function pathFlavor(): typeof posixPath {
+  return process.platform === 'win32' ? win32Path : posixPath;
+}
+
+/**
+ * The user's home directory, resolved the way os.homedir() does but keyed to
+ * the platform under evaluation: HOME on POSIX, USERPROFILE on Windows, with
+ * the OS lookup as the fallback when neither is set.
+ */
+function trustedHome(): string {
+  const fromEnv = process.platform === 'win32' ? process.env.USERPROFILE : process.env.HOME;
+  return fromEnv?.trim() ? fromEnv : homedir();
+}
+
+function getTrustedPrefixes(): string[] {
+  const flavor = pathFlavor();
+  const home = trustedHome();
+  const trusted: string[] = [];
+
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA;
+    const localAppData = process.env.LOCALAPPDATA;
+    const programFiles = process.env.ProgramFiles;
+    const programFilesX86 = process.env['ProgramFiles(x86)'];
+    const candidates = [
+      appData ? flavor.join(appData, 'npm') : undefined,
+      localAppData ? flavor.join(localAppData, 'npm') : undefined,
+      localAppData ? flavor.join(localAppData, 'Programs') : undefined,
+      localAppData ? flavor.join(localAppData, 'Yarn', 'bin') : undefined,
+      programFiles ? flavor.join(programFiles, 'nodejs') : undefined,
+      programFilesX86 ? flavor.join(programFilesX86, 'nodejs') : undefined,
+      home ? flavor.join(home, '.cargo', 'bin') : undefined,
+      home ? flavor.join(home, '.grok', 'bin') : undefined,
+      home ? flavor.join(home, '.local', 'bin') : undefined,
+    ];
+    trusted.push(...candidates.filter((entry): entry is string => Boolean(entry)));
+  } else {
+    trusted.push('/usr/local/bin', '/usr/bin', '/opt/homebrew');
+    if (home) {
+      trusted.push(`${home}/.local/bin`);
+      trusted.push(`${home}/.nvm`);
+      trusted.push(`${home}/.cargo/bin`);
+      trusted.push(`${home}/.grok/bin`);
+    }
+  }
+
+  // npm's configured global prefix is where `npm i -g` puts provider CLIs.
+  const npmPrefix = process.env.npm_config_prefix;
+  if (npmPrefix && flavor.isAbsolute(npmPrefix)) {
+    trusted.push(npmPrefix);
+    trusted.push(flavor.join(npmPrefix, 'bin'));
   }
 
   const custom = (process.env.OMC_TRUSTED_CLI_DIRS ?? '')
-    .split(':')
+    .split(flavor.delimiter)
     .map(part => part.trim())
     .filter(Boolean)
-    .filter(part => isAbsolute(part));
+    .filter(part => flavor.isAbsolute(part));
 
   trusted.push(...custom);
   return trusted;
 }
 
 function isTrustedPrefix(resolvedPath: string): boolean {
-  const normalized = normalize(resolvedPath);
+  const flavor = pathFlavor();
   return getTrustedPrefixes().some(prefix => {
-    // `normalize` strips trailing separators, so a plain `startsWith` would treat
-    // a sibling whose name merely begins with the prefix as trusted — e.g.
-    // `/usr/bin` would match `/usr/bin-malicious/grok`, and `~/.local/bin` would
-    // match `~/.local/bin-evil/x`. Enforce a directory boundary: the resolved
-    // path must be the trusted dir itself or a true descendant (prefix + sep).
-    const p = normalize(prefix);
-    if (normalized === p) return true;
-    const withSep = p.endsWith(sep) ? p : p + sep;
-    return normalized.startsWith(withSep);
+    // A raw startsWith would treat a sibling whose name merely begins with the
+    // prefix as trusted — `/usr/bin` would match `/usr/bin-malicious/grok`.
+    // `relative` enforces the directory boundary, and its win32 form compares
+    // case-insensitively the way the filesystem does.
+    const relative = flavor.relative(prefix, resolvedPath);
+    if (relative === '') return true;
+    return !relative.startsWith('..') && !flavor.isAbsolute(relative);
   });
 }
 
@@ -111,28 +171,17 @@ export function resolveCliBinaryPath(binary: string): string {
   const cached = resolvedPathCache.get(binary);
   if (cached) return cached;
 
-  const finder = process.platform === 'win32' ? 'where' : 'which';
-  const result = spawnSync(finder, [binary], {
-    timeout: 5000,
-    env: process.env,
-  });
-
-  if (result.status !== 0) {
+  const found = resolveExecutable(binary);
+  if (!found) {
     throw new Error(`CLI binary '${binary}' not found in PATH`);
   }
 
-  const stdout = result.stdout?.toString().trim() ?? '';
-  const firstLine = stdout.split('\n').map(line => line.trim()).find(Boolean) ?? '';
-  if (!firstLine) {
-    throw new Error(`CLI binary '${binary}' not found in PATH`);
-  }
-
-  const resolvedPath = normalize(firstLine);
-  if (!isAbsolute(resolvedPath)) {
+  const resolvedPath = pathFlavor().normalize(found);
+  if (!pathFlavor().isAbsolute(resolvedPath)) {
     throw new Error(`Resolved CLI binary '${binary}' to relative path`);
   }
 
-  if (UNTRUSTED_PATH_PATTERNS.some(pattern => pattern.test(resolvedPath))) {
+  if (untrustedPathPatterns().some(pattern => pattern.test(resolvedPath))) {
     throw new Error(`Resolved CLI binary '${binary}' to untrusted location: ${resolvedPath}`);
   }
 
@@ -165,6 +214,7 @@ export function validateCliBinaryPath(binary: string): CliBinaryValidation {
 
 export const _testInternals = {
   UNTRUSTED_PATH_PATTERNS,
+  untrustedPathPatterns,
   getTrustedPrefixes,
   isTrustedPrefix,
 };
@@ -193,7 +243,7 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
       if (model) {
         // Provider-specific model IDs (Bedrock, Vertex) must be passed as-is.
         // Normalizing them to aliases like "sonnet" causes Claude Code to expand
-        // them to Anthropic API names (claude-sonnet-4-6) which are invalid on
+        // them to Anthropic API names (claude-sonnet-5) which are invalid on
         // these providers. (issue #1695)
         const resolved = isProviderSpecificModelId(model) ? model : normalizeToCcAlias(model);
         args.push('--model', resolved);
@@ -279,19 +329,47 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
       return rawOutput.trim();
     },
   },
+  antigravity: {
+    agentType: 'antigravity',
+    binary: 'agy',
+    installInstructions: 'Install the Antigravity CLI (agy) per the official instructions at https://antigravity.google, then verify with `agy --version`.',
+    supportsPromptMode: true,
+    promptModeFlag: '-p',
+    buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
+      // agy's `-p`/`--print` is appended by getPromptModeArgs as `-p <instruction>`,
+      // where the prompt is the VALUE of `-p` (not a boolean). All other flags
+      // MUST precede that `-p`, so buildLaunchArgs returns only the leading flags
+      // (like grok). --dangerously-skip-permissions suppresses approval prompts,
+      // so no trust-confirm send-keys is needed (unlike gemini). Verified agy 1.0.10.
+      const args = ['--dangerously-skip-permissions'];
+      if (model) args.push('--model', model);
+      return [...args, ...extraFlags];
+    },
+    parseOutput(rawOutput: string): string {
+      return rawOutput.trim();
+    },
+  },
   cursor: {
     agentType: 'cursor',
     binary: 'cursor-agent',
     installInstructions: 'Install Cursor Agent CLI: see https://docs.cursor.com/cli',
-    // cursor-agent runs as an interactive REPL — no exit-on-complete prompt mode.
-    // Keep supportsPromptMode false so the verdict-file contract path
-    // (CONTRACT_ROLES + shouldInjectContract) skips this provider; cursor
-    // workers participate as executors only.
+    // Team workers must be persistent interactive panes, so the one-shot
+    // `-p/--print` path is deliberately unused here (same stance as codex).
     supportsPromptMode: false,
-    buildLaunchArgs(_model?: string, extraFlags: string[] = []): string[] {
-      // Minimal flags — cursor-agent owns its own session/auth state.
-      // The model is selected interactively inside cursor-agent itself.
-      return [...extraFlags];
+    buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
+      // `--force` suppresses per-command approval prompts and `--trust` accepts
+      // the workspace, which together are cursor-agent's equivalent of the
+      // approval bypass every other provider already passes. Without them a
+      // worker pane opened on a directory cursor has not seen before stops at
+      // "Workspace Trust Required" and exits; team worktrees are freshly
+      // created per worker, so they always hit that path. `omc ask cursor`
+      // already launches with `--force --trust` for the same reason.
+      const args = ['--force', '--trust'];
+      const extra = extraFlags.filter(flag => !['--force', '-f', '--yolo', '--trust'].includes(flag));
+      // `--model <id>` is a documented global option; ids come from
+      // `cursor-agent --list-models` (e.g. cursor-grok-4.6-high, composer-2.5).
+      if (model) args.push('--model', model);
+      return [...args, ...extra];
     },
     parseOutput(rawOutput: string): string {
       return rawOutput.trim();
@@ -323,45 +401,36 @@ function resolveBinaryPath(binary: string): string {
   validateBinaryRef(binary);
   if (isAbsolute(binary)) return binary;
 
-  try {
-    const resolver = process.platform === 'win32' ? 'where' : 'which';
-    const result = spawnSync(resolver, [binary], { timeout: 5000, encoding: 'utf8' });
-    if (result.status !== 0) return binary;
-
-    const lines = result.stdout
-      ?.split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean) ?? [];
-
-    const firstPath = lines[0];
-    const isResolvedAbsolute = !!firstPath && (isAbsolute(firstPath) || win32Path.isAbsolute(firstPath));
-    return isResolvedAbsolute ? firstPath : binary;
-  } catch {
-    return binary;
-  }
+  // An unresolvable name falls back to the bare binary so a PATH lookup by the
+  // spawning shell still gets a chance.
+  return resolveExecutable(binary) ?? binary;
 }
 
 export function isCliAvailable(agentType: CliAgentType): boolean {
   const contract = getContract(agentType);
   try {
-    const resolvedBinary = resolveBinaryPath(contract.binary);
-    if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedBinary)) {
-      const comspec = process.env.COMSPEC || 'cmd.exe';
-      const result = spawnSync(comspec, ['/d', '/s', '/c', `"${resolvedBinary}" --version`], { timeout: 5000 });
-      return result.status === 0;
-    }
+    validateBinaryRef(contract.binary);
+    const resolved = isAbsolute(contract.binary)
+      ? contract.binary
+      : resolveExecutable(contract.binary);
 
-    const result = spawnSync(resolvedBinary, ['--version'], {
-      timeout: 5000,
-      shell: process.platform === 'win32',
-    });
-    return result.status === 0;
+    // Fail closed when the name does not resolve. Handing a bare name to a
+    // shell let cmd.exe resolve it against the current directory and run a
+    // planted claude.cmd from an untrusted repo, and left no resolved path for
+    // the trust check to inspect.
+    if (!resolved) return false;
+
+    return probeExecutable(resolved, { timeoutMs: 5000 }).exitedZero;
   } catch {
     return false;
   }
 }
 
 export function validateCliAvailable(agentType: CliAgentType): void {
+  // Platform support first: a clear "unsupported on this OS" error is more useful
+  // than a binary-not-found message when the binary exists but headless mode is
+  // unsupported here (e.g. antigravity on Windows).
+  assertHeadlessSupported(agentType);
   if (!isCliAvailable(agentType)) {
     const contract = getContract(agentType);
     throw new Error(
@@ -392,6 +461,49 @@ export function buildWorkerArgv(agentType: CliAgentType, config: WorkerLaunchCon
   return [binary, ...args];
 }
 
+export function validateWorkerLaunchDescriptor(value: unknown): WorkerLaunchDescriptor {
+  const descriptor = value as Partial<WorkerLaunchDescriptor> | null;
+  if (!descriptor || descriptor.schema_version !== 1
+    || typeof descriptor.provider !== 'string'
+    || !Object.prototype.hasOwnProperty.call(descriptor, 'model')
+    || (descriptor.model !== null && (typeof descriptor.model !== 'string' || descriptor.model.length === 0))
+    || typeof descriptor.binary !== 'string' || descriptor.binary.length === 0 || descriptor.binary.includes('\0')
+    || !(isAbsolute(descriptor.binary) || win32Path.isAbsolute(descriptor.binary))
+    || !Array.isArray(descriptor.args) || descriptor.args.some(arg => typeof arg !== 'string' || arg.includes('\0'))) {
+    throw new Error('Invalid worker launch descriptor');
+  }
+  getContract(descriptor.provider as CliAgentType);
+  const args = descriptor.provider === 'cursor'
+    ? [
+        '--force',
+        '--trust',
+        ...descriptor.args.filter(flag => !['--force', '-f', '--yolo', '--trust'].includes(flag)),
+      ]
+    : [...descriptor.args];
+  return {
+    schema_version: 1,
+    provider: descriptor.provider as CliAgentType,
+    model: descriptor.model,
+    binary: descriptor.binary,
+    args,
+  };
+}
+
+export function buildValidatedWorkerLaunchDescriptor(
+  agentType: CliAgentType,
+  config: WorkerLaunchConfig,
+  appendedArgs: readonly string[] = [],
+): WorkerLaunchDescriptor {
+  const [binary, ...args] = buildWorkerArgv(agentType, config);
+  return validateWorkerLaunchDescriptor({
+    schema_version: 1,
+    provider: agentType,
+    model: config.model ?? null,
+    binary,
+    args: [...args, ...appendedArgs],
+  });
+}
+
 export function buildWorkerCommand(agentType: CliAgentType, config: WorkerLaunchConfig): string {
   return buildWorkerArgv(agentType, config)
     .map((part) => `'${part.replace(/'/g, `'\"'\"'`)}'`)
@@ -419,6 +531,8 @@ const WORKER_MODEL_ENV_ALLOWLIST = [
   'OMC_GEMINI_DEFAULT_MODEL',
   'OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL',
   'OMC_GROK_DEFAULT_MODEL',
+  'OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL',
+  'OMC_ANTIGRAVITY_DEFAULT_MODEL',
 ] as const;
 
 export function getWorkerEnv(
@@ -461,7 +575,7 @@ export function isPromptModeAgent(agentType: CliAgentType): boolean {
  *
  * When running on a non-standard provider (Bedrock, Vertex), workers need
  * the provider-specific model ID passed explicitly via --model. Without it,
- * Claude Code falls back to its built-in default (claude-sonnet-4-6) which
+ * Claude Code falls back to its built-in default (claude-sonnet-5) which
  * is invalid on these providers.
  *
  * Resolution order:
@@ -481,16 +595,32 @@ export function resolveClaudeWorkerModel(
     return undefined;
   }
 
-  // Only return an explicit --model when the env carries a provider-specific
-  // model id (e.g. a Bedrock ARN). Tier-specific env vars
-  // (CLAUDE_CODE_BEDROCK_*_MODEL, ANTHROPIC_DEFAULT_*_MODEL, OMC_MODEL_*) are
-  // already propagated into the worker pane via env, so adding `--model` would
-  // either duplicate or conflict with the runtime's own selection. See the
-  // copilot worker / Bedrock test in runtime-prompt-mode.test.ts.
-  const explicitModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL;
-  if (explicitModel && isProviderSpecificModelId(explicitModel)) {
-    return explicitModel;
+  // Only needed for non-standard providers
+  if (!isBedrock() && !isVertexAI()) {
+    return undefined;
   }
+
+  // Direct model env vars — highest priority
+  const directModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL || '';
+  if (directModel) {
+    return directModel;
+  }
+
+  // Fallback: Bedrock tier-specific env vars (default to sonnet tier)
+  const bedrockModel =
+    env.CLAUDE_CODE_BEDROCK_SONNET_MODEL ||
+    env.ANTHROPIC_DEFAULT_SONNET_MODEL ||
+    '';
+  if (bedrockModel) {
+    return bedrockModel;
+  }
+
+  // OMC tier env vars
+  const omcModel = env.OMC_MODEL_MEDIUM || '';
+  if (omcModel) {
+    return omcModel;
+  }
+
   return undefined;
 }
 
@@ -498,11 +628,44 @@ export function resolveClaudeWorkerModel(
  * Get the extra CLI args needed to pass an instruction in prompt mode.
  * Returns empty array if the agent does not support prompt mode.
  */
+/**
+ * Whether a CLI agent's headless/prompt mode is supported on the given platform.
+ * Antigravity (`agy`) `-p`/`--print` takes the prompt as an argv value and cannot
+ * read it from stdin; on Windows that argv path is unreliable and `agy` has known
+ * upstream Windows `-p` limitations. This centralizes the same platform support
+ * decision the advisor (`scripts/run-provider-advisor.js`) enforces for `omc ask`.
+ */
+export function isHeadlessSupportedOnPlatform(
+  agentType: CliAgentType,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  if (agentType === 'antigravity' && platform === 'win32') {
+    return false;
+  }
+  return true;
+}
+
+/** Throw a clear, actionable error if the agent's headless mode is unsupported here. */
+export function assertHeadlessSupported(agentType: CliAgentType): void {
+  if (!isHeadlessSupportedOnPlatform(agentType)) {
+    throw new Error(
+      `CLI agent '${agentType}' headless/prompt mode is not supported on Windows: ` +
+      `\`agy --print\` takes the prompt as an argv value (it cannot read stdin) and has ` +
+      `known upstream Windows \`-p\` limitations. Run '${agentType}' team workers on ` +
+      `macOS/Linux, or use the 'gemini' provider on Windows.`,
+    );
+  }
+}
+
 export function getPromptModeArgs(agentType: CliAgentType, instruction: string): string[] {
   const contract = getContract(agentType);
   if (!contract.supportsPromptMode) {
     return [];
   }
+  // Centralized platform guard: refuse unsupported headless paths (e.g. antigravity
+  // on Windows) before building `-p <prompt>`, so the team path fails clearly here
+  // instead of attempting an unreliable argv spawn that fails/hangs opaquely.
+  assertHeadlessSupported(agentType);
   // If a flag is defined (e.g. gemini's '-p'), prepend it; otherwise the
   // instruction is passed as a positional argument (e.g. codex [PROMPT]).
   if (contract.promptModeFlag) {

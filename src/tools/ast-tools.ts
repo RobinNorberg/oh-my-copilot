@@ -11,7 +11,7 @@ import { z } from "zod";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { join, extname, resolve, normalize, relative, isAbsolute } from "path";
 import { createRequire } from "module";
-import { getWorktreeRoot } from "../lib/worktree-paths.js";
+import { getGitTopLevel } from "../lib/worktree-paths.js";
 import { isToolPathRestricted } from "../lib/security-config.js";
 
 // Dynamic import for @ast-grep/napi
@@ -24,7 +24,11 @@ import { isToolPathRestricted } from "../lib/security-config.js";
 // via NODE_PATH set in the bundle's startup banner.
 let sgModule: typeof import("@ast-grep/napi") | null = null;
 let sgLoadFailed = false;
-let sgLoadError = '';
+let sgLoadError = "";
+const AST_GREP_INSTALL_COMMAND = "npm install -g @ast-grep/napi@0.31";
+const AST_GREP_RECOVERY_GUIDANCE =
+  `Install the supported runtime with: ${AST_GREP_INSTALL_COMMAND}\n` +
+  "Then restart Claude Code (or the MCP server) so @ast-grep/napi is reloaded.";
 
 async function getSgModule(): Promise<typeof import("@ast-grep/napi") | null> {
   if (sgLoadFailed) {
@@ -33,7 +37,9 @@ async function getSgModule(): Promise<typeof import("@ast-grep/napi") | null> {
   if (!sgModule) {
     try {
       // Use createRequire for CJS-style resolution (respects NODE_PATH)
-      const require = createRequire(import.meta.url || __filename || process.cwd() + '/');
+      const require = createRequire(
+        import.meta.url || __filename || process.cwd() + "/",
+      );
       sgModule = require("@ast-grep/napi") as typeof import("@ast-grep/napi");
     } catch {
       // Fallback to dynamic import for pure ESM environments
@@ -51,7 +57,11 @@ async function getSgModule(): Promise<typeof import("@ast-grep/napi") | null> {
 
 /**
  * Validate that a tool path is within the project root boundary.
- * Only enforced when security.restrictToolPaths is enabled.
+ * Only enforced when OMC_RESTRICT_TOOL_PATHS=true.
+ *
+ * @param inputPath - The path parameter from tool invocation
+ * @returns The resolved absolute path
+ * @throws Error if path is outside project root when restriction is enabled
  */
 export function validateToolPath(inputPath: string): string {
   const resolved = resolve(inputPath);
@@ -60,9 +70,12 @@ export function validateToolPath(inputPath: string): string {
     return resolved;
   }
 
-  const projectRoot = getWorktreeRoot() || process.cwd();
+  // Use the literal git toplevel (not the superproject-climbing getWorktreeRoot)
+  // so a tool inside a submodule stays confined to that submodule (#3349 / PR #3350).
+  const projectRoot = getGitTopLevel() || process.cwd();
   const normalizedRoot = normalize(projectRoot);
   const normalizedPath = normalize(resolved);
+
   const rel = relative(normalizedRoot, normalizedPath);
 
   if (rel.startsWith("..") || isAbsolute(rel)) {
@@ -105,7 +118,9 @@ function toLangEnum(
 
   const lang = langMap[language];
   if (!lang) {
-    throw new Error(`Unsupported language: ${language}`);
+    throw new Error(
+      `Unsupported language: ${language}. The loaded @ast-grep/napi runtime does not provide this language.\n${AST_GREP_RECOVERY_GUIDANCE}`,
+    );
   }
   return lang;
 }
@@ -114,17 +129,10 @@ export interface AstToolDefinition<T extends z.ZodRawShape> {
   name: string;
   description: string;
   schema: T;
-  annotations?: import('./types.js').ToolAnnotations;
   handler: (
     args: z.infer<z.ZodObject<T>>,
   ) => Promise<{ content: Array<{ type: "text"; text: string }> }>;
 }
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyAstToolDefinition = AstToolDefinition<any> & {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handler: (args: any) => Promise<{ content: Array<{ type: "text"; text: string }> }>;
-};
 
 /**
  * Supported languages for AST analysis
@@ -242,7 +250,9 @@ function getFilesForLanguage(
   try {
     stat = statSync(resolvedPath);
   } catch (err) {
-    throw new Error(`Cannot access path "${resolvedPath}": ${(err as Error).message}`);
+    throw new Error(
+      `Cannot access path "${resolvedPath}": ${(err as Error).message}`,
+    );
   }
 
   if (stat.isFile()) {
@@ -282,9 +292,14 @@ function formatMatch(
 /**
  * AST Grep Search Tool - Find code patterns using AST matching
  */
-export const astGrepSearchTool: AnyAstToolDefinition = {
+export const astGrepSearchTool: AstToolDefinition<{
+  pattern: z.ZodString;
+  language: z.ZodEnum<[string, ...string[]]>;
+  path: z.ZodOptional<z.ZodString>;
+  context: z.ZodOptional<z.ZodNumber>;
+  maxResults: z.ZodOptional<z.ZodNumber>;
+}> = {
   name: "ast_grep_search",
-  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   description: `Search for code patterns using AST matching. More precise than text search.
 
 Use meta-variables in patterns:
@@ -333,18 +348,20 @@ Note: Patterns must be valid AST nodes for the language.`,
     } = args;
 
     try {
+      const validatedPath = validateToolPath(path);
+
       const sg = await getSgModule();
       if (!sg) {
         return {
           content: [
             {
               type: "text" as const,
-              text: `@ast-grep/napi is not available. Install it with: npm install -g @ast-grep/napi\nError: ${sgLoadError}`,
+              text: `@ast-grep/napi is not available.\n${AST_GREP_RECOVERY_GUIDANCE}\nError: ${sgLoadError}`,
             },
           ],
         };
       }
-      const files = getFilesForLanguage(path, language);
+      const files = getFilesForLanguage(validatedPath, language);
 
       if (files.length === 0) {
         return {
@@ -356,6 +373,7 @@ Note: Patterns must be valid AST nodes for the language.`,
           ],
         };
       }
+      const lang = toLangEnum(sg, language);
 
       const results: string[] = [];
       let totalMatches = 0;
@@ -365,7 +383,7 @@ Note: Patterns must be valid AST nodes for the language.`,
 
         try {
           const content = readFileSync(filePath, "utf-8");
-          const root = sg.parse(toLangEnum(sg, language), content).root();
+          const root = sg.parse(lang, content).root();
           const matches = root.findAll(pattern);
 
           for (const match of matches) {
@@ -428,9 +446,14 @@ Note: Patterns must be valid AST nodes for the language.`,
 /**
  * AST Grep Replace Tool - Replace code patterns using AST matching
  */
-export const astGrepReplaceTool: AnyAstToolDefinition = {
+export const astGrepReplaceTool: AstToolDefinition<{
+  pattern: z.ZodString;
+  replacement: z.ZodString;
+  language: z.ZodEnum<[string, ...string[]]>;
+  path: z.ZodOptional<z.ZodString>;
+  dryRun: z.ZodOptional<z.ZodBoolean>;
+}> = {
   name: "ast_grep_replace",
-  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   description: `Replace code patterns using AST matching. Preserves matched content via meta-variables.
 
 Use meta-variables in both pattern and replacement:
@@ -462,18 +485,20 @@ IMPORTANT: dryRun=true (default) only previews changes. Set dryRun=false to appl
     const { pattern, replacement, language, path = ".", dryRun = true } = args;
 
     try {
+      const validatedPath = validateToolPath(path);
+
       const sg = await getSgModule();
       if (!sg) {
         return {
           content: [
             {
               type: "text" as const,
-              text: `@ast-grep/napi is not available. Install it with: npm install -g @ast-grep/napi\nError: ${sgLoadError}`,
+              text: `@ast-grep/napi is not available.\n${AST_GREP_RECOVERY_GUIDANCE}\nError: ${sgLoadError}`,
             },
           ],
         };
       }
-      const files = getFilesForLanguage(path, language);
+      const files = getFilesForLanguage(validatedPath, language);
 
       if (files.length === 0) {
         return {
@@ -485,6 +510,7 @@ IMPORTANT: dryRun=true (default) only previews changes. Set dryRun=false to appl
           ],
         };
       }
+      const lang = toLangEnum(sg, language);
 
       const changes: {
         file: string;
@@ -497,7 +523,7 @@ IMPORTANT: dryRun=true (default) only previews changes. Set dryRun=false to appl
       for (const filePath of files) {
         try {
           const content = readFileSync(filePath, "utf-8");
-          const root = sg.parse(toLangEnum(sg, language), content).root();
+          const root = sg.parse(lang, content).root();
           const matches = root.findAll(pattern);
 
           if (matches.length === 0) continue;
@@ -535,7 +561,7 @@ IMPORTANT: dryRun=true (default) only previews changes. Set dryRun=false to appl
                 if (captured) {
                   // Escape $ in captured text to prevent JS replacement patterns
                   // ($&, $', $`, $$) from being interpreted by replaceAll
-                  const safeText = captured.text().replace(/\$/g, '$$$$');
+                  const safeText = captured.text().replace(/\$/g, "$$$$");
                   finalReplacement = finalReplacement.replaceAll(
                     metaVar,
                     safeText,

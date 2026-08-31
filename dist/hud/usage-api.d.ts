@@ -1,7 +1,8 @@
 /**
  * OMC HUD - Usage API
  *
- * Fetches rate limit usage from Anthropic's OAuth API.
+ * Fetches rate limit usage from Anthropic's OAuth API, with overrides for
+ * third-party providers (z.ai, MiniMax, Kimi) detected via ANTHROPIC_BASE_URL.
  * Based on claude-hud implementation by jarrodwatts.
  *
  * Authentication:
@@ -38,7 +39,22 @@ interface UsageApiResponse {
         used_credits?: number;
         monthly_limit?: number | null;
         currency?: string;
+        decimal_places?: number;
     };
+    limits?: Array<{
+        kind?: string;
+        group?: string;
+        percent?: number;
+        is_active?: boolean;
+        resets_at?: string;
+        scope?: {
+            model?: {
+                id?: string | null;
+                display_name?: string | null;
+            } | null;
+            surface?: unknown;
+        } | null;
+    }>;
 }
 interface ParseUsageResponseOptions {
     /** Subscription type from OAuth credentials (for distinguishing Max/Pro overage from Enterprise billing) */
@@ -73,6 +89,69 @@ export declare function isZaiHost(urlString: string): boolean;
  *   - minimax.com / *.minimax.com  (China alternative)
  */
 export declare function isMinimaxHost(urlString: string): boolean;
+/**
+ * Check if a URL points to the Kimi For Coding platform (kimi.com).
+ * Matches kimi.com and any subdomain (e.g. api.kimi.com). The Moonshot open
+ * platform (api.moonshot.ai / api.moonshot.cn) is intentionally NOT matched:
+ * it exposes balance, not plan quota windows (no /usages endpoint).
+ */
+export declare function isKimiHost(urlString: string): boolean;
+/**
+ * Kimi For Coding `/usages` payload (GET {origin}/coding/v1/usages).
+ * Reverse-engineered from the open-source kimi-code CLI
+ * (MoonshotAI/kimi-code, packages/oauth/src/managed-usage.ts) and verified
+ * against the live endpoint with an API key.
+ *
+ * Quirk: `limit`/`used`/`remaining` arrive as JSON strings ("100"), not
+ * numbers. `resetTime` is ISO 8601 with nano-precision fractional seconds.
+ *
+ * Shape (abridged live payload):
+ *   {
+ *     "usage":  { "limit": "100", "used": "45", "remaining": "55", "resetTime": "..." },  // weekly window
+ *     "limits": [
+ *       { "window": { "duration": 300, "timeUnit": "TIME_UNIT_MINUTE" },                    // 5h window
+ *         "detail": { "limit": "100", "used": "2", "remaining": "98", "resetTime": "..." } }
+ *     ],
+ *     "boosterWallet": { ... }  // optional extra (metered) monthly spend
+ *   }
+ */
+interface KimiQuotaRow {
+    /** Fields are string-typed in the wire format; numbers tolerated for robustness */
+    limit?: number | string;
+    used?: number | string;
+    remaining?: number | string;
+    /** ISO 8601, may carry nano-precision fraction (".628002Z") */
+    resetTime?: string;
+    /** Aliases observed across payload versions (per kimi-code's loose parser) */
+    reset_at?: string;
+    resetAt?: string;
+}
+interface KimiUsageResponse {
+    usage?: KimiQuotaRow;
+    limits?: Array<{
+        window?: {
+            duration?: number;
+            timeUnit?: string;
+        };
+        detail?: KimiQuotaRow;
+    } & KimiQuotaRow>;
+    boosterWallet?: {
+        balance?: {
+            type?: string;
+            amount?: number;
+            amountLeft?: number;
+        };
+        monthlyChargeLimit?: {
+            priceInCents?: number;
+            currency?: string;
+        };
+        monthlyUsed?: {
+            priceInCents?: number;
+            currency?: string;
+        };
+        monthlyChargeLimitEnabled?: boolean;
+    };
+}
 interface MinimaxModelRemain {
     model_name: string;
     current_interval_total_count: number;
@@ -104,6 +183,32 @@ export declare function getSubscriptionInfo(): {
     rateLimitTier: string | null;
 };
 /**
+ * Build the User-Agent for the OAuth usage request.
+ *
+ * The endpoint buckets its rate limit by User-Agent, and a request that does not
+ * name a Claude Code *version* lands in a bucket that allows roughly one request
+ * per hour. Measured against api.anthropic.com with a single OAuth token,
+ * requests seconds apart, recording status and `retry-after` only:
+ *
+ *   User-Agent           | HTTP | retry-after
+ *   ---------------------|------|--------------------------------------------
+ *   (header omitted)     | 429  | 348s
+ *   claude-code          | 429  | 349s / 348s - same absolute deadline
+ *   claude-code/2.1.232  | 403  | none - the endpoint's real answer
+ *   claude-code/9.9.9    | 403  | none - the endpoint's real answer
+ *
+ * Node sends no User-Agent of its own, so this call has been landing in the
+ * throttled bucket and only the first request of each hour ever reached the API.
+ *
+ * The version is never invented. It comes from the Claude Code statusline
+ * payload's `version` field. When we do not have one we send no header at all:
+ * the bare product token was measured to share the throttled bucket, so it would
+ * buy nothing while looking like a fix, and a made-up version would put a false
+ * claim on the wire. The pattern is anchored because the value arrives as JSON
+ * and an unanchored match would let stray characters into an outgoing header.
+ */
+export declare function buildUserAgent(clientVersion?: string): string | undefined;
+/**
  * Parse API response into RateLimits
  */
 export declare function parseUsageResponse(response: UsageApiResponse, options?: ParseUsageResponseOptions): RateLimits | null;
@@ -122,6 +227,18 @@ export declare function parseZaiResponse(response: ZaiQuotaResponse): RateLimits
  */
 export declare function parseMinimaxResponse(response: MinimaxCodingPlanResponse): RateLimits | null;
 /**
+ * Parse Kimi For Coding `/usages` response into RateLimits.
+ *
+ * Mapping (verified against live payload):
+ * - Top-level `usage` → weekly window (resetTime ~7 days out)
+ * - `limits[]` entry whose window is exactly 300 minutes → 5-hour window
+ *   (observed: window.duration=300, timeUnit=TIME_UNIT_MINUTE). Any other
+ *   duration is dropped, never rendered under the HUD's "5h" label.
+ * - `boosterWallet` (optional) → extra usage, USD only: the HUD's extra-usage
+ *   renderer hard-codes "$", so CNY wallets are skipped rather than mislabeled.
+ */
+export declare function parseKimiResponse(response: KimiUsageResponse): RateLimits | null;
+/**
  * Get usage data (with caching)
  *
  * Returns a UsageResult with:
@@ -131,7 +248,13 @@ export declare function parseMinimaxResponse(response: MinimaxCodingPlanResponse
  *   - 'auth': credentials expired and refresh failed
  *   - 'no_credentials': no OAuth credentials available (expected for API key users)
  *   - 'rate_limited': API returned 429; stale data served if available, with exponential backoff
+ *
+ * @param opts.clientVersion Claude Code version for the usage API User-Agent
+ *   (see buildUserAgent). Optional: callers without a statusline payload omit it
+ *   and the header is left off rather than guessed.
  */
-export declare function getUsage(): Promise<UsageResult>;
+export declare function getUsage(opts?: {
+    clientVersion?: string;
+}): Promise<UsageResult>;
 export {};
 //# sourceMappingURL=usage-api.d.ts.map

@@ -2,7 +2,7 @@ import { existsSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'fs
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { describe, expect, it } from 'vitest';
-const ARTIFACT_DESCRIPTOR_SOURCE_PATH = join(process.cwd(), 'src', 'shared', 'artifact-descriptor.ts').replace(/\\/g, '/');
+const ARTIFACT_DESCRIPTOR_SOURCE_PATH = join(process.cwd(), 'src', 'shared', 'artifact-descriptor.ts');
 const ARTIFACT_DESCRIPTOR_IMPORT_PATH = '../shared/artifact-descriptor.js';
 function getExistingArtifactSource() {
     expect(existsSync(ARTIFACT_DESCRIPTOR_SOURCE_PATH)).toBe(true);

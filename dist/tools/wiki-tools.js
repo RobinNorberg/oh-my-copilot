@@ -5,15 +5,38 @@
  * wiki_ingest, wiki_query, wiki_lint, wiki_add, wiki_list, wiki_read, wiki_delete
  */
 import { z } from 'zod';
-import { validateWorkingDirectoryOrLinkedWorktree, } from '../lib/worktree-paths.js';
+import { resolveWorkingDirectoryOrLinkedWorktree, ForeignWorkingDirectoryError, getCanonicalWorkingDirectoryRoots, } from '../lib/worktree-paths.js';
 import { readPage, listPages, readIndex, deletePage, appendLog, titleToSlug, } from '../hooks/wiki/index.js';
 import { ingestKnowledge } from '../hooks/wiki/ingest.js';
 import { queryWiki } from '../hooks/wiki/query.js';
 import { lintWiki } from '../hooks/wiki/lint.js';
+import { basename } from 'node:path';
 const WIKI_CATEGORIES = [
     'architecture', 'decision', 'pattern', 'debugging',
     'environment', 'session-log', 'reference', 'convention',
 ];
+/**
+ * Resolve the wiki root for a tool call, rejecting foreign-repository
+ * workingDirectory values visibly (#3858). The rejection reaches the MCP
+ * caller as isError. Canonical provided/trusted roots stay internal; the
+ * error message uses the caller-supplied label and a basename-only trusted
+ * root so host paths the caller did not supply are not disclosed.
+ */
+function resolveWikiRoot(workingDirectory) {
+    const resolution = resolveWorkingDirectoryOrLinkedWorktree(workingDirectory);
+    if (resolution.status === 'foreign_repository') {
+        const roots = getCanonicalWorkingDirectoryRoots(resolution);
+        return {
+            ok: false,
+            error: new ForeignWorkingDirectoryError(roots.providedRoot, roots.trustedRoot, resolution.callerLabel),
+        };
+    }
+    return { ok: true, root: resolution.root };
+}
+/** Searched-root suffix for empty/no-match results: basename + corpus size (#3858). */
+function searchedSuffix(root, pages) {
+    return ` (searched ${pages} page${pages === 1 ? '' : 's'} in ${basename(root)}/.omg/wiki)`;
+}
 // ============================================================================
 // wiki_ingest
 // ============================================================================
@@ -31,7 +54,17 @@ export const wikiIngestTool = {
     },
     handler: async (args) => {
         try {
-            const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+            const resolved = resolveWikiRoot(args.workingDirectory);
+            if (!resolved.ok) {
+                return {
+                    content: [{
+                            type: 'text',
+                            text: `Error ingesting into wiki: ${resolved.error.message}`,
+                        }],
+                    isError: true,
+                };
+            }
+            const root = resolved.root;
             const result = ingestKnowledge(root, {
                 title: args.title,
                 content: args.content,
@@ -73,7 +106,17 @@ export const wikiQueryTool = {
     },
     handler: async (args) => {
         try {
-            const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+            const resolved = resolveWikiRoot(args.workingDirectory);
+            if (!resolved.ok) {
+                return {
+                    content: [{
+                            type: 'text',
+                            text: `Error querying wiki: ${resolved.error.message}`,
+                        }],
+                    isError: true,
+                };
+            }
+            const root = resolved.root;
             const matches = queryWiki(root, args.query, {
                 tags: args.tags,
                 category: args.category,
@@ -83,7 +126,7 @@ export const wikiQueryTool = {
                 return {
                     content: [{
                             type: 'text',
-                            text: `No wiki pages match "${args.query}".`,
+                            text: `No wiki pages match "${args.query}".${searchedSuffix(root, listPages(root).length)}`,
                         }],
                 };
             }
@@ -122,7 +165,17 @@ export const wikiLintTool = {
     },
     handler: async (args) => {
         try {
-            const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+            const resolved = resolveWikiRoot(args.workingDirectory);
+            if (!resolved.ok) {
+                return {
+                    content: [{
+                            type: 'text',
+                            text: `Error linting wiki: ${resolved.error.message}`,
+                        }],
+                    isError: true,
+                };
+            }
+            const root = resolved.root;
             const report = lintWiki(root);
             if (report.issues.length === 0) {
                 return {
@@ -171,7 +224,17 @@ export const wikiAddTool = {
     },
     handler: async (args) => {
         try {
-            const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+            const resolved = resolveWikiRoot(args.workingDirectory);
+            if (!resolved.ok) {
+                return {
+                    content: [{
+                            type: 'text',
+                            text: `Error adding wiki page: ${resolved.error.message}`,
+                        }],
+                    isError: true,
+                };
+            }
+            const root = resolved.root;
             const slug = titleToSlug(args.title);
             // Guard: reject if page already exists — use wiki_ingest to merge
             if (readPage(root, slug)) {
@@ -193,7 +256,7 @@ export const wikiAddTool = {
             return {
                 content: [{
                         type: 'text',
-                        text: `Wiki page created: ${result.created[0]}\nPath: .omcp/wiki/${result.created[0]}`,
+                        text: `Wiki page created: ${result.created[0]}\nPath: .omg/wiki/${result.created[0]}`,
                     }],
             };
         }
@@ -219,7 +282,17 @@ export const wikiListTool = {
     },
     handler: async (args) => {
         try {
-            const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+            const resolved = resolveWikiRoot(args.workingDirectory);
+            if (!resolved.ok) {
+                return {
+                    content: [{
+                            type: 'text',
+                            text: `Error listing wiki: ${resolved.error.message}`,
+                        }],
+                    isError: true,
+                };
+            }
+            const root = resolved.root;
             const index = readIndex(root);
             if (!index) {
                 const pages = listPages(root);
@@ -227,7 +300,7 @@ export const wikiListTool = {
                     return {
                         content: [{
                                 type: 'text',
-                                text: 'Wiki is empty. Use wiki_add or wiki_ingest to create pages.',
+                                text: `Wiki is empty.${searchedSuffix(root, 0)} Use wiki_add or wiki_ingest to create pages.`,
                             }],
                     };
                 }
@@ -268,7 +341,17 @@ export const wikiReadTool = {
     },
     handler: async (args) => {
         try {
-            const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+            const resolved = resolveWikiRoot(args.workingDirectory);
+            if (!resolved.ok) {
+                return {
+                    content: [{
+                            type: 'text',
+                            text: `Error reading wiki page: ${resolved.error.message}`,
+                        }],
+                    isError: true,
+                };
+            }
+            const root = resolved.root;
             const filename = args.page.endsWith('.md') ? args.page : `${args.page}.md`;
             const page = readPage(root, filename);
             if (!page) {
@@ -319,7 +402,17 @@ export const wikiDeleteTool = {
     },
     handler: async (args) => {
         try {
-            const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+            const resolved = resolveWikiRoot(args.workingDirectory);
+            if (!resolved.ok) {
+                return {
+                    content: [{
+                            type: 'text',
+                            text: `Error deleting wiki page: ${resolved.error.message}`,
+                        }],
+                    isError: true,
+                };
+            }
+            const root = resolved.root;
             const filename = args.page.endsWith('.md') ? args.page : `${args.page}.md`;
             const deleted = deletePage(root, filename);
             if (!deleted) {

@@ -86,8 +86,10 @@ function countFilePaths(prompt) {
  */
 function countCodeBlocks(prompt) {
     const fencedBlocks = (prompt.match(/```[\s\S]*?```/g) || []).length;
+    // The indented-block regex coalesces each contiguous run of indented lines
+    // into a single match, so `indentedBlocks` is already the block count.
     const indentedBlocks = (prompt.match(/(?:^|\n)(?:\s{4}|\t)[^\n]+(?:\n(?:\s{4}|\t)[^\n]+)*/g) || []).length;
-    return fencedBlocks + Math.floor(indentedBlocks / 2);
+    return fencedBlocks + indentedBlocks;
 }
 /**
  * Check if prompt contains any of the keywords

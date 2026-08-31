@@ -136,7 +136,7 @@ The `lsp_diagnostics_directory` tool supports two strategies:
 3. Update `src/mcp/omc-tools-server.ts` if exposed via MCP
 4. Update `docs/REFERENCE.md` (MCP Tools section)
 5. Update agent tool assignments in `src/agents/definitions.ts` if needed
-6. Update `docs/copilot-instructions.md` (Agent Tool Matrix) if assigned to agents
+6. Update `docs/CLAUDE.md` (Agent Tool Matrix) if assigned to agents
 
 ### Testing Requirements
 
@@ -233,7 +233,7 @@ async function withLspClient(filePath, operation, fn) {
 | Language | Server | Install |
 |----------|--------|---------|
 | TypeScript/JavaScript | typescript-language-server | `npm i -g typescript-language-server typescript` |
-| Python | pylsp | `pip install python-lsp-server` |
+| Python | ty | `Install ty from https://github.com/astral-sh/ty` |
 | Rust | rust-analyzer | `rustup component add rust-analyzer` |
 | Go | gopls | `go install golang.org/x/tools/gopls@latest` |
 | C/C++ | clangd | System package manager |

@@ -27,8 +27,14 @@ import { processSessionEnd } from '../index.js';
 describe('processSessionEnd mode state cleanup (issue #1427)', () => {
     let tmpDir;
     let transcriptPath;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-session-end-mode-state-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = tmpDir;
+        process.env.USERPROFILE = tmpDir;
         transcriptPath = path.join(tmpDir, 'transcript.jsonl');
         fs.writeFileSync(transcriptPath, JSON.stringify({
             type: 'assistant',
@@ -37,11 +43,19 @@ describe('processSessionEnd mode state cleanup (issue #1427)', () => {
     });
     afterEach(() => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
         vi.clearAllMocks();
     });
     it('removes active session-scoped mode state for the ending session', async () => {
         const sessionId = 'pid-1427-current';
-        const sessionDir = path.join(tmpDir, '.omcp', 'state', 'sessions', sessionId);
+        const sessionDir = path.join(tmpDir, '.omg', 'state', 'sessions', sessionId);
         fs.mkdirSync(sessionDir, { recursive: true });
         const sessionStatePath = path.join(sessionDir, 'ultrawork-state.json');
         fs.writeFileSync(sessionStatePath, JSON.stringify({ active: true, started_at: new Date().toISOString() }), 'utf-8');
@@ -57,7 +71,7 @@ describe('processSessionEnd mode state cleanup (issue #1427)', () => {
     });
     it('removes the SessionStart marker for a normally ending session', async () => {
         const sessionId = 'pid-2816-ended';
-        const sessionDir = path.join(tmpDir, '.omcp', 'state', 'sessions', sessionId);
+        const sessionDir = path.join(tmpDir, '.omg', 'state', 'sessions', sessionId);
         fs.mkdirSync(sessionDir, { recursive: true });
         const markerPath = path.join(sessionDir, 'session-started.json');
         fs.writeFileSync(markerPath, JSON.stringify({
@@ -78,7 +92,7 @@ describe('processSessionEnd mode state cleanup (issue #1427)', () => {
     it('does not remove another session\'s session-scoped state', async () => {
         const endingSessionId = 'pid-1427-ending';
         const otherSessionId = 'pid-1427-other';
-        const otherSessionDir = path.join(tmpDir, '.omcp', 'state', 'sessions', otherSessionId);
+        const otherSessionDir = path.join(tmpDir, '.omg', 'state', 'sessions', otherSessionId);
         fs.mkdirSync(otherSessionDir, { recursive: true });
         const otherSessionStatePath = path.join(otherSessionDir, 'ultrawork-state.json');
         fs.writeFileSync(otherSessionStatePath, JSON.stringify({ active: true, started_at: new Date().toISOString() }), 'utf-8');
@@ -95,7 +109,7 @@ describe('processSessionEnd mode state cleanup (issue #1427)', () => {
     it('removes active team state for the ending session and preserves other sessions', async () => {
         const endingSessionId = 'pid-1427-team-ending';
         const otherSessionId = 'pid-1427-team-other';
-        const stateDir = path.join(tmpDir, '.omcp', 'state');
+        const stateDir = path.join(tmpDir, '.omg', 'state');
         const endingSessionDir = path.join(stateDir, 'sessions', endingSessionId);
         const otherSessionDir = path.join(stateDir, 'sessions', otherSessionId);
         fs.mkdirSync(endingSessionDir, { recursive: true });
@@ -120,7 +134,7 @@ describe('processSessionEnd mode state cleanup (issue #1427)', () => {
     });
     it('removes both session-scoped and matching legacy state for the ending session', async () => {
         const sessionId = 'pid-1427-legacy';
-        const stateDir = path.join(tmpDir, '.omcp', 'state');
+        const stateDir = path.join(tmpDir, '.omg', 'state');
         const sessionDir = path.join(stateDir, 'sessions', sessionId);
         fs.mkdirSync(sessionDir, { recursive: true });
         const sessionStatePath = path.join(sessionDir, 'autopilot-state.json');
@@ -137,6 +151,34 @@ describe('processSessionEnd mode state cleanup (issue #1427)', () => {
         });
         expect(fs.existsSync(sessionStatePath)).toBe(false);
         expect(fs.existsSync(legacyStatePath)).toBe(false);
+    });
+    it('cleans up mission-state.json entries for the ending session', async () => {
+        const endingSessionId = 'pid-mission-ending';
+        const otherSessionId = 'pid-mission-other';
+        const stateDir = path.join(tmpDir, '.omg', 'state');
+        fs.mkdirSync(stateDir, { recursive: true });
+        const missionStatePath = path.join(stateDir, 'mission-state.json');
+        fs.writeFileSync(missionStatePath, JSON.stringify({
+            updatedAt: new Date().toISOString(),
+            missions: [
+                { id: `ultrawork-${endingSessionId}`, source: 'session', label: 'ending session mission' },
+                { id: `ultrawork-${otherSessionId}`, source: 'session', label: 'other session mission' },
+                { id: 'team-pipeline-abc', source: 'team', label: 'team mission' },
+            ],
+        }), 'utf-8');
+        await processSessionEnd({
+            session_id: endingSessionId,
+            transcript_path: transcriptPath,
+            cwd: tmpDir,
+            permission_mode: 'default',
+            hook_event_name: 'SessionEnd',
+            reason: 'clear',
+        });
+        const updated = JSON.parse(fs.readFileSync(missionStatePath, 'utf-8'));
+        expect(updated.missions).toHaveLength(2);
+        expect(updated.missions.some((m) => m.id === `ultrawork-${otherSessionId}`)).toBe(true);
+        expect(updated.missions.some((m) => m.source === 'team')).toBe(true);
+        expect(updated.missions.some((m) => m.id.includes(endingSessionId))).toBe(false);
     });
 });
 //# sourceMappingURL=mode-state-cleanup.test.js.map

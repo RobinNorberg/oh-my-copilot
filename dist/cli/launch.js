@@ -1,26 +1,30 @@
 /**
- * Native tmux shell launch for omg
- * Launches Copilot CLI with tmux session management
+ * Native tmux shell launch for omc
+ * Launches Claude Code with tmux session management
  */
 import { execFileSync } from 'child_process';
-import { cpSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from 'fs';
+import { cpSync, copyFileSync, existsSync, lstatSync, linkSync, mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync, } from 'fs';
 import { homedir } from 'os';
-import { basename, dirname, join } from 'path';
-import { OMC_CONFIG_FILE_REL } from '../lib/paths.js';
+import { basename, dirname, isAbsolute, join, resolve } from 'path';
+import { atomicWriteJsonSync } from '../lib/atomic-write.js';
+import { lockPathFor, withFileLockSync } from '../lib/file-lock.js';
+import { resolvePluginDirArg } from '../lib/plugin-dir.js';
+import { stripRetiredTeamMcpServers } from '../installer/mcp-registry.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
-import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, buildTmuxShellCommandWithEnv, isNativeWindowsShell, wrapWithLoginShell, isCopilotAvailable, quoteShellArg, tmuxExec, } from './tmux-utils.js';
-import { configureTmuxClipboardForCurrentSession } from './tmux-clipboard.js';
+import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, buildTmuxShellCommandWithEnv, isNativeWindowsShell, wrapWithLoginShell, isCopilotAvailable, isTmuxAvailable, quoteShellArg, tmuxExec, } from './tmux-utils.js';
+import { configureTmuxClipboardForCurrentSession, configureTmuxClipboardForSession } from './tmux-clipboard.js';
+import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
+import { OMC_CONFIG_FILE_REL } from '../lib/paths.js';
 // Flag mapping
 const MADMAX_FLAG = '--madmax';
 const YOLO_FLAG = '--yolo';
-const COPILOT_BYPASS_FLAG = '--dangerously-skip-permissions';
+const CLAUDE_BYPASS_FLAG = '--dangerously-skip-permissions';
 const NOTIFY_FLAG = '--notify';
+const OPENCLAW_FLAG = '--openclaw';
 const TELEGRAM_FLAG = '--telegram';
 const DISCORD_FLAG = '--discord';
 const SLACK_FLAG = '--slack';
 const WEBHOOK_FLAG = '--webhook';
-const TEAMS_FLAG = '--teams';
-const OPENCLAW_FLAG = '--openclaw';
 const OMC_RUNTIME_DIRNAME = '.omc-launch';
 function hasOmcMarkers(path) {
     if (!existsSync(path))
@@ -62,6 +66,9 @@ function ensureMirroredPath(sourcePath, targetPath, options = {}) {
 function isJsonObject(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+function hasOwn(value, key) {
+    return Object.prototype.hasOwnProperty.call(value, key);
+}
 function readJsonObject(path) {
     try {
         const parsed = JSON.parse(readFileSync(path, 'utf-8'));
@@ -71,94 +78,440 @@ function readJsonObject(path) {
         return null;
     }
 }
-function refreshRuntimeClaudeJsonMcpServers(baseConfigDir, runtimeClaudeJsonPath) {
-    const sourceClaudeJsonPath = join(dirname(baseConfigDir), '.claude.json');
-    const sourceClaudeJson = readJsonObject(sourceClaudeJsonPath);
-    if (!sourceClaudeJson || !isJsonObject(sourceClaudeJson.mcpServers)) {
+const OAUTH_CREDENTIAL_FIELDS = [
+    'accessToken',
+    'refreshToken',
+    'expiresAt',
+    'scopes',
+    'subscriptionType',
+    'rateLimitTier',
+    'organizationUuid',
+    'accountUuid',
+    'emailAddress',
+    'email',
+    'hasExtraUsageEnabled',
+];
+function extractOAuthCandidate(parsed) {
+    const inspect = (record, nested) => {
+        const accessToken = record.accessToken;
+        const expiresAt = record.expiresAt;
+        if (typeof accessToken !== 'string' || accessToken.trim().length === 0)
+            return null;
+        if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt))
+            return null;
+        const fields = {};
+        for (const key of OAUTH_CREDENTIAL_FIELDS) {
+            if (hasOwn(record, key))
+                fields[key] = record[key];
+        }
+        return { nested, expiresAt, fields };
+    };
+    if (isJsonObject(parsed.claudeAiOauth)) {
+        const nestedCandidate = inspect(parsed.claudeAiOauth, true);
+        if (nestedCandidate)
+            return nestedCandidate;
+    }
+    return inspect(parsed, false);
+}
+function hasLinkableCredentials(inspection) {
+    if (inspection.candidate)
+        return true;
+    if (!inspection.parsed)
+        return false;
+    const source = isJsonObject(inspection.parsed.claudeAiOauth)
+        ? inspection.parsed.claudeAiOauth
+        : inspection.parsed;
+    return typeof source.accessToken === 'string' && source.accessToken.trim().length > 0;
+}
+function inspectCredentialFile(path) {
+    let stat;
+    try {
+        stat = lstatSync(path);
+    }
+    catch (error) {
+        const code = error && typeof error === 'object' && 'code' in error
+            ? error.code
+            : undefined;
+        if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+            return { exists: true, regularFile: false, readable: false, valid: false, parsed: null, candidate: null };
+        }
+        return { exists: false, regularFile: false, readable: false, valid: false, parsed: null, candidate: null };
+    }
+    let parsed;
+    try {
+        parsed = JSON.parse(readFileSync(path, 'utf-8'));
+    }
+    catch {
+        return {
+            exists: true,
+            regularFile: stat.isFile(),
+            readable: false,
+            valid: false,
+            parsed: null,
+            candidate: null,
+        };
+    }
+    if (!isJsonObject(parsed)) {
+        return {
+            exists: true,
+            regularFile: stat.isFile(),
+            readable: true,
+            valid: false,
+            parsed: null,
+            candidate: null,
+        };
+    }
+    return {
+        exists: true,
+        regularFile: stat.isFile(),
+        readable: true,
+        valid: true,
+        parsed,
+        candidate: extractOAuthCandidate(parsed),
+    };
+}
+function credentialExpiry(parsed) {
+    const source = isJsonObject(parsed.claudeAiOauth) ? parsed.claudeAiOauth : parsed;
+    const expiresAt = source.expiresAt;
+    return typeof expiresAt === 'number' && Number.isFinite(expiresAt) ? expiresAt : null;
+}
+function resolveCredentialWritePath(path) {
+    let current = resolve(path);
+    const visited = new Set();
+    while (true) {
+        if (visited.has(current)) {
+            throw new Error('Claude credential symlink chain contains a cycle');
+        }
+        visited.add(current);
+        let stat;
+        try {
+            stat = lstatSync(current);
+        }
+        catch (error) {
+            const code = error && typeof error === 'object' && 'code' in error
+                ? error.code
+                : undefined;
+            if (code === 'ENOENT' || code === 'ENOTDIR')
+                return current;
+            throw error;
+        }
+        if (!stat.isSymbolicLink())
+            return current;
+        const target = readlinkSync(current);
+        current = isAbsolute(target) ? resolve(target) : resolve(dirname(current), target);
+    }
+}
+/** True only when source and runtime can be proven to be the same account. */
+function accountsProvenSame(sourceClaudeJson, runtimeClaudeJson) {
+    const sourceAccount = isJsonObject(sourceClaudeJson?.oauthAccount) ? sourceClaudeJson.oauthAccount : null;
+    const runtimeAccount = isJsonObject(runtimeClaudeJson?.oauthAccount) ? runtimeClaudeJson.oauthAccount : null;
+    if (!sourceAccount || !runtimeAccount)
+        return false;
+    const sourceUuid = typeof sourceAccount.accountUuid === 'string' ? sourceAccount.accountUuid.trim() : '';
+    const runtimeUuid = typeof runtimeAccount.accountUuid === 'string' ? runtimeAccount.accountUuid.trim() : '';
+    if (sourceUuid && runtimeUuid)
+        return sourceUuid === runtimeUuid;
+    let compared = false;
+    for (const key of ['emailAddress', 'email']) {
+        const sourceValue = sourceAccount[key];
+        const runtimeValue = runtimeAccount[key];
+        const sourceEmail = typeof sourceValue === 'string' ? sourceValue.trim() : '';
+        const runtimeEmail = typeof runtimeValue === 'string' ? runtimeValue.trim() : '';
+        if (!sourceEmail || !runtimeEmail)
+            continue;
+        compared = true;
+        if (sourceEmail.toLowerCase() !== runtimeEmail.toLowerCase())
+            return false;
+    }
+    return compared;
+}
+function credentialIdentitiesConflict(baseCandidate, runtimeCandidate) {
+    if (!baseCandidate)
+        return false;
+    const baseUuid = typeof baseCandidate.fields.accountUuid === 'string'
+        ? baseCandidate.fields.accountUuid.trim()
+        : '';
+    const runtimeUuid = typeof runtimeCandidate.fields.accountUuid === 'string'
+        ? runtimeCandidate.fields.accountUuid.trim()
+        : '';
+    if (baseUuid || runtimeUuid) {
+        return !baseUuid || !runtimeUuid || baseUuid !== runtimeUuid;
+    }
+    for (const key of ['emailAddress', 'email']) {
+        const baseValue = baseCandidate.fields[key];
+        const runtimeValue = runtimeCandidate.fields[key];
+        const baseEmail = typeof baseValue === 'string' ? baseValue.trim() : '';
+        const runtimeEmail = typeof runtimeValue === 'string' ? runtimeValue.trim() : '';
+        if (!baseEmail && !runtimeEmail)
+            continue;
+        if (!baseEmail || !runtimeEmail)
+            return true;
+        if (baseEmail.toLowerCase() !== runtimeEmail.toLowerCase())
+            return true;
+    }
+    return false;
+}
+function compareOnboardingVersion(left, right) {
+    const toParts = (value) => {
+        if (typeof value === 'number')
+            return Number.isFinite(value) ? [value] : null;
+        if (typeof value !== 'string' || value.trim().length === 0)
+            return null;
+        const parts = value.trim().split(/[.+-]/).map((part) => {
+            if (part.length === 0 || !/^\d+$/.test(part))
+                return Number.NaN;
+            return Number(part);
+        });
+        if (parts.some((part) => !Number.isFinite(part)))
+            return null;
+        return parts;
+    };
+    const leftParts = toParts(left);
+    const rightParts = toParts(right);
+    if (!leftParts || !rightParts)
+        return null;
+    const length = Math.max(leftParts.length, rightParts.length);
+    for (let index = 0; index < length; index += 1) {
+        const a = leftParts[index] ?? 0;
+        const b = rightParts[index] ?? 0;
+        if (a > b)
+            return 1;
+        if (a < b)
+            return -1;
+    }
+    return 0;
+}
+function refreshRuntimeClaudeJson(baseConfigDir, runtimeClaudeJsonPath, sourceClaudeJson = readJsonObject(join(dirname(baseConfigDir), '.claude.json'))) {
+    if (!sourceClaudeJson)
+        return;
+    const runtimeClaudeJson = readJsonObject(runtimeClaudeJsonPath) ?? {};
+    let changed = false;
+    if (sourceClaudeJson.hasCompletedOnboarding === true && runtimeClaudeJson.hasCompletedOnboarding !== true) {
+        runtimeClaudeJson.hasCompletedOnboarding = true;
+        changed = true;
+    }
+    const sourceVersion = sourceClaudeJson.lastOnboardingVersion;
+    if (typeof sourceVersion === 'string' || typeof sourceVersion === 'number') {
+        const runtimeHasVersion = hasOwn(runtimeClaudeJson, 'lastOnboardingVersion');
+        const compared = compareOnboardingVersion(sourceVersion, runtimeClaudeJson.lastOnboardingVersion);
+        if (!runtimeHasVersion || (compared !== null && compared > 0)) {
+            runtimeClaudeJson.lastOnboardingVersion = sourceVersion;
+            changed = true;
+        }
+    }
+    if (hasOwn(sourceClaudeJson, 'oauthAccount')) {
+        const sourceAccount = sourceClaudeJson.oauthAccount;
+        if (sourceAccount === null || sourceAccount === undefined) {
+            if (hasOwn(runtimeClaudeJson, 'oauthAccount')) {
+                delete runtimeClaudeJson.oauthAccount;
+                changed = true;
+            }
+        }
+        else if (!hasOwn(runtimeClaudeJson, 'oauthAccount')) {
+            runtimeClaudeJson.oauthAccount = sourceAccount;
+            changed = true;
+        }
+        else if (!accountsProvenSame(sourceClaudeJson, runtimeClaudeJson)) {
+            // Prefer source account metadata when identities cannot be proven equal.
+            runtimeClaudeJson.oauthAccount = sourceAccount;
+            changed = true;
+        }
+    }
+    if (isJsonObject(sourceClaudeJson.mcpServers)) {
+        runtimeClaudeJson.mcpServers = sourceClaudeJson.mcpServers;
+        changed = true;
+    }
+    if (changed) {
+        writeFileSync(runtimeClaudeJsonPath, JSON.stringify(runtimeClaudeJson, null, 2));
+    }
+}
+function ensureMirroredCredentials(sourcePath, targetPath, hasEligibleSourceCredentials) {
+    if (!existsSync(sourcePath))
+        return;
+    const removeExistingTarget = () => {
+        try {
+            lstatSync(targetPath);
+            rmSync(targetPath, { recursive: true, force: true });
+        }
+        catch {
+            // A missing target is expected in a fresh staged directory.
+        }
+    };
+    removeExistingTarget();
+    try {
+        symlinkSync(sourcePath, targetPath, 'file');
         return;
     }
-    const runtimeClaudeJson = readJsonObject(runtimeClaudeJsonPath) ?? {};
-    runtimeClaudeJson.mcpServers = sourceClaudeJson.mcpServers;
-    writeFileSync(runtimeClaudeJsonPath, JSON.stringify(runtimeClaudeJson, null, 2));
+    catch {
+        removeExistingTarget();
+    }
+    try {
+        linkSync(sourcePath, targetPath);
+        return;
+    }
+    catch {
+        removeExistingTarget();
+        if (hasEligibleSourceCredentials) {
+            throw new Error('Unable to mirror Claude credentials without copying credential content');
+        }
+    }
+}
+function pathExists(path) {
+    try {
+        lstatSync(path);
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+function reconcileRuntimeCredentials(baseConfigDir, runtimeCredentialsPath, sourceClaudeJson, preservedRuntimeClaudeJson) {
+    const runtimeInspection = inspectCredentialFile(runtimeCredentialsPath);
+    const runtimeCandidate = runtimeInspection.candidate;
+    if (!runtimeCandidate)
+        return;
+    const baseCredentialsPath = join(baseConfigDir, '.credentials.json');
+    const baseInspection = inspectCredentialFile(baseCredentialsPath);
+    if (!baseInspection.exists)
+        return;
+    if (!baseInspection.readable || !baseInspection.valid || !baseInspection.parsed) {
+        if (runtimeInspection.regularFile) {
+            throw new Error('Unable to read or parse base Claude credentials');
+        }
+        return;
+    }
+    const baseExpiresAt = credentialExpiry(baseInspection.parsed);
+    if (baseExpiresAt === null || runtimeCandidate.expiresAt <= baseExpiresAt)
+        return;
+    // Fail closed unless both sides prove the same account identity.
+    if (!accountsProvenSame(sourceClaudeJson, preservedRuntimeClaudeJson))
+        return;
+    // Credential fields may veto promotion but cannot establish account identity.
+    if (credentialIdentitiesConflict(baseInspection.candidate, runtimeCandidate))
+        return;
+    const mergedBaseCredentials = { ...baseInspection.parsed };
+    if (hasOwn(baseInspection.parsed, 'claudeAiOauth') || runtimeCandidate.nested) {
+        const existingNested = isJsonObject(baseInspection.parsed.claudeAiOauth)
+            ? baseInspection.parsed.claudeAiOauth
+            : {};
+        mergedBaseCredentials.claudeAiOauth = { ...existingNested, ...runtimeCandidate.fields };
+    }
+    else {
+        Object.assign(mergedBaseCredentials, runtimeCandidate.fields);
+    }
+    atomicWriteJsonSync(resolveCredentialWritePath(baseCredentialsPath), mergedBaseCredentials);
+}
+function swapRuntimeConfigDir(runtimeConfigDir, nextConfigDir) {
+    const previousConfigDir = `${runtimeConfigDir}.prev`;
+    let movedPrevious = false;
+    try {
+        rmSync(previousConfigDir, { recursive: true, force: true });
+        if (pathExists(runtimeConfigDir)) {
+            renameSync(runtimeConfigDir, previousConfigDir);
+            movedPrevious = true;
+        }
+        renameSync(nextConfigDir, runtimeConfigDir);
+    }
+    catch (error) {
+        try {
+            if (movedPrevious && !pathExists(runtimeConfigDir) && pathExists(previousConfigDir)) {
+                renameSync(previousConfigDir, runtimeConfigDir);
+            }
+        }
+        catch {
+            // Keep the original swap error; the previous directory remains available for recovery.
+        }
+        rmSync(nextConfigDir, { recursive: true, force: true });
+        throw error;
+    }
+    try {
+        rmSync(previousConfigDir, { recursive: true, force: true });
+    }
+    catch {
+        // Best effort cleanup; the new runtime directory is already active.
+    }
 }
 export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir()) {
-    const companionPath = join(baseConfigDir, 'copilot-instructions-omc.md');
+    const companionPath = join(baseConfigDir, 'CLAUDE-omc.md');
     if (!hasOmcMarkers(companionPath)) {
         return baseConfigDir;
     }
     const runtimeConfigDir = join(baseConfigDir, OMC_RUNTIME_DIRNAME);
+    const nextConfigDir = `${runtimeConfigDir}.next`;
     const runtimeClaudeJsonPath = join(runtimeConfigDir, '.claude.json');
-    const preservedClaudeJson = existsSync(runtimeClaudeJsonPath)
-        ? readFileSync(runtimeClaudeJsonPath)
-        : null;
-    rmSync(runtimeConfigDir, { recursive: true, force: true });
-    mkdirSync(runtimeConfigDir, { recursive: true });
-    if (preservedClaudeJson) {
-        writeFileSync(runtimeClaudeJsonPath, preservedClaudeJson);
-    }
-    refreshRuntimeClaudeJsonMcpServers(baseConfigDir, runtimeClaudeJsonPath);
-    copyFileSync(companionPath, join(runtimeConfigDir, 'copilot-instructions.md'));
-    for (const entry of [
-        'agents',
-        'commands',
-        'hooks',
-        'hud',
-        'plugins',
-        'projects',
-        'rules',
-        'skills',
-        'themes',
-        OMC_CONFIG_FILE_REL,
-        '.omc-version.json',
-        '.omc-silent-update.json',
-        'keybindings.json',
-        'settings.json',
-        'settings.local.json',
-        '.credentials.json',
-    ]) {
-        ensureMirroredPath(join(baseConfigDir, entry), join(runtimeConfigDir, basename(entry)), { allowCopyFallback: entry !== '.credentials.json' });
-    }
-    writeFileSync(join(runtimeConfigDir, '.omc-launch-profile.json'), JSON.stringify({ sourceConfigDir: baseConfigDir, sourceClaudeMd: companionPath }, null, 2));
-    return runtimeConfigDir;
+    const runtimeCredentialsPath = join(runtimeConfigDir, '.credentials.json');
+    const sourceClaudeJsonPath = join(dirname(baseConfigDir), '.claude.json');
+    const lifecycleLockPath = lockPathFor(join(baseConfigDir, '.omc-launch.prepare.lock'));
+    return withFileLockSync(lifecycleLockPath, () => {
+        const preservedClaudeJson = pathExists(runtimeClaudeJsonPath)
+            ? readFileSync(runtimeClaudeJsonPath)
+            : null;
+        const preservedRuntimeClaudeJson = readJsonObject(runtimeClaudeJsonPath);
+        const sourceClaudeJson = readJsonObject(sourceClaudeJsonPath);
+        reconcileRuntimeCredentials(baseConfigDir, runtimeCredentialsPath, sourceClaudeJson, preservedRuntimeClaudeJson);
+        rmSync(nextConfigDir, { recursive: true, force: true });
+        try {
+            mkdirSync(nextConfigDir, { recursive: true });
+            const nextClaudeJsonPath = join(nextConfigDir, '.claude.json');
+            if (preservedClaudeJson) {
+                writeFileSync(nextClaudeJsonPath, preservedClaudeJson);
+            }
+            refreshRuntimeClaudeJson(baseConfigDir, nextClaudeJsonPath, sourceClaudeJson);
+            copyFileSync(companionPath, join(nextConfigDir, 'CLAUDE.md'));
+            for (const entry of [
+                'agents',
+                'commands',
+                'hooks',
+                'hud',
+                'plugins',
+                'projects',
+                'rules',
+                'skills',
+                'themes',
+                OMC_CONFIG_FILE_REL,
+                '.omc-version.json',
+                '.omc-silent-update.json',
+                'keybindings.json',
+                'settings.json',
+                'settings.local.json',
+            ]) {
+                ensureMirroredPath(join(baseConfigDir, entry), join(nextConfigDir, basename(entry)));
+            }
+            const baseCredentialsPath = join(baseConfigDir, '.credentials.json');
+            const baseCredentialInspection = inspectCredentialFile(baseCredentialsPath);
+            ensureMirroredCredentials(baseCredentialsPath, join(nextConfigDir, '.credentials.json'), hasLinkableCredentials(baseCredentialInspection));
+            const runtimeSettingsPath = join(nextConfigDir, 'settings.json');
+            if (existsSync(runtimeSettingsPath)) {
+                try {
+                    const rawSettings = JSON.parse(readFileSync(runtimeSettingsPath, 'utf-8'));
+                    const repaired = stripRetiredTeamMcpServers(rawSettings);
+                    if (repaired.changed) {
+                        writeFileSync(runtimeSettingsPath, JSON.stringify(repaired.settings, null, 2));
+                    }
+                }
+                catch {
+                    // Best-effort compatibility repair; launch must continue even if a legacy
+                    // settings file cannot be parsed or rewritten.
+                }
+            }
+            writeFileSync(join(nextConfigDir, '.omc-launch-profile.json'), JSON.stringify({ sourceConfigDir: baseConfigDir, sourceClaudeMd: companionPath }, null, 2));
+        }
+        catch (error) {
+            rmSync(nextConfigDir, { recursive: true, force: true });
+            throw error;
+        }
+        swapRuntimeConfigDir(runtimeConfigDir, nextConfigDir);
+        return runtimeConfigDir;
+    }, { timeoutMs: 5000, retryDelayMs: 50 });
 }
-function isDefaultCopilotConfigDirPath(configDir) {
+function isDefaultClaudeConfigDirPath(configDir) {
     return configDir === join(homedir(), '.copilot');
-}
-/**
- * Extract the OMC-specific --openclaw flag from launch args.
- * Purely presence-based (like --madmax/--yolo):
- *   --openclaw        -> enable OpenClaw (OMC_OPENCLAW=1)
- *   --openclaw=true   -> enable OpenClaw
- *   --openclaw=false  -> disable OpenClaw
- *   --openclaw=1      -> enable OpenClaw
- *   --openclaw=0      -> disable OpenClaw
- *
- * Does NOT consume the next positional arg (no space-separated value).
- * This flag is stripped before passing args to Copilot CLI.
- */
-export function extractOpenClawFlag(args) {
-    let openclawEnabled = undefined;
-    const remainingArgs = [];
-    for (const arg of args) {
-        if (arg === OPENCLAW_FLAG) {
-            // Bare --openclaw means enabled (does NOT consume next arg)
-            openclawEnabled = true;
-            continue;
-        }
-        if (arg.startsWith(`${OPENCLAW_FLAG}=`)) {
-            const val = arg.slice(OPENCLAW_FLAG.length + 1).toLowerCase();
-            openclawEnabled = val !== 'false' && val !== '0';
-            continue;
-        }
-        remainingArgs.push(arg);
-    }
-    return { openclawEnabled, remainingArgs };
 }
 /**
  * Extract the OMC-specific --notify flag from launch args.
  * --notify false  → disable notifications (OMC_NOTIFY=0)
  * --notify true   → enable notifications (default)
- * This flag must be stripped before passing args to Copilot CLI.
+ * This flag must be stripped before passing args to Claude CLI.
  */
 export function extractNotifyFlag(args) {
     let notifyEnabled = true;
@@ -186,6 +539,36 @@ export function extractNotifyFlag(args) {
     return { notifyEnabled, remainingArgs };
 }
 /**
+ * Extract the OMC-specific --openclaw flag from launch args.
+ * Purely presence-based (like --madmax/--yolo):
+ *   --openclaw        -> enable OpenClaw (OMC_OPENCLAW=1)
+ *   --openclaw=true   -> enable OpenClaw
+ *   --openclaw=false  -> disable OpenClaw
+ *   --openclaw=1      -> enable OpenClaw
+ *   --openclaw=0      -> disable OpenClaw
+ *
+ * Does NOT consume the next positional arg (no space-separated value).
+ * This flag is stripped before passing args to Claude CLI.
+ */
+export function extractOpenClawFlag(args) {
+    let openclawEnabled = undefined;
+    const remainingArgs = [];
+    for (const arg of args) {
+        if (arg === OPENCLAW_FLAG) {
+            // Bare --openclaw means enabled (does NOT consume next arg)
+            openclawEnabled = true;
+            continue;
+        }
+        if (arg.startsWith(`${OPENCLAW_FLAG}=`)) {
+            const val = arg.slice(OPENCLAW_FLAG.length + 1).toLowerCase();
+            openclawEnabled = val !== 'false' && val !== '0';
+            continue;
+        }
+        remainingArgs.push(arg);
+    }
+    return { openclawEnabled, remainingArgs };
+}
+/**
  * Extract the OMC-specific --telegram flag from launch args.
  * Purely presence-based:
  *   --telegram        -> enable Telegram notifications (OMC_TELEGRAM=1)
@@ -195,7 +578,7 @@ export function extractNotifyFlag(args) {
  *   --telegram=0      -> disable
  *
  * Does NOT consume the next positional arg (no space-separated value).
- * This flag is stripped before passing args to Copilot CLI.
+ * This flag is stripped before passing args to Claude CLI.
  */
 export function extractTelegramFlag(args) {
     let telegramEnabled = undefined;
@@ -224,7 +607,7 @@ export function extractTelegramFlag(args) {
  *   --discord=0      -> disable
  *
  * Does NOT consume the next positional arg (no space-separated value).
- * This flag is stripped before passing args to Copilot CLI.
+ * This flag is stripped before passing args to Claude CLI.
  */
 export function extractDiscordFlag(args) {
     let discordEnabled = undefined;
@@ -253,7 +636,7 @@ export function extractDiscordFlag(args) {
  *   --slack=0      -> disable
  *
  * Does NOT consume the next positional arg (no space-separated value).
- * This flag is stripped before passing args to Copilot CLI.
+ * This flag is stripped before passing args to Claude CLI.
  */
 export function extractSlackFlag(args) {
     let slackEnabled = undefined;
@@ -282,7 +665,7 @@ export function extractSlackFlag(args) {
  *   --webhook=0      -> disable
  *
  * Does NOT consume the next positional arg (no space-separated value).
- * This flag is stripped before passing args to Copilot CLI.
+ * This flag is stripped before passing args to Claude CLI.
  */
 export function extractWebhookFlag(args) {
     let webhookEnabled = undefined;
@@ -302,40 +685,11 @@ export function extractWebhookFlag(args) {
     return { webhookEnabled, remainingArgs };
 }
 /**
- * Extract the OMC-specific --teams flag from launch args.
- * Purely presence-based:
- *   --teams        -> enable Teams notifications (OMC_MICROSOFT_TEAMS=1)
- *   --teams=true   -> enable
- *   --teams=false  -> disable
- *   --teams=1      -> enable
- *   --teams=0      -> disable
- *
- * Does NOT consume the next positional arg (no space-separated value).
- * This flag is stripped before passing args to Claude CLI.
- */
-export function extractTeamsFlag(args) {
-    let teamsEnabled = undefined;
-    const remainingArgs = [];
-    for (const arg of args) {
-        if (arg === TEAMS_FLAG) {
-            teamsEnabled = true;
-            continue;
-        }
-        if (arg.startsWith(`${TEAMS_FLAG}=`)) {
-            const val = arg.slice(TEAMS_FLAG.length + 1).toLowerCase();
-            teamsEnabled = val !== 'false' && val !== '0';
-            continue;
-        }
-        remainingArgs.push(arg);
-    }
-    return { teamsEnabled, remainingArgs };
-}
-/**
- * Normalize Copilot launch arguments
+ * Normalize Claude launch arguments
  * Maps --madmax/--yolo to --dangerously-skip-permissions
  * All other flags pass through unchanged
  */
-export function normalizeCopilotLaunchArgs(args) {
+export function normalizeClaudeLaunchArgs(args) {
     const normalized = [];
     let wantsBypass = false;
     let hasBypass = false;
@@ -344,7 +698,7 @@ export function normalizeCopilotLaunchArgs(args) {
             wantsBypass = true;
             continue;
         }
-        if (arg === COPILOT_BYPASS_FLAG) {
+        if (arg === CLAUDE_BYPASS_FLAG) {
             wantsBypass = true;
             if (!hasBypass) {
                 normalized.push(arg);
@@ -355,12 +709,12 @@ export function normalizeCopilotLaunchArgs(args) {
         normalized.push(arg);
     }
     if (wantsBypass && !hasBypass) {
-        normalized.push(COPILOT_BYPASS_FLAG);
+        normalized.push(CLAUDE_BYPASS_FLAG);
     }
     return normalized;
 }
 /**
- * preLaunch: Prepare environment before Copilot starts
+ * preLaunch: Prepare environment before Claude starts
  * Currently a placeholder - can be extended for:
  * - Session state initialization
  * - Environment setup
@@ -371,44 +725,111 @@ export async function preLaunch(_cwd, _sessionId) {
     // e.g., session state, environment prep, etc.
 }
 /**
- * runCopilot: Launch Copilot CLI (blocks until exit)
- * Handles 3 scenarios:
- * 1. inside-tmux: Launch copilot in current pane
- * 2. outside-tmux: Create new tmux session with copilot
- * 3. direct: tmux not available, run copilot directly
+ * Check if args contain --print or -p flag.
+ * When in print mode, Claude outputs to stdout and must not be wrapped in tmux
+ * (which would capture stdout and prevent piping to the parent process).
  */
-export function runCopilot(cwd, args, sessionId) {
-    const policy = resolveLaunchPolicy(process.env);
-    switch (policy) {
-        case 'inside-tmux':
-            runCopilotInsideTmux(cwd, args);
-            break;
-        case 'outside-tmux':
-            runCopilotOutsideTmux(cwd, args, sessionId);
-            break;
-        case 'direct':
-            runCopilotDirect(cwd, args);
-            break;
+export function isPrintMode(args) {
+    return args.some((arg) => arg === '--print' || arg === '-p');
+}
+/**
+ * Detect raw --madmax / --yolo tokens in launch args. Used before
+ * normalizeClaudeLaunchArgs strips them so we can apply OMC-specific
+ * launch contracts (e.g. tmux-mandatory on macOS).
+ */
+export function hasMadmaxFlag(args) {
+    return args.some((arg) => arg === MADMAX_FLAG || arg === YOLO_FLAG);
+}
+class MadmaxTmuxRequiredError extends Error {
+    reason;
+    constructor(reason) {
+        super(`madmax requires tmux: ${reason}`);
+        this.reason = reason;
+        this.name = 'MadmaxTmuxRequiredError';
+    }
+}
+function abortMadmaxRequiresTmux(reason) {
+    if (reason === 'missing') {
+        console.error('[omc] Error: --madmax/--yolo on macOS requires tmux, but tmux is not installed.');
+        console.error('  Install it with: brew install tmux');
+    }
+    else {
+        console.error('[omc] Error: --madmax/--yolo on macOS requires tmux, but launching tmux failed.');
+        console.error('  Verify tmux works: tmux -V && tmux new-session -d -s _omc_probe \\; kill-session -t _omc_probe');
+    }
+    process.exit(1);
+    // process.exit may be intercepted by tests; throwing guarantees the caller
+    // stops and prevents accidental fall-through to a direct claude launch.
+    throw new MadmaxTmuxRequiredError(reason);
+}
+/**
+ * runClaude: Launch Claude CLI (blocks until exit)
+ * Handles 3 scenarios:
+ * 1. inside-tmux: Launch claude in current pane
+ * 2. outside-tmux: Create new tmux session with claude
+ * 3. direct: tmux not available, run claude directly
+ *
+ * When --print/-p is present, always runs direct to preserve stdout piping.
+ *
+ * On macOS, `--madmax` (and its `--yolo` alias) require tmux: if tmux is not
+ * installed we exit with a brew install hint rather than silently launching
+ * direct. Inside an existing tmux session the current pane is reused. If
+ * tmux is installed but new-session/attach-session fails, we surface the
+ * error instead of silently demoting to direct mode.
+ */
+export function runClaude(cwd, args, sessionId) {
+    // Print mode must bypass tmux so stdout flows to the parent process (issue #1665)
+    if (isPrintMode(args)) {
+        runClaudeDirect(cwd, args);
+        return;
+    }
+    const requireTmux = process.platform === 'darwin' && hasMadmaxFlag(args);
+    try {
+        if (requireTmux && !process.env.TMUX && !isTmuxAvailable()) {
+            abortMadmaxRequiresTmux('missing');
+        }
+        const policy = resolveLaunchPolicy(process.env, args, { requireTmux });
+        switch (policy) {
+            case 'inside-tmux':
+                runClaudeInsideTmux(cwd, args);
+                break;
+            case 'outside-tmux':
+                runClaudeOutsideTmux(cwd, args, sessionId, { requireTmux });
+                break;
+            case 'direct':
+                if (requireTmux) {
+                    abortMadmaxRequiresTmux('missing');
+                }
+                runClaudeDirect(cwd, args);
+                break;
+        }
+    }
+    catch (err) {
+        if (err instanceof MadmaxTmuxRequiredError) {
+            // Already reported via stderr + process.exit(1); swallow so test harnesses
+            // that mock process.exit do not see the synthetic throw escape runClaude.
+            return;
+        }
+        throw err;
     }
 }
 /**
- * Run Copilot inside existing tmux session
- * Launches Copilot in current pane
+ * Run Claude inside existing tmux session
+ * Launches Claude in current pane
  */
-function runCopilotInsideTmux(cwd, args) {
-    // Enable OSC 52 clipboard forwarding in the current tmux session (non-fatal if unsupported).
+function runClaudeInsideTmux(cwd, args) {
+    // Enable OSC 52 clipboard forwarding and mouse scrolling in the current tmux session (non-fatal if unsupported).
     try {
         configureTmuxClipboardForCurrentSession({ stdio: 'ignore' });
     }
     catch { /* non-fatal — user's tmux may not support these options */ }
-    // Enable mouse scrolling in the current tmux session (non-fatal if it fails)
     try {
         tmuxExec(['set-option', 'mouse', 'on'], { stdio: 'ignore' });
     }
     catch { /* non-fatal — user's tmux may not support these options */ }
-    // Launch Copilot in current pane
+    // Launch Claude in current pane
     try {
-        execFileSync('copilot', args, {
+        execFileSync('claude', args, {
             cwd,
             stdio: 'inherit',
             shell: process.platform === 'win32',
@@ -417,10 +838,10 @@ function runCopilotInsideTmux(cwd, args) {
     catch (error) {
         const err = error;
         if (err.code === 'ENOENT') {
-            console.error('[omg] Error: gh CLI not found in PATH.');
+            console.error('[omc] Error: claude CLI not found in PATH.');
             process.exit(1);
         }
-        // Propagate Copilot's exit code so omg does not swallow failures
+        // Propagate Claude's exit code so omc does not swallow failures
         process.exit(typeof err.status === 'number' ? err.status : 1);
     }
 }
@@ -440,6 +861,7 @@ export const TMUX_ENV_FORWARD = [
     'OMC_DISCORD',
     'OMC_SLACK',
     'OMC_WEBHOOK',
+    OMC_PLUGIN_ROOT_ENV,
 ];
 export function buildEnvExportPrefix(vars) {
     const parts = [];
@@ -452,55 +874,80 @@ export function buildEnvExportPrefix(vars) {
     return parts.length > 0 ? parts.join('; ') + '; ' : '';
 }
 /**
- * Run Copilot outside tmux - create new session
- * Creates tmux session with Copilot
+ * Run Claude outside tmux - create new session.
+ *
+ * `requireTmux=true` (set by --madmax on macOS) turns the tmux launch
+ * failures from silent demotions into hard errors with a remediation hint.
  */
-function runCopilotOutsideTmux(cwd, args, _sessionId) {
+function runClaudeOutsideTmux(cwd, args, _sessionId, options = {}) {
     const forwardedEnv = Object.fromEntries(TMUX_ENV_FORWARD
         .map((name) => [name, process.env[name]])
         .filter(([, value]) => value !== undefined));
-    const rawCopilotCmd = isNativeWindowsShell()
-        ? buildTmuxShellCommandWithEnv('copilot', args, forwardedEnv)
-        : buildTmuxShellCommand('copilot', args);
+    const rawClaudeCmd = isNativeWindowsShell()
+        ? buildTmuxShellCommandWithEnv('claude', args, forwardedEnv)
+        : buildTmuxShellCommand('claude', args);
     const envPrefix = !isNativeWindowsShell() && Object.keys(forwardedEnv).length > 0
         ? buildEnvExportPrefix(TMUX_ENV_FORWARD)
         : '';
     // Drain any pending terminal Device Attributes (DA1) response from stdin.
     // When tmux attach-session sends a DA1 query, the terminal replies with
-    // \e[?6c which lands in the pty buffer before Copilot reads input.
+    // \e[?6c which lands in the pty buffer before Claude reads input.
     // A short sleep lets the response arrive, then tcflush discards it.
     // Wrap in login shell so .bashrc/.zshrc are sourced (PATH, nvm, etc.)
     // Env exports are injected after RC sourcing so they override stale tmux server env.
     const preflight = isNativeWindowsShell()
         ? envPrefix
         : `${envPrefix}sleep 0.3; perl -e 'use POSIX;tcflush(0,TCIFLUSH)' 2>/dev/null; `;
-    const copilotCmd = wrapWithLoginShell(`${preflight}${rawCopilotCmd}`);
+    const claudeCmd = wrapWithLoginShell(`${preflight}${rawClaudeCmd}`);
     const sessionName = buildTmuxSessionName(cwd);
-    const tmuxArgs = [
-        'new-session', '-d', '-s', sessionName, '-c', cwd,
-        copilotCmd,
-        ';', 'set-option', '-t', sessionName, 'mouse', 'on',
-        // Enable OSC 52 clipboard forwarding so terminal-side copy-on-select keeps working.
-        ';', 'set-option', '-t', sessionName, 'set-clipboard', 'on',
-        ';', 'set-option', '-at', sessionName, 'terminal-features', ',*:clipboard',
-    ];
-    // Attach to session
-    tmuxArgs.push(';', 'attach-session', '-t', sessionName);
     try {
-        tmuxExec(tmuxArgs, { stdio: 'inherit' });
+        tmuxExec(['new-session', '-d', '-s', sessionName, '-c', cwd, claudeCmd], { stripTmux: true, stdio: 'inherit' });
     }
     catch {
-        // tmux failed, fall back to direct launch
-        runCopilotDirect(cwd, args);
+        if (options.requireTmux) {
+            abortMadmaxRequiresTmux('launch-failed');
+        }
+        runClaudeDirect(cwd, args);
+        return;
+    }
+    try {
+        configureTmuxClipboardForSession(sessionName, { stripTmux: true, stdio: 'ignore' });
+    }
+    catch {
+        /* non-fatal — user's tmux may not support these options */
+    }
+    try {
+        tmuxExec(['set-option', '-t', sessionName, 'mouse', 'on'], { stripTmux: true, stdio: 'ignore' });
+    }
+    catch {
+        /* non-fatal — user's tmux may not support these options */
+    }
+    try {
+        tmuxExec(['attach-session', '-t', sessionName], { stripTmux: true, stdio: 'inherit' });
+    }
+    catch {
+        if (options.requireTmux) {
+            abortMadmaxRequiresTmux('launch-failed');
+        }
+        // If the detached session still exists, preserve it so interrupted
+        // attach paths (SSH disconnect, terminal drop, etc.) do not kill or
+        // duplicate a valid Claude session.
+        try {
+            tmuxExec(['has-session', '-t', sessionName], { stripTmux: true, stdio: 'ignore' });
+            return;
+        }
+        catch {
+            runClaudeDirect(cwd, args);
+        }
     }
 }
 /**
- * Run Copilot directly (no tmux)
+ * Run Claude directly (no tmux)
  * Fallback when tmux is not available
  */
-function runCopilotDirect(cwd, args) {
+function runClaudeDirect(cwd, args) {
     try {
-        execFileSync('copilot', args, {
+        execFileSync('claude', args, {
             cwd,
             stdio: 'inherit',
             shell: process.platform === 'win32',
@@ -509,15 +956,15 @@ function runCopilotDirect(cwd, args) {
     catch (error) {
         const err = error;
         if (err.code === 'ENOENT') {
-            console.error('[omg] Error: gh CLI not found in PATH.');
+            console.error('[omc] Error: claude CLI not found in PATH.');
             process.exit(1);
         }
-        // Propagate Copilot's exit code so omg does not swallow failures
+        // Propagate Claude's exit code so omc does not swallow failures
         process.exit(typeof err.status === 'number' ? err.status : 1);
     }
 }
 /**
- * postLaunch: Cleanup after Copilot exits
+ * postLaunch: Cleanup after Claude exits
  * Currently a placeholder - can be extended for:
  * - Session cleanup
  * - State finalization
@@ -531,8 +978,39 @@ export async function postLaunch(_cwd, _sessionId) {
  * Main launch command entry point
  * Orchestrates the 3-phase launch: preLaunch -> run -> postLaunch
  */
+/**
+ * Parse `--plugin-dir <path>` / `--plugin-dir=<path>` from launch args (non-consuming).
+ *
+ * Returns the resolved absolute path if found, or null. The flag is NOT removed
+ * from `args` — it must still forward to Claude Code's plugin loader untouched.
+ */
+export function parsePluginDirArg(args) {
+    for (let i = 0; i < args.length; i++) {
+        const a = args[i];
+        if (a === '--plugin-dir') {
+            const next = args[i + 1];
+            if (typeof next === 'string' && next.length > 0) {
+                return resolvePluginDirArg(next);
+            }
+        }
+        else if (typeof a === 'string' && a.startsWith('--plugin-dir=')) {
+            const value = a.slice('--plugin-dir='.length);
+            if (value.length > 0) {
+                return resolvePluginDirArg(value);
+            }
+        }
+    }
+    return null;
+}
 export async function launchCommand(args) {
-    // Extract OMC-specific --notify flag before passing remaining args to Copilot CLI
+    // Capture --plugin-dir <path> so the HUD wrapper (and any other env-aware
+    // child of Claude Code) can resolve the active plugin root via OMC_PLUGIN_ROOT.
+    // Non-consuming: the flag still flows through to Claude Code untouched.
+    const pluginDir = parsePluginDirArg(args);
+    if (pluginDir) {
+        process.env[OMC_PLUGIN_ROOT_ENV] = pluginDir;
+    }
+    // Extract OMC-specific --notify flag before passing remaining args to Claude CLI
     const { notifyEnabled, remainingArgs } = extractNotifyFlag(args);
     if (!notifyEnabled) {
         process.env.OMC_NOTIFY = '0';
@@ -577,39 +1055,38 @@ export async function launchCommand(args) {
     else if (webhookEnabled === false) {
         process.env.OMC_WEBHOOK = '0';
     }
-    // Extract OMC-specific --teams flag (presence-based)
-    const { teamsEnabled, remainingArgs: argsAfterTeams } = extractTeamsFlag(argsAfterWebhook);
-    if (teamsEnabled === true) {
-        process.env.OMC_MICROSOFT_TEAMS = '1';
-    }
-    else if (teamsEnabled === false) {
-        process.env.OMC_MICROSOFT_TEAMS = '0';
-    }
     const cwd = process.cwd();
     // Pre-flight: check for nested session
-    if (process.env.COPILOT_CLI) {
-        console.error('[omg] Error: Already inside a Copilot CLI session. Nested launches are not supported.');
+    if (process.env.CLAUDECODE) {
+        console.error('[omc] Error: Already inside a Claude Code session. Nested launches are not supported.');
         process.exit(1);
     }
-    // Pre-flight: check copilot CLI availability
+    // Pre-flight: check claude CLI availability
     if (!isCopilotAvailable()) {
-        console.error('[omg] Error: gh CLI not found. Install Copilot CLI first:');
-        console.error('  npm install -g @github/copilot');
+        console.error('[omc] Error: claude CLI not found. Install Claude Code first:');
+        console.error('  https://code.claude.com/docs/en/setup');
         process.exit(1);
     }
-    const normalizedArgs = normalizeCopilotLaunchArgs(argsAfterTeams);
+    const launchConfigDir = prepareOmcLaunchConfigDir();
+    if (isDefaultClaudeConfigDirPath(launchConfigDir)) {
+        delete process.env.COPILOT_CONFIG_DIR;
+    }
+    else {
+        process.env.COPILOT_CONFIG_DIR = launchConfigDir;
+    }
+    const normalizedArgs = normalizeClaudeLaunchArgs(argsAfterWebhook);
     const sessionId = `omc-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`;
     // Phase 1: preLaunch
     try {
         await preLaunch(cwd, sessionId);
     }
     catch (err) {
-        // preLaunch errors must NOT prevent Copilot from starting
-        console.error(`[omg] preLaunch warning: ${err instanceof Error ? err.message : err}`);
+        // preLaunch errors must NOT prevent Claude from starting
+        console.error(`[omc] preLaunch warning: ${err instanceof Error ? err.message : err}`);
     }
     // Phase 2: run
     try {
-        runCopilot(cwd, normalizedArgs, sessionId);
+        runClaude(cwd, normalizedArgs, sessionId);
     }
     finally {
         // Phase 3: postLaunch

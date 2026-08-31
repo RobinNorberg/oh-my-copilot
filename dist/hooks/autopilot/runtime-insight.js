@@ -1,7 +1,15 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { getOmcRoot, resolveSessionStatePath } from '../../lib/worktree-paths.js';
-import { readHudState } from '../../hud/state.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { readModeState } from '../../lib/mode-state-io.js';
+const RUNTIME_INSIGHT_MAX_FIELD_LENGTH = 160;
+const RUNTIME_INSIGHT_MAX_LENGTH = 2_000;
+function redactRuntimeInsightText(value) {
+    return value
+        .replace(/(?:^|\s)(?:\/[^\s]+|[A-Za-z]:\\[^\s]+)/g, ' [redacted-path]')
+        .replace(/\b[^\s]*transcript[^\s]*\b/gi, '[redacted-transcript]')
+        .slice(0, RUNTIME_INSIGHT_MAX_FIELD_LENGTH);
+}
 function readJsonSafe(path) {
     try {
         if (!existsSync(path)) {
@@ -28,7 +36,7 @@ function getTeamNamesForRuntimeInsight(directory, sessionId) {
         return teamNames;
     }
     const scopedTeamNames = new Set();
-    const teamState = readJsonSafe(resolveSessionStatePath('team', sessionId, directory));
+    const teamState = readModeState('team', directory, sessionId);
     const activeTeamName = teamState?.team_name ?? teamState?.teamName;
     if (typeof activeTeamName === 'string' && activeTeamName.trim().length > 0) {
         scopedTeamNames.add(activeTeamName.trim());
@@ -40,6 +48,23 @@ function getTeamNamesForRuntimeInsight(directory, sessionId) {
         }
     }
     return teamNames.filter((teamName) => scopedTeamNames.has(teamName));
+}
+function getWorkflowProgress(directory, sessionId) {
+    const state = readModeState('autopilot', directory, sessionId);
+    const workflow = state?.workflow;
+    const tracking = state?.pipelineTracking;
+    const stages = Array.isArray(workflow?.stages) ? workflow.stages : null;
+    const index = tracking?.currentStageIndex;
+    const allowedStages = new Set(['ralplan', 'execution', 'ralph', 'qa']);
+    if (!stages ||
+        !stages.every((stage) => typeof stage === 'string' && allowedStages.has(stage)) ||
+        typeof index !== 'number' ||
+        !Number.isInteger(index) ||
+        index < 0 ||
+        index > stages.length) {
+        return null;
+    }
+    return `${stages[index] ?? 'complete'} ${Math.min(index + 1, stages.length)}/${stages.length}`;
 }
 function collectRuntimeInsight(directory, sessionId) {
     const missingDependencyIssues = [];
@@ -85,8 +110,13 @@ function collectRuntimeInsight(directory, sessionId) {
             }
         }
     }
-    const hudState = readHudState(directory, sessionId);
-    const backgroundTasks = hudState?.backgroundTasks ?? [];
+    const hudState = readModeState('hud', directory, sessionId);
+    const ownedHudState = sessionId
+        && typeof hudState?.sessionId === 'string'
+        && hudState.sessionId !== sessionId
+        ? null
+        : hudState;
+    const backgroundTasks = ownedHudState?.backgroundTasks ?? [];
     const failedBackgroundTasks = backgroundTasks
         .filter((task) => task.status === 'failed')
         .sort((left, right) => {
@@ -95,11 +125,13 @@ function collectRuntimeInsight(directory, sessionId) {
         return rightAt - leftAt;
     });
     const runningBackgroundTasks = backgroundTasks.filter((task) => task.status === 'running');
+    const workflowProgress = getWorkflowProgress(directory, sessionId);
     return {
         missingDependencyIssues,
         workerIssues,
         failedBackgroundTasks,
         runningBackgroundTasks,
+        workflowProgress,
     };
 }
 export function formatAutopilotRuntimeInsight(directory, sessionId) {
@@ -116,23 +148,26 @@ export function formatAutopilotRuntimeInsight(directory, sessionId) {
             lines.push('Current blockers:');
         }
         for (const issue of snapshot.workerIssues.slice(0, 3)) {
-            lines.push(`- [${issue.teamName}] ${issue.workerName} is ${issue.state}: ${issue.reason}`);
+            lines.push(`- [${redactRuntimeInsightText(issue.teamName)}] ${redactRuntimeInsightText(issue.workerName)} is ${issue.state}: ${redactRuntimeInsightText(issue.reason)}`);
         }
     }
     if (snapshot.failedBackgroundTasks.length > 0) {
         lines.push(lines.length === 0 ? 'Recent errors:' : 'Recent errors:');
         for (const task of snapshot.failedBackgroundTasks.slice(0, 3)) {
             const agentLabel = task.agentType ? ` (${task.agentType})` : '';
-            lines.push(`- background task failed${agentLabel}: ${task.description}`);
+            lines.push(`- background task failed${agentLabel}: ${redactRuntimeInsightText(task.description)}`);
         }
     }
     if (snapshot.runningBackgroundTasks.length > 0) {
         lines.push('Live progress:');
         for (const task of snapshot.runningBackgroundTasks.slice(0, 3)) {
             const agentLabel = task.agentType ? ` (${task.agentType})` : '';
-            lines.push(`- running${agentLabel}: ${task.description}`);
+            lines.push(`- running${agentLabel}: ${redactRuntimeInsightText(task.description)}`);
         }
     }
-    return lines.length > 0 ? lines.join('\n') : '';
+    if (snapshot.workflowProgress) {
+        lines.push(`Workflow progress: ${snapshot.workflowProgress}`);
+    }
+    return lines.length > 0 ? lines.join('\n').slice(0, RUNTIME_INSIGHT_MAX_LENGTH) : '';
 }
 //# sourceMappingURL=runtime-insight.js.map

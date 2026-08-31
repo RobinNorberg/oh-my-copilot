@@ -3,7 +3,7 @@
  * OMC HUD - Main Entry Point
  *
  * Statusline command that visualizes oh-my-copilot state.
- * Receives stdin JSON from Copilot CLI and outputs formatted statusline.
+ * Receives stdin JSON from Claude Code and outputs formatted statusline.
  */
 
 import {
@@ -11,6 +11,7 @@ import {
   writeStdinCache,
   readStdinCache,
   getContextPercent,
+  getModelId,
   getModelName,
   getRateLimitsFromStdin,
   stabilizeContextPercent,
@@ -25,7 +26,6 @@ import {
 } from "./state.js";
 import {
   readRalphStateForHud,
-  readUltraworkStateForHud,
   readPrdStateForHud,
   readAutopilotStateForHud,
 } from "./omc-state.js";
@@ -35,6 +35,7 @@ import { render } from "./render.js";
 import { detectApiKeySource } from "./elements/api-key-source.js";
 import { refreshMissionBoardState } from "./mission-board.js";
 import { sanitizeOutput } from "./sanitize.js";
+import { estimatePayloadFromTranscriptPath } from "./payload-estimate.js";
 import type {
   HudRenderContext,
   RateLimits,
@@ -44,12 +45,26 @@ import type {
 } from "./types.js";
 import { getRuntimePackageVersion } from "../lib/version.js";
 import { compareVersions } from "../features/auto-update.js";
-import { resolveToWorktreeRoot, resolveTranscriptPath } from "../lib/worktree-paths.js";
+import {
+  resolveToWorktreeRoot,
+  resolveTranscriptPath,
+} from "../lib/worktree-paths.js";
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { access, readFile } from "fs/promises";
-import { join, dirname, basename } from "path";
+import { join, basename, dirname } from "path";
+import { spawn } from "child_process";
+import { fileURLToPath } from "url";
 import { getOmcRoot } from "../lib/worktree-paths.js";
 import { getCopilotConfigDir, getUpdateCheckCachePath } from "../utils/config-dir.js";
+
+/**
+ * Extract session ID (UUID) from a transcript path.
+ */
+function extractSessionIdFromPath(transcriptPath: string): string | null {
+  if (!transcriptPath) return null;
+  const match = transcriptPath.match(/([0-9a-f-]{36})(?:\.jsonl)?$/i);
+  return match ? match[1] : null;
+}
 
 function mergeStdinRateLimits(
   stdinRateLimits: RateLimits | null,
@@ -110,14 +125,75 @@ export function _getSummaryProcessPid(): number | null {
 }
 
 /**
- * Extract session ID (UUID) from a transcript path.
+ * Spawn the session-summary script in the background to generate/update summary.
+ * Fire-and-forget: does not block HUD rendering.
+ * Guards against duplicate spawns by tracking the last spawn timestamp.
  */
-function extractSessionIdFromPath(transcriptPath: string): string | null {
-  if (!transcriptPath) return null;
-  const match = transcriptPath.match(/([0-9a-f-]{36})(?:\.jsonl)?$/i);
-  return match ? match[1] : null;
-}
+function spawnSessionSummaryScript(
+  transcriptPath: string,
+  stateDir: string,
+  sessionId: string,
+): void {
+  // Check if a previously spawned summary process is still alive.
+  // This prevents accumulation of detached processes when summarization
+  // takes longer than the timestamp-based throttle window.
+  if (summaryProcessPid !== null) {
+    try {
+      process.kill(summaryProcessPid, 0);
+      // Process is still alive — skip spawning a new one
+      return;
+    } catch {
+      // Process is dead (ESRCH) — clear PID and allow respawn
+      summaryProcessPid = null;
+    }
+  }
 
+  // Secondary guard: prevent rapid re-spawns via timestamp (within 120s).
+  const now = Date.now();
+  if (now - lastSummarySpawnTimestamp < 120_000) {
+    return;
+  }
+  lastSummarySpawnTimestamp = now;
+  // Resolve the script path relative to this file's location
+  // In compiled output: dist/hud/index.js -> ../../scripts/session-summary.mjs
+  const thisDir = dirname(fileURLToPath(import.meta.url));
+  const scriptPath = join(
+    thisDir,
+    "..",
+    "..",
+    "scripts",
+    "session-summary.mjs",
+  );
+
+  if (!existsSync(scriptPath)) {
+    if (process.env.OMC_DEBUG) {
+      console.error("[HUD] session-summary script not found:", scriptPath);
+    }
+    return;
+  }
+
+  try {
+    const child = spawn(
+      "node",
+      [scriptPath, transcriptPath, stateDir, sessionId],
+      {
+        stdio: "ignore",
+        detached: true,
+        env: { ...process.env, CLAUDE_CODE_ENTRYPOINT: "session-summary" },
+      },
+    );
+    summaryProcessPid = child.pid ?? null;
+    child.unref();
+  } catch (error) {
+    summaryProcessPid = null;
+    if (process.env.OMC_DEBUG) {
+      console.error(
+        "[HUD] Failed to spawn session-summary:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+}
 
 /**
  * Calculate session health from session start time and context usage.
@@ -128,9 +204,9 @@ async function calculateSessionHealth(
 ): Promise<SessionHealth | null> {
   const durationMs = sessionStart ? Date.now() - sessionStart.getTime() : 0;
   const durationMinutes = Math.floor(durationMs / 60_000);
-  let health: SessionHealth['health'] = 'healthy';
-  if (durationMinutes > 120 || contextPercent > 85) health = 'critical';
-  else if (durationMinutes > 60 || contextPercent > 70) health = 'warning';
+  let health: SessionHealth["health"] = "healthy";
+  if (durationMinutes > 120 || contextPercent > 85) health = "critical";
+  else if (durationMinutes > 60 || contextPercent > 70) health = "warning";
   return { durationMinutes, messageCount: 0, health };
 }
 
@@ -141,34 +217,34 @@ async function calculateSessionHealth(
 function showDiagnostic(): void {
   const version = getRuntimePackageVersion();
   const configDir = getCopilotConfigDir();
-  const hudScript = join(configDir, 'hud', 'omcp-hud.mjs');
-  const settingsFile = join(configDir, 'settings.json');
+  const hudScript = join(configDir, "hud", "omcp-hud.mjs");
+  const settingsFile = join(configDir, "settings.json");
 
   const hudExists = existsSync(hudScript);
   let statusLineOk = false;
   try {
-    const settings = JSON.parse(readFileSync(settingsFile, 'utf-8'));
+    const settings = JSON.parse(readFileSync(settingsFile, "utf-8"));
     const sl = settings.statusLine;
-    if (sl && typeof sl === 'object' && typeof (sl as Record<string, unknown>).command === 'string') {
-      statusLineOk = ((sl as Record<string, unknown>).command as string).includes('omcp-hud');
-    } else if (typeof sl === 'string') {
-      statusLineOk = sl.includes('omcp-hud');
+    if (sl && typeof sl === "object" && typeof (sl as Record<string, unknown>).command === "string") {
+      statusLineOk = ((sl as Record<string, unknown>).command as string).includes("omcp-hud");
+    } else if (typeof sl === "string") {
+      statusLineOk = sl.includes("omcp-hud");
     }
   } catch {
     /* settings.json missing or invalid */
   }
 
   const config = readHudConfig();
-  const preset = config.preset ?? 'focused';
+  const preset = config.preset ?? "focused";
 
   console.log(`[OMC] HUD v${version} | preset: ${preset}`);
-  console.log(`  HUD script:  ${hudExists ? 'installed' : 'MISSING'}`);
-  console.log(`  statusLine:  ${statusLineOk ? 'configured' : 'NOT configured'}`);
+  console.log(`  HUD script:  ${hudExists ? "installed" : "MISSING"}`);
+  console.log(`  statusLine:  ${statusLineOk ? "configured" : "NOT configured"}`);
 
   if (!hudExists || !statusLineOk) {
-    console.log('  Run /oh-my-copilot:hud setup to fix.');
+    console.log("  Run /oh-my-copilot:hud setup to fix.");
   } else {
-    console.log('  HUD renders automatically inside Copilot CLI sessions.');
+    console.log("  HUD renders automatically inside Claude Code sessions.");
   }
 }
 
@@ -178,7 +254,7 @@ function showDiagnostic(): void {
  */
 async function main(watchMode = false, skipInit = false): Promise<void> {
   try {
-    // Read stdin from Copilot CLI
+    // Read stdin from Claude Code
     const previousStdinCache = readStdinCache();
     let stdin = await readStdin();
 
@@ -221,7 +297,10 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
     }
 
     // Resolve worktree-mismatched transcript paths (issue #1094)
-    const resolvedTranscriptPath = resolveTranscriptPath(stdin.transcript_path, cwd);
+    const resolvedTranscriptPath = resolveTranscriptPath(
+      stdin.transcript_path,
+      cwd,
+    );
 
     // Parse transcript for agents and todos
     const transcriptData = await parseTranscript(resolvedTranscriptPath, {
@@ -240,9 +319,11 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
 
     // Read OMC state files
     const ralph = readRalphStateForHud(cwd, currentSessionId ?? undefined);
-    const ultrawork = readUltraworkStateForHud(cwd, currentSessionId ?? undefined);
     const prd = readPrdStateForHud(cwd);
-    const autopilot = readAutopilotStateForHud(cwd, currentSessionId ?? undefined);
+    const autopilot = readAutopilotStateForHud(
+      cwd,
+      currentSessionId ?? undefined,
+    );
 
     // Read HUD state for background tasks
     const hudState = readHudState(cwd, currentSessionId ?? undefined);
@@ -264,18 +345,24 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
       // If invalid, fall through to transcript-derived sessionStart
     } else if (sessionStart) {
       // First time seeing session start (or new session) - persist it
-      const stateToWrite = hudState || { timestamp: new Date().toISOString(), backgroundTasks: [] };
+      const stateToWrite = hudState || {
+        timestamp: new Date().toISOString(),
+        backgroundTasks: [],
+      };
       stateToWrite.sessionStartTimestamp = sessionStart.toISOString();
       stateToWrite.sessionId = currentSessionId ?? undefined;
       stateToWrite.timestamp = new Date().toISOString();
       writeHudState(stateToWrite, cwd, currentSessionId ?? undefined);
     }
 
-    // Merge Copilot CLI stdin generic buckets with API/cache-specific fields.
+    // Merge Claude Code stdin generic buckets with API/cache-specific fields.
     // Stdin owns fresher five-hour/seven-day values, while getUsage() may provide
     // Sonnet/Opus weekly, monthly, extra, stale, and error metadata.
     const stdinRateLimits = getRateLimitsFromStdin(stdin);
-    const usageResult = config.elements.rateLimits === false ? null : await getUsage();
+    const usageResult =
+      config.elements.rateLimits === false
+        ? null
+        : await getUsage({ clientVersion: stdin.version });
     const rateLimitsResult =
       config.elements.rateLimits === false
         ? null
@@ -283,7 +370,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
 
     // Fetch custom rate limit buckets (if configured)
     const customBuckets =
-      config.rateLimitsProvider?.type === 'custom'
+      config.rateLimitsProvider?.type === "custom"
         ? await executeCustomProvider(config.rateLimitsProvider)
         : null;
 
@@ -292,46 +379,88 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
     let updateAvailable: string | null = null;
     try {
       omcVersion = getRuntimePackageVersion();
-      if (omcVersion === 'unknown') omcVersion = null;
+      if (omcVersion === "unknown") omcVersion = null;
     } catch (error) {
       // Ignore version detection errors
       if (process.env.OMC_DEBUG) {
-        console.error('[HUD] Version detection error:', error instanceof Error ? error.message : error);
+        console.error(
+          "[HUD] Version detection error:",
+          error instanceof Error ? error.message : error,
+        );
       }
     }
     // Async file read to avoid blocking event loop (Issue #1273)
     try {
       const updateCacheFile = getUpdateCheckCachePath();
       await access(updateCacheFile);
-      const content = await readFile(updateCacheFile, 'utf-8');
+      const content = await readFile(updateCacheFile, "utf-8");
       const cached = JSON.parse(content);
-      if (cached?.latestVersion && omcVersion && compareVersions(omcVersion, cached.latestVersion) < 0) {
+      if (
+        cached?.latestVersion &&
+        omcVersion &&
+        compareVersions(omcVersion, cached.latestVersion) < 0
+      ) {
         updateAvailable = cached.latestVersion;
       }
     } catch (error) {
       // Ignore update cache read errors - expected if file doesn't exist yet
       if (process.env.OMC_DEBUG) {
-        console.error('[HUD] Update cache read error:', error instanceof Error ? error.message : error);
+        console.error(
+          "[HUD] Update cache read error:",
+          error instanceof Error ? error.message : error,
+        );
       }
     }
 
-    const missionBoardEnabled = config.missionBoard?.enabled ?? config.elements.missionBoard ?? false;
+    // Session summary: read cached state and trigger background regeneration if needed
+    let sessionSummary: SessionSummaryState | null = null;
+    const sessionSummaryEnabled = config.elements.sessionSummary ?? false;
+    if (sessionSummaryEnabled && resolvedTranscriptPath && currentSessionId) {
+      const omcStateDir = join(getOmcRoot(cwd), "state");
+      sessionSummary = readSessionSummary(omcStateDir, currentSessionId);
+
+      // Debounce: only spawn script if cache is absent or older than 60 seconds.
+      // This prevents spawning a child process on every HUD poll (every ~1s).
+      // The child script still checks turn-count freshness internally.
+      const shouldSpawn =
+        !sessionSummary?.generatedAt ||
+        Date.now() - new Date(sessionSummary.generatedAt).getTime() > 60_000;
+
+      if (shouldSpawn) {
+        spawnSessionSummaryScript(
+          resolvedTranscriptPath,
+          omcStateDir,
+          currentSessionId,
+        );
+      }
+    }
+
+    const missionBoardEnabled =
+      config.missionBoard?.enabled ?? config.elements.missionBoard ?? false;
     const missionBoard = missionBoardEnabled
       ? await refreshMissionBoardState(cwd, config.missionBoard)
       : null;
-
     const contextPercent = getContextPercent(stdin);
+    const payloadEstimate = estimatePayloadFromTranscriptPath(resolvedTranscriptPath);
 
-    // Read subscription info for enterprise detection (best-effort, never throws)
-    const subscriptionInfo = getSubscriptionInfo();
+    // Read subscription info for enterprise detection (best-effort).
+    // Rate-limit rendering must not depend on this metadata being present.
+    const subscriptionInfo = (() => {
+      try {
+        return getSubscriptionInfo() ?? { subscriptionType: null, rateLimitTier: null };
+      } catch {
+        return { subscriptionType: null, rateLimitTier: null };
+      }
+    })();
 
     // Build render context
     const context: HudRenderContext = {
       contextPercent,
       contextDisplayScope: currentSessionId ?? cwd,
       modelName: getModelName(stdin),
+      modelId: getModelId(stdin),
       ralph,
-      ultrawork,
+      ultrawork: null,
       prd,
       autopilot,
       activeAgents: transcriptData.agents.filter((a) => a.status === "running"),
@@ -345,29 +474,29 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
       pendingPermission: transcriptData.pendingPermission || null,
       thinkingState: transcriptData.thinkingState || null,
       sessionHealth: await calculateSessionHealth(sessionStart, contextPercent),
+      lastRequestTokenUsage: transcriptData.lastRequestTokenUsage || null,
+      sessionTotalTokens: transcriptData.sessionTotalTokens ?? null,
       omcVersion,
       updateAvailable,
       toolCallCount: transcriptData.toolCallCount,
       agentCallCount: transcriptData.agentCallCount,
       skillCallCount: transcriptData.skillCallCount,
-      lastRequestTokenUsage: transcriptData.lastRequestTokenUsage || null,
-      sessionTotalTokens: transcriptData.sessionTotalTokens ?? null,
       promptTime: hudState?.lastPromptTimestamp
         ? new Date(hudState.lastPromptTimestamp)
         : null,
       apiKeySource: config.elements.apiKeySource
         ? detectApiKeySource(cwd)
         : null,
+      apiKeyMode: detectApiKeySource(cwd) !== null,
       subscriptionType: subscriptionInfo.subscriptionType,
       rateLimitTier: subscriptionInfo.rateLimitTier,
       profileName: process.env.COPILOT_CONFIG_DIR
-        ? basename(process.env.COPILOT_CONFIG_DIR).replace(/^\./, '')
+        ? basename(process.env.COPILOT_CONFIG_DIR).replace(/^\./, "")
         : null,
-      sessionSummary: currentSessionId
-        ? readSessionSummary(join(getOmcRoot(cwd), 'state'), currentSessionId)
-        : null,
+      sessionSummary,
       lastToolName: transcriptData.lastToolName,
-      recentTools: transcriptData.recentTools ?? [],
+      recentTools: transcriptData.recentTools,
+      payloadEstimate,
     };
 
     // Debug: log data if OMC_DEBUG is set
@@ -382,16 +511,19 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
       );
     }
 
-    // autoCompact: write trigger file when context exceeds threshold
+    // autoCompact: write trigger file when token context exceeds threshold.
+    // Payload pressure is warning-only for now because statusline hooks can
+    // estimate from local transcript artifacts but do not receive Claude Code's
+    // exact serialized API request body.
     // A companion hook can read this file to inject a /compact suggestion.
     if (
       config.contextLimitWarning.autoCompact &&
       context.contextPercent >= config.contextLimitWarning.threshold
     ) {
       try {
-        const omcStateDir = join(getOmcRoot(cwd), 'state');
+        const omcStateDir = join(getOmcRoot(cwd), "state");
         mkdirSync(omcStateDir, { recursive: true });
-        const triggerFile = join(omcStateDir, 'compact-requested.json');
+        const triggerFile = join(omcStateDir, "compact-requested.json");
         writeFileSync(
           triggerFile,
           JSON.stringify({
@@ -403,7 +535,10 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
       } catch (error) {
         // Silent failure — don't break HUD rendering
         if (process.env.OMC_DEBUG) {
-          console.error('[HUD] Auto-compact trigger write error:', error instanceof Error ? error.message : error);
+          console.error(
+            "[HUD] Auto-compact trigger write error:",
+            error instanceof Error ? error.message : error,
+          );
         }
       }
     }
@@ -421,7 +556,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
     // explicit false overrides platform detection: process.platform === 'win32'
     const useSafeMode =
       config.elements.safeMode !== false &&
-      (config.elements.safeMode || process.platform === 'win32');
+      (config.elements.safeMode || process.platform === "win32");
 
     if (useSafeMode) {
       output = sanitizeOutput(output);
@@ -454,7 +589,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
   }
 }
 
-// Export for programmatic use (e.g., omg hud --watch loop)
+// Export for programmatic use (e.g., omc hud --watch loop)
 export { main };
 
 // Auto-run (unconditional so dynamic import() via omcp-hud.mjs wrapper works correctly)

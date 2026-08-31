@@ -2,6 +2,11 @@
 
 OMC supports a narrow, prompt-level contract for vendor-owned company context.
 
+This contract is aimed at a specific failure mode from issue #2692: purely
+prompt-directive company-context guidance is still missed in practice roughly 5%
+of the time. Making the lookup an explicit configured tool call materially
+reduces that miss mode at the spec layer without changing OMC runtime behavior.
+
 This is **not** a runtime enforcement feature. It gives OMC workflows:
 
 - a consistent tool shape,
@@ -99,11 +104,16 @@ This contract does not change how MCP servers are registered.
 
 For a tiny runnable reference implementation, see:
 
-- [`examples/vendor-mcp-server/README.md`](/mnt/offloading/Workspace/oh-my-claudecode.omx-worktrees/issue-2692-company-context-mcp-interface/examples/vendor-mcp-server/README.md)
+- [`examples/vendor-mcp-server/README.md`](../examples/vendor-mcp-server/README.md)
 
 ## Residual Risk
 
-This interface makes the contract explicit and lowers prompt drift, but it still operates at the skill-prompt layer. If you need guaranteed invocation, that would require a separate runtime enforcement design.
+This interface addresses the observed ~5% prompt-directive miss mode by making
+the company-context lookup explicit, but it still operates at the skill-prompt
+layer. The documented MUST-call clauses should meaningfully reduce that miss
+rate, yet they do **not** guarantee a 0% miss rate or mathematically perfect
+invocation. If you need deterministic invocation, that would require a separate
+runtime enforcement design.
 
 ## Non-Goals
 

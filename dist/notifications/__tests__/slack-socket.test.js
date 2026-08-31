@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { SlackSocketClient } from "../slack-socket.js";
+import { SlackSocketClient, validateSlackEnvelope } from "../slack-socket.js";
 describe("SlackSocketClient", () => {
     const config = {
         appToken: "xapp-test-token",
@@ -142,6 +142,22 @@ describe("SlackSocketClient", () => {
             expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(fetchCallCount);
         });
     });
+    describe("validateSlackEnvelope()", () => {
+        it("accepts hello control frames without envelope_id", () => {
+            expect(validateSlackEnvelope({ type: "hello" })).toEqual({ valid: true });
+        });
+        it("accepts disconnect control frames without envelope_id", () => {
+            expect(validateSlackEnvelope({ type: "disconnect" })).toEqual({
+                valid: true,
+            });
+        });
+        it("rejects non-control envelopes without envelope_id", () => {
+            expect(validateSlackEnvelope({
+                type: "events_api",
+                payload: { event: { type: "message" } },
+            })).toEqual({ valid: false, reason: "Missing or empty envelope_id" });
+        });
+    });
     describe("handleEnvelope()", () => {
         async function getMessageHandler() {
             mockFetchSuccess();
@@ -156,6 +172,17 @@ describe("SlackSocketClient", () => {
             await vi.advanceTimersByTimeAsync(0);
             return { client, handler };
         }
+        it("authenticates when hello control frame omits envelope_id", async () => {
+            mockFetchSuccess();
+            const client = new SlackSocketClient(config, mockHandler, mockLog);
+            await client.start();
+            const messageCall = mockWsInstance.addEventListener.mock.calls.find((call) => call[0] === "message");
+            const handler = messageCall[1];
+            handler({ data: JSON.stringify({ type: "hello" }) });
+            await vi.advanceTimersByTimeAsync(0);
+            expect(client.getConnectionState().getState()).toBe("authenticated");
+            expect(mockLog).toHaveBeenCalledWith(expect.stringContaining("authenticated (hello received)"));
+        });
         it("acknowledges envelopes with envelope_id", async () => {
             const { handler } = await getMessageHandler();
             handler({

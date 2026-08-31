@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-vi.mock('child_process', () => ({
+vi.mock('child_process', async (importOriginal) => ({
+    ...(await importOriginal()),
     execSync: vi.fn(),
 }));
 vi.mock('../installer/index.js', async () => {
@@ -76,6 +77,26 @@ describe('auto-upgrade prompt config', () => {
         mockedExistsSync.mockReturnValue(true);
         mockedReadFileSync.mockReturnValue('not valid json');
         expect(isAutoUpgradePromptEnabled()).toBe(true);
+    });
+    it('silentAutoUpdate blocked by security config (OMC_SECURITY=strict)', async () => {
+        // When security config disables auto-update, silentAutoUpdate=true is overridden
+        mockedExistsSync.mockReturnValue(true);
+        mockedReadFileSync.mockReturnValue(JSON.stringify({
+            silentAutoUpdate: true,
+        }));
+        const originalSecurity = process.env.OMC_SECURITY;
+        process.env.OMC_SECURITY = 'strict';
+        const { clearSecurityConfigCache } = await import('../lib/security-config.js');
+        clearSecurityConfigCache();
+        expect(isSilentAutoUpdateEnabled()).toBe(false);
+        // Cleanup
+        if (originalSecurity === undefined) {
+            delete process.env.OMC_SECURITY;
+        }
+        else {
+            process.env.OMC_SECURITY = originalSecurity;
+        }
+        clearSecurityConfigCache();
     });
 });
 //# sourceMappingURL=auto-upgrade-prompt.test.js.map

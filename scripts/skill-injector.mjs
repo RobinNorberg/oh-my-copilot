@@ -10,31 +10,270 @@
  * Enhancement in v3.5: Now uses RECURSIVE discovery (skills in subdirectories included)
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'fs';
-import { join, basename } from 'path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, openSync, closeSync, unlinkSync, writeSync, constants as fsConstants } from 'fs';
+import { join, basename, dirname } from 'path';
 import { homedir } from 'os';
-import { getClaudeConfigDir } from './lib/config-dir.mjs';
+import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { readStdin } from './lib/stdin.mjs';
 import { createRequire } from 'module';
+import { atomicWriteFileSync, ensureDirSync } from './lib/atomic-write.mjs';
 
-// Try to load the compiled bridge bundle
-const require = createRequire(import.meta.url);
+const skipHooks = (process.env.OMC_SKIP_HOOKS || '').split(',').map(token => token.trim());
+const isDisabled = process.env.DISABLE_OMC === '1' ||
+  process.env.DISABLE_OMC === 'true' ||
+  skipHooks.includes('skill-injector');
+
 let bridge = null;
-try {
-  bridge = require('../dist/hooks/skill-bridge.cjs');
-} catch {
-  // Bridge not available - use fallback (first run before build, or dist/ missing)
+let USER_SKILLS_DIR;
+let GLOBAL_SKILLS_DIR;
+let PROJECT_SKILLS_SUBDIR;
+let SKILL_EXTENSION;
+let MAX_SKILLS_PER_SESSION;
+let MAX_LEARNED_SKILL_DESCRIPTOR_CHARS;
+let MAX_LEARNED_SKILLS_CONTEXT_CHARS;
+
+
+// ============================================================================
+// Session ID resolution (mirrors src/lib/session-id.ts — inlined for .mjs)
+// Precedence in hook context: payload wins over env var.
+// ============================================================================
+
+/**
+ * Resolve the session id for hook context.
+ * Payload session_id takes priority; falls back to OMC_SESSION_ID env var.
+ *
+ * @param {object|null} hookPayload - Parsed stdin payload (may be null)
+ * @returns {string|undefined}
+ */
+function resolveHookSessionId(hookPayload) {
+  const payloadId =
+    hookPayload &&
+    typeof hookPayload === 'object' &&
+    typeof hookPayload.session_id === 'string' &&
+    hookPayload.session_id.trim()
+      ? hookPayload.session_id.trim()
+      : undefined;
+
+  const envId =
+    process.env.OMC_SESSION_ID && process.env.OMC_SESSION_ID.trim()
+      ? process.env.OMC_SESSION_ID.trim()
+      : undefined;
+
+  return payloadId ?? envId;
+}
+
+// ============================================================================
+// Session ID validation (mirrors src/lib/worktree-paths.ts)
+// ============================================================================
+
+const SESSION_ID_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
+
+/**
+ * Validate session id to prevent path traversal.
+ * Returns the id if valid, undefined otherwise.
+ *
+ * @param {string|undefined} sessionId
+ * @returns {string|undefined}
+ */
+function validateSessionId(sessionId) {
+  if (!sessionId) return undefined;
+  if (sessionId.includes('..') || sessionId.includes('/') || sessionId.includes('\\')) return undefined;
+  if (!SESSION_ID_REGEX.test(sessionId)) return undefined;
+  return sessionId;
+}
+
+// ============================================================================
+// OMC root resolver — walk up from cwd looking for workspace markers.
+// Mirrors getOmcRoot from src/lib/worktree-paths.ts — inlined for .mjs.
+// ============================================================================
+
+/**
+ * Walk up from startDir looking for .omc-workspace, then .git, then fallback
+ * to startDir itself. Returns the .omc subdirectory of the found root.
+ * Mirrors getOmcRoot from src/lib/worktree-paths.ts — inlined synchronously for .mjs.
+ *
+ * NOTE: OMC_STATE_DIR with content-hash is handled asynchronously in state-root.mjs.
+ * This inline sync resolver skips OMC_STATE_DIR and always uses the walk-up result,
+ * which is correct for the fallback path (bridge handles OMC_STATE_DIR when available).
+ *
+ * @param {string} startDir - Directory to start from (data.cwd)
+ * @returns {string} Absolute path to the .omc root directory
+ */
+function resolveOmcRootSync(startDir) {
+  let dir = startDir;
+
+  // Walk up looking for .omc-workspace or .git
+  while (dir) {
+    if (existsSync(join(dir, '.omc-workspace'))) {
+      return join(dir, '.omg');
+    }
+    if (existsSync(join(dir, '.git'))) {
+      return join(dir, '.omg');
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break; // filesystem root reached
+    dir = parent;
+  }
+
+  // Fallback: use startDir
+  return join(startDir, '.omg');
+}
+
+// ============================================================================
+// State path resolution for skill-sessions fallback
+// ============================================================================
+
+/**
+ * Resolve the skill-sessions-fallback state file path.
+ * Session-scoped: <omcRoot>/state/sessions/<sid>/skill-sessions-fallback-state.json
+ * Legacy:         <omcRoot>/state/skill-sessions-fallback.json
+ *
+ * @param {string} omcRoot - Resolved .omc root directory
+ * @param {string|undefined} sessionId - Validated session id (or undefined)
+ * @returns {{ statePath: string, stateDir: string }}
+ */
+function resolveSkillFallbackStatePaths(omcRoot, sessionId) {
+  if (sessionId) {
+    const sessionDir = join(omcRoot, 'state', 'sessions', sessionId);
+    return {
+      stateDir: sessionDir,
+      statePath: join(sessionDir, 'skill-sessions-fallback-state.json'),
+    };
+  }
+  const stateDir = join(omcRoot, 'state');
+  return {
+    stateDir,
+    statePath: join(stateDir, 'skill-sessions-fallback.json'),
+  };
+}
+
+// ============================================================================
+// Inline file lock (mirrors src/lib/file-lock.ts — O_CREAT|O_EXCL pattern)
+// No TS import available in .mjs; implement the same algorithm inline.
+// NOTE: This block is intentionally duplicated from post-tool-use-failure.mjs.
+// No shared .mjs lock helper exists for hooks; do not factor out without first creating one.
+// ============================================================================
+
+const LOCK_STALE_MS = 30_000;
+const LOCK_RETRY_DELAY_MS = 50;
+const LOCK_TIMEOUT_MS = 2_000;
+
+/**
+ * Derive lock file path for a given data file.
+ * @param {string} filePath
+ * @returns {string}
+ */
+function lockPathFor(filePath) {
+  return filePath + '.lock';
+}
+
+/**
+ * Check whether an existing lock file is stale (old + dead PID).
+ * @param {string} lockPath
+ * @returns {boolean}
+ */
+function isLockStale(lockPath) {
+  try {
+    const stat = statSync(lockPath);
+    const ageMs = Date.now() - stat.mtimeMs;
+    if (ageMs < LOCK_STALE_MS) return false;
+    try {
+      const raw = readFileSync(lockPath, 'utf-8');
+      const payload = JSON.parse(raw);
+      if (payload.pid) {
+        try { process.kill(payload.pid, 0); return false; } catch { /* dead */ }
+      }
+    } catch { /* malformed — stale if old enough */ }
+    return true;
+  } catch {
+    return false; // disappeared
+  }
+}
+
+/**
+ * Try to acquire the lock once (single O_CREAT|O_EXCL attempt).
+ * @param {string} lockPath
+ * @returns {{fd: number, path: string}|null}
+ */
+function tryAcquireLockSync(lockPath) {
+  ensureDirSync(dirname(lockPath));
+  try {
+    const fd = openSync(lockPath, fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY, 0o600);
+    try {
+      writeSync(fd, JSON.stringify({ pid: process.pid, timestamp: Date.now() }), null, 'utf-8');
+    } catch (writeErr) {
+      try { closeSync(fd); } catch { /* ignore */ }
+      try { unlinkSync(lockPath); } catch { /* ignore */ }
+      throw writeErr;
+    }
+    return { fd, path: lockPath };
+  } catch (err) {
+    if (err && err.code === 'EEXIST') {
+      if (isLockStale(lockPath)) {
+        try { unlinkSync(lockPath); } catch { /* another process reaped it */ }
+        try {
+          const fd = openSync(lockPath, fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY, 0o600);
+          try {
+            writeSync(fd, JSON.stringify({ pid: process.pid, timestamp: Date.now() }), null, 'utf-8');
+          } catch (writeErr) {
+            try { closeSync(fd); } catch { /* ignore */ }
+            try { unlinkSync(lockPath); } catch { /* ignore */ }
+            throw writeErr;
+          }
+          return { fd, path: lockPath };
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Release a previously acquired lock handle.
+ * @param {{fd: number, path: string}} handle
+ */
+function releaseLockSync(handle) {
+  try { closeSync(handle.fd); } catch { /* ignore */ }
+  try { unlinkSync(handle.path); } catch { /* ignore */ }
+}
+
+/**
+ * Execute fn while holding an exclusive file lock.
+ * Falls back to executing fn without a lock if lock cannot be acquired
+ * (hook must never fail silently).
+ *
+ * @param {string} lockPath
+ * @param {() => void} fn
+ */
+function withFileLockSync(lockPath, fn) {
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  let handle = tryAcquireLockSync(lockPath);
+
+  if (!handle) {
+    while (!handle && Date.now() < deadline) {
+      const waitUntil = Math.min(Date.now() + LOCK_RETRY_DELAY_MS, deadline);
+      while (Date.now() < waitUntil) { /* spin */ }
+      handle = tryAcquireLockSync(lockPath);
+    }
+  }
+
+  if (!handle) {
+    fn();
+    return;
+  }
+
+  try {
+    fn();
+  } finally {
+    releaseLockSync(handle);
+  }
 }
 
 // Constants (used by fallback)
-const cfgDir = getClaudeConfigDir();
-const USER_SKILLS_DIR = join(cfgDir, 'skills', 'omc-learned');
-const GLOBAL_SKILLS_DIR = join(homedir(), '.omc', 'skills');
-const PROJECT_SKILLS_SUBDIR = join('.omc', 'skills');
-const SKILL_EXTENSION = '.md';
-const MAX_SKILLS_PER_SESSION = 5;
-const MAX_LEARNED_SKILL_DESCRIPTOR_CHARS = 1000;
-const MAX_LEARNED_SKILLS_CONTEXT_CHARS = 3000;
+// Initialized only after the early disable decision.
 
 // =============================================================================
 // Fallback Implementation (used when bridge bundle not available)
@@ -43,25 +282,25 @@ const MAX_LEARNED_SKILLS_CONTEXT_CHARS = 3000;
 // File-based session dedup for fallback path (issue #2577 bug 1).
 // UserPromptSubmit spawns a NEW Node.js process on every prompt turn, so an
 // in-memory Map always starts empty — skills were re-injected on every turn.
-// Persisting to a JSON state file at {cwd}/.omcp/state/skill-sessions-fallback.json
-// preserves the injected-set across process spawns, matching bridge behaviour.
+// Persisting to a session-scoped JSON state file preserves the injected-set
+// across process spawns, matching bridge behaviour.
+// Storage: {omcRoot}/state/sessions/{sid}/skill-sessions-fallback-state.json
+// Legacy (no sessionId): {omcRoot}/state/skill-sessions-fallback.json
 const FALLBACK_SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour (same as bridge)
 
-function readFallbackState(directory) {
-  const stateFile = join(directory, '.omcp', 'state', 'skill-sessions-fallback.json');
+function readFallbackState(statePath) {
   try {
-    if (existsSync(stateFile)) {
-      return JSON.parse(readFileSync(stateFile, 'utf-8'));
+    if (existsSync(statePath)) {
+      return JSON.parse(readFileSync(statePath, 'utf-8'));
     }
   } catch { /* ignore read/parse errors */ }
   return { sessions: {} };
 }
 
-function writeFallbackState(directory, state) {
-  const stateDir = join(directory, '.omcp', 'state');
+function writeFallbackState(stateDir, statePath, state) {
   try {
     mkdirSync(stateDir, { recursive: true });
-    writeFileSync(join(stateDir, 'skill-sessions-fallback.json'), JSON.stringify(state, null, 2));
+    atomicWriteFileSync(statePath, JSON.stringify(state, null, 2));
   } catch { /* non-critical — dedup fails open */ }
 }
 
@@ -152,39 +391,22 @@ function findSkillFilesFallback(directory) {
 }
 
 // Find matching skills (fallback)
-function findMatchingSkillsFallback(prompt, directory, sessionId) {
+function findMatchingSkillsFallback(prompt, directory, sessionId, omcRoot) {
   const promptLower = prompt.toLowerCase();
   const candidates = findSkillFilesFallback(directory);
   const matches = [];
 
-  // File-based session dedup (persists across process spawns)
-  const state = readFallbackState(directory);
-  const now = Date.now();
+  // Resolve session-scoped (or legacy) state file paths
+  const { stateDir, statePath } = resolveSkillFallbackStatePaths(omcRoot, sessionId);
+  const lockPath = lockPathFor(statePath);
 
-  // Prune expired sessions to keep the state file small
-  for (const [id, sess] of Object.entries(state.sessions)) {
-    if (now - sess.timestamp > FALLBACK_SESSION_TTL_MS) {
-      delete state.sessions[id];
-    }
-  }
-
-  const sessionData = state.sessions[sessionId];
-  const alreadyInjected = new Set(
-    sessionData && now - sessionData.timestamp <= FALLBACK_SESSION_TTL_MS
-      ? (sessionData.injectedPaths ?? [])
-      : []
-  );
-
+  // Score candidates outside the lock (read-only file access, no shared state)
   for (const candidate of candidates) {
-    // Skip if already injected this session
-    if (alreadyInjected.has(candidate.path)) continue;
-
     try {
       const content = readFileSync(candidate.path, 'utf-8');
       const skill = parseSkillFrontmatterFallback(content);
       if (!skill) continue;
 
-      // Check if any trigger matches
       let score = 0;
       for (const trigger of skill.triggers) {
         if (promptLower.includes(trigger)) {
@@ -209,19 +431,45 @@ function findMatchingSkillsFallback(prompt, directory, sessionId) {
     }
   }
 
-  // Sort by score (descending) and limit
   matches.sort((a, b) => b.score - a.score);
-  const selected = matches.slice(0, MAX_SKILLS_PER_SESSION);
 
-  // Persist injected paths back to file so future process spawns skip them
-  if (selected.length > 0) {
-    const existing = state.sessions[sessionId]?.injectedPaths ?? [];
-    state.sessions[sessionId] = {
-      injectedPaths: [...new Set([...existing, ...selected.map(s => s.path)])],
-      timestamp: now,
-    };
-    writeFallbackState(directory, state);
-  }
+  // Read-compute-write under lock to prevent concurrent dedup corruption
+  const selected = [];
+  withFileLockSync(lockPath, () => {
+    const state = readFallbackState(statePath);
+    const now = Date.now();
+
+    // Prune expired sessions to keep the state file small
+    for (const [id, sess] of Object.entries(state.sessions)) {
+      if (now - sess.timestamp > FALLBACK_SESSION_TTL_MS) {
+        delete state.sessions[id];
+      }
+    }
+
+    const sessionData = state.sessions[sessionId];
+    const alreadyInjected = new Set(
+      sessionData && now - sessionData.timestamp <= FALLBACK_SESSION_TTL_MS
+        ? (sessionData.injectedPaths ?? [])
+        : []
+    );
+
+    // Filter out already-injected, then limit
+    const newMatches = matches
+      .filter(m => !alreadyInjected.has(m.path))
+      .slice(0, MAX_SKILLS_PER_SESSION);
+
+    // Persist injected paths back to file so future process spawns skip them
+    if (newMatches.length > 0) {
+      const existing = state.sessions[sessionId]?.injectedPaths ?? [];
+      state.sessions[sessionId] = {
+        injectedPaths: [...new Set([...existing, ...newMatches.map(s => s.path)])],
+        timestamp: now,
+      };
+      writeFallbackState(stateDir, statePath, state);
+    }
+
+    selected.push(...newMatches);
+  });
 
   return selected;
 }
@@ -231,7 +479,7 @@ function findMatchingSkillsFallback(prompt, directory, sessionId) {
 // =============================================================================
 
 // Find matching skills - delegates to bridge or fallback
-function findMatchingSkills(prompt, directory, sessionId) {
+function findMatchingSkills(prompt, directory, sessionId, omcRoot) {
   if (bridge) {
     // Use bridge (RECURSIVE discovery, persistent session cache)
     const matches = bridge.matchSkillsForInjection(prompt, directory, sessionId, {
@@ -246,8 +494,8 @@ function findMatchingSkills(prompt, directory, sessionId) {
     return matches;
   }
 
-  // Fallback (NON-RECURSIVE, file-based dedup via skill-sessions-fallback.json)
-  return findMatchingSkillsFallback(prompt, directory, sessionId);
+  // Fallback (NON-RECURSIVE, file-based dedup via session-scoped state file)
+  return findMatchingSkillsFallback(prompt, directory, sessionId, omcRoot);
 }
 
 function compactText(text, maxChars) {
@@ -328,8 +576,14 @@ async function main() {
     try { data = JSON.parse(input); } catch { /* ignore parse errors */ }
 
     const prompt = data.prompt || '';
-    const sessionId = data.session_id || data.sessionId || 'unknown';
     const directory = data.cwd || process.cwd();
+
+    // Resolve session id: payload wins over env var (hook context)
+    const rawSessionId = resolveHookSessionId(data);
+    const sessionId = validateSessionId(rawSessionId) ?? (data.session_id || data.sessionId || 'unknown');
+
+    // Resolve OMC root (walk up from data.cwd looking for workspace markers)
+    const omcRoot = resolveOmcRootSync(directory);
 
     // Skip if no prompt
     if (!prompt) {
@@ -337,7 +591,7 @@ async function main() {
       return;
     }
 
-    const matchingSkills = findMatchingSkills(prompt, directory, sessionId);
+    const matchingSkills = findMatchingSkills(prompt, directory, sessionId, omcRoot);
 
     // Record skill activations to flow trace (best-effort)
     if (matchingSkills.length > 0) {
@@ -366,4 +620,23 @@ async function main() {
   }
 }
 
-main();
+if (isDisabled) {
+  console.log(JSON.stringify({ continue: true }));
+} else {
+  const require = createRequire(import.meta.url);
+  try {
+    bridge = require('../dist/hooks/skill-bridge.cjs');
+  } catch {
+    // Bridge not available - use fallback (first run before build, or dist/ missing)
+  }
+
+  const cfgDir = getCopilotConfigDir();
+  USER_SKILLS_DIR = join(cfgDir, 'skills', 'omc-learned');
+  GLOBAL_SKILLS_DIR = join(homedir(), '.omg', 'skills');
+  PROJECT_SKILLS_SUBDIR = join('.omg', 'skills');
+  SKILL_EXTENSION = '.md';
+  MAX_SKILLS_PER_SESSION = 5;
+  MAX_LEARNED_SKILL_DESCRIPTOR_CHARS = 1000;
+  MAX_LEARNED_SKILLS_CONTEXT_CHARS = 3000;
+  main();
+}

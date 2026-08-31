@@ -13,11 +13,11 @@ export declare function getRegistrationStrategy(workingDirectory: string): 'conf
  *
  * Strategy auto-selected based on cached probe result:
  * - 'config': Write member to config.json (preferred)
- * - 'shadow': Write member to .omcp/state/team-mcp-workers.json (fallback)
+ * - 'shadow': Write member to .omg/state/team-mcp-workers.json (fallback)
  *
  * Both paths use atomic write (temp + rename) to prevent corruption.
  */
-export declare function registerMcpWorker(teamName: string, workerName: string, provider: 'codex' | 'gemini' | 'copilot', model: string, tmuxTarget: string, cwd: string, workingDirectory: string): void;
+export declare function registerMcpWorker(teamName: string, workerName: string, provider: 'codex' | 'gemini' | 'claude', model: string, tmuxTarget: string, cwd: string, workingDirectory: string): void;
 /**
  * Unregister an MCP worker from the team.
  * Removes from config.json and shadow registry.

@@ -24,8 +24,30 @@ export interface WorkerCadenceContext {
   teamName: string;
   workerName: string;
   worktreePath: string;
-  agentType: 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok';
+  agentType: 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
   enabled: boolean;
+}
+
+/** Service ownership fence supplied by the persistent runtime owner. */
+export interface CadenceOwnership {
+  serviceGeneration: number;
+  attemptId: string;
+}
+
+const cadenceOwners = new Map<string, CadenceOwnership>();
+
+function ownsCadence(ctx: WorkerCadenceContext & Partial<CadenceOwnership>): boolean {
+  const current = cadenceOwners.get(ctx.worktreePath);
+  return !current || ctx.serviceGeneration === undefined
+    || (current.serviceGeneration === ctx.serviceGeneration && current.attemptId === ctx.attemptId);
+}
+
+function registerCadenceOwner(ctx: WorkerCadenceContext & Partial<CadenceOwnership>): boolean {
+  if (ctx.serviceGeneration === undefined || ctx.attemptId === undefined) return true;
+  const current = cadenceOwners.get(ctx.worktreePath);
+  if (current && current.serviceGeneration > ctx.serviceGeneration) return false;
+  cadenceOwners.set(ctx.worktreePath, { serviceGeneration: ctx.serviceGeneration, attemptId: ctx.attemptId });
+  return true;
 }
 
 export type CadenceMethod = 'hook' | 'fallback-poll' | 'none';
@@ -173,7 +195,7 @@ export async function installPostToolUseHook(
     return;
   }
 
-  const claudeDir = join(worktreePath, '.claude');
+  const claudeDir = join(worktreePath, '.copilot');
   await mkdir(claudeDir, { recursive: true });
 
   const settingsPath = join(claudeDir, 'settings.json');
@@ -299,14 +321,15 @@ export function startFallbackPoller(
 /**
  * Installs the appropriate commit cadence for the worker agent type.
  * - claude  → PostToolUse hook in .claude/settings.json
- * - codex / gemini / cursor → fallback fs-watch poller (caller owns the handle)
+ * - codex / gemini / cursor / antigravity → fallback fs-watch poller (caller owns the handle)
  *
  * Returns the chosen method. The fallback-poll handle is NOT started here;
  * callers that need the poller should call startFallbackPoller directly.
  */
 export async function installCommitCadence(
-  ctx: WorkerCadenceContext,
+  ctx: WorkerCadenceContext & Partial<CadenceOwnership>,
 ): Promise<{ method: CadenceMethod }> {
+  if (!registerCadenceOwner(ctx)) return { method: 'none' };
   if (!ctx.enabled) {
     return { method: 'none' };
   }
@@ -316,7 +339,7 @@ export async function installCommitCadence(
     return { method: 'hook' };
   }
 
-  // codex / gemini / cursor: no PostToolUse hook; caller starts the fallback poller.
+  // codex / gemini / cursor / antigravity: no PostToolUse hook; caller starts the fallback poller.
   return { method: 'fallback-poll' };
 }
 
@@ -324,27 +347,43 @@ export async function installCommitCadence(
  * Removes the auto-commit PostToolUse hook from .claude/settings.json.
  * For fallback-poll workers the caller is responsible for stopping the poller handle.
  */
-export async function uninstallCommitCadence(ctx: WorkerCadenceContext): Promise<void> {
-  if (ctx.agentType !== 'claude') return;
-
-  const settingsPath = join(ctx.worktreePath, '.claude', 'settings.json');
-  try {
-    const raw = await readFile(settingsPath, 'utf-8');
-    const parsed = JSON.parse(raw) as ClaudeSettings;
-    const filtered = (parsed.hooks?.PostToolUse ?? []).filter(
-      (h) => h.matcher !== HOOK_MATCHER,
-    );
-    const updated: ClaudeSettings = {
-      ...parsed,
-      hooks: {
-        ...parsed.hooks,
-        PostToolUse: filtered,
-      },
-    };
-    await writeFile(settingsPath, JSON.stringify(updated, null, 2) + '\n', 'utf-8');
-  } catch {
-    // File absent — nothing to uninstall.
+export async function uninstallCommitCadence(
+  ctx: WorkerCadenceContext & Partial<CadenceOwnership>,
+  io: { readFile: typeof readFile; writeFile: typeof writeFile } = { readFile, writeFile },
+): Promise<void> {
+  if (!ownsCadence(ctx)) return;
+  const owner = cadenceOwners.get(ctx.worktreePath);
+  const ownsRegisteredGeneration = owner && ctx.serviceGeneration !== undefined
+    && owner.serviceGeneration === ctx.serviceGeneration && owner.attemptId === ctx.attemptId;
+  if (ctx.agentType !== 'claude') {
+    if (ownsRegisteredGeneration) cadenceOwners.delete(ctx.worktreePath);
+    return;
   }
+
+  const settingsPath = join(ctx.worktreePath, '.copilot', 'settings.json');
+  let raw: string;
+  try {
+    raw = await io.readFile(settingsPath, 'utf-8');
+  } catch (error: unknown) {
+    if (typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'ENOENT') {
+      if (ownsRegisteredGeneration) cadenceOwners.delete(ctx.worktreePath);
+      return;
+    }
+    throw error;
+  }
+  const parsed = JSON.parse(raw) as ClaudeSettings;
+  const filtered = (parsed.hooks?.PostToolUse ?? []).filter(
+    (h) => h.matcher !== HOOK_MATCHER,
+  );
+  const updated: ClaudeSettings = {
+    ...parsed,
+    hooks: {
+      ...parsed.hooks,
+      PostToolUse: filtered,
+    },
+  };
+  await io.writeFile(settingsPath, JSON.stringify(updated, null, 2) + '\n', 'utf-8');
+  if (ownsRegisteredGeneration) cadenceOwners.delete(ctx.worktreePath);
 }
 
 /**

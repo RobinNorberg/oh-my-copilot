@@ -17,6 +17,7 @@ import { validatePathSegment } from './paths.js';
 import { SessionLock, LockTimeoutError } from './session-lock.js';
 import { sendSocketRequest, SocketConnectionError, SocketTimeoutError, JsonRpcError } from './socket-client.js';
 import { ensureBridge, killBridgeWithEscalation, spawnBridgeServer } from './bridge-manager.js';
+import { PYTHON_REPL_SANDBOX_BOUNDARY } from './sandbox.js';
 // =============================================================================
 // CONSTANTS
 // =============================================================================
@@ -53,7 +54,7 @@ export const pythonReplSchema = z.object({
         .string()
         .optional()
         .describe('Human-readable label for this code execution. ' +
-        'Examples: "Load dataset", "Train model", "Generate plot"'),
+        'Examples: "Summarize response times", "Compare cohort means", "Recompute totals"'),
     executionTimeout: z
         .number()
         .positive()
@@ -87,7 +88,7 @@ function getNextExecutionCount(sessionId) {
 // OUTPUT FORMATTING
 // =============================================================================
 /**
- * Format execution result into a readable string for Copilot.
+ * Format execution result into a readable string for Claude.
  */
 function formatExecuteResult(result, sessionId, executionLabel, executionCount) {
     const lines = [];
@@ -269,11 +270,7 @@ function formatGeneralError(error, sessionId, action) {
     lines.push('');
     lines.push(`Type: ${error.name}`);
     lines.push(`Message: ${error.message}`);
-    if (error.stack) {
-        lines.push('');
-        lines.push('Stack trace:');
-        lines.push(error.stack);
-    }
+    // Stack traces intentionally omitted to avoid leaking internal paths
     return lines.join('\n');
 }
 // =============================================================================
@@ -399,7 +396,7 @@ async function handleInterrupt(sessionId, socketPath, gracePeriodMs = 5000) {
  * Main handler for the Python REPL tool.
  *
  * @param input - Validated input from the tool call
- * @returns Formatted string output for Copilot
+ * @returns Formatted string output for Claude
  *
  * @example
  * ```typescript
@@ -414,7 +411,7 @@ export async function pythonReplHandler(input) {
     // Step 1: Validate input with Zod
     const parseResult = pythonReplSchema.safeParse(input);
     if (!parseResult.success) {
-        const errors = parseResult.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`);
+        const errors = parseResult.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`);
         return [
             '=== Validation Error ===',
             '',
@@ -478,7 +475,6 @@ export async function pythonReplHandler(input) {
                 '',
                 'Ensure you have a Python virtual environment:',
                 '  python -m venv .venv',
-                '  .venv/bin/pip install pandas numpy matplotlib',
             ].join('\n');
         }
         // Step 6: Dispatch to action handler
@@ -546,8 +542,7 @@ export const pythonReplTool = {
     description: 'Execute Python code in a persistent REPL environment. ' +
         'Variables and state persist between calls within the same session. ' +
         'Actions: execute (run code), interrupt (stop execution), reset (clear state), get_state (view memory/variables). ' +
-        'Supports scientific computing with pandas, numpy, matplotlib.',
-    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+        PYTHON_REPL_SANDBOX_BOUNDARY,
     schema: pythonReplSchema.shape,
     handler: async (args) => {
         const output = await pythonReplHandler(args);

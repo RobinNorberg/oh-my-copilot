@@ -1,20 +1,42 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, statSync, realpathSync } from 'fs';
-import { join } from 'path';
+import { isAbsolute, join, relative, resolve } from 'path';
 import { homedir, tmpdir } from 'os';
 import { readTask, updateTask } from '../task-file-ops.js';
 import { checkShutdownSignal, writeShutdownSignal, appendOutbox } from '../inbox-outbox.js';
 import { writeHeartbeat, readHeartbeat } from '../heartbeat.js';
 import { sanitizeName } from '../tmux-session.js';
 import { logAuditEvent, readAuditLog } from '../audit-log.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 const TEST_TEAM = 'test-bridge-int';
-// Task files now live in the canonical .omcp/state/team path (relative to WORK_DIR)
-const TEAMS_DIR = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
 // Resolve symlinks (macOS /var -> /private/var) so validateResolvedPath matches
 const WORK_DIR = join(realpathSync(tmpdir()), '__test_bridge_work__');
+const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+process.env.COPILOT_CONFIG_DIR = join(WORK_DIR, '.claude');
+// Task files now live in the canonical .omg/state/team path (relative to WORK_DIR)
+const TEAMS_DIR = join(getCopilotConfigDir(), 'teams', TEST_TEAM);
 // Canonical tasks dir for this team
-const TASKS_DIR = join(WORK_DIR, '.omcp', 'state', 'team', TEST_TEAM, 'tasks');
+const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
+const TASKS_DIR = join(WORK_DIR, '.omg', 'state', 'team', TEST_TEAM, 'tasks');
+beforeAll(() => {
+    process.env.HOME = WORK_DIR;
+    process.env.USERPROFILE = WORK_DIR;
+});
+afterAll(() => {
+    if (originalClaudeConfigDir === undefined)
+        delete process.env.COPILOT_CONFIG_DIR;
+    else
+        process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+    if (originalHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = originalHome;
+    if (originalUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = originalUserProfile;
+});
 function writeTask(task) {
     mkdirSync(TASKS_DIR, { recursive: true });
     writeFileSync(join(TASKS_DIR, `${task.id}.json`), JSON.stringify(task, null, 2));
@@ -48,7 +70,7 @@ beforeEach(() => {
     mkdirSync(join(TEAMS_DIR, 'outbox'), { recursive: true });
     mkdirSync(join(TEAMS_DIR, 'signals'), { recursive: true });
     mkdirSync(WORK_DIR, { recursive: true });
-    mkdirSync(join(WORK_DIR, '.omcp', 'state'), { recursive: true });
+    mkdirSync(join(WORK_DIR, '.omg', 'state'), { recursive: true });
 });
 afterEach(() => {
     rmSync(TASKS_DIR, { recursive: true, force: true });
@@ -255,6 +277,17 @@ describe('Bridge Integration', () => {
 describe('validateBridgeWorkingDirectory logic', () => {
     // validateBridgeWorkingDirectory is private in bridge-entry.ts, so we
     // replicate its core checks to validate the security properties.
+    //
+    // NOTE: being a replica, this cannot catch drift in the real function — and
+    // it did not: both carried a `home + '/'` prefix check that rejected every
+    // path on Windows until it was fixed in bridge-entry.ts. Containment here
+    // mirrors the production rule.
+    function isAtOrUnder(parent, child) {
+        const rel = relative(parent, child);
+        if (rel === '')
+            return true;
+        return !rel.startsWith('..') && !isAbsolute(rel);
+    }
     function validateBridgeWorkingDirectory(workingDirectory) {
         let stat;
         try {
@@ -266,31 +299,26 @@ describe('validateBridgeWorkingDirectory logic', () => {
         if (!stat.isDirectory()) {
             throw new Error(`workingDirectory is not a directory: ${workingDirectory}`);
         }
-        const n = (p) => p.replace(/\\/g, '/');
-        const resolved = n(realpathSync(workingDirectory));
-        const home = n(homedir());
-        if (!resolved.startsWith(home + '/') && resolved !== home) {
+        const resolved = realpathSync(workingDirectory);
+        if (!isAtOrUnder(resolve(homedir()), resolved)) {
             throw new Error(`workingDirectory is outside home directory: ${resolved}`);
         }
     }
-    it('rejects /etc as working directory', () => {
-        if (process.platform === 'win32') {
-            // /etc doesn't exist on Windows; C:\Windows is always outside home and exists
-            expect(() => validateBridgeWorkingDirectory('C:\\Windows')).toThrow('outside home directory');
-        }
-        else {
-            expect(() => validateBridgeWorkingDirectory('/etc')).toThrow('outside home directory');
-        }
+    /** A directory that exists on this platform and is outside the user's home. */
+    const OUTSIDE_HOME_DIR = process.platform === 'win32'
+        ? (process.env.SystemRoot ?? 'C:\\Windows')
+        : '/etc';
+    it('rejects a system directory outside home as working directory', () => {
+        expect(() => validateBridgeWorkingDirectory(OUTSIDE_HOME_DIR)).toThrow('outside home directory');
     });
-    it('rejects /tmp as working directory (outside home)', () => {
-        // /tmp is typically outside $HOME
-        const home = homedir();
-        if (!'/tmp'.startsWith(home)) {
-            expect(() => validateBridgeWorkingDirectory('/tmp')).toThrow('outside home directory');
+    it('rejects the temp directory as working directory when it is outside home', () => {
+        const realTmp = realpathSync(tmpdir());
+        if (!isAtOrUnder(resolve(homedir()), realTmp)) {
+            expect(() => validateBridgeWorkingDirectory(realTmp)).toThrow('outside home directory');
         }
     });
     it('accepts a valid directory under home', () => {
-        const testDir = join(getClaudeConfigDir(), '__bridge_validate_test__');
+        const testDir = join(getCopilotConfigDir(), '__bridge_validate_test__');
         mkdirSync(testDir, { recursive: true });
         try {
             expect(() => validateBridgeWorkingDirectory(testDir)).not.toThrow();

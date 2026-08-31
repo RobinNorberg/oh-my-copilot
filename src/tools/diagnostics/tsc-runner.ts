@@ -4,7 +4,7 @@
  * Executes `tsc --noEmit` to get project-level type checking diagnostics.
  */
 
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
@@ -42,7 +42,7 @@ export function runTscDiagnostics(directory: string): TscResult {
   }
 
   try {
-    execSync('tsc --noEmit --pretty false', {
+    execFileSync('tsc', ['--noEmit', '--pretty', 'false'], {
       cwd: directory,
       encoding: 'utf-8',
       stdio: 'pipe'

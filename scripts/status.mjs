@@ -2,7 +2,7 @@
 
 import { spawnSync } from 'node:child_process';
 
-const SESSION_PREFIX = 'omg-team-';
+const SESSION_PREFIX = 'omc-team-';
 
 function runTmux(args) {
   const result = spawnSync('tmux', args, {

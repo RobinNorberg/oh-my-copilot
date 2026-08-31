@@ -1,8 +1,18 @@
 /**
- * Native tmux shell launch for omg
- * Launches Copilot CLI with tmux session management
+ * Native tmux shell launch for omc
+ * Launches Claude Code with tmux session management
  */
 export declare function prepareOmcLaunchConfigDir(baseConfigDir?: string): string;
+/**
+ * Extract the OMC-specific --notify flag from launch args.
+ * --notify false  → disable notifications (OMC_NOTIFY=0)
+ * --notify true   → enable notifications (default)
+ * This flag must be stripped before passing args to Claude CLI.
+ */
+export declare function extractNotifyFlag(args: string[]): {
+    notifyEnabled: boolean;
+    remainingArgs: string[];
+};
 /**
  * Extract the OMC-specific --openclaw flag from launch args.
  * Purely presence-based (like --madmax/--yolo):
@@ -13,20 +23,10 @@ export declare function prepareOmcLaunchConfigDir(baseConfigDir?: string): strin
  *   --openclaw=0      -> disable OpenClaw
  *
  * Does NOT consume the next positional arg (no space-separated value).
- * This flag is stripped before passing args to Copilot CLI.
+ * This flag is stripped before passing args to Claude CLI.
  */
 export declare function extractOpenClawFlag(args: string[]): {
     openclawEnabled: boolean | undefined;
-    remainingArgs: string[];
-};
-/**
- * Extract the OMC-specific --notify flag from launch args.
- * --notify false  → disable notifications (OMC_NOTIFY=0)
- * --notify true   → enable notifications (default)
- * This flag must be stripped before passing args to Copilot CLI.
- */
-export declare function extractNotifyFlag(args: string[]): {
-    notifyEnabled: boolean;
     remainingArgs: string[];
 };
 /**
@@ -39,7 +39,7 @@ export declare function extractNotifyFlag(args: string[]): {
  *   --telegram=0      -> disable
  *
  * Does NOT consume the next positional arg (no space-separated value).
- * This flag is stripped before passing args to Copilot CLI.
+ * This flag is stripped before passing args to Claude CLI.
  */
 export declare function extractTelegramFlag(args: string[]): {
     telegramEnabled: boolean | undefined;
@@ -55,7 +55,7 @@ export declare function extractTelegramFlag(args: string[]): {
  *   --discord=0      -> disable
  *
  * Does NOT consume the next positional arg (no space-separated value).
- * This flag is stripped before passing args to Copilot CLI.
+ * This flag is stripped before passing args to Claude CLI.
  */
 export declare function extractDiscordFlag(args: string[]): {
     discordEnabled: boolean | undefined;
@@ -71,7 +71,7 @@ export declare function extractDiscordFlag(args: string[]): {
  *   --slack=0      -> disable
  *
  * Does NOT consume the next positional arg (no space-separated value).
- * This flag is stripped before passing args to Copilot CLI.
+ * This flag is stripped before passing args to Claude CLI.
  */
 export declare function extractSlackFlag(args: string[]): {
     slackEnabled: boolean | undefined;
@@ -87,36 +87,20 @@ export declare function extractSlackFlag(args: string[]): {
  *   --webhook=0      -> disable
  *
  * Does NOT consume the next positional arg (no space-separated value).
- * This flag is stripped before passing args to Copilot CLI.
+ * This flag is stripped before passing args to Claude CLI.
  */
 export declare function extractWebhookFlag(args: string[]): {
     webhookEnabled: boolean | undefined;
     remainingArgs: string[];
 };
 /**
- * Extract the OMC-specific --teams flag from launch args.
- * Purely presence-based:
- *   --teams        -> enable Teams notifications (OMC_MICROSOFT_TEAMS=1)
- *   --teams=true   -> enable
- *   --teams=false  -> disable
- *   --teams=1      -> enable
- *   --teams=0      -> disable
- *
- * Does NOT consume the next positional arg (no space-separated value).
- * This flag is stripped before passing args to Claude CLI.
- */
-export declare function extractTeamsFlag(args: string[]): {
-    teamsEnabled: boolean | undefined;
-    remainingArgs: string[];
-};
-/**
- * Normalize Copilot launch arguments
+ * Normalize Claude launch arguments
  * Maps --madmax/--yolo to --dangerously-skip-permissions
  * All other flags pass through unchanged
  */
-export declare function normalizeCopilotLaunchArgs(args: string[]): string[];
+export declare function normalizeClaudeLaunchArgs(args: string[]): string[];
 /**
- * preLaunch: Prepare environment before Copilot starts
+ * preLaunch: Prepare environment before Claude starts
  * Currently a placeholder - can be extended for:
  * - Session state initialization
  * - Environment setup
@@ -124,13 +108,33 @@ export declare function normalizeCopilotLaunchArgs(args: string[]): string[];
  */
 export declare function preLaunch(_cwd: string, _sessionId: string): Promise<void>;
 /**
- * runCopilot: Launch Copilot CLI (blocks until exit)
- * Handles 3 scenarios:
- * 1. inside-tmux: Launch copilot in current pane
- * 2. outside-tmux: Create new tmux session with copilot
- * 3. direct: tmux not available, run copilot directly
+ * Check if args contain --print or -p flag.
+ * When in print mode, Claude outputs to stdout and must not be wrapped in tmux
+ * (which would capture stdout and prevent piping to the parent process).
  */
-export declare function runCopilot(cwd: string, args: string[], sessionId: string): void;
+export declare function isPrintMode(args: string[]): boolean;
+/**
+ * Detect raw --madmax / --yolo tokens in launch args. Used before
+ * normalizeClaudeLaunchArgs strips them so we can apply OMC-specific
+ * launch contracts (e.g. tmux-mandatory on macOS).
+ */
+export declare function hasMadmaxFlag(args: string[]): boolean;
+/**
+ * runClaude: Launch Claude CLI (blocks until exit)
+ * Handles 3 scenarios:
+ * 1. inside-tmux: Launch claude in current pane
+ * 2. outside-tmux: Create new tmux session with claude
+ * 3. direct: tmux not available, run claude directly
+ *
+ * When --print/-p is present, always runs direct to preserve stdout piping.
+ *
+ * On macOS, `--madmax` (and its `--yolo` alias) require tmux: if tmux is not
+ * installed we exit with a brew install hint rather than silently launching
+ * direct. Inside an existing tmux session the current pane is reused. If
+ * tmux is installed but new-session/attach-session fails, we surface the
+ * error instead of silently demoting to direct mode.
+ */
+export declare function runClaude(cwd: string, args: string[], sessionId: string): void;
 /**
  * Env vars that must be forwarded into tmux sessions.
  * tmux new-session inherits the *server's* environment, not the calling
@@ -142,7 +146,7 @@ export declare function runCopilot(cwd: string, args: string[], sessionId: strin
 export declare const TMUX_ENV_FORWARD: string[];
 export declare function buildEnvExportPrefix(vars: string[]): string;
 /**
- * postLaunch: Cleanup after Copilot exits
+ * postLaunch: Cleanup after Claude exits
  * Currently a placeholder - can be extended for:
  * - Session cleanup
  * - State finalization
@@ -153,5 +157,12 @@ export declare function postLaunch(_cwd: string, _sessionId: string): Promise<vo
  * Main launch command entry point
  * Orchestrates the 3-phase launch: preLaunch -> run -> postLaunch
  */
+/**
+ * Parse `--plugin-dir <path>` / `--plugin-dir=<path>` from launch args (non-consuming).
+ *
+ * Returns the resolved absolute path if found, or null. The flag is NOT removed
+ * from `args` — it must still forward to Claude Code's plugin loader untouched.
+ */
+export declare function parsePluginDirArg(args: string[]): string | null;
 export declare function launchCommand(args: string[]): Promise<void>;
 //# sourceMappingURL=launch.d.ts.map

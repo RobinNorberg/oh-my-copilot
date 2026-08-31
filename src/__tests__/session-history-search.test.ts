@@ -1,24 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-
-const isWindows = process.platform === 'win32';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { basename, join } from 'path';
 import {
+  __testingIsWithinProject,
+  encodeProjectPath,
   parseSinceSpec,
   searchSessionHistory,
 } from '../features/session-history-search/index.js';
-
-function encodeProjectPath(projectPath: string): string {
-  return projectPath.replace(/[/\\.]/g, '-');
-}
 
 function writeTranscript(filePath: string, entries: Array<Record<string, unknown>>): void {
   mkdirSync(join(filePath, '..'), { recursive: true });
   writeFileSync(filePath, entries.map((entry) => JSON.stringify(entry)).join('\n') + '\n', 'utf-8');
 }
 
-describe.skipIf(isWindows)('session history search', () => {
+function normalizePathForAssert(path: string): string {
+  return path.replace(/\\/g, '/');
+}
+
+describe('session history search', () => {
   const repoRoot = process.cwd();
   const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
   let tempRoot: string;
@@ -28,7 +28,7 @@ describe.skipIf(isWindows)('session history search', () => {
 
   beforeEach(() => {
     tempRoot = mkdtempSync(join(tmpdir(), 'omc-session-search-'));
-    claudeDir = join(tempRoot, 'copilot');
+    claudeDir = join(tempRoot, 'claude');
     otherProject = join(tempRoot, 'other-project');
     tildeClaudeDir = join(homedir(), `.omc-session-search-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     process.env.COPILOT_CONFIG_DIR = claudeDir;
@@ -82,8 +82,8 @@ describe.skipIf(isWindows)('session history search', () => {
       process.env.COPILOT_CONFIG_DIR = originalConfigDir;
     }
     delete process.env.OMC_STATE_DIR;
-    rmSync(tempRoot, { recursive: true, force: true });
-    rmSync(tildeClaudeDir, { recursive: true, force: true });
+    rmSync(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+    rmSync(tildeClaudeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   it('searches the current project by default and returns structured snippets', async () => {
@@ -99,6 +99,38 @@ describe.skipIf(isWindows)('session history search', () => {
     expect(report.results.some((result) => result.sessionId === 'session-current')).toBe(true);
     expect(report.results[0].excerpt.toLowerCase()).toContain('notify-hook');
     expect(report.results[0].sourcePath).toContain('session-current.jsonl');
+  });
+
+  it('searches transcripts stored under the literal subdirectory cwd project dir', async () => {
+    const subdirCwd = join(repoRoot, 'src');
+    const subdirProjectDir = join(claudeDir, 'projects', encodeProjectPath(subdirCwd));
+
+    writeTranscript(join(subdirProjectDir, 'session-subdir.jsonl'), [
+      {
+        sessionId: 'session-subdir',
+        cwd: subdirCwd,
+        type: 'assistant',
+        timestamp: '2026-03-11T10:00:00.000Z',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'subdirectory cwd transcript sentinel' }] },
+      },
+    ]);
+
+    const report = await searchSessionHistory({
+      query: 'subdirectory cwd transcript sentinel',
+      workingDirectory: subdirCwd,
+    });
+
+    expect(report.scope.mode).toBe('current');
+    expect(report.scope.workingDirectory).toBeDefined();
+    const workingDirectory = report.scope.workingDirectory!;
+    expect(normalizePathForAssert(workingDirectory)).toBe(normalizePathForAssert(repoRoot));
+    expect(report.totalMatches).toBe(1);
+    expect(report.results[0]).toBeDefined();
+    const result = report.results[0]!;
+    expect(result.sessionId).toBe('session-subdir');
+    expect(result.projectPath).toBeDefined();
+    const resultProjectPath = result.projectPath!;
+    expect(normalizePathForAssert(resultProjectPath)).toBe(normalizePathForAssert(subdirCwd));
   });
 
   it('supports since and session filters', async () => {
@@ -155,6 +187,22 @@ describe.skipIf(isWindows)('session history search', () => {
 
     expect(report.totalMatches).toBe(1);
     expect(report.results[0].sessionId).toBe('session-tilde');
+  });
+
+  it('encodes a Windows drive path the same way Claude Code names its project dir', () => {
+    // Regression: the drive colon must be replaced with "-" so the encoded directory
+    // matches Claude Code's actual project dir (e.g. ~/.claude/projects/C--Users-me-proj).
+    // Before the fix this returned "C:-Users-me-proj", which never matched on Windows and
+    // made current-scope search find zero project transcripts. Platform-independent: this
+    // asserts the encoding of a literal Windows-style string regardless of host OS.
+    expect(encodeProjectPath('C:\\Users\\me\\proj')).toBe('C--Users-me-proj');
+    // POSIX paths are unaffected (no colon to replace).
+    expect(encodeProjectPath('/home/me/proj')).toBe('-home-me-proj');
+  });
+
+  it('keeps Windows-style subdirectory paths within their project root', () => {
+    expect(__testingIsWithinProject('C:\\Users\\me\\repo\\packages\\api', ['C:\\Users\\me\\repo'])).toBe(true);
+    expect(__testingIsWithinProject('C:\\Users\\me\\repo-other', ['C:\\Users\\me\\repo'])).toBe(false);
   });
 
   it('parses relative and absolute since values', () => {

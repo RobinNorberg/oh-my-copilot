@@ -2,7 +2,7 @@
  * Rate Limit Wait Daemon
  *
  * Background daemon that monitors rate limits and auto-resumes
- * Copilot CLI sessions when rate limits reset.
+ * Claude Code sessions when rate limits reset.
  *
  * Security considerations:
  * - State/PID/log files use restrictive permissions (0600)
@@ -14,12 +14,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, chmodSync, statSync, appendFileSync, renameSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { homedir } from 'os';
 import { spawn } from 'child_process';
 import { resolveDaemonModulePath } from '../../utils/daemon-module-path.js';
-import { isProcessAlive } from '../../platform/index.js';
+import { getGlobalOmcStatePath } from '../../utils/paths.js';
 import { checkRateLimitStatus, formatRateLimitStatus, isRateLimitStatusDegraded, shouldMonitorBlockedPanes, } from './rate-limit-monitor.js';
 import { isTmuxAvailable, scanForBlockedPanes, sendResumeSequence, formatBlockedPanesSummary, } from './tmux-detector.js';
+import { isProcessAlive } from '../../platform/index.js';
 // ESM compatibility: __filename is not available in ES modules
 const __filename = fileURLToPath(import.meta.url);
 /** Default configuration */
@@ -27,9 +27,9 @@ const DEFAULT_CONFIG = {
     pollIntervalMs: 60 * 1000, // 1 minute
     paneLinesToCapture: 15,
     verbose: false,
-    stateFilePath: join(homedir(), '.omcp', 'rate-limit-daemon.json'),
-    pidFilePath: join(homedir(), '.omcp', 'rate-limit-daemon.pid'),
-    logFilePath: join(homedir(), '.omcp', 'rate-limit-daemon.log'),
+    stateFilePath: getGlobalOmcStatePath('rate-limit-daemon.json'),
+    pidFilePath: getGlobalOmcStatePath('rate-limit-daemon.pid'),
+    logFilePath: getGlobalOmcStatePath('rate-limit-daemon.log'),
 };
 /** Maximum log file size before rotation (1MB) */
 const MAX_LOG_SIZE_BYTES = 1 * 1024 * 1024;
@@ -42,6 +42,8 @@ const SECURE_FILE_MODE = 0o600;
 const DAEMON_ENV_ALLOWLIST = [
     // Core system paths
     'PATH', 'HOME', 'USERPROFILE',
+    // OMC state/profile context (non-secret paths)
+    'OMC_STATE_DIR', 'COPILOT_CONFIG_DIR',
     // User identification
     'USER', 'USERNAME', 'LOGNAME',
     // Locale settings
@@ -424,7 +426,10 @@ export function startDaemon(config) {
             ...createMinimalDaemonEnv(),
             OMC_DAEMON_CONFIG_FILE: configPath,
         };
-        const child = spawn('node', ['-e', daemonScript], {
+        // process.execPath, not 'node': under Volta/nvm shims — or when omc itself
+        // was launched by absolute path — the node on the forwarded PATH may not
+        // exist, and the daemon would silently fail to start.
+        const child = spawn(process.execPath, ['-e', daemonScript], {
             detached: true,
             stdio: 'ignore',
             cwd: process.cwd(),

@@ -6,10 +6,24 @@
  */
 
 import { getUsage } from '../../hud/usage-api.js';
+import { readStdinCache } from '../../hud/stdin.js';
 import type { RateLimitStatus } from './types.js';
 
 /** Threshold percentage for considering rate limited */
 const RATE_LIMIT_THRESHOLD = 100;
+
+/**
+ * Last Claude Code version OMC observed on the statusline, from its own stdin
+ * cache. An observed value, not a guess; undefined when the cache is missing or
+ * unreadable, and the usage request then sends no User-Agent.
+ */
+function readCachedClientVersion(): string | undefined {
+  try {
+    return readStdinCache()?.version;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Check current rate limit status using the OAuth API
@@ -18,7 +32,11 @@ const RATE_LIMIT_THRESHOLD = 100;
  */
 export async function checkRateLimitStatus(): Promise<RateLimitStatus | null> {
   try {
-    const result = await getUsage();
+    // This monitor has no statusline payload of its own, but the usage endpoint
+    // throttles requests whose User-Agent does not name a Claude Code version
+    // (see buildUserAgent in usage-api.ts). Reuse the version the HUD last
+    // observed on stdin and cached; undefined when OMC has never seen one.
+    const result = await getUsage({ clientVersion: readCachedClientVersion() });
 
     if (!result.rateLimits) {
       // No OAuth credentials or API unavailable

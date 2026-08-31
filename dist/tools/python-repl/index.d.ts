@@ -8,26 +8,15 @@ import { pythonReplHandler } from './tool.js';
 export declare const pythonReplTool: {
     name: string;
     description: string;
-    annotations: {
-        readOnlyHint: boolean;
-        destructiveHint: boolean;
-        idempotentHint: boolean;
-        openWorldHint: boolean;
-    };
-    schema: import("zod").ZodObject<{
-        action: import("zod").ZodEnum<{
-            execute: "execute";
-            interrupt: "interrupt";
-            reset: "reset";
-            get_state: "get_state";
-        }>;
+    schema: {
+        action: import("zod").ZodEnum<["execute", "interrupt", "reset", "get_state"]>;
         researchSessionID: import("zod").ZodString;
         code: import("zod").ZodOptional<import("zod").ZodString>;
         executionLabel: import("zod").ZodOptional<import("zod").ZodString>;
         executionTimeout: import("zod").ZodDefault<import("zod").ZodNumber>;
         queueTimeout: import("zod").ZodDefault<import("zod").ZodNumber>;
         projectDir: import("zod").ZodOptional<import("zod").ZodString>;
-    }, import("zod/v4/core").$strip>;
+    };
     handler: typeof pythonReplHandler;
 };
 export * from './types.js';

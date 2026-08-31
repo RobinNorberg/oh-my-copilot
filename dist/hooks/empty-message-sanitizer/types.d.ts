@@ -7,7 +7,7 @@
  * Adapted from oh-my-opencode's empty-message-sanitizer hook.
  */
 /**
- * A message part in Copilot CLI's message format
+ * A message part in Claude Code's message format
  */
 export interface MessagePart {
     /** Unique identifier for this part */

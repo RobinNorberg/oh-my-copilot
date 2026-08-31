@@ -18,14 +18,17 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, chmodSync, statSync, appendFileSync, renameSync } from 'fs';
 import { join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { homedir } from 'os';
 import { spawn } from 'child_process';
+import { randomUUID } from 'crypto';
+import { tmuxExec } from '../cli/tmux-utils.js';
 import { request as httpsRequest } from 'https';
 import { resolveDaemonModulePath } from '../utils/daemon-module-path.js';
+import { getGlobalOmcStateRoot } from '../utils/paths.js';
 import { capturePaneContent, sendToPane, isTmuxAvailable, } from '../features/rate-limit-wait/tmux-detector.js';
-import { lookupByMessageId, removeMessagesByPane, pruneStale, } from './session-registry.js';
+import { lookupByMessageId, lockRegistryIfEmpty, removeMessagesByPane, pruneStale, } from './session-registry.js';
 import { parseMentionAllowedMentions } from './config.js';
 import { redactTokens } from './redact.js';
+import { getProcessStartIdentity, isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree, } from '../platform/index.js';
 import { validateSlackMessage, } from './slack-socket.js';
 // ESM compatibility: __filename is not available in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -54,7 +57,7 @@ const DAEMON_ENV_ALLOWLIST = [
     'SystemRoot', 'SYSTEMROOT', 'windir', 'COMSPEC',
 ];
 /** Default paths */
-const DEFAULT_STATE_DIR = join(homedir(), '.omcp', 'state');
+const DEFAULT_STATE_DIR = getGlobalOmcStateRoot();
 const PID_FILE_PATH = join(DEFAULT_STATE_DIR, 'reply-listener.pid');
 const STATE_FILE_PATH = join(DEFAULT_STATE_DIR, 'reply-listener-state.json');
 const LOG_FILE_PATH = join(DEFAULT_STATE_DIR, 'reply-listener.log');
@@ -176,26 +179,34 @@ export async function buildDaemonConfig() {
         return null;
     }
 }
-/**
- * Read PID file
- */
-function readPidFile() {
+/** Read the PID record, accepting the legacy numeric format for cleanup only. */
+function readPidRecord() {
     try {
-        if (!existsSync(PID_FILE_PATH)) {
+        if (!existsSync(PID_FILE_PATH))
             return null;
-        }
-        const content = readFileSync(PID_FILE_PATH, 'utf-8');
-        return parseInt(content.trim(), 10);
+        const content = readFileSync(PID_FILE_PATH, 'utf-8').trim();
+        const parsed = JSON.parse(content);
+        return typeof parsed.pid === 'number' && Number.isInteger(parsed.pid) && parsed.pid > 0
+            ? { pid: parsed.pid, generation: parsed.generation, processStartIdentity: parsed.processStartIdentity }
+            : null;
     }
     catch {
-        return null;
+        try {
+            const pid = Number.parseInt(readFileSync(PID_FILE_PATH, 'utf-8').trim(), 10);
+            return Number.isInteger(pid) && pid > 0 ? { pid } : null;
+        }
+        catch {
+            return null;
+        }
     }
 }
-/**
- * Write PID file with secure permissions
- */
-function writePidFile(pid) {
-    writeSecureFile(PID_FILE_PATH, String(pid));
+/** Read PID only for existing liveness/status callers. */
+function readPidFile() {
+    return readPidRecord()?.pid ?? null;
+}
+/** Write a generation-bound PID record with secure permissions. */
+function writePidFile(record) {
+    writeSecureFile(PID_FILE_PATH, JSON.stringify(record));
 }
 /**
  * Remove PID file
@@ -206,18 +217,6 @@ function removePidFile() {
     }
 }
 /**
- * Check if a process is running
- */
-function isProcessRunning(pid) {
-    try {
-        process.kill(pid, 0);
-        return true;
-    }
-    catch {
-        return false;
-    }
-}
-/**
  * Check if daemon is currently running
  */
 export function isDaemonRunning() {
@@ -225,7 +224,7 @@ export function isDaemonRunning() {
     if (pid === null) {
         return false;
     }
-    if (!isProcessRunning(pid)) {
+    if (!isProcessAlive(pid)) {
         removePidFile();
         return false;
     }
@@ -280,15 +279,44 @@ class RateLimiter {
         this.timestamps = [];
     }
 }
-// ============================================================================
-// Injection
-// ============================================================================
-/**
- * Inject reply text into a tmux pane after verification and sanitization.
- *
- * Returns true if injection succeeded, false otherwise.
- */
-function injectReply(paneId, text, platform, config) {
+export function buildReplyInjectionSteps(text, platform, config, mapping) {
+    const prefix = config.includePrefix ? `[reply:${platform}] ` : '';
+    const sanitized = sanitizeReplyInput(prefix + text);
+    const truncated = sanitized.slice(0, config.maxMessageLength);
+    if (mapping?.event === 'ask-user-question' &&
+        mapping.askUserQuestionAllowOther !== false &&
+        Number.isFinite(mapping.askUserQuestionOptionCount)) {
+        const optionCount = Math.max(0, Math.floor(mapping.askUserQuestionOptionCount ?? 0));
+        return [
+            ...Array.from({ length: optionCount }, () => ({ kind: 'key', value: 'Down' })),
+            { kind: 'key', value: 'Enter' },
+            { kind: 'literal', value: truncated },
+            { kind: 'key', value: 'Enter' },
+        ];
+    }
+    return [
+        { kind: 'literal', value: truncated },
+        { kind: 'key', value: 'Enter' },
+    ];
+}
+function sendReplyInjectionSteps(paneId, steps) {
+    try {
+        for (const step of steps) {
+            if (step.kind === 'literal') {
+                tmuxExec(['send-keys', '-t', paneId, '-l', step.value], { stripTmux: true, timeout: 2000 });
+            }
+            else {
+                tmuxExec(['send-keys', '-t', paneId, step.value], { stripTmux: true, timeout: 2000 });
+            }
+        }
+        return true;
+    }
+    catch (error) {
+        log(`ERROR: Failed to send reply injection steps to pane ${paneId}: ${error instanceof Error ? error.message : String(error)}`);
+        return false;
+    }
+}
+function injectReply(paneId, text, platform, config, mapping) {
     // 1. Verify pane has content (non-empty pane = active session per registry)
     const content = capturePaneContent(paneId, 15);
     if (!content.trim()) {
@@ -296,16 +324,13 @@ function injectReply(paneId, text, platform, config) {
         removeMessagesByPane(paneId);
         return false;
     }
-    // 2. Build prefixed text if configured
-    const prefix = config.includePrefix ? `[reply:${platform}] ` : '';
-    // 3. Sanitize the reply text
-    const sanitized = sanitizeReplyInput(prefix + text);
-    // 4. Truncate to max length
-    const truncated = sanitized.slice(0, config.maxMessageLength);
-    // 5. Inject via sendToPane (which applies its own sanitizeForTmux)
-    const success = sendToPane(paneId, truncated, true);
+    const steps = buildReplyInjectionSteps(text, platform, config, mapping);
+    const preview = steps.find((step) => step.kind === 'literal')?.value ?? '';
+    const success = mapping?.event === 'ask-user-question'
+        ? sendReplyInjectionSteps(paneId, steps)
+        : sendToPane(paneId, preview, true);
     if (success) {
-        log(`Injected reply from ${platform} into pane ${paneId}: "${truncated.slice(0, 50)}${truncated.length > 50 ? '...' : ''}"`);
+        log(`Injected reply from ${platform} into pane ${paneId}: "${preview.slice(0, 50)}${preview.length > 50 ? '...' : ''}"`);
     }
     else {
         log(`ERROR: Failed to inject reply into pane ${paneId}`);
@@ -392,7 +417,7 @@ async function pollDiscord(config, state, rateLimiter) {
             state.discordLastMessageId = msg.id;
             writeDaemonState(state);
             // Inject reply
-            const success = injectReply(mapping.tmuxPaneId, msg.content, 'discord', config);
+            const success = injectReply(mapping.tmuxPaneId, msg.content, 'discord', config, mapping);
             if (success) {
                 state.messagesInjected++;
                 // Send confirmation reaction (non-critical)
@@ -419,7 +444,7 @@ async function pollDiscord(config, state, rateLimiter) {
                             'Content-Type': 'application/json',
                         },
                         body: JSON.stringify({
-                            content: `${mentionPrefix}Injected into Copilot CLI session.`,
+                            content: `${mentionPrefix}Injected into Claude Code session.`,
                             message_reference: { message_id: msg.id },
                             allowed_mentions: feedbackAllowedMentions,
                         }),
@@ -532,14 +557,14 @@ async function pollTelegram(config, state, rateLimiter) {
             state.telegramLastUpdateId = update.update_id;
             writeDaemonState(state);
             // Inject reply
-            const success = injectReply(mapping.tmuxPaneId, text, 'telegram', config);
+            const success = injectReply(mapping.tmuxPaneId, text, 'telegram', config, mapping);
             if (success) {
                 state.messagesInjected++;
                 // Send confirmation reply (non-critical)
                 try {
                     const replyBody = JSON.stringify({
                         chat_id: config.telegramChatId,
-                        text: 'Injected into Copilot CLI session.',
+                        text: 'Injected into Claude Code session.',
                         reply_to_message_id: msg.message_id,
                     });
                     await new Promise((resolve) => {
@@ -643,11 +668,13 @@ async function pollLoop() {
                     }
                     // Find target pane for injection
                     let targetPaneId = null;
+                    let targetMapping;
                     // Thread replies: look up parent message in session registry
                     if (event.thread_ts && event.thread_ts !== event.ts) {
                         const mapping = lookupByMessageId('slack-bot', event.thread_ts);
                         if (mapping) {
                             targetPaneId = mapping.tmuxPaneId;
+                            targetMapping = mapping;
                         }
                     }
                     // No thread match: skip injection to avoid sending to an unrelated session.
@@ -657,7 +684,7 @@ async function pollLoop() {
                         return;
                     }
                     // Inject reply
-                    const success = injectReply(targetPaneId, event.text, 'slack', config);
+                    const success = injectReply(targetPaneId, event.text, 'slack', config, targetMapping);
                     if (success) {
                         state.messagesInjected++;
                         writeDaemonState(state);
@@ -777,7 +804,10 @@ export function startReplyListener(_config) {
     }).catch((err) => { console.error('[reply-listener] Fatal:', err instanceof Error ? err.message : 'unknown error'); process.exit(1); });
   `;
     try {
-        const child = spawn('node', ['-e', daemonScript], {
+        // process.execPath, not 'node': under Volta/nvm shims — or when omc itself
+        // was launched by absolute path — the node on the forwarded PATH may not
+        // exist, and the listener would silently fail to start.
+        const child = spawn(process.execPath, ['-e', daemonScript], {
             detached: true,
             stdio: 'ignore',
             cwd: process.cwd(),
@@ -786,7 +816,8 @@ export function startReplyListener(_config) {
         child.unref();
         const pid = child.pid;
         if (pid) {
-            writePidFile(pid);
+            const generation = randomUUID();
+            writePidFile({ pid, generation });
             const state = {
                 isRunning: true,
                 pid,
@@ -796,8 +827,20 @@ export function startReplyListener(_config) {
                 discordLastMessageId: null,
                 messagesInjected: 0,
                 errors: 0,
+                generation,
             };
             writeDaemonState(state);
+            void getProcessStartIdentity(pid).then((processStartIdentity) => {
+                if (!processStartIdentity)
+                    return;
+                const current = readDaemonState();
+                const currentPid = readPidRecord();
+                if (current?.pid !== pid || current.generation !== generation || currentPid?.generation !== generation)
+                    return;
+                current.processStartIdentity = processStartIdentity;
+                writeDaemonState(current);
+                writePidFile({ pid, generation, processStartIdentity });
+            }).catch(() => { });
             log(`Reply listener daemon started with PID ${pid}`);
             return {
                 success: true,
@@ -818,39 +861,57 @@ export function startReplyListener(_config) {
         };
     }
 }
-/**
- * Stop the reply listener daemon
- */
-export function stopReplyListener() {
-    const pid = readPidFile();
-    if (pid === null) {
-        return {
-            success: true,
-            message: 'Reply listener daemon is not running',
-        };
-    }
-    if (!isProcessRunning(pid)) {
+/** Stop only the exact live listener generation; never signal a reused PID. */
+export async function stopReplyListener() {
+    const record = readPidRecord();
+    if (!record)
+        return { success: true, message: 'Reply listener daemon is not running' };
+    if (!isProcessAlive(record.pid)) {
         removePidFile();
-        return {
-            success: true,
-            message: 'Reply listener daemon was not running (cleaned up stale PID file)',
-        };
+        return { success: true, message: 'Reply listener daemon was not running (cleaned up stale PID file)' };
+    }
+    const state = readDaemonState();
+    if (!record.generation ||
+        !record.processStartIdentity ||
+        state?.pid !== record.pid ||
+        state.generation !== record.generation ||
+        state.processStartIdentity !== record.processStartIdentity) {
+        return { success: false, message: 'Refusing to stop listener without an exact live identity' };
+    }
+    // Revalidate under the registry lock. It is held through termination so a
+    // concurrent registration cannot be accepted for a listener we are stopping.
+    const emptyRegistryLock = lockRegistryIfEmpty();
+    if (emptyRegistryLock === 'active') {
+        return { success: true, message: 'Reply listener retained for active sessions', state };
+    }
+    if (emptyRegistryLock === null) {
+        return { success: false, message: 'Could not durably verify an empty reply registry' };
     }
     try {
-        process.kill(pid, 'SIGTERM');
-        removePidFile();
-        const state = readDaemonState();
-        if (state) {
-            state.isRunning = false;
-            state.pid = null;
-            writeDaemonState(state);
+        const deadlineAt = Date.now() + 500;
+        const liveness = await isProcessIdentityLive(record.pid, record.processStartIdentity, deadlineAt);
+        if (liveness !== 'live') {
+            return {
+                success: liveness === 'dead',
+                message: liveness === 'dead'
+                    ? 'Reply listener was not running'
+                    : 'Refusing to stop listener after identity revalidation failed',
+            };
         }
-        log(`Reply listener daemon stopped (PID ${pid})`);
-        return {
-            success: true,
-            message: `Reply listener daemon stopped (PID ${pid})`,
-            state: state ?? undefined,
-        };
+        const termination = await terminateOwnedProcessTree({
+            pid: record.pid,
+            expectedStartIdentity: record.processStartIdentity,
+            deadlineAt: new Date(deadlineAt).toISOString(),
+        });
+        if (termination !== 'terminated' && termination !== 'already-dead') {
+            return { success: false, message: 'Refusing to stop listener after termination identity revalidation failed' };
+        }
+        removePidFile();
+        state.isRunning = false;
+        state.pid = null;
+        writeDaemonState(state);
+        log(`Reply listener daemon stopped (PID ${record.pid})`);
+        return { success: true, message: `Reply listener daemon stopped (PID ${record.pid})`, state };
     }
     catch (error) {
         return {
@@ -858,6 +919,9 @@ export function stopReplyListener() {
             message: 'Failed to stop daemon',
             error: error instanceof Error ? error.message : String(error),
         };
+    }
+    finally {
+        emptyRegistryLock();
     }
 }
 /**

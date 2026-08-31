@@ -2,12 +2,12 @@
  * Tests for src/cli/launch.ts
  *
  * Covers:
- * - Exit code propagation (runCopilot direct / inside-tmux)
+ * - Exit code propagation (runClaude direct / inside-tmux)
  * - No OMC HUD pane spawning in tmux launch paths
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 vi.mock('child_process', async (importOriginal) => {
@@ -29,10 +29,11 @@ vi.mock('../tmux-utils.js', () => ({
     wrapWithLoginShell: vi.fn((cmd) => cmd),
     quoteShellArg: vi.fn((s) => s),
     isCopilotAvailable: vi.fn(() => true),
+    isTmuxAvailable: vi.fn(() => true),
     tmuxExec: vi.fn(),
 }));
-import { runCopilot, launchCommand, extractNotifyFlag, extractTelegramFlag, extractDiscordFlag, extractSlackFlag, extractWebhookFlag, normalizeCopilotLaunchArgs, prepareOmcLaunchConfigDir, buildEnvExportPrefix, TMUX_ENV_FORWARD } from '../launch.js';
-import { resolveLaunchPolicy, buildTmuxShellCommand, buildTmuxShellCommandWithEnv, isNativeWindowsShell, wrapWithLoginShell, tmuxExec, } from '../tmux-utils.js';
+import { runClaude, launchCommand, extractNotifyFlag, extractOpenClawFlag, extractTelegramFlag, extractDiscordFlag, extractSlackFlag, extractWebhookFlag, normalizeClaudeLaunchArgs, isPrintMode, prepareOmcLaunchConfigDir, buildEnvExportPrefix, hasMadmaxFlag, TMUX_ENV_FORWARD } from '../launch.js';
+import { resolveLaunchPolicy, buildTmuxShellCommand, buildTmuxShellCommandWithEnv, isNativeWindowsShell, wrapWithLoginShell, isTmuxAvailable, tmuxExec, } from '../tmux-utils.js';
 // ---------------------------------------------------------------------------
 // extractNotifyFlag
 // ---------------------------------------------------------------------------
@@ -75,37 +76,37 @@ describe('extractNotifyFlag', () => {
     });
 });
 // ---------------------------------------------------------------------------
-// normalizeCopilotLaunchArgs
+// normalizeClaudeLaunchArgs
 // ---------------------------------------------------------------------------
-describe('normalizeCopilotLaunchArgs', () => {
+describe('normalizeClaudeLaunchArgs', () => {
     it('maps --madmax to --dangerously-skip-permissions', () => {
-        expect(normalizeCopilotLaunchArgs(['--madmax'])).toEqual([
+        expect(normalizeClaudeLaunchArgs(['--madmax'])).toEqual([
             '--dangerously-skip-permissions',
         ]);
     });
     it('maps --yolo to --dangerously-skip-permissions', () => {
-        expect(normalizeCopilotLaunchArgs(['--yolo'])).toEqual([
+        expect(normalizeClaudeLaunchArgs(['--yolo'])).toEqual([
             '--dangerously-skip-permissions',
         ]);
     });
     it('deduplicates --dangerously-skip-permissions', () => {
-        const result = normalizeCopilotLaunchArgs([
+        const result = normalizeClaudeLaunchArgs([
             '--madmax',
             '--dangerously-skip-permissions',
         ]);
         expect(result.filter((a) => a === '--dangerously-skip-permissions')).toHaveLength(1);
     });
     it('passes unknown flags through unchanged', () => {
-        expect(normalizeCopilotLaunchArgs(['--print', '--verbose'])).toEqual([
+        expect(normalizeClaudeLaunchArgs(['--print', '--verbose'])).toEqual([
             '--print',
             '--verbose',
         ]);
     });
 });
 // ---------------------------------------------------------------------------
-// runCopilot — exit code propagation
+// runClaude — exit code propagation
 // ---------------------------------------------------------------------------
-describe('runCopilot — exit code propagation', () => {
+describe('runClaude — exit code propagation', () => {
     let processExitSpy;
     beforeEach(() => {
         vi.resetAllMocks();
@@ -118,35 +119,43 @@ describe('runCopilot — exit code propagation', () => {
         beforeEach(() => {
             resolveLaunchPolicy.mockReturnValue('direct');
         });
-        it('propagates Copilot non-zero exit code', () => {
+        it('bypasses tmux for --print mode', () => {
+            execFileSync.mockReturnValue(Buffer.from(''));
+            runClaude('/tmp', ['--print'], 'sid');
+            // isPrintMode short-circuits before resolveLaunchPolicy is called
+            expect(resolveLaunchPolicy).not.toHaveBeenCalled();
+            expect(vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'tmux')).toBeUndefined();
+            expect(vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'claude')?.[1]).toEqual(['--print']);
+        });
+        it('propagates Claude non-zero exit code', () => {
             const err = Object.assign(new Error('Command failed'), { status: 2 });
             execFileSync.mockImplementation(() => { throw err; });
-            runCopilot('/tmp', [], 'sid');
+            runClaude('/tmp', [], 'sid');
             expect(processExitSpy).toHaveBeenCalledWith(2);
         });
         it('exits with code 1 when status is null', () => {
             const err = Object.assign(new Error('Command failed'), { status: null });
             execFileSync.mockImplementation(() => { throw err; });
-            runCopilot('/tmp', [], 'sid');
+            runClaude('/tmp', [], 'sid');
             expect(processExitSpy).toHaveBeenCalledWith(1);
         });
         it('exits with code 1 on ENOENT', () => {
             const err = Object.assign(new Error('Not found'), { code: 'ENOENT' });
             execFileSync.mockImplementation(() => { throw err; });
-            runCopilot('/tmp', [], 'sid');
+            runClaude('/tmp', [], 'sid');
             expect(processExitSpy).toHaveBeenCalledWith(1);
         });
         it('does not call process.exit on success', () => {
             execFileSync.mockReturnValue(Buffer.from(''));
-            runCopilot('/tmp', [], 'sid');
+            runClaude('/tmp', [], 'sid');
             expect(processExitSpy).not.toHaveBeenCalled();
         });
-        it('uses shell:true on win32 so copilot.cmd can launch', () => {
+        it('uses shell:true on win32 so claude.cmd can launch', () => {
             const originalPlatform = process.platform;
             Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
             execFileSync.mockReturnValue(Buffer.from(''));
-            runCopilot('/tmp', ['--resume'], 'sid');
-            expect(vi.mocked(execFileSync)).toHaveBeenCalledWith('copilot', ['--resume'], {
+            runClaude('/tmp', ['--resume'], 'sid');
+            expect(vi.mocked(execFileSync)).toHaveBeenCalledWith('claude', ['--resume'], {
                 cwd: '/tmp',
                 stdio: 'inherit',
                 shell: true,
@@ -162,70 +171,70 @@ describe('runCopilot — exit code propagation', () => {
         afterEach(() => {
             delete process.env.TMUX_PANE;
         });
-        it('propagates Copilot non-zero exit code', () => {
+        it('propagates Claude non-zero exit code', () => {
             const err = Object.assign(new Error('Command failed'), { status: 3 });
             execFileSync.mockImplementation(() => { throw err; });
-            runCopilot('/tmp', [], 'sid');
+            runClaude('/tmp', [], 'sid');
             expect(processExitSpy).toHaveBeenCalledWith(3);
         });
         it('exits with code 1 when status is null', () => {
             const err = Object.assign(new Error('Command failed'), { status: null });
             execFileSync.mockImplementation(() => { throw err; });
-            runCopilot('/tmp', [], 'sid');
+            runClaude('/tmp', [], 'sid');
             expect(processExitSpy).toHaveBeenCalledWith(1);
         });
-        it('exits with code 1 on ENOENT', () => {
-            const err = Object.assign(new Error('Not found'), { code: 'ENOENT' });
-            execFileSync.mockImplementation(() => { throw err; });
-            runCopilot('/tmp', [], 'sid');
-            expect(processExitSpy).toHaveBeenCalledWith(1);
-        });
-        it('does not call process.exit on success', () => {
-            execFileSync.mockReturnValue(Buffer.from(''));
-            runCopilot('/tmp', [], 'sid');
-            expect(processExitSpy).not.toHaveBeenCalled();
-        });
-        it('uses shell:true on win32 so copilot.cmd can launch inside tmux', () => {
+        it('uses shell:true on win32 so claude.cmd can launch inside tmux', () => {
             const originalPlatform = process.platform;
             Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
             execFileSync.mockReturnValue(Buffer.from(''));
-            runCopilot('/tmp', ['--continue'], 'sid');
-            expect(vi.mocked(execFileSync)).toHaveBeenCalledWith('copilot', ['--continue'], {
+            runClaude('/tmp', ['--continue'], 'sid');
+            expect(vi.mocked(execFileSync)).toHaveBeenCalledWith('claude', ['--continue'], {
                 cwd: '/tmp',
                 stdio: 'inherit',
                 shell: true,
             });
             Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
         });
+        it('exits with code 1 on ENOENT', () => {
+            const err = Object.assign(new Error('Not found'), { code: 'ENOENT' });
+            execFileSync.mockImplementation(() => { throw err; });
+            runClaude('/tmp', [], 'sid');
+            expect(processExitSpy).toHaveBeenCalledWith(1);
+        });
+        it('does not call process.exit on success', () => {
+            execFileSync.mockReturnValue(Buffer.from(''));
+            runClaude('/tmp', [], 'sid');
+            expect(processExitSpy).not.toHaveBeenCalled();
+        });
     });
 });
 // ---------------------------------------------------------------------------
-// runCopilot — OMC HUD pane spawning disabled
+// runClaude — OMC HUD pane spawning disabled
 // ---------------------------------------------------------------------------
-describe('runCopilot OMC HUD behavior', () => {
+describe('runClaude OMC HUD behavior', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         execFileSync.mockReturnValue(Buffer.from(''));
     });
-    it('does not build an omg hud --watch command inside tmux', () => {
+    it('does not build an omc hud --watch command inside tmux', () => {
         resolveLaunchPolicy.mockReturnValue('inside-tmux');
-        runCopilot('/tmp/cwd', [], 'test-session');
+        runClaude('/tmp/cwd', [], 'test-session');
         const calls = vi.mocked(buildTmuxShellCommand).mock.calls;
         const omcHudCall = calls.find(([cmd, args]) => cmd === 'node' && Array.isArray(args) && args.includes('hud'));
         expect(omcHudCall).toBeUndefined();
     });
     it('does not add split-window HUD pane args when launching outside tmux', () => {
         resolveLaunchPolicy.mockReturnValue('outside-tmux');
-        runCopilot('/tmp/cwd', [], 'test-session');
+        runClaude('/tmp/cwd', [], 'test-session');
         const tmuxCalls = vi.mocked(tmuxExec).mock.calls;
         expect(tmuxCalls.length).toBeGreaterThan(0);
-        expect(tmuxCalls.every(([tmuxArgs]) => !tmuxArgs.includes('split-window'))).toBe(true);
+        expect(tmuxCalls.every(([args]) => !args.includes('split-window'))).toBe(true);
     });
 });
 // ---------------------------------------------------------------------------
-// runCopilot — outside-tmux mouse scrolling (issue #890 regression guard)
+// runClaude — outside-tmux mouse scrolling (issue #890 regression guard)
 // ---------------------------------------------------------------------------
-describe('runCopilot outside-tmux — mouse scrolling (issue #890)', () => {
+describe('runClaude outside-tmux — mouse scrolling (issue #890)', () => {
     let processExitSpy;
     beforeEach(() => {
         vi.resetAllMocks();
@@ -237,120 +246,86 @@ describe('runCopilot outside-tmux — mouse scrolling (issue #890)', () => {
         processExitSpy.mockRestore();
     });
     it('uses session-targeted mouse option instead of global (-t sessionName, not -g)', () => {
-        runCopilot('/tmp', [], 'sid');
-        // new-session, set-option, and attach-session are all in one tmuxExec call as ';'-separated args
+        runClaude('/tmp', [], 'sid');
         const tmuxCalls = vi.mocked(tmuxExec).mock.calls;
-        const tmuxCall = tmuxCalls.find(([args]) => args.includes('new-session'));
+        const tmuxCall = tmuxCalls.find(([args]) => args[0] === 'set-option' && args.includes('mouse'));
         expect(tmuxCall).toBeDefined();
         const tmuxArgs = tmuxCall[0];
-        // Must use -t <sessionName> targeting, not -g (global)
-        // Find the set-option specifically for mouse (clipboard set-options were added later)
-        let setOptionIdx = -1;
-        for (let i = 0; i < tmuxArgs.length - 4; i++) {
-            if (tmuxArgs[i] === 'set-option' && tmuxArgs[i + 3] === 'mouse') {
-                setOptionIdx = i;
-                break;
-            }
-        }
-        expect(setOptionIdx).toBeGreaterThanOrEqual(0);
-        expect(tmuxArgs[setOptionIdx + 1]).toBe('-t');
-        expect(tmuxArgs[setOptionIdx + 2]).toBe('test-session');
-        expect(tmuxArgs[setOptionIdx + 3]).toBe('mouse');
-        expect(tmuxArgs[setOptionIdx + 4]).toBe('on');
-        // Must NOT use -g (global)
+        expect(tmuxArgs).toContain('-t');
+        const tIdx = tmuxArgs.indexOf('-t');
+        expect(tmuxArgs[tIdx + 1]).toBe('test-session');
+        expect(tmuxArgs).toContain('mouse');
+        expect(tmuxArgs).toContain('on');
         expect(tmuxArgs).not.toContain('-g');
     });
     it('does not set terminal-overrides in tmux args', () => {
-        runCopilot('/tmp', [], 'sid');
+        runClaude('/tmp', [], 'sid');
         const tmuxCalls = vi.mocked(tmuxExec).mock.calls;
-        const tmuxCall = tmuxCalls.find(([args]) => args.includes('new-session'));
+        const tmuxCall = tmuxCalls.find(([args]) => args[0] === 'new-session');
         expect(tmuxCall).toBeDefined();
         const tmuxArgs = tmuxCall[0];
         expect(tmuxArgs).not.toContain('terminal-overrides');
         expect(tmuxArgs).not.toContain('*:smcup@:rmcup@');
     });
     it('places mouse mode setup before attach-session', () => {
-        runCopilot('/tmp', [], 'sid');
-        // All commands are in one tmuxExec call as ';'-separated args
-        const tmuxCall = vi.mocked(tmuxExec).mock.calls[0];
-        expect(tmuxCall).toBeDefined();
-        const tmuxArgs = tmuxCall[0];
-        const mouseIdx = tmuxArgs.indexOf('set-option');
-        const attachIdx = tmuxArgs.indexOf('attach-session');
+        runClaude('/tmp', [], 'sid');
+        const tmuxCalls = vi.mocked(tmuxExec).mock.calls.map(([args]) => args);
+        const mouseIdx = tmuxCalls.findIndex((args) => args[0] === 'set-option' && args.includes('mouse'));
+        const attachIdx = tmuxCalls.findIndex((args) => args[0] === 'attach-session');
         expect(mouseIdx).toBeGreaterThanOrEqual(0);
         expect(attachIdx).toBeGreaterThanOrEqual(0);
         expect(mouseIdx).toBeLessThan(attachIdx);
     });
     it('applies session-scoped OSC 52 clipboard options before attach-session', () => {
-        runCopilot('/tmp', [], 'sid');
-        const tmuxCall = vi.mocked(tmuxExec).mock.calls[0];
-        expect(tmuxCall).toBeDefined();
-        const tmuxArgs = tmuxCall[0];
-        // Find the set-clipboard set-option (must target -t test-session, not -g)
-        let clipboardIdx = -1;
-        for (let i = 0; i < tmuxArgs.length - 4; i++) {
-            if (tmuxArgs[i] === 'set-option' && tmuxArgs[i + 3] === 'set-clipboard') {
-                clipboardIdx = i;
-                break;
-            }
-        }
+        runClaude('/tmp', [], 'sid');
+        const tmuxCalls = vi.mocked(tmuxExec).mock.calls.map(([args]) => args);
+        expect(tmuxCalls).toContainEqual(['set-option', '-t', 'test-session', 'set-clipboard', 'on']);
+        expect(tmuxCalls).toContainEqual(['show-options', '-t', 'test-session', '-v', 'terminal-features']);
+        expect(tmuxCalls).toContainEqual(['set-option', '-at', 'test-session', 'terminal-features', ',*:clipboard']);
+        expect(tmuxCalls.find((args) => args.includes('set-clipboard'))).not.toContain('-g');
+        const clipboardIdx = tmuxCalls.findIndex((args) => args.includes('set-clipboard'));
+        const attachIdx = tmuxCalls.findIndex((args) => args[0] === 'attach-session');
         expect(clipboardIdx).toBeGreaterThanOrEqual(0);
-        expect(tmuxArgs[clipboardIdx + 1]).toBe('-t');
-        expect(tmuxArgs[clipboardIdx + 2]).toBe('test-session');
-        expect(tmuxArgs[clipboardIdx + 3]).toBe('set-clipboard');
-        expect(tmuxArgs[clipboardIdx + 4]).toBe('on');
-        // Universal clipboard terminal-features append
-        let featuresIdx = -1;
-        for (let i = 0; i < tmuxArgs.length - 4; i++) {
-            if (tmuxArgs[i] === 'set-option' && tmuxArgs[i + 3] === 'terminal-features') {
-                featuresIdx = i;
-                break;
-            }
-        }
-        expect(featuresIdx).toBeGreaterThanOrEqual(0);
-        expect(tmuxArgs[featuresIdx + 1]).toBe('-at');
-        expect(tmuxArgs[featuresIdx + 2]).toBe('test-session');
-        expect(tmuxArgs[featuresIdx + 4]).toBe(',*:clipboard');
-        const attachIdx = tmuxArgs.indexOf('attach-session');
-        expect(clipboardIdx).toBeLessThan(attachIdx);
-        expect(featuresIdx).toBeLessThan(attachIdx);
+        expect(attachIdx).toBeGreaterThan(clipboardIdx);
     });
     it('preserves a valid detached session when attach-session is interrupted', () => {
         vi.mocked(tmuxExec).mockImplementation((args) => {
-            // All commands in one call; simulate failure by throwing when attach-session is present
-            if (args.includes('attach-session')) {
+            if (args[0] === 'attach-session') {
                 throw new Error('attach interrupted');
             }
-            return Buffer.from('');
+            return '';
         });
-        runCopilot('/tmp', [], 'sid');
+        runClaude('/tmp', [], 'sid');
         const tmuxCalls = vi.mocked(tmuxExec).mock.calls.map(([args]) => args);
-        // One combined call with new-session + set-option + attach-session
-        expect(tmuxCalls.length).toBeGreaterThanOrEqual(1);
-        const combinedArgs = tmuxCalls[0];
-        expect(combinedArgs).toContain('new-session');
-        expect(combinedArgs).toContain('set-option');
-        expect(combinedArgs).toContain('attach-session');
-        expect(tmuxCalls.some((tmuxArgs) => tmuxArgs.includes('kill-session'))).toBe(false);
-        // When tmux call fails (including attach-session), source falls back to direct copilot launch
-        expect(vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'copilot')).toBeDefined();
+        expect(tmuxCalls.map((args) => args[0])).toEqual([
+            'new-session',
+            'set-option',
+            'show-options',
+            'set-option',
+            'set-option',
+            'attach-session',
+            'has-session',
+        ]);
+        expect(tmuxCalls.some((args) => args[0] === 'kill-session')).toBe(false);
+        expect(vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'claude')).toBeUndefined();
+        expect(processExitSpy).not.toHaveBeenCalled();
     });
     it('falls back to direct launch when detached session creation fails', () => {
         vi.mocked(tmuxExec).mockImplementation((args) => {
             if (args[0] === 'new-session') {
                 throw new Error('tmux launch failed');
             }
-            return Buffer.from('');
+            return '';
         });
-        runCopilot('/tmp', ['--dangerously-skip-permissions'], 'sid');
+        runClaude('/tmp', ['--dangerously-skip-permissions'], 'sid');
         expect(vi.mocked(tmuxExec).mock.calls).toHaveLength(1);
-        expect(vi.mocked(execFileSync).mock.calls.find(([cmd, args]) => cmd === 'copilot' && args[0] === '--dangerously-skip-permissions')).toBeDefined();
+        expect(vi.mocked(execFileSync).mock.calls.find(([cmd, args]) => cmd === 'claude' && args[0] === '--dangerously-skip-permissions')).toBeDefined();
     });
 });
 // ---------------------------------------------------------------------------
-// runCopilot — inside-tmux mouse configuration (issue #890)
+// runClaude — inside-tmux mouse configuration (issue #890)
 // ---------------------------------------------------------------------------
-describe('runCopilot inside-tmux — mouse configuration (issue #890)', () => {
+describe('runClaude inside-tmux — mouse configuration (issue #890)', () => {
     let processExitSpy;
     beforeEach(() => {
         vi.resetAllMocks();
@@ -361,27 +336,26 @@ describe('runCopilot inside-tmux — mouse configuration (issue #890)', () => {
     afterEach(() => {
         processExitSpy.mockRestore();
     });
-    it('enables mouse mode before launching copilot', () => {
-        runCopilot('/tmp', [], 'sid');
-        // tmuxExec should have at least one mouse set-option call (clipboard config now precedes it)
-        const tmuxExecCalls = vi.mocked(tmuxExec).mock.calls;
-        expect(tmuxExecCalls.length).toBeGreaterThanOrEqual(1);
-        const mouseCall = tmuxExecCalls.find(([args]) => Array.isArray(args)
-            && args[0] === 'set-option'
-            && args.includes('mouse'));
+    it('enables mouse mode before launching claude', () => {
+        runClaude('/tmp', [], 'sid');
+        // tmuxExec should have been called for mouse config
+        const tmuxCalls = vi.mocked(tmuxExec).mock.calls;
+        const mouseCall = tmuxCalls.find(([args]) => args[0] === 'set-option' && args.includes('mouse'));
         expect(mouseCall?.[0]).toEqual(['set-option', 'mouse', 'on']);
-        // execFileSync should be called with copilot
-        const execFileSyncCalls = vi.mocked(execFileSync).mock.calls;
-        expect(execFileSyncCalls.length).toBeGreaterThanOrEqual(1);
-        expect(execFileSyncCalls[0][0]).toBe('copilot');
+        // execFileSync should have been called for claude
+        const claudeCalls = vi.mocked(execFileSync).mock.calls;
+        expect(claudeCalls.find(([cmd]) => cmd === 'claude')).toBeDefined();
     });
-    it('still launches copilot even if tmux mouse config fails', () => {
-        vi.mocked(tmuxExec).mockImplementation(() => {
-            throw new Error('tmux set-option failed');
+    it('still launches claude even if tmux mouse config fails', () => {
+        execFileSync.mockImplementation((cmd) => {
+            if (cmd === 'tmux')
+                throw new Error('tmux set-option failed');
+            return Buffer.from('');
         });
-        runCopilot('/tmp', [], 'sid');
-        // tmuxExec fails but copilot should still be called via execFileSync
-        const claudeCall = vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'copilot');
+        runClaude('/tmp', [], 'sid');
+        // tmux calls fail but claude should still be called
+        const calls = vi.mocked(execFileSync).mock.calls;
+        const claudeCall = calls.find(([cmd]) => cmd === 'claude');
         expect(claudeCall).toBeDefined();
     });
 });
@@ -496,6 +470,66 @@ describe('extractDiscordFlag', () => {
     });
 });
 // ---------------------------------------------------------------------------
+// extractOpenClawFlag
+// ---------------------------------------------------------------------------
+describe('extractOpenClawFlag', () => {
+    it('returns openclawEnabled=undefined with no --openclaw flag', () => {
+        const result = extractOpenClawFlag(['--madmax']);
+        expect(result.openclawEnabled).toBeUndefined();
+        expect(result.remainingArgs).toEqual(['--madmax']);
+    });
+    it('enables openclaw with bare --openclaw flag', () => {
+        const result = extractOpenClawFlag(['--openclaw']);
+        expect(result.openclawEnabled).toBe(true);
+        expect(result.remainingArgs).toEqual([]);
+    });
+    it('strips --openclaw from remainingArgs', () => {
+        const result = extractOpenClawFlag(['--madmax', '--openclaw', '--print']);
+        expect(result.openclawEnabled).toBe(true);
+        expect(result.remainingArgs).toEqual(['--madmax', '--print']);
+    });
+    it('bare --openclaw does NOT consume the next positional arg', () => {
+        const result = extractOpenClawFlag(['--openclaw', 'myfile.txt']);
+        expect(result.openclawEnabled).toBe(true);
+        // myfile.txt must remain as a positional arg
+        expect(result.remainingArgs).toEqual(['myfile.txt']);
+    });
+    it('enables openclaw with --openclaw=true', () => {
+        const result = extractOpenClawFlag(['--openclaw=true']);
+        expect(result.openclawEnabled).toBe(true);
+        expect(result.remainingArgs).toEqual([]);
+    });
+    it('enables openclaw with --openclaw=1', () => {
+        const result = extractOpenClawFlag(['--openclaw=1']);
+        expect(result.openclawEnabled).toBe(true);
+        expect(result.remainingArgs).toEqual([]);
+    });
+    it('disables openclaw with --openclaw=false', () => {
+        const result = extractOpenClawFlag(['--openclaw=false']);
+        expect(result.openclawEnabled).toBe(false);
+        expect(result.remainingArgs).toEqual([]);
+    });
+    it('disables openclaw with --openclaw=0', () => {
+        const result = extractOpenClawFlag(['--openclaw=0']);
+        expect(result.openclawEnabled).toBe(false);
+        expect(result.remainingArgs).toEqual([]);
+    });
+    it('handles --openclaw=FALSE (case insensitive)', () => {
+        const result = extractOpenClawFlag(['--openclaw=FALSE']);
+        expect(result.openclawEnabled).toBe(false);
+    });
+    it('returns openclawEnabled=undefined for empty args', () => {
+        const result = extractOpenClawFlag([]);
+        expect(result.openclawEnabled).toBeUndefined();
+        expect(result.remainingArgs).toEqual([]);
+    });
+    it('handles multiple flags correctly', () => {
+        const result = extractOpenClawFlag(['--madmax', '--openclaw', '--print', 'myfile.txt']);
+        expect(result.openclawEnabled).toBe(true);
+        expect(result.remainingArgs).toEqual(['--madmax', '--print', 'myfile.txt']);
+    });
+});
+// ---------------------------------------------------------------------------
 // extractSlackFlag
 // ---------------------------------------------------------------------------
 describe('extractSlackFlag', () => {
@@ -593,7 +627,7 @@ describe('extractWebhookFlag', () => {
 describe('launchCommand — env var propagation', () => {
     let processExitSpy;
     // Save original env values to restore after each test
-    const envKeys = ['OMC_NOTIFY', 'OMC_TELEGRAM', 'OMC_DISCORD', 'OMC_SLACK', 'OMC_WEBHOOK', 'CLAUDECODE'];
+    const envKeys = ['OMC_NOTIFY', 'OMC_OPENCLAW', 'OMC_TELEGRAM', 'OMC_DISCORD', 'OMC_SLACK', 'OMC_WEBHOOK', 'CLAUDECODE'];
     const savedEnv = {};
     beforeEach(() => {
         vi.resetAllMocks();
@@ -603,7 +637,7 @@ describe('launchCommand — env var propagation', () => {
             savedEnv[key] = process.env[key];
             delete process.env[key];
         }
-        // Mock execFileSync to prevent actual copilot launch
+        // Mock execFileSync to prevent actual claude launch
         execFileSync.mockReturnValue(Buffer.from(''));
         resolveLaunchPolicy.mockReturnValue('direct');
     });
@@ -635,6 +669,10 @@ describe('launchCommand — env var propagation', () => {
         await launchCommand(['--webhook']);
         expect(process.env.OMC_WEBHOOK).toBe('1');
     });
+    it('bare --openclaw sets OMC_OPENCLAW to 1', async () => {
+        await launchCommand(['--openclaw']);
+        expect(process.env.OMC_OPENCLAW).toBe('1');
+    });
     it('--telegram=false overrides inherited OMC_TELEGRAM=1', async () => {
         process.env.OMC_TELEGRAM = '1';
         await launchCommand(['--telegram=false']);
@@ -655,6 +693,11 @@ describe('launchCommand — env var propagation', () => {
         await launchCommand(['--webhook=false']);
         expect(process.env.OMC_WEBHOOK).toBe('0');
     });
+    it('--openclaw=false overrides inherited OMC_OPENCLAW=1', async () => {
+        process.env.OMC_OPENCLAW = '1';
+        await launchCommand(['--openclaw=false']);
+        expect(process.env.OMC_OPENCLAW).toBe('0');
+    });
     it('--telegram=0 overrides inherited OMC_TELEGRAM=1', async () => {
         process.env.OMC_TELEGRAM = '1';
         await launchCommand(['--telegram=0']);
@@ -671,34 +714,45 @@ describe('launchCommand — env var propagation', () => {
         expect(process.env.OMC_SLACK).toBe('1');
         expect(process.env.OMC_WEBHOOK).toBe('1');
     });
-    it('OMC flags are stripped from args passed to Copilot', async () => {
-        await launchCommand(['--telegram', '--discord', '--slack', '--webhook', '--print']);
+    it('OMC flags are stripped from args passed to Claude', async () => {
+        await launchCommand(['--telegram', '--discord', '--slack', '--webhook', '--openclaw', '--print']);
         const calls = vi.mocked(execFileSync).mock.calls;
-        const claudeCall = calls.find(([cmd]) => cmd === 'copilot');
+        const claudeCall = calls.find(([cmd]) => cmd === 'claude');
         expect(claudeCall).toBeDefined();
         const claudeArgs = claudeCall[1];
         expect(claudeArgs).not.toContain('--telegram');
         expect(claudeArgs).not.toContain('--discord');
         expect(claudeArgs).not.toContain('--slack');
         expect(claudeArgs).not.toContain('--webhook');
+        expect(claudeArgs).not.toContain('--openclaw');
         expect(claudeArgs).toContain('--print');
     });
 });
 describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () => {
     const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+    const originalHome = process.env.HOME;
     let tempRoot = null;
     const originalClaudecode = process.env.CLAUDECODE;
     beforeEach(() => {
         vi.resetAllMocks();
         delete process.env.CLAUDECODE;
         tempRoot = mkdtempSync(join(tmpdir(), 'omc-launch-profile-'));
+        process.env.HOME = join(tempRoot, 'home');
         execFileSync.mockReturnValue(Buffer.from(''));
         resolveLaunchPolicy.mockReturnValue('direct');
+        // Clear CLAUDECODE to avoid "already inside CC session" exit
+        delete process.env.CLAUDECODE;
     });
     afterEach(() => {
         if (tempRoot) {
             rmSync(tempRoot, { recursive: true, force: true });
             tempRoot = null;
+        }
+        if (originalHome === undefined) {
+            delete process.env.HOME;
+        }
+        else {
+            process.env.HOME = originalHome;
         }
         if (originalClaudeConfigDir === undefined) {
             delete process.env.COPILOT_CONFIG_DIR;
@@ -706,27 +760,57 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         else {
             process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
         }
+        if (originalClaudecode === undefined) {
+            delete process.env.CLAUDECODE;
+        }
+        else {
+            process.env.CLAUDECODE = originalClaudecode;
+        }
     });
-    it('uses a runtime launch profile when a preserved copilot-instructions-omc.md companion exists', async () => {
-        const configDir = join(tempRoot, '.copilot');
+    it('uses a runtime launch profile when a preserved CLAUDE-omc.md companion exists', async () => {
+        const configDir = join(tempRoot, '.claude');
         mkdirSync(join(configDir, 'skills'), { recursive: true });
         writeFileSync(join(configDir, 'CLAUDE.md'), '# User base config\n');
-        writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC companion\n<!-- OMC:END -->\n');
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC companion\n<!-- OMC:END -->\n');
         writeFileSync(join(configDir, 'settings.json'), '{"hooks":{}}');
         process.env.COPILOT_CONFIG_DIR = configDir;
         await launchCommand(['--print']);
-        // prepareOmcLaunchConfigDir creates the runtime dir, but launchCommand doesn't
-        // automatically set COPILOT_CONFIG_DIR — it remains as the base configDir.
-        // The runtime dir can be created by calling prepareOmcLaunchConfigDir directly.
-        expect(process.env.COPILOT_CONFIG_DIR).toBe(configDir);
-        // The source CLAUDE.md is preserved (not overwritten)
+        const runtimeDir = join(configDir, '.omc-launch');
+        expect(process.env.COPILOT_CONFIG_DIR).toBe(runtimeDir);
+        expect(existsSync(join(runtimeDir, 'CLAUDE.md'))).toBe(true);
+        expect(readFileSync(join(runtimeDir, 'CLAUDE.md'), 'utf-8')).toContain('# OMC companion');
         expect(readFileSync(join(configDir, 'CLAUDE.md'), 'utf-8')).toBe('# User base config\n');
+        expect(existsSync(join(runtimeDir, 'settings.json'))).toBe(true);
+    });
+    it('repairs retired team MCP entries in the runtime settings copy', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(join(configDir, 'skills'), { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC companion\n<!-- OMC:END -->\n');
+        writeFileSync(join(configDir, 'settings.json'), JSON.stringify({
+            theme: 'dark',
+            mcpServers: {
+                team: {
+                    command: 'node',
+                    args: ['${CLAUDE_PLUGIN_ROOT}/bridge/team-mcp.cjs'],
+                },
+                exa: {
+                    command: 'node',
+                    args: ['${CLAUDE_PLUGIN_ROOT}/bridge/mcp-server.cjs'],
+                },
+            },
+        }, null, 2));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        const runtimeSettings = JSON.parse(readFileSync(join(runtimeDir, 'settings.json'), 'utf-8'));
+        expect(runtimeSettings.theme).toBe('dark');
+        expect(runtimeSettings.mcpServers).toBeDefined();
+        expect(runtimeSettings.mcpServers?.team).toBeUndefined();
+        expect(runtimeSettings.mcpServers?.exa).toBeDefined();
     });
     it('mirrors keybindings.json, rules/, and themes/ into the runtime config dir', () => {
-        const configDir = join(tempRoot, '.copilot-keybind');
+        const configDir = join(tempRoot, '.claude');
         mkdirSync(join(configDir, 'rules'), { recursive: true });
         mkdirSync(join(configDir, 'themes'), { recursive: true });
-        writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
         writeFileSync(join(configDir, 'keybindings.json'), '{"bindings":[]}');
         writeFileSync(join(configDir, 'rules', 'my-rule.md'), '# Rule');
         writeFileSync(join(configDir, 'themes', 'custom-theme.json'), '{"name":"custom"}');
@@ -737,15 +821,15 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         expect(existsSync(join(runtimeDir, 'themes'))).toBe(true);
         expect(readFileSync(join(runtimeDir, 'themes', 'custom-theme.json'), 'utf-8')).toBe('{"name":"custom"}');
     });
-    it.skipIf(process.platform === 'win32')('mirrors Linux credential file as a symlink without copying credential content', () => {
-        const configDir = join(tempRoot, '.copilot-cred');
+    it('mirrors Linux credential file as a symlink without copying credential content', () => {
+        const configDir = join(tempRoot, '.claude');
         mkdirSync(configDir, { recursive: true });
         const credentialsPath = join(configDir, '.credentials.json');
         const credentialContent = '{"accessToken":"test-only-token"}';
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
         const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
         writeFileSync(credentialsPath, credentialContent);
         try {
             const runtimeDir = prepareOmcLaunchConfigDir(configDir);
@@ -762,7 +846,7 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
             errorSpy.mockRestore();
         }
     });
-    it.skipIf(process.platform === 'win32')('does not copy credential content when credential symlink creation fails', async () => {
+    it('does not copy credential content when credential symlink creation fails', async () => {
         vi.resetModules();
         const actualFs = await vi.importActual('node:fs');
         const copyFileSyncSpy = vi.fn(actualFs.copyFileSync);
@@ -772,18 +856,62 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
             symlinkSync: vi.fn(() => {
                 throw new Error('symlink unavailable');
             }),
+            linkSync: vi.fn(() => {
+                throw new Error('hardlink unavailable');
+            }),
         }));
         try {
             const { prepareOmcLaunchConfigDir: prepareWithFailedSymlink } = await import('../launch.js');
-            const configDir = join(tempRoot, '.copilot-cred-symlink');
+            const configDir = join(tempRoot, '.claude');
             mkdirSync(configDir, { recursive: true });
             const credentialsPath = join(configDir, '.credentials.json');
-            writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
-            writeFileSync(credentialsPath, '{"accessToken":"test-only-token"}');
+            writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+            writeFileSync(credentialsPath, JSON.stringify({ accessToken: 'test-only-token', expiresAt: 1000 }));
+            expect(() => prepareWithFailedSymlink(configDir)).toThrow(/Unable to mirror Claude credentials without copying credential content/);
+            expect(copyFileSyncSpy).not.toHaveBeenCalledWith(credentialsPath, expect.stringContaining('.credentials.json'));
+        }
+        finally {
+            vi.doUnmock('fs');
+            vi.resetModules();
+        }
+    });
+    it.skipIf(process.platform === 'win32')('falls back to a hard link when credential symlink creation fails and remains reconcilable', async () => {
+        vi.resetModules();
+        const actualFs = await vi.importActual('node:fs');
+        vi.doMock('fs', () => ({
+            ...actualFs,
+            symlinkSync: vi.fn(() => {
+                throw new Error('symlink unavailable');
+            }),
+        }));
+        try {
+            const { prepareOmcLaunchConfigDir: prepareWithFailedSymlink } = await import('../launch.js');
+            const configDir = join(tempRoot, '.claude');
+            mkdirSync(configDir, { recursive: true });
+            writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+            writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({
+                oauthAccount: { accountUuid: 'same-account' },
+            }));
+            const credentialsPath = join(configDir, '.credentials.json');
+            writeFileSync(credentialsPath, JSON.stringify({
+                claudeAiOauth: { accessToken: 'base-token', expiresAt: 100 },
+            }));
             const runtimeDir = prepareWithFailedSymlink(configDir);
             const runtimeCredentialsPath = join(runtimeDir, '.credentials.json');
-            expect(existsSync(runtimeCredentialsPath)).toBe(false);
-            expect(copyFileSyncSpy).not.toHaveBeenCalledWith(credentialsPath, runtimeCredentialsPath);
+            expect(lstatSync(runtimeCredentialsPath).isSymbolicLink()).toBe(false);
+            expect(statSync(runtimeCredentialsPath).ino).toBe(statSync(credentialsPath).ino);
+            rmSync(runtimeCredentialsPath, { force: true });
+            writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({
+                oauthAccount: { accountUuid: 'same-account' },
+            }));
+            writeFileSync(runtimeCredentialsPath, JSON.stringify({
+                claudeAiOauth: { accessToken: 'runtime-token', expiresAt: 200 },
+            }));
+            const rebuiltRuntimeDir = prepareWithFailedSymlink(configDir);
+            const baseCredentials = JSON.parse(readFileSync(credentialsPath, 'utf-8'));
+            expect(baseCredentials.claudeAiOauth.accessToken).toBe('runtime-token');
+            expect(lstatSync(join(rebuiltRuntimeDir, '.credentials.json')).isSymbolicLink()).toBe(false);
+            expect(statSync(join(rebuiltRuntimeDir, '.credentials.json')).ino).toBe(statSync(credentialsPath).ino);
         }
         finally {
             vi.doUnmock('fs');
@@ -791,9 +919,9 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         }
     });
     it('preserves runtime .claude.json across runtime config dir rebuilds', () => {
-        const configDir = join(tempRoot, '.copilot');
+        const configDir = join(tempRoot, '.claude');
         mkdirSync(configDir, { recursive: true });
-        writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
         const runtimeDir = prepareOmcLaunchConfigDir(configDir);
         writeFileSync(join(runtimeDir, '.claude.json'), '{"session":"keep-me"}');
         const rebuiltRuntimeDir = prepareOmcLaunchConfigDir(configDir);
@@ -801,9 +929,9 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         expect(readFileSync(join(rebuiltRuntimeDir, '.claude.json'), 'utf-8')).toBe('{"session":"keep-me"}');
     });
     it('seeds missing runtime .claude.json mcpServers from source .claude.json', () => {
-        const configDir = join(tempRoot, '.copilot');
+        const configDir = join(tempRoot, '.claude');
         mkdirSync(configDir, { recursive: true });
-        writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
         writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({
             mcpServers: {
                 github: { command: 'node', args: ['github-mcp.js'] },
@@ -819,9 +947,9 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         });
     });
     it('refreshes runtime mcpServers from source while preserving runtime metadata', () => {
-        const configDir = join(tempRoot, '.copilot');
+        const configDir = join(tempRoot, '.claude');
         mkdirSync(configDir, { recursive: true });
-        writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
         writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({
             mcpServers: {
                 exa: { command: 'node', args: ['old-exa.js'] },
@@ -853,10 +981,409 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
             },
         });
     });
-    it('preserves runtime .claude.json when source .claude.json is absent, invalid, or has no mcpServers', () => {
-        const configDir = join(tempRoot, '.copilot');
+    it('seeds onboarding completion and version from source .claude.json', () => {
+        const configDir = join(tempRoot, '.claude');
         mkdirSync(configDir, { recursive: true });
-        writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({
+            hasCompletedOnboarding: true,
+            lastOnboardingVersion: '2.1',
+        }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        const runtimeClaudeJson = JSON.parse(readFileSync(join(runtimeDir, '.claude.json'), 'utf-8'));
+        expect(runtimeClaudeJson.hasCompletedOnboarding).toBe(true);
+        expect(runtimeClaudeJson.lastOnboardingVersion).toBe('2.1');
+    });
+    it('inherits onboarding without mcpServers while preserving runtime session and projects', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({
+            session: 'keep-session',
+            projects: { '/repo': { history: ['keep-project'] } },
+        }));
+        const rebuiltRuntimeDir = prepareOmcLaunchConfigDir(configDir);
+        const runtimeClaudeJson = JSON.parse(readFileSync(join(rebuiltRuntimeDir, '.claude.json'), 'utf-8'));
+        expect(runtimeClaudeJson.hasCompletedOnboarding).toBe(true);
+        expect(runtimeClaudeJson.session).toBe('keep-session');
+        expect(runtimeClaudeJson.projects).toEqual({ '/repo': { history: ['keep-project'] } });
+        expect(runtimeClaudeJson.mcpServers).toBeUndefined();
+    });
+    it('replaces mismatched oauthAccount and deletes it when source removes the account', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        const sourceClaudeJsonPath = join(tempRoot, '.claude.json');
+        writeFileSync(sourceClaudeJsonPath, JSON.stringify({ oauthAccount: { accountUuid: 'source-account' } }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({
+            session: 'keep-session',
+            oauthAccount: { accountUuid: 'runtime-account' },
+        }));
+        let runtimeClaudeJson = JSON.parse(readFileSync(join(prepareOmcLaunchConfigDir(configDir), '.claude.json'), 'utf-8'));
+        expect(runtimeClaudeJson.oauthAccount).toEqual({ accountUuid: 'source-account' });
+        expect(runtimeClaudeJson.session).toBe('keep-session');
+        writeFileSync(sourceClaudeJsonPath, JSON.stringify({ oauthAccount: null }));
+        runtimeClaudeJson = JSON.parse(readFileSync(join(prepareOmcLaunchConfigDir(configDir), '.claude.json'), 'utf-8'));
+        expect(runtimeClaudeJson.oauthAccount).toBeUndefined();
+        expect(runtimeClaudeJson.session).toBe('keep-session');
+    });
+    it('promotes a fresher nested runtime credential and preserves unrelated base keys', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({ oauthAccount: { accountUuid: 'same-account' } }));
+        const credentialsPath = join(configDir, '.credentials.json');
+        writeFileSync(credentialsPath, JSON.stringify({
+            claudeAiOauth: { accessToken: 'base-token', expiresAt: 100, refreshToken: 'base-refresh' },
+            unrelated: 'preserve-me',
+        }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({ oauthAccount: { accountUuid: 'same-account' } }));
+        rmSync(join(runtimeDir, '.credentials.json'), { force: true });
+        writeFileSync(join(runtimeDir, '.credentials.json'), JSON.stringify({
+            claudeAiOauth: { accessToken: 'runtime-token', expiresAt: 200, refreshToken: 'runtime-refresh' },
+        }));
+        const rebuiltRuntimeDir = prepareOmcLaunchConfigDir(configDir);
+        const baseCredentials = JSON.parse(readFileSync(credentialsPath, 'utf-8'));
+        const runtimeCredentialsPath = join(rebuiltRuntimeDir, '.credentials.json');
+        expect(baseCredentials.claudeAiOauth.accessToken).toBe('runtime-token');
+        expect(baseCredentials.unrelated).toBe('preserve-me');
+        expect(lstatSync(runtimeCredentialsPath).isSymbolicLink()).toBe(true);
+        expect(readlinkSync(runtimeCredentialsPath)).toBe(credentialsPath);
+    });
+    it('promotes a fresher credential when UUID matches despite stale email metadata', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({
+            oauthAccount: { accountUuid: 'same-account', emailAddress: 'Current@Example.com' },
+        }));
+        const credentialsPath = join(configDir, '.credentials.json');
+        writeFileSync(credentialsPath, JSON.stringify({
+            claudeAiOauth: { accessToken: 'base-token', expiresAt: 100 },
+        }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({
+            oauthAccount: { accountUuid: 'same-account', emailAddress: 'stale@example.COM' },
+        }));
+        rmSync(join(runtimeDir, '.credentials.json'), { force: true });
+        writeFileSync(join(runtimeDir, '.credentials.json'), JSON.stringify({
+            claudeAiOauth: { accessToken: 'runtime-token', expiresAt: 200 },
+        }));
+        prepareOmcLaunchConfigDir(configDir);
+        const baseCredentials = JSON.parse(readFileSync(credentialsPath, 'utf-8'));
+        expect(baseCredentials.claudeAiOauth.accessToken).toBe('runtime-token');
+    });
+    it('promotes a fresher credential when a shared email identity matches case-insensitively', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({
+            oauthAccount: { emailAddress: 'User@Example.com' },
+        }));
+        const credentialsPath = join(configDir, '.credentials.json');
+        writeFileSync(credentialsPath, JSON.stringify({
+            claudeAiOauth: { accessToken: 'base-token', expiresAt: 100 },
+        }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({
+            oauthAccount: { emailAddress: 'user@example.COM' },
+        }));
+        rmSync(join(runtimeDir, '.credentials.json'), { force: true });
+        writeFileSync(join(runtimeDir, '.credentials.json'), JSON.stringify({
+            claudeAiOauth: { accessToken: 'runtime-token', expiresAt: 200 },
+        }));
+        prepareOmcLaunchConfigDir(configDir);
+        const baseCredentials = JSON.parse(readFileSync(credentialsPath, 'utf-8'));
+        expect(baseCredentials.claudeAiOauth.accessToken).toBe('runtime-token');
+    });
+    it('blocks credential promotion when account emails appear only in different fields', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({
+            oauthAccount: { emailAddress: 'same@example.com' },
+        }));
+        const credentialsPath = join(configDir, '.credentials.json');
+        writeFileSync(credentialsPath, JSON.stringify({
+            claudeAiOauth: { accessToken: 'base-token', expiresAt: 100 },
+        }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({
+            oauthAccount: { email: 'same@example.com' },
+        }));
+        rmSync(join(runtimeDir, '.credentials.json'), { force: true });
+        writeFileSync(join(runtimeDir, '.credentials.json'), JSON.stringify({
+            claudeAiOauth: { accessToken: 'runtime-token', expiresAt: 200 },
+        }));
+        prepareOmcLaunchConfigDir(configDir);
+        const baseCredentials = JSON.parse(readFileSync(credentialsPath, 'utf-8'));
+        expect(baseCredentials.claudeAiOauth.accessToken).toBe('base-token');
+    });
+    it('does not promote a high-expiry runtime credential without an access token', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        const credentialsPath = join(configDir, '.credentials.json');
+        writeFileSync(credentialsPath, JSON.stringify({ claudeAiOauth: { accessToken: 'base-token', expiresAt: 100 } }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        rmSync(join(runtimeDir, '.credentials.json'), { force: true });
+        writeFileSync(join(runtimeDir, '.credentials.json'), JSON.stringify({
+            claudeAiOauth: { refreshToken: 'runtime-refresh', expiresAt: 999 },
+        }));
+        prepareOmcLaunchConfigDir(configDir);
+        const baseCredentials = JSON.parse(readFileSync(credentialsPath, 'utf-8'));
+        expect(baseCredentials.claudeAiOauth.accessToken).toBe('base-token');
+        expect(baseCredentials.claudeAiOauth.expiresAt).toBe(100);
+    });
+    it('does not resurrect a runtime credential when the base credential file is missing', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        const runtimeCredentialsPath = join(runtimeDir, '.credentials.json');
+        writeFileSync(runtimeCredentialsPath, JSON.stringify({
+            accessToken: 'runtime-token',
+            expiresAt: 999,
+        }));
+        const rebuiltRuntimeDir = prepareOmcLaunchConfigDir(configDir);
+        expect(existsSync(join(configDir, '.credentials.json'))).toBe(false);
+        expect(existsSync(join(rebuiltRuntimeDir, '.credentials.json'))).toBe(false);
+    });
+    it('blocks credential promotion when source and runtime account identities differ', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({ oauthAccount: { accountUuid: 'source-account' } }));
+        const credentialsPath = join(configDir, '.credentials.json');
+        writeFileSync(credentialsPath, JSON.stringify({ claudeAiOauth: { accessToken: 'base-token', expiresAt: 100 } }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({ oauthAccount: { accountUuid: 'different-account' } }));
+        rmSync(join(runtimeDir, '.credentials.json'), { force: true });
+        writeFileSync(join(runtimeDir, '.credentials.json'), JSON.stringify({
+            claudeAiOauth: { accessToken: 'runtime-token', expiresAt: 999 },
+        }));
+        prepareOmcLaunchConfigDir(configDir);
+        const baseCredentials = JSON.parse(readFileSync(credentialsPath, 'utf-8'));
+        expect(baseCredentials.claudeAiOauth.accessToken).toBe('base-token');
+        expect(baseCredentials.claudeAiOauth.expiresAt).toBe(100);
+    });
+    it('blocks credential promotion when credential account identities conflict despite matching metadata', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({
+            oauthAccount: { accountUuid: 'same-account' },
+        }));
+        const credentialsPath = join(configDir, '.credentials.json');
+        writeFileSync(credentialsPath, JSON.stringify({
+            claudeAiOauth: { accessToken: 'base-token', expiresAt: 100, accountUuid: 'base-account' },
+        }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({
+            oauthAccount: { accountUuid: 'same-account' },
+        }));
+        rmSync(join(runtimeDir, '.credentials.json'), { force: true });
+        writeFileSync(join(runtimeDir, '.credentials.json'), JSON.stringify({
+            claudeAiOauth: { accessToken: 'runtime-token', expiresAt: 999, accountUuid: 'runtime-account' },
+        }));
+        prepareOmcLaunchConfigDir(configDir);
+        const baseCredentials = JSON.parse(readFileSync(credentialsPath, 'utf-8'));
+        expect(baseCredentials.claudeAiOauth.accessToken).toBe('base-token');
+        expect(baseCredentials.claudeAiOauth.expiresAt).toBe(100);
+    });
+    it('blocks credential promotion when credential email identities conflict despite matching metadata', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({
+            oauthAccount: { accountUuid: 'same-account' },
+        }));
+        const credentialsPath = join(configDir, '.credentials.json');
+        writeFileSync(credentialsPath, JSON.stringify({
+            claudeAiOauth: {
+                accessToken: 'base-token',
+                expiresAt: 100,
+                emailAddress: 'base@example.com',
+            },
+        }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({
+            oauthAccount: { accountUuid: 'same-account' },
+        }));
+        rmSync(join(runtimeDir, '.credentials.json'), { force: true });
+        writeFileSync(join(runtimeDir, '.credentials.json'), JSON.stringify({
+            claudeAiOauth: {
+                accessToken: 'runtime-token',
+                expiresAt: 999,
+                emailAddress: 'runtime@example.com',
+            },
+        }));
+        prepareOmcLaunchConfigDir(configDir);
+        const baseCredentials = JSON.parse(readFileSync(credentialsPath, 'utf-8'));
+        expect(baseCredentials.claudeAiOauth.accessToken).toBe('base-token');
+        expect(baseCredentials.claudeAiOauth.expiresAt).toBe(100);
+    });
+    it('blocks credential promotion when only the base credential has a stable identity', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({
+            oauthAccount: { accountUuid: 'stale-account' },
+        }));
+        const credentialsPath = join(configDir, '.credentials.json');
+        writeFileSync(credentialsPath, JSON.stringify({
+            claudeAiOauth: {
+                accessToken: 'base-token',
+                refreshToken: 'base-refresh',
+                expiresAt: 100,
+                accountUuid: 'current-account',
+            },
+        }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({
+            oauthAccount: { accountUuid: 'stale-account' },
+        }));
+        rmSync(join(runtimeDir, '.credentials.json'), { force: true });
+        writeFileSync(join(runtimeDir, '.credentials.json'), JSON.stringify({
+            claudeAiOauth: { accessToken: 'runtime-token', expiresAt: 999 },
+        }));
+        prepareOmcLaunchConfigDir(configDir);
+        const baseCredentials = JSON.parse(readFileSync(credentialsPath, 'utf-8'));
+        expect(baseCredentials.claudeAiOauth.accessToken).toBe('base-token');
+        expect(baseCredentials.claudeAiOauth.refreshToken).toBe('base-refresh');
+    });
+    it('promotes a fresher credential when credential UUID matches despite stale email', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({
+            oauthAccount: { accountUuid: 'same-account' },
+        }));
+        const credentialsPath = join(configDir, '.credentials.json');
+        writeFileSync(credentialsPath, JSON.stringify({
+            claudeAiOauth: {
+                accessToken: 'base-token',
+                expiresAt: 100,
+                accountUuid: 'same-account',
+                emailAddress: 'current@example.com',
+            },
+        }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({
+            oauthAccount: { accountUuid: 'same-account' },
+        }));
+        rmSync(join(runtimeDir, '.credentials.json'), { force: true });
+        writeFileSync(join(runtimeDir, '.credentials.json'), JSON.stringify({
+            claudeAiOauth: {
+                accessToken: 'runtime-token',
+                expiresAt: 999,
+                accountUuid: 'same-account',
+                emailAddress: 'stale@example.com',
+            },
+        }));
+        prepareOmcLaunchConfigDir(configDir);
+        const baseCredentials = JSON.parse(readFileSync(credentialsPath, 'utf-8'));
+        expect(baseCredentials.claudeAiOauth.accessToken).toBe('runtime-token');
+    });
+    it('blocks credential promotion when either account identity is missing', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({ oauthAccount: { accountUuid: 'source-account' } }));
+        const credentialsPath = join(configDir, '.credentials.json');
+        writeFileSync(credentialsPath, JSON.stringify({ claudeAiOauth: { accessToken: 'base-token', expiresAt: 100 } }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        // Runtime has no oauthAccount after a forced rewrite
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({ session: 'no-account-meta' }));
+        rmSync(join(runtimeDir, '.credentials.json'), { force: true });
+        writeFileSync(join(runtimeDir, '.credentials.json'), JSON.stringify({
+            claudeAiOauth: { accessToken: 'runtime-token', expiresAt: 999 },
+        }));
+        prepareOmcLaunchConfigDir(configDir);
+        const baseCredentials = JSON.parse(readFileSync(credentialsPath, 'utf-8'));
+        expect(baseCredentials.claudeAiOauth.accessToken).toBe('base-token');
+        expect(baseCredentials.claudeAiOauth.expiresAt).toBe(100);
+    });
+    it('inherits lastOnboardingVersion using semver-aware comparison', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({ lastOnboardingVersion: '2.10.0' }));
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({ lastOnboardingVersion: '2.9.0' }));
+        const rebuilt = prepareOmcLaunchConfigDir(configDir);
+        const runtimeClaudeJson = JSON.parse(readFileSync(join(rebuilt, '.claude.json'), 'utf-8'));
+        expect(runtimeClaudeJson.lastOnboardingVersion).toBe('2.10.0');
+    });
+    it('updates a symlink target during credential promotion without replacing the symlink', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({ oauthAccount: { accountUuid: 'same-account' } }));
+        const targetCredentialsPath = join(tempRoot, 'credentials-target.json');
+        const credentialsPath = join(configDir, '.credentials.json');
+        writeFileSync(targetCredentialsPath, JSON.stringify({
+            claudeAiOauth: { accessToken: 'base-token', expiresAt: 100 },
+            unrelated: 'preserve-me',
+        }));
+        symlinkSync(targetCredentialsPath, credentialsPath);
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({ oauthAccount: { accountUuid: 'same-account' } }));
+        rmSync(join(runtimeDir, '.credentials.json'), { force: true });
+        writeFileSync(join(runtimeDir, '.credentials.json'), JSON.stringify({
+            claudeAiOauth: { accessToken: 'runtime-token', expiresAt: 200 },
+        }));
+        prepareOmcLaunchConfigDir(configDir);
+        expect(lstatSync(credentialsPath).isSymbolicLink()).toBe(true);
+        expect(readlinkSync(credentialsPath)).toBe(targetCredentialsPath);
+        const targetCredentials = JSON.parse(readFileSync(targetCredentialsPath, 'utf-8'));
+        expect(targetCredentials.claudeAiOauth.accessToken).toBe('runtime-token');
+        expect(targetCredentials.unrelated).toBe('preserve-me');
+    });
+    it.skipIf(process.platform === 'win32')('resolves a credential symlink chain beyond the former depth cap without replacing links', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(tempRoot, '.claude.json'), JSON.stringify({
+            oauthAccount: { accountUuid: 'same-account' },
+        }));
+        const finalCredentialsPath = join(tempRoot, 'credentials-final.json');
+        const chainPaths = Array.from({ length: 20 }, (_, index) => join(tempRoot, `credentials-link-${index}.json`));
+        const credentialsPath = join(configDir, '.credentials.json');
+        writeFileSync(finalCredentialsPath, JSON.stringify({
+            claudeAiOauth: { accessToken: 'base-token', expiresAt: 100 },
+        }));
+        for (let index = chainPaths.length - 1; index >= 0; index -= 1) {
+            symlinkSync(chainPaths[index + 1] ?? finalCredentialsPath, chainPaths[index]);
+        }
+        symlinkSync(chainPaths[0], credentialsPath);
+        const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+        writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({
+            oauthAccount: { accountUuid: 'same-account' },
+        }));
+        rmSync(join(runtimeDir, '.credentials.json'), { force: true });
+        writeFileSync(join(runtimeDir, '.credentials.json'), JSON.stringify({
+            claudeAiOauth: { accessToken: 'runtime-token', expiresAt: 200 },
+        }));
+        prepareOmcLaunchConfigDir(configDir);
+        expect(lstatSync(credentialsPath).isSymbolicLink()).toBe(true);
+        expect(readlinkSync(credentialsPath)).toBe(chainPaths[0]);
+        for (let index = 0; index < chainPaths.length; index += 1) {
+            expect(lstatSync(chainPaths[index]).isSymbolicLink()).toBe(true);
+            expect(readlinkSync(chainPaths[index])).toBe(chainPaths[index + 1] ?? finalCredentialsPath);
+        }
+        expect(lstatSync(finalCredentialsPath).isSymbolicLink()).toBe(false);
+        const finalCredentials = JSON.parse(readFileSync(finalCredentialsPath, 'utf-8'));
+        expect(finalCredentials.claudeAiOauth.accessToken).toBe('runtime-token');
+    });
+    it('preserves runtime .claude.json when source .claude.json is absent, invalid, or has no mcpServers', () => {
+        const configDir = join(tempRoot, '.claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
         const runtimeDir = prepareOmcLaunchConfigDir(configDir);
         const runtimeClaudeJsonPath = join(runtimeDir, '.claude.json');
         writeFileSync(runtimeClaudeJsonPath, '{"session":"keep-absent"}');
@@ -872,9 +1399,9 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         expect(readFileSync(runtimeClaudeJsonPath, 'utf-8')).toBe('{"session":"keep-no-mcp"}');
     });
     it('removes non-mirrored runtime junk across runtime config dir rebuilds', () => {
-        const configDir = join(tempRoot, '.copilot');
+        const configDir = join(tempRoot, '.claude');
         mkdirSync(configDir, { recursive: true });
-        writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
         const runtimeDir = prepareOmcLaunchConfigDir(configDir);
         writeFileSync(join(runtimeDir, 'junk.txt'), 'remove me');
         mkdirSync(join(runtimeDir, 'junk-dir'), { recursive: true });
@@ -885,11 +1412,95 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         expect(existsSync(join(rebuiltRuntimeDir, 'junk-dir'))).toBe(false);
     });
     it('leaves COPILOT_CONFIG_DIR unchanged when no preserved companion exists', () => {
-        const configDir = join(tempRoot, '.copilot');
+        const configDir = join(tempRoot, '.claude');
         mkdirSync(configDir, { recursive: true });
         writeFileSync(join(configDir, 'CLAUDE.md'), '<!-- OMC:START -->\n# OMC base\n<!-- OMC:END -->\n');
         expect(prepareOmcLaunchConfigDir(configDir)).toBe(configDir);
         expect(existsSync(join(configDir, '.omc-launch'))).toBe(false);
+    });
+    it('does not keep COPILOT_CONFIG_DIR set when it resolves to the default ~/.copilot path', async () => {
+        const configDir = join(tempRoot, 'home', '.copilot');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE.md'), '# User config\n');
+        process.env.COPILOT_CONFIG_DIR = configDir;
+        await launchCommand(['--print']);
+        expect(process.env.COPILOT_CONFIG_DIR).toBeUndefined();
+    });
+    it('preserves explicit non-default COPILOT_CONFIG_DIR values when no companion exists', async () => {
+        const configDir = join(tempRoot, 'custom-claude');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE.md'), '# Custom user config\n');
+        process.env.COPILOT_CONFIG_DIR = configDir;
+        await launchCommand(['--print']);
+        expect(process.env.COPILOT_CONFIG_DIR).toBe(configDir);
+    });
+});
+// ---------------------------------------------------------------------------
+// isPrintMode
+// ---------------------------------------------------------------------------
+describe('isPrintMode', () => {
+    it('detects --print flag', () => {
+        expect(isPrintMode(['--print', 'say hello'])).toBe(true);
+    });
+    it('detects -p flag', () => {
+        expect(isPrintMode(['-p', 'say hello'])).toBe(true);
+    });
+    it('returns false when no print flag', () => {
+        expect(isPrintMode(['--madmax', '--verbose'])).toBe(false);
+    });
+    it('returns false for empty args', () => {
+        expect(isPrintMode([])).toBe(false);
+    });
+    it('detects --print among other flags', () => {
+        expect(isPrintMode(['--madmax', '--print', 'say hello'])).toBe(true);
+    });
+    it('does not match partial flags like --print-something', () => {
+        expect(isPrintMode(['--print-something'])).toBe(false);
+    });
+});
+// ---------------------------------------------------------------------------
+// runClaude — print mode bypasses tmux (issue #1665)
+// ---------------------------------------------------------------------------
+describe('runClaude — print mode bypasses tmux (issue #1665)', () => {
+    let processExitSpy;
+    beforeEach(() => {
+        vi.resetAllMocks();
+        processExitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined);
+        execFileSync.mockReturnValue(Buffer.from(''));
+    });
+    afterEach(() => {
+        processExitSpy.mockRestore();
+    });
+    it('runs claude directly when --print is present (outside-tmux policy)', () => {
+        resolveLaunchPolicy.mockReturnValue('outside-tmux');
+        runClaude('/tmp', ['--print', 'say hello'], 'sid');
+        const calls = vi.mocked(execFileSync).mock.calls;
+        // Should call claude directly, NOT tmux
+        expect(calls).toHaveLength(1);
+        expect(calls[0][0]).toBe('claude');
+        expect(calls[0][1]).toEqual(['--print', 'say hello']);
+        expect(calls[0][2]).toEqual(expect.objectContaining({ stdio: 'inherit' }));
+    });
+    it('runs claude directly when -p is present (outside-tmux policy)', () => {
+        resolveLaunchPolicy.mockReturnValue('outside-tmux');
+        runClaude('/tmp', ['-p', 'say hello'], 'sid');
+        const calls = vi.mocked(execFileSync).mock.calls;
+        expect(calls).toHaveLength(1);
+        expect(calls[0][0]).toBe('claude');
+    });
+    it('runs claude directly when --print is present (inside-tmux policy)', () => {
+        resolveLaunchPolicy.mockReturnValue('inside-tmux');
+        runClaude('/tmp', ['--dangerously-skip-permissions', '--print', 'say hello'], 'sid');
+        const calls = vi.mocked(execFileSync).mock.calls;
+        // Should NOT call tmux set-option (mouse config), just claude directly
+        expect(calls).toHaveLength(1);
+        expect(calls[0][0]).toBe('claude');
+    });
+    it('does not bypass tmux when --print is absent', () => {
+        resolveLaunchPolicy.mockReturnValue('outside-tmux');
+        runClaude('/tmp', ['--dangerously-skip-permissions'], 'sid');
+        // tmux calls go through tmuxExec, not execFileSync
+        expect(vi.mocked(tmuxExec).mock.calls.length).toBeGreaterThan(0);
     });
 });
 // ---------------------------------------------------------------------------
@@ -938,14 +1549,44 @@ describe('buildEnvExportPrefix', () => {
         const result = buildEnvExportPrefix(['TEST_VAR_A']);
         expect(result).toBe('export TEST_VAR_A=; ');
     });
-    it('TMUX_ENV_FORWARD contains COPILOT_CONFIG_DIR', () => {
-        expect(TMUX_ENV_FORWARD).toContain('COPILOT_CONFIG_DIR');
+});
+// ---------------------------------------------------------------------------
+// buildEnvExportPrefix — shell quoting (uses real quoteShellArg via mock passthrough)
+// ---------------------------------------------------------------------------
+describe('buildEnvExportPrefix — quoting delegation', () => {
+    const saved = process.env.TEST_QUOTE_VAR;
+    afterEach(() => {
+        if (saved !== undefined) {
+            process.env.TEST_QUOTE_VAR = saved;
+        }
+        else {
+            delete process.env.TEST_QUOTE_VAR;
+        }
+    });
+    it('delegates value quoting to quoteShellArg', async () => {
+        process.env.TEST_QUOTE_VAR = 'has spaces';
+        buildEnvExportPrefix(['TEST_QUOTE_VAR']);
+        const { quoteShellArg: mockQuote } = vi.mocked(await import('../tmux-utils.js'));
+        expect(mockQuote).toHaveBeenCalledWith('has spaces');
     });
 });
 // ---------------------------------------------------------------------------
-// runCopilot outside-tmux — env forwarding into tmux command
+// TMUX_ENV_FORWARD — allowlist contract
 // ---------------------------------------------------------------------------
-describe('runCopilot outside-tmux — env forwarding', () => {
+describe('TMUX_ENV_FORWARD allowlist', () => {
+    it('includes COPILOT_CONFIG_DIR', () => {
+        expect(TMUX_ENV_FORWARD).toContain('COPILOT_CONFIG_DIR');
+    });
+    it('includes all OMC launch flags', () => {
+        for (const name of ['OMC_NOTIFY', 'OMC_OPENCLAW', 'OMC_TELEGRAM', 'OMC_DISCORD', 'OMC_SLACK', 'OMC_WEBHOOK']) {
+            expect(TMUX_ENV_FORWARD).toContain(name);
+        }
+    });
+});
+// ---------------------------------------------------------------------------
+// runClaude outside-tmux — env forwarding into tmux command
+// ---------------------------------------------------------------------------
+describe('runClaude outside-tmux — env forwarding', () => {
     const savedConfigDir = process.env.COPILOT_CONFIG_DIR;
     beforeEach(() => {
         vi.resetAllMocks();
@@ -963,15 +1604,15 @@ describe('runCopilot outside-tmux — env forwarding', () => {
     it('injects COPILOT_CONFIG_DIR export into the tmux shell command', () => {
         process.env.COPILOT_CONFIG_DIR = '/custom/config';
         vi.mocked(isNativeWindowsShell).mockReturnValue(false);
-        runCopilot('/tmp', [], 'sid');
+        runClaude('/tmp', [], 'sid');
         const wrapCall = vi.mocked(wrapWithLoginShell).mock.calls[0];
         expect(wrapCall).toBeDefined();
         expect(wrapCall[0]).toContain('export COPILOT_CONFIG_DIR=/custom/config');
     });
-    it('places env exports before the sleep/copilot command', () => {
+    it('places env exports before the sleep/claude command', () => {
         process.env.COPILOT_CONFIG_DIR = '/custom/config';
         vi.mocked(isNativeWindowsShell).mockReturnValue(false);
-        runCopilot('/tmp', [], 'sid');
+        runClaude('/tmp', [], 'sid');
         const cmdString = vi.mocked(wrapWithLoginShell).mock.calls[0][0];
         const exportIdx = cmdString.indexOf('export COPILOT_CONFIG_DIR');
         const sleepIdx = cmdString.indexOf('sleep 0.3');
@@ -988,7 +1629,7 @@ describe('runCopilot outside-tmux — env forwarding', () => {
         delete process.env.OMC_WEBHOOK;
         delete process.env.OMC_PLUGIN_ROOT;
         vi.mocked(isNativeWindowsShell).mockReturnValue(false);
-        runCopilot('/tmp', [], 'sid');
+        runClaude('/tmp', [], 'sid');
         const cmdString = vi.mocked(wrapWithLoginShell).mock.calls[0][0];
         expect(cmdString).not.toContain('export ');
     });
@@ -997,11 +1638,11 @@ describe('runCopilot outside-tmux — env forwarding', () => {
         Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
         process.env.COPILOT_CONFIG_DIR = 'C:\\Users\\bellman\\config dir';
         vi.mocked(isNativeWindowsShell).mockReturnValue(true);
-        runCopilot('/tmp', ['--print-system-prompt', 'hello world'], 'sid');
-        expect(vi.mocked(buildTmuxShellCommandWithEnv)).toHaveBeenCalledWith('copilot', ['--print-system-prompt', 'hello world'], { COPILOT_CONFIG_DIR: 'C:\\Users\\bellman\\config dir' });
+        runClaude('/tmp', ['--print-system-prompt', 'hello world'], 'sid');
+        expect(vi.mocked(buildTmuxShellCommandWithEnv)).toHaveBeenCalledWith('claude', ['--print-system-prompt', 'hello world'], { COPILOT_CONFIG_DIR: 'C:\\Users\\bellman\\config dir' });
         const rawCommand = vi.mocked(wrapWithLoginShell).mock.calls[0][0];
         expect(rawCommand).toContain('COPILOT_CONFIG_DIR=C:\\Users\\bellman\\config dir');
-        expect(rawCommand).toContain('copilot --print-system-prompt hello world');
+        expect(rawCommand).toContain('claude --print-system-prompt hello world');
         expect(rawCommand).not.toContain('sleep 0.3');
         expect(rawCommand).not.toContain('tcflush');
         Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
@@ -1011,12 +1652,200 @@ describe('runCopilot outside-tmux — env forwarding', () => {
         Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
         process.env.COPILOT_CONFIG_DIR = '/custom/config';
         vi.mocked(isNativeWindowsShell).mockReturnValue(false);
-        runCopilot('/tmp', ['--print-system-prompt', 'hello world'], 'sid');
+        runClaude('/tmp', ['--print-system-prompt', 'hello world'], 'sid');
         const rawCommand = vi.mocked(wrapWithLoginShell).mock.calls[0][0];
         expect(rawCommand).toContain('export COPILOT_CONFIG_DIR=/custom/config');
         expect(rawCommand).toContain('sleep 0.3');
         expect(rawCommand).toContain("perl -e 'use POSIX;tcflush(0,TCIFLUSH)' 2>/dev/null;");
         Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    });
+});
+// ---------------------------------------------------------------------------
+// hasMadmaxFlag
+// ---------------------------------------------------------------------------
+describe('hasMadmaxFlag', () => {
+    it('detects --madmax', () => {
+        expect(hasMadmaxFlag(['--madmax'])).toBe(true);
+    });
+    it('detects --yolo', () => {
+        expect(hasMadmaxFlag(['--yolo'])).toBe(true);
+    });
+    it('detects --madmax mixed with other args', () => {
+        expect(hasMadmaxFlag(['--print', '--madmax', 'hello'])).toBe(true);
+    });
+    it('returns false when neither flag is present', () => {
+        expect(hasMadmaxFlag(['--print', '--dangerously-skip-permissions'])).toBe(false);
+    });
+    it('returns false for empty args', () => {
+        expect(hasMadmaxFlag([])).toBe(false);
+    });
+});
+// ---------------------------------------------------------------------------
+// runClaude — --madmax on macOS forces tmux
+// ---------------------------------------------------------------------------
+describe('runClaude — --madmax on macOS forces tmux', () => {
+    let processExitSpy;
+    let stderrSpy;
+    const savedTmux = process.env.TMUX;
+    const originalPlatform = process.platform;
+    beforeEach(() => {
+        vi.resetAllMocks();
+        processExitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined);
+        stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        execFileSync.mockReturnValue(Buffer.from(''));
+        delete process.env.TMUX;
+    });
+    afterEach(() => {
+        processExitSpy.mockRestore();
+        stderrSpy.mockRestore();
+        Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+        if (savedTmux !== undefined) {
+            process.env.TMUX = savedTmux;
+        }
+        else {
+            delete process.env.TMUX;
+        }
+    });
+    it('exits 1 with brew hint when --madmax is used on darwin without tmux', () => {
+        Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+        vi.mocked(isTmuxAvailable).mockReturnValue(false);
+        vi.mocked(resolveLaunchPolicy).mockReturnValue('direct');
+        runClaude('/tmp', ['--madmax'], 'sid');
+        expect(processExitSpy).toHaveBeenCalledWith(1);
+        const messages = stderrSpy.mock.calls.map((call) => String(call[0])).join('\n');
+        expect(messages).toContain('--madmax');
+        expect(messages).toContain('--yolo');
+        expect(messages).toContain('tmux');
+        expect(messages).toContain('brew install tmux');
+    });
+    it('exits 1 with brew hint when --yolo is used on darwin without tmux', () => {
+        Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+        vi.mocked(isTmuxAvailable).mockReturnValue(false);
+        vi.mocked(resolveLaunchPolicy).mockReturnValue('direct');
+        runClaude('/tmp', ['--yolo'], 'sid');
+        expect(processExitSpy).toHaveBeenCalledWith(1);
+        const messages = stderrSpy.mock.calls.map((call) => String(call[0])).join('\n');
+        expect(messages).toContain('brew install tmux');
+    });
+    it('exits 1 if resolver returns "direct" while requireTmux is set', () => {
+        Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+        vi.mocked(isTmuxAvailable).mockReturnValue(true);
+        // Even with tmux available, if the resolver returns 'direct' under
+        // requireTmux the launcher must exit rather than silently demote.
+        vi.mocked(resolveLaunchPolicy).mockReturnValue('direct');
+        runClaude('/tmp', ['--madmax'], 'sid');
+        expect(processExitSpy).toHaveBeenCalledWith(1);
+    });
+    it('passes requireTmux=true to resolveLaunchPolicy on darwin --madmax', () => {
+        Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+        vi.mocked(isTmuxAvailable).mockReturnValue(true);
+        vi.mocked(resolveLaunchPolicy).mockReturnValue('outside-tmux');
+        runClaude('/tmp', ['--madmax'], 'sid');
+        expect(resolveLaunchPolicy).toHaveBeenCalledWith(process.env, ['--madmax'], { requireTmux: true });
+    });
+    it('does not require tmux on darwin without --madmax', () => {
+        Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+        vi.mocked(isTmuxAvailable).mockReturnValue(false);
+        vi.mocked(resolveLaunchPolicy).mockReturnValue('direct');
+        runClaude('/tmp', [], 'sid');
+        expect(processExitSpy).not.toHaveBeenCalledWith(1);
+        expect(resolveLaunchPolicy).toHaveBeenCalledWith(process.env, [], { requireTmux: false });
+    });
+    it('does not require tmux on linux even with --madmax', () => {
+        Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+        vi.mocked(isTmuxAvailable).mockReturnValue(false);
+        vi.mocked(resolveLaunchPolicy).mockReturnValue('direct');
+        runClaude('/tmp', ['--madmax'], 'sid');
+        expect(processExitSpy).not.toHaveBeenCalledWith(1);
+        expect(resolveLaunchPolicy).toHaveBeenCalledWith(process.env, ['--madmax'], { requireTmux: false });
+    });
+    it('skips the install check when already inside tmux on darwin --madmax', () => {
+        Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+        process.env.TMUX = '/tmp/tmux-501/default,1234,0';
+        vi.mocked(isTmuxAvailable).mockReturnValue(false); // would normally fail, but TMUX env wins
+        vi.mocked(resolveLaunchPolicy).mockReturnValue('inside-tmux');
+        runClaude('/tmp', ['--madmax'], 'sid');
+        expect(processExitSpy).not.toHaveBeenCalledWith(1);
+        expect(isTmuxAvailable).not.toHaveBeenCalled();
+    });
+    it('still bypasses tmux for --print even with --madmax on darwin', () => {
+        Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+        vi.mocked(isTmuxAvailable).mockReturnValue(false);
+        runClaude('/tmp', ['--madmax', '--print', 'hi'], 'sid');
+        expect(processExitSpy).not.toHaveBeenCalledWith(1);
+        expect(resolveLaunchPolicy).not.toHaveBeenCalled();
+        const claudeCall = vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'claude');
+        expect(claudeCall).toBeDefined();
+    });
+    it('exits 1 when tmux new-session fails under --madmax (no silent direct)', () => {
+        Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+        vi.mocked(isTmuxAvailable).mockReturnValue(true);
+        vi.mocked(resolveLaunchPolicy).mockReturnValue('outside-tmux');
+        vi.mocked(tmuxExec).mockImplementation((tmuxArgs) => {
+            if (tmuxArgs[0] === 'new-session') {
+                throw new Error('tmux new-session failed');
+            }
+            return '';
+        });
+        runClaude('/tmp', ['--madmax'], 'sid');
+        expect(processExitSpy).toHaveBeenCalledWith(1);
+        const messages = stderrSpy.mock.calls.map((call) => String(call[0])).join('\n');
+        expect(messages).toContain('launching tmux failed');
+        const claudeCall = vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'claude');
+        expect(claudeCall).toBeUndefined();
+    });
+    it('exits 1 when tmux attach + has-session both fail under --madmax', () => {
+        Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+        vi.mocked(isTmuxAvailable).mockReturnValue(true);
+        vi.mocked(resolveLaunchPolicy).mockReturnValue('outside-tmux');
+        vi.mocked(tmuxExec).mockImplementation((tmuxArgs) => {
+            if (tmuxArgs[0] === 'attach-session' || tmuxArgs[0] === 'has-session') {
+                throw new Error(`tmux ${tmuxArgs[0]} failed`);
+            }
+            return '';
+        });
+        runClaude('/tmp', ['--madmax'], 'sid');
+        expect(processExitSpy).toHaveBeenCalledWith(1);
+        const messages = stderrSpy.mock.calls.map((call) => String(call[0])).join('\n');
+        expect(messages).toContain('launching tmux failed');
+        const claudeCall = vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'claude');
+        expect(claudeCall).toBeUndefined();
+    });
+    it('exits 1 when tmux attach fails under --madmax even if detached session exists', () => {
+        Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+        vi.mocked(isTmuxAvailable).mockReturnValue(true);
+        vi.mocked(resolveLaunchPolicy).mockReturnValue('outside-tmux');
+        vi.mocked(tmuxExec).mockImplementation((tmuxArgs) => {
+            if (tmuxArgs[0] === 'attach-session') {
+                throw new Error('tmux attach-session failed');
+            }
+            return '';
+        });
+        runClaude('/tmp', ['--madmax'], 'sid');
+        expect(processExitSpy).toHaveBeenCalledWith(1);
+        const messages = stderrSpy.mock.calls.map((call) => String(call[0])).join('\n');
+        expect(messages).toContain('launching tmux failed');
+        const tmuxCalls = vi.mocked(tmuxExec).mock.calls.map(([tmuxArgs]) => tmuxArgs[0]);
+        expect(tmuxCalls).toContain('attach-session');
+        expect(tmuxCalls).not.toContain('has-session');
+        const claudeCall = vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'claude');
+        expect(claudeCall).toBeUndefined();
+    });
+    it('preserves the existing direct fallback when tmux new-session fails WITHOUT --madmax', () => {
+        Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+        vi.mocked(isTmuxAvailable).mockReturnValue(true);
+        vi.mocked(resolveLaunchPolicy).mockReturnValue('outside-tmux');
+        vi.mocked(tmuxExec).mockImplementation((tmuxArgs) => {
+            if (tmuxArgs[0] === 'new-session') {
+                throw new Error('tmux new-session failed');
+            }
+            return '';
+        });
+        runClaude('/tmp', [], 'sid');
+        // No --madmax: existing behavior preserved (direct path runs, no exit-1).
+        expect(processExitSpy).not.toHaveBeenCalledWith(1);
+        const claudeCall = vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'claude');
+        expect(claudeCall).toBeDefined();
     });
 });
 //# sourceMappingURL=launch.test.js.map

@@ -30,7 +30,6 @@ export async function runHudWatchLoop(options) {
                 wakeSleep = null;
                 resolve();
             };
-            timer.unref?.();
         });
     }
 }

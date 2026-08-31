@@ -1,11 +1,55 @@
-import { describe, it, expect } from 'vitest';
-import { LSP_SERVERS, getServerForFile, getServerForLanguage } from '../tools/lsp/servers.js';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LSP_SERVERS, getAllServers, getServerForFile, getServerForLanguage, getTypeScriptServerForWorkspace, resolvePythonServer } from '../tools/lsp/servers.js';
+
+function createTypeScriptProject(options: { version: string; tsserver?: boolean; getExePath?: boolean; tscBin?: boolean }): string {
+  const root = mkdtempSync(join(tmpdir(), 'omc-lsp-ts-'));
+  const typescriptRoot = join(root, 'node_modules', 'typescript');
+  mkdirSync(join(typescriptRoot, 'lib'), { recursive: true });
+  writeFileSync(join(typescriptRoot, 'package.json'), JSON.stringify({ version: options.version }));
+
+  if (options.tsserver) {
+    writeFileSync(join(typescriptRoot, 'lib', 'tsserver.js'), '');
+  }
+
+  if (options.getExePath) {
+    writeFileSync(join(typescriptRoot, 'lib', 'getExePath.js'), '');
+  }
+
+  if (options.tscBin) {
+    const binDir = join(root, 'node_modules', '.bin');
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(join(binDir, process.platform === 'win32' ? 'tsc.cmd' : 'tsc'), '');
+  }
+
+  return root;
+}
+
+const inheritedPythonLsp = process.env.OMC_PYTHON_LSP;
+
+beforeEach(() => {
+  delete process.env.OMC_PYTHON_LSP;
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+afterAll(() => {
+  if (inheritedPythonLsp === undefined) {
+    delete process.env.OMC_PYTHON_LSP;
+  } else {
+    process.env.OMC_PYTHON_LSP = inheritedPythonLsp;
+  }
+});
 
 describe('LSP Server Configurations', () => {
   const serverKeys = Object.keys(LSP_SERVERS);
 
-  it('should have 19 configured servers', () => {
-    expect(serverKeys).toHaveLength(19);
+  it('should have 20 configured servers', () => {
+    expect(serverKeys).toHaveLength(20);
   });
 
   it.each(serverKeys)('server "%s" should have valid config', (key) => {
@@ -15,6 +59,11 @@ describe('LSP Server Configurations', () => {
     expect(Array.isArray(config.args)).toBe(true);
     expect(config.extensions.length).toBeGreaterThan(0);
     expect(config.installHint).toBeTruthy();
+  });
+
+  it('kotlin should use stdio and an extended initialize timeout', () => {
+    expect(LSP_SERVERS.kotlin.args).toContain('--stdio');
+    expect(LSP_SERVERS.kotlin.initializeTimeoutMs).toBeGreaterThan(15_000);
   });
 
   it('should have no duplicate extension mappings across servers', () => {
@@ -58,6 +107,10 @@ describe('getServerForFile', () => {
     ['Program.cs', 'OmniSharp'],
     ['main.dart', 'Dart Analysis Server'],
     ['view.erb', 'Ruby Language Server (Solargraph)'],
+    ['counter.v', 'Verible Verilog Language Server'],
+    ['defs.vh', 'Verible Verilog Language Server'],
+    ['top.sv', 'Verible Verilog Language Server'],
+    ['pkg.svh', 'Verible Verilog Language Server'],
   ];
 
   it.each(cases)('should resolve "%s" to "%s"', (file, expectedName) => {
@@ -68,6 +121,76 @@ describe('getServerForFile', () => {
 
   it('should return null for unknown extensions', () => {
     expect(getServerForFile('file.xyz')).toBeNull();
+  });
+});
+
+describe('TypeScript server selection', () => {
+  it('uses project-local tsc --lsp --stdio for TypeScript 7 projects', () => {
+    const root = createTypeScriptProject({ version: '7.0.1-rc', tscBin: true });
+
+    try {
+      const server = getTypeScriptServerForWorkspace(root);
+
+      expect(server.name).toBe('TypeScript 7 Native Language Server (typescript-go)');
+      expect(server.command).toBe(join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'tsc.cmd' : 'tsc'));
+      expect(server.args).toEqual(['--lsp', '--stdio']);
+      expect(getServerForFile(join(root, 'src', 'app.ts'), root)).toEqual(server);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('uses project-local tsc when TypeScript has no tsserver.js', () => {
+    const root = createTypeScriptProject({ version: '6.0.0-dev', tscBin: true });
+
+    try {
+      const server = getTypeScriptServerForWorkspace(root);
+
+      expect(server.command).toBe(join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'tsc.cmd' : 'tsc'));
+      expect(server.args).toEqual(['--lsp', '--stdio']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('uses project-local tsc when TypeScript exposes native getExePath metadata', () => {
+    const root = createTypeScriptProject({ version: '6.0.0-dev', getExePath: true, tsserver: true, tscBin: true });
+
+    try {
+      const server = getTypeScriptServerForWorkspace(root);
+
+      expect(server.command).toBe(join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'tsc.cmd' : 'tsc'));
+      expect(server.args).toEqual(['--lsp', '--stdio']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps classic typescript-language-server for classic TypeScript projects', () => {
+    const root = createTypeScriptProject({ version: '5.7.2', tsserver: true, tscBin: true });
+
+    try {
+      const server = getTypeScriptServerForWorkspace(root);
+
+      expect(server).toBe(LSP_SERVERS.typescript);
+      expect(server.command).toBe('typescript-language-server');
+      expect(server.args).toEqual(['--stdio']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to classic server when native TypeScript has no local tsc binary', () => {
+    const root = createTypeScriptProject({ version: '7.0.1-rc' });
+
+    try {
+      const server = getTypeScriptServerForWorkspace(root);
+
+      expect(server).toBe(LSP_SERVERS.typescript);
+      expect(server.command).toBe('typescript-language-server');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
@@ -109,6 +232,10 @@ describe('getServerForLanguage', () => {
     ['cs', 'OmniSharp'],
     ['dart', 'Dart Analysis Server'],
     ['flutter', 'Dart Analysis Server'],
+    ['verilog', 'Verible Verilog Language Server'],
+    ['systemverilog', 'Verible Verilog Language Server'],
+    ['sv', 'Verible Verilog Language Server'],
+    ['v', 'Verible Verilog Language Server'],
   ];
 
   it.each(cases)('should resolve language "%s" to "%s"', (lang, expectedName) => {
@@ -130,5 +257,59 @@ describe('getServerForLanguage', () => {
 describe('OmniSharp command casing', () => {
   it('should use lowercase command for cross-platform compatibility', () => {
     expect(LSP_SERVERS.csharp.command).toBe('omnisharp');
+  });
+});
+
+describe('Python server selection', () => {
+  it('uses ty by default', () => {
+    expect(process.env.OMC_PYTHON_LSP).toBeUndefined();
+    expect(resolvePythonServer()).toBe(LSP_SERVERS.python);
+    expect(getServerForFile('app.py')).toBe(LSP_SERVERS.python);
+    expect(getServerForFile('app.pyw')).toBe(LSP_SERVERS.python);
+    expect(getServerForLanguage('python')).toBe(LSP_SERVERS.python);
+    expect(LSP_SERVERS.python.command).toBe('ty');
+    expect(LSP_SERVERS.python.args).toEqual(['server']);
+  });
+
+  it.each(['', '   ', 'ty', 'TY', 'BasedPyright', 'pyright', 'basedpyright ', 'jedi'])(
+    'uses ty for unsupported selector value %j',
+    value => {
+      vi.stubEnv('OMC_PYTHON_LSP', value);
+
+      expect(resolvePythonServer()).toBe(LSP_SERVERS.python);
+      expect(getServerForFile('app.py')).toBe(getServerForLanguage('python'));
+      expect(getServerForFile('app.pyw')).toBe(LSP_SERVERS.python);
+    }
+  );
+
+  it('uses basedpyright only for the exact selector value', () => {
+    vi.stubEnv('OMC_PYTHON_LSP', 'basedpyright');
+
+    const server = resolvePythonServer();
+    expect(server).toMatchObject({
+      name: 'Python Language Server (basedpyright)',
+      command: 'basedpyright-langserver',
+      args: ['--stdio'],
+      extensions: ['.py', '.pyw'],
+      installHint: 'uv tool install basedpyright'
+    });
+    expect(getServerForFile('app.py')).toBe(server);
+    expect(getServerForFile('app.pyw')).toBe(server);
+    expect(getServerForLanguage('python')).toBe(server);
+  });
+
+  it('does not affect non-Python server selection', () => {
+    vi.stubEnv('OMC_PYTHON_LSP', 'basedpyright');
+
+    expect(getServerForFile('main.rs')).toBe(LSP_SERVERS.rust);
+    expect(getServerForLanguage('go')).toBe(LSP_SERVERS.go);
+  });
+
+  it('lists only the selected Python server', () => {
+    vi.stubEnv('OMC_PYTHON_LSP', 'basedpyright');
+
+    const pythonServers = getAllServers().filter(server => server.extensions.includes('.py'));
+    expect(pythonServers).toHaveLength(1);
+    expect(pythonServers[0].command).toBe('basedpyright-langserver');
   });
 });

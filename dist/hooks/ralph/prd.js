@@ -11,14 +11,86 @@
  * - passes: Boolean indicating completion
  * - notes: Optional notes from implementation
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { dirname, join } from 'path';
-import { ensureSessionStateDir, getOmcRoot, getSessionStateDir } from '../../lib/worktree-paths.js';
+import { createHash } from 'crypto';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
+import { getOmcRoot, getSessionStateDir } from '../../lib/worktree-paths.js';
+import { withStateFileMutationLock } from '../../lib/mode-state-io.js';
+import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
 // ============================================================================
 // Constants
 // ============================================================================
 export const PRD_FILENAME = 'prd.json';
 export const PRD_EXAMPLE_FILENAME = 'prd.example.json';
+export const MIN_CRITERION_EVIDENCE_LENGTH = 10;
+function normalizeCriterionAmendment(candidate) {
+    if (!candidate || typeof candidate !== 'object') {
+        return null;
+    }
+    const amendment = candidate;
+    const kind = amendment.kind;
+    const original = amendment.original;
+    const reason = amendment.reason;
+    const evidence = amendment.evidence;
+    const authority = amendment.authority;
+    const timestamp = amendment.timestamp;
+    const replacement = amendment.replacement;
+    if ((kind !== 'replaced' && kind !== 'superseded') ||
+        typeof original !== 'string' ||
+        original.trim() === '' ||
+        typeof reason !== 'string' ||
+        reason.trim() === '' ||
+        typeof evidence !== 'string' ||
+        evidence.trim() === '' ||
+        typeof authority !== 'string' ||
+        authority.trim() === '' ||
+        typeof timestamp !== 'string' ||
+        timestamp.trim() === '' ||
+        (kind === 'replaced' && (typeof replacement !== 'string' || replacement.trim() === '')) ||
+        (kind === 'superseded' && replacement !== undefined)) {
+        return null;
+    }
+    return {
+        kind,
+        original,
+        replacement: kind === 'replaced' ? replacement : undefined,
+        reason,
+        evidence,
+        authority,
+        timestamp
+    };
+}
+/**
+ * Normalize a story's optional amendment ledger and enforce its invariants:
+ * - an amended/superseded original must not still be active, and
+ * - an original may be amended at most once.
+ * Any violation makes the story (and therefore the PRD) invalid so that a
+ * silently deviated PRD fails closed instead of being misread as authoritative.
+ */
+function normalizeCriterionAmendments(candidate, acceptanceCriteria) {
+    if (candidate === undefined) {
+        return undefined;
+    }
+    if (!Array.isArray(candidate)) {
+        return null;
+    }
+    if (candidate.length === 0) {
+        return undefined;
+    }
+    const amendments = candidate.map(normalizeCriterionAmendment);
+    if (amendments.some(amendment => amendment === null)) {
+        return null;
+    }
+    const originals = new Set();
+    const active = new Set(acceptanceCriteria);
+    for (const amendment of amendments) {
+        if (originals.has(amendment.original) || active.has(amendment.original)) {
+            return null;
+        }
+        originals.add(amendment.original);
+    }
+    return amendments;
+}
 function normalizeStory(candidate) {
     if (!candidate || typeof candidate !== 'object') {
         return null;
@@ -34,15 +106,69 @@ function normalizeStory(candidate) {
         typeof story.passes !== 'boolean') {
         return null;
     }
+    const acceptanceCriteria = [...story.acceptanceCriteria];
+    const criterionAmendments = normalizeCriterionAmendments(story.criterionAmendments, acceptanceCriteria);
+    if (criterionAmendments === null) {
+        return null;
+    }
+    const governingCriteriaRevision = getGoverningCriteriaRevision(acceptanceCriteria, criterionAmendments);
+    const completionCriteriaRevision = typeof story.completionCriteriaRevision === 'string'
+        ? story.completionCriteriaRevision
+        : undefined;
+    const passes = story.passes === true && completionCriteriaRevision === governingCriteriaRevision;
+    const architectVerificationCriteriaRevision = typeof story.architectVerificationCriteriaRevision === 'string'
+        ? story.architectVerificationCriteriaRevision
+        : undefined;
+    const architectVerified = passes && story.architectVerified === true
+        && architectVerificationCriteriaRevision === governingCriteriaRevision;
     return {
         id: story.id,
         title: story.title,
         description: story.description,
-        acceptanceCriteria: [...story.acceptanceCriteria],
+        acceptanceCriteria,
+        criterionAmendments,
         priority: story.priority,
-        passes: story.passes,
-        architectVerified: story.architectVerified === true,
+        governingCriteriaRevision,
+        completionCriteriaRevision: passes ? completionCriteriaRevision : undefined,
+        architectVerificationCriteriaRevision: architectVerified ? architectVerificationCriteriaRevision : undefined,
+        passes,
+        architectVerified,
         notes: typeof story.notes === 'string' ? story.notes : undefined
+    };
+}
+function getGoverningCriteriaRevision(acceptanceCriteria, criterionAmendments) {
+    return `sha256:${createHash('sha256').update(JSON.stringify({ acceptanceCriteria, criterionAmendments: criterionAmendments ?? [] })).digest('hex')}`;
+}
+export function getStoryGoverningCriteriaRevision(story) {
+    return getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
+}
+export function getPrdGoverningCriteriaRevision(prd) {
+    return `sha256:${createHash('sha256').update(JSON.stringify(prd.userStories.map(story => ({
+        id: story.id,
+        governingCriteriaRevision: getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments),
+    })))).digest('hex')}`;
+}
+export function getPrdRevision(prd) {
+    return `sha256:${createHash('sha256').update(JSON.stringify(prd)).digest('hex')}`;
+}
+function bindCompletionClaims(prd) {
+    return {
+        ...prd,
+        userStories: prd.userStories.map(story => {
+            const governingCriteriaRevision = getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
+            const passes = story.passes === true
+                && story.completionCriteriaRevision === governingCriteriaRevision;
+            const architectVerified = passes && story.architectVerified === true
+                && story.architectVerificationCriteriaRevision === governingCriteriaRevision;
+            return {
+                ...story,
+                governingCriteriaRevision,
+                completionCriteriaRevision: passes ? governingCriteriaRevision : undefined,
+                architectVerificationCriteriaRevision: architectVerified ? governingCriteriaRevision : undefined,
+                passes,
+                architectVerified,
+            };
+        }),
     };
 }
 function normalizePrd(candidate) {
@@ -61,14 +187,81 @@ function normalizePrd(candidate) {
     if (userStories.some(story => story === null)) {
         return null;
     }
+    const reconciliation = normalizeReconciliation(prd.reconciliation);
     return {
         project: prd.project,
         branchName: prd.branchName,
         description: prd.description,
-        userStories: userStories
+        userStories: userStories,
+        ...(reconciliation ? { reconciliation } : {})
     };
 }
-function readPrdFromPath(prdPath) {
+/**
+ * Validate and preserve the optional reconciliation config. Returns undefined
+ * for legacy PRDs (no field) or malformed values — a malformed config must not
+ * invalidate an otherwise valid PRD, it just disables auto-reconciliation.
+ */
+function normalizeReconciliation(candidate) {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+        return undefined;
+    }
+    const raw = candidate;
+    const config = {};
+    if (typeof raw.staleAfterMs === 'number' && Number.isFinite(raw.staleAfterMs) && raw.staleAfterMs > 0) {
+        config.staleAfterMs = raw.staleAfterMs;
+    }
+    if (typeof raw.autoReconcile === 'boolean') {
+        config.autoReconcile = raw.autoReconcile;
+    }
+    if (raw.observableChecks && typeof raw.observableChecks === 'object' && !Array.isArray(raw.observableChecks)) {
+        const checksByStory = raw.observableChecks;
+        const observableChecks = {};
+        for (const [storyId, checks] of Object.entries(checksByStory)) {
+            if (!Array.isArray(checks)) {
+                continue;
+            }
+            const normalizedChecks = checks
+                .map(c => normalizeObservableCheck(c))
+                .filter((c) => c !== null);
+            if (normalizedChecks.length > 0) {
+                observableChecks[storyId] = normalizedChecks;
+            }
+        }
+        if (Object.keys(observableChecks).length > 0) {
+            config.observableChecks = observableChecks;
+        }
+    }
+    return Object.keys(config).length > 0 ? config : undefined;
+}
+/**
+ * Validate a single observable check. Unknown check types or missing required
+ * fields are dropped rather than failing the whole PRD.
+ */
+function normalizeObservableCheck(candidate) {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+        return null;
+    }
+    const raw = candidate;
+    const type = raw.type;
+    if (type !== 'fileExists' && type !== 'fileContains' && type !== 'gitGrep') {
+        return null;
+    }
+    const check = { type };
+    if (typeof raw.path === 'string' && raw.path.length > 0) {
+        check.path = raw.path;
+    }
+    if (typeof raw.ref === 'string' && raw.ref.length > 0) {
+        check.ref = raw.ref;
+    }
+    if (typeof raw.pattern === 'string' && raw.pattern.length > 0) {
+        check.pattern = raw.pattern;
+    }
+    if (typeof raw.description === 'string' && raw.description.length > 0) {
+        check.description = raw.description;
+    }
+    return check;
+}
+export function readPrdFromPath(prdPath) {
     try {
         const content = readFileSync(prdPath, 'utf-8');
         const parsed = JSON.parse(content);
@@ -151,18 +344,24 @@ export function readPrd(directory, sessionId) {
     return readPrdFromPath(prdPath).prd ?? null;
 }
 /**
- * Write PRD to disk
+ * Write PRD to disk.
+ *
+ * Omitting `expectedRevision` is the public non-CAS rewrite path and may
+ * replace an existing file. Passing `expectedRevision` keeps generation-safe
+ * CAS and refuses the write when the on-disk document has moved.
  */
-export function writePrd(directory, prd, sessionId) {
+export function writePrd(directory, prd, sessionId, expectedRevision) {
     let prdPath;
     if (sessionId) {
         try {
-            ensureSessionStateDir(sessionId, directory);
+            // Resolve and validate the target without creating the session
+            // scaffold. The exclusive lock below owns directory creation so a
+            // no-flock failure cannot leave Ralph state directories behind.
+            prdPath = getSessionPrdPath(directory, sessionId);
         }
         catch {
             return false;
         }
-        prdPath = getSessionPrdPath(directory, sessionId);
     }
     else {
         // Backward compatibility for direct callers without a session ID:
@@ -170,13 +369,158 @@ export function writePrd(directory, prd, sessionId) {
         prdPath = findPrdPath(directory) ?? getOmcPrdPath(directory);
     }
     try {
-        mkdirSync(dirname(prdPath), { recursive: true });
-        writeFileSync(prdPath, JSON.stringify(prd, null, 2));
-        return true;
+        const result = withStateFileMutationLock(prdPath, () => {
+            return writePrdAtRevision(prdPath, prd, expectedRevision);
+        }, true);
+        return result.acquired && result.value === true;
     }
     catch {
         return false;
     }
+}
+/** Publish a derived PRD only if its governing-criteria generation is still current. */
+export function writePrdIfRevision(directory, prd, expectedRevision, sessionId) {
+    const prdPath = findPrdPath(directory, sessionId);
+    if (!prdPath)
+        return false;
+    const result = withStateFileMutationLock(prdPath, () => {
+        try {
+            return writePrdAtRevision(prdPath, prd, expectedRevision);
+        }
+        catch {
+            return false;
+        }
+    }, true);
+    return result.acquired && result.value === true;
+}
+/**
+ * Publish a PRD. Callers that already hold the mutation lock use this helper
+ * so the final compare sits immediately next to the atomic write.
+ *
+ * When `expectedRevision` is omitted, an existing readable PRD may be
+ * rewritten. When it is provided, the on-disk generation must still match.
+ */
+function writePrdAtRevision(prdPath, prd, expectedRevision) {
+    const current = readPrdFromPath(prdPath).prd;
+    if ((existsSync(prdPath) && !current)
+        || (current && expectedRevision !== undefined && getPrdRevision(current) !== expectedRevision)) {
+        return false;
+    }
+    atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
+    return true;
+}
+function mutatePrd(directory, sessionId, mutate) {
+    const prdPath = sessionId ? getSessionPrdPath(directory, sessionId) : findPrdPath(directory);
+    if (!prdPath)
+        return undefined;
+    const result = withStateFileMutationLock(prdPath, () => {
+        const sourcePath = existsSync(prdPath) ? prdPath : findPrdPath(directory);
+        const prd = sourcePath ? readPrdFromPath(sourcePath).prd : undefined;
+        if (!prd)
+            return undefined;
+        const value = mutate(prd);
+        if (value === undefined)
+            return undefined;
+        atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
+        return value;
+    }, true);
+    return result.acquired ? result.value : undefined;
+}
+/**
+ * Consume an architect approval only when the story still has the exact
+ * governing-criteria revision that was submitted for review. The PRD lock is
+ * shared with amendments so a stale approval cannot overwrite an amendment's
+ * reset ledger with a full-file write.
+ */
+export function consumeStoryArchitectApproval(directory, storyId, expectedCriteriaRevision, sessionId, beforeCommit, notes, consume, afterRevalidation) {
+    const prdPath = findPrdPath(directory, sessionId);
+    if (!prdPath)
+        return false;
+    const result = withStateFileMutationLock(prdPath, () => {
+        beforeCommit?.();
+        const initial = readPrdFromPath(prdPath).prd;
+        const story = initial?.userStories.find(candidate => candidate.id === storyId);
+        if (!initial || !story || !story.passes || story.governingCriteriaRevision !== expectedCriteriaRevision
+            || (story.completionCriteriaRevision !== expectedCriteriaRevision
+                && !(story.completionCriteriaRevision === undefined && story.criterionAmendments === undefined))) {
+            return false;
+        }
+        try {
+            // Revalidate before consuming the request so a direct raw amendment in
+            // the deterministic post-revalidation hook remains retryable. The
+            // request callback is deliberately deferred until this CAS boundary.
+            const validatedRevision = getPrdRevision(initial);
+            afterRevalidation?.();
+            const validated = readPrdFromPath(prdPath).prd;
+            const validatedStory = validated?.userStories.find(candidate => candidate.id === storyId);
+            if (!validated || getPrdRevision(validated) !== validatedRevision
+                || !validatedStory || validatedStory.governingCriteriaRevision !== expectedCriteriaRevision
+                || validatedStory.completionCriteriaRevision !== expectedCriteriaRevision)
+                return false;
+            if (!(consume?.() ?? true))
+                return false;
+            // The request callback may perform an unrelated direct update (for
+            // example, another story's notes). Re-read after it and publish from
+            // that generation rather than the earlier approval snapshot.
+            const current = readPrdFromPath(prdPath).prd;
+            const currentStory = current?.userStories.find(candidate => candidate.id === storyId);
+            if (!current || !currentStory || currentStory.governingCriteriaRevision !== expectedCriteriaRevision
+                || currentStory.completionCriteriaRevision !== expectedCriteriaRevision)
+                return false;
+            const currentRevision = getPrdRevision(current);
+            currentStory.completionCriteriaRevision = expectedCriteriaRevision;
+            currentStory.architectVerified = true;
+            currentStory.architectVerificationCriteriaRevision = expectedCriteriaRevision;
+            if (notes)
+                currentStory.notes = notes;
+            return writePrdAtRevision(prdPath, current, currentRevision);
+        }
+        catch {
+            return false;
+        }
+    }, true);
+    return result.acquired && result.value === true;
+}
+/** Atomically rechecks the complete PRD revision before final approval is consumed. */
+export function consumeCompletionArchitectApproval(directory, expectedCriteriaRevision, sessionId, consume, beforeCommit, afterConsume, afterRevalidation) {
+    const prdPath = findPrdPath(directory, sessionId);
+    if (!prdPath)
+        return false;
+    const result = withStateFileMutationLock(prdPath, () => {
+        const prd = readPrdFromPath(prdPath).prd;
+        const current = prd !== undefined
+            && getPrdGoverningCriteriaRevision(prd) === expectedCriteriaRevision
+            && getPrdStatus(prd).allComplete;
+        if (!current)
+            return false;
+        beforeCommit?.();
+        const revalidated = readPrdFromPath(prdPath).prd;
+        const valid = revalidated !== undefined
+            && getPrdGoverningCriteriaRevision(revalidated) === expectedCriteriaRevision
+            && getPrdStatus(revalidated).allComplete;
+        if (!valid)
+            return false;
+        const revalidatedRevision = getPrdRevision(revalidated);
+        afterRevalidation?.();
+        const beforeConsume = readPrdFromPath(prdPath).prd;
+        const ready = beforeConsume !== undefined
+            && getPrdRevision(beforeConsume) === revalidatedRevision
+            && getPrdGoverningCriteriaRevision(beforeConsume) === expectedCriteriaRevision
+            && getPrdStatus(beforeConsume).allComplete;
+        if (!ready)
+            return false;
+        // Consume only after the final pre-request CAS so a direct raw amendment
+        // cannot strand the verification request or trigger terminal cleanup.
+        if (!(consume?.() ?? true))
+            return false;
+        const afterRequest = readPrdFromPath(prdPath).prd;
+        const stillValid = afterRequest !== undefined
+            && getPrdRevision(afterRequest) === revalidatedRevision
+            && getPrdGoverningCriteriaRevision(afterRequest) === expectedCriteriaRevision
+            && getPrdStatus(afterRequest).allComplete;
+        return stillValid && (afterConsume?.() ?? true);
+    }, true);
+    return result.acquired && result.value === true;
 }
 // ============================================================================
 // PRD Status & Operations
@@ -203,39 +547,35 @@ export function getPrdStatus(prd) {
  * Mark a story as complete (passes: true)
  */
 export function markStoryComplete(directory, storyId, notes, sessionId) {
-    const prd = readPrd(directory, sessionId);
-    if (!prd) {
-        return false;
-    }
-    const story = prd.userStories.find(s => s.id === storyId);
-    if (!story) {
-        return false;
-    }
-    story.passes = true;
-    story.architectVerified = false;
-    if (notes) {
-        story.notes = notes;
-    }
-    return writePrd(directory, prd, sessionId);
+    return mutatePrd(directory, sessionId, prd => {
+        const story = prd.userStories.find(s => s.id === storyId);
+        if (!story)
+            return undefined;
+        story.passes = true;
+        story.architectVerified = false;
+        story.completionCriteriaRevision = getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
+        story.architectVerificationCriteriaRevision = undefined;
+        if (notes)
+            story.notes = notes;
+        return true;
+    }) === true;
 }
 /**
  * Mark a story as incomplete (passes: false)
  */
 export function markStoryIncomplete(directory, storyId, notes, sessionId) {
-    const prd = readPrd(directory, sessionId);
-    if (!prd) {
-        return false;
-    }
-    const story = prd.userStories.find(s => s.id === storyId);
-    if (!story) {
-        return false;
-    }
-    story.passes = false;
-    story.architectVerified = false;
-    if (notes) {
-        story.notes = notes;
-    }
-    return writePrd(directory, prd, sessionId);
+    return mutatePrd(directory, sessionId, prd => {
+        const story = prd.userStories.find(s => s.id === storyId);
+        if (!story)
+            return undefined;
+        story.passes = false;
+        story.architectVerified = false;
+        story.completionCriteriaRevision = undefined;
+        story.architectVerificationCriteriaRevision = undefined;
+        if (notes)
+            story.notes = notes;
+        return true;
+    }) === true;
 }
 /**
  * Mark a story as architect-verified after reviewer approval
@@ -249,11 +589,10 @@ export function markStoryArchitectVerified(directory, storyId, notes, sessionId)
     if (!story) {
         return false;
     }
-    story.architectVerified = true;
-    if (notes) {
-        story.notes = notes;
-    }
-    return writePrd(directory, prd, sessionId);
+    const governingCriteriaRevision = getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
+    if (!story.passes || story.completionCriteriaRevision !== governingCriteriaRevision)
+        return false;
+    return consumeStoryArchitectApproval(directory, storyId, governingCriteriaRevision, sessionId, undefined, notes);
 }
 /**
  * Get a specific story by ID
@@ -275,6 +614,91 @@ export function getNextStory(directory, sessionId) {
     }
     const status = getPrdStatus(prd);
     return status.nextStory;
+}
+/**
+ * Apply an evidence-preserving criterion amendment to a story.
+ *
+ * The original criterion must currently be active. On success the original is
+ * removed from `acceptanceCriteria` (a corrected criterion is inserted at the
+ * original's position for kind 'replaced'), and the amendment is appended to
+ * the story's `criterionAmendments` ledger with bounded proof, reason,
+ * authority, and timestamp. The changed contract invalidates prior completion
+ * and architecture approval. There is no silent deletion path: an original can
+ * only leave the active list through this ledger or a direct hand edit that
+ * fails closed on the next read.
+ */
+function applyCriterionAmendment(directory, storyId, kind, input, sessionId) {
+    if (!findPrdPath(directory, sessionId))
+        return { ok: false, error: 'prd-not-found' };
+    const original = input.original;
+    if (typeof original !== 'string' || original.trim() === '')
+        return { ok: false, error: 'original-not-active' };
+    const reason = input.reason?.trim() ?? '';
+    const evidence = input.evidence?.trim() ?? '';
+    const authority = input.authority?.trim() ?? '';
+    if (reason === '') {
+        return { ok: false, error: 'reason-required' };
+    }
+    if (evidence === '') {
+        return { ok: false, error: 'evidence-required' };
+    }
+    if (evidence.length < MIN_CRITERION_EVIDENCE_LENGTH) {
+        return { ok: false, error: 'evidence-too-short' };
+    }
+    if (authority === '') {
+        return { ok: false, error: 'authority-required' };
+    }
+    const replacement = input.replacement?.trim();
+    if (kind === 'replaced' && (replacement === undefined || replacement === '')) {
+        return { ok: false, error: 'replacement-required' };
+    }
+    if (kind === 'superseded' && input.replacement !== undefined) {
+        return { ok: false, error: 'replacement-not-allowed' };
+    }
+    const amendment = {
+        kind,
+        original,
+        replacement: kind === 'replaced' ? replacement : undefined,
+        reason,
+        evidence,
+        authority,
+        timestamp: input.timestamp ?? new Date().toISOString()
+    };
+    const result = mutatePrd(directory, sessionId, prd => {
+        const story = prd.userStories.find(candidate => candidate.id === storyId);
+        if (!story)
+            return { ok: false, error: 'story-not-found' };
+        const originalIndex = story.acceptanceCriteria.indexOf(original);
+        if (originalIndex < 0)
+            return { ok: false, error: 'original-not-active' };
+        const nextCriteria = [...story.acceptanceCriteria];
+        nextCriteria.splice(originalIndex, 1);
+        if (kind === 'replaced' && replacement !== undefined)
+            nextCriteria.splice(originalIndex, 0, replacement);
+        story.acceptanceCriteria = nextCriteria;
+        story.criterionAmendments = [...(story.criterionAmendments ?? []), amendment];
+        story.passes = false;
+        story.architectVerified = false;
+        story.completionCriteriaRevision = undefined;
+        story.architectVerificationCriteriaRevision = undefined;
+        return { ok: true, amendment };
+    });
+    return result ?? { ok: false, error: 'write-failed' };
+}
+/**
+ * Amend (replace) an active acceptance criterion with a corrected one.
+ * The original is retained verbatim in the amendment ledger.
+ */
+export function amendCriterion(directory, storyId, input, sessionId) {
+    return applyCriterionAmendment(directory, storyId, 'replaced', input, sessionId);
+}
+/**
+ * Supersede an active acceptance criterion with no replacement. The original
+ * no longer governs completion, but is retained verbatim with proof, reason,
+ * authority, and timestamp in the amendment ledger.
+ */
+export function supersedeCriterion(directory, storyId, input, sessionId) {
+    return applyCriterionAmendment(directory, storyId, 'superseded', input, sessionId);
 }
 /**
  * Create a new PRD with user stories from a task description
@@ -366,6 +790,20 @@ export function ensurePrdForStartup(directory, project, branchName, description,
             error: `${existingPath} must contain at least one user story for Ralph to start.`
         };
     }
+    // Existing PRDs must prove that the safety-critical mutation path is
+    // available before Ralph publishes any loop state.  Non-exclusive mode
+    // state writes intentionally remain portable, but PRD mutations fail closed
+    // when the runtime cannot provide an exclusive lock (for example on a
+    // platform without `flock`).
+    const lockProbe = withStateFileMutationLock(existingPath, () => true, true);
+    if (!lockProbe.acquired) {
+        return {
+            ok: false,
+            created: false,
+            path: existingPath,
+            error: `Ralph requires an exclusive lock for ${PRD_FILENAME}, but the current runtime cannot provide one.`
+        };
+    }
     if (sessionId) {
         const sessionPath = getSessionPrdPath(directory, sessionId);
         if (existingPath !== sessionPath) {
@@ -413,6 +851,23 @@ export function formatPrdStatus(status) {
     return lines.join('\n');
 }
 /**
+ * Format a story's amendment ledger (struck-through originals with proof).
+ * Returns an empty string when the story has no amendments.
+ */
+export function formatCriterionAmendments(story) {
+    const amendments = story.criterionAmendments;
+    if (!amendments || amendments.length === 0) {
+        return '';
+    }
+    const lines = ['**Amended/Superseded Criteria (evidence ledger):**'];
+    for (const amendment of amendments) {
+        const action = amendment.kind === 'replaced' ? 'replaced by' : 'superseded';
+        const target = amendment.kind === 'replaced' ? `: ${amendment.replacement}` : '';
+        lines.push(`- ~~${amendment.original}~~ — ${action}${target} (reason: ${amendment.reason}; evidence: ${amendment.evidence}; authority: ${amendment.authority}; at: ${amendment.timestamp})`);
+    }
+    return lines.join('\n');
+}
+/**
  * Format a story for display
  */
 export function formatStory(story) {
@@ -432,6 +887,11 @@ export function formatStory(story) {
     story.acceptanceCriteria.forEach((c, i) => {
         lines.push(`${i + 1}. ${c}`);
     });
+    const amendments = formatCriterionAmendments(story);
+    if (amendments) {
+        lines.push('');
+        lines.push(amendments);
+    }
     if (story.notes) {
         lines.push('');
         lines.push(`**Notes:** ${story.notes}`);
@@ -467,6 +927,10 @@ export function formatPrd(prd) {
  * Format next story prompt for injection into ralph
  */
 export function formatNextStoryPrompt(story, prdPath) {
+    const amendments = formatCriterionAmendments(story);
+    const amendmentSection = amendments ? `\n${amendments}\n` : '';
+    const governingCriteriaRevision = story.governingCriteriaRevision
+        ?? getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
     return `<current-story>
 
 ## Current Story: ${story.id} - ${story.title}
@@ -475,13 +939,14 @@ ${story.description}
 
 **Acceptance Criteria:**
 ${story.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}
-
+${amendmentSection}
 ${prdPath ? `**Active PRD file:** ${prdPath}\n\n` : ''}**Instructions:**
 1. Implement this story completely
 2. Verify ALL acceptance criteria are met
 3. Run quality checks (tests, typecheck, lint)
-4. When complete, mark story as passes: true in the active PRD file
-5. If ALL stories are done, run \`/oh-my-copilot:cancel\` to cleanly exit ralph mode and clean up all state files
+4. When complete, create a revision-bound completion claim in the active PRD file: set \`passes\` to true and set \`completionCriteriaRevision\` to \`${governingCriteriaRevision}\` (the current \`governingCriteriaRevision\`). Do not mark \`architectVerified\`; reviewer approval does that only after verification.
+5. If implementation proves an acceptance criterion false, amend or supersede it with evidence instead of silently deleting it or claiming it passes (see the amendment ledger above and the ralph skill)
+6. If ALL stories are done, run \`/oh-my-copilot:cancel\` to cleanly exit ralph mode and clean up all state files
 
 </current-story>
 

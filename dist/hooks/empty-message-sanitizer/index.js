@@ -144,7 +144,7 @@ export function sanitizeMessages(input, config) {
     };
 }
 /**
- * Create empty message sanitizer hook for Copilot CLI shell hooks
+ * Create empty message sanitizer hook for Claude Code shell hooks
  *
  * This hook ensures all messages have valid content before being sent to the API.
  * It should be called at the last stage of message processing.

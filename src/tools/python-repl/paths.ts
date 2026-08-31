@@ -54,10 +54,8 @@ function isSecureRuntimeDir(dir: string): boolean {
   try {
     const stat = fs.lstatSync(dir);
     if (!stat.isDirectory() || stat.isSymbolicLink()) return false;
-    // Skip uid check on Windows (process.getuid is undefined, uid semantics differ)
-    if (process.platform !== 'win32' && stat.uid !== process.getuid?.()) return false;
-    // Skip mode check on Windows (chmod is a no-op, mode is always 0o666 or similar)
-    if (process.platform !== 'win32' && (stat.mode & 0o777) !== 0o700) return false;
+    if (stat.uid !== process.getuid?.()) return false;
+    if ((stat.mode & 0o777) !== 0o700) return false;
     return true;
   } catch {
     return false;
@@ -70,7 +68,7 @@ function isSecureRuntimeDir(dir: string): boolean {
  * Uses OS-appropriate temp directories.
  *
  * Priority:
- * 1. XDG_RUNTIME_DIR/omg (Linux standard, usually /run/user/{uid})
+ * 1. XDG_RUNTIME_DIR/omc (Linux standard, usually /run/user/{uid})
  * 2. Platform-specific user cache directory
  * 3. os.tmpdir() fallback
  *
@@ -79,31 +77,31 @@ function isSecureRuntimeDir(dir: string): boolean {
  * @example
  * getRuntimeDir();
  * // Linux with XDG: '/run/user/1000/omc'
- * // macOS: '~/Library/Caches/omg/runtime'
- * // Fallback: '/tmp/omg/runtime'
+ * // macOS: '~/Library/Caches/omc/runtime'
+ * // Fallback: '/tmp/omc/runtime'
  */
 export function getRuntimeDir(): string {
   // Priority 1: XDG_RUNTIME_DIR (Linux standard, usually /run/user/{uid})
   const xdgRuntime = process.env.XDG_RUNTIME_DIR;
   if (xdgRuntime && isSecureRuntimeDir(xdgRuntime)) {
-    return path.join(xdgRuntime, "omg");
+    return path.join(xdgRuntime, "omc");
   }
 
   // Priority 2: Platform-specific user cache directory
   const platform = process.platform;
   if (platform === "darwin") {
-    return path.join(os.homedir(), "Library", "Caches", "omg", "runtime");
+    return path.join(os.homedir(), "Library", "Caches", "omc", "runtime");
   } else if (platform === "linux") {
     // Linux fallback - use /tmp (XDG validation failed)
-    return path.join("/tmp", "omg", "runtime");
+    return path.join("/tmp", "omc", "runtime");
   } else if (platform === "win32") {
     // Windows: use LOCALAPPDATA (e.g., C:\Users\<user>\AppData\Local)
     const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
-    return path.join(localAppData, "omg", "runtime");
+    return path.join(localAppData, "omc", "runtime");
   }
 
   // Priority 3: Final fallback to os.tmpdir() for any other platform
-  return path.join(os.tmpdir(), "omg", "runtime");
+  return path.join(os.tmpdir(), "omc", "runtime");
 }
 
 // =============================================================================

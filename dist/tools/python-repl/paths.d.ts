@@ -10,7 +10,7 @@
  * Uses OS-appropriate temp directories.
  *
  * Priority:
- * 1. XDG_RUNTIME_DIR/omg (Linux standard, usually /run/user/{uid})
+ * 1. XDG_RUNTIME_DIR/omc (Linux standard, usually /run/user/{uid})
  * 2. Platform-specific user cache directory
  * 3. os.tmpdir() fallback
  *
@@ -19,8 +19,8 @@
  * @example
  * getRuntimeDir();
  * // Linux with XDG: '/run/user/1000/omc'
- * // macOS: '~/Library/Caches/omg/runtime'
- * // Fallback: '/tmp/omg/runtime'
+ * // macOS: '~/Library/Caches/omc/runtime'
+ * // Fallback: '/tmp/omc/runtime'
  */
 export declare function getRuntimeDir(): string;
 /**

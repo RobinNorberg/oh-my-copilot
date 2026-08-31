@@ -5,14 +5,14 @@ import {
   rewriteOmcCliInvocations,
 } from '../utils/omc-cli-rendering.js';
 
-describe('omcp CLI rendering', () => {
+describe('omc CLI rendering', () => {
   it('uses omcp when the binary is available', () => {
     expect(resolveOmcCliPrefix({ omcAvailable: true, env: {} as NodeJS.ProcessEnv })).toBe('omcp');
     expect(formatOmcCliInvocation('team api claim-task', { omcAvailable: true, env: {} as NodeJS.ProcessEnv }))
       .toBe('omcp team api claim-task');
   });
 
-  it('falls back to the plugin bridge when omcp is unavailable but CLAUDE_PLUGIN_ROOT is set', () => {
+  it('falls back to the plugin bridge when omc is unavailable but CLAUDE_PLUGIN_ROOT is set', () => {
     const env = { CLAUDE_PLUGIN_ROOT: '/tmp/plugin-root' } as NodeJS.ProcessEnv;
     expect(resolveOmcCliPrefix({ omcAvailable: false, env }))
       .toBe('node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs');
@@ -36,12 +36,6 @@ describe('omcp CLI rendering', () => {
   });
 
   it('routes ask invocations through the plugin bridge inside an active Claude session when CLAUDE_PLUGIN_ROOT is set', () => {
-    // Previously, ask flows were pinned to the omcp binary inside a Claude session
-    // to avoid nested bridge launches. That guard broke /ccg ask routing whenever
-    // PATH lacked omcp (fresh shells, CI, workspace setups) — the intended prefix
-    // fell through to a binary that did not exist. The standard resolution path
-    // already prefers omcp when available and falls back to the plugin bridge
-    // otherwise, so the guard is removed and ask flows follow the same rules.
     const env = {
       CLAUDE_PLUGIN_ROOT: '/tmp/plugin-root',
       CLAUDECODE: '1',
@@ -62,9 +56,8 @@ describe('omcp CLI rendering', () => {
     expect(output).toContain('> node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask gemini --prompt "improve docs"');
   });
 
-  it('rewrites omc to omcp when the binary is available', () => {
-    const input = 'Use `omc team status demo` and\nomc team wait demo';
-    const expected = 'Use `omcp team status demo` and\nomcp team wait demo';
-    expect(rewriteOmcCliInvocations(input, { omcAvailable: true, env: {} as NodeJS.ProcessEnv })).toBe(expected);
+  it('leaves text unchanged when omcp remains the selected prefix', () => {
+    const input = 'Use `omcp team status demo` and\nomcp team wait demo';
+    expect(rewriteOmcCliInvocations(input, { omcAvailable: true, env: {} as NodeJS.ProcessEnv })).toBe(input);
   });
 });

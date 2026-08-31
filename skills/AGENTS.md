@@ -19,10 +19,8 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | File | Skill | Purpose |
 |-----------|-------|---------|
 | `autopilot/SKILL.md` | autopilot | Full autonomous execution from idea to working code |
-| `ultrawork/SKILL.md` | ultrawork | Maximum parallel agent execution |
 | `ralph/SKILL.md` | ralph | Persistence until verified complete |
 | `team/SKILL.md` | team | N coordinated agents with task claiming |
-| `ultraqa/SKILL.md` | ultraqa | QA cycling until goal met |
 
 ### Planning Skills
 
@@ -70,7 +68,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 |-----------|-------|---------|
 | `project-session-manager/SKILL.md` | project-session-manager (+ `psm` alias) | Isolated dev environments |
 | `writer-memory/SKILL.md` | writer-memory | Agentic memory for writers |
-| `release/SKILL.md` | release | Generic release assistant — analyzes repo CI/rules, caches in `.omcp/RELEASE_RULE.md`, guides the release |
+| `release/SKILL.md` | release | Generic release assistant — analyzes repo CI/rules, caches in `.omg/RELEASE_RULE.md`, guides the release |
 
 ## For AI Agents
 
@@ -90,7 +88,7 @@ model: sonnet    # Optional: model override
 pipeline: [skill-name, follow-up-skill]  # Optional: standardized multi-skill flow
 next-skill: follow-up-skill              # Optional: explicit handoff target
 next-skill-args: --direct                # Optional: arguments for the next skill
-handoff: .omcp/plans/example.md           # Optional: artifact/context handed to next skill
+handoff: .omg/plans/example.md           # Optional: artifact/context handed to next skill
 ---
 
 # Skill Name
@@ -176,7 +174,7 @@ None - pure markdown files.
 
 | Category | Skills | Trigger Keywords |
 |----------|--------|------------------|
-| Execution | autopilot, ultrawork, ralph, team, ultraqa | "autopilot", "ulw", "ralph", "team" |
+| Execution | autopilot, ralph, team | "autopilot", "ralph", "team" |
 | Cleanup | ai-slop-cleaner | "deslop", "anti-slop", cleanup/refactor + slop smells |
 | Planning | omc-plan, ralplan, deep-interview, ralph-init | "plan this", "interview me", "ouroboros" |
 | Exploration | deepinit, sciomc, external-context | "deepinit", "research" |
@@ -190,7 +188,6 @@ Some skills activate automatically based on context:
 | Skill | Auto-Trigger Condition |
 |-------|----------------------|
 | autopilot | "autopilot", "build me", "I want a" |
-| ultrawork | "ulw", "ultrawork" |
 | ralph | "ralph", "don't stop until" |
 | deep-interview | "deep interview", "interview me", "ouroboros", "don't assume" |
 | cancel | "stop", "cancel", "abort" |

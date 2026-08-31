@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { omcToolsServer, omcToolNames, getOmcToolNames } from '../mcp/omc-tools-server.js';
-const totalTools = 47;
-const withoutLsp = 35;
-const withoutAst = 45;
-const withoutPython = 46;
-const withoutSkills = 44;
+const interopEnabled = process.env.OMC_INTEROP_TOOLS_ENABLED === '1';
+const totalTools = interopEnabled ? 63 : 55;
+const withoutLsp = interopEnabled ? 51 : 43;
+const withoutAst = interopEnabled ? 61 : 53;
+const withoutPython = interopEnabled ? 62 : 54;
+const withoutSkills = interopEnabled ? 60 : 52;
 describe('omc-tools-server', () => {
     describe('omcToolNames', () => {
         it('should export expected tools total', () => {
@@ -20,6 +21,9 @@ describe('omc-tools-server', () => {
         });
         it('should have python_repl tool', () => {
             expect(omcToolNames).toContain('mcp__t__python_repl');
+        });
+        it('should have session_search tool', () => {
+            expect(omcToolNames).toContain('mcp__t__session_search');
         });
         it('should use correct MCP naming format', () => {
             omcToolNames.forEach(name => {
@@ -55,6 +59,14 @@ describe('omc-tools-server', () => {
         it('should have 3 skills tools', () => {
             const skillsTools = omcToolNames.filter(n => n.includes('load_omc_skills') || n.includes('list_omc_skills'));
             expect(skillsTools).toHaveLength(3);
+        });
+        it('supports includeInterop filter option', () => {
+            const withInterop = getOmcToolNames({ includeInterop: true });
+            const withoutInterop = getOmcToolNames({ includeInterop: false });
+            if (interopEnabled) {
+                expect(withInterop.some(n => n.includes('interop_'))).toBe(true);
+            }
+            expect(withoutInterop.some(n => n.includes('interop_'))).toBe(false);
         });
     });
     describe('omcToolsServer', () => {

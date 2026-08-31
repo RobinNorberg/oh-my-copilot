@@ -10,6 +10,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 import type { McpWorkerMember, ConfigProbeResult } from './types.js';
 import { sanitizeName } from './tmux-session.js';
 import { atomicWriteJson, validateResolvedPath } from './fs-utils.js';
@@ -24,13 +25,13 @@ function configPath(teamName: string): string {
 }
 
 function shadowRegistryPath(workingDirectory: string): string {
-  const result = join(workingDirectory, '.omcp', 'state', 'team-mcp-workers.json');
-  validateResolvedPath(result, join(workingDirectory, '.omcp', 'state'));
+  const result = join(getOmcRoot(workingDirectory), 'state', 'team-mcp-workers.json');
+  validateResolvedPath(result, join(getOmcRoot(workingDirectory), 'state'));
   return result;
 }
 
 function probeResultPath(workingDirectory: string): string {
-  return join(workingDirectory, '.omcp', 'state', 'config-probe-result.json');
+  return join(getOmcRoot(workingDirectory), 'state', 'config-probe-result.json');
 }
 
 // --- Probe result cache ---
@@ -70,14 +71,14 @@ export function getRegistrationStrategy(workingDirectory: string): 'config' | 's
  *
  * Strategy auto-selected based on cached probe result:
  * - 'config': Write member to config.json (preferred)
- * - 'shadow': Write member to .omcp/state/team-mcp-workers.json (fallback)
+ * - 'shadow': Write member to .omg/state/team-mcp-workers.json (fallback)
  *
  * Both paths use atomic write (temp + rename) to prevent corruption.
  */
 export function registerMcpWorker(
   teamName: string,
   workerName: string,
-  provider: 'codex' | 'gemini' | 'copilot',
+  provider: 'codex' | 'gemini' | 'claude',
   model: string,
   tmuxTarget: string,
   cwd: string,

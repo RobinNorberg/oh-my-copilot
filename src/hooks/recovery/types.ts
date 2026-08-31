@@ -1,7 +1,7 @@
 /**
  * Unified Recovery Types
  *
- * Type definitions for all recovery mechanisms in Copilot CLI.
+ * Type definitions for all recovery mechanisms in Claude Code.
  */
 
 /**
@@ -219,14 +219,9 @@ export const TRUNCATE_CONFIG = {
   charsPerToken: 4,
 } as const;
 
-// ============================================================================
-// Orchestration Recovery Types (Feature 4)
-// ============================================================================
-
 /**
- * Orchestration-level failure types for multi-agent workflows.
- * These classify errors at the orchestration level (ralph, ultrawork, team)
- * rather than the individual tool level.
+ * Orchestration-level failure classification. Fork-specific: models failures at
+ * the orchestration level rather than the individual tool level.
  */
 export type OrchestrationFailureType =
   | 'rate_limited'
@@ -280,7 +275,7 @@ export interface RecoveryActionResult {
   reason: string;
   /** Suggested backoff delay in ms (for retry_with_backoff) */
   backoffMs?: number;
-  /** Whether this is a circular fix (integrates with Feature 2) */
+  /** Whether this is a circular fix (integrates with circular-fix-detector) */
   isCircularFix?: boolean;
 }
 

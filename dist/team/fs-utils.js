@@ -6,7 +6,7 @@
  * All directory creates default to 0o700 (owner-only access).
  * Atomic writes use PID+timestamp temp files to prevent collisions.
  */
-import { writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync, openSync, writeSync, closeSync, realpathSync, constants } from 'fs';
+import { writeFileSync, existsSync, mkdirSync, renameSync, openSync, writeSync, closeSync, realpathSync, constants } from 'fs';
 import { dirname, resolve, relative, basename, join } from 'path';
 /** Atomic write: write JSON to temp file with permissions, then rename (prevents corruption on crash) */
 export function atomicWriteJson(filePath, data, mode = 0o600) {
@@ -14,34 +14,8 @@ export function atomicWriteJson(filePath, data, mode = 0o600) {
     if (!existsSync(dir))
         mkdirSync(dir, { recursive: true, mode: 0o700 });
     const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-    const serialized = JSON.stringify(data, null, 2) + '\n';
-    writeFileSync(tmpPath, serialized, { encoding: 'utf-8', mode });
-    try {
-        renameSync(tmpPath, filePath);
-    }
-    catch (err) {
-        // On Windows, renameSync over an existing file can fail with EPERM when the
-        // target is held open (e.g. by an antivirus scan or another process).
-        // Fall back to a direct overwrite to preserve best-effort atomicity.
-        if (process.platform === 'win32' && err && typeof err === 'object' && 'code' in err && err.code === 'EPERM') {
-            try {
-                writeFileSync(filePath, serialized, { encoding: 'utf-8', mode });
-            }
-            finally {
-                try {
-                    unlinkSync(tmpPath);
-                }
-                catch { /* ignore cleanup failure */ }
-            }
-        }
-        else {
-            try {
-                unlinkSync(tmpPath);
-            }
-            catch { /* ignore */ }
-            throw err;
-        }
-    }
+    writeFileSync(tmpPath, JSON.stringify(data, null, 2) + '\n', { encoding: 'utf-8', mode });
+    renameSync(tmpPath, filePath);
 }
 /** Write file with explicit permission mode */
 export function writeFileWithMode(filePath, data, mode = 0o600) {

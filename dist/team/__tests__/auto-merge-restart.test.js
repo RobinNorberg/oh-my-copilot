@@ -42,7 +42,7 @@ describe('M6: restart recovery', () => {
         // Should detect the orphaned rebase
         expect(result.orphanedRebases).toContain('worker-1');
         // Worker-1 should have received a recovery message
-        const workerInboxPath = join(fixture.repoRoot, '.omcp', 'state', 'team', fixture.teamName, 'workers', 'worker-1', 'inbox.md');
+        const workerInboxPath = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName, 'workers', 'worker-1', 'inbox.md');
         expect(existsSync(workerInboxPath)).toBe(true);
         const inboxContent = readFileSync(workerInboxPath, 'utf-8');
         expect(inboxContent).toContain('Runtime restart recovery');
@@ -50,7 +50,7 @@ describe('M6: restart recovery', () => {
     });
     it('recoverFromRestart loads persisted SHA state (no false fan-out on first poll after restart)', async () => {
         // Seed persisted state with SHAs for both workers
-        const stateDir = join(fixture.repoRoot, '.omcp', 'state', 'team', fixture.teamName);
+        const stateDir = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName);
         mkdirSync(stateDir, { recursive: true });
         const persistedPath = join(stateDir, 'auto-merge-state.json');
         const worker1Sha = fixture.getBranchSha(fixture.workers[0].branch);
@@ -97,7 +97,7 @@ describe('M6: restart recovery', () => {
         // Commit something on worker-1 first
         const sha = await fixture.commitFile('worker-1', 'worker-1/seed.ts', '// seeded\n');
         // Write persisted state that already has this SHA
-        const stateDir = join(fixture.repoRoot, '.omcp', 'state', 'team', fixture.teamName);
+        const stateDir = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName);
         mkdirSync(stateDir, { recursive: true });
         const persistedPath = join(stateDir, 'auto-merge-state.json');
         atomicWriteJson(persistedPath, { lastShas: { 'worker-1': sha } });

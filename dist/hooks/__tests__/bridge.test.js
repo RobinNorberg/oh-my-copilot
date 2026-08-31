@@ -142,9 +142,9 @@ describe('processHook - Environment Kill-Switches', () => {
             const start = Date.now();
             await processHook('keyword-detector', input);
             const duration = Date.now() - start;
-            // Should complete in under 2000ms (generous threshold for slow CI/Windows environments)
+            // Should complete in under 500ms (generous threshold for CI environments)
             // The actual overhead should be negligible (< 1ms)
-            expect(duration).toBeLessThan(2000);
+            expect(duration).toBeLessThan(500);
         });
         it('should have minimal overhead when DISABLE_OMC=1', async () => {
             process.env.DISABLE_OMC = '1';
@@ -195,6 +195,107 @@ describe('processHook - Environment Kill-Switches', () => {
             }
         });
     });
+    describe('Bedrock/Vertex model deny on Agent tool (issue #1415)', () => {
+        it('should deny Agent calls with model param when forceInherit is enabled', async () => {
+            process.env.CLAUDE_CODE_USE_BEDROCK = '1';
+            const input = {
+                sessionId: 'test-session',
+                prompt: 'test',
+                directory: '/tmp/test',
+                toolName: 'Agent',
+                toolInput: {
+                    description: 'Test agent',
+                    prompt: 'Do something',
+                    subagent_type: 'oh-my-copilot:executor',
+                    model: 'sonnet',
+                },
+            };
+            const result = await processHook('pre-tool-use', input);
+            expect(result).toHaveProperty('hookSpecificOutput');
+            const output = result.hookSpecificOutput;
+            expect(output.permissionDecision).toBe('deny');
+            expect(output.permissionDecisionReason).toContain('MODEL ROUTING');
+            expect(output.permissionDecisionReason).toContain('Agent');
+        });
+        it('should deny Task calls with model param when forceInherit is enabled', async () => {
+            process.env.CLAUDE_CODE_USE_BEDROCK = '1';
+            const input = {
+                sessionId: 'test-session',
+                prompt: 'test',
+                directory: '/tmp/test',
+                toolName: 'Task',
+                toolInput: {
+                    description: 'Test task',
+                    prompt: 'Do something',
+                    subagent_type: 'oh-my-copilot:executor',
+                    model: 'opus',
+                },
+            };
+            const result = await processHook('pre-tool-use', input);
+            expect(result).toHaveProperty('hookSpecificOutput');
+            const output = result.hookSpecificOutput;
+            expect(output.permissionDecision).toBe('deny');
+            expect(output.permissionDecisionReason).toContain('MODEL ROUTING');
+            expect(output.permissionDecisionReason).toContain('Task');
+        });
+        it('should allow Agent calls without model param on Bedrock', async () => {
+            process.env.CLAUDE_CODE_USE_BEDROCK = '1';
+            const input = {
+                sessionId: 'test-session',
+                prompt: 'test',
+                directory: '/tmp/test',
+                toolName: 'Agent',
+                toolInput: {
+                    description: 'Test agent',
+                    prompt: 'Do something',
+                    subagent_type: 'oh-my-copilot:executor',
+                },
+            };
+            const result = await processHook('pre-tool-use', input);
+            const output = result.hookSpecificOutput;
+            expect(output?.permissionDecision).not.toBe('deny');
+        });
+        it('should deny lowercase agent calls with model param when forceInherit is enabled', async () => {
+            process.env.CLAUDE_CODE_USE_BEDROCK = '1';
+            const input = {
+                sessionId: 'test-session',
+                prompt: 'test',
+                directory: '/tmp/test',
+                toolName: 'agent',
+                toolInput: {
+                    description: 'Test agent',
+                    prompt: 'Do something',
+                    subagent_type: 'oh-my-copilot:executor',
+                    model: 'sonnet',
+                },
+            };
+            const result = await processHook('pre-tool-use', input);
+            expect(result).toHaveProperty('hookSpecificOutput');
+            const output = result.hookSpecificOutput;
+            expect(output.permissionDecision).toBe('deny');
+            expect(output.permissionDecisionReason).toContain('MODEL ROUTING');
+        });
+    });
+    describe('post-tool-use delegation completion handling', () => {
+        it.each(['Task', 'Agent'])('should surface verification reminder for %s completions', async (toolName) => {
+            const input = {
+                sessionId: 'test-session',
+                prompt: 'test',
+                directory: '/tmp/test',
+                toolName,
+                toolInput: {
+                    description: 'Test agent',
+                    prompt: 'Do something',
+                    subagent_type: 'oh-my-copilot:executor',
+                },
+                toolOutput: 'done',
+            };
+            const result = await processHook('post-tool-use', input);
+            expect(result.continue).toBe(true);
+            expect(result.message).toContain('MANDATORY VERIFICATION - SUBAGENTS LIE');
+            expect(result.message).toContain('done');
+        });
+    });
     describe('sanitizeHookOutputForSerialization', () => {
         it('drops empty top-level message fields', () => {
             expect(sanitizeHookOutputForSerialization({
@@ -232,6 +333,25 @@ describe('processHook - Environment Kill-Switches', () => {
                     hookEventName: 'PreToolUse',
                     permissionDecision: 'deny',
                     permissionDecisionReason: 'Need confirmation',
+                },
+            });
+        });
+        it('preserves explicit /ralplan startup additionalContext under hookSpecificOutput', () => {
+            expect(sanitizeHookOutputForSerialization({
+                continue: true,
+                hookSpecificOutput: {
+                    hookEventName: 'UserPromptSubmit',
+                    additionalContext: '[RALPLAN INIT] Explicit /ralplan invoke detected during UserPromptSubmit.\n' +
+                        'Proceed immediately with the consensus planning workflow for:\n' +
+                        '/oh-my-copilot:ralplan issue #2622',
+                },
+            })).toEqual({
+                continue: true,
+                hookSpecificOutput: {
+                    hookEventName: 'UserPromptSubmit',
+                    additionalContext: '[RALPLAN INIT] Explicit /ralplan invoke detected during UserPromptSubmit.\n' +
+                        'Proceed immediately with the consensus planning workflow for:\n' +
+                        '/oh-my-copilot:ralplan issue #2622',
                 },
             });
         });

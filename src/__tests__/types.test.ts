@@ -4,8 +4,8 @@ import type { ModelType, AgentConfig, PluginConfig } from '../shared/types.js';
 describe('Type Tests', () => {
   describe('ModelType', () => {
     it('should accept valid model types', () => {
-      const validTypes: ModelType[] = ['sonnet', 'opus', 'haiku', 'inherit'];
-      expect(validTypes).toHaveLength(4);
+      const validTypes: ModelType[] = ['sonnet', 'opus', 'haiku', 'fable', 'inherit'];
+      expect(validTypes).toHaveLength(5);
     });
   });
 
@@ -55,14 +55,14 @@ describe('Type Tests', () => {
     it('should support agent configuration', () => {
       const config: PluginConfig = {
         agents: {
-          omg: { model: 'claude-sonnet-4-6' },
+          omc: { model: 'claude-sonnet-5' },
           architect: { model: 'claude-opus-4-8' },
           explore: { model: 'claude-haiku-4-5' },
           documentSpecialist: { model: 'claude-haiku-4-5' },
         },
       };
 
-      expect(config.agents?.omg?.model).toBe('claude-sonnet-4-6');
+      expect(config.agents?.omc?.model).toBe('claude-sonnet-5');
       expect(config.agents?.architect?.model).toBe('claude-opus-4-8');
     });
 
@@ -75,7 +75,7 @@ describe('Type Tests', () => {
           maxEscalations: 2,
           tierModels: {
             LOW: 'claude-haiku-4',
-            MEDIUM: 'claude-sonnet-4-6',
+            MEDIUM: 'claude-sonnet-5',
             HIGH: 'claude-opus-4-8',
           },
         },

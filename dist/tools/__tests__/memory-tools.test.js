@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { projectMemoryWriteTool } from '../memory-tools.js';
-import { getProjectIdentifier } from '../../lib/worktree-paths.js';
+import { projectMemoryAddDirectiveTool, projectMemoryAddNoteTool, projectMemoryWriteTool, } from '../memory-tools.js';
 const TEST_DIR = '/tmp/memory-tools-test';
 // Mock validateWorkingDirectory to allow test directory
 vi.mock('../../lib/worktree-paths.js', async () => {
@@ -15,12 +14,26 @@ vi.mock('../../lib/worktree-paths.js', async () => {
     };
 });
 describe('memory-tools payload validation', () => {
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = TEST_DIR;
+        process.env.USERPROFILE = TEST_DIR;
         delete process.env.OMC_STATE_DIR;
-        mkdirSync(join(TEST_DIR, '.omc'), { recursive: true });
+        mkdirSync(join(TEST_DIR, '.omg'), { recursive: true });
     });
     afterEach(() => {
         delete process.env.OMC_STATE_DIR;
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
         rmSync(TEST_DIR, { recursive: true, force: true });
     });
     it('should accept large memory payloads', async () => {
@@ -59,7 +72,7 @@ describe('memory-tools payload validation', () => {
         const stateDir = '/tmp/memory-tools-centralized-state';
         rmSync(stateDir, { recursive: true, force: true });
         mkdirSync(stateDir, { recursive: true });
-        rmSync(join(TEST_DIR, '.omc'), { recursive: true, force: true });
+        rmSync(join(TEST_DIR, '.omg'), { recursive: true, force: true });
         try {
             process.env.OMC_STATE_DIR = stateDir;
             const result = await projectMemoryWriteTool.handler({
@@ -70,15 +83,61 @@ describe('memory-tools payload validation', () => {
                 },
                 workingDirectory: TEST_DIR,
             });
-            const centralizedPath = join(stateDir, getProjectIdentifier(TEST_DIR), '.omc', 'project-memory.json');
+            const centralizedPath = join(stateDir, 'non-git', 'project-memory.json');
             expect(result.content[0].text).toContain(centralizedPath);
             expect(JSON.parse(readFileSync(centralizedPath, 'utf-8')).projectRoot).toBe(TEST_DIR);
-            expect(existsSync(join(TEST_DIR, '.omc', 'project-memory.json'))).toBe(false);
+            expect(existsSync(join(TEST_DIR, '.omg', 'project-memory.json'))).toBe(false);
             expect(result.isError).toBeUndefined();
         }
         finally {
             rmSync(stateDir, { recursive: true, force: true });
         }
+    });
+    it('should add a directive when existing memory lacks userDirectives', async () => {
+        const memoryPath = join(TEST_DIR, '.omg', 'project-memory.json');
+        writeFileSync(memoryPath, JSON.stringify({
+            version: '1.0.0',
+            lastScanned: Date.now(),
+            projectRoot: TEST_DIR,
+        }));
+        const result = await projectMemoryAddDirectiveTool.handler({
+            directive: 'Prefer focused regression tests',
+            workingDirectory: TEST_DIR,
+        });
+        const saved = JSON.parse(readFileSync(memoryPath, 'utf-8'));
+        expect(result.isError).toBeUndefined();
+        expect(result.content[0].text).toContain('Successfully added directive');
+        expect(saved.userDirectives).toEqual([
+            expect.objectContaining({
+                directive: 'Prefer focused regression tests',
+                context: '',
+                source: 'explicit',
+                priority: 'normal',
+            }),
+        ]);
+    });
+    it('should add a note when existing memory lacks customNotes', async () => {
+        const memoryPath = join(TEST_DIR, '.omg', 'project-memory.json');
+        writeFileSync(memoryPath, JSON.stringify({
+            version: '1.0.0',
+            lastScanned: Date.now(),
+            projectRoot: TEST_DIR,
+        }));
+        const result = await projectMemoryAddNoteTool.handler({
+            category: 'test',
+            content: 'Minimal project memory fixtures are supported',
+            workingDirectory: TEST_DIR,
+        });
+        const saved = JSON.parse(readFileSync(memoryPath, 'utf-8'));
+        expect(result.isError).toBeUndefined();
+        expect(result.content[0].text).toContain('Successfully added note');
+        expect(saved.customNotes).toEqual([
+            expect.objectContaining({
+                source: 'manual',
+                category: 'test',
+                content: 'Minimal project memory fixtures are supported',
+            }),
+        ]);
     });
     it('should allow normal-sized memory writes', async () => {
         const result = await projectMemoryWriteTool.handler({

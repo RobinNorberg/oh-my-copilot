@@ -9,20 +9,42 @@
  * Adapted from oh-my-opencode's builtin-skills feature.
  */
 import { existsSync, readdirSync, readFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, basename, resolve, relative, isAbsolute, win32 } from 'path';
 import { fileURLToPath } from 'url';
 import { parseFrontmatter, parseFrontmatterAliases } from '../../utils/frontmatter.js';
-import { renderSkillResourcesGuidance } from '../../utils/skill-resources.js';
-import { isStrictMode } from '../../utils/strict-mode.js';
-import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { rewriteOmcCliInvocations } from '../../utils/omc-cli-rendering.js';
-// Get the project root directory (go up from src/features/builtin-skills/)
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const PROJECT_ROOT = join(__dirname, '..', '..', '..');
-const SKILLS_DIR = join(PROJECT_ROOT, 'skills');
+import { parseSkillPipelineMetadata, renderSkillPipelineGuidance } from '../../utils/skill-pipeline.js';
+import { renderSkillResourcesGuidance } from '../../utils/skill-resources.js';
+import { renderSkillRuntimeGuidance } from './runtime-guidance.js';
+import { isSkininthegamebrosUser } from '../../utils/skininthegamebros-user.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
+import entitlementManifest from '../../config/builtin-skill-entitlements.json' with { type: 'json' };
+function getPackageDir() {
+    if (typeof __dirname !== 'undefined' && __dirname) {
+        const currentDirName = basename(__dirname);
+        const parentDirName = basename(dirname(__dirname));
+        const grandparentDirName = basename(dirname(dirname(__dirname)));
+        if (currentDirName === 'bridge') {
+            return join(__dirname, '..');
+        }
+        if (currentDirName === 'builtin-skills'
+            && parentDirName === 'features'
+            && (grandparentDirName === 'src' || grandparentDirName === 'dist')) {
+            return join(__dirname, '..', '..', '..');
+        }
+    }
+    try {
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = dirname(__filename);
+        return join(__dirname, '..', '..', '..');
+    }
+    catch {
+        return process.cwd();
+    }
+}
+const SKILLS_DIR = join(getPackageDir(), 'skills');
 /**
- * Copilot CLI native commands that must not be shadowed by OMC skill short names.
+ * Claude Code native commands that must not be shadowed by OMC skill short names.
  * Skills with these names will still load but their name will be prefixed with 'omc-'
  * to avoid overriding built-in /review, /plan, /security-review etc.
  */
@@ -38,12 +60,14 @@ const CC_NATIVE_COMMANDS = new Set([
     'compact',
     'memory',
 ]);
-const STRICT_MODE_ONLY_SKILLS = new Set([
-    'remember',
-    'verify',
-    'debug',
-]);
+const SKININTHEGAMEBROS_ONLY_SKILLS = new Set(entitlementManifest.skininthegamebrosOnlySkills.map((skill) => skill.trim().toLowerCase()));
 const DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD = 0.2;
+function toSafeSkillName(name) {
+    const normalized = name.trim();
+    return CC_NATIVE_COMMANDS.has(normalized.toLowerCase())
+        ? `omc-${normalized}`
+        : normalized;
+}
 function readJsonObject(path) {
     if (!existsSync(path)) {
         return null;
@@ -82,12 +106,44 @@ function getDeepInterviewAmbiguityThresholdResolution() {
         return { threshold: projectThreshold, source: './.copilot/settings.json' };
     }
     if (profileThreshold !== null) {
-        return { threshold: profileThreshold, source: '[$COPILOT_CONFIG_DIR|~/.copilot]/settings.json' };
+        return { threshold: profileThreshold, source: '[$COPILOT_CONFIG_DIR|~/.claude]/settings.json' };
     }
     return { threshold: DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD, source: 'default' };
 }
 function formatThresholdPercent(threshold) {
     return `${(threshold * 100).toFixed(2).replace(/\.?0+$/, '')}%`;
+}
+function pathLooksWindows(value) {
+    return /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\');
+}
+export function isPathInsideOrEqual(parentPath, candidatePath) {
+    const pathApi = pathLooksWindows(parentPath) || pathLooksWindows(candidatePath) ? win32 : { relative, isAbsolute };
+    const rel = pathApi.relative(parentPath, candidatePath);
+    return rel === '' || (!rel.startsWith('..') && !pathApi.isAbsolute(rel));
+}
+function getFrontmatterString(metadata, key) {
+    const value = metadata[key];
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+function readSkillBodyOverride(skillPath, metadata, fallbackBody) {
+    const bodyPath = getFrontmatterString(metadata, 'omc-full-body');
+    if (!bodyPath) {
+        return fallbackBody;
+    }
+    const skillDir = dirname(skillPath);
+    const resolvedBodyPath = resolve(skillDir, bodyPath);
+    const packageRoot = resolve(getPackageDir());
+    if (!isPathInsideOrEqual(packageRoot, resolvedBodyPath)) {
+        return fallbackBody;
+    }
+    try {
+        const fullContent = readFileSync(resolvedBodyPath, 'utf-8');
+        const { body } = parseFrontmatter(fullContent);
+        return body;
+    }
+    catch {
+        return fallbackBody;
+    }
 }
 function applyDeepInterviewRuntimeSettings(template) {
     const { threshold, source } = getDeepInterviewAmbiguityThresholdResolution();
@@ -107,15 +163,15 @@ function applyDeepInterviewRuntimeSettings(template) {
         .replace('"threshold": 0.2,', `"threshold": ${threshold},`)
         .replace('We\'ll proceed to execution once ambiguity drops below 20%.', `We'll proceed to execution once ambiguity drops below ${percent}.`)
         // Fix #2545: replace remaining hardcoded 20%/0.2 references that conflict with runtime threshold injection
-        .replace('"ambiguityThreshold": 0.2,', `"ambiguityThreshold": ${threshold},`)
         .replace('(default: 20%)', `(default: ${percent})`)
-        .replace('(default 0.2)', `(default: ${threshold})`)
+        .replace('(default 0.2)', `(default ${threshold})`)
+        .replace('"ambiguityThreshold": 0.2,', `"ambiguityThreshold": ${threshold},`)
         .replace('Gate: ≤20% ambiguity', `Gate: ≤${percent} ambiguity`)
         .replace('(threshold: 20%).', `(threshold: ${percent}).`)
         .replace('ambiguity ≤ 20%', `ambiguity ≤ ${percent}`);
 }
 function normalizeSkillNameForRuntimeRendering(skillName) {
-    return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, '').replace(/^oh-my-claudecode:/, '').replace(/^omc:/, '');
+    return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, '').replace(/^omc:/, '');
 }
 export function renderBundledSkillBody(skillName, body) {
     const normalizedSkillName = normalizeSkillNameForRuntimeRendering(skillName);
@@ -123,12 +179,6 @@ export function renderBundledSkillBody(skillName, body) {
     return normalizedSkillName === 'deep-interview' || normalizedSkillName === 'deep-dive'
         ? applyDeepInterviewRuntimeSettings(rewrittenBody)
         : rewrittenBody;
-}
-function toSafeSkillName(name) {
-    const normalized = name.trim();
-    return CC_NATIVE_COMMANDS.has(normalized.toLowerCase())
-        ? `omc-${normalized}`
-        : normalized;
 }
 /**
  * Load a single skill from a SKILL.md file
@@ -139,6 +189,15 @@ function loadSkillFromFile(skillPath, skillName) {
         const { metadata, body } = parseFrontmatter(content);
         const resolvedName = metadata.name || skillName;
         const safePrimaryName = toSafeSkillName(resolvedName);
+        const pipeline = parseSkillPipelineMetadata(metadata);
+        const fullBody = readSkillBodyOverride(skillPath, metadata, body);
+        const renderedBody = renderBundledSkillBody(safePrimaryName, fullBody);
+        const template = [
+            renderedBody,
+            renderSkillRuntimeGuidance(safePrimaryName),
+            renderSkillPipelineGuidance(safePrimaryName, pipeline),
+            renderSkillResourcesGuidance(skillPath),
+        ].filter((section) => section.trim().length > 0).join('\n\n');
         const safeAliases = Array.from(new Set(parseFrontmatterAliases(metadata.aliases)
             .map((alias) => toSafeSkillName(alias))
             .filter((alias) => alias.length > 0 && alias.toLowerCase() !== safePrimaryName.toLowerCase())));
@@ -150,11 +209,6 @@ function loadSkillFromFile(skillPath, skillName) {
             if (seen.has(key))
                 continue;
             seen.add(key);
-            const resourcesGuidance = renderSkillResourcesGuidance(skillPath);
-            const templateParts = [renderBundledSkillBody(safePrimaryName, body)];
-            if (resourcesGuidance) {
-                templateParts.push('\n\n---\n' + resourcesGuidance);
-            }
             skillEntries.push({
                 name,
                 aliases: name === safePrimaryName ? safeAliases : undefined,
@@ -164,11 +218,12 @@ function loadSkillFromFile(skillPath, skillName) {
                     ? undefined
                     : `Skill alias "${name}" is deprecated. Use "${safePrimaryName}" instead.`,
                 description: metadata.description || '',
-                template: templateParts.join(''),
+                template,
                 // Optional fields from frontmatter
                 model: metadata.model,
                 agent: metadata.agent,
                 argumentHint: metadata['argument-hint'],
+                pipeline: name === safePrimaryName ? pipeline : undefined,
             });
         }
         return skillEntries;
@@ -200,7 +255,7 @@ function loadSkillsFromDirectory() {
         for (const entry of entries) {
             if (!entry.isDirectory())
                 continue;
-            if (STRICT_MODE_ONLY_SKILLS.has(entry.name) && !isStrictMode()) {
+            if (SKININTHEGAMEBROS_ONLY_SKILLS.has(entry.name.toLowerCase()) && !isSkininthegamebrosUser()) {
                 continue;
             }
             const skillPath = join(SKILLS_DIR, entry.name, 'SKILL.md');

@@ -5,13 +5,14 @@
  * Uses JSONL append format for atomic writes, following the pattern from
  * session-replay.ts with secure file permissions from daemon.ts.
  *
- * Registry location: XDG-aware global OMC state (legacy ~/.omcp/state fallback for reads)
+ * Registry location: XDG-aware global OMC state (legacy ~/.omg/state fallback for reads)
  * File permissions: 0600 (owner read/write only)
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync, openSync, closeSync, writeSync, unlinkSync, statSync, constants, } from 'fs';
 import { join, dirname } from 'path';
-import { homedir } from 'os';
 import { randomUUID } from 'crypto';
+import { isProcessAlive } from '../platform/index.js';
+import { getGlobalOmcStateCandidates, getGlobalOmcStateRoot } from '../utils/paths.js';
 // ============================================================================
 // Constants
 // ============================================================================
@@ -30,11 +31,17 @@ const LOCK_MAX_WAIT_MS = 10000;
  * can redirect all I/O to a temporary directory without touching global state.
  */
 function getRegistryStateDir() {
-    return process.env['OMC_TEST_REGISTRY_DIR'] ?? join(homedir(), '.omcp', 'state');
+    return process.env['OMC_TEST_REGISTRY_DIR'] ?? getGlobalOmcStateRoot();
 }
 /** Global registry JSONL path */
 function getRegistryPath() {
     return join(getRegistryStateDir(), 'reply-session-registry.jsonl');
+}
+function getRegistryReadPaths() {
+    if (process.env['OMC_TEST_REGISTRY_DIR']) {
+        return [getRegistryPath()];
+    }
+    return getGlobalOmcStateCandidates('reply-session-registry.jsonl');
 }
 /** Lock file path for cross-process synchronization */
 function getLockPath() {
@@ -65,23 +72,6 @@ function sleepMs(ms) {
         // Main thread: Atomics.wait throws on Node <22
         const waitUntil = Date.now() + ms;
         while (Date.now() < waitUntil) { /* spin */ }
-    }
-}
-/**
- * Check whether a process is alive.
- * EPERM indicates a live process we can't signal.
- */
-function isPidAlive(pid) {
-    if (!Number.isFinite(pid) || pid <= 0) {
-        return false;
-    }
-    try {
-        process.kill(pid, 0);
-        return true;
-    }
-    catch (error) {
-        const err = error;
-        return err.code === 'EPERM';
     }
 }
 /**
@@ -174,7 +164,7 @@ function acquireRegistryLock() {
                         continue;
                     }
                     // Never reap an active lock held by a live process.
-                    if (snapshot.pid !== null && isPidAlive(snapshot.pid)) {
+                    if (snapshot.pid !== null && isProcessAlive(snapshot.pid)) {
                         sleepMs(LOCK_RETRY_MS);
                         continue;
                     }
@@ -224,16 +214,13 @@ function releaseRegistryLock(lock) {
     removeLockIfUnchanged(snapshot);
 }
 /**
- * Execute critical section with registry lock, waiting up to cumulative deadline.
- * If the lock cannot be acquired within the deadline, proceeds best-effort without lock.
+ * Execute a mutation while holding the registry lock. Mutations never proceed
+ * without ownership: callers receive `null` and can retry after lock failure.
  */
-function withRegistryLockOrWait(onLocked) {
+function withRegistryLock(onLocked) {
     const lock = acquireRegistryLockOrWait();
-    if (lock === null) {
-        // Lock timed out — proceed best-effort. Write contention is mitigated
-        // by JSONL append-only format (each write appends a complete line).
-        return onLocked();
-    }
+    if (lock === null)
+        return null;
     try {
         return onLocked();
     }
@@ -242,19 +229,25 @@ function withRegistryLockOrWait(onLocked) {
     }
 }
 /**
- * Execute critical section with registry lock.
+ * Reserve an empty registry while the exact listener generation is stopped.
+ * Holding this lock prevents a concurrent notification registration from being
+ * lost between its empty check and process termination.
  */
-function withRegistryLock(onLocked, onLockUnavailable) {
+export function lockRegistryIfEmpty() {
     const lock = acquireRegistryLock();
-    if (lock === null) {
-        return onLockUnavailable();
-    }
-    try {
-        return onLocked();
-    }
-    finally {
+    if (lock === null)
+        return null;
+    if (readAllMappingsUnsafe().length > 0) {
         releaseRegistryLock(lock);
+        return 'active';
     }
+    let released = false;
+    return () => {
+        if (!released) {
+            released = true;
+            releaseRegistryLock(lock);
+        }
+    };
 }
 /**
  * Register a message mapping (atomic JSONL append).
@@ -263,51 +256,60 @@ function withRegistryLock(onLocked, onLockUnavailable) {
  * Each mapping serializes to well under 4096 bytes, making this operation atomic.
  */
 export function registerMessage(mapping) {
-    withRegistryLockOrWait(() => {
+    return withRegistryLock(() => {
         ensureRegistryDir();
+        const existing = readAllMappingsUnsafe().find((candidate) => candidate.platform === mapping.platform &&
+            candidate.messageId === mapping.messageId &&
+            candidate.sessionId === mapping.sessionId &&
+            candidate.tmuxPaneId === mapping.tmuxPaneId);
+        if (existing)
+            return true;
         const line = JSON.stringify(mapping) + '\n';
         const fd = openSync(getRegistryPath(), constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT, SECURE_FILE_MODE);
         try {
-            const buf = Buffer.from(line, 'utf-8');
-            writeSync(fd, buf);
+            writeSync(fd, Buffer.from(line, 'utf-8'));
+            return true;
         }
         finally {
             closeSync(fd);
         }
-    });
+    }) ?? false;
 }
 /**
  * Load all mappings from the JSONL file
  */
 export function loadAllMappings() {
-    return withRegistryLockOrWait(() => readAllMappingsUnsafe());
+    return withRegistryLock(() => readAllMappingsUnsafe()) ?? readAllMappingsUnsafe();
 }
 /**
  * Load all mappings without lock.
  * Caller must already hold lock (or accept race risk).
  */
 function readAllMappingsUnsafe() {
-    if (!existsSync(getRegistryPath())) {
-        return [];
+    for (const registryPath of getRegistryReadPaths()) {
+        if (!existsSync(registryPath)) {
+            continue;
+        }
+        try {
+            const content = readFileSync(registryPath, 'utf-8');
+            return content
+                .split('\n')
+                .filter(line => line.trim())
+                .map(line => {
+                try {
+                    return JSON.parse(line);
+                }
+                catch {
+                    return null;
+                }
+            })
+                .filter((m) => m !== null);
+        }
+        catch {
+            continue;
+        }
     }
-    try {
-        const content = readFileSync(getRegistryPath(), 'utf-8');
-        return content
-            .split('\n')
-            .filter(line => line.trim())
-            .map(line => {
-            try {
-                return JSON.parse(line);
-            }
-            catch {
-                return null;
-            }
-        })
-            .filter((m) => m !== null);
-    }
-    catch {
-        return [];
-    }
+    return [];
 }
 /**
  * Look up a mapping by platform and message ID.
@@ -323,61 +325,47 @@ export function lookupByMessageId(platform, messageId) {
  * This is a rewrite operation (infrequent - only on session-end).
  */
 export function removeSession(sessionId) {
-    withRegistryLock(() => {
+    return withRegistryLock(() => {
         const mappings = readAllMappingsUnsafe();
         const filtered = mappings.filter(m => m.sessionId !== sessionId);
-        if (filtered.length === mappings.length) {
-            // No changes needed
-            return;
-        }
-        rewriteRegistryUnsafe(filtered);
-    }, () => {
-        // Best-effort cleanup: if lock unavailable, leave entries as-is.
-    });
+        if (filtered.length !== mappings.length)
+            rewriteRegistryUnsafe(filtered);
+        return true;
+    }) ?? false;
 }
 /**
  * Remove all entries for a given pane ID.
  * Called by reply listener when pane verification fails (stale pane cleanup).
  */
 export function removeMessagesByPane(paneId) {
-    withRegistryLock(() => {
+    return withRegistryLock(() => {
         const mappings = readAllMappingsUnsafe();
         const filtered = mappings.filter(m => m.tmuxPaneId !== paneId);
-        if (filtered.length === mappings.length) {
-            // No changes needed
-            return;
-        }
-        rewriteRegistryUnsafe(filtered);
-    }, () => {
-        // Best-effort cleanup: if lock unavailable, leave entries as-is.
-    });
+        if (filtered.length !== mappings.length)
+            rewriteRegistryUnsafe(filtered);
+        return true;
+    }) ?? false;
 }
 /**
  * Remove entries older than MAX_AGE_MS (24 hours).
  * This is a rewrite operation (infrequent - called periodically by daemon).
  */
 export function pruneStale() {
-    withRegistryLock(() => {
+    return withRegistryLock(() => {
         const now = Date.now();
         const mappings = readAllMappingsUnsafe();
         const filtered = mappings.filter(m => {
             try {
-                const age = now - new Date(m.createdAt).getTime();
-                return age < MAX_AGE_MS;
+                return now - new Date(m.createdAt).getTime() < MAX_AGE_MS;
             }
             catch {
-                // Invalid timestamp, remove it
                 return false;
             }
         });
-        if (filtered.length === mappings.length) {
-            // No changes needed
-            return;
-        }
-        rewriteRegistryUnsafe(filtered);
-    }, () => {
-        // Best-effort cleanup: if lock unavailable, leave entries as-is.
-    });
+        if (filtered.length !== mappings.length)
+            rewriteRegistryUnsafe(filtered);
+        return true;
+    }) ?? false;
 }
 /**
  * Rewrite the entire registry file with new mappings.

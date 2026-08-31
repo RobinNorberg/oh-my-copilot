@@ -3,7 +3,7 @@
  *
  * Handles:
  * - Persistent state for the autopilot workflow across phases
- * - Phase transitions, especially Ralph → UltraQA and UltraQA → Validation
+ * - Phase transitions, especially Ralph → QA and QA → Validation
  * - State machine operations
  */
 import type { AutopilotState, AutopilotPhase, AutopilotConfig } from "./types.js";
@@ -22,7 +22,9 @@ export declare function writeAutopilotState(directory: string, state: AutopilotS
 /**
  * Clear autopilot state
  */
-export declare function clearAutopilotState(directory: string, sessionId?: string): boolean;
+export declare function clearAutopilotState(directory: string, sessionId?: string, expectedState?: AutopilotState): boolean;
+export declare function updateAutopilotStateIfCurrent(directory: string, observed: AutopilotState, update: Partial<AutopilotState>, sessionId?: string): AutopilotState | null;
+export declare function updateAutopilotStateIfExact(directory: string, observed: AutopilotState, update: Partial<AutopilotState>, sessionId: string | undefined, validateCurrent: (current: AutopilotState) => boolean): AutopilotState | null;
 /**
  * Get the age of the autopilot state file in milliseconds.
  * Returns null if no state file exists.
@@ -78,17 +80,17 @@ export interface TransitionResult {
     state?: AutopilotState;
 }
 /**
- * Transition from Ralph (Phase 2: Execution) to UltraQA (Phase 3: QA)
+ * Transition from Ralph (Phase 2: Execution) to QA (Phase 3)
  *
- * This handles the mutual exclusion by:
- * 1. Saving Ralph's progress to autopilot state
- * 2. Cleanly terminating Ralph mode (and linked Ultrawork)
- * 3. Starting UltraQA mode
- * 4. Preserving context for potential rollback
+ * This:
+ * 1. Saves Ralph's progress to autopilot state
+ * 2. Cleanly terminates Ralph mode
+ * 3. Transitions to the QA phase
+ * 4. Preserves context for potential rollback
  */
 export declare function transitionRalphToUltraQA(directory: string, sessionId: string): TransitionResult;
 /**
- * Transition from UltraQA (Phase 3: QA) to Validation (Phase 4)
+ * Transition from QA (Phase 3) to Validation (Phase 4)
  */
 export declare function transitionUltraQAToValidation(directory: string, sessionId?: string): TransitionResult;
 /**
@@ -100,7 +102,7 @@ export declare function transitionToComplete(directory: string, sessionId?: stri
  */
 export declare function transitionToFailed(directory: string, error: string, sessionId?: string): TransitionResult;
 /**
- * Get a prompt for Copilot to execute the transition
+ * Get a prompt for Claude to execute the transition
  */
 export declare function getTransitionPrompt(fromPhase: string, toPhase: string): string;
 //# sourceMappingURL=state.d.ts.map

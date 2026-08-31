@@ -1,6 +1,8 @@
-import { existsSync, readFileSync, unlinkSync } from 'fs';
-import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
-import { ensureSessionStateDir, resolveSessionStatePath } from '../../lib/worktree-paths.js';
+import {
+  clearModeStateFile,
+  readModeState,
+  writeModeState,
+} from '../../lib/mode-state-io.js';
 import { readCanonicalTeamStateCandidate } from '../team-canonical-state.js';
 import type {
   TeamPipelineState,
@@ -12,13 +14,6 @@ import { TEAM_PIPELINE_SCHEMA_VERSION } from './types.js';
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-function getTeamStatePath(directory: string, sessionId?: string): string {
-  if (!sessionId) {
-    return `${directory}/.omc/state/team-state.json`;
-  }
-  return resolveSessionStatePath('team', sessionId, directory);
 }
 
 function isTerminalTeamPipelineState(state: TeamPipelineState): boolean {
@@ -120,21 +115,13 @@ export function readTeamPipelineState(directory: string, sessionId?: string): Te
     return null;
   }
 
-  let coarseState: TeamPipelineState | null = null;
-  const statePath = getTeamStatePath(directory, sessionId);
-  if (existsSync(statePath)) {
-    try {
-      const content = readFileSync(statePath, 'utf-8');
-      const state = JSON.parse(content) as TeamPipelineState;
-      if (state && typeof state === 'object' && (!state.session_id || state.session_id === sessionId)) {
-        coarseState = state;
-        if (state.active === true && !isTerminalTeamPipelineState(state)) {
-          return state;
-        }
-      }
-    } catch {
-      // fall through to canonical fallback
+  let coarseState = readModeState<TeamPipelineState>('team', directory, sessionId);
+  if (coarseState && typeof coarseState === 'object' && !Array.isArray(coarseState)) {
+    if (coarseState.active === true && !isTerminalTeamPipelineState(coarseState)) {
+      return coarseState;
     }
+  } else {
+    coarseState = null;
   }
 
   const canonical = readCanonicalTeamStateCandidate(directory, sessionId);
@@ -150,21 +137,14 @@ export function writeTeamPipelineState(directory: string, state: TeamPipelineSta
     return false;
   }
 
-  try {
-    ensureSessionStateDir(sessionId, directory);
-    const statePath = getTeamStatePath(directory, sessionId);
-    const next: TeamPipelineState = {
-      ...state,
-      session_id: sessionId,
-      mode: 'team',
-      schema_version: TEAM_PIPELINE_SCHEMA_VERSION,
-      updated_at: nowIso(),
-    };
-    atomicWriteJsonSync(statePath, next);
-    return true;
-  } catch {
-    return false;
-  }
+  const next: TeamPipelineState = {
+    ...state,
+    session_id: sessionId,
+    mode: 'team',
+    schema_version: TEAM_PIPELINE_SCHEMA_VERSION,
+    updated_at: nowIso(),
+  };
+  return writeModeState('team', next as unknown as Record<string, unknown>, directory, sessionId);
 }
 
 export function clearTeamPipelineState(directory: string, sessionId?: string): boolean {
@@ -172,15 +152,7 @@ export function clearTeamPipelineState(directory: string, sessionId?: string): b
     return false;
   }
 
-  const statePath = getTeamStatePath(directory, sessionId);
-  try {
-    if (existsSync(statePath)) {
-      unlinkSync(statePath);
-    }
-    return true;
-  } catch {
-    return false;
-  }
+  return clearModeStateFile('team', directory, sessionId);
 }
 
 export function markTeamPhase(

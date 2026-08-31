@@ -42,10 +42,6 @@ function makeFullConfig(): NotificationConfig {
       enabled: true,
       url: 'https://example.com/webhook',
     },
-    teams: {
-      enabled: true,
-      webhookUrl: 'https://prod-01.westus.logic.azure.com/workflows/abc123',
-    },
   };
 }
 
@@ -56,7 +52,6 @@ describe('platform gating via getEnabledPlatforms', () => {
     vi.stubEnv('OMC_DISCORD', '');
     vi.stubEnv('OMC_SLACK', '');
     vi.stubEnv('OMC_WEBHOOK', '');
-    vi.stubEnv('OMC_MICROSOFT_TEAMS', '');
   });
 
   afterEach(() => {
@@ -140,20 +135,6 @@ describe('platform gating via getEnabledPlatforms', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Teams gating
-  // ---------------------------------------------------------------------------
-
-  it('teams requires OMC_MICROSOFT_TEAMS=1', () => {
-    const config = makeFullConfig();
-    const without = getEnabledPlatforms(config, 'session-end');
-    expect(without).not.toContain('teams');
-
-    vi.stubEnv('OMC_MICROSOFT_TEAMS', '1');
-    const withEnv = getEnabledPlatforms(config, 'session-end');
-    expect(withEnv).toContain('teams');
-  });
-
-  // ---------------------------------------------------------------------------
   // No platforms when no env vars set
   // ---------------------------------------------------------------------------
 
@@ -171,13 +152,11 @@ describe('platform gating via getEnabledPlatforms', () => {
     vi.stubEnv('OMC_DISCORD', '1');
     vi.stubEnv('OMC_SLACK', '1');
     vi.stubEnv('OMC_WEBHOOK', '1');
-    vi.stubEnv('OMC_MICROSOFT_TEAMS', '1');
     const platforms = getEnabledPlatforms(makeFullConfig(), 'session-end');
     expect(platforms).toContain('telegram');
     expect(platforms).toContain('discord');
     expect(platforms).toContain('discord-bot');
     expect(platforms).toContain('slack');
     expect(platforms).toContain('webhook');
-    expect(platforms).toContain('teams');
   });
 });

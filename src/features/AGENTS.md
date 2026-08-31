@@ -24,7 +24,7 @@ This directory contains self-contained feature modules that enhance orchestratio
 | File | Description |
 |------|-------------|
 | `index.ts` | Re-exports all feature modules |
-| `magic-keywords.ts` | Magic keyword detection (ultrawork, analyze, etc.) |
+| `magic-keywords.ts` | Magic keyword detection (search, analyze, ultrathink) |
 | `continuation-enforcement.ts` | Ensures task completion before stopping |
 | `auto-update.ts` | Silent version checking and updates |
 | `background-tasks.ts` | Background task execution patterns |
@@ -81,7 +81,7 @@ if (hasBoulder()) {
 }
 ```
 
-**State location:** `.omcp/state/boulder.json`
+**State location:** `.omc/state/boulder.json`
 
 #### Verification Protocol
 
@@ -113,7 +113,7 @@ addLearning('my-plan', 'The API requires auth headers');
 addDecision('my-plan', 'Using JWT for authentication');
 ```
 
-**Location:** `.omcp/notepads/{plan-name}/`
+**Location:** `.omc/notepads/{plan-name}/`
 
 #### Delegation Categories
 
@@ -175,14 +175,14 @@ npm test -- --grep "features"
 | Feature | Purpose | State Location |
 |---------|---------|----------------|
 | model-routing | Smart model selection | N/A (stateless) |
-| boulder-state | Plan progress tracking | `.omcp/state/boulder.json` |
+| boulder-state | Plan progress tracking | `.omc/state/boulder.json` |
 | verification | Evidence-based verification | In-memory |
-| notepad-wisdom | Knowledge capture | `.omcp/notepads/` |
+| notepad-wisdom | Knowledge capture | `.omc/notepads/` |
 | delegation-categories | Task categorization | N/A (stateless) |
 | task-decomposer | Parallelization | In-memory |
-| state-manager | File path standardization | `.omcp/state/`, `~/.omcp/state/` |
+| state-manager | File path standardization | `.omc/state/`, `~/.omc/state/` |
 | context-injector | Prompt enhancement | In-memory |
 | background-agent | Concurrency control | In-memory |
-| rate-limit-wait | Rate limit handling | `.omcp/state/rate-limits.json` |
+| rate-limit-wait | Rate limit handling | `.omc/state/rate-limits.json` |
 
 <!-- MANUAL: -->

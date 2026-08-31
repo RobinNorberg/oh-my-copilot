@@ -25,7 +25,7 @@ async function main() {
     config: {
       agents: {
         // Use a faster model for the orchestrator in dev
-        omc: { model: 'claude-sonnet-4-6-20260217' },
+        omc: { model: 'claude-sonnet-5' },
         // Override model for specific agents
         designer: { model: 'claude-haiku-4-5-20251001' },
         writer: { model: 'claude-haiku-4-5-20251001' }
@@ -151,7 +151,7 @@ Always:
   console.log(`
 // Pattern for adding custom tools:
 
-import { createSdkMcpServer, tool } from '@github/copilot';
+import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import { createOmcSession } from 'oh-my-copilot';
 

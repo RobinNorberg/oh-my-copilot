@@ -6,7 +6,7 @@
  * the user has already answered).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { processHook, resetSkipHooksCache, dispatchAskUserQuestionNotification, _notify, } from "../bridge.js";
+import { processHook, resetSkipHooksCache, dispatchAskUserQuestionNotification, extractAskUserQuestionPrompts, _notify, } from "../bridge.js";
 describe("AskUserQuestion notification lifecycle (issue #597)", () => {
     const originalEnv = process.env;
     let dispatchSpy;
@@ -43,6 +43,22 @@ describe("AskUserQuestion notification lifecycle (issue #597)", () => {
         },
         directory: "/tmp/test-issue-597",
     };
+    it("extractAskUserQuestionPrompts preserves option labels/descriptions for notifications", () => {
+        const prompts = extractAskUserQuestionPrompts(askUserInput.toolInput);
+        expect(prompts).toEqual([
+            {
+                question: "Which database should we use?",
+                header: "Database",
+                options: [
+                    { label: "PostgreSQL", description: "Relational DB" },
+                    { label: "MongoDB", description: "Document DB" },
+                ],
+                allowOther: true,
+                otherLabel: "Other",
+                multiSelect: false,
+            },
+        ]);
+    });
     // ---- PreToolUse: notification MUST fire ----
     it("pre-tool-use should dispatch ask-user-question notification", async () => {
         const result = await processHook("pre-tool-use", askUserInput);

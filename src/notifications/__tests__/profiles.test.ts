@@ -19,7 +19,7 @@ vi.mock("fs", async (importOriginal) => {
 
 // Mock getCopilotConfigDir to return a predictable path
 vi.mock("../../utils/config-dir.js", () => ({
-  getCopilotConfigDir: () => "/mock-copilot-config",
+  getCopilotConfigDir: () => "/mock-claude-config",
 }));
 
 import { getNotificationConfig } from "../config.js";

@@ -12,10 +12,12 @@
  * 5. If architect finds flaws -> continue ralph with architect feedback
  */
 import { randomUUID } from 'crypto';
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { resolveSessionStatePath, ensureSessionStateDir, getOmcRoot } from '../../lib/worktree-paths.js';
+import { clearStateFileLocked, clearStateFileLockedIf, writeStateFileLocked, writeStateFileLockedCreateIf, writeStateFileLockedIf } from '../../lib/mode-state-io.js';
 import { formatOmcCliInvocation } from '../../utils/omc-cli-rendering.js';
+import { getPrdGoverningCriteriaRevision, readPrd } from './prd.js';
 const DEFAULT_MAX_VERIFICATION_ATTEMPTS = 3;
 const DEFAULT_RALPH_CRITIC_MODE = 'architect';
 function createVerificationRequestId() {
@@ -76,8 +78,14 @@ export function readVerificationState(directory, sessionId) {
     try {
         const state = JSON.parse(readFileSync(statePath, 'utf-8'));
         if (!state.request_id) {
-            state.request_id = createVerificationRequestId();
-            writeVerificationState(directory, state, sessionId);
+            const requestId = createVerificationRequestId();
+            const result = writeStateFileLockedIf(statePath, current => !current.request_id, current => ({ ...current, request_id: requestId }));
+            if (result === 'written')
+                state.request_id = requestId;
+            else if (result === 'skipped')
+                return readVerificationState(directory, sessionId);
+            else
+                return null;
         }
         return state;
     }
@@ -104,13 +112,7 @@ export function writeVerificationState(directory, state, sessionId) {
             }
         }
     }
-    try {
-        writeFileSync(statePath, JSON.stringify(state, null, 2));
-        return true;
-    }
-    catch {
-        return false;
-    }
+    return writeStateFileLocked(statePath, state);
 }
 /**
  * Clear verification state
@@ -118,16 +120,18 @@ export function writeVerificationState(directory, state, sessionId) {
  */
 export function clearVerificationState(directory, sessionId) {
     const statePath = getVerificationStatePath(directory, sessionId);
-    if (existsSync(statePath)) {
-        try {
-            unlinkSync(statePath);
-            return true;
-        }
-        catch {
-            return false;
-        }
-    }
-    return true;
+    return clearStateFileLocked(statePath);
+}
+/** Clear only the verification request whose approval was consumed. */
+export function consumeVerificationRequest(directory, requestId, sessionId) {
+    if (!requestId)
+        return false;
+    return clearStateFileLockedIf(getVerificationStatePath(directory, sessionId), current => current.request_id === requestId) === 'cleared';
+}
+/** Restore a consumed verification request only when no newer request exists. */
+export function restoreVerificationRequestIfAbsent(directory, state, sessionId) {
+    const result = writeStateFileLockedCreateIf(getVerificationStatePath(directory, sessionId), current => current === null, () => state);
+    return result === 'written';
 }
 /**
  * Start verification process
@@ -143,9 +147,23 @@ export function startVerification(directory, completionClaim, originalTask, crit
         verification_scope: currentStory ? 'story' : 'completion',
         story_id: currentStory?.id,
         critic_mode: getCriticMode(criticMode),
-        request_id: createVerificationRequestId()
+        request_id: createVerificationRequestId(),
+        criteria_revision: currentStory?.governingCriteriaRevision
+            ?? (() => {
+                const prd = readPrd(directory, sessionId);
+                return prd ? getPrdGoverningCriteriaRevision(prd) : undefined;
+            })(),
     };
-    writeVerificationState(directory, state, sessionId);
+    if (sessionId) {
+        ensureSessionStateDir(sessionId, directory);
+    }
+    else {
+        mkdirSync(getOmcRoot(directory), { recursive: true });
+    }
+    const statePath = getVerificationStatePath(directory, sessionId);
+    const result = writeStateFileLockedCreateIf(statePath, current => current === null, () => state);
+    if (result === 'skipped')
+        return readVerificationState(directory, sessionId) ?? state;
     return state;
 }
 /**
@@ -180,13 +198,21 @@ export function recordArchitectFeedback(directory, approved, feedback, sessionId
 export function getArchitectVerificationPrompt(state, currentStory) {
     const criticLabel = getCriticLabel(state.critic_mode);
     const approvalTag = `<ralph-approved critic="${getCriticMode(state.critic_mode)}" request-id="${state.request_id}"${state.story_id ? ` story-id="${state.story_id}"` : ''}>VERIFIED_COMPLETE</ralph-approved>`;
+    const amendmentLedger = currentStory?.criterionAmendments?.length
+        ? `
+
+**Amended/Superseded Criteria (evidence ledger — original criteria retained):**
+${currentStory.criterionAmendments.map((a, i) => `${i + 1}. ~~${a.original}~~ — ${a.kind === 'replaced' ? `replaced by: ${a.replacement}` : 'superseded'} (reason: ${a.reason}; evidence: ${a.evidence}; authority: ${a.authority}; at: ${a.timestamp})`).join('\n')}
+Verify that each amendment is justified by its cited evidence and that the active criteria below are the ones that govern.
+`
+        : '';
     const storySection = currentStory ? `
 **Current Story: ${currentStory.id} - ${currentStory.title}**
 ${currentStory.description}
 
 **Acceptance Criteria to Verify:**
 ${currentStory.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n')}
-
+${amendmentLedger}
 IMPORTANT: This review gates Ralph's progression to the next story/complete state. Verify EACH acceptance criterion above is met. Do not verify based on general impressions — check each criterion individually with concrete evidence.
 ` : '';
     return `<ralph-verification>

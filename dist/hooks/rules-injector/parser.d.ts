@@ -14,7 +14,7 @@ import type { RuleFrontmatterResult } from './types.js';
  * - Inline array: globs: ["**\/*.py", "src/**\/*.ts"]
  * - Multi-line array with dashes
  * - Comma-separated: globs: "**\/*.py, src/**\/*.ts"
- * - Copilot CLI 'paths' field (alias for globs)
+ * - Claude Code 'paths' field (alias for globs)
  */
 export declare function parseRuleFrontmatter(content: string): RuleFrontmatterResult;
 //# sourceMappingURL=parser.d.ts.map

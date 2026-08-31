@@ -27,6 +27,12 @@ export declare function canEscalate(currentTier: ComplexityTier): boolean;
  */
 export declare function getRoutingRecommendation(context: RoutingContext, config?: Partial<RoutingConfig>): RoutingDecision;
 /**
+ * Legacy: Route with escalation support
+ * @deprecated Use getRoutingRecommendation for proactive routing instead.
+ * The orchestrator should analyze complexity upfront, not escalate reactively.
+ */
+export declare function routeWithEscalation(context: RoutingContext, config?: Partial<RoutingConfig>): RoutingDecision;
+/**
  * Get routing explanation for debugging/logging
  */
 export declare function explainRouting(context: RoutingContext, config?: Partial<RoutingConfig>): string;
@@ -45,10 +51,10 @@ export declare function quickTierForAgent(agentType: string): ComplexityTier | n
  *
  * @param agentType - The agent to delegate to
  * @param taskPrompt - The task description
- * @returns The recommended model type ('haiku', 'sonnet', or 'opus')
+ * @returns The recommended model type ('haiku', 'sonnet', 'opus', or 'fable')
  */
 export declare function getModelForTask(agentType: string, taskPrompt: string, config?: Partial<RoutingConfig>): {
-    model: 'haiku' | 'sonnet' | 'opus';
+    model: 'haiku' | 'sonnet' | 'opus' | 'fable';
     tier: ComplexityTier;
     reason: string;
 };

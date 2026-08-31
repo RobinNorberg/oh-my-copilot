@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 // Hoist test state dir so it's available inside vi.mock factories
-const { TEST_STATE_DIR } = vi.hoisted(() => ({
+const { TEST_STATE_DIR, TEST_WORKTREE_ROOT } = vi.hoisted(() => ({
     TEST_STATE_DIR: '/tmp/omc-cache-test-state',
+    TEST_WORKTREE_ROOT: '/tmp/omc-cache-test-worktree',
 }));
 vi.mock('../../../lib/atomic-write.js', () => ({
     atomicWriteJsonSync: vi.fn((filePath, data) => {
@@ -12,11 +13,12 @@ vi.mock('../../../lib/atomic-write.js', () => ({
     }),
 }));
 vi.mock('../../../lib/worktree-paths.js', () => ({
-    OmgPaths: {
+    OmcPaths: {
         STATE: TEST_STATE_DIR,
     },
-    getWorktreeRoot: () => '/',
+    getWorktreeRoot: () => TEST_WORKTREE_ROOT,
     validateWorkingDirectory: () => '/',
+    getOmcRoot: (dir) => `${dir ?? TEST_WORKTREE_ROOT}/.omg`,
 }));
 // Import after mocks are set up (vi.mock is hoisted)
 import { readState, writeState, clearState, clearStateCache, cleanupStaleStates, isStateStale, StateManager, } from '../index.js';
@@ -25,6 +27,7 @@ describe('state-manager cache', () => {
     let consoleWarnSpy;
     beforeEach(() => {
         fs.mkdirSync(TEST_STATE_DIR, { recursive: true });
+        fs.mkdirSync(TEST_WORKTREE_ROOT, { recursive: true });
         clearStateCache();
         consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
     });
@@ -35,9 +38,20 @@ describe('state-manager cache', () => {
             fs.rmSync(TEST_STATE_DIR, { recursive: true, force: true });
         }
         catch { /* best-effort */ }
+        try {
+            fs.rmSync(TEST_WORKTREE_ROOT, { recursive: true, force: true });
+        }
+        catch { /* best-effort */ }
     });
     function writeStateToDisk(name, data) {
         const filePath = path.join(TEST_STATE_DIR, `${name}.json`);
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+        return filePath;
+    }
+    function writeLegacyStateToDisk(name, data) {
+        const legacyDir = path.join(TEST_WORKTREE_ROOT, '.omg', 'state');
+        fs.mkdirSync(legacyDir, { recursive: true });
+        const filePath = path.join(legacyDir, `${name}.json`);
         fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
         return filePath;
     }
@@ -84,6 +98,28 @@ describe('state-manager cache', () => {
             const diskContent = JSON.parse(fs.readFileSync(path.join(TEST_STATE_DIR, 'stale-mode.json'), 'utf-8'));
             expect(diskContent.active).toBe(true);
         });
+        it('should warn on malformed standard state and fall through to legacy only when enabled', () => {
+            const standardPath = path.join(TEST_STATE_DIR, 'boulder.json');
+            fs.writeFileSync(standardPath, '{ malformed standard json', 'utf-8');
+            const legacyPath = writeLegacyStateToDisk('boulder', {
+                active: true,
+                source: 'legacy',
+            });
+            const result = readState('boulder', StateLocation.LOCAL, { checkLegacy: true });
+            expect(result.exists).toBe(true);
+            expect(result.foundAt).toBe(legacyPath);
+            expect(result.data).toEqual({ active: true, source: 'legacy' });
+            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining(`Failed to read state from ${standardPath}`), expect.any(SyntaxError));
+        });
+        it('should report missing state with warning evidence when legacy JSON is malformed', () => {
+            const legacyPath = path.join(TEST_WORKTREE_ROOT, '.omg', 'state', 'boulder.json');
+            fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+            fs.writeFileSync(legacyPath, '{ malformed legacy json', 'utf-8');
+            const result = readState('boulder', StateLocation.LOCAL, { checkLegacy: true });
+            expect(result.exists).toBe(false);
+            expect(result.legacyLocations).toEqual(['.omg/state/boulder.json']);
+            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining(`Failed to read legacy state from ${legacyPath}`), expect.any(SyntaxError));
+        });
     });
     describe('cache invalidation', () => {
         it('should invalidate cache on writeState', () => {
@@ -114,7 +150,7 @@ describe('cleanupStaleStates', () => {
     let consoleWarnSpy;
     beforeEach(() => {
         tmpDir = fs.mkdtempSync(path.join('/tmp', 'omc-cleanup-test-'));
-        const stateDir = path.join(tmpDir, '.omcp', 'state');
+        const stateDir = path.join(tmpDir, '.omg', 'state');
         fs.mkdirSync(stateDir, { recursive: true });
         clearStateCache();
         consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
@@ -128,13 +164,13 @@ describe('cleanupStaleStates', () => {
         catch { /* best-effort */ }
     });
     function writeStateFile(name, data) {
-        const stateDir = path.join(tmpDir, '.omcp', 'state');
+        const stateDir = path.join(tmpDir, '.omg', 'state');
         const filePath = path.join(stateDir, `${name}.json`);
         fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
         return filePath;
     }
     function readStateFile(name) {
-        const filePath = path.join(tmpDir, '.omcp', 'state', `${name}.json`);
+        const filePath = path.join(tmpDir, '.omg', 'state', `${name}.json`);
         return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     }
     it('should deactivate stale active entries', () => {

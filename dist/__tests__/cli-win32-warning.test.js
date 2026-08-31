@@ -1,9 +1,8 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
-vi.mock('../cli/tmux-utils.js', async (importOriginal) => {
-    const actual = await importOriginal();
-    return { ...actual, isTmuxAvailable: vi.fn() };
-});
-import { isTmuxAvailable } from '../cli/tmux-utils.js';
+vi.mock('child_process', () => ({
+    spawnSync: vi.fn(),
+}));
+import { spawnSync } from 'child_process';
 describe('CLI win32 platform warning (#923)', () => {
     const originalPlatform = process.platform;
     let warnSpy;
@@ -18,7 +17,7 @@ describe('CLI win32 platform warning (#923)', () => {
     });
     it('should warn on win32 when tmux is not available', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-        vi.mocked(isTmuxAvailable).mockReturnValue(false);
+        vi.mocked(spawnSync).mockReturnValue({ status: 1 });
         const { warnIfWin32 } = await import('../cli/win32-warning.js');
         warnIfWin32();
         expect(warnSpy).toHaveBeenCalled();
@@ -30,7 +29,7 @@ describe('CLI win32 platform warning (#923)', () => {
     });
     it('should NOT warn on win32 when tmux (or psmux) is available', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-        vi.mocked(isTmuxAvailable).mockReturnValue(true);
+        vi.mocked(spawnSync).mockReturnValue({ status: 0 });
         const { warnIfWin32 } = await import('../cli/win32-warning.js');
         warnIfWin32();
         expect(warnSpy).not.toHaveBeenCalled();
@@ -49,7 +48,7 @@ describe('CLI win32 platform warning (#923)', () => {
     });
     it('should not block execution after warning', async () => {
         Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-        vi.mocked(isTmuxAvailable).mockReturnValue(false);
+        vi.mocked(spawnSync).mockReturnValue({ status: 1 });
         const { warnIfWin32 } = await import('../cli/win32-warning.js');
         let continued = false;
         warnIfWin32();

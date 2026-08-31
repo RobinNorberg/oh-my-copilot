@@ -10,7 +10,7 @@ export interface UnifiedTeamMember {
     currentTaskId: string | null;
 }
 /**
- * Get all team members from both Copilot native teams and MCP workers.
+ * Get all team members from both Claude native teams and MCP workers.
  */
 export declare function getTeamMembers(teamName: string, workingDirectory: string): UnifiedTeamMember[];
 //# sourceMappingURL=unified-team.d.ts.map

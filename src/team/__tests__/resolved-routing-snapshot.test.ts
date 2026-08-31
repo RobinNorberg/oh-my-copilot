@@ -18,7 +18,7 @@ const ENV_KEYS = [
   'ANTHROPIC_DEFAULT_HAIKU_MODEL',
 ];
 
-const savedEnv: Record<string, string | undefined> = {};
+let savedEnv: Record<string, string | undefined> = {};
 
 beforeAll(() => {
   for (const key of ENV_KEYS) {
@@ -105,7 +105,7 @@ describe('buildResolvedRoutingSnapshot', () => {
     const snap = buildResolvedRoutingSnapshot(cfg);
     expect(snap.orchestrator.primary.provider).toBe('claude');
     expect(snap.orchestrator.fallback.provider).toBe('claude');
-    expect(snap.orchestrator.primary.agent).toBe('omcp');
+    expect(snap.orchestrator.primary.agent).toBe('omc');
   });
 
   it('snapshot is a plain object — JSON-roundtrip-safe for TeamConfig persistence', () => {

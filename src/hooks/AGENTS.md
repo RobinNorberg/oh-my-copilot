@@ -7,8 +7,8 @@
 
 ## Purpose
 
-Hooks intercept Copilot CLI events to enable:
-- **Execution modes**: autopilot, ultrawork, ralph, ultrapilot, swarm, pipeline (mode-registry)
+Hooks intercept Claude Code events to enable:
+- **Execution modes**: autopilot, ralph, ultrapilot, swarm, pipeline (mode-registry)
 - **Validation**: thinking blocks, empty messages, comments
 - **Recovery**: edit errors, session recovery, context window
 - **Enhancement**: rules injection, directory READMEs, notepad
@@ -28,11 +28,9 @@ Hooks intercept Copilot CLI events to enable:
 | Directory | Purpose | Trigger |
 |-----------|---------|---------|
 | `autopilot/` | Full autonomous execution | "autopilot", "build me" |
-| `ultrawork/` | Maximum parallel execution | "ulw", "ultrawork" |
 | `ralph/` | Persistence until verified | "ralph", "don't stop" |
 | `ultrapilot/` | Parallel autopilot with file ownership | "ultrapilot" |
 | `swarm/` | N coordinated agents with task claiming | "swarm N agents" |
-| `ultraqa/` | QA cycling until goal met | test failures |
 | `mode-registry/` | Tracks active execution mode  | internal |
 | `persistent-mode/` | Maintains mode state across sessions | internal |
 
@@ -82,6 +80,12 @@ Hooks intercept Copilot CLI events to enable:
 | `subagent-tracker/` | Tracks spawned sub-agents |
 | `session-end/` | Session termination handling |
 | `background-notification/` | Background task notifications |
+
+### Registry Infrastructure
+
+| Directory | Purpose |
+|-----------|---------|
+| `registry/` | Declarative hook registry + dispatcher shadow mode (#3707); design doc in `docs/design/ISSUE-3707-HOOK-REGISTRY-SHADOW.md` |
 
 ### Setup Hooks
 
@@ -190,7 +194,7 @@ writeState('autopilot-state', state);
 
 - Test specific hooks with `npm test -- --grep "hook-name"`
 - Test execution modes end-to-end with skill invocation
-- Verify state persistence in `.omcp/state/`
+- Verify state persistence in `.omc/state/`
 - For security hooks, follow `templates/rules/security.md` checklist
 
 ## Dependencies
@@ -228,7 +232,7 @@ return {
 };
 ```
 
-**Why soft enforcement**: Hard blocking (`continue: false`) would prevent context compaction and could deadlock Copilot CLI.
+**Why soft enforcement**: Hard blocking (`continue: false`) would prevent context compaction and could deadlock Claude Code.
 
 **Bypass conditions** (checked first, allow stopping):
 1. `context-limit` - Context window exhausted, must allow compaction
@@ -240,8 +244,7 @@ return {
 3. Ultrapilot (parallel workers)
 4. Swarm (coordinated agents)
 5. Pipeline (sequential stages)
-6. UltraQA (test cycling)
-7. Ultrawork (parallel execution)
+6. Ultrawork (parallel execution)
 
 **Session isolation**: Hooks only enforce for matching `session_id`. Stale states (>2 hours) are ignored.
 
@@ -251,10 +254,10 @@ return {
 
 | Hook | State File |
 |------|------------|
-| autopilot | `.omcp/state/autopilot-state.json` |
-| ultrapilot | `.omcp/state/ultrapilot-state.json` |
-| ralph | `.omcp/state/ralph-state.json` |
-| swarm | `.omcp/state/swarm-tasks.db` (SQLite) |
-| learner | `~/.copilot/local-skills/` |
+| autopilot | `.omc/state/autopilot-state.json` |
+| ultrapilot | `.omc/state/ultrapilot-state.json` |
+| ralph | `.omc/state/ralph-state.json` |
+| swarm | `.omc/state/swarm-tasks.db` (SQLite) |
+| learner | `~/.claude/local-skills/` |
 
 <!-- MANUAL: -->

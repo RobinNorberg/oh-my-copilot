@@ -25,12 +25,12 @@ describe('recovery storage issue #1386 regression', () => {
     vi.resetModules();
   });
 
-  it.skipIf(process.platform === 'win32')('prepends generic synthetic thinking instead of reusing prior assistant thinking', async () => {
+  it('prepends generic synthetic thinking instead of reusing prior assistant thinking', async () => {
     const sessionID = 'session-1';
     const priorMessageID = 'assistant-1';
     const targetMessageID = 'assistant-2';
     const staleThinking = 'Old reasoning that should never be copied forward';
-    const storageRoot = join(dataDir, 'copilot-cli', 'storage');
+    const storageRoot = join(dataDir, 'claude-code', 'storage');
     const messageDir = join(storageRoot, 'message', sessionID);
     const priorPartDir = join(storageRoot, 'part', priorMessageID);
     const targetPartDir = join(storageRoot, 'part', targetMessageID);

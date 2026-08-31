@@ -3,10 +3,12 @@
  */
 /** User-level skills directory (read by skill-injector.mjs hook) */
 export declare const USER_SKILLS_DIR: string;
-/** Global skills directory (new preferred location: ~/.omcp/skills) */
+/** Global skills directory (new preferred location: ~/.omg/skills) */
 export declare const GLOBAL_SKILLS_DIR: string;
 /** Project-level skills subdirectory */
-export declare const PROJECT_SKILLS_SUBDIR: ".omcp/skills";
+export declare const PROJECT_SKILLS_SUBDIR: ".omg/skills";
+/** Project-level compatibility skills subdirectory (read-only compatibility source) */
+export declare const PROJECT_AGENT_SKILLS_SUBDIR: string;
 /** Maximum recursion depth for skill file discovery */
 export declare const MAX_RECURSION_DEPTH = 10;
 /** Valid skill file extension */

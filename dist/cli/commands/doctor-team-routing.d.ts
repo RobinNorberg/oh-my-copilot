@@ -1,5 +1,5 @@
 /**
- * `omcp doctor team-routing` — probe configured /team role-routing providers.
+ * `omc doctor team-routing` — probe configured /team role-routing providers.
  *
  * Iterates every unique provider referenced by `team.roleRouting` (falling back
  * to `claude` when config is empty) and checks CLI presence on PATH.

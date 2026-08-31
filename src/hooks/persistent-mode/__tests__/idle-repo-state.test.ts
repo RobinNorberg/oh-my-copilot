@@ -13,19 +13,20 @@ describe('getIdleNotificationRepoState', () => {
   });
 
   it('builds a stable zero-backlog signature from git and GitHub state', () => {
+    const directory = 'C:\\repo folder; & echo owned\\worktree';
     vi.mocked(execFileSync)
-      .mockReturnValueOnce('git@github.com:Yeachan-Heo/oh-my-copilot.git\n')
+      .mockReturnValueOnce('git@github.com:RobinNorberg/oh-my-copilot.git\n')
       .mockReturnValueOnce('abc123\n')
       .mockReturnValueOnce('')
       .mockReturnValueOnce('[]')
       .mockReturnValueOnce('[]')
       .mockReturnValueOnce('[]');
 
-    const result = getIdleNotificationRepoState('/repo');
+    const result = getIdleNotificationRepoState(directory);
 
     expect(result).toEqual({
       signature: JSON.stringify({
-        repo: 'Yeachan-Heo/oh-my-copilot',
+        repo: 'RobinNorberg/oh-my-copilot',
         headSha: 'abc123',
         dirty: false,
         openPrNumbers: [],
@@ -34,11 +35,21 @@ describe('getIdleNotificationRepoState', () => {
       }),
       backlogZero: true,
     });
+    const gitOptions = {
+      cwd: directory,
+      encoding: 'utf-8',
+      timeout: 10_000,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    };
+    expect(execFileSync).toHaveBeenNthCalledWith(1, 'git', ['remote', 'get-url', 'origin'], gitOptions);
+    expect(execFileSync).toHaveBeenNthCalledWith(2, 'git', ['rev-parse', 'HEAD'], gitOptions);
+    expect(execFileSync).toHaveBeenNthCalledWith(3, 'git', ['status', '--porcelain'], gitOptions);
   });
 
   it('returns non-zero backlog when PRs, issues, or failing runs exist', () => {
     vi.mocked(execFileSync)
-      .mockReturnValueOnce('https://github.com/Yeachan-Heo/oh-my-copilot.git\n')
+      .mockReturnValueOnce('https://github.com/RobinNorberg/oh-my-copilot.git\n')
       .mockReturnValueOnce('def456\n')
       .mockReturnValueOnce(' M src/file.ts\n')
       .mockReturnValueOnce('[{"number":2472}]')
@@ -50,7 +61,7 @@ describe('getIdleNotificationRepoState', () => {
     expect(result?.backlogZero).toBe(false);
     expect(result?.signature).toBe(
       JSON.stringify({
-        repo: 'Yeachan-Heo/oh-my-copilot',
+        repo: 'RobinNorberg/oh-my-copilot',
         headSha: 'def456',
         dirty: true,
         openPrNumbers: [2472],
@@ -68,7 +79,7 @@ describe('getIdleNotificationRepoState', () => {
 
   it('returns null when GitHub queries fail', () => {
     vi.mocked(execFileSync)
-      .mockReturnValueOnce('git@github.com:Yeachan-Heo/oh-my-copilot.git\n')
+      .mockReturnValueOnce('git@github.com:RobinNorberg/oh-my-copilot.git\n')
       .mockReturnValueOnce('abc123\n')
       .mockReturnValueOnce('')
       .mockImplementationOnce(() => {

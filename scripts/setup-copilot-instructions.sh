@@ -124,15 +124,15 @@ ensure_local_omc_git_exclude() {
 
   cat >> "$exclude_path" <<'EOF'
 # BEGIN OMC local artifacts
-!.omcp/
-.omcp/*
-!.omcp/skills/
-!.omcp/skills/**
+!.omg/
+.omg/*
+!.omg/skills/
+!.omg/skills/**
 .omx/
 # END OMC local artifacts
 EOF
 
-  echo "Configured git exclude for local OMC/OMX artifacts (preserving .omcp/skills/)"
+  echo "Configured git exclude for local OMC/OMX artifacts (preserving .omg/skills/)"
 }
 
 # Determine target path

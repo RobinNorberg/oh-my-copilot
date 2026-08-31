@@ -8,7 +8,7 @@
  * when users haven't been using agents effectively.
  *
  * Ported from oh-my-opencode's agent-usage-reminder hook.
- * Adapted for Copilot CLI's shell-based hook system.
+ * Adapted for Claude Code's shell-based hook system.
  */
 import { loadAgentUsageState, saveAgentUsageState, clearAgentUsageState, } from './storage.js';
 import { TARGET_TOOLS, AGENT_TOOLS, REMINDER_MESSAGE } from './constants.js';

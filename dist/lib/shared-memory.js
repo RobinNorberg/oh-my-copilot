@@ -4,7 +4,7 @@
  * Filesystem-based key-value store for cross-session memory sync
  * between agents in /team and /pipeline workflows.
  *
- * Storage: .omcp/state/shared-memory/{namespace}/{key}.json
+ * Storage: .omg/state/shared-memory/{namespace}/{key}.json
  *
  * Each entry is a JSON file containing:
  * - key: string identifier
@@ -21,6 +21,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdir
 import { join } from 'path';
 import { getOmcRoot } from './worktree-paths.js';
 import { withFileLockSync } from './file-lock.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
@@ -28,13 +29,14 @@ const CONFIG_FILE_NAME = '.omc-config.json';
 /**
  * Check if shared memory is enabled via config.
  *
- * Reads `agents.sharedMemory.enabled` from ~/.copilot/.omc-config.json.
+ * Reads `agents.sharedMemory.enabled` from
+ * `[$COPILOT_CONFIG_DIR|~/.claude]/.omc-config.json`.
  * Defaults to true when the config key is absent (opt-out rather than opt-in
  * once the feature ships, but tools check this gate).
  */
 export function isSharedMemoryEnabled() {
     try {
-        const configPath = join(process.env.HOME || process.env.USERPROFILE || '', '.copilot', CONFIG_FILE_NAME);
+        const configPath = join(getCopilotConfigDir(), CONFIG_FILE_NAME);
         if (!existsSync(configPath))
             return true; // default enabled
         const raw = JSON.parse(readFileSync(configPath, 'utf-8'));

@@ -44,7 +44,7 @@ export interface ThinkModeInput {
     message: MessageWithModel;
 }
 /**
- * Thinking configuration for Copilot models
+ * Thinking configuration for Claude models
  */
 export interface ClaudeThinkingConfig {
     thinking: {

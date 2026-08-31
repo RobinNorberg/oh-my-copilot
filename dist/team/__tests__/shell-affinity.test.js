@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-const isWindows = process.platform === 'win32';
 import { buildWorkerLaunchSpec, resolveSupportedShellAffinity, resolveShellFromCandidates, } from '../tmux-session.js';
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal();
@@ -8,6 +7,15 @@ vi.mock('fs', async (importOriginal) => {
 import { existsSync } from 'fs';
 const mockExistsSync = existsSync;
 const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+/**
+ * Pin the platform under test. Without this the suite inherits the host's — and
+ * on Windows also the launching shell's MSYSTEM — so POSIX selection tests take
+ * the MSYS `/bin/sh` short-circuit when run from Git Bash and pass under
+ * PowerShell.
+ */
+function setPlatform(value) {
+    Object.defineProperty(process, 'platform', { value, configurable: true });
+}
 afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
@@ -16,7 +24,7 @@ afterEach(() => {
         Object.defineProperty(process, 'platform', originalPlatformDescriptor);
     }
 });
-describe.skipIf(isWindows)('resolveShellFromCandidates', () => {
+describe('resolveShellFromCandidates', () => {
     it('returns first existing candidate', () => {
         mockExistsSync.mockImplementation((p) => p === '/usr/bin/zsh');
         const result = resolveShellFromCandidates(['/bin/zsh', '/usr/bin/zsh'], '/home/user/.zshrc');
@@ -39,7 +47,7 @@ describe.skipIf(isWindows)('resolveShellFromCandidates', () => {
         }
     });
 });
-describe.skipIf(isWindows)('resolveSupportedShellAffinity', () => {
+describe('resolveSupportedShellAffinity', () => {
     it('returns null for undefined shellPath', () => {
         expect(resolveSupportedShellAffinity(undefined)).toBeNull();
     });
@@ -68,19 +76,16 @@ describe.skipIf(isWindows)('resolveSupportedShellAffinity', () => {
         expect(result).toEqual({ shell: '/bin/bash', rcFile: '/home/testuser/.bashrc' });
     });
 });
-describe.skipIf(isWindows)('buildWorkerLaunchSpec', () => {
+describe('buildWorkerLaunchSpec', () => {
     it('returns /bin/sh on MSYS2 (isUnixLikeOnWindows)', () => {
+        setPlatform('win32');
         vi.stubEnv('MSYSTEM', 'MINGW64');
-        // On Windows MSYS2, platform would be win32; we test the env branch
-        // by directly testing that MSYSTEM triggers the fallback.
-        // Since process.platform may not be win32 in CI, we test the function
-        // returns /bin/sh when MSYSTEM is set only on win32. On Linux/macOS,
-        // this branch won't trigger -- so we just verify it at least returns a spec.
-        const result = buildWorkerLaunchSpec('/bin/zsh');
-        expect(result).toHaveProperty('shell');
-        expect(result).toHaveProperty('rcFile');
+        mockExistsSync.mockReturnValue(true);
+        // MSYS short-circuits before any shell probing, so an existing zsh loses.
+        expect(buildWorkerLaunchSpec('/bin/zsh')).toEqual({ shell: '/bin/sh', rcFile: null });
     });
     it('uses user zsh when $SHELL is zsh and binary exists', () => {
+        setPlatform('linux');
         vi.stubEnv('HOME', '/home/testuser');
         mockExistsSync.mockReturnValue(true);
         const result = buildWorkerLaunchSpec('/bin/zsh');
@@ -88,6 +93,7 @@ describe.skipIf(isWindows)('buildWorkerLaunchSpec', () => {
         expect(result.rcFile).toBe('/home/testuser/.zshrc');
     });
     it('falls back to zsh candidates when $SHELL is fish', () => {
+        setPlatform('linux');
         vi.stubEnv('HOME', '/home/testuser');
         mockExistsSync.mockImplementation((p) => p === '/usr/bin/zsh');
         const result = buildWorkerLaunchSpec('/usr/bin/fish');
@@ -95,6 +101,7 @@ describe.skipIf(isWindows)('buildWorkerLaunchSpec', () => {
         expect(result.rcFile).toBe('/home/testuser/.zshrc');
     });
     it('falls back to bash when zsh is missing', () => {
+        setPlatform('linux');
         vi.stubEnv('HOME', '/home/testuser');
         mockExistsSync.mockImplementation((p) => p === '/bin/bash');
         const result = buildWorkerLaunchSpec('/usr/bin/fish');
@@ -102,11 +109,13 @@ describe.skipIf(isWindows)('buildWorkerLaunchSpec', () => {
         expect(result.rcFile).toBe('/home/testuser/.bashrc');
     });
     it('falls back to /bin/sh when no supported shell found', () => {
+        setPlatform('linux');
         mockExistsSync.mockReturnValue(false);
         const result = buildWorkerLaunchSpec('/usr/bin/fish');
         expect(result).toEqual({ shell: '/bin/sh', rcFile: null });
     });
     it('falls back to /bin/sh when no shellPath provided and no candidates found', () => {
+        setPlatform('linux');
         mockExistsSync.mockReturnValue(false);
         const result = buildWorkerLaunchSpec(undefined);
         expect(result).toEqual({ shell: '/bin/sh', rcFile: null });

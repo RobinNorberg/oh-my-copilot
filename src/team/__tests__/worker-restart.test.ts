@@ -13,15 +13,30 @@ import type { McpWorkerMember } from '../types.js';
 
 describe('worker-restart', () => {
   let testDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousStateDir: string | undefined;
   const teamName = 'test-team';
   const workerName = 'worker1';
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'worker-restart-test-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
+    delete process.env.OMC_STATE_DIR;
   });
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
   });
 
   describe('shouldRestart', () => {
@@ -79,10 +94,12 @@ describe('worker-restart', () => {
     it('updates lastRestartAt timestamp', () => {
       recordRestart(testDir, teamName, workerName);
       const state1 = readRestartState(testDir, teamName, workerName);
-      // Small delay to ensure different timestamp
+      expect(state1!.lastRestartAt).not.toBe('');
       recordRestart(testDir, teamName, workerName);
       const state2 = readRestartState(testDir, teamName, workerName);
       expect(state2!.lastRestartAt).not.toBe('');
+      // Verify the timestamp was actually updated (restartCount changes guarantee a new write)
+      expect(state2!.restartCount).toBeGreaterThan(state1!.restartCount);
     });
   });
 
@@ -107,7 +124,7 @@ describe('worker-restart', () => {
         agentType: 'mcp-codex',
         model: 'gpt-5.3-codex',
         joinedAt: Date.now(),
-        tmuxPaneId: 'omcp-team-test-codex-worker',
+        tmuxPaneId: 'omc-team-test-codex-worker',
         cwd: '/home/user/project',
         backendType: 'tmux',
         subscriptions: [],
@@ -131,7 +148,7 @@ describe('worker-restart', () => {
         agentType: 'mcp-gemini',
         model: 'gemini-3-pro-preview',
         joinedAt: Date.now(),
-        tmuxPaneId: 'omcp-team-test-gemini-worker',
+        tmuxPaneId: 'omc-team-test-gemini-worker',
         cwd: '/home/user/project',
         backendType: 'tmux',
         subscriptions: [],

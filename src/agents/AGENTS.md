@@ -79,7 +79,7 @@ const agents = getAgentDefinitions();
 | Strategic planning | `planner` | opus | Read, Glob, Grep, WebSearch |
 | CLI testing | `qa-tester` | sonnet | Bash, Read, Grep, Glob, TodoWrite |
 | Data analysis | `scientist` | sonnet | Read, Glob, Grep, Bash, python_repl |
-| ML/hypothesis | `scientist-high` | opus | Read, Glob, Grep, Bash, python_repl |
+| Deep data analysis | `scientist-high` | opus | Read, Glob, Grep, Bash, python_repl |
 | Security audit | `security-reviewer` | opus | Read, Grep, Glob, Bash |
 | Quick security scan | `security-reviewer-low` | haiku | Read, Grep, Glob, Bash |
 | Build errors | `debugger` | sonnet | Read, Grep, Glob, Edit, Write, Bash |
@@ -169,7 +169,7 @@ export const newAgentHigh: AgentConfig = {
 3. Add to `definitions.ts` (import + registry)
 4. Export from `index.ts`
 5. Update `docs/REFERENCE.md` (Agents section, count)
-6. Update `docs/copilot-instructions.md` (Agent Selection Guide)
+6. Update `docs/CLAUDE.md` (Agent Selection Guide)
 7. Update root `/AGENTS.md` (Agent Summary if applicable)
 
 #### When Modifying an Agent
@@ -178,7 +178,7 @@ export const newAgentHigh: AgentConfig = {
 2. Update prompt template (`agents/*.md`) if changing behavior
 3. Update tiered variants (`-low`, `-medium`, `-high`) if applicable
 4. Update `docs/REFERENCE.md` if changing agent description/capabilities
-5. Update `docs/copilot-instructions.md` (Agent Tool Matrix) if changing tool assignments
+5. Update `docs/CLAUDE.md` (Agent Tool Matrix) if changing tool assignments
 
 #### When Removing an Agent
 

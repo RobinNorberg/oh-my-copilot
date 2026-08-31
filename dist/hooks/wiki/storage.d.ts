@@ -6,7 +6,7 @@
  * to prevent concurrent corruption.
  *
  * Storage layout:
- *   .omcp/wiki/
+ *   .omg/wiki/
  *   ├── index.md      (auto-maintained catalog)
  *   ├── log.md         (append-only operation chronicle)
  *   ├── page-slug.md   (knowledge pages)
@@ -17,6 +17,12 @@ import { type WikiPage, type WikiPageFrontmatter, type WikiLogEntry } from './ty
 export declare function getWikiDir(root: string): string;
 /** Ensure wiki directory exists and is git-ignored. */
 export declare function ensureWikiDir(root: string): string;
+export interface WikiLockOptions {
+    /** Maximum time to wait for the wiki lock. Ordinary callers retain the existing 5s default. */
+    timeoutMs?: number;
+    /** Optional absolute deadline for worker-owned work. */
+    deadlineAt?: number;
+}
 /**
  * Execute a function under the wiki-wide file lock.
  * All write operations MUST go through this boundary.
@@ -24,7 +30,7 @@ export declare function ensureWikiDir(root: string): string;
  * Uses synchronous file lock (withFileLockSync) because wiki operations
  * are called from sync hook contexts (notepad pattern).
  */
-export declare function withWikiLock<T>(root: string, fn: () => T): T;
+export declare function withWikiLock<T>(root: string, fn: () => T, options?: WikiLockOptions): T;
 /**
  * Parse YAML frontmatter from markdown content.
  * Expects content starting with `---\n...\n---\n`.
@@ -62,6 +68,14 @@ export declare function deletePageUnsafe(root: string, filename: string): boolea
 export declare function updateIndexUnsafe(root: string): void;
 /** Append a log entry to log.md. MUST be called inside withWikiLock. */
 export declare function appendLogUnsafe(root: string, entry: WikiLogEntry): void;
+/**
+ * Write the reserved environment.md page. MUST be called inside withWikiLock.
+ *
+ * environment.md is a reserved file (excluded from index/listPages and
+ * rejected by writePageUnsafe), so project-memory feeding gets a dedicated
+ * write path — mirroring updateIndexUnsafe and appendLogUnsafe.
+ */
+export declare function writeEnvironmentUnsafe(root: string, page: WikiPage): void;
 /** Write a page with automatic locking and index/log update. */
 export declare function writePage(root: string, page: WikiPage): void;
 /** Delete a page with automatic locking and index update. */

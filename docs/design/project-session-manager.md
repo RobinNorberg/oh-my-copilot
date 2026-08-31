@@ -3,11 +3,11 @@
 > **Skill Name:** `project-session-manager` (alias: `psm`)
 > **Version:** 1.0.0
 > **Author:** oh-my-copilot
-> **Status:** Implemented — The `project-session-manager` skill is available via `/oh-my-copilot:project-session-manager`. This document captures the original design rationale.
+> **Status:** Design Draft
 
 ## Executive Summary
 
-Project Session Manager (PSM) automates the creation and management of isolated development environments using git worktrees and tmux sessions with Copilot CLI. It enables parallel work across multiple tasks, projects, and repositories while maintaining clean separation and easy context switching.
+Project Session Manager (PSM) automates the creation and management of isolated development environments using git worktrees and tmux sessions with Claude Code. It enables parallel work across multiple tasks, projects, and repositories while maintaining clean separation and easy context switching.
 
 ---
 
@@ -33,7 +33,7 @@ Project Session Manager (PSM) automates the creation and management of isolated 
 
 ### Current Pain Points
 
-1. **Context Switching Overhead**: Switching between tasks requires stashing changes, switching branches, and losing Copilot CLI context
+1. **Context Switching Overhead**: Switching between tasks requires stashing changes, switching branches, and losing Claude Code context
 2. **PR Review Isolation**: Reviewing PRs often contaminates the working directory
 3. **Parallel Work Limitation**: Can only work on one task at a time per repository
 4. **Session Management**: Manual tmux session creation is tedious and inconsistent
@@ -43,7 +43,7 @@ Project Session Manager (PSM) automates the creation and management of isolated 
 
 PSM provides a unified interface to:
 - Create isolated worktrees with a single command
-- Spawn pre-configured tmux sessions with Copilot CLI
+- Spawn pre-configured tmux sessions with Claude Code
 - Track and manage all active sessions
 - Automate cleanup of completed work
 
@@ -58,7 +58,7 @@ PSM provides a unified interface to:
 /psm review omc#123
 
 # Review PR from any GitHub URL
-/psm review https://github.com/github/copilot-cli/pull/456
+/psm review https://github.com/anthropics/claude-code/pull/456
 
 # Review with specific focus
 /psm review omc#123 --focus "security implications"
@@ -68,7 +68,7 @@ PSM provides a unified interface to:
 1. Fetches PR branch
 2. Creates worktree at `~/.psm/worktrees/omc/pr-123`
 3. Spawns tmux session `psm:omc:pr-123`
-4. Launches Copilot CLI with PR context pre-loaded
+4. Launches Claude Code with PR context pre-loaded
 5. Opens diff in editor (optional)
 
 ### 2.2 Issue Fixing
@@ -81,7 +81,7 @@ PSM provides a unified interface to:
 /psm fix omc#42 --branch fix/auth-timeout
 
 # Fix from issue URL
-/psm fix https://github.com/github/copilot-cli/issues/789
+/psm fix https://github.com/anthropics/claude-code/issues/789
 ```
 
 **What happens:**
@@ -89,7 +89,7 @@ PSM provides a unified interface to:
 2. Creates feature branch from main
 3. Creates worktree at `~/.psm/worktrees/omc/issue-42`
 4. Spawns tmux session with issue context
-5. Pre-populates Copilot CLI with issue description
+5. Pre-populates Claude Code with issue description
 
 ### 2.3 Feature Development
 
@@ -192,7 +192,7 @@ PSM provides a unified interface to:
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--project`, `-p` | Project identifier or path | Current directory |
-| `--no-copilot` | Skip Copilot CLI launch | false |
+| `--no-claude` | Skip Claude Code launch | false |
 | `--no-tmux` | Use current terminal | false |
 | `--editor`, `-e` | Open in editor after | false |
 | `--verbose`, `-v` | Verbose output | false |
@@ -207,10 +207,10 @@ PSM supports multiple reference formats:
 omc#123
 
 # Full GitHub reference
-github/copilot-cli#123
+anthropics/claude-code#123
 
 # GitHub URL
-https://github.com/github/copilot-cli/pull/123
+https://github.com/anthropics/claude-code/pull/123
 
 # Local path
 /path/to/repo#123
@@ -226,13 +226,13 @@ https://github.com/github/copilot-cli/pull/123
 {
   "aliases": {
     "omc": {
-      "repo": "RobinNorberg/oh-my-copilot",
+      "repo": "anthropics/oh-my-copilot",
       "local": "~/Workspace/oh-my-copilot",
       "default_base": "main"
     },
     "cc": {
-      "repo": "github/copilot-cli",
-      "local": "~/Workspace/copilot-cli",
+      "repo": "anthropics/claude-code",
+      "local": "~/Workspace/claude-code",
       "default_base": "main"
     },
     "myapp": {
@@ -276,15 +276,15 @@ https://github.com/github/copilot-cli/pull/123
               │               │               │
               ▼               ▼               ▼
     ┌─────────────────┐ ┌─────────────┐ ┌─────────────────┐
-    │ Worktree Manager│ │Tmux Manager │ │ Copilot Launcher │
-    │   (git cmd)     │ │ (tmux cmd)  │ │  (copilot cmd)   │
+    │ Worktree Manager│ │Tmux Manager │ │ Claude Launcher │
+    │   (git cmd)     │ │ (tmux cmd)  │ │  (claude cmd)   │
     └─────────────────┘ └─────────────┘ └─────────────────┘
               │               │               │
               └───────────────┼───────────────┘
                               ▼
     ┌─────────────────────────────────────────────────────────┐
     │                    Integration Layer                     │
-    │  (gh CLI, git, tmux, copilot, omc skills, Clawdbot)       │
+    │  (gh CLI, git, tmux, claude, omc skills, webhooks)        │
     └─────────────────────────────────────────────────────────┘
 ```
 
@@ -297,11 +297,11 @@ https://github.com/github/copilot-cli/pull/123
       │                  │                  │                  │
       │                  │                  │                  │
       ▼                  ▼                  ▼                  ▼
-  - Fetch refs      - Copilot active    - Session saved    - Worktree kept
+  - Fetch refs      - Claude active    - Session saved    - Worktree kept
   - Create worktree - Tmux attached    - Tmux running     - PR merged
   - Create branch   - Work in progress - Can resume       - Ready for GC
   - Start tmux
-  - Launch copilot
+  - Launch claude
 ```
 
 ### 4.3 Data Flow
@@ -338,7 +338,7 @@ User Command
      ▼
 ┌─────────────────┐
 │ Launch Tmux +   │
-│ Copilot CLI     │
+│ Claude Code     │
 └─────────────────┘
 ```
 
@@ -365,7 +365,7 @@ User Command
     │   ├── pr-123/
     │   ├── issue-42/
     │   └── feature-auth/
-    └── copilot-cli/
+    └── claude-code/
         └── pr-456/
 ```
 
@@ -375,9 +375,9 @@ User Command
 ~/.psm/worktrees/omc/pr-123/
 ├── .git                     # Git worktree link
 ├── .psm-session.json        # Session metadata
-├── .psm-context.md          # Pre-loaded Copilot context
+├── .psm-context.md          # Pre-loaded Claude context
 ├── <project files>          # Actual code
-└── .omcp/                    # OMC state (if applicable)
+└── .omg/                    # OMC state (if applicable)
 ```
 
 ### 5.3 Session Metadata File
@@ -400,7 +400,7 @@ User Command
     "pr_number": 123,
     "pr_title": "Add webhook support",
     "pr_author": "contributor",
-    "pr_url": "https://github.com/RobinNorberg/oh-my-copilot/pull/123"
+    "pr_url": "https://github.com/anthropics/oh-my-copilot/pull/123"
   },
   "state": "active",
   "notes": []
@@ -742,21 +742,21 @@ def cleanup(options):
 | `git-master` | Aware of worktree context |
 | `deepsearch` | Scoped to session worktree |
 
-### 10.2 Clawdbot Integration
+### 10.2 Custom Agent Gateway Integration
 
 ```typescript
-// Clawdbot can manage PSM sessions
-interface ClawdbotPSMIntegration {
-  // List sessions via Clawdbot UI
+// A custom webhook can manage PSM sessions through your own gateway.
+interface CustomAgentGatewayIntegration {
+  // List sessions via your gateway UI
   listSessions(): Promise<Session[]>;
 
-  // Create session from Clawdbot
+  // Create session from your gateway
   createSession(options: SessionOptions): Promise<Session>;
 
-  // Attach to session in new terminal
+  // Attach to session in a new terminal
   attachSession(sessionId: string): Promise<void>;
 
-  // Session status in Clawdbot dashboard
+  // Session status in your gateway dashboard
   getSessionStatus(sessionId: string): Promise<SessionStatus>;
 }
 ```
@@ -976,7 +976,7 @@ interface PSMPlugin {
     "default_layout": "main-vertical",
     "status_bar": true
   },
-  "copilot": {
+  "claude": {
     "auto_context": true,
     "context_template": "default",
     "model": "opus"
@@ -1011,7 +1011,7 @@ $ /psm review omc#123
 
 🖥️  Creating tmux session: psm:omc:pr-123...
 
-🤖 Launching Copilot CLI with PR context...
+🤖 Launching Claude Code with PR context...
 
 ✅ Session ready!
 

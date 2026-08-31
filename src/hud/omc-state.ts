@@ -1,19 +1,21 @@
 /**
  * OMC HUD - State Readers
  *
- * Read ralph, ultrawork, and PRD state from existing OMC files.
+ * Read ralph and PRD state from existing OMC files.
  * These are read-only functions that don't modify the state files.
  */
+
 
 import { existsSync, readFileSync, statSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import type {
   RalphStateForHud,
-  UltraworkStateForHud,
   PrdStateForHud,
 } from './types.js';
 import type { AutopilotStateForHud } from './elements/autopilot.js';
+import { validateNamedWorkflowStateStructure } from '../hooks/autopilot/named-workflow-resume-validator.js';
+import type { AutopilotState } from '../hooks/autopilot/types.js';
 
 /**
  * Maximum age for state files to be considered "active".
@@ -36,9 +38,9 @@ function isStateFileStale(filePath: string): boolean {
 
 /**
  * Resolve state file path with fallback chain:
- * 1. Session-scoped paths (.omcp/state/sessions/{id}/{filename}) - newest first
- * 2. Standard path (.omcp/state/{filename})
- * 3. Legacy path (.omcp/{filename})
+ * 1. Session-scoped paths (.omg/state/sessions/{id}/{filename}) - newest first
+ * 2. Standard path (.omg/state/{filename})
+ * 3. Legacy path (.omg/{filename})
  *
  * Returns the most recently modified matching path, or null if none found.
  * This ensures the HUD displays state from any active session (Issue #456).
@@ -158,47 +160,6 @@ export function readRalphStateForHud(directory: string, sessionId?: string): Ral
 }
 
 // ============================================================================
-// Ultrawork State
-// ============================================================================
-
-interface UltraworkState {
-  active: boolean;
-  reinforcement_count: number;
-}
-
-/**
- * Read Ultrawork state for HUD display.
- * Checks only local .omcp/state location.
- */
-export function readUltraworkStateForHud(
-  directory: string,
-  sessionId?: string
-): UltraworkStateForHud | null {
-  // Check local state only (with new path fallback)
-  const localFile = resolveStatePath(directory, 'ultrawork-state.json', sessionId);
-
-  if (!localFile || isStateFileStale(localFile)) {
-    return null;
-  }
-
-  try {
-    const content = readFileSync(localFile, 'utf-8');
-    const state = JSON.parse(content) as UltraworkState;
-
-    if (!state.active) {
-      return null;
-    }
-
-    return {
-      active: state.active,
-      reinforcementCount: state.reinforcement_count,
-    };
-  } catch {
-    return null;
-  }
-}
-
-// ============================================================================
 // PRD State
 // ============================================================================
 
@@ -214,7 +175,7 @@ interface PRD {
 
 /**
  * Read PRD state for HUD display.
- * Checks both root prd.json and .omcp/prd.json.
+ * Checks both root prd.json and .omg/prd.json.
  */
 export function readPrdStateForHud(directory: string): PrdStateForHud | null {
   // Check root first
@@ -260,18 +221,69 @@ export function readPrdStateForHud(directory: string): PrdStateForHud | null {
 // Autopilot State
 // ============================================================================
 
+interface WorkflowDescriptor {
+  descriptorVersion: number;
+  workflowName: string;
+  profileVersion: number;
+  stages: string[];
+  profileHash: string;
+}
+
 interface AutopilotStateFile {
   active: boolean;
   phase?: string;
   current_phase?: string;
   iteration: number;
   max_iterations: number;
+  workflow?: WorkflowDescriptor;
+  pipelineTracking?: {
+    stages?: Array<{ id?: string; status?: string }>;
+    currentStageIndex?: number;
+    trackingRevision?: number;
+    activationBoundary?: { transcriptPath?: string; byteOffset?: number } | null;
+    completionObservations?: unknown[];
+  };
   execution?: {
     tasks_completed?: number;
     tasks_total?: number;
     files_created?: string[];
   };
 }
+
+
+function hasNamedWorkflowMarker(state: AutopilotStateFile): boolean {
+  const record = state as unknown as Record<string, unknown>;
+  return ['workflow', 'workflowRunId', 'pipelineTracking'].some((marker) => (
+    Object.prototype.hasOwnProperty.call(record, marker)
+  ));
+}
+
+function getWorkflowHudState(state: AutopilotStateFile): AutopilotStateForHud['workflow'] | undefined {
+  if (!hasNamedWorkflowMarker(state)) {
+    return undefined;
+  }
+  const record = state as unknown as Record<string, unknown>;
+  const sessionId = typeof record.session_id === 'string'
+    ? record.session_id
+    : undefined;
+  if (!sessionId || !validateNamedWorkflowStateStructure(state as unknown as AutopilotState, sessionId)) {
+    return { invalid: true };
+  }
+
+  const workflow = state.workflow!;
+  const pipelineTracking = state.pipelineTracking!;
+  const currentStageIndex = pipelineTracking.currentStageIndex!;
+  const currentStage = pipelineTracking.stages![currentStageIndex]?.id;
+  return {
+    name: workflow.workflowName,
+    version: workflow.profileVersion,
+    shortHash: workflow.profileHash.slice(0, 12),
+    currentStage: currentStage ?? 'complete',
+    currentStageIndex: Math.min(currentStageIndex + 1, workflow.stages.length),
+    stagesTotal: workflow.stages.length,
+  };
+}
+
 
 /**
  * Read Autopilot state for HUD display.
@@ -309,7 +321,8 @@ export function readAutopilotStateForHud(directory: string, sessionId?: string):
       maxIterations: state.max_iterations,
       tasksCompleted: state.execution?.tasks_completed,
       tasksTotal: state.execution?.tasks_total,
-      filesCreated: state.execution?.files_created?.length
+      filesCreated: state.execution?.files_created?.length,
+      workflow: getWorkflowHudState(state),
     };
   } catch {
     return null;
@@ -325,10 +338,9 @@ export function readAutopilotStateForHud(directory: string, sessionId?: string):
  */
 export function isAnyModeActive(directory: string, sessionId?: string): boolean {
   const ralph = readRalphStateForHud(directory, sessionId);
-  const ultrawork = readUltraworkStateForHud(directory, sessionId);
   const autopilot = readAutopilotStateForHud(directory, sessionId);
 
-  return (ralph?.active ?? false) || (ultrawork?.active ?? false) || (autopilot?.active ?? false);
+  return (ralph?.active ?? false) || (autopilot?.active ?? false);
 }
 
 /**
@@ -345,11 +357,6 @@ export function getActiveSkills(directory: string, sessionId?: string): string[]
   const ralph = readRalphStateForHud(directory, sessionId);
   if (ralph?.active) {
     skills.push('ralph');
-  }
-
-  const ultrawork = readUltraworkStateForHud(directory, sessionId);
-  if (ultrawork?.active) {
-    skills.push('ultrawork');
   }
 
   return skills;

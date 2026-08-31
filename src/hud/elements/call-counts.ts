@@ -42,7 +42,6 @@ function getIcons(
  * @param toolCalls - Total tool_use blocks seen in transcript
  * @param agentInvocations - Total Task/proxy_Task calls seen in transcript
  * @param skillUsages - Total Skill/proxy_Skill calls seen in transcript
- * @param format - Icon format: auto (platform default), emoji, or ascii
  */
 export function renderCallCounts(
   toolCalls: number,

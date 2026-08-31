@@ -11,6 +11,7 @@
 
 import { join } from 'node:path';
 import { writeFileWithMode, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 import { getActivityLog, formatActivityTimeline } from './activity-log.js';
 import { generateUsageReport } from './usage-tracker.js';
 import { readAuditLog } from './audit-log.js';
@@ -79,7 +80,7 @@ export function generateTeamReport(
     lines.push('|--------|-------|-----------------|--------------|----------------|');
     for (const w of usage.workers) {
       const timeStr = `${Math.round(w.totalWallClockMs / 1000)}s`;
-      lines.push(`| ${w.workerName} | ${w.taskCount} | ${timeStr} | ${w.totalPromptChars.toLocaleString('en-US')} | ${w.totalResponseChars.toLocaleString('en-US')} |`);
+      lines.push(`| ${w.workerName} | ${w.taskCount} | ${timeStr} | ${w.totalPromptChars.toLocaleString()} | ${w.totalResponseChars.toLocaleString()} |`);
     }
     lines.push('');
   }
@@ -104,7 +105,7 @@ export function generateTeamReport(
 
 /**
  * Write the report to disk.
- * Path: .omcp/reports/team-{teamName}-{timestamp}.md
+ * Path: .omg/reports/team-{teamName}-{timestamp}.md
  * Returns the file path.
  */
 export function saveTeamReport(
@@ -112,11 +113,14 @@ export function saveTeamReport(
   teamName: string
 ): string {
   const report = generateTeamReport(workingDirectory, teamName);
-  const dir = join(workingDirectory, '.omcp', 'reports');
+  const dir = join(getOmcRoot(workingDirectory), 'reports');
   ensureDirWithMode(dir);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filePath = join(dir, `team-${teamName}-${timestamp}.md`);
-  validateResolvedPath(filePath, workingDirectory);
+  // filePath lives under getOmcRoot(...)/reports, which in a .omc-workspace
+  // layout is ABOVE workingDirectory. Validate against the shared reports dir
+  // (still catches teamName traversal) instead of the sub-repo.
+  validateResolvedPath(filePath, dir);
   writeFileWithMode(filePath, report);
   return filePath;
 }

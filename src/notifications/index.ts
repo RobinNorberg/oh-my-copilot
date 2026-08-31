@@ -23,7 +23,6 @@ export type {
   TelegramNotificationConfig,
   SlackNotificationConfig,
   SlackBotNotificationConfig,
-  TeamsNotificationConfig,
   WebhookNotificationConfig,
   EventNotificationConfig,
 } from "./types.js";
@@ -41,7 +40,6 @@ export {
   sendTelegram,
   sendSlack,
   sendSlackBot,
-  sendTeams,
   sendWebhook,
 } from "./dispatcher.js";
 export {
@@ -52,6 +50,7 @@ export {
   formatSessionIdle,
   formatAskUserQuestion,
   formatAgentCall,
+  parseTmuxTail,
 } from "./formatter.js";
 export {
   getCurrentTmuxSession,
@@ -113,7 +112,8 @@ import { dispatchNotifications } from "./dispatcher.js";
 import { getCurrentTmuxSession } from "./tmux.js";
 import { getHookConfig, resolveEventTemplate } from "./hook-config.js";
 import { interpolateTemplate } from "./template-engine.js";
-import { basename } from "path";
+import { basename, join } from "path";
+import { getOmcRoot } from "../lib/worktree-paths.js";
 
 /**
  * High-level notification function.
@@ -179,12 +179,13 @@ export async function notify(
       iteration: data.iteration,
       maxIterations: data.maxIterations,
       question: data.question,
+      askUserQuestionPrompts: data.askUserQuestionPrompts,
       incompleteTasks: data.incompleteTasks,
       agentName: data.agentName,
       agentType: data.agentType,
-      replyChannel: data.replyChannel,
-      replyTarget: data.replyTarget,
-      replyThread: data.replyThread,
+      replyChannel: data.replyChannel ?? process.env.OPENCLAW_REPLY_CHANNEL ?? undefined,
+      replyTarget: data.replyTarget ?? process.env.OPENCLAW_REPLY_TARGET ?? undefined,
+      replyThread: data.replyThread ?? process.env.OPENCLAW_REPLY_THREAD ?? undefined,
     };
 
     // Capture tmux tail for events that benefit from it
@@ -197,8 +198,13 @@ export async function notify(
         const { capturePaneContent } = await import(
           "../features/rate-limit-wait/tmux-detector.js"
         );
+        const { getNewPaneTail } = await import(
+          "../features/rate-limit-wait/pane-fresh-capture.js"
+        );
         const tailLines = getTmuxTailLines(config);
-        const rawTail = capturePaneContent(payload.tmuxPaneId, tailLines);
+        const rawTail = payload.projectPath
+          ? getNewPaneTail(payload.tmuxPaneId, join(getOmcRoot(payload.projectPath), "state"), tailLines)
+          : capturePaneContent(payload.tmuxPaneId, tailLines);
         if (rawTail) {
           payload.tmuxTail = rawTail;
           payload.maxTailLines = tailLines;
@@ -218,7 +224,7 @@ export async function notify(
       const hookConfig = getHookConfig();
       if (hookConfig?.enabled) {
         const platforms: NotificationPlatform[] = [
-          "discord", "discord-bot", "telegram", "slack", "slack-bot", "teams", "webhook",
+          "discord", "discord-bot", "telegram", "slack", "slack-bot", "webhook",
         ];
         const map = new Map<NotificationPlatform, string>();
         for (const platform of platforms) {
@@ -260,6 +266,12 @@ export async function notify(
               event: payload.event,
               createdAt: new Date().toISOString(),
               projectPath: payload.projectPath,
+              ...(payload.event === "ask-user-question" && payload.askUserQuestionPrompts?.[0]
+                ? {
+                    askUserQuestionOptionCount: payload.askUserQuestionPrompts[0].options.length,
+                    askUserQuestionAllowOther: payload.askUserQuestionPrompts[0].allowOther !== false,
+                  }
+                : {}),
             });
           }
         }
@@ -302,6 +314,8 @@ export {
   getCustomIntegrationsConfig,
   getCustomIntegrationsForEvent,
   hasCustomIntegrationsEnabled,
+  detectLegacyOpenClawConfig,
+  migrateLegacyOpenClawConfig,
 } from "./config.js";
 
 export {

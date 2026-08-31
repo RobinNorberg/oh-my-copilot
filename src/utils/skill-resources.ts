@@ -4,7 +4,8 @@ import { dirname, relative } from 'path';
 const MAX_RESOURCE_ENTRIES = 12;
 
 function toDisplayPath(pathValue: string): string {
-  const relativeToCwd = relative(process.cwd(), pathValue);
+  // Display-only paths use POSIX separators so rendered skill docs are identical on all platforms.
+  const relativeToCwd = relative(process.cwd(), pathValue).replace(/\\/g, '/');
   if (
     relativeToCwd &&
     relativeToCwd !== '' &&
@@ -13,7 +14,8 @@ function toDisplayPath(pathValue: string): string {
   ) {
     return relativeToCwd;
   }
-  return pathValue;
+
+  return pathValue.replace(/\\/g, '/');
 }
 
 export interface SkillResourceSummary {

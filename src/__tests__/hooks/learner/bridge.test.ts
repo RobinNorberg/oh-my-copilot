@@ -9,8 +9,18 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "fs";
+import {
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  symlinkSync,
+} from "fs";
 import { join } from "path";
+import { contextCollector } from "../../../features/context-injector/index.js";
+import { processMessageForSkills, clearSkillSession } from "../../../hooks/learner/index.js";
 import { tmpdir } from "os";
 import {
   findSkillFiles,
@@ -20,15 +30,12 @@ import {
   markSkillsInjected,
   clearSkillMetadataCache,
 } from "../../../hooks/learner/bridge.js";
-import {
-  processMessageForSkills,
-  clearSkillSession,
-} from "../../../hooks/learner/index.js";
-import { contextCollector } from "../../../features/context-injector/index.js";
 
 describe("Skill Bridge Module", () => {
   let testProjectRoot: string;
   let originalCwd: string;
+  let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
 
   beforeEach(() => {
     clearSkillMetadataCache();
@@ -36,12 +43,20 @@ describe("Skill Bridge Module", () => {
     contextCollector.clear("emitted-learner-session");
     originalCwd = process.cwd();
     testProjectRoot = join(tmpdir(), `omc-bridge-test-${Date.now()}`);
+    originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
+    process.env.HOME = testProjectRoot;
+    process.env.USERPROFILE = testProjectRoot;
     mkdirSync(testProjectRoot, { recursive: true });
     process.chdir(testProjectRoot);
   });
 
   afterEach(() => {
     process.chdir(originalCwd);
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
     contextCollector.clear("emitted-learner-session");
     clearSkillSession("emitted-learner-session");
     if (existsSync(testProjectRoot)) {
@@ -50,8 +65,8 @@ describe("Skill Bridge Module", () => {
   });
 
   describe("findSkillFiles", () => {
-    it("should discover skills in project .omcp/skills/", () => {
-      const skillsDir = join(testProjectRoot, ".omcp", "skills");
+    it("should discover skills in project .omg/skills/", () => {
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(
@@ -68,8 +83,25 @@ describe("Skill Bridge Module", () => {
       expect(projectFiles[0].path).toContain("test-skill.md");
     });
 
+    it("should discover compatibility skills in project .agents/skills/", () => {
+      const skillsDir = join(testProjectRoot, ".agents", "skills");
+      mkdirSync(skillsDir, { recursive: true });
+
+      writeFileSync(
+        join(skillsDir, "compat-skill.md"),
+        "---\nname: Compat Skill\ntriggers:\n  - compat\n---\nContent",
+      );
+
+      const files = findSkillFiles(testProjectRoot);
+      const projectFiles = files.filter((f) => f.scope === "project");
+
+      expect(projectFiles).toHaveLength(1);
+      expect(projectFiles[0].sourceDir).toContain(join(".agents", "skills"));
+      expect(projectFiles[0].path).toContain("compat-skill.md");
+    });
+
     it("should discover skills recursively in subdirectories", () => {
-      const skillsDir = join(testProjectRoot, ".omcp", "skills");
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       const subDir = join(skillsDir, "subdir", "nested");
       mkdirSync(subDir, { recursive: true });
 
@@ -93,7 +125,7 @@ describe("Skill Bridge Module", () => {
     });
 
     it("should ignore non-.md files", () => {
-      const skillsDir = join(testProjectRoot, ".omcp", "skills");
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(
@@ -109,6 +141,33 @@ describe("Skill Bridge Module", () => {
 
       expect(projectFiles).toHaveLength(1);
       expect(projectFiles[0].path).toContain("valid.md");
+    });
+
+    it("should treat symlinked project roots as within boundary", () => {
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
+      mkdirSync(skillsDir, { recursive: true });
+
+      writeFileSync(
+        join(skillsDir, "linked-skill.md"),
+        "---\nname: Linked Skill\ntriggers:\n  - linked\n---\nContent",
+      );
+
+      const linkedProjectRoot = join(
+        tmpdir(),
+        `omc-bridge-link-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      );
+
+      try {
+        symlinkSync(testProjectRoot, linkedProjectRoot, "dir");
+
+        const files = findSkillFiles(linkedProjectRoot);
+        const projectFiles = files.filter((f) => f.scope === "project");
+
+        expect(projectFiles).toHaveLength(1);
+        expect(projectFiles[0].path).toContain("linked-skill.md");
+      } finally {
+        rmSync(linkedProjectRoot, { recursive: true, force: true });
+      }
     });
   });
 
@@ -184,7 +243,7 @@ Content`;
 
   describe("matchSkillsForInjection", () => {
     it("should match skills by trigger substring", () => {
-      const skillsDir = join(testProjectRoot, ".omcp", "skills");
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(
@@ -204,7 +263,7 @@ Content`;
     });
 
     it("returns compact descriptor metadata for matched skills", () => {
-      const skillsDir = join(testProjectRoot, ".omcp", "skills");
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       const longBody = `${"Full body secret. ".repeat(200)}Do not inject this whole body.`;
@@ -232,7 +291,7 @@ ${longBody}`,
     });
 
     it("registers emitted learner context as compact descriptors within budget", () => {
-      const skillsDir = join(testProjectRoot, ".omcp", "skills");
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       const giantBody = `${"Sensitive full body content. ".repeat(400)}Tail.`;
@@ -262,11 +321,7 @@ ${giantBody}`,
       );
       const pending = contextCollector.getPending("emitted-learner-session");
 
-      // Note: result.injected may be >3 if the local HOME has user-scope
-      // skills that match; assert the 3 project-scope skills we planted
-      // were injected, and let the budget cap cover broader behavior.
-      const projectInjected = result.skills.filter((s) => s.scope === "project");
-      expect(projectInjected).toHaveLength(3);
+      expect(result.injected).toBe(3);
       expect(pending.hasContent).toBe(true);
       expect(pending.merged).toContain("Compact descriptors only");
       expect(pending.merged).toContain("Alpha Skill summary");
@@ -276,7 +331,7 @@ ${giantBody}`,
     });
 
     it("keeps learner omission text inside the descriptor budget", () => {
-      const skillsDir = join(testProjectRoot, ".omcp", "skills");
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       const largeSummary = "Summary ".repeat(220);
@@ -312,7 +367,7 @@ Body`,
     });
 
     it("should not match when triggers dont match", () => {
-      const skillsDir = join(testProjectRoot, ".omcp", "skills");
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(
@@ -330,7 +385,7 @@ Body`,
     });
 
     it("should not match skills with empty scalar triggers", () => {
-      const skillsDir = join(testProjectRoot, ".omc", "skills");
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(
@@ -348,7 +403,7 @@ Body`,
     });
 
     it("should ignore blank trigger entries while matching valid triggers", () => {
-      const skillsDir = join(testProjectRoot, ".omcp", "skills");
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(
@@ -381,7 +436,7 @@ Mixed trigger instructions`,
     });
 
     it("should use fuzzy matching when opt-in", () => {
-      const skillsDir = join(testProjectRoot, ".omcp", "skills");
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       // Skill with fuzzy matching enabled
@@ -403,7 +458,7 @@ Mixed trigger instructions`,
     });
 
     it("should respect skill limit", () => {
-      const skillsDir = join(testProjectRoot, ".omcp", "skills");
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       // Create 10 skills that all match "test"
@@ -458,7 +513,7 @@ Mixed trigger instructions`,
 
       const stateFile = join(
         testProjectRoot,
-        ".omcp",
+        ".omg",
         "state",
         "skill-sessions.json",
       );
@@ -471,8 +526,38 @@ Mixed trigger instructions`,
       );
     });
 
+    it("does not write project-local .omc when OMC_STATE_DIR is set", () => {
+      const centralizedDir = join(tmpdir(), `omc-state-dir-${Date.now()}`);
+      mkdirSync(centralizedDir, { recursive: true });
+      const previousOmcStateDir = process.env.OMC_STATE_DIR;
+      process.env.OMC_STATE_DIR = centralizedDir;
+      try {
+        markSkillsInjected(
+          "omc-state-dir-test",
+          ["/path/to/centralized.md"],
+          testProjectRoot,
+        );
+
+        // State must NOT land in the project-local .omg/
+        expect(existsSync(join(testProjectRoot, ".omg"))).toBe(false);
+
+        // State must land somewhere under the centralized dir
+        const found = readdirSync(centralizedDir, { recursive: true })
+          .map((f) => String(f))
+          .filter((f) => f.endsWith("skill-sessions.json"));
+        expect(found).toHaveLength(1);
+      } finally {
+        if (previousOmcStateDir === undefined) {
+          delete process.env.OMC_STATE_DIR;
+        } else {
+          process.env.OMC_STATE_DIR = previousOmcStateDir;
+        }
+        rmSync(centralizedDir, { recursive: true, force: true });
+      }
+    });
+
     it("should not re-inject already injected skills", () => {
-      const skillsDir = join(testProjectRoot, ".omcp", "skills");
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(
@@ -505,7 +590,7 @@ Mixed trigger instructions`,
     it("should return project skills before user skills", () => {
       // We can't easily test user skills dir in isolation, but we can verify
       // that project skills come first in the returned array
-      const skillsDir = join(testProjectRoot, ".omcp", "skills");
+      const skillsDir = join(testProjectRoot, ".omg", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(

@@ -15,7 +15,7 @@ import { normalizeDelegationRole } from '../features/delegation-routing/types.js
 import { BUILTIN_EXTERNAL_MODEL_DEFAULTS, getDefaultTierModels, } from '../config/models.js';
 /** Map canonical team role → KnownAgentName key (matches PluginConfig.agents.*). */
 const ROLE_TO_AGENT = {
-    orchestrator: 'omcp',
+    orchestrator: 'omc',
     planner: 'planner',
     analyst: 'analyst',
     architect: 'architect',
@@ -99,9 +99,9 @@ function resolveClaudeModel(role, raw, cfg) {
 /**
  * Resolve a user-supplied `model` value for an external provider worker.
  *
- * Tier names are Claude-centric and not meaningful for codex/gemini, so tier
- * input (or absent input) maps to the provider's builtin default. Only an
- * explicit non-tier model ID is passed through.
+ * Tier names are Claude-centric and not meaningful for codex/gemini/grok/cursor/antigravity,
+ * so tier input (or absent input) maps to the provider's builtin default. Only
+ * an explicit non-tier model ID is passed through.
  */
 function resolveExternalModel(provider, raw, cfg) {
     if (typeof raw === 'string' && raw.length > 0 && !isTier(raw)) {
@@ -113,6 +113,12 @@ function resolveExternalModel(provider, raw, cfg) {
     }
     if (provider === 'grok') {
         return defaults?.grokModel ?? '';
+    }
+    if (provider === 'cursor') {
+        return '';
+    }
+    if (provider === 'antigravity') {
+        return defaults?.antigravityModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.antigravityModel;
     }
     return defaults?.geminiModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel;
 }
@@ -137,7 +143,9 @@ export function resolveRoleAssignment(role, cfg) {
     const provider = isOrchestrator
         ? 'claude'
         : (spec?.provider ?? 'claude');
-    const model = provider === 'claude'
+    // 'copilot' is this fork's host CLI, not an external provider, so it resolves
+    // through the host model path alongside 'claude'.
+    const model = provider === 'claude' || provider === 'copilot'
         ? resolveClaudeModel(canonical, spec?.model, cfg)
         : resolveExternalModel(provider, spec?.model, cfg);
     const agent = spec?.agent ?? ROLE_TO_AGENT[canonical];

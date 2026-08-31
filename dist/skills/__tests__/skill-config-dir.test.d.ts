@@ -1,7 +1,7 @@
 /**
  * Regression test: skill markdown files must use COPILOT_CONFIG_DIR
  *
- * Ensures that bash code blocks in skill files never hardcode $HOME/.copilot
+ * Ensures that bash code blocks in skill files never hardcode $HOME/.claude
  * without a ${COPILOT_CONFIG_DIR:-...} fallback. This prevents skills from
  * ignoring the user's custom config directory.
  */

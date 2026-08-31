@@ -2,8 +2,10 @@
  * Pipeline Types
  *
  * Type definitions for the configurable pipeline orchestrator.
- * The pipeline unifies autopilot/ultrawork/ultrapilot into a single
+ * The pipeline unifies autopilot and ultrapilot into a single
  * configurable sequence: RALPLAN -> EXECUTION -> RALPH -> QA.
+ *
+ * @see https://github.com/Yeachan-Heo/oh-my-claudecode/issues/1130
  */
 
 // ============================================================================
@@ -14,36 +16,121 @@
  * Pipeline stage identifiers in execution order.
  * Each stage is optional and can be skipped via configuration.
  */
-export type PipelineStageId = 'ralplan' | 'execution' | 'ralph' | 'qa';
+export type PipelineStageId = "ralplan" | "execution" | "ralph" | "qa";
 
 /** Terminal pipeline states */
-export type PipelineTerminalState = 'complete' | 'failed' | 'cancelled';
+export type PipelineTerminalState = "complete" | "failed" | "cancelled";
 
 /** All possible pipeline phase values (stages + terminal) */
 export type PipelinePhase = PipelineStageId | PipelineTerminalState;
 
 /** Status of an individual stage */
-export type StageStatus = 'pending' | 'active' | 'complete' | 'failed' | 'skipped';
+export type StageStatus =
+  | "pending"
+  | "active"
+  | "complete"
+  | "failed"
+  | "skipped";
 
 /** The canonical stage execution order */
 export const STAGE_ORDER: readonly PipelineStageId[] = [
-  'ralplan',
-  'execution',
-  'ralph',
-  'qa',
+  "ralplan",
+  "execution",
+  "ralph",
+  "qa",
 ] as const;
+
+/** Closed version 1 profile sequence admitted by the workflow contract. */
+export type WorkflowProfileStages = readonly [
+  "ralplan",
+  "execution",
+] | readonly [
+  "ralplan",
+  "execution",
+  "ralph",
+] | readonly [
+  "ralplan",
+  "execution",
+  "qa",
+] | readonly [
+  "ralplan",
+  "execution",
+  "ralph",
+  "qa",
+];
+
+/** Immutable, normalized descriptor persisted for a named workflow run. */
+export interface WorkflowDescriptor {
+  readonly descriptorVersion: 1;
+  readonly workflowName: string;
+  readonly profileVersion: 1;
+  readonly stages: WorkflowProfileStages;
+  readonly profileHash: string;
+}
+
+/**
+ * Stable identity of transcript bytes accepted by a named workflow run.
+ * Device and inode are written as decimal strings because Windows file ids run
+ * past the safe integer range; numbers are still read for states written before that.
+ */
+export interface PipelineTranscriptFileIdentity {
+  device: string | number;
+  inode: string | number;
+  size: number;
+  mtimeNs: string;
+  ctimeNs: string;
+  contentSha256: string;
+}
+
+/** Transcript boundary captured at workflow activation. */
+export interface PipelineActivationBoundary {
+  transcriptPath: string;
+  transcriptRoot: string;
+  transcriptBasename: string;
+  sessionId: string;
+  byteOffset: number;
+  fileIdentity: PipelineTranscriptFileIdentity;
+}
+
+/** Evidence captured when a selected workflow stage completes. */
+export interface PipelineCompletionObservation {
+  stageId: PipelineStageId;
+  sessionId: string;
+  signalId: string;
+  lineNumber: number;
+  byteOffset: number;
+  recordContentSha256: string;
+  stableFile: PipelineTranscriptFileIdentity;
+  activationBoundary: PipelineActivationBoundary;
+  observedAt: string;
+}
 
 // ============================================================================
 // PIPELINE CONFIGURATION
 // ============================================================================
 
 /** Execution backend for the execution stage */
-export type ExecutionBackend = 'team' | 'solo';
+export type ExecutionBackend = "team" | "solo";
+
+/** CLI-backed worker types supported by the tmux team runtime. */
+export type AutopilotTeamAgentType =
+  | "claude"
+  | "codex"
+  | "gemini"
+  | "grok"
+  | "cursor"
+  | "antigravity";
+
+/** Team execution options for autopilot execution=team. */
+export interface AutopilotTeamConfig {
+  /** Preferred CLI worker types for executor-style implementation tasks. */
+  agentTypes?: AutopilotTeamAgentType[];
+}
 
 /** Verification engine configuration */
 export interface VerificationConfig {
   /** Engine to use for verification (currently only 'ralph') */
-  engine: 'ralph';
+  engine: "ralph";
   /** Maximum verification iterations before giving up */
   maxIterations: number;
 }
@@ -66,21 +153,23 @@ export interface VerificationConfig {
  */
 export interface PipelineConfig {
   /** Planning stage: 'ralplan' for consensus planning, 'direct' for simple planning, false to skip */
-  planning: 'ralplan' | 'direct' | false;
+  planning: "ralplan" | "direct" | false;
   /** Execution backend: 'team' for multi-worker, 'solo' for single-session */
   execution: ExecutionBackend;
   /** Verification config, or false to skip */
   verification: VerificationConfig | false;
   /** Whether to run the QA stage (build/lint/test cycling) */
   qa: boolean;
+  /** Team execution options, only used when execution is 'team'. */
+  team?: AutopilotTeamConfig;
 }
 
 /** Default pipeline configuration (matches current autopilot behavior) */
 export const DEFAULT_PIPELINE_CONFIG: PipelineConfig = {
-  planning: 'ralplan',
-  execution: 'solo',
+  planning: "ralplan",
+  execution: "solo",
   verification: {
-    engine: 'ralph',
+    engine: "ralph",
     maxIterations: 100,
   },
   qa: true,
@@ -112,7 +201,7 @@ export interface PipelineContext {
 
 /**
  * Interface that each stage adapter must implement.
- * Adapters wrap existing modules (ralplan, team, ralph, ultraqa)
+ * Adapters wrap existing modules (ralplan, team, ralph, qa)
  * into a uniform interface for the pipeline orchestrator.
  */
 export interface PipelineStageAdapter {
@@ -120,7 +209,7 @@ export interface PipelineStageAdapter {
   readonly id: PipelineStageId;
   /** Human-readable stage name for display */
   readonly name: string;
-  /** Signal string that Copilot emits to indicate stage completion */
+  /** Signal string that Claude emits to indicate stage completion */
   readonly completionSignal: string;
   /** Check if this stage should be skipped based on pipeline config */
   shouldSkip(config: PipelineConfig): boolean;
@@ -157,12 +246,18 @@ export interface PipelineStageState {
  * Stored alongside existing autopilot state fields.
  */
 export interface PipelineTracking {
-  /** Pipeline configuration used for this run */
-  pipelineConfig: PipelineConfig;
-  /** Ordered list of stages and their current status */
+  /** Pipeline configuration used by legacy pipeline runs. */
+  pipelineConfig?: PipelineConfig;
+  /** Ordered list of selected stages and their current status. */
   stages: PipelineStageState[];
-  /** Index of the currently active stage in the stages array */
+  /** Index of the currently active stage in the stages array. */
   currentStageIndex: number;
+  /** Monotonic mutable progress revision. */
+  trackingRevision: number;
+  /** Transcript boundary captured when the workflow was activated. */
+  activationBoundary: PipelineActivationBoundary | null;
+  /** Evidence collected for each completed workflow stage. */
+  completionObservations: PipelineCompletionObservation[];
 }
 
 // ============================================================================
@@ -171,15 +266,15 @@ export interface PipelineTracking {
 
 /**
  * Maps deprecated mode names to their pipeline configuration equivalents.
- * Used to translate ultrawork/ultrapilot invocations into autopilot + config.
+ * Used to translate ultrapilot invocations into autopilot + config.
  */
-export const DEPRECATED_MODE_ALIASES: Record<string, { config: Partial<PipelineConfig>; message: string }> = {
-  ultrawork: {
-    config: { execution: 'team' },
-    message: 'ultrawork is deprecated. Use /autopilot with execution: "team" instead.',
-  },
+export const DEPRECATED_MODE_ALIASES: Record<
+  string,
+  { config: Partial<PipelineConfig>; message: string }
+> = {
   ultrapilot: {
-    config: { execution: 'team' },
-    message: 'ultrapilot is deprecated. Use /autopilot with execution: "team" instead.',
+    config: { execution: "team" },
+    message:
+      'ultrapilot is deprecated. Use /autopilot with execution: "team" instead.',
   },
 };

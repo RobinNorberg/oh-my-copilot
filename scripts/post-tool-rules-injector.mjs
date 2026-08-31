@@ -23,7 +23,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 function getRuntimeBaseDir() {
-  return process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || join(__dirname, '..');
+  return process.env.CLAUDE_PLUGIN_ROOT || join(__dirname, '..');
 }
 
 // Dynamic import — graceful no-op when dist/ is not built (first run / dev)
@@ -49,6 +49,21 @@ function extractFilePath(toolInput) {
 }
 
 async function main() {
+  // Skip guard: honor the documented kill switches (see issues #838, #3253).
+  // This hook injects context on PostToolUse alongside post-tool-verifier.mjs, so it
+  // accepts the same `post-tool-use` event token. Without this, DISABLE_OMC=1 and
+  // OMC_SKIP_HOOKS=post-tool-use failed to suppress rule injection because only
+  // post-tool-verifier.mjs honored them.
+  const _skipHooks = (process.env.OMC_SKIP_HOOKS || '').split(',').map((s) => s.trim());
+  if (
+    process.env.DISABLE_OMC === '1' ||
+    process.env.DISABLE_OMC === 'true' ||
+    _skipHooks.includes('post-tool-use')
+  ) {
+    console.log(JSON.stringify({ continue: true }));
+    return;
+  }
+
   try {
     const input = await readStdin();
     if (!input.trim()) {

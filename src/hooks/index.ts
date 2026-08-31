@@ -1,13 +1,13 @@
 /**
  * Hooks Module for Oh-My-Copilot
  *
- * This module provides the TypeScript bridge for Copilot CLI's native shell hook system.
+ * This module provides the TypeScript bridge for Claude Code's native shell hook system.
  * Shell scripts call these TypeScript functions for complex logic processing.
  *
  * Architecture:
- * - Copilot CLI runs shell scripts on hook events (UserPromptSubmit, Stop, etc.)
+ * - Claude Code runs shell scripts on hook events (UserPromptSubmit, Stop, etc.)
  * - Shell scripts invoke Node.js bridge for complex processing
- * - Bridge returns JSON response that shell passes back to Copilot CLI
+ * - Bridge returns JSON response that shell passes back to Claude Code
  */
 
 export {
@@ -26,9 +26,7 @@ export {
   readRalphState,
   writeRalphState,
   clearRalphState,
-  clearLinkedUltraworkState,
   incrementRalphIteration,
-  isUltraQAActive,
   // PRD Integration
   hasPrd,
   getPrdCompletionStatus,
@@ -38,6 +36,15 @@ export {
   recordStoryProgress,
   recordPattern,
   shouldCompleteByPrd,
+  // PRD Stale-State Detection & Reconciliation (#3669)
+  detectStalePrd,
+  formatStalePrdWarning,
+  getSessionEndStalePrdWarning,
+  reconcileStalePrd,
+  reconcileStalePrdForStartup,
+  runObservableCheck,
+  PRD_RECONCILIATION_AUDIT_FILENAME,
+  DEFAULT_STALE_PRD_AFTER_MS,
   // PRD (Structured Task Tracking)
   readPrd,
   writePrd,
@@ -49,6 +56,8 @@ export {
   markStoryIncomplete,
   getStory,
   getNextStory,
+  amendCriterion,
+  supersedeCriterion,
   createPrd,
   createSimplePrd,
   initPrd,
@@ -56,6 +65,7 @@ export {
   formatStory,
   formatPrd,
   formatNextStoryPrompt,
+  formatCriterionAmendments,
   PRD_FILENAME,
   PRD_EXAMPLE_FILENAME,
   // Progress (Memory Persistence)
@@ -94,6 +104,10 @@ export {
   type PRD,
   type PRDStatus,
   type UserStory,
+  type CriterionAmendment,
+  type CriterionAmendmentInput,
+  type CriterionAmendmentResult,
+  type CriterionAmendmentKind,
   type UserStoryInput,
   type ProgressEntry,
   type CodebasePattern,
@@ -314,7 +328,7 @@ export {
   CRITICAL_THRESHOLD,
   COMPACTION_COOLDOWN_MS,
   MAX_WARNINGS,
-  COPILOT_DEFAULT_CONTEXT_LIMIT,
+  CLAUDE_DEFAULT_CONTEXT_LIMIT,
   CHARS_PER_TOKEN,
   CONTEXT_WARNING_MESSAGE,
   CONTEXT_CRITICAL_MESSAGE,
@@ -422,18 +436,6 @@ export {
   type AgentUsageState
 } from './agent-usage-reminder/index.js';
 
-export {
-  // Ultrawork State (Persistent Mode)
-  activateUltrawork,
-  deactivateUltrawork,
-  readUltraworkState,
-  writeUltraworkState,
-  incrementReinforcement,
-  shouldReinforceUltrawork,
-  getUltraworkPersistenceMessage,
-  createUltraworkStateHook,
-  type UltraworkState
-} from './ultrawork/index.js';
 
 export {
   // Persistent Mode (Unified Stop Handler)
@@ -462,23 +464,6 @@ export {
   type PreCommitResult
 } from './plugin-patterns/index.js';
 
-export {
-  // UltraQA Loop (QA cycling workflow)
-  readUltraQAState,
-  writeUltraQAState,
-  clearUltraQAState,
-  startUltraQA,
-  recordFailure,
-  completeUltraQA,
-  stopUltraQA,
-  cancelUltraQA,
-  getGoalCommand,
-  formatProgressMessage,
-  type UltraQAState,
-  type UltraQAGoalType,
-  type UltraQAOptions,
-  type UltraQAResult
-} from './ultraqa/index.js';
 
 export {
   // Notepad (Compaction-Resilient Memory)
@@ -714,6 +699,7 @@ export {
   exportWisdomToNotepad,
   saveModeSummary,
   createCompactCheckpoint,
+  collectPlanRefs,
   formatCompactSummary as formatPreCompactSummary,
   isCompactionInProgress,
   getCompactionQueueDepth,
@@ -721,6 +707,16 @@ export {
   type CompactCheckpoint,
   type HookOutput as PreCompactHookOutput
 } from './pre-compact/index.js';
+
+export {
+  // PreCompact Restore (issue #3730)
+  findLatestCheckpointForRestore,
+  formatCheckpointRestoreContext,
+  markCheckpointRestored,
+  CHECKPOINT_MAX_AGE_MS,
+  CHECKPOINT_MAX_BYTES,
+  type RestoreCandidate
+} from './pre-compact/restore.js';
 
 export {
   // Permission Handler Hook
@@ -820,4 +816,3 @@ export {
   type CodeSimplifierConfig,
   type CodeSimplifierHookResult,
 } from './code-simplifier/index.js';
-

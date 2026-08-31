@@ -6,11 +6,11 @@ import {
   readAllTeamOutboxMessages,
   resetOutboxCursor,
 } from '../outbox-reader.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import type { OutboxMessage } from '../types.js';
 
 const TEST_TEAM = 'test-team-outbox-reader';
-const TEAMS_DIR = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
+const TEAMS_DIR = join(getCopilotConfigDir(), 'teams', TEST_TEAM);
 
 beforeEach(() => {
   mkdirSync(join(TEAMS_DIR, 'outbox'), { recursive: true });

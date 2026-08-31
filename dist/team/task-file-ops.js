@@ -5,7 +5,7 @@
  * Read/write/scan task JSON files with atomic writes (temp + rename).
  *
  * Canonical task storage path:
- *   {cwd}/.omcp/state/team/{teamName}/tasks/{id}.json
+ *   {cwd}/.omg/state/team/{teamName}/tasks/{id}.json
  *
  * Legacy path (read-only fallback during migration):
  *   ~/.copilot/tasks/{teamName}/{id}.json
@@ -16,15 +16,14 @@
  */
 import { readFileSync, readdirSync, existsSync, openSync, closeSync, unlinkSync, writeSync, statSync, constants as fsConstants } from 'fs';
 import { join } from 'path';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { sanitizeName } from './tmux-session.js';
 import { atomicWriteJson, validateResolvedPath, ensureDirWithMode } from './fs-utils.js';
 import { isProcessAlive } from '../platform/index.js';
-import { getTaskStoragePath, getLegacyTaskStoragePath } from './state-paths.js';
+import { getTaskStoragePath, getLegacyTaskStoragePath, normalizeTaskFileStem } from './state-paths.js';
 /** Default age (ms) after which a lock file is considered stale. */
 const DEFAULT_STALE_LOCK_MS = 30_000;
-const FAILURE_LOCK_RETRY_ATTEMPTS = 40;
-const FAILURE_LOCK_RETRY_DELAY_MS = 5;
 /**
  * Try to acquire an exclusive lock file for a task.
  *
@@ -40,7 +39,7 @@ export function acquireTaskLock(teamName, taskId, opts) {
     const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
     const dir = canonicalTasksDir(teamName, opts?.cwd);
     ensureDirWithMode(dir);
-    const lockPath = join(dir, `${sanitizeTaskId(taskId)}.lock`);
+    const lockPath = join(dir, `${normalizeTaskFileStem(sanitizeTaskId(taskId))}.lock`);
     for (let attempt = 0; attempt < 2; attempt++) {
         try {
             const fd = openSync(lockPath, fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY, 0o600);
@@ -83,21 +82,6 @@ export function releaseTaskLock(handle) {
         unlinkSync(handle.path);
     }
     catch { /* already removed */ }
-}
-async function sleepAsync(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-async function acquireTaskLockWithRetry(teamName, taskId, opts) {
-    const attempts = opts?.attempts ?? FAILURE_LOCK_RETRY_ATTEMPTS;
-    const delayMs = opts?.delayMs ?? FAILURE_LOCK_RETRY_DELAY_MS;
-    for (let attempt = 0; attempt < attempts; attempt++) {
-        const handle = acquireTaskLock(teamName, taskId, opts);
-        if (handle)
-            return handle;
-        if (attempt < attempts - 1)
-            await sleepAsync(delayMs);
-    }
-    throw new Error(`Failed to acquire lock for ${taskId} after ${attempts} attempts`);
 }
 /**
  * Execute a function while holding an exclusive task lock.
@@ -152,12 +136,12 @@ function sanitizeTaskId(taskId) {
 // ─── Path helpers ──────────────────────────────────────────────────────────
 /**
  * Returns the canonical tasks directory for a team.
- * All new writes go here: {cwd}/.omcp/state/team/{teamName}/tasks/
+ * All new writes go here: {cwd}/.omg/state/team/{teamName}/tasks/
  */
 function canonicalTasksDir(teamName, cwd) {
     const root = cwd ?? process.cwd();
     const dir = getTaskStoragePath(root, sanitizeName(teamName));
-    validateResolvedPath(dir, join(root, '.omcp', 'state', 'team'));
+    validateResolvedPath(dir, join(getOmcRoot(root), 'state', 'team'));
     return dir;
 }
 /**
@@ -178,10 +162,15 @@ function legacyTasksDir(teamName) {
  * New writes never use the legacy path.
  */
 function resolveTaskPathForRead(teamName, taskId, cwd) {
-    const canonical = join(canonicalTasksDir(teamName, cwd), `${sanitizeTaskId(taskId)}.json`);
+    const safeTaskId = sanitizeTaskId(taskId);
+    const canonicalDir = canonicalTasksDir(teamName, cwd);
+    const canonical = join(canonicalDir, `${normalizeTaskFileStem(safeTaskId)}.json`);
     if (existsSync(canonical))
         return canonical;
-    const legacy = join(legacyTasksDir(teamName), `${sanitizeTaskId(taskId)}.json`);
+    const legacyCanonical = join(canonicalDir, `${safeTaskId}.json`);
+    if (existsSync(legacyCanonical))
+        return legacyCanonical;
+    const legacy = join(legacyTasksDir(teamName), `${safeTaskId}.json`);
     if (existsSync(legacy))
         return legacy;
     // Neither exists — return canonical so callers get a predictable missing-file path
@@ -192,10 +181,10 @@ function resolveTaskPathForRead(teamName, taskId, cwd) {
  * Always returns the canonical path regardless of whether legacy data exists.
  */
 function resolveTaskPathForWrite(teamName, taskId, cwd) {
-    return join(canonicalTasksDir(teamName, cwd), `${sanitizeTaskId(taskId)}.json`);
+    return join(canonicalTasksDir(teamName, cwd), `${normalizeTaskFileStem(sanitizeTaskId(taskId))}.json`);
 }
 function failureSidecarPath(teamName, taskId, cwd) {
-    return join(canonicalTasksDir(teamName, cwd), `${sanitizeTaskId(taskId)}.failure.json`);
+    return join(canonicalTasksDir(teamName, cwd), `${normalizeTaskFileStem(sanitizeTaskId(taskId))}.failure.json`);
 }
 // ─── Public API ────────────────────────────────────────────────────────────
 /** Read a single task file. Returns null if not found or malformed. */
@@ -251,13 +240,7 @@ export function updateTask(teamName, taskId, updates, opts) {
     }
     const handle = acquireTaskLock(teamName, taskId, { cwd: opts?.cwd });
     if (!handle) {
-        // Fallback: another worker holds the lock — proceed without lock + warn
-        // This maintains backward compatibility while logging the degradation
-        if (typeof process !== 'undefined' && process.stderr) {
-            process.stderr.write(`[task-file-ops] WARN: could not acquire lock for task ${taskId}, updating without lock\n`);
-        }
-        doUpdate();
-        return;
+        throw new Error(`Cannot acquire lock for task ${taskId}: another process holds the lock`);
     }
     try {
         doUpdate();
@@ -389,7 +372,7 @@ export function listTaskIds(teamName, opts) {
         try {
             return readdirSync(dir)
                 .filter(f => f.endsWith('.json') && !f.includes('.tmp.') && !f.includes('.failure.') && !f.endsWith('.lock'))
-                .map(f => f.replace('.json', ''));
+                .map(f => f.replace(/^task-/, '').replace('.json', ''));
         }
         catch {
             return [];

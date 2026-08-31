@@ -14,6 +14,7 @@ import {
   initPrd,
   readPrd,
   writePrd,
+  getStoryGoverningCriteriaRevision,
   type PRD,
   type UserStory,
 } from '../hooks/ralph/index.js';
@@ -27,18 +28,28 @@ import {
 
 describe('Ralph PRD-Mandatory', () => {
   let testDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
     testDir = join(tmpdir(), `ralph-prd-mandatory-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
     mkdirSync(testDir, { recursive: true });
-    // Create .omc/state directory for ralph state files
-    mkdirSync(join(testDir, '.omcp', 'state'), { recursive: true });
+    // Create .omg/state directory for ralph state files
+    mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
   });
 
   afterEach(() => {
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true });
     }
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 
   // ==========================================================================
@@ -204,6 +215,8 @@ describe('Ralph PRD-Mandatory', () => {
       const state = readRalphState(testDir);
       expect(state).not.toBeNull();
       expect(state!.prd_mode).toBe(true);
+      expect(Object.prototype.hasOwnProperty.call(state!, 'linked_ultrawork')).toBe(false);
+      expect(existsSync(join(testDir, '.omg', 'state', 'ultrawork-state.json'))).toBe(false);
     });
 
     it('should set current_story_id to next incomplete story', () => {
@@ -232,6 +245,9 @@ describe('Ralph PRD-Mandatory', () => {
           },
         ],
       };
+      const revision = getStoryGoverningCriteriaRevision(prd.userStories[0]);
+      prd.userStories[0].completionCriteriaRevision = revision;
+      prd.userStories[0].architectVerificationCriteriaRevision = revision;
       writePrd(testDir, prd);
 
       const hook = createRalphLoopHook(testDir);
@@ -484,6 +500,14 @@ describe('Ralph PRD-Mandatory', () => {
 
       const state = readRalphState(testDir);
       expect(state?.critic_mode).toBe('codex');
+    });
+
+    it('preserves a live verification request when a second handler starts verification', () => {
+      const first = startVerification(testDir, 'First claim', 'task');
+      const second = startVerification(testDir, 'Stale replacement', 'task');
+
+      expect(second.request_id).toBe(first.request_id);
+      expect(second.completion_claim).toBe('First claim');
     });
 
     it('scaffold PRD creates valid structure that getPrdStatus can read', () => {

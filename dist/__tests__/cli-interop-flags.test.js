@@ -10,9 +10,9 @@ describe('cli interop flag validation', () => {
     });
     it('rejects non-off mode when interop is disabled', () => {
         const flags = readInteropRuntimeFlags({
-            OMX_OMG_INTEROP_ENABLED: '0',
-            OMX_OMG_INTEROP_MODE: 'observe',
-            OMG_INTEROP_TOOLS_ENABLED: '0',
+            OMX_OMC_INTEROP_ENABLED: '0',
+            OMX_OMC_INTEROP_MODE: 'observe',
+            OMC_INTEROP_TOOLS_ENABLED: '0',
         });
         const verdict = validateInteropRuntimeFlags(flags);
         expect(verdict.ok).toBe(false);
@@ -20,20 +20,20 @@ describe('cli interop flag validation', () => {
     });
     it('rejects active mode without interop tools enabled', () => {
         const flags = readInteropRuntimeFlags({
-            OMX_OMG_INTEROP_ENABLED: '1',
-            OMX_OMG_INTEROP_MODE: 'active',
-            OMG_INTEROP_TOOLS_ENABLED: '0',
+            OMX_OMC_INTEROP_ENABLED: '1',
+            OMX_OMC_INTEROP_MODE: 'active',
+            OMC_INTEROP_TOOLS_ENABLED: '0',
         });
         const verdict = validateInteropRuntimeFlags(flags);
         expect(verdict.ok).toBe(false);
-        expect(verdict.reason).toContain('OMG_INTEROP_TOOLS_ENABLED=1');
+        expect(verdict.reason).toContain('OMC_INTEROP_TOOLS_ENABLED=1');
     });
     it('accepts active mode when required flags are enabled', () => {
         const flags = readInteropRuntimeFlags({
-            OMX_OMG_INTEROP_ENABLED: '1',
-            OMX_OMG_INTEROP_MODE: 'active',
-            OMG_INTEROP_TOOLS_ENABLED: '1',
-            OMX_OMG_INTEROP_FAIL_CLOSED: '1',
+            OMX_OMC_INTEROP_ENABLED: '1',
+            OMX_OMC_INTEROP_MODE: 'active',
+            OMC_INTEROP_TOOLS_ENABLED: '1',
+            OMX_OMC_INTEROP_FAIL_CLOSED: '1',
         });
         const verdict = validateInteropRuntimeFlags(flags);
         expect(verdict.ok).toBe(true);

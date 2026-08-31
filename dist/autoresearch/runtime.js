@@ -1,19 +1,21 @@
 import { execFileSync, spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import { mkdir, readFile, symlink, writeFile } from 'fs/promises';
-import { dirname, join, resolve, sep } from 'path';
+import { dirname, join, resolve } from 'path';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 import { readModeState, writeModeState, } from '../lib/mode-state-io.js';
 import { isModeActiveInAnySession } from '../hooks/mode-registry/index.js';
+import { NO_POSIX_SHELL_MESSAGE, resolvePosixCommandInvocation } from '../platform/posix-shell.js';
 import { parseEvaluatorResult, } from './contracts.js';
 const AUTORESEARCH_RESULTS_HEADER = 'iteration\tcommit\tpass\tscore\tstatus\tdescription\n';
-const AUTORESEARCH_WORKTREE_EXCLUDES = ['results.tsv', 'run.log', 'node_modules', '.omcp/'];
+const AUTORESEARCH_WORKTREE_EXCLUDES = ['results.tsv', 'run.log', 'node_modules', '.omg/'];
 // Exclusive modes that cannot run concurrently with autoresearch
-const EXCLUSIVE_MODES = ['ralph', 'ultrawork', 'autopilot', 'autoresearch'];
+const EXCLUSIVE_MODES = ['ralph', 'autopilot', 'autoresearch'];
 function nowIso() {
     return new Date().toISOString();
 }
 export function getAutoresearchMissionArtifactLayout(projectRoot, missionSlug, runId) {
-    const missionRoot = join(projectRoot, '.omcp', 'autoresearch', missionSlug);
+    const missionRoot = join(getOmcRoot(projectRoot), 'autoresearch', missionSlug);
     const runDir = join(missionRoot, 'runs', runId);
     return {
         missionRoot,
@@ -36,7 +38,7 @@ function buildRunId(missionSlug, runTag) {
     return `${missionSlug}-${runTag.toLowerCase()}`;
 }
 function activeRunStateFile(projectRoot) {
-    return join(projectRoot, '.omcp', 'state', 'autoresearch-state.json');
+    return join(getOmcRoot(projectRoot), 'state', 'autoresearch-state.json');
 }
 function trimContent(value, max = 4000) {
     const trimmed = value.trim();
@@ -48,6 +50,7 @@ function readGit(repoPath, args) {
             cwd: repoPath,
             encoding: 'utf-8',
             stdio: ['ignore', 'pipe', 'pipe'],
+            windowsHide: true,
         }).trim();
     }
     catch (error) {
@@ -64,6 +67,7 @@ function tryResolveGitCommit(worktreePath, ref) {
     const result = spawnSync('git', ['rev-parse', '--verify', `${ref}^{commit}`], {
         cwd: worktreePath,
         encoding: 'utf-8',
+        windowsHide: true,
     });
     if (result.status !== 0)
         return null;
@@ -128,6 +132,7 @@ function requireGitSuccess(worktreePath, args) {
     const result = spawnSync('git', args, {
         cwd: worktreePath,
         encoding: 'utf-8',
+        windowsHide: true,
     });
     if (result.status === 0)
         return;
@@ -137,6 +142,7 @@ function gitStatusLines(worktreePath) {
     const result = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], {
         cwd: worktreePath,
         encoding: 'utf-8',
+        windowsHide: true,
     });
     if (result.status !== 0) {
         throw new Error((result.stderr || '').trim() || `git status failed for ${worktreePath}`);
@@ -161,12 +167,9 @@ function allowedBootstrapDirtyPaths(worktreePath, allowedDirtyPaths = []) {
     return new Set(allowedDirtyPaths
         .map((path) => {
         const normalizedPath = resolve(path);
-        // Use sep for cross-platform path matching; git status uses forward slashes
-        // even on Windows, so convert backslashes to forward slashes after slicing.
-        if (!normalizedPath.startsWith(`${normalizedWorktreePath}${sep}`)) {
-            return null;
-        }
-        return normalizedPath.slice(normalizedWorktreePath.length + 1).replace(/\\/g, '/');
+        return normalizedPath.startsWith(`${normalizedWorktreePath}/`)
+            ? normalizedPath.slice(normalizedWorktreePath.length + 1)
+            : null;
     })
         .filter((path) => Boolean(path)));
 }
@@ -213,7 +216,7 @@ async function assertAutoresearchLockAvailable(projectRoot) {
     }
 }
 /**
- * Assert no exclusive mode is already active (ralph, ultrawork, autopilot).
+ * Assert no exclusive mode is already active (ralph, autopilot).
  * Mirrors OMX assertModeStartAllowed semantics using OMC mode-state-io.
  */
 export async function assertModeStartAllowed(mode, projectRoot) {
@@ -364,11 +367,28 @@ async function buildAutoresearchInstructionContext(manifest) {
 }
 export async function runAutoresearchEvaluator(contract, worktreePath, ledgerFile, latestEvaluatorFile) {
     const ran_at = nowIso();
-    const result = spawnSync(contract.sandbox.evaluator.command, {
+    // Evaluator commands are user-authored POSIX sh (env prefixes, ./ paths,
+    // 2>/dev/null). cmd.exe cannot interpret them, so on Windows they go through
+    // a discovered POSIX shell, and we fail loudly when none exists rather than
+    // recording an inscrutable error on every iteration.
+    const invocation = resolvePosixCommandInvocation(contract.sandbox.evaluator.command);
+    if (!invocation) {
+        const record = {
+            command: contract.sandbox.evaluator.command,
+            ran_at,
+            status: 'error',
+            exit_code: null,
+            stdout: '',
+            stderr: NO_POSIX_SHELL_MESSAGE,
+        };
+        return finalizeAutoresearchEvaluation(record, contract, worktreePath, ledgerFile, latestEvaluatorFile);
+    }
+    const result = spawnSync(invocation.file, invocation.args, {
         cwd: worktreePath,
         encoding: 'utf-8',
-        shell: true,
+        shell: invocation.shell,
         maxBuffer: 1024 * 1024,
+        windowsHide: true,
     });
     const stdout = result.stdout?.trim() || '';
     const stderr = result.stderr?.trim() || '';
@@ -409,6 +429,9 @@ export async function runAutoresearchEvaluator(contract, worktreePath, ledgerFil
             };
         }
     }
+    return finalizeAutoresearchEvaluation(record, contract, worktreePath, ledgerFile, latestEvaluatorFile);
+}
+async function finalizeAutoresearchEvaluation(record, contract, worktreePath, ledgerFile, latestEvaluatorFile) {
     if (latestEvaluatorFile) {
         await writeJsonFile(latestEvaluatorFile, record);
     }
@@ -611,7 +634,7 @@ export async function materializeAutoresearchMissionToWorktree(contract, worktre
     };
 }
 export async function loadAutoresearchRunManifest(projectRoot, runId) {
-    const manifestFile = join(projectRoot, '.omcp', 'logs', 'autoresearch', runId, 'manifest.json');
+    const manifestFile = join(getOmcRoot(projectRoot), 'logs', 'autoresearch', runId, 'manifest.json');
     if (!existsSync(manifestFile)) {
         throw new Error(`autoresearch_resume_manifest_missing:${runId}`);
     }
@@ -686,7 +709,7 @@ export async function prepareAutoresearchRuntime(contract, projectRoot, worktree
     const runId = buildRunId(contract.missionSlug, runTag);
     const baselineCommit = readGitShortHead(worktreePath);
     const branchName = readGit(worktreePath, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
-    const runDir = join(projectRoot, '.omcp', 'logs', 'autoresearch', runId);
+    const runDir = join(getOmcRoot(projectRoot), 'logs', 'autoresearch', runId);
     const stateFile = activeRunStateFile(projectRoot);
     const instructionsFile = join(runDir, 'bootstrap-instructions.md');
     const manifestFile = join(runDir, 'manifest.json');

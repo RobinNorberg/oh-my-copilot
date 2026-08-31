@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -8,6 +8,7 @@ const HOOKS_PATH = join(process.cwd(), 'hooks', 'hooks.json');
 const tempDirs = [];
 function makeTempDir() {
     const dir = mkdtempSync(join(tmpdir(), 'omc-preemptive-hook-'));
+    execFileSync('git', ['init', '--quiet', dir], { stdio: 'ignore' });
     tempDirs.push(dir);
     return dir;
 }
@@ -22,6 +23,36 @@ function writeTranscript(dir, inputTokens, contextWindow) {
         },
     })}\n`, 'utf-8');
     return transcriptPath;
+}
+function writeTranscriptWithoutContextWindow(dir, inputTokens) {
+    const transcriptPath = join(dir, 'transcript.jsonl');
+    writeFileSync(transcriptPath, `${JSON.stringify({
+        message: {
+            usage: {
+                input_tokens: inputTokens,
+                output_tokens: 10,
+            },
+        },
+    })}\n`, 'utf-8');
+    return transcriptPath;
+}
+function writeHudCache(dir, sessionId, usedPercentage) {
+    const cacheDir = join(dir, '.omg', 'state', 'sessions', sessionId);
+    mkdirSync(cacheDir, { recursive: true });
+    const cachePath = join(cacheDir, 'hud-stdin-cache.json');
+    writeFileSync(cachePath, JSON.stringify({
+        cwd: dir,
+        context_window: {
+            used_percentage: usedPercentage,
+            context_window_size: 1000,
+            current_usage: {
+                input_tokens: 10,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+            },
+        },
+    }), 'utf-8');
+    return cachePath;
 }
 function runPostToolVerifier(input, env = {}) {
     const stdout = execFileSync('node', [SCRIPT_PATH], {
@@ -40,8 +71,7 @@ afterEach(() => {
             rmSync(dir, { recursive: true, force: true });
     }
 });
-// TODO: hooks.json format changed from nested {hooks: [{command}]} to flat [{bash}], tests need updating
-describe.skip('post-tool-verifier preemptive compaction warnings', () => {
+describe('post-tool-verifier preemptive compaction warnings', () => {
     it('keeps preemptive compaction on the existing PostToolUse runtime instead of a standalone script', () => {
         const hooksJson = JSON.parse(readFileSync(HOOKS_PATH, 'utf-8'));
         const commands = hooksJson.hooks.PostToolUse.flatMap(entry => entry.hooks.map(hook => hook.command));
@@ -157,6 +187,86 @@ describe.skip('post-tool-verifier preemptive compaction warnings', () => {
             hookSpecificOutput: {
                 hookEventName: 'PostToolUse',
                 additionalContext: '[OMC CRITICAL] Context at 91% (critical threshold: 90%). Run /compact now before continuing with more tools or agent fan-out.',
+            },
+        });
+    });
+    it('falls back to hook input context_window when transcript lacks context_window fields', () => {
+        const dir = makeTempDir();
+        const transcriptPath = writeTranscriptWithoutContextWindow(dir, 10);
+        const result = runPostToolVerifier({
+            cwd: dir,
+            transcript_path: transcriptPath,
+            tool_name: 'Read',
+            session_id: 'preemptive-fallback-used-percent-test',
+            tool_response: 'read output',
+            context_window: {
+                used_percentage: 72,
+            },
+        }, {
+            OMC_QUIET: '2',
+            OMC_PREEMPTIVE_COMPACTION_WARNING_PERCENT: '70',
+            OMC_PREEMPTIVE_COMPACTION_CRITICAL_PERCENT: '90',
+        });
+        expect(result).toEqual({
+            continue: true,
+            hookSpecificOutput: {
+                hookEventName: 'PostToolUse',
+                additionalContext: '[OMC WARNING] Context at 72% (warning threshold: 70%). Plan a /compact soon to preserve room for the next large tool output.',
+            },
+        });
+    });
+    it('calculates fallback context percent from context_window.current_usage when used_percentage is absent', () => {
+        const dir = makeTempDir();
+        const transcriptPath = writeTranscriptWithoutContextWindow(dir, 10);
+        const result = runPostToolVerifier({
+            cwd: dir,
+            transcript_path: transcriptPath,
+            tool_name: 'Read',
+            session_id: 'preemptive-fallback-current-usage-test',
+            tool_response: 'read output',
+            context_window: {
+                context_window_size: 100,
+                current_usage: {
+                    input_tokens: 60,
+                    cache_creation_input_tokens: 5,
+                    cache_read_input_tokens: 7,
+                },
+            },
+        }, {
+            OMC_QUIET: '2',
+            OMC_PREEMPTIVE_COMPACTION_WARNING_PERCENT: '70',
+            OMC_PREEMPTIVE_COMPACTION_CRITICAL_PERCENT: '90',
+        });
+        expect(result).toEqual({
+            continue: true,
+            hookSpecificOutput: {
+                hookEventName: 'PostToolUse',
+                additionalContext: '[OMC WARNING] Context at 72% (warning threshold: 70%). Plan a /compact soon to preserve room for the next large tool output.',
+            },
+        });
+    });
+    it('warns from HUD cache when transcript and hook payload omit context_window', () => {
+        const dir = makeTempDir();
+        const sessionId = `preemptive-hud-cache-${Date.now()}`;
+        const transcriptPath = writeTranscriptWithoutContextWindow(dir, 10);
+        writeHudCache(dir, sessionId, 72);
+        const result = runPostToolVerifier({
+            cwd: dir,
+            transcript_path: transcriptPath,
+            tool_name: 'Read',
+            session_id: sessionId,
+            tool_response: 'read output',
+        }, {
+            CLAUDE_PLUGIN_ROOT: process.cwd(),
+            OMC_QUIET: '2',
+            OMC_PREEMPTIVE_COMPACTION_WARNING_PERCENT: '70',
+            OMC_PREEMPTIVE_COMPACTION_CRITICAL_PERCENT: '90',
+        });
+        expect(result).toEqual({
+            continue: true,
+            hookSpecificOutput: {
+                hookEventName: 'PostToolUse',
+                additionalContext: '[OMC WARNING] Context at 72% (warning threshold: 70%). Plan a /compact soon to preserve room for the next large tool output.',
             },
         });
     });

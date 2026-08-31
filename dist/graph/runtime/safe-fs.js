@@ -1,0 +1,123 @@
+import { closeSync, constants as fsConstants, fstatSync, openSync, readFileSync, } from "fs";
+import { isAbsolute, join, normalize, win32 } from "path";
+const NO_FOLLOW = process.platform === "win32" ? 0 : fsConstants.O_NOFOLLOW;
+const UNSAFE_CONTROL = /[\u0000-\u001f\u007f]/;
+const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|clock\$|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i;
+/** Fail closed before acquiring any run-scoped locks on unsupported platforms. */
+export function assertContainedFsSupported(platform = process.platform) {
+    if (platform !== "linux") {
+        throw new Error(`contained directory-FD traversal is unavailable on ${platform}; refusing pathname fallback`);
+    }
+}
+/**
+ * Validate the untrusted final component before it reaches any path API.
+ * Contained artifacts are deliberately a single portable basename: allowing
+ * either platform separator would make the contract depend on the host that
+ * happens to process the descriptor, and Windows also treats `:` as an ADS
+ * separator. Require canonical NFC so the same artifact name has one portable
+ * byte-level spelling across Linux, macOS, and Windows; reject normalization-
+ * changing values rather than attempting to canonicalize untrusted input.
+ */
+export function assertSafeContainedFileName(fileName, platform = process.platform) {
+    if (typeof fileName !== "string" ||
+        fileName.length === 0 ||
+        fileName === "." ||
+        fileName === ".." ||
+        fileName.includes("/") ||
+        fileName.includes("\\") ||
+        fileName.includes("\0") ||
+        UNSAFE_CONTROL.test(fileName) ||
+        fileName.normalize("NFC") !== fileName ||
+        isAbsolute(fileName) ||
+        win32.isAbsolute(fileName) ||
+        normalize(fileName) !== fileName ||
+        win32.normalize(fileName) !== fileName ||
+        (platform === "win32" && fileName.includes(":")) ||
+        (platform === "win32" && WINDOWS_DEVICE_NAME.test(fileName)) ||
+        (fileName.endsWith(".") || fileName.endsWith(" "))) {
+        throw new RangeError(`invalid contained artifact fileName: ${JSON.stringify(fileName)}`);
+    }
+}
+/** Open a runtime artifact without following a symlink at the final path. */
+export function openNoFollow(filePath, flags, mode = 0o600) {
+    if (process.platform === "win32") {
+        throw new Error("atomic no-follow file opens are unavailable on win32; refusing pathname fallback");
+    }
+    return openSync(filePath, flags | NO_FOLLOW, mode);
+}
+/** Reject special files and hardlinks that escape the run-directory inode. */
+export function assertPrivateRegularFile(fileDescriptor, filePath) {
+    const stats = fstatSync(fileDescriptor);
+    if (!stats.isFile() || stats.nlink !== 1) {
+        throw new Error(`contained artifact is not a private regular file: ${filePath}`);
+    }
+}
+/** Read a runtime artifact without following a symlink at the final path. */
+export function readFileNoFollow(filePath) {
+    const fd = openNoFollow(filePath, fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0));
+    try {
+        assertPrivateRegularFile(fd, filePath);
+        return readFileSync(fd, "utf8");
+    }
+    finally {
+        closeSync(fd);
+    }
+}
+/**
+ * Resolve a path for an already-open run directory without changing the
+ * process-wide platform state. Linux exposes directory FDs as traversable
+ * procfs directories. Platforms without that primitive fail closed instead of
+ * falling back to a raceable pathname.
+ */
+export function containedPathForPlatform(directoryFd, runDirPath, fileName, platform = process.platform) {
+    assertSafeContainedFileName(fileName, platform);
+    if (platform === "linux") {
+        return join(`/proc/self/fd/${directoryFd}`, fileName);
+    }
+    assertContainedFsSupported(platform);
+    throw new Error("unreachable");
+}
+/**
+ * Run a synchronous operation against a directory FD on Linux. If the
+ * directory is renamed or its parent path is replaced while the operation is
+ * in flight, the FD still refers to the originally validated directory.
+ * Platforms without a traversable directory FD fail closed.
+ */
+export function withContainedPath(runDir, fileName, operation) {
+    return withContainedPathForPlatform(runDir, fileName, operation, process.platform);
+}
+/** Run several related operations beneath one identity-checked directory FD. */
+export function withContainedDirectory(runDir, operation, platform = process.platform) {
+    assertContainedFsSupported(platform);
+    const directoryFd = openNoFollow(runDir.path, fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0));
+    try {
+        const stats = fstatSync(directoryFd, { bigint: true });
+        if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
+            throw new Error("run directory identity changed");
+        }
+        return operation(`/proc/self/fd/${directoryFd}`);
+    }
+    finally {
+        closeSync(directoryFd);
+    }
+}
+export function withContainedPathForPlatform(runDir, fileName, operation, platform) {
+    assertSafeContainedFileName(fileName, platform);
+    assertContainedFsSupported(platform);
+    const directoryFd = openNoFollow(runDir.path, fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0));
+    try {
+        const stats = fstatSync(directoryFd, { bigint: true });
+        if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
+            throw new Error("run directory identity changed");
+        }
+        return operation(containedPathForPlatform(directoryFd, runDir.path, fileName, platform));
+    }
+    finally {
+        closeSync(directoryFd);
+    }
+}
+/** Read a named artifact through a validated run-directory handle. */
+export function readContainedFileNoFollow(runDir, fileName) {
+    return withContainedPath(runDir, fileName, readFileNoFollow);
+}
+//# sourceMappingURL=safe-fs.js.map

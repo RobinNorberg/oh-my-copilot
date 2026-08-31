@@ -25,7 +25,7 @@ const DEFAULT_CONFIG = {
         pruneDays: 90,
     },
 };
-const CONFIG_PATH = join(getCopilotConfigDir(), 'omg', 'learner.json');
+const CONFIG_PATH = join(getCopilotConfigDir(), 'omc', 'learner.json');
 /**
  * Load configuration from disk.
  */
@@ -51,7 +51,7 @@ export function loadConfig() {
 export function saveConfig(config) {
     const merged = mergeConfig(DEFAULT_CONFIG, config);
     try {
-        const dir = join(getCopilotConfigDir(), 'omg');
+        const dir = join(getCopilotConfigDir(), 'omc');
         if (!existsSync(dir)) {
             mkdirSync(dir, { recursive: true });
         }

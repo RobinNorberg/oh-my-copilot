@@ -19,19 +19,30 @@ import type { PythonReplInput } from './types.js';
  * Validates and types all input parameters.
  */
 export declare const pythonReplSchema: z.ZodObject<{
-    action: z.ZodEnum<{
-        execute: "execute";
-        interrupt: "interrupt";
-        reset: "reset";
-        get_state: "get_state";
-    }>;
+    action: z.ZodEnum<["execute", "interrupt", "reset", "get_state"]>;
     researchSessionID: z.ZodString;
     code: z.ZodOptional<z.ZodString>;
     executionLabel: z.ZodOptional<z.ZodString>;
     executionTimeout: z.ZodDefault<z.ZodNumber>;
     queueTimeout: z.ZodDefault<z.ZodNumber>;
     projectDir: z.ZodOptional<z.ZodString>;
-}, z.core.$strip>;
+}, "strip", z.ZodTypeAny, {
+    action: "execute" | "interrupt" | "reset" | "get_state";
+    researchSessionID: string;
+    executionTimeout: number;
+    queueTimeout: number;
+    code?: string | undefined;
+    executionLabel?: string | undefined;
+    projectDir?: string | undefined;
+}, {
+    action: "execute" | "interrupt" | "reset" | "get_state";
+    researchSessionID: string;
+    code?: string | undefined;
+    executionLabel?: string | undefined;
+    executionTimeout?: number | undefined;
+    queueTimeout?: number | undefined;
+    projectDir?: string | undefined;
+}>;
 export type PythonReplSchemaInput = z.infer<typeof pythonReplSchema>;
 /**
  * Get and increment the execution counter for a session.
@@ -42,7 +53,7 @@ declare function getNextExecutionCount(sessionId: string): number;
  * Main handler for the Python REPL tool.
  *
  * @param input - Validated input from the tool call
- * @returns Formatted string output for Copilot
+ * @returns Formatted string output for Claude
  *
  * @example
  * ```typescript
@@ -60,19 +71,8 @@ export declare function pythonReplHandler(input: PythonReplInput): Promise<strin
 export declare const pythonReplTool: {
     name: string;
     description: string;
-    annotations: {
-        readOnlyHint: boolean;
-        destructiveHint: boolean;
-        idempotentHint: boolean;
-        openWorldHint: boolean;
-    };
     schema: {
-        action: z.ZodEnum<{
-            execute: "execute";
-            interrupt: "interrupt";
-            reset: "reset";
-            get_state: "get_state";
-        }>;
+        action: z.ZodEnum<["execute", "interrupt", "reset", "get_state"]>;
         researchSessionID: z.ZodString;
         code: z.ZodOptional<z.ZodString>;
         executionLabel: z.ZodOptional<z.ZodString>;

@@ -14,8 +14,8 @@ const DEFAULT_FACTCHECK_POLICY = {
     enabled: false,
     mode: 'quick',
     strict_project_patterns: [],
-    forbidden_path_prefixes: ['${COPILOT_CONFIG_DIR}/plugins/cache/omg/'],
-    forbidden_path_substrings: ['/.omcp/', '.omc-config.json'],
+    forbidden_path_prefixes: ['${COPILOT_CONFIG_DIR}/plugins/cache/omc/'],
+    forbidden_path_substrings: ['/.omg/', '.omc-config.json'],
     readonly_command_prefixes: [
         'ls ', 'cat ', 'find ', 'grep ', 'head ', 'tail ', 'stat ', 'echo ', 'wc ',
     ],

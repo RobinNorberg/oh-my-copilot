@@ -1,14 +1,14 @@
 /**
  * Oh-My-Copilot
  *
- * A multi-agent orchestration system for the Copilot Agent SDK.
- * Inspired by oh-my-opencode, reimagined for Copilot CLI.
+ * A multi-agent orchestration library and Claude Code plugin runtime with Agent SDK helpers.
+ * Inspired by oh-my-opencode, reimagined for Claude Code.
  *
  * Main features:
  * - OMC: Primary orchestrator that delegates to specialized subagents
  * - Parallel execution: Background agents run concurrently
  * - LSP/AST tools: IDE-like capabilities for agents
- * - Context management: Auto-injection from AGENTS.md/copilot-instructions.md
+ * - Context management: Auto-injection from AGENTS.md/CLAUDE.md
  * - Continuation enforcement: Ensures tasks complete before stopping
  * - Magic keywords: Special triggers for enhanced behaviors
  */
@@ -25,8 +25,12 @@ export { createBackgroundTaskManager, shouldRunInBackground, getBackgroundTaskGu
 export { type VersionMetadata, type ReleaseInfo, type UpdateCheckResult, type UpdateResult, REPO_OWNER, REPO_NAME, GITHUB_API_URL, COPILOT_CONFIG_DIR, VERSION_FILE, getInstalledVersion, saveVersionMetadata, checkForUpdates, performUpdate, formatUpdateNotification, shouldCheckForUpdates, backgroundUpdateCheck, compareVersions } from './features/auto-update.js';
 export * from './shared/index.js';
 export * from './hooks/index.js';
+export { recoverDeadWorkerV2, readRecoverDeadWorkerV2Outcome, readRecoverDeadWorkerV2Result, teamPublishTaskRecoveryCheckpoint, } from './team/index.js';
+export type { RecoverDeadWorkerV2Options, RecoverDeadWorkerV2Error, RecoverDeadWorkerV2Result, RecoverDeadWorkerV2Success, RecoverDeadWorkerV2Failure, PublishTaskRecoveryCheckpointInput, PublishTaskRecoveryCheckpointResult, } from './team/index.js';
+export type { RecoveryDurableOutcome, RecoveryOutcomePending, RecoveryOutcomeFinal, } from './team/index.js';
 export { type BoulderState, type PlanProgress, type PlanSummary, BOULDER_DIR, BOULDER_FILE, BOULDER_STATE_PATH, NOTEPAD_DIR, NOTEPAD_BASE_PATH, PLANNER_PLANS_DIR, PLAN_EXTENSION, getBoulderFilePath, readBoulderState, writeBoulderState, appendSessionId, clearBoulderState, findPlannerPlans, getPlanProgress, getPlanName, createBoulderState, getPlanSummaries, hasBoulder, getActivePlanPath, ContextCollector, contextCollector, injectPendingContext, injectContextIntoText, createContextInjectorHook, type ContextSourceType, type ContextPriority, type ContextEntry, type RegisterContextOptions, type PendingContext, type MessageContext, type OutputPart, type InjectionStrategy, type InjectionResult } from './features/index.js';
-export { type ModelType, type AgentCost, type AgentCategory, type DelegationTrigger, type AgentPromptMetadata, type AgentConfig, type FullAgentConfig, type AgentOverrideConfig, type AgentOverrides, type AgentFactory, type AvailableAgent, isGptModel, isClaudeModel, getDefaultModelForCategory, createAgentToolRestrictions, mergeAgentConfig, buildDelegationTable, buildUseAvoidSection, createEnvContext, getAvailableAgents, buildKeyTriggersSection, validateAgentConfig, deepMerge, loadAgentPrompt, architectAgent, ARCHITECT_PROMPT_METADATA, exploreAgent, EXPLORE_PROMPT_METADATA, DOCUMENT_SPECIALIST_PROMPT_METADATA, executorAgent, EXECUTOR_PROMPT_METADATA, designerAgent, FRONTEND_ENGINEER_PROMPT_METADATA, writerAgent, DOCUMENT_WRITER_PROMPT_METADATA, criticAgent, CRITIC_PROMPT_METADATA, analystAgent, ANALYST_PROMPT_METADATA, plannerAgent, PLANNER_PROMPT_METADATA, } from './agents/index.js';
+export { searchSessionHistory, parseSinceSpec, type SessionHistoryMatch, type SessionHistorySearchOptions, type SessionHistorySearchReport } from './features/index.js';
+export { type ModelType, type AgentCost, type AgentCategory, type DelegationTrigger, type AgentPromptMetadata, type AgentConfig, type FullAgentConfig, type AgentOverrideConfig, type AgentOverrides, type AgentFactory, type AvailableAgent, isGptModel, isClaudeModel, getDefaultModelForCategory, createAgentToolRestrictions, mergeAgentConfig, buildDelegationTable, buildUseAvoidSection, createEnvContext, getAvailableAgents, buildKeyTriggersSection, validateAgentConfig, deepMerge, loadAgentPrompt, architectAgent, ARCHITECT_PROMPT_METADATA, exploreAgent, EXPLORE_PROMPT_METADATA, DOCUMENT_SPECIALIST_PROMPT_METADATA, tracerAgent, TRACER_PROMPT_METADATA, executorAgent, EXECUTOR_PROMPT_METADATA, designerAgent, FRONTEND_ENGINEER_PROMPT_METADATA, writerAgent, DOCUMENT_WRITER_PROMPT_METADATA, criticAgent, CRITIC_PROMPT_METADATA, analystAgent, ANALYST_PROMPT_METADATA, plannerAgent, PLANNER_PROMPT_METADATA, } from './agents/index.js';
 /** @deprecated Use documentSpecialistAgent instead */
 export { documentSpecialistAgent as researcherAgent } from './agents/document-specialist.js';
 export { expandCommand, expandCommandPrompt, getCommand, getAllCommands, listCommands, commandExists, expandCommands, getCommandsDir, type CommandInfo, type ExpandedCommand } from './commands/index.js';
@@ -52,7 +56,7 @@ export interface OmcOptions {
  * Result of creating a OMC session
  */
 export interface OmcSession {
-    /** The query options to pass to Copilot Agent SDK */
+    /** The query options to pass to Claude Agent SDK */
     queryOptions: {
         options: {
             systemPrompt: string;
@@ -86,18 +90,24 @@ export interface OmcSession {
 /**
  * Create a OMC orchestration session
  *
- * This prepares all the configuration and options needed
- * to run a query with the Copilot Agent SDK.
+ * Prepare configuration and options needed to run a local Node.js query
+ * with the Claude Agent SDK. This helper does not install or drive the
+ * interactive Claude Code plugin UI.
  *
  * @example
  * ```typescript
  * import { createOmcSession } from 'oh-my-copilot';
+ * import { query } from '@anthropic-ai/claude-agent-sdk';
+ *
  * const session = createOmcSession();
  *
- * // Use the session's processed prompt and MCP tool servers
- * const prompt = session.processPrompt("ultrawork refactor the authentication module");
- * const { mcpServers, allowedTools } = session.queryOptions.options;
- * console.log(prompt, mcpServers, allowedTools);
+ * // Use with Claude Agent SDK
+ * for await (const message of query({
+ *   prompt: session.processPrompt("analyze the authentication module"),
+ *   ...session.queryOptions
+ * })) {
+ *   console.log(message);
+ * }
  * ```
  */
 export declare function createOmcSession(options?: OmcOptions): OmcSession;

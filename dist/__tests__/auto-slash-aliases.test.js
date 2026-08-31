@@ -1,74 +1,107 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-describe('auto-slash command skill aliases', () => {
-    const originalCwd = process.cwd();
-    const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
-    let tempRoot;
-    let tempConfigDir;
-    let tempProjectDir;
-    async function loadExecutor() {
-        vi.resetModules();
-        return import('../hooks/auto-slash-command/executor.js');
-    }
+vi.mock('../team/model-contract.js', () => ({
+    isCliAvailable: (agentType) => agentType === 'codex',
+}));
+const originalCwd = process.cwd();
+const originalPluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+const originalPath = process.env.PATH;
+let tempConfigDir;
+let tempProjectDir;
+async function loadExecutor() {
+    vi.resetModules();
+    return import('../hooks/auto-slash-command/executor.js');
+}
+describe('auto slash aliases + skill guidance', () => {
     beforeEach(() => {
-        tempRoot = mkdtempSync(join(tmpdir(), 'omc-auto-slash-aliases-'));
-        tempConfigDir = join(tempRoot, 'copilot-config');
-        tempProjectDir = join(tempRoot, 'project');
-        mkdirSync(join(tempConfigDir, 'skills', 'team'), { recursive: true });
-        mkdirSync(join(tempConfigDir, 'skills', 'project-session-manager'), { recursive: true });
-        mkdirSync(join(tempConfigDir, 'skills', 'cccg'), { recursive: true });
-        mkdirSync(join(tempProjectDir, '.copilot', 'commands'), { recursive: true });
-        writeFileSync(join(tempConfigDir, 'skills', 'team', 'SKILL.md'), `---
-name: team
-description: Team orchestration
----
-
-Team body`);
-        writeFileSync(join(tempConfigDir, 'skills', 'project-session-manager', 'SKILL.md'), `---
-name: project-session-manager
-description: Project session management
----
-
-PSM body`);
-        writeFileSync(join(tempConfigDir, 'skills', 'cccg', 'SKILL.md'), `---
-name: cccg
-description: Quadri-model orchestration
----
-
-## Workflow
-
-1. Fan out to external advisors:
-   - \`omc ask codex "<codex prompt>"\`
-   - \`omc ask gemini "<gemini prompt>"\`
-2. Synthesize results`);
+        tempConfigDir = join(tmpdir(), `omc-auto-slash-config-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        tempProjectDir = join(tmpdir(), `omc-auto-slash-project-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        mkdirSync(tempConfigDir, { recursive: true });
+        mkdirSync(tempProjectDir, { recursive: true });
         process.env.COPILOT_CONFIG_DIR = tempConfigDir;
         process.chdir(tempProjectDir);
     });
     afterEach(() => {
         process.chdir(originalCwd);
-        if (originalClaudeConfigDir === undefined) {
-            delete process.env.COPILOT_CONFIG_DIR;
+        rmSync(tempConfigDir, { recursive: true, force: true });
+        rmSync(tempProjectDir, { recursive: true, force: true });
+        delete process.env.COPILOT_CONFIG_DIR;
+        if (originalPluginRoot === undefined) {
+            delete process.env.CLAUDE_PLUGIN_ROOT;
         }
         else {
-            process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+            process.env.CLAUDE_PLUGIN_ROOT = originalPluginRoot;
         }
-        vi.resetModules();
-        rmSync(tempRoot, { recursive: true, force: true });
+        if (originalPath === undefined) {
+            delete process.env.PATH;
+        }
+        else {
+            process.env.PATH = originalPath;
+        }
     });
-    it('discovers skill commands from skill frontmatter', async () => {
-        const { discoverAllCommands, listAvailableCommands } = await loadExecutor();
-        const commands = discoverAllCommands();
-        const names = commands.map((command) => command.name);
-        expect(names).toContain('team');
-        expect(names).not.toContain('swarm'); // alias removed in #1131
-        expect(names).toContain('project-session-manager');
-        expect(names).not.toContain('psm'); // psm alias removed in Phase 4 cleanup
-        const listedNames = listAvailableCommands().map((command) => command.name);
-        expect(listedNames).toContain('team');
-        expect(listedNames).toContain('project-session-manager');
-        expect(listedNames).not.toContain('psm');
+    it('renders process-first setup routing guidance without unresolved placeholder tokens', async () => {
+        mkdirSync(join(tempConfigDir, 'skills', 'setup'), { recursive: true });
+        writeFileSync(join(tempConfigDir, 'skills', 'setup', 'SKILL.md'), `---
+name: setup
+description: Setup router
+---
+
+## Routing
+
+- doctor -> /oh-my-copilot:omc-doctor with remaining args
+- mcp -> /oh-my-copilot:mcp-setup with remaining args
+- otherwise -> /oh-my-copilot:omc-setup with remaining args`);
+        const { executeSlashCommand } = await loadExecutor();
+        const result = executeSlashCommand({
+            command: 'setup',
+            args: 'doctor --json',
+            raw: '/setup doctor --json',
+        });
+        expect(result.success).toBe(true);
+        expect(result.replacementText).toContain('doctor -> /oh-my-copilot:omc-doctor with remaining args');
+        expect(result.replacementText).not.toContain('{{ARGUMENTS_AFTER_DOCTOR}}');
+        expect(result.replacementText).not.toContain('{{ARGUMENTS_AFTER_MCP}}');
+    });
+    it('renders worktree-first guidance for project session manager compatibility skill', async () => {
+        mkdirSync(join(tempConfigDir, 'skills', 'project-session-manager'), { recursive: true });
+        writeFileSync(join(tempConfigDir, 'skills', 'project-session-manager', 'SKILL.md'), `---
+name: project-session-manager
+description: Worktree-first manager
+aliases: [psm]
+---
+
+> **Quick Start (worktree-first):** Start with \`omcp teleport\` before tmux sessions.`);
+        const { executeSlashCommand } = await loadExecutor();
+        const result = executeSlashCommand({
+            command: 'psm',
+            args: 'fix omc#42',
+            raw: '/psm fix omc#42',
+        });
+        expect(result.success).toBe(true);
+        expect(result.replacementText).toContain('Quick Start (worktree-first)');
+        expect(result.replacementText).toContain('`omcp teleport`');
+        expect(result.replacementText).toContain('Deprecated Alias');
+    });
+    it('renders provider-aware execution recommendations for deep-interview when codex is available', async () => {
+        mkdirSync(join(tempConfigDir, 'skills', 'deep-interview'), { recursive: true });
+        writeFileSync(join(tempConfigDir, 'skills', 'deep-interview', 'SKILL.md'), `---
+name: deep-interview
+description: Deep interview
+---
+
+Deep interview body`);
+        const { executeSlashCommand } = await loadExecutor();
+        const result = executeSlashCommand({
+            command: 'deep-interview',
+            args: 'improve onboarding',
+            raw: '/deep-interview improve onboarding',
+        });
+        expect(result.success).toBe(true);
+        expect(result.replacementText).toContain('## Provider-Aware Execution Recommendations');
+        expect(result.replacementText).toContain('/ralplan --architect codex');
+        expect(result.replacementText).toContain('/ralph --critic codex');
     });
     it('applies deep-interview threshold runtime injection in slash/materialized output', async () => {
         mkdirSync(join(tempConfigDir, 'skills', 'deep-interview'), { recursive: true });
@@ -98,7 +131,7 @@ Advanced: ambiguity ≤ 20%
         expect(result.success).toBe(true);
         expect(result.replacementText).toContain('ambiguityThreshold = 0.15');
         expect(result.replacementText).toContain('(default: 15%)');
-        expect(result.replacementText).toContain('(default: 0.15)');
+        expect(result.replacementText).toContain('(default 0.15)');
         expect(result.replacementText).toContain('"threshold": 0.15,');
         expect(result.replacementText).toContain('drops below 15%.');
         expect(result.replacementText).toContain('Gate: ≤15% ambiguity');
@@ -114,7 +147,7 @@ Advanced: ambiguity ≤ 20%
         expect(result.replacementText).not.toContain('ambiguity ≤ 20%');
         expect(result.replacementText).not.toContain('"ambiguityThreshold": 0.2,');
     });
-    it.skip('renders skill pipeline guidance for slash-loaded skills with handoff metadata', async () => {
+    it('renders skill pipeline guidance for slash-loaded skills with handoff metadata', async () => {
         mkdirSync(join(tempConfigDir, 'skills', 'deep-interview'), { recursive: true });
         writeFileSync(join(tempConfigDir, 'skills', 'deep-interview', 'SKILL.md'), `---
 name: deep-interview
@@ -122,7 +155,7 @@ description: Deep interview
 pipeline: [deep-interview, plan, autopilot]
 next-skill: plan
 next-skill-args: --consensus --direct
-handoff: .omcp/specs/deep-interview-{slug}.md
+handoff: .omg/specs/deep-interview-{slug}.md
 ---
 
 Deep interview body`);
@@ -137,39 +170,9 @@ Deep interview body`);
         expect(result.replacementText).toContain('Pipeline: `deep-interview → plan → autopilot`');
         expect(result.replacementText).toContain('Next skill arguments: `--consensus --direct`');
         expect(result.replacementText).toContain('Skill("oh-my-copilot:plan")');
-        expect(result.replacementText).toContain('`.omcp/specs/deep-interview-{slug}.md`');
+        expect(result.replacementText).toContain('`.omg/specs/deep-interview-{slug}.md`');
     });
-    it('discovers workspace-local Copilot CLI skills from .copilot/skills before user skills', async () => {
-        mkdirSync(join(tempProjectDir, '.copilot', 'skills', 'workspace-skill', 'references'), { recursive: true });
-        writeFileSync(join(tempProjectDir, '.copilot', 'skills', 'workspace-skill', 'SKILL.md'), `---
-name: workspace-skill
-description: Workspace Copilot skill
----
-
-Workspace Copilot skill body`);
-        writeFileSync(join(tempProjectDir, '.copilot', 'skills', 'workspace-skill', 'references', 'example.md'), 'example');
-        mkdirSync(join(tempConfigDir, 'skills', 'workspace-skill'), { recursive: true });
-        writeFileSync(join(tempConfigDir, 'skills', 'workspace-skill', 'SKILL.md'), `---
-name: workspace-skill
-description: User-global duplicate
----
-
-User-global duplicate body`);
-        const { findCommand, executeSlashCommand, listAvailableCommands } = await loadExecutor();
-        expect(findCommand('workspace-skill')?.path).toContain(join('.copilot', 'skills', 'workspace-skill', 'SKILL.md'));
-        expect(listAvailableCommands().some((command) => command.name === 'workspace-skill')).toBe(true);
-        const result = executeSlashCommand({
-            command: 'workspace-skill',
-            args: '',
-            raw: '/workspace-skill',
-        });
-        expect(result.success).toBe(true);
-        expect(result.replacementText).toContain('Workspace Copilot skill body');
-        expect(result.replacementText).toContain('## Skill Resources');
-        expect(result.replacementText).toContain('`references/`');
-        expect(result.replacementText).not.toContain('User-global duplicate body');
-    });
-    it.skip('discovers project-local compatibility skills from .agents/skills', async () => {
+    it('discovers project-local compatibility skills from .agents/skills', async () => {
         mkdirSync(join(tempProjectDir, '.agents', 'skills', 'compat-skill', 'templates'), { recursive: true });
         writeFileSync(join(tempProjectDir, '.agents', 'skills', 'compat-skill', 'SKILL.md'), `---
 name: compat-skill
@@ -191,7 +194,66 @@ Compatibility body`);
         expect(result.replacementText).toContain('.agents/skills/compat-skill');
         expect(result.replacementText).toContain('`templates/`');
     });
-    it.skip('renders deterministic autoresearch bridge guidance for deep-interview autoresearch mode', async () => {
+    it('keeps top-level descriptions for compatibility skills with nested metadata', async () => {
+        mkdirSync(join(tempProjectDir, '.agents', 'skills', 'nested-metadata-skill'), { recursive: true });
+        writeFileSync(join(tempProjectDir, '.agents', 'skills', 'nested-metadata-skill', 'SKILL.md'), `---
+  name: nested-metadata-skill
+  description: Top-level skill description
+  metadata:
+    optionalEnv:
+      - name: EXAMPLE_SECRET
+        description: Nested environment description
+---
+
+Nested metadata skill body`);
+        const { findCommand, executeSlashCommand, listAvailableCommands } = await loadExecutor();
+        expect(findCommand('nested-metadata-skill')?.metadata.description).toBe('Top-level skill description');
+        expect(listAvailableCommands()).toContainEqual({
+            name: 'nested-metadata-skill',
+            description: 'Top-level skill description',
+            scope: 'skill',
+        });
+        const result = executeSlashCommand({
+            command: 'nested-metadata-skill',
+            args: '',
+            raw: '/nested-metadata-skill',
+        });
+        expect(result.success).toBe(true);
+        expect(result.replacementText).toContain('**Description**: Top-level skill description');
+        expect(result.replacementText).not.toContain('Nested environment description');
+    });
+    it('discovers workspace-local Copilot CLI skills from .copilot/skills before OMC compatibility skills', async () => {
+        mkdirSync(join(tempProjectDir, '.copilot', 'skills', 'workspace-skill', 'references'), { recursive: true });
+        writeFileSync(join(tempProjectDir, '.copilot', 'skills', 'workspace-skill', 'SKILL.md'), `---
+name: workspace-skill
+description: Workspace Claude skill
+---
+
+Workspace Claude skill body`);
+        writeFileSync(join(tempProjectDir, '.copilot', 'skills', 'workspace-skill', 'references', 'example.md'), 'example');
+        mkdirSync(join(tempProjectDir, '.agents', 'skills', 'workspace-skill'), { recursive: true });
+        writeFileSync(join(tempProjectDir, '.agents', 'skills', 'workspace-skill', 'SKILL.md'), `---
+name: workspace-skill
+description: Compatibility duplicate
+---
+
+Compatibility duplicate body`);
+        const { findCommand, executeSlashCommand, listAvailableCommands } = await loadExecutor();
+        expect(findCommand('workspace-skill')?.path).toContain(join('.copilot', 'skills', 'workspace-skill', 'SKILL.md'));
+        expect(listAvailableCommands().some((command) => command.name === 'workspace-skill')).toBe(true);
+        const result = executeSlashCommand({
+            command: 'workspace-skill',
+            args: '',
+            raw: '/workspace-skill',
+        });
+        expect(result.success).toBe(true);
+        expect(result.replacementText).toContain('Workspace Claude skill body');
+        expect(result.replacementText).toContain('## Skill Resources');
+        expect(result.replacementText).toContain('.copilot/skills/workspace-skill');
+        expect(result.replacementText).toContain('`references/`');
+        expect(result.replacementText).not.toContain('Compatibility duplicate body');
+    });
+    it('renders deterministic autoresearch bridge guidance for deep-interview autoresearch mode', async () => {
         mkdirSync(join(tempConfigDir, 'skills', 'deep-interview'), { recursive: true });
         writeFileSync(join(tempConfigDir, 'skills', 'deep-interview', 'SKILL.md'), `---
 name: deep-interview
@@ -199,7 +261,7 @@ description: Deep interview
 pipeline: [deep-interview, plan, autopilot]
 next-skill: plan
 next-skill-args: --consensus --direct
-handoff: .omcp/specs/deep-interview-{slug}.md
+handoff: .omg/specs/deep-interview-{slug}.md
 ---
 
 Deep interview body`);
@@ -215,7 +277,7 @@ Deep interview body`);
         expect(result.replacementText).toContain('Mission seed from invocation: `improve startup performance`');
         expect(result.replacementText).not.toContain('## Skill Pipeline');
     });
-    it.skip('renders plugin-safe autoresearch guidance when omcp is unavailable in slash mode', async () => {
+    it('renders plugin-safe autoresearch guidance when omc is unavailable in slash mode', async () => {
         process.env.CLAUDE_PLUGIN_ROOT = '/plugin-root';
         process.env.PATH = '';
         mkdirSync(join(tempConfigDir, 'skills', 'deep-interview'), { recursive: true });
@@ -234,23 +296,6 @@ Deep interview body`);
         expect(result.success).toBe(true);
         expect(result.replacementText)
             .toContain('Skill("oh-my-copilot:autoresearch")');
-    });
-    it('routes /cccg advisor asks through the plugin bridge inside an active Claude session when CLAUDE_PLUGIN_ROOT is set', async () => {
-        process.env.CLAUDE_PLUGIN_ROOT = '/plugin-root';
-        process.env.PATH = '';
-        process.env.CLAUDECODE = '1';
-        process.env.CLAUDE_SESSION_ID = 'session-123';
-        const { executeSlashCommand } = await loadExecutor();
-        const result = executeSlashCommand({
-            command: 'cccg',
-            args: 'review this auth flow',
-            raw: '/cccg review this auth flow',
-        });
-        expect(result.success).toBe(true);
-        expect(result.replacementText).toContain('`node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask codex "<codex prompt>"`');
-        expect(result.replacementText).toContain('`node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask gemini "<gemini prompt>"`');
-        expect(result.replacementText).not.toContain('`omcp ask codex "<codex prompt>"`');
-        expect(result.replacementText).not.toContain('`omcp ask gemini "<gemini prompt>"`');
     });
 });
 //# sourceMappingURL=auto-slash-aliases.test.js.map

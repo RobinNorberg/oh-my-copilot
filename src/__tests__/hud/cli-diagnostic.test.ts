@@ -90,11 +90,10 @@ describe('HUD CLI diagnostic (no stdin, no watch mode)', () => {
     vi.doMock('../../lib/worktree-paths.js', () => ({
       resolveToWorktreeRoot: vi.fn((cwd?: string) => cwd ?? '/tmp'),
       resolveTranscriptPath: vi.fn((tp?: string) => tp),
-      getOmcRoot: vi.fn(() => '/tmp/.omc'),
+      getOmcRoot: vi.fn(() => '/tmp/.omg'),
     }));
     vi.doMock('../../utils/config-dir.js', () => ({
       getCopilotConfigDir: vi.fn(() => overrides.configDir ?? tempConfigDir),
-      getClaudeConfigDir: vi.fn(() => overrides.configDir ?? tempConfigDir),
     }));
 
     return import('../../hud/index.js');
@@ -170,7 +169,7 @@ describe('HUD CLI diagnostic (no stdin, no watch mode)', () => {
     writeFileSync(join(tempConfigDir, 'hud', 'omcp-hud.mjs'), '// stub');
     writeFileSync(
       join(tempConfigDir, 'settings.json'),
-      JSON.stringify({ statusLine: { type: 'command', command: 'node $HOME/.copilot/hud/omcp-hud.mjs' } }),
+      JSON.stringify({ statusLine: { type: 'command', command: 'node $HOME/.claude/hud/omcp-hud.mjs' } }),
     );
     const hud = await importHudModule();
     await hud.main(false, false);
@@ -178,7 +177,7 @@ describe('HUD CLI diagnostic (no stdin, no watch mode)', () => {
     const output = consoleLogSpy.mock.calls.map((c: unknown[]) => c[0]).join('\n');
     expect(output).toContain('statusLine:');
     expect(output).toContain('configured');
-    expect(output).toContain('HUD renders automatically inside Copilot CLI sessions.');
+    expect(output).toContain('HUD renders automatically inside Claude Code sessions.');
   });
 
   it('shows statusLine as NOT configured when settings.json has no statusLine', async () => {
@@ -195,7 +194,7 @@ describe('HUD CLI diagnostic (no stdin, no watch mode)', () => {
     writeFileSync(join(tempConfigDir, 'hud', 'omcp-hud.mjs'), '// stub');
     writeFileSync(
       join(tempConfigDir, 'settings.json'),
-      JSON.stringify({ statusLine: '~/.copilot/hud/omcp-hud.mjs' }),
+      JSON.stringify({ statusLine: '~/.claude/hud/omcp-hud.mjs' }),
     );
     const hud = await importHudModule();
     await hud.main(false, false);

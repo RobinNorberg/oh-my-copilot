@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sanitizeReplyInput } from "../reply-listener.js";
+import { buildReplyInjectionSteps, sanitizeReplyInput } from "../reply-listener.js";
 describe("reply-listener", () => {
     describe("sanitizeReplyInput", () => {
         it("strips control characters", () => {
@@ -47,6 +47,25 @@ describe("reply-listener", () => {
             expect(result).toContain('\\$(sub)');
             expect(result).toContain('\\${var}');
             expect(result).not.toContain('\x00');
+        });
+    });
+    describe("AskUserQuestion reply injection", () => {
+        it("targets the Other/free-text field before submitting mobile reply text", () => {
+            const steps = buildReplyInjectionSteps("Use SQLite for tests", "telegram", { includePrefix: false, maxMessageLength: 500 }, { event: "ask-user-question", askUserQuestionOptionCount: 2, askUserQuestionAllowOther: true });
+            expect(steps).toEqual([
+                { kind: "key", value: "Down" },
+                { kind: "key", value: "Down" },
+                { kind: "key", value: "Enter" },
+                { kind: "literal", value: "Use SQLite for tests" },
+                { kind: "key", value: "Enter" },
+            ]);
+        });
+        it("keeps normal reply injection semantics for non AskUserQuestion messages", () => {
+            const steps = buildReplyInjectionSteps("continue", "slack", { includePrefix: true, maxMessageLength: 500 }, { event: "session-idle" });
+            expect(steps).toEqual([
+                { kind: "literal", value: "[reply:slack] continue" },
+                { kind: "key", value: "Enter" },
+            ]);
         });
     });
     describe("Discord filtering", () => {
@@ -206,8 +225,8 @@ describe("reply-listener", () => {
             expect(true).toBe(true);
         });
         it("detects stale PID file", () => {
-            const pid = 99999; // Non-existent process
-            // isProcessRunning would return false
+            const pid = 2_147_483_647; // Outside the supported PID range on test platforms
+            // isProcessAlive would return false
             let isRunning = false;
             try {
                 process.kill(pid, 0);
@@ -276,7 +295,7 @@ describe("reply-listener", () => {
             const userMessageId = "999888777";
             const expectedUrl = `https://discord.com/api/v10/channels/${channelId}/messages`;
             const expectedBody = {
-                content: "Injected into Copilot CLI session.",
+                content: "Injected into Claude Code session.",
                 message_reference: { message_id: userMessageId },
                 allowed_mentions: { parse: [] },
             };
@@ -296,10 +315,10 @@ describe("reply-listener", () => {
             const messageId = 789;
             const expectedBody = {
                 chat_id: chatId,
-                text: "Injected into Copilot CLI session.",
+                text: "Injected into Claude Code session.",
                 reply_to_message_id: messageId,
             };
-            expect(expectedBody.text).toBe("Injected into Copilot CLI session.");
+            expect(expectedBody.text).toBe("Injected into Claude Code session.");
             expect(expectedBody.reply_to_message_id).toBe(messageId);
         });
         it("feedback is non-critical and wrapped in try/catch", () => {
@@ -348,14 +367,14 @@ describe("reply-listener", () => {
         it("prefixes Discord feedback with mention when discordMention is set", () => {
             const mention = "<@123456789012345678>";
             const mentionPrefix = mention ? `${mention} ` : '';
-            const content = `${mentionPrefix}Injected into Copilot CLI session.`;
-            expect(content).toBe("<@123456789012345678> Injected into Copilot CLI session.");
+            const content = `${mentionPrefix}Injected into Claude Code session.`;
+            expect(content).toBe("<@123456789012345678> Injected into Claude Code session.");
         });
         it("omits mention prefix when discordMention is undefined", () => {
             const mention = undefined;
             const mentionPrefix = mention ? `${mention} ` : '';
-            const content = `${mentionPrefix}Injected into Copilot CLI session.`;
-            expect(content).toBe("Injected into Copilot CLI session.");
+            const content = `${mentionPrefix}Injected into Claude Code session.`;
+            expect(content).toBe("Injected into Claude Code session.");
         });
         it("builds allowed_mentions for user mention", () => {
             // Inline equivalent of parseMentionAllowedMentions for user mention
@@ -405,10 +424,66 @@ describe("reply-listener", () => {
             const source = fs.readFileSync(path.join(__dirname, "..", "reply-listener.ts"), "utf-8");
             // Telegram sendMessage body should not reference discordMention
             // Find the Telegram reply body - it uses a simple text string
-            const telegramReplyMatch = source.match(/text:\s*['"]Injected into Copilot CLI session\.['"]/g);
+            const telegramReplyMatch = source.match(/text:\s*['"]Injected into Claude Code session\.['"]/g);
             expect(telegramReplyMatch).not.toBeNull();
             // Should have exactly 1 match (Telegram only; Discord now uses template)
             expect(telegramReplyMatch.length).toBe(1);
+        });
+    });
+    describe("Slack user authorization", () => {
+        it("rejects messages from unauthorized Slack users when authorizedSlackUserIds is set", () => {
+            const authorizedSlackUserIds = ["U12345678", "W0123ABCDE"];
+            const unauthorizedUser = "U99999999";
+            const authorizedUser = "U12345678";
+            // Unauthorized user should be rejected
+            expect(authorizedSlackUserIds.includes(unauthorizedUser)).toBe(false);
+            // Authorized user should be accepted
+            expect(authorizedSlackUserIds.includes(authorizedUser)).toBe(true);
+        });
+        it("rejects all users when authorizedSlackUserIds is empty (fail-closed)", () => {
+            const authorizedSlackUserIds = [];
+            // When empty, ALL messages should be rejected (fail-closed, matching Discord behavior)
+            const shouldReject = !authorizedSlackUserIds || authorizedSlackUserIds.length === 0;
+            expect(shouldReject).toBe(true);
+        });
+        it("rejects all users when authorizedSlackUserIds is undefined (fail-closed)", () => {
+            const authorizedSlackUserIds = undefined;
+            // When undefined, ALL messages should be rejected (fail-closed)
+            const shouldReject = !authorizedSlackUserIds;
+            expect(shouldReject).toBe(true);
+        });
+        it("source code checks event.user against authorizedSlackUserIds before injection", () => {
+            const fs = require("fs");
+            const path = require("path");
+            const source = fs.readFileSync(path.join(__dirname, "..", "reply-listener.ts"), "utf-8");
+            // Verify the authorization check exists in the Slack handler
+            expect(source).toContain("authorizedSlackUserIds");
+            expect(source).toContain("event.user");
+            expect(source).toContain("REJECTED Slack message from unauthorized user");
+        });
+        it("source code uses fail-closed pattern: empty authorizedSlackUserIds rejects all messages", () => {
+            const fs = require("fs");
+            const path = require("path");
+            const source = fs.readFileSync(path.join(__dirname, "..", "reply-listener.ts"), "utf-8");
+            // Verify fail-closed: when list is empty/undefined, reject all
+            expect(source).toContain("rejecting all messages (fail-closed)");
+            expect(source).toContain("authorizedSlackUserIds.length === 0");
+            // Should NOT have the old fail-open pattern
+            expect(source).not.toContain("authorizedSlackUserIds.length > 0");
+        });
+        it("config type includes authorizedSlackUserIds field", () => {
+            const fs = require("fs");
+            const path = require("path");
+            const typesSource = fs.readFileSync(path.join(__dirname, "..", "types.ts"), "utf-8");
+            expect(typesSource).toContain("authorizedSlackUserIds: string[]");
+        });
+        it("getReplyConfig parses authorizedSlackUserIds from env and config", () => {
+            const fs = require("fs");
+            const path = require("path");
+            const configSource = fs.readFileSync(path.join(__dirname, "..", "config.ts"), "utf-8");
+            expect(configSource).toContain("parseSlackUserIds");
+            expect(configSource).toContain("OMC_REPLY_SLACK_USER_IDS");
+            expect(configSource).toContain("authorizedSlackUserIds");
         });
     });
     describe("Error handling", () => {

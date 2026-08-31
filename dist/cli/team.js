@@ -1,8 +1,7 @@
 import { randomUUID } from 'crypto';
 import { spawn } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { readFile, readdir, rm } from 'fs/promises';
-import { homedir } from 'os';
+import { readFile, rm } from 'fs/promises';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { executeTeamApiOperation as executeCanonicalTeamApiOperation, resolveTeamApiOperation } from '../team/api-interop.js';
@@ -11,10 +10,12 @@ import { killWorkerPanes, killTeamSession, getWorkerLiveness } from '../team/tmu
 import { validateTeamName } from '../team/team-name.js';
 import { monitorTeam, resumeTeam, shutdownTeam } from '../team/runtime.js';
 import { readTeamConfig } from '../team/monitor.js';
-import { isProcessAlive } from '../platform/process-utils.js';
+import { isProcessAlive } from '../platform/index.js';
+import { getGlobalOmcStatePath } from '../utils/paths.js';
 import { readApprovedExecutionLaunchHintOutcome } from '../planning/artifacts.js';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 const JOB_ID_PATTERN = /^omc-[a-z0-9]{1,16}$/;
-const VALID_CLI_AGENT_TYPES = new Set(['claude', 'copilot', 'codex', 'gemini', 'cursor', 'grok']);
+const VALID_CLI_AGENT_TYPES = new Set(['claude', 'codex', 'gemini', 'cursor', 'grok', 'antigravity']);
 const SUBCOMMANDS = new Set(['start', 'status', 'wait', 'cleanup', 'resume', 'shutdown', 'api', 'help', '--help', '-h']);
 const SUPPORTED_API_OPERATIONS = new Set([
     'send-message',
@@ -26,27 +27,53 @@ const SUPPORTED_API_OPERATIONS = new Set([
     'read-task',
     'read-config',
     'get-summary',
+    'orphan-cleanup',
+    'recover-worker',
+    'write-task-checkpoint',
+    'read-recovery-result',
 ]);
 const TEAM_API_USAGE = `
 Usage:
-  omcp team api <operation> --input '<json>' [--json] [--cwd DIR]
+  omc team api <operation> --input '<json>' [--json] [--cwd DIR]
 
 Supported operations:
   ${Array.from(SUPPORTED_API_OPERATIONS).join(', ')}
 `.trim();
 function getTeamWorkerIdentityFromEnv(env = process.env) {
-    const omg = typeof env.OMC_TEAM_WORKER === 'string' ? env.OMC_TEAM_WORKER.trim() : '';
-    return omg || null;
+    const omc = typeof env.OMC_TEAM_WORKER === 'string' ? env.OMC_TEAM_WORKER.trim() : '';
+    if (omc)
+        return omc;
+    const omx = typeof env.OMX_TEAM_WORKER === 'string' ? env.OMX_TEAM_WORKER.trim() : '';
+    return omx || null;
 }
-function assertTeamSpawnAllowed(env = process.env) {
+async function assertTeamSpawnAllowed(cwd, env = process.env) {
     const workerIdentity = getTeamWorkerIdentityFromEnv(env);
-    if (!workerIdentity)
+    const { teamReadManifest } = await import('../team/team-ops.js');
+    const { findActiveTeamsV2 } = await import('../team/runtime-v2.js');
+    const { DEFAULT_TEAM_GOVERNANCE, normalizeTeamGovernance } = await import('../team/governance.js');
+    if (workerIdentity) {
+        const [parentTeamName] = workerIdentity.split('/');
+        const parentManifest = parentTeamName ? await teamReadManifest(parentTeamName, cwd) : null;
+        const governance = normalizeTeamGovernance(parentManifest?.governance, parentManifest?.policy);
+        if (!governance.nested_teams_allowed) {
+            throw new Error(`Worker context (${workerIdentity}) cannot start nested teams because nested_teams_allowed is false.`);
+        }
+        if (!governance.delegation_only) {
+            throw new Error(`Worker context (${workerIdentity}) cannot start nested teams because delegation_only is false.`);
+        }
         return;
-    throw new Error(`Worker context (${workerIdentity}) cannot start/spawn new teams. ` +
-        `Use only "omcp team api ..." operations from worker sessions.`);
+    }
+    const activeTeams = await findActiveTeamsV2(cwd);
+    for (const activeTeam of activeTeams) {
+        const manifest = await teamReadManifest(activeTeam, cwd);
+        const governance = normalizeTeamGovernance(manifest?.governance, manifest?.policy);
+        if (governance.one_team_per_leader_session ?? DEFAULT_TEAM_GOVERNANCE.one_team_per_leader_session) {
+            throw new Error(`Leader session already owns active team "${activeTeam}" and one_team_per_leader_session is enabled.`);
+        }
+    }
 }
 function resolveJobsDir(env = process.env) {
-    return env.OMC_JOBS_DIR || join(homedir(), '.omcp', 'team-jobs');
+    return env.OMC_JOBS_DIR || getGlobalOmcStatePath('team-jobs');
 }
 function resolveRuntimeCliPath(env = process.env) {
     if (env.OMC_RUNTIME_CLI_PATH) {
@@ -70,7 +97,7 @@ function panesArtifactPath(jobsDir, jobId) {
     return join(jobsDir, `${jobId}-panes.json`);
 }
 function teamStateRoot(cwd, teamName) {
-    return join(cwd, '.omcp', 'state', 'team', teamName);
+    return join(getOmcRoot(cwd), 'state', 'team', teamName);
 }
 function validateJobId(jobId) {
     if (!JOB_ID_PATTERN.test(jobId)) {
@@ -209,38 +236,8 @@ function parseJsonInput(inputRaw) {
     }
     return parsed;
 }
-function readInputString(input, ...keys) {
-    for (const key of keys) {
-        const value = input[key];
-        if (typeof value === 'string' && value.trim()) {
-            return value.trim();
-        }
-    }
-    return '';
-}
-async function readTaskFiles(cwd, teamName) {
-    const tasksDir = join(teamStateRoot(cwd, teamName), 'tasks');
-    let files = [];
-    try {
-        files = (await readdir(tasksDir)).filter((f) => f.endsWith('.json'));
-    }
-    catch {
-        return [];
-    }
-    const loaded = await Promise.all(files.map(async (file) => {
-        try {
-            const raw = await readFile(join(tasksDir, file), 'utf-8');
-            const parsed = parseJsonSafe(raw);
-            return parsed ?? null;
-        }
-        catch {
-            return null;
-        }
-    }));
-    return loaded.filter((v) => v !== null);
-}
 export async function startTeamJob(input) {
-    assertTeamSpawnAllowed();
+    await assertTeamSpawnAllowed(input.cwd);
     validateTeamName(input.teamName);
     if (!Array.isArray(input.agentTypes) || input.agentTypes.length === 0) {
         throw new Error('agentTypes must be a non-empty array');
@@ -278,8 +275,11 @@ export async function startTeamJob(input) {
         sentinelGatePollIntervalMs: input.sentinelGatePollIntervalMs,
         autoMerge: input.autoMerge,
     };
-    child.stdin.write(JSON.stringify(payload));
-    child.stdin.end();
+    if (child.stdin && typeof child.stdin.on === 'function') {
+        child.stdin.on('error', () => { });
+    }
+    child.stdin?.write(JSON.stringify(payload));
+    child.stdin?.end();
     child.unref();
     if (child.pid != null) {
         job.pid = child.pid;
@@ -442,7 +442,6 @@ export async function teamStatusByTeamName(teamName, cwd = process.cwd()) {
                 .filter((paneId) => typeof paneId === 'string' && paneId.trim().length > 0))),
             workers: (config?.workers ?? []).map((worker) => ({
                 name: worker.name,
-                pane_id: worker.pane_id,
                 working_dir: worker.working_dir,
                 worktree_repo_root: worker.worktree_repo_root,
                 worktree_path: worker.worktree_path,
@@ -497,7 +496,9 @@ export async function teamShutdownByName(teamName, options = {}) {
     const runtimeV2 = await import('../team/runtime-v2.js');
     if (runtimeV2.isRuntimeV2Enabled()) {
         const config = await readTeamConfig(teamName, cwd);
-        await runtimeV2.shutdownTeamV2(teamName, cwd, { force: Boolean(options.force) });
+        const shutdown = await runtimeV2.shutdownTeamV2(teamName, cwd, { force: Boolean(options.force) });
+        if (shutdown.outcome !== 'cleaned')
+            throw new Error(`Team shutdown ${shutdown.outcome}: ${shutdown.reason}`);
         return {
             teamName,
             shutdown: true,
@@ -518,12 +519,13 @@ export async function teamShutdownByName(teamName, options = {}) {
         }
         throw new Error(`Team ${teamName} is not running. Use --force to clear stale state.`);
     }
-    await shutdownTeam(runtime.teamName, runtime.sessionName, runtime.cwd, options.force ? 0 : 30_000, runtime.workerPaneIds, runtime.leaderPaneId, runtime.ownsWindow);
+    const cleaned = await shutdownTeam(runtime.teamName, runtime.sessionName, runtime.cwd, options.force ? 0 : 30_000, runtime.workerPaneIds, runtime.leaderPaneId, runtime.ownsWindow);
     return {
         teamName,
-        shutdown: true,
+        shutdown: cleaned,
         forced: Boolean(options.force),
         sessionFound: true,
+        ...(cleaned ? {} : { error: 'team_shutdown_failed:cleanup_unverified' }),
     };
 }
 export async function executeTeamApiOperation(operation, input, cwd = process.cwd()) {
@@ -534,7 +536,7 @@ export async function executeTeamApiOperation(operation, input, cwd = process.cw
             operation,
             error: {
                 code: 'UNSUPPORTED_OPERATION',
-                message: `Unsupported omcp team api operation: ${operation}`,
+                message: `Unsupported omc team api operation: ${operation}`,
             },
         };
     }
@@ -558,7 +560,26 @@ export async function executeTeamApiOperation(operation, input, cwd = process.cw
         ...(typeof input.messageId === 'string' && input.messageId.trim() !== '' && typeof input.message_id !== 'string'
             ? { message_id: input.messageId }
             : {}),
+        ...(typeof input.claimToken === 'string' && input.claimToken.trim() !== '' && typeof input.claim_token !== 'string'
+            ? { claim_token: input.claimToken }
+            : {}),
+        ...(typeof input.taskVersion === 'number' && input.task_version === undefined
+            ? { task_version: input.taskVersion }
+            : {}),
+        ...(typeof input.resumePayload !== 'undefined' && input.resume_payload === undefined
+            ? { resume_payload: input.resumePayload }
+            : {}),
+        ...(typeof input.requestId === 'string' && input.requestId.trim() !== '' && typeof input.request_id !== 'string'
+            ? { request_id: input.requestId }
+            : {}),
+        ...(typeof input.timeoutMs === 'number' && input.timeout_ms === undefined
+            ? { timeout_ms: input.timeoutMs }
+            : {}),
     };
+    for (const alias of ['teamName', 'taskId', 'workerName', 'fromWorker', 'toWorker', 'messageId',
+        'claimToken', 'taskVersion', 'resumePayload', 'requestId', 'timeoutMs']) {
+        delete normalizedInput[alias];
+    }
     const result = await executeCanonicalTeamApiOperation(canonicalOperation, normalizedInput, cwd);
     return result;
 }
@@ -584,14 +605,14 @@ export async function teamCleanupCommand(jobId, cleanupOptions = {}, options = {
 }
 export const TEAM_USAGE = `
 Usage:
-  omcp team start --agent <claude|copilot|codex|gemini|cursor|grok>[,<agent>...] --task "<task>" [--count N] [--name TEAM] [--cwd DIR] [--new-window] [--auto-merge] [--json]
-  omcp team status <job_id|team_name> [--json] [--cwd DIR]
-  omcp team wait <job_id> [--timeout-ms MS] [--json]
-  omcp team cleanup <job_id> [--grace-ms MS] [--json]
-  omcp team resume <team_name> [--json] [--cwd DIR]
-  omcp team shutdown <team_name> [--force] [--json] [--cwd DIR]
-  omcp team api <operation> [--input '<json>'] [--json] [--cwd DIR]
-  omcp team [ralph] <N:agent-type[:role]> "task" [--json] [--cwd DIR] [--new-window]
+  omc team start --agent <claude|codex|gemini|cursor|grok|antigravity>[,<agent>...] --task "<task>" [--count N] [--name TEAM] [--cwd DIR] [--new-window] [--auto-merge] [--json]
+  omc team status <job_id|team_name> [--json] [--cwd DIR]
+  omc team wait <job_id> [--timeout-ms MS] [--json]
+  omc team cleanup <job_id> [--grace-ms MS] [--json]
+  omc team resume <team_name> [--json] [--cwd DIR]
+  omc team shutdown <team_name> [--force] [--json] [--cwd DIR]
+  omc team api <operation> [--input '<json>'] [--json] [--cwd DIR]
+  omc team [ralph] <N:agent-type[:role]> "task" [--json] [--cwd DIR] [--new-window]
 
 Worktrees:
   Native per-worker git worktree mode is opt-in/config-gated with team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|named.
@@ -605,13 +626,17 @@ Auto-merge (v2-only):
                         Equivalent to OMC_TEAMS_AUTO_MERGE=1.
 
 Examples:
-  omcp team start --agent codex --count 2 --task "review auth flow" --new-window
-  omcp team status omc-abc123
-  omcp team status auth-review
-  omcp team resume auth-review
-  omcp team shutdown auth-review --force
-  omcp team api list-tasks --input '{"teamName":"auth-review"}' --json
-  omcp team 3:codex "refactor launch command"
+  omc team start --agent codex --count 2 --task "review auth flow" --new-window
+  omc team status omc-abc123
+  omc team status auth-review
+  omc team resume auth-review
+  omc team shutdown auth-review --force
+  omc team api list-tasks --input '{"teamName":"auth-review"}' --json
+  omc team 3:codex "refactor launch command"
+
+Worktree mode:
+  Native worker worktrees are opt-in/config-gated for runtime-v2.
+  Status surfaces workspace_mode, worktree_mode, team_state_root, and worker worktree metadata when enabled.
 `.trim();
 function parseStartArgs(args) {
     const agentValues = [];
@@ -741,7 +766,7 @@ function parseStartArgs(args) {
             sentinelGatePollIntervalMs = toInt(token.slice('--sentinel-gate-poll-interval-ms='.length), '--sentinel-gate-poll-interval-ms');
             continue;
         }
-        throw new Error(`Unknown argument for "omcp team start": ${token}`);
+        throw new Error(`Unknown argument for "omc team start": ${token}`);
     }
     if (count < 1)
         throw new Error('--count must be >= 1');
@@ -846,10 +871,10 @@ function parseCommonJobArgs(args, command) {
                 continue;
             }
         }
-        throw new Error(`Unknown argument for "omcp team ${command}": ${token}`);
+        throw new Error(`Unknown argument for "omc team ${command}": ${token}`);
     }
     if (!target) {
-        throw new Error(`Missing required target for "omcp team ${command}".`);
+        throw new Error(`Missing required target for "omc team ${command}".`);
     }
     return {
         target,
@@ -890,10 +915,10 @@ function parseTeamTargetArgs(args, command) {
             force = true;
             continue;
         }
-        throw new Error(`Unknown argument for "omcp team ${command}": ${token}`);
+        throw new Error(`Unknown argument for "omc team ${command}": ${token}`);
     }
     if (!teamName) {
-        throw new Error(`Missing required <team_name> for "omcp team ${command}".`);
+        throw new Error(`Missing required <team_name> for "omc team ${command}".`);
     }
     return {
         teamName,
@@ -940,10 +965,10 @@ function parseApiArgs(args) {
             cwd = token.slice('--cwd='.length);
             continue;
         }
-        throw new Error(`Unknown argument for "omcp team api": ${token}`);
+        throw new Error(`Unknown argument for "omc team api": ${token}`);
     }
     if (!operation) {
-        throw new Error(`Missing required <operation> for "omcp team api"\n\n${TEAM_API_USAGE}`);
+        throw new Error(`Missing required <operation> for "omc team api"\n\n${TEAM_API_USAGE}`);
     }
     return {
         operation,

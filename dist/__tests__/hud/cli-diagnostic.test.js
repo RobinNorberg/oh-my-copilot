@@ -78,11 +78,10 @@ describe('HUD CLI diagnostic (no stdin, no watch mode)', () => {
         vi.doMock('../../lib/worktree-paths.js', () => ({
             resolveToWorktreeRoot: vi.fn((cwd) => cwd ?? '/tmp'),
             resolveTranscriptPath: vi.fn((tp) => tp),
-            getOmcRoot: vi.fn(() => '/tmp/.omc'),
+            getOmcRoot: vi.fn(() => '/tmp/.omg'),
         }));
         vi.doMock('../../utils/config-dir.js', () => ({
             getCopilotConfigDir: vi.fn(() => overrides.configDir ?? tempConfigDir),
-            getClaudeConfigDir: vi.fn(() => overrides.configDir ?? tempConfigDir),
         }));
         return import('../../hud/index.js');
     }
@@ -148,13 +147,13 @@ describe('HUD CLI diagnostic (no stdin, no watch mode)', () => {
     });
     it('shows statusLine as configured when settings.json has omcp-hud command', async () => {
         writeFileSync(join(tempConfigDir, 'hud', 'omcp-hud.mjs'), '// stub');
-        writeFileSync(join(tempConfigDir, 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: 'node $HOME/.copilot/hud/omcp-hud.mjs' } }));
+        writeFileSync(join(tempConfigDir, 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: 'node $HOME/.claude/hud/omcp-hud.mjs' } }));
         const hud = await importHudModule();
         await hud.main(false, false);
         const output = consoleLogSpy.mock.calls.map((c) => c[0]).join('\n');
         expect(output).toContain('statusLine:');
         expect(output).toContain('configured');
-        expect(output).toContain('HUD renders automatically inside Copilot CLI sessions.');
+        expect(output).toContain('HUD renders automatically inside Claude Code sessions.');
     });
     it('shows statusLine as NOT configured when settings.json has no statusLine', async () => {
         writeFileSync(join(tempConfigDir, 'settings.json'), JSON.stringify({}));
@@ -166,7 +165,7 @@ describe('HUD CLI diagnostic (no stdin, no watch mode)', () => {
     });
     it('handles legacy string statusLine format', async () => {
         writeFileSync(join(tempConfigDir, 'hud', 'omcp-hud.mjs'), '// stub');
-        writeFileSync(join(tempConfigDir, 'settings.json'), JSON.stringify({ statusLine: '~/.copilot/hud/omcp-hud.mjs' }));
+        writeFileSync(join(tempConfigDir, 'settings.json'), JSON.stringify({ statusLine: '~/.claude/hud/omcp-hud.mjs' }));
         const hud = await importHudModule();
         await hud.main(false, false);
         const output = consoleLogSpy.mock.calls.map((c) => c[0]).join('\n');

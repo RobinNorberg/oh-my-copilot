@@ -1,12 +1,12 @@
 /**
  * Hook Notification Configuration Types
  *
- * Schema for omg_config.hook.json — user-customizable message templates
+ * Schema for omc_config.hook.json — user-customizable message templates
  * with per-event, per-platform overrides.
  */
 import type { NotificationPlatform } from "./types.js";
 /** Template variables available for interpolation in message templates. */
-export type TemplateVariable = "event" | "sessionId" | "message" | "timestamp" | "tmuxSession" | "projectPath" | "projectName" | "modesUsed" | "contextSummary" | "durationMs" | "agentsSpawned" | "agentsCompleted" | "reason" | "activeMode" | "iteration" | "maxIterations" | "question" | "incompleteTasks" | "agentName" | "agentType" | "tmuxTail" | "tmuxPaneId" | "replyChannel" | "replyTarget" | "replyThread" | "duration" | "time" | "modesDisplay" | "iterationDisplay" | "agentDisplay" | "projectDisplay" | "footer" | "tmuxTailBlock" | "reasonDisplay";
+export type TemplateVariable = "event" | "sessionId" | "message" | "timestamp" | "tmuxSession" | "projectPath" | "projectName" | "modesUsed" | "contextSummary" | "durationMs" | "agentsSpawned" | "agentsCompleted" | "reason" | "activeMode" | "iteration" | "maxIterations" | "question" | "questionOptions" | "incompleteTasks" | "agentName" | "agentType" | "tmuxTail" | "tmuxPaneId" | "replyChannel" | "replyTarget" | "replyThread" | "duration" | "time" | "modesDisplay" | "iterationDisplay" | "agentDisplay" | "projectDisplay" | "footer" | "tmuxTailBlock" | "reasonDisplay";
 /** Per-platform message template override */
 export interface PlatformTemplateOverride {
     /** Message template with {{variable}} placeholders */
@@ -23,7 +23,7 @@ export interface HookEventConfig {
     /** Per-platform template overrides */
     platforms?: Partial<Record<NotificationPlatform, PlatformTemplateOverride>>;
 }
-/** Top-level schema for omg_config.hook.json */
+/** Top-level schema for omc_config.hook.json */
 export interface HookNotificationConfig {
     /** Schema version for future migration */
     version: 1;

@@ -10,7 +10,6 @@ export const MODES = {
   AUTOPILOT: 'autopilot',
   RALPH: 'ralph',
   ULTRAWORK: 'ultrawork',
-  ULTRAQA: 'ultraqa',
   TEAM: 'team',
   RALPLAN: 'ralplan',
 } as const;
@@ -26,8 +25,10 @@ export const TOOL_CATEGORIES = {
   MEMORY: 'memory',
   TRACE: 'trace',
   SKILLS: 'skills',
+  INTEROP: 'interop',
   CODEX: 'codex',
   GEMINI: 'gemini',
+  ANTIGRAVITY: 'antigravity',
   SHARED_MEMORY: 'shared-memory',
   DEEPINIT: 'deepinit',
   WIKI: 'wiki',

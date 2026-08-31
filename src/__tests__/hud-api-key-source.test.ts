@@ -16,7 +16,7 @@ vi.mock('fs', () => ({
 
 // Mock config-dir utility
 vi.mock('../utils/config-dir.js', () => ({
-  getCopilotConfigDir: vi.fn(() => '/home/user/.copilot'),
+  getCopilotConfigDir: vi.fn(() => '/home/user/.claude'),
 }));
 
 import { existsSync, readFileSync } from 'fs';
@@ -54,7 +54,7 @@ describe('API Key Source Element', () => {
 
     it('should return "global" when key is in global settings', () => {
       mockedExistsSync.mockImplementation((path) =>
-        String(path) === '/home/user/.copilot/settings.json'
+        String(path) === '/home/user/.claude/settings.json'
       );
       mockedReadFileSync.mockReturnValue(
         JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-ant-xxx' } })
@@ -88,7 +88,7 @@ describe('API Key Source Element', () => {
     it('should prioritize global over env', () => {
       process.env.ANTHROPIC_API_KEY = 'sk-ant-xxx';
       mockedExistsSync.mockImplementation((path) =>
-        String(path) === '/home/user/.copilot/settings.json'
+        String(path) === '/home/user/.claude/settings.json'
       );
       mockedReadFileSync.mockReturnValue(
         JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-ant-xxx' } })
@@ -114,7 +114,7 @@ describe('API Key Source Element', () => {
 
     it('should handle null cwd', () => {
       mockedExistsSync.mockImplementation((path) =>
-        String(path) === '/home/user/.copilot/settings.json'
+        String(path) === '/home/user/.claude/settings.json'
       );
       mockedReadFileSync.mockReturnValue(
         JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-ant-xxx' } })

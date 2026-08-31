@@ -9,7 +9,7 @@
  * - Transactional transition helpers (execute + rollback on failure)
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -31,23 +31,25 @@ import {
 } from '../state.js';
 import { AutopilotPhase } from '../types.js';
 
-// One tmp dir per file, reused across tests. Between tests we only clear the
-// autopilot state subtree — on Windows (Defender real-time scans) the per-test
-// mkdtemp+rmSync cycle was ~1.3s, dominating the file's wallclock.
 describe('Autopilot State Machine Transitions', () => {
   let testDir: string;
-
-  beforeAll(() => {
-    testDir = mkdtempSync(join(tmpdir(), 'autopilot-transition-test-'));
-  });
-
-  afterAll(() => {
-    rmSync(testDir, { recursive: true, force: true });
-  });
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
-    rmSync(join(testDir, '.omc'), { recursive: true, force: true });
-    rmSync(join(testDir, '.omcp'), { recursive: true, force: true });
+    testDir = mkdtempSync(join(tmpdir(), 'autopilot-transition-test-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 
   // --------------------------------------------------------------------------

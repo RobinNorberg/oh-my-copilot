@@ -50,13 +50,15 @@ export declare function expandCommand(name: string, args?: string): ExpandedComm
 /**
  * Expand a command and return just the prompt string
  * Convenience function for direct use with SDK query
+ * This is a Node.js library helper for programmatic Agent SDK usage;
+ * it does not invoke Claude Code slash commands or require the VS Code extension.
  *
  * @example
  * ```typescript
  * import { expandCommandPrompt } from 'oh-my-copilot';
- * import { query } from '@github/copilot';
+ * import { query } from '@anthropic-ai/claude-agent-sdk';
  *
- * const prompt = expandCommandPrompt('ultrawork', 'Refactor the auth module');
+ * const prompt = expandCommandPrompt('team', 'Refactor the auth module');
  *
  * for await (const msg of query({ prompt })) {
  *   console.log(msg);

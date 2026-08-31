@@ -9,6 +9,8 @@ import {
   getPrdStatus,
   getSessionPrdPath,
   markStoryComplete,
+  getStoryGoverningCriteriaRevision,
+  getPrdRevision,
   markStoryIncomplete,
   markStoryArchitectVerified,
   getStory,
@@ -26,10 +28,16 @@ import {
 
 describe('Ralph PRD Module', () => {
   let testDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
     // Create a unique temp directory for each test
     testDir = join(tmpdir(), `ralph-prd-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -38,6 +46,10 @@ describe('Ralph PRD Module', () => {
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true });
     }
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 
   describe('findPrdPath', () => {
@@ -52,7 +64,7 @@ describe('Ralph PRD Module', () => {
     });
 
     it('should find prd.json in .omc directory', () => {
-      const omcDir = join(testDir, '.omcp');
+      const omcDir = join(testDir, '.omg');
       mkdirSync(omcDir, { recursive: true });
       const prdPath = join(omcDir, PRD_FILENAME);
       writeFileSync(prdPath, '{}');
@@ -61,7 +73,7 @@ describe('Ralph PRD Module', () => {
 
     it('should prefer root over .omc', () => {
       const rootPath = join(testDir, PRD_FILENAME);
-      const omcDir = join(testDir, '.omcp');
+      const omcDir = join(testDir, '.omg');
       mkdirSync(omcDir, { recursive: true });
       const omcPath = join(omcDir, PRD_FILENAME);
 
@@ -103,15 +115,44 @@ describe('Ralph PRD Module', () => {
       expect(readPrd(testDir)).toBeNull();
     });
 
-    it('should write and read prd correctly', () => {
-      expect(writePrd(testDir, samplePrd)).toBe(true);
+    it('should write and read revision-bound completion claims', () => {
+      const prd = structuredClone(samplePrd);
+      const completed = prd.userStories[1];
+      const revision = getStoryGoverningCriteriaRevision(completed);
+      completed.completionCriteriaRevision = revision;
+      completed.architectVerificationCriteriaRevision = revision;
+      expect(writePrd(testDir, prd)).toBe(true);
       const read = readPrd(testDir);
-      expect(read).toEqual(samplePrd);
+      expect(read).toMatchObject(prd);
+    });
+
+    it('rewrites an existing PRD without expectedRevision', () => {
+      expect(writePrd(testDir, samplePrd)).toBe(true);
+      const updated = { ...samplePrd, project: 'Rewritten Project' };
+      expect(writePrd(testDir, updated)).toBe(true);
+      expect(readPrd(testDir)?.project).toBe('Rewritten Project');
+    });
+
+    it('rewrites an existing PRD when expectedRevision still matches', () => {
+      expect(writePrd(testDir, samplePrd)).toBe(true);
+      const current = readPrd(testDir)!;
+      const revision = getPrdRevision(current);
+      expect(writePrd(testDir, { ...current, project: 'CAS Rewrite' }, undefined, revision)).toBe(true);
+      expect(readPrd(testDir)?.project).toBe('CAS Rewrite');
+    });
+
+    it('rejects an existing-file write when expectedRevision is stale', () => {
+      expect(writePrd(testDir, samplePrd)).toBe(true);
+      const snapshot = readPrd(testDir)!;
+      const staleRevision = getPrdRevision(snapshot);
+      expect(writePrd(testDir, { ...snapshot, project: 'First' })).toBe(true);
+      expect(writePrd(testDir, { ...snapshot, project: 'Stale' }, undefined, staleRevision)).toBe(false);
+      expect(readPrd(testDir)?.project).toBe('First');
     });
 
     it('should create .omc directory when writing', () => {
       writePrd(testDir, samplePrd);
-      expect(existsSync(join(testDir, '.omcp'))).toBe(true);
+      expect(existsSync(join(testDir, '.omg'))).toBe(true);
     });
 
     it('isolates transient PRDs for concurrent sessions in the same project', () => {
@@ -141,13 +182,13 @@ describe('Ralph PRD Module', () => {
       expect(readPrd(testDir, sessionB)?.userStories[0].id).toBe('US-B');
       expect(findPrdPath(testDir, sessionA)).toBe(getSessionPrdPath(testDir, sessionA));
       expect(findPrdPath(testDir, sessionB)).toBe(getSessionPrdPath(testDir, sessionB));
-      expect(existsSync(join(testDir, '.omcp', 'prd.json'))).toBe(false);
+      expect(existsSync(join(testDir, '.omg', 'prd.json'))).toBe(false);
     });
 
     it('migrates an existing project PRD into the requesting session without mutating the legacy file', () => {
       const legacyPrd: PRD = { ...samplePrd, project: 'Legacy Project' };
-      const legacyPath = join(testDir, '.omcp', 'prd.json');
-      mkdirSync(join(testDir, '.omcp'), { recursive: true });
+      const legacyPath = join(testDir, '.omg', 'prd.json');
+      mkdirSync(join(testDir, '.omg'), { recursive: true });
       writeFileSync(legacyPath, JSON.stringify(legacyPrd, null, 2));
 
       const result = ensurePrdForStartup(testDir, 'New Project', 'branch', 'New task', undefined, 'session-a');
@@ -251,6 +292,10 @@ describe('Ralph PRD Module', () => {
           { id: 'US-001', title: 'A', description: '', acceptanceCriteria: [], priority: 1, passes: false, architectVerified: false }
         ]
       };
+      const completed = prd.userStories[0];
+      const revision = getStoryGoverningCriteriaRevision(completed);
+      completed.completionCriteriaRevision = revision;
+      completed.architectVerificationCriteriaRevision = revision;
       writePrd(testDir, prd);
     });
 
@@ -285,7 +330,7 @@ describe('Ralph PRD Module', () => {
     });
 
     it('should return false when no prd exists', () => {
-      rmSync(join(testDir, '.omcp'), { recursive: true, force: true });
+      rmSync(join(testDir, '.omg'), { recursive: true, force: true });
       expect(markStoryComplete(testDir, 'US-001')).toBe(false);
     });
   });
@@ -301,6 +346,9 @@ describe('Ralph PRD Module', () => {
           { id: 'US-002', title: 'Second', description: '', acceptanceCriteria: [], priority: 2, passes: false, architectVerified: false }
         ]
       };
+      const revision = getStoryGoverningCriteriaRevision(prd.userStories[0]);
+      prd.userStories[0].completionCriteriaRevision = revision;
+      prd.userStories[0].architectVerificationCriteriaRevision = revision;
       writePrd(testDir, prd);
     });
 

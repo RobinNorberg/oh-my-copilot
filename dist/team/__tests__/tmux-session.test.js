@@ -6,6 +6,17 @@ afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
 });
+/**
+ * Native Windows is win32 *without* the MSYS markers a Git Bash launch exports.
+ * Stubbing only process.platform leaves the launching shell's MSYSTEM in place,
+ * which sends these cases down the POSIX branch — so they pass under PowerShell
+ * and fail under Git Bash. Tests that mean MSYS set MSYSTEM themselves.
+ */
+function stubNativeWindows() {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    vi.stubEnv('MSYSTEM', '');
+    vi.stubEnv('MINGW_PREFIX', '');
+}
 describe('sanitizeName', () => {
     it('passes alphanumeric names', () => {
         expect(sanitizeName('worker1')).toBe('worker1');
@@ -32,19 +43,149 @@ describe('sanitizeName', () => {
 });
 describe('sessionName', () => {
     it('builds correct session name', () => {
-        expect(sessionName('myteam', 'codex1')).toBe('omcp-team-myteam-codex1');
+        expect(sessionName('myteam', 'codex1')).toBe('omc-team-myteam-codex1');
     });
     it('sanitizes both parts', () => {
-        expect(sessionName('my team!', 'work@er')).toBe('omcp-team-myteam-worker');
+        expect(sessionName('my team!', 'work@er')).toBe('omc-team-myteam-worker');
+    });
+});
+describe('applyMainVerticalLayout', () => {
+    it('sets the 80-column main width before its sole layout selection', async () => {
+        const calls = [];
+        let mainPaneWidth;
+        const selectedPaneWidths = [];
+        vi.resetModules();
+        vi.doMock('../../cli/tmux-utils.js', async (importOriginal) => {
+            const actual = await importOriginal();
+            return {
+                ...actual,
+                tmuxCmdAsync: vi.fn(async (args) => {
+                    calls.push(args);
+                    return { stdout: '80\n', stderr: '' };
+                }),
+                tmuxExecAsync: vi.fn(async (args) => {
+                    calls.push(args);
+                    if (args[0] === 'set-window-option')
+                        mainPaneWidth = Number(args[args.length - 1]);
+                    if (args[0] === 'select-layout')
+                        selectedPaneWidths.push(mainPaneWidth);
+                    return { stdout: '', stderr: '' };
+                }),
+            };
+        });
+        try {
+            const { applyMainVerticalLayout } = await import('../tmux-session.js');
+            await applyMainVerticalLayout('team-session');
+        }
+        finally {
+            vi.doUnmock('../../cli/tmux-utils.js');
+            vi.resetModules();
+        }
+        expect(calls).toEqual([
+            ['display-message', '-p', '-t', 'team-session', '#{window_width}'],
+            ['set-window-option', '-t', 'team-session', 'main-pane-width', '40'],
+            ['select-layout', '-t', 'team-session', 'main-vertical'],
+        ]);
+        expect(calls.filter(([command]) => command === 'select-layout')).toHaveLength(1);
+        expect(selectedPaneWidths).toEqual([40]);
+    });
+    it('fails required startup layout before selecting when width is invalid', async () => {
+        const calls = [];
+        vi.resetModules();
+        vi.doMock('../../cli/tmux-utils.js', async (importOriginal) => {
+            const actual = await importOriginal();
+            return {
+                ...actual,
+                tmuxCmdAsync: vi.fn(async (args) => {
+                    calls.push(args);
+                    return { stdout: 'not-a-width\n', stderr: '' };
+                }),
+                tmuxExecAsync: vi.fn(async (args) => {
+                    calls.push(args);
+                    return { stdout: '', stderr: '' };
+                }),
+            };
+        });
+        try {
+            const { applyMainVerticalLayout } = await import('../tmux-session.js');
+            await expect(applyMainVerticalLayout('team-session', { required: true }))
+                .rejects.toThrow('team_layout_window_width_invalid:not-a-width');
+        }
+        finally {
+            vi.doUnmock('../../cli/tmux-utils.js');
+            vi.resetModules();
+        }
+        expect(calls).toEqual([
+            ['display-message', '-p', '-t', 'team-session', '#{window_width}'],
+        ]);
+    });
+    it('rejects a required layout below the startup width boundary', async () => {
+        const calls = [];
+        vi.resetModules();
+        vi.doMock('../../cli/tmux-utils.js', async (importOriginal) => {
+            const actual = await importOriginal();
+            return {
+                ...actual,
+                tmuxCmdAsync: vi.fn(async (args) => {
+                    calls.push(args);
+                    return { stdout: '39\n', stderr: '' };
+                }),
+                tmuxExecAsync: vi.fn(async (args) => {
+                    calls.push(args);
+                    return { stdout: '', stderr: '' };
+                }),
+            };
+        });
+        try {
+            const { applyMainVerticalLayout } = await import('../tmux-session.js');
+            await expect(applyMainVerticalLayout('team-session', { required: true }))
+                .rejects.toThrow('team_layout_window_width_invalid:39');
+        }
+        finally {
+            vi.doUnmock('../../cli/tmux-utils.js');
+            vi.resetModules();
+        }
+        expect(calls).toEqual([
+            ['display-message', '-p', '-t', 'team-session', '#{window_width}'],
+        ]);
+    });
+    it('never selects a best-effort layout when main-pane-width cannot be set', async () => {
+        const calls = [];
+        vi.resetModules();
+        vi.doMock('../../cli/tmux-utils.js', async (importOriginal) => {
+            const actual = await importOriginal();
+            return {
+                ...actual,
+                tmuxCmdAsync: vi.fn(async (args) => {
+                    calls.push(args);
+                    return { stdout: '80\n', stderr: '' };
+                }),
+                tmuxExecAsync: vi.fn(async (args) => {
+                    calls.push(args);
+                    if (args[0] === 'set-window-option')
+                        throw new Error('set failed');
+                    return { stdout: '', stderr: '' };
+                }),
+            };
+        });
+        try {
+            const { applyMainVerticalLayout } = await import('../tmux-session.js');
+            await expect(applyMainVerticalLayout('team-session')).resolves.toBeUndefined();
+        }
+        finally {
+            vi.doUnmock('../../cli/tmux-utils.js');
+            vi.resetModules();
+        }
+        expect(calls).toEqual([
+            ['display-message', '-p', '-t', 'team-session', '#{window_width}'],
+            ['set-window-option', '-t', 'team-session', 'main-pane-width', '40'],
+        ]);
     });
 });
 describe('getDefaultShell', () => {
     it('uses COMSPEC on win32', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        stubNativeWindows();
         vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
-        // Clear MSYS2/MINGW env vars so isUnixLikeOnWindows() returns false
-        vi.stubEnv('MSYSTEM', '');
-        vi.stubEnv('MINGW_PREFIX', '');
         expect(getDefaultShell()).toBe('C:\\Windows\\System32\\cmd.exe');
     });
     it('uses SHELL on non-win32', () => {
@@ -91,7 +232,7 @@ describe('buildWorkerStartCommand', () => {
         })).toThrow('Missing worker launch command');
     });
     it('accepts absolute Windows launchBinary paths with spaces', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        stubNativeWindows();
         vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
         expect(() => buildWorkerStartCommand({
             teamName: 't',
@@ -101,6 +242,230 @@ describe('buildWorkerStartCommand', () => {
             launchArgs: ['--full-auto'],
             cwd: 'C:\\repo'
         })).not.toThrow();
+    });
+    it('uses cmd.exe syntax for native Windows psmux worker start commands', () => {
+        stubNativeWindows();
+        vi.stubEnv('PSMUX_SESSION', 'psmux-session-1');
+        vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
+        const cmd = buildWorkerStartCommand({
+            teamName: 't',
+            workerName: 'w',
+            envVars: { OMC_TEAM_WORKER: 'team/worker-1' },
+            launchBinary: 'C:\\Users\\tester\\AppData\\Local\\Programs\\claude\\claude.exe',
+            launchArgs: ['--agent-id', 'worker-1'],
+            cwd: 'C:\\repo'
+        });
+        expect(cmd).toBe('C:\\Windows\\System32\\cmd.exe /d /s /c "set "OMC_TEAM_WORKER=team/worker-1" && ' +
+            '"C:\\Users\\tester\\AppData\\Local\\Programs\\claude\\claude.exe" "--agent-id" "worker-1"" & exit /b');
+        expect(cmd).not.toContain('$env:OMC_TEAM_WORKER');
+    });
+    it('preserves POSIX argv-style exec while routing launch through the acknowledgement bootstrap', () => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
+        vi.stubEnv('SHELL', '/bin/bash');
+        const cmd = buildWorkerStartCommand({
+            teamName: 't',
+            workerName: 'w',
+            envVars: { OMC_TEAM_WORKER: 't/w' },
+            launchBinary: '/opt/codex/bin/codex',
+            launchArgs: ['--label', 'worker one'],
+            cwd: '/tmp/team workspace',
+            provider: 'codex',
+            launchAttempt: {
+                schema_version: 1,
+                attempt_id: '11111111-1111-4111-8111-111111111111',
+                nonce: '22222222-2222-4222-8222-222222222222',
+                team_name: 't',
+                worker_name: 'w',
+                pane_id: '%2',
+                provider: 'codex',
+                created_at: '2026-01-01T00:00:00.000Z',
+                currentPath: '/tmp/current.json',
+                expectedPath: '/tmp/expected.json',
+                ackPath: '/tmp/ack.json',
+                decisionPath: '/tmp/decision.json',
+                startedPath: '/tmp/provider-started.json',
+                transportOwnerPath: '/tmp/transport-owner.json',
+                bootstrapDescriptorPath: '/tmp/bootstrap.json',
+                wrapperPath: '/tmp/launch.cmd',
+                transportCleanupCompletePath: '/tmp/transport-cleanup-complete.json',
+                runtimeCliPath: '/opt/omc/runtime-cli.cjs',
+            },
+        });
+        // Supervised POSIX launches reference the attempt-owned descriptor by path
+        // (issue #3655); the bootstrap spec itself must never travel inline.
+        expect(cmd).toContain("OMC_WORKER_LAUNCH_SPEC_FILE='/tmp/bootstrap.json'");
+        expect(cmd).not.toContain('OMC_WORKER_LAUNCH_SPEC=');
+        expect(cmd).toContain("exec \"$@\"");
+        expect(cmd).toContain("'--worker-launch'");
+        expect(cmd).toContain("'/opt/omc/runtime-cli.cjs'");
+    });
+    it('keeps provider percent/quote metacharacters out of the native Windows cmd command', () => {
+        stubNativeWindows();
+        vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
+        const cmd = buildWorkerStartCommand({
+            teamName: 't',
+            workerName: 'w',
+            envVars: { OMC_TEAM_WORKER: 't/w' },
+            launchBinary: 'C:\\Program Files\\Codex\\codex.exe',
+            launchArgs: ['--label', '100% ready %USERPROFILE%', '--title="quoted"'],
+            cwd: 'C:\\team workspace',
+            provider: 'codex',
+            launchAttempt: {
+                schema_version: 1,
+                attempt_id: '11111111-1111-4111-8111-111111111111',
+                nonce: '22222222-2222-4222-8222-222222222222',
+                team_name: 't',
+                worker_name: 'w',
+                pane_id: '%2',
+                provider: 'codex',
+                created_at: '2026-01-01T00:00:00.000Z',
+                currentPath: 'C:\\state\\current.json',
+                expectedPath: 'C:\\state\\expected.json',
+                ackPath: 'C:\\state\\ack.json',
+                decisionPath: 'C:\\state\\decision.json',
+                startedPath: 'C:\\state\\provider-started.json',
+                transportOwnerPath: 'C:\\state\\transport-owner.json',
+                bootstrapDescriptorPath: 'C:\\state\\bootstrap.json',
+                wrapperPath: 'C:\\state\\launch.cmd',
+                transportCleanupCompletePath: 'C:\\state\\transport-cleanup-complete.json',
+                runtimeCliPath: 'C:\\Program Files\\omc\\runtime-cli.cjs',
+            },
+        });
+        expect(cmd).toContain('C:\\Windows\\System32\\cmd.exe /d /s /c');
+        // Supervised launches deliver the attempt-owned descriptor by path; the
+        // bootstrap spec (and its percent/quote metacharacters) never travels in
+        // the command line or cmd environment (issue #3655).
+        expect(cmd).toContain('set "OMC_WORKER_LAUNCH_SPEC_FILE=C:\\state\\bootstrap.json"');
+        expect(cmd).not.toContain('OMC_WORKER_LAUNCH_SPEC_B64=');
+        expect(cmd).not.toContain('OMC_WORKER_LAUNCH_SPEC=');
+        expect(cmd).not.toContain('100% ready %USERPROFILE%');
+        expect(cmd).not.toContain('pane_id=%%2');
+    });
+    it('rejects CRLF injection in native Windows provider argv', () => {
+        stubNativeWindows();
+        vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
+        expect(() => buildWorkerStartCommand({
+            teamName: 't', workerName: 'w', envVars: {},
+            launchBinary: 'C:\\Program Files\\Cursor\\cursor-agent.exe',
+            launchArgs: ['--model', 'safe\r\nset PWNED=1'], cwd: 'C:\\repo',
+        })).toThrow('contains CR, LF, or NUL');
+    });
+    it('escapes psmux cmd.exe env vars and quoted launch args without PowerShell syntax', () => {
+        stubNativeWindows();
+        vi.stubEnv('PSMUX_SESSION', 'psmux-session-1');
+        vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
+        const cmd = buildWorkerStartCommand({
+            teamName: 't',
+            workerName: 'w',
+            envVars: {
+                OMC_TEAM_WORKER: "team name/worker 'one'",
+                OMC_TEAM_STATE_ROOT: 'C:\\Users\\Test User\\AppData\\Local\\omc state',
+                CLAUDE_CODE_USE_BEDROCK: 'value with spaces & [brackets] "quotes"',
+            },
+            launchBinary: 'C:\\Program Files\\Claude Code\\claude.exe',
+            launchArgs: [
+                '--model',
+                'sonnet "quoted"',
+                "--label=worker 'one'",
+            ],
+            cwd: 'C:\\repo'
+        });
+        expect(cmd).toContain('set "OMC_TEAM_WORKER=team name/worker \'one\'"');
+        expect(cmd).toContain('set "OMC_TEAM_STATE_ROOT=C:\\Users\\Test User\\AppData\\Local\\omc state"');
+        expect(cmd).toContain('set "CLAUDE_CODE_USE_BEDROCK=value with spaces & [brackets] ""quotes"""');
+        expect(cmd).toContain('"C:\\Program Files\\Claude Code\\claude.exe" "--model" "sonnet ""quoted""" "--label=worker \'one\'"');
+        expect(cmd).not.toContain('$env:OMC_TEAM_WORKER');
+    });
+    it('escapes literal percent signs in native Windows cmd env values and launch args', () => {
+        stubNativeWindows();
+        vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
+        const cmd = buildWorkerStartCommand({
+            teamName: 't',
+            workerName: 'w',
+            envVars: {
+                OMC_TEAM_WORKER: 'team/worker-1',
+                OMC_TOKEN: 'literal%USERPROFILE%token%25',
+            },
+            launchBinary: 'C:\\Program Files\\Claude Code\\claude.exe',
+            launchArgs: ['--label', '100% ready %USERPROFILE%', '--token=abc%25'],
+            cwd: 'C:\\repo'
+        });
+        expect(cmd).toContain('set "OMC_TOKEN=literal%%USERPROFILE%%token%%25"');
+        expect(cmd).toContain('"100%% ready %%USERPROFILE%%"');
+        expect(cmd).toContain('"--token=abc%%25"');
+        expect(cmd).not.toContain('literal%USERPROFILE%token%25');
+    });
+    it('base64-encodes recovery gate launch identities for native Windows cmd', () => {
+        stubNativeWindows();
+        vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
+        const gate = { recoveryId: 'recovery-1', launchAttempt: { attempt_id: 'attempt-1', nonce: 'nonce-1', pane_id: '%2' } };
+        const cmd = buildWorkerStartCommand({
+            teamName: 't',
+            workerName: 'w',
+            envVars: { OMC_RECOVERY_GATE_SPEC: JSON.stringify(gate) },
+            launchBinary: 'C:\\Program Files\\nodejs\\node.exe',
+            launchArgs: ['C:\\omc\\runtime-cli.cjs', '--recovery-gate'],
+            cwd: 'C:\\repo',
+        });
+        const marker = 'set "OMC_RECOVERY_GATE_SPEC_B64=';
+        const encodedStart = cmd.indexOf(marker) + marker.length;
+        const encodedEnd = cmd.indexOf('" &&', encodedStart);
+        expect(JSON.parse(Buffer.from(cmd.slice(encodedStart, encodedEnd), 'base64').toString('utf8')))
+            .toMatchObject({ launchAttempt: { pane_id: '%2' } });
+        expect(cmd).not.toContain('OMC_RECOVERY_GATE_SPEC=');
+        expect(cmd).not.toContain('pane_id=%%2');
+    });
+    it('does not cmd-escape percent signs on MSYS Windows worker startup', () => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        vi.stubEnv('PSMUX_SESSION', 'psmux-session-1');
+        vi.stubEnv('MSYSTEM', 'MINGW64');
+        vi.stubEnv('SHELL', '/usr/bin/bash');
+        vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
+        const cmd = buildWorkerStartCommand({
+            teamName: 't',
+            workerName: 'w',
+            envVars: { OMC_TOKEN: 'literal%USERPROFILE%token%25' },
+            launchBinary: '/c/Program Files/Git/bin/bash.exe',
+            launchArgs: ['--label=100% ready'],
+            cwd: '/c/repo'
+        });
+        expect(cmd).toContain("OMC_TOKEN='literal%USERPROFILE%token%25'");
+        expect(cmd).toContain("'--label=100% ready'");
+        expect(cmd).not.toContain('%%USERPROFILE%%');
+    });
+    it('keeps cmd.exe worker startup syntax for native Windows without psmux', () => {
+        stubNativeWindows();
+        vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
+        const cmd = buildWorkerStartCommand({
+            teamName: 't',
+            workerName: 'w',
+            envVars: { OMC_TEAM_WORKER: 'team/worker-1' },
+            launchBinary: 'C:\\Program Files\\OpenAI\\Codex\\codex.exe',
+            launchArgs: ['--full-auto'],
+            cwd: 'C:\\repo'
+        });
+        expect(cmd).toBe('C:\\Windows\\System32\\cmd.exe /d /s /c "set "OMC_TEAM_WORKER=team/worker-1" && ' +
+            '"C:\\Program Files\\OpenAI\\Codex\\codex.exe" "--full-auto"" & exit /b');
+    });
+    it('keeps MSYS/Git Bash worker startup syntax even when psmux env is present', () => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        vi.stubEnv('PSMUX_SESSION', 'psmux-session-1');
+        vi.stubEnv('MSYSTEM', 'MINGW64');
+        vi.stubEnv('SHELL', '/usr/bin/bash');
+        vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
+        const cmd = buildWorkerStartCommand({
+            teamName: 't',
+            workerName: 'w',
+            envVars: { OMC_TEAM_WORKER: 'team/worker-1' },
+            launchBinary: '/c/Program Files/Git/bin/bash.exe',
+            launchArgs: ['--login'],
+            cwd: '/c/repo'
+        });
+        expect(cmd).toContain("'env' OMC_TEAM_WORKER='team/worker-1'");
+        expect(cmd).toContain("'/usr/bin/bash' '-lc'");
+        expect(cmd).toContain("'--' '/c/Program Files/Git/bin/bash.exe' '--login'");
+        expect(cmd).not.toContain('/d /s /c');
+        expect(cmd).not.toContain('$env:OMC_TEAM_WORKER');
     });
     it('uses exec \"$@\" for launchBinary with non-fish shells', () => {
         vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
@@ -141,6 +506,50 @@ describe('buildWorkerStartCommand', () => {
         // Fish uses test/and syntax, not [ ] && .
         expect(cmd).toContain('test -f');
         expect(cmd).toContain('; and source');
+    });
+    it('does not double-escape env vars in launchBinary mode (issue #1415)', () => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
+        vi.stubEnv('SHELL', '/bin/zsh');
+        vi.stubEnv('HOME', '/home/tester');
+        const cmd = buildWorkerStartCommand({
+            teamName: 't',
+            workerName: 'w',
+            envVars: {
+                ANTHROPIC_MODEL: 'us.anthropic.claude-sonnet-4-6-v1[1m]',
+                CLAUDE_CODE_USE_BEDROCK: '1',
+            },
+            launchBinary: '/usr/local/bin/claude',
+            launchArgs: ['--dangerously-skip-permissions'],
+            cwd: '/tmp'
+        });
+        // env assignments must appear WITHOUT extra wrapping quotes.
+        // Correct:   ANTHROPIC_MODEL='us.anthropic.claude-sonnet-4-6-v1[1m]'
+        // Wrong:     'ANTHROPIC_MODEL='"'"'us.anthropic...'"'"''  (double-escaped)
+        expect(cmd).toContain("ANTHROPIC_MODEL='us.anthropic.claude-sonnet-4-6-v1[1m]'");
+        expect(cmd).toContain("CLAUDE_CODE_USE_BEDROCK='1'");
+        // The env keyword and other args should still be shell-escaped
+        expect(cmd).toMatch(/^'env'/);
+        expect(cmd).toContain("'/usr/local/bin/claude'");
+        expect(cmd).toContain("'--dangerously-skip-permissions'");
+    });
+    it('env vars with special characters survive single escaping correctly', () => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
+        vi.stubEnv('SHELL', '/bin/bash');
+        vi.stubEnv('HOME', '/home/tester');
+        const cmd = buildWorkerStartCommand({
+            teamName: 't',
+            workerName: 'w',
+            envVars: {
+                OMC_TEAM_WORKER: 'my-team/worker-1',
+                ANTHROPIC_DEFAULT_SONNET_MODEL: 'global.anthropic.claude-sonnet-4-6[1m]',
+            },
+            launchBinary: '/usr/local/bin/claude',
+            launchArgs: [],
+            cwd: '/tmp'
+        });
+        // Values with / and [] must be preserved without extra quoting
+        expect(cmd).toContain("OMC_TEAM_WORKER='my-team/worker-1'");
+        expect(cmd).toContain("ANTHROPIC_DEFAULT_SONNET_MODEL='global.anthropic.claude-sonnet-4-6[1m]'");
     });
     it('rejects relative launchBinary containing spaces', () => {
         vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
@@ -217,12 +626,22 @@ describe('shouldAttemptAdaptiveRetry', () => {
 describe('pane readiness startup banners', () => {
     it('does not treat Claude bypass-permissions startup banner as ready', () => {
         const capture = [
-            'Read .omc/state/team/example/workers/worker-1/inbox.md, execute now, report concrete progress.',
+            'Read .omg/state/team/example/workers/worker-1/inbox.md, execute now, report concrete progress.',
             '─────────────────────────────────────────────',
             '[OMC] Starting...',
             '⏵⏵ bypass permissions on (shift+tab to cycle)',
         ].join('\n');
         expect(paneLooksReady(capture)).toBe(false);
+    });
+    it('treats an exact directory trust selector as ready for legacy delivery', () => {
+        const capture = [
+            'Do you trust the contents of this directory?',
+            '› 1. Yes, continue',
+            '  2. No, quit',
+        ].join('\n');
+        expect(paneHasTrustPrompt(capture)).toBe(true);
+        expect(paneLooksReady(capture)).toBe(true);
+        expect(paneHasActiveTask(capture)).toBe(false);
     });
     it('detects Codex CLI hook-trust review screen as a trust prompt', () => {
         const capture = [
@@ -239,6 +658,39 @@ describe('pane readiness startup banners', () => {
         expect(paneHasTrustPrompt(capture)).toBe(true);
         expect(paneLooksReady(capture)).toBe(true);
         expect(paneHasActiveTask(capture)).toBe(false);
+    });
+    it('detects the cursor-agent workspace-trust banner and refuses to call it ready', () => {
+        // Verbatim capture from `cursor-agent` launched in tmux on an untrusted
+        // directory. It offers no numbered choice and the process exits, unlike
+        // the dismissible Claude/Codex prompts above.
+        const capture = [
+            '⚠ Workspace Trust Required',
+            '',
+            '  Cursor Agent can execute code and access files in this directory.',
+            '  Do you trust the contents of this directory?',
+            '',
+            '    /private/tmp/ct-nf2',
+            '',
+            '  To proceed, you can either:',
+            "    • Run 'agent' interactively to decide",
+            '    • Pass --trust, --yolo, or -f if you trust this directory',
+        ].join('\n');
+        expect(paneHasTrustPrompt(capture)).toBe(true);
+        // The pane is dead: treating it as ready would hand work to a gone process.
+        expect(paneLooksReady(capture, 'cursor')).toBe(false);
+        expect(paneHasActiveTask(capture, 'cursor')).toBe(false);
+    });
+    it('gives the Cursor trust banner precedence and keeps it provider-scoped', () => {
+        const capture = [
+            '⚠ Workspace Trust Required',
+            'Do you trust the contents of this directory?',
+            '› 1. Yes, continue',
+            '  2. No, quit',
+            "  • Pass --trust, --yolo, or -f if you trust this directory",
+        ].join('\n');
+        expect(paneHasTrustPrompt(capture, 'cursor')).toBe(true);
+        expect(paneLooksReady(capture, 'cursor')).toBe(false);
+        expect(paneLooksReady(capture, 'claude')).toBe(true);
     });
     it('still treats actual prompt lines as ready', () => {
         expect(paneLooksReady('Welcome\n❯ ')).toBe(true);
@@ -327,12 +779,12 @@ describe.skipIf(!hasTmux())('createSession with workingDirectory', () => {
     it('accepts optional workingDirectory param', () => {
         // Should not throw — workingDirectory is optional
         const name = createSession('tmuxtest', 'wdtest', '/tmp');
-        expect(name).toBe('omcp-team-tmuxtest-wdtest');
+        expect(name).toBe('omc-team-tmuxtest-wdtest');
         killSession('tmuxtest', 'wdtest');
     });
     it('works without workingDirectory param', () => {
         const name = createSession('tmuxtest', 'nowd');
-        expect(name).toBe('omcp-team-tmuxtest-nowd');
+        expect(name).toBe('omc-team-tmuxtest-nowd');
         killSession('tmuxtest', 'nowd');
     });
 });

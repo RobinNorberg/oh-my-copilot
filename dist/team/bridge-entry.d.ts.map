@@ -1,1 +1,1 @@
-{"version":3,"file":"bridge-entry.d.ts","sourceRoot":"","sources":["../../src/team/bridge-entry.ts"],"names":[],"mappings":"AAsBA;;;;GAIG;AACH,wBAAgB,kBAAkB,CAAC,UAAU,EAAE,MAAM,EAAE,OAAO,EAAE,MAAM,EAAE,eAAe,EAAE,MAAM,GAAG,OAAO,CAiCxG"}
+{"version":3,"file":"bridge-entry.d.ts","sourceRoot":"","sources":["../../src/team/bridge-entry.ts"],"names":[],"mappings":"AAsBA;;;;GAIG;AACH,wBAAgB,kBAAkB,CAAC,UAAU,EAAE,MAAM,EAAE,OAAO,EAAE,MAAM,EAAE,eAAe,EAAE,MAAM,GAAG,OAAO,CA2BxG;AAmBD;;;;;GAKG;AACH,wBAAgB,8BAA8B,CAAC,gBAAgB,EAAE,MAAM,GAAG,IAAI,CA0B7E"}

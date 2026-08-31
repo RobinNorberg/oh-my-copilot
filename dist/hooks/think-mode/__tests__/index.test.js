@@ -60,6 +60,29 @@ World`);
                 expect(detectThinkKeyword('rethinking this')).toBe(false);
             });
         });
+        describe('Multilingual keywords', () => {
+            it('should detect Korean "생각"', () => {
+                expect(detectThinkKeyword('이것에 대해 생각해주세요')).toBe(true);
+            });
+            it('should detect Chinese "思考"', () => {
+                expect(detectThinkKeyword('请思考这个问题')).toBe(true);
+            });
+            it('should detect Japanese "考え"', () => {
+                expect(detectThinkKeyword('これについて考えてください')).toBe(true);
+            });
+            it('should detect Russian "думать"', () => {
+                expect(detectThinkKeyword('пожалуйста думай')).toBe(true);
+            });
+            it('should detect Spanish "piensa"', () => {
+                expect(detectThinkKeyword('piensa en esto')).toBe(true);
+            });
+            it('should detect French "penser"', () => {
+                expect(detectThinkKeyword('tu dois penser')).toBe(true);
+            });
+            it('should detect German "denken"', () => {
+                expect(detectThinkKeyword('bitte denken Sie')).toBe(true);
+            });
+        });
         describe('Code block exclusion', () => {
             it('should not detect keyword inside fenced code block', () => {
                 expect(detectThinkKeyword('```\nthink\n```')).toBe(false);
@@ -121,21 +144,21 @@ World`);
         });
     });
     describe('switcher - getHighVariant', () => {
-        describe('Copilot models', () => {
-            it('should return high variant for claude-sonnet-4-6', () => {
-                expect(getHighVariant('claude-sonnet-4-6')).toBe('claude-sonnet-4-6-high');
+        describe('Claude models', () => {
+            it('should return high variant for claude-sonnet-5', () => {
+                expect(getHighVariant('claude-sonnet-5')).toBe('claude-sonnet-5-high');
             });
-            it('should return high variant for claude-opus-4-6', () => {
-                expect(getHighVariant('claude-opus-4-6')).toBe('claude-opus-4-8-high');
+            it('should return high variant for claude-opus-4-8', () => {
+                expect(getHighVariant('claude-opus-4-8')).toBe('claude-opus-4-8-high');
             });
             it('should return high variant for claude-3-5-sonnet', () => {
-                expect(getHighVariant('claude-3-5-sonnet')).toBe('claude-sonnet-4-6-high');
+                expect(getHighVariant('claude-3-5-sonnet')).toBe('claude-sonnet-5-high');
             });
             it('should return high variant for claude-3-opus', () => {
                 expect(getHighVariant('claude-3-opus')).toBe('claude-opus-4-8-high');
             });
             it('should handle version with dot notation', () => {
-                expect(getHighVariant('claude-sonnet-4.5')).toBe('claude-sonnet-4-6-high');
+                expect(getHighVariant('claude-sonnet-4.5')).toBe('claude-sonnet-5-high');
             });
         });
         describe('GPT models', () => {
@@ -173,7 +196,7 @@ World`);
         });
         describe('Prefixed models', () => {
             it('should preserve prefix in high variant', () => {
-                expect(getHighVariant('vertex_ai/claude-sonnet-4-5')).toBe('vertex_ai/claude-sonnet-4-6-high');
+                expect(getHighVariant('vertex_ai/claude-sonnet-4-5')).toBe('vertex_ai/claude-sonnet-5-high');
             });
             it('should handle openai/ prefix', () => {
                 expect(getHighVariant('openai/gpt-4')).toBe('openai/gpt-4-high');
@@ -203,7 +226,7 @@ World`);
     });
     describe('switcher - getThinkingConfig', () => {
         describe('Anthropic provider', () => {
-            it('should return config for Copilot models', () => {
+            it('should return config for Claude models', () => {
                 const config = getThinkingConfig('anthropic', 'claude-sonnet-4-6');
                 expect(config).not.toBeNull();
                 expect(config).toHaveProperty('thinking');
@@ -214,7 +237,7 @@ World`);
             });
         });
         describe('Amazon Bedrock provider', () => {
-            it('should return config for Copilot models on Bedrock', () => {
+            it('should return config for Claude models on Bedrock', () => {
                 const config = getThinkingConfig('amazon-bedrock', 'anthropic.claude-3-sonnet');
                 expect(config).not.toBeNull();
                 expect(config).toHaveProperty('reasoningConfig');
@@ -239,7 +262,7 @@ World`);
             });
         });
         describe('GitHub Copilot proxy', () => {
-            it('should resolve to anthropic for Copilot model', () => {
+            it('should resolve to anthropic for Claude model', () => {
                 const config = getThinkingConfig('github-copilot', 'claude-sonnet-4-6');
                 expect(config).not.toBeNull();
                 expect(config).toHaveProperty('thinking');
@@ -412,7 +435,7 @@ World`);
                 };
                 const state = hook.processChatParams('test-session', input);
                 expect(state.modelSwitched).toBe(true);
-                expect(input.message.model?.modelId).toBe('claude-sonnet-4-6-high');
+                expect(input.message.model?.modelId).toBe('claude-sonnet-5-high');
             });
             it('should not switch already high variant', () => {
                 const hook = createThinkModeHook();
@@ -505,8 +528,8 @@ World`);
         it('should return true for ultrathink keyword', () => {
             expect(shouldActivateThinkMode('ultrathink')).toBe(true);
         });
-        it('should not activate for non-English keywords', () => {
-            expect(shouldActivateThinkMode('생각해주세요')).toBe(false);
+        it('should return true for multilingual keywords', () => {
+            expect(shouldActivateThinkMode('생각해주세요')).toBe(true);
         });
         it('should return false for no keywords', () => {
             expect(shouldActivateThinkMode('regular text')).toBe(false);

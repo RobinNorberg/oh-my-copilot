@@ -1,12 +1,13 @@
 /**
  * OMC HUD - State Readers
  *
- * Read ralph, ultrawork, and PRD state from existing OMC files.
+ * Read ralph and PRD state from existing OMC files.
  * These are read-only functions that don't modify the state files.
  */
 import { existsSync, readFileSync, statSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { getOmcRoot } from '../lib/worktree-paths.js';
+import { validateNamedWorkflowStateStructure } from '../hooks/autopilot/named-workflow-resume-validator.js';
 /**
  * Maximum age for state files to be considered "active".
  * Files older than this are treated as stale/abandoned.
@@ -27,9 +28,9 @@ function isStateFileStale(filePath) {
 }
 /**
  * Resolve state file path with fallback chain:
- * 1. Session-scoped paths (.omcp/state/sessions/{id}/{filename}) - newest first
- * 2. Standard path (.omcp/state/{filename})
- * 3. Legacy path (.omcp/{filename})
+ * 1. Session-scoped paths (.omg/state/sessions/{id}/{filename}) - newest first
+ * 2. Standard path (.omg/state/{filename})
+ * 3. Legacy path (.omg/{filename})
  *
  * Returns the most recently modified matching path, or null if none found.
  * This ensures the HUD displays state from any active session (Issue #456).
@@ -132,33 +133,8 @@ export function readRalphStateForHud(directory, sessionId) {
     }
 }
 /**
- * Read Ultrawork state for HUD display.
- * Checks only local .omcp/state location.
- */
-export function readUltraworkStateForHud(directory, sessionId) {
-    // Check local state only (with new path fallback)
-    const localFile = resolveStatePath(directory, 'ultrawork-state.json', sessionId);
-    if (!localFile || isStateFileStale(localFile)) {
-        return null;
-    }
-    try {
-        const content = readFileSync(localFile, 'utf-8');
-        const state = JSON.parse(content);
-        if (!state.active) {
-            return null;
-        }
-        return {
-            active: state.active,
-            reinforcementCount: state.reinforcement_count,
-        };
-    }
-    catch {
-        return null;
-    }
-}
-/**
  * Read PRD state for HUD display.
- * Checks both root prd.json and .omcp/prd.json.
+ * Checks both root prd.json and .omg/prd.json.
  */
 export function readPrdStateForHud(directory) {
     // Check root first
@@ -193,6 +169,34 @@ export function readPrdStateForHud(directory) {
         return null;
     }
 }
+function hasNamedWorkflowMarker(state) {
+    const record = state;
+    return ['workflow', 'workflowRunId', 'pipelineTracking'].some((marker) => (Object.prototype.hasOwnProperty.call(record, marker)));
+}
+function getWorkflowHudState(state) {
+    if (!hasNamedWorkflowMarker(state)) {
+        return undefined;
+    }
+    const record = state;
+    const sessionId = typeof record.session_id === 'string'
+        ? record.session_id
+        : undefined;
+    if (!sessionId || !validateNamedWorkflowStateStructure(state, sessionId)) {
+        return { invalid: true };
+    }
+    const workflow = state.workflow;
+    const pipelineTracking = state.pipelineTracking;
+    const currentStageIndex = pipelineTracking.currentStageIndex;
+    const currentStage = pipelineTracking.stages[currentStageIndex]?.id;
+    return {
+        name: workflow.workflowName,
+        version: workflow.profileVersion,
+        shortHash: workflow.profileHash.slice(0, 12),
+        currentStage: currentStage ?? 'complete',
+        currentStageIndex: Math.min(currentStageIndex + 1, workflow.stages.length),
+        stagesTotal: workflow.stages.length,
+    };
+}
 /**
  * Read Autopilot state for HUD display.
  * Returns shape matching AutopilotStateForHud from elements/autopilot.ts.
@@ -223,7 +227,8 @@ export function readAutopilotStateForHud(directory, sessionId) {
             maxIterations: state.max_iterations,
             tasksCompleted: state.execution?.tasks_completed,
             tasksTotal: state.execution?.tasks_total,
-            filesCreated: state.execution?.files_created?.length
+            filesCreated: state.execution?.files_created?.length,
+            workflow: getWorkflowHudState(state),
         };
     }
     catch {
@@ -238,9 +243,8 @@ export function readAutopilotStateForHud(directory, sessionId) {
  */
 export function isAnyModeActive(directory, sessionId) {
     const ralph = readRalphStateForHud(directory, sessionId);
-    const ultrawork = readUltraworkStateForHud(directory, sessionId);
     const autopilot = readAutopilotStateForHud(directory, sessionId);
-    return (ralph?.active ?? false) || (ultrawork?.active ?? false) || (autopilot?.active ?? false);
+    return (ralph?.active ?? false) || (autopilot?.active ?? false);
 }
 /**
  * Get active skill names for display
@@ -254,10 +258,6 @@ export function getActiveSkills(directory, sessionId) {
     const ralph = readRalphStateForHud(directory, sessionId);
     if (ralph?.active) {
         skills.push('ralph');
-    }
-    const ultrawork = readUltraworkStateForHud(directory, sessionId);
-    if (ultrawork?.active) {
-        skills.push('ultrawork');
     }
     return skills;
 }

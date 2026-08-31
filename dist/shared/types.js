@@ -24,7 +24,7 @@ export const CANONICAL_TEAM_ROLES = [
 ];
 /** Known agent names derived from `buildDefaultConfig().agents` keys in src/config/loader.ts. */
 export const KNOWN_AGENT_NAMES = [
-    'omcp',
+    'omc',
     'explore',
     'analyst',
     'planner',

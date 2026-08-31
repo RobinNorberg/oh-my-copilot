@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 import { execFileSync } from 'child_process';
 import { checkPersistentModes } from '../index.js';
 function makeRalphSession(tempDir, sessionId) {
-    const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
+    const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, 'ralph-state.json'), JSON.stringify({
         active: true,
@@ -49,10 +49,11 @@ describe('persistent-mode cancel race guard (issue #921)', () => {
         try {
             execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
             const stateDir = makeRalphSession(tempDir, sessionId);
+            const requestedAt = Date.now();
             writeFileSync(join(stateDir, 'cancel-signal-state.json'), JSON.stringify({
                 active: true,
-                requested_at: new Date().toISOString(),
-                expires_at: new Date(Date.now() + 30_000).toISOString(),
+                requested_at: new Date(requestedAt).toISOString(),
+                expires_at: new Date(requestedAt + 30_000).toISOString(),
                 source: 'test'
             }, null, 2));
             const result = await checkPersistentModes(sessionId, tempDir, {
@@ -76,12 +77,13 @@ describe('persistent-mode cancel race guard (issue #921)', () => {
         try {
             execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
             const ownerDir = makeRalphSession(tempDir, ownerSessionId);
-            const resumedDir = join(tempDir, '.omcp', 'state', 'sessions', resumedSessionId);
+            const resumedDir = join(tempDir, '.omg', 'state', 'sessions', resumedSessionId);
             mkdirSync(resumedDir, { recursive: true });
+            const requestedAt = Date.now();
             writeFileSync(join(ownerDir, 'cancel-signal-state.json'), JSON.stringify({
                 active: true,
-                requested_at: new Date().toISOString(),
-                expires_at: new Date(Date.now() + 30_000).toISOString(),
+                requested_at: new Date(requestedAt).toISOString(),
+                expires_at: new Date(requestedAt + 30_000).toISOString(),
                 mode: 'ralph',
                 source: 'state_clear'
             }, null, 2));

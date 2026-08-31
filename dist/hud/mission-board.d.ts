@@ -67,9 +67,9 @@ export interface MissionAgentStopInput {
     at?: string;
 }
 export declare const DEFAULT_MISSION_BOARD_CONFIG: MissionBoardConfig;
-export declare function readMissionBoardState(directory: string): MissionBoardState | null;
-export declare function recordMissionAgentStart(directory: string, input: MissionAgentStartInput): MissionBoardState;
-export declare function recordMissionAgentStop(directory: string, input: MissionAgentStopInput): MissionBoardState;
-export declare function refreshMissionBoardState(directory: string, rawConfig?: MissionBoardConfig): MissionBoardState;
+export declare function readMissionBoardState(directory: string, sessionId?: string): MissionBoardState | null;
+export declare function recordMissionAgentStart(directory: string, input: MissionAgentStartInput, sessionId?: string): MissionBoardState;
+export declare function recordMissionAgentStop(directory: string, input: MissionAgentStopInput, sessionId?: string): MissionBoardState;
+export declare function refreshMissionBoardState(directory: string, rawConfig?: MissionBoardConfig, sessionId?: string): MissionBoardState;
 export declare function renderMissionBoard(state: MissionBoardState | null, rawConfig?: MissionBoardConfig): string[];
 //# sourceMappingURL=mission-board.d.ts.map

@@ -1,6 +1,7 @@
 /**
  * Shared stdin utilities for OMC hook scripts
  * Provides timeout-protected stdin reading to prevent hangs on Linux and Windows
+ * See: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/240
  *
  * Mirrors templates/hooks/lib/stdin.mjs for use by plugin hook scripts.
  */
@@ -59,5 +60,82 @@ export async function readStdin(timeoutMs = 5000) {
         resolve(Buffer.concat(chunks).toString('utf-8'));
       }
     }
+  });
+}
+
+/**
+ * Read one complete SessionEnd JSON frame under strict hook deadlines.
+ *
+ * @returns {Promise<
+ *   | { status: 'ok', value: unknown }
+ *   | { status: 'empty' | 'timeout' | 'overflow' | 'invalid' | 'error' }
+ * >}
+ */
+export function readSessionEndFrame() {
+  return new Promise((resolve) => {
+    const stdin = process.stdin;
+    const chunks = [];
+    let byteLength = 0;
+    let settled = false;
+    let firstByteTimer;
+    let totalTimer;
+
+    const cleanup = () => {
+      clearTimeout(firstByteTimer);
+      clearTimeout(totalTimer);
+      stdin.off('data', onData);
+      stdin.off('end', onEnd);
+      stdin.off('error', onError);
+    };
+
+    const finish = (result, closeStdin = false) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (closeStdin && !stdin.destroyed) {
+        stdin.pause();
+        stdin.destroy();
+      }
+      resolve(result);
+    };
+
+    const onData = (chunk) => {
+      clearTimeout(firstByteTimer);
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      byteLength += buffer.length;
+      if (byteLength > 64 * 1024) {
+        finish({ status: 'overflow' }, true);
+        return;
+      }
+      chunks.push(buffer);
+    };
+
+    const onEnd = () => {
+      const input = Buffer.concat(chunks).toString('utf8');
+      if (input.trim().length === 0) {
+        finish({ status: 'empty' });
+        return;
+      }
+      try {
+        finish({ status: 'ok', value: JSON.parse(input) });
+      } catch {
+        finish({ status: 'invalid' });
+      }
+    };
+
+    const onError = () => finish({ status: 'error' }, true);
+
+    stdin.on('data', onData);
+    stdin.once('end', onEnd);
+    stdin.once('error', onError);
+
+    if (stdin.readableEnded) {
+      onEnd();
+      return;
+    }
+
+    firstByteTimer = setTimeout(() => finish({ status: 'timeout' }, true), 25);
+    totalTimer = setTimeout(() => finish({ status: 'timeout' }, true), 100);
+    stdin.resume();
   });
 }

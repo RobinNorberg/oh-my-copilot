@@ -1,7 +1,7 @@
 /**
  * Session Recovery
  *
- * Helps recover session state when Copilot CLI restarts or crashes.
+ * Helps recover session state when Claude Code restarts or crashes.
  * Detects and fixes various error conditions that can cause session failures.
  */
 
@@ -181,7 +181,7 @@ async function _recoverToolResultMissing(
 
   debugLog('Found tool_use IDs to inject results for', toolUseIds);
 
-  // Note: In Copilot CLI's simplified architecture, we would need to
+  // Note: In Claude Code's simplified architecture, we would need to
   // integrate with the actual session/tool system to inject tool results.
   // This is a placeholder showing the recovery intent.
   // A full implementation would require access to the SDK client.

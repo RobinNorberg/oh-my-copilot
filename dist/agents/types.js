@@ -11,10 +11,10 @@ export function isGptModel(modelId) {
     return modelId.toLowerCase().includes('gpt');
 }
 /**
- * Check if a model ID is a Copilot model
+ * Check if a model ID is a Claude model
  */
 export function isClaudeModel(modelId) {
-    return modelId.toLowerCase().includes('gh');
+    return modelId.toLowerCase().includes('claude');
 }
 /**
  * Get default model for a category

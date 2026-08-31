@@ -90,7 +90,7 @@ describe('isOmcStatusLine', () => {
   it('should return true for OMC HUD statusLine', () => {
     expect(isOmcStatusLine({
       type: 'command',
-      command: 'node /home/user/.copilot/hud/omcp-hud.mjs'
+      command: 'node /home/user/.claude/hud/omcp-hud.mjs'
     })).toBe(true);
   });
 
@@ -118,11 +118,11 @@ describe('isOmcStatusLine', () => {
 
   // Legacy string format tests (pre-v4.5 compatibility)
   it('should return true for legacy string containing omcp-hud', () => {
-    expect(isOmcStatusLine('~/.copilot/hud/omcp-hud.mjs')).toBe(true);
+    expect(isOmcStatusLine('~/.claude/hud/omcp-hud.mjs')).toBe(true);
   });
 
   it('should return true for legacy string with absolute path to omcp-hud', () => {
-    expect(isOmcStatusLine('/home/user/.copilot/hud/omcp-hud.mjs')).toBe(true);
+    expect(isOmcStatusLine('/home/user/.claude/hud/omcp-hud.mjs')).toBe(true);
   });
 
   it('should return false for non-OMC string', () => {
@@ -144,14 +144,14 @@ describe('isOmcStatusLine', () => {
   it('should recognize portable $HOME statusLine as OMC', () => {
     expect(isOmcStatusLine({
       type: 'command',
-      command: 'node $HOME/.copilot/hud/omcp-hud.mjs'
+      command: 'node $HOME/.claude/hud/omcp-hud.mjs'
     })).toBe(true);
   });
 
   it('should recognize find-node.sh statusLine as OMC', () => {
     expect(isOmcStatusLine({
       type: 'command',
-      command: 'sh $HOME/.copilot/hud/find-node.sh $HOME/.copilot/hud/omcp-hud.mjs'
+      command: 'sh $HOME/.claude/hud/find-node.sh $HOME/.claude/hud/omcp-hud.mjs'
     })).toBe(true);
   });
 
@@ -173,7 +173,7 @@ describe('isOmcStatusLine', () => {
   it('should recognize cached HUD statusLine as OMC', () => {
     expect(isOmcStatusLine({
       type: 'command',
-      command: 'sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs'
+      command: 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs'
     })).toBe(true);
   });
 });

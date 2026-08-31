@@ -2,33 +2,34 @@
  * Configuration Loader
  *
  * Handles loading and merging configuration from multiple sources:
- * - User config: ~/.config/copilot-omg/config.jsonc
+ * - User config: ~/.config/claude-omc/config.jsonc
  * - Project config: .copilot/omg.jsonc
  * - Environment variables
  */
 
-import { readFileSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { readFileSync, existsSync } from "fs";
+import { join, dirname } from "path";
 import type {
+  AutopilotWorkflowProfileV1,
   PluginConfig,
   ExternalModelsConfig,
   DelegationProvider,
   TeamRoleAssignmentSpec,
-} from '../shared/types.js';
+  ModelType,
+} from "../shared/types.js";
 import {
   CANONICAL_TEAM_ROLES,
   KNOWN_AGENT_NAMES,
-} from '../shared/types.js';
-import { getConfigDir as getCopilotConfigDir } from '../utils/config-dir.js';
-import { parseJsonc } from '../utils/jsonc.js';
+} from "../shared/types.js";
+import { getConfigDir } from "../utils/paths.js";
+import { parseJsonc } from "../utils/jsonc.js";
 import {
   getDefaultTierModels,
   BUILTIN_EXTERNAL_MODEL_DEFAULTS,
-  isNonCopilotProvider,
-  isBedrock,
-  isVertexAI,
-} from './models.js';
-import { normalizeDelegationRole } from '../features/delegation-routing/types.js';
+  shouldAutoForceInherit,
+} from "./models.js";
+import { normalizeDelegationRole } from "../features/delegation-routing/types.js";
+import { isDeprecatedMcpProvider } from "../features/delegation-routing/index.js";
 
 /**
  * Default configuration.
@@ -46,7 +47,7 @@ export function buildDefaultConfig(): PluginConfig {
 
   return {
     agents: {
-      omg: { model: defaultTierModels.HIGH },
+      omc: { model: defaultTierModels.HIGH },
       explore: { model: defaultTierModels.LOW },
       analyst: { model: defaultTierModels.HIGH },
       planner: { model: defaultTierModels.HIGH },
@@ -61,6 +62,7 @@ export function buildDefaultConfig(): PluginConfig {
       writer: { model: defaultTierModels.LOW },
       qaTester: { model: defaultTierModels.MEDIUM },
       scientist: { model: defaultTierModels.MEDIUM },
+      tracer: { model: defaultTierModels.MEDIUM },
       gitMaster: { model: defaultTierModels.MEDIUM },
       codeSimplifier: { model: defaultTierModels.HIGH },
       critic: { model: defaultTierModels.HIGH },
@@ -68,53 +70,77 @@ export function buildDefaultConfig(): PluginConfig {
     },
     features: {
       parallelExecution: true,
-      lspTools: true,   // Real LSP integration with language servers
-      astTools: true,   // Real AST tools using ast-grep
+      lspTools: true, // Real LSP integration with language servers
+      astTools: true, // Real AST tools using ast-grep
       continuationEnforcement: true,
-      autoContextInjection: true
+      autoContextInjection: true,
     },
     mcpServers: {
       exa: { enabled: true },
-      context7: { enabled: true }
+      context7: { enabled: true },
     },
     companyContext: {
-      onError: 'warn'
+      onError: "warn",
     },
     permissions: {
       allowBash: true,
       allowEdit: true,
       allowWrite: true,
-      maxBackgroundTasks: 5
+      maxBackgroundTasks: 5,
     },
     magicKeywords: {
-      ultrawork: ['ultrawork', 'ulw', 'uw'],
-      search: ['search', 'find', 'locate'],
-      analyze: ['analyze', 'investigate', 'examine'],
-      ultrathink: ['ultrathink', 'think', 'reason', 'ponder']
+      search: ["search", "find", "locate"],
+      analyze: ["analyze", "investigate", "examine"],
+      ultrathink: ["ultrathink", "think", "reason", "ponder"],
     },
     // Intelligent model routing configuration
     routing: {
       enabled: true,
-      defaultTier: 'MEDIUM',
+      defaultTier: "MEDIUM",
       forceInherit: false,
       escalationEnabled: true,
       maxEscalations: 2,
       tierModels: { ...defaultTierModels },
       agentOverrides: {
-        architect: { tier: 'HIGH', reason: 'Advisory agent requires deep reasoning' },
-        planner: { tier: 'HIGH', reason: 'Strategic planning requires deep reasoning' },
-        critic: { tier: 'HIGH', reason: 'Critical review requires deep reasoning' },
-        analyst: { tier: 'HIGH', reason: 'Pre-planning analysis requires deep reasoning' },
-        explore: { tier: 'LOW', reason: 'Exploration is search-focused' },
-        'writer': { tier: 'LOW', reason: 'Documentation is straightforward' }
+        architect: {
+          tier: "HIGH",
+          reason: "Advisory agent requires deep reasoning",
+        },
+        planner: {
+          tier: "HIGH",
+          reason: "Strategic planning requires deep reasoning",
+        },
+        critic: {
+          tier: "HIGH",
+          reason: "Critical review requires deep reasoning",
+        },
+        analyst: {
+          tier: "HIGH",
+          reason: "Pre-planning analysis requires deep reasoning",
+        },
+        explore: { tier: "LOW", reason: "Exploration is search-focused" },
+        writer: { tier: "LOW", reason: "Documentation is straightforward" },
       },
       escalationKeywords: [
-        'critical', 'production', 'urgent', 'security', 'breaking',
-        'architecture', 'refactor', 'redesign', 'root cause'
+        "critical",
+        "production",
+        "urgent",
+        "security",
+        "breaking",
+        "architecture",
+        "refactor",
+        "redesign",
+        "root cause",
       ],
       simplificationKeywords: [
-        'find', 'list', 'show', 'where', 'search', 'locate', 'grep'
-      ]
+        "find",
+        "list",
+        "show",
+        "where",
+        "search",
+        "locate",
+        "grep",
+      ],
     },
     // External models configuration (Codex, Gemini)
     // Static defaults only — env var overrides applied in loadEnvConfig()
@@ -122,17 +148,18 @@ export function buildDefaultConfig(): PluginConfig {
       defaults: {
         codexModel: BUILTIN_EXTERNAL_MODEL_DEFAULTS.codexModel,
         geminiModel: BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel,
+        antigravityModel: BUILTIN_EXTERNAL_MODEL_DEFAULTS.antigravityModel,
       },
       fallbackPolicy: {
-        onModelFailure: 'provider_chain',
+        onModelFailure: "provider_chain",
         allowCrossProvider: false,
-        crossProviderOrder: ['codex', 'gemini'],
+        crossProviderOrder: ["codex", "gemini"],
       },
     },
     // Delegation routing configuration (opt-in feature for external model routing)
     delegationRouting: {
       enabled: false,
-      defaultProvider: 'copilot',
+      defaultProvider: "claude",
       roles: {},
     },
     // /team role routing (Option E — /team-scoped per-role provider & model)
@@ -141,13 +168,20 @@ export function buildDefaultConfig(): PluginConfig {
       ops: {},
       roleRouting: {},
     },
+    autopilot: {
+      execution: "solo",
+    },
+    planOutput: {
+      directory: ".omg/plans",
+      filenameTemplate: "{{name}}.md",
+    },
+    teleport: {
+      symlinkNodeModules: true,
+    },
     startupCodebaseMap: {
       enabled: true,
       maxFiles: 200,
       maxDepth: 4,
-    },
-    teleport: {
-      symlinkNodeModules: true,
     },
     taskSizeDetection: {
       enabled: true,
@@ -164,7 +198,7 @@ export function buildDefaultConfig(): PluginConfig {
         context: ["CONTEXT"],
       },
       blockingTools: ["Edit", "MultiEdit", "Write", "Agent", "Task"],
-      executionKeywords: ["ralph", "ultrawork", "autopilot"],
+      executionKeywords: ["ralph", "autopilot"],
     },
   };
 }
@@ -175,20 +209,11 @@ export const DEFAULT_CONFIG: PluginConfig = buildDefaultConfig();
  * Configuration file locations
  */
 export function getConfigPaths(): { user: string; project: string } {
-  // User config lives under the Copilot config directory (respects COPILOT_CONFIG_DIR).
-  // On most systems this is ~/.copilot/omg/config.jsonc.
-  const copilotConfigDir = getCopilotConfigDir();
-
-  // Project config: prefer .copilot/omg.jsonc; also check .claude/omc.jsonc for compatibility
-  const copilotProject = join(process.cwd(), '.copilot', 'omg.jsonc');
-  const claudeProject = join(process.cwd(), '.claude', 'omc.jsonc');
-  const project = existsSync(claudeProject) && !existsSync(copilotProject)
-    ? claudeProject
-    : copilotProject;
+  const userConfigDir = getConfigDir();
 
   return {
-    user: join(copilotConfigDir, 'omg', 'config.jsonc'),
-    project,
+    user: join(userConfigDir, "claude-omc", "config.jsonc"),
+    project: join(process.cwd(), ".copilot", "omg.jsonc"),
   };
 }
 
@@ -201,7 +226,7 @@ export function loadJsoncFile(path: string): PluginConfig | null {
   }
 
   try {
-    const content = readFileSync(path, 'utf-8');
+    const content = readFileSync(path, "utf-8");
     const result = parseJsonc(content);
     return result as PluginConfig;
   } catch (error) {
@@ -218,21 +243,23 @@ export function deepMerge<T extends object>(target: T, source: Partial<T>): T {
   const mutableResult = result as Record<string, unknown>;
 
   for (const key of Object.keys(source) as (keyof T)[]) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype")
+      continue;
     const sourceValue = source[key];
     const targetValue = mutableResult[key as string];
 
     if (
       sourceValue !== undefined &&
-      typeof sourceValue === 'object' &&
+      typeof sourceValue === "object" &&
       sourceValue !== null &&
       !Array.isArray(sourceValue) &&
-      typeof targetValue === 'object' &&
+      typeof targetValue === "object" &&
       targetValue !== null &&
       !Array.isArray(targetValue)
     ) {
       mutableResult[key as string] = deepMerge(
         targetValue as Record<string, unknown>,
-        sourceValue as Record<string, unknown>
+        sourceValue as Record<string, unknown>,
       );
     } else if (sourceValue !== undefined) {
       mutableResult[key as string] = sourceValue as unknown;
@@ -252,7 +279,7 @@ export function loadEnvConfig(): Partial<PluginConfig> {
   if (process.env.EXA_API_KEY) {
     config.mcpServers = {
       ...config.mcpServers,
-      exa: { enabled: true, apiKey: process.env.EXA_API_KEY }
+      exa: { enabled: true, apiKey: process.env.EXA_API_KEY },
     };
   }
 
@@ -260,14 +287,14 @@ export function loadEnvConfig(): Partial<PluginConfig> {
   if (process.env.OMC_PARALLEL_EXECUTION !== undefined) {
     config.features = {
       ...config.features,
-      parallelExecution: process.env.OMC_PARALLEL_EXECUTION === 'true'
+      parallelExecution: process.env.OMC_PARALLEL_EXECUTION === "true",
     };
   }
 
   if (process.env.OMC_LSP_TOOLS !== undefined) {
     config.features = {
       ...config.features,
-      lspTools: process.env.OMC_LSP_TOOLS === 'true'
+      lspTools: process.env.OMC_LSP_TOOLS === "true",
     };
   }
 
@@ -276,7 +303,7 @@ export function loadEnvConfig(): Partial<PluginConfig> {
     if (!isNaN(maxTasks)) {
       config.permissions = {
         ...config.permissions,
-        maxBackgroundTasks: maxTasks
+        maxBackgroundTasks: maxTasks,
       };
     }
   }
@@ -285,29 +312,29 @@ export function loadEnvConfig(): Partial<PluginConfig> {
   if (process.env.OMC_ROUTING_ENABLED !== undefined) {
     config.routing = {
       ...config.routing,
-      enabled: process.env.OMC_ROUTING_ENABLED === 'true'
+      enabled: process.env.OMC_ROUTING_ENABLED === "true",
     };
   }
 
   if (process.env.OMC_ROUTING_FORCE_INHERIT !== undefined) {
     config.routing = {
       ...config.routing,
-      forceInherit: process.env.OMC_ROUTING_FORCE_INHERIT === 'true'
+      forceInherit: process.env.OMC_ROUTING_FORCE_INHERIT === "true",
     };
   }
 
   if (process.env.OMC_ROUTING_DEFAULT_TIER) {
     const tier = process.env.OMC_ROUTING_DEFAULT_TIER.toUpperCase();
-    if (tier === 'LOW' || tier === 'MEDIUM' || tier === 'HIGH') {
+    if (tier === "LOW" || tier === "MEDIUM" || tier === "HIGH") {
       config.routing = {
         ...config.routing,
-        defaultTier: tier as 'LOW' | 'MEDIUM' | 'HIGH'
+        defaultTier: tier as "LOW" | "MEDIUM" | "HIGH",
       };
     }
   }
 
-  // Model alias overrides from environment (issue #1211)
-  const aliasKeys = ['HAIKU', 'SONNET', 'OPUS'] as const;
+  // Model alias overrides from environment (issue #1211, issue #3726)
+  const aliasKeys = ["HAIKU", "SONNET", "OPUS", "FABLE"] as const;
   const modelAliases: Record<string, string> = {};
   for (const key of aliasKeys) {
     const envVal = process.env[`OMC_MODEL_ALIAS_${key}`];
@@ -319,64 +346,84 @@ export function loadEnvConfig(): Partial<PluginConfig> {
   if (Object.keys(modelAliases).length > 0) {
     config.routing = {
       ...config.routing,
-      modelAliases: modelAliases as Record<string, 'haiku' | 'sonnet' | 'opus' | 'inherit'>,
+      modelAliases: modelAliases as Partial<
+        Record<"haiku" | "sonnet" | "opus" | "fable", ModelType>
+      >,
     };
   }
 
   if (process.env.OMC_ESCALATION_ENABLED !== undefined) {
     config.routing = {
       ...config.routing,
-      escalationEnabled: process.env.OMC_ESCALATION_ENABLED === 'true'
+      escalationEnabled: process.env.OMC_ESCALATION_ENABLED === "true",
     };
   }
 
   // External models configuration from environment
-  const externalModelsDefaults: ExternalModelsConfig['defaults'] = {};
+  const externalModelsDefaults: ExternalModelsConfig["defaults"] = {};
 
   if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_PROVIDER) {
     const provider = process.env.OMC_EXTERNAL_MODELS_DEFAULT_PROVIDER;
-    if (provider === 'codex' || provider === 'gemini') {
+    if (provider === "codex" || provider === "gemini" || provider === "antigravity") {
       externalModelsDefaults.provider = provider;
     }
   }
 
   if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL) {
-    externalModelsDefaults.codexModel = process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL;
+    externalModelsDefaults.codexModel =
+      process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL;
   } else if (process.env.OMC_CODEX_DEFAULT_MODEL) {
     // Legacy fallback
     externalModelsDefaults.codexModel = process.env.OMC_CODEX_DEFAULT_MODEL;
   }
 
   if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL) {
-    externalModelsDefaults.geminiModel = process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL;
+    externalModelsDefaults.geminiModel =
+      process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL;
   } else if (process.env.OMC_GEMINI_DEFAULT_MODEL) {
     // Legacy fallback
     externalModelsDefaults.geminiModel = process.env.OMC_GEMINI_DEFAULT_MODEL;
   }
 
   if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL) {
-    externalModelsDefaults.grokModel = process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL;
+    externalModelsDefaults.grokModel =
+      process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL;
   } else if (process.env.OMC_GROK_DEFAULT_MODEL) {
     // Legacy fallback
     externalModelsDefaults.grokModel = process.env.OMC_GROK_DEFAULT_MODEL;
   }
 
-  const externalModelsFallback: ExternalModelsConfig['fallbackPolicy'] = {
-    onModelFailure: 'provider_chain'
+  if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL) {
+    externalModelsDefaults.antigravityModel =
+      process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL;
+  } else if (process.env.OMC_ANTIGRAVITY_DEFAULT_MODEL) {
+    // Legacy fallback
+    externalModelsDefaults.antigravityModel = process.env.OMC_ANTIGRAVITY_DEFAULT_MODEL;
+  }
+
+  const externalModelsFallback: ExternalModelsConfig["fallbackPolicy"] = {
+    onModelFailure: "provider_chain",
   };
 
   if (process.env.OMC_EXTERNAL_MODELS_FALLBACK_POLICY) {
     const policy = process.env.OMC_EXTERNAL_MODELS_FALLBACK_POLICY;
-    if (policy === 'provider_chain' || policy === 'cross_provider' || policy === 'claude_only') {
+    if (
+      policy === "provider_chain" ||
+      policy === "cross_provider" ||
+      policy === "claude_only"
+    ) {
       externalModelsFallback.onModelFailure = policy;
     }
   }
 
   // Only add externalModels if any env vars were set
-  if (Object.keys(externalModelsDefaults).length > 0 || externalModelsFallback.onModelFailure !== 'provider_chain') {
+  if (
+    Object.keys(externalModelsDefaults).length > 0 ||
+    externalModelsFallback.onModelFailure !== "provider_chain"
+  ) {
     config.externalModels = {
       defaults: externalModelsDefaults,
-      fallbackPolicy: externalModelsFallback
+      fallbackPolicy: externalModelsFallback,
     };
   }
 
@@ -384,21 +431,21 @@ export function loadEnvConfig(): Partial<PluginConfig> {
   if (process.env.OMC_DELEGATION_ROUTING_ENABLED !== undefined) {
     config.delegationRouting = {
       ...config.delegationRouting,
-      enabled: process.env.OMC_DELEGATION_ROUTING_ENABLED === 'true',
+      enabled: process.env.OMC_DELEGATION_ROUTING_ENABLED === "true",
     };
   }
 
   if (process.env.OMC_DELEGATION_ROUTING_DEFAULT_PROVIDER) {
     const provider = process.env.OMC_DELEGATION_ROUTING_DEFAULT_PROVIDER;
-    if (['claude', 'copilot', 'codex', 'gemini'].includes(provider)) {
+    if (["claude", "codex", "gemini"].includes(provider)) {
       config.delegationRouting = {
         ...config.delegationRouting,
-        defaultProvider: provider as 'claude' | 'copilot' | 'codex' | 'gemini',
+        defaultProvider: provider as "claude" | "codex" | "gemini",
       };
     }
   }
 
-  // /team role routing env override (OMCP_TEAM_ROLE_OVERRIDES — single JSON var).
+  // /team role routing env override (OMC_TEAM_ROLE_OVERRIDES — single JSON var).
   // Best-effort: invalid JSON logs and is ignored (no throw on env path).
   const teamRoleOverrides = parseTeamRoleOverridesFromEnv();
   if (teamRoleOverrides) {
@@ -420,14 +467,14 @@ export function loadEnvConfig(): Partial<PluginConfig> {
 function warnOnDeprecatedDelegationRouting(config: PluginConfig): void {
   const deprecatedProviders = new Set<DelegationProvider>();
   const defaultProvider = config.delegationRouting?.defaultProvider;
-  if (defaultProvider === "codex" || defaultProvider === "gemini") {
+  if (isDeprecatedMcpProvider(defaultProvider)) {
     deprecatedProviders.add(defaultProvider);
   }
 
   const roles = config.delegationRouting?.roles ?? {};
   for (const route of Object.values(roles)) {
     const provider = route?.provider;
-    if (provider === "codex" || provider === "gemini") {
+    if (isDeprecatedMcpProvider(provider)) {
       deprecatedProviders.add(provider);
     }
   }
@@ -449,7 +496,8 @@ function warnOnDeprecatedDelegationRouting(config: PluginConfig): void {
  */
 const CANONICAL_TEAM_ROLE_SET = new Set<string>(CANONICAL_TEAM_ROLES);
 const KNOWN_AGENT_NAME_SET = new Set<string>(KNOWN_AGENT_NAMES);
-const TEAM_ROLE_PROVIDERS = new Set(["claude", "codex", "gemini", "grok"]);
+// /team CLI workers — codex/gemini/grok/cursor here are CLI integrations, NOT the deprecated MCP delegationRouting providers.
+const TEAM_ROLE_PROVIDERS = new Set(["claude", "codex", "gemini", "grok", "cursor", "antigravity"]);
 const TEAM_ROLE_TIERS = new Set(["HIGH", "MEDIUM", "LOW"]);
 
 export function validateTeamConfig(config: PluginConfig): void {
@@ -466,7 +514,15 @@ export function validateTeamConfig(config: PluginConfig): void {
         !TEAM_ROLE_PROVIDERS.has(ops.defaultAgentType)
       ) {
         throw new Error(
-          `[OMCP] team.ops.defaultAgentType: invalid value "${String(ops.defaultAgentType)}". Allowed: ${[...TEAM_ROLE_PROVIDERS].join(", ")}`,
+          `[OMC] team.ops.defaultAgentType: invalid value "${String(ops.defaultAgentType)}". Allowed: ${[...TEAM_ROLE_PROVIDERS].join(", ")}`,
+        );
+      }
+    }
+    if (ops.worktreeMode !== undefined) {
+      const allowed = new Set(["disabled", "off", "detached", "branch", "named"]);
+      if (typeof ops.worktreeMode !== "string" || !allowed.has(ops.worktreeMode)) {
+        throw new Error(
+          `[OMC] team.ops.worktreeMode: invalid value "${String(ops.worktreeMode)}". Allowed: ${[...allowed].join(", ")}`,
         );
       }
     }
@@ -479,13 +535,13 @@ export function validateTeamConfig(config: PluginConfig): void {
     const normalized = normalizeDelegationRole(rawRoleKey);
     if (!CANONICAL_TEAM_ROLE_SET.has(normalized)) {
       throw new Error(
-        `[OMCP] team.roleRouting: unknown role "${rawRoleKey}". Allowed roles: ${[...CANONICAL_TEAM_ROLE_SET].join(", ")}`,
+        `[OMC] team.roleRouting: unknown role "${rawRoleKey}". Allowed roles: ${[...CANONICAL_TEAM_ROLE_SET].join(", ")}`,
       );
     }
 
     if (!rawSpec || typeof rawSpec !== "object" || Array.isArray(rawSpec)) {
       throw new Error(
-        `[OMCP] team.roleRouting.${rawRoleKey}: must be an object, got ${Array.isArray(rawSpec) ? "array" : typeof rawSpec}`,
+        `[OMC] team.roleRouting.${rawRoleKey}: must be an object, got ${Array.isArray(rawSpec) ? "array" : typeof rawSpec}`,
       );
     }
     const spec = rawSpec as Record<string, unknown>;
@@ -495,13 +551,13 @@ export function validateTeamConfig(config: PluginConfig): void {
       for (const key of Object.keys(spec)) {
         if (key !== "model") {
           throw new Error(
-            `[OMCP] team.roleRouting.orchestrator: key "${key}" is not allowed (orchestrator is pinned to claude; only "model" is configurable)`,
+            `[OMC] team.roleRouting.orchestrator: key "${key}" is not allowed (orchestrator is pinned to claude; only "model" is configurable)`,
           );
         }
       }
       if (spec.model !== undefined && !isValidModelValue(spec.model)) {
         throw new Error(
-          `[OMCP] team.roleRouting.orchestrator.model: must be a tier name (HIGH|MEDIUM|LOW) or model ID string, got ${typeof spec.model}`,
+          `[OMC] team.roleRouting.orchestrator.model: must be a tier name (HIGH|MEDIUM|LOW) or model ID string, got ${typeof spec.model}`,
         );
       }
       continue;
@@ -510,21 +566,196 @@ export function validateTeamConfig(config: PluginConfig): void {
     if (spec.provider !== undefined) {
       if (typeof spec.provider !== "string" || !TEAM_ROLE_PROVIDERS.has(spec.provider)) {
         throw new Error(
-          `[OMCP] team.roleRouting.${rawRoleKey}.provider: invalid value "${String(spec.provider)}". Allowed: ${[...TEAM_ROLE_PROVIDERS].join(", ")}`,
+          `[OMC] team.roleRouting.${rawRoleKey}.provider: invalid value "${String(spec.provider)}". Allowed: ${[...TEAM_ROLE_PROVIDERS].join(", ")}`,
         );
       }
     }
 
     if (spec.model !== undefined && !isValidModelValue(spec.model)) {
       throw new Error(
-        `[OMCP] team.roleRouting.${rawRoleKey}.model: must be a tier name (HIGH|MEDIUM|LOW) or a non-empty model ID string`,
+        `[OMC] team.roleRouting.${rawRoleKey}.model: must be a tier name (HIGH|MEDIUM|LOW) or a non-empty model ID string`,
       );
     }
 
     if (spec.agent !== undefined) {
       if (typeof spec.agent !== "string" || !KNOWN_AGENT_NAME_SET.has(spec.agent)) {
         throw new Error(
-          `[OMCP] team.roleRouting.${rawRoleKey}.agent: unknown agent "${String(spec.agent)}". Allowed: ${[...KNOWN_AGENT_NAME_SET].join(", ")}`,
+          `[OMC] team.roleRouting.${rawRoleKey}.agent: unknown agent "${String(spec.agent)}". Allowed: ${[...KNOWN_AGENT_NAME_SET].join(", ")}`,
+        );
+      }
+    }
+  }
+}
+
+const AUTOPILOT_EXECUTION_BACKENDS = new Set(["team", "solo"]);
+const AUTOPILOT_PLANNING_MODES = new Set(["ralplan", "direct"]);
+const AUTOPILOT_TEAM_AGENT_TYPES = new Set([
+  "claude",
+  "codex",
+  "gemini",
+  "grok",
+  "cursor",
+  "antigravity",
+]);
+
+const AUTOPILOT_WORKFLOW_NAME = /^[a-z][a-z0-9-]{0,62}$/;
+const AUTOPILOT_WORKFLOW_RESERVED_NAMES = new Set([
+  "autopilot",
+  "ralplan",
+  "execution",
+  "ralph",
+  "qa",
+  "autoresearch",
+  "ultraqa",
+  "merge-readiness",
+  "self-improve",
+  "ultrawork",
+  "ultrapilot",
+  "swarm",
+  "pipeline",
+  "plan",
+  "team",
+  "cancel",
+  "deep-interview",
+  "deepsearch",
+  "ultrathink",
+  "tdd",
+  "code-review",
+  "security-review",
+  "analyze",
+  "search",
+  "ultragoal",
+  "default",
+]);
+const AUTOPILOT_WORKFLOW_SEQUENCES = [
+  ["ralplan", "execution"],
+  ["ralplan", "execution", "ralph"],
+  ["ralplan", "execution", "qa"],
+  ["ralplan", "execution", "ralph", "qa"],
+] as const;
+
+function isAutopilotWorkflowSequence(stages: unknown[]): boolean {
+  return AUTOPILOT_WORKFLOW_SEQUENCES.some(
+    (sequence) => stages.length === sequence.length && stages.every((stage, index) => typeof stage === "string" && stage === sequence[index]),
+  );
+}
+
+function workflowError(source: string, path: string, message: string): never {
+  throw new Error(`[OMC] ${source} ${path}: ${message}`);
+}
+
+/** Validate the closed v1 workflow block without changing legacy config validation. */
+export function validateAutopilotWorkflows(config: unknown, source: string): void {
+  if (!config || typeof config !== "object" || Array.isArray(config)) return;
+  const autopilot = (config as Record<string, unknown>).autopilot;
+  if (autopilot === undefined) return;
+  if (!autopilot || typeof autopilot !== "object" || Array.isArray(autopilot)) return;
+
+  const workflows = (autopilot as Record<string, unknown>).workflows;
+  if (workflows === undefined) return;
+  if (!workflows || typeof workflows !== "object" || Array.isArray(workflows)) {
+    workflowError(source, "autopilot.workflows", "must be an object map");
+  }
+
+  for (const [name, profile] of Object.entries(workflows as Record<string, unknown>)) {
+    const path = `autopilot.workflows.${name}`;
+    if (!AUTOPILOT_WORKFLOW_NAME.test(name)) {
+      workflowError(source, path, "name must match ^[a-z][a-z0-9-]{0,62}$");
+    }
+    if (AUTOPILOT_WORKFLOW_RESERVED_NAMES.has(name)) {
+      workflowError(source, path, `name "${name}" is reserved`);
+    }
+    if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+      workflowError(source, path, "must be an object");
+    }
+
+    const profileRecord = profile as Record<string, unknown>;
+    for (const key of Object.keys(profileRecord)) {
+      if (key !== "version" && key !== "stages") {
+        workflowError(source, `${path}.${key}`, "unknown profile key");
+      }
+    }
+    if (profileRecord.version !== 1) {
+      workflowError(source, `${path}.version`, "must be the number 1");
+    }
+    if (!Array.isArray(profileRecord.stages)) {
+      workflowError(source, `${path}.stages`, "must be an array");
+    }
+    if (!isAutopilotWorkflowSequence(profileRecord.stages)) {
+      workflowError(
+        source,
+        `${path}.stages`,
+        "must be one of: [ralplan, execution], [ralplan, execution, ralph], [ralplan, execution, qa], [ralplan, execution, ralph, qa]",
+      );
+    }
+  }
+}
+
+function composeAutopilotWorkflows(
+  config: PluginConfig,
+  userConfig: PluginConfig | null,
+  projectConfig: PluginConfig | null,
+): PluginConfig {
+  const userWorkflows = (userConfig?.autopilot as Record<string, unknown> | undefined)?.workflows;
+  const projectWorkflows = (projectConfig?.autopilot as Record<string, unknown> | undefined)?.workflows;
+  if (userWorkflows === undefined && projectWorkflows === undefined) return config;
+
+  return {
+    ...config,
+    autopilot: {
+      ...config.autopilot,
+      workflows: {
+        ...(userWorkflows as Record<string, AutopilotWorkflowProfileV1> | undefined),
+        ...(projectWorkflows as Record<string, AutopilotWorkflowProfileV1> | undefined),
+      },
+    },
+  };
+}
+
+export function validateAutopilotConfig(config: PluginConfig): void {
+  const autopilot = (config as Record<string, unknown>).autopilot as
+    | Record<string, unknown>
+    | undefined;
+  if (!autopilot || typeof autopilot !== "object") return;
+
+  validateAutopilotWorkflows(config, "effective");
+
+  if (
+    autopilot.execution !== undefined &&
+    (typeof autopilot.execution !== "string" ||
+      !AUTOPILOT_EXECUTION_BACKENDS.has(autopilot.execution))
+  ) {
+    throw new Error(
+      `[OMC] autopilot.execution: invalid value "${String(autopilot.execution)}". Allowed: ${[...AUTOPILOT_EXECUTION_BACKENDS].join(", ")}`,
+    );
+  }
+
+  if (
+    autopilot.planning !== undefined &&
+    autopilot.planning !== false &&
+    (typeof autopilot.planning !== "string" ||
+      !AUTOPILOT_PLANNING_MODES.has(autopilot.planning))
+  ) {
+    throw new Error(
+      `[OMC] autopilot.planning: invalid value "${String(autopilot.planning)}". Allowed: ralplan, direct, false`,
+    );
+  }
+
+  const team = autopilot.team as Record<string, unknown> | undefined;
+  if (!team || typeof team !== "object") return;
+
+  if (team.agentTypes !== undefined) {
+    if (!Array.isArray(team.agentTypes)) {
+      throw new Error("[OMC] autopilot.team.agentTypes: must be an array");
+    }
+
+    for (const agentType of team.agentTypes) {
+      if (
+        typeof agentType !== "string" ||
+        !AUTOPILOT_TEAM_AGENT_TYPES.has(agentType)
+      ) {
+        throw new Error(
+          `[OMC] autopilot.team.agentTypes: invalid value "${String(agentType)}". Allowed: ${[...AUTOPILOT_TEAM_AGENT_TYPES].join(", ")}`,
         );
       }
     }
@@ -540,20 +771,20 @@ function isValidModelValue(value: unknown): value is string {
 }
 
 function parseTeamRoleOverridesFromEnv(): Record<string, TeamRoleAssignmentSpec> | undefined {
-  const raw = process.env.OMCP_TEAM_ROLE_OVERRIDES;
+  const raw = process.env.OMC_TEAM_ROLE_OVERRIDES;
   if (!raw) return undefined;
   try {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       console.warn(
-        "[OMCP] OMCP_TEAM_ROLE_OVERRIDES: expected a JSON object; ignoring.",
+        "[OMC] OMC_TEAM_ROLE_OVERRIDES: expected a JSON object; ignoring.",
       );
       return undefined;
     }
     return parsed as Record<string, TeamRoleAssignmentSpec>;
   } catch (err) {
     console.warn(
-      `[OMCP] OMCP_TEAM_ROLE_OVERRIDES: invalid JSON, ignoring (${(err as Error).message})`,
+      `[OMC] OMC_TEAM_ROLE_OVERRIDES: invalid JSON, ignoring (${(err as Error).message})`,
     );
     return undefined;
   }
@@ -565,32 +796,39 @@ export function loadConfig(): PluginConfig {
   // Start with fresh defaults so env-based model overrides are resolved at call time
   let config = buildDefaultConfig();
 
-  // Merge user config
+  // Validate workflow profiles in each file before ordinary merging so a malformed
+  // project replacement can never mask a malformed user profile.
   const userConfig = loadJsoncFile(paths.user);
   if (userConfig) {
+    validateAutopilotWorkflows(userConfig, "user");
     config = deepMerge(config, userConfig);
   }
 
-  // Merge project config (takes precedence over user)
   const projectConfig = loadJsoncFile(paths.project);
   if (projectConfig) {
+    validateAutopilotWorkflows(projectConfig, "project");
     config = deepMerge(config, projectConfig);
   }
 
-  // Merge environment variables (highest precedence)
+  // Workflow profiles are atomic definitions: project replaces a same-named user
+  // profile instead of deep-merging its closed fields.
+  config = composeAutopilotWorkflows(config, userConfig, projectConfig);
+
+  // Merge environment variables (highest precedence); environment has no workflow
+  // profile inputs and therefore cannot define or replace profiles.
   const envConfig = loadEnvConfig();
   config = deepMerge(config, envConfig);
 
   // Auto-enable forceInherit for non-standard providers (issues #1201, #1025)
   // Only auto-enable if user hasn't explicitly set it via config or env var.
-  // Triggers for: CC Switch / LiteLLM (non-Copilot model IDs), custom
+  // Triggers for: CC Switch / LiteLLM (non-Claude model IDs), custom
   // ANTHROPIC_BASE_URL, AWS Bedrock (CLAUDE_CODE_USE_BEDROCK=1), and
-  // Google Vertex AI (CLAUDE_CODE_USE_VERTEX=1). Passing Copilot-specific
+  // Google Vertex AI (CLAUDE_CODE_USE_VERTEX=1). Passing Claude-specific
   // tier names (sonnet/opus/haiku) causes 400 errors on these platforms.
   if (
     config.routing?.forceInherit !== true &&
     process.env.OMC_ROUTING_FORCE_INHERIT === undefined &&
-    isNonCopilotProvider()
+    shouldAutoForceInherit()
   ) {
     config.routing = {
       ...config.routing,
@@ -603,6 +841,7 @@ export function loadConfig(): PluginConfig {
   // Validate /team role routing post-merge. Throws on invalid shape,
   // walking the parsed object so deepMerge bypasses surface here.
   validateTeamConfig(config);
+  validateAutopilotConfig(config);
 
   return config;
 }
@@ -626,7 +865,7 @@ function compactBudgetedText(text: string, maxChars: number): string {
 function looksLikeOmcGuidance(content: string): boolean {
   return (
     content.includes("<guidance_schema_contract>") &&
-    /oh-my-(claudecode|codex|copilot)/i.test(content) &&
+    /oh-my-(copilot|claudecode|codex)/i.test(content) &&
     OMC_STARTUP_COMPACTABLE_SECTIONS.some(
       (section) =>
         content.includes(`<${section}>`) && content.includes(`</${section}>`),
@@ -666,7 +905,7 @@ export function compactOmcStartupGuidance(content: string): string {
 }
 
 /**
- * Find and load AGENTS.md or copilot-instructions.md files for context injection
+ * Find and load AGENTS.md or CLAUDE.md files for context injection
  */
 export function findContextFiles(startDir?: string): string[] {
   const files: string[] = [];
@@ -674,10 +913,14 @@ export function findContextFiles(startDir?: string): string[] {
 
   // Files to look for
   const contextFileNames = [
-    'AGENTS.md',
-    'copilot-instructions.md',
-    '.copilot/copilot-instructions.md',
-    '.copilot/AGENTS.md'
+    "AGENTS.md",
+    "copilot-instructions.md",
+    "CLAUDE.md",
+    ".copilot/copilot-instructions.md",
+    ".copilot/AGENTS.md",
+    // Retained for compatibility when this plugin runs under Claude Code.
+    ".claude/CLAUDE.md",
+    ".claude/AGENTS.md",
   ];
 
   // Search in current directory and parent directories
@@ -703,7 +946,7 @@ export function findContextFiles(startDir?: string): string[] {
 }
 
 /**
- * Load context from AGENTS.md/copilot-instructions.md files
+ * Load context from AGENTS.md/CLAUDE.md files
  */
 export function loadContextFromFiles(files: string[]): string {
   const contexts: string[] = [];
@@ -712,7 +955,7 @@ export function loadContextFromFiles(files: string[]): string {
 
   for (const file of files) {
     try {
-      const content = compactOmcStartupGuidance(readFileSync(file, 'utf-8'));
+      const content = compactOmcStartupGuidance(readFileSync(file, "utf-8"));
       const contextBlock = `## Context from ${file}\n\n${content}`;
       const separatorLength = contexts.length > 0 ? separator.length : 0;
       const remainingBudget = OMC_CONTEXT_FILES_MAX_CHARS - used - separatorLength;
@@ -738,287 +981,402 @@ export function loadContextFromFiles(files: string[]): string {
  */
 export function generateConfigSchema(): object {
   return {
-    $schema: 'http://json-schema.org/draft-07/schema#',
-    title: 'Oh-My-Copilot Configuration',
-    type: 'object',
+    $schema: "http://json-schema.org/draft-07/schema#",
+    title: "Oh-My-Copilot Configuration",
+    type: "object",
     properties: {
       agents: {
-        type: 'object',
-        description: 'Agent model and feature configuration',
+        type: "object",
+        description: "Agent model and feature configuration",
         properties: {
-          omg: {
-            type: 'object',
+          omc: {
+            type: "object",
             properties: {
-              model: { type: 'string', description: 'Model ID for the main orchestrator' }
-            }
+              model: {
+                type: "string",
+                description: "Model ID for the main orchestrator",
+              },
+            },
           },
           explore: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           analyst: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           planner: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           architect: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           debugger: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           executor: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           verifier: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           securityReviewer: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           codeReviewer: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           testEngineer: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           designer: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           writer: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           qaTester: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           scientist: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
+          },
+          tracer: {
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           gitMaster: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           codeSimplifier: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           critic: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
+            type: "object",
+            properties: { model: { type: "string" } },
           },
           documentSpecialist: {
-            type: 'object',
-            properties: { model: { type: 'string' } }
-          }
-        }
+            type: "object",
+            properties: { model: { type: "string" } },
+          },
+        },
       },
       features: {
-        type: 'object',
-        description: 'Feature toggles',
+        type: "object",
+        description: "Feature toggles",
         properties: {
-          parallelExecution: { type: 'boolean', default: true },
-          lspTools: { type: 'boolean', default: true },
-          astTools: { type: 'boolean', default: true },
-          continuationEnforcement: { type: 'boolean', default: true },
-          autoContextInjection: { type: 'boolean', default: true }
-        }
+          parallelExecution: { type: "boolean", default: true },
+          lspTools: { type: "boolean", default: true },
+          astTools: { type: "boolean", default: true },
+          continuationEnforcement: { type: "boolean", default: true },
+          autoContextInjection: { type: "boolean", default: true },
+        },
       },
       mcpServers: {
-        type: 'object',
-        description: 'MCP server configurations',
+        type: "object",
+        description: "MCP server configurations",
         properties: {
           exa: {
-            type: 'object',
+            type: "object",
             properties: {
-              enabled: { type: 'boolean' },
-              apiKey: { type: 'string' }
-            }
+              enabled: { type: "boolean" },
+              apiKey: { type: "string" },
+            },
           },
           context7: {
-            type: 'object',
-            properties: { enabled: { type: 'boolean' } }
-          }
-        }
+            type: "object",
+            properties: { enabled: { type: "boolean" } },
+          },
+        },
       },
       companyContext: {
-        type: 'object',
-        description: 'Prompt-level company-context MCP contract for workflow skills',
+        type: "object",
+        description: "Prompt-level company-context MCP contract for workflow skills",
         properties: {
           tool: {
-            type: 'string',
-            description: 'Full MCP tool name to call, for example mcp__vendor__get_company_context'
+            type: "string",
+            description: "Full MCP tool name to call, for example mcp__vendor__get_company_context",
           },
           onError: {
-            type: 'string',
-            enum: ['warn', 'silent', 'fail'],
-            default: 'warn',
-            description: 'How prompt workflows should react when the configured company-context tool call fails'
-          }
-        }
+            type: "string",
+            enum: ["warn", "silent", "fail"],
+            default: "warn",
+            description: "How prompt workflows should react when the configured company-context tool call fails",
+          },
+        },
       },
       permissions: {
-        type: 'object',
-        description: 'Permission settings',
+        type: "object",
+        description: "Permission settings",
         properties: {
-          allowBash: { type: 'boolean', default: true },
-          allowEdit: { type: 'boolean', default: true },
-          allowWrite: { type: 'boolean', default: true },
-          maxBackgroundTasks: { type: 'integer', default: 5, minimum: 1, maximum: 50 }
-        }
+          allowBash: { type: "boolean", default: true },
+          allowEdit: { type: "boolean", default: true },
+          allowWrite: { type: "boolean", default: true },
+          maxBackgroundTasks: {
+            type: "integer",
+            default: 5,
+            minimum: 1,
+            maximum: 50,
+          },
+        },
       },
       magicKeywords: {
-        type: 'object',
-        description: 'Magic keyword triggers',
+        type: "object",
+        description: "Magic keyword triggers",
         properties: {
-          ultrawork: { type: 'array', items: { type: 'string' } },
-          search: { type: 'array', items: { type: 'string' } },
-          analyze: { type: 'array', items: { type: 'string' } },
-          ultrathink: { type: 'array', items: { type: 'string' } }
-        }
+          search: { type: "array", items: { type: "string" } },
+          analyze: { type: "array", items: { type: "string" } },
+          ultrathink: { type: "array", items: { type: "string" } },
+        },
       },
       teleport: {
-        type: 'object',
-        description: 'Teleport worktree bootstrap settings',
+        type: "object",
+        description: "Teleport worktree bootstrap settings",
         properties: {
           symlinkNodeModules: {
-            type: 'boolean',
+            type: "boolean",
             default: true,
-            description: 'Symlink node_modules from the parent repo when teleport-created worktrees have a matching package.json',
+            description: "Symlink node_modules from the parent repo when teleport-created worktrees have a matching package.json",
           },
         },
       },
       routing: {
-        type: 'object',
-        description: 'Intelligent model routing configuration',
-        properties: {
-          enabled: { type: 'boolean', default: true, description: 'Enable intelligent model routing' },
-          defaultTier: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'], default: 'MEDIUM', description: 'Default tier when no rules match' },
-          forceInherit: { type: 'boolean', default: false, description: 'Force all agents to inherit the parent model, bypassing OMC model routing. When true, no model parameter is passed to Task/Agent calls, so agents use the user\'s Copilot CLI model setting. Auto-enabled for non-Copilot providers (CC Switch, custom ANTHROPIC_BASE_URL), AWS Bedrock, and Google Vertex AI.' },
-        }
-      },
-      externalModels: {
-        type: 'object',
-        description: 'External model provider configuration (Codex, Gemini, Grok)',
-        properties: {
-          defaults: {
-            type: 'object',
-            description: 'Default model settings for external providers',
-            properties: {
-              provider: {
-                type: 'string',
-                enum: ['codex', 'gemini'],
-                description: 'Default external provider'
-              },
-              codexModel: {
-                type: 'string',
-                default: BUILTIN_EXTERNAL_MODEL_DEFAULTS.codexModel,
-                description: 'Default Codex model'
-              },
-              geminiModel: {
-                type: 'string',
-                default: BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel,
-                description: 'Default Gemini model'
-              },
-              grokModel: {
-                type: 'string',
-                description: 'Default Grok Build model'
-              }
-            }
-          },
-          rolePreferences: {
-            type: 'object',
-            description: 'Provider/model preferences by agent role',
-            additionalProperties: {
-              type: 'object',
-              properties: {
-                provider: { type: 'string', enum: ['codex', 'gemini'] },
-                model: { type: 'string' }
-              },
-              required: ['provider', 'model']
-            }
-          },
-          taskPreferences: {
-            type: 'object',
-            description: 'Provider/model preferences by task type',
-            additionalProperties: {
-              type: 'object',
-              properties: {
-                provider: { type: 'string', enum: ['codex', 'gemini'] },
-                model: { type: 'string' }
-              },
-              required: ['provider', 'model']
-            }
-          },
-          fallbackPolicy: {
-            type: 'object',
-            description: 'Fallback behavior on model failure',
-            properties: {
-              onModelFailure: {
-                type: 'string',
-                enum: ['provider_chain', 'cross_provider', 'claude_only'],
-                default: 'provider_chain',
-                description: 'Fallback strategy when a model fails'
-              },
-              allowCrossProvider: {
-                type: 'boolean',
-                default: false,
-                description: 'Allow fallback to a different provider'
-              },
-              crossProviderOrder: {
-                type: 'array',
-                items: { type: 'string', enum: ['codex', 'gemini'] },
-                default: ['codex', 'gemini'],
-                description: 'Order of providers for cross-provider fallback'
-              }
-            }
-          }
-        }
-      },
-      delegationRouting: {
-        type: 'object',
-        description: 'Delegation routing configuration for external model providers (opt-in feature)',
+        type: "object",
+        description: "Intelligent model routing configuration",
         properties: {
           enabled: {
-            type: 'boolean',
+            type: "boolean",
+            default: true,
+            description: "Enable intelligent model routing",
+          },
+          defaultTier: {
+            type: "string",
+            enum: ["LOW", "MEDIUM", "HIGH"],
+            default: "MEDIUM",
+            description: "Default tier when no rules match",
+          },
+          forceInherit: {
+            type: "boolean",
             default: false,
-            description: 'Enable delegation routing to external providers (Codex, Gemini)'
+            description:
+              "Force all agents to inherit the parent model, bypassing OMC model routing. When true, no model parameter is passed to Task/Agent calls, so agents use the user's Claude Code model setting. Auto-enabled for non-Claude providers (CC Switch, custom ANTHROPIC_BASE_URL), AWS Bedrock, and Google Vertex AI.",
+          },
+        },
+      },
+      externalModels: {
+        type: "object",
+        description: "External model provider configuration (Codex, Gemini, Grok, Antigravity)",
+        properties: {
+          defaults: {
+            type: "object",
+            description: "Default model settings for external providers",
+            properties: {
+              provider: {
+                type: "string",
+                enum: ["codex", "gemini", "antigravity"],
+                description: "Default external provider",
+              },
+              codexModel: {
+                type: "string",
+                default: BUILTIN_EXTERNAL_MODEL_DEFAULTS.codexModel,
+                description: "Default Codex model",
+              },
+              geminiModel: {
+                type: "string",
+                default: BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel,
+                description: "Default Gemini model",
+              },
+              grokModel: {
+                type: "string",
+                description: "Default Grok Build model",
+              },
+              antigravityModel: {
+                type: "string",
+                default: BUILTIN_EXTERNAL_MODEL_DEFAULTS.antigravityModel,
+                description: "Default Antigravity model",
+              },
+            },
+          },
+          rolePreferences: {
+            type: "object",
+            description: "Provider/model preferences by agent role",
+            additionalProperties: {
+              type: "object",
+              properties: {
+                provider: { type: "string", enum: ["codex", "gemini", "antigravity"] },
+                model: { type: "string" },
+              },
+              required: ["provider", "model"],
+            },
+          },
+          taskPreferences: {
+            type: "object",
+            description: "Provider/model preferences by task type",
+            additionalProperties: {
+              type: "object",
+              properties: {
+                provider: { type: "string", enum: ["codex", "gemini", "antigravity"] },
+                model: { type: "string" },
+              },
+              required: ["provider", "model"],
+            },
+          },
+          fallbackPolicy: {
+            type: "object",
+            description: "Fallback behavior on model failure",
+            properties: {
+              onModelFailure: {
+                type: "string",
+                enum: ["provider_chain", "cross_provider", "claude_only"],
+                default: "provider_chain",
+                description: "Fallback strategy when a model fails",
+              },
+              allowCrossProvider: {
+                type: "boolean",
+                default: false,
+                description: "Allow fallback to a different provider",
+              },
+              crossProviderOrder: {
+                type: "array",
+                items: { type: "string", enum: ["codex", "gemini", "antigravity"] },
+                default: ["codex", "gemini"],
+                description: "Order of providers for cross-provider fallback",
+              },
+            },
+          },
+        },
+      },
+      delegationRouting: {
+        type: "object",
+        description:
+          "Delegation routing configuration for external model providers (opt-in feature)",
+        properties: {
+          enabled: {
+            type: "boolean",
+            default: false,
+            description:
+              "Enable delegation routing to external providers (Codex, Gemini)",
           },
           defaultProvider: {
-            type: 'string',
-            enum: ['claude', 'copilot', 'codex', 'gemini'],
-            default: 'copilot',
-            description: 'Default provider for delegation routing when no specific role mapping exists'
+            type: "string",
+            enum: ["claude", "codex", "gemini"],
+            default: "claude",
+            description:
+              "Default provider for delegation routing when no specific role mapping exists",
           },
           roles: {
-            type: 'object',
-            description: 'Provider mappings by agent role',
+            type: "object",
+            description: "Provider mappings by agent role",
             additionalProperties: {
-              type: 'object',
+              type: "object",
               properties: {
-                provider: { type: 'string', enum: ['claude', 'copilot', 'codex', 'gemini'] },
-                tool: { type: 'string', enum: ['Task'] },
-                model: { type: 'string' },
-                agentType: { type: 'string' },
-                fallback: { type: 'array', items: { type: 'string' } }
+                provider: {
+                  type: "string",
+                  enum: ["claude", "codex", "gemini"],
+                },
+                tool: { type: "string", enum: ["Task"] },
+                model: { type: "string" },
+                agentType: { type: "string" },
+                fallback: { type: "array", items: { type: "string" } },
               },
-              required: ['provider', 'tool']
-            }
-          }
-        }
+              required: ["provider", "tool"],
+            },
+          },
+        },
+      },
+      autopilot: {
+        type: "object",
+        description: "/autopilot pipeline and team execution configuration",
+        properties: {
+          planning: {
+            anyOf: [
+              { type: "string", enum: ["ralplan", "direct"] },
+              { type: "boolean", enum: [false] },
+            ],
+            default: "ralplan",
+          },
+          execution: {
+            type: "string",
+            enum: ["team", "solo"],
+            default: "solo",
+          },
+          verification: {
+            anyOf: [
+              {
+                type: "object",
+                properties: {
+                  engine: { type: "string", enum: ["ralph"] },
+                  maxIterations: { type: "integer", minimum: 1 },
+                },
+                required: ["engine", "maxIterations"],
+              },
+              { type: "boolean", enum: [false] },
+            ],
+          },
+          qa: { type: "boolean", default: true },
+          workflows: {
+            type: "object",
+            description:
+              "Named v1 autopilot stage profiles. Project profiles replace same-named user profiles.",
+            propertyNames: {
+              pattern: "^[a-z][a-z0-9-]{0,62}$",
+              not: {
+                enum: [
+                  "autopilot", "ralplan", "execution", "ralph", "qa", "autoresearch", "ultraqa",
+                  "merge-readiness", "self-improve", "ultrawork", "ultrapilot", "swarm", "pipeline",
+                  "plan", "team", "cancel", "deep-interview", "deepsearch", "ultrathink", "tdd",
+                  "code-review", "security-review", "analyze", "search",
+                ],
+              },
+            },
+            additionalProperties: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                version: { type: "integer", enum: [1] },
+                stages: {
+                  type: "array",
+                  enum: [
+                    ["ralplan", "execution"],
+                    ["ralplan", "execution", "ralph"],
+                    ["ralplan", "execution", "qa"],
+                    ["ralplan", "execution", "ralph", "qa"],
+                  ],
+                },
+              },
+              required: ["version", "stages"],
+            },
+          },
+          team: {
+            type: "object",
+            properties: {
+              agentTypes: {
+                type: "array",
+                items: {
+                  type: "string",
+                  enum: ["claude", "codex", "gemini", "grok", "cursor", "antigravity"],
+                },
+                description:
+                  "Preferred CLI worker types for executor-style autopilot team execution tasks",
+              },
+            },
+          },
+        },
       },
       team: {
         type: "object",
@@ -1030,7 +1388,7 @@ export function generateConfigSchema(): object {
               maxAgents: { type: "integer", minimum: 1 },
               defaultAgentType: {
                 type: "string",
-                enum: ["claude", "codex", "gemini", "grok"],
+                enum: ["claude", "codex", "gemini", "grok", "cursor", "antigravity"],
                 default: "claude",
               },
               monitorIntervalMs: { type: "integer", minimum: 1 },
@@ -1044,7 +1402,7 @@ export function generateConfigSchema(): object {
             additionalProperties: {
               type: "object",
               properties: {
-                provider: { type: "string", enum: ["claude", "codex", "gemini", "grok"] },
+                provider: { type: "string", enum: ["claude", "codex", "gemini", "grok", "cursor", "antigravity"] },
                 model: { type: "string" },
                 agent: { type: "string" },
               },
@@ -1052,6 +1410,6 @@ export function generateConfigSchema(): object {
           },
         },
       },
-    }
+    },
   };
 }

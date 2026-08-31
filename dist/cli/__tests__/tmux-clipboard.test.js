@@ -25,10 +25,10 @@ describe('tmux clipboard configuration', () => {
                 return 'xterm*:clipboard:focus\n';
             return '';
         });
-        configureTmuxClipboardForSession('omcp-session', { stripTmux: true, stdio: 'ignore' });
-        expect(mocks.tmuxExec).toHaveBeenCalledWith(['set-option', '-t', 'omcp-session', 'set-clipboard', 'on'], { stripTmux: true, stdio: 'ignore' });
-        expect(mocks.tmuxExec).toHaveBeenCalledWith(['show-options', '-t', 'omcp-session', '-v', 'terminal-features'], { stripTmux: true, stdio: 'ignore' });
-        expect(mocks.tmuxExec).toHaveBeenCalledWith(['set-option', '-at', 'omcp-session', 'terminal-features', ',*:clipboard'], { stripTmux: true, stdio: 'ignore' });
+        configureTmuxClipboardForSession('omc-session', { stripTmux: true, stdio: 'ignore' });
+        expect(mocks.tmuxExec).toHaveBeenCalledWith(['set-option', '-t', 'omc-session', 'set-clipboard', 'on'], { stripTmux: true, stdio: 'ignore' });
+        expect(mocks.tmuxExec).toHaveBeenCalledWith(['show-options', '-t', 'omc-session', '-v', 'terminal-features'], { stripTmux: true, stdio: 'ignore' });
+        expect(mocks.tmuxExec).toHaveBeenCalledWith(['set-option', '-at', 'omc-session', 'terminal-features', ',*:clipboard'], { stripTmux: true, stdio: 'ignore' });
     });
     it('does not append terminal-features when universal clipboard is already present', () => {
         mocks.tmuxExec.mockImplementation((args) => {
@@ -36,8 +36,8 @@ describe('tmux clipboard configuration', () => {
                 return '*:clipboard\n';
             return '';
         });
-        configureTmuxClipboardForSession('omcp-session');
-        expect(mocks.tmuxExec).not.toHaveBeenCalledWith(['set-option', '-at', 'omcp-session', 'terminal-features', ',*:clipboard'], expect.anything());
+        configureTmuxClipboardForSession('omc-session');
+        expect(mocks.tmuxExec).not.toHaveBeenCalledWith(['set-option', '-at', 'omc-session', 'terminal-features', ',*:clipboard'], expect.anything());
     });
     it('resolves the current tmux session before applying current-session clipboard settings', () => {
         mocks.tmuxExec.mockImplementation((args) => {
@@ -58,9 +58,9 @@ describe('tmux clipboard configuration', () => {
                 return { stdout: 'screen*:title\n', stderr: '' };
             return { stdout: '', stderr: '' };
         });
-        await configureTmuxClipboardForSessionAsync('omcp-team');
-        expect(mocks.tmuxExecAsync).toHaveBeenCalledWith(['set-option', '-t', 'omcp-team', 'set-clipboard', 'on'], undefined);
-        expect(mocks.tmuxExecAsync).toHaveBeenCalledWith(['set-option', '-at', 'omcp-team', 'terminal-features', ',*:clipboard'], undefined);
+        await configureTmuxClipboardForSessionAsync('omc-team');
+        expect(mocks.tmuxExecAsync).toHaveBeenCalledWith(['set-option', '-t', 'omc-team', 'set-clipboard', 'on'], undefined);
+        expect(mocks.tmuxExecAsync).toHaveBeenCalledWith(['set-option', '-at', 'omc-team', 'terminal-features', ',*:clipboard'], undefined);
     });
 });
 //# sourceMappingURL=tmux-clipboard.test.js.map

@@ -9,15 +9,15 @@ import { tmpdir } from 'node:os';
 import { getDataDir } from '../../utils/paths.js';
 
 /**
- * Get the Copilot CLI storage directory
+ * Get the Claude Code storage directory
  */
-function getCopilotStorageDir(): string {
-  return join(getDataDir(), 'copilot-cli', 'storage');
+function getClaudeCodeStorageDir(): string {
+  return join(getDataDir(), 'claude-code', 'storage');
 }
 
-export const COPILOT_CODE_STORAGE = getCopilotStorageDir();
-export const MESSAGE_STORAGE = join(COPILOT_CODE_STORAGE, 'message');
-export const PART_STORAGE = join(COPILOT_CODE_STORAGE, 'part');
+export const CLAUDE_CODE_STORAGE = getClaudeCodeStorageDir();
+export const MESSAGE_STORAGE = join(CLAUDE_CODE_STORAGE, 'message');
+export const PART_STORAGE = join(CLAUDE_CODE_STORAGE, 'part');
 
 /**
  * Debug logging configuration

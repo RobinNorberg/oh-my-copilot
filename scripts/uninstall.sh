@@ -13,16 +13,19 @@ NC='\033[0m'
 echo -e "${BLUE}Oh-My-Copilot Uninstaller${NC}"
 echo ""
 
-# Copilot CLI config directory (always ~/.copilot)
-COPILOT_CONFIG_DIR="$HOME/.copilot"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/lib/config-dir.sh"
+
+# Claude Code config directory (defaults to ~/.claude)
+COPILOT_CONFIG_DIR="$(resolve_claude_config_dir)"
 
 echo "This will remove ALL OMC components from:"
 echo "  $COPILOT_CONFIG_DIR"
 echo ""
 echo "Components to be removed:"
 echo "  - Agents (architect, document-specialist, explore, etc. + legacy aliases)"
-echo "  - Commands (omc, ultrawork, plan, etc.)"
-echo "  - Skills (ultrawork, git-master, frontend-ui-ux)"
+echo "  - Commands (omc, plan, etc. + retired legacy commands)"
+echo "  - Skills (git-master, frontend-ui-ux, etc. + retired legacy skills)"
 echo "  - Hooks (keyword-detector, silent-auto-update, stop-continuation)"
 echo "  - Version and state files"
 echo "  - Hook configurations from settings.json"
@@ -87,10 +90,10 @@ rm -f "$COPILOT_CONFIG_DIR/hooks/silent-auto-update.sh"
 
 # Remove version, state, and config files
 echo -e "${BLUE}Removing state and config files...${NC}"
-rm -f "$COPILOT_CONFIG_DIR/.omg-version.json"
-rm -f "$COPILOT_CONFIG_DIR/.omg-silent-update.json"
-rm -f "$COPILOT_CONFIG_DIR/.omg-update.log"
-rm -f "$COPILOT_CONFIG_DIR/.omg-config.json"
+rm -f "$COPILOT_CONFIG_DIR/.omc-version.json"
+rm -f "$COPILOT_CONFIG_DIR/.omc-silent-update.json"
+rm -f "$COPILOT_CONFIG_DIR/.omc-update.log"
+rm -f "$COPILOT_CONFIG_DIR/.omc-config.json"
 
 # Remove hook configurations from settings.json
 SETTINGS_FILE="$COPILOT_CONFIG_DIR/settings.json"
@@ -151,18 +154,18 @@ else
     fi
 fi
 
-# Remove .omg directory if it exists (plans, notepads, drafts)
-if [ -d "$COPILOT_CONFIG_DIR/../.omg" ] || [ -d ".omg" ]; then
-    echo -e "${YELLOW}Note: .omg directory (plans/notepads) was not removed.${NC}"
+# Remove .omc directory if it exists (plans, notepads, drafts)
+if [ -d "$COPILOT_CONFIG_DIR/../.omc" ] || [ -d ".omg" ]; then
+    echo -e "${YELLOW}Note: .omc directory (plans/notepads) was not removed.${NC}"
     echo "  To remove project plans and notepads, run:"
-    echo "    rm -rf .omg"
+    echo "    rm -rf .omc"
 fi
 
 echo ""
 echo -e "${GREEN}Uninstallation complete!${NC}"
 echo ""
 echo -e "${YELLOW}Items NOT removed (manual cleanup if desired):${NC}"
-echo "  - copilot-instructions.md: rm $COPILOT_CONFIG_DIR/copilot-instructions.md"
+echo "  - CLAUDE.md: rm $COPILOT_CONFIG_DIR/CLAUDE.md"
 echo "  - settings.json backup: rm $COPILOT_CONFIG_DIR/settings.json.bak"
 echo ""
 echo "To verify complete removal, check:"

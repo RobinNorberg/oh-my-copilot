@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, parse } from 'node:path';
 import { validateWorktreeRemovalTarget } from '../worktree-cleanup-safety.js';
@@ -66,8 +66,8 @@ describe('validateWorktreeRemovalTarget', () => {
             expectedRoots: [root],
             mainRepoRoots: [join(root, 'main-repo')],
         });
-        expect(result.resolvedPath).toBe(worktree);
-        expect(result.matchedRoot).toBe(root);
+        expect(result.resolvedPath).toBe(realpathSync(worktree));
+        expect(result.matchedRoot).toBe(realpathSync(root));
     });
 });
 //# sourceMappingURL=worktree-cleanup-safety.test.js.map

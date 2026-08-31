@@ -11,10 +11,11 @@
  * Polls task files, builds prompts, spawns CLI processes, reports results.
  */
 
-import { spawn, execSync, ChildProcess } from "child_process";
+import { spawn, execFileSync, ChildProcess } from "child_process";
 import { existsSync, openSync, readSync, closeSync } from "fs";
 import { join } from "path";
 import { writeFileWithMode, ensureDirWithMode } from "./fs-utils.js";
+import { getOmcRoot } from "../lib/worktree-paths.js";
 import type {
   BridgeConfig,
   TaskFile,
@@ -80,48 +81,6 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Allowlist of environment variables safe to pass to child processes.
- * This prevents leaking sensitive variables like ANTHROPIC_API_KEY, GITHUB_TOKEN, etc.
- */
-const ENV_ALLOWLIST = [
-  // Core system paths
-  'PATH', 'HOME', 'USERPROFILE',
-  // User identification
-  'USER', 'USERNAME', 'LOGNAME',
-  // Locale settings
-  'LANG', 'LC_ALL', 'LC_CTYPE',
-  // Terminal/tmux
-  'TERM', 'TMUX', 'TMUX_PANE',
-  // Temp directories
-  'TMPDIR', 'TMP', 'TEMP',
-  // XDG directories (Linux)
-  'XDG_RUNTIME_DIR', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME',
-  // Shell
-  'SHELL',
-  // Node.js
-  'NODE_ENV',
-  // Proxy settings
-  'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy',
-  // Windows system
-  'SystemRoot', 'SYSTEMROOT', 'windir', 'COMSPEC',
-] as const;
-
-/**
- * Create a minimal environment for child processes.
- * Only includes allowlisted variables to prevent credential leakage.
- */
-function createMinimalEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const key of ENV_ALLOWLIST) {
-    if (process.env[key] !== undefined) {
-      env[key] = process.env[key];
-    }
-  }
-  return env;
-}
-
-
-/**
  * Capture a snapshot of tracked/modified/untracked files in the working directory.
  * Uses `git status --porcelain` + `git ls-files --others --exclude-standard`.
  * Returns a Set of relative file paths that currently exist or are modified.
@@ -130,10 +89,11 @@ export function captureFileSnapshot(cwd: string): Set<string> {
   const files = new Set<string>();
   try {
     // Get all tracked files that are modified, added, or staged
-    const statusOutput = execSync("git status --porcelain", {
+    const statusOutput = execFileSync("git", ["status", "--porcelain"], {
       cwd,
       encoding: "utf-8",
       timeout: 10000,
+      windowsHide: true,
     });
     for (const line of statusOutput.split("\n")) {
       if (!line.trim()) continue;
@@ -146,9 +106,10 @@ export function captureFileSnapshot(cwd: string): Set<string> {
     }
 
     // Get untracked files
-    const untrackedOutput = execSync(
-      "git ls-files --others --exclude-standard",
-      { cwd, encoding: "utf-8", timeout: 10000 },
+    const untrackedOutput = execFileSync(
+      "git",
+      ["ls-files", "--others", "--exclude-standard"],
+      { cwd, encoding: "utf-8", timeout: 10000, windowsHide: true },
     );
     for (const line of untrackedOutput.split("\n")) {
       if (line.trim()) files.add(line.trim());
@@ -364,7 +325,7 @@ function writePromptFile(
   taskId: string,
   prompt: string,
 ): string {
-  const dir = join(config.workingDirectory, ".omcp", "prompts");
+  const dir = join(getOmcRoot(config.workingDirectory), "prompts");
   ensureDirWithMode(dir);
   const filename = `team-${config.teamName}-task-${taskId}-${Date.now()}.md`;
   const filePath = join(dir, filename);
@@ -374,7 +335,7 @@ function writePromptFile(
 
 /** Get output file path for a task */
 function getOutputPath(config: BridgeConfig, taskId: string): string {
-  const dir = join(config.workingDirectory, ".omcp", "outputs");
+  const dir = join(getOmcRoot(config.workingDirectory), "outputs");
   ensureDirWithMode(dir);
   const suffix = Math.random().toString(36).slice(2, 8);
   return join(
