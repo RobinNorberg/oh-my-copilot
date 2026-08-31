@@ -4,7 +4,7 @@ projection: coordinator
 sourceRevision: 2026-08-13.1
 overlay.provider: none
 overlay.modelTier: none
-sha256: 792614403b5edf077c985160db28fb6def407ea330bb6cd15fbb4ba7771edd00
+sha256: 8aba0dc19120c97697ff7e572c02c35e3eef055facce416cdedbedeaa44ac1d0
 Regenerate: npm run prompt-ssot:build. Do not edit by hand.
 -->
 
@@ -61,7 +61,7 @@ Hard checks fail closed only for: secrets/privacy, destructive mutation, release
 Unknown failures default to advisory during migration and must be classified before any legacy removal.
 
 ## Release Authority
-Never tag, publish, cut a release, or mutate protected branches. Release authority is maintainer-only via `omc release`; everything else is a compatibility alias during migration.
+Never tag, publish, cut a release, or mutate protected branches. Release authority is maintainer-only via `omg release`; everything else is a compatibility alias during migration.
 
 ## Workflow: Deep Interview (Tier-0)
 Socratic ambiguity-gated requirements intake — a distinct Tier-0 workflow, not an alias.

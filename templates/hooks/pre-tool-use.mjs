@@ -421,7 +421,7 @@ function workerCommandViolation(command) {
     return 'Team worker cannot run tmux pane/session orchestration commands.';
   }
   if (WORKER_BLOCKED_TEAM_CLI_PATTERN.test(command)) {
-    return 'Team worker cannot run team orchestration commands (except `omc team api ...`).';
+    return 'Team worker cannot run team orchestration commands (except `omg team api ...`).';
   }
   if (WORKER_BLOCKED_SKILL_PATTERN.test(command)) {
     return 'Team worker cannot invoke orchestration skills (`$team`, `$autopilot`, `$ralph`).';

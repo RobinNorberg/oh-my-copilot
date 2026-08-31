@@ -19,7 +19,7 @@ const SHOULD_USE_WINDOWS_SHELL = process.platform === 'win32';
 // (google-antigravity/antigravity-cli#76) that, beyond the empty-exit-0 case,
 // can hang indefinitely — and agy's own `--print-timeout` flag is non-functional.
 // Bound the subprocess ourselves so a hang fails cleanly instead of blocking the
-// whole `omc ask` / `/ccg` flow forever. Generous so it never trips a real answer.
+// whole `omg ask` / `/ccg` flow forever. Generous so it never trips a real answer.
 // The kill MUST be SIGKILL: spawnSync does not return until the child exits, so a
 // catchable SIGTERM would let a signal-trapping agy hang past the timeout.
 const ANTIGRAVITY_TIMEOUT_DEFAULT_MS = 300000;
@@ -115,7 +115,7 @@ const ASK_ORIGINAL_TASK_ENV = 'OMC_ASK_ORIGINAL_TASK';
 const ASK_ORIGINAL_TASK_ENV_ALIAS = 'OMX_ASK_ORIGINAL_TASK';
 
 function usage() {
-  console.error('Usage: omc ask <claude|codex|gemini|antigravity|grok|cursor> "<prompt>"');
+  console.error('Usage: omg ask <claude|codex|gemini|antigravity|grok|cursor> "<prompt>"');
   console.error('Legacy direct usage: node scripts/run-provider-advisor.js <claude|codex|gemini|antigravity|grok|cursor> <prompt...>');
   console.error('                 or: node scripts/run-provider-advisor.js claude --print "<prompt>"');
   console.error('                 or: node scripts/run-provider-advisor.js gemini --prompt "<prompt>"');
@@ -189,7 +189,7 @@ function guardProviderPlatform(provider) {
     console.error('[ask-antigravity] Antigravity CLI (agy) headless mode is not supported on Windows yet:');
     console.error('[ask-antigravity]   agy --print takes the prompt as an argv value (it cannot read stdin),');
     console.error('[ask-antigravity]   and agy has known Windows -p/--print stdout limitations upstream.');
-    console.error('[ask-antigravity] Run `omc ask antigravity` on macOS/Linux, or use `omc ask gemini` on Windows.');
+    console.error('[ask-antigravity] Run `omg ask antigravity` on macOS/Linux, or use `omg ask gemini` on Windows.');
     process.exit(1);
   }
 }
