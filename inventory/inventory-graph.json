@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "38718484b68c14cd463555b2772d30f36b29240f",
-    "sourceSha256": "435d01ac128d8bd9dcdd73cdc26941666a822c73bf47f68498d0dd5f0658548c",
+    "head": "a72102ce45041f9e1d162ff16f6a7888825b5103",
+    "sourceSha256": "9129fe490b5c57210fbb95eef3f539d89937ad9877fecbbf4796b726568db149",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "38718484b68c14cd463555b2772d30f36b29240f",
-  "sourceSha256": "435d01ac128d8bd9dcdd73cdc26941666a822c73bf47f68498d0dd5f0658548c",
+  "head": "a72102ce45041f9e1d162ff16f6a7888825b5103",
+  "sourceSha256": "9129fe490b5c57210fbb95eef3f539d89937ad9877fecbbf4796b726568db149",
   "counts": {
     "public": {
       "skills": 46,
@@ -67582,6 +67582,11 @@
       },
       {
         "from": "src/mcp/team-server.ts",
+        "to": "src/utils/omc-cli-rendering.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/team-server.ts",
         "to": "src/utils/paths.ts",
         "kind": "imports"
       },
@@ -79103,11 +79108,11 @@
     ],
     "stats": {
       "nodeCount": 7158,
-      "edgeCount": 7346,
-      "importEdgeCount": 6027,
+      "edgeCount": 7347,
+      "importEdgeCount": 6028,
       "registerEdgeCount": 67
     }
   },
   "inventorySha256": "31e010081ab6664779db28d1fcc4e9a61e1b68ef3ffcc9a8075e814987f2f5bb",
-  "manifestSha256": "0e05486a94628e5d02975103b8ce2e7c4471306bf79dad2513f36ecf2dad303c"
+  "manifestSha256": "25daaf0f6d7425d824354e0e7e220df0598f1a7257a1eeb6c0e3e0791e4cfa62"
 }
