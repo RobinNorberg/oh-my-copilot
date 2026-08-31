@@ -3,7 +3,7 @@
  *
  * Background: prior to this fix, the function read `settings.plugins`, but
  * Claude Code 1.x writes the canonical field as `settings.enabledPlugins`.
- * As a result, `omc update`/`omc setup` invoked from a regular shell (where
+ * As a result, `omg update`/`omg setup` invoked from a regular shell (where
  * `CLAUDE_PLUGIN_ROOT` is unset) saw "no plugin enabled" and bypassed the
  * `prunePluginDuplicateSkills` branch entirely, leaving every user with a
  * Claude Code 1.x settings.json permanently stuck in the duplicate-skill

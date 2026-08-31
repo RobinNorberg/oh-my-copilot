@@ -36,27 +36,27 @@ async function initTeamState(teamName, wd) {
 describe('teamCommand help output', () => {
     it('prints team help for --help', async () => {
         const logs = await captureLog(() => teamCommand(['--help']));
-        expect(logs[0]).toContain('omc team api <operation>');
+        expect(logs[0]).toContain('omg team api <operation>');
     });
     it('prints team help for help alias', async () => {
         const logs = await captureLog(() => teamCommand(['help']));
-        expect(logs[0]).toContain('omc team api <operation>');
+        expect(logs[0]).toContain('omg team api <operation>');
     });
-    it('prints api help for omc team api --help', async () => {
+    it('prints api help for omg team api --help', async () => {
         const logs = await captureLog(() => teamCommand(['api', '--help']));
         expect(logs[0]).toContain('Supported operations');
         expect(logs[0]).toContain('send-message');
         expect(logs[0]).toContain('transition-task-status');
     });
-    it('prints operation-specific help for omc team api <op> --help', async () => {
+    it('prints operation-specific help for omg team api <op> --help', async () => {
         const logs = await captureLog(() => teamCommand(['api', 'send-message', '--help']));
-        expect(logs[0]).toContain('Usage: omc team api send-message');
+        expect(logs[0]).toContain('Usage: omg team api send-message');
         expect(logs[0]).toContain('from_worker');
         expect(logs[0]).toContain('to_worker');
     });
-    it('prints operation-specific help for omc team api --help <op>', async () => {
+    it('prints operation-specific help for omg team api --help <op>', async () => {
         const logs = await captureLog(() => teamCommand(['api', '--help', 'claim-task']));
-        expect(logs[0]).toContain('Usage: omc team api claim-task');
+        expect(logs[0]).toContain('Usage: omg team api claim-task');
         expect(logs[0]).toContain('expected_version');
     });
 });
@@ -125,7 +125,7 @@ describe('teamCommand api operations', () => {
         const envelope = JSON.parse(logs[0]);
         expect(envelope.schema_version).toBe('1.0');
         expect(envelope.ok).toBe(true);
-        expect(envelope.command).toBe('omc team api send-message');
+        expect(envelope.command).toBe('omg team api send-message');
         expect(envelope.data.message.body).toBe('ACK');
     });
     it('supports claim-safe lifecycle: create -> claim -> transition', async () => {
@@ -194,7 +194,7 @@ describe('teamCommand api operations', () => {
             console.error = (...args) => errors.push(args.map(String).join(' '));
             process.env.OMC_TEAM_WORKER = 'demo-team/worker-1';
             const logs = await captureLog(() => teamCommand(['1:executor', 'do work']));
-            expect(logs.join('\n')).not.toContain('Usage: omc team');
+            expect(logs.join('\n')).not.toContain('Usage: omg team');
             expect(errors.join('\n')).toContain('nested_teams_allowed is false');
             expect(process.exitCode).toBe(1);
         }
@@ -211,7 +211,7 @@ describe('teamCommand api operations', () => {
             console.error = (...args) => errors.push(args.map(String).join(' '));
             const logs = await captureLog(() => teamCommand(['1:claude:executor:extra', 'do work']));
             expect(errors.join('\n')).toContain('Invalid worker spec "1:claude:executor:extra"');
-            expect(logs.join('\n')).not.toContain('Usage: omc team');
+            expect(logs.join('\n')).not.toContain('Usage: omg team');
             expect(process.exitCode).toBe(1);
         }
         finally {

@@ -1,8 +1,8 @@
 /**
- * Tests for omc update --force-hooks protection (issue #722)
+ * Tests for omg update --force-hooks protection (issue #722)
  *
  * Verifies that the hook merge logic in install() correctly:
- *   - merges OMC hooks with existing non-OMC hooks during `omc update` (force=true)
+ *   - merges OMC hooks with existing non-OMC hooks during `omg update` (force=true)
  *   - warns when non-OMC hooks are present
  *   - only fully replaces when --force-hooks is explicitly set
  *
@@ -124,7 +124,7 @@ describe('isOmcHook()', () => {
 // ---------------------------------------------------------------------------
 // Hook merge logic tests
 // ---------------------------------------------------------------------------
-describe('Hook merge during omc update', () => {
+describe('Hook merge during omg update', () => {
     describe('no force flags — skip behaviour', () => {
         it('skips an already-configured OMC-only event type', () => {
             const existing = [omcGroup(OMC_CMD)];
@@ -145,7 +145,7 @@ describe('Hook merge during omc update', () => {
             expect(logMessages[0]).toMatch(/--force-hooks/);
         });
     });
-    describe('force=true — merge behaviour (omc update path)', () => {
+    describe('force=true — merge behaviour (omg update path)', () => {
         it('replaces OMC hooks when event type has only OMC hooks', () => {
             const existing = [omcGroup(OMC_CMD)];
             const newOmc = [omcGroup(NEW_OMC_CMD)];

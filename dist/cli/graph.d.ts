@@ -8,7 +8,7 @@ import { Command } from 'commander';
 /**
  * Returns the `graph` command:
  *
- *   omc graph run <descriptorPath> [--runs-root <dir>]
+ *   omg graph run <descriptorPath> [--runs-root <dir>]
  */
 export declare function graphCommand(): Command;
 //# sourceMappingURL=graph.d.ts.map

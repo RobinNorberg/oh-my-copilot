@@ -124,12 +124,12 @@ describe('setup-progress.mjs', () => {
         // The legacy file is copied, never moved, so nothing is destroyed.
         expect(existsSync(join(legacyDir, '.omc-config.json'))).toBe(true);
     });
-    it('resolves the omc version binary from PATH, never from the working directory', () => {
+    it('resolves the omg version binary from PATH, never from the working directory', () => {
         // cmd.exe and where.exe both search the current directory first, so a
-        // cloned repository carrying an omc.cmd would otherwise run during setup.
+        // cloned repository carrying an omg.cmd would otherwise run during setup.
         const { root, project, configDir } = makeWorkspace('omc-progress-cwd-omc-');
         const marker = join(root, 'planted-omc-ran.txt');
-        const planted = process.platform === 'win32' ? 'omc.cmd' : 'omc';
+        const planted = process.platform === 'win32' ? 'omg.cmd' : 'omg';
         writeFileSync(join(project, planted), process.platform === 'win32'
             ? `@echo off\r\n> "${marker}" echo ran\r\necho 9.9.9-planted\r\n`
             : `#!/bin/sh\necho ran > "${marker}"\necho 9.9.9-planted\n`, process.platform === 'win32' ? undefined : { mode: 0o755 });

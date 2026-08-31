@@ -2,7 +2,7 @@
  * OMC HUD - Hostname Element
  *
  * Renders the current machine's short hostname. Useful when running
- * `omc` via SSH across multiple machines — the hostname in the HUD
+ * `omg` via SSH across multiple machines — the hostname in the HUD
  * prevents accidentally running destructive commands on the wrong
  * host when terminal tab titles are hidden behind tmux/screen splits.
  */

@@ -4,10 +4,10 @@
  * Auto-resume Claude Code sessions when rate limits reset.
  *
  * Usage:
- *   omc wait status         - Show current rate limit status
- *   omc wait daemon start   - Start the background daemon
- *   omc wait daemon stop    - Stop the daemon
- *   omc wait detect         - Scan for blocked Claude Code sessions
+ *   omg wait status         - Show current rate limit status
+ *   omg wait daemon start   - Start the background daemon
+ *   omg wait daemon stop    - Stop the daemon
+ *   omg wait detect         - Scan for blocked Claude Code sessions
  */
 export type { RateLimitStatus, TmuxPane, PaneAnalysisResult, BlockedPane, DaemonState, DaemonConfig, ResumeResult, DaemonCommand, DaemonResponse, } from './types.js';
 export { checkRateLimitStatus, formatTimeUntilReset, formatRateLimitStatus, isRateLimitStatusDegraded, shouldMonitorBlockedPanes, } from './rate-limit-monitor.js';

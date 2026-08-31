@@ -11,11 +11,11 @@ import { dirname, join } from 'node:path';
 import { ALIAS_REGISTRY, assertAliasRegistryIntegrity } from '../../alias-retirement/registry.js';
 import { verifyAllAliases, summarizeReceipts } from '../../alias-retirement/verifier.js';
 import { buildClosureReport, summarizeClosureForEvidence } from '../../alias-retirement/closure.js';
-export const ALIAS_RETIREMENT_HELP = `omc alias-retirement - Alias retirement verifier and generated-closure inventory (issue #3711)
+export const ALIAS_RETIREMENT_HELP = `omg alias-retirement - Alias retirement verifier and generated-closure inventory (issue #3711)
 
 Usage:
-  omc alias-retirement verify [options]   Verify all aliases against the retirement contract (default)
-  omc alias-retirement help               Show this help
+  omg alias-retirement verify [options]   Verify all aliases against the retirement contract (default)
+  omg alias-retirement help               Show this help
 
 Options:
   --json                                 Machine-readable JSON output

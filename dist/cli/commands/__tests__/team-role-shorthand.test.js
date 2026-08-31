@@ -66,14 +66,14 @@ describe('teamCommand role-only shorthand', () => {
             ],
         }));
         expect(logSpy).toHaveBeenCalledWith('Team started: fix-the-bug');
-        expect(logSpy.mock.calls.flat().join('\n')).not.toContain('Usage: omc team');
+        expect(logSpy.mock.calls.flat().join('\n')).not.toContain('Usage: omg team');
     });
     it('surfaces startup failures without appending the generic team usage block', async () => {
         runtimeV2Mocks.startTeamV2.mockRejectedValueOnce(new Error('leader_worktree_dirty: commit or stash changes before launch'));
         const { teamCommand } = await import('../team.js');
         await teamCommand(['1:claude:executor', 'reply with exactly: PONG']);
         expect(errorSpy).toHaveBeenCalledWith('leader_worktree_dirty: commit or stash changes before launch');
-        expect(logSpy.mock.calls.flat().join('\n')).not.toContain('Usage: omc team');
+        expect(logSpy.mock.calls.flat().join('\n')).not.toContain('Usage: omg team');
         expect(process.exitCode).toBe(1);
     });
     it('routes `N:executor` through claude agent types plus executor worker roles', async () => {

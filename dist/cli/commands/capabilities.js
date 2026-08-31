@@ -97,7 +97,7 @@ export function collectCapabilitySurface(root = packageRoot()) {
         .sort((a, b) => a.name.localeCompare(b.name));
     return {
         schemaVersion: CAPABILITIES_LOCK_SCHEMA_VERSION,
-        generatedBy: 'omc capabilities',
+        generatedBy: 'omg capabilities',
         contract: {
             runner: 'deterministic-local',
             liveProbeCompatible: true,
@@ -231,7 +231,7 @@ export function buildCapabilitiesLockfile() {
     const fixtures = defaultCapabilityFixtures(surface);
     return {
         schemaVersion: CAPABILITIES_LOCK_SCHEMA_VERSION,
-        generatedBy: 'omc capabilities lock',
+        generatedBy: 'omg capabilities lock',
         surfaceDigest: digestCapabilitySurface(surface),
         surface,
         fixtures,

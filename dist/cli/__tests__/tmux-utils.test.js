@@ -459,7 +459,7 @@ describe('HUD pane tmux server targeting', () => {
     it('creates HUD panes against the current tmux server', () => {
         vi.stubEnv('TMUX', '/tmp/tmux-100/default,123,0');
         mockedExecFileSync.mockReturnValue('%12\n');
-        expect(createHudWatchPane('/tmp/project', 'omc hud --watch')).toBe('%12');
+        expect(createHudWatchPane('/tmp/project', 'omg hud --watch')).toBe('%12');
         const lastCall = mockedExecFileSync.mock.calls.at(-1);
         expect(lastCall?.[1]?.[0]).toBe('split-window');
         expect(lastCall?.[2]?.env?.TMUX).toBe('/tmp/tmux-100/default,123,0');

@@ -458,7 +458,7 @@ function getMissingDependencyIds(task, taskById) {
 // ---------------------------------------------------------------------------
 /**
  * Build the initial task instruction for v2 workers.
- * Workers use `omc team api` CLI commands for all lifecycle transitions.
+ * Workers use `omg team api` CLI commands for all lifecycle transitions.
  */
 function buildV2TaskInstruction(teamName, workerName, task, taskId, agentType, cliOutputContract) {
     const claimTaskCommand = formatOmcCliInvocation(`team api claim-task --input '${JSON.stringify({ team_name: teamName, task_id: taskId, worker: workerName })}' --json`, {});

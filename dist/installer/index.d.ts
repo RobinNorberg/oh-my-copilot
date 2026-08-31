@@ -51,7 +51,7 @@ export interface InstallOptions {
     /**
      * Dev plugin-dir mode: skip copying agents and bundled skills into
      * `<configDir>` because the user is launching OMC via
-     * `claude --plugin-dir <path>` (or `omc --plugin-dir <path>`) and the
+     * `claude --plugin-dir <path>` (or `omg --plugin-dir <path>`) and the
      * plugin already provides them at runtime. HUD, hooks, CLAUDE.md, and
      * `.omc-config.json` are still installed. Mutually exclusive with
      * `noPlugin` (the CLI gives `noPlugin` precedence).
@@ -150,7 +150,7 @@ export declare function cleanupStaleSkills(log: (msg: string) => void, options?:
  * Remove standalone skill directories that duplicate plugin-provided skills.
  *
  * When the plugin is the canonical skill source, standalone copies in
- * ~/.claude/skills/ from a prior `omc setup` cause every command to appear
+ * ~/.claude/skills/ from a prior `omg setup` cause every command to appear
  * twice (#2252). This function removes standalone copies whose SKILL.md
  * content-hashes match any installed plugin version, preserving user-authored
  * skills that happen to share a name.

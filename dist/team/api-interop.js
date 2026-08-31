@@ -205,12 +205,12 @@ export function resolveTeamApiCliCommand(env = process.env) {
     const hasOmcContext = ((typeof env.OMC_TEAM_WORKER === 'string' && env.OMC_TEAM_WORKER.trim() !== '')
         || (typeof env.OMC_TEAM_STATE_ROOT === 'string' && env.OMC_TEAM_STATE_ROOT.trim() !== ''));
     if (hasOmcContext)
-        return 'omc team api';
+        return 'omg team api';
     const hasOmxContext = ((typeof env.OMX_TEAM_WORKER === 'string' && env.OMX_TEAM_WORKER.trim() !== '')
         || (typeof env.OMX_TEAM_STATE_ROOT === 'string' && env.OMX_TEAM_STATE_ROOT.trim() !== ''));
     if (hasOmxContext)
         return 'omx team api';
-    return 'omc team api';
+    return 'omg team api';
 }
 /**
  * Classify team configs BEFORE relying on canonicalized shape.

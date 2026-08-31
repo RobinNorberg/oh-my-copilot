@@ -114,7 +114,7 @@ Unknown failures default to advisory during migration and must be classified bef
         owner: 'prompt-ssot-owner',
         version: 1,
         body: `## Release Authority
-Never tag, publish, cut a release, or mutate protected branches. Release authority is maintainer-only via \`omc release\`; everything else is a compatibility alias during migration.`,
+Never tag, publish, cut a release, or mutate protected branches. Release authority is maintainer-only via \`omg release\`; everything else is a compatibility alias during migration.`,
     },
     // ---------------------------------------------------------- role deltas
     {

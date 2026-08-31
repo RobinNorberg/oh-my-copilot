@@ -81,7 +81,7 @@ describe('Tier-0 contract docs consistency', () => {
         expect(agentsDoc).toContain('# oh-my-copilot - Intelligent Multi-Agent Orchestration');
         expect(agentsDoc).toContain('You are running with oh-my-copilot (OMC), a multi-agent orchestration layer for Claude Code.');
         expect(agentsDoc).toContain('`.omg/state/`');
-        expect(agentsDoc).toContain('Run `omc setup` to install all components. Run `omc doctor` to verify installation.');
+        expect(agentsDoc).toContain('Run `omg setup` to install all components. Run `omg doctor` to verify installation.');
         expect(agentsDoc).not.toContain('oh-my-codex');
         expect(agentsDoc).not.toContain('OMX_TEAM_WORKER_LAUNCH_ARGS');
         expect(agentsDoc).not.toContain('gpt-5.3-codex-spark');

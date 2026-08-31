@@ -1,5 +1,5 @@
 /**
- * Real commander-pipeline tests for `omc setup --plugin-dir-mode` and the
+ * Real commander-pipeline tests for `omg setup --plugin-dir-mode` and the
  * OMC_PLUGIN_ROOT auto-detection precedence.
  *
  * These tests drive the *actual* commander program built by `src/cli/index.ts`
@@ -91,7 +91,7 @@ function lastInstallOptions() {
 function loggedText() {
     return logSpy.mock.calls.map((c) => c.join(' ')).join('\n');
 }
-describe('omc setup commander pipeline — pluginDirMode precedence', () => {
+describe('omg setup commander pipeline — pluginDirMode precedence', () => {
     it('1. --plugin-dir-mode flag → pluginDirMode=true', async () => {
         await runSetup(['--plugin-dir-mode', '--quiet']);
         expect(lastInstallOptions().pluginDirMode).toBe(true);
