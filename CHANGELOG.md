@@ -2,7 +2,7 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
-## [5.0.0] - 2026-08-31 - 2026-08-31
+## [5.0.0] - 2026-08-31
 
 The fork was at v4.13.102. It has now been rebased onto upstream
 `yeachan-heo/oh-my-claudecode` v5.0.2 and is being released as the fork's own
