@@ -838,9 +838,13 @@ function isWorkflowTimestamp(value) {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
 
+/** Windows file ids run past the safe integer range, so identities carry device and inode as decimal strings; states written as numbers still validate. */
+function isWorkflowFileId(value) { return typeof value === "string" ? /^\d+$/.test(value) : Number.isSafeInteger(value) && value >= 0; }
+function sameWorkflowFileId(left, right) { return String(left) === String(right); }
+
 function isWorkflowFileIdentity(value) {
   return hasExactWorkflowKeys(value, ["device", "inode", "size", "mtimeNs", "ctimeNs", "contentSha256"]) &&
-    [value.device, value.inode, value.size].every((field) => Number.isSafeInteger(field) && field >= 0) &&
+    isWorkflowFileId(value.device) && isWorkflowFileId(value.inode) && Number.isSafeInteger(value.size) && value.size >= 0 &&
     /^\d+$/.test(value.mtimeNs) && /^\d+$/.test(value.ctimeNs) && /^[a-f0-9]{64}$/.test(value.contentSha256);
 }
 
@@ -859,7 +863,7 @@ function hasWorkflowBoundaryTopology(value, sessionId) {
 }
 
 function workflowFileIdentityEquals(left, right) {
-  return left.device === right.device && left.inode === right.inode && left.size === right.size &&
+  return sameWorkflowFileId(left.device, right.device) && sameWorkflowFileId(left.inode, right.inode) && left.size === right.size &&
     left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs && left.contentSha256 === right.contentSha256;
 }
 
