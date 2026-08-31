@@ -235,14 +235,14 @@ describe('Builtin Skills', () => {
       expect(skill).toBeDefined();
       expect(skill?.description).toContain('Worktree-first');
       expect(skill?.template).toContain('Quick Start (worktree-first)');
-      expect(skill?.template).toContain('`omcp teleport`');
+      expect(skill?.template).toContain('`omg teleport`');
     });
 
     it('should keep ask as the canonical process-first advisor wrapper', () => {
       const skill = getBuiltinSkill('ask');
       expect(skill).toBeDefined();
       expect(skill?.description).toContain('Process-first advisor routing');
-      expect(skill?.template).toContain('omcp ask {{ARGUMENTS}}');
+      expect(skill?.template).toContain('omg ask {{ARGUMENTS}}');
       expect(skill?.template).toContain('Do NOT manually construct raw provider CLI commands');
     });
 
@@ -646,7 +646,7 @@ describe('Builtin Skills', () => {
       expect(skill?.template).toContain('only when the Claude CLI is resolvable');
       expect(skill?.template).toContain('no runnable fallback exists');
       expect(skill?.template).toContain('orchestration/startup is unavailable');
-      expect(skill?.template).toContain('omcp doctor --team-routing');
+      expect(skill?.template).toContain('omg doctor --team-routing');
     });
 
 
