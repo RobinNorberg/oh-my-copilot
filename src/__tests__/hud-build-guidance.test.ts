@@ -10,7 +10,10 @@ const root = join(__dirname, '..', '..');
 describe('HUD build/load guidance', () => {
   it('session-start checks legacy hud script name and build guidance', () => {
     const content = readFileSync(join(root, 'scripts', 'session-start.mjs'), 'utf-8');
-    expect(content).toContain("const hudScriptLegacy = join(hudDir, 'omcp-hud.js');");
+    // Emission is omg-only; detection must still match the names 4.13.x wrote
+    // into this config dir, or an unrefreshed install reads as "HUD missing".
+    expect(content).toContain("const HUD_SCRIPT_NAMES = ['omg-hud.mjs', 'omcp-hud.mjs', 'omcp-hud.js'];");
+    expect(content).toContain("const HUD_COMMAND_MARKERS = ['omg-hud', 'omcp-hud'];");
     expect(content).toContain('HUD plugin cache is not built. Run: cd');
     expect(content).toContain('npm install && npm run build');
   });

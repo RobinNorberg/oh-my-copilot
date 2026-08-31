@@ -68,13 +68,13 @@ describe('isOmcStatusLine', () => {
     it('should return true for OMC HUD statusLine', () => {
         expect(isOmcStatusLine({
             type: 'command',
-            command: 'node /home/user/.claude/hud/omcp-hud.mjs'
+            command: 'node /home/user/.claude/hud/omg-hud.mjs'
         })).toBe(true);
     });
-    it('should return true for any command containing omcp-hud', () => {
+    it('should return true for any command containing omg-hud', () => {
         expect(isOmcStatusLine({
             type: 'command',
-            command: '/usr/local/bin/node /some/path/omcp-hud.mjs'
+            command: '/usr/local/bin/node /some/path/omg-hud.mjs'
         })).toBe(true);
     });
     it('should return false for custom statusLine', () => {
@@ -89,12 +89,21 @@ describe('isOmcStatusLine', () => {
     it('should return false for undefined', () => {
         expect(isOmcStatusLine(undefined)).toBe(false);
     });
-    // Legacy string format tests (pre-v4.5 compatibility)
+    // Legacy string format tests (pre-v4.5 compatibility). These keep the
+    // superseded omcp-hud filename on purpose: the installer still carries it in
+    // OMC_HUD_COMMAND_MARKERS so an omcp-era statusLine is recognized as ours and
+    // reclaimed on upgrade rather than left pointing at a deleted wrapper.
     it('should return true for legacy string containing omcp-hud', () => {
         expect(isOmcStatusLine('~/.claude/hud/omcp-hud.mjs')).toBe(true);
     });
     it('should return true for legacy string with absolute path to omcp-hud', () => {
         expect(isOmcStatusLine('/home/user/.claude/hud/omcp-hud.mjs')).toBe(true);
+    });
+    it('should return true for a legacy omcp-hud command object', () => {
+        expect(isOmcStatusLine({
+            type: 'command',
+            command: 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs'
+        })).toBe(true);
     });
     it('should return false for non-OMC string', () => {
         expect(isOmcStatusLine('my-custom-statusline')).toBe(false);
@@ -111,31 +120,31 @@ describe('isOmcStatusLine', () => {
     it('should recognize portable $HOME statusLine as OMC', () => {
         expect(isOmcStatusLine({
             type: 'command',
-            command: 'node $HOME/.claude/hud/omcp-hud.mjs'
+            command: 'node $HOME/.claude/hud/omg-hud.mjs'
         })).toBe(true);
     });
     it('should recognize find-node.sh statusLine as OMC', () => {
         expect(isOmcStatusLine({
             type: 'command',
-            command: 'sh $HOME/.claude/hud/find-node.sh $HOME/.claude/hud/omcp-hud.mjs'
+            command: 'sh $HOME/.claude/hud/find-node.sh $HOME/.claude/hud/omg-hud.mjs'
         })).toBe(true);
     });
     it('should recognize COPILOT_CONFIG_DIR-aware statusLine as OMC', () => {
         expect(isOmcStatusLine({
             type: 'command',
-            command: 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs'
+            command: 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs'
         })).toBe(true);
     });
     it('should recognize COPILOT_CONFIG_DIR-aware find-node.sh statusLine as OMC', () => {
         expect(isOmcStatusLine({
             type: 'command',
-            command: 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs'
+            command: 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs'
         })).toBe(true);
     });
     it('should recognize cached HUD statusLine as OMC', () => {
         expect(isOmcStatusLine({
             type: 'command',
-            command: 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs'
+            command: 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs'
         })).toBe(true);
     });
 });

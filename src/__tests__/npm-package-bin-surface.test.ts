@@ -51,7 +51,7 @@ type PluginShippingSurface = {
 };
 
 const CLI_BIN_TARGET = "bin/oh-my-copilot.js";
-const SUPPORTED_CLI_ALIASES = ["oh-my-copilot", "omcp"] as const;
+const SUPPORTED_CLI_ALIASES = ["oh-my-copilot", "omg"] as const;
 const GENERATED_RUNTIME_ENTRYPOINTS = new Set([
   "bridge/claude-md-coordinator.cjs",
   "bridge/cli.cjs",
@@ -439,7 +439,7 @@ describe("npm package bin surface regression", () => {
         "oh-my-copilot.cmd",
         "oh-my-copilot.ps1",
       ],
-      omcp: ["omcp", "omcp.cmd", "omcp.ps1"],
+      omg: ["omg", "omg.cmd", "omg.ps1"],
     });
   });
 
@@ -466,7 +466,7 @@ describe("npm package bin surface regression", () => {
         "oh-my-copilot.cmd",
         "oh-my-copilot.ps1",
       ],
-      omcp: ["omcp", "omcp.cmd", "omcp.ps1"],
+      omg: ["omg", "omg.cmd", "omg.ps1"],
     });
   });
 });

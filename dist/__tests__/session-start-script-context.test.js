@@ -171,8 +171,8 @@ ${'- oversized startup guidance\n'.repeat(700)}
         mkdirSync(join(copilotDir, 'hud'), { recursive: true });
         mkdirSync(pluginRoot, { recursive: true });
         writeFileSync(join(pluginRoot, 'package.json'), JSON.stringify({ version: '1.0.0', type: 'module' }));
-        writeFileSync(join(copilotDir, 'hud', 'omcp-hud.mjs'), '');
-        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omcp-hud.mjs' }));
+        writeFileSync(join(copilotDir, 'hud', 'omg-hud.mjs'), '');
+        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omg-hud.mjs' }));
         writeFileSync(join(copilotDir, '.omg', 'update-check.json'), JSON.stringify({
             timestamp: Date.now(),
             latestVersion: '999.0.0',
@@ -215,8 +215,8 @@ ${'- oversized startup guidance\n'.repeat(700)}
         mkdirSync(latestPluginRoot, { recursive: true });
         writeFileSync(join(stalePluginRoot, 'package.json'), JSON.stringify({ version: '4.14.4', type: 'module' }));
         writeFileSync(join(latestPluginRoot, 'package.json'), JSON.stringify({ version: '4.14.5', type: 'module' }));
-        writeFileSync(join(copilotDir, 'hud', 'omcp-hud.mjs'), '');
-        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omcp-hud.mjs' }));
+        writeFileSync(join(copilotDir, 'hud', 'omg-hud.mjs'), '');
+        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omg-hud.mjs' }));
         writeFileSync(join(copilotDir, '.omg', 'update-check.json'), JSON.stringify({
             timestamp: Date.now(),
             latestVersion: '4.14.5',
@@ -261,8 +261,8 @@ ${'- oversized startup guidance\n'.repeat(700)}
             plugins: [{ name: 'oh-my-copilot', version: '4.15.4' }],
             version: '4.15.4',
         }));
-        writeFileSync(join(copilotDir, 'hud', 'omcp-hud.mjs'), '');
-        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omcp-hud.mjs' }));
+        writeFileSync(join(copilotDir, 'hud', 'omg-hud.mjs'), '');
+        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omg-hud.mjs' }));
         writeFileSync(join(copilotDir, '.omg', 'update-check.json'), JSON.stringify({
             timestamp: Date.now(),
             latestVersion: '4.15.5',
@@ -310,8 +310,8 @@ ${'- oversized startup guidance\n'.repeat(700)}
         writeFileSync(join(marketplaceRoot, '.claude-plugin', 'marketplace.json'), JSON.stringify({
             plugins: [{ name: 'oh-my-copilot', version: '999x.0.0' }],
         }));
-        writeFileSync(join(copilotDir, 'hud', 'omcp-hud.mjs'), '');
-        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omcp-hud.mjs' }));
+        writeFileSync(join(copilotDir, 'hud', 'omg-hud.mjs'), '');
+        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omg-hud.mjs' }));
         writeFileSync(join(copilotDir, '.omg', 'update-check.json'), JSON.stringify({
             timestamp: Date.now(),
             latestVersion: '4.15.5',
@@ -358,8 +358,8 @@ ${'- oversized startup guidance\n'.repeat(700)}
         writeFileSync(join(marketplaceRoot, '.claude-plugin', 'marketplace.json'), JSON.stringify({
             plugins: [{ name: 'oh-my-copilot', version: '4.16.0' }],
         }));
-        writeFileSync(join(copilotDir, 'hud', 'omcp-hud.mjs'), '');
-        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omcp-hud.mjs' }));
+        writeFileSync(join(copilotDir, 'hud', 'omg-hud.mjs'), '');
+        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omg-hud.mjs' }));
         const result = spawnSync(NODE, [SCRIPT_PATH], {
             input: JSON.stringify({
                 hook_event_name: 'SessionStart',
@@ -395,8 +395,8 @@ ${'- oversized startup guidance\n'.repeat(700)}
             plugins: [{ name: 'oh-my-copilot', version: '4.15.4' }],
             version: '4.15.4',
         }));
-        writeFileSync(join(copilotDir, 'hud', 'omcp-hud.mjs'), '');
-        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omcp-hud.mjs' }));
+        writeFileSync(join(copilotDir, 'hud', 'omg-hud.mjs'), '');
+        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omg-hud.mjs' }));
         writeFileSync(join(copilotDir, '.omg', 'update-check.json'), JSON.stringify({
             timestamp: Date.now(),
             latestVersion: '4.15.5',
@@ -442,8 +442,8 @@ ${'- oversized startup guidance\n'.repeat(700)}
             plugins: [{ name: 'oh-my-copilot', version: '4.15.4' }],
         }));
         writeFileSync(join(copilotDir, '.omc-version.json'), JSON.stringify({ version: '4.15.5' }));
-        writeFileSync(join(copilotDir, 'hud', 'omcp-hud.mjs'), '');
-        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omcp-hud.mjs' }));
+        writeFileSync(join(copilotDir, 'hud', 'omg-hud.mjs'), '');
+        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omg-hud.mjs' }));
         writeFileSync(join(copilotDir, '.omg', 'update-check.json'), JSON.stringify({
             timestamp: Date.now(),
             latestVersion: '4.15.5',
@@ -482,8 +482,8 @@ ${'- oversized startup guidance\n'.repeat(700)}
         mkdirSync(join(copilotDir, 'hud'), { recursive: true });
         mkdirSync(pluginRoot, { recursive: true });
         writeFileSync(join(pluginRoot, 'package.json'), JSON.stringify({ version: '4.15.7', type: 'module' }));
-        writeFileSync(join(copilotDir, 'hud', 'omcp-hud.mjs'), '');
-        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omcp-hud.mjs' }));
+        writeFileSync(join(copilotDir, 'hud', 'omg-hud.mjs'), '');
+        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omg-hud.mjs' }));
         writeFileSync(join(copilotDir, '.omg', 'update-check.json'), JSON.stringify({
             timestamp: Date.now(),
             latestVersion: '5.0.0',
@@ -529,8 +529,8 @@ ${'- oversized startup guidance\n'.repeat(700)}
             plugins: [{ name: 'oh-my-copilot', version: '4.15.7' }],
             version: '4.15.7',
         }));
-        writeFileSync(join(copilotDir, 'hud', 'omcp-hud.mjs'), '');
-        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omcp-hud.mjs' }));
+        writeFileSync(join(copilotDir, 'hud', 'omg-hud.mjs'), '');
+        writeFileSync(join(copilotDir, 'settings.json'), JSON.stringify({ statusLine: 'node ~/.copilot/hud/omg-hud.mjs' }));
         writeFileSync(join(copilotDir, '.omg', 'update-check.json'), JSON.stringify({
             timestamp: Date.now(),
             latestVersion: '5.0.0',

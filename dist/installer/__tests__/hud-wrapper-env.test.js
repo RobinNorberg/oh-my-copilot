@@ -5,9 +5,9 @@
  * Plan: binary-weaving-mountain.
  *
  * Strategy: write the wrapper template (which is the same byte-for-byte string
- * the installer would write to <configDir>/hud/omcp-hud.mjs) into a tmp dir,
+ * the installer would write to <configDir>/hud/omg-hud.mjs) into a tmp dir,
  * stage a sibling `lib/config-dir.mjs` and a fake `dist/hud/index.js` marker,
- * then spawn `node <tmp>/omcp-hud.mjs` with controlled env + stdin and assert
+ * then spawn `node <tmp>/omg-hud.mjs` with controlled env + stdin and assert
  * which resolution branch fired (via stdout marker).
  */
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
@@ -57,13 +57,13 @@ const STDIN_PAYLOAD = JSON.stringify({
     context_window: 200000,
 });
 function stage() {
-    const dir = mkdtempSync(join(tmpdir(), 'omcp-hud-wrapper-'));
+    const dir = mkdtempSync(join(tmpdir(), 'omg-hud-wrapper-'));
     const libDir = join(dir, 'lib');
     mkdirSync(libDir, { recursive: true });
     // Stage the sibling config-dir.mjs that the wrapper imports.
     copyFileSync(CONFIG_DIR_MJS, join(libDir, 'config-dir.mjs'));
     // Write the wrapper itself (same content the installer emits).
-    const wrapperPath = join(dir, 'omcp-hud.mjs');
+    const wrapperPath = join(dir, 'omg-hud.mjs');
     const body = readFileSync(TEMPLATE_TXT, 'utf8');
     writeFileSync(wrapperPath, body, 'utf8');
     // Build a fake plugin root with a marker dist/hud/index.js.

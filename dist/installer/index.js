@@ -209,15 +209,15 @@ function buildStatusLineCommand(nodeBin, hudScriptPath, findNodePath, cacheWrapp
     const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, '/');
     if (cacheWrapperPath) {
         if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
-            return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs';
+            return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs';
         }
         return `sh ${quoteShellArg(cacheWrapperPath.replace(/\\/g, '/'))} ${quoteShellArg(normalizedHudScriptPath)}`;
     }
     if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
         if (findNodePath) {
-            return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs';
+            return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs';
         }
-        return 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs';
+        return 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs';
     }
     if (findNodePath) {
         return `sh ${quoteShellArg(findNodePath.replace(/\\/g, '/'))} ${quoteShellArg(normalizedHudScriptPath)}`;
@@ -258,6 +258,18 @@ export function isHudEnabledInConfig() {
     }
 }
 /**
+ * HUD wrapper basenames this installer recognises as its own.
+ *
+ * Only `omg-hud` is ever written. `omcp-hud` is the superseded fork name and is
+ * matched for detection only: without it, a config still pointing at the old
+ * wrapper reads as "owned by another tool", so the installer would refuse to
+ * repair it even under --force and leave the HUD permanently broken.
+ */
+const OMC_HUD_COMMAND_MARKERS = ['omg-hud', 'omcp-hud'];
+function isOmcHudCommand(command) {
+    return OMC_HUD_COMMAND_MARKERS.some(marker => command.includes(marker));
+}
+/**
  * Detect whether a statusLine config belongs to oh-my-copilot.
  *
  * Checks the command string for known OMC HUD paths so that custom
@@ -270,15 +282,15 @@ export function isHudEnabledInConfig() {
 export function isOmcStatusLine(statusLine) {
     if (!statusLine)
         return false;
-    // Legacy string format (pre-v4.5): "~/.claude/hud/omcp-hud.mjs"
+    // Legacy string format (pre-v4.5), e.g. "~/.claude/hud/omc-hud.mjs"
     if (typeof statusLine === 'string') {
-        return statusLine.includes('omcp-hud');
+        return isOmcHudCommand(statusLine);
     }
-    // Current object format: { type: "command", command: "node ...omcp-hud.mjs" }
+    // Current object format: { type: "command", command: "node ...omg-hud.mjs" }
     if (typeof statusLine === 'object') {
         const sl = statusLine;
         if (typeof sl.command === 'string') {
-            return sl.command.includes('omcp-hud');
+            return isOmcHudCommand(sl.command);
         }
     }
     return false;
@@ -667,7 +679,7 @@ function configureInstallerSettings(baseSettings, context) {
                 const findNodeSrc = join(getPackageDir(), 'scripts', 'find-node.sh');
                 const findNodeDest = join(HUD_DIR, 'find-node.sh');
                 const cacheWrapperSrc = join(getPackageDir(), 'scripts', 'lib', 'hud-cache-wrapper.sh');
-                const cacheWrapperDest = join(HUD_DIR, 'omcp-hud-cache.sh');
+                const cacheWrapperDest = join(HUD_DIR, 'omg-hud-cache.sh');
                 const configDirHelperSrc = join(getPackageDir(), 'scripts', 'lib', 'config-dir.sh');
                 const hudLibDir = join(HUD_DIR, 'lib');
                 const configDirHelperDest = join(hudLibDir, 'config-dir.sh');
@@ -2283,13 +2295,13 @@ export function install(options = {}) {
                 // The wrapper body is read by buildHudWrapper() in src/lib/hud-wrapper-template.ts —
                 // the single TS source of truth, mirrored by scripts/lib/hud-wrapper-template.mjs
                 // for scripts/plugin-setup.mjs. Drift enforced by hud-wrapper-template-sync.test.ts.
-                hudScriptPath = join(HUD_DIR, 'omcp-hud.mjs').replace(/\\/g, '/');
+                hudScriptPath = join(HUD_DIR, 'omg-hud.mjs').replace(/\\/g, '/');
                 const hudScript = buildHudWrapper(getPackageDir());
                 writeFileSync(hudScriptPath, hudScript);
                 if (!isWindows()) {
                     chmodSync(hudScriptPath, 0o755);
                 }
-                log('  Installed omcp-hud.mjs');
+                log('  Installed omg-hud.mjs');
             }
             catch (_e) {
                 log('  Warning: Could not install HUD statusline script (non-fatal)');

@@ -31,7 +31,7 @@ explore (haiku), analyst (opus), planner (opus), architect (opus), debugger (son
 </agent_catalog>
 
 <tools>
-External AI: `/team N:executor "task"`, `omcp team N:codex|gemini "..."`, `omcp ask <copilot|claude|codex|gemini>`, `/cccg`
+External AI: `/team N:executor "task"`, `omg team N:codex|gemini "..."`, `omg ask <copilot|claude|codex|gemini>`, `/cccg`
 OMC State: `state_read`, `state_write`, `state_clear`, `state_list_active`, `state_get_status`
 Teams: `TeamCreate`, `TeamDelete`, `SendMessage`, `TaskCreate`, `TaskList`, `TaskGet`, `TaskUpdate`
 Notepad: `notepad_read`, `notepad_write_priority`, `notepad_write_working`, `notepad_write_manual`

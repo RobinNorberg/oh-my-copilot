@@ -362,7 +362,7 @@ describe('HUD stdin cache path is session-scoped', () => {
   const savedEnv: Partial<Record<(typeof envKeys)[number], string | undefined>> = {};
 
   beforeEach(() => {
-    tmpRoot = mkdtempSync(join(tmpdir(), 'omcp-hud-stdin-cache-'));
+    tmpRoot = mkdtempSync(join(tmpdir(), 'omg-hud-stdin-cache-'));
     // Make a real git repo so getWorktreeRoot() (which shells out to git
     // rev-parse) deterministically returns tmpRoot instead of leaking into
     // the surrounding workspace.
@@ -557,7 +557,7 @@ describe('readStdinCache — env-less reader fallback to most recent session cac
   const savedEnv: Partial<Record<(typeof envKeys)[number], string | undefined>> = {};
 
   beforeEach(() => {
-    tmpRoot = mkdtempSync(join(tmpdir(), 'omcp-hud-stdin-read-'));
+    tmpRoot = mkdtempSync(join(tmpdir(), 'omg-hud-stdin-read-'));
     execSync('git init --quiet', { cwd: tmpRoot });
     originalCwd = process.cwd();
     process.chdir(tmpRoot);
@@ -679,7 +679,7 @@ describe('readStdinCache — env-less reader fallback to most recent session cac
     // directory from `join(root, '.omg', 'state', 'sessions')` directly,
     // which bypasses `OMC_STATE_DIR`-backed centralized state and made
     // `omc hud --watch` miss the active cache in that deployment shape.
-    const centralRoot = mkdtempSync(join(tmpdir(), 'omcp-hud-stdin-central-'));
+    const centralRoot = mkdtempSync(join(tmpdir(), 'omg-hud-stdin-central-'));
     const prevStateDir = process.env.OMC_STATE_DIR;
     process.env.OMC_STATE_DIR = centralRoot;
     try {

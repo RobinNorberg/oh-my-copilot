@@ -8,7 +8,7 @@ import { getPluginCacheBase } from '../utils/paths.js';
  * HUD Windows Compatibility Tests
  *
  * These tests verify Windows compatibility fixes for HUD:
- * - File naming (omcp-hud.mjs)
+ * - File naming (omg-hud.mjs)
  * - Windows dynamic import() requires file:// URLs (pathToFileURL)
  * - Version sorting (numeric vs lexicographic)
  * - Cross-platform plugin cache path resolution (#670)
@@ -20,19 +20,17 @@ const __dirname = dirname(__filename);
 const packageRoot = join(__dirname, '..', '..');
 describe('HUD Windows Compatibility', () => {
     describe('File Naming', () => {
-        it('session-start.mjs should reference omcp-hud.mjs', () => {
+        it('session-start.mjs should reference omg-hud.mjs', () => {
             const sessionStartPath = join(packageRoot, 'scripts', 'session-start.mjs');
             expect(existsSync(sessionStartPath)).toBe(true);
             const content = readFileSync(sessionStartPath, 'utf-8');
-            expect(content).toContain('omcp-hud.mjs');
-            // Note: May also contain 'omcp-hud.mjs' for backward compatibility (dual naming)
+            expect(content).toContain('omg-hud.mjs');
         });
-        it('installer should create omcp-hud.mjs', () => {
+        it('installer should create omg-hud.mjs', () => {
             const installerPath = join(packageRoot, 'src', 'installer', 'index.ts');
             expect(existsSync(installerPath)).toBe(true);
             const content = readFileSync(installerPath, 'utf-8');
-            expect(content).toContain('omcp-hud.mjs');
-            // Note: May also contain 'omcp-hud.mjs' for legacy support
+            expect(content).toContain('omg-hud.mjs');
         });
     });
     describe('pathToFileURL for Dynamic Import', () => {
@@ -181,8 +179,8 @@ describe('HUD Windows Compatibility', () => {
             expect(content).toContain(".split(require('path').sep).join('/')");
             expect(content).toContain('The command path MUST use forward slashes on all platforms');
             expect(content).toContain('On Windows the path uses forward slashes (not backslashes):');
-            expect(content).toContain('"command": "node C:/Users/username/.copilot/hud/omcp-hud.mjs"');
-            expect(content).not.toContain('"command": "node C:\\Users\\username\\.copilot\\hud\\omcp-hud.mjs"');
+            expect(content).toContain('"command": "node C:/Users/username/.copilot/hud/omg-hud.mjs"');
+            expect(content).not.toContain('"command": "node C:\\Users\\username\\.copilot\\hud\\omg-hud.mjs"');
         });
         it('usage-api should use path.join with separate segments', () => {
             const usageApiPath = join(packageRoot, 'src', 'hud', 'usage-api.ts');

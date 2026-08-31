@@ -43,8 +43,8 @@ afterAll(() => {
 });
 
 describe('HUD marketplace resolution', () => {
-  it('omcp-hud.mjs converts absolute HUD paths to file URLs before dynamic imports', () => {
-    const configDir = mkdtempSync(join(tmpdir(), 'omcp-hud-wrapper-'));
+  it('omg-hud.mjs converts absolute HUD paths to file URLs before dynamic imports', () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'omg-hud-wrapper-'));
     tempDirs.push(configDir);
 
     const fakeHome = join(configDir, 'home');
@@ -60,17 +60,17 @@ describe('HUD marketplace resolution', () => {
       stdio: 'pipe',
     });
 
-    const hudScriptPath = join(configDir, 'hud', 'omcp-hud.mjs');
+    const hudScriptPath = join(configDir, 'hud', 'omg-hud.mjs');
     expect(existsSync(hudScriptPath)).toBe(true);
     expect(existsSync(join(configDir, 'hud', 'lib', 'config-dir.mjs'))).toBe(true);
 
     const settings = JSON.parse(readFileSync(join(configDir, 'settings.json'), 'utf-8')) as {
       statusLine?: { command?: string };
     };
-    expect(settings.statusLine?.command).toContain(`${join(configDir, 'hud', 'omcp-hud.mjs').replace(/\\/g, '/')}`);
+    expect(settings.statusLine?.command).toContain(`${join(configDir, 'hud', 'omg-hud.mjs').replace(/\\/g, '/')}`);
     if (process.platform !== 'win32') {
-      expect(settings.statusLine?.command).toContain('omcp-hud-cache.sh');
-      expect(existsSync(join(configDir, 'hud', 'omcp-hud-cache.sh'))).toBe(true);
+      expect(settings.statusLine?.command).toContain('omg-hud-cache.sh');
+      expect(existsSync(join(configDir, 'hud', 'omg-hud-cache.sh'))).toBe(true);
       expect(existsSync(join(configDir, 'hud', 'find-node.sh'))).toBe(true);
     }
     expect(existsSync(join(configDir, '.omc-config.json'))).toBe(true);
@@ -86,8 +86,8 @@ describe('HUD marketplace resolution', () => {
     expect(content).not.toContain('await import(marketplaceHudPath);');
   });
 
-  it('omcp-hud.mjs loads a marketplace install when plugin cache is unavailable', () => {
-    const configDir = mkdtempSync(join(tmpdir(), 'omcp-hud-marketplace-'));
+  it('omg-hud.mjs loads a marketplace install when plugin cache is unavailable', () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'omg-hud-marketplace-'));
     tempDirs.push(configDir);
 
     const fakeHome = join(configDir, 'home');
@@ -113,7 +113,7 @@ describe('HUD marketplace resolution', () => {
       stdio: 'pipe',
     });
 
-    const hudScriptPath = join(configDir, 'hud', 'omcp-hud.mjs');
+    const hudScriptPath = join(configDir, 'hud', 'omg-hud.mjs');
     expect(existsSync(hudScriptPath)).toBe(true);
 
     execFileSync(process.execPath, [hudScriptPath], {
@@ -129,8 +129,8 @@ describe('HUD marketplace resolution', () => {
     expect(readFileSync(sentinelPath, 'utf-8')).toBe('marketplace-loaded');
   });
 
-  it('omcp-hud.mjs surfaces dynamic import errors from OMC_PLUGIN_ROOT HUD paths', () => {
-    const configDir = mkdtempSync(join(tmpdir(), 'omcp-hud-import-error-'));
+  it('omg-hud.mjs surfaces dynamic import errors from OMC_PLUGIN_ROOT HUD paths', () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'omg-hud-import-error-'));
     tempDirs.push(configDir);
 
     const fakeHome = join(configDir, 'home');
@@ -155,7 +155,7 @@ describe('HUD marketplace resolution', () => {
       "import '../platform/index.js';\n",
     );
 
-    const hudScriptPath = join(configDir, 'hud', 'omcp-hud.mjs');
+    const hudScriptPath = join(configDir, 'hud', 'omg-hud.mjs');
     const output = execFileSync(process.execPath, [hudScriptPath], {
       cwd: root,
       env: {
@@ -174,8 +174,8 @@ describe('HUD marketplace resolution', () => {
     expect(normalized).toContain('/broken-plugin-root/dist/hud/index.js');
   });
 
-  it('omcp-hud.mjs loads a global npm install outside a Node project via npm prefix resolution', () => {
-    const configDir = mkdtempSync(join(tmpdir(), 'omcp-hud-global-prefix-'));
+  it('omg-hud.mjs loads a global npm install outside a Node project via npm prefix resolution', () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'omg-hud-global-prefix-'));
     tempDirs.push(configDir);
 
     const fakeHome = join(configDir, 'home');
@@ -207,7 +207,7 @@ describe('HUD marketplace resolution', () => {
       stdio: 'pipe',
     });
 
-    const hudScriptPath = join(configDir, 'hud', 'omcp-hud.mjs');
+    const hudScriptPath = join(configDir, 'hud', 'omg-hud.mjs');
     expect(existsSync(hudScriptPath)).toBe(true);
 
     execFileSync(process.execPath, [hudScriptPath], {
@@ -224,8 +224,8 @@ describe('HUD marketplace resolution', () => {
     expect(readFileSync(sentinelPath, 'utf-8')).toBe('global-prefix-loaded');
   });
 
-  it('omcp-hud.mjs falls back to the published npm package', () => {
-    const configDir = mkdtempSync(join(tmpdir(), 'omcp-hud-npm-package-'));
+  it('omg-hud.mjs falls back to the published npm package', () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'omg-hud-npm-package-'));
     tempDirs.push(configDir);
 
     const fakeHome = join(configDir, 'home');
@@ -251,7 +251,7 @@ describe('HUD marketplace resolution', () => {
       stdio: 'pipe',
     });
 
-    const hudScriptPath = join(configDir, 'hud', 'omcp-hud.mjs');
+    const hudScriptPath = join(configDir, 'hud', 'omg-hud.mjs');
     expect(existsSync(hudScriptPath)).toBe(true);
 
     const content = readFileSync(hudScriptPath, 'utf-8');
