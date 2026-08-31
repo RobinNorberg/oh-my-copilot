@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "040058a62208c61bf1a8e5f523b661cc6f193b04",
-    "sourceSha256": "2b9b2aed55c4922271fea170feb8fbbbb4dc32ba8e26d402e28eac5293eaa566",
+    "head": "3c58397b646b4c78bcbcc5191e03aeae629910a2",
+    "sourceSha256": "435b1c0ad6708cd3ec3d52551b14bcd7190ea56d622e25375db5f9514efa99b4",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "040058a62208c61bf1a8e5f523b661cc6f193b04",
-  "sourceSha256": "2b9b2aed55c4922271fea170feb8fbbbb4dc32ba8e26d402e28eac5293eaa566",
+  "head": "3c58397b646b4c78bcbcc5191e03aeae629910a2",
+  "sourceSha256": "435b1c0ad6708cd3ec3d52551b14bcd7190ea56d622e25375db5f9514efa99b4",
   "counts": {
     "public": {
       "skills": 46,
@@ -28,8 +28,8 @@
       "toolFiles": 60,
       "libFiles": 37,
       "templateHooks": 21,
-      "srcFiles": 1342,
-      "total": 1363
+      "srcFiles": 1341,
+      "total": 1362
     },
     "generated": {
       "distFiles": 5223,
@@ -36598,11 +36598,6 @@
         "path": "src/__tests__/skills.test.ts"
       },
       {
-        "id": "src/__tests__/skininthegamebros-guidance.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/skininthegamebros-guidance.test.ts"
-      },
-      {
         "id": "src/__tests__/slack-fallback-removal.test.ts",
         "kind": "src",
         "path": "src/__tests__/slack-fallback-removal.test.ts"
@@ -36888,9 +36883,9 @@
         "path": "src/agents/scientist.ts"
       },
       {
-        "id": "src/agents/skininthegamebros-guidance.ts",
+        "id": "src/agents/strict-mode-guidance.ts",
         "kind": "agent",
-        "path": "src/agents/skininthegamebros-guidance.ts"
+        "path": "src/agents/strict-mode-guidance.ts"
       },
       {
         "id": "src/agents/templates/exploration-template.md",
@@ -50535,26 +50530,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/__tests__/skininthegamebros-guidance.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skininthegamebros-guidance.test.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skininthegamebros-guidance.test.ts",
-        "to": "src/agents/prompt-helpers.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skininthegamebros-guidance.test.ts",
-        "to": "src/index.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/__tests__/slack-fallback-removal.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -51486,7 +51461,7 @@
       },
       {
         "from": "src/agents/definitions.ts",
-        "to": "src/agents/skininthegamebros-guidance.ts",
+        "to": "src/agents/strict-mode-guidance.ts",
         "kind": "imports"
       },
       {
@@ -51671,7 +51646,7 @@
       },
       {
         "from": "src/agents/prompt-helpers.ts",
-        "to": "src/agents/skininthegamebros-guidance.ts",
+        "to": "src/agents/strict-mode-guidance.ts",
         "kind": "imports"
       },
       {
@@ -51815,8 +51790,8 @@
         "kind": "imports"
       },
       {
-        "from": "src/agents/skininthegamebros-guidance.ts",
-        "to": "src/utils/skininthegamebros-user.ts",
+        "from": "src/agents/strict-mode-guidance.ts",
+        "to": "src/utils/strict-mode.ts",
         "kind": "imports"
       },
       {
@@ -65416,7 +65391,7 @@
       },
       {
         "from": "src/index.ts",
-        "to": "src/agents/skininthegamebros-guidance.ts",
+        "to": "src/agents/strict-mode-guidance.ts",
         "kind": "imports"
       },
       {
@@ -79151,12 +79126,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7163,
-      "edgeCount": 7350,
-      "importEdgeCount": 6031,
+      "nodeCount": 7162,
+      "edgeCount": 7346,
+      "importEdgeCount": 6027,
       "registerEdgeCount": 67
     }
   },
-  "inventorySha256": "643f28be0d92a88de34c2cb58fc676700251163a4b04f179f8192f9c0fb8f31f",
-  "manifestSha256": "733170d779da4551282062cff1f48e1ff1874ad286feec471f8bdf361b084203"
+  "inventorySha256": "31e010081ab6664779db28d1fcc4e9a61e1b68ef3ffcc9a8075e814987f2f5bb",
+  "manifestSha256": "b3bbfc457cb2fa3f51013b8b9a19382772376f62f200be64f220adf019fb7a8f"
 }
