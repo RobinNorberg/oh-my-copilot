@@ -34,7 +34,7 @@ function mkWorktree(): string {
 }
 
 function readSettings(worktreePath: string): Record<string, unknown> {
-  const p = join(worktreePath, '.claude', 'settings.json');
+  const p = join(worktreePath, '.copilot', 'settings.json');
   return JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>;
 }
 
@@ -53,7 +53,7 @@ describe('installPostToolUseHook – settings.json shape', () => {
     rmSync(worktreePath, { recursive: true, force: true });
   });
 
-  it('creates .claude/settings.json with correct Claude Code hook schema', async () => {
+  it('creates .copilot/settings.json with correct Claude Code hook schema', async () => {
     await installPostToolUseHook(worktreePath, 'writer');
 
     const settings = readSettings(worktreePath);
@@ -129,12 +129,12 @@ describe('installPostToolUseHook – settings.json shape', () => {
     await installPostToolUseHook(worktreePath, 'writer');
 
     // settings.json should not have been created
-    expect(existsSync(join(worktreePath, '.claude', 'settings.json'))).toBe(false);
+    expect(existsSync(join(worktreePath, '.copilot', 'settings.json'))).toBe(false);
   });
 
   it('merges into existing settings.json without clobbering other keys', async () => {
     // Pre-create a settings.json with an existing key
-    const claudeDir = join(worktreePath, '.claude');
+    const claudeDir = join(worktreePath, '.copilot');
     mkdirSync(claudeDir, { recursive: true });
     writeFileSync(
       join(claudeDir, 'settings.json'),
@@ -458,7 +458,7 @@ describe('uninstallCommitCadence durability', () => {
   it('retains generation ownership after malformed settings and removes it only after a durable retry', async () => {
     const current = context();
     await installCommitCadence(current);
-    const settingsPath = join(worktreePath, '.claude', 'settings.json');
+    const settingsPath = join(worktreePath, '.copilot', 'settings.json');
     writeFileSync(settingsPath, '{ malformed settings', 'utf-8');
 
     await expect(uninstallCommitCadence(current)).rejects.toThrow();
@@ -472,7 +472,7 @@ describe('uninstallCommitCadence durability', () => {
   it('propagates non-ENOENT read errors and permits a later durable uninstall retry', async () => {
     const current = context();
     await installCommitCadence(current);
-    const settingsPath = join(worktreePath, '.claude', 'settings.json');
+    const settingsPath = join(worktreePath, '.copilot', 'settings.json');
     rmSync(settingsPath);
     mkdirSync(settingsPath);
 

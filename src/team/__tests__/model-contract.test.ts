@@ -600,6 +600,9 @@ describe('model-contract', () => {
   });
 
   describe('buildWorkerArgv', () => {
+    // resolveCliPath picks the platform's PATH finder; Windows uses where.exe.
+    const expectedFinder = process.platform === 'win32' ? 'where.exe' : 'which';
+
     it('builds codex interactive worker argv without the exec subcommand', () => {
       const mockSpawnSync = vi.mocked(spawnSync);
       mockSpawnSync.mockReturnValueOnce({ status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null } as any);
@@ -610,7 +613,11 @@ describe('model-contract', () => {
         '--dangerously-bypass-approvals-and-sandbox',
       ]);
       expect(argv).not.toContain('exec');
-      expect(mockSpawnSync).toHaveBeenCalledWith('which', ['codex'], { timeout: 5000, encoding: 'utf8' });
+      expect(mockSpawnSync).toHaveBeenCalledWith(
+        expectedFinder,
+        ['codex'],
+        expect.objectContaining({ timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true }),
+      );
       mockSpawnSync.mockRestore();
     });
 
@@ -628,7 +635,11 @@ describe('model-contract', () => {
       expect(argv).toContain('--bare');
       expect(countArg(argv, '--bare')).toBe(1);
       expect(argv).not.toContain('exec');
-      expect(mockSpawnSync).toHaveBeenCalledWith('which', ['claude'], { timeout: 5000, encoding: 'utf8' });
+      expect(mockSpawnSync).toHaveBeenCalledWith(
+        expectedFinder,
+        ['claude'],
+        expect.objectContaining({ timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true }),
+      );
       mockSpawnSync.mockRestore();
     });
 
@@ -810,6 +821,12 @@ describe('model-contract', () => {
     });
 
     it('getPromptModeArgs returns flag + instruction for antigravity', () => {
+      // agy --print has no Windows support, so the contract refuses there.
+      if (process.platform === 'win32') {
+        expect(() => getPromptModeArgs('antigravity', 'Read inbox'))
+          .toThrow(/not supported on Windows/);
+        return;
+      }
       const args = getPromptModeArgs('antigravity', 'Read inbox');
       expect(args).toEqual(['-p', 'Read inbox']);
     });
