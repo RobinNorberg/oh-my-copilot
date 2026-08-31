@@ -40,11 +40,13 @@ describe('Cleanup Validation', () => {
         expect(agentKeys).not.toContain('deepExecutor');
         expect(agentKeys).not.toContain('buildFixer');
     });
-    it('agent registry has 19 agents', async () => {
+    it('agent registry has 20 agents', async () => {
+        // Upstream v5.0.2 ships 19; this fork adds devils-advocate.
         const { getAgentDefinitions } = await import('../agents/definitions.js');
         const defs = getAgentDefinitions();
-        expect(Object.keys(defs)).toHaveLength(19);
+        expect(Object.keys(defs)).toHaveLength(20);
         expect(defs).toHaveProperty('tracer');
+        expect(defs).toHaveProperty('devils-advocate');
     });
 });
 //# sourceMappingURL=cleanup-validation.test.js.map

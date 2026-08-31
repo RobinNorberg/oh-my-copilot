@@ -277,7 +277,7 @@ OMC Ultrawork = "특수부대 작전 반"
         const pluginPath = join(packageRoot, 'scripts', 'keyword-detector.mjs');
         const fakeHome = mkdtempSync(join(tmpdir(), 'keyword-hook-ralph-loop-home-'));
         const projectDir = mkdtempSync(join(tmpdir(), 'keyword-hook-ralph-loop-project-'));
-        const configDir = join(fakeHome, '.claude');
+        const configDir = join(fakeHome, '.copilot');
         const officialRoot = join(configDir, 'plugins', 'cache', 'claude-plugins-official', 'ralph-loop', '1.0.0');
         const omcRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.15.4');
         const registryPath = join(configDir, 'plugins', 'installed_plugins.json');
@@ -287,6 +287,9 @@ OMC Ultrawork = "특수부대 작전 반"
             env: {
                 ...process.env,
                 HOME: fakeHome,
+                // os.homedir() reads USERPROFILE on Windows and HOME elsewhere, so the
+                // HOME-derived config root only redirects when both are pointed at the fixture.
+                USERPROFILE: fakeHome,
                 XDG_CONFIG_HOME: join(fakeHome, '.xdg'),
                 COPILOT_CONFIG_DIR: configDir,
                 ...env,
@@ -462,7 +465,7 @@ OMC Ultrawork = "특수부대 작전 반"
             for (const scriptPath of [templatePath, pluginPath]) {
                 expect(contextOf(runIn(scriptPath, `ralph-malformed-${basename(scriptPath)}`))).not.toContain('ralph-loop');
             }
-            // N. Config-root variant: settings lives at HOME/.claude and COPILOT_CONFIG_DIR is
+            // N. Config-root variant: settings lives at HOME/.copilot and COPILOT_CONFIG_DIR is
             //    unset (HOME-derived root) -> the notice still resolves the same config root.
             writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': true } });
             writeRegistry({

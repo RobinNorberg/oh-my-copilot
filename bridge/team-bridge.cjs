@@ -47,14 +47,14 @@ __export(bridge_entry_exports, {
   validateConfigPath: () => validateConfigPath
 });
 module.exports = __toCommonJS(bridge_entry_exports);
-var import_fs17 = require("fs");
-var import_path17 = require("path");
+var import_fs18 = require("fs");
+var import_path18 = require("path");
 var import_os3 = require("os");
 
 // src/team/mcp-team-bridge.ts
 var import_child_process6 = require("child_process");
-var import_fs16 = require("fs");
-var import_path16 = require("path");
+var import_fs17 = require("fs");
+var import_path17 = require("path");
 
 // src/team/fs-utils.ts
 var import_fs = require("fs");
@@ -1790,8 +1790,8 @@ function getBuiltinExternalDefaultModel(provider) {
 }
 
 // src/agents/prompt-helpers.ts
-var import_fs14 = require("fs");
-var import_path14 = require("path");
+var import_fs15 = require("fs");
+var import_path15 = require("path");
 var import_url3 = require("url");
 
 // src/agents/utils.ts
@@ -1799,27 +1799,31 @@ var import_fs13 = require("fs");
 var import_path13 = require("path");
 var import_url2 = require("url");
 
+// src/utils/strict-mode.ts
+var import_fs14 = require("fs");
+var import_path14 = require("path");
+
 // src/agents/prompt-helpers.ts
 var import_meta = {};
 function getPackageDir() {
   if (typeof __dirname !== "undefined" && __dirname) {
-    const currentDirName = (0, import_path14.basename)(__dirname);
-    const parentDirName = (0, import_path14.basename)((0, import_path14.dirname)(__dirname));
+    const currentDirName = (0, import_path15.basename)(__dirname);
+    const parentDirName = (0, import_path15.basename)((0, import_path15.dirname)(__dirname));
     if (currentDirName === "bridge") {
-      return (0, import_path14.join)(__dirname, "..");
+      return (0, import_path15.join)(__dirname, "..");
     }
     if (currentDirName === "agents" && (parentDirName === "src" || parentDirName === "dist")) {
-      return (0, import_path14.join)(__dirname, "..", "..");
+      return (0, import_path15.join)(__dirname, "..", "..");
     }
   }
   try {
     const __filename = (0, import_url3.fileURLToPath)(import_meta.url);
-    const __dirname2 = (0, import_path14.dirname)(__filename);
-    const currentDirName = (0, import_path14.basename)(__dirname2);
+    const __dirname2 = (0, import_path15.dirname)(__filename);
+    const currentDirName = (0, import_path15.basename)(__dirname2);
     if (currentDirName === "bridge") {
-      return (0, import_path14.join)(__dirname2, "..");
+      return (0, import_path15.join)(__dirname2, "..");
     }
-    return (0, import_path14.join)(__dirname2, "..", "..");
+    return (0, import_path15.join)(__dirname2, "..", "..");
   } catch {
   }
   return process.cwd();
@@ -1835,9 +1839,9 @@ function getValidAgentRoles() {
   } catch {
   }
   try {
-    const agentsDir = (0, import_path14.join)(getPackageDir(), "agents");
-    const files = (0, import_fs14.readdirSync)(agentsDir);
-    _cachedRoles = files.filter((f) => f.endsWith(".md")).map((f) => (0, import_path14.basename)(f, ".md")).sort();
+    const agentsDir = (0, import_path15.join)(getPackageDir(), "agents");
+    const files = (0, import_fs15.readdirSync)(agentsDir);
+    _cachedRoles = files.filter((f) => f.endsWith(".md")).map((f) => (0, import_path15.basename)(f, ".md")).sort();
   } catch (err) {
     console.error("[prompt-injection] CRITICAL: Could not scan agents/ directory for role discovery:", err);
     _cachedRoles = [];
@@ -1859,8 +1863,8 @@ function sanitizePromptContent(content, maxLength = 4e3) {
 }
 
 // src/team/team-status.ts
-var import_fs15 = require("fs");
-var import_path15 = require("path");
+var import_fs16 = require("fs");
+var import_path16 = require("path");
 
 // src/team/usage-tracker.ts
 var import_node_fs = require("node:fs");
@@ -1949,10 +1953,10 @@ function emptyUsageReport(teamName) {
 function peekRecentOutboxMessages(teamName, workerName, maxMessages = 10) {
   const safeName = sanitizeName(teamName);
   const safeWorker = sanitizeName(workerName);
-  const outboxPath2 = (0, import_path15.join)(getCopilotConfigDir(), "teams", safeName, "outbox", `${safeWorker}.jsonl`);
-  if (!(0, import_fs15.existsSync)(outboxPath2)) return [];
+  const outboxPath2 = (0, import_path16.join)(getCopilotConfigDir(), "teams", safeName, "outbox", `${safeWorker}.jsonl`);
+  if (!(0, import_fs16.existsSync)(outboxPath2)) return [];
   try {
-    const content = (0, import_fs15.readFileSync)(outboxPath2, "utf-8");
+    const content = (0, import_fs16.readFileSync)(outboxPath2, "utf-8");
     const lines = content.split("\n").filter((l) => l.trim());
     const recentLines = lines.slice(-maxMessages);
     const messages = [];
@@ -2225,29 +2229,29 @@ function buildTaskPrompt(task, messages, config) {
   return result;
 }
 function writePromptFile(config, taskId, prompt) {
-  const dir = (0, import_path16.join)(getOmcRoot(config.workingDirectory), "prompts");
+  const dir = (0, import_path17.join)(getOmcRoot(config.workingDirectory), "prompts");
   ensureDirWithMode(dir);
   const filename = `team-${config.teamName}-task-${taskId}-${Date.now()}.md`;
-  const filePath = (0, import_path16.join)(dir, filename);
+  const filePath = (0, import_path17.join)(dir, filename);
   writeFileWithMode(filePath, prompt);
   return filePath;
 }
 function getOutputPath(config, taskId) {
-  const dir = (0, import_path16.join)(getOmcRoot(config.workingDirectory), "outputs");
+  const dir = (0, import_path17.join)(getOmcRoot(config.workingDirectory), "outputs");
   ensureDirWithMode(dir);
   const suffix = Math.random().toString(36).slice(2, 8);
-  return (0, import_path16.join)(
+  return (0, import_path17.join)(
     dir,
     `team-${config.teamName}-task-${taskId}-${Date.now()}-${suffix}.md`
   );
 }
 function readOutputSummary(outputFile) {
   try {
-    if (!(0, import_fs16.existsSync)(outputFile)) return "(no output file)";
+    if (!(0, import_fs17.existsSync)(outputFile)) return "(no output file)";
     const buf = Buffer.alloc(1024);
-    const fd = (0, import_fs16.openSync)(outputFile, "r");
+    const fd = (0, import_fs17.openSync)(outputFile, "r");
     try {
-      const bytesRead = (0, import_fs16.readSync)(fd, buf, 0, 1024, 0);
+      const bytesRead = (0, import_fs17.readSync)(fd, buf, 0, 1024, 0);
       if (bytesRead === 0) return "(empty output)";
       const content = buf.toString("utf-8", 0, bytesRead);
       if (content.length > 500) {
@@ -2255,7 +2259,7 @@ function readOutputSummary(outputFile) {
       }
       return content;
     } finally {
-      (0, import_fs16.closeSync)(fd);
+      (0, import_fs17.closeSync)(fd);
     }
   } catch {
     return "(error reading output)";
@@ -2813,16 +2817,16 @@ ${violationSummary}`
 
 // src/team/bridge-entry.ts
 function validateConfigPath(configPath2, homeDir, claudeConfigDir) {
-  const resolved = (0, import_path17.resolve)(configPath2);
-  const normalizedHome = (0, import_path17.resolve)(homeDir);
+  const resolved = (0, import_path18.resolve)(configPath2);
+  const normalizedHome = (0, import_path18.resolve)(homeDir);
   const isUnderHome = isAtOrUnder(normalizedHome, resolved);
-  const normalizedConfigDir = (0, import_path17.resolve)(claudeConfigDir);
-  const normalizedOmcDir = (0, import_path17.resolve)(homeDir, ".omg");
+  const normalizedConfigDir = (0, import_path18.resolve)(claudeConfigDir);
+  const normalizedOmcDir = (0, import_path18.resolve)(homeDir, ".omg");
   const isTrustedSubpath = isAtOrUnder(normalizedConfigDir, resolved) || isAtOrUnder(normalizedOmcDir, resolved) || hasOmcPathSegment(resolved);
   if (!isUnderHome || !isTrustedSubpath) return false;
   try {
-    const parentDir = (0, import_path17.resolve)(resolved, "..");
-    const realParent = (0, import_fs17.realpathSync)(parentDir);
+    const parentDir = (0, import_path18.resolve)(resolved, "..");
+    const realParent = (0, import_fs18.realpathSync)(parentDir);
     if (!isAtOrUnder(normalizedHome, realParent)) {
       return false;
     }
@@ -2831,9 +2835,9 @@ function validateConfigPath(configPath2, homeDir, claudeConfigDir) {
   return true;
 }
 function isAtOrUnder(parent, child) {
-  const rel = (0, import_path17.relative)(parent, child);
+  const rel = (0, import_path18.relative)(parent, child);
   if (rel === "") return true;
-  return !rel.startsWith("..") && !(0, import_path17.isAbsolute)(rel);
+  return !rel.startsWith("..") && !(0, import_path18.isAbsolute)(rel);
 }
 function hasOmcPathSegment(absolutePath) {
   return absolutePath.split(/[\\/]/).includes(".omg");
@@ -2841,15 +2845,15 @@ function hasOmcPathSegment(absolutePath) {
 function validateBridgeWorkingDirectory(workingDirectory) {
   let stat;
   try {
-    stat = (0, import_fs17.statSync)(workingDirectory);
+    stat = (0, import_fs18.statSync)(workingDirectory);
   } catch {
     throw new Error(`workingDirectory does not exist: ${workingDirectory}`);
   }
   if (!stat.isDirectory()) {
     throw new Error(`workingDirectory is not a directory: ${workingDirectory}`);
   }
-  const resolved = (0, import_fs17.realpathSync)(workingDirectory);
-  const home = (0, import_path17.resolve)((0, import_os3.homedir)());
+  const resolved = (0, import_fs18.realpathSync)(workingDirectory);
+  const home = (0, import_path18.resolve)((0, import_os3.homedir)());
   if (!isAtOrUnder(home, resolved)) {
     throw new Error(`workingDirectory is outside home directory: ${resolved}`);
   }
@@ -2864,7 +2868,7 @@ function main() {
     console.error("Usage: node bridge-entry.js --config <path-to-config.json>");
     process.exit(1);
   }
-  const configPath2 = (0, import_path17.resolve)(process.argv[configIdx + 1]);
+  const configPath2 = (0, import_path18.resolve)(process.argv[configIdx + 1]);
   const home = (0, import_os3.homedir)();
   const claudeConfigDir = getCopilotConfigDir();
   if (!validateConfigPath(configPath2, home, claudeConfigDir)) {
@@ -2873,7 +2877,7 @@ function main() {
   }
   let config;
   try {
-    const raw = (0, import_fs17.readFileSync)(configPath2, "utf-8");
+    const raw = (0, import_fs18.readFileSync)(configPath2, "utf-8");
     config = JSON.parse(raw);
   } catch (err) {
     console.error(`Failed to read config from ${configPath2}: ${err.message}`);

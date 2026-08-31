@@ -33,7 +33,7 @@ describe('API Key Source Element', () => {
     });
     describe('detectApiKeySource', () => {
         it('should return "project" when key is in project settings', () => {
-            mockedExistsSync.mockImplementation((path) => String(path) === '/my/project/.claude/settings.local.json');
+            mockedExistsSync.mockImplementation((path) => String(path) === '/my/project/.copilot/settings.local.json');
             mockedReadFileSync.mockReturnValue(JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-ant-xxx' } }));
             expect(detectApiKeySource('/my/project')).toBe('project');
         });

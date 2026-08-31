@@ -10,7 +10,7 @@
 import { loadAgentPrompt, parseDisallowedTools } from './utils.js';
 import { loadConfig } from '../config/loader.js';
 import { resolveInheritedModelFromEnv } from '../config/models.js';
-import { appendSkininthegamebrosGuidance } from './skininthegamebros-guidance.js';
+import { appendStrictModeGuidance } from './strict-mode-guidance.js';
 // Re-export base agents from individual files (rebranded names)
 export { architectAgent } from './architect.js';
 export { designerAgent } from './designer.js';
@@ -122,6 +122,16 @@ export const codeSimplifierAgent = {
     model: 'opus',
     defaultModel: 'opus'
 };
+/**
+ * Devil's Advocate Agent - Independent Pre-Push Critique (Opus)
+ */
+export const devilsAdvocateAgent = {
+    name: 'devils-advocate',
+    description: 'Independent pre-push critique — finds flaws in unpushed commits with adversarial skepticism (Opus).',
+    prompt: loadAgentPrompt('devils-advocate'),
+    model: 'opus',
+    defaultModel: 'opus'
+};
 // ============================================================
 // DEPRECATED ALIASES (Backward Compatibility)
 // ============================================================
@@ -149,6 +159,7 @@ const AGENT_CONFIG_KEY_MAP = {
     'code-simplifier': 'codeSimplifier',
     critic: 'critic',
     'document-specialist': 'documentSpecialist',
+    'devils-advocate': 'devilsAdvocate',
 };
 function getConfiguredAgentModel(name, config) {
     const key = AGENT_CONFIG_KEY_MAP[name];
@@ -191,6 +202,7 @@ export function getAgentDefinitions(options) {
         // ============================================================
         'security-reviewer': securityReviewerAgent,
         'code-reviewer': codeReviewerAgent,
+        'devils-advocate': devilsAdvocateAgent,
         // ============================================================
         // DOMAIN SPECIALISTS
         // ============================================================
@@ -224,7 +236,7 @@ export function getAgentDefinitions(options) {
         const resolvedDefaultModel = override?.defaultModel ?? agentConfig.defaultModel;
         result[name] = {
             description: override?.description ?? agentConfig.description,
-            prompt: appendSkininthegamebrosGuidance(override?.prompt ?? agentConfig.prompt, 'agent'),
+            prompt: appendStrictModeGuidance(override?.prompt ?? agentConfig.prompt, 'agent'),
             tools: override?.tools ?? agentConfig.tools,
             disallowedTools,
             model: resolvedModel,
@@ -248,7 +260,7 @@ You are BOUND to your task list. You do not stop. You do not quit. You do not ta
 ## Your Core Duty
 You coordinate specialized subagents to accomplish complex software engineering tasks. Abandoning work mid-task is not an option. If you stop without completing ALL tasks, you have failed.
 
-## Available Subagents (19 Agents)
+## Available Subagents (20 Agents)
 
 ### Build/Analysis Lane
 - **explore**: Internal codebase discovery (haiku) — fast pattern matching
@@ -263,6 +275,7 @@ You coordinate specialized subagents to accomplish complex software engineering 
 ### Review Lane
 - **security-reviewer**: Security audits (sonnet) — vulns, trust boundaries, authn/authz
 - **code-reviewer**: Comprehensive review (opus) — API contracts, versioning, backward compatibility, logic defects, maintainability, anti-patterns, performance, quality strategy
+- **devils-advocate**: Pre-push adversarial critique (opus) — finds flaws before code reaches remote
 
 ### Domain Specialists
 - **test-engineer**: Test strategy (sonnet) — coverage, flaky test hardening

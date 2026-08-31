@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { readdirSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
@@ -66,21 +66,12 @@ describe('Tier-0 contract docs consistency', () => {
         expect(localPluginDoc).toContain('git worktrees');
     });
     it('uses the published /docs/ path instead of the removed docs.html path in README links', () => {
-        const readmes = [
-            'README.md',
-            'README.de.md',
-            'README.es.md',
-            'README.fr.md',
-            'README.it.md',
-            'README.ja.md',
-            'README.ko.md',
-            'README.pt.md',
-            'README.ru.md',
-            'README.tr.md',
-            'README.vi.md',
-            'README.zh.md',
-        ].map((file) => readProjectFile(file));
-        for (const content of readmes) {
+        // Enumerated rather than hard-coded: this fork ships only README.md today,
+        // and a hard-coded list of translations turns into an ENOENT the moment the
+        // set changes in either direction.
+        const readmeFiles = readdirSync(PROJECT_ROOT).filter((name) => /^README(\.[a-z-]+)?\.md$/.test(name));
+        expect(readmeFiles).toContain('README.md');
+        for (const content of readmeFiles.map((file) => readProjectFile(file))) {
             expect(content).not.toContain('https://yeachan-heo.github.io/oh-my-copilot-website/docs.html');
             expect(content).toContain('https://yeachan-heo.github.io/oh-my-copilot-website/docs/#');
         }

@@ -16,8 +16,8 @@ describe('Sentinel readiness gate', () => {
     beforeEach(() => {
         tempDir = mkdtempSync(join(tmpdir(), 'sentinel-gate-'));
         // Pin guard thresholds in test-local project config for deterministic behavior.
-        mkdirSync(join(tempDir, '.claude'), { recursive: true });
-        writeFileSync(join(tempDir, '.claude', 'omc.jsonc'), JSON.stringify({
+        mkdirSync(join(tempDir, '.copilot'), { recursive: true });
+        writeFileSync(join(tempDir, '.copilot', 'omg.jsonc'), JSON.stringify({
             guards: {
                 factcheck: {
                     enabled: true,
@@ -110,7 +110,7 @@ describe('Sentinel readiness gate', () => {
         expect(result.blockers.some(b => b.includes('cannot verify readiness'))).toBe(true);
     });
     it('respects sentinel.enabled from config when enabled is omitted', () => {
-        writeFileSync(join(tempDir, '.claude', 'omc.jsonc'), JSON.stringify({
+        writeFileSync(join(tempDir, '.copilot', 'omg.jsonc'), JSON.stringify({
             guards: {
                 sentinel: {
                     enabled: false,

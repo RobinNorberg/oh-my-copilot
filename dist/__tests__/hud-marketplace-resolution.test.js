@@ -184,7 +184,7 @@ describe('HUD marketplace resolution', () => {
         });
         expect(readFileSync(sentinelPath, 'utf-8')).toBe('global-prefix-loaded');
     });
-    it('omcp-hud.mjs loads the published npm package name before the branded fallback', () => {
+    it('omcp-hud.mjs falls back to the published npm package', () => {
         const configDir = mkdtempSync(join(tmpdir(), 'omcp-hud-npm-package-'));
         tempDirs.push(configDir);
         const fakeHome = join(configDir, 'home');
@@ -208,8 +208,6 @@ describe('HUD marketplace resolution', () => {
         expect(existsSync(hudScriptPath)).toBe(true);
         const content = readFileSync(hudScriptPath, 'utf-8');
         expect(content).toContain('"oh-my-copilot/dist/hud/index.js"');
-        expect(content).toContain('"oh-my-copilot/dist/hud/index.js"');
-        expect(content.indexOf('"oh-my-copilot/dist/hud/index.js"')).toBeLessThan(content.indexOf('"oh-my-copilot/dist/hud/index.js"'));
         execFileSync(process.execPath, [hudScriptPath], {
             cwd: root,
             env: {

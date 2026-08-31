@@ -167,7 +167,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     }
   });
 
-  it("executes cleanup for tilde paths and preserves the original on jq or mv failure", () => {
+  it("executes cleanup for tilde paths and preserves the original when the write fails", () => {
     const phase = readPhase("02-configure.md");
     const snippet = phase.match(/## Step 2\.4:[\s\S]*?```bash\n([\s\S]*?)\n```/)?.[1];
     expect(snippet, "Step 2.4 must keep an executable cleanup snippet").toBeTruthy();
@@ -203,17 +203,44 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       });
       expect(readFileSync(config, "utf8")).toBe(malformed);
 
+      // The snippet writes a sibling temp file and renames it, so the failure
+      // has to be injected where it actually writes. Stubbing `mv` on PATH was
+      // inert once the jq|mv pipeline became fs.renameSync: the cleanup simply
+      // succeeded and the "original preserved" assertion was never exercised.
+      // A read-only directory is the injection, but root and Windows both
+      // ignore the bits, so prove the denial holds before asserting on it.
+      const denied = join(root, "denied");
+      const deniedConfig = join(denied, ".omc-config.json");
+      mkdirSync(denied, { recursive: true });
+      writeFileSync(deniedConfig, original);
+      chmodSync(denied, 0o500);
+      let denialEnforced = false;
+      try {
+        writeFileSync(join(denied, ".probe"), "x");
+        rmSync(join(denied, ".probe"), { force: true });
+      } catch {
+        denialEnforced = true;
+      }
+      try {
+        if (denialEnforced) {
+          execFileSync("bash", ["-c", snippet!], {
+            env: { ...process.env, COPILOT_CONFIG_DIR: denied },
+            stdio: "ignore",
+          });
+          expect(readFileSync(deniedConfig, "utf8")).toBe(original);
+          expect(readdirSync(denied).filter((entry) => entry.includes(".tmp.")).length).toBe(0);
+        }
+      } finally {
+        chmodSync(denied, 0o700);
+      }
+
+      // Success path leaves no temp residue behind either.
       writeFileSync(config, original);
-      const fakeBin = join(root, "bin");
-      const fakeMv = join(fakeBin, "mv");
-      mkdirSync(fakeBin, { recursive: true });
-      writeFileSync(fakeMv, "#!/bin/sh\nexit 1\n");
-      chmodSync(fakeMv, 0o755);
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, COPILOT_CONFIG_DIR: root, PATH: `${fakeBin}:${process.env.PATH ?? ""}` },
+        env: { ...process.env, COPILOT_CONFIG_DIR: root },
         stdio: "ignore",
       });
-      expect(readFileSync(config, "utf8")).toBe(original);
+      expect(JSON.parse(readFileSync(config, "utf8"))).toEqual({ silentAutoUpdate: false });
       expect(readdirSync(root).filter((entry) => entry.includes(".tmp.")).length).toBe(0);
     } finally {
       rmSync(root, { recursive: true, force: true });

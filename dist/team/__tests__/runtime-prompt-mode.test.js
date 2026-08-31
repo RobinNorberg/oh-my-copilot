@@ -82,7 +82,11 @@ vi.mock('child_process', async (importOriginal) => {
         }
         if (command === 'display-message') {
             const format = args[args.length - 1] ?? '';
-            return { stdout: format.includes('pane_current_command') ? '0 zsh\n' : '0\n', stderr: '' };
+            if (format.includes('pane_current_command'))
+                return { stdout: '0 zsh\n', stderr: '' };
+            if (format.includes('window_width'))
+                return { stdout: '160\n', stderr: '' };
+            return { stdout: '0\n', stderr: '' };
         }
         return { stdout: '', stderr: '' };
     }

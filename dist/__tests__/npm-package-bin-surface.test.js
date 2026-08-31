@@ -11,7 +11,7 @@ import { collectPluginRuntimeClosure } from "../../scripts/plugin-shipping-surfa
 const PACKAGE_ROOT = process.cwd();
 const PACKAGE_JSON_PATH = join(PACKAGE_ROOT, "package.json");
 const CLI_BIN_TARGET = "bin/oh-my-copilot.js";
-const SUPPORTED_CLI_ALIASES = ["oh-my-copilot", "omc"];
+const SUPPORTED_CLI_ALIASES = ["oh-my-copilot", "omcp"];
 const GENERATED_RUNTIME_ENTRYPOINTS = new Set([
     "bridge/claude-md-coordinator.cjs",
     "bridge/cli.cjs",
@@ -268,7 +268,7 @@ describe("npm package bin surface regression", () => {
                 "oh-my-copilot.cmd",
                 "oh-my-copilot.ps1",
             ],
-            omc: ["omc", "omc.cmd", "omc.ps1"],
+            omcp: ["omcp", "omcp.cmd", "omcp.ps1"],
         });
     });
     it("keeps the packed package metadata aligned with the source bin aliases and installed npm shims", () => {
@@ -287,7 +287,7 @@ describe("npm package bin surface regression", () => {
                 "oh-my-copilot.cmd",
                 "oh-my-copilot.ps1",
             ],
-            omc: ["omc", "omc.cmd", "omc.ps1"],
+            omcp: ["omcp", "omcp.cmd", "omcp.ps1"],
         });
     });
 });

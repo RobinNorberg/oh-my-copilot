@@ -63,8 +63,11 @@ const CC_NATIVE_COMMANDS = new Set([
     'memory',
 ]);
 const SKININTHEGAMEBROS_ONLY_SKILLS = new Set(entitlementManifest.skininthegamebrosOnlySkills.map((skill) => skill.trim().toLowerCase()));
+// `<name>.agent.md` is Copilot's agent naming, which this fork's v4 releases
+// installed. Both forms stay restricted to a single lowercase basename with no
+// separators, so neither can escape the agents directory.
 function isSafeAgentFilename(filename) {
-    return /^[a-z0-9-]+\.md$/.test(filename);
+    return /^[a-z0-9-]+(\.agent)?\.md$/.test(filename);
 }
 function isValidHistoricalAgent(record) {
     if (!record || typeof record !== 'object')

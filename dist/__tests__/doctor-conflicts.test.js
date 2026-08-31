@@ -20,7 +20,7 @@ let TEST_PROJECT_CLAUDE_DIR = '';
 function resetTestDirs() {
     TEST_CLAUDE_DIR = mkdtempSync(join(tmpdir(), 'omc-doctor-conflicts-claude-'));
     TEST_PROJECT_DIR = mkdtempSync(join(tmpdir(), 'omc-doctor-conflicts-project-'));
-    TEST_PROJECT_CLAUDE_DIR = join(TEST_PROJECT_DIR, '.claude');
+    TEST_PROJECT_CLAUDE_DIR = join(TEST_PROJECT_DIR, '.copilot');
     TEST_DIRS.claudeDir = TEST_CLAUDE_DIR;
     TEST_DIRS.builtinSkillsDir = join(TEST_PROJECT_DIR, 'builtin-skills');
 }

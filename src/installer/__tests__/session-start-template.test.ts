@@ -215,7 +215,8 @@ ${'- oversized startup guidance\n'.repeat(700)}
   });
 
   it('surfaces update notices through systemMessage without injecting them into additionalContext', () => {
-    const omcDir = join(fakeHome, '.claude', '.omg');
+    // getOmcConfigDir() is getCopilotConfigDir()/.omg, and the host dir is ~/.copilot.
+    const omcDir = join(fakeHome, '.copilot', '.omg');
     mkdirSync(omcDir, { recursive: true });
     writeFileSync(
       join(omcDir, 'update-check.json'),
@@ -258,9 +259,9 @@ ${'- oversized startup guidance\n'.repeat(700)}
   });
 
   it('honors autoUpgradePrompt=false with passive systemMessage wording', () => {
-    const omcDir = join(fakeHome, '.claude', '.omg');
+    const omcDir = join(fakeHome, '.copilot', '.omg');
     mkdirSync(omcDir, { recursive: true });
-    writeFileSync(join(fakeHome, '.claude', '.omc-config.json'), JSON.stringify({ autoUpgradePrompt: false }));
+    writeFileSync(join(fakeHome, '.copilot', '.omc-config.json'), JSON.stringify({ autoUpgradePrompt: false }));
     writeFileSync(
       join(omcDir, 'update-check.json'),
       JSON.stringify({

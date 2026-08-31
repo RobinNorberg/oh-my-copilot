@@ -72,14 +72,14 @@ describe("readHudConfig", () => {
             mockExistsSync.mockImplementation((path) => {
                 const s = String(path);
                 return (/[\\/]Users[\\/]testuser[\\/]\.claude[\\/]settings\.json$/.test(s) ||
-                    /[\\/]Users[\\/]testuser[\\/]\.claude[\\/]\.omc[\\/]hud-config\.json$/.test(s));
+                    /[\\/]Users[\\/]testuser[\\/]\.claude[\\/]\.omg[\\/]hud-config\.json$/.test(s));
             });
             mockReadFileSync.mockImplementation((path) => {
                 const s = String(path);
                 if (/[\\/]Users[\\/]testuser[\\/]\.claude[\\/]settings\.json$/.test(s)) {
                     return JSON.stringify({ someOtherKey: true });
                 }
-                if (/[\\/]Users[\\/]testuser[\\/]\.claude[\\/]\.omc[\\/]hud-config\.json$/.test(s)) {
+                if (/[\\/]Users[\\/]testuser[\\/]\.claude[\\/]\.omg[\\/]hud-config\.json$/.test(s)) {
                     return JSON.stringify({
                         elements: {
                             cwd: true,
@@ -117,7 +117,7 @@ describe("readHudConfig", () => {
                         },
                     });
                 }
-                if (/[\\/]Users[\\/]testuser[\\/]\.claude[\\/]\.omc[\\/]hud-config\.json$/.test(s)) {
+                if (/[\\/]Users[\\/]testuser[\\/]\.claude[\\/]\.omg[\\/]hud-config\.json$/.test(s)) {
                     return JSON.stringify({
                         elements: {
                             gitRepo: false,
@@ -151,7 +151,7 @@ describe("readHudConfig", () => {
                 if (/[\\/]Users[\\/]testuser[\\/]\.claude[\\/]settings\.json$/.test(s)) {
                     throw new Error("Read error");
                 }
-                if (/[\\/]Users[\\/]testuser[\\/]\.claude[\\/]\.omc[\\/]hud-config\.json$/.test(s)) {
+                if (/[\\/]Users[\\/]testuser[\\/]\.claude[\\/]\.omg[\\/]hud-config\.json$/.test(s)) {
                     return JSON.stringify({
                         elements: { cwd: true },
                     });

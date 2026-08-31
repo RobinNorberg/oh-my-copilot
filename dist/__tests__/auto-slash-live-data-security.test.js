@@ -27,10 +27,10 @@ describe('auto slash live-data security', () => {
         vi.clearAllMocks();
         projectDir = join(tmpdir(), `omc-live-data-project-${process.pid}-${Date.now()}`);
         configDir = join(tmpdir(), `omc-live-data-config-${process.pid}-${Date.now()}`);
-        mkdirSync(join(projectDir, '.claude', 'commands'), { recursive: true });
+        mkdirSync(join(projectDir, '.copilot', 'commands'), { recursive: true });
         mkdirSync(configDir, { recursive: true });
-        writeFileSync(join(projectDir, '.claude', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n!git status $ARGUMENTS\n');
-        writeFileSync(join(projectDir, '.claude', 'live-data-policy.json'), JSON.stringify({ allowed_commands: ['git'] }));
+        writeFileSync(join(projectDir, '.copilot', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n!git status $ARGUMENTS\n');
+        writeFileSync(join(projectDir, '.copilot', 'live-data-policy.json'), JSON.stringify({ allowed_commands: ['git'] }));
         process.env.COPILOT_CONFIG_DIR = configDir;
         process.chdir(projectDir);
     });
@@ -87,7 +87,7 @@ describe('auto slash live-data security', () => {
         expect(mockedExecFileSync).not.toHaveBeenCalled();
     });
     it('blocks a script block introduced through $ARGUMENTS', async () => {
-        writeFileSync(join(projectDir, '.claude', 'live-data-policy.json'), JSON.stringify({ allowed_commands: ['git', 'bash'] }));
+        writeFileSync(join(projectDir, '.copilot', 'live-data-policy.json'), JSON.stringify({ allowed_commands: ['git', 'bash'] }));
         const { executeSlashCommand } = await import('../hooks/auto-slash-command/executor.js');
         const args = '\n!begin-script bash\nnode -e "process.exit(99)"\n!end-script';
         const result = executeSlashCommand({
@@ -102,8 +102,8 @@ describe('auto slash live-data security', () => {
         expect(mockedExecFileSync).not.toHaveBeenCalled();
     });
     it('blocks $ARGUMENTS interpolation inside an authored script block', async () => {
-        writeFileSync(join(projectDir, '.claude', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n!begin-script bash\ngit status $ARGUMENTS\n!end-script\n');
-        writeFileSync(join(projectDir, '.claude', 'live-data-policy.json'), JSON.stringify({ allowed_commands: ['bash', 'git'] }));
+        writeFileSync(join(projectDir, '.copilot', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n!begin-script bash\ngit status $ARGUMENTS\n!end-script\n');
+        writeFileSync(join(projectDir, '.copilot', 'live-data-policy.json'), JSON.stringify({ allowed_commands: ['bash', 'git'] }));
         const { executeSlashCommand } = await import('../hooks/auto-slash-command/executor.js');
         const result = executeSlashCommand({
             command: 'live-test',
@@ -117,8 +117,8 @@ describe('auto slash live-data security', () => {
         expect(mockedExecFileSync).not.toHaveBeenCalled();
     });
     it('blocks $ARGUMENTS interpolation in an authored script shell declaration', async () => {
-        writeFileSync(join(projectDir, '.claude', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n!begin-script $ARGUMENTS\necho safe\n!end-script\n');
-        writeFileSync(join(projectDir, '.claude', 'live-data-policy.json'), JSON.stringify({ allowed_commands: ['bash'] }));
+        writeFileSync(join(projectDir, '.copilot', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n!begin-script $ARGUMENTS\necho safe\n!end-script\n');
+        writeFileSync(join(projectDir, '.copilot', 'live-data-policy.json'), JSON.stringify({ allowed_commands: ['bash'] }));
         const { executeSlashCommand } = await import('../hooks/auto-slash-command/executor.js');
         const result = executeSlashCommand({
             command: 'live-test',
@@ -132,7 +132,7 @@ describe('auto slash live-data security', () => {
         expect(mockedExecFileSync).not.toHaveBeenCalled();
     });
     it('blocks a live-data directive introduced into a placeholder-only template', async () => {
-        writeFileSync(join(projectDir, '.claude', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n$ARGUMENTS\n');
+        writeFileSync(join(projectDir, '.copilot', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n$ARGUMENTS\n');
         const { executeSlashCommand } = await import('../hooks/auto-slash-command/executor.js');
         const result = executeSlashCommand({
             command: 'live-test',
@@ -146,7 +146,7 @@ describe('auto slash live-data security', () => {
         expect(mockedExecFileSync).not.toHaveBeenCalled();
     });
     it('blocks a live-data directive after slash-command parsing normalizes the newline', async () => {
-        writeFileSync(join(projectDir, '.claude', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n$ARGUMENTS\n');
+        writeFileSync(join(projectDir, '.copilot', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n$ARGUMENTS\n');
         const { detectSlashCommand } = await import('../hooks/auto-slash-command/detector.js');
         const { executeSlashCommand } = await import('../hooks/auto-slash-command/executor.js');
         const parsed = detectSlashCommand('/live-test\n!git status');
@@ -160,8 +160,8 @@ describe('auto slash live-data security', () => {
         expect(mockedExecFileSync).not.toHaveBeenCalled();
     });
     it('blocks promotion of an authored directive into a script block', async () => {
-        writeFileSync(join(projectDir, '.claude', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n!$ARGUMENTS\necho safe\n!end-script\n');
-        writeFileSync(join(projectDir, '.claude', 'live-data-policy.json'), JSON.stringify({ allowed_patterns: ['^bash'] }));
+        writeFileSync(join(projectDir, '.copilot', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n!$ARGUMENTS\necho safe\n!end-script\n');
+        writeFileSync(join(projectDir, '.copilot', 'live-data-policy.json'), JSON.stringify({ allowed_patterns: ['^bash'] }));
         const { executeSlashCommand } = await import('../hooks/auto-slash-command/executor.js');
         const result = executeSlashCommand({
             command: 'live-test',
@@ -175,7 +175,7 @@ describe('auto slash live-data security', () => {
         expect(mockedExecFileSync).not.toHaveBeenCalled();
     });
     it('keeps a placeholder that renders inside a code fence as plain text', async () => {
-        writeFileSync(join(projectDir, '.claude', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n```text\n$ARGUMENTS\n```\n');
+        writeFileSync(join(projectDir, '.copilot', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n```text\n$ARGUMENTS\n```\n');
         const { executeSlashCommand } = await import('../hooks/auto-slash-command/executor.js');
         const result = executeSlashCommand({
             command: 'live-test',
@@ -189,7 +189,7 @@ describe('auto slash live-data security', () => {
         expect(mockedExecFileSync).not.toHaveBeenCalled();
     });
     it('blocks arguments that close a code fence and expose a live-data directive', async () => {
-        writeFileSync(join(projectDir, '.claude', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n```text\n$ARGUMENTS\n!git status\n```\n');
+        writeFileSync(join(projectDir, '.copilot', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n```text\n$ARGUMENTS\n!git status\n```\n');
         const { executeSlashCommand } = await import('../hooks/auto-slash-command/executor.js');
         const result = executeSlashCommand({
             command: 'live-test',

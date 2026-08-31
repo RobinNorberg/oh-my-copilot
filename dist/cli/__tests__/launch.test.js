@@ -1418,8 +1418,8 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         expect(prepareOmcLaunchConfigDir(configDir)).toBe(configDir);
         expect(existsSync(join(configDir, '.omc-launch'))).toBe(false);
     });
-    it('does not keep COPILOT_CONFIG_DIR set when it resolves to the default ~/.claude path', async () => {
-        const configDir = join(tempRoot, 'home', '.claude');
+    it('does not keep COPILOT_CONFIG_DIR set when it resolves to the default ~/.copilot path', async () => {
+        const configDir = join(tempRoot, 'home', '.copilot');
         mkdirSync(configDir, { recursive: true });
         writeFileSync(join(configDir, 'CLAUDE.md'), '# User config\n');
         process.env.COPILOT_CONFIG_DIR = configDir;

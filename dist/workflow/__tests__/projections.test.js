@@ -31,8 +31,10 @@ describe('registry projections — canonical JSON and digest', () => {
 describe('registry projections — drift check against installed surfaces', () => {
     it('matches the repository skills/ and commands/ surface exactly', () => {
         const installed = enumerateInstalledSurfaces(process.cwd());
-        // 41 + execute/review/research + graph, which ship as real skill directories.
-        expect(installed.skills.length).toBe(32);
+        // 32 upstream surfaces plus this fork's 14 exclusive skills: the critique /
+        // deep-review / discover / ralph-experiment lanes and the omc-ado-* and
+        // omc-gh-* issue-tracker lanes.
+        expect(installed.skills.length).toBe(46);
         expect(installed.commands.length).toBe(21);
         const drift = checkProjectionDrift(installed);
         expect(drift.unregistered).toEqual([]);

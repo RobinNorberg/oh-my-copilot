@@ -133,7 +133,15 @@ describe('resolveLaunchPolicy', () => {
             signal: null,
         });
         expect(resolveLaunchPolicy({})).toBe('outside-tmux');
-        expect(mockedSpawnSync).toHaveBeenNthCalledWith(1, 'where.exe', ['tmux'], { timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true });
+        expect(mockedSpawnSync).toHaveBeenNthCalledWith(1, 'where.exe', ['tmux'], {
+            timeout: 5000,
+            encoding: 'utf8',
+            shell: false,
+            windowsHide: true,
+            // The finder runs from a directory only administrators can write to,
+            // so a planted tmux next to the CWD cannot win resolution.
+            cwd: process.env.SystemRoot || process.env.windir || 'C:\\Windows',
+        });
         // shell:false keeps the space in "Program Files" from splitting the path.
         expect(mockedSpawnSync).toHaveBeenNthCalledWith(2, 'C:\\Windows\\System32\\cmd.exe', ['/d', '/s', '/c', '"C:\\Program Files\\psmux\\tmux.cmd" -V'], { timeout: 5000, shell: false, windowsHide: true });
         Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
