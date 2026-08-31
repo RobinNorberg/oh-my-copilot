@@ -1067,21 +1067,39 @@ export function reconcileUpdateRuntime(options?: { verbose?: boolean; skipGraceP
   };
 }
 
+/**
+ * Names this CLI may be linked under, most current first.
+ *
+ * `omg` is the v5 command. `oh-my-copilot` is the long-form name that ships in
+ * both v4 and v5, so it still resolves on a machine caught mid-upgrade where
+ * the new short shim is not linked yet — self-update re-exec would otherwise
+ * fail on exactly the installs that need it.
+ */
+const OMC_BINARY_CANDIDATES = ['omg', 'oh-my-copilot'] as const;
+
 function resolveOmcBinaryPath(): string {
-  if (process.platform === 'win32') {
-    return getFirstResolvedBinaryPath(execFileSync('where.exe', ['omg.cmd'], {
-      encoding: 'utf-8',
-      stdio: 'pipe',
-      timeout: 5000,
-      windowsHide: true,
-    }), 'omg');
+  for (const candidate of OMC_BINARY_CANDIDATES) {
+    try {
+      if (process.platform === 'win32') {
+        return getFirstResolvedBinaryPath(execFileSync('where.exe', [`${candidate}.cmd`], {
+          encoding: 'utf-8',
+          stdio: 'pipe',
+          timeout: 5000,
+          windowsHide: true,
+        }), candidate);
+      }
+
+      return getFirstResolvedBinaryPath(execSync(`which ${candidate} 2>/dev/null || where ${candidate} 2>NUL`, {
+        encoding: 'utf-8',
+        stdio: 'pipe',
+        timeout: 5000,
+      }), candidate);
+    } catch {
+      // Not linked under this name; fall through to the next candidate.
+    }
   }
 
-  return getFirstResolvedBinaryPath(execSync('which omg 2>/dev/null || where omg 2>NUL', {
-    encoding: 'utf-8',
-    stdio: 'pipe',
-    timeout: 5000,
-  }), 'omg');
+  throw new Error(`Unable to resolve ${OMC_BINARY_CANDIDATES.join(' or ')} binary path`);
 }
 
 /**
