@@ -209,7 +209,7 @@ function harness(input = params(), overrides: Partial<MailboxNotificationAttempt
 describe.sequential('direct mailbox notification orchestration', () => {
   it('hashes the per-request lock name so opaque request text cannot traverse dispatch state', () => {
     const lock = TeamPaths.mailboxNotificationLock('dispatch-team', '../foreign/request');
-    expect(lock).toMatch(/^\.omc\/state\/team\/dispatch-team\/dispatch\/\.mailbox-notification-[a-f0-9]{64}\.lock$/);
+    expect(lock).toMatch(/^\.omg\/state\/team\/dispatch-team\/dispatch\/\.mailbox-notification-[a-f0-9]{64}\.lock$/);
     expect(lock).not.toContain('foreign');
   });
   it('serializes two waiters after mutation then false without a second transport effect', async () => {

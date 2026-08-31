@@ -105,7 +105,7 @@ describe('cli-worker-contract', () => {
     });
 
     it('normalizes windows backslashes to forward slashes', () => {
-      const p = cliWorkerOutputFilePath('C:\\proj\\.omc\\state\\team\\foo', 'worker-1');
+      const p = cliWorkerOutputFilePath('C:\\proj\\.omg\\state\\team\\foo', 'worker-1');
       expect(p).toBe('C:/proj/.omg/state/team/foo/workers/worker-1/verdict.json');
     });
 
