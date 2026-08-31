@@ -68,14 +68,16 @@ describe('npm trusted publishing contract', () => {
     expect(ci).not.toContain('  recover:');
   });
 
-  it('publishes once with required provenance and no token or fallback route', () => {
-    expect(releaseJob).not.toContain('NODE_AUTH_TOKEN');
-    expect(releaseJob).not.toContain('NPM_TOKEN');
-    expect(releaseJob).not.toContain('secrets.NPM_TOKEN');
+  it('publishes once with required provenance over classic token auth and no fallback route', () => {
+    // Fork decision: classic NPM_TOKEN auth (Trusted Publishing deferred), provenance retained
+    // via the release job's id-token grant. The token is scoped to the publish step only.
+    expect(releaseJob).toContain('NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}');
+    expect([...ci.matchAll(/NODE_AUTH_TOKEN/g)]).toHaveLength(1);
+    expect([...ci.matchAll(/NPM_TOKEN/g)]).toHaveLength(1);
+    expect(releaseJob.slice(stepIndex(releaseJob, 'Publish exact archive and verify registry')))
+      .toContain('NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}');
     expect(releaseJob).not.toContain('sigstore-fallback');
     expect(releaseJob).not.toContain('assert-sigstore-fallback');
-    expect(ci).not.toContain('NODE_AUTH_TOKEN');
-    expect(ci).not.toContain('NPM_TOKEN');
     expect(recoveryJob).not.toContain('npm publish');
     expect(recovery).not.toContain('NODE_AUTH_TOKEN');
     expect(recovery).not.toContain('NPM_TOKEN');

@@ -182,7 +182,7 @@ Detection rules:
 
 Ralph / Ralplan execution gate:
 - Enforce **ralplan-first** when ralph is active and planning is not complete.
-- Planning is complete only after both `.omc/plans/prd-*.md` and `.omc/plans/test-spec-*.md` exist.
+- Planning is complete only after both `.omg/plans/prd-*.md` and `.omg/plans/test-spec-*.md` exist.
 - Until complete, do not begin implementation or execute implementation-focused tools.
 </keyword_detection>
 
@@ -317,7 +317,7 @@ Anti-slop workflow:
 
 Visual iteration gate:
 - For visual tasks (reference image(s) + generated screenshot), run `$visual-verdict` every iteration before the next edit.
-- Persist visual verdict JSON in `.omc/state/{scope}/ralph-progress.json` with both numeric (`score`, threshold pass/fail) and qualitative (`reasoning`, `differences`, `suggestions`, `next_actions`) feedback.
+- Persist visual verdict JSON in `.omg/state/{scope}/ralph-progress.json` with both numeric (`score`, threshold pass/fail) and qualitative (`reasoning`, `differences`, `suggestions`, `next_actions`) feedback.
 
 Continuation:
   Before concluding, confirm: zero pending tasks, all features working, tests passing, zero errors, verification evidence collected. If any item is unchecked, continue working.
@@ -342,15 +342,15 @@ When not to cancel:
 ---
 
 <state_management>
-oh-my-copilot uses the `.omc/` directory for persistent state:
-- `.omc/state/` -- Mode state files (JSON)
-- `.omc/notepad.md` -- Session-persistent notes
-- `.omc/project-memory.json` -- Cross-session project knowledge
-- `.omc/plans/` -- Planning documents
-- `.omc/logs/` -- Audit logs
-- `.omc/ultragoal/plans/{planId}/` -- Multi-plan ultragoal artifacts when `--plan-id` / `--auto-plan-id` is used.
+oh-my-copilot uses the `.omg/` directory for persistent state:
+- `.omg/state/` -- Mode state files (JSON)
+- `.omg/notepad.md` -- Session-persistent notes
+- `.omg/project-memory.json` -- Cross-session project knowledge
+- `.omg/plans/` -- Planning documents
+- `.omg/logs/` -- Audit logs
+- `.omg/ultragoal/plans/{planId}/` -- Multi-plan ultragoal artifacts when `--plan-id` / `--auto-plan-id` is used.
 
-Multi-repo workspaces: drop a `.omc-workspace` marker file (JSON, can be `{}` or `{"id":"name"}`) in the parent directory when it is not itself a git repo. OMC will anchor `.omc/` at the marker from any sub-directory. This lets parallel Claude sessions in sibling repos share one `.omc/`. The session-start hook uses PID-aware liveness — a dead owner no longer blocks state restore. See `docs/REFERENCE.md#multi-repo-workspaces-with-omc-workspace` for full details.
+Multi-repo workspaces: drop a `.omc-workspace` marker file (JSON, can be `{}` or `{"id":"name"}`) in the parent directory when it is not itself a git repo. OMC will anchor `.omg/` at the marker from any sub-directory. This lets parallel Claude sessions in sibling repos share one `.omg/`. The session-start hook uses PID-aware liveness — a dead owner no longer blocks state restore. See `docs/REFERENCE.md#multi-repo-workspaces-with-omc-workspace` for full details.
 
 Tools are available via MCP when configured (`omc setup` registers all servers):
 

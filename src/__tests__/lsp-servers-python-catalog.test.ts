@@ -2,12 +2,18 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 
 const inheritedPythonLsp = process.env.OMC_PYTHON_LSP;
 
+// The PATH resolver treats a finder run as successful only when it exits zero
+// AND prints an absolute path, so a stubbed hit has to supply both.
+const FINDER_HIT_PATH = process.platform === 'win32' ? 'C:\\tools\\bin\\' : '/usr/local/bin/';
+
 async function renderServerStatus(installedCommand?: string): Promise<string> {
   vi.resetModules();
   vi.doMock('child_process', () => ({
-    spawnSync: vi.fn((_command: string, args: string[]) => ({
-      status: args[0] === installedCommand ? 0 : 1
-    }))
+    spawnSync: vi.fn((_command: string, args: string[]) =>
+      args[0] === installedCommand
+        ? { status: 0, stdout: `${FINDER_HIT_PATH}${args[0]}\n` }
+        : { status: 1, stdout: '' }
+    )
   }));
 
   const { lspServersTool } = await import('../tools/lsp-tools.js');

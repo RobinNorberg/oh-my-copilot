@@ -119,12 +119,12 @@ describe('AzureDevOpsProvider', () => {
       expect(result?.baseBranch).toBeUndefined();
     });
 
-    it('returns null when execFileSync throws', () => {
+    it('throws AdoError when execFileSync throws', () => {
       mockExecFileSync.mockImplementation(() => {
         throw new Error('az: not found');
       });
 
-      expect(provider.viewPR(1)).toBeNull();
+      expect(() => provider.viewPR(1)).toThrow('az: not found');
     });
 
     it('returns null for invalid number', () => {
@@ -171,12 +171,12 @@ describe('AzureDevOpsProvider', () => {
       expect(result?.body).toBeUndefined();
     });
 
-    it('returns null when execFileSync throws', () => {
+    it('throws AdoError when execFileSync throws', () => {
       mockExecFileSync.mockImplementation(() => {
         throw new Error('az: not found');
       });
 
-      expect(provider.viewIssue(1)).toBeNull();
+      expect(() => provider.viewIssue(1)).toThrow('az: not found');
     });
 
     it('returns null for invalid number', () => {

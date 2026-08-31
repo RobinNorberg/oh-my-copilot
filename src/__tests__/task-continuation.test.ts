@@ -721,9 +721,9 @@ describe('Task System Support', () => {
       expect(result.count).toBe(1);
     });
 
-    it('should read from project .omc directory', () => {
+    it('should read from project .omg directory', () => {
       vi.mocked(fs.existsSync).mockImplementation((p: any) => {
-        return /[\\/]\.omc[\\/]todos\.json$/.test(p);
+        return /[\\/]\.omg[\\/]todos\.json$/.test(p);
       });
       vi.mocked(fs.readFileSync).mockReturnValue(
         JSON.stringify([{ content: 'Todo', status: 'pending' }])

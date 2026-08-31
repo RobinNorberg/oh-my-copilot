@@ -6,10 +6,10 @@ import {
 } from '../utils/omc-cli-rendering.js';
 
 describe('omc CLI rendering', () => {
-  it('uses omc when the binary is available', () => {
-    expect(resolveOmcCliPrefix({ omcAvailable: true, env: {} as NodeJS.ProcessEnv })).toBe('omc');
+  it('uses omcp when the binary is available', () => {
+    expect(resolveOmcCliPrefix({ omcAvailable: true, env: {} as NodeJS.ProcessEnv })).toBe('omcp');
     expect(formatOmcCliInvocation('team api claim-task', { omcAvailable: true, env: {} as NodeJS.ProcessEnv }))
-      .toBe('omc team api claim-task');
+      .toBe('omcp team api claim-task');
   });
 
   it('falls back to the plugin bridge when omc is unavailable but CLAUDE_PLUGIN_ROOT is set', () => {
@@ -56,8 +56,8 @@ describe('omc CLI rendering', () => {
     expect(output).toContain('> node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask gemini --prompt "improve docs"');
   });
 
-  it('leaves text unchanged when omc remains the selected prefix', () => {
-    const input = 'Use `omc team status demo` and\nomc team wait demo';
+  it('leaves text unchanged when omcp remains the selected prefix', () => {
+    const input = 'Use `omcp team status demo` and\nomcp team wait demo';
     expect(rewriteOmcCliInvocations(input, { omcAvailable: true, env: {} as NodeJS.ProcessEnv })).toBe(input);
   });
 });
