@@ -384,27 +384,27 @@ jobs:
             exit 1
           fi
 
-          echo "🔍 Checking omcp command..."
-          which omcp
+          echo "🔍 Checking omg command..."
+          which omg
 
-          echo "🔍 Testing omcp --version..."
-          omcp --version
+          echo "🔍 Testing omg --version..."
+          omg --version
 
-          VERSION_OUTPUT=$(omcp --version 2>&1)
+          VERSION_OUTPUT=$(omg --version 2>&1)
           if [ $? -ne 0 ]; then
-            echo "❌ omcp --version failed!"
+            echo "❌ omg --version failed!"
             echo "$VERSION_OUTPUT"
             exit 1
           fi
 
-          echo "✅ omcp --version: $VERSION_OUTPUT"
+          echo "✅ omg --version: $VERSION_OUTPUT"
 
-          echo "🔍 Testing omcp --help..."
-          omcp --help
+          echo "🔍 Testing omg --help..."
+          omg --help
 
-          HELP_OUTPUT=$(omcp --help 2>&1)
+          HELP_OUTPUT=$(omg --help 2>&1)
           if [ $? -ne 0 ]; then
-            echo "❌ omcp --help failed!"
+            echo "❌ omg --help failed!"
             echo "$HELP_OUTPUT"
             exit 1
           fi
@@ -530,13 +530,13 @@ jobs:
           test -s "$SMOKE_PACKAGE_ROOT/skills/wiki/SKILL.md"
           test -f "$SMOKE_PACKAGE_ROOT/skills/omc-setup/SKILL.md"
           test -f "$SMOKE_PACKAGE_ROOT/skills/omc-setup/phases/01-install-claude-md.md"
-          test "$(env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omcp" --version)" = "$VERSION"
-          env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omcp" --help
-          API_HELP=$(env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omcp-cli" team api --help)
+          test "$(env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omg" --version)" = "$VERSION"
+          env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omg" --help
+          API_HELP=$(env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omg-cli" team api --help)
           case "$API_HELP" in
             *recover-worker*write-task-checkpoint*read-recovery-result*) ;;
             *)
-              echo "omcp-cli team api help is missing required recovery commands" >&2
+              echo "omg-cli team api help is missing required recovery commands" >&2
               exit 1
               ;;
           esac
