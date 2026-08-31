@@ -119,7 +119,10 @@ describe('cleanupStaleAgents', () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it.each(['build-fixer.md', 'deep-executor.md', 'quality-reviewer.md'])('removes exact release-authenticated stale agent bytes for %s', async filename => {
+  // This fork's v4 releases installed agents under Copilot's `<name>.agent.md`
+  // naming; v5 installs plain `<name>.md`, so every `.agent.md` basename is
+  // stale history that the ledger authorizes for reclamation.
+  it.each(['analyst.agent.md', 'architect.agent.md', 'code-reviewer.agent.md'])('removes exact release-authenticated stale agent bytes for %s', async filename => {
     vi.resetModules();
     const { cleanupStaleAgents: cleanup, AGENTS_DIR: agentsDir } = await import('../index.js');
 
@@ -131,15 +134,15 @@ describe('cleanupStaleAgents', () => {
     expect(cleanup(log)).toEqual([]);
   });
 
-  it('removes the v4.1.0 build-fixer bytes as stale history', async () => {
+  it('removes the v4.11.7 analyst bytes as stale history', async () => {
     vi.resetModules();
     const { cleanupStaleAgents: cleanup, AGENTS_DIR: agentsDir } = await import('../index.js');
 
     mkdirSync(agentsDir, { recursive: true });
-    writeFileSync(join(agentsDir, 'build-fixer.md'), historicalAgent('build-fixer.md', 'v4.1.0/build-fixer.md'));
+    writeFileSync(join(agentsDir, 'analyst.agent.md'), historicalAgent('analyst.agent.md', 'v4.11.7/analyst.agent.md'));
 
-    expect(cleanup(log)).toEqual(['build-fixer.md']);
-    expect(existsSync(join(agentsDir, 'build-fixer.md'))).toBe(false);
+    expect(cleanup(log)).toEqual(['analyst.agent.md']);
+    expect(existsSync(join(agentsDir, 'analyst.agent.md'))).toBe(false);
   });
 
   it('preserves an exact duplicate-only ledger row during stale cleanup', async () => {
@@ -426,9 +429,9 @@ describe('cleanupStaleAgents', () => {
     const actualFs = await vi.importActual<typeof import('fs')>('fs');
 
     mkdirSync(agentsDir, { recursive: true });
-    const candidatePath = join(agentsDir, 'build-fixer.md');
-    const divergent = sameLengthByteDivergence(historicalAgent('build-fixer.md'));
-    writeFileSync(candidatePath, historicalAgent('build-fixer.md'));
+    const candidatePath = join(agentsDir, 'analyst.agent.md');
+    const divergent = sameLengthByteDivergence(historicalAgent('analyst.agent.md'));
+    writeFileSync(candidatePath, historicalAgent('analyst.agent.md'));
 
     let candidateStats = 0;
     fsMocks.lstatSync.mockImplementation(path => {
@@ -797,11 +800,13 @@ describe('prunePluginDuplicateSkills', () => {
 describe('prunePluginDuplicateAgents', () => {
   let tempDir: string;
   let originalConfigDir: string | undefined;
+  let originalPluginRoots: [string | undefined, string | undefined];
   const log = vi.fn();
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'omc-prune-agent-dupes-'));
     originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+    originalPluginRoots = [process.env.OMC_PLUGIN_ROOT, process.env.CLAUDE_PLUGIN_ROOT];
     process.env.COPILOT_CONFIG_DIR = tempDir;
     log.mockClear();
   });
@@ -812,27 +817,44 @@ describe('prunePluginDuplicateAgents', () => {
     } else {
       process.env.COPILOT_CONFIG_DIR = originalConfigDir;
     }
+    for (const [name, value] of [['OMC_PLUGIN_ROOT', originalPluginRoots[0]], ['CLAUDE_PLUGIN_ROOT', originalPluginRoots[1]]] as const) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it('removes an exact release-authenticated standalone copy that duplicates an active agent', async () => {
+  // The active payload decides which basenames prune may reclaim. This fork's
+  // v4 plugin payload shipped Copilot-style `<name>.agent.md` agents, so the
+  // duplicate standalone copies it must reclaim carry the same names.
+  async function withActivePluginAgents(agentContents: Record<string, Buffer>) {
+    const pluginRoot = join(tempDir, 'active-plugin-root');
+    createPluginRoot(pluginRoot, agentContents);
+    process.env.OMC_PLUGIN_ROOT = pluginRoot;
+    delete process.env.CLAUDE_PLUGIN_ROOT;
     vi.resetModules();
-    const { prunePluginDuplicateAgents: prune, AGENTS_DIR: agentsDir } = await import('../index.js');
+    return import('../index.js');
+  }
+
+  it('removes an exact release-authenticated standalone copy that duplicates an active agent', async () => {
+    const bytes = historicalAgent('architect.agent.md');
+    const { prunePluginDuplicateAgents: prune, AGENTS_DIR: agentsDir } =
+      await withActivePluginAgents({ 'architect.agent.md': bytes });
 
     mkdirSync(agentsDir, { recursive: true });
-    writeFileSync(join(agentsDir, 'architect.md'), historicalAgent('architect.md'));
+    writeFileSync(join(agentsDir, 'architect.agent.md'), bytes);
 
-    expect(prune(log)).toEqual(['architect.md']);
-    expect(existsSync(join(agentsDir, 'architect.md'))).toBe(false);
+    expect(prune(log)).toEqual(['architect.agent.md']);
+    expect(existsSync(join(agentsDir, 'architect.agent.md'))).toBe(false);
     expect(prune(log)).toEqual([]);
   });
 
   it.each([
-    ['analyst.md', 'v4.4.0/analyst.md'],
-    ['architect.md', 'v4.5.0/architect.md'],
+    ['analyst.agent.md', 'v4.11.7/analyst.agent.md'],
+    ['architect.agent.md', 'architect.agent.md'],
   ])('prunes current-name bytes from released history for %s', async (filename, fixturePath) => {
-    vi.resetModules();
-    const { prunePluginDuplicateAgents: prune, AGENTS_DIR: agentsDir } = await import('../index.js');
+    const { prunePluginDuplicateAgents: prune, AGENTS_DIR: agentsDir } =
+      await withActivePluginAgents({ [filename]: Buffer.from('active payload agent\n') });
 
     mkdirSync(agentsDir, { recursive: true });
     writeFileSync(join(agentsDir, filename), historicalAgent(filename, fixturePath));
@@ -884,14 +906,14 @@ describe('prunePluginDuplicateAgents', () => {
   });
 
   it('preserves a candidate that becomes non-regular during unlink revalidation', async () => {
-    vi.resetModules();
-    const { prunePluginDuplicateAgents: prune, AGENTS_DIR: agentsDir } = await import('../index.js');
+    const { prunePluginDuplicateAgents: prune, AGENTS_DIR: agentsDir } =
+      await withActivePluginAgents({ 'architect.agent.md': Buffer.from('active payload agent\n') });
     const actualFs = await vi.importActual<typeof import('fs')>('fs');
 
     mkdirSync(agentsDir, { recursive: true });
-    const candidatePath = join(agentsDir, 'architect.md');
+    const candidatePath = join(agentsDir, 'architect.agent.md');
     const replacementTarget = join(tempDir, 'replacement-architect.md');
-    writeFileSync(candidatePath, historicalAgent('architect.md'));
+    writeFileSync(candidatePath, historicalAgent('architect.agent.md'));
     writeFileSync(replacementTarget, 'replacement target\n');
 
     let candidateStats = 0;

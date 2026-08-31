@@ -77,8 +77,11 @@ const SKININTHEGAMEBROS_ONLY_SKILLS = new Set<string>(
   entitlementManifest.skininthegamebrosOnlySkills.map((skill: string) => skill.trim().toLowerCase()),
 );
 
+// `<name>.agent.md` is Copilot's agent naming, which this fork's v4 releases
+// installed. Both forms stay restricted to a single lowercase basename with no
+// separators, so neither can escape the agents directory.
 function isSafeAgentFilename(filename: string): boolean {
-  return /^[a-z0-9-]+\.md$/.test(filename);
+  return /^[a-z0-9-]+(\.agent)?\.md$/.test(filename);
 }
 
 function isValidHistoricalAgent(record: unknown): record is HistoricalAgentOwnership {

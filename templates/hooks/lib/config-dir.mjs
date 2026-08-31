@@ -1,3 +1,16 @@
+/**
+ * OMC configuration directory resolution (standalone hook runtime).
+ *
+ * Honours COPILOT_CONFIG_DIR (absolute, or ~-prefixed) and falls back to
+ * ~/.copilot, the host CLI's config directory.
+ *
+ * Multi-surface mirrors (keep in sync):
+ *   src/utils/config-dir.ts      — TypeScript runtime (source of truth)
+ *   scripts/lib/config-dir.mjs   — ESM plugin runtime
+ *   scripts/lib/config-dir.cjs   — CJS bridge runtime
+ *   scripts/lib/config-dir.sh    — POSIX shell runtime
+ */
+
 import { homedir } from 'node:os';
 import { join, normalize, parse, sep } from 'node:path';
 
@@ -14,7 +27,7 @@ export function getCopilotConfigDir() {
   const configured = process.env.COPILOT_CONFIG_DIR?.trim();
 
   if (!configured) {
-    return stripTrailingSep(normalize(join(home, '.claude')));
+    return stripTrailingSep(normalize(join(home, '.copilot')));
   }
 
   if (configured === '~') {

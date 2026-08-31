@@ -166,7 +166,7 @@ describe('Contract 7: hook command portability (#2084, #2348)', () => {
 
     expect(commands.length).toBeGreaterThan(0);
     for (const cmd of commands) {
-      expect(cmd).toContain('/.claude/hooks/');
+      expect(cmd).toContain('/.copilot/hooks/');
       expect(cmd).not.toContain('${COPILOT_CONFIG_DIR:-$HOME/.copilot}');
       expect(cmd).not.toContain('%USERPROFILE%');
     }
