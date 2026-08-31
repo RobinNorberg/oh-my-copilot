@@ -2,7 +2,11 @@ import type { AutopilotState } from "./types.js";
 export declare const WORKFLOW_TRANSCRIPT_RECORD_TOO_LARGE = "workflow_transcript_record_too_large";
 export declare function takeNamedWorkflowTranscriptFailure(sessionId: string | undefined): string | null;
 type RecordValue = Record<string, unknown>;
-/** Named persisted state is supported only where its no-follow contract can be enforced. */
+/**
+ * Named persisted state needs inter-process exclusion and a no-follow read of the transcript.
+ * Both are available on every platform: flock or the portable lockfile for the former, and an
+ * openat walk or a symlink-rejecting component walk for the latter.
+ */
 export declare function namedWorkflowRuntimeSupported(): boolean;
 export type NamedWorkflowValidation = {
     tracking: NonNullable<AutopilotState["pipelineTracking"]>;

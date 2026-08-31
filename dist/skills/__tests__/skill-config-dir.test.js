@@ -110,8 +110,17 @@ function findHardcodedTildeClaude(filePath) {
     return violations;
 }
 const ALL_FILES = findMarkdownFiles(SKILLS_ROOT);
+/**
+ * `skills/<path>` label for a discovered file. Windows paths use backslashes, so
+ * matching on a literal `skills/` left the label as the full absolute path and no
+ * baseline entry ever matched — every file with any violation failed there while
+ * passing on Linux.
+ */
+function toSkillLabel(filePath) {
+    return filePath.replace(/\\/g, '/').replace(/.*\/skills\//, 'skills/');
+}
 describe('skill markdown bash blocks must respect COPILOT_CONFIG_DIR', () => {
-    it.each(ALL_FILES.map((f) => [f.replace(/.*skills\//, 'skills/'), f]))('%s has no hardcoded $HOME/.claude in bash blocks', (_label, filePath) => {
+    it.each(ALL_FILES.map((f) => [toSkillLabel(f), f]))('%s has no hardcoded $HOME/.claude in bash blocks', (_label, filePath) => {
         const violations = findHardcodedHomeClaude(filePath);
         if (violations.length > 0) {
             const details = violations
@@ -140,7 +149,7 @@ describe('skill markdown prose must not use raw ~/.claude (Contract 6, issue #21
         'skills/skill/SKILL.md': 8,
         'skills/team/SKILL.md': 6,
     };
-    it.each(ALL_FILES.map((f) => [f.replace(/.*skills\//, 'skills/'), f]))('%s has no new unguarded ~/.claude in prose', (label, filePath) => {
+    it.each(ALL_FILES.map((f) => [toSkillLabel(f), f]))('%s has no new unguarded ~/.claude in prose', (label, filePath) => {
         const violations = findHardcodedTildeClaude(filePath);
         const baseline = KNOWN_VIOLATION_BASELINE[label] ?? 0;
         if (violations.length > baseline) {

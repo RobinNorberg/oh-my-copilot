@@ -11,6 +11,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join, extname, normalize } from 'path';
 import { execFileSync, spawnSync } from 'child_process';
+import { isExecutableAvailable } from '../../platform/executable-resolution.js';
 // =============================================================================
 // SECURITY UTILITIES
 // =============================================================================
@@ -54,10 +55,7 @@ export function getFormatter(ext) {
  * Check if a formatter is available
  */
 export function isFormatterAvailable(command) {
-    const binary = command.split(' ')[0];
-    const checkCommand = process.platform === 'win32' ? 'where' : 'which';
-    const result = spawnSync(checkCommand, [binary], { stdio: 'ignore' });
-    return result.status === 0;
+    return isExecutableAvailable(command.split(' ')[0]);
 }
 /**
  * Format a file using the appropriate formatter
@@ -113,9 +111,7 @@ export function lintFile(filePath) {
         return { success: true, message: `No linter configured for ${ext}` };
     }
     const linterBin = linter.split(' ')[0];
-    const checkCommand = process.platform === 'win32' ? 'where' : 'which';
-    const checkResult = spawnSync(checkCommand, [linterBin], { stdio: 'ignore' });
-    if (checkResult.status !== 0) {
+    if (!isExecutableAvailable(linterBin)) {
         return { success: true, message: `Linter ${linter} not available` };
     }
     try {
@@ -194,9 +190,7 @@ export function runTypeCheck(directory) {
     if (!existsSync(tsconfigPath)) {
         return { success: true, message: 'No tsconfig.json found' };
     }
-    const checkCommand = process.platform === 'win32' ? 'where' : 'which';
-    const tscCheck = spawnSync(checkCommand, ['tsc'], { stdio: 'ignore' });
-    if (tscCheck.status !== 0) {
+    if (!isExecutableAvailable('tsc')) {
         return { success: true, message: 'TypeScript not installed' };
     }
     // shell:true on Windows avoids Node 20.12+ EINVAL when spawning npx.cmd (CVE-2024-27980). #2721

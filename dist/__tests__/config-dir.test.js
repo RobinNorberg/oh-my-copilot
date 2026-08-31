@@ -58,6 +58,26 @@ describe('getCopilotConfigDir', () => {
             vi.resetModules();
         }
     });
+    it('keeps every surface on the same default when COPILOT_CONFIG_DIR is unset', () => {
+        // The .mjs and .cjs mirrors silently drifted to ~/.claude while the
+        // TypeScript and shell surfaces used ~/.copilot, so the bash setup
+        // lifecycle wrote .omc-config.json where the Node hooks never looked.
+        // Only the tilde branch was covered, which is why the drift survived.
+        delete process.env.COPILOT_CONFIG_DIR;
+        const expected = normalize(join(homedir(), '.copilot'));
+        const env = { ...process.env };
+        delete env.COPILOT_CONFIG_DIR;
+        const mjs = execFileSync(process.execPath, [
+            '--input-type=module',
+            '-e',
+            "import { getCopilotConfigDir } from './scripts/lib/config-dir.mjs'; process.stdout.write(getCopilotConfigDir());",
+        ], { cwd: process.cwd(), env, encoding: 'utf-8' });
+        const cjsPath = join(process.cwd(), 'scripts', 'lib', 'config-dir.cjs');
+        const cjs = execFileSync(process.execPath, ['-e', `const { getCopilotConfigDir } = require(${JSON.stringify(cjsPath)}); process.stdout.write(getCopilotConfigDir());`], { cwd: process.cwd(), env, encoding: 'utf-8' });
+        expect(getCopilotConfigDir()).toBe(expected);
+        expect(mjs).toBe(expected);
+        expect(cjs).toBe(expected);
+    });
     it('keeps the script helper aligned with the TypeScript helper', async () => {
         process.env.COPILOT_CONFIG_DIR = '~/.claude-alt';
         const output = execFileSync(process.execPath, [

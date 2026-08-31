@@ -4,9 +4,9 @@
  * Defines known language servers and their configurations.
  * Supports auto-detection and installation hints.
  */
-import { spawnSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { dirname, extname, isAbsolute, join, parse, resolve } from 'path';
+import { isExecutableAvailable } from '../../platform/executable-resolution.js';
 const TYPESCRIPT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs'];
 const TYPESCRIPT_CLASSIC_SERVER = {
     name: 'TypeScript Language Server',
@@ -234,9 +234,7 @@ export function resolvePythonServer() {
 export function commandExists(command) {
     if (isAbsolute(command))
         return existsSync(command);
-    const checkCommand = process.platform === 'win32' ? 'where' : 'which';
-    const result = spawnSync(checkCommand, [command], { stdio: 'ignore' });
-    return result.status === 0;
+    return isExecutableAvailable(command);
 }
 /**
  * Get the LSP server config for a file based on its extension.

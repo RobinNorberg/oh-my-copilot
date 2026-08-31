@@ -103,10 +103,12 @@ describe('plugin-setup.mjs hook command portability', () => {
         }
         return cmd;
     }
-    it('selects direct node only on win32 and find-node bootstrap elsewhere', () => {
-        expect(scriptContent).toContain("process.platform === 'win32'");
+    it('delegates hook prefix selection to the shared normalizer', () => {
         expect(scriptContent).toContain('hookPrefixForPlatform');
         expect(scriptContent).toContain('normalizeHooksDataForPlatform');
+        // The prefix decision belongs to the normalizer, which probes whether this
+        // host can run the portable form; plugin-setup must not branch on platform.
+        expect(scriptContent).not.toMatch(/prefix[^\n]*process\.platform === 'win32'/);
     });
     it('leaves the canonical sh+find-node+run.cjs command unchanged', () => {
         const canonical = `${UNIX_PREFIX}"$CLAUDE_PLUGIN_ROOT"/scripts/keyword-detector.mjs`;

@@ -46,10 +46,14 @@ export interface WorkflowDescriptor {
     readonly stages: WorkflowProfileStages;
     readonly profileHash: string;
 }
-/** Stable identity of transcript bytes accepted by a named workflow run. */
+/**
+ * Stable identity of transcript bytes accepted by a named workflow run.
+ * Device and inode are written as decimal strings because Windows file ids run
+ * past the safe integer range; numbers are still read for states written before that.
+ */
 export interface PipelineTranscriptFileIdentity {
-    device: number;
-    inode: number;
+    device: string | number;
+    inode: string | number;
     size: number;
     mtimeNs: string;
     ctimeNs: string;

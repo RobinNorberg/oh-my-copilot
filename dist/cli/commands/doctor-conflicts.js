@@ -648,7 +648,8 @@ export function formatReport(report, json) {
             lines.push(`    - ${hook.event} ${colors.gray(`(${hook.pluginRoot})`)}`);
             lines.push(`      ${colors.gray(hook.command)}`);
         }
-        lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup or update/reinstall the plugin to rewrite hooks to direct node run.cjs commands.')}`);
+        lines.push(`    ${colors.gray("cmd.exe answers these with \"'sh' is not recognized\", so every hook silently fails.")}`);
+        lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup to restore the portable node run.cjs commands.')}`);
         lines.push('');
     }
     // Config issues

@@ -87,11 +87,18 @@ vi.mock('child_process', async (importOriginal) => {
             return 'tmux 3.4\n';
         return '';
     });
+    // validateTmux probes `tmux -V` through argv execution, not a shell string.
+    const execFileSyncMock = vi.fn((_cmd, args = []) => {
+        if (args.includes('-V'))
+            return 'tmux 3.4\n';
+        return runMockExec(args).stdout;
+    });
     return {
         ...actual,
         exec: execMock,
         execFile: execFileMock,
         execSync: execSyncMock,
+        execFileSync: execFileSyncMock,
     };
 });
 import { createTeamSession, detectTeamMultiplexerContext, splitTeamWorkerPane, splitTeamWorkerPaneWithEvidence } from '../tmux-session.js';

@@ -199,7 +199,7 @@ function createEventLogger() {
 // ============================================================================
 function getCurrentTmuxSession() {
     try {
-        return tmuxShell("display-message -p '#S'", {
+        return tmuxShell(["display-message", "-p", "#S"], {
             timeout: 5000,
         }).trim();
     }
@@ -209,7 +209,7 @@ function getCurrentTmuxSession() {
 }
 function getCurrentTmuxPane() {
     try {
-        return tmuxShell("display-message -p '#{pane_id}'", {
+        return tmuxShell(["display-message", "-p", "#{pane_id}"], {
             timeout: 5000,
         }).trim();
     }

@@ -1,49 +1,104 @@
-import { spawnSync } from 'child_process';
-import { isAbsolute, normalize, sep, win32 as win32Path } from 'path';
+import { isAbsolute, posix as posixPath, win32 as win32Path } from 'path';
+import { homedir } from 'os';
 import { validateTeamName } from './team-name.js';
 import { normalizeToCcAlias } from '../features/delegation-enforcer.js';
 import { isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/models.js';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
+import { probeExecutable, resolveExecutable } from '../platform/executable-resolution.js';
 const resolvedPathCache = new Map();
+// Locations any process can write to, so a binary resolved there is not
+// trustworthy.
 const UNTRUSTED_PATH_PATTERNS = [
     /^\/tmp(\/|$)/,
     /^\/var\/tmp(\/|$)/,
     /^\/dev\/shm(\/|$)/,
 ];
+// The POSIX list never matches a Windows path, so drops like C:\Users\me\
+// AppData\Local\Temp\claude.exe sailed through. These match by path segment
+// because %TEMP% and Downloads sit under the user profile, wherever that is,
+// and case-insensitively because the filesystem is.
+const UNTRUSTED_WINDOWS_PATH_PATTERNS = [
+    /[\\/]Temp[\\/]/i,
+    /[\\/]Tmp[\\/]/i,
+    /[\\/]Downloads[\\/]/i,
+];
+function untrustedPathPatterns() {
+    return process.platform === 'win32'
+        ? [...UNTRUSTED_PATH_PATTERNS, ...UNTRUSTED_WINDOWS_PATH_PATTERNS]
+        : UNTRUSTED_PATH_PATTERNS;
+}
+/**
+ * Path semantics for the host platform. Selected per call rather than bound at
+ * import time so a platform-stubbed test exercises the matching rules it means to.
+ */
+function pathFlavor() {
+    return process.platform === 'win32' ? win32Path : posixPath;
+}
+/**
+ * The user's home directory, resolved the way os.homedir() does but keyed to
+ * the platform under evaluation: HOME on POSIX, USERPROFILE on Windows, with
+ * the OS lookup as the fallback when neither is set.
+ */
+function trustedHome() {
+    const fromEnv = process.platform === 'win32' ? process.env.USERPROFILE : process.env.HOME;
+    return fromEnv?.trim() ? fromEnv : homedir();
+}
 function getTrustedPrefixes() {
-    const trusted = [
-        '/usr/local/bin',
-        '/usr/bin',
-        '/opt/homebrew/',
-    ];
-    const home = process.env.HOME;
-    if (home) {
-        trusted.push(`${home}/.local/bin`);
-        trusted.push(`${home}/.nvm/`);
-        trusted.push(`${home}/.cargo/bin`);
-        trusted.push(`${home}/.grok/bin`);
+    const flavor = pathFlavor();
+    const home = trustedHome();
+    const trusted = [];
+    if (process.platform === 'win32') {
+        const appData = process.env.APPDATA;
+        const localAppData = process.env.LOCALAPPDATA;
+        const programFiles = process.env.ProgramFiles;
+        const programFilesX86 = process.env['ProgramFiles(x86)'];
+        const candidates = [
+            appData ? flavor.join(appData, 'npm') : undefined,
+            localAppData ? flavor.join(localAppData, 'npm') : undefined,
+            localAppData ? flavor.join(localAppData, 'Programs') : undefined,
+            localAppData ? flavor.join(localAppData, 'Yarn', 'bin') : undefined,
+            programFiles ? flavor.join(programFiles, 'nodejs') : undefined,
+            programFilesX86 ? flavor.join(programFilesX86, 'nodejs') : undefined,
+            home ? flavor.join(home, '.cargo', 'bin') : undefined,
+            home ? flavor.join(home, '.grok', 'bin') : undefined,
+            home ? flavor.join(home, '.local', 'bin') : undefined,
+        ];
+        trusted.push(...candidates.filter((entry) => Boolean(entry)));
+    }
+    else {
+        trusted.push('/usr/local/bin', '/usr/bin', '/opt/homebrew');
+        if (home) {
+            trusted.push(`${home}/.local/bin`);
+            trusted.push(`${home}/.nvm`);
+            trusted.push(`${home}/.cargo/bin`);
+            trusted.push(`${home}/.grok/bin`);
+        }
+    }
+    // npm's configured global prefix is where `npm i -g` puts provider CLIs.
+    const npmPrefix = process.env.npm_config_prefix;
+    if (npmPrefix && flavor.isAbsolute(npmPrefix)) {
+        trusted.push(npmPrefix);
+        trusted.push(flavor.join(npmPrefix, 'bin'));
     }
     const custom = (process.env.OMC_TRUSTED_CLI_DIRS ?? '')
-        .split(':')
+        .split(flavor.delimiter)
         .map(part => part.trim())
         .filter(Boolean)
-        .filter(part => isAbsolute(part));
+        .filter(part => flavor.isAbsolute(part));
     trusted.push(...custom);
     return trusted;
 }
 function isTrustedPrefix(resolvedPath) {
-    const normalized = normalize(resolvedPath);
+    const flavor = pathFlavor();
     return getTrustedPrefixes().some(prefix => {
-        // `normalize` strips trailing separators, so a plain `startsWith` would treat
-        // a sibling whose name merely begins with the prefix as trusted — e.g.
-        // `/usr/bin` would match `/usr/bin-malicious/grok`, and `~/.local/bin` would
-        // match `~/.local/bin-evil/x`. Enforce a directory boundary: the resolved
-        // path must be the trusted dir itself or a true descendant (prefix + sep).
-        const p = normalize(prefix);
-        if (normalized === p)
+        // A raw startsWith would treat a sibling whose name merely begins with the
+        // prefix as trusted — `/usr/bin` would match `/usr/bin-malicious/grok`.
+        // `relative` enforces the directory boundary, and its win32 form compares
+        // case-insensitively the way the filesystem does.
+        const relative = flavor.relative(prefix, resolvedPath);
+        if (relative === '')
             return true;
-        const withSep = p.endsWith(sep) ? p : p + sep;
-        return normalized.startsWith(withSep);
+        return !relative.startsWith('..') && !flavor.isAbsolute(relative);
     });
 }
 function assertBinaryName(binary) {
@@ -61,24 +116,15 @@ export function resolveCliBinaryPath(binary) {
     const cached = resolvedPathCache.get(binary);
     if (cached)
         return cached;
-    const finder = process.platform === 'win32' ? 'where' : 'which';
-    const result = spawnSync(finder, [binary], {
-        timeout: 5000,
-        env: process.env,
-    });
-    if (result.status !== 0) {
+    const found = resolveExecutable(binary);
+    if (!found) {
         throw new Error(`CLI binary '${binary}' not found in PATH`);
     }
-    const stdout = result.stdout?.toString().trim() ?? '';
-    const firstLine = stdout.split('\n').map(line => line.trim()).find(Boolean) ?? '';
-    if (!firstLine) {
-        throw new Error(`CLI binary '${binary}' not found in PATH`);
-    }
-    const resolvedPath = normalize(firstLine);
-    if (!isAbsolute(resolvedPath)) {
+    const resolvedPath = pathFlavor().normalize(found);
+    if (!pathFlavor().isAbsolute(resolvedPath)) {
         throw new Error(`Resolved CLI binary '${binary}' to relative path`);
     }
-    if (UNTRUSTED_PATH_PATTERNS.some(pattern => pattern.test(resolvedPath))) {
+    if (untrustedPathPatterns().some(pattern => pattern.test(resolvedPath))) {
         throw new Error(`Resolved CLI binary '${binary}' to untrusted location: ${resolvedPath}`);
     }
     if (!isTrustedPrefix(resolvedPath)) {
@@ -107,6 +153,7 @@ export function validateCliBinaryPath(binary) {
 }
 export const _testInternals = {
     UNTRUSTED_PATH_PATTERNS,
+    untrustedPathPatterns,
     getTrustedPrefixes,
     isTrustedPrefix,
 };
@@ -295,37 +342,24 @@ function resolveBinaryPath(binary) {
     validateBinaryRef(binary);
     if (isAbsolute(binary))
         return binary;
-    try {
-        const resolver = process.platform === 'win32' ? 'where' : 'which';
-        const result = spawnSync(resolver, [binary], { timeout: 5000, encoding: 'utf8' });
-        if (result.status !== 0)
-            return binary;
-        const lines = result.stdout
-            ?.split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean) ?? [];
-        const firstPath = lines[0];
-        const isResolvedAbsolute = !!firstPath && (isAbsolute(firstPath) || win32Path.isAbsolute(firstPath));
-        return isResolvedAbsolute ? firstPath : binary;
-    }
-    catch {
-        return binary;
-    }
+    // An unresolvable name falls back to the bare binary so a PATH lookup by the
+    // spawning shell still gets a chance.
+    return resolveExecutable(binary) ?? binary;
 }
 export function isCliAvailable(agentType) {
     const contract = getContract(agentType);
     try {
-        const resolvedBinary = resolveBinaryPath(contract.binary);
-        if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedBinary)) {
-            const comspec = process.env.COMSPEC || 'cmd.exe';
-            const result = spawnSync(comspec, ['/d', '/s', '/c', `"${resolvedBinary}" --version`], { timeout: 5000 });
-            return result.status === 0;
-        }
-        const result = spawnSync(resolvedBinary, ['--version'], {
-            timeout: 5000,
-            shell: process.platform === 'win32',
-        });
-        return result.status === 0;
+        validateBinaryRef(contract.binary);
+        const resolved = isAbsolute(contract.binary)
+            ? contract.binary
+            : resolveExecutable(contract.binary);
+        // Fail closed when the name does not resolve. Handing a bare name to a
+        // shell let cmd.exe resolve it against the current directory and run a
+        // planted claude.cmd from an untrusted repo, and left no resolved path for
+        // the trust check to inspect.
+        if (!resolved)
+            return false;
+        return probeExecutable(resolved, { timeoutMs: 5000 }).exitedZero;
     }
     catch {
         return false;

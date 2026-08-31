@@ -19,7 +19,7 @@ export function getCurrentTmuxSession() {
         // is wrong when Claude runs in a detached session.
         const paneId = process.env.TMUX_PANE;
         if (paneId) {
-            const lines = tmuxShell("list-panes -a -F '#{pane_id} #{session_name}'", {
+            const lines = tmuxShell(["list-panes", "-a", "-F", "#{pane_id} #{session_name}"], {
                 timeout: 3000,
                 stdio: ["pipe", "pipe", "pipe"],
             }).split("\n");
@@ -28,7 +28,7 @@ export function getCurrentTmuxSession() {
                 return match.split(" ")[1] ?? null;
         }
         // Fallback: ask the attached session (may differ when detached).
-        const sessionName = tmuxShell("display-message -p '#S'", {
+        const sessionName = tmuxShell(["display-message", "-p", "#S"], {
             timeout: 3000,
             stdio: ["pipe", "pipe", "pipe"],
         }).trim();
@@ -47,7 +47,7 @@ export function getTeamTmuxSessions(teamName) {
         return [];
     const prefix = `omc-team-${sanitized}-`;
     try {
-        const output = tmuxShell("list-sessions -F '#{session_name}'", {
+        const output = tmuxShell(["list-sessions", "-F", "#{session_name}"], {
             timeout: 3000,
             stdio: ["pipe", "pipe", "pipe"],
         });
@@ -86,7 +86,7 @@ export function getCurrentTmuxPaneId() {
         return envPane;
     // Fallback: ask tmux directly (similar to getCurrentTmuxSession)
     try {
-        const paneId = tmuxShell("display-message -p '#{pane_id}'", {
+        const paneId = tmuxShell(["display-message", "-p", "#{pane_id}"], {
             timeout: 3000,
             stdio: ["pipe", "pipe", "pipe"],
         }).trim();

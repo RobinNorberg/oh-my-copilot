@@ -124,8 +124,8 @@ function stateBytes(cwd) {
     return existsSync(path) ? readFileSync(path) : null;
 }
 function fileIdentity(path, content) {
-    const stat = lstatSync(path);
-    return { device: stat.dev, inode: stat.ino, size: stat.size, mtimeNs: '0', ctimeNs: '0', contentSha256: createHash('sha256').update(content).digest('hex') };
+    const stat = lstatSync(path, { bigint: true });
+    return { device: String(stat.dev), inode: String(stat.ino), size: Number(stat.size), mtimeNs: '0', ctimeNs: '0', contentSha256: createHash('sha256').update(content).digest('hex') };
 }
 function advancePausedWorkflowState(state, transcriptPath, signal = 'PIPELINE_RALPLAN_COMPLETE') {
     const record = JSON.stringify({ sessionId: 'workflow-activation-fixture', type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: `Signal: ${signal}` }] } });
@@ -281,7 +281,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
             expect(JSON.parse(stateBytes(nested).toString())).toMatchObject({
                 prompt: 'ship the release',
                 workflow: { workflowName: 'release-flow', stages: ['ralplan', 'execution'] },
-                pipelineTracking: { activationBoundary: { transcriptPath: join(nested, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl'), byteOffset: 0, fileIdentity: { inode: expect.any(Number), device: expect.any(Number), size: 0 } } },
+                pipelineTracking: { activationBoundary: { transcriptPath: join(nested, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl'), byteOffset: 0, fileIdentity: { inode: expect.stringMatching(/^\d+$/), device: expect.stringMatching(/^\d+$/), size: 0 } } },
             });
         }
         finally {
@@ -362,22 +362,24 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
             rmSync(parent, { recursive: true, force: true });
         }
     });
-    it.each(HOOKS)('rejects named workflows explicitly on unsupported platforms through %s', (script) => {
+    it.each(HOOKS)('activates named workflows on platforms without /proc through %s', (script) => {
         const { cwd, configHome } = createFixture();
         try {
             const output = runHook(script, '/autopilot --workflow release-flow ship the release', cwd, configHome, undefined, { OMC_WORKFLOW_TEST_PLATFORM: 'darwin' });
-            expect(output.hookSpecificOutput?.additionalContext).toContain('named autopilot workflow profiles require Linux');
-            expect(stateBytes(cwd)).toBeNull();
+            expect(output.hookSpecificOutput?.additionalContext ?? '').not.toContain('require a working state file lock');
+            const state = stateBytes(cwd);
+            expect(state).not.toBeNull();
+            expect(JSON.parse(String(state)).workflow?.workflowName).toBe('release-flow');
         }
         finally {
             rmSync(cwd, { recursive: true, force: true });
         }
     });
-    it.each(HOOKS)('rejects named workflows before mutation when flock is unavailable through %s', (script) => {
+    it.each(HOOKS)('rejects named workflows before mutation when locking is unavailable through %s', (script) => {
         const { cwd, configHome } = createFixture();
         try {
             const output = runHook(script, '/autopilot --workflow release-flow ship the release', cwd, configHome, undefined, { OMC_WORKFLOW_TEST_FLOCK_AVAILABLE: '0' });
-            expect(output.hookSpecificOutput?.additionalContext).toContain('require Linux with flock');
+            expect(output.hookSpecificOutput?.additionalContext).toContain('require a working state file lock');
             expect(stateBytes(cwd)).toBeNull();
         }
         finally {
@@ -810,10 +812,10 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
             const transcriptPath = join(cwd, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl');
             rmSync(transcriptPath);
             writeFileSync(transcriptPath, 'replacement');
-            const replacementIdentity = lstatSync(transcriptPath);
+            const replacementIdentity = lstatSync(transcriptPath, { bigint: true });
             rmSync(lockPath, { force: true });
             await pending;
-            expect(JSON.parse(stateBytes(cwd).toString())).toMatchObject({ workflow: { workflowName: 'release-flow' }, pipelineTracking: { activationBoundary: { byteOffset: 11, fileIdentity: { inode: replacementIdentity.ino, device: replacementIdentity.dev, size: 11 } } } });
+            expect(JSON.parse(stateBytes(cwd).toString())).toMatchObject({ workflow: { workflowName: 'release-flow' }, pipelineTracking: { activationBoundary: { byteOffset: 11, fileIdentity: { inode: String(replacementIdentity.ino), device: String(replacementIdentity.dev), size: 11 } } } });
         }
         finally {
             rmSync(cwd, { recursive: true, force: true });

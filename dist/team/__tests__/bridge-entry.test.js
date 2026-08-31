@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { validateConfigPath } from '../bridge-entry.js';
+import { validateBridgeWorkingDirectory, validateConfigPath } from '../bridge-entry.js';
 describe('bridge-entry security', () => {
     const source = readFileSync(join(__dirname, '..', 'bridge-entry.ts'), 'utf-8');
     it('does NOT use process.cwd()', () => {
@@ -10,9 +10,15 @@ describe('bridge-entry security', () => {
     it('has validateBridgeWorkingDirectory function', () => {
         expect(source).toContain('validateBridgeWorkingDirectory');
     });
-    it('validates config path is under ~/.claude/ or .omg/', () => {
-        expect(source).toContain('.claude/');
-        expect(source).toContain('.omg/');
+    it('validates config path is under the Claude config dir or .omg/', () => {
+        // Asserted through the function rather than by grepping the source for
+        // separator literals, which pinned one spelling of the implementation and
+        // broke the moment the check became separator-aware.
+        const home = '/home/user';
+        const claudeConfigDir = '/home/user/.claude';
+        expect(validateConfigPath('/home/user/.claude/teams/a/config.json', home, claudeConfigDir)).toBe(true);
+        expect(validateConfigPath('/home/user/project/.omg/state/config.json', home, claudeConfigDir)).toBe(true);
+        expect(validateConfigPath('/home/user/project/config.json', home, claudeConfigDir)).toBe(false);
     });
     it('sanitizes team and worker names', () => {
         expect(source).toContain('sanitizeName(config.teamName)');
@@ -22,7 +28,12 @@ describe('bridge-entry security', () => {
         expect(source).toContain('realpathSync');
     });
     it('checks path is under homedir', () => {
-        expect(source).toContain("home + '/'");
+        // Behavioral, not a source grep: the old grep pinned a `home + '/'` prefix
+        // check, which is exactly the expression that rejected every path on Windows.
+        const outsideHome = process.platform === 'win32'
+            ? (process.env.SystemRoot ?? 'C:\\Windows')
+            : '/etc';
+        expect(() => validateBridgeWorkingDirectory(outsideHome)).toThrow('outside home directory');
     });
     it('verifies git worktree', () => {
         expect(source).toContain('getWorktreeRoot');

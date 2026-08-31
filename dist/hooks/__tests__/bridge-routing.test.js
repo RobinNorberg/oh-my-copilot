@@ -530,7 +530,7 @@ $ ultrawork search the codebase`,
                 rmSync(tempDir, { recursive: true, force: true });
             }
         });
-        it('preserves existing autopilot state for a named invocation on an unsupported runtime', async () => {
+        it('preserves existing autopilot state for a named invocation the bridge cannot activate', async () => {
             const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-existing-named-autopilot-'));
             try {
                 execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
@@ -539,7 +539,6 @@ $ ultrawork search the codebase`,
                 mkdirSync(join(statePath, '..'), { recursive: true });
                 const existingState = JSON.stringify({ active: true, session_id: sessionId, originalIdea: 'legacy state' });
                 writeFileSync(statePath, existingState);
-                process.env.OMC_WORKFLOW_TEST_PLATFORM = 'darwin';
                 const result = await processHook('keyword-detector', {
                     sessionId,
                     prompt: '/omc:autopilot --workflow release-flow ship the release',

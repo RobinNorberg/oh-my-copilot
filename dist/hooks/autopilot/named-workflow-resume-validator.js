@@ -2,6 +2,7 @@ import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readS
 import { createHash } from "crypto";
 import { basename, join, parse, relative, resolve, sep } from "path";
 import { getCopilotConfigDir } from "../../utils/config-dir.js";
+import { isStateMutationLockingSupported } from "../../lib/mode-state-io.js";
 import { verifyWorkflowDescriptor } from "./pipeline.js";
 import { TextDecoder } from "util";
 const NAMED_SIGNALS = {
@@ -37,6 +38,13 @@ function exactKeys(value, keys) {
 function safeInteger(value) {
     return Number.isSafeInteger(value) && Number(value) >= 0;
 }
+/** Windows file ids run past the safe integer range, so identities carry device and inode as decimal strings; states written as numbers still validate. */
+function fileId(value) {
+    return typeof value === "string" ? /^\d+$/.test(value) : safeInteger(value);
+}
+function sameFileId(left, right) {
+    return String(left) === String(right);
+}
 function timestamp(value) {
     return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
@@ -50,8 +58,8 @@ function validFileIdentity(value) {
             "ctimeNs",
             "contentSha256",
         ]) &&
-        safeInteger(value.device) &&
-        safeInteger(value.inode) &&
+        fileId(value.device) &&
+        fileId(value.inode) &&
         safeInteger(value.size) &&
         typeof value.mtimeNs === "string" &&
         /^\d+$/.test(value.mtimeNs) &&
@@ -60,23 +68,41 @@ function validFileIdentity(value) {
         typeof value.contentSha256 === "string" &&
         /^[a-f0-9]{64}$/.test(value.contentSha256));
 }
-/** Named persisted state is supported only where its no-follow contract can be enforced. */
-export function namedWorkflowRuntimeSupported() {
-    return (process.platform === "linux" &&
-        typeof constants.O_NOFOLLOW === "number" &&
-        typeof constants.O_DIRECTORY === "number" &&
-        typeof constants.O_RDONLY === "number" &&
-        (() => {
-            try {
-                return lstatSync("/proc/self/fd").isDirectory();
-            }
-            catch {
-                return false;
-            }
-        })() &&
-        process.env.OMC_TEST_FLOCK_AVAILABLE !== "0" &&
-        (existsSync("/usr/bin/flock") || existsSync("/bin/flock")));
+/**
+ * True where /proc lets descriptors be reopened, which is what makes the openat-style walk possible.
+ * Gated on Linux like the .mjs runtime: FreeBSD with fdescfs also exposes /proc/self/fd, but its
+ * entries are not traversable into, so taking this branch there fails closed on every open.
+ */
+function procSelfFdAvailable() {
+    if (process.platform !== "linux")
+        return false;
+    if (typeof constants.O_NOFOLLOW !== "number" ||
+        typeof constants.O_DIRECTORY !== "number")
+        return false;
+    try {
+        return lstatSync("/proc/self/fd").isDirectory();
+    }
+    catch {
+        return false;
+    }
 }
+/**
+ * Named persisted state needs inter-process exclusion and a no-follow read of the transcript.
+ * Both are available on every platform: flock or the portable lockfile for the former, and an
+ * openat walk or a symlink-rejecting component walk for the latter.
+ */
+export function namedWorkflowRuntimeSupported() {
+    return (typeof constants.O_RDONLY === "number" &&
+        process.env.OMC_TEST_FLOCK_AVAILABLE !== "0" &&
+        (existsSync("/usr/bin/flock") ||
+            existsSync("/bin/flock") ||
+            isStateMutationLockingSupported()));
+}
+/**
+ * Open `path` under `root` refusing to traverse any symlink. Linux reopens each descriptor
+ * through /proc/self/fd for an atomic openat walk; elsewhere every component is rejected up
+ * front if it is a link and the opened file is confirmed to be the one that was inspected.
+ */
 function noFollowCanonicalFile(path, root) {
     const canonicalRoot = realpathSync(root);
     const absolute = resolve(path);
@@ -89,6 +115,10 @@ function noFollowCanonicalFile(path, root) {
         return null;
     const pathRoot = parse(absolute).root;
     const components = absolute.slice(pathRoot.length).split(sep).filter(Boolean);
+    if (components.length === 0)
+        return null;
+    if (!procSelfFdAvailable())
+        return openVerifiedFile(absolute, canonicalRoot, components, pathRoot);
     let fd;
     try {
         fd = openSync(pathRoot, constants.O_RDONLY | constants.O_DIRECTORY);
@@ -108,6 +138,49 @@ function noFollowCanonicalFile(path, root) {
         const canonicalPath = realpathSync(`/proc/self/fd/${fd}`);
         if (canonicalPath !== absolute ||
             !canonicalPath.startsWith(canonicalRoot + sep))
+            return null;
+        const result = { fd, path: canonicalPath };
+        fd = undefined;
+        return result;
+    }
+    catch {
+        return null;
+    }
+    finally {
+        if (fd !== undefined) {
+            try {
+                closeSync(fd);
+            }
+            catch {
+                /* best-effort descriptor cleanup */
+            }
+        }
+    }
+}
+function openVerifiedFile(absolute, canonicalRoot, components, pathRoot) {
+    let fd;
+    try {
+        let walked = pathRoot;
+        let expected = null;
+        for (let index = 0; index < components.length; index += 1) {
+            walked = join(walked, components[index]);
+            const final = index === components.length - 1;
+            const stat = lstatSync(walked, { bigint: true });
+            if (stat.isSymbolicLink() || (final ? !stat.isFile() : !stat.isDirectory()))
+                return null;
+            if (final)
+                expected = { device: String(stat.dev), inode: String(stat.ino) };
+        }
+        const canonicalPath = realpathSync(absolute);
+        if (canonicalPath !== absolute ||
+            !canonicalPath.startsWith(canonicalRoot + sep))
+            return null;
+        fd = openSync(absolute, constants.O_RDONLY);
+        const opened = fstatSync(fd, { bigint: true });
+        if (!expected ||
+            !opened.isFile() ||
+            !sameFileId(opened.dev, expected.device) ||
+            !sameFileId(opened.ino, expected.inode))
             return null;
         const result = { fd, path: canonicalPath };
         fd = undefined;
@@ -164,11 +237,11 @@ function validBoundary(value, sessionId, root) {
     if (!opened)
         return false;
     try {
-        const stat = fstatSync(opened.fd);
+        const stat = fstatSync(opened.fd, { bigint: true });
         const identity = boundary.fileIdentity;
-        if (stat.dev !== identity.device ||
-            stat.ino !== identity.inode ||
-            stat.size < boundary.byteOffset ||
+        if (!sameFileId(stat.dev, identity.device) ||
+            !sameFileId(stat.ino, identity.inode) ||
+            Number(stat.size) < boundary.byteOffset ||
             identity.size !== boundary.byteOffset)
             return false;
         return hashTranscriptRange(opened.fd, 0, boundary.byteOffset) === identity.contentSha256;
@@ -264,7 +337,7 @@ function readStableTranscript(path, sessionId, root) {
             return null;
         const fd = opened.fd;
         opened.fd = -1;
-        return { fd, path: opened.path, identity: { device: Number(after.dev), inode: Number(after.ino), size: Number(after.size), mtimeNs: after.mtimeNs.toString(), ctimeNs: after.ctimeNs.toString(), contentSha256 }, hashRange: (start, end) => start >= 0 && end >= start && end <= size ? hashTranscriptRange(fd, start, end) : null, scanJsonl: (start, end, callback) => start >= 0 && end >= start && end <= size ? scanTranscriptJsonl(fd, start, end, sessionId, callback) : false };
+        return { fd, path: opened.path, identity: { device: String(after.dev), inode: String(after.ino), size: Number(after.size), mtimeNs: after.mtimeNs.toString(), ctimeNs: after.ctimeNs.toString(), contentSha256 }, hashRange: (start, end) => start >= 0 && end >= start && end <= size ? hashTranscriptRange(fd, start, end) : null, scanJsonl: (start, end, callback) => start >= 0 && end >= start && end <= size ? scanTranscriptJsonl(fd, start, end, sessionId, callback) : false };
     }
     catch {
         return null;
@@ -313,8 +386,8 @@ function authenticatedObservation(observation, sessionId, root) {
     if (!transcript)
         return false;
     try {
-        if (transcript.identity.device !== stable.device ||
-            transcript.identity.inode !== stable.inode ||
+        if (!sameFileId(transcript.identity.device, stable.device) ||
+            !sameFileId(transcript.identity.inode, stable.inode) ||
             Number(transcript.identity.size) < Number(stable.size) ||
             transcript.hashRange(0, Number(stable.size)) !== stable.contentSha256 ||
             Number(observation.byteOffset) < Number(boundary.byteOffset) ||
@@ -417,7 +490,7 @@ export function validateNamedWorkflowStateStructure(state, sessionId) {
         if (previousObservation) {
             const previousBoundary = previousObservation.activationBoundary;
             const previousStable = previousObservation.stableFile;
-            if (boundary.transcriptPath !== previousBoundary.transcriptPath || boundary.byteOffset !== previousStable.size || JSON.stringify(boundary.fileIdentity) !== JSON.stringify(previousStable))
+            if (boundary.transcriptPath !== previousBoundary.transcriptPath || boundary.byteOffset !== previousStable.size || !sameFileIdentity(boundary.fileIdentity, previousStable))
                 return null;
         }
         previousObservation = observation;
@@ -426,7 +499,7 @@ export function validateNamedWorkflowStateStructure(state, sessionId) {
         const current = tracking.activationBoundary;
         const stable = previousObservation.stableFile;
         const boundary = previousObservation.activationBoundary;
-        if (current.transcriptPath !== boundary.transcriptPath || current.byteOffset !== stable.size || JSON.stringify(current.fileIdentity) !== JSON.stringify(stable))
+        if (current.transcriptPath !== boundary.transcriptPath || current.byteOffset !== stable.size || !sameFileIdentity(current.fileIdentity, stable))
             return null;
     }
     if (terminal ? state.phase !== "complete" : state.phase !== workflow.stages[tracking.currentStageIndex])
@@ -541,7 +614,7 @@ export function validateNamedWorkflowState(state, sessionId) {
             const previousStable = previousObservation.stableFile;
             if (boundary.transcriptPath !== previousBoundary.transcriptPath ||
                 boundary.byteOffset !== previousStable.size ||
-                JSON.stringify(boundary.fileIdentity) !== JSON.stringify(previousStable))
+                !sameFileIdentity(boundary.fileIdentity, previousStable))
                 return null;
         }
         previousObservation = observation;
@@ -552,7 +625,7 @@ export function validateNamedWorkflowState(state, sessionId) {
         const boundary = previousObservation.activationBoundary;
         if (current.transcriptPath !== boundary.transcriptPath ||
             current.byteOffset !== stable.size ||
-            JSON.stringify(current.fileIdentity) !== JSON.stringify(stable))
+            !sameFileIdentity(current.fileIdentity, stable))
             return null;
     }
     if (terminal
@@ -613,8 +686,10 @@ export function refreshNamedWorkflowBoundaryForCommit(advance) {
     }
 }
 function sameFileIdentity(left, right) {
-    return (left.device === right.device &&
-        left.inode === right.inode &&
+    if (!isRecord(left) || !isRecord(right))
+        return false;
+    return (sameFileId(left.device, right.device) &&
+        sameFileId(left.inode, right.inode) &&
         left.size === right.size &&
         left.mtimeNs === right.mtimeNs &&
         left.ctimeNs === right.ctimeNs &&

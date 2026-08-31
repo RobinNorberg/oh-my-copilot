@@ -36,6 +36,7 @@ export interface CliBinaryValidation {
     resolvedPath?: string;
     reason?: string;
 }
+declare function untrustedPathPatterns(): RegExp[];
 declare function getTrustedPrefixes(): string[];
 declare function isTrustedPrefix(resolvedPath: string): boolean;
 /** @deprecated Backward-compat shim; non-interactive shells should generally skip RC files. */
@@ -48,6 +49,7 @@ export declare function clearResolvedPathCache(): void;
 export declare function validateCliBinaryPath(binary: string): CliBinaryValidation;
 export declare const _testInternals: {
     UNTRUSTED_PATH_PATTERNS: RegExp[];
+    untrustedPathPatterns: typeof untrustedPathPatterns;
     getTrustedPrefixes: typeof getTrustedPrefixes;
     isTrustedPrefix: typeof isTrustedPrefix;
 };

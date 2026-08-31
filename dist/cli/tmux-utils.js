@@ -2,9 +2,10 @@
  * tmux utility functions for omc native shell launch
  * Adapted from oh-my-codex patterns for omc
  */
-import { exec, execFile, execFileSync, execSync, spawnSync, } from 'child_process';
-import { basename, isAbsolute, win32 as win32Path } from 'path';
+import { execFile, execFileSync, spawnSync, } from 'child_process';
+import { basename } from 'path';
 import { promisify } from 'util';
+import { resolveExecutable } from '../platform/executable-resolution.js';
 export function tmuxEnv() {
     // Strip both TMUX (real tmux) and PSMUX_SESSION (psmux's drop-in tmux on
     // native Windows). psmux gates `new-session -d` nesting on PSMUX_SESSION,
@@ -61,67 +62,53 @@ export async function tmuxExecAsync(args, opts) {
         ...(timeout !== undefined ? { timeout } : {}), ...rest,
     });
 }
-export function tmuxShell(command, opts) {
-    const { stripTmux: _, ...execOpts } = opts ?? {};
-    return execSync(`tmux ${command}`, { encoding: 'utf-8', ...execOpts, env: resolveEnv(opts) });
+/**
+ * Argv-based tmux call for commands that carry format strings.
+ *
+ * These used to run as a `tmux <command>` shell string, which skipped the
+ * win32 .cmd/COMSPEC wrapping in resolveTmuxInvocation and forced callers to
+ * POSIX-quote format args — quotes that cmd.exe passes through literally.
+ * @deprecated Prefer tmuxExec; this remains for existing callers.
+ */
+export function tmuxShell(args, opts) {
+    return tmuxExec(args, opts);
 }
-export async function tmuxShellAsync(command, opts) {
-    const { stripTmux: _, timeout, ...rest } = opts ?? {};
-    return promisify(exec)(`tmux ${command}`, {
-        encoding: 'utf-8', env: resolveEnv(opts),
-        ...(timeout !== undefined ? { timeout } : {}), ...rest,
-    });
+/** @deprecated Prefer tmuxExecAsync; this remains for existing callers. */
+export async function tmuxShellAsync(args, opts) {
+    return tmuxExecAsync(args, opts);
 }
 export function tmuxSpawn(args, opts) {
     const { stripTmux: _, ...spawnOpts } = opts ?? {};
     const invocation = resolveTmuxInvocation(args);
     return spawnSync(invocation.command, invocation.args, { encoding: 'utf-8', ...spawnOpts, env: resolveEnv(opts) });
 }
+/**
+ * Argv execution carries `#{...}` format args to tmux verbatim on every
+ * platform, so no shell — and therefore no per-platform quoting — is involved.
+ */
 export async function tmuxCmdAsync(args, opts) {
-    if (args.some(a => a.includes('#{')) && !isNativeWindowsShell()) {
-        const escaped = args.map(a => "'" + a.replace(/'/g, "'\\''") + "'").join(' ');
-        return tmuxShellAsync(escaped, opts);
-    }
     return tmuxExecAsync(args, opts);
 }
 function resolveTmuxBinaryPath() {
     if (process.platform !== 'win32') {
         return 'tmux';
     }
-    try {
-        const result = spawnSync('where', ['tmux'], {
-            timeout: 5000,
-            encoding: 'utf8',
-        });
-        if (result.status !== 0)
-            return 'tmux';
-        const candidates = result.stdout
-            ?.split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean) ?? [];
-        const first = candidates[0];
-        if (first && (isAbsolute(first) || win32Path.isAbsolute(first))) {
-            return first;
-        }
-    }
-    catch {
-        // Fall back to plain tmux lookup below.
-    }
-    return 'tmux';
+    return resolveExecutable('tmux') ?? 'tmux';
 }
 /**
  * Check if tmux is available on the system
  */
 export function isTmuxAvailable() {
     try {
-        const resolvedBinary = resolveTmuxBinaryPath();
-        if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedBinary)) {
-            const comspec = process.env.COMSPEC || 'cmd.exe';
-            const result = spawnSync(comspec, ['/d', '/s', '/c', `"${resolvedBinary}" -V`], { timeout: 5000 });
-            return result.status === 0;
-        }
         if (process.platform === 'win32') {
-            const result = spawnSync(resolvedBinary, ['-V'], { timeout: 5000, shell: true });
+            // shell:false keeps an install path with spaces ("C:\Program Files\...")
+            // from splitting into separate arguments.
+            const invocation = resolveTmuxInvocation(['-V']);
+            const result = spawnSync(invocation.command, invocation.args, {
+                timeout: 5000,
+                shell: false,
+                windowsHide: true,
+            });
             return result.status === 0;
         }
         tmuxExec(['-V'], { stripTmux: true, stdio: 'ignore' });

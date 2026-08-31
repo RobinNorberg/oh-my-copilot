@@ -105,10 +105,10 @@ describe("workflow descriptor integrity enforcement (#3487)", () => {
         const transcriptRoot = join(testDir, "claude-config", "projects");
         const transcriptPath = join(transcriptRoot, `${sessionId}.jsonl`);
         writeFileSync(transcriptPath, "");
-        const stat = statSync(transcriptPath);
+        const stat = statSync(transcriptPath, { bigint: true });
         const identity = {
-            device: stat.dev,
-            inode: stat.ino,
+            device: String(stat.dev),
+            inode: String(stat.ino),
             size: 0,
             mtimeNs: "0",
             ctimeNs: "0",
@@ -199,10 +199,10 @@ describe("workflow descriptor integrity enforcement (#3487)", () => {
         const transcriptRoot = join(testDir, "claude-config", "projects");
         const transcriptPath = join(transcriptRoot, `${sessionId}.jsonl`);
         writeFileSync(transcriptPath, "");
-        const stat = statSync(transcriptPath);
+        const stat = statSync(transcriptPath, { bigint: true });
         const identity = {
-            device: stat.dev,
-            inode: stat.ino,
+            device: String(stat.dev),
+            inode: String(stat.ino),
             size: 0,
             mtimeNs: "0",
             ctimeNs: "0",
@@ -249,7 +249,7 @@ describe("workflow descriptor integrity enforcement (#3487)", () => {
         const result = await checkAutopilot(sessionId, testDir);
         expect(result).toEqual({
             shouldBlock: false,
-            message: "[AUTOPILOT NAMED WORKFLOW UNSUPPORTED] Named workflow enforcement requires Linux with flock. State was left unchanged; use /cancel to safely stop this workflow.",
+            message: "[AUTOPILOT NAMED WORKFLOW UNSUPPORTED] Named workflow enforcement requires a working state file lock. State was left unchanged; use /cancel to safely stop this workflow.",
             phase: "ralplan",
         });
         expect(result?.message).not.toContain("PIPELINE STAGE");
@@ -281,10 +281,10 @@ describe("workflow descriptor integrity enforcement (#3487)", () => {
         const transcriptRoot = join(testDir, "claude-config", "projects");
         const transcriptPath = join(transcriptRoot, `${sessionId}.jsonl`);
         writeFileSync(transcriptPath, "");
-        const stat = statSync(transcriptPath);
+        const stat = statSync(transcriptPath, { bigint: true });
         const identity = {
-            device: stat.dev,
-            inode: stat.ino,
+            device: String(stat.dev),
+            inode: String(stat.ino),
             size: 0,
             mtimeNs: "0",
             ctimeNs: "0",
@@ -451,6 +451,122 @@ describe("workflow descriptor integrity enforcement (#3487)", () => {
         writeFileSync(transcriptPath, `${signal}\n${appendedNextStageSignal}\n`);
         expect(refreshNamedWorkflowBoundaryForCommit(prepared)).toBe(false);
         expect(readAutopilotState(testDir, sessionId)).toEqual(unadvanced);
+    });
+    const EMPTY_SHA256 = createHash("sha256").update("").digest("hex");
+    function stateWithFileIdentity(sessionId, identity) {
+        const base = initAutopilot(testDir, "ship the release", sessionId);
+        const descriptor = createWorkflowDescriptor("release-flow", {
+            version: 1,
+            stages: ["ralplan", "execution"],
+        });
+        const transcriptRoot = join(testDir, "claude-config", "projects");
+        return {
+            ...base,
+            phase: "ralplan",
+            prompt: "ship the release",
+            workflow: descriptor,
+            workflowRunId: "11111111-1111-4111-8111-111111111111",
+            pipelineTracking: {
+                stages: [
+                    { id: "ralplan", status: "active", iterations: 0, startedAt: new Date().toISOString() },
+                    { id: "execution", status: "pending", iterations: 0 },
+                ],
+                currentStageIndex: 0,
+                trackingRevision: 0,
+                activationBoundary: {
+                    transcriptPath: join(transcriptRoot, `${sessionId}.jsonl`),
+                    transcriptRoot,
+                    transcriptBasename: `${sessionId}.jsonl`,
+                    sessionId,
+                    byteOffset: 0,
+                    fileIdentity: { size: 0, mtimeNs: "0", ctimeNs: "0", contentSha256: EMPTY_SHA256, ...identity },
+                },
+                completionObservations: [],
+            },
+        };
+    }
+    it("accepts a decimal-string file identity", () => {
+        const sessionId = "identity-string-form";
+        const state = stateWithFileIdentity(sessionId, { device: "2049", inode: "12345" });
+        expect(validateNamedWorkflowStateStructure(state, sessionId)).not.toBeNull();
+    });
+    it("accepts a legacy numeric file identity", () => {
+        const sessionId = "identity-legacy-numeric-form";
+        const state = stateWithFileIdentity(sessionId, { device: 2049, inode: 12345 });
+        expect(validateNamedWorkflowStateStructure(state, sessionId)).not.toBeNull();
+    });
+    it("accepts a Windows-magnitude inode that Number() cannot represent", () => {
+        const sessionId = "identity-windows-magnitude";
+        // A real NTFS file id observed on Windows; NTFS routinely allocates ids past 2^53.
+        const windowsInode = "160159261751319050";
+        expect(Number.isSafeInteger(Number(windowsInode))).toBe(false);
+        expect(validateNamedWorkflowStateStructure(stateWithFileIdentity(sessionId, { device: "312828405", inode: windowsInode }), sessionId)).not.toBeNull();
+        expect(validateNamedWorkflowStateStructure(stateWithFileIdentity(sessionId, { device: 312828405, inode: Number(windowsInode) }), sessionId)).toBeNull();
+    });
+    it("matches a legacy numeric boundary against a string-encoded observation", async () => {
+        const sessionId = "identity-mixed-encoding";
+        const base = initAutopilot(testDir, "ship the release", sessionId);
+        const descriptor = createWorkflowDescriptor("release-flow", {
+            version: 1,
+            stages: ["ralplan", "execution"],
+        });
+        const transcriptRoot = join(testDir, "claude-config", "projects");
+        const transcriptPath = join(transcriptRoot, `${sessionId}.jsonl`);
+        writeFileSync(transcriptPath, "");
+        const stat = statSync(transcriptPath, { bigint: true });
+        writeAutopilotState(testDir, {
+            ...base,
+            phase: "ralplan",
+            prompt: "ship the release",
+            workflow: descriptor,
+            workflowRunId: "11111111-1111-4111-8111-111111111111",
+            pipelineTracking: {
+                stages: [
+                    { id: "ralplan", status: "active", iterations: 0, startedAt: new Date().toISOString() },
+                    { id: "execution", status: "pending", iterations: 0 },
+                ],
+                currentStageIndex: 0,
+                trackingRevision: 0,
+                activationBoundary: {
+                    transcriptPath,
+                    transcriptRoot,
+                    transcriptBasename: `${sessionId}.jsonl`,
+                    sessionId,
+                    byteOffset: 0,
+                    fileIdentity: {
+                        device: String(stat.dev),
+                        inode: String(stat.ino),
+                        size: 0,
+                        mtimeNs: "0",
+                        ctimeNs: "0",
+                        contentSha256: EMPTY_SHA256,
+                    },
+                },
+                completionObservations: [],
+            },
+        }, sessionId);
+        const signal = JSON.stringify({
+            sessionId,
+            type: "assistant",
+            message: { role: "assistant", content: [{ type: "text", text: "Signal: PIPELINE_RALPLAN_COMPLETE" }] },
+        });
+        writeFileSync(transcriptPath, `${signal}\n`);
+        await checkAutopilot(sessionId, testDir);
+        const advanced = readAutopilotState(testDir, sessionId);
+        expect(advanced.pipelineTracking?.completionObservations).toHaveLength(1);
+        // The same file described twice: the boundary as an older numeric state persisted it,
+        // the observation as the current writer persists it.
+        const mixed = structuredClone(advanced);
+        const boundary = mixed.pipelineTracking.activationBoundary.fileIdentity;
+        const stable = mixed.pipelineTracking.completionObservations[0].stableFile;
+        boundary.device = 2049;
+        boundary.inode = 12345;
+        stable.device = "2049";
+        stable.inode = "12345";
+        expect(validateNamedWorkflowStateStructure(mixed, sessionId)).not.toBeNull();
+        const mismatched = structuredClone(mixed);
+        mismatched.pipelineTracking.activationBoundary.fileIdentity.inode = 999;
+        expect(validateNamedWorkflowStateStructure(mismatched, sessionId)).toBeNull();
     });
 });
 //# sourceMappingURL=workflow-integrity.test.js.map

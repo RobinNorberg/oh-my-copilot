@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'path';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { readModeState, writeModeState, } from '../lib/mode-state-io.js';
 import { isModeActiveInAnySession } from '../hooks/mode-registry/index.js';
+import { NO_POSIX_SHELL_MESSAGE, resolvePosixCommandInvocation } from '../platform/posix-shell.js';
 import { parseEvaluatorResult, } from './contracts.js';
 const AUTORESEARCH_RESULTS_HEADER = 'iteration\tcommit\tpass\tscore\tstatus\tdescription\n';
 const AUTORESEARCH_WORKTREE_EXCLUDES = ['results.tsv', 'run.log', 'node_modules', '.omg/'];
@@ -366,11 +367,28 @@ async function buildAutoresearchInstructionContext(manifest) {
 }
 export async function runAutoresearchEvaluator(contract, worktreePath, ledgerFile, latestEvaluatorFile) {
     const ran_at = nowIso();
-    const result = spawnSync(contract.sandbox.evaluator.command, {
+    // Evaluator commands are user-authored POSIX sh (env prefixes, ./ paths,
+    // 2>/dev/null). cmd.exe cannot interpret them, so on Windows they go through
+    // a discovered POSIX shell, and we fail loudly when none exists rather than
+    // recording an inscrutable error on every iteration.
+    const invocation = resolvePosixCommandInvocation(contract.sandbox.evaluator.command);
+    if (!invocation) {
+        const record = {
+            command: contract.sandbox.evaluator.command,
+            ran_at,
+            status: 'error',
+            exit_code: null,
+            stdout: '',
+            stderr: NO_POSIX_SHELL_MESSAGE,
+        };
+        return finalizeAutoresearchEvaluation(record, contract, worktreePath, ledgerFile, latestEvaluatorFile);
+    }
+    const result = spawnSync(invocation.file, invocation.args, {
         cwd: worktreePath,
         encoding: 'utf-8',
-        shell: true,
+        shell: invocation.shell,
         maxBuffer: 1024 * 1024,
+        windowsHide: true,
     });
     const stdout = result.stdout?.trim() || '';
     const stderr = result.stderr?.trim() || '';
@@ -411,6 +429,9 @@ export async function runAutoresearchEvaluator(contract, worktreePath, ledgerFil
             };
         }
     }
+    return finalizeAutoresearchEvaluation(record, contract, worktreePath, ledgerFile, latestEvaluatorFile);
+}
+async function finalizeAutoresearchEvaluation(record, contract, worktreePath, ledgerFile, latestEvaluatorFile) {
     if (latestEvaluatorFile) {
         await writeJsonFile(latestEvaluatorFile, record);
     }

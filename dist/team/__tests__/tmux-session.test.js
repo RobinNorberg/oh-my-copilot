@@ -6,6 +6,17 @@ afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
 });
+/**
+ * Native Windows is win32 *without* the MSYS markers a Git Bash launch exports.
+ * Stubbing only process.platform leaves the launching shell's MSYSTEM in place,
+ * which sends these cases down the POSIX branch — so they pass under PowerShell
+ * and fail under Git Bash. Tests that mean MSYS set MSYSTEM themselves.
+ */
+function stubNativeWindows() {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    vi.stubEnv('MSYSTEM', '');
+    vi.stubEnv('MINGW_PREFIX', '');
+}
 describe('sanitizeName', () => {
     it('passes alphanumeric names', () => {
         expect(sanitizeName('worker1')).toBe('worker1');
@@ -173,7 +184,7 @@ describe('applyMainVerticalLayout', () => {
 });
 describe('getDefaultShell', () => {
     it('uses COMSPEC on win32', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        stubNativeWindows();
         vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
         expect(getDefaultShell()).toBe('C:\\Windows\\System32\\cmd.exe');
     });
@@ -221,7 +232,7 @@ describe('buildWorkerStartCommand', () => {
         })).toThrow('Missing worker launch command');
     });
     it('accepts absolute Windows launchBinary paths with spaces', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        stubNativeWindows();
         vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
         expect(() => buildWorkerStartCommand({
             teamName: 't',
@@ -233,7 +244,7 @@ describe('buildWorkerStartCommand', () => {
         })).not.toThrow();
     });
     it('uses cmd.exe syntax for native Windows psmux worker start commands', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        stubNativeWindows();
         vi.stubEnv('PSMUX_SESSION', 'psmux-session-1');
         vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
         const cmd = buildWorkerStartCommand({
@@ -289,7 +300,7 @@ describe('buildWorkerStartCommand', () => {
         expect(cmd).toContain("'/opt/omc/runtime-cli.cjs'");
     });
     it('keeps provider percent/quote metacharacters out of the native Windows cmd command', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        stubNativeWindows();
         vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
         const cmd = buildWorkerStartCommand({
             teamName: 't',
@@ -331,7 +342,7 @@ describe('buildWorkerStartCommand', () => {
         expect(cmd).not.toContain('pane_id=%%2');
     });
     it('rejects CRLF injection in native Windows provider argv', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        stubNativeWindows();
         vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
         expect(() => buildWorkerStartCommand({
             teamName: 't', workerName: 'w', envVars: {},
@@ -340,7 +351,7 @@ describe('buildWorkerStartCommand', () => {
         })).toThrow('contains CR, LF, or NUL');
     });
     it('escapes psmux cmd.exe env vars and quoted launch args without PowerShell syntax', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        stubNativeWindows();
         vi.stubEnv('PSMUX_SESSION', 'psmux-session-1');
         vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
         const cmd = buildWorkerStartCommand({
@@ -366,7 +377,7 @@ describe('buildWorkerStartCommand', () => {
         expect(cmd).not.toContain('$env:OMC_TEAM_WORKER');
     });
     it('escapes literal percent signs in native Windows cmd env values and launch args', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        stubNativeWindows();
         vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
         const cmd = buildWorkerStartCommand({
             teamName: 't',
@@ -385,7 +396,7 @@ describe('buildWorkerStartCommand', () => {
         expect(cmd).not.toContain('literal%USERPROFILE%token%25');
     });
     it('base64-encodes recovery gate launch identities for native Windows cmd', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        stubNativeWindows();
         vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
         const gate = { recoveryId: 'recovery-1', launchAttempt: { attempt_id: 'attempt-1', nonce: 'nonce-1', pane_id: '%2' } };
         const cmd = buildWorkerStartCommand({
@@ -423,7 +434,7 @@ describe('buildWorkerStartCommand', () => {
         expect(cmd).not.toContain('%%USERPROFILE%%');
     });
     it('keeps cmd.exe worker startup syntax for native Windows without psmux', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        stubNativeWindows();
         vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
         const cmd = buildWorkerStartCommand({
             teamName: 't',

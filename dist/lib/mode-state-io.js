@@ -11,7 +11,34 @@ import { createHash, randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
 import { getOmcRoot, probeGitTopLevel, resolveStatePath, resolveSessionStatePath, ensureSessionStateDir, ensureOmcDir, listSessionIds, } from './worktree-paths.js';
 import { atomicWriteJsonSync } from './atomic-write.js';
-function flockPath() { return process.env.NODE_ENV === 'test' && process.env.OMC_TEST_FLOCK_AVAILABLE === '0' ? null : existsSync('/usr/bin/flock') ? '/usr/bin/flock' : existsSync('/bin/flock') ? '/bin/flock' : null; }
+const LOCK_OWNER_KEYS = ['createdAt', 'nonce', 'pid', 'processStart', 'version'];
+/**
+ * Reclaim a lock whose owner still looks live only once it is this old. Deliberately generous: the
+ * critical sections here are synchronous and measured in milliseconds, so this ceiling exists only to
+ * break a deadlock against a recycled pid, never as routine expiry. It is compared against a
+ * wall-clock stamp, and a laptop suspend or an NTP step can age a healthy holder by hours — at a
+ * shorter ceiling that would admit a second writer, so the window is sized to make that implausible.
+ * Death of the owning pid, not elapsed time, is the signal that actually frees a lock.
+ */
+const PORTABLE_LOCK_MAX_AGE_MS = 1_800_000;
+const PORTABLE_GUARD_MAX_AGE_MS = 5_000;
+const PORTABLE_GUARD_ATTEMPTS = 200;
+/** Transient read failures (EACCES, EBUSY, a scanner holding the file) get this many retries before we fail closed. */
+const PORTABLE_UNVERIFIABLE_RETRIES = 5;
+/** 'none' suppresses locking entirely, 'portable' forces the lockfile fallback; null means probe the platform. */
+function testLockMode() {
+    if (process.env.NODE_ENV !== 'test')
+        return null;
+    if (process.env.OMC_TEST_STATE_LOCK_MODE === 'portable')
+        return 'portable';
+    if (process.env.OMC_TEST_STATE_LOCK_MODE === 'none' || process.env.OMC_TEST_FLOCK_AVAILABLE === '0')
+        return 'none';
+    return null;
+}
+function flockPath() { return testLockMode() ? null : existsSync('/usr/bin/flock') ? '/usr/bin/flock' : existsSync('/bin/flock') ? '/bin/flock' : null; }
+function portableLockingAvailable() { return testLockMode() !== 'none'; }
+/** True when state mutations can be serialized across processes on this platform. */
+export function isStateMutationLockingSupported() { return Boolean(flockPath()) || portableLockingAvailable(); }
 const LOCK_REMOVAL_SCRIPT = String.raw `
 const fs = require('fs');
 const [operation, lockPath, expectedRaw] = process.argv.slice(1);
@@ -77,10 +104,163 @@ function writeAllSync(fd, content, label) {
         throw new Error(`${label} size verification failed`);
     }
 }
+function readLockOwnerAt(path) {
+    let value;
+    try {
+        value = JSON.parse(readFileSync(path, 'utf8'));
+    }
+    catch (error) {
+        return error.code === 'ENOENT' ? 'absent' : null;
+    }
+    const actual = Object.keys(value ?? {}).sort();
+    if (actual.length !== LOCK_OWNER_KEYS.length || !actual.every((key, index) => key === LOCK_OWNER_KEYS[index]) || value.version !== 1 || !Number.isSafeInteger(value.pid) || Number(value.pid) <= 0 || typeof value.processStart !== 'string' || !/^\d+$/.test(value.processStart) || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== 'string' || !/^[0-9a-f-]{36}$/i.test(value.nonce))
+        return null;
+    return value;
+}
+/** true = running, false = gone, null = undecidable. */
+function pidIsLive(pid) {
+    if (pid === process.pid)
+        return true;
+    try {
+        process.kill(pid, 0);
+        return true;
+    }
+    catch (error) {
+        const code = error.code;
+        if (code === 'ESRCH')
+            return false;
+        if (code === 'EPERM')
+            return true;
+        return null;
+    }
+}
+/**
+ * Best-effort serialization of the reclaim section with an O_EXCL marker. This is deliberately not a
+ * mutex: two processes that both observe a stale marker can both delete it and enter, and the loser's
+ * delete can remove the winner's fresh marker. That is tolerable because the section re-reads the
+ * owner record under the marker and every removal is conditional on what it re-reads, so a double
+ * admission costs an extra adjudication pass rather than an unsafe removal. The fd is closed before
+ * returning so the later unlink stays portable on Windows.
+ */
+function acquirePortableGuard(guardPath) {
+    for (let attempt = 0; attempt < PORTABLE_GUARD_ATTEMPTS; attempt += 1) {
+        let fd;
+        let published = false;
+        try {
+            fd = openSync(guardPath, 'wx', 0o600);
+            writeAllSync(fd, String(process.pid), 'lock guard publication');
+            published = true;
+            closeSync(fd);
+            return true;
+        }
+        catch (error) {
+            if (fd !== undefined) {
+                try {
+                    closeSync(fd);
+                }
+                catch { /* best-effort descriptor cleanup */ }
+            }
+            // We created the marker but never published it. Drop it now rather than leaving debris that
+            // blocks every other contender until the staleness window expires.
+            if (fd !== undefined && !published) {
+                try {
+                    unlinkSync(guardPath);
+                }
+                catch { /* already gone */ }
+            }
+            if (error.code !== 'EEXIST')
+                return false;
+            let age = null;
+            try {
+                age = Date.now() - statSync(guardPath).mtimeMs;
+            }
+            catch { /* guard vanished under us */ }
+            if (age !== null && age > PORTABLE_GUARD_MAX_AGE_MS) {
+                try {
+                    unlinkSync(guardPath);
+                }
+                catch { /* another process won the sweep */ }
+                continue;
+            }
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+        }
+    }
+    return false;
+}
+function portableLockIsLive(observed) {
+    const live = pidIsLive(observed.pid);
+    if (live === null)
+        return null;
+    if (!live)
+        return false;
+    // A clock that stepped backwards yields a negative age; that is not expiry, so compare in the
+    // direction that keeps an unreadable or implausible stamp on the holder's side.
+    return !(Date.now() - Date.parse(observed.createdAt) > PORTABLE_LOCK_MAX_AGE_MS);
+}
+/** An owner record we cannot parse can never be adjudicated by identity, so its age is the only escape. */
+function unparseableLockIsStale(path) {
+    try {
+        return Date.now() - statSync(path).mtimeMs > PORTABLE_LOCK_MAX_AGE_MS;
+    }
+    catch {
+        return false;
+    }
+}
+function portableLockRemoval(path, operation, owner) {
+    // Reading the owner needs no guard; skipping it keeps the common "holder is alive" path off the filesystem.
+    if (operation !== 'release') {
+        const observed = readLockOwnerAt(path);
+        if (observed && observed !== 'absent') {
+            const live = portableLockIsLive(observed);
+            if (live === null)
+                return 'unverifiable';
+            if (live)
+                return 'live';
+        }
+    }
+    const guardPath = `${path}.reclaim.guard`;
+    if (!acquirePortableGuard(guardPath))
+        return 'unverifiable';
+    try {
+        const current = readLockOwnerAt(path);
+        if (current === 'absent')
+            return 'retry';
+        if (!current) {
+            // Debris we cannot attribute. Release never removes it — an unattributable record is not ours
+            // to delete — but reclaim must have some escape or the path stays wedged forever.
+            if (operation === 'release' || !unparseableLockIsStale(path))
+                return 'unverifiable';
+        }
+        else if (operation === 'release') {
+            if (!owner || current.pid !== owner.pid || current.processStart !== owner.processStart || current.nonce !== owner.nonce)
+                return 'replaced';
+        }
+        else {
+            const live = portableLockIsLive(current);
+            if (live === null)
+                return 'unverifiable';
+            if (live)
+                return 'live';
+        }
+        try {
+            unlinkSync(path);
+            return 'retry';
+        }
+        catch (error) {
+            return error.code === 'ENOENT' ? 'retry' : 'unverifiable';
+        }
+    }
+    finally {
+        try {
+            unlinkSync(guardPath);
+        }
+        catch { /* best-effort guard cleanup */ }
+    }
+}
 function guardedLockRemoval(path, operation, owner) {
     const flock = flockPath();
     if (!flock)
-        return 'unverifiable';
+        return portableLockingAvailable() ? portableLockRemoval(path, operation, owner) : 'unverifiable';
     const result = spawnSync(flock, ['-x', `${path}.reclaim.guard`, process.execPath, '-e', LOCK_REMOVAL_SCRIPT, operation, path, owner ? JSON.stringify(owner) : ''], { stdio: 'ignore', timeout: 2000 });
     if (result.status === 0)
         return 'retry';
@@ -88,11 +268,29 @@ function guardedLockRemoval(path, operation, owner) {
         return 'live';
     if (result.status === 4)
         return 'replaced';
-    return 'unverifiable';
+    // The removal script adjudicates liveness only through /proc, so off Linux it reports unverifiable
+    // even where an flock binary exists. Fall through instead of wedging on a platform we do support.
+    return portableLockingAvailable() ? portableLockRemoval(path, operation, owner) : 'unverifiable';
+}
+function lockBackoff(attempt) {
+    // Jittered so contending processes do not re-collide in lockstep.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1 + Math.floor(Math.random() * Math.min(40, 4 * (attempt + 1))));
+}
+/**
+ * Clear or wait out a lock someone else holds. Returns false only once the holder has stayed
+ * unadjudicable across several attempts: a single unreadable read is usually transient (a scanner or
+ * backup agent holding the file, EACCES, EBUSY) and must not abandon the acquisition outright.
+ */
+function awaitLockTurn(path, attempt, unverifiable) {
+    const disposition = guardedLockRemoval(path, 'reclaim');
+    if (disposition === 'unverifiable' && (unverifiable.count += 1) > PORTABLE_UNVERIFIABLE_RETRIES)
+        return false;
+    if (disposition === 'live' || disposition === 'unverifiable')
+        lockBackoff(attempt);
+    return true;
 }
 function acquireLockAt(path, requireExclusive = false) {
-    const flock = flockPath();
-    if (!flock) {
+    if (!flockPath() && !portableLockingAvailable()) {
         // Non-exclusive mode state retains its historical best-effort behavior,
         // but safety-critical callers (notably PRD mutations) must fail closed
         // rather than silently running without an inter-process lock.
@@ -107,7 +305,22 @@ function acquireLockAt(path, requireExclusive = false) {
         console.error(`[omc-lock] state_mutation_lock_owner_unverifiable: ${path}`);
         return null;
     }
+    const unverifiable = { count: 0 };
+    // Report once on any give-up that saw an unadjudicable holder, whichever budget ran out first —
+    // the attempt budget can be smaller than the retry budget, and failing closed silently would leave
+    // an operator with no signal at all.
+    const abandon = () => {
+        if (unverifiable.count > 0)
+            console.error(`[omc-lock] state_mutation_lock_unverifiable: ${path}`);
+        return null;
+    };
     for (let attempt = 0; attempt < 50; attempt += 1) {
+        // Adjudicate a held lock before paying for owner publication.
+        if (existsSync(path)) {
+            if (!awaitLockTurn(path, attempt, unverifiable))
+                return abandon();
+            continue;
+        }
         const owner = { version: 1, pid: process.pid, processStart, createdAt: new Date().toISOString(), nonce: randomUUID() };
         const tempPath = `${path}.${process.pid}.${owner.nonce}.tmp`;
         let fd;
@@ -132,16 +345,11 @@ function acquireLockAt(path, requireExclusive = false) {
             catch { /* best-effort unpublished temp cleanup */ }
             if (error.code !== 'EEXIST')
                 return null;
-            const disposition = guardedLockRemoval(path, 'reclaim');
-            if (disposition === 'unverifiable') {
-                console.error(`[omc-lock] state_mutation_lock_unverifiable: ${path}`);
-                return null;
-            }
-            if (disposition === 'live')
-                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+            if (!awaitLockTurn(path, attempt, unverifiable))
+                return abandon();
         }
     }
-    return null;
+    return abandon();
 }
 function acquireMutationLock(filePath) {
     return acquireLockAt(`${filePath}.mutation.lock`);

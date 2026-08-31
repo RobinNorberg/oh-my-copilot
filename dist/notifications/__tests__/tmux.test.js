@@ -26,7 +26,7 @@ describe("getCurrentTmuxSession", () => {
         process.env.TMUX_PANE = "%3";
         mockTmuxShell.mockReturnValueOnce("%0 main\n%1 main\n%2 background\n%3 my-detached-session\n");
         expect(getCurrentTmuxSession()).toBe("my-detached-session");
-        expect(mockTmuxShell).toHaveBeenCalledWith("list-panes -a -F '#{pane_id} #{session_name}'", expect.objectContaining({ timeout: 3000 }));
+        expect(mockTmuxShell).toHaveBeenCalledWith(["list-panes", "-a", "-F", "#{pane_id} #{session_name}"], expect.objectContaining({ timeout: 3000 }));
     });
     it("returns the correct session even when an earlier pane has the same ID prefix", () => {
         process.env.TMUX = "/tmp/tmux-1000/default,1234,0";
@@ -40,7 +40,7 @@ describe("getCurrentTmuxSession", () => {
         delete process.env.TMUX_PANE;
         mockTmuxShell.mockReturnValueOnce("fallback-session\n");
         expect(getCurrentTmuxSession()).toBe("fallback-session");
-        expect(mockTmuxShell).toHaveBeenCalledWith("display-message -p '#S'", expect.objectContaining({ timeout: 3000 }));
+        expect(mockTmuxShell).toHaveBeenCalledWith(["display-message", "-p", "#S"], expect.objectContaining({ timeout: 3000 }));
     });
     it("falls back to display-message when pane not found in list", () => {
         process.env.TMUX = "/tmp/tmux-1000/default,1234,0";

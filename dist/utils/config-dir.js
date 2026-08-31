@@ -1,9 +1,9 @@
 /**
- * Claude Code Configuration Directory Resolution
+ * Host CLI Configuration Directory Resolution
  *
- * Resolves the active Claude Code configuration directory, honouring
+ * Resolves the active host CLI configuration directory, honouring
  * COPILOT_CONFIG_DIR (absolute path, or ~-prefixed) with fallback to
- * ~/.claude.  Trailing separators are stripped; filesystem roots are
+ * ~/.copilot.  Trailing separators are stripped; filesystem roots are
  * preserved.
  *
  * Multi-surface mirrors (keep in sync):
@@ -24,10 +24,10 @@ function stripTrailingSep(p) {
     return p === parse(p).root ? p : p.slice(0, -1);
 }
 /**
- * Resolve the Claude Code configuration directory.
+ * Resolve the host CLI configuration directory.
  *
  * Honours COPILOT_CONFIG_DIR (absolute path, or ~-prefixed) with fallback
- * to ~/.claude.  Trailing separators are stripped; filesystem roots are
+ * to ~/.copilot.  Trailing separators are stripped; filesystem roots are
  * preserved.
  */
 export function getCopilotConfigDir() {

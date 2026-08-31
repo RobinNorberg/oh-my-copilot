@@ -4,6 +4,33 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { execFileSync } from 'child_process';
 import { createWorkerWorktree, removeWorkerWorktree, listTeamWorktrees, cleanupTeamWorktrees, ensureWorkerWorktree, installWorktreeRootAgents, restoreWorktreeRootAgents, prepareWorkerWorktreeForRemoval, } from '../git-worktree.js';
+/**
+ * Compare paths by segments rather than by separator. The production code
+ * correctly returns native paths (backslashes on Windows) and git reports
+ * forward slashes; neither is what these assertions are about.
+ */
+function toPosixPath(value) {
+    return value.replace(/\\/g, '/');
+}
+/**
+ * Windows only permits directory symlinks with Developer Mode or elevation.
+ * Where it does not, the symlink guard cannot be exercised at all — skip rather
+ * than report the missing privilege as a product failure.
+ */
+function canCreateDirectorySymlinks() {
+    const probeDir = mkdtempSync(join(tmpdir(), 'omc-symlink-probe-'));
+    try {
+        symlinkSync(probeDir, join(probeDir, 'link'), 'dir');
+        return true;
+    }
+    catch {
+        return false;
+    }
+    finally {
+        rmSync(probeDir, { recursive: true, force: true });
+    }
+}
+const SYMLINKS_AVAILABLE = canCreateDirectorySymlinks();
 describe('git-worktree', () => {
     let repoDir;
     const teamName = 'test-wt';
@@ -13,6 +40,10 @@ describe('git-worktree', () => {
         execFileSync('git', ['init'], { cwd: repoDir, stdio: 'pipe' });
         execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: repoDir, stdio: 'pipe' });
         execFileSync('git', ['config', 'user.name', 'Test'], { cwd: repoDir, stdio: 'pipe' });
+        // Git for Windows defaults core.autocrlf=true, which rewrites LF to CRLF on
+        // checkout — including into a new worktree — so byte-exact content
+        // assertions would compare against the host's git config rather than the code.
+        execFileSync('git', ['config', 'core.autocrlf', 'false'], { cwd: repoDir, stdio: 'pipe' });
         writeFileSync(join(repoDir, 'README.md'), '# Test\n');
         writeFileSync(join(repoDir, 'AGENTS.md'), 'original instructions');
         execFileSync('git', ['add', '.'], { cwd: repoDir, stdio: 'pipe' });
@@ -29,7 +60,7 @@ describe('git-worktree', () => {
     describe('createWorkerWorktree', () => {
         it('creates worktree at correct path', () => {
             const info = createWorkerWorktree(teamName, 'worker1', repoDir);
-            expect(info.path).toContain(`.omg/team/${teamName}/worktrees/worker1`);
+            expect(toPosixPath(info.path)).toContain(`.omg/team/${teamName}/worktrees/worker1`);
             expect(info.branch).toBe(`omc-team/${teamName}/worker1`);
             expect(info.workerName).toBe('worker1');
             expect(info.teamName).toBe(teamName);
@@ -63,7 +94,7 @@ describe('git-worktree', () => {
                 mode: 'detached',
                 requireCleanLeader: false,
             });
-            expect(info?.path).toContain(`.omg/team/${teamName}/worktrees/worker-detached`);
+            expect(toPosixPath(info?.path ?? '')).toContain(`.omg/team/${teamName}/worktrees/worker-detached`);
             expect(info?.detached).toBe(true);
             expect(info?.created).toBe(true);
             expect(info?.reused).toBe(false);
@@ -112,13 +143,14 @@ describe('git-worktree', () => {
             expect(existsSync(info.path)).toBe(true);
             expect(listTeamWorktrees(teamName, repoDir).map(w => w.workerName)).toContain(workerName);
             const worktreeList = execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: repoDir, encoding: 'utf-8' });
-            expect(worktreeList).toContain(info.path);
+            // git reports worktree paths with forward slashes even on Windows.
+            expect(toPosixPath(worktreeList)).toContain(toPosixPath(info.path));
             execFileSync('git', ['worktree', 'unlock', info.path], { cwd: repoDir, stdio: 'pipe' });
         });
         it('does not throw for non-existent worktree', () => {
             expect(() => removeWorkerWorktree(teamName, 'nonexistent', repoDir)).not.toThrow();
         });
-        it('refuses a symlink at the canonical worker worktree path', () => {
+        it.skipIf(!SYMLINKS_AVAILABLE)('refuses a symlink at the canonical worker worktree path', () => {
             const workerName = 'worker-symlink';
             const worktreePath = join(repoDir, '.omg', 'team', teamName, 'worktrees', workerName);
             mkdirSync(join(repoDir, '.omg', 'team', teamName, 'worktrees'), { recursive: true });

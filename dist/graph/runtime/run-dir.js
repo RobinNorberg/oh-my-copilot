@@ -136,7 +136,7 @@ export function resolveRunDirHandle(runsRoot, runId) {
             if (!resolved.startsWith(prefixCmp)) {
                 throw new Error(`run directory ${resolved} escapes the persistence root ${runsRootReal}`);
             }
-            const identity = fstatSync(directoryFd);
+            const identity = fstatSync(directoryFd, { bigint: true });
             return { path: target, device: identity.dev, inode: identity.ino };
         }
         finally {

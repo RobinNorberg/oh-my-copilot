@@ -804,7 +804,10 @@ export function startReplyListener(_config) {
     }).catch((err) => { console.error('[reply-listener] Fatal:', err instanceof Error ? err.message : 'unknown error'); process.exit(1); });
   `;
     try {
-        const child = spawn('node', ['-e', daemonScript], {
+        // process.execPath, not 'node': under Volta/nvm shims — or when omc itself
+        // was launched by absolute path — the node on the forwarded PATH may not
+        // exist, and the listener would silently fail to start.
+        const child = spawn(process.execPath, ['-e', daemonScript], {
             detached: true,
             stdio: 'ignore',
             cwd: process.cwd(),

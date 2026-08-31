@@ -91,7 +91,7 @@ export function withContainedDirectory(runDir, operation, platform = process.pla
     assertContainedFsSupported(platform);
     const directoryFd = openNoFollow(runDir.path, fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0));
     try {
-        const stats = fstatSync(directoryFd);
+        const stats = fstatSync(directoryFd, { bigint: true });
         if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
             throw new Error("run directory identity changed");
         }
@@ -106,7 +106,7 @@ export function withContainedPathForPlatform(runDir, fileName, operation, platfo
     assertContainedFsSupported(platform);
     const directoryFd = openNoFollow(runDir.path, fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0));
     try {
-        const stats = fstatSync(directoryFd);
+        const stats = fstatSync(directoryFd, { bigint: true });
         if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
             throw new Error("run directory identity changed");
         }

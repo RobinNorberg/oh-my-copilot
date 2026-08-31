@@ -100,8 +100,19 @@ export function isValidProcessStartIdentity(value, platform = process.platform) 
     return separator > 0 && value.slice(0, separator) === platform
         && value.slice(separator + 1).length > 0 && !/[\u0000-\u001f\u007f]/.test(value.slice(separator + 1));
 }
+/**
+ * Our own start identity cannot change while we are running, and on Windows reading it costs a
+ * PowerShell spawn (~200ms measured), which every lock acquisition would otherwise pay. Only this
+ * process is cached: a foreign pid can be recycled, so its identity must be re-read each time.
+ */
+let ownProcessStartIdentity = null;
 export function currentProcessStartIdentity(pid = process.pid) {
-    return processStartIdentityForPlatform(pid);
+    if (pid !== process.pid)
+        return processStartIdentityForPlatform(pid);
+    // Only a successful probe is cached. Caching a failure would turn one transient hiccup — a
+    // PowerShell spawn that could not start — into a permanent fail-closed for the process lifetime.
+    ownProcessStartIdentity ??= processStartIdentityForPlatform(pid);
+    return ownProcessStartIdentity;
 }
 function processStartIdentitiesMayMatch(recorded, observed) {
     if (recorded === observed)

@@ -9,7 +9,7 @@
 //
 // Config via temp file, not inline JSON argument.
 import { readFileSync, statSync, realpathSync } from 'fs';
-import { resolve } from 'path';
+import { relative, resolve, isAbsolute } from 'path';
 import { homedir } from 'os';
 import { runBridge } from './mcp-team-bridge.js';
 import { deleteHeartbeat } from './heartbeat.js';
@@ -25,15 +25,13 @@ import { sanitizeName } from './tmux-session.js';
 export function validateConfigPath(configPath, homeDir, claudeConfigDir) {
     // Resolve to canonical absolute path to defeat ".." traversal
     const resolved = resolve(configPath);
-    const isUnderHome = resolved.startsWith(homeDir + '/') || resolved === homeDir;
+    const normalizedHome = resolve(homeDir);
+    const isUnderHome = isAtOrUnder(normalizedHome, resolved);
     const normalizedConfigDir = resolve(claudeConfigDir);
     const normalizedOmcDir = resolve(homeDir, '.omg');
-    const hasOmcComponent = resolved.includes('/.omg/') || resolved.endsWith('/.omg');
-    const isTrustedSubpath = resolved === normalizedConfigDir ||
-        resolved.startsWith(normalizedConfigDir + '/') ||
-        resolved === normalizedOmcDir ||
-        resolved.startsWith(normalizedOmcDir + '/') ||
-        hasOmcComponent;
+    const isTrustedSubpath = isAtOrUnder(normalizedConfigDir, resolved) ||
+        isAtOrUnder(normalizedOmcDir, resolved) ||
+        hasOmcPathSegment(resolved);
     if (!isUnderHome || !isTrustedSubpath)
         return false;
     // Additionally verify via realpathSync on the parent directory (if it exists)
@@ -41,7 +39,7 @@ export function validateConfigPath(configPath, homeDir, claudeConfigDir) {
     try {
         const parentDir = resolve(resolved, '..');
         const realParent = realpathSync(parentDir);
-        if (!realParent.startsWith(homeDir + '/') && realParent !== homeDir) {
+        if (!isAtOrUnder(normalizedHome, realParent)) {
             return false;
         }
     }
@@ -51,12 +49,28 @@ export function validateConfigPath(configPath, homeDir, claudeConfigDir) {
     return true;
 }
 /**
+ * Directory containment by path semantics rather than string prefixes: string
+ * concatenation with '/' never matches on Windows, where resolve() yields
+ * backslashes, so every path was rejected there. relative() also enforces the
+ * segment boundary, so `/home/user-evil` is not treated as under `/home/user`.
+ */
+function isAtOrUnder(parent, child) {
+    const rel = relative(parent, child);
+    if (rel === '')
+        return true;
+    return !rel.startsWith('..') && !isAbsolute(rel);
+}
+/** True when `.omg` appears as a whole path segment, on either separator. */
+function hasOmcPathSegment(absolutePath) {
+    return absolutePath.split(/[\\/]/).includes('.omg');
+}
+/**
  * Validate the bridge working directory is safe:
  * - Must exist and be a directory
  * - Must resolve (via realpathSync) to a path under the user's home directory
  * - Must be inside a git worktree
  */
-function validateBridgeWorkingDirectory(workingDirectory) {
+export function validateBridgeWorkingDirectory(workingDirectory) {
     // Check exists and is directory
     let stat;
     try {
@@ -68,10 +82,12 @@ function validateBridgeWorkingDirectory(workingDirectory) {
     if (!stat.isDirectory()) {
         throw new Error(`workingDirectory is not a directory: ${workingDirectory}`);
     }
-    // Resolve symlinks and verify under homedir
+    // Resolve symlinks and verify under homedir. Same containment rule as
+    // validateConfigPath: a string prefix with '/' never matches on Windows, so
+    // every working directory under the user's home was rejected there.
     const resolved = realpathSync(workingDirectory);
-    const home = homedir();
-    if (!resolved.startsWith(home + '/') && resolved !== home) {
+    const home = resolve(homedir());
+    if (!isAtOrUnder(home, resolved)) {
         throw new Error(`workingDirectory is outside home directory: ${resolved}`);
     }
     // Must be inside a git worktree

@@ -33,8 +33,11 @@ describe('omc-doctor skill package version diagnostic (issue #2981)', () => {
     it('checks the canonical published npm package for latest version', () => {
         const skillPath = join(process.cwd(), 'skills', 'omc-doctor', 'SKILL.md');
         const content = readFileSync(skillPath, 'utf8');
-        expect(content).toContain('npm view oh-my-copilot version');
-        expect(content).not.toContain('npm view oh-my-copilot version');
+        // The second assertion here used to negate the first verbatim, so this test
+        // could never pass. The check that matters is that the diagnostic queries the
+        // canonical published package name, which it now does through an argument
+        // array rather than a shell string.
+        expect(content).toContain("spawnSync('npm',['view','oh-my-copilot','version']");
     });
 });
 //# sourceMappingURL=omc-doctor-skill.test.js.map

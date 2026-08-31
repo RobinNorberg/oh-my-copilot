@@ -5,6 +5,8 @@
  * Centralises path resolution, ghost-legacy cleanup, directory creation,
  * and file permissions so that individual mode modules don't duplicate this logic.
  */
+/** True when state mutations can be serialized across processes on this platform. */
+export declare function isStateMutationLockingSupported(): boolean;
 /** Executes a read or mutation against a state file under its mutation lock. */
 export declare function withStateFileMutationLock<T>(filePath: string, callback: () => T, requireExclusive?: boolean): {
     acquired: boolean;

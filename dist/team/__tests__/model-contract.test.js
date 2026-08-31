@@ -45,24 +45,30 @@ describe('model-contract', () => {
         });
         it('resolveCliBinaryPath resolves and caches paths', () => {
             const mockSpawnSync = vi.mocked(spawnSync);
+            const restorePlatform = setProcessPlatform('linux');
+            mockSpawnSync.mockClear();
             mockSpawnSync.mockReturnValue({ status: 0, stdout: '/usr/local/bin/claude\n', stderr: '', pid: 0, output: [], signal: null });
             clearResolvedPathCache();
             expect(resolveCliBinaryPath('claude')).toBe('/usr/local/bin/claude');
             expect(resolveCliBinaryPath('claude')).toBe('/usr/local/bin/claude');
             expect(mockSpawnSync).toHaveBeenCalledTimes(1);
             clearResolvedPathCache();
+            restorePlatform();
         });
         it('resolveCliBinaryPath rejects unsafe names and paths', () => {
             const mockSpawnSync = vi.mocked(spawnSync);
+            const restorePlatform = setProcessPlatform('linux');
             expect(() => resolveCliBinaryPath('../evil')).toThrow('Invalid CLI binary name');
             mockSpawnSync.mockReturnValue({ status: 0, stdout: '/tmp/evil/claude\n', stderr: '', pid: 0, output: [], signal: null });
             clearResolvedPathCache();
             expect(() => resolveCliBinaryPath('claude')).toThrow('untrusted location');
             clearResolvedPathCache();
+            restorePlatform();
             mockSpawnSync.mockRestore();
         });
         it('validateCliBinaryPath returns compatibility result object', () => {
             const mockSpawnSync = vi.mocked(spawnSync);
+            const restorePlatform = setProcessPlatform('linux');
             mockSpawnSync.mockReturnValue({ status: 0, stdout: '/usr/local/bin/claude\n', stderr: '', pid: 0, output: [], signal: null });
             clearResolvedPathCache();
             expect(validateCliBinaryPath('claude')).toEqual({
@@ -77,17 +83,25 @@ describe('model-contract', () => {
             expect(invalid.binary).toBe('missing-cli');
             expect(invalid.reason).toContain('not found in PATH');
             clearResolvedPathCache();
+            restorePlatform();
             mockSpawnSync.mockRestore();
         });
         it('exposes compatibility test internals for path policy', () => {
-            expect(_testInternals.UNTRUSTED_PATH_PATTERNS.some(p => p.test('/tmp/evil'))).toBe(true);
-            expect(_testInternals.UNTRUSTED_PATH_PATTERNS.some(p => p.test('/usr/local/bin/claude'))).toBe(false);
-            const prefixes = _testInternals.getTrustedPrefixes();
-            expect(prefixes).toContain('/usr/local/bin');
-            expect(prefixes).toContain('/usr/bin');
+            const restorePlatform = setProcessPlatform('linux');
+            try {
+                expect(_testInternals.UNTRUSTED_PATH_PATTERNS.some(p => p.test('/tmp/evil'))).toBe(true);
+                expect(_testInternals.UNTRUSTED_PATH_PATTERNS.some(p => p.test('/usr/local/bin/claude'))).toBe(false);
+                const prefixes = _testInternals.getTrustedPrefixes();
+                expect(prefixes).toContain('/usr/local/bin');
+                expect(prefixes).toContain('/usr/bin');
+            }
+            finally {
+                restorePlatform();
+            }
         });
         it('isTrustedPrefix enforces directory boundaries (no sibling-prefix bypass)', () => {
             const origHome = process.env.HOME;
+            const restorePlatform = setProcessPlatform('linux');
             process.env.HOME = '/home/tester';
             try {
                 const { isTrustedPrefix } = _testInternals;
@@ -117,10 +131,70 @@ describe('model-contract', () => {
                 }
             }
             finally {
+                restorePlatform();
                 if (origHome === undefined)
                     delete process.env.HOME;
                 else
                     process.env.HOME = origHome;
+            }
+        });
+        it('treats Windows temp and Downloads locations as untrusted', () => {
+            const restorePlatform = setProcessPlatform('win32');
+            try {
+                const patterns = _testInternals.untrustedPathPatterns();
+                const untrusted = (p) => patterns.some(pattern => pattern.test(p));
+                expect(untrusted('C:\\Users\\me\\AppData\\Local\\Temp\\claude.exe')).toBe(true);
+                expect(untrusted('C:\\Windows\\Temp\\claude.exe')).toBe(true);
+                expect(untrusted('C:\\Users\\me\\Downloads\\claude.exe')).toBe(true);
+                // Case-insensitive, as the filesystem is.
+                expect(untrusted('C:\\Users\\me\\appdata\\local\\temp\\claude.exe')).toBe(true);
+                // A legitimate install location stays trusted.
+                expect(untrusted('C:\\Program Files\\nodejs\\claude.exe')).toBe(false);
+                // A directory that merely contains the word is not a temp segment.
+                expect(untrusted('C:\\Tools\\contemporary\\claude.exe')).toBe(false);
+            }
+            finally {
+                restorePlatform();
+            }
+        });
+        it('leaves the POSIX untrusted list unchanged off win32', () => {
+            const restorePlatform = setProcessPlatform('linux');
+            try {
+                const patterns = _testInternals.untrustedPathPatterns();
+                const untrusted = (p) => patterns.some(pattern => pattern.test(p));
+                expect(untrusted('/tmp/claude')).toBe(true);
+                // Windows segment rules must not start rejecting POSIX paths.
+                expect(untrusted('/home/user/Downloads/claude')).toBe(false);
+                expect(untrusted('/usr/local/temp/claude')).toBe(false);
+            }
+            finally {
+                restorePlatform();
+            }
+        });
+        it('trusts standard Windows install roots and splits OMC_TRUSTED_CLI_DIRS on ;', () => {
+            const restorePlatform = setProcessPlatform('win32');
+            vi.stubEnv('USERPROFILE', 'C:\\Users\\tester');
+            vi.stubEnv('APPDATA', 'C:\\Users\\tester\\AppData\\Roaming');
+            vi.stubEnv('LOCALAPPDATA', 'C:\\Users\\tester\\AppData\\Local');
+            vi.stubEnv('ProgramFiles', 'C:\\Program Files');
+            vi.stubEnv('OMC_TRUSTED_CLI_DIRS', 'C:\\Tools\\bin;D:\\Shared\\cli');
+            try {
+                const { isTrustedPrefix } = _testInternals;
+                expect(isTrustedPrefix('C:\\Users\\tester\\AppData\\Roaming\\npm\\claude.cmd')).toBe(true);
+                expect(isTrustedPrefix('C:\\Program Files\\nodejs\\codex.cmd')).toBe(true);
+                expect(isTrustedPrefix('C:\\Users\\tester\\.cargo\\bin\\grok.exe')).toBe(true);
+                // A drive-lettered custom dir survives the split instead of being shredded into 'C'.
+                expect(isTrustedPrefix('C:\\Tools\\bin\\gemini.exe')).toBe(true);
+                expect(isTrustedPrefix('D:\\Shared\\cli\\gemini.exe')).toBe(true);
+                // Windows paths compare case-insensitively, the way the filesystem does.
+                expect(isTrustedPrefix('c:\\program files\\NODEJS\\codex.cmd')).toBe(true);
+                // Sibling directories that merely share a name prefix stay untrusted.
+                expect(isTrustedPrefix('C:\\Tools\\bin-evil\\gemini.exe')).toBe(false);
+                expect(isTrustedPrefix('C:\\Users\\tester\\Downloads\\claude.exe')).toBe(false);
+            }
+            finally {
+                restorePlatform();
+                vi.unstubAllEnvs();
             }
         });
     });
@@ -539,45 +613,82 @@ describe('model-contract', () => {
     describe('isCliAvailable', () => {
         it('checks version without shell:true for standard binaries', () => {
             const mockSpawnSync = vi.mocked(spawnSync);
+            const restorePlatform = setProcessPlatform('linux');
             clearResolvedPathCache();
+            mockSpawnSync.mockClear();
             mockSpawnSync
-                .mockReturnValueOnce({ status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null })
+                .mockReturnValueOnce({ status: 0, stdout: '/usr/local/bin/codex\n', stderr: '', pid: 0, output: [], signal: null })
                 .mockReturnValueOnce({ status: 0, stdout: '', stderr: '', pid: 0, output: [], signal: null });
             isCliAvailable('codex');
-            expect(mockSpawnSync).toHaveBeenNthCalledWith(1, 'which', ['codex'], { timeout: 5000, encoding: 'utf8' });
-            expect(mockSpawnSync).toHaveBeenNthCalledWith(2, 'codex', ['--version'], { timeout: 5000, shell: false });
+            expect(mockSpawnSync).toHaveBeenNthCalledWith(1, 'which', ['codex'], { timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true });
+            // The resolved absolute path is probed, never the bare name.
+            expect(mockSpawnSync).toHaveBeenNthCalledWith(2, '/usr/local/bin/codex', ['--version'], { timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: false, windowsHide: true });
+            restorePlatform();
             clearResolvedPathCache();
             mockSpawnSync.mockRestore();
         });
-        it('uses COMSPEC for .cmd binaries on win32', () => {
+        it('falls back to COMSPEC when a .cmd shim refuses to start directly on win32', () => {
             const mockSpawnSync = vi.mocked(spawnSync);
             const restorePlatform = setProcessPlatform('win32');
             vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
             clearResolvedPathCache();
+            mockSpawnSync.mockClear();
             mockSpawnSync
                 .mockReturnValueOnce({ status: 0, stdout: 'C:\\Tools\\codex.cmd\n', stderr: '', pid: 0, output: [], signal: null })
-                .mockReturnValueOnce({ status: 0, stdout: '', stderr: '', pid: 0, output: [], signal: null });
-            isCliAvailable('codex');
-            expect(mockSpawnSync).toHaveBeenNthCalledWith(1, 'where', ['codex'], { timeout: 5000, encoding: 'utf8' });
-            expect(mockSpawnSync).toHaveBeenNthCalledWith(2, 'C:\\Windows\\System32\\cmd.exe', ['/d', '/s', '/c', '"C:\\Tools\\codex.cmd" --version'], { timeout: 5000 });
+                // Node cannot exec a .cmd shim directly; it reports EINVAL without ever starting.
+                .mockReturnValueOnce({ status: null, stdout: '', stderr: '', pid: 0, output: [], signal: null, error: Object.assign(new Error('spawn EINVAL'), { code: 'EINVAL' }) })
+                .mockReturnValueOnce({ status: 0, stdout: 'codex 1.2.3\n', stderr: '', pid: 0, output: [], signal: null });
+            expect(isCliAvailable('codex')).toBe(true);
+            expect(mockSpawnSync).toHaveBeenNthCalledWith(1, 'where.exe', ['codex'], 
+            // cwd is the Windows directory, never the inherited one: where.exe
+            // searches the current directory before PATH.
+            expect.objectContaining({
+                timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true, cwd: expect.any(String),
+            }));
+            expect(mockSpawnSync).toHaveBeenNthCalledWith(3, 'C:\\Windows\\System32\\cmd.exe', ['/d', '/v:off', '/s', '/c', '""C:\\Tools\\codex.cmd" --version"'], expect.objectContaining({ timeout: 5000, shell: false, windowsVerbatimArguments: true }));
             restorePlatform();
             clearResolvedPathCache();
             mockSpawnSync.mockRestore();
             vi.unstubAllEnvs();
         });
-        it('uses shell:true for unresolved binaries on win32', () => {
+        it('reports unavailable instead of shelling out to a bare name on win32', () => {
             const mockSpawnSync = vi.mocked(spawnSync);
             const restorePlatform = setProcessPlatform('win32');
             clearResolvedPathCache();
-            mockSpawnSync
-                .mockReturnValueOnce({ status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null })
-                .mockReturnValueOnce({ status: 0, stdout: '', stderr: '', pid: 0, output: [], signal: null });
-            isCliAvailable('gemini');
-            expect(mockSpawnSync).toHaveBeenNthCalledWith(1, 'where', ['gemini'], { timeout: 5000, encoding: 'utf8' });
-            expect(mockSpawnSync).toHaveBeenNthCalledWith(2, 'gemini', ['--version'], { timeout: 5000, shell: true });
+            mockSpawnSync.mockClear();
+            // where.exe cannot resolve it.
+            mockSpawnSync.mockReturnValue({ status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null });
+            expect(isCliAvailable('gemini')).toBe(false);
+            expect(mockSpawnSync).toHaveBeenNthCalledWith(1, 'where.exe', ['gemini'], expect.objectContaining({
+                timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true, cwd: expect.any(String),
+            }));
+            // Fail closed: no second spawn. A bare name under shell:true would let
+            // cmd.exe resolve it against the CWD and run a planted gemini.cmd, and
+            // would leave no resolved path for the trust check to inspect.
+            expect(mockSpawnSync).toHaveBeenCalledTimes(1);
             restorePlatform();
             clearResolvedPathCache();
             mockSpawnSync.mockRestore();
+        });
+        it('probes an absolute contract binary without consulting the resolver', () => {
+            const mockSpawnSync = vi.mocked(spawnSync);
+            const restorePlatform = setProcessPlatform('linux');
+            clearResolvedPathCache();
+            mockSpawnSync.mockClear();
+            mockSpawnSync.mockReturnValue({ status: 0, stdout: 'ok\n', stderr: '', pid: 0, output: [], signal: null });
+            const originalBinary = getContract('codex').binary;
+            try {
+                getContract('codex').binary = '/opt/tools/codex';
+                expect(isCliAvailable('codex')).toBe(true);
+                expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+                expect(mockSpawnSync).toHaveBeenNthCalledWith(1, '/opt/tools/codex', ['--version'], expect.objectContaining({ shell: false }));
+            }
+            finally {
+                getContract('codex').binary = originalBinary;
+                restorePlatform();
+                clearResolvedPathCache();
+                mockSpawnSync.mockRestore();
+            }
         });
     });
     describe('prompt mode (headless TUI bypass)', () => {

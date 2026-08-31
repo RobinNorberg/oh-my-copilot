@@ -1,0 +1,1 @@
+{"version":3,"file":"types.js","sourceRoot":"","sources":["../../../src/hooks/circular-fix-detector/types.ts"],"names":[],"mappings":"AAAA;;GAEG;AAsBH,+CAA+C;AAC/C,MAAM,CAAC,MAAM,mBAAmB,GAAG;IACjC,+DAA+D;IAC/D,SAAS,EAAE,CAAC;IACZ,+CAA+C;IAC/C,eAAe,EAAE,CAAC,GAAG,EAAE,GAAG,EAAE,GAAG,IAAI;IACnC,qCAAqC;IACrC,iBAAiB,EAAE,EAAE;IACrB,6CAA6C;IAC7C,gBAAgB,EAAE,GAAG;CACb,CAAC"}

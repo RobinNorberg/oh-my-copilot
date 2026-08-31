@@ -161,7 +161,10 @@ describe('HUD Windows Compatibility', () => {
             // Should use path.join for constructing paths
             expect(content).toContain("p.join(d,'plugins','cache','omc','oh-my-copilot')");
             expect(content).not.toContain('ls ~/.claude/CLAUDE-*.md');
-            expect(content).toContain("find \"${COPILOT_CONFIG_DIR:-$HOME/.copilot}\" -maxdepth 1 -type f -name 'CLAUDE-*.md' -print 2>/dev/null");
+            // The companion scan used POSIX `find -maxdepth`, which System32's find.exe
+            // rejects; it now enumerates CLAUDE-*.md through fs like the other checks.
+            expect(content).not.toMatch(/find .*-maxdepth/);
+            expect(content).toContain("n.startsWith('claude-')&&n.endsWith('.md')");
         });
         it('hud skill should use cross-platform Node.js commands for plugin detection', () => {
             const hudPath = join(packageRoot, 'skills', 'hud', 'SKILL.md');
@@ -178,8 +181,8 @@ describe('HUD Windows Compatibility', () => {
             expect(content).toContain(".split(require('path').sep).join('/')");
             expect(content).toContain('The command path MUST use forward slashes on all platforms');
             expect(content).toContain('On Windows the path uses forward slashes (not backslashes):');
-            expect(content).toContain('"command": "node C:/Users/username/.claude/hud/omcp-hud.mjs"');
-            expect(content).not.toContain('"command": "node C:\\Users\\username\\.claude\\hud\\omcp-hud.mjs"');
+            expect(content).toContain('"command": "node C:/Users/username/.copilot/hud/omcp-hud.mjs"');
+            expect(content).not.toContain('"command": "node C:\\Users\\username\\.copilot\\hud\\omcp-hud.mjs"');
         });
         it('usage-api should use path.join with separate segments', () => {
             const usageApiPath = join(packageRoot, 'src', 'hud', 'usage-api.ts');

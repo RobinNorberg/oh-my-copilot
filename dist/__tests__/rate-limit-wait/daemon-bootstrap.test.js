@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
 import { tmpdir } from 'os';
 const { mockSpawn, mockResolveDaemonModulePath, mockIsTmuxAvailable } = vi.hoisted(() => ({
     mockSpawn: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock('../../features/rate-limit-wait/tmux-detector.js', async () => {
         isTmuxAvailable: mockIsTmuxAvailable,
     };
 });
+const DAEMON_MODULE_PATH = '/repo/dist/features/rate-limit-wait/daemon.js';
 describe('daemon bootstrap', () => {
     const originalEnv = { ...process.env };
     const testDir = join(tmpdir(), `omc-daemon-bootstrap-test-${Date.now()}`);
@@ -34,7 +36,7 @@ describe('daemon bootstrap', () => {
         mockResolveDaemonModulePath.mockReset();
         mockIsTmuxAvailable.mockReset();
         mockIsTmuxAvailable.mockReturnValue(true);
-        mockResolveDaemonModulePath.mockReturnValue('/repo/dist/features/rate-limit-wait/daemon.js');
+        mockResolveDaemonModulePath.mockReturnValue(DAEMON_MODULE_PATH);
         ({ startDaemon } = await import('../../features/rate-limit-wait/daemon.js'));
     });
     afterEach(() => {
@@ -67,9 +69,12 @@ describe('daemon bootstrap', () => {
         expect(mockResolveDaemonModulePath).toHaveBeenCalledWith(expect.any(String), ['features', 'rate-limit-wait', 'daemon.js']);
         expect(mockSpawn).toHaveBeenCalledTimes(1);
         const [command, args, spawnOptions] = mockSpawn.mock.calls[0];
-        expect(command).toBe('node');
+        // The running interpreter, not a PATH lookup that a Volta/nvm shim can break.
+        expect(command).toBe(process.execPath);
         expect(args[0]).toBe('-e');
-        expect(args[1]).toContain("import(\"file:///repo/dist/features/rate-limit-wait/daemon.js\")");
+        // The URL is derived the same way the daemon derives it, so the assertion
+        // holds on Windows where a POSIX-looking path resolves under a drive root.
+        expect(args[1]).toContain(`import(${JSON.stringify(pathToFileURL(DAEMON_MODULE_PATH).href)})`);
         expect(spawnOptions?.detached).toBe(true);
         expect(spawnOptions?.stdio).toBe('ignore');
         const childEnv = spawnOptions?.env;
