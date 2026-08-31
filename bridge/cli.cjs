@@ -38526,7 +38526,7 @@ var init_omc_cli_rendering = __esm({
   "src/utils/omc-cli-rendering.ts"() {
     "use strict";
     import_child_process14 = require("child_process");
-    OMC_CLI_BINARY = "omcp";
+    OMC_CLI_BINARY = "omg";
     OMC_PLUGIN_BRIDGE_PREFIX = 'node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs';
   }
 });
@@ -43600,15 +43600,15 @@ function buildStatusLineCommand(nodeBin, hudScriptPath, findNodePath, cacheWrapp
   const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, "/");
   if (cacheWrapperPath) {
     if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
-      return "sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs";
+      return "sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs";
     }
     return `sh ${quoteShellArg(cacheWrapperPath.replace(/\\/g, "/"))} ${quoteShellArg(normalizedHudScriptPath)}`;
   }
   if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
     if (findNodePath) {
-      return "sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs";
+      return "sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs";
     }
-    return "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs";
+    return "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs";
   }
   if (findNodePath) {
     return `sh ${quoteShellArg(findNodePath.replace(/\\/g, "/"))} ${quoteShellArg(normalizedHudScriptPath)}`;
@@ -43628,15 +43628,18 @@ function isHudEnabledInConfig() {
     return true;
   }
 }
+function isOmcHudCommand(command) {
+  return OMC_HUD_COMMAND_MARKERS.some((marker) => command.includes(marker));
+}
 function isOmcStatusLine(statusLine) {
   if (!statusLine) return false;
   if (typeof statusLine === "string") {
-    return statusLine.includes("omcp-hud");
+    return isOmcHudCommand(statusLine);
   }
   if (typeof statusLine === "object") {
     const sl = statusLine;
     if (typeof sl.command === "string") {
-      return sl.command.includes("omcp-hud");
+      return isOmcHudCommand(sl.command);
     }
   }
   return false;
@@ -43941,7 +43944,7 @@ function configureInstallerSettings(baseSettings, context) {
         const findNodeSrc = (0, import_path63.join)(getPackageDir3(), "scripts", "find-node.sh");
         const findNodeDest = (0, import_path63.join)(HUD_DIR, "find-node.sh");
         const cacheWrapperSrc = (0, import_path63.join)(getPackageDir3(), "scripts", "lib", "hud-cache-wrapper.sh");
-        const cacheWrapperDest = (0, import_path63.join)(HUD_DIR, "omcp-hud-cache.sh");
+        const cacheWrapperDest = (0, import_path63.join)(HUD_DIR, "omg-hud-cache.sh");
         const configDirHelperSrc = (0, import_path63.join)(getPackageDir3(), "scripts", "lib", "config-dir.sh");
         const hudLibDir = (0, import_path63.join)(HUD_DIR, "lib");
         const configDirHelperDest = (0, import_path63.join)(hudLibDir, "config-dir.sh");
@@ -45252,13 +45255,13 @@ function install(options = {}) {
       if (!(0, import_fs50.existsSync)(HUD_DIR)) {
         (0, import_fs50.mkdirSync)(HUD_DIR, { recursive: true });
       }
-      hudScriptPath = (0, import_path63.join)(HUD_DIR, "omcp-hud.mjs").replace(/\\/g, "/");
+      hudScriptPath = (0, import_path63.join)(HUD_DIR, "omg-hud.mjs").replace(/\\/g, "/");
       const hudScript = buildHudWrapper(getPackageDir3());
       (0, import_fs50.writeFileSync)(hudScriptPath, hudScript);
       if (!isWindows()) {
         (0, import_fs50.chmodSync)(hudScriptPath, 493);
       }
-      log3("  Installed omcp-hud.mjs");
+      log3("  Installed omg-hud.mjs");
     } catch (_e) {
       log3("  Warning: Could not install HUD statusline script (non-fatal)");
       hudScriptPath = null;
@@ -45388,7 +45391,7 @@ function getInstallInfo() {
     return null;
   }
 }
-var import_fs50, import_crypto17, import_path63, import_url10, import_os12, import_child_process18, COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, VERSION_FILE, OMC_MANAGED_SKILL_MARKER, PLUGIN_FULL_SKILL_BODIES_DIR, PLUGIN_COMPACT_SKILL_SHIM_MARKER, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, CC_NATIVE_COMMANDS, SKININTHEGAMEBROS_ONLY_SKILLS, HISTORICAL_AGENT_HASHES_BY_FILENAME, OMC_HOOK_FILENAMES, OMC_HOOK_EXTRA_FILENAMES, STANDALONE_HOOK_TEMPLATE_FILES, OMC_PLUGIN_IDS, OMC_PLUGIN_MANIFEST_NAME, PLUGIN_SYNC_PAYLOAD, REQUIRED_PLUGIN_PAYLOAD_FILES, REQUIRED_PLUGIN_COMMAND_FILES;
+var import_fs50, import_crypto17, import_path63, import_url10, import_os12, import_child_process18, COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, VERSION_FILE, OMC_MANAGED_SKILL_MARKER, PLUGIN_FULL_SKILL_BODIES_DIR, PLUGIN_COMPACT_SKILL_SHIM_MARKER, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, CC_NATIVE_COMMANDS, SKININTHEGAMEBROS_ONLY_SKILLS, HISTORICAL_AGENT_HASHES_BY_FILENAME, OMC_HUD_COMMAND_MARKERS, OMC_HOOK_FILENAMES, OMC_HOOK_EXTRA_FILENAMES, STANDALONE_HOOK_TEMPLATE_FILES, OMC_PLUGIN_IDS, OMC_PLUGIN_MANIFEST_NAME, PLUGIN_SYNC_PAYLOAD, REQUIRED_PLUGIN_PAYLOAD_FILES, REQUIRED_PLUGIN_COMMAND_FILES;
 var init_installer = __esm({
   "src/installer/index.ts"() {
     "use strict";
@@ -45450,6 +45453,7 @@ var init_installer = __esm({
       hashes.add(`${record2.byteLength}:${record2.sha256}`);
       HISTORICAL_AGENT_HASHES_BY_FILENAME.set(record2.filename, hashes);
     }
+    OMC_HUD_COMMAND_MARKERS = ["omg-hud", "omcp-hud"];
     OMC_HOOK_FILENAMES = /* @__PURE__ */ new Set([
       "keyword-detector.mjs",
       "session-start.mjs",
@@ -93294,7 +93298,7 @@ async function calculateSessionHealth(sessionStart, contextPercent) {
 function showDiagnostic() {
   const version3 = getRuntimePackageVersion();
   const configDir = getCopilotConfigDir();
-  const hudScript = (0, import_path160.join)(configDir, "hud", "omcp-hud.mjs");
+  const hudScript = (0, import_path160.join)(configDir, "hud", "omg-hud.mjs");
   const settingsFile = (0, import_path160.join)(configDir, "settings.json");
   const hudExists = (0, import_fs138.existsSync)(hudScript);
   let statusLineOk = false;
@@ -93302,9 +93306,9 @@ function showDiagnostic() {
     const settings = JSON.parse((0, import_fs138.readFileSync)(settingsFile, "utf-8"));
     const sl = settings.statusLine;
     if (sl && typeof sl === "object" && typeof sl.command === "string") {
-      statusLineOk = sl.command.includes("omcp-hud");
+      statusLineOk = sl.command.includes("omg-hud");
     } else if (typeof sl === "string") {
-      statusLineOk = sl.includes("omcp-hud");
+      statusLineOk = sl.includes("omg-hud");
     }
   } catch {
   }

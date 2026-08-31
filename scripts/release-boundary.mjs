@@ -29,8 +29,8 @@ const REPOSITORY_URL = 'https://github.com/RobinNorberg/oh-my-copilot';
 const WORKFLOW_PATH = '.github/workflows/ci.yml';
 const EXPECTED_BINS = Object.freeze({
   'oh-my-copilot': 'bin/oh-my-copilot.js',
-  omcp: 'bin/oh-my-copilot.js',
-  'omcp-cli': 'bridge/cli.cjs',
+  omg: 'bin/oh-my-copilot.js',
+  'omg-cli': 'bridge/cli.cjs',
 });
 const REQUIRED_ENTRYPOINTS = Object.freeze([
   'bin/oh-my-copilot.js',

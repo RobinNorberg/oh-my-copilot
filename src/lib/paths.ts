@@ -8,6 +8,6 @@ export const OMC_PLUGIN_PACKAGE_NAME = "oh-my-copilot";
 export const OMC_PLUGIN_CACHE_REL = `plugins/cache/${OMC_PLUGIN_MARKETPLACE_SLUG}/${OMC_PLUGIN_PACKAGE_NAME}`;
 export const OMC_PLUGIN_MARKETPLACE_REL = `plugins/marketplaces/${OMC_PLUGIN_MARKETPLACE_SLUG}`;
 export const OMC_HUD_DIST_REL = "dist/hud/index.js";
-export const OMC_HUD_WRAPPER_REL = "hud/omcp-hud.mjs";
+export const OMC_HUD_WRAPPER_REL = "hud/omg-hud.mjs";
 export const OMC_HUD_WRAPPER_LIB_REL = "hud/lib/config-dir.mjs";
 export const OMC_CONFIG_FILE_REL = ".omc-config.json";

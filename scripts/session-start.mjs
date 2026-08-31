@@ -806,8 +806,8 @@ async function checkNpmUpdate(currentVersion) {
 async function checkHudInstallation(retryCount = 0) {
   const hudDir = join(configDir, 'hud');
   // Support current and legacy script names
-  const hudScriptOmc = join(hudDir, 'omcp-hud.mjs');
-  const hudScriptLegacy = join(hudDir, 'omcp-hud.js');
+  const hudScriptOmc = join(hudDir, 'omg-hud.mjs');
+  const hudScriptLegacy = join(hudDir, 'omg-hud.js');
   const settingsFile = join(configDir, 'settings.json');
 
   const MAX_RETRIES = 2;
@@ -849,7 +849,7 @@ async function checkHudInstallation(retryCount = 0) {
           : null);
 
       // If OMC HUD wrapper is configured, ensure at least one plugin cache version is built.
-      if (statusLineCommand?.includes('omcp-hud')) {
+      if (statusLineCommand?.includes('omg-hud')) {
         const pluginCacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
         if (existsSync(pluginCacheBase)) {
           const versions = readdirSync(pluginCacheBase)

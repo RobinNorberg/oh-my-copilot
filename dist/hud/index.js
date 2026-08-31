@@ -154,7 +154,7 @@ async function calculateSessionHealth(sessionStart, contextPercent) {
 function showDiagnostic() {
     const version = getRuntimePackageVersion();
     const configDir = getCopilotConfigDir();
-    const hudScript = join(configDir, "hud", "omcp-hud.mjs");
+    const hudScript = join(configDir, "hud", "omg-hud.mjs");
     const settingsFile = join(configDir, "settings.json");
     const hudExists = existsSync(hudScript);
     let statusLineOk = false;
@@ -162,10 +162,10 @@ function showDiagnostic() {
         const settings = JSON.parse(readFileSync(settingsFile, "utf-8"));
         const sl = settings.statusLine;
         if (sl && typeof sl === "object" && typeof sl.command === "string") {
-            statusLineOk = sl.command.includes("omcp-hud");
+            statusLineOk = sl.command.includes("omg-hud");
         }
         else if (typeof sl === "string") {
-            statusLineOk = sl.includes("omcp-hud");
+            statusLineOk = sl.includes("omg-hud");
         }
     }
     catch {
@@ -466,6 +466,6 @@ async function main(watchMode = false, skipInit = false) {
 }
 // Export for programmatic use (e.g., omc hud --watch loop)
 export { main };
-// Auto-run (unconditional so dynamic import() via omcp-hud.mjs wrapper works correctly)
+// Auto-run (unconditional so dynamic import() via omg-hud.mjs wrapper works correctly)
 main();
 //# sourceMappingURL=index.js.map
