@@ -72,7 +72,7 @@ description: Worktree-first manager
 aliases: [psm]
 ---
 
-> **Quick Start (worktree-first):** Start with \`omcp teleport\` before tmux sessions.`);
+> **Quick Start (worktree-first):** Start with \`omg teleport\` before tmux sessions.`);
         const { executeSlashCommand } = await loadExecutor();
         const result = executeSlashCommand({
             command: 'psm',
@@ -81,7 +81,7 @@ aliases: [psm]
         });
         expect(result.success).toBe(true);
         expect(result.replacementText).toContain('Quick Start (worktree-first)');
-        expect(result.replacementText).toContain('`omcp teleport`');
+        expect(result.replacementText).toContain('`omg teleport`');
         expect(result.replacementText).toContain('Deprecated Alias');
     });
     it('renders provider-aware execution recommendations for deep-interview when codex is available', async () => {

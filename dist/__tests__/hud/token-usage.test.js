@@ -6,7 +6,7 @@ import { parseTranscript } from "../../hud/transcript.js";
 import { renderTokenUsage } from "../../hud/elements/token-usage.js";
 const tempDirs = [];
 function createTempTranscript(lines) {
-    const dir = mkdtempSync(join(tmpdir(), "omcp-hud-token-usage-"));
+    const dir = mkdtempSync(join(tmpdir(), "omg-hud-token-usage-"));
     tempDirs.push(dir);
     const transcriptPath = join(dir, "transcript.jsonl");
     writeFileSync(transcriptPath, `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`, "utf8");

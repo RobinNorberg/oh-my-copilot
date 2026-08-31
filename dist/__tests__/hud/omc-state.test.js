@@ -29,7 +29,7 @@ describe('hud omc state session scoping', () => {
         delete process.env.OMC_STATE_DIR;
     });
     function createWorktree() {
-        const dir = mkdtempSync(join(homedir(), 'omcp-hud-state-'));
+        const dir = mkdtempSync(join(homedir(), 'omg-hud-state-'));
         process.env.HOME = dir;
         process.env.USERPROFILE = dir;
         tempDirs.push(dir);
