@@ -195,6 +195,29 @@ const SKILL_ENTRIES: readonly WorkflowEntry[] = [
   entry({ name: 'hud', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),
   entry({ name: 'self-improve', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in learning utility.' }),
   entry({ name: 'trace', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),
+
+  // Fork-exclusive review lanes. These ship as real skill directories and are
+  // directly invocable, but none of them is Tier-0: review routing stays with
+  // `review`, and these are opt-in passes a user asks for by name.
+  entry({ name: 'critique', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Pre-push critique of unpushed commits; read-only advisory pass.' }),
+  entry({ name: 'deep-review', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Multi-pass review (security, quality, structure, validation); opt-in alongside review.' }),
+  entry({ name: 'discover', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Parallel specialist scan producing a prioritized improvement backlog.' }),
+  entry({ name: 'ralph-experiment', kind: 'skill', decision: 'keep', riskClass: 'destructive-mutation', owner: REGISTRY_OWNER, notes: 'Hypothesis loop that git-checkpoints and reverts the working tree between trials.' }),
+
+  // Fork-exclusive issue-tracker lanes (Azure DevOps and GitHub). The setup
+  // lanes walk the user through host authentication, so they carry the
+  // secrets-privacy boundary; the rest read and comment through an already
+  // authenticated CLI.
+  entry({ name: 'omc-ado-setup', kind: 'skill', decision: 'keep', riskClass: 'secrets-privacy', owner: REGISTRY_OWNER, notes: 'Azure DevOps onboarding incl. PAT/az login guidance.' }),
+  entry({ name: 'omc-ado-review', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),
+  entry({ name: 'omc-ado-auto-review', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Unattended variant of omc-ado-review; posts review output to the remote PR.' }),
+  entry({ name: 'omc-ado-triage', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),
+  entry({ name: 'omc-ado-sprint', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),
+  entry({ name: 'omc-gh-setup', kind: 'skill', decision: 'keep', riskClass: 'secrets-privacy', owner: REGISTRY_OWNER, notes: 'GitHub onboarding incl. gh auth guidance.' }),
+  entry({ name: 'omc-gh-review', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),
+  entry({ name: 'omc-gh-auto-review', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Unattended variant of omc-gh-review; posts review output to the remote PR.' }),
+  entry({ name: 'omc-gh-triage', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),
+  entry({ name: 'omc-gh-project', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),
 ];
 
 // ---------------------------------------------------------------------------

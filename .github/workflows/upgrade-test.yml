@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   upgrade-test:
-    name: omc update + session-start hook
+    name: omcp update + session-start hook
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -97,8 +97,8 @@ jobs:
       - name: Verify Claude Code is on PATH
         run: which claude
 
-      # ── 3. Install omc@4.9.3 via npm ────────────────────────────────────────
-      # Establishes the "old version" baseline before `omc update` is run.
+      # ── 3. Install omc@4.13.79 via npm ────────────────────────────────────────
+      # Establishes the "old version" baseline before `omcp update` is run.
       #
       # ENOTEMPTY hardening: the global node_modules dir is reused across runs on
       # GitHub-hosted runners (and within the GitHub-hosted tool cache). A
@@ -112,7 +112,7 @@ jobs:
       # transient rename race does not fail the run. Persistent install failures
       # still surface as a non-zero exit (we never swallow the final failure).
 
-      - name: Install omc v4.9.3 via npm
+      - name: Install omc v4.13.79 via npm
         run: |
           set -euo pipefail
 
@@ -131,9 +131,9 @@ jobs:
 
           ATTEMPTS=3
           for attempt in $(seq 1 "$ATTEMPTS"); do
-            echo "Installing $PKG@4.9.3 (attempt $attempt/$ATTEMPTS)"
-            if npm install -g "$PKG@4.9.3" --no-audit --no-fund; then
-              echo "Installed $PKG@4.9.3"
+            echo "Installing $PKG@4.13.79 (attempt $attempt/$ATTEMPTS)"
+            if npm install -g "$PKG@4.13.79" --no-audit --no-fund; then
+              echo "Installed $PKG@4.13.79"
               exit 0
             fi
             echo "Install attempt $attempt failed; cleaning stale global state and retrying."
@@ -141,29 +141,29 @@ jobs:
             sleep 2
           done
 
-          echo "FAIL: npm install -g $PKG@4.9.3 failed after $ATTEMPTS attempts"
+          echo "FAIL: npm install -g $PKG@4.13.79 failed after $ATTEMPTS attempts"
           exit 1
 
-      - name: Verify omc version is 4.9.3
+      - name: Verify omc version is 4.13.79
         run: |
-          omc --version > "$RUNNER_TEMP/omc-pre-update.version" 2>&1
+          omcp --version > "$RUNNER_TEMP/omc-pre-update.version" 2>&1
           VERSION_EXIT=$?
           INSTALLED_VERSION=$(cat "$RUNNER_TEMP/omc-pre-update.version")
 
           if [ "$VERSION_EXIT" -ne 0 ]; then
-            echo "FAIL: omc --version exited with code $VERSION_EXIT"
+            echo "FAIL: omcp --version exited with code $VERSION_EXIT"
             cat "$RUNNER_TEMP/omc-pre-update.version"
             exit 1
           fi
 
           echo "Installed omc version: $INSTALLED_VERSION"
-          if [ "$INSTALLED_VERSION" != "4.9.3" ]; then
-            echo "Expected version 4.9.3, got: $INSTALLED_VERSION"
+          if [ "$INSTALLED_VERSION" != "4.13.79" ]; then
+            echo "Expected version 4.13.79, got: $INSTALLED_VERSION"
             exit 1
           fi
 
-      # ── 4. Run omc update and verify clean stdout only ───────────────────────
-      # omc update must:
+      # ── 4. Run omcp update and verify clean stdout only ───────────────────────
+      # omcp update must:
       #   - Exit 0
       #   - Produce zero stderr
       # Any npm warnings, git warnings, or sync messages to stderr are failures.
@@ -172,9 +172,9 @@ jobs:
       # so CI runners with a fresh home directory are handled correctly.
       #
       # dev can legitimately carry a package/release-notes version bump before
-      # that version is published to npm. In that window the old 4.9.3 updater
+      # that version is published to npm. In that window the old 4.13.79 updater
       # still tries `npm install -g ...@latest`, which fails with ETARGET before
-      # any current update/reconcile code can run. Keep the real `omc update`
+      # any current update/reconcile code can run. Keep the real `omcp update`
       # path when the current package version exists on npm; otherwise install
       # the just-built local package tarball and run the same post-update
       # reconciliation command directly. This preserves deterministic coverage
@@ -236,7 +236,7 @@ jobs:
               fi
             elif [ "$GITHUB_LATEST_VERSION" = "$CURRENT_PACKAGE_VERSION" ]; then
               echo "OMC_UPGRADE_TEST_USE_LOCAL_TARBALL=false" >> "$GITHUB_ENV"
-              echo "Package $CURRENT_PACKAGE_VERSION is published and GitHub latest matches; testing the live omc update path."
+              echo "Package $CURRENT_PACKAGE_VERSION is published and GitHub latest matches; testing the live omcp update path."
             else
               echo "OMC_UPGRADE_TEST_USE_LOCAL_TARBALL=true" >> "$GITHUB_ENV"
               echo "Package $CURRENT_PACKAGE_VERSION is published, but GitHub latest is $GITHUB_LATEST_VERSION; testing local tarball + update-reconcile."
@@ -246,7 +246,7 @@ jobs:
             echo "Package $CURRENT_PACKAGE_VERSION is not published; testing local tarball + update-reconcile."
           fi
 
-      - name: Run omc update
+      - name: Run omcp update
         id: omc-update
         env:
           # Suppress npm update progress bar to keep stdout clean
@@ -254,7 +254,7 @@ jobs:
         run: |
           set -o pipefail
 
-          # Capture exit code of omc update itself (or the deterministic
+          # Capture exit code of omcp update itself (or the deterministic
           # unpublished-version fallback). npm install may emit deprecation
           # warnings to stderr — those are not omc errors. Filter those out and
           # fail on everything else.
@@ -263,18 +263,18 @@ jobs:
             {
               echo "Using local package tarball because deterministic fallback is required for $OMC_UPGRADE_TEST_EXPECTED_VERSION."
               npm install -g "$OMC_UPGRADE_TEST_TARBALL"
-              omc update-reconcile
+              omcp update-reconcile
             } 1>"$RUNNER_TEMP/omc-update.stdout.log" 2>"$RUNNER_TEMP/omc-update.stderr.log"
             UPDATE_EXIT=$?
           else
-            omc update 1>"$RUNNER_TEMP/omc-update.stdout.log" 2>"$RUNNER_TEMP/omc-update.stderr.log"
+            omcp update 1>"$RUNNER_TEMP/omc-update.stdout.log" 2>"$RUNNER_TEMP/omc-update.stderr.log"
             UPDATE_EXIT=$?
-            LIVE_UPDATED_VERSION="$(omc --version 2>/dev/null || true)"
-            if [ "$LIVE_UPDATED_VERSION" = "4.9.3" ]; then
+            LIVE_UPDATED_VERSION="$(omcp --version 2>/dev/null || true)"
+            if [ "$LIVE_UPDATED_VERSION" = "4.13.79" ]; then
               {
-                echo "Live omc update left version at 4.9.3; falling back to local tarball + update-reconcile."
+                echo "Live omcp update left version at 4.13.79; falling back to local tarball + update-reconcile."
                 npm install -g "$OMC_UPGRADE_TEST_TARBALL"
-                omc update-reconcile
+                omcp update-reconcile
               } >>"$RUNNER_TEMP/omc-update.stdout.log" 2>>"$RUNNER_TEMP/omc-update.stderr.log"
               UPDATE_EXIT=$?
             fi
@@ -285,7 +285,7 @@ jobs:
           # Exclude npm deprecation warnings: "npm deprecated ...".
           # All other stderr lines (omc console.warn, error, exception, fail patterns) are failures.
           if grep -vE '^npm deprecated ' "$RUNNER_TEMP/omc-update.stderr.log" 2>/dev/null | grep -qiE '^(error|exception|fail|critical|warn|omc)'; then
-            echo "FAIL: omc update produced stderr:"
+            echo "FAIL: omcp update produced stderr:"
             cat "$RUNNER_TEMP/omc-update.stderr.log"
             echo "Full stdout:"
             cat "$RUNNER_TEMP/omc-update.stdout.log"
@@ -293,7 +293,7 @@ jobs:
           fi
 
           if [ "$UPDATE_EXIT" -ne 0 ]; then
-            echo "FAIL: omc update exited with code $UPDATE_EXIT"
+            echo "FAIL: omcp update exited with code $UPDATE_EXIT"
             echo "Full stdout:"
             cat "$RUNNER_TEMP/omc-update.stdout.log"
             echo "Full stderr:"
@@ -304,37 +304,37 @@ jobs:
           if [ "$OMC_UPGRADE_TEST_USE_LOCAL_TARBALL" = "true" ]; then
             echo "PASS: local tarball install + update-reconcile succeeded"
           else
-            echo "PASS: omc update succeeded"
+            echo "PASS: omcp update succeeded"
           fi
 
       # ── 5. Verify new omc version installed ──────────────────────────────────
 
       - name: Verify omc version after update
         run: |
-          omc --version > "$RUNNER_TEMP/omc-post-update.version" 2>&1
+          omcp --version > "$RUNNER_TEMP/omc-post-update.version" 2>&1
           VERSION_EXIT=$?
           UPDATED_VERSION=$(cat "$RUNNER_TEMP/omc-post-update.version")
 
           if [ "$VERSION_EXIT" -ne 0 ]; then
-            echo "FAIL: omc --version exited with code $VERSION_EXIT"
+            echo "FAIL: omcp --version exited with code $VERSION_EXIT"
             cat "$RUNNER_TEMP/omc-post-update.version"
             exit 1
           fi
 
           echo "Updated omc version: $UPDATED_VERSION"
           if [ -z "$UPDATED_VERSION" ]; then
-            echo "FAIL: omc --version returned empty"
+            echo "FAIL: omcp --version returned empty"
             exit 1
           fi
-          if [ "$UPDATED_VERSION" = "4.9.3" ]; then
-            echo "FAIL: omc version still 4.9.3 after update"
+          if [ "$UPDATED_VERSION" = "4.13.79" ]; then
+            echo "FAIL: omc version still 4.13.79 after update"
             exit 1
           fi
           if [ "$OMC_UPGRADE_TEST_USE_LOCAL_TARBALL" = "true" ] && [ "$UPDATED_VERSION" != "$OMC_UPGRADE_TEST_EXPECTED_VERSION" ]; then
             echo "FAIL: local tarball fallback installed $UPDATED_VERSION, expected $OMC_UPGRADE_TEST_EXPECTED_VERSION"
             exit 1
           fi
-          echo "PASS: omc updated from 4.9.3 to $UPDATED_VERSION"
+          echo "PASS: omc updated from 4.13.79 to $UPDATED_VERSION"
 
       # ── 6. Verify SessionStart hook wiring + execution ───────────────────────
       # Validate the update-owned coverage directly:

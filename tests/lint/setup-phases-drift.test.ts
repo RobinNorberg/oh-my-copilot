@@ -184,13 +184,14 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       const tildeConfig = join(tildeConfigDir, ".omc-config.json");
       mkdirSync(tildeConfigDir, { recursive: true });
       writeFileSync(tildeConfig, original);
+      // os.homedir() reads USERPROFILE on Windows and HOME elsewhere.
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, HOME: root, COPILOT_CONFIG_DIR: "~/nested" },
+        env: { ...process.env, HOME: root, USERPROFILE: root, COPILOT_CONFIG_DIR: "~/nested" },
       });
       expect(JSON.parse(readFileSync(tildeConfig, "utf8"))).toEqual({ silentAutoUpdate: false });
       writeFileSync(tildeConfig, original);
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, HOME: root, COPILOT_CONFIG_DIR: "~\\nested" },
+        env: { ...process.env, HOME: root, USERPROFILE: root, COPILOT_CONFIG_DIR: "~\\nested" },
       });
       expect(JSON.parse(readFileSync(tildeConfig, "utf8"))).toEqual({ silentAutoUpdate: false });
 
@@ -227,12 +228,26 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     try {
       mkdirSync(join(root, ".omg", "state"), { recursive: true });
       writeFileSync(join(root, ".omg", "state", "setup-state.json"), JSON.stringify({ lastCompletedStep: 7 }));
-      const resumed = execFileSync("bash", ["-c", `${snippet}\nprintf '%s:%s\\n' "$RESUMED_PHASE_TWO_BOUNDARY" "$RESUME_LAST_COMPLETED_STEP"`], { cwd: root });
-      expect(resumed.toString()).toContain("true:7");
+      // The snippet reports the boundary as KEY=value lines on stdout for the
+      // setup agent to read; it does not export shell variables of its own.
+      const boundaryVars = () => {
+        const out = execFileSync("bash", ["-c", snippet!], { cwd: root, encoding: "utf-8" });
+        return Object.fromEntries(
+          out.trim().split(/\r?\n/).filter(Boolean).map((line) => {
+            const at = line.indexOf("=");
+            return [line.slice(0, at), line.slice(at + 1)];
+          }),
+        ) as Record<string, string>;
+      };
+
+      const resumed = boundaryVars();
+      expect(resumed.RESUMED_PHASE_TWO_BOUNDARY).toBe("true");
+      expect(resumed.RESUME_LAST_COMPLETED_STEP).toBe("7");
 
       writeFileSync(join(root, ".omg", "state", "setup-state.json"), JSON.stringify({ lastCompletedStep: 2 }));
-      const fresh = execFileSync("bash", ["-c", `${snippet}\nprintf '%s:%s\\n' "$RESUMED_PHASE_TWO_BOUNDARY" "$RESUME_LAST_COMPLETED_STEP"`], { cwd: root });
-      expect(fresh.toString()).toContain("false:2");
+      const fresh = boundaryVars();
+      expect(fresh.RESUMED_PHASE_TWO_BOUNDARY).toBe("false");
+      expect(fresh.RESUME_LAST_COMPLETED_STEP).toBe("2");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -246,20 +261,16 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     expect(welcome).not.toContain("/oh-my-copilot:review");
   });
 
-  it("executes the team config normalizer for a backslash-tilde path", () => {
+  it("delegates the team config write instead of normalizing the path inline", () => {
+    // The phase used to build $CONFIG_FILE with its own shell path normalizer,
+    // which is where the backslash-tilde bug lived. It now hands the patch to
+    // MERGE_JSON_FILE, so the guard is that no inline path building comes back.
     const phase = readPhase("03-integrations.md");
-    const block = phase.match(/Store the team configuration[\s\S]*?```bash\n([\s\S]*?)\n```/)?.[1];
-    expect(block, "team config block must remain executable").toBeTruthy();
-    const preamble = block!.split("\n").slice(0, 8).join("\n");
-    const root = mkdtempSync(join(tmpdir(), "setup-drift-team-path-"));
-    try {
-      const output = execFileSync("bash", ["-c", `${preamble}\nprintf '%s\\n' "$CONFIG_FILE"`], {
-        cwd: root,
-        env: { ...process.env, HOME: root, COPILOT_CONFIG_DIR: "~\\claude" },
-      });
-      expect(output.toString().trim()).toBe(join(root, "claude", ".omc-config.json"));
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
+    const section = phase.match(/Store the team configuration[\s\S]*?(?=\n#{1,4} )/)?.[0];
+    expect(section, "team config section must remain present").toBeTruthy();
+    expect(section).toMatch(/MERGE_JSON_FILE/);
+    expect(section).toMatch(/\.omc-config\.json/);
+    expect(section, "team config must not rebuild the config path inline").not.toMatch(/CONFIG_FILE=/);
+    expect(section, "team config must not expand ~ inline").not.toMatch(/COPILOT_CONFIG_DIR[^\n]*HOME/);
   });
 });

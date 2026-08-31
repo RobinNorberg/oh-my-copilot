@@ -64,15 +64,18 @@ describe('alias-retirement registry', () => {
     }
   });
 
-  it('built-in loader exposes 34 entries (32 canonical + 2 aliases) after the 5.0.0 retirement', () => {
+  it('built-in loader exposes 48 entries (46 canonical + 2 aliases) after the 5.0.0 retirement', () => {
     // This is the baseline that retirement must not silently change without an eligibility receipt.
     // Raised 37 -> 40 canonical when execute/review/research shipped as real
     // skill directories; this is an addition, not an alias retirement.
+    // Raised 32 -> 46 canonical when this fork's 14 exclusive skills (critique,
+    // deep-review, discover, ralph-experiment, omc-ado-*, omc-gh-*) were
+    // restored as real skill directories — again an addition, not a retirement.
     const all = createBuiltinSkills();
-    expect(all).toHaveLength(34);
+    expect(all).toHaveLength(48);
     const canonical = all.filter((s) => !s.aliasOf);
     const aliases = all.filter((s) => !!s.aliasOf);
-    expect(canonical).toHaveLength(32);
+    expect(canonical).toHaveLength(46);
     expect(aliases).toHaveLength(2);
     expect(aliases.map((s) => s.name).sort()).toEqual(['cancel-ralph', 'psm'].sort());
   });
