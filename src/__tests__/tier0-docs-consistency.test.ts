@@ -89,8 +89,12 @@ describe('Tier-0 contract docs consistency', () => {
     expect(readmeFiles).toContain('README.md');
 
     for (const content of readmeFiles.map((file) => readProjectFile(file))) {
-      expect(content).not.toContain('https://yeachan-heo.github.io/oh-my-copilot-website/docs.html');
-      expect(content).toContain('https://yeachan-heo.github.io/oh-my-copilot-website/docs/#');
+      // The fork's README documents itself with in-repo docs and credits
+      // upstream by its real repository; it must not link upstream's website
+      // under a rebrand-mangled domain that reads as an imposter clone.
+      expect(content).not.toContain('yeachan-heo.github.io');
+      expect(content).toContain('docs/REFERENCE.md');
+      expect(content).toContain('docs/MIGRATION.md');
     }
   });
 
