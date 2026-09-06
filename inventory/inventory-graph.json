@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "f832691502cab7ff46cb05f49972d95fbd01bcac",
-    "sourceSha256": "e9c21d284aa7b86ad673a7133de2ddd5b518f000c712f5a5c964121604ce40a3",
+    "head": "2d0151fa7d84bcba908f9ded22acfdcb7bdc47a9",
+    "sourceSha256": "ee2742f8264a1b7da0782d3433e36715bd0738ab19f38c2daa6e4994c4eaedb0",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "f832691502cab7ff46cb05f49972d95fbd01bcac",
-  "sourceSha256": "e9c21d284aa7b86ad673a7133de2ddd5b518f000c712f5a5c964121604ce40a3",
+  "head": "2d0151fa7d84bcba908f9ded22acfdcb7bdc47a9",
+  "sourceSha256": "ee2742f8264a1b7da0782d3433e36715bd0738ab19f38c2daa6e4994c4eaedb0",
   "counts": {
     "public": {
-      "skills": 46,
+      "skills": 49,
       "commands": 21,
       "workflows": 8,
       "agents": 20,
-      "total": 95
+      "total": 98
     },
     "internal": {
       "hookFiles": 304,
@@ -28,8 +28,8 @@
       "toolFiles": 60,
       "libFiles": 37,
       "templateHooks": 21,
-      "srcFiles": 1341,
-      "total": 1362
+      "srcFiles": 1343,
+      "total": 1364
     },
     "generated": {
       "distFiles": 5219,
@@ -39,7 +39,7 @@
     "prompt": {
       "promptLikeFiles": 62
     },
-    "skills": 46,
+    "skills": 49,
     "commands": 21,
     "hookFiles": 304,
     "workflows": 8,
@@ -60,10 +60,13 @@
       "deep-review",
       "deepinit",
       "discover",
+      "drydock",
       "execute",
       "external-context",
       "graph",
       "hud",
+      "launch",
+      "minimal-code-discipline",
       "omc-ado-auto-review",
       "omc-ado-review",
       "omc-ado-setup",
@@ -6717,6 +6720,11 @@
         "id": ".omc/skills/omc-new-agent-skill-checklist-expertise.md",
         "kind": "other",
         "path": ".omc/skills/omc-new-agent-skill-checklist-expertise.md"
+      },
+      {
+        "id": ".omc/skills/omg-release-runbook.md",
+        "kind": "other",
+        "path": ".omc/skills/omg-release-runbook.md"
       },
       {
         "id": ".omc/skills/port-upstream.md",
@@ -33824,6 +33832,11 @@
         "path": "docs/shared/verification-tiers.md"
       },
       {
+        "id": "docs/shipyard.md",
+        "kind": "other",
+        "path": "docs/shipyard.md"
+      },
+      {
         "id": "docs/ultragoal.md",
         "kind": "other",
         "path": "docs/ultragoal.md"
@@ -35004,6 +35017,11 @@
         "path": "skills/discover/SKILL.md"
       },
       {
+        "id": "skills/drydock/SKILL.md",
+        "kind": "skill",
+        "path": "skills/drydock/SKILL.md"
+      },
+      {
         "id": "skills/execute/SKILL.md",
         "kind": "skill",
         "path": "skills/execute/SKILL.md"
@@ -35022,6 +35040,16 @@
         "id": "skills/hud/SKILL.md",
         "kind": "skill",
         "path": "skills/hud/SKILL.md"
+      },
+      {
+        "id": "skills/launch/SKILL.md",
+        "kind": "skill",
+        "path": "skills/launch/SKILL.md"
+      },
+      {
+        "id": "skills/minimal-code-discipline/SKILL.md",
+        "kind": "skill",
+        "path": "skills/minimal-code-discipline/SKILL.md"
       },
       {
         "id": "skills/omc-ado-auto-review/SKILL.md",
@@ -36542,6 +36570,16 @@
         "id": "src/__tests__/shared-state-locking.test.ts",
         "kind": "src",
         "path": "src/__tests__/shared-state-locking.test.ts"
+      },
+      {
+        "id": "src/__tests__/shipyard-seed-locale.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/shipyard-seed-locale.test.ts"
+      },
+      {
+        "id": "src/__tests__/shipyard-skills.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/shipyard-skills.test.ts"
       },
       {
         "id": "src/__tests__/skill-entitlements-cross-surface.test.ts",
@@ -44776,6 +44814,11 @@
         "kind": "registers"
       },
       {
+        "from": "skills/drydock/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
         "from": "skills/execute/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -44792,6 +44835,16 @@
       },
       {
         "from": "skills/hud/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/launch/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/minimal-code-discipline/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
@@ -50373,6 +50426,81 @@
       {
         "from": "src/__tests__/shared-state-locking.test.ts",
         "to": "src/interop/shared-state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "src/hooks/learner/loader.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "src/hooks/learner/parser.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/hooks/learner/loader.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/hooks/learner/parser.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/team/api-interop.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/team/contracts.ts",
         "kind": "imports"
       },
       {
@@ -56567,6 +56695,16 @@
       },
       {
         "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -56578,6 +56716,11 @@
       {
         "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
+        "to": "src/hooks/omc-orchestrator/index.ts",
         "kind": "imports"
       },
       {
@@ -59737,6 +59880,11 @@
       },
       {
         "from": "src/hooks/omc-orchestrator/index.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/omc-orchestrator/index.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -59773,11 +59921,6 @@
       {
         "from": "src/hooks/omc-orchestrator/index.ts",
         "to": "src/utils/config-dir.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/omc-orchestrator/index.ts",
-        "to": "src/utils/paths.ts",
         "kind": "imports"
       },
       {
@@ -74282,6 +74425,11 @@
       },
       {
         "from": "src/team/model-contract.ts",
+        "to": "src/shared/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/model-contract.ts",
         "to": "src/team/team-name.ts",
         "kind": "imports"
       },
@@ -78472,6 +78620,11 @@
       },
       {
         "from": "templates/hooks/pre-tool-use.mjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/pre-tool-use.mjs",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -79102,12 +79255,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7157,
-      "edgeCount": 7347,
-      "importEdgeCount": 6028,
-      "registerEdgeCount": 67
+      "nodeCount": 7164,
+      "edgeCount": 7370,
+      "importEdgeCount": 6047,
+      "registerEdgeCount": 70
     }
   },
-  "inventorySha256": "eb7ea7acb5e687a644c27413d50858a5ba5a026194d8e172940a7c6f987bcd5d",
-  "manifestSha256": "53378e2ac1eda92d1310af8eac95fd17491564f85ad3bc99100a7e2dc741fdef"
+  "inventorySha256": "e8efc0e67e471ba23769a0a6bb0bfe738a8df6b642dc949f093ddd53876f5464",
+  "manifestSha256": "222b9f39b05b11d1785fe09dfe9f7618a91c8b39593905fb2bc8718b741f78cd"
 }

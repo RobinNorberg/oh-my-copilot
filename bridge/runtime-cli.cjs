@@ -1105,6 +1105,11 @@ function loadEnvConfig() {
   } else if (process.env.OMC_GROK_DEFAULT_MODEL) {
     externalModelsDefaults.grokModel = process.env.OMC_GROK_DEFAULT_MODEL;
   }
+  if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL) {
+    externalModelsDefaults.cursorModel = process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+  } else if (process.env.OMC_CURSOR_DEFAULT_MODEL) {
+    externalModelsDefaults.cursorModel = process.env.OMC_CURSOR_DEFAULT_MODEL;
+  }
   if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL) {
     externalModelsDefaults.antigravityModel = process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL;
   } else if (process.env.OMC_ANTIGRAVITY_DEFAULT_MODEL) {
@@ -2509,19 +2514,69 @@ function resolveClaudeWorkerModel(env = process.env) {
   if (!isBedrock() && !isVertexAI()) {
     return void 0;
   }
-  const directModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL || "";
+  const directModel = [env.ANTHROPIC_MODEL, env.CLAUDE_MODEL].map((value) => value?.trim()).find(Boolean) ?? "";
   if (directModel) {
     return directModel;
   }
-  const bedrockModel = env.CLAUDE_CODE_BEDROCK_SONNET_MODEL || env.ANTHROPIC_DEFAULT_SONNET_MODEL || "";
+  const bedrockModel = [env.CLAUDE_CODE_BEDROCK_SONNET_MODEL, env.ANTHROPIC_DEFAULT_SONNET_MODEL].map((value) => value?.trim()).find(Boolean) ?? "";
   if (bedrockModel) {
     return bedrockModel;
   }
-  const omcModel = env.OMC_MODEL_MEDIUM || "";
+  const omcModel = env.OMC_MODEL_MEDIUM?.trim() ?? "";
   if (omcModel) {
     return omcModel;
   }
   return void 0;
+}
+function resolveDefaultWorkerModel(agentType, env = process.env, defaults) {
+  if (agentType === "claude" || agentType === "copilot") return resolveClaudeWorkerModel(env);
+  const providerConfigKeys = {
+    codex: "codexModel",
+    gemini: "geminiModel",
+    antigravity: "antigravityModel",
+    grok: "grokModel",
+    cursor: "cursorModel"
+  };
+  const configuredValue = defaults?.[providerConfigKeys[agentType]];
+  const configured = typeof configuredValue === "string" ? configuredValue.trim() : void 0;
+  if (configured) return configured;
+  const providerName = agentType.toUpperCase();
+  const envKeys = [
+    `OMC_EXTERNAL_MODELS_DEFAULT_${providerName}_MODEL`,
+    `OMC_${providerName}_DEFAULT_MODEL`
+  ];
+  for (const key of envKeys) {
+    const value = env[key]?.trim();
+    if (value) return value;
+  }
+  return void 0;
+}
+function normalizeExternalModelsDefaults(defaults) {
+  if (!defaults || typeof defaults !== "object") return void 0;
+  const normalized = {};
+  for (const key of ["codexModel", "geminiModel", "grokModel", "antigravityModel", "cursorModel"]) {
+    const value = defaults[key];
+    if (typeof value === "string" && value.trim()) normalized[key] = value.trim();
+  }
+  if (defaults.provider === "codex" || defaults.provider === "gemini" || defaults.provider === "antigravity") {
+    normalized.provider = defaults.provider;
+  }
+  return Object.keys(normalized).length > 0 ? normalized : void 0;
+}
+function resolveExternalModelsDefaults(defaults, env = process.env) {
+  const normalized = normalizeExternalModelsDefaults(defaults) ?? {};
+  for (const [provider, key] of [
+    ["CODEX", "codexModel"],
+    ["GEMINI", "geminiModel"],
+    ["GROK", "grokModel"],
+    ["CURSOR", "cursorModel"],
+    ["ANTIGRAVITY", "antigravityModel"]
+  ]) {
+    if (normalized[key]) continue;
+    const value = [env[`OMC_EXTERNAL_MODELS_DEFAULT_${provider}_MODEL`], env[`OMC_${provider}_DEFAULT_MODEL`]].map((candidate) => candidate?.trim()).find(Boolean);
+    if (value) normalized[key] = value;
+  }
+  return normalized;
 }
 function isHeadlessSupportedOnPlatform(agentType, platform = process.platform) {
   if (agentType === "antigravity" && platform === "win32") {
@@ -9159,6 +9214,9 @@ function configFromManifest(manifest) {
     resize_hook_name: manifest.resize_hook_name,
     resize_hook_target: manifest.resize_hook_target,
     next_worker_index: manifest.next_worker_index,
+    resolved_routing: manifest.resolved_routing,
+    resolved_routing_roles: manifest.resolved_routing_roles,
+    external_models_defaults: manifest.external_models_defaults,
     service_descriptor: manifest.service_descriptor
   };
 }
@@ -9167,6 +9225,17 @@ function isRecord(value) {
 }
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
+}
+function isOptionalExternalModelsDefaults(value) {
+  if (value === void 0) return true;
+  if (!isRecord(value)) return false;
+  const allowed = /* @__PURE__ */ new Set(["provider", "codexModel", "geminiModel", "grokModel", "antigravityModel", "cursorModel"]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) return false;
+  if (value.provider !== void 0 && !["codex", "gemini", "antigravity"].includes(value.provider)) return false;
+  return ["codexModel", "geminiModel", "grokModel", "antigravityModel", "cursorModel"].every((key) => value[key] === void 0 || value[key] === "" || isNonEmptyString(value[key]));
+}
+function isOptionalRoutingRoles(value) {
+  return value === void 0 || Array.isArray(value) && value.every((role) => CANONICAL_TEAM_ROLES.includes(role));
 }
 function isSafeCounter(value) {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
@@ -9209,7 +9278,7 @@ function isAllDeadRecovery(value) {
   return isRecord(value) && isTimestamp(value.detected_at) && isTimestamp(value.deadline_at) && isSafeCounter(value.state_revision);
 }
 function isTeamConfig(value, requireRevision, expectedTeamName) {
-  if (!isRecord(value) || !isNonEmptyString(value.name) || expectedTeamName !== void 0 && value.name !== expectedTeamName || !isNonEmptyString(value.agent_type) || value.task !== void 0 && typeof value.task !== "string" || value.worker_launch_mode !== void 0 && !["interactive", "prompt"].includes(value.worker_launch_mode) || !isSafeCounter(value.worker_count) || !isValidPersistedMaxWorkers(value.max_workers) || !Array.isArray(value.workers) || value.worker_count !== value.workers.length || !value.workers.every(isWorkerInfo) || !hasUniqueWorkerIdentity(value.workers) || !isTimestamp(value.created_at) || !isNonEmptyString(value.tmux_session) || value.next_task_id !== void 0 && !isSafeCounter(value.next_task_id) || !isOptionalPolicy(value.policy) || !isOptionalGovernance(value.governance) || !isOptionalWorkspaceShape(value) || !isOptionalPaneShape(value) || !isOptionalRouting(value.resolved_routing)) return false;
+  if (!isRecord(value) || !isNonEmptyString(value.name) || expectedTeamName !== void 0 && value.name !== expectedTeamName || !isNonEmptyString(value.agent_type) || value.task !== void 0 && typeof value.task !== "string" || value.worker_launch_mode !== void 0 && !["interactive", "prompt"].includes(value.worker_launch_mode) || !isSafeCounter(value.worker_count) || !isValidPersistedMaxWorkers(value.max_workers) || !Array.isArray(value.workers) || value.worker_count !== value.workers.length || !value.workers.every(isWorkerInfo) || !hasUniqueWorkerIdentity(value.workers) || !isTimestamp(value.created_at) || !isNonEmptyString(value.tmux_session) || value.next_task_id !== void 0 && !isSafeCounter(value.next_task_id) || !isOptionalPolicy(value.policy) || !isOptionalGovernance(value.governance) || !isOptionalWorkspaceShape(value) || !isOptionalPaneShape(value) || !isOptionalRouting(value.resolved_routing) || !isOptionalRoutingRoles(value.resolved_routing_roles) || !isOptionalExternalModelsDefaults(value.external_models_defaults)) return false;
   if (requireRevision ? !isSafeCounter(value.state_revision) : value.state_revision !== void 0 && !isSafeCounter(value.state_revision)) return false;
   if (!requireRevision && Object.hasOwn(value, "state_revision")) return false;
   return (value.lifecycle_state === void 0 || ["active", "shutting_down", "stopped"].includes(value.lifecycle_state)) && (value.runtime_owner_epoch === void 0 || isOwnerEpoch(value.runtime_owner_epoch)) && (value.active_recovery === void 0 || isRecoveryAttempt(value.active_recovery)) && (value.last_recovery === void 0 || isRecoveryAttempt(value.last_recovery)) && (value.active_scale_up === void 0 || isScaleUpAttempt(value.active_scale_up)) && (value.active_scale_down === void 0 || isScaleDownAttempt(value.active_scale_down)) && (value.service_descriptor === void 0 || isServiceDescriptor(value.service_descriptor)) && (value.shutdown_attempt === void 0 || isShutdownAttempt(value.shutdown_attempt)) && (value.all_dead_recovery === void 0 || isAllDeadRecovery(value.all_dead_recovery)) && hasMatchingActiveFenceRevisions(value);
@@ -9243,10 +9312,11 @@ function isOptionalRouting(value) {
   return CANONICAL_TEAM_ROLES.every((role) => isResolvedRoleRoute(value[role]));
 }
 function isResolvedRoleRoute(value) {
-  return isRecord(value) && isRoleAssignment(value.primary) && isRoleAssignment(value.fallback);
+  return isRecord(value) && isRoleAssignment(value.primary, true) && isRoleAssignment(value.fallback);
 }
-function isRoleAssignment(value) {
-  return isRecord(value) && ["claude", "codex", "gemini", "grok", "cursor", "antigravity"].includes(value.provider) && isNonEmptyString(value.model) && KNOWN_AGENT_NAMES.some((agent) => agent === value.agent);
+function isRoleAssignment(value, allowEmptyExternalModel = false) {
+  const provider = isRecord(value) ? value.provider : void 0;
+  return isRecord(value) && ["claude", "codex", "gemini", "grok", "cursor", "antigravity"].includes(provider) && (isNonEmptyString(value.model) || allowEmptyExternalModel && provider !== "claude" && value.model === "") && KNOWN_AGENT_NAMES.some((agent) => agent === value.agent);
 }
 function hasMatchingActiveFenceRevisions(value) {
   if (!isSafeCounter(value.state_revision)) return true;
@@ -9573,6 +9643,9 @@ async function saveTeamConfigUnlocked(config, cwd) {
       resize_hook_name: config.resize_hook_name,
       resize_hook_target: config.resize_hook_target,
       next_worker_index: config.next_worker_index,
+      resolved_routing: config.resolved_routing ?? existingManifest.resolved_routing,
+      resolved_routing_roles: config.resolved_routing_roles ?? existingManifest.resolved_routing_roles,
+      external_models_defaults: config.external_models_defaults ?? existingManifest.external_models_defaults,
       policy: config.policy ?? existingManifest.policy,
       governance: config.governance ?? existingManifest.governance,
       state_revision: config.state_revision,
@@ -10273,7 +10346,10 @@ function configFromManifest2(manifest) {
     hud_pane_id: manifest.hud_pane_id,
     resize_hook_name: manifest.resize_hook_name,
     resize_hook_target: manifest.resize_hook_target,
-    next_worker_index: manifest.next_worker_index
+    next_worker_index: manifest.next_worker_index,
+    resolved_routing: manifest.resolved_routing,
+    resolved_routing_roles: manifest.resolved_routing_roles,
+    external_models_defaults: manifest.external_models_defaults
   };
 }
 function mergeTeamConfigSources(config, manifest) {
@@ -10560,33 +10636,35 @@ function getRoleRoutingSpec(roleRouting, role) {
 }
 function resolveTierToModelId(tier, cfg) {
   const fromCfg = cfg.routing?.tierModels?.[tier];
-  if (typeof fromCfg === "string" && fromCfg.length > 0) return fromCfg;
+  if (typeof fromCfg === "string" && fromCfg.trim().length > 0) return fromCfg.trim();
   return getDefaultTierModels()[tier];
 }
 function resolveClaudeModel(role, raw, cfg) {
-  if (typeof raw === "string" && raw.length > 0) {
-    return isTier(raw) ? resolveTierToModelId(raw, cfg) : raw;
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    const value = raw.trim();
+    return isTier(value) ? resolveTierToModelId(value, cfg) : value;
   }
   return resolveTierToModelId(ROLE_DEFAULT_TIER[role], cfg);
 }
 function resolveExternalModel(provider, raw, cfg) {
-  if (typeof raw === "string" && raw.length > 0 && !isTier(raw)) {
-    return raw;
+  if (typeof raw === "string" && raw.trim().length > 0 && !isTier(raw.trim())) {
+    return raw.trim();
   }
   const defaults = cfg.externalModels?.defaults;
+  const model = (value) => typeof value === "string" && value.trim() ? value.trim() : void 0;
   if (provider === "codex") {
-    return defaults?.codexModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.codexModel;
+    return model(defaults?.codexModel) ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.codexModel;
   }
   if (provider === "grok") {
-    return defaults?.grokModel ?? "";
+    return model(defaults?.grokModel) ?? "";
   }
   if (provider === "cursor") {
-    return "";
+    return model(defaults?.cursorModel) ?? "";
   }
   if (provider === "antigravity") {
-    return defaults?.antigravityModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.antigravityModel;
+    return model(defaults?.antigravityModel) ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.antigravityModel;
   }
-  return defaults?.geminiModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel;
+  return model(defaults?.geminiModel) ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel;
 }
 function resolveRoleAssignment(role, cfg) {
   const normalized = normalizeDelegationRole(role);
@@ -15065,13 +15143,9 @@ async function startTeamV2(config) {
   }
   const startupByWorker = new Map(startupAllocations.map((item) => [item.workerName, item.taskIndex]));
   const preparedLaunches = /* @__PURE__ */ new Map();
+  const externalModelsDefaults = resolveExternalModelsDefaults(pluginCfg.externalModels?.defaults, process.env);
   const resolveDefaultModel = (agentType) => {
-    if (agentType === "codex") return process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL || process.env.OMC_CODEX_DEFAULT_MODEL || void 0;
-    if (agentType === "gemini") return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMC_GEMINI_DEFAULT_MODEL || void 0;
-    if (agentType === "antigravity") return process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL || process.env.OMC_ANTIGRAVITY_DEFAULT_MODEL || void 0;
-    if (agentType === "grok") return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL || process.env.OMC_GROK_DEFAULT_MODEL || void 0;
-    if (agentType === "cursor") return void 0;
-    return resolveClaudeWorkerModel();
+    return resolveDefaultWorkerModel(agentType, process.env, externalModelsDefaults);
   };
   for (let i = 0; i < workerNames.length; i++) {
     const workerName2 = workerNames[i];
@@ -15203,6 +15277,8 @@ async function startTeamV2(config) {
     resize_hook_name: null,
     resize_hook_target: null,
     resolved_routing: resolvedRouting,
+    resolved_routing_roles: Object.keys(pluginCfg.team?.roleRouting ?? {}).map((role) => normalizeDelegationRole(role)).filter((role) => CANONICAL_TEAM_ROLES.includes(role)),
+    external_models_defaults: externalModelsDefaults,
     workspace_mode: workspaceMode,
     worktree_mode: worktreeMode,
     service_descriptor: config.autoMerge ? {
@@ -15268,6 +15344,9 @@ async function startTeamV2(config) {
     resize_hook_name: null,
     resize_hook_target: null,
     next_worker_index: teamConfig.next_worker_index,
+    resolved_routing: teamConfig.resolved_routing,
+    resolved_routing_roles: teamConfig.resolved_routing_roles,
+    external_models_defaults: teamConfig.external_models_defaults,
     service_descriptor: teamConfig.service_descriptor
   };
   try {
@@ -17135,24 +17214,7 @@ async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
       runtime.resolvedBinaryPaths = {};
     }
     runtime.resolvedBinaryPaths[agentType] = resolvedBinaryPath;
-    const modelForAgent = (() => {
-      if (agentType === "codex") {
-        return process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL || process.env.OMC_CODEX_DEFAULT_MODEL || void 0;
-      }
-      if (agentType === "gemini") {
-        return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMC_GEMINI_DEFAULT_MODEL || void 0;
-      }
-      if (agentType === "antigravity") {
-        return process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL || process.env.OMC_ANTIGRAVITY_DEFAULT_MODEL || void 0;
-      }
-      if (agentType === "grok") {
-        return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL || process.env.OMC_GROK_DEFAULT_MODEL || void 0;
-      }
-      if (agentType === "cursor") {
-        return void 0;
-      }
-      return resolveClaudeWorkerModel();
-    })();
+    const modelForAgent = resolveDefaultWorkerModel(agentType, process.env);
     const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
       teamName: runtime.teamName,
       workerName: workerNameValue,

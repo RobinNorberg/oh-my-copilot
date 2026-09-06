@@ -2,6 +2,32 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Ported from upstream oh-my-claudecode v5.1.0 (v5.0.2..v5.1.0)
+
+- **Three new skills (46 → 49):** `drydock` and `launch` (the Shipyard
+  governed-delivery pair, with the methodology map at `docs/shipyard.md`) and
+  `minimal-code-discipline` (opt-in YAGNI-ladder writing-time discipline).
+  Skill paths adapted to the fork's `.omg/` runtime root and
+  `/oh-my-copilot:` namespace.
+- **Cursor default-model hook (#3880):** `externalModels.defaults.cursorModel`
+  config plus `OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL` /
+  `OMC_CURSOR_DEFAULT_MODEL` env fallbacks.
+- **Team model routing hardening (#3899–#3905):** shared
+  `resolveDefaultWorkerModel` across launch and scale-up, normalized persisted
+  model defaults, preserved routing provenance and configured defaults during
+  scale-up. The fork's `copilot` provider shares the claude resolution path.
+- **Delegation enforcement rewrite (#3911 + follow-ups):** the pre-tool-use
+  template gained a real shell-command parser (heredocs, here-strings, ANSI-C
+  quoting, fd duplication, printf/echo semantics, coprocesses) eliminating
+  delegation false positives, and bounded cross-platform temp/scratchpad path
+  allowances in both the template and the orchestrator hook. The template now
+  allows the fork's `.omg/` state root alongside legacy `.omc/`.
+- Test expectations for POSIX-only temp-path shapes are platform-gated so the
+  suite reflects the implementation's deliberate rejection of cross-platform
+  path shapes on Windows.
+
 # oh-my-copilot v5.0.0
 
 ## [5.0.0] - 2026-08-31

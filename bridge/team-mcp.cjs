@@ -19760,6 +19760,9 @@ function configFromManifest(manifest) {
     resize_hook_name: manifest.resize_hook_name,
     resize_hook_target: manifest.resize_hook_target,
     next_worker_index: manifest.next_worker_index,
+    resolved_routing: manifest.resolved_routing,
+    resolved_routing_roles: manifest.resolved_routing_roles,
+    external_models_defaults: manifest.external_models_defaults,
     service_descriptor: manifest.service_descriptor
   };
 }
@@ -19768,6 +19771,17 @@ function isRecord(value) {
 }
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
+}
+function isOptionalExternalModelsDefaults(value) {
+  if (value === void 0) return true;
+  if (!isRecord(value)) return false;
+  const allowed = /* @__PURE__ */ new Set(["provider", "codexModel", "geminiModel", "grokModel", "antigravityModel", "cursorModel"]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) return false;
+  if (value.provider !== void 0 && !["codex", "gemini", "antigravity"].includes(value.provider)) return false;
+  return ["codexModel", "geminiModel", "grokModel", "antigravityModel", "cursorModel"].every((key) => value[key] === void 0 || value[key] === "" || isNonEmptyString(value[key]));
+}
+function isOptionalRoutingRoles(value) {
+  return value === void 0 || Array.isArray(value) && value.every((role) => CANONICAL_TEAM_ROLES.includes(role));
 }
 function isSafeCounter(value) {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
@@ -19810,7 +19824,7 @@ function isAllDeadRecovery(value) {
   return isRecord(value) && isTimestamp(value.detected_at) && isTimestamp(value.deadline_at) && isSafeCounter(value.state_revision);
 }
 function isTeamConfig(value, requireRevision, expectedTeamName) {
-  if (!isRecord(value) || !isNonEmptyString(value.name) || expectedTeamName !== void 0 && value.name !== expectedTeamName || !isNonEmptyString(value.agent_type) || value.task !== void 0 && typeof value.task !== "string" || value.worker_launch_mode !== void 0 && !["interactive", "prompt"].includes(value.worker_launch_mode) || !isSafeCounter(value.worker_count) || !isValidPersistedMaxWorkers(value.max_workers) || !Array.isArray(value.workers) || value.worker_count !== value.workers.length || !value.workers.every(isWorkerInfo) || !hasUniqueWorkerIdentity(value.workers) || !isTimestamp(value.created_at) || !isNonEmptyString(value.tmux_session) || value.next_task_id !== void 0 && !isSafeCounter(value.next_task_id) || !isOptionalPolicy(value.policy) || !isOptionalGovernance(value.governance) || !isOptionalWorkspaceShape(value) || !isOptionalPaneShape(value) || !isOptionalRouting(value.resolved_routing)) return false;
+  if (!isRecord(value) || !isNonEmptyString(value.name) || expectedTeamName !== void 0 && value.name !== expectedTeamName || !isNonEmptyString(value.agent_type) || value.task !== void 0 && typeof value.task !== "string" || value.worker_launch_mode !== void 0 && !["interactive", "prompt"].includes(value.worker_launch_mode) || !isSafeCounter(value.worker_count) || !isValidPersistedMaxWorkers(value.max_workers) || !Array.isArray(value.workers) || value.worker_count !== value.workers.length || !value.workers.every(isWorkerInfo) || !hasUniqueWorkerIdentity(value.workers) || !isTimestamp(value.created_at) || !isNonEmptyString(value.tmux_session) || value.next_task_id !== void 0 && !isSafeCounter(value.next_task_id) || !isOptionalPolicy(value.policy) || !isOptionalGovernance(value.governance) || !isOptionalWorkspaceShape(value) || !isOptionalPaneShape(value) || !isOptionalRouting(value.resolved_routing) || !isOptionalRoutingRoles(value.resolved_routing_roles) || !isOptionalExternalModelsDefaults(value.external_models_defaults)) return false;
   if (requireRevision ? !isSafeCounter(value.state_revision) : value.state_revision !== void 0 && !isSafeCounter(value.state_revision)) return false;
   if (!requireRevision && Object.hasOwn(value, "state_revision")) return false;
   return (value.lifecycle_state === void 0 || ["active", "shutting_down", "stopped"].includes(value.lifecycle_state)) && (value.runtime_owner_epoch === void 0 || isOwnerEpoch(value.runtime_owner_epoch)) && (value.active_recovery === void 0 || isRecoveryAttempt(value.active_recovery)) && (value.last_recovery === void 0 || isRecoveryAttempt(value.last_recovery)) && (value.active_scale_up === void 0 || isScaleUpAttempt(value.active_scale_up)) && (value.active_scale_down === void 0 || isScaleDownAttempt(value.active_scale_down)) && (value.service_descriptor === void 0 || isServiceDescriptor(value.service_descriptor)) && (value.shutdown_attempt === void 0 || isShutdownAttempt(value.shutdown_attempt)) && (value.all_dead_recovery === void 0 || isAllDeadRecovery(value.all_dead_recovery)) && hasMatchingActiveFenceRevisions(value);
@@ -19844,10 +19858,11 @@ function isOptionalRouting(value) {
   return CANONICAL_TEAM_ROLES.every((role) => isResolvedRoleRoute(value[role]));
 }
 function isResolvedRoleRoute(value) {
-  return isRecord(value) && isRoleAssignment(value.primary) && isRoleAssignment(value.fallback);
+  return isRecord(value) && isRoleAssignment(value.primary, true) && isRoleAssignment(value.fallback);
 }
-function isRoleAssignment(value) {
-  return isRecord(value) && ["claude", "codex", "gemini", "grok", "cursor", "antigravity"].includes(value.provider) && isNonEmptyString(value.model) && KNOWN_AGENT_NAMES.some((agent) => agent === value.agent);
+function isRoleAssignment(value, allowEmptyExternalModel = false) {
+  const provider = isRecord(value) ? value.provider : void 0;
+  return isRecord(value) && ["claude", "codex", "gemini", "grok", "cursor", "antigravity"].includes(provider) && (isNonEmptyString(value.model) || allowEmptyExternalModel && provider !== "claude" && value.model === "") && KNOWN_AGENT_NAMES.some((agent) => agent === value.agent);
 }
 function hasMatchingActiveFenceRevisions(value) {
   if (!isSafeCounter(value.state_revision)) return true;

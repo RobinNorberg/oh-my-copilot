@@ -667,13 +667,18 @@ describe('pre-tool-use packaged artifacts', () => {
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
-    it('does not warn for .json commands just because .js is a substring', () => {
+    it('warns based on the output target rather than source-like input names', () => {
         const scriptPath = join(packageRoot, 'templates', 'hooks', 'pre-tool-use.mjs');
         expect(runPreToolHook(scriptPath, 'cat settings.json > backup.txt')).toEqual({
             continue: true,
             suppressOutput: true,
         });
-        expect(JSON.stringify(runPreToolHook(scriptPath, 'cat app.js > backup.txt'))).toContain('Bash command may modify source files');
+        expect(runPreToolHook(scriptPath, 'cat app.js > backup.txt')).toEqual({
+            continue: true,
+            suppressOutput: true,
+        });
+        expect(JSON.stringify(runPreToolHook(scriptPath, 'cat fixture.txt > src/app.js'))).toContain('Bash command may modify source files');
+        expect(JSON.stringify(runPreToolHook(scriptPath, 'printf x | tee -- -generated.ts'))).toContain('Bash command may modify source files');
     });
     it('keeps the Skill-vs-Agent guard in parity with the runtime enforcer', () => {
         const templatePath = join(packageRoot, 'templates', 'hooks', 'pre-tool-use.mjs');

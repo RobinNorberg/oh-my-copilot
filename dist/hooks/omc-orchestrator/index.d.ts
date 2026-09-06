@@ -41,6 +41,7 @@ interface GitFileStat {
     removed: number;
     status: 'modified' | 'added' | 'deleted';
 }
+export declare function isTempOrScratchpadPath(filePath: string, directory?: string): boolean;
 /**
  * Check if a file path is allowed for direct orchestrator modification
  */

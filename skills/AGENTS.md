@@ -1,9 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-01-28 | Updated: 2026-03-02 -->
+<!-- Generated: 2026-01-28 | Updated: 2026-08-29 -->
 
 # skills
 
-30 skill directories for workflow automation and specialized behaviors.
+35 skill directories for workflow automation and specialized behaviors.
 
 ## Purpose
 
@@ -19,6 +19,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | File | Skill | Purpose |
 |-----------|-------|---------|
 | `autopilot/SKILL.md` | autopilot | Full autonomous execution from idea to working code |
+| `launch/SKILL.md` | launch | Governed delivery pipeline: spec → vertical-slice tickets → frontier execution with human checkpoints |
 | `ralph/SKILL.md` | ralph | Persistence until verified complete |
 | `team/SKILL.md` | team | N coordinated agents with task claiming |
 
@@ -49,6 +50,8 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | File | Skill | Purpose |
 |-----------|-------|---------|
 | `ai-slop-cleaner/SKILL.md` | ai-slop-cleaner | Regression-safe cleanup workflow for AI-generated code slop |
+| `drydock/SKILL.md` | drydock | Shipyard harness scaffold: 4-pillar shared environment across 5 surfaces, with --check drift audit |
+| `minimal-code-discipline/SKILL.md` | minimal-code-discipline | YAGNI-ladder writing-time discipline: existence-first, reuse before writing, shortest correct diff |
 | `skillify/SKILL.md` | skillify | Extract reusable skill from session |
 | `learner/SKILL.md` | learner | Deprecated compatibility alias/internal implementation history for skillify |
 | `ask/SKILL.md` | ask | Ask Claude, Codex, or Gemini via `omg ask` and capture an artifact |

@@ -2,7 +2,7 @@ import { mkdir, readFile, rm, rename, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { tmuxExecAsync } from '../cli/tmux-utils.js';
-import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, assertHeadlessSupported } from './model-contract.js';
+import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveDefaultWorkerModel, assertHeadlessSupported } from './model-contract.js';
 import { validateTeamName } from './team-name.js';
 import { createTeamSession, spawnWorkerInPane, sendToWorker, isWorkerAlive, killTeamSession, resolveSplitPaneWorkerPaneIds, waitForPaneReady, applyMainVerticalLayout, killTeamPane, splitTeamWorkerPane, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, } from './worker-bootstrap.js';
@@ -635,33 +635,7 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
         // Resolve model from environment variables based on agent type.
         // For Claude agents on Bedrock/Vertex, resolve the provider-specific model
         // so workers don't fall back to invalid Anthropic API model names. (#1695)
-        const modelForAgent = (() => {
-            if (agentType === 'codex') {
-                return process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL
-                    || process.env.OMC_CODEX_DEFAULT_MODEL
-                    || undefined;
-            }
-            if (agentType === 'gemini') {
-                return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL
-                    || process.env.OMC_GEMINI_DEFAULT_MODEL
-                    || undefined;
-            }
-            if (agentType === 'antigravity') {
-                return process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL
-                    || process.env.OMC_ANTIGRAVITY_DEFAULT_MODEL
-                    || undefined;
-            }
-            if (agentType === 'grok') {
-                return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL
-                    || process.env.OMC_GROK_DEFAULT_MODEL
-                    || undefined;
-            }
-            if (agentType === 'cursor') {
-                return undefined;
-            }
-            // Claude agents: resolve Bedrock/Vertex model when on those providers
-            return resolveClaudeWorkerModel();
-        })();
+        const modelForAgent = resolveDefaultWorkerModel(agentType, process.env);
         const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
             teamName: runtime.teamName,
             workerName: workerNameValue,

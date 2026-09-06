@@ -83,13 +83,14 @@ describe('workflow registry — risk classes and gate policy', () => {
 });
 
 describe('workflow registry — aliases and classification', () => {
-  it('classifies all 46 installed skills and 21 installed commands exactly once', () => {
+  it('classifies all 49 installed skills and 21 installed commands exactly once', () => {
     const skills = WORKFLOW_ENTRIES.filter((e) => e.kind === 'skill' && !e.declaredOnly);
     const commands = WORKFLOW_ENTRIES.filter((e) => e.kind === 'command' && !e.declaredOnly);
     // execute/review/research and graph ship as real skill directories, as do
     // this fork's 14 exclusive skills (critique, deep-review, discover,
-    // ralph-experiment, omc-ado-*, omc-gh-*).
-    expect(skills).toHaveLength(46);
+    // ralph-experiment, omc-ado-*, omc-gh-*) and upstream v5.1.0's
+    // minimal-code-discipline, launch, and drydock.
+    expect(skills).toHaveLength(49);
     expect(commands).toHaveLength(21);
     const keys = WORKFLOW_ENTRIES.map((e) => `${e.kind}:${e.name}`);
     expect(new Set(keys).size).toBe(keys.length);

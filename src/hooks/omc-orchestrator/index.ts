@@ -9,11 +9,11 @@
  */
 
 import * as path from 'path';
+import { tmpdir } from 'os';
 import { execFileSync } from 'child_process';
-import { getOmcRoot, getWorktreeRoot } from '../../lib/worktree-paths.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
-import { toForwardSlash } from '../../utils/paths.js';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, realpathSync } from 'fs';
 import {
   HOOK_NAME,
   ALLOWED_PATH_PATTERNS,
@@ -122,29 +122,117 @@ interface GitFileStat {
   status: 'modified' | 'added' | 'deleted';
 }
 
+const TEMP_ROOTS = ['/tmp', '/private/tmp', '/var/tmp', '/private/var/tmp'];
+const TEMP_VARS = ['TMPDIR', 'TMP', 'TEMP'];
+const WINDOWS_TEMP = [/^[a-z]:\/windows\/temp(?:\/|$)/i, /^[a-z]:\/users\/[^/]+\/appdata\/local\/temp(?:\/|$)/i];
+
+function portablePath(value: string): string {
+  const input = String(value || '').trim().replace(/\\/g, '/');
+  if (/^[a-z]:(?:\/|$)/i.test(input)) return `${input[0].toUpperCase()}:${path.posix.normalize(`/${input.slice(3)}`)}`;
+  const unc = input.match(/^\/\/([^/]+)\/([^/]+)(?:\/(.*))?$/);
+  if (unc) {
+    const rest = unc[3] ? path.posix.normalize(`/${unc[3]}`).slice(1) : '';
+    return `//${unc[1]}/${unc[2]}${rest ? `/${rest}` : ''}`;
+  }
+  return path.posix.normalize(input);
+}
+function absolutePortable(value: string): string {
+  const clean = portablePath(value);
+  return clean.startsWith('/') || /^[a-z]:\//i.test(clean) ? clean : portablePath(path.resolve(value));
+}
+function isWindowsPath(value: string): boolean { return /^([a-z]:\/|\/\/)/i.test(portablePath(value)); }
+function isAbsolutePath(value: string): boolean { return portablePath(value).startsWith('/') || /^[a-z]:\//i.test(portablePath(value)); }
+function withinPath(target: string, root: string): boolean {
+  const t = portablePath(target), r = portablePath(root);
+  if (!isAbsolutePath(t) || !isAbsolutePath(r)) return false;
+  const fold = isWindowsPath(t) || isWindowsPath(r);
+  const a = fold ? t.toLowerCase() : t, b = fold ? r.toLowerCase() : r;
+  return a === b || a.startsWith(b.endsWith('/') ? b : `${b}/`);
+}
+function canonicalPath(value: string): string {
+  const clean = portablePath(value);
+  if (!isAbsolutePath(clean) || isWindowsPath(clean) !== (process.platform === 'win32')) return clean;
+  const raw = String(value); const parsed = path.parse(raw); const parts = raw.slice(parsed.root.length).split(path.sep);
+  let resolved = parsed.root;
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i];
+    if (!part || part === '.') continue;
+    if (part === '..') { resolved = path.dirname(resolved); continue; }
+    const candidate = path.join(resolved, part);
+    try { resolved = realpathSync(candidate); }
+    catch { return portablePath(path.resolve(resolved, ...parts.slice(i))); }
+  }
+  return portablePath(resolved);
+}
+function nearestGitRoot(directory: string): string | null {
+  let probe = canonicalPath(absolutePortable(directory));
+  if (!isAbsolutePath(probe) || isWindowsPath(probe) !== (process.platform === 'win32')) return null;
+  try {
+    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: probe,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+      timeout: 5000,
+    }).trim();
+    if (root) return canonicalPath(root);
+  } catch { /* fall back to bounded ancestor probing */ }
+  while (true) {
+    if (existsSync(path.join(probe, '.git'))) return probe;
+    const parent = path.dirname(probe); if (parent === probe) return null; probe = parent;
+  }
+}
+function projectRoots(directory?: string): string[] {
+  const start = absolutePortable(directory || process.cwd()), git = nearestGitRoot(start);
+  return [...new Set([start, git].filter((value): value is string => Boolean(value)))];
+}
+function hasGitAncestor(value: string): boolean {
+  if (!isAbsolutePath(value) || isWindowsPath(value) !== (process.platform === 'win32')) return false;
+  let probe = path.dirname(canonicalPath(value));
+  while (true) {
+    if (existsSync(path.join(probe, '.git'))) return true;
+    const parent = path.dirname(probe); if (parent === probe) return false; probe = parent;
+  }
+}
+function approvedTempRoots(): string[] {
+  const roots = [...TEMP_ROOTS, ...TEMP_VARS.map(name => process.env[name]).filter((value): value is string => Boolean(value))];
+  try { roots.push(tmpdir()); } catch { /* use the fixed roots */ }
+  return [...new Set(roots.map(portablePath).filter(value => isAbsolutePath(value) && value !== '/' && !/^[a-z]:\/$/i.test(value)))];
+}
+export function isTempOrScratchpadPath(filePath: string, directory?: string): boolean {
+  const target = portablePath(filePath);
+  if (!filePath || !isAbsolutePath(target)) return false;
+  const hostIsWindows = process.platform === 'win32';
+  if (isWindowsPath(target) !== hostIsWindows) return false;
+  const canonical = canonicalPath(filePath), roots = projectRoots(directory);
+  if (roots.some(root => withinPath(target, root) || withinPath(canonical, canonicalPath(root))) || hasGitAncestor(canonical)) return false;
+  const temps = approvedTempRoots(), canonicalTemps = temps.map(canonicalPath);
+  const lexical = temps.some(root => withinPath(target, root)) || (hostIsWindows && WINDOWS_TEMP.some(pattern => pattern.test(target)));
+  const resolved = canonicalTemps.some(root => withinPath(canonical, root)) || (hostIsWindows && WINDOWS_TEMP.some(pattern => pattern.test(canonical)));
+  return lexical && resolved;
+}
+
 /**
  * Check if a file path is allowed for direct orchestrator modification
  */
 export function isAllowedPath(filePath: string, directory?: string): boolean {
   if (!filePath) return true;
-  // Convert backslashes first (so path.normalize resolves .. on all platforms),
-  // then normalize to collapse .. segments, then ensure forward slashes.
-  const normalized = toForwardSlash(path.normalize(toForwardSlash(filePath)));
+  const normalized = portablePath(filePath);
   // Reject explicit traversal that escapes (e.g. "../foo")
   if (normalized.startsWith('../') || normalized === '..') return false;
   // Fast path: check relative patterns
   if (ALLOWED_PATH_PATTERNS.some(pattern => pattern.test(normalized))) return true;
+  // Temp and scratchpad paths are allowed only under bounded, canonical roots.
+  if (isTempOrScratchpadPath(filePath, directory)) return true;
   // Absolute path: strip worktree root, then re-check
-  if (path.isAbsolute(filePath)) {
-    const relToConfigDir = path.relative(getCopilotConfigDir(), filePath);
-    if (!relToConfigDir || (!relToConfigDir.startsWith('..') && !path.isAbsolute(relToConfigDir))) {
+  if (isAbsolutePath(normalized)) {
+    if (withinPath(normalized, absolutePortable(getCopilotConfigDir()))) {
       return true;
     }
 
-    const root = directory ? getWorktreeRoot(directory) : getWorktreeRoot();
-    if (root) {
-      const rel = toForwardSlash(path.relative(root, filePath));
-      if (rel.startsWith('../') || rel === '..' || path.isAbsolute(rel)) return false;
+    for (const root of projectRoots(directory)) {
+      if (!withinPath(normalized, root)) continue;
+      const rel = normalized.slice(portablePath(root).length).replace(/^\/+/, '');
       return ALLOWED_PATH_PATTERNS.some(pattern => pattern.test(rel));
     }
   }

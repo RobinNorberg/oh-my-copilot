@@ -128,6 +128,37 @@ describe('stage-router resolveRoleAssignment', () => {
             expect(out.provider).toBe('grok');
             expect(out.model).toBe('grok-code-fast-1');
         });
+        it('cursor resolves configured externalModels.defaults.cursorModel when model omitted', () => {
+            const cfg = {
+                externalModels: { defaults: { cursorModel: 'cursor-grok-4.6-high' } },
+                team: { roleRouting: { 'code-reviewer': { provider: 'cursor' } } },
+            };
+            const out = resolveRoleAssignment('code-reviewer', cfg);
+            expect(out.provider).toBe('cursor');
+            expect(out.model).toBe('cursor-grok-4.6-high');
+        });
+        it('tier name on cursor provider falls back to configured cursorModel', () => {
+            // Previously a tier resolved to '' with no diagnostic, so a user asking
+            // for HIGH silently got whatever cursor-agent defaults to.
+            const cfg = {
+                externalModels: { defaults: { cursorModel: 'cursor-grok-4.6-high' } },
+                team: { roleRouting: { executor: { provider: 'cursor', model: 'HIGH' } } },
+            };
+            expect(resolveRoleAssignment('executor', cfg).model).toBe('cursor-grok-4.6-high');
+        });
+        it('explicit cursor model id outranks the configured default', () => {
+            const cfg = {
+                externalModels: { defaults: { cursorModel: 'composer-2.5' } },
+                team: { roleRouting: { executor: { provider: 'cursor', model: 'cursor-grok-4.6-xhigh' } } },
+            };
+            expect(resolveRoleAssignment('executor', cfg).model).toBe('cursor-grok-4.6-xhigh');
+        });
+        it('unconfigured cursor stays empty so cursor-agent picks its own model', () => {
+            const cfg = {
+                team: { roleRouting: { executor: { provider: 'cursor' } } },
+            };
+            expect(resolveRoleAssignment('executor', cfg).model).toBe('');
+        });
         it('tier name on grok provider falls back to provider default (tiers are claude-centric)', () => {
             const cfg = {
                 team: { roleRouting: { executor: { provider: 'grok', model: 'HIGH' } } },

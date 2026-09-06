@@ -348,6 +348,14 @@ export function loadEnvConfig() {
         // Legacy fallback
         externalModelsDefaults.grokModel = process.env.OMC_GROK_DEFAULT_MODEL;
     }
+    if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL) {
+        externalModelsDefaults.cursorModel =
+            process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+    }
+    else if (process.env.OMC_CURSOR_DEFAULT_MODEL) {
+        // Legacy fallback
+        externalModelsDefaults.cursorModel = process.env.OMC_CURSOR_DEFAULT_MODEL;
+    }
     if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL) {
         externalModelsDefaults.antigravityModel =
             process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL;
@@ -1045,6 +1053,10 @@ export function generateConfigSchema() {
                                 type: "string",
                                 default: BUILTIN_EXTERNAL_MODEL_DEFAULTS.antigravityModel,
                                 description: "Default Antigravity model",
+                            },
+                            cursorModel: {
+                                type: "string",
+                                description: "Default Cursor model (ids from `cursor-agent --list-models`)",
                             },
                         },
                     },

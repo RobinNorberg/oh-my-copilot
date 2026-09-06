@@ -3437,8 +3437,8 @@ function comparisonPath(p) {
   return toForwardSlash(pathIdentity(p)).replace(/\/+$/, "");
 }
 function compareSemverDesc(a, b) {
-  const parse10 = (s) => s.split(".").map((n) => parseInt(n, 10) || 0);
-  const pa = parse10(a), pb = parse10(b);
+  const parse11 = (s) => s.split(".").map((n) => parseInt(n, 10) || 0);
+  const pa = parse11(a), pb = parse11(b);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const diff = (pb[i] ?? 0) - (pa[i] ?? 0);
     if (diff !== 0) return diff;
@@ -4380,6 +4380,11 @@ function loadEnvConfig() {
     externalModelsDefaults.grokModel = process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL;
   } else if (process.env.OMC_GROK_DEFAULT_MODEL) {
     externalModelsDefaults.grokModel = process.env.OMC_GROK_DEFAULT_MODEL;
+  }
+  if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL) {
+    externalModelsDefaults.cursorModel = process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+  } else if (process.env.OMC_CURSOR_DEFAULT_MODEL) {
+    externalModelsDefaults.cursorModel = process.env.OMC_CURSOR_DEFAULT_MODEL;
   }
   if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL) {
     externalModelsDefaults.antigravityModel = process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL;
@@ -11815,8 +11820,8 @@ var init_sdk = __esm({
         }
         return count;
       }
-      function getFullPath(resolver, id = "", normalize13) {
-        if (normalize13 !== false)
+      function getFullPath(resolver, id = "", normalize12) {
+        if (normalize12 !== false)
           id = normalizeId(id);
         const p = resolver.parse(id);
         return _getFullPath(resolver, p);
@@ -12542,7 +12547,7 @@ var init_sdk = __esm({
         const schOrFunc = root2.refs[ref];
         if (schOrFunc)
           return schOrFunc;
-        let _sch = resolve37.call(this, root2, ref);
+        let _sch = resolve38.call(this, root2, ref);
         if (_sch === void 0) {
           const schema = (_a = root2.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
           const { schemaId } = this.opts;
@@ -12569,7 +12574,7 @@ var init_sdk = __esm({
       function sameSchemaEnv(s1, s2) {
         return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
       }
-      function resolve37(root2, ref) {
+      function resolve38(root2, ref) {
         let sch;
         while (typeof (sch = this.refs[ref]) == "string")
           ref = sch;
@@ -13059,7 +13064,7 @@ var init_sdk = __esm({
     require_fast_uri = __commonJS2((exports2, module2) => {
       var { normalizeIPv6, normalizeIPv4, removeDotSegments, recomposeAuthority, normalizeComponentEncoding } = require_utils();
       var SCHEMES = require_schemes();
-      function normalize13(uri, options) {
+      function normalize12(uri, options) {
         if (typeof uri === "string") {
           uri = serialize(parse62(uri, options), options);
         } else if (typeof uri === "object") {
@@ -13067,54 +13072,54 @@ var init_sdk = __esm({
         }
         return uri;
       }
-      function resolve37(baseURI, relativeURI, options) {
+      function resolve38(baseURI, relativeURI, options) {
         const schemelessOptions = Object.assign({ scheme: "null" }, options);
         const resolved = resolveComponents(parse62(baseURI, schemelessOptions), parse62(relativeURI, schemelessOptions), schemelessOptions, true);
         return serialize(resolved, { ...schemelessOptions, skipEscape: true });
       }
-      function resolveComponents(base, relative25, options, skipNormalization) {
+      function resolveComponents(base, relative24, options, skipNormalization) {
         const target = {};
         if (!skipNormalization) {
           base = parse62(serialize(base, options), options);
-          relative25 = parse62(serialize(relative25, options), options);
+          relative24 = parse62(serialize(relative24, options), options);
         }
         options = options || {};
-        if (!options.tolerant && relative25.scheme) {
-          target.scheme = relative25.scheme;
-          target.userinfo = relative25.userinfo;
-          target.host = relative25.host;
-          target.port = relative25.port;
-          target.path = removeDotSegments(relative25.path || "");
-          target.query = relative25.query;
+        if (!options.tolerant && relative24.scheme) {
+          target.scheme = relative24.scheme;
+          target.userinfo = relative24.userinfo;
+          target.host = relative24.host;
+          target.port = relative24.port;
+          target.path = removeDotSegments(relative24.path || "");
+          target.query = relative24.query;
         } else {
-          if (relative25.userinfo !== void 0 || relative25.host !== void 0 || relative25.port !== void 0) {
-            target.userinfo = relative25.userinfo;
-            target.host = relative25.host;
-            target.port = relative25.port;
-            target.path = removeDotSegments(relative25.path || "");
-            target.query = relative25.query;
+          if (relative24.userinfo !== void 0 || relative24.host !== void 0 || relative24.port !== void 0) {
+            target.userinfo = relative24.userinfo;
+            target.host = relative24.host;
+            target.port = relative24.port;
+            target.path = removeDotSegments(relative24.path || "");
+            target.query = relative24.query;
           } else {
-            if (!relative25.path) {
+            if (!relative24.path) {
               target.path = base.path;
-              if (relative25.query !== void 0) {
-                target.query = relative25.query;
+              if (relative24.query !== void 0) {
+                target.query = relative24.query;
               } else {
                 target.query = base.query;
               }
             } else {
-              if (relative25.path.charAt(0) === "/") {
-                target.path = removeDotSegments(relative25.path);
+              if (relative24.path.charAt(0) === "/") {
+                target.path = removeDotSegments(relative24.path);
               } else {
                 if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                  target.path = "/" + relative25.path;
+                  target.path = "/" + relative24.path;
                 } else if (!base.path) {
-                  target.path = relative25.path;
+                  target.path = relative24.path;
                 } else {
-                  target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative25.path;
+                  target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative24.path;
                 }
                 target.path = removeDotSegments(target.path);
               }
-              target.query = relative25.query;
+              target.query = relative24.query;
             }
             target.userinfo = base.userinfo;
             target.host = base.host;
@@ -13122,7 +13127,7 @@ var init_sdk = __esm({
           }
           target.scheme = base.scheme;
         }
-        target.fragment = relative25.fragment;
+        target.fragment = relative24.fragment;
         return target;
       }
       function equal(uriA, uriB, options) {
@@ -13299,8 +13304,8 @@ var init_sdk = __esm({
       }
       var fastUri = {
         SCHEMES,
-        normalize: normalize13,
-        resolve: resolve37,
+        normalize: normalize12,
+        resolve: resolve38,
         resolveComponents,
         equal,
         serialize,
@@ -16714,7 +16719,7 @@ var init_sdk = __esm({
           }
           return;
         }
-        return new Promise((resolve37, reject) => {
+        return new Promise((resolve38, reject) => {
           const exitHandler = (code, signal) => {
             if (this.abortController.signal.aborted) {
               reject(new AbortError("Operation aborted"));
@@ -16724,7 +16729,7 @@ var init_sdk = __esm({
             if (error2) {
               reject(error2);
             } else {
-              resolve37();
+              resolve38();
             }
           };
           this.process.once("exit", exitHandler);
@@ -16770,17 +16775,17 @@ var init_sdk = __esm({
         if (this.hasError) {
           return Promise.reject(this.hasError);
         }
-        return new Promise((resolve37, reject) => {
-          this.readResolve = resolve37;
+        return new Promise((resolve38, reject) => {
+          this.readResolve = resolve38;
           this.readReject = reject;
         });
       }
       enqueue(value) {
         if (this.readResolve) {
-          const resolve37 = this.readResolve;
+          const resolve38 = this.readResolve;
           this.readResolve = void 0;
           this.readReject = void 0;
-          resolve37({ done: false, value });
+          resolve38({ done: false, value });
         } else {
           this.queue.push(value);
         }
@@ -16788,10 +16793,10 @@ var init_sdk = __esm({
       done() {
         this.isDone = true;
         if (this.readResolve) {
-          const resolve37 = this.readResolve;
+          const resolve38 = this.readResolve;
           this.readResolve = void 0;
           this.readReject = void 0;
-          resolve37({ done: true, value: void 0 });
+          resolve38({ done: true, value: void 0 });
         }
       }
       error(error2) {
@@ -17124,10 +17129,10 @@ var init_sdk = __esm({
           type: "control_request",
           request
         };
-        return new Promise((resolve37, reject) => {
+        return new Promise((resolve38, reject) => {
           this.pendingControlResponses.set(requestId, (response) => {
             if (response.subtype === "success") {
-              resolve37(response);
+              resolve38(response);
             } else {
               reject(new Error(response.error));
               if (response.pending_permission_requests) {
@@ -17217,15 +17222,15 @@ var init_sdk = __esm({
           logForDebugging(`[Query.waitForFirstResult] Result already received, returning immediately`);
           return Promise.resolve();
         }
-        return new Promise((resolve37) => {
+        return new Promise((resolve38) => {
           if (this.abortController?.signal.aborted) {
-            resolve37();
+            resolve38();
             return;
           }
-          this.abortController?.signal.addEventListener("abort", () => resolve37(), {
+          this.abortController?.signal.addEventListener("abort", () => resolve38(), {
             once: true
           });
-          this.firstResultReceivedResolve = resolve37;
+          this.firstResultReceivedResolve = resolve38;
         });
       }
       handleHookCallbacks(callbackId, input, toolUseID, abortSignal) {
@@ -17276,13 +17281,13 @@ var init_sdk = __esm({
       handleMcpControlRequest(serverName, mcpRequest, transport) {
         const messageId = "id" in mcpRequest.message ? mcpRequest.message.id : null;
         const key = `${serverName}:${messageId}`;
-        return new Promise((resolve37, reject) => {
+        return new Promise((resolve38, reject) => {
           const cleanup = () => {
             this.pendingMcpResponses.delete(key);
           };
           const resolveAndCleanup = (response) => {
             cleanup();
-            resolve37(response);
+            resolve38(response);
           };
           const rejectAndCleanup = (error2) => {
             cleanup();
@@ -25519,7 +25524,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
               return;
             }
             const pollInterval = (_c = (_a = task2.pollInterval) !== null && _a !== void 0 ? _a : (_b = this._options) === null || _b === void 0 ? void 0 : _b.defaultTaskPollInterval) !== null && _c !== void 0 ? _c : 1e3;
-            await new Promise((resolve37) => setTimeout(resolve37, pollInterval));
+            await new Promise((resolve38) => setTimeout(resolve38, pollInterval));
             (_d = options === null || options === void 0 ? void 0 : options.signal) === null || _d === void 0 || _d.throwIfAborted();
           }
         } catch (error2) {
@@ -25531,7 +25536,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
       }
       request(request, resultSchema, options) {
         const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options !== null && options !== void 0 ? options : {};
-        return new Promise((resolve37, reject) => {
+        return new Promise((resolve38, reject) => {
           var _a, _b, _c, _d, _e, _f, _g;
           const earlyReject = (error2) => {
             reject(error2);
@@ -25612,7 +25617,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
               if (!parseResult.success) {
                 reject(parseResult.error);
               } else {
-                resolve37(parseResult.data);
+                resolve38(parseResult.data);
               }
             } catch (error2) {
               reject(error2);
@@ -25809,12 +25814,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
           }
         } catch (_d) {
         }
-        return new Promise((resolve37, reject) => {
+        return new Promise((resolve38, reject) => {
           if (signal.aborted) {
             reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
             return;
           }
-          const timeoutId = setTimeout(resolve37, interval);
+          const timeoutId = setTimeout(resolve38, interval);
           signal.addEventListener("abort", () => {
             clearTimeout(timeoutId);
             reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -26485,7 +26490,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
         let task = createTaskResult.task;
         const pollInterval = (_a = task.pollInterval) !== null && _a !== void 0 ? _a : 5e3;
         while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-          await new Promise((resolve37) => setTimeout(resolve37, pollInterval));
+          await new Promise((resolve38) => setTimeout(resolve38, pollInterval));
           const updatedTask = await extra.taskStore.getTask(taskId);
           if (!updatedTask) {
             throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -33676,7 +33681,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep2(ms) {
-  return new Promise((resolve37) => setTimeout(resolve37, ms));
+  return new Promise((resolve38) => setTimeout(resolve38, ms));
 }
 var import_child_process9, fs5, fsPromises2, path6, import_url7, import_child_process10, import_util6, execFileAsync3, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
@@ -39902,10 +39907,10 @@ function noFollowCanonicalFile(path27, root2) {
       (0, import_fs31.closeSync)(fd);
       fd = nextFd;
     }
-    const canonicalPath = (0, import_fs31.realpathSync)(`/proc/self/fd/${fd}`);
-    if (canonicalPath !== absolute || !canonicalPath.startsWith(canonicalRoot + import_path38.sep))
+    const canonicalPath2 = (0, import_fs31.realpathSync)(`/proc/self/fd/${fd}`);
+    if (canonicalPath2 !== absolute || !canonicalPath2.startsWith(canonicalRoot + import_path38.sep))
       return null;
-    const result = { fd, path: canonicalPath };
+    const result = { fd, path: canonicalPath2 };
     fd = void 0;
     return result;
   } catch {
@@ -39931,14 +39936,14 @@ function openVerifiedFile(absolute, canonicalRoot, components, pathRoot) {
       if (stat2.isSymbolicLink() || (final ? !stat2.isFile() : !stat2.isDirectory())) return null;
       if (final) expected = { device: String(stat2.dev), inode: String(stat2.ino) };
     }
-    const canonicalPath = (0, import_fs31.realpathSync)(absolute);
-    if (canonicalPath !== absolute || !canonicalPath.startsWith(canonicalRoot + import_path38.sep))
+    const canonicalPath2 = (0, import_fs31.realpathSync)(absolute);
+    if (canonicalPath2 !== absolute || !canonicalPath2.startsWith(canonicalRoot + import_path38.sep))
       return null;
     fd = (0, import_fs31.openSync)(absolute, import_fs31.constants.O_RDONLY);
     const opened = (0, import_fs31.fstatSync)(fd, { bigint: true });
     if (!expected || !opened.isFile() || !sameFileId(opened.dev, expected.device) || !sameFileId(opened.ino, expected.inode))
       return null;
-    const result = { fd, path: canonicalPath };
+    const result = { fd, path: canonicalPath2 };
     fd = void 0;
     return result;
   } catch {
@@ -40554,7 +40559,7 @@ function withFileLockSync(lockPath2, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve37) => setTimeout(resolve37, ms));
+  return new Promise((resolve38) => setTimeout(resolve38, ms));
 }
 async function acquireFileLock(lockPath2, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -50463,18 +50468,18 @@ function isSafeRepoPath(cwd2, inputPath, options = {}) {
     return false;
   }
   const resolvedPath = path16.resolve(cwd2, inputPath);
-  let canonicalPath = resolvedPath;
+  let canonicalPath2 = resolvedPath;
   const exists = fs10.existsSync(resolvedPath);
   if (exists) {
     try {
-      canonicalPath = fs10.realpathSync(resolvedPath);
+      canonicalPath2 = fs10.realpathSync(resolvedPath);
     } catch {
       return false;
     }
   } else if (requireExisting) {
     return false;
   }
-  const relativePath = path16.relative(worktreeRoot, canonicalPath);
+  const relativePath = path16.relative(worktreeRoot, canonicalPath2);
   if (relativePath.startsWith("..") || path16.isAbsolute(relativePath)) {
     return false;
   }
@@ -55123,24 +55128,24 @@ async function runSessionEndAction(context, _execute) {
     let settled = false;
     let exitCode = null;
     let settleChild = () => void 0;
-    const childExit = new Promise((resolve37) => {
+    const childExit = new Promise((resolve38) => {
       settleChild = (code2) => {
         if (settled) return;
         settled = true;
         exitCode = code2;
-        resolve37(code2);
+        resolve38(code2);
       };
       child.once("exit", settleChild);
       child.once("error", () => settleChild(null));
     });
     let deadlineTermination;
     let resolveTermination;
-    const terminationFinished = new Promise((resolve37) => {
-      resolveTermination = resolve37;
+    const terminationFinished = new Promise((resolve38) => {
+      resolveTermination = resolve38;
     });
     const terminate = async () => {
-      const postKillWait = new Promise((resolve37) => {
-        const timer = setTimeout(resolve37, Math.max(1, context.deadlineAt + POST_KILL_SETTLE_MS - Date.now()));
+      const postKillWait = new Promise((resolve38) => {
+        const timer = setTimeout(resolve38, Math.max(1, context.deadlineAt + POST_KILL_SETTLE_MS - Date.now()));
         timer.unref();
       });
       if (identity && child.pid) {
@@ -55154,7 +55159,7 @@ async function runSessionEndAction(context, _execute) {
       await Promise.race([childExit, postKillWait]);
     };
     if (!identity || !child.pid) {
-      await Promise.race([childExit, new Promise((resolve37) => setTimeout(resolve37, POST_KILL_SETTLE_MS))]);
+      await Promise.race([childExit, new Promise((resolve38) => setTimeout(resolve38, POST_KILL_SETTLE_MS))]);
       return { code: "runner-identity-unavailable", completed: false };
     }
     const timeout = setTimeout(() => {
@@ -55205,7 +55210,7 @@ async function runActionRunnerEntrypoint() {
       } catch {
       }
       if (armed) break;
-      await new Promise((resolve37) => setTimeout(resolve37, 10));
+      await new Promise((resolve38) => setTimeout(resolve38, 10));
     }
     if (Date.now() >= input.deadlineAt) throw new Error("runner-arm-deadline");
     const deadlineTimer = setTimeout(() => {
@@ -57058,7 +57063,7 @@ async function sendTelegram(config2, payload) {
       text: payload.message,
       parse_mode: config2.parseMode || "Markdown"
     });
-    const result = await new Promise((resolve37) => {
+    const result = await new Promise((resolve38) => {
       const req = (0, import_https.request)(
         telegramRequestOptions(Buffer.byteLength(body), config2.botToken),
         (res) => {
@@ -57074,9 +57079,9 @@ async function sendTelegram(config2, payload) {
                 }
               } catch {
               }
-              resolve37({ platform: "telegram", success: true, messageId });
+              resolve38({ platform: "telegram", success: true, messageId });
             } else {
-              resolve37({
+              resolve38({
                 platform: "telegram",
                 success: false,
                 error: `HTTP ${res.statusCode}`
@@ -57086,11 +57091,11 @@ async function sendTelegram(config2, payload) {
         }
       );
       req.on("error", (e) => {
-        resolve37({ platform: "telegram", success: false, error: e.message });
+        resolve38({ platform: "telegram", success: false, error: e.message });
       });
       req.on("timeout", () => {
         req.destroy();
-        resolve37({
+        resolve38({
           platform: "telegram",
           success: false,
           error: "Request timeout"
@@ -57381,9 +57386,9 @@ async function dispatchNotifications(config2, event, payload, platformMessages) 
           }
         )
       ),
-      new Promise((resolve37) => {
+      new Promise((resolve38) => {
         timer = setTimeout(
-          () => resolve37([
+          () => resolve38([
             {
               platform: "unknown",
               success: false,
@@ -60221,7 +60226,7 @@ function interpolatePath(pathTemplate, sessionId, idempotencyKey) {
   const time3 = now.toISOString().split("T")[1].split(".")[0].replace(/:/g, "-");
   const safeSessionId = sessionId.replace(/[/\\..]/g, "_");
   const safeIdempotencyKey = (idempotencyKey ?? "").replace(/[^A-Za-z0-9_-]/g, "_");
-  return (0, import_path85.normalize)(pathTemplate.replace(/~/g, (0, import_os13.homedir)()).replace(/\{session_id\}/g, safeSessionId).replace(/\{idempotency_key\}/g, safeIdempotencyKey).replace(/\{date\}/g, date3).replace(/\{time\}/g, time3));
+  return (0, import_path85.normalize)(pathTemplate.replace(/~/g, (0, import_os14.homedir)()).replace(/\{session_id\}/g, safeSessionId).replace(/\{idempotency_key\}/g, safeIdempotencyKey).replace(/\{date\}/g, date3).replace(/\{time\}/g, time3));
 }
 async function writeToFile(config2, content, sessionId, idempotencyKey) {
   const resolvedPath = interpolatePath(config2.path, sessionId, idempotencyKey);
@@ -60261,10 +60266,10 @@ async function runWithinDeadline(deadlineAt, run) {
   const controller = new AbortController();
   let timer;
   try {
-    return await Promise.race([run(controller.signal), new Promise((resolve37) => {
+    return await Promise.race([run(controller.signal), new Promise((resolve38) => {
       timer = setTimeout(() => {
         controller.abort();
-        resolve37(void 0);
+        resolve38(void 0);
       }, remaining);
     })]);
   } finally {
@@ -60310,13 +60315,13 @@ async function runSessionEndDeferredAction(action, context) {
     return { status: "failed", detail: error2 instanceof Error ? error2.message : "Unknown action failure" };
   }
 }
-var import_fs70, import_path85, import_os13;
+var import_fs70, import_path85, import_os14;
 var init_callbacks = __esm({
   "src/hooks/session-end/callbacks.ts"() {
     "use strict";
     import_fs70 = require("fs");
     import_path85 = require("path");
-    import_os13 = require("os");
+    import_os14 = require("os");
     init_auto_update();
   }
 });
@@ -61023,7 +61028,7 @@ async function withProcessIdentityFileLock(lockPath2, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve37) => setTimeout(resolve37, 25));
+        await new Promise((resolve38) => setTimeout(resolve38, 25));
         continue;
       }
       try {
@@ -61044,7 +61049,7 @@ async function withProcessIdentityFileLock(lockPath2, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve37) => setTimeout(resolve37, 25));
+        await new Promise((resolve38) => setTimeout(resolve38, 25));
       }
     }
     return await fn();
@@ -61212,6 +61217,9 @@ function configFromManifest(manifest) {
     resize_hook_name: manifest.resize_hook_name,
     resize_hook_target: manifest.resize_hook_target,
     next_worker_index: manifest.next_worker_index,
+    resolved_routing: manifest.resolved_routing,
+    resolved_routing_roles: manifest.resolved_routing_roles,
+    external_models_defaults: manifest.external_models_defaults,
     service_descriptor: manifest.service_descriptor
   };
 }
@@ -61220,6 +61228,17 @@ function isRecord2(value) {
 }
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0;
+}
+function isOptionalExternalModelsDefaults(value) {
+  if (value === void 0) return true;
+  if (!isRecord2(value)) return false;
+  const allowed = /* @__PURE__ */ new Set(["provider", "codexModel", "geminiModel", "grokModel", "antigravityModel", "cursorModel"]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) return false;
+  if (value.provider !== void 0 && !["codex", "gemini", "antigravity"].includes(value.provider)) return false;
+  return ["codexModel", "geminiModel", "grokModel", "antigravityModel", "cursorModel"].every((key) => value[key] === void 0 || value[key] === "" || isNonEmptyString(value[key]));
+}
+function isOptionalRoutingRoles(value) {
+  return value === void 0 || Array.isArray(value) && value.every((role) => CANONICAL_TEAM_ROLES.includes(role));
 }
 function isSafeCounter(value) {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
@@ -61262,7 +61281,7 @@ function isAllDeadRecovery(value) {
   return isRecord2(value) && isTimestamp(value.detected_at) && isTimestamp(value.deadline_at) && isSafeCounter(value.state_revision);
 }
 function isTeamConfig(value, requireRevision, expectedTeamName) {
-  if (!isRecord2(value) || !isNonEmptyString(value.name) || expectedTeamName !== void 0 && value.name !== expectedTeamName || !isNonEmptyString(value.agent_type) || value.task !== void 0 && typeof value.task !== "string" || value.worker_launch_mode !== void 0 && !["interactive", "prompt"].includes(value.worker_launch_mode) || !isSafeCounter(value.worker_count) || !isValidPersistedMaxWorkers(value.max_workers) || !Array.isArray(value.workers) || value.worker_count !== value.workers.length || !value.workers.every(isWorkerInfo) || !hasUniqueWorkerIdentity(value.workers) || !isTimestamp(value.created_at) || !isNonEmptyString(value.tmux_session) || value.next_task_id !== void 0 && !isSafeCounter(value.next_task_id) || !isOptionalPolicy(value.policy) || !isOptionalGovernance(value.governance) || !isOptionalWorkspaceShape(value) || !isOptionalPaneShape(value) || !isOptionalRouting(value.resolved_routing)) return false;
+  if (!isRecord2(value) || !isNonEmptyString(value.name) || expectedTeamName !== void 0 && value.name !== expectedTeamName || !isNonEmptyString(value.agent_type) || value.task !== void 0 && typeof value.task !== "string" || value.worker_launch_mode !== void 0 && !["interactive", "prompt"].includes(value.worker_launch_mode) || !isSafeCounter(value.worker_count) || !isValidPersistedMaxWorkers(value.max_workers) || !Array.isArray(value.workers) || value.worker_count !== value.workers.length || !value.workers.every(isWorkerInfo) || !hasUniqueWorkerIdentity(value.workers) || !isTimestamp(value.created_at) || !isNonEmptyString(value.tmux_session) || value.next_task_id !== void 0 && !isSafeCounter(value.next_task_id) || !isOptionalPolicy(value.policy) || !isOptionalGovernance(value.governance) || !isOptionalWorkspaceShape(value) || !isOptionalPaneShape(value) || !isOptionalRouting(value.resolved_routing) || !isOptionalRoutingRoles(value.resolved_routing_roles) || !isOptionalExternalModelsDefaults(value.external_models_defaults)) return false;
   if (requireRevision ? !isSafeCounter(value.state_revision) : value.state_revision !== void 0 && !isSafeCounter(value.state_revision)) return false;
   if (!requireRevision && Object.hasOwn(value, "state_revision")) return false;
   return (value.lifecycle_state === void 0 || ["active", "shutting_down", "stopped"].includes(value.lifecycle_state)) && (value.runtime_owner_epoch === void 0 || isOwnerEpoch(value.runtime_owner_epoch)) && (value.active_recovery === void 0 || isRecoveryAttempt(value.active_recovery)) && (value.last_recovery === void 0 || isRecoveryAttempt(value.last_recovery)) && (value.active_scale_up === void 0 || isScaleUpAttempt(value.active_scale_up)) && (value.active_scale_down === void 0 || isScaleDownAttempt(value.active_scale_down)) && (value.service_descriptor === void 0 || isServiceDescriptor(value.service_descriptor)) && (value.shutdown_attempt === void 0 || isShutdownAttempt(value.shutdown_attempt)) && (value.all_dead_recovery === void 0 || isAllDeadRecovery(value.all_dead_recovery)) && hasMatchingActiveFenceRevisions(value);
@@ -61296,10 +61315,11 @@ function isOptionalRouting(value) {
   return CANONICAL_TEAM_ROLES.every((role) => isResolvedRoleRoute(value[role]));
 }
 function isResolvedRoleRoute(value) {
-  return isRecord2(value) && isRoleAssignment(value.primary) && isRoleAssignment(value.fallback);
+  return isRecord2(value) && isRoleAssignment(value.primary, true) && isRoleAssignment(value.fallback);
 }
-function isRoleAssignment(value) {
-  return isRecord2(value) && ["claude", "codex", "gemini", "grok", "cursor", "antigravity"].includes(value.provider) && isNonEmptyString(value.model) && KNOWN_AGENT_NAMES.some((agent) => agent === value.agent);
+function isRoleAssignment(value, allowEmptyExternalModel = false) {
+  const provider = isRecord2(value) ? value.provider : void 0;
+  return isRecord2(value) && ["claude", "codex", "gemini", "grok", "cursor", "antigravity"].includes(provider) && (isNonEmptyString(value.model) || allowEmptyExternalModel && provider !== "claude" && value.model === "") && KNOWN_AGENT_NAMES.some((agent) => agent === value.agent);
 }
 function hasMatchingActiveFenceRevisions(value) {
   if (!isSafeCounter(value.state_revision)) return true;
@@ -61723,6 +61743,9 @@ async function saveTeamConfigUnlocked(config2, cwd2) {
       resize_hook_name: config2.resize_hook_name,
       resize_hook_target: config2.resize_hook_target,
       next_worker_index: config2.next_worker_index,
+      resolved_routing: config2.resolved_routing ?? existingManifest.resolved_routing,
+      resolved_routing_roles: config2.resolved_routing_roles ?? existingManifest.resolved_routing_roles,
+      external_models_defaults: config2.external_models_defaults ?? existingManifest.external_models_defaults,
       policy: config2.policy ?? existingManifest.policy,
       governance: config2.governance ?? existingManifest.governance,
       state_revision: config2.state_revision,
@@ -62134,13 +62157,13 @@ var init_tasks = __esm({
 // src/team/task-recovery-checkpoint.ts
 function canonicalJson(value) {
   const seen = /* @__PURE__ */ new Set();
-  const normalize13 = (current) => {
+  const normalize12 = (current) => {
     if (current === null || typeof current === "string" || typeof current === "boolean") return current;
     if (typeof current === "number") {
       if (!Number.isFinite(current)) throw new TypeError("Checkpoint payload must be finite JSON");
       return current;
     }
-    if (Array.isArray(current)) return current.map(normalize13);
+    if (Array.isArray(current)) return current.map(normalize12);
     if (typeof current === "object") {
       if (seen.has(current)) throw new TypeError("Checkpoint payload must not contain cycles");
       seen.add(current);
@@ -62150,14 +62173,14 @@ function canonicalJson(value) {
         if (child === void 0 || typeof child === "function" || typeof child === "symbol" || typeof child === "bigint") {
           throw new TypeError("Checkpoint payload must be JSON");
         }
-        output[key] = normalize13(child);
+        output[key] = normalize12(child);
       }
       seen.delete(current);
       return output;
     }
     throw new TypeError("Checkpoint payload must be JSON");
   };
-  return JSON.stringify(normalize13(value));
+  return JSON.stringify(normalize12(value));
 }
 function hashTaskRecoveryCheckpointPayload(payload) {
   return (0, import_node_crypto4.createHash)("sha256").update(canonicalJson(payload)).digest("hex");
@@ -62454,7 +62477,7 @@ async function withMailboxLock(teamName, workerName2, cwd2, fn) {
   while (Date.now() < deadline) {
     const result = await withLock2(lockDir, fn);
     if (result.ok) return result.value;
-    await new Promise((resolve37) => setTimeout(resolve37, delayMs));
+    await new Promise((resolve38) => setTimeout(resolve38, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire mailbox lock for ${workerName2} after ${timeoutMs}ms`);
@@ -62481,7 +62504,10 @@ function configFromManifest2(manifest) {
     hud_pane_id: manifest.hud_pane_id,
     resize_hook_name: manifest.resize_hook_name,
     resize_hook_target: manifest.resize_hook_target,
-    next_worker_index: manifest.next_worker_index
+    next_worker_index: manifest.next_worker_index,
+    resolved_routing: manifest.resolved_routing,
+    resolved_routing_roles: manifest.resolved_routing_roles,
+    external_models_defaults: manifest.external_models_defaults
   };
 }
 function mergeTeamConfigSources(config2, manifest) {
@@ -62605,7 +62631,7 @@ async function teamCreateTask(teamName, task, cwd2) {
       return taskLock.value;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve37) => setTimeout(resolve37, delayMs));
+    await new Promise((resolve38) => setTimeout(resolve38, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task creation lock for team ${teamName} after ${timeoutMs}ms`);
@@ -62645,7 +62671,7 @@ async function teamUpdateTask(teamName, taskId, updates, cwd2) {
       return merged;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve37) => setTimeout(resolve37, delayMs));
+    await new Promise((resolve38) => setTimeout(resolve38, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task update lock for task ${taskId} in team ${teamName} after ${timeoutMs}ms`);
@@ -63951,7 +63977,7 @@ function pathFlavor() {
 }
 function trustedHome() {
   const fromEnv = process.platform === "win32" ? process.env.USERPROFILE : process.env.HOME;
-  return fromEnv?.trim() ? fromEnv : (0, import_os14.homedir)();
+  return fromEnv?.trim() ? fromEnv : (0, import_os15.homedir)();
 }
 function getTrustedPrefixes() {
   const flavor = pathFlavor();
@@ -63995,9 +64021,9 @@ function getTrustedPrefixes() {
 function isTrustedPrefix(resolvedPath) {
   const flavor = pathFlavor();
   return getTrustedPrefixes().some((prefix) => {
-    const relative25 = flavor.relative(prefix, resolvedPath);
-    if (relative25 === "") return true;
-    return !relative25.startsWith("..") && !flavor.isAbsolute(relative25);
+    const relative24 = flavor.relative(prefix, resolvedPath);
+    if (relative24 === "") return true;
+    return !relative24.startsWith("..") && !flavor.isAbsolute(relative24);
   });
 }
 function assertBinaryName(binary) {
@@ -64137,19 +64163,69 @@ function resolveClaudeWorkerModel(env2 = process.env) {
   if (!isBedrock() && !isVertexAI()) {
     return void 0;
   }
-  const directModel = env2.ANTHROPIC_MODEL || env2.CLAUDE_MODEL || "";
+  const directModel = [env2.ANTHROPIC_MODEL, env2.CLAUDE_MODEL].map((value) => value?.trim()).find(Boolean) ?? "";
   if (directModel) {
     return directModel;
   }
-  const bedrockModel = env2.CLAUDE_CODE_BEDROCK_SONNET_MODEL || env2.ANTHROPIC_DEFAULT_SONNET_MODEL || "";
+  const bedrockModel = [env2.CLAUDE_CODE_BEDROCK_SONNET_MODEL, env2.ANTHROPIC_DEFAULT_SONNET_MODEL].map((value) => value?.trim()).find(Boolean) ?? "";
   if (bedrockModel) {
     return bedrockModel;
   }
-  const omcModel = env2.OMC_MODEL_MEDIUM || "";
+  const omcModel = env2.OMC_MODEL_MEDIUM?.trim() ?? "";
   if (omcModel) {
     return omcModel;
   }
   return void 0;
+}
+function resolveDefaultWorkerModel(agentType, env2 = process.env, defaults) {
+  if (agentType === "claude" || agentType === "copilot") return resolveClaudeWorkerModel(env2);
+  const providerConfigKeys = {
+    codex: "codexModel",
+    gemini: "geminiModel",
+    antigravity: "antigravityModel",
+    grok: "grokModel",
+    cursor: "cursorModel"
+  };
+  const configuredValue = defaults?.[providerConfigKeys[agentType]];
+  const configured = typeof configuredValue === "string" ? configuredValue.trim() : void 0;
+  if (configured) return configured;
+  const providerName = agentType.toUpperCase();
+  const envKeys = [
+    `OMC_EXTERNAL_MODELS_DEFAULT_${providerName}_MODEL`,
+    `OMC_${providerName}_DEFAULT_MODEL`
+  ];
+  for (const key of envKeys) {
+    const value = env2[key]?.trim();
+    if (value) return value;
+  }
+  return void 0;
+}
+function normalizeExternalModelsDefaults(defaults) {
+  if (!defaults || typeof defaults !== "object") return void 0;
+  const normalized = {};
+  for (const key of ["codexModel", "geminiModel", "grokModel", "antigravityModel", "cursorModel"]) {
+    const value = defaults[key];
+    if (typeof value === "string" && value.trim()) normalized[key] = value.trim();
+  }
+  if (defaults.provider === "codex" || defaults.provider === "gemini" || defaults.provider === "antigravity") {
+    normalized.provider = defaults.provider;
+  }
+  return Object.keys(normalized).length > 0 ? normalized : void 0;
+}
+function resolveExternalModelsDefaults(defaults, env2 = process.env) {
+  const normalized = normalizeExternalModelsDefaults(defaults) ?? {};
+  for (const [provider, key] of [
+    ["CODEX", "codexModel"],
+    ["GEMINI", "geminiModel"],
+    ["GROK", "grokModel"],
+    ["CURSOR", "cursorModel"],
+    ["ANTIGRAVITY", "antigravityModel"]
+  ]) {
+    if (normalized[key]) continue;
+    const value = [env2[`OMC_EXTERNAL_MODELS_DEFAULT_${provider}_MODEL`], env2[`OMC_${provider}_DEFAULT_MODEL`]].map((candidate) => candidate?.trim()).find(Boolean);
+    if (value) normalized[key] = value;
+  }
+  return normalized;
 }
 function isHeadlessSupportedOnPlatform(agentType, platform = process.platform) {
   if (agentType === "antigravity" && platform === "win32") {
@@ -64175,12 +64251,12 @@ function getPromptModeArgs(agentType, instruction) {
   }
   return [instruction];
 }
-var import_path96, import_os14, resolvedPathCache, UNTRUSTED_PATH_PATTERNS, UNTRUSTED_WINDOWS_PATH_PATTERNS, CONTRACTS, WORKER_MODEL_ENV_ALLOWLIST;
+var import_path96, import_os15, resolvedPathCache, UNTRUSTED_PATH_PATTERNS, UNTRUSTED_WINDOWS_PATH_PATTERNS, CONTRACTS, WORKER_MODEL_ENV_ALLOWLIST;
 var init_model_contract = __esm({
   "src/team/model-contract.ts"() {
     "use strict";
     import_path96 = require("path");
-    import_os14 = require("os");
+    import_os15 = require("os");
     init_team_name();
     init_delegation_enforcer();
     init_models();
@@ -64446,7 +64522,7 @@ function canonicalAuthorityDigest(input) {
   return (0, import_node_crypto6.createHash)("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep4(ms) {
-  return new Promise((resolve37) => setTimeout(resolve37, ms));
+  return new Promise((resolve38) => setTimeout(resolve38, ms));
 }
 function isExactText(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -67257,7 +67333,7 @@ async function withDispatchLock(teamName, cwd2, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve37) => setTimeout(resolve37, Math.floor(pollMs * jitter)));
+      await new Promise((resolve38) => setTimeout(resolve38, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -68836,33 +68912,35 @@ function getRoleRoutingSpec(roleRouting, role) {
 }
 function resolveTierToModelId(tier, cfg) {
   const fromCfg = cfg.routing?.tierModels?.[tier];
-  if (typeof fromCfg === "string" && fromCfg.length > 0) return fromCfg;
+  if (typeof fromCfg === "string" && fromCfg.trim().length > 0) return fromCfg.trim();
   return getDefaultTierModels()[tier];
 }
 function resolveClaudeModel(role, raw, cfg) {
-  if (typeof raw === "string" && raw.length > 0) {
-    return isTier(raw) ? resolveTierToModelId(raw, cfg) : raw;
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    const value = raw.trim();
+    return isTier(value) ? resolveTierToModelId(value, cfg) : value;
   }
   return resolveTierToModelId(ROLE_DEFAULT_TIER[role], cfg);
 }
 function resolveExternalModel(provider, raw, cfg) {
-  if (typeof raw === "string" && raw.length > 0 && !isTier(raw)) {
-    return raw;
+  if (typeof raw === "string" && raw.trim().length > 0 && !isTier(raw.trim())) {
+    return raw.trim();
   }
   const defaults = cfg.externalModels?.defaults;
+  const model = (value) => typeof value === "string" && value.trim() ? value.trim() : void 0;
   if (provider === "codex") {
-    return defaults?.codexModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.codexModel;
+    return model(defaults?.codexModel) ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.codexModel;
   }
   if (provider === "grok") {
-    return defaults?.grokModel ?? "";
+    return model(defaults?.grokModel) ?? "";
   }
   if (provider === "cursor") {
-    return "";
+    return model(defaults?.cursorModel) ?? "";
   }
   if (provider === "antigravity") {
-    return defaults?.antigravityModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.antigravityModel;
+    return model(defaults?.antigravityModel) ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.antigravityModel;
   }
-  return defaults?.geminiModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel;
+  return model(defaults?.geminiModel) ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel;
 }
 function resolveRoleAssignment(role, cfg) {
   const normalized = normalizeDelegationRole(role);
@@ -70227,8 +70305,8 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
               return false;
             }
           })(),
-          new Promise((resolve37) => {
-            const t = setTimeout(() => resolve37(false), remaining);
+          new Promise((resolve38) => {
+            const t = setTimeout(() => resolve38(false), remaining);
             if (typeof t.unref === "function") t.unref();
           })
         ]);
@@ -71079,7 +71157,7 @@ async function bootstrapPersistentOwner(input, priorEpoch) {
       return true;
     }
     if (owner && (owner.epoch > expectedEpoch || owner.epoch === expectedEpoch && owner.pid !== child.pid)) return false;
-    await new Promise((resolve37) => setTimeout(resolve37, 25));
+    await new Promise((resolve38) => setTimeout(resolve38, 25));
   }
   return false;
 }
@@ -71176,7 +71254,7 @@ function createRecoveryOwnerClient(dispatch, timing = {}) {
           teamName: normalized.teamName,
           workerName: normalized.workerName
         })) return outcome.result;
-        await new Promise((resolve37) => setTimeout(resolve37, timing.pollIntervalMs ?? 250));
+        await new Promise((resolve38) => setTimeout(resolve38, timing.pollIntervalMs ?? 250));
       }
       return timeoutResult(normalized, canonical.recovery_id);
     }
@@ -71355,7 +71433,7 @@ async function waitForRecoveryGateRecord(path27, expected, timeoutMs, pollInterv
       if (value.recovery_id === expected.recovery_id && value.worker_name === expected.worker_name && value.replacement_generation === expected.replacement_generation && value.pane_attempt_id === expected.pane_attempt_id && value.launch_attempt_id === expected.launch_attempt_id && value.launch_nonce === expected.launch_nonce) return true;
     } catch {
     }
-    await new Promise((resolve37) => setTimeout(resolve37, pollIntervalMs));
+    await new Promise((resolve38) => setTimeout(resolve38, pollIntervalMs));
   }
   return false;
 }
@@ -71844,7 +71922,7 @@ async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WOR
     if (await hasEvidence()) return true;
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) return false;
-    await new Promise((resolve37) => setTimeout(resolve37, Math.min(delayMs, remainingMs)));
+    await new Promise((resolve38) => setTimeout(resolve38, Math.min(delayMs, remainingMs)));
   }
 }
 async function waitForWorkerStartupEvidence(teamName, workerName2, taskId, cwd2, baseline, launchAttemptId, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS) {
@@ -72459,14 +72537,14 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
   }
 }
 function waitForBootstrapRecoveryEvidence(delayMs, signal) {
-  return new Promise((resolve37, reject) => {
+  return new Promise((resolve38, reject) => {
     if (signal?.aborted) {
       reject(signal.reason ?? new Error("bootstrap_recovery_evidence_aborted"));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve37();
+      resolve38();
     }, delayMs);
     const onAbort = () => {
       clearTimeout(timer);
@@ -73741,13 +73819,9 @@ async function startTeamV2(config2) {
   }
   const startupByWorker = new Map(startupAllocations.map((item) => [item.workerName, item.taskIndex]));
   const preparedLaunches = /* @__PURE__ */ new Map();
+  const externalModelsDefaults = resolveExternalModelsDefaults(pluginCfg.externalModels?.defaults, process.env);
   const resolveDefaultModel = (agentType) => {
-    if (agentType === "codex") return process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL || process.env.OMC_CODEX_DEFAULT_MODEL || void 0;
-    if (agentType === "gemini") return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMC_GEMINI_DEFAULT_MODEL || void 0;
-    if (agentType === "antigravity") return process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL || process.env.OMC_ANTIGRAVITY_DEFAULT_MODEL || void 0;
-    if (agentType === "grok") return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL || process.env.OMC_GROK_DEFAULT_MODEL || void 0;
-    if (agentType === "cursor") return void 0;
-    return resolveClaudeWorkerModel();
+    return resolveDefaultWorkerModel(agentType, process.env, externalModelsDefaults);
   };
   for (let i = 0; i < workerNames.length; i++) {
     const workerName2 = workerNames[i];
@@ -73879,6 +73953,8 @@ async function startTeamV2(config2) {
     resize_hook_name: null,
     resize_hook_target: null,
     resolved_routing: resolvedRouting,
+    resolved_routing_roles: Object.keys(pluginCfg.team?.roleRouting ?? {}).map((role) => normalizeDelegationRole(role)).filter((role) => CANONICAL_TEAM_ROLES.includes(role)),
+    external_models_defaults: externalModelsDefaults,
     workspace_mode: workspaceMode,
     worktree_mode: worktreeMode,
     service_descriptor: config2.autoMerge ? {
@@ -73944,6 +74020,9 @@ async function startTeamV2(config2) {
     resize_hook_name: null,
     resize_hook_target: null,
     next_worker_index: teamConfig.next_worker_index,
+    resolved_routing: teamConfig.resolved_routing,
+    resolved_routing_roles: teamConfig.resolved_routing_roles,
+    external_models_defaults: teamConfig.external_models_defaults,
     service_descriptor: teamConfig.service_descriptor
   };
   try {
@@ -75358,7 +75437,7 @@ async function readJsonSafe5(filePath) {
         return null;
       }
     }
-    await new Promise((resolve37) => setTimeout(resolve37, 25));
+    await new Promise((resolve38) => setTimeout(resolve38, 25));
   }
   return null;
 }
@@ -75478,7 +75557,7 @@ async function nextPendingTaskIndex(runtime) {
     let task = await readTask(root2, taskId);
     if (!task) {
       for (let attempt = 1; attempt < transientReadRetryAttempts; attempt++) {
-        await new Promise((resolve37) => setTimeout(resolve37, transientReadRetryDelayMs));
+        await new Promise((resolve38) => setTimeout(resolve38, transientReadRetryDelayMs));
         task = await readTask(root2, taskId);
         if (task) break;
       }
@@ -75865,24 +75944,7 @@ async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
       runtime.resolvedBinaryPaths = {};
     }
     runtime.resolvedBinaryPaths[agentType] = resolvedBinaryPath;
-    const modelForAgent = (() => {
-      if (agentType === "codex") {
-        return process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL || process.env.OMC_CODEX_DEFAULT_MODEL || void 0;
-      }
-      if (agentType === "gemini") {
-        return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMC_GEMINI_DEFAULT_MODEL || void 0;
-      }
-      if (agentType === "antigravity") {
-        return process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL || process.env.OMC_ANTIGRAVITY_DEFAULT_MODEL || void 0;
-      }
-      if (agentType === "grok") {
-        return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL || process.env.OMC_GROK_DEFAULT_MODEL || void 0;
-      }
-      if (agentType === "cursor") {
-        return void 0;
-      }
-      return resolveClaudeWorkerModel();
-    })();
+    const modelForAgent = resolveDefaultWorkerModel(agentType, process.env);
     const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
       teamName: runtime.teamName,
       workerName: workerNameValue,
@@ -76441,7 +76503,7 @@ async function pollTelegram(config2, state, rateLimiter) {
   try {
     const offset = state.telegramLastUpdateId ? state.telegramLastUpdateId + 1 : 0;
     const path27 = `/bot${config2.telegramBotToken}/getUpdates?offset=${offset}&timeout=0`;
-    const updates = await new Promise((resolve37, reject) => {
+    const updates = await new Promise((resolve38, reject) => {
       const req = (0, import_https2.request)(
         {
           hostname: "api.telegram.org",
@@ -76458,7 +76520,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             try {
               const body = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
               if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                resolve37(body.result || []);
+                resolve38(body.result || []);
               } else {
                 reject(new Error(`HTTP ${res.statusCode}`));
               }
@@ -76522,7 +76584,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             text: "Injected into Claude Code session.",
             reply_to_message_id: msg.message_id
           });
-          await new Promise((resolve37) => {
+          await new Promise((resolve38) => {
             const replyReq = (0, import_https2.request)(
               {
                 hostname: "api.telegram.org",
@@ -76537,13 +76599,13 @@ async function pollTelegram(config2, state, rateLimiter) {
               },
               (res) => {
                 res.resume();
-                resolve37();
+                resolve38();
               }
             );
-            replyReq.on("error", () => resolve37());
+            replyReq.on("error", () => resolve38());
             replyReq.on("timeout", () => {
               replyReq.destroy();
-              resolve37();
+              resolve38();
             });
             replyReq.write(replyBody);
             replyReq.end();
@@ -76682,13 +76744,13 @@ async function pollLoop() {
         }
       }
       writeDaemonState(state);
-      await new Promise((resolve37) => setTimeout(resolve37, config2.pollIntervalMs));
+      await new Promise((resolve38) => setTimeout(resolve38, config2.pollIntervalMs));
     } catch (error2) {
       state.errors++;
       state.lastError = redactTokens(error2 instanceof Error ? error2.message : String(error2));
       log(`Poll error: ${state.lastError}`);
       writeDaemonState(state);
-      await new Promise((resolve37) => setTimeout(resolve37, config2.pollIntervalMs * 2));
+      await new Promise((resolve38) => setTimeout(resolve38, config2.pollIntervalMs * 2));
     }
   }
   log("Poll loop ended");
@@ -80550,7 +80612,7 @@ var require_regexp_tree = __commonJS({
       /**
        * Parses a string.
        */
-      parse: function parse10(string3, parseOptions) {
+      parse: function parse11(string3, parseOptions) {
         if (!tokenizer) {
           throw new Error("Tokenizer instance wasn't specified.");
         }
@@ -84660,7 +84722,7 @@ var require_regexp_tree2 = __commonJS({
        *
        * @return Object AST
        */
-      parse: function parse10(regexp, options) {
+      parse: function parse11(regexp, options) {
         return parser.parse("" + regexp, options);
       },
       /**
@@ -85267,7 +85329,7 @@ function readKeychainCredentials() {
   const serviceName = getKeychainServiceName();
   const candidateAccounts = [];
   try {
-    const username = (0, import_os21.userInfo)().username?.trim();
+    const username = (0, import_os22.userInfo)().username?.trim();
     if (username) {
       candidateAccounts.push(username);
     }
@@ -85327,7 +85389,7 @@ function validateCredentials(creds) {
   return !isCredentialExpired(creds);
 }
 function refreshAccessToken(refreshToken) {
-  return new Promise((resolve37) => {
+  return new Promise((resolve38) => {
     const clientId = process.env.CLAUDE_CODE_OAUTH_CLIENT_ID || DEFAULT_OAUTH_CLIENT_ID;
     const body = new URLSearchParams({
       grant_type: "refresh_token",
@@ -85355,7 +85417,7 @@ function refreshAccessToken(refreshToken) {
             try {
               const parsed = JSON.parse(data);
               if (parsed.access_token) {
-                resolve37({
+                resolve38({
                   accessToken: parsed.access_token,
                   refreshToken: parsed.refresh_token || refreshToken,
                   expiresAt: parsed.expires_in ? Date.now() + parsed.expires_in * 1e3 : parsed.expires_at
@@ -85368,14 +85430,14 @@ function refreshAccessToken(refreshToken) {
           if (process.env.OMC_DEBUG) {
             console.error(`[usage-api] Token refresh failed: HTTP ${res.statusCode}`);
           }
-          resolve37(null);
+          resolve38(null);
         });
       }
     );
-    req.on("error", () => resolve37(null));
+    req.on("error", () => resolve38(null));
     req.on("timeout", () => {
       req.destroy();
-      resolve37(null);
+      resolve38(null);
     });
     req.end(body);
   });
@@ -85388,7 +85450,7 @@ function buildUserAgent(clientVersion) {
 }
 function fetchUsageFromApi(accessToken, clientVersion) {
   const userAgent = buildUserAgent(clientVersion);
-  return new Promise((resolve37) => {
+  return new Promise((resolve38) => {
     const req = import_https3.default.request(
       {
         hostname: "api.anthropic.com",
@@ -85410,41 +85472,41 @@ function fetchUsageFromApi(accessToken, clientVersion) {
         res.on("end", () => {
           if (res.statusCode === 200) {
             try {
-              resolve37({ data: JSON.parse(data) });
+              resolve38({ data: JSON.parse(data) });
             } catch {
-              resolve37({ data: null });
+              resolve38({ data: null });
             }
           } else if (res.statusCode === 429) {
             if (process.env.OMC_DEBUG) {
               console.error(`[usage-api] Anthropic API returned 429 (rate limited)`);
             }
-            resolve37({ data: null, rateLimited: true });
+            resolve38({ data: null, rateLimited: true });
           } else {
-            resolve37({ data: null });
+            resolve38({ data: null });
           }
         });
       }
     );
-    req.on("error", () => resolve37({ data: null }));
+    req.on("error", () => resolve38({ data: null }));
     req.on("timeout", () => {
       req.destroy();
-      resolve37({ data: null });
+      resolve38({ data: null });
     });
     req.end();
   });
 }
 function fetchUsageFromZai() {
-  return new Promise((resolve37) => {
+  return new Promise((resolve38) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
     if (!baseUrl || !authToken) {
-      resolve37({ data: null });
+      resolve38({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve37({ data: null });
+      resolve38({ data: null });
       return;
     }
     try {
@@ -85472,29 +85534,29 @@ function fetchUsageFromZai() {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve37({ data: JSON.parse(data) });
+                resolve38({ data: JSON.parse(data) });
               } catch {
-                resolve37({ data: null });
+                resolve38({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] z.ai API returned 429 (rate limited)`);
               }
-              resolve37({ data: null, rateLimited: true });
+              resolve38({ data: null, rateLimited: true });
             } else {
-              resolve37({ data: null });
+              resolve38({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve37({ data: null }));
+      req.on("error", () => resolve38({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve37({ data: null });
+        resolve38({ data: null });
       });
       req.end();
     } catch {
-      resolve37({ data: null });
+      resolve38({ data: null });
     }
   });
 }
@@ -85764,16 +85826,16 @@ function parseZaiResponse(response) {
   return result;
 }
 function fetchUsageFromMinimax(apiKey) {
-  return new Promise((resolve37) => {
+  return new Promise((resolve38) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     if (!baseUrl) {
-      resolve37({ data: null });
+      resolve38({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve37({ data: null });
+      resolve38({ data: null });
       return;
     }
     try {
@@ -85800,29 +85862,29 @@ function fetchUsageFromMinimax(apiKey) {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve37({ data: JSON.parse(data) });
+                resolve38({ data: JSON.parse(data) });
               } catch {
-                resolve37({ data: null });
+                resolve38({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] MiniMax API returned 429 (rate limited)`);
               }
-              resolve37({ data: null, rateLimited: true });
+              resolve38({ data: null, rateLimited: true });
             } else {
-              resolve37({ data: null });
+              resolve38({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve37({ data: null }));
+      req.on("error", () => resolve38({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve37({ data: null });
+        resolve38({ data: null });
       });
       req.end();
     } catch {
-      resolve37({ data: null });
+      resolve38({ data: null });
     }
   });
 }
@@ -85862,16 +85924,16 @@ function parseMinimaxResponse(response) {
   };
 }
 function fetchUsageFromKimi(apiKey) {
-  return new Promise((resolve37) => {
+  return new Promise((resolve38) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     if (!baseUrl) {
-      resolve37({ data: null });
+      resolve38({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve37({ data: null });
+      resolve38({ data: null });
       return;
     }
     try {
@@ -85882,7 +85944,7 @@ function fetchUsageFromKimi(apiKey) {
             `[usage-api] Refusing to send Kimi credentials to non-canonical host '${hostname4}'`
           );
         }
-        resolve37({ data: null });
+        resolve38({ data: null });
         return;
       }
       const req = import_https3.default.request(
@@ -85898,37 +85960,37 @@ function fetchUsageFromKimi(apiKey) {
         },
         (res) => {
           let data = "";
-          res.on("error", () => resolve37({ data: null }));
-          res.on("aborted", () => resolve37({ data: null }));
+          res.on("error", () => resolve38({ data: null }));
+          res.on("aborted", () => resolve38({ data: null }));
           res.on("data", (chunk) => {
             data += chunk;
           });
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve37({ data: JSON.parse(data) });
+                resolve38({ data: JSON.parse(data) });
               } catch {
-                resolve37({ data: null });
+                resolve38({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] Kimi API returned 429 (rate limited)`);
               }
-              resolve37({ data: null, rateLimited: true });
+              resolve38({ data: null, rateLimited: true });
             } else {
-              resolve37({ data: null });
+              resolve38({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve37({ data: null }));
+      req.on("error", () => resolve38({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve37({ data: null });
+        resolve38({ data: null });
       });
       req.end();
     } catch {
-      resolve37({ data: null });
+      resolve38({ data: null });
     }
   });
 }
@@ -86195,7 +86257,7 @@ async function getUsage(opts) {
     return { rateLimits: null, error: "network" };
   }
 }
-var import_fs119, import_path140, import_child_process36, import_crypto36, import_os21, import_https3, CACHE_TTL_FAILURE_MS, CACHE_TTL_TRANSIENT_NETWORK_MS, MAX_RATE_LIMITED_BACKOFF_MS, API_TIMEOUT_MS2, MAX_STALE_DATA_MS, TOKEN_REFRESH_URL_HOSTNAME, USAGE_CACHE_LOCK_OPTS, TOKEN_REFRESH_URL_PATH, DEFAULT_OAUTH_CLIENT_ID, ZAI_UNIT_WEEK, KIMI_USAGE_HOSTNAMES, KIMI_USAGE_PATH, KIMI_FIVE_HOUR_WINDOW_MINUTES;
+var import_fs119, import_path140, import_child_process36, import_crypto36, import_os22, import_https3, CACHE_TTL_FAILURE_MS, CACHE_TTL_TRANSIENT_NETWORK_MS, MAX_RATE_LIMITED_BACKOFF_MS, API_TIMEOUT_MS2, MAX_STALE_DATA_MS, TOKEN_REFRESH_URL_HOSTNAME, USAGE_CACHE_LOCK_OPTS, TOKEN_REFRESH_URL_PATH, DEFAULT_OAUTH_CLIENT_ID, ZAI_UNIT_WEEK, KIMI_USAGE_HOSTNAMES, KIMI_USAGE_PATH, KIMI_FIVE_HOUR_WINDOW_MINUTES;
 var init_usage_api = __esm({
   "src/hud/usage-api.ts"() {
     "use strict";
@@ -86204,7 +86266,7 @@ var init_usage_api = __esm({
     import_path140 = require("path");
     import_child_process36 = require("child_process");
     import_crypto36 = require("crypto");
-    import_os21 = require("os");
+    import_os22 = require("os");
     import_https3 = __toESM(require("https"), 1);
     init_ssrf_guard();
     init_types7();
@@ -87466,9 +87528,9 @@ function displayValue(value) {
     return `<${typeof value}>`;
   }
 }
-function parseSchedulerInput(parse10, input, what) {
+function parseSchedulerInput(parse11, input, what) {
   try {
-    return parse10(input);
+    return parse11(input);
   } catch (error2) {
     fail(
       "invalid_input",
@@ -90725,7 +90787,7 @@ function isCacheValid2(cache) {
   return Date.now() - cache.timestamp < CACHE_TTL_MS2;
 }
 function spawnWithTimeout(cmd, timeoutMs) {
-  return new Promise((resolve37, reject) => {
+  return new Promise((resolve38, reject) => {
     const [executable, ...args] = Array.isArray(cmd) ? cmd : ["sh", "-c", cmd];
     const child = (0, import_child_process42.spawn)(executable, args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -90761,7 +90823,7 @@ function spawnWithTimeout(cmd, timeoutMs) {
       if (!timedOut && escalationTimer) clearTimeout(escalationTimer);
       if (!timedOut) {
         if (code === 0) {
-          resolve37(stdout);
+          resolve38(stdout);
         } else {
           reject(new Error(`Command exited with code ${code}`));
         }
@@ -94732,7 +94794,7 @@ var LspClient = class _LspClient {
 Install with: ${this.serverConfig.installHint}`
       );
     }
-    return new Promise((resolve37, reject) => {
+    return new Promise((resolve38, reject) => {
       const command = this.devContainerContext ? "docker" : this.serverConfig.command;
       const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
       this.process = (0, import_child_process4.spawn)(command, args, {
@@ -94759,7 +94821,7 @@ Install with: ${this.serverConfig.installHint}`
       });
       this.initialize().then(() => {
         this.initialized = true;
-        resolve37();
+        resolve38();
       }).catch(reject);
     });
   }
@@ -94925,13 +94987,13 @@ ${content}`);
     const message2 = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-    return new Promise((resolve37, reject) => {
+    return new Promise((resolve38, reject) => {
       const timeoutHandle = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
       }, effectiveTimeout);
       this.pendingRequests.set(id, {
-        resolve: resolve37,
+        resolve: resolve38,
         reject,
         timeout: timeoutHandle
       });
@@ -95007,7 +95069,7 @@ ${content}`;
       }
     });
     this.openDocuments.add(hostUri);
-    await new Promise((resolve37) => setTimeout(resolve37, 100));
+    await new Promise((resolve38) => setTimeout(resolve38, 100));
   }
   /**
    * Close a document
@@ -95168,13 +95230,13 @@ ${content}`;
     if (this.diagnostics.has(uri)) {
       return Promise.resolve();
     }
-    return new Promise((resolve37) => {
+    return new Promise((resolve38) => {
       let resolved = false;
       const timer = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           this.diagnosticWaiters.delete(uri);
-          resolve37();
+          resolve38();
         }
       }, timeoutMs);
       const existing = this.diagnosticWaiters.get(uri) || [];
@@ -95182,7 +95244,7 @@ ${content}`;
         if (!resolved) {
           resolved = true;
           clearTimeout(timer);
-          resolve37();
+          resolve38();
         }
       });
       this.diagnosticWaiters.set(uri, existing);
@@ -97128,7 +97190,7 @@ var SessionLock = class {
   }
 };
 function sleep(ms) {
-  return new Promise((resolve37) => setTimeout(resolve37, ms));
+  return new Promise((resolve38) => setTimeout(resolve38, ms));
 }
 
 // src/tools/python-repl/socket-client.ts
@@ -97158,7 +97220,7 @@ var JsonRpcError = class extends Error {
   }
 };
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve37, reject) => {
+  return new Promise((resolve38, reject) => {
     const id = (0, import_crypto6.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -97248,7 +97310,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
           }
           if (!settled) {
             settled = true;
-            resolve37(response.result);
+            resolve38(response.result);
           }
         } catch (e) {
           if (!settled) {
@@ -101466,7 +101528,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve37) {
+function mergeByKey(base, incoming, keyFn, resolve38) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -101475,7 +101537,7 @@ function mergeByKey(base, incoming, keyFn, resolve37) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve37(existing, item));
+      seen.set(key, resolve38(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -101826,15 +101888,15 @@ function uniqueSortedTargets(targets) {
 }
 function buildCurrentProjectTargets(projectRoot, transcriptProjectRoots = [projectRoot]) {
   const claudeDir = getCopilotConfigDir();
-  const projectRoots = new Set(transcriptProjectRoots);
+  const projectRoots2 = new Set(transcriptProjectRoots);
   for (const root2 of transcriptProjectRoots) {
     const mainRepoRoot = getMainRepoRoot(root2);
-    if (mainRepoRoot) projectRoots.add(mainRepoRoot);
+    if (mainRepoRoot) projectRoots2.add(mainRepoRoot);
     const claudeWorktreeParent = getClaudeWorktreeParent(root2);
-    if (claudeWorktreeParent) projectRoots.add(claudeWorktreeParent);
+    if (claudeWorktreeParent) projectRoots2.add(claudeWorktreeParent);
   }
   const targets = [];
-  for (const root2 of projectRoots) {
+  for (const root2 of projectRoots2) {
     const encodedDir = (0, import_path51.join)(claudeDir, "projects", encodeProjectPath(root2));
     for (const filePath of listJsonlFiles(encodedDir)) {
       targets.push({ filePath, sourceType: "project-transcript" });
@@ -101870,12 +101932,12 @@ function buildAllProjectTargets() {
   }
   return uniqueSortedTargets(targets);
 }
-function isWithinProject(projectPath, projectRoots) {
+function isWithinProject(projectPath, projectRoots2) {
   if (!projectPath) {
     return false;
   }
   const normalizedProjectPath = (0, import_path51.normalize)((0, import_path51.resolve)(projectPath)).replace(/\\/g, "/");
-  return projectRoots.some((root2) => {
+  return projectRoots2.some((root2) => {
     const normalizedRoot = (0, import_path51.normalize)((0, import_path51.resolve)(root2)).replace(/\\/g, "/");
     return normalizedProjectPath === normalizedRoot || normalizedProjectPath.startsWith(`${normalizedRoot}/`);
   });
@@ -106459,10 +106521,10 @@ init_team_canonical_state();
 
 // src/hooks/omc-orchestrator/index.ts
 var path15 = __toESM(require("path"), 1);
+var import_os13 = require("os");
 var import_child_process21 = require("child_process");
 init_worktree_paths();
 init_config_dir();
-init_paths();
 var import_fs54 = require("fs");
 
 // src/hooks/omc-orchestrator/constants.ts
@@ -106665,20 +106727,127 @@ function getEnforcementLevel(directory) {
   enforcementCache = { level, directory, timestamp: now };
   return level;
 }
+var TEMP_ROOTS = ["/tmp", "/private/tmp", "/var/tmp", "/private/var/tmp"];
+var TEMP_VARS = ["TMPDIR", "TMP", "TEMP"];
+var WINDOWS_TEMP = [/^[a-z]:\/windows\/temp(?:\/|$)/i, /^[a-z]:\/users\/[^/]+\/appdata\/local\/temp(?:\/|$)/i];
+function portablePath(value) {
+  const input = String(value || "").trim().replace(/\\/g, "/");
+  if (/^[a-z]:(?:\/|$)/i.test(input)) return `${input[0].toUpperCase()}:${path15.posix.normalize(`/${input.slice(3)}`)}`;
+  const unc = input.match(/^\/\/([^/]+)\/([^/]+)(?:\/(.*))?$/);
+  if (unc) {
+    const rest = unc[3] ? path15.posix.normalize(`/${unc[3]}`).slice(1) : "";
+    return `//${unc[1]}/${unc[2]}${rest ? `/${rest}` : ""}`;
+  }
+  return path15.posix.normalize(input);
+}
+function absolutePortable(value) {
+  const clean = portablePath(value);
+  return clean.startsWith("/") || /^[a-z]:\//i.test(clean) ? clean : portablePath(path15.resolve(value));
+}
+function isWindowsPath(value) {
+  return /^([a-z]:\/|\/\/)/i.test(portablePath(value));
+}
+function isAbsolutePath(value) {
+  return portablePath(value).startsWith("/") || /^[a-z]:\//i.test(portablePath(value));
+}
+function withinPath(target, root2) {
+  const t = portablePath(target), r = portablePath(root2);
+  if (!isAbsolutePath(t) || !isAbsolutePath(r)) return false;
+  const fold = isWindowsPath(t) || isWindowsPath(r);
+  const a = fold ? t.toLowerCase() : t, b = fold ? r.toLowerCase() : r;
+  return a === b || a.startsWith(b.endsWith("/") ? b : `${b}/`);
+}
+function canonicalPath(value) {
+  const clean = portablePath(value);
+  if (!isAbsolutePath(clean) || isWindowsPath(clean) !== (process.platform === "win32")) return clean;
+  const raw = String(value);
+  const parsed = path15.parse(raw);
+  const parts = raw.slice(parsed.root.length).split(path15.sep);
+  let resolved = parsed.root;
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i];
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      resolved = path15.dirname(resolved);
+      continue;
+    }
+    const candidate = path15.join(resolved, part);
+    try {
+      resolved = (0, import_fs54.realpathSync)(candidate);
+    } catch {
+      return portablePath(path15.resolve(resolved, ...parts.slice(i)));
+    }
+  }
+  return portablePath(resolved);
+}
+function nearestGitRoot(directory) {
+  let probe = canonicalPath(absolutePortable(directory));
+  if (!isAbsolutePath(probe) || isWindowsPath(probe) !== (process.platform === "win32")) return null;
+  try {
+    const root2 = (0, import_child_process21.execFileSync)("git", ["rev-parse", "--show-toplevel"], {
+      cwd: probe,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
+      timeout: 5e3
+    }).trim();
+    if (root2) return canonicalPath(root2);
+  } catch {
+  }
+  while (true) {
+    if ((0, import_fs54.existsSync)(path15.join(probe, ".git"))) return probe;
+    const parent = path15.dirname(probe);
+    if (parent === probe) return null;
+    probe = parent;
+  }
+}
+function projectRoots(directory) {
+  const start = absolutePortable(directory || process.cwd()), git3 = nearestGitRoot(start);
+  return [...new Set([start, git3].filter((value) => Boolean(value)))];
+}
+function hasGitAncestor(value) {
+  if (!isAbsolutePath(value) || isWindowsPath(value) !== (process.platform === "win32")) return false;
+  let probe = path15.dirname(canonicalPath(value));
+  while (true) {
+    if ((0, import_fs54.existsSync)(path15.join(probe, ".git"))) return true;
+    const parent = path15.dirname(probe);
+    if (parent === probe) return false;
+    probe = parent;
+  }
+}
+function approvedTempRoots() {
+  const roots = [...TEMP_ROOTS, ...TEMP_VARS.map((name) => process.env[name]).filter((value) => Boolean(value))];
+  try {
+    roots.push((0, import_os13.tmpdir)());
+  } catch {
+  }
+  return [...new Set(roots.map(portablePath).filter((value) => isAbsolutePath(value) && value !== "/" && !/^[a-z]:\/$/i.test(value)))];
+}
+function isTempOrScratchpadPath(filePath, directory) {
+  const target = portablePath(filePath);
+  if (!filePath || !isAbsolutePath(target)) return false;
+  const hostIsWindows = process.platform === "win32";
+  if (isWindowsPath(target) !== hostIsWindows) return false;
+  const canonical = canonicalPath(filePath), roots = projectRoots(directory);
+  if (roots.some((root2) => withinPath(target, root2) || withinPath(canonical, canonicalPath(root2))) || hasGitAncestor(canonical)) return false;
+  const temps = approvedTempRoots(), canonicalTemps = temps.map(canonicalPath);
+  const lexical = temps.some((root2) => withinPath(target, root2)) || hostIsWindows && WINDOWS_TEMP.some((pattern) => pattern.test(target));
+  const resolved = canonicalTemps.some((root2) => withinPath(canonical, root2)) || hostIsWindows && WINDOWS_TEMP.some((pattern) => pattern.test(canonical));
+  return lexical && resolved;
+}
 function isAllowedPath(filePath, directory) {
   if (!filePath) return true;
-  const normalized = toForwardSlash(path15.normalize(toForwardSlash(filePath)));
+  const normalized = portablePath(filePath);
   if (normalized.startsWith("../") || normalized === "..") return false;
   if (ALLOWED_PATH_PATTERNS.some((pattern) => pattern.test(normalized))) return true;
-  if (path15.isAbsolute(filePath)) {
-    const relToConfigDir = path15.relative(getCopilotConfigDir(), filePath);
-    if (!relToConfigDir || !relToConfigDir.startsWith("..") && !path15.isAbsolute(relToConfigDir)) {
+  if (isTempOrScratchpadPath(filePath, directory)) return true;
+  if (isAbsolutePath(normalized)) {
+    if (withinPath(normalized, absolutePortable(getCopilotConfigDir()))) {
       return true;
     }
-    const root2 = directory ? getWorktreeRoot(directory) : getWorktreeRoot();
-    if (root2) {
-      const rel = toForwardSlash(path15.relative(root2, filePath));
-      if (rel.startsWith("../") || rel === ".." || path15.isAbsolute(rel)) return false;
+    for (const root2 of projectRoots(directory)) {
+      if (!withinPath(normalized, root2)) continue;
+      const rel = normalized.slice(portablePath(root2).length).replace(/^\/+/, "");
       return ALLOWED_PATH_PATTERNS.some((pattern) => pattern.test(rel));
     }
   }
@@ -108044,6 +108213,9 @@ var SKILL_ENTRIES = [
   entry({ name: "configure-notifications", kind: "skill", decision: "keep", riskClass: "secrets-privacy", owner: REGISTRY_OWNER, notes: "Opt-in integration handling secrets; hard boundary retained." }),
   entry({ name: "project-session-manager", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Utility only; workflow-gate behavior removed per plan." }),
   entry({ name: "ai-slop-cleaner", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Opt-in review tool; never a default gate." }),
+  entry({ name: "minimal-code-discipline", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Opt-in writing-time discipline; never a default gate." }),
+  entry({ name: "launch", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Opt-in governed delivery pipeline (spec -> tickets -> frontier); never a default gate." }),
+  entry({ name: "drydock", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Opt-in harness scaffold (shipyard keel); never a default gate." }),
   entry({ name: "visual-verdict", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Opt-in for visual surfaces." }),
   entry({ name: "external-context", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Opt-in external evidence tool." }),
   entry({ name: "graph", kind: "skill", decision: "keep", riskClass: "security-boundary", owner: REGISTRY_OWNER, notes: "Declarative graph runtime with command execution and bounded read-only Agent SDK execution; CLI + skill entrypoints." }),
@@ -108338,7 +108510,7 @@ async function runShadowObservation(hookType, legacyOutput, legacyDurationMs) {
       const dispatchResult = await Promise.race([
         dispatcher.dispatch(event, {}),
         new Promise(
-          (resolve37) => setTimeout(() => resolve37(null), SHADOW_OBSERVATION_BUDGET_MS)
+          (resolve38) => setTimeout(() => resolve38(null), SHADOW_OBSERVATION_BUDGET_MS)
         )
       ]);
       shadowDurationMs = performance.now() - started;
@@ -110851,9 +111023,9 @@ var COPILOT_CONFIG_DIR3 = getCopilotConfigDir();
 // src/hooks/comment-checker/index.ts
 var fs17 = __toESM(require("fs"), 1);
 var path22 = __toESM(require("path"), 1);
-var import_os15 = require("os");
+var import_os16 = require("os");
 var DEBUG2 = process.env.COMMENT_CHECKER_DEBUG === "1";
-var DEBUG_FILE = path22.join((0, import_os15.tmpdir)(), "comment-checker-debug.log");
+var DEBUG_FILE = path22.join((0, import_os16.tmpdir)(), "comment-checker-debug.log");
 
 // src/hooks/recovery/context-window.ts
 var fs18 = __toESM(require("fs"), 1);
@@ -110890,14 +111062,14 @@ var ORCHESTRATION_RECOVERY_CONFIG = {
 // src/hooks/preemptive-compaction/index.ts
 var fs19 = __toESM(require("fs"), 1);
 var path23 = __toESM(require("path"), 1);
-var import_os16 = require("os");
+var import_os17 = require("os");
 
 // src/hooks/preemptive-compaction/constants.ts
 var CLAUDE_DEFAULT_CONTEXT_LIMIT = process.env.ANTHROPIC_1M_CONTEXT === "true" || process.env.VERTEX_ANTHROPIC_1M_CONTEXT === "true" ? 1e6 : 2e5;
 
 // src/hooks/preemptive-compaction/index.ts
 var DEBUG4 = process.env.PREEMPTIVE_COMPACTION_DEBUG === "1";
-var DEBUG_FILE3 = path23.join((0, import_os16.tmpdir)(), "preemptive-compaction-debug.log");
+var DEBUG_FILE3 = path23.join((0, import_os17.tmpdir)(), "preemptive-compaction-debug.log");
 
 // src/features/background-agent/manager.ts
 var import_fs100 = require("fs");
@@ -110918,9 +111090,9 @@ var README_INJECTOR_STORAGE = (0, import_node_path21.join)(
 // src/hooks/empty-message-sanitizer/index.ts
 var fs20 = __toESM(require("fs"), 1);
 var path24 = __toESM(require("path"), 1);
-var import_os17 = require("os");
+var import_os18 = require("os");
 var DEBUG5 = process.env.EMPTY_MESSAGE_SANITIZER_DEBUG === "1";
-var DEBUG_FILE4 = path24.join((0, import_os17.tmpdir)(), "empty-message-sanitizer-debug.log");
+var DEBUG_FILE4 = path24.join((0, import_os18.tmpdir)(), "empty-message-sanitizer-debug.log");
 
 // src/hooks/non-interactive-env/constants.ts
 var SHELL_COMMAND_PATTERNS = {
@@ -110985,8 +111157,8 @@ var import_path122 = require("path");
 
 // src/hooks/agent-usage-reminder/constants.ts
 var import_path121 = require("path");
-var import_os18 = require("os");
-var OMC_STORAGE_DIR3 = (0, import_path121.join)((0, import_os18.homedir)(), ".omg");
+var import_os19 = require("os");
+var OMC_STORAGE_DIR3 = (0, import_path121.join)((0, import_os19.homedir)(), ".omg");
 var AGENT_USAGE_REMINDER_STORAGE = (0, import_path121.join)(
   OMC_STORAGE_DIR3,
   "agent-usage-reminder"
@@ -111036,7 +111208,7 @@ init_ralph();
 // src/hooks/learner/auto-invoke.ts
 var import_fs105 = __toESM(require("fs"), 1);
 var import_path126 = __toESM(require("path"), 1);
-var import_os19 = __toESM(require("os"), 1);
+var import_os20 = __toESM(require("os"), 1);
 init_config_dir();
 init_atomic_write();
 
@@ -111177,7 +111349,7 @@ var import_fs113 = require("fs");
 var import_path134 = require("path");
 
 // src/hooks/factcheck/config.ts
-var import_os20 = require("os");
+var import_os21 = require("os");
 init_loader();
 init_config_dir();
 var DEFAULT_FACTCHECK_POLICY = {
@@ -112362,10 +112534,10 @@ function listJsonFiles(rootDir) {
   }
   return files;
 }
-function isWithinProject2(projectPath, projectRoots) {
+function isWithinProject2(projectPath, projectRoots2) {
   if (!projectPath) return false;
   const normalizedProjectPath = (0, import_path137.normalize)((0, import_path137.resolve)(projectPath)).replace(/\\/g, "/");
-  return projectRoots.some((root2) => {
+  return projectRoots2.some((root2) => {
     const normalizedRoot = (0, import_path137.normalize)((0, import_path137.resolve)(root2)).replace(/\\/g, "/");
     return normalizedProjectPath === normalizedRoot || normalizedProjectPath.startsWith(`${normalizedRoot}/`);
   });
@@ -112401,7 +112573,7 @@ function uniqueSortedTargets2(targets) {
     return bTime - aTime;
   });
 }
-function buildTargets(projectRoot, projectRoots, scopeMode) {
+function buildTargets(projectRoot, projectRoots2, scopeMode) {
   const claudeDir = getCopilotConfigDir();
   const targets = [];
   if (scopeMode === "all") {
@@ -112412,7 +112584,7 @@ function buildTargets(projectRoot, projectRoots, scopeMode) {
       targets.push({ filePath, sourceType: "legacy-transcript" });
     }
   } else {
-    for (const root2 of projectRoots) {
+    for (const root2 of projectRoots2) {
       for (const filePath of listJsonFiles((0, import_path137.join)(claudeDir, "projects", encodeProjectPath(root2)))) {
         targets.push({ filePath, sourceType: "project-transcript" });
       }
@@ -112651,15 +112823,15 @@ async function generateSessionFrictionReport(rawOptions = {}) {
   const currentProjectRoot = resolveToWorktreeRoot(workingDirectory);
   const scopeMode = buildScopeMode2(rawOptions.project);
   const literalWorkingDirectory = rawOptions.workingDirectory ? (0, import_path137.resolve)(rawOptions.workingDirectory) : workingDirectory;
-  const projectRoots = [currentProjectRoot, literalWorkingDirectory].concat(getMainRepoRoot2(currentProjectRoot) ?? []).concat(getClaudeWorktreeParent2(currentProjectRoot) ?? []).filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
-  const targets = buildTargets(currentProjectRoot, projectRoots, scopeMode);
+  const projectRoots2 = [currentProjectRoot, literalWorkingDirectory].concat(getMainRepoRoot2(currentProjectRoot) ?? []).concat(getClaudeWorktreeParent2(currentProjectRoot) ?? []).filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
+  const targets = buildTargets(currentProjectRoot, projectRoots2, scopeMode);
   const sessions = /* @__PURE__ */ new Map();
   for (const target of targets) {
     const filters = {
       sessionId: rawOptions.sessionId,
       sinceEpoch,
       projectFilter: scopeMode === "project" ? rawOptions.project : void 0,
-      projectRoots: scopeMode === "current" ? projectRoots : void 0
+      projectRoots: scopeMode === "current" ? projectRoots2 : void 0
     };
     if (target.filePath.endsWith(".json")) {
       await scanJsonTarget(target, sessions, filters);
@@ -113307,7 +113479,7 @@ async function pollLoop2(config2) {
       log2(`Poll error: ${state.lastError}`, config2);
       writeDaemonState2(state, config2);
     }
-    await new Promise((resolve37) => setTimeout(resolve37, config2.pollIntervalMs));
+    await new Promise((resolve38) => setTimeout(resolve38, config2.pollIntervalMs));
   }
 }
 function startDaemon(config2) {
@@ -116491,7 +116663,7 @@ async function ralphthonCommand(args) {
   console.log(source_default.gray("Orchestrator running. Press Ctrl+C to stop."));
 }
 function sleep6(ms) {
-  return new Promise((resolve37) => setTimeout(resolve37, ms));
+  return new Promise((resolve38) => setTimeout(resolve38, ms));
 }
 
 // src/cli/commands/ultragoal.ts
@@ -117878,12 +118050,12 @@ async function aliasRetirementCommand(args) {
 // src/cli/commands/teleport.ts
 var import_child_process38 = require("child_process");
 var import_fs126 = require("fs");
-var import_os22 = require("os");
+var import_os23 = require("os");
 var import_path146 = require("path");
 init_loader();
 init_providers();
 init_worktree_cleanup_safety();
-var DEFAULT_WORKTREE_ROOT = (0, import_path146.join)((0, import_os22.homedir)(), "Workspace", "omc-worktrees");
+var DEFAULT_WORKTREE_ROOT = (0, import_path146.join)((0, import_os23.homedir)(), "Workspace", "omc-worktrees");
 var PACKAGE_JSON_NAME = "package.json";
 var PACKAGE_MANAGER_LOCKFILES = {
   pnpm: "pnpm-lock.yaml",
@@ -118472,7 +118644,7 @@ function resolvePluginDirArg(rawPath) {
 // src/cli/launch.ts
 var import_child_process39 = require("child_process");
 var import_fs127 = require("fs");
-var import_os23 = require("os");
+var import_os24 = require("os");
 var import_path148 = require("path");
 init_atomic_write();
 init_file_lock();
@@ -118914,7 +119086,7 @@ function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir()) {
   }, { timeoutMs: 5e3, retryDelayMs: 50 });
 }
 function isDefaultClaudeConfigDirPath2(configDir) {
-  return configDir === (0, import_path148.join)((0, import_os23.homedir)(), ".copilot");
+  return configDir === (0, import_path148.join)((0, import_os24.homedir)(), ".copilot");
 }
 function extractNotifyFlag(args) {
   let notifyEnabled = true;
@@ -119412,7 +119584,7 @@ function interopCommand(options = {}) {
 var import_child_process41 = require("child_process");
 var import_fs128 = require("fs");
 var import_promises30 = require("fs/promises");
-var import_os24 = require("os");
+var import_os25 = require("os");
 var import_path149 = require("path");
 var import_url20 = require("url");
 init_security_config();
@@ -119561,7 +119733,7 @@ function resolveAskAdvisorScriptPath(packageRoot2 = getPackageRoot(), env2 = pro
 }
 function resolveSignalExitCode(signal) {
   if (!signal) return 1;
-  const signalNumber = import_os24.constants.signals[signal];
+  const signalNumber = import_os25.constants.signals[signal];
   if (typeof signalNumber === "number" && Number.isFinite(signalNumber)) {
     return 128 + signalNumber;
   }
@@ -119917,7 +120089,7 @@ function terminateProcessTree(child, signal) {
   }
 }
 function runShellCommand(command, timeoutMs, stdoutTail, stderrTail, idempotencyKey) {
-  return new Promise((resolve37) => {
+  return new Promise((resolve38) => {
     let child;
     try {
       child = (0, import_node_child_process14.spawn)(command, {
@@ -119931,7 +120103,7 @@ function runShellCommand(command, timeoutMs, stdoutTail, stderrTail, idempotency
         ...process.platform === "win32" ? {} : { detached: true }
       });
     } catch (error2) {
-      resolve37({ timed_out: false, exit_code: null, infra_error: describeError2(error2) });
+      resolve38({ timed_out: false, exit_code: null, infra_error: describeError2(error2) });
       return;
     }
     let settled = false;
@@ -119947,7 +120119,7 @@ function runShellCommand(command, timeoutMs, stdoutTail, stderrTail, idempotency
       settled = true;
       if (timeoutTimer !== void 0) clearTimeout(timeoutTimer);
       if (escalationTimer !== void 0) clearTimeout(escalationTimer);
-      resolve37({ timed_out: timedOut, exit_code: exitCode, infra_error: infraError });
+      resolve38({ timed_out: timedOut, exit_code: exitCode, infra_error: infraError });
     };
     if (child.stdout) {
       child.stdout.setEncoding("utf8");
@@ -120100,8 +120272,8 @@ function createStdinApprovalGate(input) {
       return Promise.resolve(queued);
     }
     getInterface();
-    return new Promise((resolve37) => {
-      waitingReader = resolve37;
+    return new Promise((resolve38) => {
+      waitingReader = resolve38;
     });
   }
   return {
@@ -120400,15 +120572,15 @@ async function runHudWatchLoop(options) {
     if (shouldStop) {
       break;
     }
-    await new Promise((resolve37) => {
+    await new Promise((resolve38) => {
       const timer = setTimeout(() => {
         wakeSleep = null;
-        resolve37();
+        resolve38();
       }, options.intervalMs);
       wakeSleep = () => {
         clearTimeout(timer);
         wakeSleep = null;
-        resolve37();
+        resolve38();
       };
     });
   }

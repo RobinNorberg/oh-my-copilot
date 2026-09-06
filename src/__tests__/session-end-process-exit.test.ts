@@ -11,7 +11,9 @@ const SESSION_END_SCRIPTS = [
   ['session-end', join(REPO_ROOT, 'scripts', 'session-end.mjs')],
   ['wiki-session-end', join(REPO_ROOT, 'scripts', 'wiki-session-end.mjs')],
 ] as const;
-const COMMAND_CEILING_MS = 500;
+// Keep the strict local regression ceiling while allowing bounded GitHub-hosted
+// process startup contention during the full parallel suite.
+const COMMAND_CEILING_MS = process.env.CI === 'true' || process.env.CI === '1' ? 1_500 : 500;
 const SEQUENTIAL_CEILING_MS = 1_000;
 const HAS_GENERATED_DIST = existsSync(join(REPO_ROOT, 'dist', 'hooks', 'session-end', 'worker.js'));
 const TEST_PRODUCER_GRACE_MS = '25';

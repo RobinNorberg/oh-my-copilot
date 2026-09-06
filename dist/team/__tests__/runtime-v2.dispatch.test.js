@@ -57,6 +57,20 @@ const modelContractMocks = vi.hoisted(() => ({
     isPromptModeAgent: vi.fn(() => false),
     getPromptModeArgs: vi.fn((_agentType, instruction) => [instruction]),
     resolveClaudeWorkerModel: vi.fn(() => undefined),
+    normalizeExternalModelsDefaults: vi.fn((defaults) => defaults),
+    resolveExternalModelsDefaults: vi.fn((defaults) => defaults),
+    resolveDefaultWorkerModel: vi.fn((agentType, _env, defaults) => {
+        if (agentType === 'claude')
+            return undefined;
+        const keys = {
+            codex: ['OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL', 'OMC_CODEX_DEFAULT_MODEL'],
+            gemini: ['OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL', 'OMC_GEMINI_DEFAULT_MODEL'],
+            antigravity: ['OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL', 'OMC_ANTIGRAVITY_DEFAULT_MODEL'],
+            grok: ['OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL', 'OMC_GROK_DEFAULT_MODEL'],
+            cursor: ['OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL', 'OMC_CURSOR_DEFAULT_MODEL'],
+        };
+        return keys[agentType]?.map(key => process.env[key]).find(Boolean) ?? (agentType === 'cursor' ? defaults?.cursorModel : undefined);
+    }),
     buildValidatedWorkerLaunchDescriptor: vi.fn((agentType, config, appendedArgs = []) => {
         const [binary, ...args] = modelContractMocks.buildWorkerArgv(agentType, config);
         return { schema_version: 1, provider: agentType, model: config.model ?? null,
@@ -87,6 +101,9 @@ vi.mock('../model-contract.js', () => ({
     isPromptModeAgent: modelContractMocks.isPromptModeAgent,
     getPromptModeArgs: modelContractMocks.getPromptModeArgs,
     resolveClaudeWorkerModel: modelContractMocks.resolveClaudeWorkerModel,
+    normalizeExternalModelsDefaults: modelContractMocks.normalizeExternalModelsDefaults,
+    resolveExternalModelsDefaults: modelContractMocks.resolveExternalModelsDefaults,
+    resolveDefaultWorkerModel: modelContractMocks.resolveDefaultWorkerModel,
     buildValidatedWorkerLaunchDescriptor: modelContractMocks.buildValidatedWorkerLaunchDescriptor,
     validateWorkerLaunchDescriptor: modelContractMocks.validateWorkerLaunchDescriptor,
     assertHeadlessSupported: () => { },
@@ -1571,6 +1588,129 @@ describe('runtime v2 startup inbox dispatch', () => {
                 delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL;
             else
                 process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL = originalGrokExternal;
+        }
+    });
+    it('direct cursor launch resolves model from cursor env vars, canonical outranking legacy', async () => {
+        // `resolveDefaultModel` hardcoded `undefined` for cursor while every sibling
+        // provider read its env vars, so a plain `omc team 1:cursor` ignored the
+        // configured default entirely — it only applied via team.roleRouting.
+        cwd = await mkdtempFixture('omc-runtime-v2-cursor-env-');
+        const originalCursorModel = process.env.OMC_CURSOR_DEFAULT_MODEL;
+        const originalCursorExternal = process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+        process.env.OMC_CURSOR_DEFAULT_MODEL = 'composer-2.5';
+        process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL = 'cursor-grok-4.6-high';
+        try {
+            const { startTeamV2 } = await import('../runtime-v2.js');
+            await startTeamV2({
+                teamName: 'dispatch-team',
+                workerCount: 1,
+                agentTypes: ['cursor'],
+                tasks: [{ subject: 'Cursor dispatch', description: 'Verify cursor env model passthrough' }],
+                cwd,
+            });
+            expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith('cursor', expect.objectContaining({ model: 'cursor-grok-4.6-high' }));
+            expect(modelContractMocks.resolveClaudeWorkerModel).not.toHaveBeenCalled();
+        }
+        finally {
+            if (originalCursorModel === undefined)
+                delete process.env.OMC_CURSOR_DEFAULT_MODEL;
+            else
+                process.env.OMC_CURSOR_DEFAULT_MODEL = originalCursorModel;
+            if (originalCursorExternal === undefined)
+                delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+            else
+                process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL = originalCursorExternal;
+        }
+    });
+    it('direct cursor launch resolves the configured cursor default when env is unset', async () => {
+        cwd = await mkdtempFixture('omc-runtime-v2-cursor-config-');
+        const originalCursorModel = process.env.OMC_CURSOR_DEFAULT_MODEL;
+        const originalCursorExternal = process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+        delete process.env.OMC_CURSOR_DEFAULT_MODEL;
+        delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+        try {
+            const { startTeamV2 } = await import('../runtime-v2.js');
+            const runtime = await startTeamV2({
+                teamName: 'dispatch-team',
+                workerCount: 1,
+                agentTypes: ['cursor'],
+                tasks: [{ subject: 'Cursor dispatch', description: 'Verify configured cursor model passthrough' }],
+                pluginConfig: {
+                    externalModels: { defaults: { cursorModel: 'composer-2.5' } },
+                },
+                cwd,
+            });
+            expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith('cursor', expect.objectContaining({ model: 'composer-2.5' }));
+            expect(runtime.config.external_models_defaults).toEqual({ cursorModel: 'composer-2.5' });
+        }
+        finally {
+            if (originalCursorModel === undefined)
+                delete process.env.OMC_CURSOR_DEFAULT_MODEL;
+            else
+                process.env.OMC_CURSOR_DEFAULT_MODEL = originalCursorModel;
+            if (originalCursorExternal === undefined)
+                delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+            else
+                process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL = originalCursorExternal;
+        }
+    });
+    it('direct cursor launch falls back to the legacy OMC_CURSOR_DEFAULT_MODEL', async () => {
+        cwd = await mkdtempFixture('omc-runtime-v2-cursor-legacy-env-');
+        const originalCursorModel = process.env.OMC_CURSOR_DEFAULT_MODEL;
+        const originalCursorExternal = process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+        delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+        process.env.OMC_CURSOR_DEFAULT_MODEL = 'composer-2.5';
+        try {
+            const { startTeamV2 } = await import('../runtime-v2.js');
+            await startTeamV2({
+                teamName: 'dispatch-team',
+                workerCount: 1,
+                agentTypes: ['cursor'],
+                tasks: [{ subject: 'Cursor dispatch', description: 'Verify legacy cursor env fallback' }],
+                cwd,
+            });
+            expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith('cursor', expect.objectContaining({ model: 'composer-2.5' }));
+        }
+        finally {
+            if (originalCursorModel === undefined)
+                delete process.env.OMC_CURSOR_DEFAULT_MODEL;
+            else
+                process.env.OMC_CURSOR_DEFAULT_MODEL = originalCursorModel;
+            if (originalCursorExternal === undefined)
+                delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+            else
+                process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL = originalCursorExternal;
+        }
+    });
+    it('direct cursor launch with no cursor env leaves the model unset', async () => {
+        cwd = await mkdtempFixture('omc-runtime-v2-cursor-no-env-');
+        const originalCursorModel = process.env.OMC_CURSOR_DEFAULT_MODEL;
+        const originalCursorExternal = process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+        delete process.env.OMC_CURSOR_DEFAULT_MODEL;
+        delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+        try {
+            const { startTeamV2 } = await import('../runtime-v2.js');
+            await startTeamV2({
+                teamName: 'dispatch-team',
+                workerCount: 1,
+                agentTypes: ['cursor'],
+                tasks: [{ subject: 'Cursor dispatch', description: 'Verify cursor default stays unset' }],
+                cwd,
+            });
+            // Unset must stay unset: cursor-agent picks its own model, and a Claude id
+            // here would be invalid for it.
+            expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith('cursor', expect.objectContaining({ model: undefined }));
+            expect(modelContractMocks.resolveClaudeWorkerModel).not.toHaveBeenCalled();
+        }
+        finally {
+            if (originalCursorModel === undefined)
+                delete process.env.OMC_CURSOR_DEFAULT_MODEL;
+            else
+                process.env.OMC_CURSOR_DEFAULT_MODEL = originalCursorModel;
+            if (originalCursorExternal === undefined)
+                delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+            else
+                process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL = originalCursorExternal;
         }
     });
     it('direct grok launch passes OMC_GROK_DEFAULT_MODEL through to buildWorkerArgv', async () => {

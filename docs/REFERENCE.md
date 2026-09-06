@@ -14,8 +14,9 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated-opt-in-only)
 - [Agents (29 Total)](#agents-29-total)
 - [Goal Workflow UX: `/goal`, Ralph, Team, Ultragoal](#goal-workflow-ux-goal-ralph-team-ultragoal)
-- [Skills (33 Total)](#skills-33-total)
+- [Skills (49 Total)](#skills-49-total)
 - [Slash Commands](#slash-commands)
+- [Shipyard Methodology](./shipyard.md) — governed delivery & shared harness map
 - [Claude Code `/goal` Adapter Design](#claude-code-goal-adapter-design)
 - [Hooks System](#hooks-system)
 - [Magic Keywords](#magic-keywords)
@@ -840,7 +841,7 @@ Autopilot continues to own cancel, resume, cleanup, state inspection, HUD, and S
 
 V1 deliberately defers `stageModels` and all model/provider/role routing, inline/no-spawn execution, dynamic commands/modes/state files, arbitrary stages/prompts/plugins and control-flow extensions, and the separate custom-skill inline-array frontmatter parser mismatch. See [ADR 03487](./adr/03487-named-autopilot-stage-profiles.md) for the decision record.
 
-## Skills (33 Total)
+## Skills (49 Total)
 
 Includes bundled workflow, utility, domain, and compatibility skills. Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
@@ -860,9 +861,12 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `debug`                   | Diagnose the current OMC session or repository state                           | `/oh-my-copilot:debug`                   |
 | `deep-interview`          | Socratic deep interview with ambiguity gating                                  | `/deep-interview`                           |
 | `deepinit`                | Generate hierarchical AGENTS.md documentation                                  | `/oh-my-copilot:deepinit`                |
+| `drydock`                 | Shipyard harness scaffold: 4-pillar shared environment, --check drift audit    | `/oh-my-copilot:drydock`                 |
 | `execute`                 | Carry an approved task through to working, verified code                       | `/oh-my-copilot:execute`                |
 | `external-context`        | Parallel document-specialist research                                          | `/oh-my-copilot:external-context`       |
 | `hud`                     | Configure HUD/statusline                                                        | `/oh-my-copilot:hud`                     |
+| `launch`                  | Shipyard governed delivery pipeline: spec, tickets, frontier execution          | `/oh-my-copilot:launch`                  |
+| `minimal-code-discipline` | YAGNI-ladder writing-time discipline: reuse first, shortest correct diff        | `/oh-my-copilot:minimal-code-discipline` |
 | `omc-doctor`              | Diagnose and fix installation issues                                           | `/oh-my-copilot:omc-doctor`              |
 | `omc-plan`                | Strategic planning with optional interview and consensus modes                 | `/oh-my-copilot:omc-plan`               |
 | `omc-review`              | Evaluate finished work for defects, risk, and simplification                   | `/oh-my-copilot:omc-review`             |
@@ -904,9 +908,12 @@ Most installed skills are exposed as `/oh-my-copilot:<skill-name>`. Deep Intervi
 | `/oh-my-copilot:debug`                                | Diagnose the current OMC session or repository state                                          |
 | `/deep-interview <idea>`                                 | Socratic interview with ambiguity scoring before execution                                    |
 | `/oh-my-copilot:deepinit [path]`                      | Index codebase with hierarchical AGENTS.md files                                              |
+| `/oh-my-copilot:drydock [--check]`                    | Lay the shipyard harness keel in a repo (5 surfaces); --check audits drift                     |
 | `/oh-my-copilot:execute <task>`                      | Carry an approved task through to working, verified code                                      |
 | `/oh-my-copilot:external-context <topic>`             | Run parallel document-specialist research                                                     |
 | `/oh-my-copilot:hud [setup\|minimal\|focused\|full\|status]` | Configure HUD/statusline                                                               |
+| `/oh-my-copilot:launch <brief\|spec-path> [--serial]` | Run the shipyard governed delivery pipeline (spec -> tickets -> frontier)                      |
+| `/oh-my-copilot:minimal-code-discipline`              | Apply the YAGNI-ladder writing-time discipline while implementing                              |
 | `/oh-my-copilot:omc-doctor`                           | Diagnose and fix installation issues                                                          |
 | `/oh-my-copilot:omc-plan <description>`               | Start planning session (supports consensus structured deliberation)                           |
 | `/oh-my-copilot:omc-review [path]`                    | Review finished work for defects and risk                                                       |
