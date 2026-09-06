@@ -9,7 +9,7 @@
     {
       "name": "oh-my-copilot",
       "description": "Multi-agent orchestration for GitHub Copilot CLI with intelligent model routing across agents and skills. Zero learning curve. Maximum power.",
-      "version": "5.0.0",
+      "version": "5.1.0",
       "author": {
         "name": "Robin Norberg"
       },
@@ -25,5 +25,5 @@
       ]
     }
   ],
-  "version": "5.0.0"
+  "version": "5.1.0"
 }
