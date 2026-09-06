@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "269ae8c78de027acbb8e7772a43e4ef48f494b03",
-    "sourceSha256": "6970a246c786df98ede1fb64838c19d43d97c7dca98fa968f34526c463ce59ad",
+    "head": "5b7125af81ac76ee6bac15ae51b4e41c33826ff6",
+    "sourceSha256": "51e09d4a2cf7be86fe2d9a3459f8e05f63bca7b44d5884520e3198077ad99417",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "269ae8c78de027acbb8e7772a43e4ef48f494b03",
-  "sourceSha256": "6970a246c786df98ede1fb64838c19d43d97c7dca98fa968f34526c463ce59ad",
+  "head": "5b7125af81ac76ee6bac15ae51b4e41c33826ff6",
+  "sourceSha256": "51e09d4a2cf7be86fe2d9a3459f8e05f63bca7b44d5884520e3198077ad99417",
   "counts": {
     "public": {
-      "skills": 55,
+      "skills": 51,
       "commands": 21,
       "workflows": 8,
       "agents": 20,
-      "total": 104
+      "total": 100
     },
     "internal": {
       "hookFiles": 304,
@@ -28,23 +28,23 @@
       "toolFiles": 61,
       "libFiles": 40,
       "templateHooks": 21,
-      "srcFiles": 1382,
-      "total": 1403
+      "srcFiles": 1364,
+      "total": 1385
     },
     "generated": {
-      "distFiles": 5219,
+      "distFiles": 5299,
       "bridgeFiles": 9,
-      "total": 5228
+      "total": 5308
     },
     "prompt": {
-      "promptLikeFiles": 70
+      "promptLikeFiles": 62
     },
-    "skills": 55,
+    "skills": 51,
     "commands": 21,
     "hookFiles": 304,
     "workflows": 8,
     "agentDefinitions": 18,
-    "promptLikeFiles": 70
+    "promptLikeFiles": 62
   },
   "public": {
     "skills": [
@@ -62,14 +62,10 @@
       "deepinit",
       "discover",
       "drydock",
-      "drydock",
-      "drydock",
       "execute",
       "external-context",
       "graph",
       "hud",
-      "launch",
-      "launch",
       "launch",
       "loft",
       "minimal-code-discipline",
@@ -671,17 +667,11 @@
     "promptSources": [
       ".clawhip/state/prompt-submit.json",
       ".github/CLAUDE.md",
-      ".github/CLAUDE.md",
-      ".github/CLAUDE.md",
-      "CLAUDE.md",
-      "CLAUDE.md",
       "CLAUDE.md",
       "benchmarks/code-reviewer/prompts/quality-reviewer.md",
       "benchmarks/debugger/prompts/build-fixer.md",
       "benchmarks/executor/prompts/deep-executor.md",
       "benchmarks/harsh-critic/prompts/harsh-critic.md",
-      "docs/CLAUDE.md",
-      "docs/CLAUDE.md",
       "docs/CLAUDE.md",
       "docs/design/issue-3704-prompt-ssot/README.md",
       "docs/design/issue-3704-prompt-ssot/measurements.json",
@@ -735,8 +725,6 @@
       "templates/hooks/lib/workflow-stage-prompts.mjs",
       "tests/fixtures/prompt-projection/README.md",
       "tests/fixtures/prompt-projection/claude-body.normalized",
-      "tests/fixtures/prompt-projection/claude-managed-block.golden",
-      "tests/fixtures/prompt-projection/claude-managed-block.golden",
       "tests/fixtures/prompt-projection/claude-managed-block.golden",
       "tests/fixtures/prompt-projection/transaction-backup-rollback.json"
     ],
@@ -1258,6 +1246,10 @@
       "dist/__tests__/hud/transcript-agent-lifecycle.test.d.ts.map",
       "dist/__tests__/hud/transcript-agent-lifecycle.test.js",
       "dist/__tests__/hud/transcript-agent-lifecycle.test.js.map",
+      "dist/__tests__/hud/update-hint.test.d.ts",
+      "dist/__tests__/hud/update-hint.test.d.ts.map",
+      "dist/__tests__/hud/update-hint.test.js",
+      "dist/__tests__/hud/update-hint.test.js.map",
       "dist/__tests__/hud/usage-api-lock.test.d.ts",
       "dist/__tests__/hud/usage-api-lock.test.d.ts.map",
       "dist/__tests__/hud/usage-api-lock.test.js",
@@ -1538,6 +1530,10 @@
       "dist/__tests__/project-memory-merge.test.d.ts.map",
       "dist/__tests__/project-memory-merge.test.js",
       "dist/__tests__/project-memory-merge.test.js.map",
+      "dist/__tests__/project-memory-posttool.test.d.ts",
+      "dist/__tests__/project-memory-posttool.test.d.ts.map",
+      "dist/__tests__/project-memory-posttool.test.js",
+      "dist/__tests__/project-memory-posttool.test.js.map",
       "dist/__tests__/project-session-manager-review-worktree.test.d.ts",
       "dist/__tests__/project-session-manager-review-worktree.test.d.ts.map",
       "dist/__tests__/project-session-manager-review-worktree.test.js",
@@ -1690,6 +1686,10 @@
       "dist/__tests__/run-cjs-graceful-fallback.test.d.ts.map",
       "dist/__tests__/run-cjs-graceful-fallback.test.js",
       "dist/__tests__/run-cjs-graceful-fallback.test.js.map",
+      "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts",
+      "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts.map",
+      "dist/__tests__/run-cjs-windows-stdio-contract.test.js",
+      "dist/__tests__/run-cjs-windows-stdio-contract.test.js.map",
       "dist/__tests__/runtime-guidance-plan-ralph.test.d.ts",
       "dist/__tests__/runtime-guidance-plan-ralph.test.d.ts.map",
       "dist/__tests__/runtime-guidance-plan-ralph.test.js",
@@ -1742,6 +1742,14 @@
       "dist/__tests__/session-start-timeout-cleanup.test.d.ts.map",
       "dist/__tests__/session-start-timeout-cleanup.test.js",
       "dist/__tests__/session-start-timeout-cleanup.test.js.map",
+      "dist/__tests__/session-start-update-check.test.d.ts",
+      "dist/__tests__/session-start-update-check.test.d.ts.map",
+      "dist/__tests__/session-start-update-check.test.js",
+      "dist/__tests__/session-start-update-check.test.js.map",
+      "dist/__tests__/session-start-update-refresh.test.d.ts",
+      "dist/__tests__/session-start-update-refresh.test.d.ts.map",
+      "dist/__tests__/session-start-update-refresh.test.js",
+      "dist/__tests__/session-start-update-refresh.test.js.map",
       "dist/__tests__/session-summary-pid-tracking.test.d.ts",
       "dist/__tests__/session-summary-pid-tracking.test.d.ts.map",
       "dist/__tests__/session-summary-pid-tracking.test.js",
@@ -1782,6 +1790,14 @@
       "dist/__tests__/shared-state-locking.test.d.ts.map",
       "dist/__tests__/shared-state-locking.test.js",
       "dist/__tests__/shared-state-locking.test.js.map",
+      "dist/__tests__/shipyard-seed-locale.test.d.ts",
+      "dist/__tests__/shipyard-seed-locale.test.d.ts.map",
+      "dist/__tests__/shipyard-seed-locale.test.js",
+      "dist/__tests__/shipyard-seed-locale.test.js.map",
+      "dist/__tests__/shipyard-skills.test.d.ts",
+      "dist/__tests__/shipyard-skills.test.d.ts.map",
+      "dist/__tests__/shipyard-skills.test.js",
+      "dist/__tests__/shipyard-skills.test.js.map",
       "dist/__tests__/skill-entitlements-cross-surface.test.d.ts",
       "dist/__tests__/skill-entitlements-cross-surface.test.d.ts.map",
       "dist/__tests__/skill-entitlements-cross-surface.test.js",
@@ -2234,6 +2250,10 @@
       "dist/cli/autoresearch.d.ts.map",
       "dist/cli/autoresearch.js",
       "dist/cli/autoresearch.js.map",
+      "dist/cli/checkpoint.d.ts",
+      "dist/cli/checkpoint.d.ts.map",
+      "dist/cli/checkpoint.js",
+      "dist/cli/checkpoint.js.map",
       "dist/cli/claude-md-coordinator.d.ts",
       "dist/cli/claude-md-coordinator.d.ts.map",
       "dist/cli/claude-md-coordinator.js",
@@ -2399,6 +2419,10 @@
       "dist/constants/names.d.ts.map",
       "dist/constants/names.js",
       "dist/constants/names.js.map",
+      "dist/features/__tests__/checkpoint.test.d.ts",
+      "dist/features/__tests__/checkpoint.test.d.ts.map",
+      "dist/features/__tests__/checkpoint.test.js",
+      "dist/features/__tests__/checkpoint.test.js.map",
       "dist/features/__tests__/magic-keywords.test.d.ts",
       "dist/features/__tests__/magic-keywords.test.d.ts.map",
       "dist/features/__tests__/magic-keywords.test.js",
@@ -2467,6 +2491,10 @@
       "dist/features/builtin-skills/types.d.ts.map",
       "dist/features/builtin-skills/types.js",
       "dist/features/builtin-skills/types.js.map",
+      "dist/features/checkpoint/index.d.ts",
+      "dist/features/checkpoint/index.d.ts.map",
+      "dist/features/checkpoint/index.js",
+      "dist/features/checkpoint/index.js.map",
       "dist/features/context-injector/collector.d.ts",
       "dist/features/context-injector/collector.d.ts.map",
       "dist/features/context-injector/collector.js",
@@ -2575,6 +2603,10 @@
       "dist/features/model-routing/types.d.ts.map",
       "dist/features/model-routing/types.js",
       "dist/features/model-routing/types.js.map",
+      "dist/features/notepad-wisdom/__tests__/extractor.test.d.ts",
+      "dist/features/notepad-wisdom/__tests__/extractor.test.d.ts.map",
+      "dist/features/notepad-wisdom/__tests__/extractor.test.js",
+      "dist/features/notepad-wisdom/__tests__/extractor.test.js.map",
       "dist/features/notepad-wisdom/extractor.d.ts",
       "dist/features/notepad-wisdom/extractor.d.ts.map",
       "dist/features/notepad-wisdom/extractor.js",
@@ -2711,6 +2743,10 @@
       "dist/graph/__tests__/runtime/regression-matrix.test.d.ts.map",
       "dist/graph/__tests__/runtime/regression-matrix.test.js",
       "dist/graph/__tests__/runtime/regression-matrix.test.js.map",
+      "dist/graph/__tests__/runtime/remote-approval.test.d.ts",
+      "dist/graph/__tests__/runtime/remote-approval.test.d.ts.map",
+      "dist/graph/__tests__/runtime/remote-approval.test.js",
+      "dist/graph/__tests__/runtime/remote-approval.test.js.map",
       "dist/graph/__tests__/runtime/run-dir.test.d.ts",
       "dist/graph/__tests__/runtime/run-dir.test.d.ts.map",
       "dist/graph/__tests__/runtime/run-dir.test.js",
@@ -2767,6 +2803,10 @@
       "dist/graph/runtime/progress.d.ts.map",
       "dist/graph/runtime/progress.js",
       "dist/graph/runtime/progress.js.map",
+      "dist/graph/runtime/remote-approval.d.ts",
+      "dist/graph/runtime/remote-approval.d.ts.map",
+      "dist/graph/runtime/remote-approval.js",
+      "dist/graph/runtime/remote-approval.js.map",
       "dist/graph/runtime/run-dir.d.ts",
       "dist/graph/runtime/run-dir.d.ts.map",
       "dist/graph/runtime/run-dir.js",
@@ -4164,6 +4204,10 @@
       "dist/hud/elements/token-usage.d.ts.map",
       "dist/hud/elements/token-usage.js",
       "dist/hud/elements/token-usage.js.map",
+      "dist/hud/elements/update-hint.d.ts",
+      "dist/hud/elements/update-hint.d.ts.map",
+      "dist/hud/elements/update-hint.js",
+      "dist/hud/elements/update-hint.js.map",
       "dist/hud/index.d.ts",
       "dist/hud/index.d.ts.map",
       "dist/hud/index.js",
@@ -4393,14 +4437,26 @@
       "dist/lib/__tests__/worktree-paths-git-probe-failclosed.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths-git-probe-failclosed.test.js",
       "dist/lib/__tests__/worktree-paths-git-probe-failclosed.test.js.map",
+      "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts",
+      "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts.map",
+      "dist/lib/__tests__/worktree-paths-git-timeout.test.js",
+      "dist/lib/__tests__/worktree-paths-git-timeout.test.js.map",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.js",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.js.map",
+      "dist/lib/__tests__/worktree-paths-split-warning.test.d.ts",
+      "dist/lib/__tests__/worktree-paths-split-warning.test.d.ts.map",
+      "dist/lib/__tests__/worktree-paths-split-warning.test.js",
+      "dist/lib/__tests__/worktree-paths-split-warning.test.js.map",
       "dist/lib/__tests__/worktree-paths-superproject-cache.test.d.ts",
       "dist/lib/__tests__/worktree-paths-superproject-cache.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths-superproject-cache.test.js",
       "dist/lib/__tests__/worktree-paths-superproject-cache.test.js.map",
+      "dist/lib/__tests__/worktree-paths-toplevel-cache.test.d.ts",
+      "dist/lib/__tests__/worktree-paths-toplevel-cache.test.d.ts.map",
+      "dist/lib/__tests__/worktree-paths-toplevel-cache.test.js",
+      "dist/lib/__tests__/worktree-paths-toplevel-cache.test.js.map",
       "dist/lib/__tests__/worktree-paths.test.d.ts",
       "dist/lib/__tests__/worktree-paths.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths.test.js",
@@ -4573,6 +4629,10 @@
       "dist/mcp/tool-registry.d.ts.map",
       "dist/mcp/tool-registry.js",
       "dist/mcp/tool-registry.js.map",
+      "dist/notifications/__tests__/approval-reply.test.d.ts",
+      "dist/notifications/__tests__/approval-reply.test.d.ts.map",
+      "dist/notifications/__tests__/approval-reply.test.js",
+      "dist/notifications/__tests__/approval-reply.test.js.map",
       "dist/notifications/__tests__/config-merge.test.d.ts",
       "dist/notifications/__tests__/config-merge.test.d.ts.map",
       "dist/notifications/__tests__/config-merge.test.js",
@@ -5397,6 +5457,10 @@
       "dist/team/__tests__/worker-launch-posix-transport.test.d.ts.map",
       "dist/team/__tests__/worker-launch-posix-transport.test.js",
       "dist/team/__tests__/worker-launch-posix-transport.test.js.map",
+      "dist/team/__tests__/worker-launch-wrapper-posix.test.d.ts",
+      "dist/team/__tests__/worker-launch-wrapper-posix.test.d.ts.map",
+      "dist/team/__tests__/worker-launch-wrapper-posix.test.js",
+      "dist/team/__tests__/worker-launch-wrapper-posix.test.js.map",
       "dist/team/__tests__/worker-restart.test.d.ts",
       "dist/team/__tests__/worker-restart.test.d.ts.map",
       "dist/team/__tests__/worker-restart.test.js",
@@ -5781,6 +5845,10 @@
       "dist/tools/lsp/__tests__/client-devcontainer.test.d.ts.map",
       "dist/tools/lsp/__tests__/client-devcontainer.test.js",
       "dist/tools/lsp/__tests__/client-devcontainer.test.js.map",
+      "dist/tools/lsp/__tests__/client-document-lifecycle.test.d.ts",
+      "dist/tools/lsp/__tests__/client-document-lifecycle.test.d.ts.map",
+      "dist/tools/lsp/__tests__/client-document-lifecycle.test.js",
+      "dist/tools/lsp/__tests__/client-document-lifecycle.test.js.map",
       "dist/tools/lsp/__tests__/client-eviction.test.d.ts",
       "dist/tools/lsp/__tests__/client-eviction.test.d.ts.map",
       "dist/tools/lsp/__tests__/client-eviction.test.js",
@@ -6406,17 +6474,11 @@
     "promptSources": [
       ".clawhip/state/prompt-submit.json",
       ".github/CLAUDE.md",
-      ".github/CLAUDE.md",
-      ".github/CLAUDE.md",
-      "CLAUDE.md",
-      "CLAUDE.md",
       "CLAUDE.md",
       "benchmarks/code-reviewer/prompts/quality-reviewer.md",
       "benchmarks/debugger/prompts/build-fixer.md",
       "benchmarks/executor/prompts/deep-executor.md",
       "benchmarks/harsh-critic/prompts/harsh-critic.md",
-      "docs/CLAUDE.md",
-      "docs/CLAUDE.md",
       "docs/CLAUDE.md",
       "docs/design/issue-3704-prompt-ssot/README.md",
       "docs/design/issue-3704-prompt-ssot/measurements.json",
@@ -6470,8 +6532,6 @@
       "templates/hooks/lib/workflow-stage-prompts.mjs",
       "tests/fixtures/prompt-projection/README.md",
       "tests/fixtures/prompt-projection/claude-body.normalized",
-      "tests/fixtures/prompt-projection/claude-managed-block.golden",
-      "tests/fixtures/prompt-projection/claude-managed-block.golden",
       "tests/fixtures/prompt-projection/claude-managed-block.golden",
       "tests/fixtures/prompt-projection/transaction-backup-rollback.json"
     ],
@@ -9540,6 +9600,26 @@
         "path": "dist/__tests__/hud/transcript-agent-lifecycle.test.js.map"
       },
       {
+        "id": "dist/__tests__/hud/update-hint.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/update-hint.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/update-hint.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/update-hint.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/update-hint.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/update-hint.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/update-hint.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/update-hint.test.js.map"
+      },
+      {
         "id": "dist/__tests__/hud/usage-api-lock.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud/usage-api-lock.test.d.ts"
@@ -10940,6 +11020,26 @@
         "path": "dist/__tests__/project-memory-merge.test.js.map"
       },
       {
+        "id": "dist/__tests__/project-memory-posttool.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/project-memory-posttool.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/project-memory-posttool.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/project-memory-posttool.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/project-memory-posttool.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/project-memory-posttool.test.js"
+      },
+      {
+        "id": "dist/__tests__/project-memory-posttool.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/project-memory-posttool.test.js.map"
+      },
+      {
         "id": "dist/__tests__/project-session-manager-review-worktree.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/project-session-manager-review-worktree.test.d.ts"
@@ -11700,6 +11800,26 @@
         "path": "dist/__tests__/run-cjs-graceful-fallback.test.js.map"
       },
       {
+        "id": "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-windows-stdio-contract.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-windows-stdio-contract.test.js"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-windows-stdio-contract.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-windows-stdio-contract.test.js.map"
+      },
+      {
         "id": "dist/__tests__/runtime-guidance-plan-ralph.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/runtime-guidance-plan-ralph.test.d.ts"
@@ -11960,6 +12080,46 @@
         "path": "dist/__tests__/session-start-timeout-cleanup.test.js.map"
       },
       {
+        "id": "dist/__tests__/session-start-update-check.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-check.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-check.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-check.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-check.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-check.test.js"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-check.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-check.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-refresh.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-refresh.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-refresh.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-refresh.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-refresh.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-refresh.test.js"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-refresh.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-refresh.test.js.map"
+      },
+      {
         "id": "dist/__tests__/session-summary-pid-tracking.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/session-summary-pid-tracking.test.d.ts"
@@ -12158,6 +12318,46 @@
         "id": "dist/__tests__/shared-state-locking.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/shared-state-locking.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/shipyard-seed-locale.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-seed-locale.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/shipyard-seed-locale.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-seed-locale.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/shipyard-seed-locale.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-seed-locale.test.js"
+      },
+      {
+        "id": "dist/__tests__/shipyard-seed-locale.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-seed-locale.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/shipyard-skills.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-skills.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/shipyard-skills.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-skills.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/shipyard-skills.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-skills.test.js"
+      },
+      {
+        "id": "dist/__tests__/shipyard-skills.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-skills.test.js.map"
       },
       {
         "id": "dist/__tests__/skill-entitlements-cross-surface.test.d.ts",
@@ -14420,6 +14620,26 @@
         "path": "dist/cli/autoresearch.js.map"
       },
       {
+        "id": "dist/cli/checkpoint.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/checkpoint.d.ts"
+      },
+      {
+        "id": "dist/cli/checkpoint.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/checkpoint.d.ts.map"
+      },
+      {
+        "id": "dist/cli/checkpoint.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/checkpoint.js"
+      },
+      {
+        "id": "dist/cli/checkpoint.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/checkpoint.js.map"
+      },
+      {
         "id": "dist/cli/claude-md-coordinator.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/claude-md-coordinator.d.ts"
@@ -15245,6 +15465,26 @@
         "path": "dist/constants/names.js.map"
       },
       {
+        "id": "dist/features/__tests__/checkpoint.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/checkpoint.test.d.ts"
+      },
+      {
+        "id": "dist/features/__tests__/checkpoint.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/checkpoint.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/__tests__/checkpoint.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/checkpoint.test.js"
+      },
+      {
+        "id": "dist/features/__tests__/checkpoint.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/checkpoint.test.js.map"
+      },
+      {
         "id": "dist/features/__tests__/magic-keywords.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/features/__tests__/magic-keywords.test.d.ts"
@@ -15583,6 +15823,26 @@
         "id": "dist/features/builtin-skills/types.js.map",
         "kind": "generated-dist",
         "path": "dist/features/builtin-skills/types.js.map"
+      },
+      {
+        "id": "dist/features/checkpoint/index.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/checkpoint/index.d.ts"
+      },
+      {
+        "id": "dist/features/checkpoint/index.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/checkpoint/index.d.ts.map"
+      },
+      {
+        "id": "dist/features/checkpoint/index.js",
+        "kind": "generated-dist",
+        "path": "dist/features/checkpoint/index.js"
+      },
+      {
+        "id": "dist/features/checkpoint/index.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/checkpoint/index.js.map"
       },
       {
         "id": "dist/features/context-injector/collector.d.ts",
@@ -16123,6 +16383,26 @@
         "id": "dist/features/model-routing/types.js.map",
         "kind": "generated-dist",
         "path": "dist/features/model-routing/types.js.map"
+      },
+      {
+        "id": "dist/features/notepad-wisdom/__tests__/extractor.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/notepad-wisdom/__tests__/extractor.test.d.ts"
+      },
+      {
+        "id": "dist/features/notepad-wisdom/__tests__/extractor.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/notepad-wisdom/__tests__/extractor.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/notepad-wisdom/__tests__/extractor.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/notepad-wisdom/__tests__/extractor.test.js"
+      },
+      {
+        "id": "dist/features/notepad-wisdom/__tests__/extractor.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/notepad-wisdom/__tests__/extractor.test.js.map"
       },
       {
         "id": "dist/features/notepad-wisdom/extractor.d.ts",
@@ -16805,6 +17085,26 @@
         "path": "dist/graph/__tests__/runtime/regression-matrix.test.js.map"
       },
       {
+        "id": "dist/graph/__tests__/runtime/remote-approval.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/__tests__/runtime/remote-approval.test.d.ts"
+      },
+      {
+        "id": "dist/graph/__tests__/runtime/remote-approval.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/__tests__/runtime/remote-approval.test.d.ts.map"
+      },
+      {
+        "id": "dist/graph/__tests__/runtime/remote-approval.test.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/__tests__/runtime/remote-approval.test.js"
+      },
+      {
+        "id": "dist/graph/__tests__/runtime/remote-approval.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/__tests__/runtime/remote-approval.test.js.map"
+      },
+      {
         "id": "dist/graph/__tests__/runtime/run-dir.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/graph/__tests__/runtime/run-dir.test.d.ts"
@@ -17083,6 +17383,26 @@
         "id": "dist/graph/runtime/progress.js.map",
         "kind": "generated-dist",
         "path": "dist/graph/runtime/progress.js.map"
+      },
+      {
+        "id": "dist/graph/runtime/remote-approval.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/remote-approval.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/remote-approval.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/remote-approval.d.ts.map"
+      },
+      {
+        "id": "dist/graph/runtime/remote-approval.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/remote-approval.js"
+      },
+      {
+        "id": "dist/graph/runtime/remote-approval.js.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/remote-approval.js.map"
       },
       {
         "id": "dist/graph/runtime/run-dir.d.ts",
@@ -24070,6 +24390,26 @@
         "path": "dist/hud/elements/token-usage.js.map"
       },
       {
+        "id": "dist/hud/elements/update-hint.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/update-hint.d.ts"
+      },
+      {
+        "id": "dist/hud/elements/update-hint.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/update-hint.d.ts.map"
+      },
+      {
+        "id": "dist/hud/elements/update-hint.js",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/update-hint.js"
+      },
+      {
+        "id": "dist/hud/elements/update-hint.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/update-hint.js.map"
+      },
+      {
         "id": "dist/hud/index.d.ts",
         "kind": "generated-dist",
         "path": "dist/hud/index.d.ts"
@@ -25215,6 +25555,26 @@
         "path": "dist/lib/__tests__/worktree-paths-git-probe-failclosed.test.js.map"
       },
       {
+        "id": "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-git-timeout.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-git-timeout.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-git-timeout.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-git-timeout.test.js.map"
+      },
+      {
         "id": "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts"
@@ -25235,6 +25595,26 @@
         "path": "dist/lib/__tests__/worktree-paths-nongit-anchor.test.js.map"
       },
       {
+        "id": "dist/lib/__tests__/worktree-paths-split-warning.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-split-warning.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-split-warning.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-split-warning.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-split-warning.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-split-warning.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-split-warning.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-split-warning.test.js.map"
+      },
+      {
         "id": "dist/lib/__tests__/worktree-paths-superproject-cache.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/worktree-paths-superproject-cache.test.d.ts"
@@ -25253,6 +25633,26 @@
         "id": "dist/lib/__tests__/worktree-paths-superproject-cache.test.js.map",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/worktree-paths-superproject-cache.test.js.map"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.js.map"
       },
       {
         "id": "dist/lib/__tests__/worktree-paths.test.d.ts",
@@ -26113,6 +26513,26 @@
         "id": "dist/mcp/tool-registry.js.map",
         "kind": "generated-dist",
         "path": "dist/mcp/tool-registry.js.map"
+      },
+      {
+        "id": "dist/notifications/__tests__/approval-reply.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/approval-reply.test.d.ts"
+      },
+      {
+        "id": "dist/notifications/__tests__/approval-reply.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/approval-reply.test.d.ts.map"
+      },
+      {
+        "id": "dist/notifications/__tests__/approval-reply.test.js",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/approval-reply.test.js"
+      },
+      {
+        "id": "dist/notifications/__tests__/approval-reply.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/approval-reply.test.js.map"
       },
       {
         "id": "dist/notifications/__tests__/config-merge.test.d.ts",
@@ -30235,6 +30655,26 @@
         "path": "dist/team/__tests__/worker-launch-posix-transport.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/worker-launch-wrapper-posix.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/worker-launch-wrapper-posix.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/worker-launch-wrapper-posix.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/worker-launch-wrapper-posix.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/worker-launch-wrapper-posix.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/worker-launch-wrapper-posix.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/worker-launch-wrapper-posix.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/worker-launch-wrapper-posix.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/worker-restart.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/worker-restart.test.d.ts"
@@ -32153,6 +32593,26 @@
         "id": "dist/tools/lsp/__tests__/client-devcontainer.test.js.map",
         "kind": "generated-dist",
         "path": "dist/tools/lsp/__tests__/client-devcontainer.test.js.map"
+      },
+      {
+        "id": "dist/tools/lsp/__tests__/client-document-lifecycle.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/tools/lsp/__tests__/client-document-lifecycle.test.d.ts"
+      },
+      {
+        "id": "dist/tools/lsp/__tests__/client-document-lifecycle.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/lsp/__tests__/client-document-lifecycle.test.d.ts.map"
+      },
+      {
+        "id": "dist/tools/lsp/__tests__/client-document-lifecycle.test.js",
+        "kind": "generated-dist",
+        "path": "dist/tools/lsp/__tests__/client-document-lifecycle.test.js"
+      },
+      {
+        "id": "dist/tools/lsp/__tests__/client-document-lifecycle.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/lsp/__tests__/client-document-lifecycle.test.js.map"
       },
       {
         "id": "dist/tools/lsp/__tests__/client-eviction.test.d.ts",
@@ -80003,12 +80463,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7189,
+      "nodeCount": 7269,
       "edgeCount": 7488,
       "importEdgeCount": 6156,
       "registerEdgeCount": 72
     }
   },
-  "inventorySha256": "90d64322522a675302cb10f0f7c1158f462fe157990ada99563643a51661bc3a",
-  "manifestSha256": "110221dd2e1767d4052e679470026ce8437cc1a2ae4347ed1df26e122181894d"
+  "inventorySha256": "c48a8e5a019519c708a9e92be8813c4bccce35699503db33d576aae4831999b5",
+  "manifestSha256": "85817c58fce502584b491db64b571326c6ebdf3145133a989073542a7c67aec7"
 }
