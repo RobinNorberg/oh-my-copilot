@@ -2,7 +2,16 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
-## [Unreleased]
+# oh-my-copilot v5.1.0
+
+## [5.1.0] - 2026-09-06
+
+Ports the three upstream oh-my-claudecode releases since the v5.0.0 rebase —
+v5.1.0, v5.2.0, and v5.3.0 (upstream dev parity at release time) — into the
+fork, adapted throughout to the `omg` CLI, the `.omg/` runtime root, the
+`.copilot/` host surface, and the `/oh-my-copilot:` namespace. Five new skills
+(51 canonical total): the full Shipyard set — `drydock`, `launch`,
+`ask-navigator`, `loft` — plus `minimal-code-discipline`.
 
 ### Ported from upstream oh-my-claudecode v5.3.0 (v5.2.0..v5.3.0)
 
