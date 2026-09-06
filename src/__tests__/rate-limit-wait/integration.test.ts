@@ -20,14 +20,14 @@ vi.mock('child_process', async () => {
   const actual = await vi.importActual<typeof import('child_process')>('child_process');
   return {
     ...actual,
-    execSync: vi.fn(),
+    execFileSync: vi.fn(),
     spawnSync: vi.fn(),
     spawn: vi.fn(),
   };
 });
 
 import { getUsage } from '../../hud/usage-api.js';
-import { execSync, spawnSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import {
   checkRateLimitStatus,
   analyzePaneContent,
@@ -413,7 +413,7 @@ Assistant: I can help with more tasks.
         output: [],
       });
 
-      vi.mocked(execSync).mockReturnValue('malformed output without proper format');
+      vi.mocked(execFileSync).mockReturnValue('malformed output without proper format');
 
       // Should not throw, just return empty
       const blocked = scanForBlockedPanes();

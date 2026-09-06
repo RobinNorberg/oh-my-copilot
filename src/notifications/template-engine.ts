@@ -297,6 +297,11 @@ const DEFAULT_TEMPLATES: Record<NotificationEvent, string> = {
     "{{#if agentName}}\n**Agent:** `{{agentName}}`{{/if}}" +
     "{{#if agentType}}\n**Type:** `{{agentType}}`{{/if}}" +
     "\n\n{{footer}}",
+
+  "approval-request":
+    "# 🔔 Approval Required\n" +
+    "{{#if question}}\n{{question}}\n{{/if}}" +
+    "\nReply or run `omg graph approvals decide` to approve/deny.\n\n{{footer}}",
 };
 
 /**

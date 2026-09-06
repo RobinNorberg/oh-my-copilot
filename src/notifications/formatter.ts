@@ -422,6 +422,30 @@ export function formatAgentCall(payload: NotificationPayload): string {
 }
 
 /**
+ * Format approval-request notification message.
+ * Notifies the user that a graph run is paused on a human approval gate.
+ */
+export function formatApprovalRequest(payload: NotificationPayload): string {
+  const lines = [`🔔 Approval Required`, ""];
+
+  if (payload.question) {
+    lines.push(payload.question);
+    lines.push("");
+  }
+
+  if (payload.approval) {
+    lines.push(`Run: \`${payload.approval.runId}\` | Activation: \`${payload.approval.activationId}\``);
+    lines.push("");
+  }
+
+  lines.push(`Reply or run \`omg graph approvals decide\` to approve/deny.`);
+  lines.push("");
+  lines.push(buildFooter(payload, true));
+
+  return lines.join("\n");
+}
+
+/**
  * Format ask-user-question notification message.
  * Notifies the user that Copilot is waiting for input.
  */
@@ -475,6 +499,8 @@ export function formatNotification(payload: NotificationPayload): string {
       return formatSessionIdle(payload);
     case "ask-user-question":
       return formatAskUserQuestion(payload);
+    case "approval-request":
+      return formatApprovalRequest(payload);
     case "agent-call":
       return formatAgentCall(payload);
     default:

@@ -13,7 +13,15 @@ const SKIP_ENVIRONMENTS: Record<string, string>[] = [
   { OMC_SKIP_HOOKS: ' keyword-detector , post-tool-use ' },
 ];
 
-function runHook(env: Record<string, string>) {
+function runHook(
+  env: Record<string, string>,
+  input: Record<string, unknown> | string = {
+    cwd: '',
+    tool_name: 'Read',
+    tool_input: { file_path: 'README.md' },
+    tool_response: 'ok',
+  },
+) {
   const root = mkdtempSync(join(tmpdir(), 'project-memory-posttool-'));
   tempDirs.push(root);
   mkdirSync(join(root, '.git'));
@@ -43,12 +51,12 @@ function runHook(env: Record<string, string>) {
   const result = spawnSync(process.execPath, [copiedScriptPath], {
     cwd: root,
     encoding: 'utf8',
-    input: JSON.stringify({
-      cwd: root,
-      tool_name: 'Read',
-      tool_input: { file_path: join(root, 'README.md') },
-      tool_response: 'ok',
-    }),
+    input: typeof input === 'string'
+      ? input
+      : JSON.stringify({
+          cwd: root,
+          ...input,
+        }),
     env: { ...process.env, DISABLE_OMC: '', OMC_SKIP_HOOKS: '', OMC_DEBUG: '1', ...env },
   });
   expect(result.status, result.stderr).toBe(0);
@@ -70,5 +78,19 @@ describe('project-memory-posttool skip guards', () => {
     expect(result.output).toEqual({ continue: true });
     expect(result.stderr).toBe('');
     expect(result.memory).toBe(result.expectedMemory);
+  });
+});
+
+describe('project-memory-posttool response contract', () => {
+  it('returns a bare continue response when runtime modules are unavailable', () => {
+    const result = runHook({ OMC_DEBUG: '' });
+
+    expect(result.output).toEqual({ continue: true });
+  });
+
+  it('returns a bare continue response when input parsing fails', () => {
+    const result = runHook({ OMC_DEBUG: '' }, '{');
+
+    expect(result.output).toEqual({ continue: true });
   });
 });

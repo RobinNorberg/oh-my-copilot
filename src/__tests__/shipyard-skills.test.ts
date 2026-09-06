@@ -11,6 +11,8 @@ import { executeTeamApiOperation } from '../team/api-interop.js';
 const ROOT = join(__dirname, '..', '..');
 const LAUNCH = readFileSync(join(ROOT, 'skills', 'launch', 'SKILL.md'), 'utf-8');
 const DRYDOCK = readFileSync(join(ROOT, 'skills', 'drydock', 'SKILL.md'), 'utf-8');
+const NAVIGATOR = readFileSync(join(ROOT, 'skills', 'ask-navigator', 'SKILL.md'), 'utf-8');
+const LOFT = readFileSync(join(ROOT, 'skills', 'loft', 'SKILL.md'), 'utf-8');
 const SHIPYARD_DOC = readFileSync(join(ROOT, 'docs', 'shipyard.md'), 'utf-8');
 const PLUGIN = JSON.parse(readFileSync(join(ROOT, '.claude-plugin', 'plugin.json'), 'utf-8'));
 
@@ -26,10 +28,18 @@ function frontmatter(src: string): Record<string, string> {
 }
 
 describe('shipyard skills — behavior & packaging contract', () => {
-  it('launch/drydock ship as loadable skill directories with matching frontmatter names', () => {
-    for (const name of ['launch', 'drydock']) {
+  it('launch/drydock/ask-navigator/loft ship as loadable skill directories with matching frontmatter names', () => {
+    for (const name of ['launch', 'drydock', 'ask-navigator', 'loft']) {
       expect(existsSync(join(ROOT, 'skills', name, 'SKILL.md'))).toBe(true);
-      const fm = frontmatter(name === 'launch' ? LAUNCH : DRYDOCK);
+      const fm = frontmatter(
+        name === 'launch'
+          ? LAUNCH
+          : name === 'drydock'
+            ? DRYDOCK
+            : name === 'ask-navigator'
+              ? NAVIGATOR
+              : LOFT,
+      );
       expect(fm.name).toBe(name);
       expect(fm.description.length).toBeGreaterThan(0);
       expect(fm.level).toBeDefined();
@@ -66,6 +76,80 @@ describe('shipyard skills — behavior & packaging contract', () => {
     expect(LAUNCH).toContain('**Serial C4 (`--serial`).**');
     expect(LAUNCH).toContain('start a fresh executor successor');
     expect(LAUNCH).toContain('do not manufacture Team tasks when Team is not active');
+  });
+
+  it('launch fog gate and ask-navigator agree on the fog test verbatim', () => {
+    // The two-question fog test is the routing contract between launch and the navigator:
+    // both files must carry the same wording so a drift on either side is a test failure.
+    for (const q of [
+      'can the destination be stated in one sentence',
+      'can the first three decisions be stated precisely right now',
+    ]) {
+      expect(LAUNCH.toLowerCase()).toContain(q);
+      expect(NAVIGATOR.toLowerCase()).toContain(q);
+    }
+  });
+
+  it('launch routes fog with the yard-gate honesty contract (run never started, no artifacts)', () => {
+    expect(LAUNCH).toContain('**Fog gate**');
+    expect(LAUNCH).toContain('**Map check**');
+    expect(LAUNCH).toContain('`/oh-my-copilot:ask-navigator`');
+    expect(LAUNCH).toContain('the run never starts');
+    expect(LAUNCH).toContain('no artifacts were produced');
+    expect(LAUNCH).toContain('the pipeline never invents a destination');
+  });
+
+  it('ask-navigator produces decisions, never deliverables, and exits through launch', () => {
+    expect(NAVIGATOR).toContain('decisions, never deliverables');
+    expect(NAVIGATOR).toContain('navigator:map');
+    expect(NAVIGATOR).toContain('`/oh-my-copilot:launch`');
+    expect(NAVIGATOR).toContain('Stop after one ticket');
+    expect(NAVIGATOR).toContain('never answers a question that belongs to the captain');
+  });
+
+  it('ask-navigator ticket types stay within the documented vocabulary', () => {
+    const types = [...NAVIGATOR.matchAll(/`?(research|loft|grilling|task)`?/g)].map((m) => m[1]);
+    expect(types.length).toBeGreaterThan(0);
+    for (const t of types) {
+      expect(['research', 'loft', 'grilling', 'task']).toContain(t);
+    }
+    expect(NAVIGATOR).toContain('| `research` |');
+    expect(NAVIGATOR).toContain('| `loft` |');
+    expect(NAVIGATOR).toContain('| `grilling` |');
+    expect(NAVIGATOR).toContain('| `task` |');
+  });
+
+  it('ask-navigator defers un-laid-yard sediment instead of skipping it', () => {
+    expect(NAVIGATOR).toContain('report-only mode');
+    expect(NAVIGATOR).toContain('Deferred sediment');
+    expect(DRYDOCK).toContain('report-only mode');
+  });
+
+  it('loft is model-invoked: model-facing description, no keyword triggers', () => {
+    const fm = frontmatter(LOFT);
+    expect(fm['argument-hint']).toBeUndefined(); // input is the conversation's design question
+    expect(fm.description).toContain('prose cannot settle');
+    expect(LOFT).not.toMatch(/^triggers:/m); // no keyword auto-activation
+  });
+
+  it('loft carries the two forks and the never-docks law', () => {
+    expect(LOFT).toContain('Cut no steel until the shape is fair');
+    expect(LOFT).toContain('Logic fork');
+    expect(LOFT).toContain('UI fork');
+    expect(LOFT).toContain('differ in structure');
+    expect(LOFT).toContain('never merges');
+    expect(LOFT).toContain('No persistence, no tests, no abstractions');
+  });
+
+  it('launch and navigator wire the loft contract', () => {
+    expect(LAUNCH).toContain('**Loft detour.**');
+    expect(LAUNCH).toContain('call the Skill tool with "loft"');
+    expect(LAUNCH).toContain('usually a loft');
+    expect(LAUNCH).toContain('map resolutions or deferred-sediment lines');
+    expect(LAUNCH).toContain('/oh-my-copilot:minimal-code-discipline');
+    expect(NAVIGATOR).toContain('| `loft` |');
+    expect(NAVIGATOR).not.toContain('`prototype`');
+    expect(NAVIGATOR).toContain('Call the Skill tool with "loft"');
   });
 
   it('Team API enforces pre-dispatch ticket dependencies and persists C4 failure evidence', async () => {
@@ -334,7 +418,7 @@ describe('shipyard skills — behavior & packaging contract', () => {
   });
 
   it('plugin.json ships both skills and every path exists on disk', () => {
-    for (const name of ['launch', 'drydock']) {
+    for (const name of ['launch', 'drydock', 'ask-navigator', 'loft']) {
       const entry = `./skills/${name}/`;
       expect(PLUGIN.skills as string[]).toContain(entry);
       expect(existsSync(join(ROOT, entry, 'SKILL.md'))).toBe(true);
@@ -350,7 +434,8 @@ describe('shipyard skills — behavior & packaging contract', () => {
     expect(ref).toContain(`[Skills (${dirCount} Total)](#skills-${dirCount}-total)`);
     expect(ref).toContain('/oh-my-copilot:drydock [--check]');
     expect(ref).toContain('/oh-my-copilot:launch <brief\\|spec-path> [--serial]');
-    for (const name of ['launch', 'drydock']) {
+    expect(ref).toContain('/oh-my-copilot:ask-navigator <idea\\|map>');
+    for (const name of ['launch', 'drydock', 'ask-navigator', 'loft']) {
       expect(ref).toContain(`\`${name}\``);
     }
   });

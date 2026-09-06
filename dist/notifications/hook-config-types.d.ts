@@ -35,6 +35,7 @@ export interface HookNotificationConfig {
         "session-stop"?: HookEventConfig;
         "session-end"?: HookEventConfig;
         "session-idle"?: HookEventConfig;
+        "approval-request"?: HookEventConfig;
         "ask-user-question"?: HookEventConfig;
         "agent-call"?: HookEventConfig;
     };

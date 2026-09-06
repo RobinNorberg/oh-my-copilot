@@ -4,6 +4,32 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Ported from upstream oh-my-claudecode v5.3.0 (v5.2.0..v5.3.0)
+
+- **Two new shipyard skills (49 → 51):** `ask-navigator` (charts foggy efforts
+  into decision-ticket maps, hands off to launch) and `loft` (shape-before-steel
+  discipline: throwaway artifacts answer design questions). Launch gained the
+  fog gate and map check. Paths adapted to `.omg/wayfinder/` and the
+  `/oh-my-copilot:` namespace.
+- **Workspace checkpoints:** `omg checkpoint create/list/rollback` shadow
+  snapshots for autonomous runs, plus `omg graph run --checkpoint`. The fork
+  additionally suppresses CRLF conversion so Windows rollbacks are
+  byte-faithful.
+- **Remote graph approval gates:** `omg graph run --approval-mode remote` with
+  notification dispatch, reply-channel decisions, and
+  `omg graph approvals list/decide` (the underlying contained run-dir remains
+  Linux-only, as before).
+- **Review hardening:** abort-aware gates, denied-only rollback, hardened
+  reply/checkpoint paths.
+- **Hooks:** stderr preserved after early protocol stdout close (#3963);
+  unsupported PostToolUse `suppressOutput` omitted; verifier semantics
+  preserved on the Worker path.
+- **Perf:** batched Windows cache occupancy identity checks with precise tick
+  validation; per-render git path memoization in the HUD.
+- Windows test adaptations: case-folded occupancy identities via
+  `pathIdentity`, fork rules dir (`.copilot/rules`) in the rules-injector
+  guard tests.
+
 ### Ported from upstream oh-my-claudecode v5.2.0 (v5.1.0..v5.2.0)
 
 - **Hook runner Windows stdio overhaul:** `run.cjs` protocol writes guarded

@@ -23,11 +23,13 @@ import { execFileSync } from "child_process";
 import {
   clearWorktreeCache,
   getGitTopLevel,
+  getProjectIdentifier,
   getOmcRoot,
   getWorktreeRoot,
   probeGitTopLevel,
   setGitShowToplevelProbeForTests,
   validateWorkingDirectory,
+  withWorktreePathRenderScope,
 } from "../worktree-paths.js";
 
 const mockedExecFileSync = vi.mocked(execFileSync);
@@ -356,6 +358,162 @@ describe("git top-level memoization", () => {
     expect(probeGitTopLevel(repo).status).toBe("ok");
     expect(probeGitTopLevel(repo).status).toBe("ok");
     expect(showToplevelCalls()).toBe(2);
+  });
+
+  it("memoizes probes by canonical cwd only inside a render scope", () => {
+    const repo = join(tempDir, "repo");
+    const alias = join(tempDir, "repo-link");
+    initRepo(repo);
+
+    try {
+      symlinkSync(repo, alias, "dir");
+    } catch {
+      return;
+    }
+
+    let probeCalls = 0;
+    setGitShowToplevelProbeForTests(() => {
+      probeCalls++;
+      return `${repo}\n`;
+    });
+
+    withWorktreePathRenderScope(() => {
+      expect(probeGitTopLevel(repo).status).toBe("ok");
+      expect(probeGitTopLevel(alias).status).toBe("ok");
+    });
+    expect(probeCalls).toBe(1);
+
+    expect(probeGitTopLevel(repo).status).toBe("ok");
+    expect(probeGitTopLevel(repo).status).toBe("ok");
+    expect(probeCalls).toBe(3);
+  });
+
+  it("memoizes negative probe results only inside a render scope", () => {
+    const repo = join(tempDir, "repo");
+    initRepo(repo);
+    let probeCalls = 0;
+    setGitShowToplevelProbeForTests(() => {
+      probeCalls++;
+      return "not-an-absolute-root\n";
+    });
+
+    withWorktreePathRenderScope(() => {
+      expect(probeGitTopLevel(repo).status).toBe("probe_failed");
+      expect(probeGitTopLevel(repo).status).toBe("probe_failed");
+    });
+
+    expect(probeCalls).toBe(1);
+    expect(probeGitTopLevel(repo).status).toBe("probe_failed");
+    expect(probeCalls).toBe(2);
+  });
+
+  it("memoizes project identifiers by canonical root within a render scope", () => {
+    const repo = join(tempDir, "repo");
+    const alias = join(tempDir, "repo-link");
+    initRepo(repo);
+
+    try {
+      symlinkSync(repo, alias, "dir");
+    } catch {
+      return;
+    }
+
+    const remoteCalls = () =>
+      mockedExecFileSync.mock.calls.filter(
+        ([command, args]) =>
+          command === "git" &&
+          Array.isArray(args) &&
+          args[0] === "remote" &&
+          args[1] === "get-url",
+      ).length;
+    const commonDirCalls = () =>
+      mockedExecFileSync.mock.calls.filter(
+        ([command, args]) =>
+          command === "git" &&
+          Array.isArray(args) &&
+          args[0] === "rev-parse" &&
+          args.includes("--git-common-dir"),
+      ).length;
+
+    withWorktreePathRenderScope(() => {
+      expect(getProjectIdentifier(repo)).toBe(getProjectIdentifier(alias));
+    });
+    expect(remoteCalls()).toBe(1);
+    expect(commonDirCalls()).toBe(1);
+  });
+
+  it("re-evaluates project identifiers in a fresh scope after remote metadata changes", () => {
+    const repo = join(tempDir, "repo");
+    initRepo(repo);
+    git(repo, ["remote", "add", "origin", "https://example.test/first.git"]);
+
+    let firstIdentifier: string;
+    withWorktreePathRenderScope(() => {
+      firstIdentifier = getProjectIdentifier(repo);
+    });
+
+    git(repo, ["remote", "set-url", "origin", "https://example.test/second.git"]);
+
+    let secondIdentifier: string;
+    withWorktreePathRenderScope(() => {
+      secondIdentifier = getProjectIdentifier(repo);
+    });
+
+    expect(secondIdentifier!).not.toBe(firstIdentifier!);
+  });
+
+  it("keeps concurrent render scopes isolated", async () => {
+    const repo = join(tempDir, "repo");
+    initRepo(repo);
+    let probeCalls = 0;
+    setGitShowToplevelProbeForTests(() => {
+      probeCalls++;
+      return `${repo}\n`;
+    });
+
+    await Promise.all([
+      withWorktreePathRenderScope(async () => {
+        expect(probeGitTopLevel(repo).status).toBe("ok");
+        await Promise.resolve();
+        expect(probeGitTopLevel(repo).status).toBe("ok");
+      }),
+      withWorktreePathRenderScope(async () => {
+        expect(probeGitTopLevel(repo).status).toBe("ok");
+        await Promise.resolve();
+        expect(probeGitTopLevel(repo).status).toBe("ok");
+      }),
+    ]);
+
+    expect(probeCalls).toBe(2);
+  });
+
+  it("re-evaluates probes in a fresh scope after the environment changes", () => {
+    const repo = join(tempDir, "repo");
+    initRepo(repo);
+    let probeCalls = 0;
+    setGitShowToplevelProbeForTests(() => {
+      probeCalls++;
+      return `${repo}\n`;
+    });
+
+    withWorktreePathRenderScope(() => {
+      expect(probeGitTopLevel(repo).status).toBe("ok");
+      expect(probeGitTopLevel(repo).status).toBe("ok");
+    });
+
+    const previousPath = process.env.PATH;
+    try {
+      process.env.PATH = `${previousPath ?? ""}${process.platform === "win32" ? ";" : ":"}${tempDir}`;
+      withWorktreePathRenderScope(() => {
+        expect(probeGitTopLevel(repo).status).toBe("ok");
+        expect(probeGitTopLevel(repo).status).toBe("ok");
+      });
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+    }
+
+    expect(probeCalls).toBe(2);
   });
 
   it("fails closed when the validator sees a transient git probe failure", () => {

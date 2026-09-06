@@ -83,7 +83,7 @@ Ask the remaining questions only after language is resolved:
 
 - package/tech stack (for standards and design-system seeds)
 - does this repo have a UI? (no UI → design-system/ is created as a stub with a note, or skipped on request)
-- issue tracker location (GitHub / GitLab / local `.scratch/`) — recorded for launch/triage flows
+- issue tracker location (GitHub / GitLab / local `.scratch/`) — consumed by tracker-backed flows (the navigator's map home)
 
 ### 3. Scaffold (create missing surfaces — seeds render in the document language)
 
@@ -334,4 +334,4 @@ The rule that keeps 先动手 aligned: **starting needs no permission; landing g
 
 ## `--check` mode
 
-Diff actual repo state against the shipyard map; report: missing surfaces, a missing or invalid `CONTEXT.md` frontmatter `documentLanguage` tag, CLAUDE.md sections that point at dead paths, CONTEXT.md terms unused in code, and standards never referenced. For each finding, state the confidence (`high` when mechanically checkable, `low` when heuristic) and whether it is actionable after excluding throwaway/scratch repositories explicitly declared by the user. Launch's yard gate treats high-confidence actionable findings as blocking; low-confidence or explicitly-classified false-positive findings, and findings in a user-declared scratch/throwaway scope, may be overridden only with deliberate per-invocation intent (see `/oh-my-copilot:launch`). Today `--check` has no executable or machine-readable exit contract — the report's wording is the classification source until a structured finding/severity contract ships (planned follow-up). Read-only.
+Diff actual repo state against the shipyard map; report: missing surfaces, a missing or invalid `CONTEXT.md` frontmatter `documentLanguage` tag, CLAUDE.md sections that point at dead paths, CONTEXT.md terms unused in code, and standards never referenced. For each finding, state the confidence (`high` when mechanically checkable, `low` when heuristic) and whether it is actionable after excluding throwaway/scratch repositories explicitly declared by the user. Launch's yard gate treats high-confidence actionable findings as blocking; low-confidence or explicitly-classified false-positive findings, and findings in a user-declared scratch/throwaway scope, may be overridden only with deliberate per-invocation intent (see `/oh-my-copilot:launch`). `/oh-my-copilot:ask-navigator` may also run this audit in report-only mode while charting a foggy effort: findings are recorded verbatim in the map's Notes (never swallowed) and remain live findings for the launch yard gate. Today `--check` has no executable or machine-readable exit contract — the report's wording is the classification source until a structured finding/severity contract ships (planned follow-up). Read-only.

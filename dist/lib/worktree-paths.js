@@ -9,6 +9,7 @@
  * of {worktree}/.omg/. This preserves state across worktree deletions.
  */
 import { createHash } from 'crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { execFileSync } from 'child_process';
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, readdirSync, writeFileSync, unlinkSync, statSync } from 'fs';
 import { homedir, tmpdir } from 'os';
@@ -355,6 +356,18 @@ function resolveStateAnchorRoot(worktreeRoot) {
         return resolveSuperprojectRoot(worktreeRoot) || worktreeRoot;
     return getWorktreeRoot() || resolveNonGitStateAnchor();
 }
+const worktreePathRenderScope = new AsyncLocalStorage();
+/**
+ * Run path lookups in an isolated render scope.
+ *
+ * The memo is intentionally opt-in and is discarded when the render settles.
+ * Direct callers that enforce security boundaries continue to receive fresh
+ * probes, while each HUD render gets a new scope that observes PATH and .git
+ * metadata changes made between renders.
+ */
+export function withWorktreePathRenderScope(fn) {
+    return worktreePathRenderScope.run({ gitTopLevelProbes: new Map(), projectIdentifiers: new Map() }, fn);
+}
 let gitShowToplevelProbeForTests;
 export function setGitShowToplevelProbeForTests(probe) {
     gitShowToplevelProbeForTests = probe;
@@ -550,14 +563,27 @@ function runGitShowToplevel(cwd) {
     });
 }
 export function probeGitTopLevel(cwd) {
-    // Never cache security decisions: PATH, the git executable, and .git
-    // metadata can change between calls in the same process.
+    const scope = worktreePathRenderScope.getStore();
+    const scopeKey = scope ? canonicalizeExistingPath(cwd) ?? resolve(cwd) : null;
+    if (scope && scopeKey) {
+        const cached = scope.gitTopLevelProbes.get(scopeKey);
+        if (cached)
+            return cached;
+    }
+    // Outside an explicit render scope, never cache security decisions: PATH,
+    // the git executable, and .git metadata can change between calls in the same
+    // process. A HUD render scope is intentionally limited to one invocation.
+    let result;
     try {
-        return classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
+        result = classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
     }
     catch (error) {
-        return classifyGitShowToplevelError(error);
+        result = classifyGitShowToplevelError(error);
     }
+    if (scope && scopeKey) {
+        scope.gitTopLevelProbes.set(scopeKey, result);
+    }
+    return result;
 }
 function gitMetadataFileSignature(path) {
     try {
@@ -1006,6 +1032,13 @@ export function getProjectIdentifier(worktreeRoot) {
     // submodule still resolves the submodule's own identity, and findWorkspaceRoot
     // below sees the unclimbed root so an inner `.omc-workspace` marker is honored.
     const root = worktreeRoot || getGitTopLevel() || process.cwd();
+    const scope = worktreePathRenderScope.getStore();
+    const scopeKey = scope ? canonicalizeExistingPath(root) ?? resolve(root) : null;
+    if (scope && scopeKey) {
+        const cached = scope.projectIdentifiers.get(scopeKey);
+        if (cached !== undefined)
+            return cached;
+    }
     // Workspace marker can supply a stable, user-controlled identifier.
     // This wins over git remote so multi-repo workspaces have one consistent ID.
     const workspaceRoot = findWorkspaceRoot(root);
@@ -1014,13 +1047,19 @@ export function getProjectIdentifier(worktreeRoot) {
         if (cfg.id && typeof cfg.id === 'string' && cfg.id.trim()) {
             const safeId = cfg.id.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
             const hash = createHash('sha256').update(safeId).digest('hex').slice(0, 16);
-            return `${safeId}-${hash}`;
+            const identifier = `${safeId}-${hash}`;
+            if (scope && scopeKey)
+                scope.projectIdentifiers.set(scopeKey, identifier);
+            return identifier;
         }
         // No explicit id — derive a stable identifier from the workspace path so
         // sibling subrepos inside the same workspace share one ID.
         const hash = createHash('sha256').update(workspaceRoot).digest('hex').slice(0, 16);
         const dirName = basename(workspaceRoot).replace(/[^a-zA-Z0-9_-]/g, '_');
-        return `${dirName}-${hash}`;
+        const identifier = `${dirName}-${hash}`;
+        if (scope && scopeKey)
+            scope.projectIdentifiers.set(scopeKey, identifier);
+        return identifier;
     }
     let remoteUrl = '';
     try {
@@ -1070,7 +1109,10 @@ export function getProjectIdentifier(worktreeRoot) {
     const source = remoteUrl || primaryRoot;
     const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
     const dirName = basename(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, '_');
-    return `${dirName}-${hash}`;
+    const identifier = `${dirName}-${hash}`;
+    if (scope && scopeKey)
+        scope.projectIdentifiers.set(scopeKey, identifier);
+    return identifier;
 }
 /**
  * Get the .omc root directory path.

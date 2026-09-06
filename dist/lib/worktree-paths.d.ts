@@ -86,6 +86,15 @@ type GitTopLevelProbe = {
     detail: string;
 };
 /**
+ * Run path lookups in an isolated render scope.
+ *
+ * The memo is intentionally opt-in and is discarded when the render settles.
+ * Direct callers that enforce security boundaries continue to receive fresh
+ * probes, while each HUD render gets a new scope that observes PATH and .git
+ * metadata changes made between renders.
+ */
+export declare function withWorktreePathRenderScope<T>(fn: () => T): T;
+/**
  * Injectable `git rev-parse --show-toplevel` runner for tests (#3858).
  * Throw to simulate spawn/exit failures; return stdout to simulate success.
  */

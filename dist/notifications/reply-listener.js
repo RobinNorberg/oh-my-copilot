@@ -26,6 +26,7 @@ import { resolveDaemonModulePath } from '../utils/daemon-module-path.js';
 import { getGlobalOmcStateRoot } from '../utils/paths.js';
 import { capturePaneContent, sendToPane, isTmuxAvailable, } from '../features/rate-limit-wait/tmux-detector.js';
 import { lookupByMessageId, lockRegistryIfEmpty, removeMessagesByPane, pruneStale, } from './session-registry.js';
+import { writeApprovalDecision } from '../graph/runtime/remote-approval.js';
 import { parseMentionAllowedMentions } from './config.js';
 import { redactTokens } from './redact.js';
 import { getProcessStartIdentity, isProcessAlive, isProcessIdentityLive, terminateOwnedProcessTree, } from '../platform/index.js';
@@ -256,6 +257,52 @@ export function sanitizeReplyInput(text) {
         .trim();
 }
 // ============================================================================
+// Approval Gate Replies
+// ============================================================================
+/** Keywords that resolve an approval gate (first word of the reply, case-insensitive). */
+const APPROVAL_APPROVE_WORDS = new Set([
+    'approve', 'approved', 'yes', 'y',
+    '批准', '同意',
+]);
+const APPROVAL_DENY_WORDS = new Set([
+    'deny', 'denied', 'no', 'n', 'reject', 'rejected',
+    '拒绝', '驳回',
+]);
+/**
+ * Parse a reply as an approval decision. Returns null when the reply does
+ * not look like a decision (the message is then left for normal handling).
+ */
+export function parseApprovalReply(text) {
+    const firstWord = text.trim().toLowerCase().split(/\s+/)[0] || '';
+    if (APPROVAL_APPROVE_WORDS.has(firstWord))
+        return 'approved';
+    if (APPROVAL_DENY_WORDS.has(firstWord))
+        return 'denied';
+    return null;
+}
+/**
+ * Resolve an approval gate from a platform reply.
+ *
+ * Returns the recorded decision, or null when the text is not a decision
+ * (callers should fall back to normal reply handling or ignore).
+ */
+export function handleApprovalReply(approvalRef, text, platform) {
+    const decision = parseApprovalReply(text);
+    if (decision === null)
+        return null;
+    try {
+        writeApprovalDecision(approvalRef.runsRoot, approvalRef.runId, approvalRef.activationId, decision, `reply:${platform}`);
+    }
+    catch (error) {
+        // A stale or cross-session approvalRef must never throw out of the
+        // poll loop: stale entries are pruned by their 24h TTL; log and skip.
+        log(`Approval reply ignored for stale ref ${approvalRef.runId}/${approvalRef.activationId}: ${error instanceof Error ? error.message : String(error)}`);
+        return null;
+    }
+    log(`Approval ${decision} recorded for run ${approvalRef.runId} activation ${approvalRef.activationId} via ${platform} reply`);
+    return decision;
+}
+// ============================================================================
 // Rate Limiting
 // ============================================================================
 class RateLimiter {
@@ -405,6 +452,31 @@ async function pollDiscord(config, state, rateLimiter) {
                 writeDaemonState(state);
                 continue;
             }
+            // Approval-gate replies resolve the gate instead of injecting a pane
+            if (mapping.approvalRef) {
+                // AT-MOST-ONCE: persist offset BEFORE processing
+                state.discordLastMessageId = msg.id;
+                writeDaemonState(state);
+                const decision = handleApprovalReply(mapping.approvalRef, msg.content, 'discord');
+                if (decision !== null) {
+                    // Confirmation reaction (non-critical)
+                    const reaction = decision === 'approved' ? '%E2%9C%85' : '%E2%9D%8C';
+                    try {
+                        await fetch(`https://discord.com/api/v10/channels/${config.discordChannelId}/messages/${msg.id}/reactions/${reaction}/@me`, {
+                            method: 'PUT',
+                            headers: { 'Authorization': `Bot ${config.discordBotToken}` },
+                            signal: AbortSignal.timeout(5000),
+                        });
+                    }
+                    catch (e) {
+                        log(`WARN: Failed to add approval confirmation reaction: ${e}`);
+                    }
+                }
+                else {
+                    log(`Discord reply on approval message ${msg.id} was not a decision; ignored`);
+                }
+                continue;
+            }
             // Rate limiting
             if (!rateLimiter.canProceed()) {
                 log(`WARN: Rate limit exceeded, dropping Discord message ${msg.id}`);
@@ -537,6 +609,53 @@ async function pollTelegram(config, state, rateLimiter) {
             if (!mapping) {
                 state.telegramLastUpdateId = update.update_id;
                 writeDaemonState(state);
+                continue;
+            }
+            // Approval-gate replies resolve the gate instead of injecting a pane
+            if (mapping.approvalRef) {
+                // AT-MOST-ONCE: persist offset BEFORE processing
+                state.telegramLastUpdateId = update.update_id;
+                writeDaemonState(state);
+                const decision = handleApprovalReply(mapping.approvalRef, msg.text || '', 'telegram');
+                if (decision !== null) {
+                    // Confirmation reply (non-critical)
+                    try {
+                        const confirmBody = JSON.stringify({
+                            chat_id: config.telegramChatId,
+                            text: `Approval recorded: ${decision}`,
+                            reply_to_message_id: msg.message_id,
+                        });
+                        await new Promise((resolve) => {
+                            const confirmReq = httpsRequest({
+                                hostname: 'api.telegram.org',
+                                path: `/bot${config.telegramBotToken}/sendMessage`,
+                                method: 'POST',
+                                family: 4,
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Content-Length': Buffer.byteLength(confirmBody),
+                                },
+                                timeout: 5000,
+                            }, (res) => {
+                                res.resume();
+                                resolve();
+                            });
+                            confirmReq.on('error', () => resolve());
+                            confirmReq.on('timeout', () => {
+                                confirmReq.destroy();
+                                resolve();
+                            });
+                            confirmReq.write(confirmBody);
+                            confirmReq.end();
+                        });
+                    }
+                    catch (e) {
+                        log(`WARN: Failed to send approval confirmation: ${e}`);
+                    }
+                }
+                else {
+                    log(`Telegram reply on approval message ${msg.message_id} was not a decision; ignored`);
+                }
                 continue;
             }
             const text = msg.text || '';
@@ -673,6 +792,22 @@ async function pollLoop() {
                     if (event.thread_ts && event.thread_ts !== event.ts) {
                         const mapping = lookupByMessageId('slack-bot', event.thread_ts);
                         if (mapping) {
+                            // Approval-gate replies resolve the gate instead of injecting a pane
+                            if (mapping.approvalRef) {
+                                const decision = handleApprovalReply(mapping.approvalRef, event.text, 'slack');
+                                if (decision !== null) {
+                                    try {
+                                        await addSlackReaction(slackBotToken, slackChannelId, event.ts);
+                                    }
+                                    catch (e) {
+                                        log(`WARN: Failed to add Slack approval reaction: ${e}`);
+                                    }
+                                }
+                                else {
+                                    log(`Slack reply on approval message ${event.thread_ts} was not a decision; ignored`);
+                                }
+                                return;
+                            }
                             targetPaneId = mapping.tmuxPaneId;
                             targetMapping = mapping;
                         }

@@ -18,7 +18,7 @@ import { sanitizeOutput } from "./sanitize.js";
 import { estimatePayloadFromTranscriptPath } from "./payload-estimate.js";
 import { getRuntimePackageVersion } from "../lib/version.js";
 import { compareVersions } from "../features/auto-update.js";
-import { resolveToWorktreeRoot, resolveTranscriptPath, } from "../lib/worktree-paths.js";
+import { resolveToWorktreeRoot, resolveTranscriptPath, withWorktreePathRenderScope, } from "../lib/worktree-paths.js";
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { access, readFile } from "fs/promises";
 import { join, basename, dirname } from "path";
@@ -198,7 +198,7 @@ function showDiagnostic() {
  * Main HUD entry point
  * @param watchMode - true when called from the --watch polling loop (stdin is TTY)
  */
-async function main(watchMode = false, skipInit = false) {
+async function mainImpl(watchMode = false, skipInit = false) {
     try {
         // Read stdin from Claude Code
         const previousStdinCache = readStdinCache();
@@ -492,6 +492,9 @@ async function main(watchMode = false, skipInit = false) {
     }
 }
 // Export for programmatic use (e.g., omg hud --watch loop)
+function main(watchMode = false, skipInit = false) {
+    return withWorktreePathRenderScope(() => mainImpl(watchMode, skipInit));
+}
 export { main };
 // Auto-run (unconditional so dynamic import() via omg-hud.mjs wrapper works correctly)
 main();

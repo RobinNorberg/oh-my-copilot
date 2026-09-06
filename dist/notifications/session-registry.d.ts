@@ -20,6 +20,12 @@ export interface SessionMapping {
     /** AskUserQuestion metadata used to target the Other/free-text field for mobile replies. */
     askUserQuestionOptionCount?: number;
     askUserQuestionAllowOther?: boolean;
+    /** Approval-gate mapping: replies to this message resolve the gate instead of injecting a pane. */
+    approvalRef?: {
+        runsRoot: string;
+        runId: string;
+        activationId: string;
+    };
 }
 /**
  * Reserve an empty registry while the exact listener generation is stopped.

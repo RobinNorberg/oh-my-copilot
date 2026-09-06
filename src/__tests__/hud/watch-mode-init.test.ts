@@ -137,6 +137,7 @@ describe('HUD watch mode initialization', () => {
       resolveToWorktreeRoot: vi.fn((cwd?: string) => cwd ?? '/tmp/worktree'),
       resolveTranscriptPath: vi.fn((transcriptPath?: string) => transcriptPath),
       getOmcRoot: vi.fn(() => '/tmp/worktree/.omg'),
+      withWorktreePathRenderScope: vi.fn((callback: () => unknown) => callback()),
     }));
 
     return import('../../hud/index.js');

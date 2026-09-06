@@ -633,6 +633,7 @@ describe('agent output summarization / truncation (issue #1373)', () => {
     expect(out.continue).toBe(true);
     expect(out.hookSpecificOutput?.additionalContext).toContain('TaskOutput summary:');
     expect(out.hookSpecificOutput?.additionalContext).toContain('TaskOutput clipped');
+    expect(out).not.toHaveProperty('suppressOutput');
   });
 });
 
@@ -720,7 +721,7 @@ describe('post-tool hook regression coverage (issue #2615)', () => {
       cwd: process.cwd(),
     });
 
-    expect(out).toEqual({ continue: true, suppressOutput: true });
+    expect(out).toEqual({ continue: true });
   });
 });
 
@@ -979,7 +980,7 @@ describe('OMC_QUIET hook message suppression (issue #1646)', () => {
       { OMC_QUIET: '1' },
     );
 
-    expect(edit).toEqual({ continue: true, suppressOutput: true });
+    expect(edit).toEqual({ continue: true });
 
     const grep = runPostToolVerifier(
       {
@@ -991,7 +992,7 @@ describe('OMC_QUIET hook message suppression (issue #1646)', () => {
       { OMC_QUIET: '1' },
     );
 
-    expect(grep).toEqual({ continue: true, suppressOutput: true });
+    expect(grep).toEqual({ continue: true });
 
     const writeFailure = runPostToolVerifier(
       {
@@ -1043,7 +1044,7 @@ describe('OMC_QUIET hook message suppression (issue #1646)', () => {
       );
     });
 
-    expect(taskSummary).toEqual({ continue: true, suppressOutput: true });
+    expect(taskSummary).toEqual({ continue: true });
   });
 });
 
@@ -1061,7 +1062,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
         cwd: tempDir,
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
       expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(false);
       expect(existsSync(legacySkillStatePath(tempDir))).toBe(false);
     });
@@ -1080,7 +1081,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
         cwd: tempDir,
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
       expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(true);
       expect(existsSync(legacySkillStatePath(tempDir))).toBe(true);
     });
@@ -1142,7 +1143,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
         cwd: tempDir,
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
 
       const state = JSON.parse(readFileSync(ralplanStatePath(tempDir, sessionId), 'utf-8'));
       expect(state.active).toBe(false);
@@ -1191,7 +1192,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
         cwd: tempDir,
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
       expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(false);
       expect(existsSync(legacySkillStatePath(tempDir))).toBe(false);
     });
@@ -1210,7 +1211,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
         cwd: tempDir,
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
       expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(false);
       expect(existsSync(legacySkillStatePath(tempDir))).toBe(false);
     });
@@ -1271,7 +1272,7 @@ describe('background operation detection (issue #3578)', () => {
           session_id: `bg-fp-${word}`,
         });
 
-        expect(out).toEqual({ continue: true, suppressOutput: true });
+        expect(out).toEqual({ continue: true });
       });
     }
 
@@ -1283,7 +1284,7 @@ describe('background operation detection (issue #3578)', () => {
         session_id: 'bg-fp-all',
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
     });
 
     it('does not fire for the reported repro payload', () => {
@@ -1294,7 +1295,7 @@ describe('background operation detection (issue #3578)', () => {
         session_id: 'bg-fp-repro',
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
     });
   });
 
@@ -1340,7 +1341,7 @@ describe('background operation detection (issue #3578)', () => {
         session_id: 'bg-fg-task-quote',
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
     });
   });
 
@@ -1361,7 +1362,7 @@ describe('background operation detection (issue #3578)', () => {
 
         const out = runPostToolVerifier(payload);
 
-        expect(out).toEqual({ continue: true, suppressOutput: true });
+        expect(out).toEqual({ continue: true });
       });
     }
   });

@@ -14,7 +14,7 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated-opt-in-only)
 - [Agents (29 Total)](#agents-29-total)
 - [Goal Workflow UX: `/goal`, Ralph, Team, Ultragoal](#goal-workflow-ux-goal-ralph-team-ultragoal)
-- [Skills (49 Total)](#skills-49-total)
+- [Skills (51 Total)](#skills-51-total)
 - [Slash Commands](#slash-commands)
 - [Shipyard Methodology](./shipyard.md) — governed delivery & shared harness map
 - [Claude Code `/goal` Adapter Design](#claude-code-goal-adapter-design)
@@ -610,6 +610,37 @@ omg session friction report --project all --json
 - Highlights context-bloat and operator-friction indicators such as high estimated context usage, large JSONL entries, tool error rates, long idle gaps, failed agents, and hook noise
 - Supports `--limit`, `--session`, `--since`, `--project`, and `--json`
 
+### `omg checkpoint`
+
+Workspace snapshot/rollback for autonomous runs, built on git "shadow commits": the full working tree (tracked, modified, and untracked non-ignored files) is captured into `refs/omc/checkpoints/` without touching HEAD, the index, or the worktree.
+
+```bash
+omg checkpoint create --label "before ralph run"
+omg checkpoint list
+omg checkpoint rollback <id> --force
+```
+
+- `create` never touches HEAD or the working tree; restore points appear only under `refs/omc/checkpoints/`
+- `rollback` restores the worktree and index and removes files created after the snapshot (`git clean -fd` keeps ignored paths such as `node_modules`)
+- `rollback` refuses to discard uncommitted changes unless `--force` is passed
+- Requires a git repository; no external storage is involved
+
+### Graph approval gates (remote approvals)
+
+Graph runtime `human-approval` nodes support two gate styles via `omg graph run`:
+
+```bash
+omg graph run ./my-graph.json --approval-mode stdin    # default: interactive y/n
+omg graph run ./my-graph.json --approval-mode remote --checkpoint
+```
+
+- `--approval-mode remote` persists each pending gate under `.omc/graph-runs/<run_id>/approvals/` and dispatches an `approval-request` notification (Telegram/Discord/Slack/webhook, following your notification config)
+- Reply `approved`/`denied` (or `y`/`n`, `批准`/`拒绝`) to the notification message to decide from your phone; the reply-listener daemon writes the decision artifact
+- Decide from any shell on the machine: `omg graph approvals list`, then `omg graph approvals decide <runId> <activationId> approved|denied`
+- `--approval-timeout <seconds>` bounds the wait; an expired gate resolves to `--approval-timeout-policy deny` (default, fail-closed) or `approve`
+- `--checkpoint` snapshots the working tree before the run; after a denial you can restore it: `omg graph approvals decide <runId> <activationId> denied --rollback <checkpointId>`
+- Malformed decision artifacts are ignored, never trusted; the runner journal remains the record of outcomes
+
 ### Non-interactive automation and CI/CD
 
 Use OMC's terminal and library surfaces in non-interactive environments:
@@ -850,7 +881,7 @@ Autopilot continues to own cancel, resume, cleanup, state inspection, HUD, and S
 
 V1 deliberately defers `stageModels` and all model/provider/role routing, inline/no-spawn execution, dynamic commands/modes/state files, arbitrary stages/prompts/plugins and control-flow extensions, and the separate custom-skill inline-array frontmatter parser mismatch. See [ADR 03487](./adr/03487-named-autopilot-stage-profiles.md) for the decision record.
 
-## Skills (49 Total)
+## Skills (51 Total)
 
 Includes bundled workflow, utility, domain, and compatibility skills. Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
@@ -862,6 +893,7 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | ------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------- |
 | `ai-slop-cleaner`         | Anti-slop cleanup workflow with optional reviewer-only `--review` pass        | `/oh-my-copilot:ai-slop-cleaner`         |
 | `ask`                     | Ask Claude, Codex, Gemini, Antigravity, Grok, or Cursor via local CLI          | `/oh-my-copilot:ask`                     |
+| `ask-navigator`           | Shipyard navigator: chart foggy efforts into decision-ticket maps, hand off to launch | `/oh-my-copilot:ask-navigator`    |
 | `autopilot`               | Full autonomous execution from idea to working code                            | `/oh-my-copilot:autopilot`               |
 | `autoresearch`            | Stateful evaluator-driven improvement loop                                     | `/oh-my-copilot:autoresearch`            |
 | `cancel`                  | Unified cancellation for active modes                                          | `/oh-my-copilot:cancel`                  |
@@ -875,6 +907,7 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `external-context`        | Parallel document-specialist research                                          | `/oh-my-copilot:external-context`       |
 | `hud`                     | Configure HUD/statusline                                                        | `/oh-my-copilot:hud`                     |
 | `launch`                  | Shipyard governed delivery pipeline: spec, tickets, frontier execution          | `/oh-my-copilot:launch`                  |
+| `loft`                    | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions | `/oh-my-copilot:loft`              |
 | `minimal-code-discipline` | YAGNI-ladder writing-time discipline: reuse first, shortest correct diff        | `/oh-my-copilot:minimal-code-discipline` |
 | `omc-doctor`              | Diagnose and fix installation issues                                           | `/oh-my-copilot:omc-doctor`              |
 | `omc-plan`                | Strategic planning with optional interview and consensus modes                 | `/oh-my-copilot:omc-plan`               |
@@ -908,6 +941,7 @@ Most installed skills are exposed as `/oh-my-copilot:<skill-name>`. Deep Intervi
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `/oh-my-copilot:ai-slop-cleaner <target>`             | Run the anti-slop cleanup workflow (`--review` for reviewer-only pass)                        |
 | `/oh-my-copilot:ask <claude\|codex\|gemini\|antigravity\|grok\|cursor> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact                   |
+| `/oh-my-copilot:ask-navigator <idea\|map>`            | Chart a foggy effort into a map of decision tickets (or work the open map), then hand off to launch |
 | `/oh-my-copilot:autopilot <task>`                     | Full autonomous execution                                                                     |
 | `/oh-my-copilot:autoresearch <task>`                  | Run a bounded evaluator-driven improvement mission                                             |
 | `/oh-my-copilot:cancel [--force\|--all]`              | Cancel active OMC modes                                                                       |
@@ -922,6 +956,7 @@ Most installed skills are exposed as `/oh-my-copilot:<skill-name>`. Deep Intervi
 | `/oh-my-copilot:external-context <topic>`             | Run parallel document-specialist research                                                     |
 | `/oh-my-copilot:hud [setup\|minimal\|focused\|full\|status]` | Configure HUD/statusline                                                               |
 | `/oh-my-copilot:launch <brief\|spec-path> [--serial]` | Run the shipyard governed delivery pipeline (spec -> tickets -> frontier)                      |
+| `/oh-my-copilot:loft <design-question>`               | Loft the shape before cutting steel: a throwaway artifact answers a design question prose cannot settle |
 | `/oh-my-copilot:minimal-code-discipline`              | Apply the YAGNI-ladder writing-time discipline while implementing                              |
 | `/oh-my-copilot:omc-doctor`                           | Diagnose and fix installation issues                                                          |
 | `/oh-my-copilot:omc-plan <description>`               | Start planning session (supports consensus structured deliberation)                           |

@@ -1,6 +1,6 @@
 ---
 name: launch
-description: Shipyard's governed delivery pipeline — converge the mission, synthesize a durable spec, decompose vertical-slice tickets with blocking edges, run the frontier in parallel via team, close with verification, and report with a full decision log. Humans own the checkpoints where there is no unique answer or the error cost is severe; agents continuously run everything repeatable and acceptable-by-evidence.
+description: Shipyard's governed delivery pipeline — converge the mission, synthesize a durable spec, decompose vertical-slice tickets with blocking edges, run the frontier in parallel via team, close with verification, and report with a full decision log. Two entry gates — the yard gate (drydock audit) and the fog gate (an effort whose destination is unclear is routed to /ask-navigator before this pipeline starts). Humans own the checkpoints where there is no unique answer or the error cost is severe; agents continuously run everything repeatable and acceptable-by-evidence.
 argument-hint: "<mission brief | path to existing spec> [--serial]"
 level: 3
 pipeline: [deep-interview, launch]
@@ -40,6 +40,7 @@ Launch is a **stateless composition over OMC's existing lifecycle** — it owns 
 - Team owns task statuses, transitions, cancellation, and runtime cleanup; Launch never mutates them outside Team's contract.
 - The canonical `plan` → `execute` → `review` → `verify` surfaces own their existing lifecycle behavior. Launch-authored artifacts are limited to `.omg/specs/<feature-slug>/`, `CONTEXT.md`, `docs/adr/`, and `docs/business/` — plus, only after C5 approval, the sediment slots named in the Phase 5 table.
 - Launch has no automatic resume. After interruption, re-read the artifacts and current Team status, but continue only through a new explicit Launch invocation after the owning Team lifecycle has reached a supported terminal/cleanup boundary. Never infer a human approval or replay an `in_progress` task.
+- Foggy efforts are the navigator's jurisdiction: when the fog gate routes to `/oh-my-copilot:ask-navigator`, the run never started — no artifacts, no partial state. The navigator's map is the only carrier across sessions; launch resumes only from the mission brief it hands back.
 - Launch adds no approval receipt, revision counter, replay log, cancellation path, rollback mechanism, or cleanup lifecycle of its own.
 
 Any durability claim in this skill is a claim about the files on disk, not about a hidden runtime.
@@ -51,6 +52,8 @@ A run reaches this phase only through a clean yard gate. Before reading a suppli
 Localize prose and human-facing labels/localizable scalar values only. Paths, slash commands, flags, code fences, placeholders, frontmatter keys and machine-semantic values, YAML/JSON keys, lifecycle tokens (`plan`, `execute`, `review`, `verify`), status enums (`pending`, `in_progress`, `completed`, `failed`, `ready-for-agent`), IDs, ticket `blockedBy`, public Team `blocked_by`, and all parser/control tokens remain byte-for-byte stable. Reference language companions are mutually exclusive: emit exactly one selected rendering, never bilingual duplicate headings or labels.
 
 - Brief self-check before anything else: does the brief name an objective, a scope boundary, and non-goals? If two or more are missing, say so and ask for one sharpening pass — running the pipeline on a soft brief converts ambiguity into confident-looking output.
+- **Fog gate**: after the sharpening pass, apply the navigator's fog test — **Q1**: can the destination be stated in one sentence (the spec, decision, or change this effort is finding its way to)? **Q2**: can the first three decisions be stated precisely right now, even though none can be answered yet? Either answer no → the run never starts: state that plainly, note that no artifacts were produced, recommend `/oh-my-copilot:ask-navigator` (the shipyard's navigator charts fog as a map of decision tickets and hands back a mission brief), and stop. Hand over the residual questions and any vocabulary already settled, so the navigator's W1 does not re-ask them.
+- **Map check**: before reading a supplied spec or entering Phase 1, look for an open `navigator:map` (tracker label, or under `.omg/wayfinder/`). One exists and this invocation supplies no new brief → recommend `/oh-my-copilot:ask-navigator` to work the next decision on that map, and stop. One exists and a new brief is supplied → ask one question — continue the open map, or start a new effort — before proceeding.
 - Spec path supplied → read it, jump to Phase 2.
 - Mission brief → Phase 1.
 - Single-point fix → hand off to execute, exit.
@@ -64,7 +67,9 @@ Paper trail, written the moment each item settles:
 - decisions passing the ADR test (hard to reverse, surprising without context, real tradeoff) → `docs/adr/NNNN-<slug>.md`
 - business rules and background discovered during convergence → `docs/business/` (one article per business question, opening paragraph states why it matters)
 
-Non-convergence here is normal work, not a failure: if the frontier will not empty, present the residual questions ranked — this is C2's input, not an error.
+Non-convergence here is normal work, not a failure: if the frontier will not empty, present the residual questions ranked — this is C2's input, not an error. If the residual questions themselves cannot be stated precisely (fog test Q2 fails), the destination itself is unsettled and that is beyond C2's authority: stop, note what already settled (vocabulary in `CONTEXT.md`, answered questions), recommend `/oh-my-copilot:ask-navigator`, and exit — the pipeline never invents a destination.
+
+**Loft detour.** A residual question that is precise but cannot settle in prose — it needs to be seen or clicked, not described (how the UI should look, whether a state model feels right) — is answered with an artifact, not more questions: call the Skill tool with "loft", let the captain react, and fold that reaction back into the interview. The lofted artifact is C2's input; the captain signs what they saw, not what they were told.
 
 ## Phase 2 — Spec synthesis (agent drafts → C2 approves)
 
@@ -82,7 +87,7 @@ Synthesize `.omg/specs/<feature-slug>/spec.md`:
 
 Draft all of it, then stop at **C2**: present the acceptance criteria and the test seam list for human approval. Seams are selected by repo evidence and the deep-module discipline (public interfaces, existing test seams, depth analysis); the human confirms or corrects the list — a seam the human has not approved gets no tests.
 
-Durability gate (agent-enforced, no approval needed): spec and tickets carry contracts, never coordinates — no file paths, no line numbers. Fragments encoding a decision better than prose (state machines, reducers, schemas) are the exception and state their origin.
+Durability gate (agent-enforced, no approval needed): spec and tickets carry contracts, never coordinates — no file paths, no line numbers. Fragments encoding a decision better than prose (state machines, reducers, schemas) are the exception and state their origin (usually a loft).
 
 ## Phase 3 — Ticket decomposition (agent drafts → C3 approves)
 
@@ -100,7 +105,7 @@ Integration-wiring rule: every vertical slice includes its own wiring and a smok
 
 The frontier is every ticket whose blockers are all complete.
 
-**Parallel (default, 2+ tickets).** Hand tickets to team: each ticket becomes a team task, `blockedBy` edges carry over — team's claim mechanics pick only frontier tasks. Spawn N workers. Each worker implements with the tdd discipline at the seams approved in C2; a ticket closes only after code-review passes on the diff, declared by the reviewer — the implementer never self-approves.
+**Parallel (default, 2+ tickets).** Hand tickets to team: each ticket becomes a team task, `blockedBy` edges carry over — team's claim mechanics pick only frontier tasks. Spawn N workers. Each worker implements with the tdd discipline at the seams approved in C2, applying `/oh-my-copilot:minimal-code-discipline` as the writing-time discipline (it stays opt-in); a ticket closes only after code-review passes on the diff, declared by the reviewer — the implementer never self-approves.
 
 **Serial (single ticket, or `--serial`).** Delegate one ticket at a time to an executor subagent; same review gate.
 
@@ -117,7 +122,7 @@ On a later explicit Launch invocation, first require the owning Team lifecycle t
 - all tickets terminal with evidence → run verify across the whole change
 - reconcile the paper trail: CONTEXT.md accurate, ADRs complete, spec updated where implementation taught it something
 - yard re-check: re-run the drydock `--check` audit; any new findings since entry are reported as **yard drift**, with a pointer to `/oh-my-copilot:drydock`
-- **sediment pass — answer: what did this ship teach the yard?** Sweep the source checklist first (three-strike failure root causes, C4 answers, review rejections, verify findings), then answer. Propose every lesson as `lesson → slot → intended change` against the slot table below, or decline it explicitly with a reason; a ship with nothing to teach must say so verbatim as "no new lessons". This requirement blocks non-answers, never empty answers — inventing lessons to have one is the same violation as skipping the question. The lesson list rides in the completion report next to the Open Assumptions, each line individually vetoable; approved lessons are written to their slots only after acceptance, and the report records each landing's file location.
+- **sediment pass — answer: what did this ship teach the yard?** Sweep the source checklist first (three-strike failure root causes, C4 answers, review rejections, verify findings, and any map resolutions or deferred-sediment lines from a source map this run followed), then answer. Propose every lesson as `lesson → slot → intended change` against the slot table below, or decline it explicitly with a reason; a ship with nothing to teach must say so verbatim as "no new lessons". This requirement blocks non-answers, never empty answers — inventing lessons to have one is the same violation as skipping the question. The lesson list rides in the completion report next to the Open Assumptions, each line individually vetoable; approved lessons are written to their slots only after acceptance, and the report records each landing's file location.
 
   | Lesson kind | Slot |
   |---|---|

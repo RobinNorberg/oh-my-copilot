@@ -1,9 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-01-28 | Updated: 2026-08-29 -->
+<!-- Generated: 2026-01-28 | Updated: 2026-09-05 -->
 
 # skills
 
-35 skill directories for workflow automation and specialized behaviors.
+37 skill directories for workflow automation and specialized behaviors.
 
 ## Purpose
 
@@ -30,6 +30,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | `plan/SKILL.md` | omc-plan | Strategic planning with interview workflow |
 | `ralplan/SKILL.md` | ralplan | Iterative planning (Planner+Architect+Critic) with RALPLAN-DR structured deliberation (`--deliberate` for high-risk) |
 | `deep-interview/SKILL.md` | deep-interview | Socratic deep interview with mathematical ambiguity gating (Ouroboros-inspired) |
+| `ask-navigator/SKILL.md` | ask-navigator | Shipyard navigator: chart foggy efforts into decision-ticket maps, one ticket per session, then hand a mission brief to launch |
 | `ralph-init/SKILL.md` | ralph-init | Initialize PRD for structured ralph |
 
 ### Exploration Skills
@@ -51,6 +52,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 |-----------|-------|---------|
 | `ai-slop-cleaner/SKILL.md` | ai-slop-cleaner | Regression-safe cleanup workflow for AI-generated code slop |
 | `drydock/SKILL.md` | drydock | Shipyard harness scaffold: 4-pillar shared environment across 5 surfaces, with --check drift audit |
+| `loft/SKILL.md` | loft | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions prose cannot settle |
 | `minimal-code-discipline/SKILL.md` | minimal-code-discipline | YAGNI-ladder writing-time discipline: existence-first, reuse before writing, shortest correct diff |
 | `skillify/SKILL.md` | skillify | Extract reusable skill from session |
 | `learner/SKILL.md` | learner | Deprecated compatibility alias/internal implementation history for skillify |

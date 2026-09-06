@@ -1107,14 +1107,12 @@ async function main() {
         hookEventName: 'PostToolUse',
         additionalContext: message
       };
-    } else {
-      response.suppressOutput = true;
     }
 
     console.log(JSON.stringify(response, null, 2));
   } catch (error) {
     // On error, always continue
-    console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+    console.log(JSON.stringify({ continue: true }));
   }
 }
 

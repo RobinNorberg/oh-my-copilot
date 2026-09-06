@@ -3172,11 +3172,22 @@ function runGitShowToplevel(cwd) {
   });
 }
 function probeGitTopLevel(cwd) {
-  try {
-    return classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
-  } catch (error) {
-    return classifyGitShowToplevelError(error);
+  const scope = worktreePathRenderScope.getStore();
+  const scopeKey = scope ? canonicalizeExistingPath(cwd) ?? (0, import_path14.resolve)(cwd) : null;
+  if (scope && scopeKey) {
+    const cached = scope.gitTopLevelProbes.get(scopeKey);
+    if (cached) return cached;
   }
+  let result;
+  try {
+    result = classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
+  } catch (error) {
+    result = classifyGitShowToplevelError(error);
+  }
+  if (scope && scopeKey) {
+    scope.gitTopLevelProbes.set(scopeKey, result);
+  }
+  return result;
 }
 function gitMetadataFileSignature(path5) {
   try {
@@ -3415,17 +3426,27 @@ function discoverCentralizedDirFromSettings() {
 }
 function getProjectIdentifier(worktreeRoot) {
   const root = worktreeRoot || getGitTopLevel() || process.cwd();
+  const scope = worktreePathRenderScope.getStore();
+  const scopeKey = scope ? canonicalizeExistingPath(root) ?? (0, import_path14.resolve)(root) : null;
+  if (scope && scopeKey) {
+    const cached = scope.projectIdentifiers.get(scopeKey);
+    if (cached !== void 0) return cached;
+  }
   const workspaceRoot = findWorkspaceRoot(root);
   if (workspaceRoot) {
     const cfg = readWorkspaceMarkerConfig(workspaceRoot);
     if (cfg.id && typeof cfg.id === "string" && cfg.id.trim()) {
       const safeId = cfg.id.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
       const hash3 = (0, import_crypto2.createHash)("sha256").update(safeId).digest("hex").slice(0, 16);
-      return `${safeId}-${hash3}`;
+      const identifier3 = `${safeId}-${hash3}`;
+      if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier3);
+      return identifier3;
     }
     const hash2 = (0, import_crypto2.createHash)("sha256").update(workspaceRoot).digest("hex").slice(0, 16);
     const dirName2 = (0, import_path14.basename)(workspaceRoot).replace(/[^a-zA-Z0-9_-]/g, "_");
-    return `${dirName2}-${hash2}`;
+    const identifier2 = `${dirName2}-${hash2}`;
+    if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier2);
+    return identifier2;
   }
   let remoteUrl = "";
   try {
@@ -3460,7 +3481,9 @@ function getProjectIdentifier(worktreeRoot) {
   const source = remoteUrl || primaryRoot;
   const hash = (0, import_crypto2.createHash)("sha256").update(source).digest("hex").slice(0, 16);
   const dirName = (0, import_path14.basename)(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, "_");
-  return `${dirName}-${hash}`;
+  const identifier = `${dirName}-${hash}`;
+  if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier);
+  return identifier;
 }
 function getOmcRoot(worktreeRoot) {
   const customDir = process.env.OMC_STATE_DIR;
@@ -3573,11 +3596,12 @@ function redactErrorStack(stack, providedRoot, trustedRoot) {
   const [header, ...frames] = lines;
   return [header, ...frames.map((frame) => redactCanonicalRoots(frame, providedRoot, trustedRoot))].join(newline);
 }
-var import_crypto2, import_child_process4, import_fs11, import_os4, import_path14, import_url3, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, superprojectCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, SENSITIVE_DIR_BASENAMES, gitShowToplevelProbeForTests, dualDirWarnings, ForeignWorkingDirectoryError;
+var import_crypto2, import_node_async_hooks, import_child_process4, import_fs11, import_os4, import_path14, import_url3, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, superprojectCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, gitShowToplevelProbeForTests, dualDirWarnings, ForeignWorkingDirectoryError;
 var init_worktree_paths = __esm({
   "src/lib/worktree-paths.ts"() {
     "use strict";
     import_crypto2 = require("crypto");
+    import_node_async_hooks = require("node:async_hooks");
     import_child_process4 = require("child_process");
     import_fs11 = require("fs");
     import_os4 = require("os");
@@ -3659,6 +3683,7 @@ var init_worktree_paths = __esm({
       "public",
       "library"
     ]);
+    worktreePathRenderScope = new import_node_async_hooks.AsyncLocalStorage();
     dualDirWarnings = /* @__PURE__ */ new Set();
     ForeignWorkingDirectoryError = class extends Error {
       callerLabel;

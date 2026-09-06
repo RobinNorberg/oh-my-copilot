@@ -58,7 +58,7 @@ async function main() {
 
     // Early exit if imports failed
     if (!learnFromToolOutput || !findProjectRoot) {
-      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      console.log(JSON.stringify({ continue: true }));
       return;
     }
 
@@ -77,16 +77,10 @@ async function main() {
     }
 
     // Return success
-    console.log(JSON.stringify({
-      continue: true,
-      suppressOutput: true
-    }));
+    console.log(JSON.stringify({ continue: true }));
   } catch (error) {
     // Always continue on error
-    console.log(JSON.stringify({
-      continue: true,
-      suppressOutput: true
-    }));
+    console.log(JSON.stringify({ continue: true }));
   }
 }
 

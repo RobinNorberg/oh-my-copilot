@@ -40,6 +40,7 @@ var import_os3 = require("os");
 
 // src/lib/worktree-paths.ts
 var import_crypto = require("crypto");
+var import_node_async_hooks = require("node:async_hooks");
 var import_child_process = require("child_process");
 var import_fs = require("fs");
 var import_os2 = require("os");
@@ -346,6 +347,7 @@ function resolveStateAnchorRoot(worktreeRoot) {
   if (worktreeRoot) return resolveSuperprojectRoot(worktreeRoot) || worktreeRoot;
   return getWorktreeRoot() || resolveNonGitStateAnchor();
 }
+var worktreePathRenderScope = new import_node_async_hooks.AsyncLocalStorage();
 var gitShowToplevelProbeForTests;
 function gitErrorStderr(error) {
   if (!error || typeof error !== "object") {
@@ -533,11 +535,22 @@ function runGitShowToplevel(cwd) {
   });
 }
 function probeGitTopLevel(cwd) {
-  try {
-    return classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
-  } catch (error) {
-    return classifyGitShowToplevelError(error);
+  const scope = worktreePathRenderScope.getStore();
+  const scopeKey = scope ? canonicalizeExistingPath(cwd) ?? (0, import_path2.resolve)(cwd) : null;
+  if (scope && scopeKey) {
+    const cached = scope.gitTopLevelProbes.get(scopeKey);
+    if (cached) return cached;
   }
+  let result;
+  try {
+    result = classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
+  } catch (error) {
+    result = classifyGitShowToplevelError(error);
+  }
+  if (scope && scopeKey) {
+    scope.gitTopLevelProbes.set(scopeKey, result);
+  }
+  return result;
 }
 function gitMetadataFileSignature(path) {
   try {
@@ -777,17 +790,27 @@ function discoverCentralizedDirFromSettings() {
 }
 function getProjectIdentifier(worktreeRoot) {
   const root = worktreeRoot || getGitTopLevel() || process.cwd();
+  const scope = worktreePathRenderScope.getStore();
+  const scopeKey = scope ? canonicalizeExistingPath(root) ?? (0, import_path2.resolve)(root) : null;
+  if (scope && scopeKey) {
+    const cached = scope.projectIdentifiers.get(scopeKey);
+    if (cached !== void 0) return cached;
+  }
   const workspaceRoot = findWorkspaceRoot(root);
   if (workspaceRoot) {
     const cfg = readWorkspaceMarkerConfig(workspaceRoot);
     if (cfg.id && typeof cfg.id === "string" && cfg.id.trim()) {
       const safeId = cfg.id.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
       const hash3 = (0, import_crypto.createHash)("sha256").update(safeId).digest("hex").slice(0, 16);
-      return `${safeId}-${hash3}`;
+      const identifier3 = `${safeId}-${hash3}`;
+      if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier3);
+      return identifier3;
     }
     const hash2 = (0, import_crypto.createHash)("sha256").update(workspaceRoot).digest("hex").slice(0, 16);
     const dirName2 = (0, import_path2.basename)(workspaceRoot).replace(/[^a-zA-Z0-9_-]/g, "_");
-    return `${dirName2}-${hash2}`;
+    const identifier2 = `${dirName2}-${hash2}`;
+    if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier2);
+    return identifier2;
   }
   let remoteUrl = "";
   try {
@@ -822,7 +845,9 @@ function getProjectIdentifier(worktreeRoot) {
   const source = remoteUrl || primaryRoot;
   const hash = (0, import_crypto.createHash)("sha256").update(source).digest("hex").slice(0, 16);
   const dirName = (0, import_path2.basename)(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, "_");
-  return `${dirName}-${hash}`;
+  const identifier = `${dirName}-${hash}`;
+  if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier);
+  return identifier;
 }
 function getOmcRoot(worktreeRoot) {
   const customDir = process.env.OMC_STATE_DIR;
