@@ -92,13 +92,23 @@ export declare class LspClient {
     private requestId;
     private pendingRequests;
     private buffer;
+    private notificationTail;
+    private notificationGeneration;
+    private notificationWaiterRejectors;
     private openDocuments;
+    private persistentDocuments;
+    private documentOpenPromises;
+    private documentOperationTails;
+    private documentQueueCancellation;
     private diagnostics;
     private diagnosticWaiters;
     private workspaceRoot;
     private serverConfig;
     private devContainerContext;
     private initialized;
+    private disconnected;
+    private connectionGeneration;
+    private terminalError;
     private _serverCapabilities;
     private _supportsPullDiagnostics;
     constructor(workspaceRoot: string, serverConfig: LspServerConfig, devContainerContext?: DevContainerContext | null);
@@ -120,6 +130,11 @@ export declare class LspClient {
      * Called on process exit to avoid dangling unresolved promises.
      */
     private rejectPendingRequests;
+    private handleTransportFailure;
+    private cancelDiagnosticWaiters;
+    private throwIfTerminal;
+    private isCurrentConnection;
+    private assertCurrentConnection;
     /**
      * Handle incoming data from the server
      */
@@ -142,6 +157,11 @@ export declare class LspClient {
      * Send a notification to the server (no response expected)
      */
     private notify;
+    private notifyWithBackpressure;
+    private enqueueOutboundWrite;
+    private writeMessage;
+    private writeWithBackpressure;
+    private cancelPendingNotificationWrites;
     /**
      * Initialize the LSP connection
      */
@@ -150,10 +170,20 @@ export declare class LspClient {
      * Open a document for editing
      */
     openDocument(filePath: string): Promise<void>;
+    private ensureDocumentOpen;
+    private performDocumentOpen;
     /**
      * Close a document
      */
-    closeDocument(filePath: string): void;
+    closeDocument(filePath: string): Promise<void>;
+    private closeTransientDocument;
+    /**
+     * Run an operation while a document is open, closing only documents opened
+     * by this operation. Calls for the same document are serialized so one
+     * operation cannot close the document while another is still using it.
+     */
+    withOpenDocument<T>(filePath: string, operation: () => Promise<T>): Promise<T>;
+    private queueDocumentOperation;
     /**
      * Get the language ID for a file
      */
@@ -190,6 +220,7 @@ export declare class LspClient {
      * Whether the server supports LSP 3.17 pull diagnostics (textDocument/diagnostic).
      */
     get supportsPullDiagnostics(): boolean;
+    get isUsable(): boolean;
     /**
      * Request diagnostics via the LSP 3.17 pull model (textDocument/diagnostic).
      * Only call when supportsPullDiagnostics is true.
@@ -231,6 +262,9 @@ export declare const IDLE_CHECK_INTERVAL_MS: number;
  */
 export declare class LspClientManager {
     private clients;
+    private pendingClients;
+    private clientGeneration;
+    private disconnecting;
     private lastUsed;
     private inFlightCount;
     private idleDeadlines;
@@ -252,6 +286,9 @@ export declare class LspClientManager {
      * The lastUsed timestamp is refreshed on both entry and exit.
      */
     runWithClientLease<T>(filePath: string, fn: (client: LspClient) => Promise<T>): Promise<T>;
+    private getOrCreateClient;
+    private acquireClient;
+    private acquireClientLease;
     private touchClient;
     private scheduleIdleDeadline;
     private clearIdleDeadline;
@@ -275,6 +312,7 @@ export declare class LspClientManager {
      * Maps are always cleared regardless of individual disconnect failures.
      */
     disconnectAll(): Promise<void>;
+    private performDisconnectAll;
     /** Expose in-flight count for testing */
     getInFlightCount(key: string): number;
     /** Expose client count for testing */

@@ -14,6 +14,10 @@ vi.mock('fs', async () => {
         readFileSync: vi.fn(),
     };
 });
+vi.mock('../lib/worktree-paths.js', () => ({
+    getWorktreeRoot: () => null,
+    getOmcRoot: () => `${process.cwd()}/.omc`,
+}));
 const mockedExecSync = vi.mocked(child_process.execSync);
 const mockedExecFileSync = vi.mocked(child_process.execFileSync);
 const mockedExistsSync = vi.mocked(fs.existsSync);

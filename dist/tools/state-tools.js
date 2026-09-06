@@ -9,7 +9,7 @@ import { createHash } from 'crypto';
 import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync, constants as fsConstants } from 'fs';
 import { homedir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'path';
-import { resolveStatePath, ensureOmcDir, resolveStateWorkingDirectory, isSensitiveStateLocation, getGitTopLevel, probeGitTopLevel, resolveSessionStatePath, ensureSessionStateDir, listSessionIds, validateSessionId, getOmcRoot, findGitMetadataDir, OmcPaths, } from '../lib/worktree-paths.js';
+import { resolveStatePath, ensureOmcDir, resolveStateWorkingDirectory, isSensitiveStateLocation, probeGitTopLevel, resolveSessionStatePath, ensureSessionStateDir, listSessionIds, validateSessionId, getOmcRoot, findGitMetadataDir, OmcPaths, } from '../lib/worktree-paths.js';
 import { resolveSessionId } from '../lib/session-id.js';
 import { validatePayload } from '../lib/payload-limits.js';
 import { canClearStateForSession, findCompletedSessionStateFiles, findCompletedSessionStateCandidates, findSessionOwnedStateCandidates, findSessionOwnedStateFiles, getStateSessionOwner, writeStateFileLocked, writeStateFileLockedIf, writeStateFileLockedCreateIf, clearStateFileLockedIf, emergencyMutateStateFileIf, recoverEmergencyStateFile, } from '../lib/mode-state-io.js';
@@ -152,7 +152,7 @@ function getConvergedOmcRoots(root) {
     const canonicalRoot = getOmcRoot(root);
     if (process.env.OMC_STATE_DIR)
         return [canonicalRoot];
-    if (!getGitTopLevel(root))
+    if (probeGitTopLevel(root).status !== 'ok')
         return [canonicalRoot];
     const roots = new Set([canonicalRoot]);
     roots.add(join(root, OmcPaths.ROOT));
@@ -371,7 +371,7 @@ function getLegacyStateFileCandidates(mode, root) {
         getStatePath(mode, root),
         join(getOmcRoot(root), `${normalizedName}.json`),
     ];
-    if (mode === 'autopilot' && getGitTopLevel(root))
+    if (mode === 'autopilot' && probeGitTopLevel(root).status === 'ok')
         candidates.push(join(homedir(), '.omg', 'state', 'autopilot-state.json'));
     return [...new Set(candidates)];
 }
@@ -418,7 +418,7 @@ function shouldCheckWorkingDirectoryLocalState(root) {
     // Non-git state uses a canonical user/central root. Do not probe or mutate
     // `{workingDirectory}/.omg` implicitly; legacy recovery requires an explicit
     // migration path so unrelated directories cannot be swept together.
-    if (!getGitTopLevel(root))
+    if (probeGitTopLevel(root).status !== 'ok')
         return false;
     return getWorkingDirectoryLocalOmcRoot(root) !== getOmcRoot(root);
 }

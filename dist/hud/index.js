@@ -301,6 +301,9 @@ async function main(watchMode = false, skipInit = false) {
         // Read OMC version and update check cache
         let omcVersion = null;
         let updateAvailable = null;
+        let omcUpdateSource = null;
+        const claudeCodeVersion = stdin.version ?? null;
+        let claudeCodeUpdateAvailable = null;
         try {
             omcVersion = getRuntimePackageVersion();
             if (omcVersion === "unknown")
@@ -322,6 +325,16 @@ async function main(watchMode = false, skipInit = false) {
                 omcVersion &&
                 compareVersions(omcVersion, cached.latestVersion) < 0) {
                 updateAvailable = cached.latestVersion;
+            }
+            if (cached?.source === "npm" || cached?.source === "marketplace") {
+                omcUpdateSource = cached.source;
+            }
+            // claudeCodeLatestVersion is absent on caches written before the
+            // Claude Code check existed; treat that as "no update known".
+            if (cached?.claudeCodeLatestVersion &&
+                claudeCodeVersion &&
+                compareVersions(claudeCodeVersion, cached.claudeCodeLatestVersion) < 0) {
+                claudeCodeUpdateAvailable = cached.claudeCodeLatestVersion;
             }
         }
         catch (error) {
@@ -386,6 +399,9 @@ async function main(watchMode = false, skipInit = false) {
             sessionTotalTokens: transcriptData.sessionTotalTokens ?? null,
             omcVersion,
             updateAvailable,
+            omcUpdateSource,
+            claudeCodeVersion,
+            claudeCodeUpdateAvailable,
             toolCallCount: transcriptData.toolCallCount,
             agentCallCount: transcriptData.agentCallCount,
             skillCallCount: transcriptData.skillCallCount,

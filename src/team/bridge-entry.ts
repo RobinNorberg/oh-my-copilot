@@ -16,7 +16,7 @@ import type { BridgeConfig } from './types.js';
 import { runBridge } from './mcp-team-bridge.js';
 import { deleteHeartbeat } from './heartbeat.js';
 import { unregisterMcpWorker } from './team-registration.js';
-import { getWorktreeRoot } from '../lib/worktree-paths.js';
+import { probeGitTopLevel } from '../lib/worktree-paths.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { sanitizeName } from './tmux-session.js';
 
@@ -99,8 +99,8 @@ export function validateBridgeWorkingDirectory(workingDirectory: string): void {
   }
 
   // Must be inside a git worktree
-  const root = getWorktreeRoot(workingDirectory);
-  if (!root) {
+  const probe = probeGitTopLevel(workingDirectory);
+  if (probe.status !== 'ok') {
     throw new Error(`workingDirectory is not inside a git worktree: ${workingDirectory}`);
   }
 }

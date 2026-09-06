@@ -66,12 +66,13 @@ export declare function resolveNonGitStateAnchor(startDir?: string): string;
  * Get the literal git toplevel for a directory: `git rev-parse --show-toplevel`
  * with NO submodule→superproject climb. Returns null if not in a git repository.
  *
- * SECURITY: this is the correct primitive for path-restriction / containment
- * checks. A tool operating inside a submodule must be confined to that submodule
- * working tree, not the parent superproject. Use this — NOT getWorktreeRoot() —
- * for boundary validation (getWorktreeRoot climbs to the superproject for state
- * anchoring and would widen the boundary across submodule borders; see #3349
- * and the Codex review on PR #3350).
+ * SECURITY: this cached helper is not the primitive for path-restriction /
+ * containment checks. Those callers must use probeGitTopLevel() so a fresh,
+ * fail-closed probe guards each boundary decision. A tool operating inside a
+ * submodule must be confined to that submodule working tree, not the parent
+ * superproject. getWorktreeRoot() intentionally climbs for state anchoring;
+ * using it for containment would widen the boundary across submodule borders
+ * (see #3349 and the Codex review on PR #3350).
  */
 type GitTopLevelProbe = {
     status: 'ok';
@@ -92,6 +93,10 @@ export type GitShowToplevelProbe = (cwd: string) => string | Buffer;
 export declare function setGitShowToplevelProbeForTests(probe?: GitShowToplevelProbe): void;
 export declare function findGitMetadataDir(start: string): string | null;
 export declare function probeGitTopLevel(cwd: string): GitTopLevelProbe;
+/**
+ * Resolve a literal Git top-level with positive, metadata-validated caching.
+ * Security-sensitive containment decisions must call probeGitTopLevel() instead.
+ */
 export declare function getGitTopLevel(cwd?: string): string | null;
 /**
  * Get the state-anchor "worktree root" for a directory.
@@ -104,7 +109,7 @@ export declare function getGitTopLevel(cwd?: string): string | null;
  *
  * SECURITY: do NOT use this for path-restriction / containment checks — the
  * submodule climb widens the boundary across submodule borders. Use
- * getGitTopLevel() for confinement.
+ * probeGitTopLevel() for confinement.
  */
 export declare function getWorktreeRoot(cwd?: string): string | null;
 /**

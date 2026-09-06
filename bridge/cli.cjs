@@ -31291,6 +31291,11 @@ var init_encode_project_path = __esm({
 });
 
 // src/lib/worktree-paths.ts
+function gitProbeEnvironmentSignature() {
+  const fixedEntries = GIT_PROBE_ENVIRONMENT_KEYS.map((key) => JSON.stringify([key, process.env[key] !== void 0, process.env[key] ?? ""]));
+  const dynamicEntries = Object.keys(process.env).filter((key) => /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/.test(key)).sort().map((key) => JSON.stringify([key, process.env[key] !== void 0, process.env[key] ?? ""]));
+  return [...fixedEntries, ...dynamicEntries].join("\0");
+}
 function findWorkspaceRoot(startDir) {
   if (process.env.OMC_DISABLE_MULTIREPO === "1") return null;
   const effectiveStart = startDir || process.cwd();
@@ -31355,10 +31360,13 @@ function isDefinitiveNonGitError(error2) {
 function resolveSuperprojectRoot(cwd2) {
   const cacheKey = (0, import_path20.resolve)(cwd2);
   if (superprojectCacheMap.has(cacheKey)) {
-    const cached2 = superprojectCacheMap.get(cacheKey) ?? null;
+    const cached2 = superprojectCacheMap.get(cacheKey);
+    if (isStateRootCacheEntryValid(cacheKey, cached2)) {
+      superprojectCacheMap.delete(cacheKey);
+      superprojectCacheMap.set(cacheKey, cached2);
+      return cached2.root;
+    }
     superprojectCacheMap.delete(cacheKey);
-    superprojectCacheMap.set(cacheKey, cached2);
-    return cached2;
   }
   let anchor = null;
   let probeCwd = cacheKey;
@@ -31389,7 +31397,7 @@ function resolveSuperprojectRoot(cwd2) {
       const oldest = superprojectCacheMap.keys().next().value;
       if (oldest !== void 0) superprojectCacheMap.delete(oldest);
     }
-    superprojectCacheMap.set(cacheKey, anchor);
+    superprojectCacheMap.set(cacheKey, createStateRootCacheEntry(cacheKey, anchor));
   }
   return anchor;
 }
@@ -31676,9 +31684,192 @@ function probeGitTopLevel(cwd2) {
     return classifyGitShowToplevelError(error2);
   }
 }
+function gitMetadataFileSignature(path27) {
+  try {
+    const metadata = (0, import_fs15.statSync)(path27);
+    return [
+      path27,
+      metadata.dev,
+      metadata.ino,
+      metadata.mode,
+      metadata.size,
+      metadata.mtimeMs,
+      metadata.ctimeMs
+    ].join(":");
+  } catch {
+    return `${path27}:missing`;
+  }
+}
+function readGitMarker(path27) {
+  let descriptor;
+  try {
+    if (!(0, import_fs15.lstatSync)(path27).isFile()) return null;
+    descriptor = (0, import_fs15.openSync)(path27, "r");
+    const buffer = Buffer.alloc(MAX_GIT_MARKER_BYTES);
+    const bytesRead = (0, import_fs15.readSync)(descriptor, buffer, 0, buffer.length, 0);
+    return buffer.toString("utf8", 0, bytesRead);
+  } catch {
+    return null;
+  } finally {
+    if (descriptor !== void 0) (0, import_fs15.closeSync)(descriptor);
+  }
+}
+function commonGitDirectorySignature(linkedGitDir) {
+  const commondirPath = (0, import_path20.join)(linkedGitDir, "commondir");
+  try {
+    if (!(0, import_fs15.existsSync)(commondirPath)) return `${commondirPath}:absent`;
+    const marker = readGitMarker(commondirPath);
+    if (marker === null) return `${commondirPath}:unreadable`;
+    const commonDir = canonicalizeExistingPath((0, import_path20.resolve)(linkedGitDir, marker.trim()));
+    if (!commonDir || !(0, import_fs15.statSync)(commonDir).isDirectory()) {
+      return `${commondirPath}:invalid:${marker}`;
+    }
+    return [
+      commonDir,
+      gitMetadataFileSignature(commonDir),
+      gitMetadataFileSignature((0, import_path20.join)(commonDir, "HEAD")),
+      gitMetadataFileSignature((0, import_path20.join)(commonDir, "index")),
+      gitMetadataFileSignature((0, import_path20.join)(commonDir, "config"))
+    ].join(":");
+  } catch {
+    return `${commondirPath}:invalid`;
+  }
+}
+function getGitMetadataSnapshot(cwd2) {
+  const metadataDir = findGitMetadataDir(canonicalizeExistingPath(cwd2) ?? (0, import_path20.resolve)(cwd2));
+  if (!metadataDir) return null;
+  const canonicalDirectory = canonicalizeExistingPath(metadataDir);
+  if (!canonicalDirectory) return null;
+  const gitPath2 = (0, import_path20.join)(canonicalDirectory, ".git");
+  try {
+    const metadata = (0, import_fs15.statSync)(gitPath2);
+    const marker = metadata.isFile() ? readGitMarker(gitPath2) : "";
+    if (marker === null) return null;
+    let metadataPath = gitPath2;
+    let linkedGitDirSignature = "";
+    if (metadata.isFile()) {
+      const gitDirMatch = /^\s*gitdir:\s*(.+?)\s*$/im.exec(marker);
+      if (!gitDirMatch?.[1]) return null;
+      const linkedGitDir = (0, import_path20.resolve)(canonicalDirectory, gitDirMatch[1].trim());
+      const linkedGitDirReal = canonicalizeExistingPath(linkedGitDir);
+      if (!linkedGitDirReal || !(0, import_fs15.statSync)(linkedGitDirReal).isDirectory()) return null;
+      metadataPath = linkedGitDirReal;
+      linkedGitDirSignature = [
+        linkedGitDirReal,
+        gitMetadataFileSignature(linkedGitDirReal),
+        gitMetadataFileSignature((0, import_path20.join)(linkedGitDirReal, "HEAD")),
+        gitMetadataFileSignature((0, import_path20.join)(linkedGitDirReal, "index")),
+        gitMetadataFileSignature((0, import_path20.join)(linkedGitDirReal, "config")),
+        gitMetadataFileSignature((0, import_path20.join)(linkedGitDirReal, "config.worktree")),
+        gitMetadataFileSignature((0, import_path20.join)(linkedGitDirReal, "commondir")),
+        gitMetadataFileSignature((0, import_path20.join)(linkedGitDirReal, "gitdir")),
+        commonGitDirectorySignature(linkedGitDirReal)
+      ].join(":");
+    }
+    const gitPathReal = canonicalizeExistingPath(gitPath2) ?? (0, import_path20.resolve)(gitPath2);
+    const metadataPathReal = canonicalizeExistingPath(metadataPath) ?? (0, import_path20.resolve)(metadataPath);
+    const signature = [
+      gitPathReal,
+      gitMetadataFileSignature(gitPath2),
+      marker,
+      linkedGitDirSignature,
+      metadataPathReal,
+      gitMetadataFileSignature((0, import_path20.join)(metadataPathReal, "HEAD")),
+      gitMetadataFileSignature((0, import_path20.join)(metadataPathReal, "index")),
+      gitMetadataFileSignature((0, import_path20.join)(metadataPathReal, "config")),
+      gitMetadataFileSignature((0, import_path20.join)(metadataPathReal, "config.worktree"))
+    ].join(":");
+    return { directory: canonicalDirectory, signature };
+  } catch {
+    return null;
+  }
+}
+function getGitTopologySignature(cwd2) {
+  const start = canonicalizeExistingPath(cwd2) ?? (0, import_path20.resolve)(cwd2);
+  const signatures = [];
+  let cursor = start;
+  for (; ; ) {
+    const gitPath2 = (0, import_path20.join)(cursor, ".git");
+    if ((0, import_fs15.existsSync)(gitPath2)) {
+      let metadataPath = gitPath2;
+      let marker = "";
+      try {
+        if ((0, import_fs15.statSync)(gitPath2).isFile()) {
+          marker = readGitMarker(gitPath2) ?? "<unreadable>";
+          const gitDirMatch = /^\s*gitdir:\s*(.+?)\s*$/im.exec(marker);
+          if (gitDirMatch?.[1]) metadataPath = (0, import_path20.resolve)(cursor, gitDirMatch[1].trim());
+        }
+      } catch {
+      }
+      const metadataReal = canonicalizeExistingPath(metadataPath) ?? (0, import_path20.resolve)(metadataPath);
+      signatures.push([
+        cursor,
+        gitMetadataFileSignature(gitPath2),
+        marker,
+        gitMetadataFileSignature((0, import_path20.join)(metadataReal, "HEAD")),
+        gitMetadataFileSignature((0, import_path20.join)(metadataReal, "index")),
+        gitMetadataFileSignature((0, import_path20.join)(metadataReal, "config")),
+        gitMetadataFileSignature((0, import_path20.join)(metadataReal, "config.worktree")),
+        commonGitDirectorySignature(metadataReal)
+      ].join(":"));
+    }
+    const parent = (0, import_path20.dirname)(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  return signatures.join("|");
+}
+function createStateRootCacheEntry(cwd2, root2) {
+  return {
+    root: root2,
+    metadataSignature: getGitMetadataSnapshot(cwd2)?.signature ?? null,
+    topologySignature: getGitTopologySignature(cwd2),
+    environmentSignature: gitProbeEnvironmentSignature()
+  };
+}
+function isStateRootCacheEntryValid(cwd2, entry2) {
+  return entry2.metadataSignature === (getGitMetadataSnapshot(cwd2)?.signature ?? null) && entry2.topologySignature === getGitTopologySignature(cwd2) && entry2.environmentSignature === gitProbeEnvironmentSignature();
+}
+function isGitTopLevelCacheEntryValid(cwd2, cached2) {
+  const current = getGitMetadataSnapshot(cwd2);
+  if (!current || current.signature !== cached2.metadataSignature) return false;
+  if (cached2.topologySignature !== getGitTopologySignature(cwd2)) return false;
+  if (cached2.environmentSignature !== gitProbeEnvironmentSignature()) return false;
+  if (!sameCanonicalPath(current.directory, cached2.metadataDir)) return false;
+  if (!sameCanonicalPath(current.directory, cached2.root)) return false;
+  return isCredibleGitWorktreeRoot(cached2.root);
+}
+function cacheGitTopLevel(key, root2, cwd2) {
+  const metadata = getGitMetadataSnapshot(cwd2);
+  if (!metadata || !sameCanonicalPath(metadata.directory, root2)) return;
+  if (gitTopLevelCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+    const oldest = gitTopLevelCacheMap.keys().next().value;
+    if (oldest !== void 0) gitTopLevelCacheMap.delete(oldest);
+  }
+  gitTopLevelCacheMap.set(key, {
+    root: root2,
+    metadataDir: metadata.directory,
+    metadataSignature: metadata.signature,
+    topologySignature: getGitTopologySignature(cwd2),
+    environmentSignature: gitProbeEnvironmentSignature()
+  });
+}
 function getGitTopLevel(cwd2) {
-  const probe = probeGitTopLevel(cwd2 || process.cwd());
-  return probe.status === "ok" ? probe.root : null;
+  const effectiveCwd = cwd2 || process.cwd();
+  const key = canonicalizeExistingPath(effectiveCwd) ?? (0, import_path20.resolve)(effectiveCwd);
+  const cached2 = gitTopLevelCacheMap.get(key);
+  if (cached2) {
+    if (isGitTopLevelCacheEntryValid(effectiveCwd, cached2)) {
+      gitTopLevelCacheMap.delete(key);
+      gitTopLevelCacheMap.set(key, cached2);
+      return cached2.root;
+    }
+    gitTopLevelCacheMap.delete(key);
+  }
+  const probe = probeGitTopLevel(effectiveCwd);
+  if (probe.status !== "ok") return null;
+  cacheGitTopLevel(key, probe.root, effectiveCwd);
+  return probe.root;
 }
 function formatGitProbeFailedMessage(workingDirectory) {
   return `workingDirectory '${workingDirectory}' git probe failed and was not used. Cross-repository access is not permitted; pass a path inside the current repository or start the session there.`;
@@ -31686,10 +31877,13 @@ function formatGitProbeFailedMessage(workingDirectory) {
 function getWorktreeRoot(cwd2) {
   const effectiveCwd = cwd2 || process.cwd();
   if (worktreeCacheMap.has(effectiveCwd)) {
-    const root3 = worktreeCacheMap.get(effectiveCwd);
+    const cached2 = worktreeCacheMap.get(effectiveCwd);
+    if (isStateRootCacheEntryValid(effectiveCwd, cached2) && cached2.root !== null && isCredibleGitWorktreeRoot(cached2.root)) {
+      worktreeCacheMap.delete(effectiveCwd);
+      worktreeCacheMap.set(effectiveCwd, cached2);
+      return cached2.root;
+    }
     worktreeCacheMap.delete(effectiveCwd);
-    worktreeCacheMap.set(effectiveCwd, root3);
-    return root3 || null;
   }
   const root2 = resolveSuperprojectRoot(effectiveCwd) || getGitTopLevel(effectiveCwd);
   if (!root2) {
@@ -31701,7 +31895,7 @@ function getWorktreeRoot(cwd2) {
       worktreeCacheMap.delete(oldest);
     }
   }
-  worktreeCacheMap.set(effectiveCwd, root2);
+  worktreeCacheMap.set(effectiveCwd, createStateRootCacheEntry(effectiveCwd, root2));
   return root2;
 }
 function validatePath(inputPath) {
@@ -31711,6 +31905,30 @@ function validatePath(inputPath) {
   if (inputPath.startsWith("~") || (0, import_path20.isAbsolute)(inputPath)) {
     throw new Error(`Invalid path: absolute paths not allowed (${inputPath})`);
   }
+}
+function discoverCentralizedDirFromSettings() {
+  const candidates = [];
+  try {
+    candidates.push((0, import_path20.join)(getCopilotConfigDir(), "settings.json"));
+  } catch {
+  }
+  try {
+    const cw = process.cwd();
+    candidates.push((0, import_path20.join)(cw, ".claude", "settings.json"));
+    candidates.push((0, import_path20.join)(cw, ".claude", "settings.local.json"));
+  } catch {
+  }
+  for (const p of candidates) {
+    try {
+      const raw = (0, import_fs15.readFileSync)(p, "utf-8");
+      const parsed = JSON.parse(raw);
+      const env2 = parsed?.env;
+      const val = env2?.OMC_STATE_DIR;
+      if (typeof val === "string" && val.trim()) return val.trim();
+    } catch {
+    }
+  }
+  return null;
 }
 function getProjectIdentifier(worktreeRoot) {
   const root2 = worktreeRoot || getGitTopLevel() || process.cwd();
@@ -31732,7 +31950,8 @@ function getProjectIdentifier(worktreeRoot) {
       cwd: root2,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true
+      windowsHide: true,
+      timeout: 5e3
     }).trim();
   } catch {
   }
@@ -31780,11 +31999,50 @@ function getOmcRoot(worktreeRoot) {
   }
   const workspaceAnchor = findWorkspaceRoot(worktreeRoot);
   if (workspaceAnchor && !isSensitiveStateLocation(workspaceAnchor)) {
+    try {
+      const legacyPathW = (0, import_path20.join)(workspaceAnchor, OmcPaths.ROOT);
+      const discoveredCentral = discoverCentralizedDirFromSettings();
+      if (discoveredCentral) {
+        const wsCfg = readWorkspaceMarkerConfig(workspaceAnchor);
+        let projectIdW;
+        if (wsCfg.id && typeof wsCfg.id === "string" && wsCfg.id.trim()) {
+          const safeId = wsCfg.id.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
+          projectIdW = `${safeId}-${(0, import_crypto5.createHash)("sha256").update(safeId).digest("hex").slice(0, 16)}`;
+        } else {
+          projectIdW = `${(0, import_path20.basename)(workspaceAnchor).replace(/[^a-zA-Z0-9_-]/g, "_")}-${(0, import_crypto5.createHash)("sha256").update(workspaceAnchor).digest("hex").slice(0, 16)}`;
+        }
+        const centralizedPathW = (0, import_path20.join)(discoveredCentral, projectIdW);
+        const warningKeyW = `${legacyPathW}:${centralizedPathW}`;
+        if (!dualDirWarnings.has(warningKeyW) && (0, import_fs15.existsSync)(legacyPathW) && (0, import_fs15.existsSync)(centralizedPathW)) {
+          dualDirWarnings.add(warningKeyW);
+          console.warn(
+            `[omc] Both legacy state dir (${legacyPathW}) and centralized state dir (${centralizedPathW}) exist. Using legacy dir (OMC_STATE_DIR not set in this process). Set OMC_STATE_DIR via settings.json env to use centralized dir consistently.`
+          );
+        }
+      }
+    } catch {
+    }
     return (0, import_path20.join)(workspaceAnchor, OmcPaths.ROOT);
   }
   const root2 = resolveStateAnchorRoot(worktreeRoot);
   if (!getGitTopLevel(root2)) {
     return (0, import_path20.join)(resolveNonGitStateAnchor(root2), OmcPaths.ROOT);
+  }
+  try {
+    const legacyPath = (0, import_path20.join)(root2, OmcPaths.ROOT);
+    const discoveredCentral = discoverCentralizedDirFromSettings();
+    if (discoveredCentral) {
+      const projectId = getProjectIdentifier(root2);
+      const centralizedPath = (0, import_path20.join)(discoveredCentral, projectId);
+      const warningKey = `${legacyPath}:${centralizedPath}`;
+      if (!dualDirWarnings.has(warningKey) && (0, import_fs15.existsSync)(legacyPath) && (0, import_fs15.existsSync)(centralizedPath)) {
+        dualDirWarnings.add(warningKey);
+        console.warn(
+          `[omc] Both legacy state dir (${legacyPath}) and centralized state dir (${centralizedPath}) exist. Using legacy dir (OMC_STATE_DIR not set in this process). Set OMC_STATE_DIR via settings.json env to use centralized dir consistently.`
+        );
+      }
+    }
+  } catch {
   }
   return (0, import_path20.join)(root2, OmcPaths.ROOT);
 }
@@ -31965,7 +32223,8 @@ function resolveTranscriptPath(transcriptPath, cwd2) {
       cwd: effectiveCwd,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true
+      windowsHide: true,
+      timeout: 5e3
     }).trim();
     const absoluteCommonDir = (0, import_path20.resolve)(effectiveCwd, gitCommonDir);
     let mainRepoRoot = (0, import_path20.dirname)(absoluteCommonDir);
@@ -31980,7 +32239,8 @@ function resolveTranscriptPath(transcriptPath, cwd2) {
       cwd: effectiveCwd,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true
+      windowsHide: true,
+      timeout: 5e3
     }).trim();
     if (mainRepoRoot !== worktreeTop) {
       const sessionFile = (0, import_path20.basename)(transcriptPath);
@@ -32069,7 +32329,11 @@ function foreignRepositoryResolution(providedRoot, trustedRoot, callerLabel) {
   return resolution;
 }
 function validateWorkingDirectory(workingDirectory) {
-  const trustedRoot = getGitTopLevel(process.cwd()) || process.cwd();
+  const trustedProbe = probeGitTopLevel(process.cwd());
+  if (trustedProbe.status === "probe_failed" || trustedProbe.status === "git_missing") {
+    throw new Error(formatGitProbeFailedMessage(process.cwd()));
+  }
+  const trustedRoot = trustedProbe.status === "ok" ? trustedProbe.root : process.cwd();
   if (!workingDirectory) {
     return trustedRoot;
   }
@@ -32080,8 +32344,9 @@ function validateWorkingDirectory(workingDirectory) {
   } catch {
     trustedRootReal = trustedRoot;
   }
-  const providedRoot = getGitTopLevel(resolved);
-  if (providedRoot) {
+  const providedProbe = probeGitTopLevel(resolved);
+  if (providedProbe.status === "ok") {
+    const providedRoot = providedProbe.root;
     let providedRootReal;
     try {
       providedRootReal = (0, import_fs15.realpathSync)(providedRoot);
@@ -32098,6 +32363,9 @@ function validateWorkingDirectory(workingDirectory) {
     }
     return providedRoot;
   }
+  if (providedProbe.status === "probe_failed" || providedProbe.status === "git_missing") {
+    throw new Error(formatGitProbeFailedMessage(workingDirectory));
+  }
   let resolvedReal;
   try {
     resolvedReal = (0, import_fs15.realpathSync)(resolved);
@@ -32111,7 +32379,7 @@ function validateWorkingDirectory(workingDirectory) {
   if (trustedRootReal === resolvedReal) {
     return trustedRoot;
   }
-  if (getGitTopLevel(process.cwd())) {
+  if (trustedProbe.status === "ok") {
     return trustedRoot;
   }
   return resolvedReal;
@@ -32236,7 +32504,7 @@ function validateWorkingDirectoryOrLinkedWorktree(workingDirectory) {
   }
   return resolution.root;
 }
-var import_crypto5, import_child_process6, import_fs15, import_os4, import_path20, import_url6, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, superprojectCacheMap, canonicalWorkingDirectoryRoots, workspaceCacheMap, SENSITIVE_DIR_BASENAMES, gitShowToplevelProbeForTests, dualDirWarnings, SESSION_ID_REGEX, processSessionId, ForeignWorkingDirectoryError;
+var import_crypto5, import_child_process6, import_fs15, import_os4, import_path20, import_url6, WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, superprojectCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, SENSITIVE_DIR_BASENAMES, gitShowToplevelProbeForTests, dualDirWarnings, SESSION_ID_REGEX, processSessionId, ForeignWorkingDirectoryError;
 var init_worktree_paths = __esm({
   "src/lib/worktree-paths.ts"() {
     "use strict";
@@ -32268,8 +32536,27 @@ var init_worktree_paths = __esm({
     };
     MAX_WORKTREE_CACHE_SIZE = 8;
     worktreeCacheMap = /* @__PURE__ */ new Map();
+    gitTopLevelCacheMap = /* @__PURE__ */ new Map();
     superprojectCacheMap = /* @__PURE__ */ new Map();
     canonicalWorkingDirectoryRoots = /* @__PURE__ */ new WeakMap();
+    GIT_PROBE_ENVIRONMENT_KEYS = [
+      "PATH",
+      "GIT_DIR",
+      "GIT_WORK_TREE",
+      "GIT_COMMON_DIR",
+      "GIT_EXEC_PATH",
+      "GIT_CEILING_DIRECTORIES",
+      "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+      "GIT_CONFIG_SYSTEM",
+      "GIT_CONFIG_GLOBAL",
+      "GIT_CONFIG_NOSYSTEM",
+      "GIT_CONFIG_COUNT",
+      "GIT_CONFIG_PARAMETERS",
+      "GIT_INDEX_FILE",
+      "HOME",
+      "XDG_CONFIG_HOME"
+    ];
+    MAX_GIT_MARKER_BYTES = 4096;
     workspaceCacheMap = /* @__PURE__ */ new Map();
     SENSITIVE_DIR_BASENAMES = /* @__PURE__ */ new Set([
       ".ssh",
@@ -47729,6 +48016,7 @@ var init_types7 = __esm({
       main: [
         "omcLabel",
         "model",
+        "claudeLabel",
         "enterpriseCost",
         "rateLimits",
         "customBuckets",
@@ -47750,7 +48038,7 @@ var init_types7 = __esm({
         "recentTools",
         "sessionSummary"
       ],
-      detail: ["missionBoard", "agents", "contextWarning", "payloadWarning", "todos"]
+      detail: ["missionBoard", "agents", "contextWarning", "payloadWarning", "updateHint", "todos"]
     };
     DEFAULT_HUD_USAGE_POLL_INTERVAL_MS = 90 * 1e3;
     DEFAULT_HUD_CONFIG = {
@@ -50463,10 +50751,11 @@ function isSafeRepoPath(cwd2, inputPath, options = {}) {
   if (!inputPath) {
     return false;
   }
-  const worktreeRoot = getGitTopLevel(cwd2);
-  if (!worktreeRoot) {
+  const worktreeProbe = probeGitTopLevel(cwd2);
+  if (worktreeProbe.status !== "ok") {
     return false;
   }
+  const worktreeRoot = worktreeProbe.root;
   const resolvedPath = path16.resolve(cwd2, inputPath);
   let canonicalPath2 = resolvedPath;
   const exists = fs10.existsSync(resolvedPath);
@@ -64783,19 +65072,38 @@ function windowsWrapperRelativePath(cwd2, wrapperPath) {
   }
   return relativePath;
 }
-function buildWorkerLaunchWrapper(attempt) {
-  const runtimeCli = quoteWindowsCmdArgument(attempt.runtimeCliPath);
-  const nodeExecutable = quoteWindowsCmdArgument(process.execPath);
+function buildWorkerLaunchWrapper(attempt, platform = process.platform) {
+  if (platform === "win32") {
+    const runtimeCli2 = quoteWindowsCmdArgument(attempt.runtimeCliPath);
+    const nodeExecutable2 = quoteWindowsCmdArgument(process.execPath);
+    return [
+      "@echo off",
+      "setlocal DisableDelayedExpansion",
+      'set "OMC_WORKER_LAUNCH_SPEC_FILE=%~dp0bootstrap.json"',
+      `${nodeExecutable2} ${runtimeCli2} --worker-launch`,
+      'set "_OMC_WORKER_LAUNCH_EXIT=%ERRORLEVEL%"',
+      'del /f /q "%~f0" >nul 2>&1',
+      "endlocal & exit /b %_OMC_WORKER_LAUNCH_EXIT%",
+      ""
+    ].join("\r\n");
+  }
+  const runtimeCli = quotePosixShellArgument(attempt.runtimeCliPath);
+  const nodeExecutable = quotePosixShellArgument(process.execPath);
   return [
-    "@echo off",
-    "setlocal DisableDelayedExpansion",
-    'set "OMC_WORKER_LAUNCH_SPEC_FILE=%~dp0bootstrap.json"',
+    "#!/bin/sh",
+    "set -u",
+    'omc_wrapper_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)',
+    'export OMC_WORKER_LAUNCH_SPEC_FILE="$omc_wrapper_dir/bootstrap.json"',
     `${nodeExecutable} ${runtimeCli} --worker-launch`,
-    'set "_OMC_WORKER_LAUNCH_EXIT=%ERRORLEVEL%"',
-    'del /f /q "%~f0" >nul 2>&1',
-    "endlocal & exit /b %_OMC_WORKER_LAUNCH_EXIT%",
+    "_omc_exit=$?",
+    'rm -f -- "$0"',
+    "exit $_omc_exit",
     ""
-  ].join("\\r\\n");
+  ].join("\n");
+}
+function quotePosixShellArgument(value) {
+  if (/[\r\n\0]/.test(value)) throw new Error("worker_launch_provider_argv_invalid");
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 async function materializeWorkerLaunchTransport(input) {
   const { attempt } = input;
@@ -64811,7 +65119,7 @@ async function materializeWorkerLaunchTransport(input) {
     authority_digest: spec.authority_digest
   };
   const wrapperRelativePath = windowsDelivery ? windowsWrapperRelativePath(input.cwd, attempt.wrapperPath) : "";
-  const wrapper = buildWorkerLaunchWrapper(attempt);
+  const wrapper = buildWorkerLaunchWrapper(attempt, windowsDelivery ? "win32" : process.platform);
   let ownerCreated = false;
   let descriptorCreated = false;
   let wrapperCreated = false;
@@ -92568,6 +92876,30 @@ var init_context_warning = __esm({
   }
 });
 
+// src/hud/elements/update-hint.ts
+function renderUpdateHints(input) {
+  const lines = [];
+  if (input.omcUpdateAvailable) {
+    const command = input.omcUpdateSource === "marketplace" ? "claude plugin marketplace update omc && claude plugin update oh-my-copilot@omc" : "npm i -g oh-my-copilot@latest";
+    lines.push(`${YELLOW10}${BOLD3}[!] omc ${input.omcUpdateAvailable} - paste: ! ${command}${RESET}`);
+  }
+  if (input.claudeCodeUpdateAvailable) {
+    lines.push(
+      `${YELLOW10}${BOLD3}[!] claude ${input.claudeCodeUpdateAvailable} - paste: ! claude update${RESET}`
+    );
+  }
+  return lines;
+}
+var YELLOW10, BOLD3;
+var init_update_hint = __esm({
+  "src/hud/elements/update-hint.ts"() {
+    "use strict";
+    init_colors();
+    YELLOW10 = "\x1B[33m";
+    BOLD3 = "\x1B[1m";
+  }
+});
+
 // src/hud/elements/session-summary.ts
 function renderSessionSummary(summaryState) {
   if (!summaryState?.summary) return null;
@@ -92790,6 +93122,15 @@ async function render(context, config2) {
     );
     if (modelElement) rendered.set("model", modelElement);
   }
+  if (enabledElements.updateNotification !== false && context.claudeCodeUpdateAvailable) {
+    const versionTag = context.claudeCodeVersion ? `#${context.claudeCodeVersion}` : "";
+    rendered.set(
+      "claudeLabel",
+      bold(
+        `[Claude${versionTag}] -> ${context.claudeCodeUpdateAvailable} claude update`
+      )
+    );
+  }
   if (enabledElements.apiKeySource && context.apiKeySource) {
     const keySource = renderApiKeySource(context.apiKeySource);
     if (keySource) rendered.set("apiKeySource", keySource);
@@ -92983,6 +93324,14 @@ async function render(context, config2) {
   if (ctxWarning) renderedDetail.set("contextWarning", [ctxWarning]);
   const payloadWarning = renderPayloadLimitWarning(context.payloadEstimate);
   if (payloadWarning) renderedDetail.set("payloadWarning", [payloadWarning]);
+  if (enabledElements.updateNotification !== false) {
+    const updateHints = renderUpdateHints({
+      omcUpdateAvailable: context.updateAvailable,
+      omcUpdateSource: context.omcUpdateSource ?? null,
+      claudeCodeUpdateAvailable: context.claudeCodeUpdateAvailable ?? null
+    });
+    if (updateHints.length > 0) renderedDetail.set("updateHint", updateHints);
+  }
   if (enabledElements.todos) {
     const todos = renderTodosWithCurrent(context.todos);
     if (todos) renderedDetail.set("todos", [todos]);
@@ -93087,6 +93436,7 @@ var init_render = __esm({
     init_api_key_source();
     init_call_counts();
     init_context_warning();
+    init_update_hint();
     init_mission_board();
     init_session_summary();
     init_last_tool();
@@ -93459,6 +93809,9 @@ async function main2(watchMode = false, skipInit = false) {
     const customBuckets = config2.rateLimitsProvider?.type === "custom" ? await executeCustomProvider(config2.rateLimitsProvider) : null;
     let omcVersion = null;
     let updateAvailable = null;
+    let omcUpdateSource = null;
+    const claudeCodeVersion = stdin.version ?? null;
+    let claudeCodeUpdateAvailable = null;
     try {
       omcVersion = getRuntimePackageVersion();
       if (omcVersion === "unknown") omcVersion = null;
@@ -93477,6 +93830,12 @@ async function main2(watchMode = false, skipInit = false) {
       const cached2 = JSON.parse(content);
       if (cached2?.latestVersion && omcVersion && compareVersions2(omcVersion, cached2.latestVersion) < 0) {
         updateAvailable = cached2.latestVersion;
+      }
+      if (cached2?.source === "npm" || cached2?.source === "marketplace") {
+        omcUpdateSource = cached2.source;
+      }
+      if (cached2?.claudeCodeLatestVersion && claudeCodeVersion && compareVersions2(claudeCodeVersion, cached2.claudeCodeLatestVersion) < 0) {
+        claudeCodeUpdateAvailable = cached2.claudeCodeLatestVersion;
       }
     } catch (error2) {
       if (process.env.OMC_DEBUG) {
@@ -93535,6 +93894,9 @@ async function main2(watchMode = false, skipInit = false) {
       sessionTotalTokens: transcriptData.sessionTotalTokens ?? null,
       omcVersion,
       updateAvailable,
+      omcUpdateSource,
+      claudeCodeVersion,
+      claudeCodeUpdateAvailable,
       toolCallCount: transcriptData.toolCallCount,
       agentCallCount: transcriptData.agentCallCount,
       skillCallCount: transcriptData.skillCallCount,
@@ -94759,6 +95121,13 @@ function readPositiveIntEnv(name, fallback) {
 function fileUri(filePath) {
   return (0, import_url5.pathToFileURL)((0, import_path16.resolve)(filePath)).href;
 }
+function createCancellationSignal() {
+  let cancel;
+  const promise = new Promise((resolveCancellation) => {
+    cancel = resolveCancellation;
+  });
+  return { promise, cancel };
+}
 var LspClient = class _LspClient {
   static MAX_BUFFER_SIZE = 50 * 1024 * 1024;
   // 50MB
@@ -94766,13 +95135,23 @@ var LspClient = class _LspClient {
   requestId = 0;
   pendingRequests = /* @__PURE__ */ new Map();
   buffer = Buffer.alloc(0);
+  notificationTail = Promise.resolve();
+  notificationGeneration = 0;
+  notificationWaiterRejectors = /* @__PURE__ */ new Set();
   openDocuments = /* @__PURE__ */ new Set();
+  persistentDocuments = /* @__PURE__ */ new Set();
+  documentOpenPromises = /* @__PURE__ */ new Map();
+  documentOperationTails = /* @__PURE__ */ new Map();
+  documentQueueCancellation = createCancellationSignal();
   diagnostics = /* @__PURE__ */ new Map();
   diagnosticWaiters = /* @__PURE__ */ new Map();
   workspaceRoot;
   serverConfig;
   devContainerContext;
   initialized = false;
+  disconnected = false;
+  connectionGeneration = 0;
+  terminalError = null;
   _serverCapabilities = null;
   _supportsPullDiagnostics = false;
   constructor(workspaceRoot, serverConfig, devContainerContext = null) {
@@ -94787,6 +95166,20 @@ var LspClient = class _LspClient {
     if (this.process) {
       return;
     }
+    this.disconnected = false;
+    this.terminalError = null;
+    const connectionGeneration = ++this.connectionGeneration;
+    this.documentQueueCancellation.cancel();
+    this.documentQueueCancellation = createCancellationSignal();
+    this.buffer = Buffer.alloc(0);
+    this.openDocuments.clear();
+    this.persistentDocuments.clear();
+    this.documentOpenPromises.clear();
+    this.documentOperationTails.clear();
+    this.diagnostics.clear();
+    this.buffer = Buffer.alloc(0);
+    this.documentOperationTails.clear();
+    this.diagnostics.clear();
     const spawnCommand = this.devContainerContext ? "docker" : this.serverConfig.command;
     if (!commandExists(spawnCommand)) {
       throw new Error(
@@ -94802,27 +95195,58 @@ Install with: ${this.serverConfig.installHint}`
         stdio: ["pipe", "pipe", "pipe"],
         shell: !this.devContainerContext && process.platform === "win32"
       });
-      this.process.stdout?.on("data", (data) => {
+      const child = this.process;
+      child.stdout?.on("data", (data) => {
+        if (this.process !== child || this.connectionGeneration !== connectionGeneration) return;
         this.handleData(data);
       });
-      this.process.stderr?.on("data", (data) => {
+      child.stderr?.on("data", (data) => {
+        if (this.process !== child || this.connectionGeneration !== connectionGeneration) return;
         console.error(`LSP stderr: ${data.toString()}`);
       });
-      this.process.on("error", (error2) => {
+      const stdin = child.stdin;
+      if (stdin && typeof stdin.on === "function") {
+        stdin.on("error", (error2) => {
+          if (this.process !== child || this.connectionGeneration !== connectionGeneration) return;
+          this.handleTransportFailure(error2);
+        });
+        stdin.on("close", () => {
+          if (this.process === child && this.connectionGeneration === connectionGeneration && !this.disconnected) {
+            this.handleTransportFailure(new Error("LSP stdin closed"));
+          }
+        });
+      }
+      child.on("error", (error2) => {
+        if (this.process !== child || this.connectionGeneration !== connectionGeneration) return;
+        this.handleTransportFailure(error2);
         reject(new Error(`Failed to start LSP server: ${error2.message}`));
       });
-      this.process.on("exit", (code) => {
+      child.on("exit", (code) => {
+        if (this.process !== child || this.connectionGeneration !== connectionGeneration) return;
         this.process = null;
-        this.initialized = false;
+        this.handleTransportFailure(new Error(`LSP server exited (code ${code})`));
         if (code !== 0) {
           console.error(`LSP server exited with code ${code}`);
         }
-        this.rejectPendingRequests(new Error(`LSP server exited (code ${code})`));
       });
       this.initialize().then(() => {
+        if (this.process !== child || this.connectionGeneration !== connectionGeneration) {
+          reject(new Error("LSP server was replaced during initialization"));
+          return;
+        }
         this.initialized = true;
         resolve38();
-      }).catch(reject);
+      }).catch((error2) => {
+        if (this.process === child && this.connectionGeneration === connectionGeneration) {
+          this.forceKill();
+        } else {
+          try {
+            child.kill("SIGKILL");
+          } catch {
+          }
+        }
+        reject(error2);
+      });
     });
   }
   /**
@@ -94830,6 +95254,13 @@ Install with: ${this.serverConfig.installHint}`
    * Used in process exit handlers where async operations are not possible.
    */
   forceKill() {
+    const error2 = new Error("LSP client force-killed");
+    this.connectionGeneration++;
+    this.documentQueueCancellation.cancel();
+    this.terminalError = error2;
+    this.cancelPendingNotificationWrites(error2);
+    this.rejectPendingRequests(error2);
+    this.disconnected = true;
     if (this.process) {
       try {
         this.process.kill("SIGKILL");
@@ -94837,34 +95268,61 @@ Install with: ${this.serverConfig.installHint}`
       }
       this.process = null;
       this.initialized = false;
-      for (const waiters of this.diagnosticWaiters.values()) {
-        for (const wake of waiters) wake();
-      }
-      this.diagnosticWaiters.clear();
     }
+    this.cancelDiagnosticWaiters(error2);
+    this.openDocuments.clear();
+    this.persistentDocuments.clear();
+    this.documentOpenPromises.clear();
+    this.documentOperationTails.clear();
+    this.diagnostics.clear();
+    this.buffer = Buffer.alloc(0);
   }
   /**
    * Disconnect from the LSP server
    */
   async disconnect() {
-    if (!this.process) return;
+    const child = this.process;
+    const connectionGeneration = this.connectionGeneration;
     try {
-      await this.request("shutdown", null, 3e3);
-      this.notify("exit", null);
+      if (child && this.process === child && this.connectionGeneration === connectionGeneration) {
+        await this.request("shutdown", null, 3e3);
+        if (this.process === child && this.connectionGeneration === connectionGeneration) {
+          await Promise.race([
+            this.notifyWithBackpressure("exit", null),
+            new Promise((resolveTimeout) => setTimeout(resolveTimeout, 250))
+          ]);
+        }
+      }
     } catch {
     } finally {
-      if (this.process) {
-        this.process.kill();
-        this.process = null;
+      if (this.process !== child || this.connectionGeneration !== connectionGeneration) {
+        if (child) {
+          try {
+            child.kill();
+          } catch {
+          }
+        }
+      } else {
+        const error2 = new Error("LSP client disconnected");
+        this.connectionGeneration++;
+        this.documentQueueCancellation.cancel();
+        this.terminalError = error2;
+        this.cancelPendingNotificationWrites(error2);
+        this.disconnected = true;
+        if (child) {
+          child.kill();
+          this.process = null;
+        }
+        this.initialized = false;
+        this.rejectPendingRequests(new Error("Client disconnected"));
+        this.openDocuments.clear();
+        this.persistentDocuments.clear();
+        this.documentOpenPromises.clear();
+        this.documentOperationTails.clear();
+        this.diagnostics.clear();
+        this.buffer = Buffer.alloc(0);
+        this.cancelDiagnosticWaiters(new Error("LSP client disconnected"));
       }
-      this.initialized = false;
-      this.rejectPendingRequests(new Error("Client disconnected"));
-      this.openDocuments.clear();
-      this.diagnostics.clear();
-      for (const waiters of this.diagnosticWaiters.values()) {
-        for (const wake of waiters) wake();
-      }
-      this.diagnosticWaiters.clear();
     }
   }
   /**
@@ -94876,6 +95334,52 @@ Install with: ${this.serverConfig.installHint}`
       clearTimeout(pending.timeout);
       pending.reject(error2);
       this.pendingRequests.delete(id);
+    }
+  }
+  handleTransportFailure(error2) {
+    if (this.disconnected) return;
+    this.connectionGeneration++;
+    this.documentQueueCancellation.cancel();
+    this.disconnected = true;
+    this.terminalError = error2;
+    this.cancelPendingNotificationWrites(error2);
+    this.rejectPendingRequests(error2);
+    this.cancelDiagnosticWaiters(error2);
+    if (this.process) {
+      try {
+        this.process.kill("SIGKILL");
+      } catch {
+      }
+      this.process = null;
+    }
+    this.initialized = false;
+    this.openDocuments.clear();
+    this.persistentDocuments.clear();
+    this.documentOpenPromises.clear();
+    this.documentOperationTails.clear();
+    this.diagnostics.clear();
+    this.buffer = Buffer.alloc(0);
+  }
+  cancelDiagnosticWaiters(error2) {
+    for (const waiters of this.diagnosticWaiters.values()) {
+      for (const wake of waiters) wake(error2);
+    }
+    this.diagnosticWaiters.clear();
+  }
+  throwIfTerminal() {
+    if (this.terminalError) {
+      throw this.terminalError;
+    }
+    if (this.disconnected) {
+      throw new Error("LSP client is disconnected");
+    }
+  }
+  isCurrentConnection(child, connectionGeneration) {
+    return child !== null && this.process === child && this.connectionGeneration === connectionGeneration && !this.disconnected;
+  }
+  assertCurrentConnection(child, connectionGeneration) {
+    if (!this.isCurrentConnection(child, connectionGeneration)) {
+      throw this.terminalError ?? new Error("LSP connection was replaced");
     }
   }
   /**
@@ -94950,9 +95454,11 @@ Install with: ${this.serverConfig.installHint}`
     const error2 = request.method === "client/registerCapability" ? { code: -32803, message: "Dynamic capability registration is not supported" } : { code: -32601, message: "Method not found" };
     const response = { jsonrpc: "2.0", id: request.id, error: error2 };
     const content = JSON.stringify(response);
-    this.process?.stdin?.write(`Content-Length: ${Buffer.byteLength(content)}\r
+    const message2 = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
-${content}`);
+${content}`;
+    void this.enqueueOutboundWrite(() => this.writeMessage(message2)).catch(() => {
+    });
   }
   /**
    * Handle server notifications
@@ -94997,14 +95503,24 @@ ${content}`;
         reject,
         timeout: timeoutHandle
       });
-      this.process?.stdin?.write(message2);
+      void this.enqueueOutboundWrite(() => {
+        if (!this.pendingRequests.has(id)) {
+          throw new Error(`LSP request '${method}' is no longer pending`);
+        }
+        return this.writeMessage(message2);
+      }).catch((error2) => {
+        const pending = this.pendingRequests.get(id);
+        if (!pending) return;
+        clearTimeout(pending.timeout);
+        this.pendingRequests.delete(id);
+        pending.reject(error2 instanceof Error ? error2 : new Error(String(error2)));
+      });
     });
   }
   /**
    * Send a notification to the server (no response expected)
    */
   notify(method, params) {
-    if (!this.process?.stdin) return;
     const notification = {
       jsonrpc: "2.0",
       method,
@@ -95014,12 +95530,81 @@ ${content}`;
     const message2 = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-    this.process.stdin.write(message2);
+    return this.writeMessage(message2);
+  }
+  async notifyWithBackpressure(method, params) {
+    return this.enqueueOutboundWrite(() => this.notify(method, params));
+  }
+  async enqueueOutboundWrite(write) {
+    const generation = this.notificationGeneration;
+    const notification = this.notificationTail.then(() => {
+      if (generation !== this.notificationGeneration) {
+        throw new Error("LSP notification cancelled before write");
+      }
+      return this.writeWithBackpressure(write);
+    });
+    this.notificationTail = notification.catch(() => void 0);
+    return notification;
+  }
+  writeMessage(message2) {
+    if (!this.process?.stdin) {
+      throw new Error("LSP client is not connected");
+    }
+    try {
+      return this.process.stdin.write(message2);
+    } catch (error2) {
+      const failure3 = error2 instanceof Error ? error2 : new Error(String(error2));
+      this.handleTransportFailure(failure3);
+      throw failure3;
+    }
+  }
+  async writeWithBackpressure(write) {
+    const stdin = this.process?.stdin;
+    if (write() || !stdin) {
+      return;
+    }
+    if (typeof stdin.once !== "function" || typeof stdin.off !== "function") {
+      return;
+    }
+    await new Promise((resolveDrain, rejectDrain) => {
+      const cleanup = () => {
+        stdin.off("drain", handleDrain);
+        stdin.off("error", handleError);
+        stdin.off("close", handleClose);
+        this.notificationWaiterRejectors.delete(handleCancel);
+      };
+      const handleDrain = () => {
+        cleanup();
+        resolveDrain();
+      };
+      const handleError = (error2) => {
+        cleanup();
+        rejectDrain(error2);
+      };
+      const handleClose = () => {
+        handleError(new Error("LSP stdin closed before drain"));
+      };
+      const handleCancel = (error2) => {
+        handleError(error2);
+      };
+      this.notificationWaiterRejectors.add(handleCancel);
+      stdin.once("drain", handleDrain);
+      stdin.once("error", handleError);
+      stdin.once("close", handleClose);
+    });
+  }
+  cancelPendingNotificationWrites(error2) {
+    this.notificationGeneration++;
+    for (const reject of Array.from(this.notificationWaiterRejectors)) {
+      reject(error2);
+    }
   }
   /**
    * Initialize the LSP connection
    */
   async initialize() {
+    const child = this.process;
+    const connectionGeneration = this.connectionGeneration;
     const initResult = await this.request("initialize", {
       processId: process.pid,
       rootUri: this.getWorkspaceRootUri(),
@@ -95044,23 +95629,47 @@ ${content}`;
       },
       initializationOptions: this.serverConfig.initializationOptions || {}
     }, getLspRequestTimeout(this.serverConfig, "initialize"));
+    this.assertCurrentConnection(child, connectionGeneration);
     this._serverCapabilities = initResult?.capabilities ?? null;
     this._supportsPullDiagnostics = !!this._serverCapabilities?.diagnosticProvider;
-    this.notify("initialized", {});
+    await this.notifyWithBackpressure("initialized", {});
+    this.assertCurrentConnection(child, connectionGeneration);
   }
   /**
    * Open a document for editing
    */
   async openDocument(filePath) {
     const hostUri = fileUri(filePath);
-    const uri = this.toServerUri(hostUri);
+    await this.queueDocumentOperation(hostUri, async () => {
+      await this.ensureDocumentOpen(filePath);
+      this.persistentDocuments.add(hostUri);
+    });
+  }
+  async ensureDocumentOpen(filePath) {
+    const hostUri = fileUri(filePath);
     if (this.openDocuments.has(hostUri)) return;
+    const pending = this.documentOpenPromises.get(hostUri);
+    if (pending) return pending;
+    const opening = this.performDocumentOpen(filePath, hostUri).finally(() => {
+      if (this.documentOpenPromises.get(hostUri) === opening) {
+        this.documentOpenPromises.delete(hostUri);
+      }
+    });
+    this.documentOpenPromises.set(hostUri, opening);
+    return opening;
+  }
+  async performDocumentOpen(filePath, hostUri) {
+    this.throwIfTerminal();
+    const child = this.process;
+    const connectionGeneration = this.connectionGeneration;
+    const uri = this.toServerUri(hostUri);
     if (!(0, import_fs11.existsSync)(filePath)) {
       throw new Error(`File not found: ${filePath}`);
     }
     const content = (0, import_fs11.readFileSync)(filePath, "utf-8");
     const languageId = this.getLanguageId(filePath);
-    this.notify("textDocument/didOpen", {
+    this.diagnostics.delete(hostUri);
+    await this.notifyWithBackpressure("textDocument/didOpen", {
       textDocument: {
         uri,
         languageId,
@@ -95068,20 +95677,83 @@ ${content}`;
         text: content
       }
     });
+    this.assertCurrentConnection(child, connectionGeneration);
     this.openDocuments.add(hostUri);
     await new Promise((resolve38) => setTimeout(resolve38, 100));
+    this.assertCurrentConnection(child, connectionGeneration);
+    this.throwIfTerminal();
   }
   /**
    * Close a document
    */
-  closeDocument(filePath) {
+  async closeDocument(filePath) {
+    const hostUri = fileUri(filePath);
+    await this.queueDocumentOperation(hostUri, async () => {
+      this.persistentDocuments.delete(hostUri);
+      await this.closeTransientDocument(filePath);
+    });
+  }
+  async closeTransientDocument(filePath) {
     const hostUri = fileUri(filePath);
     const uri = this.toServerUri(hostUri);
+    const child = this.process;
+    const connectionGeneration = this.connectionGeneration;
     if (!this.openDocuments.has(hostUri)) return;
-    this.notify("textDocument/didClose", {
-      textDocument: { uri }
+    try {
+      await this.notifyWithBackpressure("textDocument/didClose", {
+        textDocument: { uri }
+      });
+    } finally {
+      if (this.isCurrentConnection(child, connectionGeneration)) {
+        this.openDocuments.delete(hostUri);
+      }
+    }
+  }
+  /**
+   * Run an operation while a document is open, closing only documents opened
+   * by this operation. Calls for the same document are serialized so one
+   * operation cannot close the document while another is still using it.
+   */
+  async withOpenDocument(filePath, operation) {
+    const hostUri = fileUri(filePath);
+    const connectionGeneration = this.connectionGeneration;
+    return this.queueDocumentOperation(hostUri, async () => {
+      try {
+        await this.ensureDocumentOpen(filePath);
+        return await operation();
+      } finally {
+        if (this.connectionGeneration === connectionGeneration && !this.persistentDocuments.has(hostUri)) {
+          await this.closeTransientDocument(filePath);
+        }
+      }
     });
-    this.openDocuments.delete(hostUri);
+  }
+  async queueDocumentOperation(hostUri, operation) {
+    const connectionGeneration = this.connectionGeneration;
+    const cancellation = this.documentQueueCancellation.promise;
+    const previous = this.documentOperationTails.get(hostUri) ?? Promise.resolve();
+    let release;
+    const current = new Promise((resolveCurrent) => {
+      release = resolveCurrent;
+    });
+    const tail = previous.catch(() => void 0).then(() => current);
+    this.documentOperationTails.set(hostUri, tail);
+    const predecessorCompleted = await Promise.race([
+      previous.then(() => true, () => true),
+      cancellation.then(() => false)
+    ]);
+    try {
+      if (!predecessorCompleted || this.connectionGeneration !== connectionGeneration) {
+        throw this.terminalError ?? new Error("LSP connection was replaced");
+      }
+      this.throwIfTerminal();
+      return await operation();
+    } finally {
+      release();
+      if (this.documentOperationTails.get(hostUri) === tail) {
+        this.documentOperationTails.delete(hostUri);
+      }
+    }
   }
   /**
    * Get the language ID for a file
@@ -95201,6 +95873,9 @@ ${content}`;
   get supportsPullDiagnostics() {
     return this._supportsPullDiagnostics;
   }
+  get isUsable() {
+    return !this.disconnected;
+  }
   /**
    * Request diagnostics via the LSP 3.17 pull model (textDocument/diagnostic).
    * Only call when supportsPullDiagnostics is true.
@@ -95227,26 +95902,46 @@ ${content}`;
    */
   waitForDiagnostics(filePath, timeoutMs = 2e3) {
     const uri = fileUri(filePath);
+    try {
+      this.throwIfTerminal();
+    } catch (error2) {
+      return Promise.reject(error2);
+    }
     if (this.diagnostics.has(uri)) {
       return Promise.resolve();
     }
-    return new Promise((resolve38) => {
+    return new Promise((resolve38, reject) => {
       let resolved = false;
+      const removeWaiter = (waiter2) => {
+        const waiters = this.diagnosticWaiters.get(uri);
+        if (!waiters) return;
+        const remaining = waiters.filter((candidate) => candidate !== waiter2);
+        if (remaining.length === 0) {
+          this.diagnosticWaiters.delete(uri);
+        } else {
+          this.diagnosticWaiters.set(uri, remaining);
+        }
+      };
+      const waiter = (error2) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          if (error2) {
+            reject(error2);
+          } else {
+            resolve38();
+          }
+        }
+      };
       const timer = setTimeout(() => {
         if (!resolved) {
           resolved = true;
-          this.diagnosticWaiters.delete(uri);
+          removeWaiter(waiter);
           resolve38();
         }
       }, timeoutMs);
       const existing = this.diagnosticWaiters.get(uri) || [];
-      existing.push(() => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timer);
-          resolve38();
-        }
-      });
+      existing.push(waiter);
       this.diagnosticWaiters.set(uri, existing);
     });
   }
@@ -95338,6 +96033,9 @@ var IDLE_TIMEOUT_MS = readPositiveIntEnv("OMC_LSP_IDLE_TIMEOUT_MS", 5 * 60 * 1e3
 var IDLE_CHECK_INTERVAL_MS = readPositiveIntEnv("OMC_LSP_IDLE_CHECK_INTERVAL_MS", 60 * 1e3);
 var LspClientManager = class {
   clients = /* @__PURE__ */ new Map();
+  pendingClients = /* @__PURE__ */ new Map();
+  clientGeneration = 0;
+  disconnecting = null;
   lastUsed = /* @__PURE__ */ new Map();
   inFlightCount = /* @__PURE__ */ new Map();
   idleDeadlines = /* @__PURE__ */ new Map();
@@ -95367,7 +96065,15 @@ var LspClientManager = class {
         } catch {
         }
       }
+      for (const { client } of this.pendingClients.values()) {
+        try {
+          client.forceKill();
+        } catch {
+        }
+      }
+      this.clientGeneration++;
       this.clients.clear();
+      this.pendingClients.clear();
       this.lastUsed.clear();
       this.inFlightCount.clear();
     };
@@ -95387,18 +96093,12 @@ var LspClientManager = class {
     }
     const devContainerContext = resolveDevContainerContext(workspaceRoot);
     const key = `${workspaceRoot}:${serverConfig.command}:${devContainerContext?.containerId ?? "host"}`;
-    let client = this.clients.get(key);
-    if (!client) {
-      client = new LspClient(workspaceRoot, serverConfig, devContainerContext);
-      try {
-        await client.connect();
-        this.clients.set(key, client);
-      } catch (error2) {
-        throw error2;
+    while (true) {
+      const client = await this.acquireClient(key, workspaceRoot, serverConfig, devContainerContext);
+      if (this.clients.get(key) === client && client.isUsable && !this.disconnecting) {
+        return client;
       }
     }
-    this.touchClient(key);
-    return client;
   }
   /**
    * Run a function with in-flight tracking for the client serving filePath.
@@ -95413,28 +96113,94 @@ var LspClientManager = class {
     }
     const devContainerContext = resolveDevContainerContext(workspaceRoot);
     const key = `${workspaceRoot}:${serverConfig.command}:${devContainerContext?.containerId ?? "host"}`;
-    let client = this.clients.get(key);
-    if (!client) {
-      client = new LspClient(workspaceRoot, serverConfig, devContainerContext);
-      try {
-        await client.connect();
-        this.clients.set(key, client);
-      } catch (error2) {
-        throw error2;
-      }
-    }
-    this.touchClient(key);
-    this.inFlightCount.set(key, (this.inFlightCount.get(key) || 0) + 1);
+    const client = await this.acquireClientLease(key, workspaceRoot, serverConfig, devContainerContext);
     try {
       return await fn(client);
     } finally {
-      const count = (this.inFlightCount.get(key) || 1) - 1;
-      if (count <= 0) {
-        this.inFlightCount.delete(key);
-      } else {
-        this.inFlightCount.set(key, count);
+      if (this.clients.get(key) === client) {
+        const count = (this.inFlightCount.get(key) || 1) - 1;
+        if (count <= 0) {
+          this.inFlightCount.delete(key);
+        } else {
+          this.inFlightCount.set(key, count);
+        }
+        this.touchClient(key);
       }
-      this.touchClient(key);
+    }
+  }
+  async getOrCreateClient(key, workspaceRoot, serverConfig, devContainerContext) {
+    const existing = this.clients.get(key);
+    if (existing?.isUsable) {
+      return existing;
+    }
+    if (existing) {
+      existing.forceKill();
+      this.clients.delete(key);
+      this.clearIdleDeadline(key);
+      this.lastUsed.delete(key);
+      this.inFlightCount.delete(key);
+    }
+    let pending = this.pendingClients.get(key);
+    if (!pending) {
+      const client = new LspClient(workspaceRoot, serverConfig, devContainerContext);
+      const generation = this.clientGeneration;
+      const promise = client.connect().then(() => {
+        if (generation !== this.clientGeneration) {
+          client.forceKill();
+          throw new Error("LSP client manager shut down during connection");
+        }
+        this.clients.set(key, client);
+        return client;
+      }).finally(() => {
+        if (this.pendingClients.get(key)?.client === client) {
+          this.pendingClients.delete(key);
+        }
+      });
+      pending = { client, promise };
+      this.pendingClients.set(key, pending);
+    }
+    return pending.promise;
+  }
+  async acquireClient(key, workspaceRoot, serverConfig, devContainerContext) {
+    while (true) {
+      const teardown = this.disconnecting;
+      if (teardown) {
+        await teardown;
+      }
+      const generation = this.clientGeneration;
+      this.startIdleCheck();
+      const existing = this.clients.get(key);
+      if (existing?.isUsable) {
+        this.touchClient(key);
+        return existing;
+      }
+      const client = await this.getOrCreateClient(key, workspaceRoot, serverConfig, devContainerContext);
+      if (generation === this.clientGeneration && !this.disconnecting && client.isUsable) {
+        this.touchClient(key);
+        return client;
+      }
+    }
+  }
+  async acquireClientLease(key, workspaceRoot, serverConfig, devContainerContext) {
+    while (true) {
+      const teardown = this.disconnecting;
+      if (teardown) {
+        await teardown;
+      }
+      const generation = this.clientGeneration;
+      this.startIdleCheck();
+      const existing = this.clients.get(key);
+      if (existing?.isUsable) {
+        this.touchClient(key);
+        this.inFlightCount.set(key, (this.inFlightCount.get(key) || 0) + 1);
+        return existing;
+      }
+      const client = await this.getOrCreateClient(key, workspaceRoot, serverConfig, devContainerContext);
+      if (generation === this.clientGeneration && !this.disconnecting && client.isUsable) {
+        this.touchClient(key);
+        this.inFlightCount.set(key, (this.inFlightCount.get(key) || 0) + 1);
+        return client;
+      }
     }
   }
   touchClient(key) {
@@ -95548,6 +96314,21 @@ var LspClientManager = class {
    * Maps are always cleared regardless of individual disconnect failures.
    */
   async disconnectAll() {
+    if (this.disconnecting) {
+      return this.disconnecting;
+    }
+    const teardown = Promise.resolve().then(() => this.performDisconnectAll());
+    this.disconnecting = teardown;
+    try {
+      await teardown;
+    } finally {
+      if (this.disconnecting === teardown) {
+        this.disconnecting = null;
+      }
+    }
+  }
+  async performDisconnectAll() {
+    this.clientGeneration++;
     if (this.idleTimer) {
       clearInterval(this.idleTimer);
       this.idleTimer = null;
@@ -95556,7 +96337,17 @@ var LspClientManager = class {
       clearTimeout(timer);
     }
     this.idleDeadlines.clear();
+    for (const { client } of this.pendingClients.values()) {
+      try {
+        client.forceKill();
+      } catch {
+      }
+    }
+    this.pendingClients.clear();
     const entries = Array.from(this.clients.entries());
+    this.clients.clear();
+    this.lastUsed.clear();
+    this.inFlightCount.clear();
     const results = await Promise.allSettled(
       entries.map(([, client]) => client.disconnect())
     );
@@ -95567,9 +96358,7 @@ var LspClientManager = class {
         console.warn(`LSP disconnectAll: failed to disconnect client "${key}": ${result.reason}`);
       }
     }
-    this.clients.clear();
-    this.lastUsed.clear();
-    this.inFlightCount.clear();
+    this.pendingClients.clear();
   }
   /** Expose in-flight count for testing */
   getInFlightCount(key) {
@@ -95833,12 +96622,26 @@ function parseTscOutput(output) {
 // src/tools/diagnostics/lsp-aggregator.ts
 var import_fs13 = require("fs");
 var import_path18 = require("path");
+var LSP_DIAGNOSTICS_CONCURRENCY = 8;
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await mapper(items[index]);
+    }
+  }
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
 function findFiles(directory, extensions, ignoreDirs = []) {
   const results = [];
   const ignoreDirSet = new Set(ignoreDirs);
   function walk(dir) {
     try {
-      const entries = (0, import_fs13.readdirSync)(dir);
+      const entries = (0, import_fs13.readdirSync)(dir).sort();
       for (const entry2 of entries) {
         const fullPath = (0, import_path18.join)(dir, entry2);
         try {
@@ -95867,36 +96670,53 @@ function findFiles(directory, extensions, ignoreDirs = []) {
 async function runLspAggregatedDiagnostics(directory, extensions = [".ts", ".tsx", ".js", ".jsx"]) {
   const files = findFiles(directory, extensions, ["node_modules", "dist", "build", ".git"]);
   const allDiagnostics = [];
-  let filesChecked = 0;
   const skippedFiles = [];
   const installHintSet = /* @__PURE__ */ new Set();
-  for (const file of files) {
+  const fileResults = await mapWithConcurrency(files, LSP_DIAGNOSTICS_CONCURRENCY, async (file) => {
     if (!getServerForFile(file)) {
-      skippedFiles.push({ file, reason: "no language server registered for extension" });
-      continue;
+      return {
+        file,
+        skippedReason: "no language server registered for extension"
+      };
     }
     try {
-      await lspClientManager.runWithClientLease(file, async (client) => {
-        await client.openDocument(file);
-        await client.waitForDiagnostics(file, LSP_DIAGNOSTICS_WAIT_MS);
-        const diagnostics = client.getDiagnostics(file);
-        for (const diagnostic of diagnostics) {
-          allDiagnostics.push({
-            file,
-            diagnostic
-          });
-        }
-        filesChecked++;
+      const diagnostics = await lspClientManager.runWithClientLease(file, async (client) => {
+        return client.withOpenDocument(file, async () => {
+          if (client.supportsPullDiagnostics) {
+            return client.pullDiagnostics(file);
+          }
+          await client.waitForDiagnostics(file, LSP_DIAGNOSTICS_WAIT_MS);
+          return client.getDiagnostics(file);
+        });
       });
+      return { file, diagnostics };
     } catch (error2) {
       const message2 = error2 instanceof Error ? error2.message : String(error2);
-      const match = message2.match(/^Language server '([^']+)' not found\.\nInstall with: (.+)$/s);
-      if (match) {
-        installHintSet.add(match[2].trim());
-        skippedFiles.push({ file, reason: `missing language server: ${match[1]}` });
-      } else {
-        skippedFiles.push({ file, reason: message2 });
+      return { file, skippedReason: message2 };
+    }
+  });
+  let filesChecked = 0;
+  for (const result of fileResults) {
+    if (result.diagnostics) {
+      filesChecked++;
+      for (const diagnostic of result.diagnostics) {
+        allDiagnostics.push({
+          file: result.file,
+          diagnostic
+        });
       }
+      continue;
+    }
+    const message2 = result.skippedReason ?? "unknown LSP diagnostics failure";
+    const match = message2.match(/^Language server '([^']+)' not found\.\nInstall with: (.+)$/s);
+    if (match) {
+      installHintSet.add(match[2].trim());
+      skippedFiles.push({
+        file: result.file,
+        reason: `missing language server: ${match[1]}`
+      });
+    } else {
+      skippedFiles.push({ file: result.file, reason: message2 });
     }
   }
   const errorCount = allDiagnostics.filter((d) => d.diagnostic.severity === 1).length;
@@ -95904,7 +96724,7 @@ async function runLspAggregatedDiagnostics(directory, extensions = [".ts", ".tsx
   const installHints = Array.from(installHintSet);
   const allFilesSkipped = filesChecked === 0 && files.length > 0;
   return {
-    success: errorCount === 0 && !allFilesSkipped,
+    success: errorCount === 0 && skippedFiles.length === 0 && !allFilesSkipped,
     diagnostics: allDiagnostics,
     errorCount,
     warningCount,
@@ -96432,7 +97252,13 @@ function validateToolPath(inputPath) {
   if (!isToolPathRestricted()) {
     return resolved;
   }
-  const projectRoot = getGitTopLevel() || process.cwd();
+  const projectProbe = probeGitTopLevel(process.cwd());
+  if (projectProbe.status !== "ok") {
+    throw new Error(
+      `Path restricted: unable to verify the project root because the Git probe failed. Disable via security.restrictToolPaths in .claude/omc.jsonc or unset OMC_SECURITY.`
+    );
+  }
+  const projectRoot = projectProbe.root;
   const normalizedRoot = (0, import_path22.normalize)(projectRoot);
   const normalizedPath = (0, import_path22.normalize)(resolved);
   const rel = (0, import_path22.relative)(normalizedRoot, normalizedPath);
@@ -98874,7 +99700,7 @@ function listSessionIdsUnderOmcRoot(omcRoot) {
 function getConvergedOmcRoots(root2) {
   const canonicalRoot = getOmcRoot(root2);
   if (process.env.OMC_STATE_DIR) return [canonicalRoot];
-  if (!getGitTopLevel(root2)) return [canonicalRoot];
+  if (probeGitTopLevel(root2).status !== "ok") return [canonicalRoot];
   const roots = /* @__PURE__ */ new Set([canonicalRoot]);
   roots.add((0, import_path40.join)(root2, OmcPaths.ROOT));
   roots.add((0, import_path40.join)((0, import_os7.homedir)(), OmcPaths.ROOT));
@@ -99061,7 +99887,7 @@ function getLegacyStateFileCandidates(mode, root2) {
     getStatePath(mode, root2),
     (0, import_path40.join)(getOmcRoot(root2), `${normalizedName}.json`)
   ];
-  if (mode === "autopilot" && getGitTopLevel(root2)) candidates.push((0, import_path40.join)((0, import_os7.homedir)(), ".omg", "state", "autopilot-state.json"));
+  if (mode === "autopilot" && probeGitTopLevel(root2).status === "ok") candidates.push((0, import_path40.join)((0, import_os7.homedir)(), ".omg", "state", "autopilot-state.json"));
   return [...new Set(candidates)];
 }
 function isSharedHomeAutopilotCandidate(path27, root2) {
@@ -99101,7 +99927,7 @@ function getWorkingDirectoryLocalOmcRoot(root2) {
   return (0, import_path40.join)(root2, OmcPaths.ROOT);
 }
 function shouldCheckWorkingDirectoryLocalState(root2) {
-  if (!getGitTopLevel(root2)) return false;
+  if (probeGitTopLevel(root2).status !== "ok") return false;
   return getWorkingDirectoryLocalOmcRoot(root2) !== getOmcRoot(root2);
 }
 function getWorkingDirectoryLocalSessionStatePath(mode, root2, sessionId) {
@@ -102082,23 +102908,81 @@ function buildScopeMode(project) {
   if (project === "all") return "all";
   return "project";
 }
+function compareMatches(a, b) {
+  const parsedATime = a.timestamp ? Date.parse(a.timestamp) : 0;
+  const parsedBTime = b.timestamp ? Date.parse(b.timestamp) : 0;
+  const aTime = Number.isFinite(parsedATime) ? parsedATime : 0;
+  const bTime = Number.isFinite(parsedBTime) ? parsedBTime : 0;
+  if (aTime !== bTime) return bTime - aTime;
+  return a.sourcePath.localeCompare(b.sourcePath);
+}
+function compareRankedMatches(a, b) {
+  const comparison = compareMatches(a.match, b.match);
+  return comparison || a.encounterOrder - b.encounterOrder;
+}
+function addToWorstFirstHeap(heap, candidate, capacity) {
+  if (capacity <= 0) return;
+  if (heap.length >= capacity) {
+    if (compareRankedMatches(candidate, heap[0]) >= 0) return;
+    heap[0] = candidate;
+    let index2 = 0;
+    while (true) {
+      const left = index2 * 2 + 1;
+      const right = left + 1;
+      let worst = index2;
+      if (left < heap.length && compareRankedMatches(heap[left], heap[worst]) > 0) worst = left;
+      if (right < heap.length && compareRankedMatches(heap[right], heap[worst]) > 0) worst = right;
+      if (worst === index2) break;
+      [heap[index2], heap[worst]] = [heap[worst], heap[index2]];
+      index2 = worst;
+    }
+    return;
+  }
+  heap.push(candidate);
+  let index = heap.length - 1;
+  while (index > 0) {
+    const parent = Math.floor((index - 1) / 2);
+    if (compareRankedMatches(heap[parent], heap[index]) >= 0) break;
+    [heap[parent], heap[index]] = [heap[index], heap[parent]];
+    index = parent;
+  }
+}
+function createMatchRetainer(limit) {
+  const maxMatches = Number.isNaN(limit) ? 0 : Math.max(0, Math.trunc(limit));
+  const heap = [];
+  let totalMatches = 0;
+  let encounterOrder = 0;
+  return {
+    add(match) {
+      totalMatches += 1;
+      const rankedMatch = { match, encounterOrder };
+      encounterOrder += 1;
+      addToWorstFirstHeap(heap, rankedMatch, maxMatches);
+    },
+    get retained() {
+      return [...heap].sort(compareRankedMatches).map((rankedMatch) => rankedMatch.match);
+    },
+    get totalMatches() {
+      return totalMatches;
+    }
+  };
+}
 async function collectMatchesFromFile(target, options) {
-  const matches = [];
   const fileMtime = (0, import_fs38.existsSync)(target.filePath) ? (0, import_fs38.statSync)(target.filePath).mtimeMs : 0;
   if (target.sourceType === "omc-session-summary" && target.filePath.endsWith(".json")) {
     try {
       const payload = JSON.parse(await import("fs/promises").then((fs23) => fs23.readFile(target.filePath, "utf-8")));
       const entry2 = buildSearchableEntry(payload, target.sourceType);
-      if (!entry2) return [];
-      if (options.sessionId && entry2.sessionId !== options.sessionId) return [];
-      if (options.projectRoots && options.projectRoots.length > 0 && !isWithinProject(entry2.projectPath, options.projectRoots)) return [];
-      if (!matchesProjectFilter(entry2.projectPath, options.projectFilter)) return [];
+      if (!entry2) return;
+      if (options.sessionId && entry2.sessionId !== options.sessionId) return;
+      if (options.projectRoots && options.projectRoots.length > 0 && !isWithinProject(entry2.projectPath, options.projectRoots)) return;
+      if (!matchesProjectFilter(entry2.projectPath, options.projectFilter)) return;
       const entryEpoch = entry2.timestamp ? Date.parse(entry2.timestamp) : fileMtime;
-      if (options.sinceEpoch && Number.isFinite(entryEpoch) && entryEpoch < options.sinceEpoch) return [];
+      if (options.sinceEpoch && Number.isFinite(entryEpoch) && entryEpoch < options.sinceEpoch) return;
       for (const text of entry2.texts) {
         const matchIndex = findMatchIndex(text, options.query, options.caseSensitive);
         if (matchIndex < 0) continue;
-        matches.push({
+        options.onMatch({
           sessionId: entry2.sessionId,
           timestamp: entry2.timestamp,
           projectPath: entry2.projectPath,
@@ -102112,9 +102996,9 @@ async function collectMatchesFromFile(target, options) {
         break;
       }
     } catch {
-      return [];
+      return;
     }
-    return matches;
+    return;
   }
   const stream = (0, import_fs38.createReadStream)(target.filePath, { encoding: "utf-8" });
   const reader = (0, import_readline2.createInterface)({ input: stream, crlfDelay: Infinity });
@@ -102139,7 +103023,7 @@ async function collectMatchesFromFile(target, options) {
       for (const text of entry2.texts) {
         const matchIndex = findMatchIndex(text, options.query, options.caseSensitive);
         if (matchIndex < 0) continue;
-        matches.push({
+        options.onMatch({
           sessionId: entry2.sessionId,
           agentId: entry2.agentId,
           timestamp: entry2.timestamp,
@@ -102158,7 +103042,6 @@ async function collectMatchesFromFile(target, options) {
     reader.close();
     stream.destroy();
   }
-  return matches;
 }
 async function searchSessionHistory(rawOptions) {
   const query2 = compactWhitespace(rawOptions.query || "");
@@ -102180,25 +103063,19 @@ async function searchSessionHistory(rawOptions) {
   const currentProjectRoots = [currentProjectRoot, literalWorkingDirectory].concat(getMainRepoRoot(currentProjectRoot) ?? []).concat(getClaudeWorktreeParent(currentProjectRoot) ?? []).filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
   const transcriptProjectRoots = currentProjectRoots.filter((root2) => isWithinProject(root2, [currentProjectRoot]));
   const targets = scopeMode === "all" ? buildAllProjectTargets() : buildCurrentProjectTargets(currentProjectRoot, transcriptProjectRoots);
-  const allMatches = [];
+  const matchRetainer = createMatchRetainer(limit);
   for (const target of targets) {
-    const fileMatches = await collectMatchesFromFile(target, {
+    await collectMatchesFromFile(target, {
       query: query2,
       caseSensitive,
       contextChars,
       sinceEpoch,
       sessionId: rawOptions.sessionId,
       projectFilter,
-      projectRoots: scopeMode === "current" ? currentProjectRoots : void 0
+      projectRoots: scopeMode === "current" ? currentProjectRoots : void 0,
+      onMatch: matchRetainer.add
     });
-    allMatches.push(...fileMatches);
   }
-  allMatches.sort((a, b) => {
-    const aTime = a.timestamp ? Date.parse(a.timestamp) : 0;
-    const bTime = b.timestamp ? Date.parse(b.timestamp) : 0;
-    if (aTime !== bTime) return bTime - aTime;
-    return a.sourcePath.localeCompare(b.sourcePath);
-  });
   return {
     query: query2,
     scope: {
@@ -102209,8 +103086,8 @@ async function searchSessionHistory(rawOptions) {
       caseSensitive
     },
     searchedFiles: targets.length,
-    totalMatches: allMatches.length,
-    results: allMatches.slice(0, limit)
+    totalMatches: matchRetainer.totalMatches,
+    results: matchRetainer.retained
   };
 }
 

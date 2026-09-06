@@ -4,6 +4,29 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Ported from upstream oh-my-claudecode v5.2.0 (v5.1.0..v5.2.0)
+
+- **Hook runner Windows stdio overhaul:** `run.cjs` protocol writes guarded
+  against closed consumers, fail-open before Windows tree reap, single generic
+  child reap, EPIPE-safe PassThrough teardown, POSIX process-group reaping, and
+  runner-aware SessionEnd foreground ceilings and worker timeouts.
+- **LSP hardening:** document open/close lifecycle serialization in the LSP
+  client, retired document queue cancellation, and bounded directory
+  diagnostics lifecycle in the aggregator.
+- **Bounded git calls in worktree-paths** with a memoized `probeGitTopLevel`
+  (replacing `getGitTopLevel`/`getWorktreeRoot` call sites), plus the
+  symmetric dual-state-root warning on the legacy branch (#3937).
+- **HUD:** update and paste-ready upgrade hints (`update-hint` element, adapted
+  to `oh-my-copilot` package/plugin names), pid-aware cache lock recovery and
+  bounded `.err` reclamation, stale stdin tmp orphan reclamation.
+- **Shipyard yard gate (launch C5 sediment pass):** launch now refuses to run
+  when the drydock `--check` audit reports actionable findings.
+- **session-history-search** bounds retained matches while still counting all.
+- **Team:** platform-aware worker launch wrapper for POSIX hosts (#3931).
+- Windows adaptations: platform-gated expectations for POSIX-only temp paths,
+  `$OMC_TEAM_STATE_ROOT` placeholders, pid-liveness lock tests, and junction
+  symlinks in tests; separator-normalized superproject assertions.
+
 ### Ported from upstream oh-my-claudecode v5.1.0 (v5.0.2..v5.1.0)
 
 - **Three new skills (46 → 49):** `drydock` and `launch` (the Shipyard

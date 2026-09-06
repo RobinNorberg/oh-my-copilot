@@ -9,7 +9,8 @@
  */
 
 const { spawn, spawnSync } = require('child_process');
-const { existsSync, readFileSync, realpathSync } = require('fs');
+const { PassThrough, Writable } = require('stream');
+const { existsSync, readFileSync, realpathSync, writeSync } = require('fs');
 const path = require('path');
 const { join, basename, dirname } = path;
 const { pathToFileURL } = require('url');
@@ -107,36 +108,80 @@ function isDebugHooksEnabled() {
     process.env.OMC_DEBUG === 'true';
 }
 
-function resolveTimeoutCushionMs(manifestTimeoutMs, hookEvent) {
-  if (hookEvent !== 'UserPromptSubmit') return TIMEOUT_CUSHION_MS;
+const POSIX_TIMEOUT_CUSHION_MS = 500;
+const WINDOWS_TIMEOUT_CUSHION_MS = 1500;
+const MAX_DECLARED_GENERIC_TIMEOUT_MS = 60000;
+const WINDOWS_REAP_TIMEOUT_MS = 400;
+const PROTOCOL_STDIO_SETTLE_MS = 150;
+// Empty source→tap→writer pipelines identify leaked descendant handles after
+// the leader exits. Legitimate buffered bytes are exempt from this idle bound.
+const PROTOCOL_SOURCE_IDLE_MS = 80;
+const MIN_HOOK_INNER_FRACTION = 0.5;
+const MIN_HOOK_INNER_MS = 400;
+// Observed Windows supervisor→hook→grandchild cold start in hosted CI (361–559ms).
+const WINDOWS_GENERIC_STARTUP_MS = 600;
+// Must match scripts/lib/bounded-git-timeout.mjs.
+const NESTED_OPERATION_TIMEOUT_MS = 2000;
+const NESTED_OPERATION_MARGIN_MS = 200;
+const NESTED_INNER_FLOOR_MS = NESTED_OPERATION_TIMEOUT_MS + NESTED_OPERATION_MARGIN_MS + WINDOWS_GENERIC_STARTUP_MS;
+const TIMEOUT_CUSHION_MS = POSIX_TIMEOUT_CUSHION_MS;
+const DEFAULT_GENERIC_TIMEOUT_MS = MAX_DECLARED_GENERIC_TIMEOUT_MS - POSIX_TIMEOUT_CUSHION_MS;
+
+function platformTimeoutCushionMs(platform = process.platform) {
+  return platform === 'win32' ? WINDOWS_TIMEOUT_CUSHION_MS : POSIX_TIMEOUT_CUSHION_MS;
+}
+
+function desiredTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform = process.platform) {
+  const base = platformTimeoutCushionMs(platform);
+  if (hookEvent !== 'UserPromptSubmit') return base;
   const promptCushion = Math.floor(manifestTimeoutMs * 0.2);
-  return Math.min(3000, Math.max(1000, promptCushion));
+  return Math.min(3000, Math.max(base, 1000, promptCushion));
 }
 
-const TIMEOUT_CUSHION_MS = 500;
-// = max declared manifest budget (60000ms, setup-maintenance) minus the 500ms cushion; applied ONLY when manifest resolution is null so long legit hooks are not prematurely reaped.
-const DEFAULT_GENERIC_TIMEOUT_MS = 59500;
+function resolveTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform = process.platform) {
+  const desired = desiredTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform);
+  if (platform === 'win32' && hookEvent !== 'UserPromptSubmit' && manifestTimeoutMs <= 3000) {
+    // Preserve the historical 500ms outer allowance for short hooks. It
+    // covers the 400ms Windows reap plus the 80ms protocol-idle close while
+    // leaving a 3s hook its prior 2500ms inner budget for shipped 2000ms Git
+    // and lock operations.
+    return Math.min(500, Math.max(1, manifestTimeoutMs - 1));
+  }
+  const fractionalInner = Math.max(MIN_HOOK_INNER_MS, Math.floor(manifestTimeoutMs * MIN_HOOK_INNER_FRACTION));
+  const canFitNestedFloor = manifestTimeoutMs - POSIX_TIMEOUT_CUSHION_MS >= NESTED_INNER_FLOOR_MS;
+  const minInner = Math.min(
+    Math.max(1, manifestTimeoutMs - 1),
+    canFitNestedFloor ? Math.max(fractionalInner, NESTED_INNER_FLOOR_MS) : fractionalInner,
+  );
+  const maxCushion = Math.max(1, manifestTimeoutMs - minInner);
+  return Math.min(desired, maxCushion);
+}
 
-
-function resolveInnerTimeoutMs(manifestHook) {
+function resolveInnerTimeoutMs(manifestHook, platform = process.platform) {
   if (!manifestHook) return null;
-  return Math.max(1, manifestHook.timeoutMs - resolveTimeoutCushionMs(manifestHook.timeoutMs, manifestHook.event));
+  return Math.max(1, manifestHook.timeoutMs - resolveTimeoutCushionMs(manifestHook.timeoutMs, manifestHook.event, platform));
 }
 
-// Call only after resolveWorkerTarget has verified an exact canonical trusted prompt target.
-function resolveTrustedPromptWorkerTimeoutMs(targetPath, manifestHook, trustedPluginRoot) {
+// Call only after resolveWorkerTarget has verified an exact canonical trusted target.
+const TRUSTED_WORKER_HOOKS = new Map([
+  ['keyword-detector.mjs', { event: 'UserPromptSubmit', timeoutCapMs: 8000 }],
+  ['skill-injector.mjs', { event: 'UserPromptSubmit', timeoutCapMs: 12000 }],
+  ['pre-tool-enforcer.mjs', { event: 'PreToolUse' }],
+  ['post-tool-verifier.mjs', { event: 'PostToolUse' }],
+  ['project-memory-posttool.mjs', { event: 'PostToolUse' }],
+  ['post-tool-rules-injector.mjs', { event: 'PostToolUse' }],
+]);
+
+function resolveTrustedWorkerTimeoutMs(targetPath, manifestHook) {
   const calculatedTimeoutMs = resolveInnerTimeoutMs(manifestHook);
-  const canonicalTarget = normalizedComparisonPath(targetPath);
-  const capsByCanonicalTarget = new Map([
-    [normalizedComparisonPath(join(trustedPluginRoot, 'scripts', 'keyword-detector.mjs')), 8000],
-    [normalizedComparisonPath(join(trustedPluginRoot, 'scripts', 'skill-injector.mjs')), 12000],
-  ]);
-  const capMs = capsByCanonicalTarget.get(canonicalTarget);
+  const capMs = TRUSTED_WORKER_HOOKS.get(basename(targetPath))?.timeoutCapMs;
   return capMs ? Math.min(calculatedTimeoutMs, capMs) : calculatedTimeoutMs;
 }
 
-function resolveGenericTimeoutMs(manifestHook) {
-  return manifestHook ? resolveInnerTimeoutMs(manifestHook) : DEFAULT_GENERIC_TIMEOUT_MS;
+function resolveGenericTimeoutMs(manifestHook, platform = process.platform) {
+  return manifestHook
+    ? resolveInnerTimeoutMs(manifestHook, platform)
+    : MAX_DECLARED_GENERIC_TIMEOUT_MS - platformTimeoutCushionMs(platform);
 }
 
 function resolveHookTimeoutMsFromRoot(pluginRoot, targetPath, extraArgs) {
@@ -193,12 +238,14 @@ function resolveWorkerTarget(resolution, extraArgs) {
     const canonicalTarget = normalizedComparisonPath(resolution.targetPath);
     if (!isContainedBy(canonicalRoot, canonicalTarget)) return null;
 
-    const expectedTargets = ['keyword-detector.mjs', 'skill-injector.mjs']
-      .map(script => normalizedComparisonPath(join(trustedRoot, 'scripts', script)));
-    if (!expectedTargets.includes(canonicalTarget)) return null;
+    const scriptName = basename(resolution.targetPath);
+    const trustedHook = TRUSTED_WORKER_HOOKS.get(scriptName);
+    if (!trustedHook) return null;
+    const expectedTarget = normalizedComparisonPath(join(trustedRoot, 'scripts', scriptName));
+    if (canonicalTarget !== expectedTarget) return null;
 
     const manifestHook = resolveHookTimeoutMsFromRoot(trustedRoot, resolution.targetPath, []);
-    if (manifestHook?.event !== 'UserPromptSubmit') return null;
+    if (manifestHook?.event !== trustedHook.event) return null;
     return manifestHook;
   } catch {
     return null;
@@ -223,11 +270,13 @@ function resolveTrustedSessionEndTarget(resolution, extraArgs) {
 }
 
 
-function writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs) {
+function writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink) {
   const message = `[run.cjs] Hook ${basename(targetPath)} timed out after ${timeoutMs}ms; exiting fail-open.\n`;
   if (manifestHook?.event !== 'UserPromptSubmit' || isDebugHooksEnabled()) {
-    process.stderr.write(message);
+    if (sink) return sink.write(process.stderr, Buffer.from(message));
+    try { process.stderr.write(message); } catch { /* protocol dest may already be closed */ }
   }
+  return Promise.resolve();
 }
 
 function captureProcessStartIdentity(pid) {
@@ -268,16 +317,34 @@ function processIdentityMatches(pid, expectedIdentity) {
   return captureProcessStartIdentity(pid) === expectedIdentity;
 }
 
+function leaderPresence(pid, expectedIdentity) {
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    return error && error.code === 'ESRCH' ? 'absent' : 'unknown';
+  }
+  if (!expectedIdentity) return 'alive';
+  return captureProcessStartIdentity(pid) === expectedIdentity ? 'alive' : 'mismatch';
+}
+
 function reapTree(child, childIdentity) {
-  // Identity-safe reap: verify the PID still belongs to the child we spawned
-  // before killing its process group. If the PID was reused by the OS after
-  // the child exited, processIdentityMatches returns false and we skip the
-  // kill entirely, relying on child.unref() for fail-open exit.
-  if (childIdentity && !processIdentityMatches(child.pid, childIdentity)) return;
+  // Identity-safe reap: only signal a live PID we spawned, or a confirmed-dead
+  // detached leader's leftover process group. A live identity mismatch is PID
+  // reuse — fail closed. Unknown (EPERM/identity-read failure) also fail closed.
+  if (!Number.isInteger(child.pid) || child.pid <= 0) return;
+  const presence = leaderPresence(child.pid, childIdentity);
+  if (presence === 'mismatch' || presence === 'unknown') return;
+  if (presence === 'absent') {
+    if (process.platform === 'win32') return;
+    try { process.kill(-child.pid, 'SIGKILL'); } catch { /* group already empty */ }
+    return;
+  }
   if (process.platform === 'win32') {
-    // Fire-and-forget: a slow, denied, or missing taskkill must not block the
-    // runner past the outer hooks.json budget. The runner still exits fail-open
-    // via child.unref() on the timeout path; taskkill reaps the tree best-effort.
+    // Protocol stdout/stderr are owned by run.cjs pipes, so a descendant that
+    // outlives this process cannot retain Claude Code's handles (#3920).
+    // Do not spawnSync here: Node waits for the killer even after its timeout,
+    // which can hold the runner past the declared host fuse. Fire-and-forget
+    // taskkill with stdio ignored after protocol detach is the fail-open path.
     try {
       const killer = spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], {
         windowsHide: true,
@@ -310,7 +377,274 @@ function resolveGenericChildCommand(targetPath, extraArgs, platform = process.pl
     : [targetPath, ...extraArgs];
 }
 
+function resolveGenericChildStdio(platform = process.platform) {
+  // stdin inherit: hook JSON payload from Claude Code.
+  // stdout/stderr pipe: run.cjs owns the protocol handles so a descendant that
+  // outlives the runner cannot keep Claude Code blocked on EOF (#3920).
+  // ipc: Windows supervisor parent-death reap.
+  return platform === 'win32'
+    ? ['inherit', 'pipe', 'pipe', 'ipc']
+    : ['inherit', 'pipe', 'pipe'];
+}
+
+function isClosedDestinationError(error) {
+  const code = error && error.code;
+  return code === 'EPIPE' || code === 'ERR_STREAM_DESTROYED' || code === 'ERR_STREAM_WRITE_AFTER_END';
+}
+
+
+let processDestGuardsInstalled = false;
+function ensureProcessDestGuards() {
+  if (processDestGuardsInstalled) return;
+  processDestGuardsInstalled = true;
+  const guard = (error) => {
+    if (isClosedDestinationError(error)) return;
+    try {
+      writeSync(2, `[run.cjs] protocol stream error: ${error.code || error.message}\n`);
+    } catch { /* both destinations dead */ }
+  };
+  process.stdout.on('error', guard);
+  process.stderr.on('error', guard);
+}
+
+function createProtocolSink(hooks = {}) {
+  const discarded = { stdout: false, stderr: false };
+  const closedDest = { stdout: false, stderr: false };
+  const bindings = { stdout: [], stderr: [] };
+  let installed = false;
+  let pendingWrites = 0;
+  let uninstallRequested = false;
+  const onStdoutError = (error) => handleDestError('stdout', process.stdout, error);
+  const onStderrError = (error) => handleDestError('stderr', process.stderr, error);
+
+  function teardownChannel(name) {
+    discarded[name] = true;
+    const snapshot = bindings[name];
+    bindings[name] = [];
+    for (const binding of snapshot) {
+      try { binding.source.unpipe(binding.tap); } catch { /* already unpiped */ }
+      try { binding.tap.unpipe(binding.writer); } catch { /* already unpiped */ }
+      try { binding.tap.destroy(); } catch { /* already destroyed */ }
+      try { binding.writer.destroy(); } catch { /* already destroyed */ }
+    }
+    if (typeof hooks.beforeSourceDestroy === 'function') hooks.beforeSourceDestroy();
+    for (const binding of snapshot) {
+      try { binding.source.destroy(); } catch { /* already destroyed */ }
+    }
+  }
+
+  function handleDestError(name, dest, error) {
+    if (discarded[name]) return;
+    if (isClosedDestinationError(error)) closedDest[name] = true;
+    teardownChannel(name);
+    if (!isClosedDestinationError(error) && name === 'stdout') {
+      void write(process.stderr, Buffer.from(`[run.cjs] protocol stream error: ${error.code || error.message}\n`));
+    }
+  }
+
+  function install() {
+    ensureProcessDestGuards();
+    if (installed) return;
+    installed = true;
+    process.stdout.on('error', onStdoutError);
+    process.stderr.on('error', onStderrError);
+  }
+
+  function flushUninstall() {
+    if (!uninstallRequested || pendingWrites > 0 || !installed) return;
+    installed = false;
+    process.stdout.removeListener('error', onStdoutError);
+    process.stderr.removeListener('error', onStderrError);
+    // Process-lifetime closed-dest guards remain so a late write callback
+    // EPIPE after finish() cannot crash the runner.
+  }
+
+  function uninstall() {
+    uninstallRequested = true;
+    flushUninstall();
+  }
+
+  function abandonOutputs() {
+    teardownChannel('stdout');
+    teardownChannel('stderr');
+  }
+
+  function closeDestinations() {
+    try { process.stdout.destroy(); } catch { /* already closed */ }
+    try { process.stderr.destroy(); } catch { /* already closed */ }
+  }
+
+  function write(dest, data) {
+    install();
+    const name = dest === process.stderr ? 'stderr' : 'stdout';
+    if (discarded[name] || !dest || dest.destroyed || !dest.writable) return Promise.resolve();
+    if (dest.writableNeedDrain) {
+      discarded[name] = true;
+      return Promise.resolve();
+    }
+    pendingWrites += 1;
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      const completeWrite = (error) => {
+        if (writeCompleted) {
+          if (error) handleDestError(name, dest, error);
+          return;
+        }
+        writeCompleted = true;
+        pendingWrites = Math.max(0, pendingWrites - 1);
+        if (error) handleDestError(name, dest, error);
+        clearTimeout(timer);
+        done();
+        flushUninstall();
+      };
+      let writeCompleted = false;
+      const timer = setTimeout(done, PROTOCOL_STDIO_SETTLE_MS);
+      try {
+        const ok = dest.write(data, (error) => completeWrite(error));
+        if (!ok) completeWrite();
+      } catch (error) {
+        completeWrite(error);
+      }
+    });
+  }
+
+  function attachChild(child) {
+    install();
+    const bind = (source, dest, name) => {
+      if (!source) return;
+      const tap = new PassThrough();
+      const binding = {
+        source,
+        tap,
+        dest,
+        writer: null,
+        completed: false,
+        lastProgressAt: Date.now(),
+      };
+      const writer = new Writable({
+        write(chunk, _encoding, callback) {
+          let offset = 0;
+          const writeNext = () => {
+            if (discarded[name] || !dest || dest.destroyed || !dest.writable) {
+              callback();
+              return;
+            }
+            if (offset >= chunk.length) {
+              callback();
+              return;
+            }
+            const end = Math.min(offset + 1024, chunk.length);
+            const slice = chunk.subarray(offset, end);
+            offset = end;
+            try {
+              dest.write(slice, (error) => {
+                if (error) {
+                  handleDestError(name, dest, error);
+                  callback();
+                  return;
+                }
+                binding.lastProgressAt = Date.now();
+                writeNext();
+              });
+            } catch (error) {
+              handleDestError(name, dest, error);
+              callback();
+            }
+          };
+          writeNext();
+        },
+      });
+      binding.writer = writer;
+      bindings[name].push(binding);
+      source.on('data', () => { binding.lastProgressAt = Date.now(); });
+      source.pipe(tap);
+      tap.pipe(writer);
+      tap.on('error', (error) => handleDestError(name, dest, error));
+      writer.on('finish', () => { binding.completed = true; });
+      writer.on('error', (error) => handleDestError(name, dest, error));
+    };
+    bind(child.stdout, process.stdout, 'stdout');
+    bind(child.stderr, process.stderr, 'stderr');
+  }
+
+  function settleOutputs(timeoutMs, idleMs = PROTOCOL_SOURCE_IDLE_MS) {
+    const active = [...bindings.stdout, ...bindings.stderr];
+    if (active.length === 0) return Promise.resolve(true);
+    const deadline = Date.now() + Math.max(1, timeoutMs);
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = (complete) => {
+        if (settled) return;
+        settled = true;
+        clearInterval(timer);
+        resolve(complete);
+      };
+      const inspect = () => {
+        if (Date.now() >= deadline) {
+          abandonOutputs();
+          finish(false);
+          return;
+        }
+        if (active.every(binding => binding.completed || binding.writer.destroyed)) {
+          finish(true);
+          return;
+        }
+        const now = Date.now();
+        for (const binding of active) {
+          if (binding.completed || binding.writer.destroyed) continue;
+          if (now - binding.lastProgressAt < idleMs) continue;
+          const sourceEnded = binding.source.readableEnded || binding.source.destroyed;
+          const bufferedBytes = binding.source.readableLength + binding.tap.readableLength +
+            binding.writer.writableLength + (binding.dest.writableLength || 0);
+          // An open source with an empty pipeline after the leader exited is a
+          // leaked descendant handle. Buffered bytes, by contrast, are valid
+          // protocol output and retain the remaining declared hook budget.
+          if (!sourceEnded && bufferedBytes === 0) {
+            teardownChannel(binding.dest === process.stderr ? 'stderr' : 'stdout');
+          }
+        }
+      };
+      const timer = setInterval(inspect, Math.max(5, Math.floor(idleMs / 4)));
+      inspect();
+    });
+  }
+
+  return {
+    install,
+    uninstall,
+    write,
+    attachChild,
+    settleOutputs,
+    abandonOutputs,
+    closeDestinations,
+    hasClosedDestination: () => closedDest.stdout || closedDest.stderr,
+  };
+}
+
+function detachProtocolStdio(child) {
+  if (!child) return;
+  for (const [stream, dest] of [[child.stdout, process.stdout], [child.stderr, process.stderr]]) {
+    if (!stream) continue;
+    try { stream.unpipe(dest); } catch { /* already detached */ }
+    try {
+      if (typeof stream.pause === 'function') stream.pause();
+      const destWritable = dest && !dest.destroyed && dest.writable && !dest.writableNeedDrain;
+      if (typeof stream.read === 'function' && destWritable) {
+        let chunk;
+        while ((chunk = stream.read()) !== null) dest.write(chunk);
+      }
+    } catch { /* remaining buffered bytes are best-effort */ }
+    try { stream.destroy(); } catch { /* already destroyed */ }
+  }
+}
+
 function releaseGenericChild(child) {
+  detachProtocolStdio(child);
   try {
     if (child.connected) child.disconnect();
   } catch {
@@ -351,13 +685,30 @@ function superviseGenericChild(targetPath, extraArgs) {
   child.once('error', () => finish(0));
 }
 
-
 function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
+  let child;
+  let childIdentity = null;
+  let reaped = false;
+  const reapOnce = () => {
+    if (reaped || !child) return;
+    reaped = true;
+    reapTree(child, childIdentity);
+  };
+  const sink = createProtocolSink({
+    beforeSourceDestroy: reapOnce,
+  });
+  sink.install();
   return new Promise(resolve => {
+    const protocolDeadline = Date.now() + timeoutMs;
     let terminal = false;
+    let settling = false;
     let timer;
-    const child = spawn(process.execPath, resolveGenericChildCommand(targetPath, extraArgs), {
-      stdio: process.platform === 'win32' ? ['inherit', 'inherit', 'inherit', 'ipc'] : 'inherit',
+    const finish = (status) => {
+      sink.uninstall();
+      resolve(status);
+    };
+    child = spawn(process.execPath, resolveGenericChildCommand(targetPath, extraArgs), {
+      stdio: resolveGenericChildStdio(),
       env: {
         ...process.env,
         OMC_SESSION_OWNER_PID: process.env.OMC_SESSION_OWNER_PID || String(process.ppid),
@@ -365,9 +716,8 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       windowsHide: true,
       detached: true,
     });
-    // Capture the durable start identity immediately so reapTree can reject
-    // a PID that was reused after the child exited.
-    const childIdentity = child.pid ? captureProcessStartIdentity(child.pid) : null;
+    sink.attachChild(child);
+    childIdentity = child.pid ? captureProcessStartIdentity(child.pid) : null;
 
     // The generic child is detached into its own process group (POSIX). If the
     // runner is terminated or cancelled BEFORE the inner timer fires (outer
@@ -379,43 +729,70 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       process.off('exit', onRunnerExit);
     };
     function onRunnerSignal() {
-      if (terminal) return;
+      if (terminal && !settling) return;
       terminal = true;
+      settling = false;
       detachHandlers();
-      reapTree(child, childIdentity);
+      reapOnce();
+      sink.abandonOutputs();
+      detachProtocolStdio(child);
+      sink.uninstall();
       process.exit(0);
     }
     function onRunnerExit() {
-      if (terminal) return;
+      if (terminal && !settling) return;
       terminal = true;
-      reapTree(child, childIdentity);
+      settling = false;
+      reapOnce();
+      sink.abandonOutputs();
+      detachProtocolStdio(child);
     }
 
     timer = setTimeout(() => {
       if (terminal) return;
       terminal = true;
       detachHandlers();
-      reapTree(child, childIdentity);
-      // The runner MUST exit fail-open even if the tree reap did not (or could
-      // not) complete — the core #3493 symptom is run.cjs parents living for
-      // tens of minutes. Closing the Windows IPC channel also tells the
-      // supervisor to reap the hook tree if taskkill did not complete.
-      releaseGenericChild(child);
-      writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs);
-      resolve(0);
+      reapOnce();
+      void writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink).finally(() => {
+        sink.abandonOutputs();
+        detachProtocolStdio(child);
+        releaseGenericChild(child);
+        if (require.main === module) {
+          sink.closeDestinations();
+        }
+        finish(0);
+      });
     }, timeoutMs);
 
     child.once('exit', (code) => {
       if (terminal) return;
       terminal = true;
-      detachHandlers();
-      resolve(typeof code === 'number' ? code : 0);
+      settling = true;
+      clearTimeout(timer);
+      // Drain then close even on a clean hook exit. A detached descendant that
+      // inherited the child's stdout/stderr keeps the pipe readableEnded=false;
+      // leaving the forwarders attached would pin process.stdout and wedge EOF
+      // (#3920 success-path hang, outer harness timeout 124).
+      const remainingProtocolMs = Math.max(1, protocolDeadline - Date.now());
+      void sink.settleOutputs(remainingProtocolMs).then((complete) => {
+        settling = false;
+        detachHandlers();
+        if (!complete && require.main === module) {
+          sink.closeDestinations();
+          releaseGenericChild(child);
+          return process.exit(1);
+        }
+        releaseGenericChild(child);
+        const childStatus = typeof code === 'number' ? code : 0;
+        finish(complete ? (sink.hasClosedDestination() ? 0 : childStatus) : 1);
+      });
     });
     child.once('error', () => {
       if (terminal) return;
       terminal = true;
       detachHandlers();
-      resolve(0);
+      detachProtocolStdio(child);
+      finish(0);
     });
 
     for (const signal of RUNNER_TERMINATION_SIGNALS) process.on(signal, onRunnerSignal);
@@ -430,6 +807,8 @@ async function runWorker(targetPath, manifestHook, timeoutMs) {
   let discardOutput = false;
   const stdout = [];
   const stderr = [];
+  const sink = createProtocolSink();
+  sink.install();
 
   const cleanupInput = () => {
     if (!worker) return;
@@ -439,15 +818,12 @@ async function runWorker(targetPath, manifestHook, timeoutMs) {
   const waitForOutputEnd = stream => stream.readableEnded
     ? Promise.resolve()
     : new Promise(resolve => stream.once('end', resolve));
-  const writeBuffer = (stream, buffer) => new Promise(resolve => {
-    stream.write(buffer, () => resolve());
-  });
   const forwardBuffers = async (workerError) => {
-    if (stdout.length) await writeBuffer(process.stdout, Buffer.concat(stdout));
-    if (stderr.length) await writeBuffer(process.stderr, Buffer.concat(stderr));
+    if (stdout.length) await sink.write(process.stdout, Buffer.concat(stdout));
+    if (stderr.length) await sink.write(process.stderr, Buffer.concat(stderr));
     if (workerError) {
       const diagnostic = workerError.stack || workerError.message || String(workerError);
-      await writeBuffer(process.stderr, Buffer.from(`${diagnostic}\n`));
+      await sink.write(process.stderr, Buffer.from(`${diagnostic}\n`));
     }
   };
   const waitForWorkerOutput = () => Promise.all([
@@ -464,6 +840,7 @@ async function runWorker(targetPath, manifestHook, timeoutMs) {
         cleanupInput();
         if (worker) await waitForWorkerOutput();
         await forwardBuffers(workerError);
+        sink.uninstall();
         resolve(status);
       };
 
@@ -477,7 +854,8 @@ async function runWorker(targetPath, manifestHook, timeoutMs) {
         } catch {
           // Termination is best-effort; the hook must still fail open.
         }
-        writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs);
+        await writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink);
+        sink.uninstall();
         resolve(0);
       }, timeoutMs);
 
@@ -508,6 +886,7 @@ async function runWorker(targetPath, manifestHook, timeoutMs) {
 }
 
 if (require.main === module) {
+  ensureProcessDestGuards();
   const target = process.argv[2];
   if (target === '--generic-child-supervisor') {
     const supervisedTarget = process.argv[3];
@@ -523,19 +902,22 @@ if (require.main === module) {
       const extraArgs = process.argv.slice(3);
       const workerManifestHook = resolveWorkerTarget(resolution, extraArgs);
       if (workerManifestHook) {
-        const workerTimeoutMs = resolveTrustedPromptWorkerTimeoutMs(resolution.targetPath, workerManifestHook, resolution.trustedPluginRoot);
+        const workerTimeoutMs = resolveTrustedWorkerTimeoutMs(resolution.targetPath, workerManifestHook);
         runWorker(resolution.targetPath, workerManifestHook, workerTimeoutMs).then(status => {
           process.exitCode = status;
         });
       } else {
         const sessionEndManifestHook = resolveTrustedSessionEndTarget(resolution, extraArgs);
         if (sessionEndManifestHook) {
+          // The shipped foreground budget stays 300ms unconditionally; only the
+          // test harness may widen it, and only under NODE_ENV=test.
           const requestedTestTimeout = process.env.NODE_ENV === 'test'
             ? Number(process.env.OMC_SESSION_END_TEST_FOREGROUND_TIMEOUT_MS)
             : NaN;
-          const timeoutMs = Number.isFinite(requestedTestTimeout) && requestedTestTimeout > 0
-            ? Math.min(resolveGenericTimeoutMs(sessionEndManifestHook), requestedTestTimeout)
-            : Math.min(resolveGenericTimeoutMs(sessionEndManifestHook), 300);
+          const budgetMs = Number.isFinite(requestedTestTimeout) && requestedTestTimeout > 0
+            ? requestedTestTimeout
+            : 300;
+          const timeoutMs = Math.min(resolveGenericTimeoutMs(sessionEndManifestHook), budgetMs);
           runWorker(resolution.targetPath, sessionEndManifestHook, timeoutMs).then(status => {
             process.exitCode = status;
           });
@@ -553,13 +935,28 @@ if (require.main === module) {
 
 module.exports = {
   resolveInnerTimeoutMs,
-  resolveTrustedPromptWorkerTimeoutMs,
+  resolveTrustedWorkerTimeoutMs,
   resolveWorkerTarget,
   resolveHookTimeoutMs,
   resolveGenericTimeoutMs,
+  resolveTimeoutCushionMs,
+  desiredTimeoutCushionMs,
+  platformTimeoutCushionMs,
   runGenericChild,
   resolveGenericChildCommand,
+  resolveGenericChildStdio,
   releaseGenericChild,
+  isClosedDestinationError,
   DEFAULT_GENERIC_TIMEOUT_MS,
+  TIMEOUT_CUSHION_MS,
+  WINDOWS_TIMEOUT_CUSHION_MS,
+  WINDOWS_REAP_TIMEOUT_MS,
+  MIN_HOOK_INNER_MS,
+  MIN_HOOK_INNER_FRACTION,
+  WINDOWS_GENERIC_STARTUP_MS,
+  NESTED_OPERATION_TIMEOUT_MS,
+  NESTED_OPERATION_MARGIN_MS,
+  NESTED_INNER_FLOOR_MS,
+  MAX_DECLARED_GENERIC_TIMEOUT_MS,
   resolveTrustedSessionEndTarget,
 };

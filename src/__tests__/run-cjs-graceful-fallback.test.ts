@@ -6,6 +6,7 @@ import { execFileSync, spawnSync } from 'child_process';
 
 const RUN_CJS_PATH = join(__dirname, '..', '..', 'scripts', 'run.cjs');
 const NODE = process.execPath;
+const runCjsModule = require('../../scripts/run.cjs');
 
 /**
  * Regression tests for run.cjs graceful fallback when CLAUDE_PLUGIN_ROOT
@@ -112,9 +113,9 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
       const outer = { event: 'UserPromptSubmit', timeoutMs: 30000 };
       const lower = { event: 'UserPromptSubmit', timeoutMs: 5000 };
       process.stdout.write(JSON.stringify([
-        runner.resolveTrustedPromptWorkerTimeoutMs(keyword, outer, root),
-        runner.resolveTrustedPromptWorkerTimeoutMs(skill, outer, root),
-        runner.resolveTrustedPromptWorkerTimeoutMs(keyword, lower, root),
+        runner.resolveTrustedWorkerTimeoutMs(keyword, outer),
+        runner.resolveTrustedWorkerTimeoutMs(skill, outer),
+        runner.resolveTrustedWorkerTimeoutMs(keyword, lower),
         runner.resolveGenericTimeoutMs(outer),
       ]));
     `;
@@ -122,7 +123,9 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
       encoding: 'utf-8',
     }));
 
-    expect(values).toEqual([8000, 12000, 4000, 27000]);
+    // The lower-manifest inner budget subtracts the platform cushion:
+    // 1500ms on Windows, 1000ms on POSIX (upstream's expectation).
+    expect(values).toEqual([8000, 12000, process.platform === 'win32' ? 3500 : 4000, 27000]);
   });
 
   it('exits 0 when no target argument is provided', () => {
@@ -197,13 +200,15 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
   it('resolves target through symlinked version directory', () => {
     const markerPath = join(tmpDir, 'symlink-hit.txt');
     // Create a real latest version
-    const _latestDir = createFakeVersion('4.4.5', {
+    const latestDir = createFakeVersion('4.4.5', {
       'test-hook.cjs': `#!/usr/bin/env node\nrequire('fs').writeFileSync(${JSON.stringify(markerPath)}, "via-symlink"); process.exit(0);`,
     });
 
-    // Create a symlink from old version to latest
+    // Create a symlink from old version to latest. Windows needs a junction
+    // (plain directory symlinks require elevation) and junctions need an
+    // absolute target; the type argument is ignored on POSIX.
     const symlinkVersion = join(fakeCacheBase, '4.4.3');
-    symlinkSync('4.4.5', symlinkVersion);
+    symlinkSync(process.platform === 'win32' ? latestDir : '4.4.5', symlinkVersion, 'junction');
 
     // Target uses the symlinked version
     const target = join(symlinkVersion, 'scripts', 'test-hook.cjs');
@@ -309,7 +314,8 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain('slow-stop-done');
-    expect(result.stderr).toContain('[run.cjs] Hook slow-stop-hook.cjs timed out after 1500ms; exiting fail-open.');
+    const innerMs = runCjsModule.resolveGenericTimeoutMs({ timeoutMs: 2000, event: 'Stop' });
+    expect(result.stderr).toContain(`[run.cjs] Hook slow-stop-hook.cjs timed out after ${innerMs}ms; exiting fail-open.`);
     expect(result.stderr).not.toContain('timed out after 2000ms');
     expect(elapsedMs).toBeLessThan(2000);
   });
@@ -421,7 +427,8 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain('non-prompt-done');
-    expect(result.stderr).toContain('[run.cjs] Hook non-prompt-slow.cjs timed out after 1500ms; exiting fail-open.');
+    const innerMs = runCjsModule.resolveGenericTimeoutMs({ timeoutMs: 2000, event: 'Stop' });
+    expect(result.stderr).toContain(`[run.cjs] Hook non-prompt-slow.cjs timed out after ${innerMs}ms; exiting fail-open.`);
     expect(elapsedMs).toBeLessThan(2000);
   });
 
@@ -470,11 +477,12 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
     expect(quietResult.stderr).toBe('');
     expect(debugResult.status).toBe(0);
     expect(debugResult.stdout).not.toContain('prompt-debug-done');
-    expect(debugResult.stderr).toContain('[run.cjs] Hook prompt-debug-slow.cjs timed out after 1ms; exiting fail-open.');
+    const innerMs = runCjsModule.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'UserPromptSubmit' });
+    expect(debugResult.stderr).toContain(`[run.cjs] Hook prompt-debug-slow.cjs timed out after ${innerMs}ms; exiting fail-open.`);
   });
 });
 
-describe('run.cjs trusted UserPromptSubmit Worker selection', () => {
+describe('run.cjs trusted hook Worker selection', () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -490,7 +498,14 @@ describe('run.cjs trusted UserPromptSubmit Worker selection', () => {
     mkdirSync(join(root, 'hooks'), { recursive: true });
     writeFileSync(join(root, 'scripts', 'run.cjs'), '// plugin-root marker');
     for (const [name, contents] of Object.entries(scripts)) writeFileSync(join(root, 'scripts', name), contents);
-    for (const expectedScript of ['keyword-detector.mjs', 'skill-injector.mjs']) {
+    for (const expectedScript of [
+      'keyword-detector.mjs',
+      'skill-injector.mjs',
+      'pre-tool-enforcer.mjs',
+      'post-tool-verifier.mjs',
+      'project-memory-posttool.mjs',
+      'post-tool-rules-injector.mjs',
+    ]) {
       const expectedPath = join(root, 'scripts', expectedScript);
       if (!existsSync(expectedPath)) writeFileSync(expectedPath, 'process.exit(0);');
     }
@@ -505,11 +520,11 @@ describe('run.cjs trusted UserPromptSubmit Worker selection', () => {
     }));
   }
 
-  function run(target: string, env: Record<string, string> = {}, args: string[] = []) {
+  function run(target: string, env: Record<string, string> = {}, args: string[] = [], input = '{}') {
     const result = spawnSync(NODE, [RUN_CJS_PATH, target, ...args], {
       encoding: 'utf-8',
       env: { ...process.env, ...env },
-      input: '{}',
+      input,
       timeout: 30000,
       maxBuffer: 10 * 1024 * 1024,
     });
@@ -526,6 +541,59 @@ describe('run.cjs trusted UserPromptSubmit Worker selection', () => {
     const result = run(target, { CLAUDE_PLUGIN_ROOT: root });
 
     expect(result).toMatchObject({ status: 0, stdout: 'worker' });
+  });
+
+  it.each([
+    ['pre-tool-enforcer.mjs', 'PreToolUse'],
+    ['post-tool-verifier.mjs', 'PostToolUse'],
+    ['project-memory-posttool.mjs', 'PostToolUse'],
+    ['post-tool-rules-injector.mjs', 'PostToolUse'],
+  ])('uses a Worker for exact trusted per-tool hook %s', (script, event) => {
+    const root = join(tmpDir, `${script}-root`);
+    const target = join(root, 'scripts', script);
+    createTrustedPlugin(root, { [script]: workerProbe }, event);
+
+    expect(run(target, { CLAUDE_PLUGIN_ROOT: root })).toMatchObject({ status: 0, stdout: 'worker' });
+  });
+
+  it('executes the real post-tool verifier entrypoint inside its trusted Worker', () => {
+    const root = join(__dirname, '..', '..');
+    const target = join(root, 'scripts', 'post-tool-verifier.mjs');
+    const home = join(tmpDir, 'real-verifier-home');
+    const configDir = join(home, '.claude');
+    const input = JSON.stringify({
+      session_id: 'real-worker-session',
+      cwd: root,
+      tool_name: 'Read',
+      tool_input: { file_path: join(root, 'package.json') },
+      tool_response: 'ok',
+    });
+
+    const result = run(target, {
+      CLAUDE_PLUGIN_ROOT: root,
+      COPILOT_CONFIG_DIR: configDir,
+      HOME: home,
+      USERPROFILE: home,
+      OMC_QUIET: '1',
+      DISABLE_OMC: '',
+      OMC_SKIP_HOOKS: '',
+    }, [], input);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ continue: true });
+    const stats = JSON.parse(readFileSync(join(configDir, '.session-stats.json'), 'utf8'));
+    expect(stats.sessions['real-worker-session']).toMatchObject({
+      tool_counts: { Read: 1 },
+      total_calls: 1,
+    });
+  });
+
+  it('rejects a trusted per-tool pathname registered under the wrong event', () => {
+    const root = join(tmpDir, 'wrong-event-root');
+    const target = join(root, 'scripts', 'project-memory-posttool.mjs');
+    createTrustedPlugin(root, { 'project-memory-posttool.mjs': workerProbe }, 'PreToolUse');
+
+    expect(run(target, { CLAUDE_PLUGIN_ROOT: root })).toMatchObject({ status: 0, stdout: 'child' });
   });
 
   it('rejects same-basename outside-root, extra-argument, and nonprompt candidates to the generic child path', () => {
@@ -671,5 +739,24 @@ describe('run.cjs trusted UserPromptSubmit Worker selection', () => {
     expect(debug.stdout).toBe('');
     expect(debug.stderr).toContain('Hook keyword-detector.mjs timed out after 1000ms; exiting fail-open.');
     expect(readFileSync(startedMarker, 'utf-8')).toBe('async');
+  });
+
+  it('terminates a timed-out trusted per-tool Worker without late protocol output', () => {
+    const root = join(tmpDir, 'per-tool-timeout-root');
+    const target = join(root, 'scripts', 'pre-tool-enforcer.mjs');
+    createTrustedPlugin(
+      root,
+      {
+        'pre-tool-enforcer.mjs': "setTimeout(() => process.stdout.write('late'), 20); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);",
+      },
+      'PreToolUse',
+      1,
+    );
+
+    const result = run(target, { CLAUDE_PLUGIN_ROOT: root });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('Hook pre-tool-enforcer.mjs timed out after 500ms; exiting fail-open.');
   });
 });

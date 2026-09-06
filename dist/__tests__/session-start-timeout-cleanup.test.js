@@ -14,13 +14,17 @@ describe('BUG 4: session-start hooks clear timeout in finally', () => {
         const { readFileSync } = await import('fs');
         const { join } = await import('path');
         const source = readFileSync(join(process.cwd(), 'scripts/session-start.mjs'), 'utf-8');
-        // The checkNpmUpdate function should use finally for clearTimeout
-        // Look for the npm fetch section
-        const fetchSection = source.indexOf('registry.npmjs.org');
-        expect(fetchSection).toBeGreaterThan(-1);
-        // Find the surrounding try/finally block
-        const surroundingCode = source.slice(Math.max(0, fetchSection - 300), fetchSection + 800);
-        expect(surroundingCode).toMatch(/finally\s*\{[\s\S]*?clearTimeout/);
+        // Every aborted registry fetch must clear its timeout in a finally block.
+        // Anchor on the fetch calls themselves: the registry host now lives in a
+        // shared URL helper that sits outside any try/finally.
+        const fetchCalls = ["oh-my-copilot", "@anthropic-ai/claude-code"];
+        for (const packageName of fetchCalls) {
+            const fetchSection = source.indexOf(`registryLatestUrl('${packageName}')`);
+            expect(fetchSection).toBeGreaterThan(-1);
+            // Find the surrounding try/finally block
+            const surroundingCode = source.slice(Math.max(0, fetchSection - 300), fetchSection + 800);
+            expect(surroundingCode).toMatch(/finally\s*\{[\s\S]*?clearTimeout/);
+        }
     });
 });
 //# sourceMappingURL=session-start-timeout-cleanup.test.js.map

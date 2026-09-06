@@ -12,7 +12,14 @@ Launch is the shipyard's delivery run: from mission brief to shipped, verified c
 
 The verifiability test, applied to every step: *if this is done wrong, can the system detect it? Can it redo or roll back automatically?* Both yes → agent. No unique answer, system cannot judge, or expensive to get wrong → human.
 
-Launch assumes the shipyard keel exists (CONTEXT.md, conventions, standards). If the repo has neither `CONTEXT.md` nor a conventions section in `CLAUDE.md`, the paper trail has nowhere to land — recommend running `/oh-my-copilot:drydock` first (hard dependency; say it explicitly, once).
+Launch assumes the shipyard exists — and refuses to run if it does not. The yard gate is the first action of every invocation, before document-language resolution and before reading any supplied spec:
+
+- **Run the full drydock `--check` audit** — missing surfaces, a missing or invalid `CONTEXT.md` frontmatter `documentLanguage`, dead paths, glossary terms unused in code, standards never referenced. This is the single criterion: Launch performs no separate facility inventory of its own.
+- **Actionable / high-confidence findings hard-block the run:** list every such finding verbatim, point at `/oh-my-copilot:drydock`, state that the run never started and no artifacts were produced, and stop. Without an explicit override, treat any finding as blocking.
+- **Narrow override (explicit intent only):** low-confidence findings, findings explicitly classified as false positives in the drydock report, or a scratch/throwaway repository explicitly declared by the user may be overridden only with deliberate, per-invocation user intent — the override must name the finding(s) or the throwaway scope and must never silently swallow a high-confidence actionable finding. No general bypass flag.
+- **Current audit limitation:** today `--check` is a skill-instruction checklist without a machine-readable finding/severity contract or executable — severity classification relies on the drydock report's wording until a structured contract exists. A machine-readable finding/severity exit contract is the intended follow-up; the gate wording stays honest about what it can and cannot rely on mechanically.
+- **A clean audit (or an explicitly overridden low-confidence/false-positive/scratch scope) admits the run.** Every paper-trail slot (`CONTEXT.md`, `docs/adr/`, `docs/business/`) and facility surface already exists at that point; Launch fills the paper trail as decisions settle but never creates the slots.
+- The rules entry is `CLAUDE.md` — the shipyard map recognizes no substitute.
 
 ## The boundary
 
@@ -22,7 +29,7 @@ Launch assumes the shipyard keel exists (CONTEXT.md, conventions, standards). If
 | C2 approve acceptance criteria + test seam list | interview preparation: frontier questions batched with recommended answers |
 | C3 approve ticket decomposition (granularity, blocking edges) | spec and ticket drafting, mechanical validation (independence, demonstrability, fits-one-context) |
 | C4 answer irreversible decisions that emerge mid-run (batched, async) | tdd implementation at agreed seams, builds, tests, regressions |
-| C5 accept the completion report; veto via Open Assumptions | code-review, verify across the change, team frontier scheduling, the whole paper trail |
+| C5 accept the completion report; veto via Open Assumptions and the per-line sediment list | code-review, verify across the change, team frontier scheduling, the whole paper trail |
 
 Between checkpoints the pipeline never idles: agents keep working every frontier ticket that does not depend on a pending human answer.
 
@@ -31,7 +38,7 @@ Between checkpoints the pipeline never idles: agents keep working every frontier
 Launch is a **stateless composition over OMC's existing lifecycle** — it owns no runtime state machine:
 
 - Team owns task statuses, transitions, cancellation, and runtime cleanup; Launch never mutates them outside Team's contract.
-- The canonical `plan` → `execute` → `review` → `verify` surfaces own their existing lifecycle behavior. Launch-authored artifacts are limited to `.omg/specs/<feature-slug>/`, `CONTEXT.md`, `docs/adr/`, and `docs/business/`.
+- The canonical `plan` → `execute` → `review` → `verify` surfaces own their existing lifecycle behavior. Launch-authored artifacts are limited to `.omg/specs/<feature-slug>/`, `CONTEXT.md`, `docs/adr/`, and `docs/business/` — plus, only after C5 approval, the sediment slots named in the Phase 5 table.
 - Launch has no automatic resume. After interruption, re-read the artifacts and current Team status, but continue only through a new explicit Launch invocation after the owning Team lifecycle has reached a supported terminal/cleanup boundary. Never infer a human approval or replay an `in_progress` task.
 - Launch adds no approval receipt, revision counter, replay log, cancellation path, rollback mechanism, or cleanup lifecycle of its own.
 
@@ -39,7 +46,7 @@ Any durability claim in this skill is a claim about the files on disk, not about
 
 ## Phase 0 — Entry
 
-Before reading a supplied spec or entering Phase 1, resolve the document language. An explicit human choice in the current invocation wins; otherwise read a valid BCP-47-style tag from `CONTEXT.md` frontmatter at the exact stable key `documentLanguage`; otherwise require unanimous high-confidence inference from `CLAUDE.md` then `README.md`. A persisted bare or region-only Chinese tag is script-ambiguous and must be asked once at that authority tier, never bypassed by inference. Missing, mixed, conflicting, low-confidence, invalid-explicit, or script-ambiguous Chinese evidence requires one batched language question; do not guess. Chinese must resolve to an explicit `zh-Hans` or `zh-Hant` script tag. `zh-Hans-*` selects the Simplified companion and `zh-Hant-*` selects the Traditional companion while the full normalized tag is persisted. Persist the resolved normalized tag back to `CONTEXT.md` before any Launch-authored artifact so a fresh explicit invocation can read it without hidden conversation state. The human reads and maintains these artifacts; agents are language-agnostic.
+A run reaches this phase only through a clean yard gate. Before reading a supplied spec or entering Phase 1, resolve the document language. An explicit human choice in the current invocation wins; otherwise read a valid BCP-47-style tag from `CONTEXT.md` frontmatter at the exact stable key `documentLanguage`; otherwise require unanimous high-confidence inference from `CLAUDE.md` then `README.md`. A persisted bare or region-only Chinese tag is script-ambiguous and must be asked once at that authority tier, never bypassed by inference. Missing, mixed, conflicting, low-confidence, invalid-explicit, or script-ambiguous Chinese evidence requires one batched language question; do not guess. Chinese must resolve to an explicit `zh-Hans` or `zh-Hant` script tag. `zh-Hans-*` selects the Simplified companion and `zh-Hant-*` selects the Traditional companion while the full normalized tag is persisted. Persist the resolved normalized tag back to `CONTEXT.md` before any Launch-authored artifact so a fresh explicit invocation can read it without hidden conversation state. The human reads and maintains these artifacts; agents are language-agnostic.
 
 Localize prose and human-facing labels/localizable scalar values only. Paths, slash commands, flags, code fences, placeholders, frontmatter keys and machine-semantic values, YAML/JSON keys, lifecycle tokens (`plan`, `execute`, `review`, `verify`), status enums (`pending`, `in_progress`, `completed`, `failed`, `ready-for-agent`), IDs, ticket `blockedBy`, public Team `blocked_by`, and all parser/control tokens remain byte-for-byte stable. Reference language companions are mutually exclusive: emit exactly one selected rendering, never bilingual duplicate headings or labels.
 
@@ -53,7 +60,7 @@ Localize prose and human-facing labels/localizable scalar values only. Paths, sl
 Run the interview with the design-tree protocol: map decisions and their dependencies, then work in **frontier rounds** — batch every currently-askable question into one round, numbered, each with a recommended answer. The human answers; the tree reshapes; recompute the frontier. Facts are always self-served by sub-agents from repo evidence — the human is asked only what no amount of exploration can settle.
 
 Paper trail, written the moment each item settles:
-- domain vocabulary → `CONTEXT.md` at repo root (lazy creation, one entry per term)
+- domain vocabulary → `CONTEXT.md` at repo root (one entry per term)
 - decisions passing the ADR test (hard to reverse, surprising without context, real tradeoff) → `docs/adr/NNNN-<slug>.md`
 - business rules and background discovered during convergence → `docs/business/` (one article per business question, opening paragraph states why it matters)
 
@@ -109,7 +116,23 @@ On a later explicit Launch invocation, first require the owning Team lifecycle t
 
 - all tickets terminal with evidence → run verify across the whole change
 - reconcile the paper trail: CONTEXT.md accurate, ADRs complete, spec updated where implementation taught it something
-- emit the **completion report**: shipped scope, verification evidence, paper-trail locations, and Open Assumptions ranked by how much a human would likely want to veto them
+- yard re-check: re-run the drydock `--check` audit; any new findings since entry are reported as **yard drift**, with a pointer to `/oh-my-copilot:drydock`
+- **sediment pass — answer: what did this ship teach the yard?** Sweep the source checklist first (three-strike failure root causes, C4 answers, review rejections, verify findings), then answer. Propose every lesson as `lesson → slot → intended change` against the slot table below, or decline it explicitly with a reason; a ship with nothing to teach must say so verbatim as "no new lessons". This requirement blocks non-answers, never empty answers — inventing lessons to have one is the same violation as skipping the question. The lesson list rides in the completion report next to the Open Assumptions, each line individually vetoable; approved lessons are written to their slots only after acceptance, and the report records each landing's file location.
+
+  | Lesson kind | Slot |
+  |---|---|
+  | terms and boundaries settled mid-run | `CONTEXT.md` glossary |
+  | checkable behavior rules (carry a why) | `docs/standards/` matching volume (architecture / data / process) |
+  | most-violated conventions (thin-entry grade) | `CLAUDE.md` body — propose only |
+  | hard-to-reverse decisions | `docs/adr/` (C4 answers already land here) |
+  | business rules / background | `docs/business/` |
+  | UI patterns / component contracts | `design-system/` |
+  | reusable craft | `.omc/skills/` (through the skillify gate) |
+  | repeatedly needed automation / integrations | `scripts/` or `.mcp.json` |
+  | no slot fits | decline explicitly with the reason |
+
+- **thin-entry budget:** the `CLAUDE.md` body carries at most five hot entries. A lesson is thin-entry grade only when the source checklist evidences the same violation at least twice in this run, or the captain marks it load-bearing. Entries are listed most-recently-promoted first; the coldest entry is deterministically the last one listed, and a promotion over budget must demote exactly that entry in the same proposal, moving its full text back to `docs/standards/` — nothing is deleted, only re-tiered. Bloat is rebalanced ship by ship and is deliberately not a `--check` finding.
+- emit the **completion report**: shipped scope, verification evidence, paper-trail locations, yard-drift findings (if any), the sediment list (each line vetoable), and Open Assumptions ranked by how much a human would likely want to veto them
 
 ## Context hygiene
 
