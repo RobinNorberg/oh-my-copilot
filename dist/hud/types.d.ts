@@ -359,6 +359,12 @@ export interface HudRenderContext {
     omcVersion: string | null;
     /** Latest available version from npm registry (null if up to date or unknown) */
     updateAvailable: string | null;
+    /** Update channel the cached OMC update belongs to (null if unknown) */
+    omcUpdateSource?: 'npm' | 'marketplace' | null;
+    /** Installed Claude Code version reported by the statusline stdin payload */
+    claudeCodeVersion?: string | null;
+    /** Latest available Claude Code version (null if up to date or unknown) */
+    claudeCodeUpdateAvailable?: string | null;
     /** Total tool_use blocks seen in transcript */
     toolCallCount: number;
     /** Total Task/proxy_Task calls seen in transcript */

@@ -38,6 +38,11 @@ export declare function parseTmuxTail(raw: string, maxLines?: number): string;
  */
 export declare function formatAgentCall(payload: NotificationPayload): string;
 /**
+ * Format approval-request notification message.
+ * Notifies the user that a graph run is paused on a human approval gate.
+ */
+export declare function formatApprovalRequest(payload: NotificationPayload): string;
+/**
  * Format ask-user-question notification message.
  * Notifies the user that Copilot is waiting for input.
  */

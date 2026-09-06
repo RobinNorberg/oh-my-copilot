@@ -17,6 +17,19 @@ function identity(pid) {
   if (process.platform === 'win32') { try { const result = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', `$p=Get-Process -Id ${pid} -ErrorAction Stop; $p.StartTime.ToUniversalTime().Ticks`], { encoding: 'utf8', timeout: 3000, windowsHide: true }); const ticks = result.stdout?.trim().match(/^\d+$/)?.[0]; return ticks ? `ticks:${ticks}` : null; } catch { return null; } }
   return null;
 }
+function identities(pids) {
+  if (process.platform !== 'win32') return new Map();
+  const validPids = [...new Set(pids.filter(pid => Number.isSafeInteger(pid) && pid > 0))];
+  if (validPids.length === 0) return new Map();
+  try {
+    const command = `$items=Get-Process -Id ${validPids.join(',')} -ErrorAction SilentlyContinue | Select-Object Id,@{Name='StartTicks';Expression={[string]$_.StartTime.ToUniversalTime().Ticks}}; $items | ConvertTo-Json -Compress`;
+    const result = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', command], { encoding: 'utf8', timeout: 3000, windowsHide: true });
+    if (result.status !== 0) return new Map();
+    const parsed = JSON.parse(result.stdout?.trim() || 'null');
+    const items = Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
+    return new Map(items.map(item => [Number(item?.Id), item?.StartTicks]).filter(([pid, ticks]) => validPids.includes(pid) && typeof ticks === 'string' && /^\d+$/.test(ticks)).map(([pid, ticks]) => [pid, `ticks:${ticks}`]));
+  } catch { return new Map(); }
+}
 function alive(pid) {
   try { process.kill(pid, 0); return true; }
   catch (error) { return error?.code === 'EPERM'; }
@@ -32,7 +45,9 @@ export function publishCacheOccupancy(pluginRoot, configDir, pid = process.ppid)
 export function readOccupiedPluginRoots(configDir) {
   const dir = registryDir(configDir); let names;
   try { names = readdirSync(dir).filter(name => typeof name === 'string' && NAME.test(name)); } catch (error) { return { roots: new Set(), unavailable: error?.code !== 'ENOENT' }; }
-  const roots = new Set();
-  for (const name of names) { const path = join(dir, name); let record; try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { try { unlinkSync(path); } catch {} continue; } const age = Date.now() - Date.parse(record?.updatedAt); const current = identity(record?.pid); if (record?.version !== 1 || !Number.isSafeInteger(record?.pid) || !record?.processStartIdentity || !record?.pluginRoot || !Number.isFinite(Date.parse(record?.updatedAt)) || age < -300000 || !alive(record.pid) || (current && current !== record.processStartIdentity)) { try { unlinkSync(path); } catch {} continue; } roots.add(pathIdentity(record.pluginRoot)); }
+  const roots = new Set(); const records = [];
+  for (const name of names) { const path = join(dir, name); let record; try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { try { unlinkSync(path); } catch {} continue; } const age = Date.now() - Date.parse(record?.updatedAt); if (record?.version !== 1 || !Number.isSafeInteger(record?.pid) || !record?.processStartIdentity || !record?.pluginRoot || !Number.isFinite(Date.parse(record?.updatedAt)) || age < -300000 || !alive(record.pid)) { try { unlinkSync(path); } catch {} continue; } records.push({ path, record }); }
+  const currentIdentities = identities(records.map(({ record }) => record.pid));
+  for (const { path, record } of records) { const current = process.platform === 'win32' ? currentIdentities.get(record.pid) : identity(record.pid); if (current && current !== record.processStartIdentity) { try { unlinkSync(path); } catch {} continue; } roots.add(pathIdentity(record.pluginRoot)); }
   return { roots, unavailable: false };
 }

@@ -21,7 +21,7 @@ function manifestOnly(config, manifest) {
     // Only fields absent from config are safe projection backfill. Never accept worker/session,
     // lifecycle/counters/policy/governance data from a revisioned projection.
     const backfill = {};
-    for (const key of ['permissions_snapshot', 'leader_cwd', 'team_state_root', 'workspace_mode', 'worktree_mode', 'lifecycle_profile', 'leader_pane_id', 'hud_pane_id', 'resize_hook_name', 'resize_hook_target']) {
+    for (const key of ['permissions_snapshot', 'leader_cwd', 'team_state_root', 'workspace_mode', 'worktree_mode', 'lifecycle_profile', 'leader_pane_id', 'hud_pane_id', 'resize_hook_name', 'resize_hook_target', 'resolved_routing', 'resolved_routing_roles', 'external_models_defaults']) {
         if (config[key] === undefined && projected[key] !== undefined)
             backfill[key] = projected[key];
     }
@@ -90,6 +90,9 @@ export function deriveManifestProjection(config, existing) {
         resize_hook_name: config.resize_hook_name,
         resize_hook_target: config.resize_hook_target,
         next_worker_index: config.next_worker_index,
+        resolved_routing: config.resolved_routing ?? source?.resolved_routing,
+        resolved_routing_roles: config.resolved_routing_roles ?? source?.resolved_routing_roles,
+        external_models_defaults: config.external_models_defaults ?? source?.external_models_defaults,
         // Retain revision in the durable projection although old manifest typings predate it.
         state_revision: config.state_revision,
     };

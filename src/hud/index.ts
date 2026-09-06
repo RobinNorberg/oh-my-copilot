@@ -48,6 +48,7 @@ import { compareVersions } from "../features/auto-update.js";
 import {
   resolveToWorktreeRoot,
   resolveTranscriptPath,
+  withWorktreePathRenderScope,
 } from "../lib/worktree-paths.js";
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { access, readFile } from "fs/promises";
@@ -265,7 +266,7 @@ function showDiagnostic(): void {
  * Main HUD entry point
  * @param watchMode - true when called from the --watch polling loop (stdin is TTY)
  */
-async function main(watchMode = false, skipInit = false): Promise<void> {
+async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
   try {
     // Read stdin from Claude Code
     const previousStdinCache = readStdinCache();
@@ -390,6 +391,9 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
     // Read OMC version and update check cache
     let omcVersion: string | null = null;
     let updateAvailable: string | null = null;
+    let omcUpdateSource: "npm" | "marketplace" | null = null;
+    const claudeCodeVersion = stdin.version ?? null;
+    let claudeCodeUpdateAvailable: string | null = null;
     try {
       omcVersion = getRuntimePackageVersion();
       if (omcVersion === "unknown") omcVersion = null;
@@ -414,6 +418,18 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
         compareVersions(omcVersion, cached.latestVersion) < 0
       ) {
         updateAvailable = cached.latestVersion;
+      }
+      if (cached?.source === "npm" || cached?.source === "marketplace") {
+        omcUpdateSource = cached.source;
+      }
+      // claudeCodeLatestVersion is absent on caches written before the
+      // Claude Code check existed; treat that as "no update known".
+      if (
+        cached?.claudeCodeLatestVersion &&
+        claudeCodeVersion &&
+        compareVersions(claudeCodeVersion, cached.claudeCodeLatestVersion) < 0
+      ) {
+        claudeCodeUpdateAvailable = cached.claudeCodeLatestVersion;
       }
     } catch (error) {
       // Ignore update cache read errors - expected if file doesn't exist yet
@@ -491,6 +507,9 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
       sessionTotalTokens: transcriptData.sessionTotalTokens ?? null,
       omcVersion,
       updateAvailable,
+      omcUpdateSource,
+      claudeCodeVersion,
+      claudeCodeUpdateAvailable,
       toolCallCount: transcriptData.toolCallCount,
       agentCallCount: transcriptData.agentCallCount,
       skillCallCount: transcriptData.skillCallCount,
@@ -603,6 +622,10 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
 }
 
 // Export for programmatic use (e.g., omg hud --watch loop)
+function main(watchMode = false, skipInit = false): Promise<void> {
+  return withWorktreePathRenderScope(() => mainImpl(watchMode, skipInit));
+}
+
 export { main };
 
 // Auto-run (unconditional so dynamic import() via omg-hud.mjs wrapper works correctly)

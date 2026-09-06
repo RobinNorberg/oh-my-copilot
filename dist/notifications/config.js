@@ -395,6 +395,9 @@ const SESSION_EVENTS = new Set([
     "session-stop",
     "session-end",
     "session-idle",
+    // Approval requests gate a blocked pipeline; like ask-user-question they
+    // must never be silently dropped by a coarse verbosity setting.
+    "approval-request",
 ]);
 /**
  * Get the effective verbosity level.

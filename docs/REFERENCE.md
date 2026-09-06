@@ -14,8 +14,9 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated-opt-in-only)
 - [Agents (29 Total)](#agents-29-total)
 - [Goal Workflow UX: `/goal`, Ralph, Team, Ultragoal](#goal-workflow-ux-goal-ralph-team-ultragoal)
-- [Skills (33 Total)](#skills-33-total)
+- [Skills (51 Total)](#skills-51-total)
 - [Slash Commands](#slash-commands)
+- [Shipyard Methodology](./shipyard.md) — governed delivery & shared harness map
 - [Claude Code `/goal` Adapter Design](#claude-code-goal-adapter-design)
 - [Hooks System](#hooks-system)
 - [Magic Keywords](#magic-keywords)
@@ -132,9 +133,18 @@ By default, OMC stores state in `{worktree}/.omg/`. This is lost when worktrees 
 export OMC_STATE_DIR="$HOME/.claude/omc"
 ```
 
+> Shell rc files are not sourced by GUI-launched editors. For those sessions the
+> supported delivery channel is `settings.json` `env` (verified: keys defined only
+> there are present in spawned hook and statusline processes):
+>
+> ```json
+> { "env": { "OMC_STATE_DIR": "/home/you/.claude/omc" } }
+> ```
+> Set it in `~/.copilot/settings.json` (or `$COPILOT_CONFIG_DIR/settings.json`).
+
 This resolves to `~/.claude/omc/{project-identifier}/` where the project identifier uses a hash of the git remote URL (stable across worktrees/clones) with a fallback to the directory path hash for local-only repos.
 
-If both a legacy `{worktree}/.omg/` directory and a centralized directory exist, OMC logs a notice and uses the centralized directory. You can then migrate data from the legacy directory and remove it.
+If both a legacy `{worktree}/.omg/` directory and a centralized directory exist, OMC logs a notice. Processes that inherit `OMC_STATE_DIR` use the centralized directory; misconfigured processes that do not inherit it use the legacy directory and now also warn (legacy branch mirrors the centralized-branch check by discovering `OMC_STATE_DIR` from `settings.json` `env` when present). You can then migrate data from the legacy directory and remove it.
 
 #### OMC state, gitignore, worktree, and workspace contract
 
@@ -600,6 +610,37 @@ omg session friction report --project all --json
 - Highlights context-bloat and operator-friction indicators such as high estimated context usage, large JSONL entries, tool error rates, long idle gaps, failed agents, and hook noise
 - Supports `--limit`, `--session`, `--since`, `--project`, and `--json`
 
+### `omg checkpoint`
+
+Workspace snapshot/rollback for autonomous runs, built on git "shadow commits": the full working tree (tracked, modified, and untracked non-ignored files) is captured into `refs/omc/checkpoints/` without touching HEAD, the index, or the worktree.
+
+```bash
+omg checkpoint create --label "before ralph run"
+omg checkpoint list
+omg checkpoint rollback <id> --force
+```
+
+- `create` never touches HEAD or the working tree; restore points appear only under `refs/omc/checkpoints/`
+- `rollback` restores the worktree and index and removes files created after the snapshot (`git clean -fd` keeps ignored paths such as `node_modules`)
+- `rollback` refuses to discard uncommitted changes unless `--force` is passed
+- Requires a git repository; no external storage is involved
+
+### Graph approval gates (remote approvals)
+
+Graph runtime `human-approval` nodes support two gate styles via `omg graph run`:
+
+```bash
+omg graph run ./my-graph.json --approval-mode stdin    # default: interactive y/n
+omg graph run ./my-graph.json --approval-mode remote --checkpoint
+```
+
+- `--approval-mode remote` persists each pending gate under `.omc/graph-runs/<run_id>/approvals/` and dispatches an `approval-request` notification (Telegram/Discord/Slack/webhook, following your notification config)
+- Reply `approved`/`denied` (or `y`/`n`, `批准`/`拒绝`) to the notification message to decide from your phone; the reply-listener daemon writes the decision artifact
+- Decide from any shell on the machine: `omg graph approvals list`, then `omg graph approvals decide <runId> <activationId> approved|denied`
+- `--approval-timeout <seconds>` bounds the wait; an expired gate resolves to `--approval-timeout-policy deny` (default, fail-closed) or `approve`
+- `--checkpoint` snapshots the working tree before the run; after a denial you can restore it: `omg graph approvals decide <runId> <activationId> denied --rollback <checkpointId>`
+- Malformed decision artifacts are ignored, never trusted; the runner journal remains the record of outcomes
+
 ### Non-interactive automation and CI/CD
 
 Use OMC's terminal and library surfaces in non-interactive environments:
@@ -840,7 +881,7 @@ Autopilot continues to own cancel, resume, cleanup, state inspection, HUD, and S
 
 V1 deliberately defers `stageModels` and all model/provider/role routing, inline/no-spawn execution, dynamic commands/modes/state files, arbitrary stages/prompts/plugins and control-flow extensions, and the separate custom-skill inline-array frontmatter parser mismatch. See [ADR 03487](./adr/03487-named-autopilot-stage-profiles.md) for the decision record.
 
-## Skills (33 Total)
+## Skills (51 Total)
 
 Includes bundled workflow, utility, domain, and compatibility skills. Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
@@ -852,6 +893,7 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | ------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------- |
 | `ai-slop-cleaner`         | Anti-slop cleanup workflow with optional reviewer-only `--review` pass        | `/oh-my-copilot:ai-slop-cleaner`         |
 | `ask`                     | Ask Claude, Codex, Gemini, Antigravity, Grok, or Cursor via local CLI          | `/oh-my-copilot:ask`                     |
+| `ask-navigator`           | Shipyard navigator: chart foggy efforts into decision-ticket maps, hand off to launch | `/oh-my-copilot:ask-navigator`    |
 | `autopilot`               | Full autonomous execution from idea to working code                            | `/oh-my-copilot:autopilot`               |
 | `autoresearch`            | Stateful evaluator-driven improvement loop                                     | `/oh-my-copilot:autoresearch`            |
 | `cancel`                  | Unified cancellation for active modes                                          | `/oh-my-copilot:cancel`                  |
@@ -860,9 +902,13 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `debug`                   | Diagnose the current OMC session or repository state                           | `/oh-my-copilot:debug`                   |
 | `deep-interview`          | Socratic deep interview with ambiguity gating                                  | `/deep-interview`                           |
 | `deepinit`                | Generate hierarchical AGENTS.md documentation                                  | `/oh-my-copilot:deepinit`                |
+| `drydock`                 | Shipyard harness scaffold: 4-pillar shared environment, --check drift audit    | `/oh-my-copilot:drydock`                 |
 | `execute`                 | Carry an approved task through to working, verified code                       | `/oh-my-copilot:execute`                |
 | `external-context`        | Parallel document-specialist research                                          | `/oh-my-copilot:external-context`       |
 | `hud`                     | Configure HUD/statusline                                                        | `/oh-my-copilot:hud`                     |
+| `launch`                  | Shipyard governed delivery pipeline: spec, tickets, frontier execution          | `/oh-my-copilot:launch`                  |
+| `loft`                    | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions | `/oh-my-copilot:loft`              |
+| `minimal-code-discipline` | YAGNI-ladder writing-time discipline: reuse first, shortest correct diff        | `/oh-my-copilot:minimal-code-discipline` |
 | `omc-doctor`              | Diagnose and fix installation issues                                           | `/oh-my-copilot:omc-doctor`              |
 | `omc-plan`                | Strategic planning with optional interview and consensus modes                 | `/oh-my-copilot:omc-plan`               |
 | `omc-review`              | Evaluate finished work for defects, risk, and simplification                   | `/oh-my-copilot:omc-review`             |
@@ -895,6 +941,7 @@ Most installed skills are exposed as `/oh-my-copilot:<skill-name>`. Deep Intervi
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `/oh-my-copilot:ai-slop-cleaner <target>`             | Run the anti-slop cleanup workflow (`--review` for reviewer-only pass)                        |
 | `/oh-my-copilot:ask <claude\|codex\|gemini\|antigravity\|grok\|cursor> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact                   |
+| `/oh-my-copilot:ask-navigator <idea\|map>`            | Chart a foggy effort into a map of decision tickets (or work the open map), then hand off to launch |
 | `/oh-my-copilot:autopilot <task>`                     | Full autonomous execution                                                                     |
 | `/oh-my-copilot:autoresearch <task>`                  | Run a bounded evaluator-driven improvement mission                                             |
 | `/oh-my-copilot:cancel [--force\|--all]`              | Cancel active OMC modes                                                                       |
@@ -904,9 +951,13 @@ Most installed skills are exposed as `/oh-my-copilot:<skill-name>`. Deep Intervi
 | `/oh-my-copilot:debug`                                | Diagnose the current OMC session or repository state                                          |
 | `/deep-interview <idea>`                                 | Socratic interview with ambiguity scoring before execution                                    |
 | `/oh-my-copilot:deepinit [path]`                      | Index codebase with hierarchical AGENTS.md files                                              |
+| `/oh-my-copilot:drydock [--check]`                    | Lay the shipyard harness keel in a repo (5 surfaces); --check audits drift                     |
 | `/oh-my-copilot:execute <task>`                      | Carry an approved task through to working, verified code                                      |
 | `/oh-my-copilot:external-context <topic>`             | Run parallel document-specialist research                                                     |
 | `/oh-my-copilot:hud [setup\|minimal\|focused\|full\|status]` | Configure HUD/statusline                                                               |
+| `/oh-my-copilot:launch <brief\|spec-path> [--serial]` | Run the shipyard governed delivery pipeline (spec -> tickets -> frontier)                      |
+| `/oh-my-copilot:loft <design-question>`               | Loft the shape before cutting steel: a throwaway artifact answers a design question prose cannot settle |
+| `/oh-my-copilot:minimal-code-discipline`              | Apply the YAGNI-ladder writing-time discipline while implementing                              |
 | `/oh-my-copilot:omc-doctor`                           | Diagnose and fix installation issues                                                          |
 | `/oh-my-copilot:omc-plan <description>`               | Start planning session (supports consensus structured deliberation)                           |
 | `/oh-my-copilot:omc-review [path]`                    | Review finished work for defects and risk                                                       |
@@ -974,9 +1025,9 @@ OMC registers 21 hook scripts across 11 Claude Code lifecycle events. For detail
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
 | **UserPromptSubmit**   | `keyword-detector.mjs`, `skill-injector.mjs`                                                                      | 30s outer fuse per command; 8s, 12s trusted Worker limits |
 | **SessionStart**       | `session-start.mjs`, `project-memory-session.mjs`, `setup-init.mjs` (init), `setup-maintenance.mjs` (maintenance) | 5s, 5s, 30s, 60s |
-| **PreToolUse**         | `pre-tool-enforcer.mjs`                                                                                           | 3s               |
+| **PreToolUse**         | `pre-tool-enforcer.mjs`                                                                                           | 5s trusted Worker |
 | **PermissionRequest**  | `permission-handler.mjs` (Bash only)                                                                              | 5s               |
-| **PostToolUse**        | `post-tool-verifier.mjs`, `project-memory-posttool.mjs`                                                           | 3s, 3s           |
+| **PostToolUse**        | `post-tool-verifier.mjs`, `project-memory-posttool.mjs`, `post-tool-rules-injector.mjs`                          | 5s, 3s, 3s trusted Workers |
 | **PostToolUseFailure** | `post-tool-use-failure.mjs`                                                                                       | 3s               |
 | **SubagentStart**      | `subagent-tracker.mjs start`                                                                                      | 3s               |
 | **SubagentStop**       | `subagent-tracker.mjs stop`, `verify-deliverables.mjs`                                                            | 5s, 5s           |
@@ -984,7 +1035,7 @@ OMC registers 21 hook scripts across 11 Claude Code lifecycle events. For detail
 | **Stop**               | `context-guard-stop.mjs`, `workflow-drift-guard.mjs`, `persistent-mode.mjs`, `code-simplifier.mjs`                | 5s, 3s, 10s, 5s  |
 | **SessionEnd**         | `session-end.mjs`                                                                                                 | 30s              |
 
-For each UserPromptSubmit command, 30s is the outer host fuse, including any launcher delay before `run.cjs`. Only exact canonical targets in the trusted Worker branch receive the 8s keyword-detector or 12s skill-injector execution caps; generic, untrusted, and non-prompt child paths retain their existing timeout behavior. A command that never starts the runner can take the entire 30s per-command fuse, and host scheduling does not imply an aggregate latency.
+For each UserPromptSubmit command, 30s is the outer host fuse, including any launcher delay before `run.cjs`. Exact canonical targets use the trusted Worker branch only when their manifest event matches: the prompt hooks receive the 8s keyword-detector or 12s skill-injector execution caps, while the PreToolUse and PostToolUse hooks retain their manifest-derived inner budgets. Generic targets, untrusted paths, event mismatches, and invocations with extra arguments retain the isolated child-process path. A command that never starts the runner can take the entire 30s per-command fuse, and host scheduling does not imply an aggregate latency.
 
 The `workflow-drift-guard` blocks only supported source-associated local selection forks with a known minimum of two live alternatives—including exact binary questions and cardinality templates; explicit open input and every unsupported or ambiguous form fail open.
 

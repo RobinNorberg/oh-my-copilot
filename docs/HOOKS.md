@@ -124,10 +124,11 @@ Fires immediately before Claude uses a tool.
 
 | Script | Role | Timeout |
 |--------|------|---------|
-| `pre-tool-enforcer.mjs` | Validates rules before tool use | 3s |
+| `pre-tool-enforcer.mjs` | Validates rules before tool use | 5s |
 
 Runs on all tool calls (`matcher: "*"`). Enforces agent permission restrictions (e.g., blocking Write/Edit for read-only agents).
 Denies Task/Agent calls whose `subagent_type` names a bundled skill (issue #3667): instead of Claude Code's generic native "Agent type not found", the hook returns a precise error naming the Skill tool and the correct identifier, and forbids closest-match agent substitution.
+The exact canonical shipped script runs in the trusted Worker path; untrusted paths, event mismatches, and extra arguments retain the isolated child-process fallback.
 
 ### PermissionRequest
 
@@ -145,10 +146,12 @@ Fires after a tool use completes.
 
 | Script | Role | Timeout |
 |--------|------|---------|
-| `post-tool-verifier.mjs` | Verifies tool results and injects additional context | 3s |
+| `post-tool-verifier.mjs` | Verifies tool results and injects additional context | 5s |
 | `project-memory-posttool.mjs` | Updates project memory | 3s |
+| `post-tool-rules-injector.mjs` | Injects matching project rules | 3s |
 
 Injects additional guidance based on Read, Write, Edit, and Bash results. For example, after reading a file it may hint "consider using parallel reads."
+These exact canonical shipped scripts use the trusted Worker path without changing their manifest timeout budgets. The verifier retains statistics for the current session and the 99 most recently updated historical sessions so per-tool writes stay bounded. Disable all three with `DISABLE_OMC=1` (or `DISABLE_OMC=true`) or `OMC_SKIP_HOOKS=post-tool-use`; `project-memory-posttool` also accepts its script-specific token.
 
 ### PostToolUseFailure
 

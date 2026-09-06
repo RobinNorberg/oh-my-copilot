@@ -437,6 +437,9 @@ const SESSION_EVENTS: ReadonlySet<NotificationEvent> = new Set([
   "session-stop",
   "session-end",
   "session-idle",
+  // Approval requests gate a blocked pipeline; like ask-user-question they
+  // must never be silently dropped by a coarse verbosity setting.
+  "approval-request",
 ]);
 
 /**

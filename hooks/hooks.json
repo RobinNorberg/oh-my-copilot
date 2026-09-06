@@ -67,7 +67,7 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PLUGIN_ROOT\"/scripts/run.cjs \"$CLAUDE_PLUGIN_ROOT\"/scripts/pre-tool-enforcer.mjs",
-            "timeout": 3
+            "timeout": 5
           }
         ]
       }
@@ -91,7 +91,7 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PLUGIN_ROOT\"/scripts/run.cjs \"$CLAUDE_PLUGIN_ROOT\"/scripts/post-tool-verifier.mjs",
-            "timeout": 3
+            "timeout": 5
           },
           {
             "type": "command",

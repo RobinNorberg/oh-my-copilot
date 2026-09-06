@@ -38,6 +38,25 @@ function processStartIdentity(pid: number): string | null {
   return null;
 }
 
+export function processStartIdentities(pids: number[], exec: typeof execFileSync = execFileSync): Map<number, string> {
+  if (process.platform !== 'win32') return new Map();
+  const validPids = [...new Set(pids.filter((pid) => Number.isSafeInteger(pid) && pid > 0))];
+  if (validPids.length === 0) return new Map();
+  try {
+    const command = `$items=Get-Process -Id ${validPids.join(',')} -ErrorAction SilentlyContinue | Select-Object Id,@{Name='StartTicks';Expression={[string]$_.StartTime.ToUniversalTime().Ticks}}; $items | ConvertTo-Json -Compress`;
+    const output = exec('powershell', ['-NoProfile', '-NonInteractive', '-Command', command], { encoding: 'utf8', windowsHide: true });
+    const parsed: unknown = JSON.parse(output.trim() || 'null');
+    const items = Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
+    return new Map(items
+      .map((item) => [Number((item as { Id?: unknown })?.Id), (item as { StartTicks?: unknown })?.StartTicks] as const)
+      .flatMap(([pid, ticks]) => validPids.includes(pid) && typeof ticks === 'string' && /^\d+$/.test(ticks)
+        ? [[pid, `ticks:${ticks}`] as const]
+        : []));
+  } catch {
+    return new Map();
+  }
+}
+
 function processAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true; }
   catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM'; }
@@ -106,6 +125,7 @@ export function readOccupiedPluginRoots(configDir = getCopilotConfigDir()): { ro
   }
 
   const roots = new Set<string>();
+  const records: Array<{ path: string; record: CacheOccupancyRecord }> = [];
   const now = Date.now();
   for (const name of names) {
     const path = join(directory, name);
@@ -115,7 +135,13 @@ export function readOccupiedPluginRoots(configDir = getCopilotConfigDir()): { ro
     const age = now - Date.parse(record.updatedAt);
     if (age < -5 * 60 * 1000) { try { unlinkSync(path); } catch { /* best effort */ } continue; }
     if (!processAlive(record.pid)) { try { unlinkSync(path); } catch { /* best effort */ } continue; }
-    const currentIdentity = processStartIdentity(record.pid);
+    records.push({ path, record });
+  }
+  const currentIdentities = processStartIdentities(records.map(({ record }) => record.pid));
+  for (const { path, record } of records) {
+    const currentIdentity = process.platform === 'win32'
+      ? currentIdentities.get(record.pid)
+      : processStartIdentity(record.pid);
     if (currentIdentity && currentIdentity !== record.processStartIdentity) { try { unlinkSync(path); } catch { /* best effort */ } continue; }
     // A live process whose identity cannot be read (including EPERM) is retained
     // conservatively; only a proven-dead PID or proven mismatch self-invalidates.

@@ -1,14 +1,14 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "omc",
-  "description": "GitHub Copilot CLI multi-agent orchestration - intelligent model routing, 20 agents, 46 skills",
+  "description": "GitHub Copilot CLI multi-agent orchestration - intelligent model routing across agents and skills",
   "owner": {
     "name": "Robin Norberg"
   },
   "plugins": [
     {
       "name": "oh-my-copilot",
-      "description": "Multi-agent orchestration for GitHub Copilot CLI with intelligent model routing, 20 agent variants, and 46 skills. Zero learning curve. Maximum power.",
+      "description": "Multi-agent orchestration for GitHub Copilot CLI with intelligent model routing across agents and skills. Zero learning curve. Maximum power.",
       "version": "5.0.0",
       "author": {
         "name": "Robin Norberg"

@@ -6,7 +6,7 @@
 import type { TeamTaskStatus } from './contracts.js';
 import type { TeamPhase } from './phase-controller.js';
 import type { TeamLeaderNextAction } from './leader-nudge-guidance.js';
-import type { CanonicalTeamRole, RoleAssignment } from '../shared/types.js';
+import type { CanonicalTeamRole, ExternalModelsDefaults, RoleAssignment } from '../shared/types.js';
 /** Bridge daemon configuration — passed via --config file to bridge-entry.ts */
 export interface BridgeConfig {
     teamName: string;
@@ -396,6 +396,12 @@ export interface TeamManifestV2 {
     resize_hook_name: string | null;
     resize_hook_target: string | null;
     next_worker_index?: number;
+    resolved_routing?: Record<CanonicalTeamRole, {
+        primary: RoleAssignment;
+        fallback: RoleAssignment;
+    }>;
+    resolved_routing_roles?: CanonicalTeamRole[];
+    external_models_defaults?: ExternalModelsDefaults;
     service_descriptor?: TeamServiceDescriptor;
 }
 /** Worker info within a team config */
@@ -484,6 +490,10 @@ export interface TeamConfig {
         primary: RoleAssignment;
         fallback: RoleAssignment;
     }>;
+    /** Canonical roles explicitly configured for routing; defaults are not opt-in routes. */
+    resolved_routing_roles?: CanonicalTeamRole[];
+    /** Immutable provider defaults captured at team creation for scale-up parity. */
+    external_models_defaults?: ExternalModelsDefaults;
     state_revision?: number;
     runtime_owner_epoch?: TeamRuntimeOwnerEpoch;
     active_recovery?: TeamRecoveryAttempt;

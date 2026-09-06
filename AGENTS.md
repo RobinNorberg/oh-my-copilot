@@ -203,6 +203,11 @@ Workflow Skills:
 - `deep-interview`: Socratic deep interview with Ouroboros-inspired mathematical ambiguity gating before execution
 - `ralplan`: Iterative consensus planning with RALPLAN-DR structured deliberation (planner + architect + critic); supports `--deliberate` for high-risk work
 - `ai-slop-cleaner`: Regression-safe cleanup workflow for duplicate code, dead code, needless abstractions, and boundary violations; supports `--review` for reviewer-only passes
+- `minimal-code-discipline`: YAGNI-ladder writing-time discipline — existence-first, reuse before writing, shortest correct diff, with non-negotiables that are never minimized away
+- `launch`: Shipyard governed delivery pipeline — spec synthesis, vertical-slice tickets with blocking edges, frontier execution with human checkpoints; opt-in
+- `ask-navigator`: Shipyard navigator — charts foggy efforts into decision-ticket maps on the issue tracker, one ticket per session, then hands a mission brief to launch; opt-in
+- `loft`: Shipyard shape-before-steel discipline — answers a design question prose cannot settle with a throwaway artifact (pure logic module or structurally different UI variants); model-invoked; opt-in
+- `drydock`: Shipyard harness scaffold — 4-pillar shared environment (Context/Rules/Tools/Standards) across 5 surfaces, with --check drift audit; opt-in
 
 Agent Shortcuts:
 - `analyze` -> debugger: Investigation and root-cause analysis

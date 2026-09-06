@@ -29,6 +29,9 @@ const modelContractMocks = vi.hoisted(() => ({
     isPromptModeAgent: vi.fn(() => false),
     getPromptModeArgs: vi.fn(() => []),
     resolveClaudeWorkerModel: vi.fn(() => undefined),
+    normalizeExternalModelsDefaults: vi.fn((defaults) => defaults),
+    resolveExternalModelsDefaults: vi.fn((defaults) => defaults),
+    resolveDefaultWorkerModel: vi.fn(() => undefined),
     buildValidatedWorkerLaunchDescriptor: vi.fn((agentType, config, appendedArgs = []) => {
         const [binary, ...args] = modelContractMocks.buildWorkerArgv(agentType, config);
         return { schema_version: 1, provider: agentType, model: config.model ?? null, binary, args: [...args, ...appendedArgs] };
@@ -63,6 +66,9 @@ vi.mock('../model-contract.js', () => ({
     isPromptModeAgent: modelContractMocks.isPromptModeAgent,
     getPromptModeArgs: modelContractMocks.getPromptModeArgs,
     resolveClaudeWorkerModel: modelContractMocks.resolveClaudeWorkerModel,
+    normalizeExternalModelsDefaults: modelContractMocks.normalizeExternalModelsDefaults,
+    resolveExternalModelsDefaults: modelContractMocks.resolveExternalModelsDefaults,
+    resolveDefaultWorkerModel: modelContractMocks.resolveDefaultWorkerModel,
     buildValidatedWorkerLaunchDescriptor: modelContractMocks.buildValidatedWorkerLaunchDescriptor,
     validateWorkerLaunchDescriptor: modelContractMocks.validateWorkerLaunchDescriptor,
     // gemini is supported on all platforms, so the preflight headless guard is a no-op here.

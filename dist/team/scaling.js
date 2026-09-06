@@ -14,7 +14,7 @@ import { mkdir, readFile, rm } from 'fs/promises';
 import { existsSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { tmuxSpawn } from '../cli/tmux-utils.js';
-import { buildWorkerArgv, clearResolvedPathCache, getWorkerEnv as getModelWorkerEnv, resolveClaudeWorkerModel, assertHeadlessSupported, resolveValidatedBinaryPath, validateWorkerLaunchDescriptor, } from './model-contract.js';
+import { buildWorkerArgv, clearResolvedPathCache, getWorkerEnv as getModelWorkerEnv, resolveDefaultWorkerModel, assertHeadlessSupported, resolveValidatedBinaryPath, validateWorkerLaunchDescriptor, } from './model-contract.js';
 import { CANONICAL_TEAM_ROLES } from '../shared/types.js';
 import { normalizeDelegationRole } from '../features/delegation-routing/types.js';
 import { routeTaskToRole } from './role-router.js';
@@ -466,8 +466,12 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                 // from an explicit `task.role` (user opt-in). Pre-patch semantics: callers
                 // passing `--agent-type codex` stay on codex regardless of task text.
                 const hasExplicitOwnedRole = ownedRoles.length === 1;
-                const routedPair = hasExplicitOwnedRole && canonical
-                    ? config.resolved_routing?.[canonical]
+                const resolvedRoute = canonical === null ? undefined : config.resolved_routing?.[canonical];
+                const hasLegacyConfiguredRoute = config.resolved_routing_roles === undefined && resolvedRoute !== undefined;
+                const hasConfiguredRoute = canonical !== null
+                    && (config.resolved_routing_roles?.includes(canonical) === true || hasLegacyConfiguredRoute);
+                const routedPair = canonical && hasExplicitOwnedRole && (hasConfiguredRoute || workerAgentType === 'claude')
+                    ? resolvedRoute
                     : undefined;
                 if (routedPair) {
                     const { primary } = routedPair;
@@ -476,10 +480,15 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                         workerAgentType = primaryProvider;
                         workerModel = primary.model;
                     }
+                    if (!workerModel) {
+                        const modelEnv = workerAgentType === 'claude' || config.external_models_defaults === undefined ? env : {};
+                        workerModel = resolveDefaultWorkerModel(workerAgentType, modelEnv, config.external_models_defaults);
+                    }
                 }
-                else if (cliAgentType === 'claude') {
-                    // Honor Bedrock/Vertex default-model resolution for non-routed claude workers.
-                    workerModel = resolveClaudeWorkerModel(env);
+                else {
+                    // Honor provider-specific default-model resolution for non-routed workers.
+                    const modelEnv = workerAgentType === 'claude' || config.external_models_defaults === undefined ? env : {};
+                    workerModel = resolveDefaultWorkerModel(workerAgentType, modelEnv, config.external_models_defaults);
                 }
                 let launchBinary;
                 try {

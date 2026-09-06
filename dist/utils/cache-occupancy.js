@@ -44,6 +44,27 @@ function processStartIdentity(pid) {
     }
     return null;
 }
+export function processStartIdentities(pids, exec = execFileSync) {
+    if (process.platform !== 'win32')
+        return new Map();
+    const validPids = [...new Set(pids.filter((pid) => Number.isSafeInteger(pid) && pid > 0))];
+    if (validPids.length === 0)
+        return new Map();
+    try {
+        const command = `$items=Get-Process -Id ${validPids.join(',')} -ErrorAction SilentlyContinue | Select-Object Id,@{Name='StartTicks';Expression={[string]$_.StartTime.ToUniversalTime().Ticks}}; $items | ConvertTo-Json -Compress`;
+        const output = exec('powershell', ['-NoProfile', '-NonInteractive', '-Command', command], { encoding: 'utf8', windowsHide: true });
+        const parsed = JSON.parse(output.trim() || 'null');
+        const items = Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
+        return new Map(items
+            .map((item) => [Number(item?.Id), item?.StartTicks])
+            .flatMap(([pid, ticks]) => validPids.includes(pid) && typeof ticks === 'string' && /^\d+$/.test(ticks)
+            ? [[pid, `ticks:${ticks}`]]
+            : []));
+    }
+    catch {
+        return new Map();
+    }
+}
 function processAlive(pid) {
     try {
         process.kill(pid, 0);
@@ -106,6 +127,7 @@ export function readOccupiedPluginRoots(configDir = getCopilotConfigDir()) {
         return { roots: new Set(), unavailable: error.code !== 'ENOENT' };
     }
     const roots = new Set();
+    const records = [];
     const now = Date.now();
     for (const name of names) {
         const path = join(directory, name);
@@ -142,7 +164,13 @@ export function readOccupiedPluginRoots(configDir = getCopilotConfigDir()) {
             catch { /* best effort */ }
             continue;
         }
-        const currentIdentity = processStartIdentity(record.pid);
+        records.push({ path, record });
+    }
+    const currentIdentities = processStartIdentities(records.map(({ record }) => record.pid));
+    for (const { path, record } of records) {
+        const currentIdentity = process.platform === 'win32'
+            ? currentIdentities.get(record.pid)
+            : processStartIdentity(record.pid);
         if (currentIdentity && currentIdentity !== record.processStartIdentity) {
             try {
                 unlinkSync(path);

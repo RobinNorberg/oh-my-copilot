@@ -186,6 +186,7 @@ export async function notify(
       replyChannel: data.replyChannel ?? process.env.OPENCLAW_REPLY_CHANNEL ?? undefined,
       replyTarget: data.replyTarget ?? process.env.OPENCLAW_REPLY_TARGET ?? undefined,
       replyThread: data.replyThread ?? process.env.OPENCLAW_REPLY_THREAD ?? undefined,
+      approval: data.approval,
     };
 
     // Capture tmux tail for events that benefit from it
@@ -248,7 +249,10 @@ export async function notify(
     );
 
     // NEW: Register message IDs for reply correlation
-    if (result.anySuccess && payload.tmuxPaneId) {
+    if (
+      result.anySuccess &&
+      (payload.tmuxPaneId || payload.event === "approval-request")
+    ) {
       try {
         const { registerMessage } = await import("./session-registry.js");
         for (const r of result.results) {
@@ -261,11 +265,14 @@ export async function notify(
               platform: r.platform,
               messageId: r.messageId,
               sessionId: payload.sessionId,
-              tmuxPaneId: payload.tmuxPaneId,
+              tmuxPaneId: payload.tmuxPaneId ?? "",
               tmuxSessionName: payload.tmuxSession || "",
               event: payload.event,
               createdAt: new Date().toISOString(),
               projectPath: payload.projectPath,
+              ...(payload.approval
+                ? { approvalRef: payload.approval }
+                : {}),
               ...(payload.event === "ask-user-question" && payload.askUserQuestionPrompts?.[0]
                 ? {
                     askUserQuestionOptionCount: payload.askUserQuestionPrompts[0].options.length,
