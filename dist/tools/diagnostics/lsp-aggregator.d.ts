@@ -21,6 +21,7 @@ export interface LspAggregationResult {
     }>;
     installHints: string[];
 }
+export declare const LSP_DIAGNOSTICS_CONCURRENCY = 8;
 /**
  * Run LSP diagnostics on all TypeScript/JavaScript files in a directory
  * @param directory - Project directory to scan

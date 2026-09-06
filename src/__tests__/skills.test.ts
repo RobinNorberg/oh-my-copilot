@@ -69,10 +69,10 @@ describe('Builtin Skills', () => {
   });
 
   describe('createBuiltinSkills()', () => {
-    it('should return correct number of skills (46 canonical + 2 aliases)', () => {
+    it('should return correct number of skills (51 canonical + 2 aliases)', () => {
       const skills = createBuiltinSkills();
-      // 48 entries: 46 canonical skills + 2 aliases (cancel-ralph, psm)
-      expect(skills).toHaveLength(48);
+      // 53 entries: 51 canonical skills + 2 aliases (cancel-ralph, psm)
+      expect(skills).toHaveLength(53);
     });
 
     it('should return an array of BuiltinSkill objects', () => {
@@ -126,6 +126,7 @@ describe('Builtin Skills', () => {
       const expectedSkills = [
         'ai-slop-cleaner',
         'ask',
+        'ask-navigator',
         'autopilot',
         'autoresearch',
         'cancel',
@@ -137,10 +138,14 @@ describe('Builtin Skills', () => {
         'deep-review',
         'deepinit',
         'discover',
+        'drydock',
         'execute',
         'external-context',
         'graph',
         'hud',
+        'launch',
+        'loft',
+        'minimal-code-discipline',
         'omc-ado-auto-review',
         'omc-ado-review',
         'omc-ado-setup',
@@ -673,9 +678,14 @@ describe('Builtin Skills', () => {
     it('should return canonical skill names by default', () => {
       const names = listBuiltinSkillNames();
 
-      expect(names).toHaveLength(46);
+      expect(names).toHaveLength(51);
       expect(names).toContain('ai-slop-cleaner');
+      expect(names).toContain('minimal-code-discipline');
+      expect(names).toContain('launch');
+      expect(names).toContain('loft');
+      expect(names).toContain('drydock');
       expect(names).toContain('ask');
+      expect(names).toContain('ask-navigator');
       expect(names).toContain('autopilot');
       expect(names).toContain('autoresearch');
       expect(names).toContain('cancel');
@@ -707,7 +717,7 @@ describe('Builtin Skills', () => {
       const names = listBuiltinSkillNames({ includeAliases: true });
 
       // swarm alias removed in #1131; learner retired in 5.0.0; cancel-ralph and psm remain
-      expect(names).toHaveLength(48);
+      expect(names).toHaveLength(53);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('autoresearch');
       expect(names).toContain('self-improve');

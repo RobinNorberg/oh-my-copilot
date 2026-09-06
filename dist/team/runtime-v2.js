@@ -29,7 +29,7 @@ import { DEFAULT_TEAM_GOVERNANCE, DEFAULT_TEAM_TRANSPORT_POLICY, getConfigGovern
 import { inferPhase } from './phase-controller.js';
 import { validateTeamName } from './team-name.js';
 import { TASK_ID_SAFE_PATTERN, WORKER_NAME_SAFE_PATTERN } from './contracts.js';
-import { buildValidatedWorkerLaunchDescriptor, clearResolvedPathCache, validateWorkerLaunchDescriptor, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, assertHeadlessSupported, } from './model-contract.js';
+import { buildValidatedWorkerLaunchDescriptor, clearResolvedPathCache, validateWorkerLaunchDescriptor, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveDefaultWorkerModel, resolveExternalModelsDefaults, assertHeadlessSupported, } from './model-contract.js';
 import { createTeamSession, spawnOwnedWorkerInPane, deliverStartupInbox, retryStartupInboxSubmit, proveWorkerPaneOwnership, adoptWorkerPaneOwnership, killOwnedWorkerPane, verifyTeamTargetOwnership, redactBoundedDiagnostic, killTeamSession, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, getWorkerLiveness, captureTeamPane, splitTeamWorkerPaneWithEvidence, workerPaneBelongsToProviderTarget, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, generatePromptModeStartupPrompt, renderRecoveryContinuationInstruction, renderCursorWorkerGuidance, } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
@@ -2713,18 +2713,9 @@ export async function startTeamV2(config) {
     }
     const startupByWorker = new Map(startupAllocations.map(item => [item.workerName, item.taskIndex]));
     const preparedLaunches = new Map();
+    const externalModelsDefaults = resolveExternalModelsDefaults(pluginCfg.externalModels?.defaults, process.env);
     const resolveDefaultModel = (agentType) => {
-        if (agentType === 'codex')
-            return process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL || process.env.OMC_CODEX_DEFAULT_MODEL || undefined;
-        if (agentType === 'gemini')
-            return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMC_GEMINI_DEFAULT_MODEL || undefined;
-        if (agentType === 'antigravity')
-            return process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL || process.env.OMC_ANTIGRAVITY_DEFAULT_MODEL || undefined;
-        if (agentType === 'grok')
-            return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL || process.env.OMC_GROK_DEFAULT_MODEL || undefined;
-        if (agentType === 'cursor')
-            return undefined;
-        return resolveClaudeWorkerModel();
+        return resolveDefaultWorkerModel(agentType, process.env, externalModelsDefaults);
     };
     for (let i = 0; i < workerNames.length; i++) {
         const workerName = workerNames[i];
@@ -2850,6 +2841,10 @@ export async function startTeamV2(config) {
         resize_hook_name: null,
         resize_hook_target: null,
         resolved_routing: resolvedRouting,
+        resolved_routing_roles: Object.keys(pluginCfg.team?.roleRouting ?? {})
+            .map(role => normalizeDelegationRole(role))
+            .filter((role) => CANONICAL_TEAM_ROLES.includes(role)),
+        external_models_defaults: externalModelsDefaults,
         workspace_mode: workspaceMode,
         worktree_mode: worktreeMode,
         service_descriptor: config.autoMerge
@@ -2905,6 +2900,9 @@ export async function startTeamV2(config) {
         resize_hook_name: null,
         resize_hook_target: null,
         next_worker_index: teamConfig.next_worker_index,
+        resolved_routing: teamConfig.resolved_routing,
+        resolved_routing_roles: teamConfig.resolved_routing_roles,
+        external_models_defaults: teamConfig.external_models_defaults,
         service_descriptor: teamConfig.service_descriptor,
     };
     try {

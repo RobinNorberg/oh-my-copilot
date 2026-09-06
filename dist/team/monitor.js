@@ -74,6 +74,9 @@ function configFromManifest(manifest) {
         resize_hook_name: manifest.resize_hook_name,
         resize_hook_target: manifest.resize_hook_target,
         next_worker_index: manifest.next_worker_index,
+        resolved_routing: manifest.resolved_routing,
+        resolved_routing_roles: manifest.resolved_routing_roles,
+        external_models_defaults: manifest.external_models_defaults,
         service_descriptor: manifest.service_descriptor,
     };
 }
@@ -82,6 +85,23 @@ function isRecord(value) {
 }
 function isNonEmptyString(value) {
     return typeof value === 'string' && value.trim().length > 0;
+}
+function isOptionalExternalModelsDefaults(value) {
+    if (value === undefined)
+        return true;
+    if (!isRecord(value))
+        return false;
+    const allowed = new Set(['provider', 'codexModel', 'geminiModel', 'grokModel', 'antigravityModel', 'cursorModel']);
+    if (Object.keys(value).some(key => !allowed.has(key)))
+        return false;
+    if (value.provider !== undefined && !['codex', 'gemini', 'antigravity'].includes(value.provider))
+        return false;
+    return ['codexModel', 'geminiModel', 'grokModel', 'antigravityModel', 'cursorModel']
+        .every(key => value[key] === undefined || value[key] === '' || isNonEmptyString(value[key]));
+}
+function isOptionalRoutingRoles(value) {
+    return value === undefined || (Array.isArray(value)
+        && value.every(role => CANONICAL_TEAM_ROLES.includes(role)));
 }
 function isSafeCounter(value) {
     return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -177,7 +197,9 @@ function isTeamConfig(value, requireRevision, expectedTeamName) {
         || (value.next_task_id !== undefined && !isSafeCounter(value.next_task_id))
         || !isOptionalPolicy(value.policy) || !isOptionalGovernance(value.governance)
         || !isOptionalWorkspaceShape(value) || !isOptionalPaneShape(value)
-        || !isOptionalRouting(value.resolved_routing))
+        || !isOptionalRouting(value.resolved_routing)
+        || !isOptionalRoutingRoles(value.resolved_routing_roles)
+        || !isOptionalExternalModelsDefaults(value.external_models_defaults))
         return false;
     if (requireRevision ? !isSafeCounter(value.state_revision) : value.state_revision !== undefined && !isSafeCounter(value.state_revision))
         return false;
@@ -244,12 +266,13 @@ function isOptionalRouting(value) {
     return CANONICAL_TEAM_ROLES.every(role => isResolvedRoleRoute(value[role]));
 }
 function isResolvedRoleRoute(value) {
-    return isRecord(value) && isRoleAssignment(value.primary) && isRoleAssignment(value.fallback);
+    return isRecord(value) && isRoleAssignment(value.primary, true) && isRoleAssignment(value.fallback);
 }
-function isRoleAssignment(value) {
+function isRoleAssignment(value, allowEmptyExternalModel = false) {
+    const provider = isRecord(value) ? value.provider : undefined;
     return isRecord(value)
-        && ['claude', 'codex', 'gemini', 'grok', 'cursor', 'antigravity'].includes(value.provider)
-        && isNonEmptyString(value.model)
+        && ['claude', 'codex', 'gemini', 'grok', 'cursor', 'antigravity'].includes(provider)
+        && (isNonEmptyString(value.model) || (allowEmptyExternalModel && provider !== 'claude' && value.model === ''))
         && KNOWN_AGENT_NAMES.some(agent => agent === value.agent);
 }
 function hasMatchingActiveFenceRevisions(value) {
@@ -780,6 +803,9 @@ async function saveTeamConfigUnlocked(config, cwd) {
             resize_hook_name: config.resize_hook_name,
             resize_hook_target: config.resize_hook_target,
             next_worker_index: config.next_worker_index,
+            resolved_routing: config.resolved_routing ?? existingManifest.resolved_routing,
+            resolved_routing_roles: config.resolved_routing_roles ?? existingManifest.resolved_routing_roles,
+            external_models_defaults: config.external_models_defaults ?? existingManifest.external_models_defaults,
             policy: config.policy ?? existingManifest.policy,
             governance: config.governance ?? existingManifest.governance,
             state_revision: config.state_revision,

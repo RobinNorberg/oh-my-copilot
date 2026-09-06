@@ -34,7 +34,7 @@ export function extractWisdomFromCompletion(response) {
         problem: 'problems',
     };
     for (const [singular, category] of Object.entries(singularMap)) {
-        const tagRegex = new RegExp(`<${singular}>([\s\S]*?)<\/${singular}>`, 'gi');
+        const tagRegex = new RegExp(String.raw `<${singular}>([\s\S]*?)</${singular}>`, 'gi');
         while ((match = tagRegex.exec(response)) !== null) {
             const content = match[1].trim();
             if (content) {

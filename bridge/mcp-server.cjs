@@ -19704,6 +19704,13 @@ function readPositiveIntEnv(name, fallback) {
 function fileUri(filePath) {
   return (0, import_url3.pathToFileURL)((0, import_path10.resolve)(filePath)).href;
 }
+function createCancellationSignal() {
+  let cancel;
+  const promise = new Promise((resolveCancellation) => {
+    cancel = resolveCancellation;
+  });
+  return { promise, cancel };
+}
 var LspClient = class _LspClient {
   static MAX_BUFFER_SIZE = 50 * 1024 * 1024;
   // 50MB
@@ -19711,13 +19718,23 @@ var LspClient = class _LspClient {
   requestId = 0;
   pendingRequests = /* @__PURE__ */ new Map();
   buffer = Buffer.alloc(0);
+  notificationTail = Promise.resolve();
+  notificationGeneration = 0;
+  notificationWaiterRejectors = /* @__PURE__ */ new Set();
   openDocuments = /* @__PURE__ */ new Set();
+  persistentDocuments = /* @__PURE__ */ new Set();
+  documentOpenPromises = /* @__PURE__ */ new Map();
+  documentOperationTails = /* @__PURE__ */ new Map();
+  documentQueueCancellation = createCancellationSignal();
   diagnostics = /* @__PURE__ */ new Map();
   diagnosticWaiters = /* @__PURE__ */ new Map();
   workspaceRoot;
   serverConfig;
   devContainerContext;
   initialized = false;
+  disconnected = false;
+  connectionGeneration = 0;
+  terminalError = null;
   _serverCapabilities = null;
   _supportsPullDiagnostics = false;
   constructor(workspaceRoot, serverConfig, devContainerContext = null) {
@@ -19732,6 +19749,20 @@ var LspClient = class _LspClient {
     if (this.process) {
       return;
     }
+    this.disconnected = false;
+    this.terminalError = null;
+    const connectionGeneration = ++this.connectionGeneration;
+    this.documentQueueCancellation.cancel();
+    this.documentQueueCancellation = createCancellationSignal();
+    this.buffer = Buffer.alloc(0);
+    this.openDocuments.clear();
+    this.persistentDocuments.clear();
+    this.documentOpenPromises.clear();
+    this.documentOperationTails.clear();
+    this.diagnostics.clear();
+    this.buffer = Buffer.alloc(0);
+    this.documentOperationTails.clear();
+    this.diagnostics.clear();
     const spawnCommand = this.devContainerContext ? "docker" : this.serverConfig.command;
     if (!commandExists(spawnCommand)) {
       throw new Error(
@@ -19747,27 +19778,58 @@ Install with: ${this.serverConfig.installHint}`
         stdio: ["pipe", "pipe", "pipe"],
         shell: !this.devContainerContext && process.platform === "win32"
       });
-      this.process.stdout?.on("data", (data) => {
+      const child = this.process;
+      child.stdout?.on("data", (data) => {
+        if (this.process !== child || this.connectionGeneration !== connectionGeneration) return;
         this.handleData(data);
       });
-      this.process.stderr?.on("data", (data) => {
+      child.stderr?.on("data", (data) => {
+        if (this.process !== child || this.connectionGeneration !== connectionGeneration) return;
         console.error(`LSP stderr: ${data.toString()}`);
       });
-      this.process.on("error", (error2) => {
+      const stdin = child.stdin;
+      if (stdin && typeof stdin.on === "function") {
+        stdin.on("error", (error2) => {
+          if (this.process !== child || this.connectionGeneration !== connectionGeneration) return;
+          this.handleTransportFailure(error2);
+        });
+        stdin.on("close", () => {
+          if (this.process === child && this.connectionGeneration === connectionGeneration && !this.disconnected) {
+            this.handleTransportFailure(new Error("LSP stdin closed"));
+          }
+        });
+      }
+      child.on("error", (error2) => {
+        if (this.process !== child || this.connectionGeneration !== connectionGeneration) return;
+        this.handleTransportFailure(error2);
         reject(new Error(`Failed to start LSP server: ${error2.message}`));
       });
-      this.process.on("exit", (code) => {
+      child.on("exit", (code) => {
+        if (this.process !== child || this.connectionGeneration !== connectionGeneration) return;
         this.process = null;
-        this.initialized = false;
+        this.handleTransportFailure(new Error(`LSP server exited (code ${code})`));
         if (code !== 0) {
           console.error(`LSP server exited with code ${code}`);
         }
-        this.rejectPendingRequests(new Error(`LSP server exited (code ${code})`));
       });
       this.initialize().then(() => {
+        if (this.process !== child || this.connectionGeneration !== connectionGeneration) {
+          reject(new Error("LSP server was replaced during initialization"));
+          return;
+        }
         this.initialized = true;
         resolve14();
-      }).catch(reject);
+      }).catch((error2) => {
+        if (this.process === child && this.connectionGeneration === connectionGeneration) {
+          this.forceKill();
+        } else {
+          try {
+            child.kill("SIGKILL");
+          } catch {
+          }
+        }
+        reject(error2);
+      });
     });
   }
   /**
@@ -19775,6 +19837,13 @@ Install with: ${this.serverConfig.installHint}`
    * Used in process exit handlers where async operations are not possible.
    */
   forceKill() {
+    const error2 = new Error("LSP client force-killed");
+    this.connectionGeneration++;
+    this.documentQueueCancellation.cancel();
+    this.terminalError = error2;
+    this.cancelPendingNotificationWrites(error2);
+    this.rejectPendingRequests(error2);
+    this.disconnected = true;
     if (this.process) {
       try {
         this.process.kill("SIGKILL");
@@ -19782,34 +19851,61 @@ Install with: ${this.serverConfig.installHint}`
       }
       this.process = null;
       this.initialized = false;
-      for (const waiters of this.diagnosticWaiters.values()) {
-        for (const wake of waiters) wake();
-      }
-      this.diagnosticWaiters.clear();
     }
+    this.cancelDiagnosticWaiters(error2);
+    this.openDocuments.clear();
+    this.persistentDocuments.clear();
+    this.documentOpenPromises.clear();
+    this.documentOperationTails.clear();
+    this.diagnostics.clear();
+    this.buffer = Buffer.alloc(0);
   }
   /**
    * Disconnect from the LSP server
    */
   async disconnect() {
-    if (!this.process) return;
+    const child = this.process;
+    const connectionGeneration = this.connectionGeneration;
     try {
-      await this.request("shutdown", null, 3e3);
-      this.notify("exit", null);
+      if (child && this.process === child && this.connectionGeneration === connectionGeneration) {
+        await this.request("shutdown", null, 3e3);
+        if (this.process === child && this.connectionGeneration === connectionGeneration) {
+          await Promise.race([
+            this.notifyWithBackpressure("exit", null),
+            new Promise((resolveTimeout) => setTimeout(resolveTimeout, 250))
+          ]);
+        }
+      }
     } catch {
     } finally {
-      if (this.process) {
-        this.process.kill();
-        this.process = null;
+      if (this.process !== child || this.connectionGeneration !== connectionGeneration) {
+        if (child) {
+          try {
+            child.kill();
+          } catch {
+          }
+        }
+      } else {
+        const error2 = new Error("LSP client disconnected");
+        this.connectionGeneration++;
+        this.documentQueueCancellation.cancel();
+        this.terminalError = error2;
+        this.cancelPendingNotificationWrites(error2);
+        this.disconnected = true;
+        if (child) {
+          child.kill();
+          this.process = null;
+        }
+        this.initialized = false;
+        this.rejectPendingRequests(new Error("Client disconnected"));
+        this.openDocuments.clear();
+        this.persistentDocuments.clear();
+        this.documentOpenPromises.clear();
+        this.documentOperationTails.clear();
+        this.diagnostics.clear();
+        this.buffer = Buffer.alloc(0);
+        this.cancelDiagnosticWaiters(new Error("LSP client disconnected"));
       }
-      this.initialized = false;
-      this.rejectPendingRequests(new Error("Client disconnected"));
-      this.openDocuments.clear();
-      this.diagnostics.clear();
-      for (const waiters of this.diagnosticWaiters.values()) {
-        for (const wake of waiters) wake();
-      }
-      this.diagnosticWaiters.clear();
     }
   }
   /**
@@ -19821,6 +19917,52 @@ Install with: ${this.serverConfig.installHint}`
       clearTimeout(pending.timeout);
       pending.reject(error2);
       this.pendingRequests.delete(id);
+    }
+  }
+  handleTransportFailure(error2) {
+    if (this.disconnected) return;
+    this.connectionGeneration++;
+    this.documentQueueCancellation.cancel();
+    this.disconnected = true;
+    this.terminalError = error2;
+    this.cancelPendingNotificationWrites(error2);
+    this.rejectPendingRequests(error2);
+    this.cancelDiagnosticWaiters(error2);
+    if (this.process) {
+      try {
+        this.process.kill("SIGKILL");
+      } catch {
+      }
+      this.process = null;
+    }
+    this.initialized = false;
+    this.openDocuments.clear();
+    this.persistentDocuments.clear();
+    this.documentOpenPromises.clear();
+    this.documentOperationTails.clear();
+    this.diagnostics.clear();
+    this.buffer = Buffer.alloc(0);
+  }
+  cancelDiagnosticWaiters(error2) {
+    for (const waiters of this.diagnosticWaiters.values()) {
+      for (const wake of waiters) wake(error2);
+    }
+    this.diagnosticWaiters.clear();
+  }
+  throwIfTerminal() {
+    if (this.terminalError) {
+      throw this.terminalError;
+    }
+    if (this.disconnected) {
+      throw new Error("LSP client is disconnected");
+    }
+  }
+  isCurrentConnection(child, connectionGeneration) {
+    return child !== null && this.process === child && this.connectionGeneration === connectionGeneration && !this.disconnected;
+  }
+  assertCurrentConnection(child, connectionGeneration) {
+    if (!this.isCurrentConnection(child, connectionGeneration)) {
+      throw this.terminalError ?? new Error("LSP connection was replaced");
     }
   }
   /**
@@ -19895,9 +20037,11 @@ Install with: ${this.serverConfig.installHint}`
     const error2 = request.method === "client/registerCapability" ? { code: -32803, message: "Dynamic capability registration is not supported" } : { code: -32601, message: "Method not found" };
     const response = { jsonrpc: "2.0", id: request.id, error: error2 };
     const content = JSON.stringify(response);
-    this.process?.stdin?.write(`Content-Length: ${Buffer.byteLength(content)}\r
+    const message = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
-${content}`);
+${content}`;
+    void this.enqueueOutboundWrite(() => this.writeMessage(message)).catch(() => {
+    });
   }
   /**
    * Handle server notifications
@@ -19942,14 +20086,24 @@ ${content}`;
         reject,
         timeout: timeoutHandle
       });
-      this.process?.stdin?.write(message);
+      void this.enqueueOutboundWrite(() => {
+        if (!this.pendingRequests.has(id)) {
+          throw new Error(`LSP request '${method}' is no longer pending`);
+        }
+        return this.writeMessage(message);
+      }).catch((error2) => {
+        const pending = this.pendingRequests.get(id);
+        if (!pending) return;
+        clearTimeout(pending.timeout);
+        this.pendingRequests.delete(id);
+        pending.reject(error2 instanceof Error ? error2 : new Error(String(error2)));
+      });
     });
   }
   /**
    * Send a notification to the server (no response expected)
    */
   notify(method, params) {
-    if (!this.process?.stdin) return;
     const notification = {
       jsonrpc: "2.0",
       method,
@@ -19959,12 +20113,81 @@ ${content}`;
     const message = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-    this.process.stdin.write(message);
+    return this.writeMessage(message);
+  }
+  async notifyWithBackpressure(method, params) {
+    return this.enqueueOutboundWrite(() => this.notify(method, params));
+  }
+  async enqueueOutboundWrite(write) {
+    const generation = this.notificationGeneration;
+    const notification = this.notificationTail.then(() => {
+      if (generation !== this.notificationGeneration) {
+        throw new Error("LSP notification cancelled before write");
+      }
+      return this.writeWithBackpressure(write);
+    });
+    this.notificationTail = notification.catch(() => void 0);
+    return notification;
+  }
+  writeMessage(message) {
+    if (!this.process?.stdin) {
+      throw new Error("LSP client is not connected");
+    }
+    try {
+      return this.process.stdin.write(message);
+    } catch (error2) {
+      const failure = error2 instanceof Error ? error2 : new Error(String(error2));
+      this.handleTransportFailure(failure);
+      throw failure;
+    }
+  }
+  async writeWithBackpressure(write) {
+    const stdin = this.process?.stdin;
+    if (write() || !stdin) {
+      return;
+    }
+    if (typeof stdin.once !== "function" || typeof stdin.off !== "function") {
+      return;
+    }
+    await new Promise((resolveDrain, rejectDrain) => {
+      const cleanup = () => {
+        stdin.off("drain", handleDrain);
+        stdin.off("error", handleError);
+        stdin.off("close", handleClose);
+        this.notificationWaiterRejectors.delete(handleCancel);
+      };
+      const handleDrain = () => {
+        cleanup();
+        resolveDrain();
+      };
+      const handleError = (error2) => {
+        cleanup();
+        rejectDrain(error2);
+      };
+      const handleClose = () => {
+        handleError(new Error("LSP stdin closed before drain"));
+      };
+      const handleCancel = (error2) => {
+        handleError(error2);
+      };
+      this.notificationWaiterRejectors.add(handleCancel);
+      stdin.once("drain", handleDrain);
+      stdin.once("error", handleError);
+      stdin.once("close", handleClose);
+    });
+  }
+  cancelPendingNotificationWrites(error2) {
+    this.notificationGeneration++;
+    for (const reject of Array.from(this.notificationWaiterRejectors)) {
+      reject(error2);
+    }
   }
   /**
    * Initialize the LSP connection
    */
   async initialize() {
+    const child = this.process;
+    const connectionGeneration = this.connectionGeneration;
     const initResult = await this.request("initialize", {
       processId: process.pid,
       rootUri: this.getWorkspaceRootUri(),
@@ -19989,23 +20212,47 @@ ${content}`;
       },
       initializationOptions: this.serverConfig.initializationOptions || {}
     }, getLspRequestTimeout(this.serverConfig, "initialize"));
+    this.assertCurrentConnection(child, connectionGeneration);
     this._serverCapabilities = initResult?.capabilities ?? null;
     this._supportsPullDiagnostics = !!this._serverCapabilities?.diagnosticProvider;
-    this.notify("initialized", {});
+    await this.notifyWithBackpressure("initialized", {});
+    this.assertCurrentConnection(child, connectionGeneration);
   }
   /**
    * Open a document for editing
    */
   async openDocument(filePath) {
     const hostUri = fileUri(filePath);
-    const uri = this.toServerUri(hostUri);
+    await this.queueDocumentOperation(hostUri, async () => {
+      await this.ensureDocumentOpen(filePath);
+      this.persistentDocuments.add(hostUri);
+    });
+  }
+  async ensureDocumentOpen(filePath) {
+    const hostUri = fileUri(filePath);
     if (this.openDocuments.has(hostUri)) return;
+    const pending = this.documentOpenPromises.get(hostUri);
+    if (pending) return pending;
+    const opening = this.performDocumentOpen(filePath, hostUri).finally(() => {
+      if (this.documentOpenPromises.get(hostUri) === opening) {
+        this.documentOpenPromises.delete(hostUri);
+      }
+    });
+    this.documentOpenPromises.set(hostUri, opening);
+    return opening;
+  }
+  async performDocumentOpen(filePath, hostUri) {
+    this.throwIfTerminal();
+    const child = this.process;
+    const connectionGeneration = this.connectionGeneration;
+    const uri = this.toServerUri(hostUri);
     if (!(0, import_fs10.existsSync)(filePath)) {
       throw new Error(`File not found: ${filePath}`);
     }
     const content = (0, import_fs10.readFileSync)(filePath, "utf-8");
     const languageId = this.getLanguageId(filePath);
-    this.notify("textDocument/didOpen", {
+    this.diagnostics.delete(hostUri);
+    await this.notifyWithBackpressure("textDocument/didOpen", {
       textDocument: {
         uri,
         languageId,
@@ -20013,20 +20260,83 @@ ${content}`;
         text: content
       }
     });
+    this.assertCurrentConnection(child, connectionGeneration);
     this.openDocuments.add(hostUri);
     await new Promise((resolve14) => setTimeout(resolve14, 100));
+    this.assertCurrentConnection(child, connectionGeneration);
+    this.throwIfTerminal();
   }
   /**
    * Close a document
    */
-  closeDocument(filePath) {
+  async closeDocument(filePath) {
+    const hostUri = fileUri(filePath);
+    await this.queueDocumentOperation(hostUri, async () => {
+      this.persistentDocuments.delete(hostUri);
+      await this.closeTransientDocument(filePath);
+    });
+  }
+  async closeTransientDocument(filePath) {
     const hostUri = fileUri(filePath);
     const uri = this.toServerUri(hostUri);
+    const child = this.process;
+    const connectionGeneration = this.connectionGeneration;
     if (!this.openDocuments.has(hostUri)) return;
-    this.notify("textDocument/didClose", {
-      textDocument: { uri }
+    try {
+      await this.notifyWithBackpressure("textDocument/didClose", {
+        textDocument: { uri }
+      });
+    } finally {
+      if (this.isCurrentConnection(child, connectionGeneration)) {
+        this.openDocuments.delete(hostUri);
+      }
+    }
+  }
+  /**
+   * Run an operation while a document is open, closing only documents opened
+   * by this operation. Calls for the same document are serialized so one
+   * operation cannot close the document while another is still using it.
+   */
+  async withOpenDocument(filePath, operation) {
+    const hostUri = fileUri(filePath);
+    const connectionGeneration = this.connectionGeneration;
+    return this.queueDocumentOperation(hostUri, async () => {
+      try {
+        await this.ensureDocumentOpen(filePath);
+        return await operation();
+      } finally {
+        if (this.connectionGeneration === connectionGeneration && !this.persistentDocuments.has(hostUri)) {
+          await this.closeTransientDocument(filePath);
+        }
+      }
     });
-    this.openDocuments.delete(hostUri);
+  }
+  async queueDocumentOperation(hostUri, operation) {
+    const connectionGeneration = this.connectionGeneration;
+    const cancellation = this.documentQueueCancellation.promise;
+    const previous = this.documentOperationTails.get(hostUri) ?? Promise.resolve();
+    let release;
+    const current = new Promise((resolveCurrent) => {
+      release = resolveCurrent;
+    });
+    const tail = previous.catch(() => void 0).then(() => current);
+    this.documentOperationTails.set(hostUri, tail);
+    const predecessorCompleted = await Promise.race([
+      previous.then(() => true, () => true),
+      cancellation.then(() => false)
+    ]);
+    try {
+      if (!predecessorCompleted || this.connectionGeneration !== connectionGeneration) {
+        throw this.terminalError ?? new Error("LSP connection was replaced");
+      }
+      this.throwIfTerminal();
+      return await operation();
+    } finally {
+      release();
+      if (this.documentOperationTails.get(hostUri) === tail) {
+        this.documentOperationTails.delete(hostUri);
+      }
+    }
   }
   /**
    * Get the language ID for a file
@@ -20146,6 +20456,9 @@ ${content}`;
   get supportsPullDiagnostics() {
     return this._supportsPullDiagnostics;
   }
+  get isUsable() {
+    return !this.disconnected;
+  }
   /**
    * Request diagnostics via the LSP 3.17 pull model (textDocument/diagnostic).
    * Only call when supportsPullDiagnostics is true.
@@ -20172,26 +20485,46 @@ ${content}`;
    */
   waitForDiagnostics(filePath, timeoutMs = 2e3) {
     const uri = fileUri(filePath);
+    try {
+      this.throwIfTerminal();
+    } catch (error2) {
+      return Promise.reject(error2);
+    }
     if (this.diagnostics.has(uri)) {
       return Promise.resolve();
     }
-    return new Promise((resolve14) => {
+    return new Promise((resolve14, reject) => {
       let resolved = false;
+      const removeWaiter = (waiter2) => {
+        const waiters = this.diagnosticWaiters.get(uri);
+        if (!waiters) return;
+        const remaining = waiters.filter((candidate) => candidate !== waiter2);
+        if (remaining.length === 0) {
+          this.diagnosticWaiters.delete(uri);
+        } else {
+          this.diagnosticWaiters.set(uri, remaining);
+        }
+      };
+      const waiter = (error2) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timer);
+          if (error2) {
+            reject(error2);
+          } else {
+            resolve14();
+          }
+        }
+      };
       const timer = setTimeout(() => {
         if (!resolved) {
           resolved = true;
-          this.diagnosticWaiters.delete(uri);
+          removeWaiter(waiter);
           resolve14();
         }
       }, timeoutMs);
       const existing = this.diagnosticWaiters.get(uri) || [];
-      existing.push(() => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timer);
-          resolve14();
-        }
-      });
+      existing.push(waiter);
       this.diagnosticWaiters.set(uri, existing);
     });
   }
@@ -20283,6 +20616,9 @@ var IDLE_TIMEOUT_MS = readPositiveIntEnv("OMC_LSP_IDLE_TIMEOUT_MS", 5 * 60 * 1e3
 var IDLE_CHECK_INTERVAL_MS = readPositiveIntEnv("OMC_LSP_IDLE_CHECK_INTERVAL_MS", 60 * 1e3);
 var LspClientManager = class {
   clients = /* @__PURE__ */ new Map();
+  pendingClients = /* @__PURE__ */ new Map();
+  clientGeneration = 0;
+  disconnecting = null;
   lastUsed = /* @__PURE__ */ new Map();
   inFlightCount = /* @__PURE__ */ new Map();
   idleDeadlines = /* @__PURE__ */ new Map();
@@ -20312,7 +20648,15 @@ var LspClientManager = class {
         } catch {
         }
       }
+      for (const { client } of this.pendingClients.values()) {
+        try {
+          client.forceKill();
+        } catch {
+        }
+      }
+      this.clientGeneration++;
       this.clients.clear();
+      this.pendingClients.clear();
       this.lastUsed.clear();
       this.inFlightCount.clear();
     };
@@ -20332,18 +20676,12 @@ var LspClientManager = class {
     }
     const devContainerContext = resolveDevContainerContext(workspaceRoot);
     const key = `${workspaceRoot}:${serverConfig.command}:${devContainerContext?.containerId ?? "host"}`;
-    let client = this.clients.get(key);
-    if (!client) {
-      client = new LspClient(workspaceRoot, serverConfig, devContainerContext);
-      try {
-        await client.connect();
-        this.clients.set(key, client);
-      } catch (error2) {
-        throw error2;
+    while (true) {
+      const client = await this.acquireClient(key, workspaceRoot, serverConfig, devContainerContext);
+      if (this.clients.get(key) === client && client.isUsable && !this.disconnecting) {
+        return client;
       }
     }
-    this.touchClient(key);
-    return client;
   }
   /**
    * Run a function with in-flight tracking for the client serving filePath.
@@ -20358,28 +20696,94 @@ var LspClientManager = class {
     }
     const devContainerContext = resolveDevContainerContext(workspaceRoot);
     const key = `${workspaceRoot}:${serverConfig.command}:${devContainerContext?.containerId ?? "host"}`;
-    let client = this.clients.get(key);
-    if (!client) {
-      client = new LspClient(workspaceRoot, serverConfig, devContainerContext);
-      try {
-        await client.connect();
-        this.clients.set(key, client);
-      } catch (error2) {
-        throw error2;
-      }
-    }
-    this.touchClient(key);
-    this.inFlightCount.set(key, (this.inFlightCount.get(key) || 0) + 1);
+    const client = await this.acquireClientLease(key, workspaceRoot, serverConfig, devContainerContext);
     try {
       return await fn(client);
     } finally {
-      const count = (this.inFlightCount.get(key) || 1) - 1;
-      if (count <= 0) {
-        this.inFlightCount.delete(key);
-      } else {
-        this.inFlightCount.set(key, count);
+      if (this.clients.get(key) === client) {
+        const count = (this.inFlightCount.get(key) || 1) - 1;
+        if (count <= 0) {
+          this.inFlightCount.delete(key);
+        } else {
+          this.inFlightCount.set(key, count);
+        }
+        this.touchClient(key);
       }
-      this.touchClient(key);
+    }
+  }
+  async getOrCreateClient(key, workspaceRoot, serverConfig, devContainerContext) {
+    const existing = this.clients.get(key);
+    if (existing?.isUsable) {
+      return existing;
+    }
+    if (existing) {
+      existing.forceKill();
+      this.clients.delete(key);
+      this.clearIdleDeadline(key);
+      this.lastUsed.delete(key);
+      this.inFlightCount.delete(key);
+    }
+    let pending = this.pendingClients.get(key);
+    if (!pending) {
+      const client = new LspClient(workspaceRoot, serverConfig, devContainerContext);
+      const generation = this.clientGeneration;
+      const promise = client.connect().then(() => {
+        if (generation !== this.clientGeneration) {
+          client.forceKill();
+          throw new Error("LSP client manager shut down during connection");
+        }
+        this.clients.set(key, client);
+        return client;
+      }).finally(() => {
+        if (this.pendingClients.get(key)?.client === client) {
+          this.pendingClients.delete(key);
+        }
+      });
+      pending = { client, promise };
+      this.pendingClients.set(key, pending);
+    }
+    return pending.promise;
+  }
+  async acquireClient(key, workspaceRoot, serverConfig, devContainerContext) {
+    while (true) {
+      const teardown = this.disconnecting;
+      if (teardown) {
+        await teardown;
+      }
+      const generation = this.clientGeneration;
+      this.startIdleCheck();
+      const existing = this.clients.get(key);
+      if (existing?.isUsable) {
+        this.touchClient(key);
+        return existing;
+      }
+      const client = await this.getOrCreateClient(key, workspaceRoot, serverConfig, devContainerContext);
+      if (generation === this.clientGeneration && !this.disconnecting && client.isUsable) {
+        this.touchClient(key);
+        return client;
+      }
+    }
+  }
+  async acquireClientLease(key, workspaceRoot, serverConfig, devContainerContext) {
+    while (true) {
+      const teardown = this.disconnecting;
+      if (teardown) {
+        await teardown;
+      }
+      const generation = this.clientGeneration;
+      this.startIdleCheck();
+      const existing = this.clients.get(key);
+      if (existing?.isUsable) {
+        this.touchClient(key);
+        this.inFlightCount.set(key, (this.inFlightCount.get(key) || 0) + 1);
+        return existing;
+      }
+      const client = await this.getOrCreateClient(key, workspaceRoot, serverConfig, devContainerContext);
+      if (generation === this.clientGeneration && !this.disconnecting && client.isUsable) {
+        this.touchClient(key);
+        this.inFlightCount.set(key, (this.inFlightCount.get(key) || 0) + 1);
+        return client;
+      }
     }
   }
   touchClient(key) {
@@ -20493,6 +20897,21 @@ var LspClientManager = class {
    * Maps are always cleared regardless of individual disconnect failures.
    */
   async disconnectAll() {
+    if (this.disconnecting) {
+      return this.disconnecting;
+    }
+    const teardown = Promise.resolve().then(() => this.performDisconnectAll());
+    this.disconnecting = teardown;
+    try {
+      await teardown;
+    } finally {
+      if (this.disconnecting === teardown) {
+        this.disconnecting = null;
+      }
+    }
+  }
+  async performDisconnectAll() {
+    this.clientGeneration++;
     if (this.idleTimer) {
       clearInterval(this.idleTimer);
       this.idleTimer = null;
@@ -20501,7 +20920,17 @@ var LspClientManager = class {
       clearTimeout(timer);
     }
     this.idleDeadlines.clear();
+    for (const { client } of this.pendingClients.values()) {
+      try {
+        client.forceKill();
+      } catch {
+      }
+    }
+    this.pendingClients.clear();
     const entries = Array.from(this.clients.entries());
+    this.clients.clear();
+    this.lastUsed.clear();
+    this.inFlightCount.clear();
     const results = await Promise.allSettled(
       entries.map(([, client]) => client.disconnect())
     );
@@ -20512,9 +20941,7 @@ var LspClientManager = class {
         console.warn(`LSP disconnectAll: failed to disconnect client "${key}": ${result.reason}`);
       }
     }
-    this.clients.clear();
-    this.lastUsed.clear();
-    this.inFlightCount.clear();
+    this.pendingClients.clear();
   }
   /** Expose in-flight count for testing */
   getInFlightCount(key) {
@@ -20781,12 +21208,26 @@ function parseTscOutput(output) {
 // src/tools/diagnostics/lsp-aggregator.ts
 var import_fs12 = require("fs");
 var import_path12 = require("path");
+var LSP_DIAGNOSTICS_CONCURRENCY = 8;
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await mapper(items[index]);
+    }
+  }
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
 function findFiles(directory, extensions, ignoreDirs = []) {
   const results = [];
   const ignoreDirSet = new Set(ignoreDirs);
   function walk(dir) {
     try {
-      const entries = (0, import_fs12.readdirSync)(dir);
+      const entries = (0, import_fs12.readdirSync)(dir).sort();
       for (const entry of entries) {
         const fullPath = (0, import_path12.join)(dir, entry);
         try {
@@ -20815,36 +21256,53 @@ function findFiles(directory, extensions, ignoreDirs = []) {
 async function runLspAggregatedDiagnostics(directory, extensions = [".ts", ".tsx", ".js", ".jsx"]) {
   const files = findFiles(directory, extensions, ["node_modules", "dist", "build", ".git"]);
   const allDiagnostics = [];
-  let filesChecked = 0;
   const skippedFiles = [];
   const installHintSet = /* @__PURE__ */ new Set();
-  for (const file of files) {
+  const fileResults = await mapWithConcurrency(files, LSP_DIAGNOSTICS_CONCURRENCY, async (file) => {
     if (!getServerForFile(file)) {
-      skippedFiles.push({ file, reason: "no language server registered for extension" });
-      continue;
+      return {
+        file,
+        skippedReason: "no language server registered for extension"
+      };
     }
     try {
-      await lspClientManager.runWithClientLease(file, async (client) => {
-        await client.openDocument(file);
-        await client.waitForDiagnostics(file, LSP_DIAGNOSTICS_WAIT_MS);
-        const diagnostics = client.getDiagnostics(file);
-        for (const diagnostic of diagnostics) {
-          allDiagnostics.push({
-            file,
-            diagnostic
-          });
-        }
-        filesChecked++;
+      const diagnostics = await lspClientManager.runWithClientLease(file, async (client) => {
+        return client.withOpenDocument(file, async () => {
+          if (client.supportsPullDiagnostics) {
+            return client.pullDiagnostics(file);
+          }
+          await client.waitForDiagnostics(file, LSP_DIAGNOSTICS_WAIT_MS);
+          return client.getDiagnostics(file);
+        });
       });
+      return { file, diagnostics };
     } catch (error2) {
       const message = error2 instanceof Error ? error2.message : String(error2);
-      const match = message.match(/^Language server '([^']+)' not found\.\nInstall with: (.+)$/s);
-      if (match) {
-        installHintSet.add(match[2].trim());
-        skippedFiles.push({ file, reason: `missing language server: ${match[1]}` });
-      } else {
-        skippedFiles.push({ file, reason: message });
+      return { file, skippedReason: message };
+    }
+  });
+  let filesChecked = 0;
+  for (const result of fileResults) {
+    if (result.diagnostics) {
+      filesChecked++;
+      for (const diagnostic of result.diagnostics) {
+        allDiagnostics.push({
+          file: result.file,
+          diagnostic
+        });
       }
+      continue;
+    }
+    const message = result.skippedReason ?? "unknown LSP diagnostics failure";
+    const match = message.match(/^Language server '([^']+)' not found\.\nInstall with: (.+)$/s);
+    if (match) {
+      installHintSet.add(match[2].trim());
+      skippedFiles.push({
+        file: result.file,
+        reason: `missing language server: ${match[1]}`
+      });
+    } else {
+      skippedFiles.push({ file: result.file, reason: message });
     }
   }
   const errorCount = allDiagnostics.filter((d) => d.diagnostic.severity === 1).length;
@@ -20852,7 +21310,7 @@ async function runLspAggregatedDiagnostics(directory, extensions = [".ts", ".tsx
   const installHints = Array.from(installHintSet);
   const allFilesSkipped = filesChecked === 0 && files.length > 0;
   return {
-    success: errorCount === 0 && !allFilesSkipped,
+    success: errorCount === 0 && skippedFiles.length === 0 && !allFilesSkipped,
     diagnostics: allDiagnostics,
     errorCount,
     warningCount,
@@ -21347,6 +21805,7 @@ var import_module = require("module");
 
 // src/lib/worktree-paths.ts
 var import_crypto2 = require("crypto");
+var import_node_async_hooks = require("node:async_hooks");
 var import_child_process8 = require("child_process");
 var import_fs14 = require("fs");
 var import_os3 = require("os");
@@ -21379,8 +21838,32 @@ var OmcPaths = {
 };
 var MAX_WORKTREE_CACHE_SIZE = 8;
 var worktreeCacheMap = /* @__PURE__ */ new Map();
+var gitTopLevelCacheMap = /* @__PURE__ */ new Map();
 var superprojectCacheMap = /* @__PURE__ */ new Map();
 var canonicalWorkingDirectoryRoots = /* @__PURE__ */ new WeakMap();
+var GIT_PROBE_ENVIRONMENT_KEYS = [
+  "PATH",
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_EXEC_PATH",
+  "GIT_CEILING_DIRECTORIES",
+  "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+  "GIT_CONFIG_SYSTEM",
+  "GIT_CONFIG_GLOBAL",
+  "GIT_CONFIG_NOSYSTEM",
+  "GIT_CONFIG_COUNT",
+  "GIT_CONFIG_PARAMETERS",
+  "GIT_INDEX_FILE",
+  "HOME",
+  "XDG_CONFIG_HOME"
+];
+var MAX_GIT_MARKER_BYTES = 4096;
+function gitProbeEnvironmentSignature() {
+  const fixedEntries = GIT_PROBE_ENVIRONMENT_KEYS.map((key) => JSON.stringify([key, process.env[key] !== void 0, process.env[key] ?? ""]));
+  const dynamicEntries = Object.keys(process.env).filter((key) => /^GIT_CONFIG_(?:KEY|VALUE)_\d+$/.test(key)).sort().map((key) => JSON.stringify([key, process.env[key] !== void 0, process.env[key] ?? ""]));
+  return [...fixedEntries, ...dynamicEntries].join("\0");
+}
 var workspaceCacheMap = /* @__PURE__ */ new Map();
 function findWorkspaceRoot(startDir) {
   if (process.env.OMC_DISABLE_MULTIREPO === "1") return null;
@@ -21446,10 +21929,13 @@ function isDefinitiveNonGitError(error2) {
 function resolveSuperprojectRoot(cwd) {
   const cacheKey = (0, import_path14.resolve)(cwd);
   if (superprojectCacheMap.has(cacheKey)) {
-    const cached2 = superprojectCacheMap.get(cacheKey) ?? null;
+    const cached2 = superprojectCacheMap.get(cacheKey);
+    if (isStateRootCacheEntryValid(cacheKey, cached2)) {
+      superprojectCacheMap.delete(cacheKey);
+      superprojectCacheMap.set(cacheKey, cached2);
+      return cached2.root;
+    }
     superprojectCacheMap.delete(cacheKey);
-    superprojectCacheMap.set(cacheKey, cached2);
-    return cached2;
   }
   let anchor = null;
   let probeCwd = cacheKey;
@@ -21480,7 +21966,7 @@ function resolveSuperprojectRoot(cwd) {
       const oldest = superprojectCacheMap.keys().next().value;
       if (oldest !== void 0) superprojectCacheMap.delete(oldest);
     }
-    superprojectCacheMap.set(cacheKey, anchor);
+    superprojectCacheMap.set(cacheKey, createStateRootCacheEntry(cacheKey, anchor));
   }
   return anchor;
 }
@@ -21607,6 +22093,7 @@ function resolveStateAnchorRoot(worktreeRoot) {
   if (worktreeRoot) return resolveSuperprojectRoot(worktreeRoot) || worktreeRoot;
   return getWorktreeRoot() || resolveNonGitStateAnchor();
 }
+var worktreePathRenderScope = new import_node_async_hooks.AsyncLocalStorage();
 var gitShowToplevelProbeForTests;
 function gitErrorStderr(error2) {
   if (!error2 || typeof error2 !== "object") {
@@ -21794,15 +22281,209 @@ function runGitShowToplevel(cwd) {
   });
 }
 function probeGitTopLevel(cwd) {
+  const scope = worktreePathRenderScope.getStore();
+  const scopeKey = scope ? canonicalizeExistingPath(cwd) ?? (0, import_path14.resolve)(cwd) : null;
+  if (scope && scopeKey) {
+    const cached2 = scope.gitTopLevelProbes.get(scopeKey);
+    if (cached2) return cached2;
+  }
+  let result;
   try {
-    return classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
+    result = classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
   } catch (error2) {
-    return classifyGitShowToplevelError(error2);
+    result = classifyGitShowToplevelError(error2);
+  }
+  if (scope && scopeKey) {
+    scope.gitTopLevelProbes.set(scopeKey, result);
+  }
+  return result;
+}
+function gitMetadataFileSignature(path14) {
+  try {
+    const metadata = (0, import_fs14.statSync)(path14);
+    return [
+      path14,
+      metadata.dev,
+      metadata.ino,
+      metadata.mode,
+      metadata.size,
+      metadata.mtimeMs,
+      metadata.ctimeMs
+    ].join(":");
+  } catch {
+    return `${path14}:missing`;
   }
 }
+function readGitMarker(path14) {
+  let descriptor;
+  try {
+    if (!(0, import_fs14.lstatSync)(path14).isFile()) return null;
+    descriptor = (0, import_fs14.openSync)(path14, "r");
+    const buffer = Buffer.alloc(MAX_GIT_MARKER_BYTES);
+    const bytesRead = (0, import_fs14.readSync)(descriptor, buffer, 0, buffer.length, 0);
+    return buffer.toString("utf8", 0, bytesRead);
+  } catch {
+    return null;
+  } finally {
+    if (descriptor !== void 0) (0, import_fs14.closeSync)(descriptor);
+  }
+}
+function commonGitDirectorySignature(linkedGitDir) {
+  const commondirPath = (0, import_path14.join)(linkedGitDir, "commondir");
+  try {
+    if (!(0, import_fs14.existsSync)(commondirPath)) return `${commondirPath}:absent`;
+    const marker = readGitMarker(commondirPath);
+    if (marker === null) return `${commondirPath}:unreadable`;
+    const commonDir = canonicalizeExistingPath((0, import_path14.resolve)(linkedGitDir, marker.trim()));
+    if (!commonDir || !(0, import_fs14.statSync)(commonDir).isDirectory()) {
+      return `${commondirPath}:invalid:${marker}`;
+    }
+    return [
+      commonDir,
+      gitMetadataFileSignature(commonDir),
+      gitMetadataFileSignature((0, import_path14.join)(commonDir, "HEAD")),
+      gitMetadataFileSignature((0, import_path14.join)(commonDir, "index")),
+      gitMetadataFileSignature((0, import_path14.join)(commonDir, "config"))
+    ].join(":");
+  } catch {
+    return `${commondirPath}:invalid`;
+  }
+}
+function getGitMetadataSnapshot(cwd) {
+  const metadataDir = findGitMetadataDir(canonicalizeExistingPath(cwd) ?? (0, import_path14.resolve)(cwd));
+  if (!metadataDir) return null;
+  const canonicalDirectory = canonicalizeExistingPath(metadataDir);
+  if (!canonicalDirectory) return null;
+  const gitPath = (0, import_path14.join)(canonicalDirectory, ".git");
+  try {
+    const metadata = (0, import_fs14.statSync)(gitPath);
+    const marker = metadata.isFile() ? readGitMarker(gitPath) : "";
+    if (marker === null) return null;
+    let metadataPath = gitPath;
+    let linkedGitDirSignature = "";
+    if (metadata.isFile()) {
+      const gitDirMatch = /^\s*gitdir:\s*(.+?)\s*$/im.exec(marker);
+      if (!gitDirMatch?.[1]) return null;
+      const linkedGitDir = (0, import_path14.resolve)(canonicalDirectory, gitDirMatch[1].trim());
+      const linkedGitDirReal = canonicalizeExistingPath(linkedGitDir);
+      if (!linkedGitDirReal || !(0, import_fs14.statSync)(linkedGitDirReal).isDirectory()) return null;
+      metadataPath = linkedGitDirReal;
+      linkedGitDirSignature = [
+        linkedGitDirReal,
+        gitMetadataFileSignature(linkedGitDirReal),
+        gitMetadataFileSignature((0, import_path14.join)(linkedGitDirReal, "HEAD")),
+        gitMetadataFileSignature((0, import_path14.join)(linkedGitDirReal, "index")),
+        gitMetadataFileSignature((0, import_path14.join)(linkedGitDirReal, "config")),
+        gitMetadataFileSignature((0, import_path14.join)(linkedGitDirReal, "config.worktree")),
+        gitMetadataFileSignature((0, import_path14.join)(linkedGitDirReal, "commondir")),
+        gitMetadataFileSignature((0, import_path14.join)(linkedGitDirReal, "gitdir")),
+        commonGitDirectorySignature(linkedGitDirReal)
+      ].join(":");
+    }
+    const gitPathReal = canonicalizeExistingPath(gitPath) ?? (0, import_path14.resolve)(gitPath);
+    const metadataPathReal = canonicalizeExistingPath(metadataPath) ?? (0, import_path14.resolve)(metadataPath);
+    const signature = [
+      gitPathReal,
+      gitMetadataFileSignature(gitPath),
+      marker,
+      linkedGitDirSignature,
+      metadataPathReal,
+      gitMetadataFileSignature((0, import_path14.join)(metadataPathReal, "HEAD")),
+      gitMetadataFileSignature((0, import_path14.join)(metadataPathReal, "index")),
+      gitMetadataFileSignature((0, import_path14.join)(metadataPathReal, "config")),
+      gitMetadataFileSignature((0, import_path14.join)(metadataPathReal, "config.worktree"))
+    ].join(":");
+    return { directory: canonicalDirectory, signature };
+  } catch {
+    return null;
+  }
+}
+function getGitTopologySignature(cwd) {
+  const start = canonicalizeExistingPath(cwd) ?? (0, import_path14.resolve)(cwd);
+  const signatures = [];
+  let cursor = start;
+  for (; ; ) {
+    const gitPath = (0, import_path14.join)(cursor, ".git");
+    if ((0, import_fs14.existsSync)(gitPath)) {
+      let metadataPath = gitPath;
+      let marker = "";
+      try {
+        if ((0, import_fs14.statSync)(gitPath).isFile()) {
+          marker = readGitMarker(gitPath) ?? "<unreadable>";
+          const gitDirMatch = /^\s*gitdir:\s*(.+?)\s*$/im.exec(marker);
+          if (gitDirMatch?.[1]) metadataPath = (0, import_path14.resolve)(cursor, gitDirMatch[1].trim());
+        }
+      } catch {
+      }
+      const metadataReal = canonicalizeExistingPath(metadataPath) ?? (0, import_path14.resolve)(metadataPath);
+      signatures.push([
+        cursor,
+        gitMetadataFileSignature(gitPath),
+        marker,
+        gitMetadataFileSignature((0, import_path14.join)(metadataReal, "HEAD")),
+        gitMetadataFileSignature((0, import_path14.join)(metadataReal, "index")),
+        gitMetadataFileSignature((0, import_path14.join)(metadataReal, "config")),
+        gitMetadataFileSignature((0, import_path14.join)(metadataReal, "config.worktree")),
+        commonGitDirectorySignature(metadataReal)
+      ].join(":"));
+    }
+    const parent = (0, import_path14.dirname)(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  return signatures.join("|");
+}
+function createStateRootCacheEntry(cwd, root) {
+  return {
+    root,
+    metadataSignature: getGitMetadataSnapshot(cwd)?.signature ?? null,
+    topologySignature: getGitTopologySignature(cwd),
+    environmentSignature: gitProbeEnvironmentSignature()
+  };
+}
+function isStateRootCacheEntryValid(cwd, entry) {
+  return entry.metadataSignature === (getGitMetadataSnapshot(cwd)?.signature ?? null) && entry.topologySignature === getGitTopologySignature(cwd) && entry.environmentSignature === gitProbeEnvironmentSignature();
+}
+function isGitTopLevelCacheEntryValid(cwd, cached2) {
+  const current = getGitMetadataSnapshot(cwd);
+  if (!current || current.signature !== cached2.metadataSignature) return false;
+  if (cached2.topologySignature !== getGitTopologySignature(cwd)) return false;
+  if (cached2.environmentSignature !== gitProbeEnvironmentSignature()) return false;
+  if (!sameCanonicalPath(current.directory, cached2.metadataDir)) return false;
+  if (!sameCanonicalPath(current.directory, cached2.root)) return false;
+  return isCredibleGitWorktreeRoot(cached2.root);
+}
+function cacheGitTopLevel(key, root, cwd) {
+  const metadata = getGitMetadataSnapshot(cwd);
+  if (!metadata || !sameCanonicalPath(metadata.directory, root)) return;
+  if (gitTopLevelCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+    const oldest = gitTopLevelCacheMap.keys().next().value;
+    if (oldest !== void 0) gitTopLevelCacheMap.delete(oldest);
+  }
+  gitTopLevelCacheMap.set(key, {
+    root,
+    metadataDir: metadata.directory,
+    metadataSignature: metadata.signature,
+    topologySignature: getGitTopologySignature(cwd),
+    environmentSignature: gitProbeEnvironmentSignature()
+  });
+}
 function getGitTopLevel(cwd) {
-  const probe = probeGitTopLevel(cwd || process.cwd());
-  return probe.status === "ok" ? probe.root : null;
+  const effectiveCwd = cwd || process.cwd();
+  const key = canonicalizeExistingPath(effectiveCwd) ?? (0, import_path14.resolve)(effectiveCwd);
+  const cached2 = gitTopLevelCacheMap.get(key);
+  if (cached2) {
+    if (isGitTopLevelCacheEntryValid(effectiveCwd, cached2)) {
+      gitTopLevelCacheMap.delete(key);
+      gitTopLevelCacheMap.set(key, cached2);
+      return cached2.root;
+    }
+    gitTopLevelCacheMap.delete(key);
+  }
+  const probe = probeGitTopLevel(effectiveCwd);
+  if (probe.status !== "ok") return null;
+  cacheGitTopLevel(key, probe.root, effectiveCwd);
+  return probe.root;
 }
 function formatGitProbeFailedMessage(workingDirectory) {
   return `workingDirectory '${workingDirectory}' git probe failed and was not used. Cross-repository access is not permitted; pass a path inside the current repository or start the session there.`;
@@ -21810,10 +22491,13 @@ function formatGitProbeFailedMessage(workingDirectory) {
 function getWorktreeRoot(cwd) {
   const effectiveCwd = cwd || process.cwd();
   if (worktreeCacheMap.has(effectiveCwd)) {
-    const root2 = worktreeCacheMap.get(effectiveCwd);
+    const cached2 = worktreeCacheMap.get(effectiveCwd);
+    if (isStateRootCacheEntryValid(effectiveCwd, cached2) && cached2.root !== null && isCredibleGitWorktreeRoot(cached2.root)) {
+      worktreeCacheMap.delete(effectiveCwd);
+      worktreeCacheMap.set(effectiveCwd, cached2);
+      return cached2.root;
+    }
     worktreeCacheMap.delete(effectiveCwd);
-    worktreeCacheMap.set(effectiveCwd, root2);
-    return root2 || null;
   }
   const root = resolveSuperprojectRoot(effectiveCwd) || getGitTopLevel(effectiveCwd);
   if (!root) {
@@ -21825,7 +22509,7 @@ function getWorktreeRoot(cwd) {
       worktreeCacheMap.delete(oldest);
     }
   }
-  worktreeCacheMap.set(effectiveCwd, root);
+  worktreeCacheMap.set(effectiveCwd, createStateRootCacheEntry(effectiveCwd, root));
   return root;
 }
 function validatePath(inputPath) {
@@ -21837,19 +22521,53 @@ function validatePath(inputPath) {
   }
 }
 var dualDirWarnings = /* @__PURE__ */ new Set();
+function discoverCentralizedDirFromSettings() {
+  const candidates = [];
+  try {
+    candidates.push((0, import_path14.join)(getCopilotConfigDir(), "settings.json"));
+  } catch {
+  }
+  try {
+    const cw = process.cwd();
+    candidates.push((0, import_path14.join)(cw, ".claude", "settings.json"));
+    candidates.push((0, import_path14.join)(cw, ".claude", "settings.local.json"));
+  } catch {
+  }
+  for (const p of candidates) {
+    try {
+      const raw = (0, import_fs14.readFileSync)(p, "utf-8");
+      const parsed = JSON.parse(raw);
+      const env = parsed?.env;
+      const val = env?.OMC_STATE_DIR;
+      if (typeof val === "string" && val.trim()) return val.trim();
+    } catch {
+    }
+  }
+  return null;
+}
 function getProjectIdentifier(worktreeRoot) {
   const root = worktreeRoot || getGitTopLevel() || process.cwd();
+  const scope = worktreePathRenderScope.getStore();
+  const scopeKey = scope ? canonicalizeExistingPath(root) ?? (0, import_path14.resolve)(root) : null;
+  if (scope && scopeKey) {
+    const cached2 = scope.projectIdentifiers.get(scopeKey);
+    if (cached2 !== void 0) return cached2;
+  }
   const workspaceRoot = findWorkspaceRoot(root);
   if (workspaceRoot) {
     const cfg = readWorkspaceMarkerConfig(workspaceRoot);
     if (cfg.id && typeof cfg.id === "string" && cfg.id.trim()) {
       const safeId = cfg.id.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
       const hash3 = (0, import_crypto2.createHash)("sha256").update(safeId).digest("hex").slice(0, 16);
-      return `${safeId}-${hash3}`;
+      const identifier3 = `${safeId}-${hash3}`;
+      if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier3);
+      return identifier3;
     }
     const hash2 = (0, import_crypto2.createHash)("sha256").update(workspaceRoot).digest("hex").slice(0, 16);
     const dirName2 = (0, import_path14.basename)(workspaceRoot).replace(/[^a-zA-Z0-9_-]/g, "_");
-    return `${dirName2}-${hash2}`;
+    const identifier2 = `${dirName2}-${hash2}`;
+    if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier2);
+    return identifier2;
   }
   let remoteUrl = "";
   try {
@@ -21857,7 +22575,8 @@ function getProjectIdentifier(worktreeRoot) {
       cwd: root,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true
+      windowsHide: true,
+      timeout: 5e3
     }).trim();
   } catch {
   }
@@ -21883,7 +22602,9 @@ function getProjectIdentifier(worktreeRoot) {
   const source = remoteUrl || primaryRoot;
   const hash = (0, import_crypto2.createHash)("sha256").update(source).digest("hex").slice(0, 16);
   const dirName = (0, import_path14.basename)(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, "_");
-  return `${dirName}-${hash}`;
+  const identifier = `${dirName}-${hash}`;
+  if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier);
+  return identifier;
 }
 function getOmcRoot(worktreeRoot) {
   const customDir = process.env.OMC_STATE_DIR;
@@ -21905,11 +22626,50 @@ function getOmcRoot(worktreeRoot) {
   }
   const workspaceAnchor = findWorkspaceRoot(worktreeRoot);
   if (workspaceAnchor && !isSensitiveStateLocation(workspaceAnchor)) {
+    try {
+      const legacyPathW = (0, import_path14.join)(workspaceAnchor, OmcPaths.ROOT);
+      const discoveredCentral = discoverCentralizedDirFromSettings();
+      if (discoveredCentral) {
+        const wsCfg = readWorkspaceMarkerConfig(workspaceAnchor);
+        let projectIdW;
+        if (wsCfg.id && typeof wsCfg.id === "string" && wsCfg.id.trim()) {
+          const safeId = wsCfg.id.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
+          projectIdW = `${safeId}-${(0, import_crypto2.createHash)("sha256").update(safeId).digest("hex").slice(0, 16)}`;
+        } else {
+          projectIdW = `${(0, import_path14.basename)(workspaceAnchor).replace(/[^a-zA-Z0-9_-]/g, "_")}-${(0, import_crypto2.createHash)("sha256").update(workspaceAnchor).digest("hex").slice(0, 16)}`;
+        }
+        const centralizedPathW = (0, import_path14.join)(discoveredCentral, projectIdW);
+        const warningKeyW = `${legacyPathW}:${centralizedPathW}`;
+        if (!dualDirWarnings.has(warningKeyW) && (0, import_fs14.existsSync)(legacyPathW) && (0, import_fs14.existsSync)(centralizedPathW)) {
+          dualDirWarnings.add(warningKeyW);
+          console.warn(
+            `[omc] Both legacy state dir (${legacyPathW}) and centralized state dir (${centralizedPathW}) exist. Using legacy dir (OMC_STATE_DIR not set in this process). Set OMC_STATE_DIR via settings.json env to use centralized dir consistently.`
+          );
+        }
+      }
+    } catch {
+    }
     return (0, import_path14.join)(workspaceAnchor, OmcPaths.ROOT);
   }
   const root = resolveStateAnchorRoot(worktreeRoot);
   if (!getGitTopLevel(root)) {
     return (0, import_path14.join)(resolveNonGitStateAnchor(root), OmcPaths.ROOT);
+  }
+  try {
+    const legacyPath = (0, import_path14.join)(root, OmcPaths.ROOT);
+    const discoveredCentral = discoverCentralizedDirFromSettings();
+    if (discoveredCentral) {
+      const projectId = getProjectIdentifier(root);
+      const centralizedPath = (0, import_path14.join)(discoveredCentral, projectId);
+      const warningKey = `${legacyPath}:${centralizedPath}`;
+      if (!dualDirWarnings.has(warningKey) && (0, import_fs14.existsSync)(legacyPath) && (0, import_fs14.existsSync)(centralizedPath)) {
+        dualDirWarnings.add(warningKey);
+        console.warn(
+          `[omc] Both legacy state dir (${legacyPath}) and centralized state dir (${centralizedPath}) exist. Using legacy dir (OMC_STATE_DIR not set in this process). Set OMC_STATE_DIR via settings.json env to use centralized dir consistently.`
+        );
+      }
+    }
+  } catch {
   }
   return (0, import_path14.join)(root, OmcPaths.ROOT);
 }
@@ -22072,7 +22832,11 @@ function foreignRepositoryResolution(providedRoot, trustedRoot, callerLabel) {
   return resolution;
 }
 function validateWorkingDirectory(workingDirectory) {
-  const trustedRoot = getGitTopLevel(process.cwd()) || process.cwd();
+  const trustedProbe = probeGitTopLevel(process.cwd());
+  if (trustedProbe.status === "probe_failed" || trustedProbe.status === "git_missing") {
+    throw new Error(formatGitProbeFailedMessage(process.cwd()));
+  }
+  const trustedRoot = trustedProbe.status === "ok" ? trustedProbe.root : process.cwd();
   if (!workingDirectory) {
     return trustedRoot;
   }
@@ -22083,8 +22847,9 @@ function validateWorkingDirectory(workingDirectory) {
   } catch {
     trustedRootReal = trustedRoot;
   }
-  const providedRoot = getGitTopLevel(resolved);
-  if (providedRoot) {
+  const providedProbe = probeGitTopLevel(resolved);
+  if (providedProbe.status === "ok") {
+    const providedRoot = providedProbe.root;
     let providedRootReal;
     try {
       providedRootReal = (0, import_fs14.realpathSync)(providedRoot);
@@ -22101,6 +22866,9 @@ function validateWorkingDirectory(workingDirectory) {
     }
     return providedRoot;
   }
+  if (providedProbe.status === "probe_failed" || providedProbe.status === "git_missing") {
+    throw new Error(formatGitProbeFailedMessage(workingDirectory));
+  }
   let resolvedReal;
   try {
     resolvedReal = (0, import_fs14.realpathSync)(resolved);
@@ -22114,7 +22882,7 @@ function validateWorkingDirectory(workingDirectory) {
   if (trustedRootReal === resolvedReal) {
     return trustedRoot;
   }
-  if (getGitTopLevel(process.cwd())) {
+  if (trustedProbe.status === "ok") {
     return trustedRoot;
   }
   return resolvedReal;
@@ -22302,7 +23070,13 @@ function validateToolPath(inputPath) {
   if (!isToolPathRestricted()) {
     return resolved;
   }
-  const projectRoot = getGitTopLevel() || process.cwd();
+  const projectProbe = probeGitTopLevel(process.cwd());
+  if (projectProbe.status !== "ok") {
+    throw new Error(
+      `Path restricted: unable to verify the project root because the Git probe failed. Disable via security.restrictToolPaths in .claude/omc.jsonc or unset OMC_SECURITY.`
+    );
+  }
+  const projectRoot = projectProbe.root;
   const normalizedRoot = (0, import_path15.normalize)(projectRoot);
   const normalizedPath = (0, import_path15.normalize)(resolved);
   const rel = (0, import_path15.relative)(normalizedRoot, normalizedPath);
@@ -26573,7 +27347,7 @@ function listSessionIdsUnderOmcRoot(omcRoot) {
 function getConvergedOmcRoots(root) {
   const canonicalRoot = getOmcRoot(root);
   if (process.env.OMC_STATE_DIR) return [canonicalRoot];
-  if (!getGitTopLevel(root)) return [canonicalRoot];
+  if (probeGitTopLevel(root).status !== "ok") return [canonicalRoot];
   const roots = /* @__PURE__ */ new Set([canonicalRoot]);
   roots.add((0, import_path29.join)(root, OmcPaths.ROOT));
   roots.add((0, import_path29.join)((0, import_os4.homedir)(), OmcPaths.ROOT));
@@ -26760,7 +27534,7 @@ function getLegacyStateFileCandidates(mode, root) {
     getStatePath(mode, root),
     (0, import_path29.join)(getOmcRoot(root), `${normalizedName}.json`)
   ];
-  if (mode === "autopilot" && getGitTopLevel(root)) candidates.push((0, import_path29.join)((0, import_os4.homedir)(), ".omg", "state", "autopilot-state.json"));
+  if (mode === "autopilot" && probeGitTopLevel(root).status === "ok") candidates.push((0, import_path29.join)((0, import_os4.homedir)(), ".omg", "state", "autopilot-state.json"));
   return [...new Set(candidates)];
 }
 function isSharedHomeAutopilotCandidate(path14, root) {
@@ -26800,7 +27574,7 @@ function getWorkingDirectoryLocalOmcRoot(root) {
   return (0, import_path29.join)(root, OmcPaths.ROOT);
 }
 function shouldCheckWorkingDirectoryLocalState(root) {
-  if (!getGitTopLevel(root)) return false;
+  if (probeGitTopLevel(root).status !== "ok") return false;
   return getWorkingDirectoryLocalOmcRoot(root) !== getOmcRoot(root);
 }
 function getWorkingDirectoryLocalSessionStatePath(mode, root, sessionId) {
@@ -30217,23 +30991,81 @@ function buildScopeMode(project) {
   if (project === "all") return "all";
   return "project";
 }
+function compareMatches(a, b) {
+  const parsedATime = a.timestamp ? Date.parse(a.timestamp) : 0;
+  const parsedBTime = b.timestamp ? Date.parse(b.timestamp) : 0;
+  const aTime = Number.isFinite(parsedATime) ? parsedATime : 0;
+  const bTime = Number.isFinite(parsedBTime) ? parsedBTime : 0;
+  if (aTime !== bTime) return bTime - aTime;
+  return a.sourcePath.localeCompare(b.sourcePath);
+}
+function compareRankedMatches(a, b) {
+  const comparison = compareMatches(a.match, b.match);
+  return comparison || a.encounterOrder - b.encounterOrder;
+}
+function addToWorstFirstHeap(heap, candidate, capacity) {
+  if (capacity <= 0) return;
+  if (heap.length >= capacity) {
+    if (compareRankedMatches(candidate, heap[0]) >= 0) return;
+    heap[0] = candidate;
+    let index2 = 0;
+    while (true) {
+      const left = index2 * 2 + 1;
+      const right = left + 1;
+      let worst = index2;
+      if (left < heap.length && compareRankedMatches(heap[left], heap[worst]) > 0) worst = left;
+      if (right < heap.length && compareRankedMatches(heap[right], heap[worst]) > 0) worst = right;
+      if (worst === index2) break;
+      [heap[index2], heap[worst]] = [heap[worst], heap[index2]];
+      index2 = worst;
+    }
+    return;
+  }
+  heap.push(candidate);
+  let index = heap.length - 1;
+  while (index > 0) {
+    const parent = Math.floor((index - 1) / 2);
+    if (compareRankedMatches(heap[parent], heap[index]) >= 0) break;
+    [heap[parent], heap[index]] = [heap[index], heap[parent]];
+    index = parent;
+  }
+}
+function createMatchRetainer(limit) {
+  const maxMatches = Number.isNaN(limit) ? 0 : Math.max(0, Math.trunc(limit));
+  const heap = [];
+  let totalMatches = 0;
+  let encounterOrder = 0;
+  return {
+    add(match) {
+      totalMatches += 1;
+      const rankedMatch = { match, encounterOrder };
+      encounterOrder += 1;
+      addToWorstFirstHeap(heap, rankedMatch, maxMatches);
+    },
+    get retained() {
+      return [...heap].sort(compareRankedMatches).map((rankedMatch) => rankedMatch.match);
+    },
+    get totalMatches() {
+      return totalMatches;
+    }
+  };
+}
 async function collectMatchesFromFile(target, options) {
-  const matches = [];
   const fileMtime = (0, import_fs32.existsSync)(target.filePath) ? (0, import_fs32.statSync)(target.filePath).mtimeMs : 0;
   if (target.sourceType === "omc-session-summary" && target.filePath.endsWith(".json")) {
     try {
       const payload = JSON.parse(await import("fs/promises").then((fs8) => fs8.readFile(target.filePath, "utf-8")));
       const entry = buildSearchableEntry(payload, target.sourceType);
-      if (!entry) return [];
-      if (options.sessionId && entry.sessionId !== options.sessionId) return [];
-      if (options.projectRoots && options.projectRoots.length > 0 && !isWithinProject(entry.projectPath, options.projectRoots)) return [];
-      if (!matchesProjectFilter(entry.projectPath, options.projectFilter)) return [];
+      if (!entry) return;
+      if (options.sessionId && entry.sessionId !== options.sessionId) return;
+      if (options.projectRoots && options.projectRoots.length > 0 && !isWithinProject(entry.projectPath, options.projectRoots)) return;
+      if (!matchesProjectFilter(entry.projectPath, options.projectFilter)) return;
       const entryEpoch = entry.timestamp ? Date.parse(entry.timestamp) : fileMtime;
-      if (options.sinceEpoch && Number.isFinite(entryEpoch) && entryEpoch < options.sinceEpoch) return [];
+      if (options.sinceEpoch && Number.isFinite(entryEpoch) && entryEpoch < options.sinceEpoch) return;
       for (const text of entry.texts) {
         const matchIndex = findMatchIndex(text, options.query, options.caseSensitive);
         if (matchIndex < 0) continue;
-        matches.push({
+        options.onMatch({
           sessionId: entry.sessionId,
           timestamp: entry.timestamp,
           projectPath: entry.projectPath,
@@ -30247,9 +31079,9 @@ async function collectMatchesFromFile(target, options) {
         break;
       }
     } catch {
-      return [];
+      return;
     }
-    return matches;
+    return;
   }
   const stream = (0, import_fs32.createReadStream)(target.filePath, { encoding: "utf-8" });
   const reader = (0, import_readline.createInterface)({ input: stream, crlfDelay: Infinity });
@@ -30274,7 +31106,7 @@ async function collectMatchesFromFile(target, options) {
       for (const text of entry.texts) {
         const matchIndex = findMatchIndex(text, options.query, options.caseSensitive);
         if (matchIndex < 0) continue;
-        matches.push({
+        options.onMatch({
           sessionId: entry.sessionId,
           agentId: entry.agentId,
           timestamp: entry.timestamp,
@@ -30293,7 +31125,6 @@ async function collectMatchesFromFile(target, options) {
     reader.close();
     stream.destroy();
   }
-  return matches;
 }
 async function searchSessionHistory(rawOptions) {
   const query = compactWhitespace(rawOptions.query || "");
@@ -30315,25 +31146,19 @@ async function searchSessionHistory(rawOptions) {
   const currentProjectRoots = [currentProjectRoot, literalWorkingDirectory].concat(getMainRepoRoot(currentProjectRoot) ?? []).concat(getClaudeWorktreeParent(currentProjectRoot) ?? []).filter((value, index, arr) => Boolean(value) && arr.indexOf(value) === index);
   const transcriptProjectRoots = currentProjectRoots.filter((root) => isWithinProject(root, [currentProjectRoot]));
   const targets = scopeMode === "all" ? buildAllProjectTargets() : buildCurrentProjectTargets(currentProjectRoot, transcriptProjectRoots);
-  const allMatches = [];
+  const matchRetainer = createMatchRetainer(limit);
   for (const target of targets) {
-    const fileMatches = await collectMatchesFromFile(target, {
+    await collectMatchesFromFile(target, {
       query,
       caseSensitive,
       contextChars,
       sinceEpoch,
       sessionId: rawOptions.sessionId,
       projectFilter,
-      projectRoots: scopeMode === "current" ? currentProjectRoots : void 0
+      projectRoots: scopeMode === "current" ? currentProjectRoots : void 0,
+      onMatch: matchRetainer.add
     });
-    allMatches.push(...fileMatches);
   }
-  allMatches.sort((a, b) => {
-    const aTime = a.timestamp ? Date.parse(a.timestamp) : 0;
-    const bTime = b.timestamp ? Date.parse(b.timestamp) : 0;
-    if (aTime !== bTime) return bTime - aTime;
-    return a.sourcePath.localeCompare(b.sourcePath);
-  });
   return {
     query,
     scope: {
@@ -30344,8 +31169,8 @@ async function searchSessionHistory(rawOptions) {
       caseSensitive
     },
     searchedFiles: targets.length,
-    totalMatches: allMatches.length,
-    results: allMatches.slice(0, limit)
+    totalMatches: matchRetainer.totalMatches,
+    results: matchRetainer.retained
   };
 }
 

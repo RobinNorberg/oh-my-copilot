@@ -144,6 +144,96 @@ function writeRalplanStateFixture(tempDir, sessionId, overrides = {}) {
   );
 }
 
+describe('session statistics retention', () => {
+  it('keeps the current session while pruning accumulated historical sessions', () => {
+    withTempDir((tempDir) => {
+      const configDir = join(tempDir, '.claude');
+      const statePath = join(configDir, '.session-stats.json');
+      mkdirSync(configDir, { recursive: true });
+      const sessions = Object.fromEntries(
+        Array.from({ length: 150 }, (_, index) => [
+          `historical-${index}`,
+          {
+            tool_counts: { Read: 1 },
+            last_tool: 'Read',
+            total_calls: 1,
+            started_at: index + 1,
+            updated_at: index + 1,
+          },
+        ]),
+      );
+      writeFileSync(statePath, JSON.stringify({ sessions }));
+
+      runPostToolVerifier(
+        {
+          session_id: 'current-session',
+          cwd: tempDir,
+          tool_name: 'Read',
+          tool_input: { file_path: join(tempDir, 'README.md') },
+          tool_response: 'ok',
+        },
+        {
+          HOME: tempDir,
+          USERPROFILE: tempDir,
+          COPILOT_CONFIG_DIR: configDir,
+        },
+      );
+
+      const retained = JSON.parse(readFileSync(statePath, 'utf8')).sessions;
+      expect(Object.keys(retained)).toHaveLength(100);
+      expect(retained['current-session'].tool_counts.Read).toBe(1);
+      expect(retained['historical-149']).toBeDefined();
+      expect(retained['historical-0']).toBeUndefined();
+    });
+  });
+
+  it.each([
+    { DISABLE_OMC: 'true', OMC_SKIP_HOOKS: '' },
+    { DISABLE_OMC: '', OMC_SKIP_HOOKS: 'post-tool-use' },
+  ])('does not rewrite statistics when disabled by %j', (env) => {
+    withTempDir((tempDir) => {
+      const configDir = join(tempDir, '.claude');
+      const statePath = join(configDir, '.session-stats.json');
+      mkdirSync(configDir, { recursive: true });
+      const original = JSON.stringify({
+        sessions: {
+          existing: { tool_counts: { Read: 7 }, total_calls: 7, started_at: 1, updated_at: 2 },
+        },
+      });
+      writeFileSync(statePath, original);
+
+      expect(runPostToolVerifier(
+        {
+          session_id: 'current-session',
+          cwd: tempDir,
+          tool_name: 'Read',
+          tool_input: { file_path: join(tempDir, 'README.md') },
+          tool_response: 'ok',
+        },
+        {
+          HOME: tempDir,
+          USERPROFILE: tempDir,
+          COPILOT_CONFIG_DIR: configDir,
+          ...env,
+        },
+      )).toEqual({ continue: true });
+      expect(readFileSync(statePath, 'utf8')).toBe(original);
+    });
+  });
+
+  it('does not initialize the state directory when disabled', () => {
+    withTempDir((tempDir) => {
+      const configDir = join(tempDir, 'missing-config');
+
+      expect(runPostToolVerifier(
+        { session_id: 'disabled-session', cwd: tempDir, tool_name: 'Read' },
+        { COPILOT_CONFIG_DIR: configDir, DISABLE_OMC: 'true' },
+      )).toEqual({ continue: true });
+      expect(existsSync(configDir)).toBe(false);
+    });
+  });
+});
+
 describe('detectBashFailure', () => {
   describe('Claude Code temp CWD false positives (issue #696)', () => {
     it('should not flag macOS temp CWD permission error as a failure', () => {
@@ -543,6 +633,7 @@ describe('agent output summarization / truncation (issue #1373)', () => {
     expect(out.continue).toBe(true);
     expect(out.hookSpecificOutput?.additionalContext).toContain('TaskOutput summary:');
     expect(out.hookSpecificOutput?.additionalContext).toContain('TaskOutput clipped');
+    expect(out).not.toHaveProperty('suppressOutput');
   });
 });
 
@@ -630,7 +721,7 @@ describe('post-tool hook regression coverage (issue #2615)', () => {
       cwd: process.cwd(),
     });
 
-    expect(out).toEqual({ continue: true, suppressOutput: true });
+    expect(out).toEqual({ continue: true });
   });
 });
 
@@ -889,7 +980,7 @@ describe('OMC_QUIET hook message suppression (issue #1646)', () => {
       { OMC_QUIET: '1' },
     );
 
-    expect(edit).toEqual({ continue: true, suppressOutput: true });
+    expect(edit).toEqual({ continue: true });
 
     const grep = runPostToolVerifier(
       {
@@ -901,7 +992,7 @@ describe('OMC_QUIET hook message suppression (issue #1646)', () => {
       { OMC_QUIET: '1' },
     );
 
-    expect(grep).toEqual({ continue: true, suppressOutput: true });
+    expect(grep).toEqual({ continue: true });
 
     const writeFailure = runPostToolVerifier(
       {
@@ -953,7 +1044,7 @@ describe('OMC_QUIET hook message suppression (issue #1646)', () => {
       );
     });
 
-    expect(taskSummary).toEqual({ continue: true, suppressOutput: true });
+    expect(taskSummary).toEqual({ continue: true });
   });
 });
 
@@ -971,7 +1062,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
         cwd: tempDir,
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
       expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(false);
       expect(existsSync(legacySkillStatePath(tempDir))).toBe(false);
     });
@@ -990,7 +1081,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
         cwd: tempDir,
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
       expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(true);
       expect(existsSync(legacySkillStatePath(tempDir))).toBe(true);
     });
@@ -1052,7 +1143,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
         cwd: tempDir,
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
 
       const state = JSON.parse(readFileSync(ralplanStatePath(tempDir, sessionId), 'utf-8'));
       expect(state.active).toBe(false);
@@ -1101,7 +1192,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
         cwd: tempDir,
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
       expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(false);
       expect(existsSync(legacySkillStatePath(tempDir))).toBe(false);
     });
@@ -1120,7 +1211,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
         cwd: tempDir,
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
       expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(false);
       expect(existsSync(legacySkillStatePath(tempDir))).toBe(false);
     });
@@ -1181,7 +1272,7 @@ describe('background operation detection (issue #3578)', () => {
           session_id: `bg-fp-${word}`,
         });
 
-        expect(out).toEqual({ continue: true, suppressOutput: true });
+        expect(out).toEqual({ continue: true });
       });
     }
 
@@ -1193,7 +1284,7 @@ describe('background operation detection (issue #3578)', () => {
         session_id: 'bg-fp-all',
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
     });
 
     it('does not fire for the reported repro payload', () => {
@@ -1204,7 +1295,7 @@ describe('background operation detection (issue #3578)', () => {
         session_id: 'bg-fp-repro',
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
     });
   });
 
@@ -1250,7 +1341,7 @@ describe('background operation detection (issue #3578)', () => {
         session_id: 'bg-fg-task-quote',
       });
 
-      expect(out).toEqual({ continue: true, suppressOutput: true });
+      expect(out).toEqual({ continue: true });
     });
   });
 
@@ -1271,7 +1362,7 @@ describe('background operation detection (issue #3578)', () => {
 
         const out = runPostToolVerifier(payload);
 
-        expect(out).toEqual({ continue: true, suppressOutput: true });
+        expect(out).toEqual({ continue: true });
       });
     }
   });

@@ -95,6 +95,8 @@ jobs:
       # platform-specific failures on Windows (e.g. python-repl sandbox, lsp
       # devcontainer, session-end path interpolation) that are out of scope for
       # this gate. Keep this list in sync with the path-handling test files.
+      # run.cjs supervisor/stdio contract tests (#3920) must run here: leaked
+      # protocol handles and process-tree reap are Windows-hosted failures.
       - name: Run Windows path-handling tests
         run: >-
           npx vitest run --fileParallelism=false
@@ -112,6 +114,8 @@ jobs:
           src/hooks/merge-readiness/__tests__/runtime.test.ts
           src/hooks/merge-readiness/__tests__/tool-flow.test.ts
           src/__tests__/windows-prompt-hook-runner.test.ts
+          src/__tests__/run-cjs-generic-timeout.test.ts
+          src/__tests__/run-cjs-windows-stdio-contract.test.ts
           src/installer/__tests__/claude-md-transaction.test.ts
           src/team/__tests__/cli-detection.windows.integration.test.ts
 

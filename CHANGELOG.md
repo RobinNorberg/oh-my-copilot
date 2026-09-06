@@ -2,6 +2,90 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.1.0
+
+## [5.1.0] - 2026-09-06
+
+Ports the three upstream oh-my-claudecode releases since the v5.0.0 rebase —
+v5.1.0, v5.2.0, and v5.3.0 (upstream dev parity at release time) — into the
+fork, adapted throughout to the `omg` CLI, the `.omg/` runtime root, the
+`.copilot/` host surface, and the `/oh-my-copilot:` namespace. Five new skills
+(51 canonical total): the full Shipyard set — `drydock`, `launch`,
+`ask-navigator`, `loft` — plus `minimal-code-discipline`.
+
+### Ported from upstream oh-my-claudecode v5.3.0 (v5.2.0..v5.3.0)
+
+- **Two new shipyard skills (49 → 51):** `ask-navigator` (charts foggy efforts
+  into decision-ticket maps, hands off to launch) and `loft` (shape-before-steel
+  discipline: throwaway artifacts answer design questions). Launch gained the
+  fog gate and map check. Paths adapted to `.omg/wayfinder/` and the
+  `/oh-my-copilot:` namespace.
+- **Workspace checkpoints:** `omg checkpoint create/list/rollback` shadow
+  snapshots for autonomous runs, plus `omg graph run --checkpoint`. The fork
+  additionally suppresses CRLF conversion so Windows rollbacks are
+  byte-faithful.
+- **Remote graph approval gates:** `omg graph run --approval-mode remote` with
+  notification dispatch, reply-channel decisions, and
+  `omg graph approvals list/decide` (the underlying contained run-dir remains
+  Linux-only, as before).
+- **Review hardening:** abort-aware gates, denied-only rollback, hardened
+  reply/checkpoint paths.
+- **Hooks:** stderr preserved after early protocol stdout close (#3963);
+  unsupported PostToolUse `suppressOutput` omitted; verifier semantics
+  preserved on the Worker path.
+- **Perf:** batched Windows cache occupancy identity checks with precise tick
+  validation; per-render git path memoization in the HUD.
+- Windows test adaptations: case-folded occupancy identities via
+  `pathIdentity`, fork rules dir (`.copilot/rules`) in the rules-injector
+  guard tests.
+
+### Ported from upstream oh-my-claudecode v5.2.0 (v5.1.0..v5.2.0)
+
+- **Hook runner Windows stdio overhaul:** `run.cjs` protocol writes guarded
+  against closed consumers, fail-open before Windows tree reap, single generic
+  child reap, EPIPE-safe PassThrough teardown, POSIX process-group reaping, and
+  runner-aware SessionEnd foreground ceilings and worker timeouts.
+- **LSP hardening:** document open/close lifecycle serialization in the LSP
+  client, retired document queue cancellation, and bounded directory
+  diagnostics lifecycle in the aggregator.
+- **Bounded git calls in worktree-paths** with a memoized `probeGitTopLevel`
+  (replacing `getGitTopLevel`/`getWorktreeRoot` call sites), plus the
+  symmetric dual-state-root warning on the legacy branch (#3937).
+- **HUD:** update and paste-ready upgrade hints (`update-hint` element, adapted
+  to `oh-my-copilot` package/plugin names), pid-aware cache lock recovery and
+  bounded `.err` reclamation, stale stdin tmp orphan reclamation.
+- **Shipyard yard gate (launch C5 sediment pass):** launch now refuses to run
+  when the drydock `--check` audit reports actionable findings.
+- **session-history-search** bounds retained matches while still counting all.
+- **Team:** platform-aware worker launch wrapper for POSIX hosts (#3931).
+- Windows adaptations: platform-gated expectations for POSIX-only temp paths,
+  `$OMC_TEAM_STATE_ROOT` placeholders, pid-liveness lock tests, and junction
+  symlinks in tests; separator-normalized superproject assertions.
+
+### Ported from upstream oh-my-claudecode v5.1.0 (v5.0.2..v5.1.0)
+
+- **Three new skills (46 → 49):** `drydock` and `launch` (the Shipyard
+  governed-delivery pair, with the methodology map at `docs/shipyard.md`) and
+  `minimal-code-discipline` (opt-in YAGNI-ladder writing-time discipline).
+  Skill paths adapted to the fork's `.omg/` runtime root and
+  `/oh-my-copilot:` namespace.
+- **Cursor default-model hook (#3880):** `externalModels.defaults.cursorModel`
+  config plus `OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL` /
+  `OMC_CURSOR_DEFAULT_MODEL` env fallbacks.
+- **Team model routing hardening (#3899–#3905):** shared
+  `resolveDefaultWorkerModel` across launch and scale-up, normalized persisted
+  model defaults, preserved routing provenance and configured defaults during
+  scale-up. The fork's `copilot` provider shares the claude resolution path.
+- **Delegation enforcement rewrite (#3911 + follow-ups):** the pre-tool-use
+  template gained a real shell-command parser (heredocs, here-strings, ANSI-C
+  quoting, fd duplication, printf/echo semantics, coprocesses) eliminating
+  delegation false positives, and bounded cross-platform temp/scratchpad path
+  allowances in both the template and the orchestrator hook. The template now
+  allows the fork's `.omg/` state root alongside legacy `.omc/`.
+- Test expectations for POSIX-only temp-path shapes are platform-gated so the
+  suite reflects the implementation's deliberate rejection of cross-platform
+  path shapes on Windows.
+
 # oh-my-copilot v5.0.0
 
 ## [5.0.0] - 2026-08-31

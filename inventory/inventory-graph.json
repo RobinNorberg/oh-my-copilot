@@ -5,41 +5,41 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "f832691502cab7ff46cb05f49972d95fbd01bcac",
-    "sourceSha256": "e9c21d284aa7b86ad673a7133de2ddd5b518f000c712f5a5c964121604ce40a3",
+    "head": "e4b108da9f7906d9d2d073f038014ae1e5331437",
+    "sourceSha256": "7eb2892d1d61caf1b67ef323d2a21e2f123b214d9dd0e5cc13772c9c8313a881",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "f832691502cab7ff46cb05f49972d95fbd01bcac",
-  "sourceSha256": "e9c21d284aa7b86ad673a7133de2ddd5b518f000c712f5a5c964121604ce40a3",
+  "head": "e4b108da9f7906d9d2d073f038014ae1e5331437",
+  "sourceSha256": "7eb2892d1d61caf1b67ef323d2a21e2f123b214d9dd0e5cc13772c9c8313a881",
   "counts": {
     "public": {
-      "skills": 46,
+      "skills": 51,
       "commands": 21,
       "workflows": 8,
       "agents": 20,
-      "total": 95
+      "total": 100
     },
     "internal": {
       "hookFiles": 304,
-      "featureFiles": 68,
-      "toolFiles": 60,
-      "libFiles": 37,
+      "featureFiles": 71,
+      "toolFiles": 61,
+      "libFiles": 40,
       "templateHooks": 21,
-      "srcFiles": 1341,
-      "total": 1362
+      "srcFiles": 1364,
+      "total": 1385
     },
     "generated": {
-      "distFiles": 5219,
+      "distFiles": 5299,
       "bridgeFiles": 9,
-      "total": 5228
+      "total": 5308
     },
     "prompt": {
       "promptLikeFiles": 62
     },
-    "skills": 46,
+    "skills": 51,
     "commands": 21,
     "hookFiles": 304,
     "workflows": 8,
@@ -50,6 +50,7 @@
     "skills": [
       "ai-slop-cleaner",
       "ask",
+      "ask-navigator",
       "autopilot",
       "autoresearch",
       "cancel",
@@ -60,10 +61,14 @@
       "deep-review",
       "deepinit",
       "discover",
+      "drydock",
       "execute",
       "external-context",
       "graph",
       "hud",
+      "launch",
+      "loft",
+      "minimal-code-discipline",
       "omc-ado-auto-review",
       "omc-ado-review",
       "omc-ado-setup",
@@ -460,6 +465,7 @@
     ],
     "featureFiles": [
       "src/features/AGENTS.md",
+      "src/features/__tests__/checkpoint.test.ts",
       "src/features/__tests__/magic-keywords.test.ts",
       "src/features/agent-addressability/__tests__/addressability.test.ts",
       "src/features/agent-addressability/index.ts",
@@ -477,6 +483,7 @@
       "src/features/builtin-skills/runtime-guidance.ts",
       "src/features/builtin-skills/skills.ts",
       "src/features/builtin-skills/types.ts",
+      "src/features/checkpoint/index.ts",
       "src/features/context-injector/collector.ts",
       "src/features/context-injector/index.ts",
       "src/features/context-injector/injector.ts",
@@ -506,6 +513,7 @@
       "src/features/model-routing/scorer.ts",
       "src/features/model-routing/signals.ts",
       "src/features/model-routing/types.ts",
+      "src/features/notepad-wisdom/__tests__/extractor.test.ts",
       "src/features/notepad-wisdom/extractor.ts",
       "src/features/notepad-wisdom/index.ts",
       "src/features/notepad-wisdom/types.ts",
@@ -551,6 +559,7 @@
       "src/tools/lsp-tools.ts",
       "src/tools/lsp/AGENTS.md",
       "src/tools/lsp/__tests__/client-devcontainer.test.ts",
+      "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
       "src/tools/lsp/__tests__/client-eviction.test.ts",
       "src/tools/lsp/__tests__/client-handle-data.test.ts",
       "src/tools/lsp/__tests__/client-python-boundary.test.ts",
@@ -603,8 +612,11 @@
       "src/lib/__tests__/worktree-cleanup-safety.test.ts",
       "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
       "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
+      "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
       "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
+      "src/lib/__tests__/worktree-paths-split-warning.test.ts",
       "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
+      "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
       "src/lib/__tests__/worktree-paths.test.ts",
       "src/lib/atomic-write.ts",
       "src/lib/env-vars.ts",
@@ -1234,6 +1246,10 @@
       "dist/__tests__/hud/transcript-agent-lifecycle.test.d.ts.map",
       "dist/__tests__/hud/transcript-agent-lifecycle.test.js",
       "dist/__tests__/hud/transcript-agent-lifecycle.test.js.map",
+      "dist/__tests__/hud/update-hint.test.d.ts",
+      "dist/__tests__/hud/update-hint.test.d.ts.map",
+      "dist/__tests__/hud/update-hint.test.js",
+      "dist/__tests__/hud/update-hint.test.js.map",
       "dist/__tests__/hud/usage-api-lock.test.d.ts",
       "dist/__tests__/hud/usage-api-lock.test.d.ts.map",
       "dist/__tests__/hud/usage-api-lock.test.js",
@@ -1514,6 +1530,10 @@
       "dist/__tests__/project-memory-merge.test.d.ts.map",
       "dist/__tests__/project-memory-merge.test.js",
       "dist/__tests__/project-memory-merge.test.js.map",
+      "dist/__tests__/project-memory-posttool.test.d.ts",
+      "dist/__tests__/project-memory-posttool.test.d.ts.map",
+      "dist/__tests__/project-memory-posttool.test.js",
+      "dist/__tests__/project-memory-posttool.test.js.map",
       "dist/__tests__/project-session-manager-review-worktree.test.d.ts",
       "dist/__tests__/project-session-manager-review-worktree.test.d.ts.map",
       "dist/__tests__/project-session-manager-review-worktree.test.js",
@@ -1666,6 +1686,10 @@
       "dist/__tests__/run-cjs-graceful-fallback.test.d.ts.map",
       "dist/__tests__/run-cjs-graceful-fallback.test.js",
       "dist/__tests__/run-cjs-graceful-fallback.test.js.map",
+      "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts",
+      "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts.map",
+      "dist/__tests__/run-cjs-windows-stdio-contract.test.js",
+      "dist/__tests__/run-cjs-windows-stdio-contract.test.js.map",
       "dist/__tests__/runtime-guidance-plan-ralph.test.d.ts",
       "dist/__tests__/runtime-guidance-plan-ralph.test.d.ts.map",
       "dist/__tests__/runtime-guidance-plan-ralph.test.js",
@@ -1718,6 +1742,14 @@
       "dist/__tests__/session-start-timeout-cleanup.test.d.ts.map",
       "dist/__tests__/session-start-timeout-cleanup.test.js",
       "dist/__tests__/session-start-timeout-cleanup.test.js.map",
+      "dist/__tests__/session-start-update-check.test.d.ts",
+      "dist/__tests__/session-start-update-check.test.d.ts.map",
+      "dist/__tests__/session-start-update-check.test.js",
+      "dist/__tests__/session-start-update-check.test.js.map",
+      "dist/__tests__/session-start-update-refresh.test.d.ts",
+      "dist/__tests__/session-start-update-refresh.test.d.ts.map",
+      "dist/__tests__/session-start-update-refresh.test.js",
+      "dist/__tests__/session-start-update-refresh.test.js.map",
       "dist/__tests__/session-summary-pid-tracking.test.d.ts",
       "dist/__tests__/session-summary-pid-tracking.test.d.ts.map",
       "dist/__tests__/session-summary-pid-tracking.test.js",
@@ -1758,6 +1790,14 @@
       "dist/__tests__/shared-state-locking.test.d.ts.map",
       "dist/__tests__/shared-state-locking.test.js",
       "dist/__tests__/shared-state-locking.test.js.map",
+      "dist/__tests__/shipyard-seed-locale.test.d.ts",
+      "dist/__tests__/shipyard-seed-locale.test.d.ts.map",
+      "dist/__tests__/shipyard-seed-locale.test.js",
+      "dist/__tests__/shipyard-seed-locale.test.js.map",
+      "dist/__tests__/shipyard-skills.test.d.ts",
+      "dist/__tests__/shipyard-skills.test.d.ts.map",
+      "dist/__tests__/shipyard-skills.test.js",
+      "dist/__tests__/shipyard-skills.test.js.map",
       "dist/__tests__/skill-entitlements-cross-surface.test.d.ts",
       "dist/__tests__/skill-entitlements-cross-surface.test.d.ts.map",
       "dist/__tests__/skill-entitlements-cross-surface.test.js",
@@ -2210,6 +2250,10 @@
       "dist/cli/autoresearch.d.ts.map",
       "dist/cli/autoresearch.js",
       "dist/cli/autoresearch.js.map",
+      "dist/cli/checkpoint.d.ts",
+      "dist/cli/checkpoint.d.ts.map",
+      "dist/cli/checkpoint.js",
+      "dist/cli/checkpoint.js.map",
       "dist/cli/claude-md-coordinator.d.ts",
       "dist/cli/claude-md-coordinator.d.ts.map",
       "dist/cli/claude-md-coordinator.js",
@@ -2375,6 +2419,10 @@
       "dist/constants/names.d.ts.map",
       "dist/constants/names.js",
       "dist/constants/names.js.map",
+      "dist/features/__tests__/checkpoint.test.d.ts",
+      "dist/features/__tests__/checkpoint.test.d.ts.map",
+      "dist/features/__tests__/checkpoint.test.js",
+      "dist/features/__tests__/checkpoint.test.js.map",
       "dist/features/__tests__/magic-keywords.test.d.ts",
       "dist/features/__tests__/magic-keywords.test.d.ts.map",
       "dist/features/__tests__/magic-keywords.test.js",
@@ -2443,6 +2491,10 @@
       "dist/features/builtin-skills/types.d.ts.map",
       "dist/features/builtin-skills/types.js",
       "dist/features/builtin-skills/types.js.map",
+      "dist/features/checkpoint/index.d.ts",
+      "dist/features/checkpoint/index.d.ts.map",
+      "dist/features/checkpoint/index.js",
+      "dist/features/checkpoint/index.js.map",
       "dist/features/context-injector/collector.d.ts",
       "dist/features/context-injector/collector.d.ts.map",
       "dist/features/context-injector/collector.js",
@@ -2551,6 +2603,10 @@
       "dist/features/model-routing/types.d.ts.map",
       "dist/features/model-routing/types.js",
       "dist/features/model-routing/types.js.map",
+      "dist/features/notepad-wisdom/__tests__/extractor.test.d.ts",
+      "dist/features/notepad-wisdom/__tests__/extractor.test.d.ts.map",
+      "dist/features/notepad-wisdom/__tests__/extractor.test.js",
+      "dist/features/notepad-wisdom/__tests__/extractor.test.js.map",
       "dist/features/notepad-wisdom/extractor.d.ts",
       "dist/features/notepad-wisdom/extractor.d.ts.map",
       "dist/features/notepad-wisdom/extractor.js",
@@ -2687,6 +2743,10 @@
       "dist/graph/__tests__/runtime/regression-matrix.test.d.ts.map",
       "dist/graph/__tests__/runtime/regression-matrix.test.js",
       "dist/graph/__tests__/runtime/regression-matrix.test.js.map",
+      "dist/graph/__tests__/runtime/remote-approval.test.d.ts",
+      "dist/graph/__tests__/runtime/remote-approval.test.d.ts.map",
+      "dist/graph/__tests__/runtime/remote-approval.test.js",
+      "dist/graph/__tests__/runtime/remote-approval.test.js.map",
       "dist/graph/__tests__/runtime/run-dir.test.d.ts",
       "dist/graph/__tests__/runtime/run-dir.test.d.ts.map",
       "dist/graph/__tests__/runtime/run-dir.test.js",
@@ -2743,6 +2803,10 @@
       "dist/graph/runtime/progress.d.ts.map",
       "dist/graph/runtime/progress.js",
       "dist/graph/runtime/progress.js.map",
+      "dist/graph/runtime/remote-approval.d.ts",
+      "dist/graph/runtime/remote-approval.d.ts.map",
+      "dist/graph/runtime/remote-approval.js",
+      "dist/graph/runtime/remote-approval.js.map",
       "dist/graph/runtime/run-dir.d.ts",
       "dist/graph/runtime/run-dir.d.ts.map",
       "dist/graph/runtime/run-dir.js",
@@ -4140,6 +4204,10 @@
       "dist/hud/elements/token-usage.d.ts.map",
       "dist/hud/elements/token-usage.js",
       "dist/hud/elements/token-usage.js.map",
+      "dist/hud/elements/update-hint.d.ts",
+      "dist/hud/elements/update-hint.d.ts.map",
+      "dist/hud/elements/update-hint.js",
+      "dist/hud/elements/update-hint.js.map",
       "dist/hud/index.d.ts",
       "dist/hud/index.d.ts.map",
       "dist/hud/index.js",
@@ -4369,14 +4437,26 @@
       "dist/lib/__tests__/worktree-paths-git-probe-failclosed.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths-git-probe-failclosed.test.js",
       "dist/lib/__tests__/worktree-paths-git-probe-failclosed.test.js.map",
+      "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts",
+      "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts.map",
+      "dist/lib/__tests__/worktree-paths-git-timeout.test.js",
+      "dist/lib/__tests__/worktree-paths-git-timeout.test.js.map",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.js",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.js.map",
+      "dist/lib/__tests__/worktree-paths-split-warning.test.d.ts",
+      "dist/lib/__tests__/worktree-paths-split-warning.test.d.ts.map",
+      "dist/lib/__tests__/worktree-paths-split-warning.test.js",
+      "dist/lib/__tests__/worktree-paths-split-warning.test.js.map",
       "dist/lib/__tests__/worktree-paths-superproject-cache.test.d.ts",
       "dist/lib/__tests__/worktree-paths-superproject-cache.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths-superproject-cache.test.js",
       "dist/lib/__tests__/worktree-paths-superproject-cache.test.js.map",
+      "dist/lib/__tests__/worktree-paths-toplevel-cache.test.d.ts",
+      "dist/lib/__tests__/worktree-paths-toplevel-cache.test.d.ts.map",
+      "dist/lib/__tests__/worktree-paths-toplevel-cache.test.js",
+      "dist/lib/__tests__/worktree-paths-toplevel-cache.test.js.map",
       "dist/lib/__tests__/worktree-paths.test.d.ts",
       "dist/lib/__tests__/worktree-paths.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths.test.js",
@@ -4549,6 +4629,10 @@
       "dist/mcp/tool-registry.d.ts.map",
       "dist/mcp/tool-registry.js",
       "dist/mcp/tool-registry.js.map",
+      "dist/notifications/__tests__/approval-reply.test.d.ts",
+      "dist/notifications/__tests__/approval-reply.test.d.ts.map",
+      "dist/notifications/__tests__/approval-reply.test.js",
+      "dist/notifications/__tests__/approval-reply.test.js.map",
       "dist/notifications/__tests__/config-merge.test.d.ts",
       "dist/notifications/__tests__/config-merge.test.d.ts.map",
       "dist/notifications/__tests__/config-merge.test.js",
@@ -5373,6 +5457,10 @@
       "dist/team/__tests__/worker-launch-posix-transport.test.d.ts.map",
       "dist/team/__tests__/worker-launch-posix-transport.test.js",
       "dist/team/__tests__/worker-launch-posix-transport.test.js.map",
+      "dist/team/__tests__/worker-launch-wrapper-posix.test.d.ts",
+      "dist/team/__tests__/worker-launch-wrapper-posix.test.d.ts.map",
+      "dist/team/__tests__/worker-launch-wrapper-posix.test.js",
+      "dist/team/__tests__/worker-launch-wrapper-posix.test.js.map",
       "dist/team/__tests__/worker-restart.test.d.ts",
       "dist/team/__tests__/worker-restart.test.d.ts.map",
       "dist/team/__tests__/worker-restart.test.js",
@@ -5757,6 +5845,10 @@
       "dist/tools/lsp/__tests__/client-devcontainer.test.d.ts.map",
       "dist/tools/lsp/__tests__/client-devcontainer.test.js",
       "dist/tools/lsp/__tests__/client-devcontainer.test.js.map",
+      "dist/tools/lsp/__tests__/client-document-lifecycle.test.d.ts",
+      "dist/tools/lsp/__tests__/client-document-lifecycle.test.d.ts.map",
+      "dist/tools/lsp/__tests__/client-document-lifecycle.test.js",
+      "dist/tools/lsp/__tests__/client-document-lifecycle.test.js.map",
       "dist/tools/lsp/__tests__/client-eviction.test.d.ts",
       "dist/tools/lsp/__tests__/client-eviction.test.d.ts.map",
       "dist/tools/lsp/__tests__/client-eviction.test.js",
@@ -6445,6 +6537,7 @@
     ],
     "featureFiles": [
       "src/features/AGENTS.md",
+      "src/features/__tests__/checkpoint.test.ts",
       "src/features/__tests__/magic-keywords.test.ts",
       "src/features/agent-addressability/__tests__/addressability.test.ts",
       "src/features/agent-addressability/index.ts",
@@ -6462,6 +6555,7 @@
       "src/features/builtin-skills/runtime-guidance.ts",
       "src/features/builtin-skills/skills.ts",
       "src/features/builtin-skills/types.ts",
+      "src/features/checkpoint/index.ts",
       "src/features/context-injector/collector.ts",
       "src/features/context-injector/index.ts",
       "src/features/context-injector/injector.ts",
@@ -6491,6 +6585,7 @@
       "src/features/model-routing/scorer.ts",
       "src/features/model-routing/signals.ts",
       "src/features/model-routing/types.ts",
+      "src/features/notepad-wisdom/__tests__/extractor.test.ts",
       "src/features/notepad-wisdom/extractor.ts",
       "src/features/notepad-wisdom/index.ts",
       "src/features/notepad-wisdom/types.ts",
@@ -6536,6 +6631,7 @@
       "src/tools/lsp-tools.ts",
       "src/tools/lsp/AGENTS.md",
       "src/tools/lsp/__tests__/client-devcontainer.test.ts",
+      "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
       "src/tools/lsp/__tests__/client-eviction.test.ts",
       "src/tools/lsp/__tests__/client-handle-data.test.ts",
       "src/tools/lsp/__tests__/client-python-boundary.test.ts",
@@ -9504,6 +9600,26 @@
         "path": "dist/__tests__/hud/transcript-agent-lifecycle.test.js.map"
       },
       {
+        "id": "dist/__tests__/hud/update-hint.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/update-hint.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/update-hint.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/update-hint.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/update-hint.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/update-hint.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/update-hint.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/update-hint.test.js.map"
+      },
+      {
         "id": "dist/__tests__/hud/usage-api-lock.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud/usage-api-lock.test.d.ts"
@@ -10904,6 +11020,26 @@
         "path": "dist/__tests__/project-memory-merge.test.js.map"
       },
       {
+        "id": "dist/__tests__/project-memory-posttool.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/project-memory-posttool.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/project-memory-posttool.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/project-memory-posttool.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/project-memory-posttool.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/project-memory-posttool.test.js"
+      },
+      {
+        "id": "dist/__tests__/project-memory-posttool.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/project-memory-posttool.test.js.map"
+      },
+      {
         "id": "dist/__tests__/project-session-manager-review-worktree.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/project-session-manager-review-worktree.test.d.ts"
@@ -11664,6 +11800,26 @@
         "path": "dist/__tests__/run-cjs-graceful-fallback.test.js.map"
       },
       {
+        "id": "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-windows-stdio-contract.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-windows-stdio-contract.test.js"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-windows-stdio-contract.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-windows-stdio-contract.test.js.map"
+      },
+      {
         "id": "dist/__tests__/runtime-guidance-plan-ralph.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/runtime-guidance-plan-ralph.test.d.ts"
@@ -11924,6 +12080,46 @@
         "path": "dist/__tests__/session-start-timeout-cleanup.test.js.map"
       },
       {
+        "id": "dist/__tests__/session-start-update-check.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-check.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-check.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-check.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-check.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-check.test.js"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-check.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-check.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-refresh.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-refresh.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-refresh.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-refresh.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-refresh.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-refresh.test.js"
+      },
+      {
+        "id": "dist/__tests__/session-start-update-refresh.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-update-refresh.test.js.map"
+      },
+      {
         "id": "dist/__tests__/session-summary-pid-tracking.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/session-summary-pid-tracking.test.d.ts"
@@ -12122,6 +12318,46 @@
         "id": "dist/__tests__/shared-state-locking.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/shared-state-locking.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/shipyard-seed-locale.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-seed-locale.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/shipyard-seed-locale.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-seed-locale.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/shipyard-seed-locale.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-seed-locale.test.js"
+      },
+      {
+        "id": "dist/__tests__/shipyard-seed-locale.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-seed-locale.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/shipyard-skills.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-skills.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/shipyard-skills.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-skills.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/shipyard-skills.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-skills.test.js"
+      },
+      {
+        "id": "dist/__tests__/shipyard-skills.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/shipyard-skills.test.js.map"
       },
       {
         "id": "dist/__tests__/skill-entitlements-cross-surface.test.d.ts",
@@ -14384,6 +14620,26 @@
         "path": "dist/cli/autoresearch.js.map"
       },
       {
+        "id": "dist/cli/checkpoint.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/checkpoint.d.ts"
+      },
+      {
+        "id": "dist/cli/checkpoint.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/checkpoint.d.ts.map"
+      },
+      {
+        "id": "dist/cli/checkpoint.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/checkpoint.js"
+      },
+      {
+        "id": "dist/cli/checkpoint.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/checkpoint.js.map"
+      },
+      {
         "id": "dist/cli/claude-md-coordinator.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/claude-md-coordinator.d.ts"
@@ -15209,6 +15465,26 @@
         "path": "dist/constants/names.js.map"
       },
       {
+        "id": "dist/features/__tests__/checkpoint.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/checkpoint.test.d.ts"
+      },
+      {
+        "id": "dist/features/__tests__/checkpoint.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/checkpoint.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/__tests__/checkpoint.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/checkpoint.test.js"
+      },
+      {
+        "id": "dist/features/__tests__/checkpoint.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/checkpoint.test.js.map"
+      },
+      {
         "id": "dist/features/__tests__/magic-keywords.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/features/__tests__/magic-keywords.test.d.ts"
@@ -15547,6 +15823,26 @@
         "id": "dist/features/builtin-skills/types.js.map",
         "kind": "generated-dist",
         "path": "dist/features/builtin-skills/types.js.map"
+      },
+      {
+        "id": "dist/features/checkpoint/index.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/checkpoint/index.d.ts"
+      },
+      {
+        "id": "dist/features/checkpoint/index.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/checkpoint/index.d.ts.map"
+      },
+      {
+        "id": "dist/features/checkpoint/index.js",
+        "kind": "generated-dist",
+        "path": "dist/features/checkpoint/index.js"
+      },
+      {
+        "id": "dist/features/checkpoint/index.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/checkpoint/index.js.map"
       },
       {
         "id": "dist/features/context-injector/collector.d.ts",
@@ -16087,6 +16383,26 @@
         "id": "dist/features/model-routing/types.js.map",
         "kind": "generated-dist",
         "path": "dist/features/model-routing/types.js.map"
+      },
+      {
+        "id": "dist/features/notepad-wisdom/__tests__/extractor.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/notepad-wisdom/__tests__/extractor.test.d.ts"
+      },
+      {
+        "id": "dist/features/notepad-wisdom/__tests__/extractor.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/notepad-wisdom/__tests__/extractor.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/notepad-wisdom/__tests__/extractor.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/notepad-wisdom/__tests__/extractor.test.js"
+      },
+      {
+        "id": "dist/features/notepad-wisdom/__tests__/extractor.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/notepad-wisdom/__tests__/extractor.test.js.map"
       },
       {
         "id": "dist/features/notepad-wisdom/extractor.d.ts",
@@ -16769,6 +17085,26 @@
         "path": "dist/graph/__tests__/runtime/regression-matrix.test.js.map"
       },
       {
+        "id": "dist/graph/__tests__/runtime/remote-approval.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/__tests__/runtime/remote-approval.test.d.ts"
+      },
+      {
+        "id": "dist/graph/__tests__/runtime/remote-approval.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/__tests__/runtime/remote-approval.test.d.ts.map"
+      },
+      {
+        "id": "dist/graph/__tests__/runtime/remote-approval.test.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/__tests__/runtime/remote-approval.test.js"
+      },
+      {
+        "id": "dist/graph/__tests__/runtime/remote-approval.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/__tests__/runtime/remote-approval.test.js.map"
+      },
+      {
         "id": "dist/graph/__tests__/runtime/run-dir.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/graph/__tests__/runtime/run-dir.test.d.ts"
@@ -17047,6 +17383,26 @@
         "id": "dist/graph/runtime/progress.js.map",
         "kind": "generated-dist",
         "path": "dist/graph/runtime/progress.js.map"
+      },
+      {
+        "id": "dist/graph/runtime/remote-approval.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/remote-approval.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/remote-approval.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/remote-approval.d.ts.map"
+      },
+      {
+        "id": "dist/graph/runtime/remote-approval.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/remote-approval.js"
+      },
+      {
+        "id": "dist/graph/runtime/remote-approval.js.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/remote-approval.js.map"
       },
       {
         "id": "dist/graph/runtime/run-dir.d.ts",
@@ -24034,6 +24390,26 @@
         "path": "dist/hud/elements/token-usage.js.map"
       },
       {
+        "id": "dist/hud/elements/update-hint.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/update-hint.d.ts"
+      },
+      {
+        "id": "dist/hud/elements/update-hint.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/update-hint.d.ts.map"
+      },
+      {
+        "id": "dist/hud/elements/update-hint.js",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/update-hint.js"
+      },
+      {
+        "id": "dist/hud/elements/update-hint.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/update-hint.js.map"
+      },
+      {
         "id": "dist/hud/index.d.ts",
         "kind": "generated-dist",
         "path": "dist/hud/index.d.ts"
@@ -25179,6 +25555,26 @@
         "path": "dist/lib/__tests__/worktree-paths-git-probe-failclosed.test.js.map"
       },
       {
+        "id": "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-git-timeout.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-git-timeout.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-git-timeout.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-git-timeout.test.js.map"
+      },
+      {
         "id": "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts"
@@ -25199,6 +25595,26 @@
         "path": "dist/lib/__tests__/worktree-paths-nongit-anchor.test.js.map"
       },
       {
+        "id": "dist/lib/__tests__/worktree-paths-split-warning.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-split-warning.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-split-warning.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-split-warning.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-split-warning.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-split-warning.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-split-warning.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-split-warning.test.js.map"
+      },
+      {
         "id": "dist/lib/__tests__/worktree-paths-superproject-cache.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/worktree-paths-superproject-cache.test.d.ts"
@@ -25217,6 +25633,26 @@
         "id": "dist/lib/__tests__/worktree-paths-superproject-cache.test.js.map",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/worktree-paths-superproject-cache.test.js.map"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-toplevel-cache.test.js.map"
       },
       {
         "id": "dist/lib/__tests__/worktree-paths.test.d.ts",
@@ -26077,6 +26513,26 @@
         "id": "dist/mcp/tool-registry.js.map",
         "kind": "generated-dist",
         "path": "dist/mcp/tool-registry.js.map"
+      },
+      {
+        "id": "dist/notifications/__tests__/approval-reply.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/approval-reply.test.d.ts"
+      },
+      {
+        "id": "dist/notifications/__tests__/approval-reply.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/approval-reply.test.d.ts.map"
+      },
+      {
+        "id": "dist/notifications/__tests__/approval-reply.test.js",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/approval-reply.test.js"
+      },
+      {
+        "id": "dist/notifications/__tests__/approval-reply.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/approval-reply.test.js.map"
       },
       {
         "id": "dist/notifications/__tests__/config-merge.test.d.ts",
@@ -30199,6 +30655,26 @@
         "path": "dist/team/__tests__/worker-launch-posix-transport.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/worker-launch-wrapper-posix.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/worker-launch-wrapper-posix.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/worker-launch-wrapper-posix.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/worker-launch-wrapper-posix.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/worker-launch-wrapper-posix.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/worker-launch-wrapper-posix.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/worker-launch-wrapper-posix.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/worker-launch-wrapper-posix.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/worker-restart.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/worker-restart.test.d.ts"
@@ -32119,6 +32595,26 @@
         "path": "dist/tools/lsp/__tests__/client-devcontainer.test.js.map"
       },
       {
+        "id": "dist/tools/lsp/__tests__/client-document-lifecycle.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/tools/lsp/__tests__/client-document-lifecycle.test.d.ts"
+      },
+      {
+        "id": "dist/tools/lsp/__tests__/client-document-lifecycle.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/lsp/__tests__/client-document-lifecycle.test.d.ts.map"
+      },
+      {
+        "id": "dist/tools/lsp/__tests__/client-document-lifecycle.test.js",
+        "kind": "generated-dist",
+        "path": "dist/tools/lsp/__tests__/client-document-lifecycle.test.js"
+      },
+      {
+        "id": "dist/tools/lsp/__tests__/client-document-lifecycle.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/lsp/__tests__/client-document-lifecycle.test.js.map"
+      },
+      {
         "id": "dist/tools/lsp/__tests__/client-eviction.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/tools/lsp/__tests__/client-eviction.test.d.ts"
@@ -33824,6 +34320,11 @@
         "path": "docs/shared/verification-tiers.md"
       },
       {
+        "id": "docs/shipyard.md",
+        "kind": "other",
+        "path": "docs/shipyard.md"
+      },
+      {
         "id": "docs/ultragoal.md",
         "kind": "other",
         "path": "docs/ultragoal.md"
@@ -33969,6 +34470,11 @@
         "path": "net"
       },
       {
+        "id": "external:node:async_hooks",
+        "kind": "external",
+        "path": "node:async_hooks"
+      },
+      {
         "id": "external:node:child_process",
         "kind": "external",
         "path": "node:child_process"
@@ -34004,6 +34510,11 @@
         "path": "node:module"
       },
       {
+        "id": "external:node:net",
+        "kind": "external",
+        "path": "node:net"
+      },
+      {
         "id": "external:node:os",
         "kind": "external",
         "path": "node:os"
@@ -34027,6 +34538,11 @@
         "id": "external:node:readline/promises",
         "kind": "external",
         "path": "node:readline/promises"
+      },
+      {
+        "id": "external:node:stream",
+        "kind": "external",
+        "path": "node:stream"
       },
       {
         "id": "external:node:url",
@@ -34949,6 +35465,11 @@
         "path": "skills/ai-slop-cleaner/SKILL.md"
       },
       {
+        "id": "skills/ask-navigator/SKILL.md",
+        "kind": "skill",
+        "path": "skills/ask-navigator/SKILL.md"
+      },
+      {
         "id": "skills/ask/SKILL.md",
         "kind": "skill",
         "path": "skills/ask/SKILL.md"
@@ -35004,6 +35525,11 @@
         "path": "skills/discover/SKILL.md"
       },
       {
+        "id": "skills/drydock/SKILL.md",
+        "kind": "skill",
+        "path": "skills/drydock/SKILL.md"
+      },
+      {
         "id": "skills/execute/SKILL.md",
         "kind": "skill",
         "path": "skills/execute/SKILL.md"
@@ -35022,6 +35548,21 @@
         "id": "skills/hud/SKILL.md",
         "kind": "skill",
         "path": "skills/hud/SKILL.md"
+      },
+      {
+        "id": "skills/launch/SKILL.md",
+        "kind": "skill",
+        "path": "skills/launch/SKILL.md"
+      },
+      {
+        "id": "skills/loft/SKILL.md",
+        "kind": "skill",
+        "path": "skills/loft/SKILL.md"
+      },
+      {
+        "id": "skills/minimal-code-discipline/SKILL.md",
+        "kind": "skill",
+        "path": "skills/minimal-code-discipline/SKILL.md"
       },
       {
         "id": "skills/omc-ado-auto-review/SKILL.md",
@@ -35579,6 +36120,16 @@
         "path": "src/__tests__/file-lock.test.ts"
       },
       {
+        "id": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs"
+      },
+      {
+        "id": "src/__tests__/fixtures/hung-hooks/epipe-exit-parent.cjs",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/hung-hooks/epipe-exit-parent.cjs"
+      },
+      {
         "id": "src/__tests__/fixtures/hung-hooks/hung-grandchild.cjs",
         "kind": "src",
         "path": "src/__tests__/fixtures/hung-hooks/hung-grandchild.cjs"
@@ -35587,6 +36138,11 @@
         "id": "src/__tests__/fixtures/hung-hooks/hung-parent.cjs",
         "kind": "src",
         "path": "src/__tests__/fixtures/hung-hooks/hung-parent.cjs"
+      },
+      {
+        "id": "src/__tests__/fixtures/hung-hooks/success-parent-stdout-orphan.cjs",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/hung-hooks/success-parent-stdout-orphan.cjs"
       },
       {
         "id": "src/__tests__/fixtures/sample-transcript.jsonl",
@@ -35877,6 +36433,11 @@
         "id": "src/__tests__/hud/transcript-agent-lifecycle.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/transcript-agent-lifecycle.test.ts"
+      },
+      {
+        "id": "src/__tests__/hud/update-hint.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/update-hint.test.ts"
       },
       {
         "id": "src/__tests__/hud/usage-api-lock.test.ts",
@@ -36234,6 +36795,11 @@
         "path": "src/__tests__/project-memory-merge.test.ts"
       },
       {
+        "id": "src/__tests__/project-memory-posttool.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/project-memory-posttool.test.ts"
+      },
+      {
         "id": "src/__tests__/project-session-manager-review-worktree.test.ts",
         "kind": "src",
         "path": "src/__tests__/project-session-manager-review-worktree.test.ts"
@@ -36429,6 +36995,11 @@
         "path": "src/__tests__/run-cjs-graceful-fallback.test.ts"
       },
       {
+        "id": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/run-cjs-windows-stdio-contract.test.ts"
+      },
+      {
         "id": "src/__tests__/runtime-guidance-plan-ralph.test.ts",
         "kind": "src",
         "path": "src/__tests__/runtime-guidance-plan-ralph.test.ts"
@@ -36494,6 +37065,16 @@
         "path": "src/__tests__/session-start-timeout-cleanup.test.ts"
       },
       {
+        "id": "src/__tests__/session-start-update-check.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/session-start-update-check.test.ts"
+      },
+      {
+        "id": "src/__tests__/session-start-update-refresh.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/session-start-update-refresh.test.ts"
+      },
+      {
         "id": "src/__tests__/session-summary-pid-tracking.test.ts",
         "kind": "src",
         "path": "src/__tests__/session-summary-pid-tracking.test.ts"
@@ -36542,6 +37123,16 @@
         "id": "src/__tests__/shared-state-locking.test.ts",
         "kind": "src",
         "path": "src/__tests__/shared-state-locking.test.ts"
+      },
+      {
+        "id": "src/__tests__/shipyard-seed-locale.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/shipyard-seed-locale.test.ts"
+      },
+      {
+        "id": "src/__tests__/shipyard-skills.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/shipyard-skills.test.ts"
       },
       {
         "id": "src/__tests__/skill-entitlements-cross-surface.test.ts",
@@ -37129,6 +37720,11 @@
         "path": "src/cli/autoresearch.ts"
       },
       {
+        "id": "src/cli/checkpoint.ts",
+        "kind": "src",
+        "path": "src/cli/checkpoint.ts"
+      },
+      {
         "id": "src/cli/claude-md-coordinator.ts",
         "kind": "src",
         "path": "src/cli/claude-md-coordinator.ts"
@@ -37344,6 +37940,11 @@
         "path": "src/features/AGENTS.md"
       },
       {
+        "id": "src/features/__tests__/checkpoint.test.ts",
+        "kind": "feature",
+        "path": "src/features/__tests__/checkpoint.test.ts"
+      },
+      {
         "id": "src/features/__tests__/magic-keywords.test.ts",
         "kind": "feature",
         "path": "src/features/__tests__/magic-keywords.test.ts"
@@ -37427,6 +38028,11 @@
         "id": "src/features/builtin-skills/types.ts",
         "kind": "feature",
         "path": "src/features/builtin-skills/types.ts"
+      },
+      {
+        "id": "src/features/checkpoint/index.ts",
+        "kind": "feature",
+        "path": "src/features/checkpoint/index.ts"
       },
       {
         "id": "src/features/context-injector/collector.ts",
@@ -37572,6 +38178,11 @@
         "id": "src/features/model-routing/types.ts",
         "kind": "feature",
         "path": "src/features/model-routing/types.ts"
+      },
+      {
+        "id": "src/features/notepad-wisdom/__tests__/extractor.test.ts",
+        "kind": "feature",
+        "path": "src/features/notepad-wisdom/__tests__/extractor.test.ts"
       },
       {
         "id": "src/features/notepad-wisdom/extractor.ts",
@@ -37764,6 +38375,11 @@
         "path": "src/graph/__tests__/runtime/regression-matrix.test.ts"
       },
       {
+        "id": "src/graph/__tests__/runtime/remote-approval.test.ts",
+        "kind": "src",
+        "path": "src/graph/__tests__/runtime/remote-approval.test.ts"
+      },
+      {
         "id": "src/graph/__tests__/runtime/run-dir.test.ts",
         "kind": "src",
         "path": "src/graph/__tests__/runtime/run-dir.test.ts"
@@ -37832,6 +38448,11 @@
         "id": "src/graph/runtime/progress.ts",
         "kind": "src",
         "path": "src/graph/runtime/progress.ts"
+      },
+      {
+        "id": "src/graph/runtime/remote-approval.ts",
+        "kind": "src",
+        "path": "src/graph/runtime/remote-approval.ts"
       },
       {
         "id": "src/graph/runtime/run-dir.ts",
@@ -39589,6 +40210,11 @@
         "path": "src/hud/elements/token-usage.ts"
       },
       {
+        "id": "src/hud/elements/update-hint.ts",
+        "kind": "src",
+        "path": "src/hud/elements/update-hint.ts"
+      },
+      {
         "id": "src/hud/index.ts",
         "kind": "src",
         "path": "src/hud/index.ts"
@@ -39934,14 +40560,29 @@
         "path": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts"
       },
       {
+        "id": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/worktree-paths-git-timeout.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts"
       },
       {
+        "id": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/worktree-paths-split-warning.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts"
+      },
+      {
+        "id": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts"
       },
       {
         "id": "src/lib/__tests__/worktree-paths.test.ts",
@@ -40157,6 +40798,11 @@
         "id": "src/mcp/tool-registry.ts",
         "kind": "src",
         "path": "src/mcp/tool-registry.ts"
+      },
+      {
+        "id": "src/notifications/__tests__/approval-reply.test.ts",
+        "kind": "src",
+        "path": "src/notifications/__tests__/approval-reply.test.ts"
       },
       {
         "id": "src/notifications/__tests__/config-merge.test.ts",
@@ -41189,6 +41835,11 @@
         "path": "src/team/__tests__/worker-launch-posix-transport.test.ts"
       },
       {
+        "id": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/worker-launch-wrapper-posix.test.ts"
+      },
+      {
         "id": "src/team/__tests__/worker-restart.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/worker-restart.test.ts"
@@ -41682,6 +42333,11 @@
         "id": "src/tools/lsp/__tests__/client-devcontainer.test.ts",
         "kind": "tool",
         "path": "src/tools/lsp/__tests__/client-devcontainer.test.ts"
+      },
+      {
+        "id": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "kind": "tool",
+        "path": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts"
       },
       {
         "id": "src/tools/lsp/__tests__/client-eviction.test.ts",
@@ -44177,6 +44833,11 @@
       },
       {
         "from": "scripts/run.cjs",
+        "to": "external:stream",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/run.cjs",
         "to": "external:url",
         "kind": "imports"
       },
@@ -44721,6 +45382,11 @@
         "kind": "registers"
       },
       {
+        "from": "skills/ask-navigator/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
         "from": "skills/ask/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -44776,6 +45442,11 @@
         "kind": "registers"
       },
       {
+        "from": "skills/drydock/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
         "from": "skills/execute/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -44792,6 +45463,21 @@
       },
       {
         "from": "skills/hud/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/launch/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/loft/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/minimal-code-discipline/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
@@ -45328,6 +46014,11 @@
       {
         "from": "src/__tests__/bounded-git-timeout-parity.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/bounded-git-timeout-parity.test.ts",
+        "to": "scripts/run.cjs",
         "kind": "imports"
       },
       {
@@ -45966,6 +46657,21 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/fixtures/hung-hooks/epipe-exit-parent.cjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/fixtures/hung-hooks/epipe-exit-parent.cjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/fixtures/hung-hooks/hung-grandchild.cjs",
         "to": "external:node:fs",
         "kind": "imports"
@@ -45978,6 +46684,11 @@
       {
         "from": "src/__tests__/fixtures/hung-hooks/hung-parent.cjs",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/fixtures/hung-hooks/success-parent-stdout-orphan.cjs",
+        "to": "external:node:child_process",
         "kind": "imports"
       },
       {
@@ -47244,6 +47955,31 @@
         "from": "src/__tests__/hud/transcript-agent-lifecycle.test.ts",
         "to": "src/hud/transcript.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/update-hint.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/update-hint.test.ts",
+        "to": "src/hud/elements/update-hint.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/update-hint.test.ts",
+        "to": "src/hud/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/update-hint.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/update-hint.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/__tests__/hud/usage-api-lock.test.ts",
@@ -48677,6 +49413,16 @@
       },
       {
         "from": "src/__tests__/post-tool-rules-injector.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/post-tool-rules-injector.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/post-tool-rules-injector.test.ts",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -48843,6 +49589,31 @@
       {
         "from": "src/__tests__/project-memory-merge.test.ts",
         "to": "src/lib/project-memory-merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/project-memory-posttool.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/project-memory-posttool.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/project-memory-posttool.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/project-memory-posttool.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/project-memory-posttool.test.ts",
+        "to": "external:vitest",
         "kind": "imports"
       },
       {
@@ -49816,6 +50587,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/run-cjs-graceful-fallback.test.ts",
+        "to": "scripts/run.cjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "external:node:stream",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "scripts/run.cjs",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/runtime-guidance-plan-ralph.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -50126,6 +50937,76 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/session-start-update-check.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-check.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-check.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-check.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-check.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:http",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:http",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:net",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:net",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/session-summary-pid-tracking.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -50373,6 +51254,81 @@
       {
         "from": "src/__tests__/shared-state-locking.test.ts",
         "to": "src/interop/shared-state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "src/hooks/learner/loader.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "src/hooks/learner/parser.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/hooks/learner/loader.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/hooks/learner/parser.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/team/api-interop.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/team/contracts.ts",
         "kind": "imports"
       },
       {
@@ -51228,6 +52184,11 @@
       {
         "from": "src/__tests__/windows-prompt-hook-runner.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/windows-prompt-hook-runner.test.ts",
+        "to": "scripts/run.cjs",
         "kind": "imports"
       },
       {
@@ -52966,6 +53927,21 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/checkpoint.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/checkpoint.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/checkpoint.ts",
+        "to": "src/features/checkpoint/index.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/claude-md-coordinator.ts",
         "to": "external:node:crypto",
         "kind": "imports"
@@ -53512,6 +54488,11 @@
       },
       {
         "from": "src/cli/graph.ts",
+        "to": "src/features/checkpoint/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/graph.ts",
         "to": "src/graph/descriptor.ts",
         "kind": "imports"
       },
@@ -53533,6 +54514,11 @@
       {
         "from": "src/cli/graph.ts",
         "to": "src/graph/runtime/progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/graph.ts",
+        "to": "src/graph/runtime/remote-approval.ts",
         "kind": "imports"
       },
       {
@@ -53571,6 +54557,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/graph.ts",
+        "to": "src/notifications/index.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/hud-watch.ts",
         "to": "src/mcp/standalone-shutdown.ts",
         "kind": "imports"
@@ -53603,6 +54594,11 @@
       {
         "from": "src/cli/index.ts",
         "to": "src/cli/autoresearch.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
+        "to": "src/cli/checkpoint.ts",
         "kind": "imports"
       },
       {
@@ -54151,6 +55147,36 @@
         "kind": "type-exports"
       },
       {
+        "from": "src/features/__tests__/checkpoint.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/checkpoint.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/checkpoint.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/checkpoint.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/checkpoint.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/checkpoint.test.ts",
+        "to": "src/features/checkpoint/index.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/features/__tests__/magic-keywords.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -54414,6 +55440,26 @@
         "from": "src/features/builtin-skills/types.ts",
         "to": "src/utils/skill-pipeline.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/features/checkpoint/index.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/checkpoint/index.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/checkpoint/index.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/checkpoint/index.ts",
+        "to": "external:path",
+        "kind": "imports"
       },
       {
         "from": "src/features/context-injector/collector.ts",
@@ -54904,6 +55950,16 @@
         "from": "src/features/model-routing/types.ts",
         "to": "src/shared/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/features/notepad-wisdom/__tests__/extractor.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/notepad-wisdom/__tests__/extractor.test.ts",
+        "to": "src/features/notepad-wisdom/extractor.ts",
+        "kind": "imports"
       },
       {
         "from": "src/features/notepad-wisdom/extractor.ts",
@@ -55701,6 +56757,36 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/graph/__tests__/runtime/remote-approval.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/remote-approval.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/remote-approval.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/remote-approval.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/remote-approval.test.ts",
+        "to": "src/graph/runtime/remote-approval.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/remote-approval.test.ts",
+        "to": "src/graph/runtime/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/graph/__tests__/runtime/run-dir.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -56124,6 +57210,41 @@
         "from": "src/graph/runtime/progress.ts",
         "to": "src/graph/runtime/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/runtime/remote-approval.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/remote-approval.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/remote-approval.ts",
+        "to": "src/graph/runtime/run-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/remote-approval.ts",
+        "to": "src/graph/runtime/run-dir.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/runtime/remote-approval.ts",
+        "to": "src/graph/runtime/safe-fs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/remote-approval.ts",
+        "to": "src/graph/runtime/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/runtime/remote-approval.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
       },
       {
         "from": "src/graph/runtime/run-dir.ts",
@@ -56567,6 +57688,16 @@
       },
       {
         "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -56578,6 +57709,11 @@
       {
         "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
+        "to": "src/hooks/omc-orchestrator/index.ts",
         "kind": "imports"
       },
       {
@@ -59737,6 +60873,11 @@
       },
       {
         "from": "src/hooks/omc-orchestrator/index.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/omc-orchestrator/index.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -59773,11 +60914,6 @@
       {
         "from": "src/hooks/omc-orchestrator/index.ts",
         "to": "src/utils/config-dir.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/omc-orchestrator/index.ts",
-        "to": "src/utils/paths.ts",
         "kind": "imports"
       },
       {
@@ -64806,6 +65942,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hud/elements/update-hint.ts",
+        "to": "src/hud/colors.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hud/index.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -65123,6 +66264,11 @@
       {
         "from": "src/hud/render.ts",
         "to": "src/hud/elements/token-usage.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/render.ts",
+        "to": "src/hud/elements/update-hint.ts",
         "kind": "imports"
       },
       {
@@ -66711,6 +67857,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -66736,6 +67912,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -66757,6 +67963,41 @@
       },
       {
         "from": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -67028,6 +68269,11 @@
       {
         "from": "src/lib/worktree-paths.ts",
         "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/worktree-paths.ts",
+        "to": "external:node:async_hooks",
         "kind": "imports"
       },
       {
@@ -67658,6 +68904,31 @@
       {
         "from": "src/mcp/tool-registry.ts",
         "to": "src/tools/wiki-tools.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/approval-reply.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/approval-reply.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/approval-reply.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/approval-reply.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/approval-reply.test.ts",
+        "to": "src/notifications/reply-listener.ts",
         "kind": "imports"
       },
       {
@@ -68338,6 +69609,11 @@
       {
         "from": "src/notifications/reply-listener.ts",
         "to": "src/features/rate-limit-wait/tmux-detector.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/reply-listener.ts",
+        "to": "src/graph/runtime/remote-approval.ts",
         "kind": "imports"
       },
       {
@@ -72981,6 +74257,41 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "src/team/worker-launch-ack.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "src/team/worker-launch-ack.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/team/__tests__/worker-restart.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -74279,6 +75590,11 @@
         "from": "src/team/model-contract.ts",
         "to": "src/platform/executable-resolution.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/team/model-contract.ts",
+        "to": "src/shared/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/model-contract.ts",
@@ -76581,6 +77897,41 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:node:events",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "src/tools/lsp/client.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/tools/lsp/__tests__/client-eviction.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -78472,6 +79823,11 @@
       },
       {
         "from": "templates/hooks/pre-tool-use.mjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/pre-tool-use.mjs",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -78508,6 +79864,11 @@
       {
         "from": "templates/hooks/pre-tool-use.mjs",
         "to": "templates/hooks/lib/skill-entitlements.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/session-start.mjs",
+        "to": "external:child_process",
         "kind": "imports"
       },
       {
@@ -79102,12 +80463,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7157,
-      "edgeCount": 7347,
-      "importEdgeCount": 6028,
-      "registerEdgeCount": 67
+      "nodeCount": 7269,
+      "edgeCount": 7488,
+      "importEdgeCount": 6156,
+      "registerEdgeCount": 72
     }
   },
-  "inventorySha256": "eb7ea7acb5e687a644c27413d50858a5ba5a026194d8e172940a7c6f987bcd5d",
-  "manifestSha256": "53378e2ac1eda92d1310af8eac95fd17491564f85ad3bc99100a7e2dc741fdef"
+  "inventorySha256": "c48a8e5a019519c708a9e92be8813c4bccce35699503db33d576aae4831999b5",
+  "manifestSha256": "9bd0b2858837c659fc708fdd23b9db8db4bf5c7abcdba73aceacef27f667e597"
 }

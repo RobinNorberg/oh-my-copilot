@@ -747,6 +747,16 @@ OMC Ultrawork = "특수부대 작전 반"
 });
 
 describe('pre-tool-use packaged artifacts', () => {
+  it('keeps Windows cache-occupancy tick parsing string-based in runtime and template helpers', () => {
+    for (const helperPath of [
+      join(packageRoot, 'scripts', 'lib', 'cache-occupancy.mjs'),
+      join(packageRoot, 'templates', 'hooks', 'lib', 'cache-occupancy.mjs'),
+      join(packageRoot, 'src', 'utils', 'cache-occupancy.ts'),
+    ]) {
+      expect(readFileSync(helperPath, 'utf8')).toContain('[string]$_.StartTime.ToUniversalTime().Ticks');
+    }
+  });
+
   it('keeps cache occupancy path identity aligned across template and runtime helpers', async () => {
     const helperPaths = [
       join(packageRoot, 'templates', 'hooks', 'lib', 'cache-occupancy.mjs'),
@@ -780,7 +790,7 @@ describe('pre-tool-use packaged artifacts', () => {
     }
   });
 
-  it('does not warn for .json commands just because .js is a substring', () => {
+  it('warns based on the output target rather than source-like input names', () => {
     const scriptPath = join(packageRoot, 'templates', 'hooks', 'pre-tool-use.mjs');
 
     expect(runPreToolHook(scriptPath, 'cat settings.json > backup.txt')).toEqual({
@@ -788,7 +798,16 @@ describe('pre-tool-use packaged artifacts', () => {
       suppressOutput: true,
     });
 
-    expect(JSON.stringify(runPreToolHook(scriptPath, 'cat app.js > backup.txt'))).toContain(
+    expect(runPreToolHook(scriptPath, 'cat app.js > backup.txt')).toEqual({
+      continue: true,
+      suppressOutput: true,
+    });
+
+    expect(JSON.stringify(runPreToolHook(scriptPath, 'cat fixture.txt > src/app.js'))).toContain(
+      'Bash command may modify source files',
+    );
+
+    expect(JSON.stringify(runPreToolHook(scriptPath, 'printf x | tee -- -generated.ts'))).toContain(
       'Bash command may modify source files',
     );
   });

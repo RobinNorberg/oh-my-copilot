@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'path';
-import { processOrchestratorPreTool, isAllowedPath, isSourceFile, isWriteEditTool, clearEnforcementCache, } from '../hooks/omc-orchestrator/index.js';
+import { processOrchestratorPreTool, isAllowedPath, isTempOrScratchpadPath, isSourceFile, isWriteEditTool, clearEnforcementCache, } from '../hooks/omc-orchestrator/index.js';
 // Mock fs module
 vi.mock('fs', async () => {
     const actual = await vi.importActual('fs');
@@ -539,6 +539,37 @@ describe('delegation-enforcement-levels', () => {
         });
         it('returns true for .claude/ paths', () => {
             expect(isAllowedPath('.claude/settings.json')).toBe(true);
+        });
+        it('returns true for temporary and scratchpad paths', () => {
+            // POSIX-style temp paths are only recognized on POSIX hosts; the
+            // implementation rejects cross-platform path shapes by design.
+            const posixHost = process.platform !== 'win32';
+            expect(isAllowedPath('/tmp/test.py')).toBe(posixHost);
+            expect(isAllowedPath('/private/tmp/claude-501/project/session/scratchpad/test.py')).toBe(posixHost);
+            expect(isAllowedPath('/var/tmp/script.sh')).toBe(posixHost);
+        });
+        it.each([
+            // POSIX temp rows only hold on POSIX hosts (cross-platform shapes are rejected).
+            ['/tmp/test.py', '/home/project', process.platform !== 'win32'],
+            ['/private/tmp/test.py', '/home/project', process.platform !== 'win32'],
+            ['/var/tmp/test.py', '/home/project', process.platform !== 'win32'],
+            ['/private/var/tmp/test.py', '/home/project', process.platform !== 'win32'],
+            ['/tmp/project/src/app.ts', '/tmp/project', false],
+            ['/tmp/project2/src/app.ts', '/tmp/project', process.platform !== 'win32'],
+            ['/tmpfoo/src/app.ts', '/home/project', false],
+            ['scratchpad/src/app.ts', '/home/project', false],
+            ['C:\\Windows\\Temp\\fixture.ts', '/home/project', process.platform === 'win32'],
+            ['C:\\Users\\alice\\AppData\\Local\\Temp\\fixture.ts', '/home/project', process.platform === 'win32'],
+            ['\\\\server\\share\\fixture.ts', '/home/project', false],
+            ['.omc\\..\\src\\app.ts', '/home/project', false],
+        ])('uses bounded cross-platform temp paths: %s from %s', (filePath, directory, expected) => {
+            expect(isTempOrScratchpadPath(filePath, directory)).toBe(expected);
+            expect(isAllowedPath(filePath, directory)).toBe(expected);
+        });
+        it('does not allow an absolute temp path that resolves inside the project', () => {
+            const directory = '/tmp/project';
+            expect(isTempOrScratchpadPath('/tmp/project/../project/src/app.ts', directory)).toBe(false);
+            expect(isAllowedPath('/tmp/project/../project/src/app.ts', directory)).toBe(false);
         });
         it('returns true for absolute paths under COPILOT_CONFIG_DIR', () => {
             const originalConfigDir = process.env.COPILOT_CONFIG_DIR;

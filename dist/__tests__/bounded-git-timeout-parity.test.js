@@ -8,9 +8,11 @@ const templateFile = join(process.cwd(), 'templates', 'hooks', 'lib', 'bounded-g
 describe('bounded git timeout installation parity', () => {
     it('keeps installed and source timeout modules byte-identical', async () => {
         const [scripts, template] = await Promise.all([import(scriptsModule), import(templateModule)]);
+        const runCjs = require('../../scripts/run.cjs');
         expect(scripts.BOUNDED_GIT_TIMEOUT_MS).toBe(2000);
         expect(template.BOUNDED_GIT_TIMEOUT_MS).toBe(2000);
         expect(template.BOUNDED_GIT_TIMEOUT_MS).toBe(scripts.BOUNDED_GIT_TIMEOUT_MS);
+        expect(runCjs.NESTED_OPERATION_TIMEOUT_MS).toBe(scripts.BOUNDED_GIT_TIMEOUT_MS);
         expect(readFileSync(templateFile)).toEqual(readFileSync(scriptsFile));
     });
 });

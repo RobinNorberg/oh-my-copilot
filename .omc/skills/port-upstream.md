@@ -15,7 +15,7 @@ Port commits from the upstream `yeachan-heo/oh-my-claudecode` dev branch into a 
 
 ## Directories
 
-- **Upstream repo**: `C:\Code\Temp\oh-my-claudecode` (read-only reference)
+- **Upstream repo**: `C:\Code\oh-my-claudecode` (read-only reference; `upstream` remote also configured in the fork)
 - **Our fork**: `C:\Code\OMC` (working directory for all edits)
 
 ## Workflow
@@ -99,10 +99,13 @@ Apply these substitutions when porting upstream code:
 | `getClaude*Permission*` | `getCopilot*Permission*` |
 | `claude-native` | `copilot-native` |
 | `tmux-claude` | `tmux-copilot` |
-| `omc-hud` | `omcp-hud` |
-| `OMC_CLI_BINARY` | `'omcp'` |
+| `omc-hud` | `omg-hud` |
+| `OMC_CLI_BINARY` | `'omg'` |
+| `omc` CLI invocations in docs/messages | `omg` |
+| `.claude/omc.jsonc` (project config) | `.copilot/omg.jsonc` |
+| Host dir `.claude/` (Copilot host surface) | `.copilot/` (keep `.claude` fallbacks where dev already has them) |
 | Agent files `.md` | `.agent.md` |
-| State dir `.omc` (in scripts) | `.omcp` |
+| Runtime/state root `.omc/` (OmcPaths + scripts + skill docs) | `.omg/` |
 
 ### DO NOT Rename
 - `platform.claude.com`, `claudeAiOauth` (Anthropic API refs)
@@ -121,8 +124,20 @@ When replacing files wholesale, check for these fork-specific additions:
 ## Key Gotchas
 
 - **Always base port branches on `dev`** (latest code), never feature branches
+- **Windows-hostile upstream tests**: upstream writes temp-path and team-dispatch
+  expectations for POSIX hosts (`/tmp/...` allowances, `$OMC_TEAM_STATE_ROOT`
+  placeholders). The implementations deliberately branch on `win32`; adapt the
+  ported test EXPECTATIONS platform-aware, don't change the implementation.
+- **chdir/rmSync EPERM**: upstream tests that `process.chdir(tempDir)` then
+  `rmSync(tempDir)` in `finally` fail on Windows (cannot delete the cwd);
+  restore cwd before rmSync when porting such tests.
+- **Pre-existing local Windows failures** (not port regressions, baseline on dev
+  as of 2026-09-06): 15 in config/loader.test.ts (chdir/rmSync EPERM), 3 in
+  session-end-process-exit (timing ceilings), 3 in runtime-v2.dispatch
+  ($OMC_TEAM_STATE_ROOT placeholder vs win32 absolute paths), plus tmux/POSIX
+  permission suites under src/team.
 - **Agent file extension**: Upstream uses `.md`, we use `.agent.md`
-- **State directory**: Scripts use `.omcp`, TypeScript source uses `.omc`
+- **State directory**: `.omg/` everywhere (OmcPaths.ROOT, scripts, templates); the pre-tool-use template additionally allows legacy `.omc/`
 - **Test mocks**: When upstream adds new exports, grep for `vi.mock.*{module}` and update all mocks
 - **Bridge bundles**: Never manually edit — rebuild from source with `npm run build`
 - **Count assertions**: New agents/skills require updating hardcoded counts in tests (see `omc-new-agent-skill-checklist` skill)

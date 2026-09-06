@@ -11,6 +11,7 @@ const modelContractMocks = vi.hoisted(() => ({
     buildWorkerArgv: vi.fn(),
     getWorkerEnv: vi.fn(),
     resolveClaudeWorkerModel: vi.fn(),
+    resolveDefaultWorkerModel: vi.fn(),
     validateWorkerLaunchDescriptor: vi.fn((value) => value),
     clearResolvedPathCache: vi.fn(),
     resolveValidatedBinaryPath: vi.fn(() => '/usr/bin/claude'),
@@ -92,6 +93,7 @@ vi.mock('../model-contract.js', () => ({
     resolveValidatedBinaryPath: modelContractMocks.resolveValidatedBinaryPath,
     getWorkerEnv: modelContractMocks.getWorkerEnv,
     resolveClaudeWorkerModel: modelContractMocks.resolveClaudeWorkerModel,
+    resolveDefaultWorkerModel: modelContractMocks.resolveDefaultWorkerModel,
     validateWorkerLaunchDescriptor: modelContractMocks.validateWorkerLaunchDescriptor,
     assertHeadlessSupported: () => { },
     isHeadlessSupportedOnPlatform: () => true,
@@ -215,6 +217,18 @@ describe('scaleUp duplicate worker guard', () => {
             'split-window', '-v', '-t', '%1', '-d', '-P', '-F', '#{pane_id}', '-c', resolve(cwd),
         ]);
     });
+    it.each(['claude', 'codex', 'gemini', 'antigravity', 'grok', 'cursor'])('passes the shared default model through unrouted scale-up for %s', async (provider) => {
+        config = makeConfig({ agent_type: provider, next_worker_index: 2 });
+        const model = `${provider}-default-model`;
+        modelContractMocks.resolveDefaultWorkerModel.mockReturnValue(model);
+        modelContractMocks.buildWorkerArgv.mockImplementation((_agentType, options) => [
+            `/usr/bin/${provider}`, ...(options.model ? ['--model', options.model] : []),
+        ]);
+        const result = await scaleUp('demo-team', 1, provider, [{ subject: 'demo', description: 'demo task' }], cwd, { OMC_TEAM_SCALING_ENABLED: '1', OMC_TEAM_SKIP_READY_WAIT: '1' });
+        expect(result).toMatchObject({ ok: true });
+        expect(modelContractMocks.resolveDefaultWorkerModel).toHaveBeenCalledWith(provider, expect.anything(), undefined);
+        expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith(provider, expect.objectContaining({ model }));
+    }, 30000);
     it('keeps the active scale-up fence revision aligned through normal worker reservation and commit', async () => {
         config = makeConfig({ state_revision: 4, next_worker_index: 2, worktree_mode: 'disabled' });
         const snapshots = [];

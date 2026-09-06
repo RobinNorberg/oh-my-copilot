@@ -16,7 +16,8 @@ export type NotificationEvent =
   | "session-end"
   | "session-idle"
   | "ask-user-question"
-  | "agent-call";
+  | "agent-call"
+  | "approval-request";
 
 /** Supported notification platforms */
 export type NotificationPlatform =
@@ -176,6 +177,7 @@ export interface NotificationConfig {
     "session-idle"?: EventNotificationConfig;
     "ask-user-question"?: EventNotificationConfig;
     "agent-call"?: EventNotificationConfig;
+    "approval-request"?: EventNotificationConfig;
   };
 }
 
@@ -213,6 +215,15 @@ export interface NotificationPayload {
   iteration?: number;
   /** Max iterations (for stop events) */
   maxIterations?: number;
+  /** Approval-gate correlation for approval-request events */
+  approval?: {
+    /** Absolute runs root holding the run directory */
+    runsRoot: string;
+    /** Graph run id */
+    runId: string;
+    /** Activation id of the pending approval */
+    activationId: string;
+  };
   /** Question text (for ask-user-question events) */
   question?: string;
   /** Structured AskUserQuestion prompts/options preserved from tool input */

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getOmcRoot, getGitTopLevel } from '../../lib/worktree-paths.js';
+import { getOmcRoot, probeGitTopLevel } from '../../lib/worktree-paths.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
 const SAFE_PATTERNS = [
     /^git (status|diff|log|branch|show|fetch)/,
@@ -240,10 +240,11 @@ function isSafeRepoPath(cwd, inputPath, options = {}) {
     }
     // Literal git toplevel (no submodule→superproject climb) so the containment
     // boundary stays the actual repo the path lives in (#3349 / PR #3350).
-    const worktreeRoot = getGitTopLevel(cwd);
-    if (!worktreeRoot) {
+    const worktreeProbe = probeGitTopLevel(cwd);
+    if (worktreeProbe.status !== 'ok') {
         return false;
     }
+    const worktreeRoot = worktreeProbe.root;
     const resolvedPath = path.resolve(cwd, inputPath);
     let canonicalPath = resolvedPath;
     const exists = fs.existsSync(resolvedPath);

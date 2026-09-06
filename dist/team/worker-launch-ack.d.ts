@@ -112,6 +112,8 @@ export declare function buildWorkerLaunchBootstrapSpec(attempt: WorkerLaunchAtte
     releaseAfterSpawn?: boolean;
     providerEnv?: NodeJS.ProcessEnv | Record<string, string>;
 }): WorkerLaunchBootstrapSpec;
+export declare function buildWorkerLaunchWrapper(attempt: WorkerLaunchAttempt, platform?: NodeJS.Platform): string;
+export declare function quotePosixShellArgument(value: string): string;
 export declare function materializeWorkerLaunchTransport(input: {
     attempt: WorkerLaunchAttempt;
     providerArgv: string[];

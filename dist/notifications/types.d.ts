@@ -8,7 +8,7 @@
 /** Verbosity levels for notification filtering (ordered most to least verbose) */
 export type VerbosityLevel = "verbose" | "agent" | "session" | "minimal";
 /** Events that can trigger notifications */
-export type NotificationEvent = "session-start" | "session-stop" | "session-end" | "session-idle" | "ask-user-question" | "agent-call";
+export type NotificationEvent = "session-start" | "session-stop" | "session-end" | "session-idle" | "ask-user-question" | "agent-call" | "approval-request";
 /** Supported notification platforms */
 export type NotificationPlatform = "discord" | "discord-bot" | "telegram" | "slack" | "slack-bot" | "teams" | "webhook";
 /** Discord webhook configuration */
@@ -137,6 +137,7 @@ export interface NotificationConfig {
         "session-idle"?: EventNotificationConfig;
         "ask-user-question"?: EventNotificationConfig;
         "agent-call"?: EventNotificationConfig;
+        "approval-request"?: EventNotificationConfig;
     };
 }
 /** Payload sent with each notification */
@@ -173,6 +174,15 @@ export interface NotificationPayload {
     iteration?: number;
     /** Max iterations (for stop events) */
     maxIterations?: number;
+    /** Approval-gate correlation for approval-request events */
+    approval?: {
+        /** Absolute runs root holding the run directory */
+        runsRoot: string;
+        /** Graph run id */
+        runId: string;
+        /** Activation id of the pending approval */
+        activationId: string;
+    };
     /** Question text (for ask-user-question events) */
     question?: string;
     /** Structured AskUserQuestion prompts/options preserved from tool input */

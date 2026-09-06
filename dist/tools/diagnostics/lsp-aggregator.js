@@ -8,6 +8,20 @@ import { readdirSync, statSync } from 'fs';
 import { join, extname } from 'path';
 import { lspClientManager, getServerForFile } from '../lsp/index.js';
 import { LSP_DIAGNOSTICS_WAIT_MS } from './index.js';
+export const LSP_DIAGNOSTICS_CONCURRENCY = 8;
+async function mapWithConcurrency(items, concurrency, mapper) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+    async function worker() {
+        while (nextIndex < items.length) {
+            const index = nextIndex++;
+            results[index] = await mapper(items[index]);
+        }
+    }
+    const workerCount = Math.min(concurrency, items.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+    return results;
+}
 /**
  * Recursively find files with given extensions
  */
@@ -16,7 +30,7 @@ function findFiles(directory, extensions, ignoreDirs = []) {
     const ignoreDirSet = new Set(ignoreDirs);
     function walk(dir) {
         try {
-            const entries = readdirSync(dir);
+            const entries = readdirSync(dir).sort();
             for (const entry of entries) {
                 const fullPath = join(dir, entry);
                 try {
@@ -58,47 +72,59 @@ export async function runLspAggregatedDiagnostics(directory, extensions = ['.ts'
     // Find all matching files
     const files = findFiles(directory, extensions, ['node_modules', 'dist', 'build', '.git']);
     const allDiagnostics = [];
-    let filesChecked = 0;
     const skippedFiles = [];
     const installHintSet = new Set();
-    for (const file of files) {
+    const fileResults = await mapWithConcurrency(files, LSP_DIAGNOSTICS_CONCURRENCY, async (file) => {
         // Guards future callers passing custom extensions with no registered LSP; redundant under default extension list.
         if (!getServerForFile(file)) {
-            skippedFiles.push({ file, reason: 'no language server registered for extension' });
-            continue;
+            return {
+                file,
+                skippedReason: 'no language server registered for extension',
+            };
         }
         try {
-            await lspClientManager.runWithClientLease(file, async (client) => {
-                // Open document to trigger diagnostics
-                await client.openDocument(file);
-                // Wait for the server to publish diagnostics via textDocument/publishDiagnostics
-                // notification instead of using a fixed delay. Falls back to LSP_DIAGNOSTICS_WAIT_MS
-                // as a timeout so we don't hang forever on servers that omit the notification.
-                await client.waitForDiagnostics(file, LSP_DIAGNOSTICS_WAIT_MS);
-                // Get diagnostics for this file
-                const diagnostics = client.getDiagnostics(file);
-                // Add to aggregated results
-                for (const diagnostic of diagnostics) {
-                    allDiagnostics.push({
-                        file,
-                        diagnostic
-                    });
-                }
-                // Must remain the last statement in the lease callback to preserve filesChecked + skippedFiles.length === files.length.
-                filesChecked++;
+            const diagnostics = await lspClientManager.runWithClientLease(file, async (client) => {
+                return client.withOpenDocument(file, async () => {
+                    if (client.supportsPullDiagnostics) {
+                        return client.pullDiagnostics(file);
+                    }
+                    // Wait for the server to publish diagnostics via textDocument/publishDiagnostics.
+                    // The timeout prevents a server that omits the notification from blocking a worker.
+                    await client.waitForDiagnostics(file, LSP_DIAGNOSTICS_WAIT_MS);
+                    return client.getDiagnostics(file);
+                });
             });
+            return { file, diagnostics };
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            // Regex pinned to throw at src/tools/lsp/client.ts:186 — keep header literal in formatLspResult in sync.
-            const match = message.match(/^Language server '([^']+)' not found\.\nInstall with: (.+)$/s);
-            if (match) {
-                installHintSet.add(match[2].trim());
-                skippedFiles.push({ file, reason: `missing language server: ${match[1]}` });
+            return { file, skippedReason: message };
+        }
+    });
+    let filesChecked = 0;
+    for (const result of fileResults) {
+        if (result.diagnostics) {
+            filesChecked++;
+            for (const diagnostic of result.diagnostics) {
+                allDiagnostics.push({
+                    file: result.file,
+                    diagnostic
+                });
             }
-            else {
-                skippedFiles.push({ file, reason: message });
-            }
+            continue;
+        }
+        const message = result.skippedReason ?? 'unknown LSP diagnostics failure';
+        // Keep the missing-server header literal in formatLspResult in sync.
+        const match = message.match(/^Language server '([^']+)' not found\.\nInstall with: (.+)$/s);
+        if (match) {
+            installHintSet.add(match[2].trim());
+            skippedFiles.push({
+                file: result.file,
+                reason: `missing language server: ${match[1]}`
+            });
+        }
+        else {
+            skippedFiles.push({ file: result.file, reason: message });
         }
     }
     // Count errors and warnings
@@ -107,7 +133,7 @@ export async function runLspAggregatedDiagnostics(directory, extensions = ['.ts'
     const installHints = Array.from(installHintSet);
     const allFilesSkipped = filesChecked === 0 && files.length > 0;
     return {
-        success: errorCount === 0 && !allFilesSkipped,
+        success: errorCount === 0 && skippedFiles.length === 0 && !allFilesSkipped,
         diagnostics: allDiagnostics,
         errorCount,
         warningCount,

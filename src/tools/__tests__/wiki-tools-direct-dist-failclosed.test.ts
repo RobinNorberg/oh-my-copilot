@@ -27,7 +27,13 @@ function installFakeGit(dir: string, unixBody: string, winBody: string): string 
   mkdirSync(bin, { recursive: true });
   if (process.platform === 'win32') {
     writeFileSync(join(bin, 'git.cmd'), `@echo off\r\n${winBody}\r\n`);
-    copyFileSync(process.execPath, join(bin, 'git.exe'));
+    const windowsRoot = process.env.SystemRoot ?? process.env.WINDIR;
+    if (!windowsRoot) throw new Error('SystemRoot or WINDIR is required on Windows');
+    // Node can retain a transient executable-image handle after exit, making
+    // immediate PATH re-probes of a copied node.exe fail with EPERM. where.exe
+    // is a small native executable that deterministically exits nonzero for
+    // the git argv used here without the self-hosted Node lock race.
+    copyFileSync(join(windowsRoot, 'System32', 'where.exe'), join(bin, 'git.exe'));
   } else {
     const gitPath = join(bin, 'git');
     writeFileSync(gitPath, `#!/bin/sh\n${unixBody}\n`);
@@ -100,6 +106,16 @@ describe('tracked dist wiki runtime fail-closed (#3858 remaining P1)', () => {
     process.chdir(originalCwd);
     process.env.PATH = originalPath;
     clearWorktreeCache();
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        rmSync(tempDir, { recursive: true, force: true });
+        return;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== 'ENOTEMPTY' && code !== 'EBUSY' && code !== 'EPERM') throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * (attempt + 1));
+      }
+    }
     rmSync(tempDir, { recursive: true, force: true });
   });
 

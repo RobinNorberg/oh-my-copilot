@@ -68,7 +68,9 @@ function installFakeGit(dir: string, unixBody: string, winBody: string): string 
   mkdirSync(bin, { recursive: true });
   if (process.platform === 'win32') {
     writeFileSync(join(bin, 'git.cmd'), `@echo off\r\n${winBody}\r\n`);
-    copyFileSync(process.execPath, join(bin, 'git.exe'));
+    const windowsRoot = process.env.SystemRoot ?? process.env.WINDIR;
+    if (!windowsRoot) throw new Error('SystemRoot or WINDIR is required on Windows');
+    copyFileSync(join(windowsRoot, 'System32', 'where.exe'), join(bin, 'git.exe'));
   } else {
     const gitPath = join(bin, 'git');
     writeFileSync(gitPath, `#!/bin/sh\n${unixBody}\n`);

@@ -1,11 +1,12 @@
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const NODE = process.execPath;
 const RUN_CJS_PATH = join(process.cwd(), 'scripts', 'run.cjs');
+const runCjs = require('../../scripts/run.cjs');
 const tempDirs: string[] = [];
 const workerProbe = "import { isMainThread } from 'node:worker_threads'; process.stdin.on('end', () => process.stdout.write(isMainThread ? 'child' : 'worker')); process.stdin.resume();";
 
@@ -104,7 +105,55 @@ describe('Windows-safe prompt hook runner paths', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('Hook keyword-detector.mjs timed out after 1ms; exiting fail-open.');
+    const innerMs = runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'UserPromptSubmit' });
+    expect(result.stderr).toContain(`Hook keyword-detector.mjs timed out after ${innerMs}ms; exiting fail-open.`);
+  });
+  it('fail-opens a trusted Worker when protocol stdout is closed', async () => {
+    const cacheBase = mkdtempSync(join(tmpdir(), 'omc worker closed stdout-'));
+    tempDirs.push(cacheBase);
+    const root = join(cacheBase, '4.8.0');
+    makePlugin(root, workerProbe);
+    const target = join(root, 'scripts', 'keyword-detector.mjs');
+    const runner = spawn(NODE, [RUN_CJS_PATH, target], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, CLAUDE_PLUGIN_ROOT: root },
+      windowsHide: true,
+    });
+    runner.stdin.write('{}');
+    runner.stdin.end();
+    runner.stdout.destroy();
+    const code = await new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('trusted Worker hung after stdout close')), 5000);
+      runner.once('exit', status => {
+        clearTimeout(timer);
+        resolve(status);
+      });
+    });
+    expect(code).toBe(0);
+  });
+
+  it('fail-opens a trusted Worker timeout diagnostic when protocol stderr is closed', async () => {
+    const cacheBase = mkdtempSync(join(tmpdir(), 'omc worker closed stderr-'));
+    tempDirs.push(cacheBase);
+    const root = join(cacheBase, '4.9.0');
+    const target = join(root, 'scripts', 'keyword-detector.mjs');
+    makePlugin(root, "setInterval(() => {}, 1000);", 1);
+    const runner = spawn(NODE, [RUN_CJS_PATH, target], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, CLAUDE_PLUGIN_ROOT: root, OMC_DEBUG_HOOKS: '1' },
+      windowsHide: true,
+    });
+    runner.stdin.write('{}');
+    runner.stdin.end();
+    runner.stderr.destroy();
+    const code = await new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('trusted Worker hung after stderr close')), 5000);
+      runner.once('exit', status => {
+        clearTimeout(timer);
+        resolve(status);
+      });
+    });
+    expect(code).toBe(0);
   });
 
   it('models an argv-delayed launch crossing 10s and failing open before the 30s host fuse', () => {
@@ -130,7 +179,7 @@ describe('Windows-safe prompt hook runner paths', () => {
     const cacheBase = mkdtempSync(join(tmpdir(), 'omc generic tree reap-'));
     tempDirs.push(cacheBase);
     const root = join(cacheBase, '4.6.0');
-    const target = join(root, 'scripts', 'post-tool-verifier.mjs');
+    const target = join(root, 'scripts', 'post-tool-use-failure.mjs');
     const pidfile = join(cacheBase, 'generic-grandchild.pid');
     let grandchildPid: number | undefined;
     mkdirSync(join(root, 'scripts'), { recursive: true });
@@ -144,10 +193,10 @@ describe('Windows-safe prompt hook runner paths', () => {
     `);
     writeFileSync(join(root, 'hooks', 'hooks.json'), JSON.stringify({
       hooks: {
-        PostToolUse: [{ matcher: '', hooks: [{
+        PostToolUseFailure: [{ matcher: '', hooks: [{
           type: 'command',
-          command: 'node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/post-tool-verifier.mjs',
-          timeout: 1,
+          command: 'node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/post-tool-use-failure.mjs',
+          timeout: 2,
         }] }],
       },
     }));
@@ -157,8 +206,14 @@ describe('Windows-safe prompt hook runner paths', () => {
       const result = run(target, root, { OMC_TEST_PIDFILE: pidfile });
       const elapsed = Date.now() - startedAt;
       expect(result.status).toBe(0);
-      expect(elapsed).toBeGreaterThanOrEqual(400);
-      expect(elapsed).toBeLessThan(30000);
+      const declaredMs = 2000;
+      const innerMs = runCjs.resolveGenericTimeoutMs({ timeoutMs: declaredMs, event: 'PostToolUseFailure' });
+      expect(elapsed).toBeGreaterThanOrEqual(innerMs >= 400 ? 400 : 0);
+      expect(elapsed).toBeLessThan(declaredMs);
+      const pidDeadline = Date.now() + 1000;
+      while (!existsSync(pidfile) && Date.now() < pidDeadline) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
       grandchildPid = Number(readFileSync(pidfile, 'utf8'));
       expect(grandchildPid).toBeGreaterThan(0);
 

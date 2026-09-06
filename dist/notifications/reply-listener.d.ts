@@ -81,6 +81,18 @@ export declare function isDaemonRunning(): boolean;
  * - Control characters stripped
  */
 export declare function sanitizeReplyInput(text: string): string;
+/**
+ * Parse a reply as an approval decision. Returns null when the reply does
+ * not look like a decision (the message is then left for normal handling).
+ */
+export declare function parseApprovalReply(text: string): 'approved' | 'denied' | null;
+/**
+ * Resolve an approval gate from a platform reply.
+ *
+ * Returns the recorded decision, or null when the text is not a decision
+ * (callers should fall back to normal reply handling or ignore).
+ */
+export declare function handleApprovalReply(approvalRef: NonNullable<SessionMapping['approvalRef']>, text: string, platform: string): 'approved' | 'denied' | null;
 declare class RateLimiter {
     private readonly maxPerMinute;
     private timestamps;
