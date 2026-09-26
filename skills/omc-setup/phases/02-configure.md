@@ -10,12 +10,13 @@ Capture the original progress marker once when Phase 2 starts. A resumed run tha
 node -e "const p=require('path'),f=require('fs'),t=p.join('.omg','state','setup-state.json');let s={};if(f.existsSync(t)){try{s=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: Setup state is invalid JSON. Existing setup state was not modified.');process.exit(1)}}const step=Number.isFinite(s.lastCompletedStep)?s.lastCompletedStep:0;console.log('RESUME_LAST_COMPLETED_STEP='+step);console.log('RESUMED_PHASE_TWO_BOUNDARY='+(step>=4))"
 ```
 
-## Step 2.0: Check Ralph Ruby Dependency
+## Step 2.0: Check Ralph Runtime Prerequisites
 
-Ralph workflows require Ruby. On fresh Ubuntu installations, missing Ruby can cause Ralph to fail later with an opaque Claude Code abort. Check for Ruby during setup and show a product-facing remediation hint without blocking the rest of setup:
+Ralph is an agent-driven persistence loop with no external language dependency. Its only hard prerequisites are the Node runtime that already runs OMC's hooks and a writable config directory for `.omg/state/` state files. Verify both without blocking the rest of setup:
 
 ```bash
-node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('ruby',['--version'],{encoding:'utf8',shell:process.platform==='win32'});if(r.status===0){console.log('Ruby detected for Ralph workflows: '+(r.stdout||'').split(/\r?\n/)[0])}else{console.log('WARNING: Ruby was not found on PATH. Ralph workflows require Ruby.');console.log('Install it, then restart Claude Code before using Ralph.');console.log('Ubuntu/Debian: sudo apt update && sudo apt install ruby-full');console.log('macOS: brew install ruby');console.log('Windows: winget install RubyInstallerTeam.Ruby')}"
+node --version || echo "ERROR: Node is required for OMC hooks and Ralph state persistence."
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-write-probe');try{f.mkdirSync(d,{recursive:true});f.writeFileSync(t,'');f.rmSync(t,{force:true});}catch{console.log('WARNING: Config dir is not writable; Ralph state persistence will fail until it is.')}"
 ```
 
 ## Step 2.1: Setup HUD Statusline

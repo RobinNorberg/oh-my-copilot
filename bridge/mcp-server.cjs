@@ -2994,7 +2994,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve14.call(this, root, ref);
+      let _sch = resolve15.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3021,7 +3021,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve14(root, ref) {
+    function resolve15(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3652,7 +3652,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve14(baseURI, relativeURI, options) {
+    function resolve15(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse9(baseURI, schemelessOptions), parse9(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3910,7 +3910,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize8,
-      resolve: resolve14,
+      resolve: resolve15,
       resolveComponent,
       equal,
       serialize,
@@ -16761,7 +16761,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve14) => setTimeout(resolve14, pollInterval));
+        await new Promise((resolve15) => setTimeout(resolve15, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -16778,7 +16778,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve14, reject) => {
+    return new Promise((resolve15, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -16856,7 +16856,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve14(parseResult.data);
+            resolve15(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -17117,12 +17117,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve14, reject) => {
+    return new Promise((resolve15, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve14, interval);
+      const timeoutId = setTimeout(resolve15, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -17851,12 +17851,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve14) => {
+    return new Promise((resolve15) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve14();
+        resolve15();
       } else {
-        this._stdout.once("drain", resolve14);
+        this._stdout.once("drain", resolve15);
       }
     });
   }
@@ -18674,6 +18674,51 @@ async function getProcessStartTimeLinux(pid, deadlineAt) {
     return void 0;
   }
 }
+function getProcessStartIdentitySync(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  if (process.platform === "linux") {
+    try {
+      const stat = (0, import_fs4.readFileSync)(`/proc/${pid}/stat`, "utf8");
+      const closeParen = stat.lastIndexOf(")");
+      if (closeParen === -1) return null;
+      const fields = stat.substring(closeParen + 2).split(" ");
+      const startTime = parseInt(fields[19] ?? "", 10);
+      return Number.isNaN(startTime) ? null : String(startTime);
+    } catch {
+      return null;
+    }
+  }
+  if (process.platform === "darwin") {
+    try {
+      const result = (0, import_child_process.spawnSync)(
+        "ps",
+        ["-p", String(pid), "-o", "lstart="],
+        { encoding: "utf8", timeout: 2e3, windowsHide: true, env: { ...process.env, LC_ALL: "C" } }
+      );
+      if (result.status !== 0 || !result.stdout) return null;
+      const time3 = new Date(result.stdout.trim()).getTime();
+      return Number.isNaN(time3) ? null : String(time3);
+    } catch {
+      return null;
+    }
+  }
+  if (process.platform === "win32") {
+    try {
+      const cmd = `$p = Get-Process -Id ${pid} -ErrorAction Stop; if ($p -and $p.StartTime) { $p.StartTime.ToUniversalTime().Ticks }`;
+      const result = (0, import_child_process.spawnSync)(
+        "powershell",
+        ["-NoProfile", "-NonInteractive", "-Command", cmd],
+        { encoding: "utf8", timeout: 3e3, windowsHide: true }
+      );
+      if (result.status !== 0 || !result.stdout) return null;
+      const ticks = result.stdout.trim().match(/^\d+$/)?.[0];
+      return ticks ? `ticks:${ticks}` : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 // src/platform/posix-shell.ts
 var import_fs5 = require("fs");
@@ -19169,7 +19214,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve14) => setTimeout(resolve14, ms));
+  return new Promise((resolve15) => setTimeout(resolve15, ms));
 }
 
 // src/tools/lsp/client.ts
@@ -19770,7 +19815,7 @@ var LspClient = class _LspClient {
 Install with: ${this.serverConfig.installHint}`
       );
     }
-    return new Promise((resolve14, reject) => {
+    return new Promise((resolve15, reject) => {
       const command = this.devContainerContext ? "docker" : this.serverConfig.command;
       const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
       this.process = (0, import_child_process6.spawn)(command, args, {
@@ -19818,7 +19863,7 @@ Install with: ${this.serverConfig.installHint}`
           return;
         }
         this.initialized = true;
-        resolve14();
+        resolve15();
       }).catch((error2) => {
         if (this.process === child && this.connectionGeneration === connectionGeneration) {
           this.forceKill();
@@ -20076,13 +20121,13 @@ ${content}`;
     const message = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-    return new Promise((resolve14, reject) => {
+    return new Promise((resolve15, reject) => {
       const timeoutHandle = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
       }, effectiveTimeout);
       this.pendingRequests.set(id, {
-        resolve: resolve14,
+        resolve: resolve15,
         reject,
         timeout: timeoutHandle
       });
@@ -20262,7 +20307,7 @@ ${content}`;
     });
     this.assertCurrentConnection(child, connectionGeneration);
     this.openDocuments.add(hostUri);
-    await new Promise((resolve14) => setTimeout(resolve14, 100));
+    await new Promise((resolve15) => setTimeout(resolve15, 100));
     this.assertCurrentConnection(child, connectionGeneration);
     this.throwIfTerminal();
   }
@@ -20493,7 +20538,7 @@ ${content}`;
     if (this.diagnostics.has(uri)) {
       return Promise.resolve();
     }
-    return new Promise((resolve14, reject) => {
+    return new Promise((resolve15, reject) => {
       let resolved = false;
       const removeWaiter = (waiter2) => {
         const waiters = this.diagnosticWaiters.get(uri);
@@ -20512,7 +20557,7 @@ ${content}`;
           if (error2) {
             reject(error2);
           } else {
-            resolve14();
+            resolve15();
           }
         }
       };
@@ -20520,7 +20565,7 @@ ${content}`;
         if (!resolved) {
           resolved = true;
           removeWaiter(waiter);
-          resolve14();
+          resolve15();
         }
       }, timeoutMs);
       const existing = this.diagnosticWaiters.get(uri) || [];
@@ -21948,7 +21993,11 @@ function resolveSuperprojectRoot(cwd) {
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
-        timeout: 5e3
+        timeout: 5e3,
+        // Force English error text so isDefinitiveNonGitError's stderr match is
+        // locale-independent (localized git output otherwise fails to match
+        // and mis-classifies a plain "not a repository" as a generic failure).
+        env: { ...process.env, LC_ALL: "C" }
       }).trim();
     } catch (error2) {
       completed = depth === 0 && isDefinitiveNonGitError(error2);
@@ -22048,7 +22097,12 @@ function isSensitiveStateLocation(dir) {
   }
   const home = (() => {
     try {
-      return (0, import_path14.resolve)((0, import_os3.homedir)());
+      const path14 = (0, import_path14.resolve)((0, import_os3.homedir)());
+      try {
+        return (0, import_fs14.realpathSync)(path14);
+      } catch {
+        return path14;
+      }
     } catch {
       return null;
     }
@@ -22067,7 +22121,12 @@ function isSensitiveStateLocation(dir) {
   if (isFilesystemRoot(candidate)) return true;
   return sensitiveAbsoluteRoots().some((root) => {
     const normalizedCandidate = process.platform === "win32" ? candidate.toLowerCase() : candidate;
-    const normalizedRoot = process.platform === "win32" ? root.toLowerCase() : root;
+    let canonicalRoot = root;
+    try {
+      canonicalRoot = (0, import_fs14.realpathSync)(root);
+    } catch {
+    }
+    const normalizedRoot = process.platform === "win32" ? canonicalRoot.toLowerCase() : canonicalRoot;
     return normalizedCandidate === normalizedRoot || isWithinPath(normalizedRoot, normalizedCandidate);
   });
 }
@@ -22094,6 +22153,7 @@ function resolveStateAnchorRoot(worktreeRoot) {
   return getWorktreeRoot() || resolveNonGitStateAnchor();
 }
 var worktreePathRenderScope = new import_node_async_hooks.AsyncLocalStorage();
+var projectIdentifierOperationScope = new import_node_async_hooks.AsyncLocalStorage();
 var gitShowToplevelProbeForTests;
 function gitErrorStderr(error2) {
   if (!error2 || typeof error2 !== "object") {
@@ -22150,7 +22210,21 @@ function isNotAGitRepositoryError(error2) {
     return false;
   }
   const stderr = gitErrorStderr(error2);
-  return err.status === 128 && /not a git repository/i.test(stderr);
+  return err.status === 128 && /(?:not a git repository|must be run in a work tree)/i.test(stderr);
+}
+function isBareRepository(cwd) {
+  try {
+    return (0, import_child_process8.execFileSync)("git", ["rev-parse", "--is-bare-repository"], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+      timeout: 5e3,
+      env: { ...process.env, LC_ALL: "C" }
+    }).trim() === "true";
+  } catch {
+    return false;
+  }
 }
 function formatGitProbeDetail(error2) {
   if (!error2 || typeof error2 !== "object") {
@@ -22277,7 +22351,12 @@ function runGitShowToplevel(cwd) {
     encoding: "utf-8",
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
-    timeout: 5e3
+    timeout: 5e3,
+    // Force English error text so isNotAGitRepositoryError's stderr match is
+    // locale-independent (localized git output otherwise fails to match and
+    // mis-classifies a plain "not a repository" as probe_failed, which then
+    // fails closed and breaks callers such as the HUD statusline).
+    env: { ...process.env, LC_ALL: "C" }
   });
 }
 function probeGitTopLevel(cwd) {
@@ -22547,6 +22626,12 @@ function discoverCentralizedDirFromSettings() {
 }
 function getProjectIdentifier(worktreeRoot) {
   const root = worktreeRoot || getGitTopLevel() || process.cwd();
+  const operationScope = projectIdentifierOperationScope.getStore();
+  const operationScopeKey = operationScope ? canonicalizeExistingPath(root) ?? (0, import_path14.resolve)(root) : null;
+  if (operationScope && operationScopeKey) {
+    const cached2 = operationScope.get(operationScopeKey);
+    if (cached2 !== void 0) return cached2;
+  }
   const scope = worktreePathRenderScope.getStore();
   const scopeKey = scope ? canonicalizeExistingPath(root) ?? (0, import_path14.resolve)(root) : null;
   if (scope && scopeKey) {
@@ -22560,12 +22645,14 @@ function getProjectIdentifier(worktreeRoot) {
       const safeId = cfg.id.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
       const hash3 = (0, import_crypto2.createHash)("sha256").update(safeId).digest("hex").slice(0, 16);
       const identifier3 = `${safeId}-${hash3}`;
+      if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, identifier3);
       if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier3);
       return identifier3;
     }
     const hash2 = (0, import_crypto2.createHash)("sha256").update(workspaceRoot).digest("hex").slice(0, 16);
     const dirName2 = (0, import_path14.basename)(workspaceRoot).replace(/[^a-zA-Z0-9_-]/g, "_");
     const identifier2 = `${dirName2}-${hash2}`;
+    if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, identifier2);
     if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier2);
     return identifier2;
   }
@@ -22603,6 +22690,7 @@ function getProjectIdentifier(worktreeRoot) {
   const hash = (0, import_crypto2.createHash)("sha256").update(source).digest("hex").slice(0, 16);
   const dirName = (0, import_path14.basename)(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, "_");
   const identifier = `${dirName}-${hash}`;
+  if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, identifier);
   if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier);
   return identifier;
 }
@@ -22958,7 +23046,7 @@ function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory) {
     } catch {
       cwdReal = process.cwd();
     }
-    if ((0, import_fs14.existsSync)((0, import_path14.join)(cwdReal, ".git"))) {
+    if ((0, import_fs14.existsSync)((0, import_path14.join)(cwdReal, ".git")) && !isBareRepository(cwdReal)) {
       throw new Error(formatGitProbeFailedMessage(callerLabel));
     }
     trustedRoot = process.cwd();
@@ -23001,7 +23089,7 @@ function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory) {
   } catch {
     throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
   }
-  if (providedProbe.status === "not_a_repository" && (0, import_fs14.existsSync)((0, import_path14.join)(resolvedReal, ".git"))) {
+  if (providedProbe.status === "not_a_repository" && (0, import_fs14.existsSync)((0, import_path14.join)(resolvedReal, ".git")) && !isBareRepository(resolvedReal)) {
     throw new Error(formatGitProbeFailedMessage(workingDirectory));
   }
   const gitMetadataDir = findGitMetadataDir(resolvedReal);
@@ -23827,7 +23915,7 @@ var SessionLock = class {
   }
 };
 function sleep2(ms) {
-  return new Promise((resolve14) => setTimeout(resolve14, ms));
+  return new Promise((resolve15) => setTimeout(resolve15, ms));
 }
 
 // src/tools/python-repl/socket-client.ts
@@ -23857,7 +23945,7 @@ var JsonRpcError = class extends Error {
   }
 };
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve14, reject) => {
+  return new Promise((resolve15, reject) => {
     const id = (0, import_crypto3.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -23947,7 +24035,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
           }
           if (!settled) {
             settled = true;
-            resolve14(response.result);
+            resolve15(response.result);
           }
         } catch (e) {
           if (!settled) {
@@ -24517,277 +24605,286 @@ function validatePayload(payload, limits = {}) {
 var import_fs16 = require("fs");
 var import_path16 = require("path");
 var import_crypto4 = require("crypto");
-var import_child_process10 = require("child_process");
-var LOCK_OWNER_KEYS = ["createdAt", "nonce", "pid", "processStart", "version"];
-var PORTABLE_LOCK_MAX_AGE_MS = 18e5;
-var PORTABLE_GUARD_MAX_AGE_MS = 5e3;
-var PORTABLE_GUARD_ATTEMPTS = 200;
-var PORTABLE_UNVERIFIABLE_RETRIES = 5;
-function testLockMode() {
-  if (process.env.NODE_ENV !== "test") return null;
-  if (process.env.OMC_TEST_STATE_LOCK_MODE === "portable") return "portable";
-  if (process.env.OMC_TEST_STATE_LOCK_MODE === "none" || process.env.OMC_TEST_FLOCK_AVAILABLE === "0") return "none";
-  return null;
-}
-function flockPath() {
-  return testLockMode() ? null : (0, import_fs16.existsSync)("/usr/bin/flock") ? "/usr/bin/flock" : (0, import_fs16.existsSync)("/bin/flock") ? "/bin/flock" : null;
-}
-function portableLockingAvailable() {
-  return testLockMode() !== "none";
+var import_better_sqlite3 = __toESM(require("better-sqlite3"), 1);
+var localLocks = /* @__PURE__ */ new Map();
+var ownProcessStartIdentityCache = null;
+function ownProcessStartIdentity() {
+  if (ownProcessStartIdentityCache === null) {
+    ownProcessStartIdentityCache = getProcessStartIdentitySync(process.pid);
+  }
+  return ownProcessStartIdentityCache;
 }
 function isStateMutationLockingSupported() {
-  return Boolean(flockPath()) || portableLockingAvailable();
+  return !(process.env.NODE_ENV === "test" && process.env.OMC_TEST_STATE_LOCK_MODE === "none");
 }
-var LOCK_REMOVAL_SCRIPT = String.raw`
-const fs = require('fs');
-const [operation, lockPath, expectedRaw] = process.argv.slice(1);
-const keys = ['createdAt', 'nonce', 'pid', 'processStart', 'version'];
-function readOwner() {
-  try {
-    const value = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
-    const actual = Object.keys(value).sort();
-    if (actual.length !== keys.length || !actual.every((key, index) => key === keys[index]) || value.version !== 1 || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.processStart !== 'string' || !/^\d+$/.test(value.processStart) || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== 'string' || !/^[0-9a-f-]{36}$/i.test(value.nonce)) return null;
-    return value;
-  } catch (error) { if (error && error.code === 'ENOENT') process.exit(0); return null; }
+function sqliteConstructor() {
+  return import_better_sqlite3.default;
 }
-const owner = readOwner();
-if (!owner) process.exit(3);
-if (operation === 'release') {
-  let expected;
-  try { expected = JSON.parse(expectedRaw); } catch { process.exit(3); }
-  if (owner.pid !== expected.pid || owner.processStart !== expected.processStart || owner.nonce !== expected.nonce) process.exit(4);
-  try { fs.unlinkSync(lockPath); process.exit(0); } catch { process.exit(3); }
-}
-if (process.platform !== 'linux') process.exit(3);
-let currentStart;
-try {
-  const stat = fs.readFileSync('/proc/' + owner.pid + '/stat', 'utf8');
-  const end = stat.lastIndexOf(')');
-  const fields = end >= 0 ? stat.slice(end + 2).trim().split(/\s+/) : [];
-  currentStart = fields[19] && /^\d+$/.test(fields[19]) ? fields[19] : null;
-} catch (error) { currentStart = error && error.code === 'ENOENT' ? 'absent' : null; }
-if (currentStart === null) process.exit(3);
-if (currentStart !== 'absent' && currentStart === owner.processStart) process.exit(2);
-try { fs.unlinkSync(lockPath); process.exit(0); } catch { process.exit(3); }
-`;
-function processStartIdentity(pid) {
-  if (!Number.isSafeInteger(pid) || pid <= 0) return null;
-  if (process.platform !== "linux") return pid === process.pid ? String(Math.max(1, Math.floor(Date.now() - process.uptime() * 1e3))) : null;
-  if (process.env.NODE_ENV === "test" && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(pid)) return null;
-  try {
-    const stat = (0, import_fs16.readFileSync)(`/proc/${pid}/stat`, "utf8");
-    const end = stat.lastIndexOf(")");
-    if (end < 0) return null;
-    const fields = stat.slice(end + 2).trim().split(/\s+/);
-    return fields[19] && /^\d+$/.test(fields[19]) ? fields[19] : null;
-  } catch (error2) {
-    return error2.code === "ENOENT" ? "absent" : null;
+function mutationDbPath(lockPath) {
+  let current = (0, import_path16.dirname)(lockPath);
+  while ((0, import_path16.basename)(current) !== "state") {
+    const parent = (0, import_path16.dirname)(current);
+    if (parent === current) return (0, import_path16.join)((0, import_path16.dirname)(lockPath), ".state-mutation-locks.db");
+    current = parent;
   }
+  return (0, import_path16.join)(current, ".state-mutation-locks.db");
+}
+function ownerFromRow(row) {
+  if (!row || row.version !== 1 || !Number.isSafeInteger(row.pid) || row.pid <= 0 || typeof row.process_start !== "string" || typeof row.created_at !== "string" || typeof row.nonce !== "string") return null;
+  return { version: 1, pid: row.pid, processStart: row.process_start, createdAt: row.created_at, nonce: row.nonce };
 }
 function writeAllSync2(fd, content, label) {
-  const bytes = Buffer.from(content, "utf-8");
+  const bytes = Buffer.from(content, "utf8");
   let offset = 0;
   while (offset < bytes.length) {
     const written = (0, import_fs16.writeSync)(fd, bytes, offset, bytes.length - offset);
-    if (!Number.isInteger(written) || written <= 0) {
-      throw new Error(`${label} made no progress`);
-    }
+    if (!Number.isInteger(written) || written <= 0) throw new Error(`${label} made no progress`);
     offset += written;
   }
-  if ((0, import_fs16.fstatSync)(fd).size !== bytes.length) {
-    throw new Error(`${label} size verification failed`);
-  }
+  if ((0, import_fs16.fstatSync)(fd).size !== bytes.length) throw new Error(`${label} size verification failed`);
 }
-function readLockOwnerAt(path14) {
-  let value;
+function readLockOwner(path14) {
   try {
-    value = JSON.parse((0, import_fs16.readFileSync)(path14, "utf8"));
+    const value = JSON.parse((0, import_fs16.readFileSync)(path14, "utf8"));
+    const pid = value.pid;
+    if (value.version !== 1 || !Number.isSafeInteger(pid) || pid <= 0 || typeof value.processStart !== "string" || !/^\S+$/.test(value.processStart) || typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== "string" || !/^[0-9a-f-]{36}$/i.test(value.nonce)) return null;
+    return value;
   } catch (error2) {
     return error2.code === "ENOENT" ? "absent" : null;
   }
-  const actual = Object.keys(value ?? {}).sort();
-  if (actual.length !== LOCK_OWNER_KEYS.length || !actual.every((key, index) => key === LOCK_OWNER_KEYS[index]) || value.version !== 1 || !Number.isSafeInteger(value.pid) || Number(value.pid) <= 0 || typeof value.processStart !== "string" || !/^\d+$/.test(value.processStart) || typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== "string" || !/^[0-9a-f-]{36}$/i.test(value.nonce)) return null;
-  return value;
 }
-function pidIsLive(pid) {
-  if (pid === process.pid) return true;
+function sameOwner(left, right) {
+  return left !== null && left.pid === right.pid && left.processStart === right.processStart && left.nonce === right.nonce;
+}
+function ownerLive(owner) {
+  if (process.env.NODE_ENV === "test" && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(owner.pid)) return null;
+  const current = processStartIdentity(owner.pid);
+  if (current === null) return null;
+  return current === "absent" ? false : current === owner.processStart;
+}
+function publishLockOwner(path14, owner) {
+  const tempPath = `${path14}.${owner.pid}.${owner.nonce}.tmp`;
+  let fd;
   try {
-    process.kill(pid, 0);
+    fd = (0, import_fs16.openSync)(tempPath, "wx", 384);
+    writeAllSync2(fd, JSON.stringify(owner), "lock owner publication");
+    (0, import_fs16.fsyncSync)(fd);
+    (0, import_fs16.closeSync)(fd);
+    fd = void 0;
+    (0, import_fs16.linkSync)(tempPath, path14);
+    (0, import_fs16.unlinkSync)(tempPath);
     return true;
-  } catch (error2) {
-    const code = error2.code;
-    if (code === "ESRCH") return false;
-    if (code === "EPERM") return true;
-    return null;
-  }
-}
-function acquirePortableGuard(guardPath) {
-  for (let attempt = 0; attempt < PORTABLE_GUARD_ATTEMPTS; attempt += 1) {
-    let fd;
-    let published = false;
-    try {
-      fd = (0, import_fs16.openSync)(guardPath, "wx", 384);
-      writeAllSync2(fd, String(process.pid), "lock guard publication");
-      published = true;
-      (0, import_fs16.closeSync)(fd);
-      return true;
-    } catch (error2) {
-      if (fd !== void 0) {
-        try {
-          (0, import_fs16.closeSync)(fd);
-        } catch {
-        }
-      }
-      if (fd !== void 0 && !published) {
-        try {
-          (0, import_fs16.unlinkSync)(guardPath);
-        } catch {
-        }
-      }
-      if (error2.code !== "EEXIST") return false;
-      let age = null;
-      try {
-        age = Date.now() - (0, import_fs16.statSync)(guardPath).mtimeMs;
-      } catch {
-      }
-      if (age !== null && age > PORTABLE_GUARD_MAX_AGE_MS) {
-        try {
-          (0, import_fs16.unlinkSync)(guardPath);
-        } catch {
-        }
-        continue;
-      }
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    }
-  }
-  return false;
-}
-function portableLockIsLive(observed) {
-  const live = pidIsLive(observed.pid);
-  if (live === null) return null;
-  if (!live) return false;
-  return !(Date.now() - Date.parse(observed.createdAt) > PORTABLE_LOCK_MAX_AGE_MS);
-}
-function unparseableLockIsStale(path14) {
-  try {
-    return Date.now() - (0, import_fs16.statSync)(path14).mtimeMs > PORTABLE_LOCK_MAX_AGE_MS;
   } catch {
+    try {
+      if (fd !== void 0) (0, import_fs16.closeSync)(fd);
+    } catch {
+    }
+    try {
+      (0, import_fs16.unlinkSync)(tempPath);
+    } catch {
+    }
     return false;
   }
 }
-function portableLockRemoval(path14, operation, owner) {
-  if (operation !== "release") {
-    const observed = readLockOwnerAt(path14);
-    if (observed && observed !== "absent") {
-      const live = portableLockIsLive(observed);
-      if (live === null) return "unverifiable";
-      if (live) return "live";
-    }
-  }
-  const guardPath = `${path14}.reclaim.guard`;
-  if (!acquirePortableGuard(guardPath)) return "unverifiable";
+function openMutationDb(lockPath) {
+  const Database2 = sqliteConstructor();
+  if (!Database2) return null;
+  let db = null;
   try {
-    const current = readLockOwnerAt(path14);
-    if (current === "absent") return "retry";
-    if (!current) {
-      if (operation === "release" || !unparseableLockIsStale(path14)) return "unverifiable";
-    } else if (operation === "release") {
-      if (!owner || current.pid !== owner.pid || current.processStart !== owner.processStart || current.nonce !== owner.nonce) return "replaced";
-    } else {
-      const live = portableLockIsLive(current);
-      if (live === null) return "unverifiable";
-      if (live) return "live";
-    }
-    try {
-      (0, import_fs16.unlinkSync)(path14);
-      return "retry";
-    } catch (error2) {
-      return error2.code === "ENOENT" ? "retry" : "unverifiable";
-    }
-  } finally {
-    try {
-      (0, import_fs16.unlinkSync)(guardPath);
-    } catch {
-    }
-  }
-}
-function guardedLockRemoval(path14, operation, owner) {
-  const flock = flockPath();
-  if (!flock) return portableLockingAvailable() ? portableLockRemoval(path14, operation, owner) : "unverifiable";
-  const result = (0, import_child_process10.spawnSync)(flock, ["-x", `${path14}.reclaim.guard`, process.execPath, "-e", LOCK_REMOVAL_SCRIPT, operation, path14, owner ? JSON.stringify(owner) : ""], { stdio: "ignore", timeout: 2e3 });
-  if (result.status === 0) return "retry";
-  if (result.status === 2) return "live";
-  if (result.status === 4) return "replaced";
-  return portableLockingAvailable() ? portableLockRemoval(path14, operation, owner) : "unverifiable";
-}
-function lockBackoff(attempt) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1 + Math.floor(Math.random() * Math.min(40, 4 * (attempt + 1))));
-}
-function awaitLockTurn(path14, attempt, unverifiable) {
-  const disposition = guardedLockRemoval(path14, "reclaim");
-  if (disposition === "unverifiable" && (unverifiable.count += 1) > PORTABLE_UNVERIFIABLE_RETRIES) return false;
-  if (disposition === "live" || disposition === "unverifiable") lockBackoff(attempt);
-  return true;
-}
-function acquireLockAt(path14, requireExclusive = false) {
-  if (!flockPath() && !portableLockingAvailable()) {
-    if (requireExclusive) return null;
-    (0, import_fs16.mkdirSync)((0, import_path16.dirname)(path14), { recursive: true });
-    return { unlocked: true };
-  }
-  (0, import_fs16.mkdirSync)((0, import_path16.dirname)(path14), { recursive: true });
-  const processStart = processStartIdentity(process.pid);
-  if (!processStart || processStart === "absent") {
-    console.error(`[omc-lock] state_mutation_lock_owner_unverifiable: ${path14}`);
-    return null;
-  }
-  const unverifiable = { count: 0 };
-  const abandon = () => {
-    if (unverifiable.count > 0) console.error(`[omc-lock] state_mutation_lock_unverifiable: ${path14}`);
-    return null;
-  };
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    if ((0, import_fs16.existsSync)(path14)) {
-      if (!awaitLockTurn(path14, attempt, unverifiable)) return abandon();
-      continue;
-    }
-    const owner = { version: 1, pid: process.pid, processStart, createdAt: (/* @__PURE__ */ new Date()).toISOString(), nonce: (0, import_crypto4.randomUUID)() };
-    const tempPath = `${path14}.${process.pid}.${owner.nonce}.tmp`;
-    let fd;
-    try {
-      fd = (0, import_fs16.openSync)(tempPath, "wx", 384);
-      writeAllSync2(fd, JSON.stringify(owner), "lock owner publication");
-      (0, import_fs16.fsyncSync)(fd);
-      (0, import_fs16.linkSync)(tempPath, path14);
-      (0, import_fs16.unlinkSync)(tempPath);
-      return { fd, path: path14, owner };
-    } catch (error2) {
-      if (fd !== void 0) {
-        try {
-          (0, import_fs16.closeSync)(fd);
-        } catch {
+    const dbPath = mutationDbPath(lockPath);
+    for (const sidecar of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`, `${dbPath}-journal`]) {
+      try {
+        const stat = (0, import_fs16.statSync)(sidecar);
+        if (!stat.isFile() || stat.nlink !== 1) {
+          if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] openMutationDb sidecar-reject ${sidecar} isFile=${stat.isFile()} nlink=${stat.nlink}`);
+          return null;
+        }
+      } catch (error2) {
+        if (error2.code !== "ENOENT") {
+          if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] openMutationDb sidecar-stat-error ${sidecar} ${error2.code}`);
+          return null;
         }
       }
-      try {
-        (0, import_fs16.unlinkSync)(tempPath);
-      } catch {
-      }
-      if (error2.code !== "EEXIST") return null;
-      if (!awaitLockTurn(path14, attempt, unverifiable)) return abandon();
     }
+    db = new Database2(dbPath);
+    db.pragma("journal_mode = WAL");
+    db.pragma("busy_timeout = 2000");
+    db.exec("CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)");
+    return db;
+  } catch (error2) {
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] openMutationDb open/exec failed for ${lockPath}: ${error2?.message}`);
+    try {
+      db?.close();
+    } catch {
+    }
+    return null;
   }
-  return abandon();
+}
+function acquireLockAt(path14, attempts = 50) {
+  (0, import_fs16.mkdirSync)((0, import_path16.dirname)(path14), { recursive: true });
+  const key = (() => {
+    try {
+      return (0, import_path16.resolve)((0, import_fs16.realpathSync)((0, import_path16.dirname)(path14)), (0, import_path16.basename)(path14));
+    } catch {
+      return (0, import_path16.resolve)(path14);
+    }
+  })();
+  const held = localLocks.get(key);
+  if (held && !("unlocked" in held)) {
+    held.depth += 1;
+    return held;
+  }
+  const db = openMutationDb(path14);
+  if (!db) {
+    if (attempts <= 1) return null;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    return acquireLockAt(path14, attempts - 1);
+  }
+  const processStart = ownProcessStartIdentity();
+  if (!processStart) {
+    try {
+      db.close();
+    } catch {
+    }
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt processStart-null ${path14}`);
+    if (attempts <= 1) return null;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    return acquireLockAt(path14, attempts - 1);
+  }
+  const owner = { version: 1, pid: process.pid, processStart, createdAt: (/* @__PURE__ */ new Date()).toISOString(), nonce: (0, import_crypto4.randomUUID)() };
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    const rawRow = db.prepare("SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?").get(key);
+    if (rawRow) {
+      const row = ownerFromRow(rawRow);
+      if (!row) {
+        db.exec("ROLLBACK");
+        db.close();
+        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt row-invalid ${path14}`);
+        return null;
+      }
+      const live = ownerLive(row);
+      if (live === null || live) {
+        db.exec("ROLLBACK");
+        db.close();
+        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt row-live=${live} ${path14}`);
+        if (live === null || attempts <= 1) return null;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+        return acquireLockAt(path14, attempts - 1);
+      }
+      db.prepare("DELETE FROM state_mutation_locks WHERE lock_key = ?").run(key);
+    }
+    const artifact = readLockOwner(path14);
+    if (artifact !== "absent") {
+      if (!artifact) {
+        db.exec("ROLLBACK");
+        db.close();
+        console.error(`[omc-lock] state_mutation_lock_unverifiable: ${path14}`);
+        return null;
+      }
+      const live = ownerLive(artifact);
+      if (live === null || live) {
+        db.exec("ROLLBACK");
+        db.close();
+        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt artifact-live=${live} ${path14}`);
+        if (live === null || attempts <= 1) return null;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+        return acquireLockAt(path14, attempts - 1);
+      }
+      try {
+        (0, import_fs16.unlinkSync)(path14);
+      } catch (error2) {
+        db.exec("ROLLBACK");
+        db.close();
+        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt artifact-unlink-failed ${path14} ${error2.code}`);
+        return null;
+      }
+    }
+    db.prepare("INSERT INTO state_mutation_locks (lock_key, version, pid, process_start, created_at, nonce) VALUES (?, 1, ?, ?, ?, ?)").run(key, owner.pid, owner.processStart, owner.createdAt, owner.nonce);
+    if (!publishLockOwner(path14, owner)) {
+      db.exec("ROLLBACK");
+      db.close();
+      if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt publish-failed ${path14}`);
+      if (attempts <= 1) return null;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+      return acquireLockAt(path14, attempts - 1);
+    }
+    db.exec("COMMIT");
+    const lock = { db, key, path: path14, owner, depth: 1 };
+    localLocks.set(key, lock);
+    return lock;
+  } catch (error2) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+    }
+    try {
+      db.close();
+    } catch {
+    }
+    const code = error2?.code;
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt caught-error ${path14} code=${code} msg=${error2?.message}`);
+    if ((code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") && attempts > 1) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+      return acquireLockAt(path14, attempts - 1);
+    }
+    return null;
+  }
 }
 function acquireMutationLock(filePath) {
   return acquireLockAt(`${filePath}.mutation.lock`);
 }
+var RELEASE_BUSY_ATTEMPTS = 30;
 function releaseMutationLock(lock) {
   if (!lock || "unlocked" in lock) return;
-  try {
-    (0, import_fs16.closeSync)(lock.fd);
-  } catch {
+  if (lock.depth > 1) {
+    lock.depth -= 1;
+    return;
   }
-  guardedLockRemoval(lock.path, "release", lock.owner);
+  localLocks.delete(lock.key);
+  try {
+    for (let attempt = 0; attempt < RELEASE_BUSY_ATTEMPTS; attempt += 1) {
+      try {
+        lock.db.exec("BEGIN IMMEDIATE");
+        const row = ownerFromRow(lock.db.prepare("SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?").get(lock.key));
+        const artifact = readLockOwner(lock.path);
+        if (!sameOwner(row, lock.owner) || !sameOwner(artifact === "absent" ? null : artifact, lock.owner)) {
+          lock.db.exec("ROLLBACK");
+          return;
+        }
+        (0, import_fs16.unlinkSync)(lock.path);
+        lock.db.prepare("DELETE FROM state_mutation_locks WHERE lock_key = ?").run(lock.key);
+        lock.db.exec("COMMIT");
+        return;
+      } catch (error2) {
+        try {
+          lock.db.exec("ROLLBACK");
+        } catch {
+        }
+        const code = error2?.code;
+        if (code !== "SQLITE_BUSY" && code !== "SQLITE_LOCKED") return;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+      }
+    }
+  } finally {
+    try {
+      lock.db.close();
+    } catch {
+    }
+  }
+}
+function processStartIdentity(pid) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return null;
+  if (process.env.NODE_ENV === "test" && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(pid)) return null;
+  const identity = getProcessStartIdentitySync(pid);
+  if (identity !== null) return identity;
+  try {
+    process.kill(pid, 0);
+    return null;
+  } catch (error2) {
+    const code = error2.code;
+    return code === "ESRCH" ? "absent" : null;
+  }
 }
 function writeStateFileLocked(filePath, state) {
   if (!recoverEmergencyStateFile(filePath)) return false;
@@ -24869,9 +24966,15 @@ function writeStateFileLockedIf(filePath, predicate, transform2) {
   }
 }
 function writeStateFileLockedCreateIf(filePath, predicate, transform2) {
-  if (!recoverEmergencyStateFile(filePath)) return "failed";
+  if (!recoverEmergencyStateFile(filePath)) {
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] CreateIf recoverEmergency failed ${filePath}`);
+    return "failed";
+  }
   const lock = acquireMutationLock(filePath);
-  if (!lock) return "failed";
+  if (!lock) {
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] CreateIf acquireMutationLock failed ${filePath}`);
+    return "failed";
+  }
   try {
     if (process.env.NODE_ENV === "test" && process.env.OMC_TEST_CONDITIONAL_CREATE_REPLACEMENT_PATH === filePath && process.env.OMC_TEST_CONDITIONAL_CREATE_REPLACEMENT_BASE64) {
       try {
@@ -24886,14 +24989,16 @@ function writeStateFileLockedCreateIf(filePath, predicate, transform2) {
     if ((0, import_fs16.existsSync)(filePath)) {
       try {
         current = JSON.parse((0, import_fs16.readFileSync)(filePath, "utf8"));
-      } catch {
+      } catch (error2) {
+        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] CreateIf JSON-parse-failed ${filePath} ${error2?.message}`);
         return "failed";
       }
     }
     if (!predicate(current)) return "skipped";
     atomicWriteJsonSync(filePath, transform2(current));
     return "written";
-  } catch {
+  } catch (error2) {
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] CreateIf caught-error ${filePath} ${error2?.message}`);
     return "failed";
   } finally {
     releaseMutationLock(lock);
@@ -24910,8 +25015,8 @@ function sessionOwnerFromStatePath(filePath) {
   return match?.[1];
 }
 function emergencyOwner() {
-  const processStart = processStartIdentity(process.pid);
-  return typeof processStart === "string" ? { pid: process.pid, processStart, nonce: (0, import_crypto4.randomUUID)() } : null;
+  const processStart = ownProcessStartIdentity();
+  return processStart !== null ? { pid: process.pid, processStart, nonce: (0, import_crypto4.randomUUID)() } : null;
 }
 function sameEmergencyOwner(left, right) {
   return left.pid === right.pid && left.processStart === right.processStart && left.nonce === right.nonce;
@@ -24933,10 +25038,16 @@ function writeEmergencyJournal(path14, journal, requireOwnership = true) {
     return false;
   }
 }
+function encodeProcessStartForFilename(processStart) {
+  return processStart.replace(/:/g, "_c_");
+}
+function decodeProcessStartFromFilename(encoded) {
+  return encoded.replace(/_c_/g, ":");
+}
 function emergencyPublicationTempPath(path14) {
-  const processStart = processStartIdentity(process.pid);
-  if (!processStart || processStart === "absent") return null;
-  return `${path14}.${process.pid}.${processStart}.${(0, import_crypto4.randomUUID)()}.tmp`;
+  const processStart = ownProcessStartIdentity();
+  if (!processStart) return null;
+  return `${path14}.${process.pid}.${encodeProcessStartForFilename(processStart)}.${(0, import_crypto4.randomUUID)()}.tmp`;
 }
 function publishEmergencyFileExclusive(path14, content) {
   const tempPath = emergencyPublicationTempPath(path14);
@@ -24959,7 +25070,8 @@ function publishEmergencyFileExclusive(path14, content) {
     (0, import_fs16.linkSync)(tempPath, path14);
     (0, import_fs16.unlinkSync)(tempPath);
     return true;
-  } catch {
+  } catch (error2) {
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] publishEmergencyFileExclusive failed path=${path14} tempPath=${tempPath} pathExists=${(0, import_fs16.existsSync)(path14)} err=${error2?.code} ${error2?.message}`);
     return false;
   } finally {
     if (fd !== void 0) {
@@ -24977,75 +25089,42 @@ function publishEmergencyFileExclusive(path14, content) {
     }
   }
 }
-var RECOVERY_CLAIM_SCRIPT = String.raw`
-const fs = require('fs');
-const [operation, claimPath, expectedRaw] = process.argv.slice(1);
-const keys = ['createdAt', 'nonce', 'pid', 'processStart', 'version'];
-function readOwner() {
-  try {
-    const value = JSON.parse(fs.readFileSync(claimPath, 'utf8'));
-    const actual = Object.keys(value).sort();
-    if (actual.length !== keys.length || !actual.every((key, index) => key === keys[index]) || value.version !== 1 || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.processStart !== 'string' || !/^\d+$/.test(value.processStart) || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== 'string' || !/^[0-9a-f-]{36}$/i.test(value.nonce)) return null;
-    return value;
-  } catch (error) { return error && error.code === 'ENOENT' ? 'absent' : null; }
-}
-function exact(left, right) { return left.pid === right.pid && left.processStart === right.processStart && left.nonce === right.nonce; }
-function stale(owner) {
-  if (process.platform !== 'linux') return null;
-  try {
-    const stat = fs.readFileSync('/proc/' + owner.pid + '/stat', 'utf8');
-    const end = stat.lastIndexOf(')');
-    const fields = end >= 0 ? stat.slice(end + 2).trim().split(/\s+/) : [];
-    const start = fields[19] && /^\d+$/.test(fields[19]) ? fields[19] : null;
-    return start === null ? null : start !== owner.processStart;
-  } catch (error) { return error && error.code === 'ENOENT' ? true : null; }
-}
-let expected;
-try { expected = JSON.parse(expectedRaw); } catch { process.exit(3); }
-if (operation === 'release') {
-  const current = readOwner();
-  if (current === 'absent') process.exit(0);
-  if (!current || !exact(current, expected)) process.exit(4);
-  try { fs.unlinkSync(claimPath); process.exit(0); } catch { process.exit(3); }
-}
-const current = readOwner();
-if (current !== 'absent') {
-  if (!current) process.exit(3);
-  const isStale = stale(current);
-  if (isStale !== true) process.exit(isStale === false ? 2 : 3);
-  try { fs.unlinkSync(claimPath); } catch { process.exit(3); }
-}
-let fd;
-try {
-  fd = fs.openSync(claimPath, 'wx', 0o600);
-  const bytes = Buffer.from(JSON.stringify(expected));
-  let offset = 0;
-  while (offset < bytes.length) {
-    const written = fs.writeSync(fd, bytes, offset, bytes.length - offset);
-    if (written <= 0) throw new Error('recovery claim made no progress');
-    offset += written;
+function acquireRecoveryClaim(path14, attempts = 50) {
+  const processStart = ownProcessStartIdentity();
+  if (!processStart) {
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim processStart-null ${path14}`);
+    if (attempts <= 1) return null;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    return acquireRecoveryClaim(path14, attempts - 1);
   }
-  fs.fsyncSync(fd);
-  if (fs.statSync(claimPath).size !== bytes.length) throw new Error('recovery claim truncated');
-  fs.closeSync(fd);
-  process.exit(0);
-} catch { try { if (fd !== undefined) fs.closeSync(fd); } catch {} try { fs.unlinkSync(claimPath); } catch {} process.exit(3); }
-`;
-function guardedRecoveryClaim(path14, operation, owner) {
-  const flock = flockPath();
-  if (!flock) return "unverifiable";
-  const result = (0, import_child_process10.spawnSync)(flock, ["-x", `${path14}.recovery.guard`, process.execPath, "-e", RECOVERY_CLAIM_SCRIPT, operation, path14, JSON.stringify(owner)], { stdio: "ignore", timeout: 2e3 });
-  if (result.status === 0) return "claimed";
-  if (result.status === 2) return "live";
-  if (result.status === 4) return "replaced";
-  return "unverifiable";
-}
-function acquireRecoveryClaim(path14) {
-  const processStart = processStartIdentity(process.pid);
-  if (!processStart || processStart === "absent") return null;
+  const lock = acquireLockAt(`${path14}.recovery.guard`, attempts);
+  if (!lock || "unlocked" in lock) {
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim guard-lock-null ${path14}`);
+    return null;
+  }
+  const existing = readRecoveryClaim(path14);
+  if (existing) {
+    const live = ownerLive(existing);
+    if (live === null || live) {
+      releaseMutationLock(lock);
+      if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim existing-live=${live} ${path14}`);
+      return null;
+    }
+    try {
+      (0, import_fs16.unlinkSync)(path14);
+    } catch (error2) {
+      releaseMutationLock(lock);
+      if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim existing-unlink-failed ${path14} ${error2.code}`);
+      return null;
+    }
+  }
   const owner = { version: 1, pid: process.pid, processStart, createdAt: (/* @__PURE__ */ new Date()).toISOString(), nonce: (0, import_crypto4.randomUUID)() };
-  if (!flockPath()) return publishEmergencyFileExclusive(path14, JSON.stringify(owner)) ? owner : null;
-  return guardedRecoveryClaim(path14, "acquire", owner) === "claimed" ? owner : null;
+  if (!publishEmergencyFileExclusive(path14, JSON.stringify(owner))) {
+    releaseMutationLock(lock);
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim publish-failed ${path14}`);
+    return null;
+  }
+  return owner;
 }
 function readRecoveryClaim(path14) {
   try {
@@ -25059,15 +25138,36 @@ function sameRecoveryClaim(left, right) {
   return left.pid === right.pid && left.processStart === right.processStart && left.nonce === right.nonce;
 }
 function releaseRecoveryClaim(path14, owner) {
-  if (!flockPath()) {
+  const guardPath = `${path14}.recovery.guard`;
+  const key = (() => {
     try {
-      const current = readRecoveryClaim(path14);
-      if (current && sameRecoveryClaim(current, owner)) (0, import_fs16.unlinkSync)(path14);
+      return (0, import_path16.resolve)((0, import_fs16.realpathSync)((0, import_path16.dirname)(guardPath)), (0, import_path16.basename)(guardPath));
     } catch {
+      return (0, import_path16.resolve)(guardPath);
     }
-    return;
+  })();
+  const lock = localLocks.get(key);
+  if (!lock) return;
+  try {
+    const current = readRecoveryClaim(path14);
+    if (current && sameRecoveryClaim(current, owner)) {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        try {
+          (0, import_fs16.unlinkSync)(path14);
+          break;
+        } catch (error2) {
+          if (error2.code === "ENOENT") break;
+          if (attempt === 9) {
+            if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] releaseRecoveryClaim unlink-failed-after-retries ${path14} ${error2.code}`);
+            break;
+          }
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+        }
+      }
+    }
+  } catch {
   }
-  guardedRecoveryClaim(path14, "release", owner);
+  releaseMutationLock(lock);
 }
 function createEmergencyJournal(path14, journal) {
   return publishEmergencyFileExclusive(path14, JSON.stringify(journal));
@@ -25118,7 +25218,7 @@ function sameFile(path14, expected) {
 function reconcileEmergencyPublicationTemps(filePath, authorizeState) {
   const directory = (0, import_path16.dirname)(filePath);
   const base = filePath.slice(directory.length + 1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`^${base}\\.emergency-(journal\\.json|recovery\\.claim|quarantine\\.[0-9a-f-]{36}\\.payload)\\.(\\d+)\\.(\\d+)\\.([0-9a-f-]{36})\\.tmp$`, "i");
+  const pattern = new RegExp(`^${base}\\.emergency-(journal\\.json|recovery\\.claim|quarantine\\.[0-9a-f-]{36}\\.payload)\\.(\\d+)\\.([^.]+)\\.([0-9a-f-]{36})\\.tmp$`, "i");
   let names;
   try {
     names = (0, import_fs16.readdirSync)(directory);
@@ -25129,8 +25229,9 @@ function reconcileEmergencyPublicationTemps(filePath, authorizeState) {
     const match = pattern.exec(name);
     if (!match) continue;
     const path14 = (0, import_path16.join)(directory, name);
+    const matchedProcessStart = decodeProcessStartFromFilename(match[3]);
     const currentStart = processStartIdentity(Number(match[2]));
-    if (currentStart === null || currentStart === match[3]) return false;
+    if (currentStart === null || currentStart === matchedProcessStart) return false;
     const generation = fileIdentity(path14);
     try {
       if (!generation) return false;
@@ -25144,7 +25245,7 @@ function reconcileEmergencyPublicationTemps(filePath, authorizeState) {
           if (!state || typeof state !== "object" || Array.isArray(state) || !authorizeState(state)) return false;
         } else {
           const claim = readRecoveryClaim(path14);
-          if (!claim || claim.pid !== Number(match[2]) || claim.processStart !== match[3] || claim.nonce !== match[4]) return false;
+          if (!claim || claim.pid !== Number(match[2]) || claim.processStart !== matchedProcessStart || claim.nonce !== match[4]) return false;
         }
       }
       if (!sameFile(path14, generation) || stateDigest((0, import_fs16.readFileSync)(path14, "utf8")) !== stateDigest(raw)) return false;
@@ -25215,15 +25316,28 @@ function recoveryGenerationsAuthorized(filePath, journal, authorizeState) {
 function hasUnattributableRecoveryClaimArtifact(filePath, recoveryClaim) {
   const directory = (0, import_path16.dirname)(filePath);
   const base = filePath.slice(directory.length + 1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const tempPattern = new RegExp(`^${base}\\.emergency-recovery\\.claim\\.\\d+\\.\\d+\\.[0-9a-f-]{36}\\.tmp$`, "i");
+  const tempPattern = new RegExp(`^${base}\\.emergency-recovery\\.claim\\.\\d+\\.[^.]+\\.[0-9a-f-]{36}\\.tmp$`, "i");
   try {
-    if ((0, import_fs16.readdirSync)(directory).some((name) => tempPattern.test(name))) return true;
+    if ((0, import_fs16.readdirSync)(directory).some((name) => tempPattern.test(name))) {
+      if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] hasUnattributable temp-match ${filePath}`);
+      return true;
+    }
     const claimPath = `${filePath}.emergency-recovery.claim`;
-    if (!(0, import_fs16.existsSync)(claimPath)) return recoveryClaim !== void 0;
-    if (!recoveryClaim) return true;
+    if (!(0, import_fs16.existsSync)(claimPath)) {
+      const result2 = recoveryClaim !== void 0;
+      if (result2 && process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] hasUnattributable no-claim-file-but-recoveryClaim-set ${filePath}`);
+      return result2;
+    }
+    if (!recoveryClaim) {
+      if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] hasUnattributable claim-file-exists-no-recoveryClaim ${filePath}`);
+      return true;
+    }
     const current = readRecoveryClaim(claimPath);
-    return !current || !sameRecoveryClaim(current, recoveryClaim);
-  } catch {
+    const result = !current || !sameRecoveryClaim(current, recoveryClaim);
+    if (result && process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] hasUnattributable claim-mismatch ${filePath} current=${JSON.stringify(current)} recoveryClaim=${JSON.stringify(recoveryClaim)}`);
+    return result;
+  } catch (error2) {
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] hasUnattributable caught-error ${filePath} ${error2?.message}`);
     return true;
   }
 }
@@ -25268,14 +25382,23 @@ function recoverEmergencyStateFile(filePath, options) {
   } : void 0);
   const journalPath = emergencyJournalPath(filePath);
   if (!(0, import_fs16.existsSync)(filePath) && !(0, import_fs16.existsSync)(journalPath)) return true;
-  if (!sharedRecoveryArtifactsAuthorized(filePath, authorizeState)) return false;
+  if (!sharedRecoveryArtifactsAuthorized(filePath, authorizeState)) {
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] recoverEmergency prefilter-false ${filePath}`);
+    return false;
+  }
   if (!(0, import_fs16.existsSync)(journalPath)) {
     if (!authorizeState) return reconcileEmergencyPublicationTemps(filePath);
     const claimPath2 = `${filePath}.emergency-recovery.claim`;
     const claim2 = acquireRecoveryClaim(claimPath2);
-    if (!claim2) return false;
+    if (!claim2) {
+      if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] recoverEmergency no-journal-claim-null ${filePath}`);
+      return false;
+    }
     try {
-      if ((0, import_fs16.existsSync)(journalPath) || !sharedRecoveryArtifactsAuthorized(filePath, authorizeState, claim2)) return false;
+      if ((0, import_fs16.existsSync)(journalPath) || !sharedRecoveryArtifactsAuthorized(filePath, authorizeState, claim2)) {
+        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] recoverEmergency no-journal-revalidate-false ${filePath}`);
+        return false;
+      }
       return reconcileEmergencyPublicationTemps(filePath, authorizeState);
     } finally {
       releaseRecoveryClaim(claimPath2, claim2);
@@ -26252,7 +26375,7 @@ var CANONICAL_TEAM_ROLE_SET = new Set(CANONICAL_TEAM_ROLES);
 var KNOWN_AGENT_NAME_SET = new Set(KNOWN_AGENT_NAMES);
 
 // src/hooks/ralph/loop.ts
-var import_child_process12 = require("child_process");
+var import_child_process11 = require("child_process");
 var import_path24 = require("path");
 
 // src/hooks/ralph/prd.ts
@@ -26261,7 +26384,7 @@ var import_fs19 = require("fs");
 var import_path20 = require("path");
 
 // src/hooks/ralph/stale-prd.ts
-var import_child_process11 = require("child_process");
+var import_child_process10 = require("child_process");
 var import_fs20 = require("fs");
 var import_path21 = require("path");
 var DEFAULT_STALE_PRD_AFTER_MS = 2 * 60 * 60 * 1e3;
@@ -26281,7 +26404,7 @@ var import_fs23 = require("fs");
 var import_path25 = require("path");
 
 // src/utils/omc-cli-rendering.ts
-var import_child_process13 = require("child_process");
+var import_child_process12 = require("child_process");
 
 // src/hooks/autopilot/pipeline.ts
 var WORKFLOW_STAGE_SEQUENCES = [
@@ -26502,7 +26625,7 @@ function sameFileIdentity(left, right) {
 }
 
 // src/hooks/merge-readiness/runtime.ts
-var import_child_process14 = require("child_process");
+var import_child_process13 = require("child_process");
 var import_fs26 = require("fs");
 var import_path28 = require("path");
 
@@ -26565,7 +26688,7 @@ function slugifyMergeReadiness(input) {
 }
 function runGit(directory, args) {
   try {
-    const stdout = (0, import_child_process14.execFileSync)("git", args, {
+    const stdout = (0, import_child_process13.execFileSync)("git", args, {
       cwd: directory,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -29358,7 +29481,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve14) => setTimeout(resolve14, ms));
+  return new Promise((resolve15) => setTimeout(resolve15, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -30252,7 +30375,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve14) {
+function mergeByKey(base, incoming, keyFn, resolve15) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -30261,7 +30384,7 @@ function mergeByKey(base, incoming, keyFn, resolve14) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve14(existing, item));
+      seen.set(key, resolve15(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -30700,7 +30823,7 @@ function getReplaySummary(directory, sessionId) {
 }
 
 // src/features/session-history-search/index.ts
-var import_child_process15 = require("child_process");
+var import_child_process14 = require("child_process");
 var import_fs32 = require("fs");
 var import_path40 = require("path");
 var import_readline = require("readline");
@@ -30735,7 +30858,7 @@ function parseSinceSpec(since) {
 }
 function getMainRepoRoot(projectRoot) {
   try {
-    const gitCommonDir = (0, import_child_process15.execFileSync)("git", ["rev-parse", "--git-common-dir"], {
+    const gitCommonDir = (0, import_child_process14.execFileSync)("git", ["rev-parse", "--git-common-dir"], {
       cwd: projectRoot,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],

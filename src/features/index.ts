@@ -338,5 +338,17 @@ export {
   type MatchKind,
   type ResolveResult,
   type FormatAgentListOptions,
-} from './agent-addressability/index.js';
+} from './agent-addressability/index.js';;
+// lookout - pre-flight danger scan for autonomous runs (advisory only)
+export {
+  LookoutError,
+  resolveBriefArg,
+  scanLookout,
+  type LookoutConfidence,
+  type LookoutFinding,
+  type LookoutReport,
+  type LookoutSeverity,
+  type LookoutVerdict,
+  type ScanLookoutOptions,
+} from './lookout/index.js';
 

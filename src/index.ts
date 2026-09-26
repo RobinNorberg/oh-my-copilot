@@ -67,6 +67,17 @@ export {
 } from './features/auto-update.js';
 export * from './shared/index.js';
 
+// Lookout pre-flight danger scanning API.
+export { LookoutError, resolveBriefArg, scanLookout } from './features/lookout/index.js';
+export type {
+  LookoutConfidence,
+  LookoutFinding,
+  LookoutReport,
+  LookoutSeverity,
+  LookoutVerdict,
+  ScanLookoutOptions,
+} from './features/lookout/index.js';
+
 // Hooks module exports
 export * from './hooks/index.js';
 

@@ -15,7 +15,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 const osPaths = { home: '', tmp: '' };
 vi.mock('os', async () => {
@@ -172,9 +172,9 @@ describe('#3873 non-git state-root anchoring', () => {
             mkdirSync(tempJob, { recursive: true });
             expect(isSensitiveStateLocation(tempJob)).toBe(true);
         });
-        it('does not flag ordinary project directories', () => {
-            const project = join(scratch, 'my-project');
-            mkdirSync(project, { recursive: true });
+        it('does not flag ordinary project paths outside protected system and temporary roots', () => {
+            // A real OS temporary fixture remains sensitive even when tmpdir is mocked.
+            const project = process.platform === 'win32' ? 'C:\\projects\\my-project' : '/projects/my-project';
             expect(isSensitiveStateLocation(project)).toBe(false);
             expect(isSensitiveStateLocation(join(project, 'src'))).toBe(false);
         });
@@ -220,7 +220,7 @@ describe('#3873 non-git state-root anchoring', () => {
             for (const dir of [repo, join(repo, 'x'), join(repo, 'x', 'y')]) {
                 process.chdir(dir);
                 clearWorktreeCache();
-                expect(getOmcRoot()).toBe(join(repo, '.omg'));
+                expect(getOmcRoot()).toBe(join(realpathSync(repo), '.omg'));
             }
         });
         it('OMC_STATE_DIR still centralizes non-git state', () => {
@@ -258,7 +258,7 @@ describe('#3873 non-git state-root anchoring', () => {
             execFileSync('git', ['init', '-q'], { cwd: repo });
             process.chdir(repo);
             clearWorktreeCache();
-            expect(getOmcRoot()).toBe(join(repo, '.omg'));
+            expect(getOmcRoot()).toBe(join(realpathSync(repo), '.omg'));
         });
         it('.omc-workspace remains separate from non-git canonical anchoring', () => {
             const parent = join(scratch, 'ws-parent');
@@ -270,7 +270,9 @@ describe('#3873 non-git state-root anchoring', () => {
             expect(anchor).not.toBe(join(parent, 'repo-b', '.omg'));
             mkdirSync(join(parent, '.omg'), { recursive: true });
             clearWorktreeCache();
-            expect(resolveNonGitStateAnchor(inner)).toBe(parent);
+            // An explicit workspace marker cannot override sensitive-location refusal.
+            const expectedAnchor = isSensitiveStateLocation(parent) ? fakeHome : realpathSync(parent);
+            expect(resolveNonGitStateAnchor(inner)).toBe(expectedAnchor);
         });
     });
     describe('workingDirectory is honored (#3873)', () => {
@@ -280,7 +282,7 @@ describe('#3873 non-git state-root anchoring', () => {
             mkdirSync(sub, { recursive: true });
             process.chdir(base);
             clearWorktreeCache();
-            expect(validateWorkingDirectory(sub)).toBe(resolve(sub));
+            expect(validateWorkingDirectory(sub)).toBe(realpathSync(sub));
         });
         it('git sessions still normalize subdirs to the git toplevel', () => {
             if (!gitAvailable)
@@ -291,7 +293,7 @@ describe('#3873 non-git state-root anchoring', () => {
             execFileSync('git', ['init', '-q'], { cwd: repo });
             process.chdir(sub);
             clearWorktreeCache();
-            expect(validateWorkingDirectory(sub)).toBe(resolve(repo));
+            expect(validateWorkingDirectory(sub)).toBe(realpathSync(repo));
         });
         it('outside the trusted root still throws', () => {
             const base = join(scratch, 'nogit-wd2');

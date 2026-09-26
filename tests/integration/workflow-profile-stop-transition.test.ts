@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { getProcessStartIdentitySync } from '../../src/platform/process-utils.js';
+import { provisionStandaloneStateLockBridge } from '../../src/installer/index.js';
 import { resolveCanonicalWorkflowStagePrompt } from '../../scripts/lib/workflow-stage-prompts.mjs';
 
 
@@ -45,15 +47,10 @@ describe('canonical workflow stage prompt serialization', () => {
   });
 });
 
-/** Process-start identity the lock module accepts for a live owner on this platform. */
-function liveProcessStart() {
-  if (process.platform !== 'linux') return String(Math.max(1, Math.floor(Date.now() - process.uptime() * 1000)));
-  const stat = readFileSync(`/proc/${process.pid}/stat`, 'utf8');
-  return stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/)[19];
-}
-
 function liveLockOwner() {
-  return JSON.stringify({ version: 1, pid: process.pid, processStart: liveProcessStart(), createdAt: new Date().toISOString(), nonce: randomUUID() });
+  const processStart = getProcessStartIdentitySync(process.pid);
+  if (processStart === null) throw new Error('unable to determine process start identity');
+  return JSON.stringify({ version: 1, pid: process.pid, processStart, createdAt: new Date().toISOString(), nonce: randomUUID() });
 }
 
 function abandonedLockOwner() {
@@ -80,6 +77,7 @@ function fixture(kind) {
   if (kind === 'installed-template') {
     const hooks = join(dir, 'installed-hooks');
     cpSync(join(root, 'templates', 'hooks'), hooks, { recursive: true });
+    provisionStandaloneStateLockBridge(root, join(hooks, 'lib', 'state-lock.mjs'));
     hook = join(hooks, 'persistent-mode.mjs');
   }
   return { dir, home, claudeConfigDir, project, sessionId, transcript, statePath, hook };

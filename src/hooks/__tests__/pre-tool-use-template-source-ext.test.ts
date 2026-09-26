@@ -320,6 +320,7 @@ describe('pre-tool-use template source extension detection', () => {
 
       expect(output.continue).toBe(true);
       expect(hasDelegationNotice(output)).toBe(true);
+      expect(hookSpecificOutput?.additionalContext).toContain('Bash command may modify source files');
     });
   });
 

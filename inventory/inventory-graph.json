@@ -5,49 +5,50 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "e4b108da9f7906d9d2d073f038014ae1e5331437",
-    "sourceSha256": "7eb2892d1d61caf1b67ef323d2a21e2f123b214d9dd0e5cc13772c9c8313a881",
+    "head": "9b451c577f94c3bc2be780ede5c4de1edee51759",
+    "sourceSha256": "c2a9adcf7a77ee7507d0bc2ccefac374361095f4d6c1672b1c4ee5d0439d8591",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "e4b108da9f7906d9d2d073f038014ae1e5331437",
-  "sourceSha256": "7eb2892d1d61caf1b67ef323d2a21e2f123b214d9dd0e5cc13772c9c8313a881",
+  "head": "9b451c577f94c3bc2be780ede5c4de1edee51759",
+  "sourceSha256": "c2a9adcf7a77ee7507d0bc2ccefac374361095f4d6c1672b1c4ee5d0439d8591",
   "counts": {
     "public": {
-      "skills": 51,
+      "skills": 53,
       "commands": 21,
       "workflows": 8,
       "agents": 20,
-      "total": 100
+      "total": 102
     },
     "internal": {
-      "hookFiles": 304,
-      "featureFiles": 71,
+      "hookFiles": 305,
+      "featureFiles": 80,
       "toolFiles": 61,
-      "libFiles": 40,
-      "templateHooks": 21,
-      "srcFiles": 1364,
-      "total": 1385
+      "libFiles": 42,
+      "templateHooks": 22,
+      "srcFiles": 1380,
+      "total": 1402
     },
     "generated": {
-      "distFiles": 5299,
+      "distFiles": 5363,
       "bridgeFiles": 9,
-      "total": 5308
+      "total": 5372
     },
     "prompt": {
       "promptLikeFiles": 62
     },
-    "skills": 51,
+    "skills": 53,
     "commands": 21,
-    "hookFiles": 304,
+    "hookFiles": 305,
     "workflows": 8,
     "agentDefinitions": 18,
     "promptLikeFiles": 62
   },
   "public": {
     "skills": [
+      "agent-doc-discipline",
       "ai-slop-cleaner",
       "ask",
       "ask-navigator",
@@ -65,6 +66,7 @@
       "execute",
       "external-context",
       "graph",
+      "harbor",
       "hud",
       "launch",
       "loft",
@@ -400,6 +402,7 @@
       "src/hooks/session-end/action-watchdog.ts",
       "src/hooks/session-end/callbacks.ts",
       "src/hooks/session-end/cleanup-manifest.ts",
+      "src/hooks/session-end/foreground-bootstrap.ts",
       "src/hooks/session-end/index.ts",
       "src/hooks/session-end/worker.ts",
       "src/hooks/setup/README.md",
@@ -501,6 +504,15 @@
       "src/features/delegation-routing/resolver.ts",
       "src/features/delegation-routing/types.ts",
       "src/features/index.ts",
+      "src/features/lookout/__tests__/lookout-workspace.test.ts",
+      "src/features/lookout/__tests__/lookout.test.ts",
+      "src/features/lookout/command-parser.ts",
+      "src/features/lookout/index.ts",
+      "src/features/lookout/substitution-parser.ts",
+      "src/features/lookout/test-artifact-parser.ts",
+      "src/features/lookout/types.ts",
+      "src/features/lookout/workspace.ts",
+      "src/features/lookout/wrapper-parser.ts",
       "src/features/magic-keywords.ts",
       "src/features/model-routing/__tests__/index.test.ts",
       "src/features/model-routing/index.ts",
@@ -610,8 +622,10 @@
       "src/lib/__tests__/sync-publication-short-write.test.ts",
       "src/lib/__tests__/truncate-prompt.test.ts",
       "src/lib/__tests__/worktree-cleanup-safety.test.ts",
+      "src/lib/__tests__/worktree-paths-bare-container.test.ts",
       "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
       "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
+      "src/lib/__tests__/worktree-paths-git-probe-locale.test.ts",
       "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
       "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
       "src/lib/__tests__/worktree-paths-split-warning.test.ts",
@@ -652,6 +666,7 @@
       "templates/hooks/lib/precompact-publisher.mjs",
       "templates/hooks/lib/precompact-restore.mjs",
       "templates/hooks/lib/skill-entitlements.mjs",
+      "templates/hooks/lib/state-lock.mjs",
       "templates/hooks/lib/state-root.mjs",
       "templates/hooks/lib/stdin.mjs",
       "templates/hooks/lib/workflow-profile-runtime.mjs",
@@ -779,6 +794,7 @@
       "scripts/lib/precompact-publisher.mjs",
       "scripts/lib/precompact-restore.mjs",
       "scripts/lib/skill-entitlements.mjs",
+      "scripts/lib/state-lock.mjs",
       "scripts/lib/state-root.cjs",
       "scripts/lib/state-root.mjs",
       "scripts/lib/stdin.mjs",
@@ -1730,6 +1746,10 @@
       "dist/__tests__/session-start-cache-cleanup.test.d.ts.map",
       "dist/__tests__/session-start-cache-cleanup.test.js",
       "dist/__tests__/session-start-cache-cleanup.test.js.map",
+      "dist/__tests__/session-start-context-budget.test.d.ts",
+      "dist/__tests__/session-start-context-budget.test.d.ts.map",
+      "dist/__tests__/session-start-context-budget.test.js",
+      "dist/__tests__/session-start-context-budget.test.js.map",
       "dist/__tests__/session-start-precompact-restore.test.d.ts",
       "dist/__tests__/session-start-precompact-restore.test.d.ts.map",
       "dist/__tests__/session-start-precompact-restore.test.js",
@@ -2170,6 +2190,10 @@
       "dist/cli/__tests__/launch.test.d.ts.map",
       "dist/cli/__tests__/launch.test.js",
       "dist/cli/__tests__/launch.test.js.map",
+      "dist/cli/__tests__/lookout-cli.test.d.ts",
+      "dist/cli/__tests__/lookout-cli.test.d.ts.map",
+      "dist/cli/__tests__/lookout-cli.test.js",
+      "dist/cli/__tests__/lookout-cli.test.js.map",
       "dist/cli/__tests__/plugin-dir-capture.test.d.ts",
       "dist/cli/__tests__/plugin-dir-capture.test.d.ts.map",
       "dist/cli/__tests__/plugin-dir-capture.test.js",
@@ -2346,6 +2370,10 @@
       "dist/cli/launch.d.ts.map",
       "dist/cli/launch.js",
       "dist/cli/launch.js.map",
+      "dist/cli/lookout.d.ts",
+      "dist/cli/lookout.d.ts.map",
+      "dist/cli/lookout.js",
+      "dist/cli/lookout.js.map",
       "dist/cli/team.d.ts",
       "dist/cli/team.d.ts.map",
       "dist/cli/team.js",
@@ -2555,6 +2583,42 @@
       "dist/features/index.d.ts.map",
       "dist/features/index.js",
       "dist/features/index.js.map",
+      "dist/features/lookout/__tests__/lookout-workspace.test.d.ts",
+      "dist/features/lookout/__tests__/lookout-workspace.test.d.ts.map",
+      "dist/features/lookout/__tests__/lookout-workspace.test.js",
+      "dist/features/lookout/__tests__/lookout-workspace.test.js.map",
+      "dist/features/lookout/__tests__/lookout.test.d.ts",
+      "dist/features/lookout/__tests__/lookout.test.d.ts.map",
+      "dist/features/lookout/__tests__/lookout.test.js",
+      "dist/features/lookout/__tests__/lookout.test.js.map",
+      "dist/features/lookout/command-parser.d.ts",
+      "dist/features/lookout/command-parser.d.ts.map",
+      "dist/features/lookout/command-parser.js",
+      "dist/features/lookout/command-parser.js.map",
+      "dist/features/lookout/index.d.ts",
+      "dist/features/lookout/index.d.ts.map",
+      "dist/features/lookout/index.js",
+      "dist/features/lookout/index.js.map",
+      "dist/features/lookout/substitution-parser.d.ts",
+      "dist/features/lookout/substitution-parser.d.ts.map",
+      "dist/features/lookout/substitution-parser.js",
+      "dist/features/lookout/substitution-parser.js.map",
+      "dist/features/lookout/test-artifact-parser.d.ts",
+      "dist/features/lookout/test-artifact-parser.d.ts.map",
+      "dist/features/lookout/test-artifact-parser.js",
+      "dist/features/lookout/test-artifact-parser.js.map",
+      "dist/features/lookout/types.d.ts",
+      "dist/features/lookout/types.d.ts.map",
+      "dist/features/lookout/types.js",
+      "dist/features/lookout/types.js.map",
+      "dist/features/lookout/workspace.d.ts",
+      "dist/features/lookout/workspace.d.ts.map",
+      "dist/features/lookout/workspace.js",
+      "dist/features/lookout/workspace.js.map",
+      "dist/features/lookout/wrapper-parser.d.ts",
+      "dist/features/lookout/wrapper-parser.d.ts.map",
+      "dist/features/lookout/wrapper-parser.js",
+      "dist/features/lookout/wrapper-parser.js.map",
       "dist/features/magic-keywords.d.ts",
       "dist/features/magic-keywords.d.ts.map",
       "dist/features/magic-keywords.js",
@@ -2779,6 +2843,10 @@
       "dist/graph/runtime/approval.d.ts.map",
       "dist/graph/runtime/approval.js",
       "dist/graph/runtime/approval.js.map",
+      "dist/graph/runtime/contained-fd.d.ts",
+      "dist/graph/runtime/contained-fd.d.ts.map",
+      "dist/graph/runtime/contained-fd.js",
+      "dist/graph/runtime/contained-fd.js.map",
       "dist/graph/runtime/executors/agent.d.ts",
       "dist/graph/runtime/executors/agent.d.ts.map",
       "dist/graph/runtime/executors/agent.js",
@@ -3803,6 +3871,10 @@
       "dist/hooks/session-end/cleanup-manifest.d.ts.map",
       "dist/hooks/session-end/cleanup-manifest.js",
       "dist/hooks/session-end/cleanup-manifest.js.map",
+      "dist/hooks/session-end/foreground-bootstrap.d.ts",
+      "dist/hooks/session-end/foreground-bootstrap.d.ts.map",
+      "dist/hooks/session-end/foreground-bootstrap.js",
+      "dist/hooks/session-end/foreground-bootstrap.js.map",
       "dist/hooks/session-end/index.d.ts",
       "dist/hooks/session-end/index.d.ts.map",
       "dist/hooks/session-end/index.js",
@@ -4429,6 +4501,10 @@
       "dist/lib/__tests__/worktree-cleanup-safety.test.d.ts.map",
       "dist/lib/__tests__/worktree-cleanup-safety.test.js",
       "dist/lib/__tests__/worktree-cleanup-safety.test.js.map",
+      "dist/lib/__tests__/worktree-paths-bare-container.test.d.ts",
+      "dist/lib/__tests__/worktree-paths-bare-container.test.d.ts.map",
+      "dist/lib/__tests__/worktree-paths-bare-container.test.js",
+      "dist/lib/__tests__/worktree-paths-bare-container.test.js.map",
       "dist/lib/__tests__/worktree-paths-foreign-root.test.d.ts",
       "dist/lib/__tests__/worktree-paths-foreign-root.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths-foreign-root.test.js",
@@ -4437,6 +4513,10 @@
       "dist/lib/__tests__/worktree-paths-git-probe-failclosed.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths-git-probe-failclosed.test.js",
       "dist/lib/__tests__/worktree-paths-git-probe-failclosed.test.js.map",
+      "dist/lib/__tests__/worktree-paths-git-probe-locale.test.d.ts",
+      "dist/lib/__tests__/worktree-paths-git-probe-locale.test.d.ts.map",
+      "dist/lib/__tests__/worktree-paths-git-probe-locale.test.js",
+      "dist/lib/__tests__/worktree-paths-git-probe-locale.test.js.map",
       "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts",
       "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths-git-timeout.test.js",
@@ -6398,6 +6478,7 @@
       "src/hooks/session-end/action-watchdog.ts",
       "src/hooks/session-end/callbacks.ts",
       "src/hooks/session-end/cleanup-manifest.ts",
+      "src/hooks/session-end/foreground-bootstrap.ts",
       "src/hooks/session-end/index.ts",
       "src/hooks/session-end/worker.ts",
       "src/hooks/setup/README.md",
@@ -6573,6 +6654,15 @@
       "src/features/delegation-routing/resolver.ts",
       "src/features/delegation-routing/types.ts",
       "src/features/index.ts",
+      "src/features/lookout/__tests__/lookout-workspace.test.ts",
+      "src/features/lookout/__tests__/lookout.test.ts",
+      "src/features/lookout/command-parser.ts",
+      "src/features/lookout/index.ts",
+      "src/features/lookout/substitution-parser.ts",
+      "src/features/lookout/test-artifact-parser.ts",
+      "src/features/lookout/types.ts",
+      "src/features/lookout/workspace.ts",
+      "src/features/lookout/wrapper-parser.ts",
       "src/features/magic-keywords.ts",
       "src/features/model-routing/__tests__/index.test.ts",
       "src/features/model-routing/index.ts",
@@ -12020,6 +12110,26 @@
         "path": "dist/__tests__/session-start-cache-cleanup.test.js.map"
       },
       {
+        "id": "dist/__tests__/session-start-context-budget.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-context-budget.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/session-start-context-budget.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-context-budget.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/session-start-context-budget.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-context-budget.test.js"
+      },
+      {
+        "id": "dist/__tests__/session-start-context-budget.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-start-context-budget.test.js.map"
+      },
+      {
         "id": "dist/__tests__/session-start-precompact-restore.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/session-start-precompact-restore.test.d.ts"
@@ -14220,6 +14330,26 @@
         "path": "dist/cli/__tests__/launch.test.js.map"
       },
       {
+        "id": "dist/cli/__tests__/lookout-cli.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/lookout-cli.test.d.ts"
+      },
+      {
+        "id": "dist/cli/__tests__/lookout-cli.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/lookout-cli.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/__tests__/lookout-cli.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/lookout-cli.test.js"
+      },
+      {
+        "id": "dist/cli/__tests__/lookout-cli.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/lookout-cli.test.js.map"
+      },
+      {
         "id": "dist/cli/__tests__/plugin-dir-capture.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/__tests__/plugin-dir-capture.test.d.ts"
@@ -15098,6 +15228,26 @@
         "id": "dist/cli/launch.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/launch.js.map"
+      },
+      {
+        "id": "dist/cli/lookout.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/lookout.d.ts"
+      },
+      {
+        "id": "dist/cli/lookout.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/lookout.d.ts.map"
+      },
+      {
+        "id": "dist/cli/lookout.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/lookout.js"
+      },
+      {
+        "id": "dist/cli/lookout.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/lookout.js.map"
       },
       {
         "id": "dist/cli/team.d.ts",
@@ -16143,6 +16293,186 @@
         "id": "dist/features/index.js.map",
         "kind": "generated-dist",
         "path": "dist/features/index.js.map"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace.test.d.ts"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace.test.js"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout-workspace.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout-workspace.test.js.map"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout.test.d.ts"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout.test.js"
+      },
+      {
+        "id": "dist/features/lookout/__tests__/lookout.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/__tests__/lookout.test.js.map"
+      },
+      {
+        "id": "dist/features/lookout/command-parser.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/command-parser.d.ts"
+      },
+      {
+        "id": "dist/features/lookout/command-parser.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/command-parser.d.ts.map"
+      },
+      {
+        "id": "dist/features/lookout/command-parser.js",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/command-parser.js"
+      },
+      {
+        "id": "dist/features/lookout/command-parser.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/command-parser.js.map"
+      },
+      {
+        "id": "dist/features/lookout/index.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/index.d.ts"
+      },
+      {
+        "id": "dist/features/lookout/index.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/index.d.ts.map"
+      },
+      {
+        "id": "dist/features/lookout/index.js",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/index.js"
+      },
+      {
+        "id": "dist/features/lookout/index.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/index.js.map"
+      },
+      {
+        "id": "dist/features/lookout/substitution-parser.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/substitution-parser.d.ts"
+      },
+      {
+        "id": "dist/features/lookout/substitution-parser.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/substitution-parser.d.ts.map"
+      },
+      {
+        "id": "dist/features/lookout/substitution-parser.js",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/substitution-parser.js"
+      },
+      {
+        "id": "dist/features/lookout/substitution-parser.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/substitution-parser.js.map"
+      },
+      {
+        "id": "dist/features/lookout/test-artifact-parser.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/test-artifact-parser.d.ts"
+      },
+      {
+        "id": "dist/features/lookout/test-artifact-parser.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/test-artifact-parser.d.ts.map"
+      },
+      {
+        "id": "dist/features/lookout/test-artifact-parser.js",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/test-artifact-parser.js"
+      },
+      {
+        "id": "dist/features/lookout/test-artifact-parser.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/test-artifact-parser.js.map"
+      },
+      {
+        "id": "dist/features/lookout/types.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/types.d.ts"
+      },
+      {
+        "id": "dist/features/lookout/types.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/types.d.ts.map"
+      },
+      {
+        "id": "dist/features/lookout/types.js",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/types.js"
+      },
+      {
+        "id": "dist/features/lookout/types.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/types.js.map"
+      },
+      {
+        "id": "dist/features/lookout/workspace.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/workspace.d.ts"
+      },
+      {
+        "id": "dist/features/lookout/workspace.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/workspace.d.ts.map"
+      },
+      {
+        "id": "dist/features/lookout/workspace.js",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/workspace.js"
+      },
+      {
+        "id": "dist/features/lookout/workspace.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/workspace.js.map"
+      },
+      {
+        "id": "dist/features/lookout/wrapper-parser.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/wrapper-parser.d.ts"
+      },
+      {
+        "id": "dist/features/lookout/wrapper-parser.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/wrapper-parser.d.ts.map"
+      },
+      {
+        "id": "dist/features/lookout/wrapper-parser.js",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/wrapper-parser.js"
+      },
+      {
+        "id": "dist/features/lookout/wrapper-parser.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/lookout/wrapper-parser.js.map"
       },
       {
         "id": "dist/features/magic-keywords.d.ts",
@@ -17263,6 +17593,26 @@
         "id": "dist/graph/runtime/approval.js.map",
         "kind": "generated-dist",
         "path": "dist/graph/runtime/approval.js.map"
+      },
+      {
+        "id": "dist/graph/runtime/contained-fd.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/contained-fd.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/contained-fd.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/contained-fd.d.ts.map"
+      },
+      {
+        "id": "dist/graph/runtime/contained-fd.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/contained-fd.js"
+      },
+      {
+        "id": "dist/graph/runtime/contained-fd.js.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/contained-fd.js.map"
       },
       {
         "id": "dist/graph/runtime/executors/agent.d.ts",
@@ -22385,6 +22735,26 @@
         "path": "dist/hooks/session-end/cleanup-manifest.js.map"
       },
       {
+        "id": "dist/hooks/session-end/foreground-bootstrap.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/foreground-bootstrap.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/foreground-bootstrap.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/foreground-bootstrap.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/foreground-bootstrap.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/foreground-bootstrap.js"
+      },
+      {
+        "id": "dist/hooks/session-end/foreground-bootstrap.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/foreground-bootstrap.js.map"
+      },
+      {
         "id": "dist/hooks/session-end/index.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/index.d.ts"
@@ -25515,6 +25885,26 @@
         "path": "dist/lib/__tests__/worktree-cleanup-safety.test.js.map"
       },
       {
+        "id": "dist/lib/__tests__/worktree-paths-bare-container.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-bare-container.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-bare-container.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-bare-container.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-bare-container.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-bare-container.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-bare-container.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-bare-container.test.js.map"
+      },
+      {
         "id": "dist/lib/__tests__/worktree-paths-foreign-root.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/worktree-paths-foreign-root.test.d.ts"
@@ -25553,6 +25943,26 @@
         "id": "dist/lib/__tests__/worktree-paths-git-probe-failclosed.test.js.map",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/worktree-paths-git-probe-failclosed.test.js.map"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-git-probe-locale.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-git-probe-locale.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-git-probe-locale.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-git-probe-locale.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-git-probe-locale.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-git-probe-locale.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-git-probe-locale.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-git-probe-locale.test.js.map"
       },
       {
         "id": "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts",
@@ -35070,6 +35480,11 @@
         "path": "scripts/lib/skill-entitlements.mjs"
       },
       {
+        "id": "scripts/lib/state-lock.mjs",
+        "kind": "script",
+        "path": "scripts/lib/state-lock.mjs"
+      },
+      {
         "id": "scripts/lib/state-root.cjs",
         "kind": "script",
         "path": "scripts/lib/state-root.cjs"
@@ -35460,6 +35875,11 @@
         "path": "skills/AGENTS.md"
       },
       {
+        "id": "skills/agent-doc-discipline/SKILL.md",
+        "kind": "skill",
+        "path": "skills/agent-doc-discipline/SKILL.md"
+      },
+      {
         "id": "skills/ai-slop-cleaner/SKILL.md",
         "kind": "skill",
         "path": "skills/ai-slop-cleaner/SKILL.md"
@@ -35543,6 +35963,11 @@
         "id": "skills/graph/SKILL.md",
         "kind": "skill",
         "path": "skills/graph/SKILL.md"
+      },
+      {
+        "id": "skills/harbor/SKILL.md",
+        "kind": "skill",
+        "path": "skills/harbor/SKILL.md"
       },
       {
         "id": "skills/hud/SKILL.md",
@@ -37050,6 +37475,11 @@
         "path": "src/__tests__/session-start-cache-cleanup.test.ts"
       },
       {
+        "id": "src/__tests__/session-start-context-budget.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/session-start-context-budget.test.ts"
+      },
+      {
         "id": "src/__tests__/session-start-precompact-restore.test.ts",
         "kind": "src",
         "path": "src/__tests__/session-start-precompact-restore.test.ts"
@@ -37620,6 +38050,11 @@
         "path": "src/cli/__tests__/launch.test.ts"
       },
       {
+        "id": "src/cli/__tests__/lookout-cli.test.ts",
+        "kind": "src",
+        "path": "src/cli/__tests__/lookout-cli.test.ts"
+      },
+      {
         "id": "src/cli/__tests__/plugin-dir-capture.test.ts",
         "kind": "src",
         "path": "src/cli/__tests__/plugin-dir-capture.test.ts"
@@ -37838,6 +38273,11 @@
         "id": "src/cli/launch.ts",
         "kind": "src",
         "path": "src/cli/launch.ts"
+      },
+      {
+        "id": "src/cli/lookout.ts",
+        "kind": "src",
+        "path": "src/cli/lookout.ts"
       },
       {
         "id": "src/cli/team.ts",
@@ -38118,6 +38558,51 @@
         "id": "src/features/index.ts",
         "kind": "feature",
         "path": "src/features/index.ts"
+      },
+      {
+        "id": "src/features/lookout/__tests__/lookout-workspace.test.ts",
+        "kind": "feature",
+        "path": "src/features/lookout/__tests__/lookout-workspace.test.ts"
+      },
+      {
+        "id": "src/features/lookout/__tests__/lookout.test.ts",
+        "kind": "feature",
+        "path": "src/features/lookout/__tests__/lookout.test.ts"
+      },
+      {
+        "id": "src/features/lookout/command-parser.ts",
+        "kind": "feature",
+        "path": "src/features/lookout/command-parser.ts"
+      },
+      {
+        "id": "src/features/lookout/index.ts",
+        "kind": "feature",
+        "path": "src/features/lookout/index.ts"
+      },
+      {
+        "id": "src/features/lookout/substitution-parser.ts",
+        "kind": "feature",
+        "path": "src/features/lookout/substitution-parser.ts"
+      },
+      {
+        "id": "src/features/lookout/test-artifact-parser.ts",
+        "kind": "feature",
+        "path": "src/features/lookout/test-artifact-parser.ts"
+      },
+      {
+        "id": "src/features/lookout/types.ts",
+        "kind": "feature",
+        "path": "src/features/lookout/types.ts"
+      },
+      {
+        "id": "src/features/lookout/workspace.ts",
+        "kind": "feature",
+        "path": "src/features/lookout/workspace.ts"
+      },
+      {
+        "id": "src/features/lookout/wrapper-parser.ts",
+        "kind": "feature",
+        "path": "src/features/lookout/wrapper-parser.ts"
       },
       {
         "id": "src/features/magic-keywords.ts",
@@ -38418,6 +38903,11 @@
         "id": "src/graph/runtime/approval.ts",
         "kind": "src",
         "path": "src/graph/runtime/approval.ts"
+      },
+      {
+        "id": "src/graph/runtime/contained-fd.ts",
+        "kind": "src",
+        "path": "src/graph/runtime/contained-fd.ts"
       },
       {
         "id": "src/graph/runtime/executors/agent.ts",
@@ -39705,6 +40195,11 @@
         "path": "src/hooks/session-end/cleanup-manifest.ts"
       },
       {
+        "id": "src/hooks/session-end/foreground-bootstrap.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/foreground-bootstrap.ts"
+      },
+      {
         "id": "src/hooks/session-end/index.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/index.ts"
@@ -40550,6 +41045,11 @@
         "path": "src/lib/__tests__/worktree-cleanup-safety.test.ts"
       },
       {
+        "id": "src/lib/__tests__/worktree-paths-bare-container.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/worktree-paths-bare-container.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/worktree-paths-foreign-root.test.ts"
@@ -40558,6 +41058,11 @@
         "id": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts"
+      },
+      {
+        "id": "src/lib/__tests__/worktree-paths-git-probe-locale.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/worktree-paths-git-probe-locale.test.ts"
       },
       {
         "id": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
@@ -42765,6 +43270,11 @@
         "path": "templates/hooks/lib/skill-entitlements.mjs"
       },
       {
+        "id": "templates/hooks/lib/state-lock.mjs",
+        "kind": "template-hook",
+        "path": "templates/hooks/lib/state-lock.mjs"
+      },
+      {
         "id": "templates/hooks/lib/state-root.mjs",
         "kind": "template-hook",
         "path": "templates/hooks/lib/state-root.mjs"
@@ -42860,6 +43370,11 @@
         "path": "tests/benchmark-diagnostics.test.ts"
       },
       {
+        "id": "tests/fixtures/harbor/scenarios.json",
+        "kind": "other",
+        "path": "tests/fixtures/harbor/scenarios.json"
+      },
+      {
         "id": "tests/fixtures/multirepo/drift-fixture.mjs",
         "kind": "other",
         "path": "tests/fixtures/multirepo/drift-fixture.mjs"
@@ -42898,6 +43413,11 @@
         "id": "tests/fixtures/typescript-pnpm/tsconfig.json",
         "kind": "other",
         "path": "tests/fixtures/typescript-pnpm/tsconfig.json"
+      },
+      {
+        "id": "tests/harbor-scenarios.test.ts",
+        "kind": "other",
+        "path": "tests/harbor-scenarios.test.ts"
       },
       {
         "id": "tests/integration/concurrent-project-memory.test.ts",
@@ -42963,6 +43483,11 @@
         "id": "tests/lint/inventory-graph-drift.test.ts",
         "kind": "other",
         "path": "tests/lint/inventory-graph-drift.test.ts"
+      },
+      {
+        "id": "tests/lint/issue-3996-ruby-false-positive.test.ts",
+        "kind": "other",
+        "path": "tests/lint/issue-3996-ruby-false-positive.test.ts"
       },
       {
         "id": "tests/lint/setup-phases-drift.test.ts",
@@ -43993,11 +44518,6 @@
       },
       {
         "from": "scripts/lib/atomic-write.mjs",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/lib/atomic-write.mjs",
         "to": "external:crypto",
         "kind": "imports"
       },
@@ -44009,6 +44529,11 @@
       {
         "from": "scripts/lib/atomic-write.mjs",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/atomic-write.mjs",
+        "to": "scripts/lib/state-lock.mjs",
         "kind": "imports"
       },
       {
@@ -44134,6 +44659,36 @@
       {
         "from": "scripts/lib/precompact-restore.mjs",
         "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-lock.mjs",
+        "to": "external:better-sqlite3",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-lock.mjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-lock.mjs",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-lock.mjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-lock.mjs",
+        "to": "external:module",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-lock.mjs",
+        "to": "external:path",
         "kind": "imports"
       },
       {
@@ -44853,7 +45408,7 @@
       },
       {
         "from": "scripts/session-end.mjs",
-        "to": "dist/hooks/session-end/index.js",
+        "to": "dist/hooks/session-end/foreground-bootstrap.js",
         "kind": "imports"
       },
       {
@@ -45377,6 +45932,11 @@
         "kind": "imports"
       },
       {
+        "from": "skills/agent-doc-discipline/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
         "from": "skills/ai-slop-cleaner/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -45458,6 +46018,11 @@
       },
       {
         "from": "skills/graph/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/harbor/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
@@ -47533,6 +48098,11 @@
       },
       {
         "from": "src/__tests__/hud/model.test.ts",
+        "to": "src/hud/colors.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/model.test.ts",
         "to": "src/hud/elements/model.ts",
         "kind": "imports"
       },
@@ -48528,7 +49098,17 @@
       },
       {
         "from": "src/__tests__/keyword-detector-script.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/keyword-detector-script.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/keyword-detector-script.test.ts",
+        "to": "src/installer/index.ts",
         "kind": "imports"
       },
       {
@@ -50378,6 +50958,11 @@
       },
       {
         "from": "src/__tests__/release-guidance.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/release-guidance.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -50742,6 +51327,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/session-end-process-exit.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/session-friction-report.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -50859,6 +51449,36 @@
       {
         "from": "src/__tests__/session-start-cache-cleanup.test.ts",
         "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-context-budget.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-context-budget.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-context-budget.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-context-budget.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-context-budget.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-context-budget.test.ts",
+        "to": "external:vitest",
         "kind": "imports"
       },
       {
@@ -51419,6 +52039,11 @@
       {
         "from": "src/__tests__/skill-injector-script.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skill-injector-script.test.ts",
+        "to": "src/installer/index.ts",
         "kind": "imports"
       },
       {
@@ -52224,6 +52849,11 @@
       {
         "from": "src/__tests__/workflow-profile-activation-script.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/workflow-profile-activation-script.test.ts",
+        "to": "src/installer/index.ts",
         "kind": "imports"
       },
       {
@@ -53419,6 +54049,41 @@
       {
         "from": "src/cli/__tests__/launch.test.ts",
         "to": "src/cli/tmux-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/lookout-cli.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/lookout-cli.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/lookout-cli.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/lookout-cli.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/lookout-cli.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/lookout-cli.test.ts",
+        "to": "src/cli/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/lookout-cli.test.ts",
+        "to": "src/cli/lookout.ts",
         "kind": "imports"
       },
       {
@@ -54678,6 +55343,11 @@
       },
       {
         "from": "src/cli/index.ts",
+        "to": "src/cli/lookout.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
         "to": "src/cli/win32-warning.ts",
         "kind": "imports"
       },
@@ -54820,6 +55490,26 @@
         "from": "src/cli/launch.ts",
         "to": "src/utils/config-dir.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/cli/lookout.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/lookout.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/lookout.ts",
+        "to": "src/features/lookout/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/lookout.ts",
+        "to": "src/features/lookout/index.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/cli/team.ts",
@@ -55713,6 +56403,16 @@
       },
       {
         "from": "src/features/index.ts",
+        "to": "src/features/lookout/index.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/features/index.ts",
+        "to": "src/features/lookout/index.ts",
+        "kind": "type-exports"
+      },
+      {
+        "from": "src/features/index.ts",
         "to": "src/features/magic-keywords.ts",
         "kind": "exports"
       },
@@ -55785,6 +56485,171 @@
         "from": "src/features/index.ts",
         "to": "src/features/verification/index.ts",
         "kind": "type-exports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout-workspace.test.ts",
+        "to": "src/features/lookout/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/__tests__/lookout.test.ts",
+        "to": "src/features/lookout/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/command-parser.ts",
+        "to": "src/features/lookout/substitution-parser.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/command-parser.ts",
+        "to": "src/features/lookout/wrapper-parser.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/index.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/index.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/index.ts",
+        "to": "src/features/lookout/command-parser.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/index.ts",
+        "to": "src/features/lookout/command-parser.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/features/lookout/index.ts",
+        "to": "src/features/lookout/substitution-parser.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/index.ts",
+        "to": "src/features/lookout/test-artifact-parser.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/index.ts",
+        "to": "src/features/lookout/types.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/features/lookout/index.ts",
+        "to": "src/features/lookout/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/index.ts",
+        "to": "src/features/lookout/types.ts",
+        "kind": "type-exports"
+      },
+      {
+        "from": "src/features/lookout/index.ts",
+        "to": "src/features/lookout/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/features/lookout/index.ts",
+        "to": "src/features/lookout/workspace.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/test-artifact-parser.ts",
+        "to": "src/features/lookout/command-parser.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/test-artifact-parser.ts",
+        "to": "src/features/lookout/command-parser.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/features/lookout/test-artifact-parser.ts",
+        "to": "src/features/lookout/substitution-parser.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/workspace.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/workspace.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/workspace.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/workspace.ts",
+        "to": "src/features/lookout/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/lookout/workspace.ts",
+        "to": "src/features/lookout/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/features/magic-keywords.ts",
@@ -57052,6 +57917,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/graph/runtime/contained-fd.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
         "from": "src/graph/runtime/executors/agent.ts",
         "to": "external:@anthropic-ai/claude-agent-sdk",
         "kind": "imports"
@@ -57257,6 +58127,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/graph/runtime/run-dir.ts",
+        "to": "src/graph/runtime/contained-fd.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/graph/runtime/runner.ts",
         "to": "external:path",
         "kind": "imports"
@@ -57329,6 +58204,11 @@
       {
         "from": "src/graph/runtime/safe-fs.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/safe-fs.ts",
+        "to": "src/graph/runtime/contained-fd.ts",
         "kind": "imports"
       },
       {
@@ -60752,6 +61632,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/mode-registry/__tests__/session-isolation.test.ts",
+        "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/mode-registry/index.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -62537,11 +63422,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/hooks/ralph/loop.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/hooks/ralph/prd.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -63598,6 +64478,11 @@
       },
       {
         "from": "src/hooks/session-end/__tests__/session-end-timeout.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/session-end-timeout.test.ts",
         "to": "external:os",
         "kind": "imports"
       },
@@ -63838,6 +64723,21 @@
       },
       {
         "from": "src/hooks/session-end/cleanup-manifest.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/foreground-bootstrap.ts",
+        "to": "src/hooks/session-end/cleanup-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/foreground-bootstrap.ts",
+        "to": "src/hooks/session-end/worker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/foreground-bootstrap.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -64158,6 +65058,11 @@
       },
       {
         "from": "src/hooks/subagent-tracker/__tests__/flow-tracer.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/subagent-tracker/__tests__/flow-tracer.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -64315,6 +65220,11 @@
         "from": "src/hooks/subagent-tracker/__tests__/session-isolation.test.ts",
         "to": "src/hooks/subagent-tracker/index.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/subagent-tracker/__tests__/session-replay.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/subagent-tracker/__tests__/session-replay.test.ts",
@@ -64488,11 +65398,6 @@
       },
       {
         "from": "src/hooks/team-dispatch-hook.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/team-dispatch-hook.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -64504,11 +65409,6 @@
       {
         "from": "src/hooks/team-dispatch-hook.ts",
         "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/team-dispatch-hook.ts",
-        "to": "external:util",
         "kind": "imports"
       },
       {
@@ -66573,6 +67473,16 @@
       },
       {
         "from": "src/index.ts",
+        "to": "src/features/lookout/index.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/index.ts",
+        "to": "src/features/lookout/index.ts",
+        "kind": "type-exports"
+      },
+      {
+        "from": "src/index.ts",
         "to": "src/features/magic-keywords.ts",
         "kind": "exports"
       },
@@ -66834,6 +67744,11 @@
       {
         "from": "src/installer/__tests__/hook-templates.test.ts",
         "to": "src/installer/hooks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/__tests__/hook-templates.test.ts",
+        "to": "src/installer/index.ts",
         "kind": "imports"
       },
       {
@@ -67602,6 +68517,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/lib/__tests__/atomic-write.test.ts",
+        "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/lib/__tests__/mode-state-io.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -67614,6 +68534,11 @@
       {
         "from": "src/lib/__tests__/mode-state-io.test.ts",
         "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-io.test.ts",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -67638,6 +68563,11 @@
       },
       {
         "from": "src/lib/__tests__/mode-state-io.test.ts",
+        "to": "src/installer/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-io.test.ts",
         "to": "src/lib/atomic-write.ts",
         "kind": "imports"
       },
@@ -67653,7 +68583,7 @@
       },
       {
         "from": "src/lib/__tests__/mode-state-io.test.ts",
-        "to": "templates/hooks/lib/atomic-write.mjs",
+        "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
       {
@@ -67742,11 +68672,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/lib/__tests__/sync-publication-short-write.test.ts",
-        "to": "templates/hooks/lib/atomic-write.mjs",
-        "kind": "imports"
-      },
-      {
         "from": "src/lib/__tests__/truncate-prompt.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -67779,6 +68704,36 @@
       {
         "from": "src/lib/__tests__/worktree-cleanup-safety.test.ts",
         "to": "src/lib/worktree-cleanup-safety.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-bare-container.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-bare-container.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-bare-container.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-bare-container.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-bare-container.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-bare-container.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -67853,6 +68808,31 @@
       },
       {
         "from": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-probe-locale.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-probe-locale.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-probe-locale.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-probe-locale.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-probe-locale.test.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -68138,7 +69118,7 @@
       },
       {
         "from": "src/lib/mode-state-io.ts",
-        "to": "external:child_process",
+        "to": "external:better-sqlite3",
         "kind": "imports"
       },
       {
@@ -68164,6 +69144,11 @@
       {
         "from": "src/lib/mode-state-io.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/mode-state-io.ts",
+        "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
       {
@@ -70158,6 +71143,11 @@
       },
       {
         "from": "src/platform/__tests__/process-utils-identity.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/platform/__tests__/process-utils-identity.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -70960,16 +71950,6 @@
         "from": "src/team/__tests__/auto-merge-restart.test.ts",
         "to": "src/team/merge-orchestrator.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/team/__tests__/auto-merge.perf.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/__tests__/auto-merge.perf.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
       },
       {
         "from": "src/team/__tests__/auto-merge.perf.test.ts",
@@ -72767,6 +73747,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/team/__tests__/runtime-prompt-mode.test.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/__tests__/runtime-v2-role-routing.test.ts",
         "to": "external:fs/promises",
         "kind": "imports"
@@ -72808,11 +73793,6 @@
       },
       {
         "from": "src/team/__tests__/runtime-v2.cursor-routing.test.ts",
-        "to": "src/team/model-contract.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/team/__tests__/runtime-v2.cursor-routing.test.ts",
         "to": "src/team/runtime-v2.ts",
         "kind": "imports"
       },
@@ -72829,6 +73809,11 @@
       {
         "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
         "to": "external:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
+        "to": "external:node:crypto",
         "kind": "imports"
       },
       {
@@ -72858,18 +73843,23 @@
       },
       {
         "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
+        "to": "src/team/recovery-request-store.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
         "to": "src/team/runtime-v2.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
+        "to": "src/team/state-paths.ts",
         "kind": "imports"
       },
       {
         "from": "src/team/__tests__/runtime-v2.explicit-provider-routing.test.ts",
         "to": "external:vitest",
         "kind": "imports"
-      },
-      {
-        "from": "src/team/__tests__/runtime-v2.explicit-provider-routing.test.ts",
-        "to": "src/team/model-contract.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/team/__tests__/runtime-v2.explicit-provider-routing.test.ts",
@@ -72919,6 +73909,11 @@
       {
         "from": "src/team/__tests__/runtime-v2.gemini-preflight.test.ts",
         "to": "src/team/runtime-v2.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.gemini-preflight.test.ts",
+        "to": "src/team/types.ts",
         "kind": "imports"
       },
       {
@@ -73015,6 +74010,11 @@
         "from": "src/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.ts",
         "to": "src/team/worker-launch-ack.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.ts",
+        "to": "src/team/worker-launch-ack.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/__tests__/runtime-v2.shutdown.test.ts",
@@ -73772,11 +74772,6 @@
         "kind": "type-imports"
       },
       {
-        "from": "src/team/__tests__/teardown-invariant.test.ts",
-        "to": "src/team/tmux-session.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/team/__tests__/tmux-comm.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -74218,6 +75213,11 @@
       },
       {
         "from": "src/team/__tests__/worker-launch-posix-transport.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-posix-transport.test.ts",
         "to": "external:node:fs/promises",
         "kind": "imports"
       },
@@ -74234,6 +75234,11 @@
       {
         "from": "src/team/__tests__/worker-launch-posix-transport.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-posix-transport.test.ts",
+        "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
       {
@@ -76229,6 +77234,11 @@
       {
         "from": "src/team/runtime-v2.ts",
         "to": "src/team/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime-v2.ts",
+        "to": "src/team/types.ts",
         "kind": "type-imports"
       },
       {
@@ -77263,6 +78273,11 @@
       },
       {
         "from": "src/team/worker-launch-ack.ts",
+        "to": "external:node:stream",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/worker-launch-ack.ts",
         "to": "src/lib/atomic-write.ts",
         "kind": "imports"
       },
@@ -77469,6 +78484,11 @@
       {
         "from": "src/tools/__tests__/state-tools.test.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools.test.ts",
+        "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
       {
@@ -79248,6 +80268,11 @@
       },
       {
         "from": "src/workflow/__tests__/alias-resolver.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/workflow/__tests__/alias-resolver.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -79448,11 +80473,6 @@
       },
       {
         "from": "templates/hooks/lib/atomic-write.mjs",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "templates/hooks/lib/atomic-write.mjs",
         "to": "external:crypto",
         "kind": "imports"
       },
@@ -79475,6 +80495,11 @@
         "from": "templates/hooks/lib/atomic-write.mjs",
         "to": "src/hooks/bridge.ts",
         "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/lib/atomic-write.mjs",
+        "to": "templates/hooks/lib/state-lock.mjs",
+        "kind": "imports"
       },
       {
         "from": "templates/hooks/lib/bounded-git-timeout.mjs",
@@ -79613,6 +80638,16 @@
       },
       {
         "from": "templates/hooks/lib/skill-entitlements.mjs",
+        "to": "src/hooks/bridge.ts",
+        "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/lib/state-lock.mjs",
+        "to": "hooks/hooks.json",
+        "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/lib/state-lock.mjs",
         "to": "src/hooks/bridge.ts",
         "kind": "projects"
       },
@@ -80002,6 +81037,16 @@
         "kind": "imports"
       },
       {
+        "from": "tests/harbor-scenarios.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/harbor-scenarios.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
         "from": "tests/integration/concurrent-project-memory.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -80172,6 +81217,11 @@
         "kind": "imports"
       },
       {
+        "from": "tests/integration/workflow-profile-keyword-activation.test.ts",
+        "to": "src/installer/index.ts",
+        "kind": "imports"
+      },
+      {
         "from": "tests/integration/workflow-profile-lock-recovery.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -80204,6 +81254,16 @@
       {
         "from": "tests/integration/workflow-profile-lock-recovery.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/workflow-profile-lock-recovery.test.ts",
+        "to": "src/installer/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/workflow-profile-lock-recovery.test.ts",
+        "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
       {
@@ -80244,6 +81304,16 @@
       {
         "from": "tests/integration/workflow-profile-stop-transition.test.ts",
         "to": "scripts/lib/workflow-stage-prompts.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/workflow-profile-stop-transition.test.ts",
+        "to": "src/installer/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/workflow-profile-stop-transition.test.ts",
+        "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
       {
@@ -80333,6 +81403,21 @@
       },
       {
         "from": "tests/lint/inventory-graph-drift.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-3996-ruby-false-positive.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-3996-ruby-false-positive.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-3996-ruby-false-positive.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -80453,7 +81538,7 @@
       },
       {
         "from": "vitest.config.ts",
-        "to": "external:path",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -80463,12 +81548,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7269,
-      "edgeCount": 7488,
-      "importEdgeCount": 6156,
-      "registerEdgeCount": 72
+      "nodeCount": 7356,
+      "edgeCount": 7600,
+      "importEdgeCount": 6253,
+      "registerEdgeCount": 74
     }
   },
-  "inventorySha256": "c48a8e5a019519c708a9e92be8813c4bccce35699503db33d576aae4831999b5",
-  "manifestSha256": "9bd0b2858837c659fc708fdd23b9db8db4bf5c7abcdba73aceacef27f667e597"
+  "inventorySha256": "2f981ee6e021fc1f32035458d1cd4c19e8467e1951f3dfdc017b5461274d9e49",
+  "manifestSha256": "dd8137fc99cc208b6186d35f060276b952c85ab0d07b0181ab5d21decbceedb3"
 }

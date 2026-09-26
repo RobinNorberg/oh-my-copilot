@@ -27,7 +27,7 @@ OMC ships two surfaces and they are designed to coexist:
 
 | Surface | What you get | Recommended install |
 |---|---|---|
-| **Claude Code plugin** (`oh-my-copilot@omc`) | In-session skills, agents, hooks, statusline, MCP servers — the `/autopilot`, `/ralph`, `/execute`, `/team` slash commands | Marketplace plugin install (Step 1–2 below) |
+| **Claude Code plugin** (`oh-my-copilot@omc`) | In-session skills, agents, hooks, statusline, MCP servers — the `/oh-my-copilot:autopilot`, `/oh-my-copilot:ralph`, `/oh-my-copilot:execute`, and `/oh-my-copilot:team` slash commands | Marketplace plugin install (Step 1–2 below) |
 | **Terminal CLI** (`omg` binary, package `oh-my-copilot`) | Shell commands: `omg setup`, `omg update`, `omg team`, `omg ask`, and a hard-deprecated `omg autoresearch` shim | `npm i -g oh-my-copilot@latest` |
 
 Most users want **both**: the plugin for the in-session experience, and the npm CLI for shell-side automation and updates. Running them in parallel is fully supported — `omg update` and `omg setup` are idempotent and detect the plugin install to avoid duplicating in-session skills (#2252).
@@ -69,13 +69,9 @@ Both can be installed at the same time. The CLI auto-detects the plugin install 
 
 ### Step 3: Run initial setup
 
-After installation, enter one of the following in Claude Code:
+After installation, run this in Claude Code:
 
 ```bash
-# Option 1: natural language
-setup omc
-
-# Option 2: skill command
 /oh-my-copilot:omc-setup
 ```
 
@@ -228,7 +224,7 @@ To configure the HUD display, run:
 
 ### Starting smaller
 
-If autopilot feels too large, start with a single-task command:
+If autopilot feels too large, start with a focused skill:
 
 ```bash
 # Code analysis
@@ -237,11 +233,11 @@ analyze why this test is failing
 # File search
 deepsearch for files that handle authentication
 
-# Simple implementation
-ultrawork add a health check endpoint
+# Approved implementation task
+/oh-my-copilot:execute add a health check endpoint
 ```
 
-These keywords invoke a single appropriate agent directly, without running the full pipeline.
+These surfaces invoke focused work without running the full autopilot pipeline. Use `/oh-my-copilot:team` when the task needs parallel agents.
 
 ### Next steps
 
@@ -291,7 +287,6 @@ Defaults → User config (~/.config/claude-omc/config.jsonc)
 
   // Magic keyword customization
   "magicKeywords": {
-    "ultrawork": ["ultrawork", "ulw", "uw"],
     "search": ["search", "find", "locate"],
     "analyze": ["analyze", "investigate", "examine"],
     "ultrathink": ["ultrathink", "think", "reason"]
@@ -369,14 +364,11 @@ You can change the AI model used by each agent:
 
 ### Customizing magic keywords
 
-You can change keywords in four categories via the `magicKeywords` section of `config.jsonc`:
+You can customize the supported search, analysis, and deep-reasoning categories via the `magicKeywords` section of `config.jsonc`:
 
 ```jsonc
 {
   "magicKeywords": {
-    // Triggers parallel execution mode
-    "ultrawork": ["ultrawork", "ulw", "parallel"],
-
     // Triggers codebase search mode
     "search": ["search", "find", "locate", "grep"],
 
@@ -389,7 +381,7 @@ You can change keywords in four categories via the `magicKeywords` section of `c
 }
 ```
 
-> ℹ️ **Note:** The `magicKeywords` section in `config.jsonc` only allows customizing four categories: `ultrawork`, `search`, `analyze`, and `ultrathink`. Keywords such as `autopilot`, `ralph`, and `ccg` are hardcoded in the keyword-detector hook and cannot be changed via config files.
+> ℹ️ **Note:** Parallel work is not configured as a magic keyword. Use `/oh-my-copilot:team` for coordinated agents, or `/oh-my-copilot:execute` to carry an approved task through verified implementation. Keywords such as `autopilot` and `ralph` are hardcoded in the keyword-detector hook and cannot be changed via config files.
 
 ### Model routing configuration
 

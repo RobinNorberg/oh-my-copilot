@@ -5,7 +5,10 @@
  * Centralises path resolution, ghost-legacy cleanup, directory creation,
  * and file permissions so that individual mode modules don't duplicate this logic.
  */
-/** True when state mutations can be serialized across processes on this platform. */
+/**
+ * True when state mutations can be serialized across processes on this platform. The SQLite
+ * lock backend is platform-independent, so only the test-only 'none' switch reports unsupported.
+ */
 export declare function isStateMutationLockingSupported(): boolean;
 /** Executes a read or mutation against a state file under its mutation lock. */
 export declare function withStateFileMutationLock<T>(filePath: string, callback: () => T, requireExclusive?: boolean): {

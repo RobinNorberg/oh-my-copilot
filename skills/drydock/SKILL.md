@@ -83,7 +83,7 @@ Ask the remaining questions only after language is resolved:
 
 - package/tech stack (for standards and design-system seeds)
 - does this repo have a UI? (no UI → design-system/ is created as a stub with a note, or skipped on request)
-- issue tracker location (GitHub / GitLab / local `.scratch/`) — consumed by tracker-backed flows (the navigator's map home)
+- issue tracker location (GitHub / GitLab / local `.scratch/`) — for V1 harbor intake only GitHub is supported; also record the maintainer's communication authority for intake (issue comments, label changes) — consumed by the navigator's map home and the harbor's intake queue
 
 ### 3. Scaffold (create missing surfaces — seeds render in the document language)
 
@@ -104,6 +104,8 @@ scripts/README.md
 ```
 
 Seed exemplars are reference companions, never a combined payload. Select exactly one companion after resolving `documentLanguage`; do not emit duplicate headings or labels from another companion. Use the longest matching language/script prefix: `en-*` uses English, `zh-Hans-*` uses Simplified Chinese, and `zh-Hant-*` uses Traditional Chinese, while Seed B writes the full resolved tag into `documentLanguage`. For any other valid tag, translate the English canonical companion once while preserving every stable token above.
+
+Before generating seed prose, call the Skill tool with `agent-doc-discipline` and apply its rules; seed prose is ready only when every rule is checkable and carries a why, every surface is self-describing without chat history, and sources are named rather than assumed. A teammate or agent should be able to act on the seed's content by reading alone.
 
 Seed A — CLAUDE.md, en (thin entry; extend in place if the file exists):
 

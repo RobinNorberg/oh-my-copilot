@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveRunDirHandle } from "../../runtime/run-dir.js";
-import { containedPathForPlatform, assertSafeContainedFileName, assertContainedFsSupported, readContainedFileNoFollow, withContainedDirectory, withContainedPathForPlatform, } from "../../runtime/safe-fs.js";
+import { containedPathForPlatform, assertSafeContainedFileName, assertContainedFsSupported, readFileNoFollow, readContainedFileNoFollow, withContainedDirectory, withContainedPathForPlatform, } from "../../runtime/safe-fs.js";
 describe("graph runtime safe filesystem", () => {
     const tempDirs = [];
     afterEach(() => {
@@ -18,11 +18,10 @@ describe("graph runtime safe filesystem", () => {
         const handle = resolveRunDirHandle(root, runId);
         return { root, handle };
     }
-    it("uses traversable procfs only for Linux and does not mutate platform state", () => {
+    it("uses kernel FD paths on Linux and Darwin without mutating platform state", () => {
         const before = process.platform;
         expect(containedPathForPlatform(7, "/runs/example", "artifact", "linux")).toBe("/proc/self/fd/7/artifact");
-        expect(() => containedPathForPlatform(7, "/runs/example", "artifact", "darwin"))
-            .toThrow("refusing pathname fallback");
+        expect(containedPathForPlatform(7, "/runs/example", "artifact", "darwin")).toBe("/dev/fd/7/artifact");
         expect(() => containedPathForPlatform(7, "C:/runs/example", "artifact", "win32"))
             .toThrow("refusing pathname fallback");
         expect(process.platform).toBe(before);
@@ -40,14 +39,14 @@ describe("graph runtime safe filesystem", () => {
         withContainedPathForPlatform(handle, "renamed.txt", (path) => rmSync(path), "linux");
         expect(existsSync(join(handle.path, "renamed.txt"))).toBe(false);
     });
-    it("rejects a final artifact symlink on Linux and refuses darwin fallback", () => {
+    it("rejects a final artifact symlink on Linux and Darwin", () => {
         const { root, handle } = makeRunDir();
         const outside = join(root, "outside.txt");
         writeFileSync(outside, "outside");
         symlinkSync(outside, join(handle.path, "artifact.txt"));
         expect(() => readContainedFileNoFollow(handle, "artifact.txt")).toThrow();
-        expect(() => withContainedPathForPlatform(handle, "artifact.txt", () => undefined, "darwin"))
-            .toThrow("refusing pathname fallback");
+        expect(() => withContainedPathForPlatform(handle, "artifact.txt", readFileNoFollow, "darwin"))
+            .toThrow();
         expect(readFileSync(outside, "utf8")).toBe("outside");
     });
     it("rejects special files and hardlinks as contained artifacts", () => {
@@ -67,9 +66,11 @@ describe("graph runtime safe filesystem", () => {
             closeSync(readerFd);
         }
     });
-    it("rejects non-Linux POSIX operations before any pathname fallback", () => {
+    it("performs Darwin operations through the descriptor alias", () => {
         const { handle } = makeRunDir();
-        expect(() => withContainedPathForPlatform(handle, "artifact.txt", () => undefined, "darwin")).toThrow("refusing pathname fallback");
+        const artifact = join(handle.path, "artifact.txt");
+        writeFileSync(artifact, "darwin-contained");
+        expect(() => withContainedPathForPlatform(handle, "artifact.txt", (path) => expect(readFileSync(path, "utf8")).toBe("darwin-contained"), "darwin")).not.toThrow();
     });
     it("fails closed on Windows instead of using a raceable pathname fallback", () => {
         const { handle } = makeRunDir();
@@ -109,7 +110,7 @@ describe("graph runtime safe filesystem", () => {
         expect(() => assertSafeContainedFileName(fileName, "win32")).toThrow("invalid contained artifact");
     });
     it("exposes an explicit fail-closed capability check", () => {
-        expect(() => assertContainedFsSupported("darwin")).toThrow("refusing pathname fallback");
+        expect(() => assertContainedFsSupported("darwin")).not.toThrow();
         expect(() => assertContainedFsSupported("linux")).not.toThrow();
         expect(() => assertContainedFsSupported("win32")).toThrow("refusing pathname fallback");
     });
@@ -131,10 +132,10 @@ describe("graph runtime safe filesystem", () => {
         const { handle } = makeRunDir();
         expect(() => readContainedFileNoFollow(handle, "../outside.txt")).toThrow("invalid contained artifact");
     });
-    it("fails closed for every operation on non-Linux POSIX", () => {
+    it("fails closed for every operation on unsupported platforms", () => {
         const { handle } = makeRunDir();
         for (const operation of ["read", "write", "rename", "delete"]) {
-            expect(() => withContainedPathForPlatform(handle, "artifact.txt", () => operation, "darwin")).toThrow("refusing pathname fallback");
+            expect(() => withContainedPathForPlatform(handle, "artifact.txt", () => operation, "win32")).toThrow("refusing pathname fallback");
         }
     });
 });

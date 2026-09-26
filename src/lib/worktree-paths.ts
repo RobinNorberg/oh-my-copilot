@@ -234,6 +234,10 @@ function resolveSuperprojectRoot(cwd: string): string | null {
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
         timeout: 5000,
+        // Force English error text so isDefinitiveNonGitError's stderr match is
+        // locale-independent (localized git output otherwise fails to match
+        // and mis-classifies a plain "not a repository" as a generic failure).
+        env: { ...process.env, LC_ALL: 'C' },
       }).trim();
     } catch (error) {
       completed = depth === 0 && isDefinitiveNonGitError(error);
@@ -302,7 +306,7 @@ export function isSensitiveStateLocation(dir: string): boolean {
   } catch {
     return true;
   }
-  const home = (() => { try { return resolve(homedir()); } catch { return null; } })();
+  const home = (() => { try { const path = resolve(homedir()); try { return realpathSync(path); } catch { return path; } } catch { return null; } })();
   let cursor = candidate;
   for (;;) {
     const name = basename(cursor);
@@ -317,7 +321,9 @@ export function isSensitiveStateLocation(dir: string): boolean {
   if (isFilesystemRoot(candidate)) return true;
   return sensitiveAbsoluteRoots().some((root) => {
     const normalizedCandidate = process.platform === 'win32' ? candidate.toLowerCase() : candidate;
-    const normalizedRoot = process.platform === 'win32' ? root.toLowerCase() : root;
+    let canonicalRoot = root;
+    try { canonicalRoot = realpathSync(root); } catch { /* missing roots retain lexical protection */ }
+    const normalizedRoot = process.platform === 'win32' ? canonicalRoot.toLowerCase() : canonicalRoot;
     return normalizedCandidate === normalizedRoot || isWithinPath(normalizedRoot, normalizedCandidate);
   });
 }
@@ -381,6 +387,12 @@ interface WorktreePathRenderScope {
 }
 
 const worktreePathRenderScope = new AsyncLocalStorage<WorktreePathRenderScope>();
+const projectIdentifierOperationScope = new AsyncLocalStorage<Map<string, string>>();
+
+/** Run project-identity lookups in an operation-local memo scope. */
+export function withProjectIdentifierScope<T>(fn: () => T): T {
+  return projectIdentifierOperationScope.run(new Map(), fn);
+}
 
 /**
  * Run path lookups in an isolated render scope.
@@ -479,7 +491,39 @@ function isNotAGitRepositoryError(error: unknown): boolean {
     return false;
   }
   const stderr = gitErrorStderr(error);
-  return err.status === 128 && /not a git repository/i.test(stderr);
+  // A bare repository (the `git worktree` container layout: a bare `.git` at the
+  // container root with sibling linked worktrees) answers `rev-parse
+  // --show-toplevel` with exit 128 and "this operation must be run in a work
+  // tree" rather than "not a git repository". That is a benign absence of a work
+  // tree, not an unreadable git, so it must classify as not_a_repository instead
+  // of probe_failed — otherwise every fail-closed caller (HUD statusline, state
+  // resolution) throws from a legitimate container root (#3990).
+  return err.status === 128 && /(?:not a git repository|must be run in a work tree)/i.test(stderr);
+}
+
+/**
+ * True when `cwd` is inside a bare repository.
+ *
+ * A bare container legitimately carries a `.git` file (`gitdir: ./.bare`), so
+ * the `.git`-present guards below cannot treat its presence as evidence of a
+ * broken or foreign repository. Any failure to answer is reported as not bare,
+ * which keeps those guards fail-closed by default.
+ */
+function isBareRepository(cwd: string): boolean {
+  try {
+    return (
+      execFileSync('git', ['rev-parse', '--is-bare-repository'], {
+        cwd,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+        timeout: 5000,
+        env: { ...process.env, LC_ALL: 'C' },
+      }).trim() === 'true'
+    );
+  } catch {
+    return false;
+  }
 }
 
 function formatGitProbeDetail(error: unknown): string {
@@ -622,6 +666,11 @@ function runGitShowToplevel(cwd: string): string {
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
     timeout: 5000,
+    // Force English error text so isNotAGitRepositoryError's stderr match is
+    // locale-independent (localized git output otherwise fails to match and
+    // mis-classifies a plain "not a repository" as probe_failed, which then
+    // fails closed and breaks callers such as the HUD statusline).
+    env: { ...process.env, LC_ALL: 'C' },
   });
 }
 
@@ -1110,6 +1159,12 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
   // submodule still resolves the submodule's own identity, and findWorkspaceRoot
   // below sees the unclimbed root so an inner `.omc-workspace` marker is honored.
   const root = worktreeRoot || getGitTopLevel() || process.cwd();
+  const operationScope = projectIdentifierOperationScope.getStore();
+  const operationScopeKey = operationScope ? canonicalizeExistingPath(root) ?? resolve(root) : null;
+  if (operationScope && operationScopeKey) {
+    const cached = operationScope.get(operationScopeKey);
+    if (cached !== undefined) return cached;
+  }
   const scope = worktreePathRenderScope.getStore();
   const scopeKey = scope ? canonicalizeExistingPath(root) ?? resolve(root) : null;
   if (scope && scopeKey) {
@@ -1126,6 +1181,7 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
       const safeId = cfg.id.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
       const hash = createHash('sha256').update(safeId).digest('hex').slice(0, 16);
       const identifier = `${safeId}-${hash}`;
+      if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, identifier);
       if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier);
       return identifier;
     }
@@ -1134,6 +1190,7 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
     const hash = createHash('sha256').update(workspaceRoot).digest('hex').slice(0, 16);
     const dirName = basename(workspaceRoot).replace(/[^a-zA-Z0-9_-]/g, '_');
     const identifier = `${dirName}-${hash}`;
+    if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, identifier);
     if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier);
     return identifier;
   }
@@ -1187,6 +1244,7 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
   const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
   const dirName = basename(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, '_');
   const identifier = `${dirName}-${hash}`;
+  if (operationScope && operationScopeKey) operationScope.set(operationScopeKey, identifier);
   if (scope && scopeKey) scope.projectIdentifiers.set(scopeKey, identifier);
   return identifier;
 }
@@ -2230,7 +2288,7 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
     } catch {
       cwdReal = process.cwd();
     }
-    if (existsSync(join(cwdReal, '.git'))) {
+    if (existsSync(join(cwdReal, '.git')) && !isBareRepository(cwdReal)) {
       throw new Error(formatGitProbeFailedMessage(callerLabel));
     }
     trustedRoot = process.cwd();
@@ -2285,7 +2343,11 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
     throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
   }
 
-  if (providedProbe.status === 'not_a_repository' && existsSync(join(resolvedReal, '.git'))) {
+  if (
+    providedProbe.status === 'not_a_repository' &&
+    existsSync(join(resolvedReal, '.git')) &&
+    !isBareRepository(resolvedReal)
+  ) {
     throw new Error(formatGitProbeFailedMessage(workingDirectory));
   }
 

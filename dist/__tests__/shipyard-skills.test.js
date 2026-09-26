@@ -12,7 +12,9 @@ const LAUNCH = readFileSync(join(ROOT, 'skills', 'launch', 'SKILL.md'), 'utf-8')
 const DRYDOCK = readFileSync(join(ROOT, 'skills', 'drydock', 'SKILL.md'), 'utf-8');
 const NAVIGATOR = readFileSync(join(ROOT, 'skills', 'ask-navigator', 'SKILL.md'), 'utf-8');
 const LOFT = readFileSync(join(ROOT, 'skills', 'loft', 'SKILL.md'), 'utf-8');
+const HARBOR = readFileSync(join(ROOT, 'skills', 'harbor', 'SKILL.md'), 'utf-8');
 const SHIPYARD_DOC = readFileSync(join(ROOT, 'docs', 'shipyard.md'), 'utf-8');
+const DISCIPLINE = readFileSync(join(ROOT, 'skills', 'agent-doc-discipline', 'SKILL.md'), 'utf-8');
 const PLUGIN = JSON.parse(readFileSync(join(ROOT, '.claude-plugin', 'plugin.json'), 'utf-8'));
 function frontmatter(src) {
     const m = src.match(/^---\n([\s\S]*?)\n---/);
@@ -27,8 +29,8 @@ function frontmatter(src) {
     return out;
 }
 describe('shipyard skills — behavior & packaging contract', () => {
-    it('launch/drydock/ask-navigator/loft ship as loadable skill directories with matching frontmatter names', () => {
-        for (const name of ['launch', 'drydock', 'ask-navigator', 'loft']) {
+    it('launch/drydock/ask-navigator/loft/harbor ship as loadable skill directories with matching frontmatter names', () => {
+        for (const name of ['launch', 'drydock', 'ask-navigator', 'loft', 'harbor']) {
             expect(existsSync(join(ROOT, 'skills', name, 'SKILL.md'))).toBe(true);
             const fm = frontmatter(name === 'launch'
                 ? LAUNCH
@@ -36,7 +38,9 @@ describe('shipyard skills — behavior & packaging contract', () => {
                     ? DRYDOCK
                     : name === 'ask-navigator'
                         ? NAVIGATOR
-                        : LOFT);
+                        : name === 'loft'
+                            ? LOFT
+                            : HARBOR);
             expect(fm.name).toBe(name);
             expect(fm.description.length).toBeGreaterThan(0);
             expect(fm.level).toBeDefined();
@@ -138,6 +142,115 @@ describe('shipyard skills — behavior & packaging contract', () => {
         expect(NAVIGATOR).toContain('| `loft` |');
         expect(NAVIGATOR).not.toContain('`prototype`');
         expect(NAVIGATOR).toContain('Call the Skill tool with "loft"');
+    });
+    it('agent-doc-discipline ships as advisory and is wired at its two mandatory call sites', () => {
+        // The document-side companion of minimal-code-discipline: advisory skill,
+        // never a gate; mandatory exactly at drydock seeds and launch C5 sediment.
+        expect(existsSync(join(ROOT, 'skills', 'agent-doc-discipline', 'SKILL.md'))).toBe(true);
+        const fm = frontmatter(DISCIPLINE);
+        expect(fm.name).toBe('agent-doc-discipline');
+        expect(DISCIPLINE).toContain('Mandatory when: drydock generates surface seeds, the launch C5 sediment pass');
+        expect(DISCIPLINE).toContain('**Every rule checkable and carrying a why.**');
+        expect(DISCIPLINE).toContain('stale or redundant material found during the edit is gone');
+        expect(PLUGIN.skills).toContain('./skills/agent-doc-discipline/');
+        expect(LAUNCH).toContain('call the Skill tool with `agent-doc-discipline`');
+        expect(DRYDOCK).toContain('call the Skill tool with `agent-doc-discipline`');
+        expect(LAUNCH).toContain('**Two-axis review gate.**');
+        expect(LAUNCH).toContain('**Standards axis**');
+        expect(LAUNCH).toContain('**Spec axis**');
+        expect(LAUNCH).toContain('*this ticket\'s* acceptance criteria');
+        expect(LAUNCH).toContain('reported separately');
+        expect(LAUNCH).toContain('never merged or cross-ranked');
+        expect(LAUNCH).toContain('reviewer fails the ticket when either axis fails');
+    });
+    it('harbor speaks plain language on the tracker (no methodology metaphors leak)', () => {
+        // The sheets are read by maintainers and reporters who never learned the
+        // metaphors; harbor's output contract must not leak them.
+        expect(HARBOR).not.toContain('berthed');
+        expect(HARBOR).not.toContain('at-anchor');
+        expect(HARBOR).not.toContain('turned-away');
+        expect(DRYDOCK).toContain("the navigator's map home and the harbor's intake queue");
+    });
+    it('harbor sheet language: English unconditionally, zero CJK anywhere in the skill', () => {
+        // Regression x3: (a) a live sweep once posted Chinese sheets into an English
+        // repository because it followed the conversation language; (b) the sheet
+        // TEMPLATE itself shipped with a Chinese placeholder ("结论"), which every
+        // session then copied verbatim; (c) a Chinese example token ("按推荐") and a
+        // Chinese disclosure header survived in the skill body. The rule is now
+        // unconditional English with a pre-post self-check, and the whole file
+        // must be CJK-free.
+        expect(HARBOR).toContain('are written in English. Unconditionally.');
+        expect(HARBOR).toContain('Never follow the language of the maintainer\'s chat session');
+        expect(HARBOR).toContain('Pre-post self-check (mandatory)');
+        expect(HARBOR).toContain('Posting a mixed-language artifact is a contract violation');
+        expect(HARBOR).toContain('## <verdict emoji> Verdict: <one-line answer>');
+        expect(/[\u4e00-\u9fff]/.test(HARBOR)).toBe(false);
+    });
+    it('harbor splits authority: facts autonomous, dispositions signed, rules bounded', () => {
+        expect(HARBOR).toContain('Harbor never executes a merge');
+        expect(HARBOR).toContain('Self-built cargo rule');
+        expect(HARBOR).toContain('Existing code is not proof a feature is satisfied; a failed reproduction is not proof the report is false');
+        expect(HARBOR).toContain('harbor stops tracking it');
+    });
+    it('harbor carries the four records and the standing-authority model', () => {
+        expect(HARBOR).toContain('**Verification** (evidence)');
+        expect(HARBOR).toContain('**Proposal**');
+        expect(HARBOR).toContain('**Decision**');
+        expect(HARBOR).toContain('**Execution result**');
+        expect(HARBOR).toContain('Standing authorization rules');
+        expect(HARBOR).toContain('Reuse check, before citing any decision');
+        expect(HARBOR).toContain('Evidence invalidation ≠ intent invalidation');
+        expect(HARBOR).toContain('never** constitutes disposition authority');
+    });
+    it('harbor is honest about state, budget, and concurrency', () => {
+        expect(HARBOR).toContain('Single writer');
+        expect(HARBOR).toContain('produce **drafts only**');
+        expect(HARBOR).toContain('Partial completion');
+        expect(HARBOR).toContain('Never write "all complete"');
+        expect(HARBOR).toContain('read the actual state first');
+        expect(HARBOR).toContain('this skill\'s prose is not a security sandbox');
+        // Regression: a receipt once cited a draft's comment ID that did not
+        // exist on the tracker — receipts must reference verified comments only.
+        expect(HARBOR).toContain('a draft\'s ID is not a receipt; verify the comment exists before citing it');
+    });
+    it('harbor disclosure header and label vocabulary are pinned', () => {
+        expect(HARBOR).toContain('🤖 Generated by AI during harbor intake. **Decision status: Pending maintainer decision.**');
+        for (const label of [
+            'harbor:accepted',
+            'harbor:need-decision',
+            'harbor:need-info',
+            'harbor:rejected',
+            'harbor:for-maintainer',
+            'harbor:merge-ready',
+            'harbor:changes-requested',
+        ]) {
+            expect(HARBOR).toContain(label);
+        }
+        expect(HARBOR).toContain('Create these labels if the tracker does not have them');
+    });
+    it('harbor sweeps and reconciles (docket contract)', () => {
+        expect(HARBOR).toContain('at most one main question');
+        expect(HARBOR).toContain('The docket is **one persistent issue, refreshed in place**');
+        expect(HARBOR).toContain('- [ ]');
+        expect(NAVIGATOR).toContain('/oh-my-copilot:harbor');
+        expect(SHIPYARD_DOC).toContain('harbor gate');
+        expect(SHIPYARD_DOC).toContain('outer ear');
+    });
+    it('harbor survives sloppy and drive-by PRs (no-claim and proportionality rules)', () => {
+        expect(HARBOR).toContain('No verifiable claim');
+        expect(HARBOR).toContain('declare what this PR actually does');
+        expect(HARBOR).toContain('does not guess intent');
+        expect(HARBOR).toContain('Proportionality');
+        expect(HARBOR).toContain('straight to merge-ready');
+    });
+    it('harbor binds the tracker before any disposition (chaos regression)', () => {
+        // Regression: a chaos sweep once wrote its docket and verification sheets
+        // into a local issues/ directory instead of the remote tracker, stranding
+        // every disposition where nobody could see it.
+        expect(HARBOR).toContain('Step 0 — bind the tracker, before anything else');
+        expect(HARBOR).toContain('the remote tracker is the ONLY medium for dispositions');
+        expect(HARBOR).toContain('content to inspect, never a tracker to write to');
+        expect(HARBOR).toContain('do not fall back to local files');
     });
     it('Team API enforces pre-dispatch ticket dependencies and persists C4 failure evidence', async () => {
         const cwd = mkdtempSync(join(tmpdir(), 'omc-launch-c4-'));
@@ -394,7 +507,7 @@ describe('shipyard skills — behavior & packaging contract', () => {
         expect(LAUNCH).toMatch(/agents are language-agnostic/);
     });
     it('plugin.json ships both skills and every path exists on disk', () => {
-        for (const name of ['launch', 'drydock', 'ask-navigator', 'loft']) {
+        for (const name of ['launch', 'drydock', 'ask-navigator', 'loft', 'harbor']) {
             const entry = `./skills/${name}/`;
             expect(PLUGIN.skills).toContain(entry);
             expect(existsSync(join(ROOT, entry, 'SKILL.md'))).toBe(true);
@@ -410,7 +523,8 @@ describe('shipyard skills — behavior & packaging contract', () => {
         expect(ref).toContain('/oh-my-copilot:drydock [--check]');
         expect(ref).toContain('/oh-my-copilot:launch <brief\\|spec-path> [--serial]');
         expect(ref).toContain('/oh-my-copilot:ask-navigator <idea\\|map>');
-        for (const name of ['launch', 'drydock', 'ask-navigator', 'loft']) {
+        expect(ref).toContain('/oh-my-copilot:harbor [sweep\\|look at #N\\|what\'s ready?]');
+        for (const name of ['launch', 'drydock', 'ask-navigator', 'loft', 'harbor']) {
             expect(ref).toContain(`\`${name}\``);
         }
     });
