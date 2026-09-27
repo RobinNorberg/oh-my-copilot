@@ -7,7 +7,7 @@
  * - legitimately increasing epochs across takeovers (1 then 2) fold fine.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync, } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, utimesSync, writeFileSync, } from "fs";
 import { spawnSync } from "child_process";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
@@ -23,7 +23,7 @@ function loadFixture(name) {
 }
 const tempDirs = [];
 function makeRunsRoot() {
-    const dir = mkdtempSync(join(tmpdir(), "omc-journal-epoch-"));
+    const dir = mkdtempSync(join(realpathSync(tmpdir()), "omc-journal-epoch-"));
     tempDirs.push(dir);
     return dir;
 }

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { execFileSync } from 'child_process';
 import { readFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -15,6 +16,7 @@ const LOFT = readFileSync(join(ROOT, 'skills', 'loft', 'SKILL.md'), 'utf-8');
 const HARBOR = readFileSync(join(ROOT, 'skills', 'harbor', 'SKILL.md'), 'utf-8');
 const SHIPYARD_DOC = readFileSync(join(ROOT, 'docs', 'shipyard.md'), 'utf-8');
 const DISCIPLINE = readFileSync(join(ROOT, 'skills', 'agent-doc-discipline', 'SKILL.md'), 'utf-8');
+const SURVEY = readFileSync(join(ROOT, 'skills', 'architecture-survey', 'SKILL.md'), 'utf-8');
 const PLUGIN = JSON.parse(readFileSync(join(ROOT, '.claude-plugin', 'plugin.json'), 'utf-8'));
 function frontmatter(src) {
     const m = src.match(/^---\n([\s\S]*?)\n---/);
@@ -142,6 +144,68 @@ describe('shipyard skills — behavior & packaging contract', () => {
         expect(NAVIGATOR).toContain('| `loft` |');
         expect(NAVIGATOR).not.toContain('`prototype`');
         expect(NAVIGATOR).toContain('Call the Skill tool with "loft"');
+    });
+    it('launch carries the round-2 disciplines (comprehension reset, settled-consensus exit, planned handoff)', () => {
+        expect(LAUNCH).toContain('**Comprehension reset.**');
+        expect(LAUNCH).toContain('the terms as `CONTEXT.md` defines them');
+        expect(LAUNCH).toContain('**Settled-consensus exit.**');
+        expect(LAUNCH).toContain('consensus audit');
+        expect(LAUNCH).toContain('skipping the interview never skips a signature');
+        expect(LAUNCH).toContain('**Planned session handoff**');
+        expect(LAUNCH).toContain('No raw transcript, no chat history');
+    });
+    it('harbor and navigator carry the round-3 disciplines (external extraction, ask-a-person, environment face, repair)', () => {
+        expect(HARBOR).toContain('**External knowledge extraction.**');
+        expect(HARBOR).toContain('the subject is never grilled');
+        expect(NAVIGATOR).toContain('knowledge lives in a **person**');
+        expect(NAVIGATOR).toContain('cited as the primary source');
+        expect(LAUNCH).toContain('where the **environment dragged**');
+        expect(LAUNCH).toContain('one misunderstanding at a time');
+    });
+    it('agent-doc-discipline carries the output disciplines (closable next action, rejoin orientation)', () => {
+        const DISCIPLINE = readFileSync(join(ROOT, 'skills', 'agent-doc-discipline', 'SKILL.md'), 'utf-8');
+        expect(DISCIPLINE).toContain('**Close on a next action a reader can start now.**');
+        expect(DISCIPLINE).toContain('under two minutes');
+        expect(DISCIPLINE).toContain('**Re-state the position each time the reader rejoins.**');
+        expect(DISCIPLINE).toContain('where things stand');
+        expect(DISCIPLINE).not.toContain('always-on');
+    });
+    it('minimal-prose-discipline ships as the third writing companion with the protected core and auto-clarity', () => {
+        const PROSE = readFileSync(join(ROOT, 'skills', 'minimal-prose-discipline', 'SKILL.md'), 'utf-8');
+        const frontmatter = PROSE.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
+        expect(frontmatter).toContain('name: minimal-prose-discipline');
+        expect(frontmatter).toContain('level: 3');
+        expect(PROSE).toContain('**Protect the core.**');
+        expect(PROSE).toContain('byte-for-byte what the tool or user produced');
+        expect(PROSE).toContain('**Never drop the meaning-bearers.**');
+        expect(PROSE).toContain('Auto-clarity');
+        expect(PROSE).toContain('security warnings and irreversible-action confirmations');
+        expect(PROSE).toContain('writing-time discipline, not a mode');
+        expect(PROSE).toContain('**minimal-code-discipline** disciplines what the agent builds');
+        // Scope boundary: conversational output only — artifacts have their own companions.
+        expect(PROSE).toContain('## Scope');
+        expect(PROSE).toContain('A ticket body written for humans');
+        // Absorbed-out mechanisms stay out: no intensity ladder, no style persistence.
+        expect(PROSE).not.toContain('lite|full|ultra');
+        expect(PROSE).not.toContain('/caveman');
+    });
+    it('both companions carry the six remaining output disciplines with the gate-machinery exclusion', () => {
+        const PROSE = readFileSync(join(ROOT, 'skills', 'minimal-prose-discipline', 'SKILL.md'), 'utf-8');
+        // agent-doc-discipline: numbered steps, bounded lists, document-side stated timing.
+        expect(DISCIPLINE).toContain('**A procedure longer than two steps is numbered.**');
+        expect(DISCIPLINE).toContain('**A list is capped at what a reader holds in one glance.**');
+        expect(DISCIPLINE).toContain('**Deferred and scheduled work states when.**');
+        expect(DISCIPLINE).toContain('never touches the machinery of a gate or a batched decision');
+        expect(DISCIPLINE).toContain('it never rebinds a checkpoint the methodology pushes right deliberately');
+        // minimal-prose-discipline: thread, error tone, stated outcomes, conversational timing.
+        expect(PROSE).toContain('**The reply stays on the thread.**');
+        expect(PROSE).toContain('**Errors are reported as facts.**');
+        expect(PROSE).toContain('**What shipped is stated, not celebrated.**');
+        expect(PROSE).toContain('**A reply that defers work says when.**');
+        expect(PROSE).toContain('it never rebinds a checkpoint the methodology pushes right deliberately');
+        // Verification coverage gained in both.
+        expect(DISCIPLINE).toContain('procedures of three or more steps are numbered');
+        expect(PROSE).toContain('errors are facts; completions name what shipped');
     });
     it('agent-doc-discipline ships as advisory and is wired at its two mandatory call sites', () => {
         // The document-side companion of minimal-code-discipline: advisory skill,
@@ -416,8 +480,9 @@ describe('shipyard skills — behavior & packaging contract', () => {
         expect(LAUNCH).toContain('scratch/throwaway');
         expect(LAUNCH).toContain('never silently swallow a high-confidence actionable finding');
         expect(LAUNCH).toContain('No general bypass');
-        expect(LAUNCH).toContain('Current audit limitation');
-        expect(LAUNCH).toContain('without a machine-readable finding/severity contract or executable');
+        expect(LAUNCH).toContain('Current audit contract');
+        expect(LAUNCH).toContain('node scripts/shipyard-audit.mjs');
+        expect(LAUNCH).toContain('exit 0 = clean, 1 = high-confidence actionable findings present');
         expect(LAUNCH).toContain('The rules entry is `CLAUDE.md` — the shipyard map recognizes no substitute');
         expect(LAUNCH).not.toContain('No override flag, no confirm-to-continue path');
         expect(LAUNCH).not.toContain('no exception for throwaway prototypes — laying the yard is one command away');
@@ -430,11 +495,15 @@ describe('shipyard skills — behavior & packaging contract', () => {
         expect(DRYDOCK).toContain('throwaway/scratch');
         expect(DRYDOCK).toContain('high-confidence actionable findings as blocking');
         expect(DRYDOCK).toContain('low-confidence or explicitly-classified false-positive');
-        expect(DRYDOCK).toContain('no executable or machine-readable exit contract');
-        expect(DRYDOCK).toContain('planned follow-up');
+        // the structured exit contract exists — the limitation wording is retired
+        expect(DRYDOCK).toContain('The structured exit contract');
+        expect(DRYDOCK).toContain('node scripts/shipyard-audit.mjs');
+        expect(DRYDOCK).toContain('Exit code 0 = clean, 1 = high-confidence actionable findings present, 2 = invocation error');
+        expect(DRYDOCK).not.toContain('planned follow-up');
         // docs/shipyard.md must reflect the same softened contract
         expect(SHIPYARD_DOC).toContain('per-finding confidence');
-        expect(SHIPYARD_DOC).toContain('no executable or machine-readable severity contract (planned follow-up)');
+        expect(SHIPYARD_DOC).toContain('node scripts/shipyard-audit.mjs');
+        expect(SHIPYARD_DOC).toContain('the structured contract both surfaces share');
         expect(SHIPYARD_DOC).toContain('blocks on high-confidence actionable drydock findings');
         expect(SHIPYARD_DOC).toContain('narrowly, explicitly overridden low-confidence / false-positive / scratch-scope finding — no general bypass');
     });
@@ -446,8 +515,11 @@ describe('shipyard skills — behavior & packaging contract', () => {
     it('launch C5 carries the sediment pass: source checklist, mandatory answer, slot table', () => {
         // regression: the sediment half-loop referenced a nonexistent retro; it now lives in C5
         expect(LAUNCH).toContain('what did this ship teach the yard');
-        expect(LAUNCH).toContain('Sweep the source checklist first');
-        expect(LAUNCH).toContain('three-strike failure root causes');
+        expect(LAUNCH).toContain('Consume a **structured retro** first');
+        expect(LAUNCH).toContain('what was built');
+        expect(LAUNCH).toContain('what broke');
+        expect(LAUNCH).toContain('what taught');
+        expect(LAUNCH).toContain('three-strike');
         expect(LAUNCH).toContain('"no new lessons"');
         expect(LAUNCH).toContain('blocks non-answers, never empty answers');
         expect(LAUNCH).toContain('`lesson → slot → intended change`');
@@ -457,6 +529,25 @@ describe('shipyard skills — behavior & packaging contract', () => {
         expect(LAUNCH).toContain('individually vetoable');
         expect(LAUNCH).toContain('written to their slots only after acceptance');
     });
+    it('launch C5 sediment slot table is pinned verbatim (lesson → slot)', () => {
+        // the slot table is the landing map for every C5 lesson; a silent rename
+        // strands lessons in no slot, so the rows are a text contract
+        for (const row of [
+            '| Lesson kind | Slot |',
+            '| terms and boundaries settled mid-run | `CONTEXT.md` glossary |',
+            '| checkable behavior rules (carry a why) | `docs/standards/` matching volume (architecture / data / process) |',
+            '| most-violated conventions (thin-entry grade) | `CLAUDE.md` body — propose only |',
+            '| hard-to-reverse decisions | `docs/adr/` (C4 answers already land here) |',
+            '| ruled-out directions (concept + why rejected) | `docs/adr/` (a rejection is a decision too; the why is the load-bearing part) |',
+            '| business rules / background | `docs/business/` |',
+            '| UI patterns / component contracts | `design-system/` |',
+            '| reusable craft | `.omc/skills/` (through the skillify gate) |',
+            '| repeatedly needed automation / integrations | `scripts/` or `.mcp.json` |',
+            '| no slot fits | decline explicitly with the reason |',
+        ]) {
+            expect(LAUNCH).toContain(row);
+        }
+    });
     it('launch keeps the thin entry a bounded cache (hot-entry budget with deterministic demotion)', () => {
         expect(LAUNCH).toContain('at most five hot entries');
         expect(LAUNCH).toContain('same violation at least twice in this run');
@@ -464,12 +555,20 @@ describe('shipyard skills — behavior & packaging contract', () => {
         expect(LAUNCH).toContain('nothing is deleted, only re-tiered');
         expect(LAUNCH).toContain('not a `--check` finding');
     });
+    it('launch C5 completion report states the run numbers (facts, not telemetry)', () => {
+        // the loop had no measurements; C5 records the run's numbers as plain facts
+        // in the report text — disk is the primary source, no telemetry machinery
+        expect(LAUNCH).toContain('**run numbers**');
+        expect(LAUNCH).toContain('tickets completed, C4 decisions surfaced, three-strike halts, and sediment lines proposed');
+        expect(LAUNCH).toContain('no telemetry system, no state files');
+    });
     it('drydock governance loop names the real sediment carrier (no ghost retro)', () => {
-        // regression: the sediment loop referenced a nonexistent retro skill
+        // regression: the sediment loop referenced a nonexistent retro skill; the
+        // structured retro now genuinely lives in launch's C5, so only drydock's
+        // governance loop must still name "launch C5 sediment" rather than a retro skill
         expect(DRYDOCK).not.toMatch(/retro/i);
         expect(DRYDOCK).toContain('launch C5 sediment');
-        expect(SHIPYARD_DOC).not.toMatch(/retros?/i);
-        expect(SHIPYARD_DOC).toContain('C5 sediment');
+        expect(SHIPYARD_DOC).toContain('C5 closeout consumes a structured retro');
     });
     it('drydock seed requires non-empty triggers so generated project skills are loadable', () => {
         const example = DRYDOCK.match(/```markdown\n(---\nid: project-release-check\nname: project-release-check[\s\S]*?)\n```/)?.[1];
@@ -506,12 +605,100 @@ describe('shipyard skills — behavior & packaging contract', () => {
         expect(LAUNCH).toMatch(/document language/);
         expect(LAUNCH).toMatch(/agents are language-agnostic/);
     });
+    it('launch reads the drydock language contract instead of inlining the resolution order', () => {
+        // one meaning, one home: the resolution-order mechanics live in the drydock
+        // contract block only; launch carries the pointer and its own requirements
+        expect(LAUNCH).toContain('shipyard-document-language-contract');
+        expect(LAUNCH).toContain('single authority');
+        expect(LAUNCH).not.toContain('Resolution order:');
+        expect(LAUNCH).not.toContain('otherwise require unanimous high-confidence inference');
+        expect(LAUNCH).not.toContain('A persisted bare or region-only Chinese tag is script-ambiguous');
+        expect(LAUNCH).not.toContain('never bypassed by inference');
+    });
     it('plugin.json ships both skills and every path exists on disk', () => {
-        for (const name of ['launch', 'drydock', 'ask-navigator', 'loft', 'harbor']) {
+        for (const name of ['launch', 'drydock', 'ask-navigator', 'loft', 'harbor', 'architecture-survey']) {
             const entry = `./skills/${name}/`;
             expect(PLUGIN.skills).toContain(entry);
             expect(existsSync(join(ROOT, entry, 'SKILL.md'))).toBe(true);
         }
+    });
+    it('architecture-survey ships as a loadable skill with survey-not-rescue non-goals', () => {
+        const fm = frontmatter(SURVEY);
+        expect(fm.name).toBe('architecture-survey');
+        expect(fm.description.length).toBeGreaterThan(0);
+        expect(fm.level).toBeDefined();
+        expect(fm['argument-hint']).toBeDefined();
+        expect(PLUGIN.skills).toContain('./skills/architecture-survey/');
+        expect(SURVEY).toContain('Shallow modules');
+        expect(SURVEY).toContain('Hypothetical seams');
+        expect(SURVEY).toContain('Logic behind the wrong seam');
+        expect(SURVEY).toContain('Survey proposes; the captain disposes');
+        expect(SURVEY).toContain('No code edits.');
+        expect(SURVEY).toContain('Not a gate.');
+        expect(SURVEY).toContain('Not merged into the drydock drift audit.');
+        expect(SHIPYARD_DOC).toContain('`architecture-survey`');
+    });
+    it('the invocation contract is stated on the map and pinned in both directions', () => {
+        const USER_INVOKED = ['launch', 'harbor', 'ask-navigator', 'architecture-survey'];
+        const MODEL_INVOKED = ['drydock', 'loft', 'minimal-code-discipline', 'agent-doc-discipline'];
+        const sources = {
+            launch: LAUNCH,
+            drydock: DRYDOCK,
+            'ask-navigator': NAVIGATOR,
+            loft: LOFT,
+            harbor: HARBOR,
+            'minimal-code-discipline': readFileSync(join(ROOT, 'skills', 'minimal-code-discipline', 'SKILL.md'), 'utf-8'),
+            'agent-doc-discipline': DISCIPLINE,
+            'architecture-survey': SURVEY,
+        };
+        for (const name of USER_INVOKED) {
+            expect(frontmatter(sources[name])['disable-model-invocation']).toBe('true');
+        }
+        for (const name of MODEL_INVOKED) {
+            expect(frontmatter(sources[name])['disable-model-invocation']).toBeUndefined();
+        }
+        // iron rule: no shipyard skill may instruct the Skill tool to invoke a user-invoked skill
+        for (const src of Object.values(sources)) {
+            const lower = src.toLowerCase();
+            for (const name of USER_INVOKED) {
+                expect(lower).not.toContain(`skill tool with "${name}"`);
+                expect(lower).not.toContain(`skill tool with \`${name}\``);
+                expect(lower).not.toContain(`skill("oh-my-copilot:${name}")`);
+                expect(lower).not.toContain(`skill(skill="oh-my-copilot:${name}")`);
+            }
+        }
+        expect(SHIPYARD_DOC.toLowerCase()).toContain('the invocation contract');
+        expect(SHIPYARD_DOC).toContain('a user-invoked skill never invokes another user-invoked skill');
+    });
+    it('rejected directions persist as concept-level memory across launch, navigator, and harbor', () => {
+        expect(LAUNCH).toContain('a concept-similar re-proposal must state what changed');
+        expect(LAUNCH).toContain('a new name for a rejected idea is not a new idea');
+        expect(LAUNCH).toContain('ruled-out directions (concept + why rejected)');
+        expect(NAVIGATOR).toContain('carrying the concept and the reason');
+        expect(NAVIGATOR).toContain('ruled-out work never re-enters as a fresh ticket');
+        expect(HARBOR).toContain('Match rejections by concept, not by title');
+    });
+    it('launch and navigator state the primary-source-on-disk boundary cost model', () => {
+        expect(LAUNCH).toContain('Disk is the primary source; conversation memory is secondary');
+        expect(LAUNCH).toContain('The four-way boundary choice');
+        expect(NAVIGATOR).toContain('every session re-orients from the map, never from the previous session');
+    });
+    it('the seam and deep-module vocabulary is seeded once in the architecture standards', () => {
+        expect(DRYDOCK).toContain('## Seams and depth');
+        expect(DRYDOCK).toContain('One adapter is a hypothetical seam; two adapters make it real.');
+        expect(LAUNCH).toContain('the vocabulary is seeded in `docs/standards/architecture.md`');
+    });
+    it('the testing discipline is seeded as its own process volume that launch can point at', () => {
+        expect(DRYDOCK).toContain('Seed C2 — docs/standards/process.md, Testing volume');
+        expect(DRYDOCK).toContain('## Testing');
+        expect(DRYDOCK).toContain('Tests enter through the interface only');
+        expect(DRYDOCK).toContain('Expected values come from an independent source of truth');
+        expect(DRYDOCK).toContain('Refactoring happens at the review axis, not inside the red-green loop');
+        expect(DRYDOCK).toContain('Tests open only at seams the reviewing captain approved');
+        // launch already points callers at the process volume; the seed must exist,
+        // or that reference dangles.
+        expect(LAUNCH).toContain('The testing rules themselves are seeded in `docs/standards/process.md`');
+        expect(DRYDOCK).not.toContain('data.md / process.md same shape');
     });
     it('docs/REFERENCE.md skills count matches the filesystem', () => {
         const ref = readFileSync(join(ROOT, 'docs', 'REFERENCE.md'), 'utf-8');
@@ -524,8 +711,86 @@ describe('shipyard skills — behavior & packaging contract', () => {
         expect(ref).toContain('/oh-my-copilot:launch <brief\\|spec-path> [--serial]');
         expect(ref).toContain('/oh-my-copilot:ask-navigator <idea\\|map>');
         expect(ref).toContain('/oh-my-copilot:harbor [sweep\\|look at #N\\|what\'s ready?]');
-        for (const name of ['launch', 'drydock', 'ask-navigator', 'loft', 'harbor']) {
+        for (const name of ['launch', 'drydock', 'ask-navigator', 'loft', 'harbor', 'architecture-survey']) {
             expect(ref).toContain(`\`${name}\``);
+        }
+    });
+});
+describe('shipyard audit script — mechanical check classes', () => {
+    const AUDIT = join(ROOT, 'scripts', 'shipyard-audit.mjs');
+    function runAudit(root) {
+        try {
+            const stdout = execFileSync('node', [AUDIT, root], { encoding: 'utf-8' });
+            return { status: 0, stdout };
+        }
+        catch (err) {
+            const e = err;
+            return { status: e.status ?? -1, stdout: e.stdout ?? '' };
+        }
+    }
+    function makeCleanRepo() {
+        const root = mkdtempSync(join(tmpdir(), 'shipyard-audit-'));
+        writeFileSync(join(root, 'CLAUDE.md'), '# Project\n');
+        writeFileSync(join(root, 'CONTEXT.md'), '---\ndocumentLanguage: en\n---\n\n# Glossary\n');
+        for (const dir of ['docs/adr', 'docs/standards', 'docs/business', 'design-system', '.omg/skills', 'scripts']) {
+            mkdirSync(join(root, dir), { recursive: true });
+        }
+        writeFileSync(join(root, '.mcp.json'), '{"mcpServers": {}}');
+        return root;
+    }
+    it('a fully seeded repo audits clean', () => {
+        const root = makeCleanRepo();
+        try {
+            const { status, stdout } = runAudit(root);
+            expect(status).toBe(0);
+            expect(JSON.parse(stdout).findings).toEqual([]);
+        }
+        finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+    it('a project skill without non-empty triggers is a high-confidence actionable finding', () => {
+        const root = makeCleanRepo();
+        try {
+            writeFileSync(join(root, '.omg/skills/no-triggers.md'), '---\nid: no-triggers\nname: no-triggers\ndescription: A skill that will never load\n---\n\nbody\n');
+            const { status, stdout } = runAudit(root);
+            expect(status).toBe(1);
+            const findings = JSON.parse(stdout).findings;
+            expect(findings.map((f) => f.id)).toContain('shipyard.project-skill.missing-triggers');
+        }
+        finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+    it('project skills with block or inline triggers are accepted', () => {
+        const root = makeCleanRepo();
+        try {
+            writeFileSync(join(root, '.omg/skills/block-triggers.md'), '---\nid: block-triggers\nname: block-triggers\ndescription: Block-list triggers\ntriggers:\n  - "project release check"\n---\n\nbody\n');
+            writeFileSync(join(root, '.omg/skills/inline-triggers.md'), '---\nid: inline-triggers\nname: inline-triggers\ndescription: Inline triggers\ntriggers: ["project release check"]\n---\n\nbody\n');
+            const { status } = runAudit(root);
+            expect(status).toBe(0);
+        }
+        finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    });
+    it('an intent with a missing or invalid status is a finding; a valid one is clean', () => {
+        const root = makeCleanRepo();
+        try {
+            mkdirSync(join(root, 'docs', 'intents', 'demo'), { recursive: true });
+            writeFileSync(join(root, 'docs/intents/demo/intent.md'), '---\nintent: demo\ntitle: Demo\ndate: 2026-09-16\n---\n\nbody\n');
+            const missing = runAudit(root);
+            expect(missing.status).toBe(1);
+            expect(JSON.parse(missing.stdout).findings.map((f) => f.id)).toContain('shipyard.intent.missing-status');
+            writeFileSync(join(root, 'docs/intents/demo/intent.md'), '---\nintent: demo\ntitle: Demo\ndate: 2026-09-16\nstatus: archived\n---\n\nbody\n');
+            const invalid = runAudit(root);
+            expect(invalid.status).toBe(1);
+            expect(JSON.parse(invalid.stdout).findings.map((f) => f.id)).toContain('shipyard.intent.invalid-status');
+            writeFileSync(join(root, 'docs/intents/demo/intent.md'), '---\nintent: demo\ntitle: Demo\ndate: 2026-09-16\nstatus: accepted\n---\n\nbody\n');
+            expect(runAudit(root).status).toBe(0);
+        }
+        finally {
+            rmSync(root, { recursive: true, force: true });
         }
     });
 });

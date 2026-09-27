@@ -1,9 +1,6 @@
 ---
 name: omc-ado-review
-description: >
-  Pull request review workflow for Azure DevOps repositories.
-  WHEN: User wants to review PRs, add reviewers, create review comments, vote on PRs, or manage PR threads in Azure DevOps.
-  DO NOT USE FOR: Creating PRs (use git-master agent), sprint planning (use omc-ado-sprint), work item triage (use omc-ado-triage), or non-ADO repositories.
+description: "Review Azure DevOps pull requests: read diffs, add reviewers, comment, vote, and manage PR threads. Not for automated review (omc-ado-auto-review), triage, or sprint planning."
 ---
 
 # OMC ADO Review

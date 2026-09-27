@@ -4,7 +4,7 @@
  * Covers round-trip fidelity, missing-file null, fail-closed corruption,
  * descriptor binding (AC-3), and idempotent resave.
  */
-import { mkdirSync, mkdtempSync, renameSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from "fs";
+import { mkdirSync, mkdtempSync, realpathSync, renameSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -40,7 +40,7 @@ function makeEnvelope(overrides = {}) {
 describe("FileProjectionStore", () => {
     let runsRoot;
     beforeEach(() => {
-        runsRoot = mkdtempSync(join(tmpdir(), "omc-projection-store-"));
+        runsRoot = mkdtempSync(join(realpathSync(tmpdir()), "omc-projection-store-"));
     });
     afterEach(() => {
         rmSync(runsRoot, { recursive: true, force: true });

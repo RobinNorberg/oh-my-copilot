@@ -15,7 +15,7 @@ import { pathToFileURL } from 'node:url';
 const REPO_ROOT = join(__dirname, '..', '..');
 const MODULE_PATH = join(REPO_ROOT, 'scripts', 'lib', 'hook-command-normalizer.mjs');
 const normalizer = (await import(pathToFileURL(MODULE_PATH).href));
-const SESSION_END = '"$CLAUDE_PLUGIN_ROOT"/scripts/session-end.mjs';
+const SESSION_END = '"${CLAUDE_PLUGIN_ROOT}"/scripts/session-end.mjs';
 describe('hook prefix selection', () => {
     it('uses the portable form on Windows, which has no sh', () => {
         expect(normalizer.hookPrefixForPlatform('win32')).toBe(normalizer.PORTABLE_HOOK_PREFIX);
@@ -38,7 +38,7 @@ describe('hook prefix selection', () => {
     });
     it('exposes the legacy Windows prefix name as the portable form', () => {
         expect(normalizer.WINDOWS_HOOK_PREFIX).toBe(normalizer.PORTABLE_HOOK_PREFIX);
-        expect(normalizer.PORTABLE_HOOK_PREFIX).toBe('node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs ');
+        expect(normalizer.PORTABLE_HOOK_PREFIX).toBe('node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ');
     });
 });
 describe('command rewriting', () => {
@@ -70,7 +70,7 @@ describe('shipped hooks manifest', () => {
     it('ships the Windows-runnable form, with no sh anywhere', () => {
         expect(commands.length).toBeGreaterThan(0);
         for (const { event, command } of commands) {
-            expect(command, event).toMatch(/^node "\$CLAUDE_PLUGIN_ROOT"\/scripts\/run\.cjs /);
+            expect(command, event).toMatch(/^node "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/run\.cjs /);
             expect(command, event).not.toContain('find-node.sh');
             expect(command, event).not.toContain('/bin/sh');
         }
@@ -84,7 +84,7 @@ describe('shipped hooks manifest', () => {
             for (const groups of Object.values(data.hooks)) {
                 for (const group of groups) {
                     for (const hook of group.hooks) {
-                        expect(hook.command, platform).toMatch(/^sh "\$CLAUDE_PLUGIN_ROOT"\/scripts\/find-node\.sh "\$CLAUDE_PLUGIN_ROOT"\/scripts\/run\.cjs /);
+                        expect(hook.command, platform).toMatch(/^sh "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/find-node\.sh "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/run\.cjs /);
                     }
                 }
             }

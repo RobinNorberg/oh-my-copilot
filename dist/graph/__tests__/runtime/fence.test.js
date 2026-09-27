@@ -10,7 +10,7 @@
  * (fallback to 2) — ownership safety comes from O_EXCL + atomic rename.
  */
 import { spawnSync } from "child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync, } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, renameSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync, } from "fs";
 import { tmpdir } from "os";
 import { basename, dirname, join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -49,7 +49,7 @@ describe("FileOwnershipFence", () => {
     const roots = [];
     /** Fresh runsRoot + run dir under os.tmpdir(); auto-cleaned after each test. */
     function makeRunDir() {
-        const root = mkdtempSync(join(tmpdir(), "omc-fence-"));
+        const root = mkdtempSync(join(realpathSync(tmpdir()), "omc-fence-"));
         roots.push(root);
         const dir = join(root, "run-1");
         mkdirSync(dir, { recursive: true });
@@ -78,7 +78,7 @@ describe("FileOwnershipFence", () => {
             epoch: 1,
         });
         const originalRoot = dirname(dir);
-        const outsideRoot = mkdtempSync(join(tmpdir(), "omc-fence-outside-"));
+        const outsideRoot = mkdtempSync(join(realpathSync(tmpdir()), "omc-fence-outside-"));
         roots.push(outsideRoot);
         mkdirSync(join(outsideRoot, basename(dir)), { recursive: true });
         renameSync(originalRoot, `${originalRoot}-original`);
@@ -119,7 +119,7 @@ describe("FileOwnershipFence", () => {
     });
     it("refuses symlinked epoch and lock state instead of reading outside", async () => {
         const dir = makeRunDir();
-        const outside = mkdtempSync(join(tmpdir(), "omc-fence-symlink-outside-"));
+        const outside = mkdtempSync(join(realpathSync(tmpdir()), "omc-fence-symlink-outside-"));
         roots.push(outside);
         const outsideEpoch = join(outside, EPOCH_FILE_NAME);
         const outsideLock = join(outside, LOCK_NAME);

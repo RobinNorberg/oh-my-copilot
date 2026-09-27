@@ -1,9 +1,6 @@
 ---
 name: omc-gh-setup
-description: >
-  Configure GitHub integration for the current project.
-  WHEN: User wants to set up GitHub integration, connect a project to GitHub, configure .omg/config.json for GitHub, or troubleshoot GitHub connection issues.
-  DO NOT USE FOR: Issue triage (use omc-gh-triage), project board management (use omc-gh-project), PR review (use omc-gh-review), or Azure DevOps configuration (use omc-ado-setup).
+description: "Set up or troubleshoot the GitHub integration for this project (.omg/config.json connection). Not for issue triage, project boards, PR review, or Azure DevOps setup (omc-ado-setup)."
 role: config-writer
 scope: .omg/**
 ---

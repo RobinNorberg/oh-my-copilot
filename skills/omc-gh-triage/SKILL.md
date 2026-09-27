@@ -1,9 +1,6 @@
 ---
 name: omc-gh-triage
-description: >
-  GitHub issue and PR triage — surfaces open issues, PRs needing review, failing CI, and security alerts.
-  WHEN: User wants to check GitHub project status, triage issues, see CI health, review open PRs, or get a project health overview.
-  DO NOT USE FOR: PR code review (use omc-gh-review), project board management (use omc-gh-project), initial GitHub setup (use omc-gh-setup), or ADO projects (use omc-ado-triage).
+description: "Triage GitHub: open issues, PRs needing review, failing CI, and security alerts for a project health overview. Not for PR code review (omc-gh-review) or project boards."
 ---
 
 # OMC GitHub Triage

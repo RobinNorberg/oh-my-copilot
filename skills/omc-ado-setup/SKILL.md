@@ -1,9 +1,6 @@
 ---
 name: omc-ado-setup
-description: >
-  Configure Azure DevOps integration for the current project.
-  WHEN: User wants to set up ADO integration, connect a project to Azure DevOps, configure .omg/config.json for ADO, or troubleshoot ADO connection issues.
-  DO NOT USE FOR: Work item triage (use omc-ado-triage), sprint planning (use omc-ado-sprint), PR review (use omc-ado-review), or Azure cloud service configuration (use azure-skills plugin).
+description: "Set up or troubleshoot the Azure DevOps integration for this project (.omg/config.json connection). Not for triage, sprint planning, PR review, or Azure cloud service configuration."
 role: config-writer
 scope: .omg/**
 ---

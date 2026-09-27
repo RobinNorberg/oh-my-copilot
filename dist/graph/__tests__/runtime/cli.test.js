@@ -6,7 +6,7 @@
  * descriptor load/seal, fresh-vs-resume identity check, and exit-code wiring.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sealGraphDescriptor } from '../../descriptor.js';
@@ -46,7 +46,7 @@ describe('graphCommand run subcommand', () => {
     let previousExitCode;
     let errorSpy;
     beforeEach(() => {
-        workDir = join(mkdtempSync(join(tmpdir(), 'omc-cli-graph-')), 'repo');
+        workDir = join(mkdtempSync(join(realpathSync(tmpdir()), 'omc-cli-graph-')), 'repo');
         mkdirSync(workDir, { recursive: true });
         previousExitCode = process.exitCode;
         process.exitCode = undefined;
@@ -145,7 +145,7 @@ describe('graphCommand run subcommand', () => {
         expect(errorSpy.mock.calls.map((args) => args.join(' ')).join('\n')).toContain(missingPath);
         expect(mocks.runGraph).not.toHaveBeenCalled();
     });
-    it('accepts Darwin as a supported confined runtime platform', async () => {
+    it.runIf(process.platform === 'darwin')('accepts the actual Darwin backend as a supported confined runtime platform', async () => {
         const runsRoot = join(workDir, '.omg', 'graph-runs');
         const fixturePath = join(workDir, 'descriptor.json');
         writeFileSync(fixturePath, JSON.stringify(descriptorInput('run-darwin', 'darwin support')));

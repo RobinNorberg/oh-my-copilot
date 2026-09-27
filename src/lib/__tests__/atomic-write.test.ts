@@ -20,7 +20,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { randomUUID } from 'crypto';
 import { getProcessStartIdentitySync } from '../../platform/process-utils.js';
 // @ts-expect-error Hook runtime source is intentionally JavaScript-only.
-import { acquireStateFileLockSync, isStateFileLockingSupported, releaseStateFileLockSync, withStateFileLockSync } from '../../../scripts/lib/atomic-write.mjs';
+import { acquireStateFileLockSync, isExclusiveStateLockingAvailable, isStateFileLockingSupported, releaseStateFileLockSync, withStateFileLockSync } from '../../../scripts/lib/atomic-write.mjs';
 
 import { tmpdir } from 'os';
 
@@ -349,11 +349,15 @@ describe('state file locking without flock', () => {
     }
   });
 
+  // Upstream v5.5.0: the owner-file fallback is a real exclusive backend, so locking stays
+  // supported under the simulation; only exclusive availability reports the simulated loss.
   it('reports locking as supported and unsupported only when locking is disabled', () => {
     process.env.NODE_ENV = 'test';
     expect(isStateFileLockingSupported()).toBe(true);
+    expect(isExclusiveStateLockingAvailable()).toBe(true);
     process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
-    expect(isStateFileLockingSupported()).toBe(false);
+    expect(isStateFileLockingSupported()).toBe(true);
+    expect(isExclusiveStateLockingAvailable()).toBe(false);
   });
 
   it('publishes the lock while held, re-enters it in-process, and releases it cleanly', () => {

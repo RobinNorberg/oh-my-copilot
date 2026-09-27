@@ -69,11 +69,13 @@ describe('Builtin Skills', () => {
   });
 
   describe('createBuiltinSkills()', () => {
-    it('should return correct number of skills (53 canonical + 2 aliases)', () => {
+    it('should return correct number of skills (57 canonical + 2 aliases)', () => {
       const skills = createBuiltinSkills();
-      // 55 entries: 53 canonical skills (incl. upstream v5.4.0's harbor and
-      // agent-doc-discipline) + 2 aliases (cancel-ralph, psm)
-      expect(skills).toHaveLength(55);
+      // 59 entries: 57 canonical skills (incl. upstream v5.4.0's harbor and
+      // agent-doc-discipline, and upstream v5.5.0's architecture-survey,
+      // diagram, intent, and minimal-prose-discipline) + 2 aliases
+      // (cancel-ralph, psm)
+      expect(skills).toHaveLength(59);
     });
 
     it('should return an array of BuiltinSkill objects', () => {
@@ -127,6 +129,7 @@ describe('Builtin Skills', () => {
       const expectedSkills = [
         'ai-slop-cleaner',
         'agent-doc-discipline',
+        'architecture-survey',
         'ask',
         'ask-navigator',
         'autopilot',
@@ -139,6 +142,7 @@ describe('Builtin Skills', () => {
         'deep-interview',
         'deep-review',
         'deepinit',
+        'diagram',
         'discover',
         'drydock',
         'execute',
@@ -146,9 +150,11 @@ describe('Builtin Skills', () => {
         'graph',
         'harbor',
         'hud',
+        'intent',
         'launch',
         'loft',
         'minimal-code-discipline',
+        'minimal-prose-discipline',
         'omc-ado-auto-review',
         'omc-ado-review',
         'omc-ado-setup',
@@ -690,8 +696,10 @@ describe('Builtin Skills', () => {
     it('should return canonical skill names by default', () => {
       const names = listBuiltinSkillNames();
 
-      // 53 canonical skills, incl. upstream v5.4.0's harbor and agent-doc-discipline
-      expect(names).toHaveLength(53);
+      // 57 canonical skills, incl. upstream v5.4.0's harbor and agent-doc-discipline
+      // and upstream v5.5.0's architecture-survey, diagram, intent, and
+      // minimal-prose-discipline
+      expect(names).toHaveLength(57);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('minimal-code-discipline');
       expect(names).toContain('launch');
@@ -731,7 +739,7 @@ describe('Builtin Skills', () => {
       const names = listBuiltinSkillNames({ includeAliases: true });
 
       // swarm alias removed in #1131; learner retired in 5.0.0; cancel-ralph and psm remain
-      expect(names).toHaveLength(55);
+      expect(names).toHaveLength(59);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('autoresearch');
       expect(names).toContain('self-improve');

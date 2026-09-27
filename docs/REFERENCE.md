@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.1.0, the plugin ships 20 agents, 53 skills, 21 command files, and one configured MCP server exposing exactly 55 tools.
+For v5.1.0, the plugin ships 20 agents, 57 skills, 21 command files, and one configured MCP server exposing exactly 55 tools.
 
 ---
 
@@ -16,7 +16,7 @@ For v5.1.0, the plugin ships 20 agents, 53 skills, 21 command files, and one con
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated-opt-in-only)
 - [Agents (20 Total)](#agents-20-total)
 - [Goal Workflow UX: `/goal`, Ralph, Team, Ultragoal](#goal-workflow-ux-goal-ralph-team-ultragoal)
-- [Skills (53 Total)](#skills-53-total)
+- [Skills (57 Total)](#skills-57-total)
 - [Slash Commands](#slash-commands)
 - [Shipyard Methodology](./shipyard.md) — governed delivery & shared harness map
 - [Claude Code `/goal` Adapter Design](#claude-code-goal-adapter-design)
@@ -579,6 +579,18 @@ omg team api claim-task --input '{"team_name":"auth-review","task_id":"1","worke
 
 Supported entrypoints: direct start (`omg team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
 
+Startup reserves the team name for an immutable instance. Shutdown and job cleanup
+require matching instance and worker-launch evidence; `--force` skips graceful
+waits but does not bypass ownership checks. Missing or corrupt evidence preserves
+resources, and an old job cannot clean up a newer same-name team. Keep external
+cleanup receipts when retrying a partial state removal. See
+[Team Instance Ownership](MIGRATION.md#unreleased-team-instance-ownership).
+API `cleanup` and `orphan-cleanup` follow the same evidence rules. SessionEnd
+validates Claude-session ownership from config `leader_session_id` before
+delegating instance-bound shutdown.
+Tmux effects require the original socket and precise server process identity;
+reused pane IDs after a server restart do not grant ownership.
+
 Native team worker worktrees are an opt-in/config-gated runtime-v2 rollout. See [Native Team Worktree Mode](TEAM-WORKTREE-MODE.md) for the worktree path contract, canonical `OMC_TEAM_STATE_ROOT` behavior, status fields, and dirty-worktree cleanup policy.
 
 Topology behavior:
@@ -652,7 +664,7 @@ omg graph run ./my-graph.json --approval-mode stdin    # default: interactive y/
 omg graph run ./my-graph.json --approval-mode remote --checkpoint
 ```
 
-- `--approval-mode remote` persists each pending gate under `.omc/graph-runs/<run_id>/approvals/` and dispatches an `approval-request` notification (Telegram/Discord/Slack/webhook, following your notification config)
+- `--approval-mode remote` persists each pending gate under `.omg/graph-runs/<run_id>/approvals/` and dispatches an `approval-request` notification (Telegram/Discord/Slack/webhook, following your notification config)
 - Reply `approved`/`denied` (or `y`/`n`, `批准`/`拒绝`) to the notification message to decide from your phone; the reply-listener daemon writes the decision artifact
 - Decide from any shell on the machine: `omg graph approvals list`, then `omg graph approvals decide <runId> <activationId> approved|denied`
 - `--approval-timeout <seconds>` bounds the wait; an expired gate resolves to `--approval-timeout-policy deny` (default, fail-closed) or `approve`
@@ -901,7 +913,7 @@ Autopilot continues to own cancel, resume, cleanup, state inspection, HUD, and S
 
 V1 deliberately defers `stageModels` and all model/provider/role routing, inline/no-spawn execution, dynamic commands/modes/state files, arbitrary stages/prompts/plugins and control-flow extensions, and the separate custom-skill inline-array frontmatter parser mismatch. See [ADR 03487](./adr/03487-named-autopilot-stage-profiles.md) for the decision record.
 
-## Skills (53 Total)
+## Skills (57 Total)
 
 Includes bundled workflow, utility, domain, and compatibility skills. Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
@@ -913,6 +925,7 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | ------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------- |
 | `ai-slop-cleaner`         | Anti-slop cleanup workflow with optional reviewer-only `--review` pass        | `/oh-my-copilot:ai-slop-cleaner`         |
 | `agent-doc-discipline`    | Writing-time discipline for agent-facing documents: checkable rules with a why, steps first, one meaning one home | `/oh-my-copilot:agent-doc-discipline` |
+| `architecture-survey`     | Shipyard survey: report ranked architecture-deepening candidates with evidence, never edit code | `/oh-my-copilot:architecture-survey`     |
 | `ask`                     | Ask Claude, Codex, Gemini, Antigravity, Grok, or Cursor via local CLI          | `/oh-my-copilot:ask`                     |
 | `ask-navigator`           | Shipyard navigator: chart foggy efforts into decision-ticket maps, hand off to launch | `/oh-my-copilot:ask-navigator`    |
 | `autopilot`               | Full autonomous execution from idea to working code                            | `/oh-my-copilot:autopilot`               |
@@ -923,14 +936,17 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `debug`                   | Diagnose the current OMC session or repository state                           | `/oh-my-copilot:debug`                   |
 | `deep-interview`          | Socratic deep interview with ambiguity gating                                  | `/oh-my-copilot:deep-interview`                |
 | `deepinit`                | Generate hierarchical AGENTS.md documentation                                  | `/oh-my-copilot:deepinit`                |
+| `diagram`                 | Model-invoked visual explanations — smallest view (pseudocode, tree, Mermaid, diff) that carries the point | `/oh-my-copilot:diagram`                |
 | `drydock`                 | Shipyard harness scaffold: 4-pillar shared environment, --check drift audit    | `/oh-my-copilot:drydock`                 |
 | `execute`                 | Carry an approved task through to working, verified code                       | `/oh-my-copilot:execute`                |
 | `external-context`        | Parallel document-specialist research                                          | `/oh-my-copilot:external-context`       |
 | `harbor`                  | Shipyard intake gate: verify external issues and PRs, hand a signature docket  | `/oh-my-copilot:harbor`                  |
 | `hud`                     | Configure HUD/statusline                                                        | `/oh-my-copilot:hud`                     |
+| `intent`                  | Internal requirements intake for non-engineer contributors                      | `/oh-my-copilot:intent`                  |
 | `launch`                  | Shipyard governed delivery pipeline: spec, tickets, frontier execution          | `/oh-my-copilot:launch`                  |
 | `loft`                    | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions | `/oh-my-copilot:loft`              |
 | `minimal-code-discipline` | YAGNI-ladder writing-time discipline: reuse first, shortest correct diff        | `/oh-my-copilot:minimal-code-discipline` |
+| `minimal-prose-discipline` | Writing-time discipline for the agent's own prose: protected core, no filler, close on the action | `/oh-my-copilot:minimal-prose-discipline` |
 | `omc-doctor`              | Diagnose and fix installation issues                                           | `/oh-my-copilot:omc-doctor`              |
 | `omc-plan`                | Strategic planning with optional interview and consensus modes                 | `/oh-my-copilot:omc-plan`               |
 | `omc-review`              | Evaluate finished work for defects, risk, and simplification                   | `/oh-my-copilot:omc-review`             |
@@ -957,23 +973,25 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 
 ## Slash Commands
 
-Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plugin ships 21 command files alongside the 53 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
+Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plugin ships 21 command files alongside the 57 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
 
 | Command                                                  | Description                                                                                   |
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `/oh-my-copilot:ai-slop-cleaner <target>`             | Run the anti-slop cleanup workflow (`--review` for reviewer-only pass)                        |
 | `/oh-my-copilot:agent-doc-discipline`                 | Apply the writing-time discipline for agent-facing documents                                   |
 | `/oh-my-copilot:ask <claude\|codex\|gemini\|antigravity\|grok\|cursor> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact                   |
+| `/oh-my-copilot:architecture-survey [area]`           | Survey the repo for architecture-deepening candidates with evidence; reports only, never edits  |
 | `/oh-my-copilot:ask-navigator <idea\|map>`            | Chart a foggy effort into a map of decision tickets (or work the open map), then hand off to launch |
 | `/oh-my-copilot:autopilot <task>`                     | Full autonomous execution                                                                     |
 | `/oh-my-copilot:autoresearch <task>`                  | Run a bounded evaluator-driven improvement mission                                             |
-| `/oh-my-copilot:cancel [--force\|--all]`              | Cancel active OMC modes                                                                       |
-| `/oh-my-copilot:cancel-ralph [--force\|--all]`        | Deprecated alias for cancellation                                                             |
+| `/oh-my-copilot:cancel [--force] [--all]`            | Cancel current-session modes; `--force` skips graceful waits, `--all` explicitly selects all sessions |
+| `/oh-my-copilot:cancel-ralph [--force] [--all]`      | Deprecated alias with the same force/scope distinction                                         |
 | `/oh-my-copilot:configure-notifications`              | Configure notification integrations                                                           |
 | `/oh-my-copilot:compact [note]`                       | Prepare an OMC-safe manual handoff telling the user to run bare `/compact [note]`              |
 | `/oh-my-copilot:debug`                                | Diagnose the current OMC session or repository state                                          |
 | `/deep-interview <idea>`                                 | Socratic interview with ambiguity scoring before execution                                    |
 | `/oh-my-copilot:deepinit [path]`                      | Index codebase with hierarchical AGENTS.md files                                              |
+| `/oh-my-copilot:diagram`                              | Explain the current topic with the smallest visual that carries it                            |
 | `/oh-my-copilot:execute <task>`                      | Carry an approved task through to working, verified code                                      |
 | `/oh-my-copilot:external-context <topic>`             | Run parallel document-specialist research                                                     |
 | `/oh-my-copilot:harbor [sweep\|look at #N\|what's ready?]` | Sweep external issues and PRs, verify claims, hand a signature docket                    |
@@ -982,6 +1000,7 @@ Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plu
 | `/oh-my-copilot:launch <brief\|spec-path> [--serial]` | Run the shipyard governed delivery pipeline (spec -> tickets -> frontier)                      |
 | `/oh-my-copilot:loft <design-question>`               | Loft the shape before cutting steel: a throwaway artifact answers a design question prose cannot settle |
 | `/oh-my-copilot:minimal-code-discipline`              | Apply the YAGNI-ladder writing-time discipline while implementing                              |
+| `/oh-my-copilot:minimal-prose-discipline`             | Apply the writing-time discipline for the agent's own prose                                    |
 | `/oh-my-copilot:omc-doctor`                           | Diagnose and fix installation issues                                                          |
 | `/oh-my-copilot:omc-plan <description>`               | Start planning session (supports consensus structured deliberation)                           |
 | `/oh-my-copilot:omc-review [path]`                    | Review finished work for defects and risk                                                       |

@@ -57,6 +57,8 @@ import {
   restoreVerificationRequestIfAbsent,
   type VerificationState,
 } from '../ralph/index.js';
+import { applyRalphVerdictShadow } from '../ralph/jev-shadow.js';
+import type { UserStory } from '../ralph/prd.js';
 import { checkIncompleteTodos, getNextPendingTodo, StopContext, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError, isScheduledWakeupStop, isOversizeToolResultRedirectStop } from '../todo-continuation/index.js';
 import { TODO_CONTINUATION_PROMPT } from '../../installer/hooks.js';
 import {
@@ -67,6 +69,7 @@ import { readTeamPipelineState } from '../team-pipeline/state.js';
 import type { TeamPipelinePhase } from '../team-pipeline/types.js';
 import { getActiveAgentSnapshot } from '../subagent-tracker/index.js';
 import type { IdleNotificationRepoState } from './idle-repo-state.js';
+import { applyLoopContinuationShadow } from './jev-shadow.js';
 import { truncatePromptForEcho } from '../../lib/truncate-prompt.js';
 import { isModeActive } from '../mode-registry/index.js';
 import { namedWorkflowRuntimeSupported, validateNamedWorkflowState } from '../autopilot/named-workflow-resume-validator.js';
@@ -1118,6 +1121,23 @@ function checkArchitectRejectionInTranscript(sessionId: string): { rejected: boo
 }
 
 /**
+ * Bounded criteria excerpt for the ralph-verdict Jev shadow point: the story
+ * under review's acceptance criteria, or every PRD story's criteria for
+ * completion-scope verification. The resolver bounds the string before
+ * send/log.
+ */
+function verificationCriteriaExcerpt(
+  workingDir: string,
+  sessionId: string | undefined,
+  story?: UserStory | null,
+): string {
+  const criteria = story?.acceptanceCriteria
+    ?? readPrd(workingDir, sessionId)?.userStories.flatMap(s => s.acceptanceCriteria)
+    ?? [];
+  return criteria.join('; ');
+}
+
+/**
  * Check Ralph Loop state and determine if it should continue
  * Now includes Architect verification for completion claims
  */
@@ -1234,6 +1254,14 @@ async function checkRalphLoop(
     if (sessionId) {
       // Check for architect approval
       if (checkArchitectApprovalInTranscript(sessionId, verificationState)) {
+        // Jev ralph-verdict shadow: the detected approval is the twin; the
+        // verdict flow below is unchanged with and without a Jev key.
+        await applyRalphVerdictShadow({
+          verdict: true,
+          prdContext: verificationCriteriaExcerpt(workingDir, sessionId, verifiedStory),
+          claim: verificationState.completion_claim,
+          criticMode: verificationState.critic_mode,
+        });
         if (verificationState.verification_scope === 'story' && verificationState.story_id) {
           const consumed = consumeStoryArchitectApproval(
             workingDir,
@@ -1337,6 +1365,14 @@ async function checkRalphLoop(
       // Check for architect rejection
       const rejection = checkArchitectRejectionInTranscript(sessionId);
       if (verificationState && rejection.rejected) {
+        // Jev ralph-verdict shadow: the detected rejection is the twin; the
+        // feedback flow below is unchanged with and without a Jev key.
+        await applyRalphVerdictShadow({
+          verdict: false,
+          prdContext: verificationCriteriaExcerpt(workingDir, sessionId, verifiedStory),
+          claim: verificationState.completion_claim,
+          criticMode: verificationState.critic_mode,
+        });
         if (verificationState.verification_scope === 'story' && verificationState.story_id) {
           markStoryIncomplete(workingDir, verificationState.story_id, rejection.feedback, sessionId);
         }
@@ -1492,7 +1528,7 @@ CRITICAL INSTRUCTIONS:
 1. Review your progress and the original task
 ${prdInstruction}
 3. Continue from where you left off
-4. When FULLY complete (after ${state.critic_mode === 'codex' ? 'Codex critic' : state.critic_mode === 'critic' ? 'Critic' : 'Architect'} verification), run \`/oh-my-copilot:cancel\` to cleanly exit and clean up state files. If cancel fails, retry with \`/oh-my-copilot:cancel --force\`.
+4. When FULLY complete (after ${state.critic_mode === 'codex' ? 'Codex critic' : state.critic_mode === 'critic' ? 'Critic' : 'Architect'} verification), run \`/oh-my-copilot:cancel\` to cleanly exit and clean up state files. If cancel fails, report the failure and retry within the same session scope. Cancel all sessions only when the user explicitly requests \`--all\`.
 5. Do NOT stop until the task is truly done
 
 ${newState.prompt ? `Original task: ${truncatePromptForEcho(newState.prompt)}` : ''}
@@ -2245,12 +2281,15 @@ export async function checkPersistentModes(
   stopContext?: StopContext  // NEW: from todo-continuation types
 ): Promise<PersistentModeResult> {
   const result = await resolvePersistentModeBlock(sessionId, directory, stopContext);
-  return applyThinkingOnlyStreakGuard(
+  const guarded = applyThinkingOnlyStreakGuard(
     result,
     resolveToWorktreeRoot(directory),
     sessionId,
     stopContext,
   );
+  // Jev loop-continuation shadow point: the guarded decision is the twin;
+  // the returned decision is byte-identical with and without a Jev key.
+  return applyLoopContinuationShadow({ result: guarded, sessionId });
 }
 
 /**

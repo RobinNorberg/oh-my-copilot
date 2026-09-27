@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { isProcessAlive } from '../../platform/process-utils.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { resolveRuntimeCliPath } from '../runtime-owner-client.js';
+import { reserveTeamInstance } from '../team-instance.js';
 import { awaitWorkerLaunchAcknowledgement, awaitWorkerLaunchProviderStarted, buildWorkerLaunchBootstrapSpec,
   prepareWorkerLaunchAttempt, runWorkerLaunchBootstrap, terminateWorkerLaunchProvider, withWorkerLaunchAttemptFence, type WorkerLaunchAttempt } from '../worker-launch-ack.js';
 
@@ -12,8 +13,24 @@ const tmuxUtilsMocks = vi.hoisted(() => ({
   tmuxExecAsync: vi.fn(),
   tmuxCmdAsync: vi.fn(),
 }));
+const tmuxSessionMocks = vi.hoisted(() => ({
+  observeTmuxServerIdentity: vi.fn(async () => 'matching' as const),
+  getOwnedWorkerLiveness: vi.fn(async () => 'dead' as const),
+  observeTeamSessionTargetPresence: vi.fn(async () => ({ kind: 'owned' as const })),
+  workerPaneBelongsToOwnedProviderTarget: vi.fn(async () => true),
+  killOwnedWorkerPane: vi.fn(async () => undefined),
+  killTeamSession: vi.fn(async () => true),
+}));
 const tmuxCalls = vi.hoisted(() => [] as string[][]);
 type StartedRecord = { pid: number; process_start_identity: string; process_group_id?: number };
+const TEAM_INSTANCE_ID = '44444444-4444-4444-8444-444444444444';
+const FIXTURE_TMUX_SERVER_IDENTITY = {
+  socket_path: '/tmp/omc-test-tmux.sock',
+  server_pid: 4242,
+  process_started_at: process.platform === 'darwin'
+    ? 'darwin:1700000000:123456'
+    : 'linux:01234567-89ab-cdef-0123-456789abcdef:424242',
+};
 
 vi.mock('../../cli/tmux-utils.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../cli/tmux-utils.js')>();
@@ -21,6 +38,19 @@ vi.mock('../../cli/tmux-utils.js', async importOriginal => {
     ...actual,
     tmuxExecAsync: tmuxUtilsMocks.tmuxExecAsync,
     tmuxCmdAsync: tmuxUtilsMocks.tmuxCmdAsync,
+  };
+});
+
+vi.mock('../tmux-session.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../tmux-session.js')>();
+  return {
+    ...actual,
+    observeTmuxServerIdentity: tmuxSessionMocks.observeTmuxServerIdentity,
+    getOwnedWorkerLiveness: tmuxSessionMocks.getOwnedWorkerLiveness,
+    observeTeamSessionTargetPresence: tmuxSessionMocks.observeTeamSessionTargetPresence,
+    workerPaneBelongsToOwnedProviderTarget: tmuxSessionMocks.workerPaneBelongsToOwnedProviderTarget,
+    killOwnedWorkerPane: tmuxSessionMocks.killOwnedWorkerPane,
+    killTeamSession: tmuxSessionMocks.killTeamSession,
   };
 });
 
@@ -47,6 +77,18 @@ describe('shutdownTeamV2 split-pane pane cleanup', () => {
     tmuxCalls.length = 0;
     tmuxUtilsMocks.tmuxExecAsync.mockReset();
     tmuxUtilsMocks.tmuxCmdAsync.mockReset();
+    tmuxSessionMocks.observeTmuxServerIdentity.mockReset();
+    tmuxSessionMocks.observeTmuxServerIdentity.mockResolvedValue('matching');
+    tmuxSessionMocks.getOwnedWorkerLiveness.mockReset();
+    tmuxSessionMocks.getOwnedWorkerLiveness.mockResolvedValue('dead');
+    tmuxSessionMocks.observeTeamSessionTargetPresence.mockReset();
+    tmuxSessionMocks.observeTeamSessionTargetPresence.mockResolvedValue({ kind: 'owned' });
+    tmuxSessionMocks.workerPaneBelongsToOwnedProviderTarget.mockReset();
+    tmuxSessionMocks.workerPaneBelongsToOwnedProviderTarget.mockResolvedValue(true);
+    tmuxSessionMocks.killOwnedWorkerPane.mockReset();
+    tmuxSessionMocks.killOwnedWorkerPane.mockImplementation(async () => undefined);
+    tmuxSessionMocks.killTeamSession.mockReset();
+    tmuxSessionMocks.killTeamSession.mockResolvedValue(true);
 
     const run = (args: string[]) => {
       tmuxCalls.push(args);
@@ -81,10 +123,12 @@ describe('shutdownTeamV2 split-pane pane cleanup', () => {
 
   it('preserves the owned pane and state when provider launch identity is missing', async () => {
     const teamName = 'pane-cleanup-team';
+    await reserveTeamInstance({ teamName, cwd, instanceId: TEAM_INSTANCE_ID });
     const teamRoot = join(getOmcRoot(cwd), 'state', 'team', teamName);
 
     await writeJson(cwd, `${teamRoot}/config.json`, {
       name: teamName,
+      instance_id: TEAM_INSTANCE_ID,
       task: 'demo',
       agent_type: 'claude',
       worker_launch_mode: 'interactive',
@@ -96,6 +140,7 @@ describe('shutdownTeamV2 split-pane pane cleanup', () => {
       ],
       created_at: new Date().toISOString(),
       tmux_session: 'leader-session:0',
+      tmux_server_identity: FIXTURE_TMUX_SERVER_IDENTITY,
       tmux_window_owned: false,
       next_task_id: 1,
       leader_pane_id: '%1',
@@ -119,13 +164,14 @@ describe('shutdownTeamV2 split-pane pane cleanup', () => {
   });
   it('retires and terminates the exact provider while accepting a proven-dead pane', async () => {
     const teamName = 'provider-cleanup-team';
+    await reserveTeamInstance({ teamName, cwd, instanceId: TEAM_INSTANCE_ID });
     const teamRoot = join(getOmcRoot(cwd), 'state', 'team', teamName);
     let attempt: WorkerLaunchAttempt | undefined;
     let bootstrap: Promise<unknown> | undefined;
     let startedRecord: StartedRecord | undefined;
     try {
       attempt = await prepareWorkerLaunchAttempt({ cwd, teamName, workerName: 'worker-1', paneId: '%2',
-        provider: 'claude', runtimeCliPath: resolveRuntimeCliPath(), context: { kind: 'initial' } });
+        instanceId: TEAM_INSTANCE_ID, provider: 'claude', runtimeCliPath: resolveRuntimeCliPath(), context: { kind: 'initial' } });
       bootstrap = runWorkerLaunchBootstrap(buildWorkerLaunchBootstrapSpec(
         attempt, [process.execPath, '-e', 'setInterval(()=>{},1000)'], cwd,
       ));
@@ -140,11 +186,12 @@ describe('shutdownTeamV2 split-pane pane cleanup', () => {
       await expect(withWorkerLaunchAttemptFence(attempt, async () => isProcessAlive(providerPid)))
         .resolves.toEqual({ ok: true, value: true });
       await writeJson(cwd, `${teamRoot}/config.json`, {
-        name: teamName, task: 'demo', agent_type: 'claude', worker_launch_mode: 'interactive', worker_count: 1, max_workers: 20,
+        name: teamName, instance_id: TEAM_INSTANCE_ID, task: 'demo', agent_type: 'claude', worker_launch_mode: 'interactive', worker_count: 1, max_workers: 20,
         workers: [{ name: 'worker-1', index: 1, role: 'claude', assigned_tasks: [], pane_id: '%2',
           worker_cli: 'claude', launch_attempt_id: attempt.attempt_id,
           launch_descriptor: { schema_version: 1, provider: 'claude', model: null, binary: process.execPath, args: [] } }],
-        created_at: new Date().toISOString(), tmux_session: 'leader-session:0', tmux_window_owned: false,
+        created_at: new Date().toISOString(), tmux_session: 'leader-session:0',
+        tmux_server_identity: FIXTURE_TMUX_SERVER_IDENTITY, tmux_window_owned: false,
         next_task_id: 1, leader_pane_id: '%1', hud_pane_id: null, resize_hook_name: null, resize_hook_target: null,
       });
 

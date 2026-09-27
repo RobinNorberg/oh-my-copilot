@@ -1,9 +1,6 @@
 ---
 name: omc-ado-auto-review
-description: >
-  Automated code review for Azure DevOps pull requests where you are assigned as reviewer.
-  WHEN: User wants automated code reviews on PRs they're assigned to, wants AI-powered PR review comments, or wants to auto-review pending PRs in Azure DevOps.
-  DO NOT USE FOR: Manual interactive PR review (use omc-ado-review), creating PRs (use git-master agent), sprint planning (use omc-ado-sprint), or non-ADO repositories.
+description: "Auto-review Azure DevOps PRs where you are an assigned reviewer and post AI review comments. Not for interactive review (omc-ado-review) or creating PRs."
 ---
 
 # OMC ADO Auto Review

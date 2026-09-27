@@ -2,7 +2,7 @@
  * FileJournal tests — round-trip, fail-closed corruption handling (AC-8),
  * and ordered concurrent appends.
  */
-import { mkdirSync, mkdtempSync, linkSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from "fs";
+import { mkdirSync, mkdtempSync, realpathSync, linkSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -37,7 +37,7 @@ function makeRecord(seq) {
 describe("FileJournal", () => {
     const tempDirs = [];
     function makeRunsRoot() {
-        const dir = mkdtempSync(join(tmpdir(), "omc-journal-test-"));
+        const dir = mkdtempSync(join(realpathSync(tmpdir()), "omc-journal-test-"));
         tempDirs.push(dir);
         return dir;
     }

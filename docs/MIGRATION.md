@@ -6,6 +6,8 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [Unreleased: Team Instance Ownership](#unreleased-team-instance-ownership)
+- [Unreleased: Cancellation Scope](#unreleased-cancellation-scope)
 - [v4.13.102 → v5.0.0: Fork Upgrade Guide](#v413102--v500-fork-upgrade-guide)
 - [v4.x → v5.0: Workflow Retirement](#v4x--v50-workflow-retirement)
 - [Unreleased: Team MCP Runtime Deprecation (CLI-Only)](#unreleased-team-mcp-runtime-deprecation-cli-only)
@@ -18,6 +20,79 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
 
 ---
+
+## Unreleased: Team Instance Ownership
+
+Team startup reserves an immutable instance ID before creating tasks or workers.
+An existing reservation or team state is not overwritten by another start using
+the same name. CLI/MCP jobs retain their original instance ID: cleanup of an old
+job cannot adopt a newer team's configuration.
+
+Native CLI jobs no longer start through the legacy v1 opt-out path. Unset
+`OMC_RUNTIME_V2=0`, `false`, `no`, or `off` before starting a job; disabling v2 is
+rejected before native startup effects rather than selecting weaker cleanup.
+
+Cleanup now requires matching instance and worker-launch evidence. A missing or
+corrupt receipt is not permission to kill a pane or remove state, even with
+`--force`. Older jobs and teams without this evidence are preserved rather than
+automatically upgraded or forcibly deleted. Complete their shutdown using the
+owning runtime before upgrading; do not fabricate IDs or discard receipts to
+bypass a blocked cleanup.
+
+This also applies to API `cleanup` and `orphan-cleanup`: neither is a raw state
+deletion escape hatch. The unsafe low-level `teamCleanup` deletion API is removed.
+SessionEnd cleanup checks the ending session's ownership via config
+`leader_session_id` (not the tmux target projected into `leader.session_id`)
+and passes the captured instance ID; stale team-name hints cannot authorize
+cleanup of another session's team.
+
+Provider execution and pane liveness are observed separately. An exited provider
+can be recovered even when its pane shell remains, but recovery does not treat
+that observation as proof that all descendant processes have terminated.
+
+Tmux ownership additionally binds the socket, server PID, and precise process
+creation time captured at startup. Reused session names or pane IDs after a
+server restart cannot replace that evidence. Missing historical server identity
+does not authorize adoption, input, or destruction. Confirmed death of the
+original server proves only that its panes are gone, not provider cleanup.
+Strict server identity requires the native addon on macOS or boot-bound process
+evidence on Linux; unavailable precision preserves resources without a coarse
+process-listing fallback.
+Native Windows/MSYS tmux control has no verified process-identity mapping and
+therefore cannot authorize these effects. Running Node inside WSL uses the Linux
+identity path.
+
+The legacy mutation exports `watchdogCliWorkers`, `spawnWorkerForTask`,
+`killWorkerPane`, `assignTask`, and `killWorkerPanes` have been removed. Use the instance-bound v2
+startup, dispatch, recovery, scaling, and shutdown APIs instead. The former
+`done.json` watchdog, five automatic pane-death retries, lowest-index scheduling,
+and watchdog timer `stop()` contract are retired, not recreated inside v2.
+
+Final state removal retains instance-bound cleanup records outside the disposable
+team directory. After a partial removal failure, retry cleanup for the original
+job. Do not manually delete these records, including completed receipts: they
+prevent reuse of a retired instance identity. Detached state is removed by the
+validated cleanup protocol.
+
+Pending recovery reservations, intents, and owner requests also retain the
+original instance ID. Records without that evidence are not automatically
+adopted, and retrying an old request cannot attach it to a same-named replacement.
+
+`state_clear(mode="team", ...)` clears orchestration/session state, not native
+team runtime directories or name-only native mission records. Shut down native
+teams through `omg team shutdown` or the original job's cleanup API first.
+Session ownership alone does not prove ownership of a same-name runtime instance.
+
+## Unreleased: Cancellation Scope
+
+`/oh-my-copilot:cancel --force` now targets only the current session; it no longer
+means clearing every session. It skips graceful waits, not state locks or ownership checks.
+If the current session cannot be identified, cancellation fails closed.
+
+Use `--all` explicitly for all-session cancellation. It follows normal cancellation
+within each session; use `--force --all` when forced cancellation across sessions is intended.
+Update prompts or automation that previously used `--force` for a workspace-wide reset.
+The deprecated `cancel-ralph` alias follows the same contract.
 
 ## Unreleased: Git-less State Root Recovery
 

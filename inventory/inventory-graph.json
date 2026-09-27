@@ -5,51 +5,52 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "9b451c577f94c3bc2be780ede5c4de1edee51759",
-    "sourceSha256": "c2a9adcf7a77ee7507d0bc2ccefac374361095f4d6c1672b1c4ee5d0439d8591",
+    "head": "49fe8cea7a3ccac9acf3fa61a0048c199a6925d2",
+    "sourceSha256": "44a5e8fcb26e43ed135d46785e1d525f93cdb50e42955360a4baaaf6c8b48ca6",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "9b451c577f94c3bc2be780ede5c4de1edee51759",
-  "sourceSha256": "c2a9adcf7a77ee7507d0bc2ccefac374361095f4d6c1672b1c4ee5d0439d8591",
+  "head": "49fe8cea7a3ccac9acf3fa61a0048c199a6925d2",
+  "sourceSha256": "44a5e8fcb26e43ed135d46785e1d525f93cdb50e42955360a4baaaf6c8b48ca6",
   "counts": {
     "public": {
-      "skills": 53,
+      "skills": 57,
       "commands": 21,
       "workflows": 8,
       "agents": 20,
-      "total": 102
+      "total": 106
     },
     "internal": {
-      "hookFiles": 305,
-      "featureFiles": 80,
+      "hookFiles": 327,
+      "featureFiles": 84,
       "toolFiles": 61,
-      "libFiles": 42,
+      "libFiles": 43,
       "templateHooks": 22,
-      "srcFiles": 1380,
-      "total": 1402
+      "srcFiles": 1416,
+      "total": 1438
     },
     "generated": {
-      "distFiles": 5363,
+      "distFiles": 5515,
       "bridgeFiles": 9,
-      "total": 5372
+      "total": 5524
     },
     "prompt": {
-      "promptLikeFiles": 62
+      "promptLikeFiles": 61
     },
-    "skills": 53,
+    "skills": 57,
     "commands": 21,
-    "hookFiles": 305,
+    "hookFiles": 327,
     "workflows": 8,
     "agentDefinitions": 18,
-    "promptLikeFiles": 62
+    "promptLikeFiles": 61
   },
   "public": {
     "skills": [
       "agent-doc-discipline",
       "ai-slop-cleaner",
+      "architecture-survey",
       "ask",
       "ask-navigator",
       "autopilot",
@@ -61,6 +62,7 @@
       "deep-interview",
       "deep-review",
       "deepinit",
+      "diagram",
       "discover",
       "drydock",
       "execute",
@@ -68,9 +70,11 @@
       "graph",
       "harbor",
       "hud",
+      "intent",
       "launch",
       "loft",
       "minimal-code-discipline",
+      "minimal-prose-discipline",
       "omc-ado-auto-review",
       "omc-ado-review",
       "omc-ado-setup",
@@ -230,7 +234,9 @@
       "src/hooks/bridge.ts",
       "src/hooks/circular-fix-detector/index.ts",
       "src/hooks/circular-fix-detector/types.ts",
+      "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
       "src/hooks/code-simplifier/index.ts",
+      "src/hooks/code-simplifier/jev-shadow.ts",
       "src/hooks/codebase-map.ts",
       "src/hooks/comment-checker/constants.ts",
       "src/hooks/comment-checker/filters.ts",
@@ -257,8 +263,19 @@
       "src/hooks/factcheck/sentinel.ts",
       "src/hooks/factcheck/types.ts",
       "src/hooks/index.ts",
+      "src/hooks/jev/__tests__/client.test.ts",
+      "src/hooks/jev/__tests__/resolver.test.ts",
+      "src/hooks/jev/client.ts",
+      "src/hooks/jev/config.ts",
+      "src/hooks/jev/index.ts",
+      "src/hooks/jev/points.ts",
+      "src/hooks/jev/resolver.ts",
+      "src/hooks/jev/types.ts",
       "src/hooks/keyword-detector/__tests__/index.test.ts",
+      "src/hooks/keyword-detector/__tests__/jev-shadow.test.ts",
       "src/hooks/keyword-detector/index.ts",
+      "src/hooks/keyword-detector/jev-shadow.ts",
+      "src/hooks/learner/__tests__/jev-extraction-shadow.test.ts",
       "src/hooks/learner/auto-invoke.ts",
       "src/hooks/learner/auto-learner.ts",
       "src/hooks/learner/bridge.ts",
@@ -268,6 +285,7 @@
       "src/hooks/learner/detector.ts",
       "src/hooks/learner/finder.ts",
       "src/hooks/learner/index.ts",
+      "src/hooks/learner/jev-shadow.ts",
       "src/hooks/learner/loader.ts",
       "src/hooks/learner/matcher.ts",
       "src/hooks/learner/parser.ts",
@@ -303,6 +321,7 @@
       "src/hooks/persistent-mode/__tests__/error-handling.test.ts",
       "src/hooks/persistent-mode/__tests__/idle-cooldown.test.ts",
       "src/hooks/persistent-mode/__tests__/idle-repo-state.test.ts",
+      "src/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.ts",
       "src/hooks/persistent-mode/__tests__/oversize-tool-result-redirect.test.ts",
       "src/hooks/persistent-mode/__tests__/prompt-truncation.test.ts",
       "src/hooks/persistent-mode/__tests__/ralph-hard-max.test.ts",
@@ -320,14 +339,17 @@
       "src/hooks/persistent-mode/idle-cooldown.test.ts",
       "src/hooks/persistent-mode/idle-repo-state.ts",
       "src/hooks/persistent-mode/index.ts",
+      "src/hooks/persistent-mode/jev-shadow.ts",
       "src/hooks/persistent-mode/session-isolation.test.ts",
       "src/hooks/persistent-mode/stop-hook-blocking.test.ts",
       "src/hooks/plugin-patterns/__tests__/index.test.ts",
       "src/hooks/plugin-patterns/index.ts",
       "src/hooks/pre-compact/index.ts",
       "src/hooks/pre-compact/restore.ts",
+      "src/hooks/preemptive-compaction/__tests__/jev-shadow.test.ts",
       "src/hooks/preemptive-compaction/constants.ts",
       "src/hooks/preemptive-compaction/index.ts",
+      "src/hooks/preemptive-compaction/jev-shadow.ts",
       "src/hooks/preemptive-compaction/types.ts",
       "src/hooks/project-memory/__tests__/detector.test.ts",
       "src/hooks/project-memory/__tests__/formatter.test.ts",
@@ -349,7 +371,9 @@
       "src/hooks/project-memory/storage.ts",
       "src/hooks/project-memory/types.ts",
       "src/hooks/prompt-prerequisites/index.ts",
+      "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
       "src/hooks/ralph/index.ts",
+      "src/hooks/ralph/jev-shadow.ts",
       "src/hooks/ralph/loop.ts",
       "src/hooks/ralph/prd.ts",
       "src/hooks/ralph/progress.ts",
@@ -425,7 +449,9 @@
       "src/hooks/subagent-tracker/session-replay.ts",
       "src/hooks/subagent-tracker/worktree-evidence.ts",
       "src/hooks/task-size-detector/__tests__/index.test.ts",
+      "src/hooks/task-size-detector/__tests__/jev-shadow.test.ts",
       "src/hooks/task-size-detector/index.ts",
+      "src/hooks/task-size-detector/jev-shadow.ts",
       "src/hooks/team-canonical-state.ts",
       "src/hooks/team-dispatch-hook.ts",
       "src/hooks/team-leader-nudge-hook.ts",
@@ -469,6 +495,8 @@
     "featureFiles": [
       "src/features/AGENTS.md",
       "src/features/__tests__/checkpoint.test.ts",
+      "src/features/__tests__/jev-model-routing.test.ts",
+      "src/features/__tests__/jev-slop-warning.test.ts",
       "src/features/__tests__/magic-keywords.test.ts",
       "src/features/agent-addressability/__tests__/addressability.test.ts",
       "src/features/agent-addressability/index.ts",
@@ -504,6 +532,8 @@
       "src/features/delegation-routing/resolver.ts",
       "src/features/delegation-routing/types.ts",
       "src/features/index.ts",
+      "src/features/jev-model-routing.ts",
+      "src/features/jev-slop-warning.ts",
       "src/features/lookout/__tests__/lookout-workspace.test.ts",
       "src/features/lookout/__tests__/lookout.test.ts",
       "src/features/lookout/command-parser.ts",
@@ -614,6 +644,7 @@
     "libFiles": [
       "src/lib/__tests__/atomic-write.test.ts",
       "src/lib/__tests__/mode-state-io.test.ts",
+      "src/lib/__tests__/mode-state-lock.test.ts",
       "src/lib/__tests__/payload-limits.test.ts",
       "src/lib/__tests__/plugin-dir.test.ts",
       "src/lib/__tests__/session-id.test.ts",
@@ -736,7 +767,6 @@
       "src/mcp/prompt-persistence.ts",
       "src/ralphthon/deep-interview-prompt.ts",
       "src/team/__tests__/prompt-sanitization.test.ts",
-      "src/team/__tests__/runtime-prompt-mode.test.ts",
       "templates/hooks/lib/workflow-stage-prompts.mjs",
       "tests/fixtures/prompt-projection/README.md",
       "tests/fixtures/prompt-projection/claude-body.normalized",
@@ -748,6 +778,8 @@
       "scripts/build-bridge-entry.mjs",
       "scripts/build-claude-md-coordinator.mjs",
       "scripts/build-cli.mjs",
+      "scripts/build-contained-fs.mjs",
+      "scripts/build-generated-artifact-authorization.mjs",
       "scripts/build-mcp-server.mjs",
       "scripts/build-prompt-ssot.ts",
       "scripts/build-runtime-cli.mjs",
@@ -774,6 +806,7 @@
       "scripts/generate-skill-entitlements.mjs",
       "scripts/graph-agent-demo.mjs",
       "scripts/inventory-issue-3698.mjs",
+      "scripts/jev-eval.mjs",
       "scripts/keyword-detector.mjs",
       "scripts/lib/agent-model-config.mjs",
       "scripts/lib/atomic-write.mjs",
@@ -793,6 +826,7 @@
       "scripts/lib/pre-tool-enforcer-preflight.mjs",
       "scripts/lib/precompact-publisher.mjs",
       "scripts/lib/precompact-restore.mjs",
+      "scripts/lib/read-budget-preflight.mjs",
       "scripts/lib/skill-entitlements.mjs",
       "scripts/lib/state-lock.mjs",
       "scripts/lib/state-root.cjs",
@@ -807,6 +841,7 @@
       "scripts/persistent-mode.mjs",
       "scripts/plugin-setup.mjs",
       "scripts/plugin-shipping-surface.mjs",
+      "scripts/post-tool-directory-context-injector.mjs",
       "scripts/post-tool-rules-injector.mjs",
       "scripts/post-tool-use-failure.mjs",
       "scripts/post-tool-verifier.mjs",
@@ -834,6 +869,7 @@
       "scripts/setup-maintenance.mjs",
       "scripts/setup-progress.mjs",
       "scripts/setup-progress.sh",
+      "scripts/shipyard-audit.mjs",
       "scripts/skill-injector.mjs",
       "scripts/smoke-multirepo.mjs",
       "scripts/status.mjs",
@@ -850,6 +886,7 @@
       "scripts/verify-deliverables.mjs",
       "scripts/verify-epic-3698-closure.mjs",
       "scripts/verify-generated-artifact-authorization.mjs",
+      "scripts/verify-graph-contained-fs.mjs",
       "scripts/wiki-pre-compact.mjs",
       "scripts/wiki-session-end.mjs",
       "scripts/wiki-session-start.mjs",
@@ -1010,6 +1047,10 @@
       "dist/__tests__/delegation-enforcer.test.d.ts.map",
       "dist/__tests__/delegation-enforcer.test.js",
       "dist/__tests__/delegation-enforcer.test.js.map",
+      "dist/__tests__/directory-context-injector-registration.test.d.ts",
+      "dist/__tests__/directory-context-injector-registration.test.d.ts.map",
+      "dist/__tests__/directory-context-injector-registration.test.js",
+      "dist/__tests__/directory-context-injector-registration.test.js.map",
       "dist/__tests__/directory-context-injector.test.d.ts",
       "dist/__tests__/directory-context-injector.test.d.ts.map",
       "dist/__tests__/directory-context-injector.test.js",
@@ -1266,6 +1307,10 @@
       "dist/__tests__/hud/update-hint.test.d.ts.map",
       "dist/__tests__/hud/update-hint.test.js",
       "dist/__tests__/hud/update-hint.test.js.map",
+      "dist/__tests__/hud/usage-api-header-fallback.test.d.ts",
+      "dist/__tests__/hud/usage-api-header-fallback.test.d.ts.map",
+      "dist/__tests__/hud/usage-api-header-fallback.test.js",
+      "dist/__tests__/hud/usage-api-header-fallback.test.js.map",
       "dist/__tests__/hud/usage-api-lock.test.d.ts",
       "dist/__tests__/hud/usage-api-lock.test.d.ts.map",
       "dist/__tests__/hud/usage-api-lock.test.js",
@@ -1662,6 +1707,10 @@
       "dist/__tests__/rate-limit-wait/tmux-detector.test.d.ts.map",
       "dist/__tests__/rate-limit-wait/tmux-detector.test.js",
       "dist/__tests__/rate-limit-wait/tmux-detector.test.js.map",
+      "dist/__tests__/read-budget-preflight.test.d.ts",
+      "dist/__tests__/read-budget-preflight.test.d.ts.map",
+      "dist/__tests__/read-budget-preflight.test.js",
+      "dist/__tests__/read-budget-preflight.test.js.map",
       "dist/__tests__/release-boundary.test.d.ts",
       "dist/__tests__/release-boundary.test.d.ts.map",
       "dist/__tests__/release-boundary.test.js",
@@ -2186,6 +2235,10 @@
       "dist/cli/__tests__/hud-watch.test.d.ts.map",
       "dist/cli/__tests__/hud-watch.test.js",
       "dist/cli/__tests__/hud-watch.test.js.map",
+      "dist/cli/__tests__/launch-secure-transport.test.d.ts",
+      "dist/cli/__tests__/launch-secure-transport.test.d.ts.map",
+      "dist/cli/__tests__/launch-secure-transport.test.js",
+      "dist/cli/__tests__/launch-secure-transport.test.js.map",
       "dist/cli/__tests__/launch.test.d.ts",
       "dist/cli/__tests__/launch.test.d.ts.map",
       "dist/cli/__tests__/launch.test.js",
@@ -2451,6 +2504,14 @@
       "dist/features/__tests__/checkpoint.test.d.ts.map",
       "dist/features/__tests__/checkpoint.test.js",
       "dist/features/__tests__/checkpoint.test.js.map",
+      "dist/features/__tests__/jev-model-routing.test.d.ts",
+      "dist/features/__tests__/jev-model-routing.test.d.ts.map",
+      "dist/features/__tests__/jev-model-routing.test.js",
+      "dist/features/__tests__/jev-model-routing.test.js.map",
+      "dist/features/__tests__/jev-slop-warning.test.d.ts",
+      "dist/features/__tests__/jev-slop-warning.test.d.ts.map",
+      "dist/features/__tests__/jev-slop-warning.test.js",
+      "dist/features/__tests__/jev-slop-warning.test.js.map",
       "dist/features/__tests__/magic-keywords.test.d.ts",
       "dist/features/__tests__/magic-keywords.test.d.ts.map",
       "dist/features/__tests__/magic-keywords.test.js",
@@ -2583,6 +2644,14 @@
       "dist/features/index.d.ts.map",
       "dist/features/index.js",
       "dist/features/index.js.map",
+      "dist/features/jev-model-routing.d.ts",
+      "dist/features/jev-model-routing.d.ts.map",
+      "dist/features/jev-model-routing.js",
+      "dist/features/jev-model-routing.js.map",
+      "dist/features/jev-slop-warning.d.ts",
+      "dist/features/jev-slop-warning.d.ts.map",
+      "dist/features/jev-slop-warning.js",
+      "dist/features/jev-slop-warning.js.map",
       "dist/features/lookout/__tests__/lookout-workspace.test.d.ts",
       "dist/features/lookout/__tests__/lookout-workspace.test.d.ts.map",
       "dist/features/lookout/__tests__/lookout-workspace.test.js",
@@ -2799,6 +2868,10 @@
       "dist/graph/__tests__/runtime/journal.test.d.ts.map",
       "dist/graph/__tests__/runtime/journal.test.js",
       "dist/graph/__tests__/runtime/journal.test.js.map",
+      "dist/graph/__tests__/runtime/native-contained-fs.test.d.ts",
+      "dist/graph/__tests__/runtime/native-contained-fs.test.d.ts.map",
+      "dist/graph/__tests__/runtime/native-contained-fs.test.js",
+      "dist/graph/__tests__/runtime/native-contained-fs.test.js.map",
       "dist/graph/__tests__/runtime/progress.test.d.ts",
       "dist/graph/__tests__/runtime/progress.test.d.ts.map",
       "dist/graph/__tests__/runtime/progress.test.js",
@@ -2867,6 +2940,10 @@
       "dist/graph/runtime/journal.d.ts.map",
       "dist/graph/runtime/journal.js",
       "dist/graph/runtime/journal.js.map",
+      "dist/graph/runtime/native-contained-fs.d.ts",
+      "dist/graph/runtime/native-contained-fs.d.ts.map",
+      "dist/graph/runtime/native-contained-fs.js",
+      "dist/graph/runtime/native-contained-fs.js.map",
       "dist/graph/runtime/progress.d.ts",
       "dist/graph/runtime/progress.d.ts.map",
       "dist/graph/runtime/progress.js",
@@ -3183,10 +3260,18 @@
       "dist/hooks/circular-fix-detector/types.d.ts.map",
       "dist/hooks/circular-fix-detector/types.js",
       "dist/hooks/circular-fix-detector/types.js.map",
+      "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.d.ts",
+      "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.d.ts.map",
+      "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.js",
+      "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.js.map",
       "dist/hooks/code-simplifier/index.d.ts",
       "dist/hooks/code-simplifier/index.d.ts.map",
       "dist/hooks/code-simplifier/index.js",
       "dist/hooks/code-simplifier/index.js.map",
+      "dist/hooks/code-simplifier/jev-shadow.d.ts",
+      "dist/hooks/code-simplifier/jev-shadow.d.ts.map",
+      "dist/hooks/code-simplifier/jev-shadow.js",
+      "dist/hooks/code-simplifier/jev-shadow.js.map",
       "dist/hooks/codebase-map.d.ts",
       "dist/hooks/codebase-map.d.ts.map",
       "dist/hooks/codebase-map.js",
@@ -3291,14 +3376,58 @@
       "dist/hooks/index.d.ts.map",
       "dist/hooks/index.js",
       "dist/hooks/index.js.map",
+      "dist/hooks/jev/__tests__/client.test.d.ts",
+      "dist/hooks/jev/__tests__/client.test.d.ts.map",
+      "dist/hooks/jev/__tests__/client.test.js",
+      "dist/hooks/jev/__tests__/client.test.js.map",
+      "dist/hooks/jev/__tests__/resolver.test.d.ts",
+      "dist/hooks/jev/__tests__/resolver.test.d.ts.map",
+      "dist/hooks/jev/__tests__/resolver.test.js",
+      "dist/hooks/jev/__tests__/resolver.test.js.map",
+      "dist/hooks/jev/client.d.ts",
+      "dist/hooks/jev/client.d.ts.map",
+      "dist/hooks/jev/client.js",
+      "dist/hooks/jev/client.js.map",
+      "dist/hooks/jev/config.d.ts",
+      "dist/hooks/jev/config.d.ts.map",
+      "dist/hooks/jev/config.js",
+      "dist/hooks/jev/config.js.map",
+      "dist/hooks/jev/index.d.ts",
+      "dist/hooks/jev/index.d.ts.map",
+      "dist/hooks/jev/index.js",
+      "dist/hooks/jev/index.js.map",
+      "dist/hooks/jev/points.d.ts",
+      "dist/hooks/jev/points.d.ts.map",
+      "dist/hooks/jev/points.js",
+      "dist/hooks/jev/points.js.map",
+      "dist/hooks/jev/resolver.d.ts",
+      "dist/hooks/jev/resolver.d.ts.map",
+      "dist/hooks/jev/resolver.js",
+      "dist/hooks/jev/resolver.js.map",
+      "dist/hooks/jev/types.d.ts",
+      "dist/hooks/jev/types.d.ts.map",
+      "dist/hooks/jev/types.js",
+      "dist/hooks/jev/types.js.map",
       "dist/hooks/keyword-detector/__tests__/index.test.d.ts",
       "dist/hooks/keyword-detector/__tests__/index.test.d.ts.map",
       "dist/hooks/keyword-detector/__tests__/index.test.js",
       "dist/hooks/keyword-detector/__tests__/index.test.js.map",
+      "dist/hooks/keyword-detector/__tests__/jev-shadow.test.d.ts",
+      "dist/hooks/keyword-detector/__tests__/jev-shadow.test.d.ts.map",
+      "dist/hooks/keyword-detector/__tests__/jev-shadow.test.js",
+      "dist/hooks/keyword-detector/__tests__/jev-shadow.test.js.map",
       "dist/hooks/keyword-detector/index.d.ts",
       "dist/hooks/keyword-detector/index.d.ts.map",
       "dist/hooks/keyword-detector/index.js",
       "dist/hooks/keyword-detector/index.js.map",
+      "dist/hooks/keyword-detector/jev-shadow.d.ts",
+      "dist/hooks/keyword-detector/jev-shadow.d.ts.map",
+      "dist/hooks/keyword-detector/jev-shadow.js",
+      "dist/hooks/keyword-detector/jev-shadow.js.map",
+      "dist/hooks/learner/__tests__/jev-extraction-shadow.test.d.ts",
+      "dist/hooks/learner/__tests__/jev-extraction-shadow.test.d.ts.map",
+      "dist/hooks/learner/__tests__/jev-extraction-shadow.test.js",
+      "dist/hooks/learner/__tests__/jev-extraction-shadow.test.js.map",
       "dist/hooks/learner/auto-invoke.d.ts",
       "dist/hooks/learner/auto-invoke.d.ts.map",
       "dist/hooks/learner/auto-invoke.js",
@@ -3335,6 +3464,10 @@
       "dist/hooks/learner/index.d.ts.map",
       "dist/hooks/learner/index.js",
       "dist/hooks/learner/index.js.map",
+      "dist/hooks/learner/jev-shadow.d.ts",
+      "dist/hooks/learner/jev-shadow.d.ts.map",
+      "dist/hooks/learner/jev-shadow.js",
+      "dist/hooks/learner/jev-shadow.js.map",
       "dist/hooks/learner/loader.d.ts",
       "dist/hooks/learner/loader.d.ts.map",
       "dist/hooks/learner/loader.js",
@@ -3475,6 +3608,10 @@
       "dist/hooks/persistent-mode/__tests__/idle-repo-state.test.d.ts.map",
       "dist/hooks/persistent-mode/__tests__/idle-repo-state.test.js",
       "dist/hooks/persistent-mode/__tests__/idle-repo-state.test.js.map",
+      "dist/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.d.ts",
+      "dist/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.d.ts.map",
+      "dist/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.js",
+      "dist/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.js.map",
       "dist/hooks/persistent-mode/__tests__/oversize-tool-result-redirect.test.d.ts",
       "dist/hooks/persistent-mode/__tests__/oversize-tool-result-redirect.test.d.ts.map",
       "dist/hooks/persistent-mode/__tests__/oversize-tool-result-redirect.test.js",
@@ -3543,6 +3680,10 @@
       "dist/hooks/persistent-mode/index.d.ts.map",
       "dist/hooks/persistent-mode/index.js",
       "dist/hooks/persistent-mode/index.js.map",
+      "dist/hooks/persistent-mode/jev-shadow.d.ts",
+      "dist/hooks/persistent-mode/jev-shadow.d.ts.map",
+      "dist/hooks/persistent-mode/jev-shadow.js",
+      "dist/hooks/persistent-mode/jev-shadow.js.map",
       "dist/hooks/persistent-mode/session-isolation.test.d.ts",
       "dist/hooks/persistent-mode/session-isolation.test.d.ts.map",
       "dist/hooks/persistent-mode/session-isolation.test.js",
@@ -3567,6 +3708,10 @@
       "dist/hooks/pre-compact/restore.d.ts.map",
       "dist/hooks/pre-compact/restore.js",
       "dist/hooks/pre-compact/restore.js.map",
+      "dist/hooks/preemptive-compaction/__tests__/jev-shadow.test.d.ts",
+      "dist/hooks/preemptive-compaction/__tests__/jev-shadow.test.d.ts.map",
+      "dist/hooks/preemptive-compaction/__tests__/jev-shadow.test.js",
+      "dist/hooks/preemptive-compaction/__tests__/jev-shadow.test.js.map",
       "dist/hooks/preemptive-compaction/constants.d.ts",
       "dist/hooks/preemptive-compaction/constants.d.ts.map",
       "dist/hooks/preemptive-compaction/constants.js",
@@ -3575,6 +3720,10 @@
       "dist/hooks/preemptive-compaction/index.d.ts.map",
       "dist/hooks/preemptive-compaction/index.js",
       "dist/hooks/preemptive-compaction/index.js.map",
+      "dist/hooks/preemptive-compaction/jev-shadow.d.ts",
+      "dist/hooks/preemptive-compaction/jev-shadow.d.ts.map",
+      "dist/hooks/preemptive-compaction/jev-shadow.js",
+      "dist/hooks/preemptive-compaction/jev-shadow.js.map",
       "dist/hooks/preemptive-compaction/types.d.ts",
       "dist/hooks/preemptive-compaction/types.d.ts.map",
       "dist/hooks/preemptive-compaction/types.js",
@@ -3659,10 +3808,18 @@
       "dist/hooks/prompt-prerequisites/index.d.ts.map",
       "dist/hooks/prompt-prerequisites/index.js",
       "dist/hooks/prompt-prerequisites/index.js.map",
+      "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.d.ts",
+      "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.d.ts.map",
+      "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.js",
+      "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.js.map",
       "dist/hooks/ralph/index.d.ts",
       "dist/hooks/ralph/index.d.ts.map",
       "dist/hooks/ralph/index.js",
       "dist/hooks/ralph/index.js.map",
+      "dist/hooks/ralph/jev-shadow.d.ts",
+      "dist/hooks/ralph/jev-shadow.d.ts.map",
+      "dist/hooks/ralph/jev-shadow.js",
+      "dist/hooks/ralph/jev-shadow.js.map",
       "dist/hooks/ralph/loop.d.ts",
       "dist/hooks/ralph/loop.d.ts.map",
       "dist/hooks/ralph/loop.js",
@@ -3960,10 +4117,18 @@
       "dist/hooks/task-size-detector/__tests__/index.test.d.ts.map",
       "dist/hooks/task-size-detector/__tests__/index.test.js",
       "dist/hooks/task-size-detector/__tests__/index.test.js.map",
+      "dist/hooks/task-size-detector/__tests__/jev-shadow.test.d.ts",
+      "dist/hooks/task-size-detector/__tests__/jev-shadow.test.d.ts.map",
+      "dist/hooks/task-size-detector/__tests__/jev-shadow.test.js",
+      "dist/hooks/task-size-detector/__tests__/jev-shadow.test.js.map",
       "dist/hooks/task-size-detector/index.d.ts",
       "dist/hooks/task-size-detector/index.d.ts.map",
       "dist/hooks/task-size-detector/index.js",
       "dist/hooks/task-size-detector/index.js.map",
+      "dist/hooks/task-size-detector/jev-shadow.d.ts",
+      "dist/hooks/task-size-detector/jev-shadow.d.ts.map",
+      "dist/hooks/task-size-detector/jev-shadow.js",
+      "dist/hooks/task-size-detector/jev-shadow.js.map",
       "dist/hooks/team-canonical-state.d.ts",
       "dist/hooks/team-canonical-state.d.ts.map",
       "dist/hooks/team-canonical-state.js",
@@ -4469,6 +4634,10 @@
       "dist/lib/__tests__/mode-state-io.test.d.ts.map",
       "dist/lib/__tests__/mode-state-io.test.js",
       "dist/lib/__tests__/mode-state-io.test.js.map",
+      "dist/lib/__tests__/mode-state-lock.test.d.ts",
+      "dist/lib/__tests__/mode-state-lock.test.d.ts.map",
+      "dist/lib/__tests__/mode-state-lock.test.js",
+      "dist/lib/__tests__/mode-state-lock.test.js.map",
       "dist/lib/__tests__/payload-limits.test.d.ts",
       "dist/lib/__tests__/payload-limits.test.d.ts.map",
       "dist/lib/__tests__/payload-limits.test.js",
@@ -5329,6 +5498,10 @@
       "dist/team/__tests__/runtime-prompt-mode.test.d.ts.map",
       "dist/team/__tests__/runtime-prompt-mode.test.js",
       "dist/team/__tests__/runtime-prompt-mode.test.js.map",
+      "dist/team/__tests__/runtime-storage-boundary.test.d.ts",
+      "dist/team/__tests__/runtime-storage-boundary.test.d.ts.map",
+      "dist/team/__tests__/runtime-storage-boundary.test.js",
+      "dist/team/__tests__/runtime-storage-boundary.test.js.map",
       "dist/team/__tests__/runtime-v2-role-routing.test.d.ts",
       "dist/team/__tests__/runtime-v2-role-routing.test.d.ts.map",
       "dist/team/__tests__/runtime-v2-role-routing.test.js",
@@ -5361,6 +5534,10 @@
       "dist/team/__tests__/runtime-v2.service-repair.test.d.ts.map",
       "dist/team/__tests__/runtime-v2.service-repair.test.js",
       "dist/team/__tests__/runtime-v2.service-repair.test.js.map",
+      "dist/team/__tests__/runtime-v2.shutdown-interruption.test.d.ts",
+      "dist/team/__tests__/runtime-v2.shutdown-interruption.test.d.ts.map",
+      "dist/team/__tests__/runtime-v2.shutdown-interruption.test.js",
+      "dist/team/__tests__/runtime-v2.shutdown-interruption.test.js.map",
       "dist/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.d.ts",
       "dist/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.d.ts.map",
       "dist/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.js",
@@ -5417,10 +5594,18 @@
       "dist/team/__tests__/task-router.test.d.ts.map",
       "dist/team/__tests__/task-router.test.js",
       "dist/team/__tests__/task-router.test.js.map",
+      "dist/team/__tests__/task-storage-integrity.test.d.ts",
+      "dist/team/__tests__/task-storage-integrity.test.d.ts.map",
+      "dist/team/__tests__/task-storage-integrity.test.js",
+      "dist/team/__tests__/task-storage-integrity.test.js.map",
       "dist/team/__tests__/team-config-revision-lock.test.d.ts",
       "dist/team/__tests__/team-config-revision-lock.test.d.ts.map",
       "dist/team/__tests__/team-config-revision-lock.test.js",
       "dist/team/__tests__/team-config-revision-lock.test.js.map",
+      "dist/team/__tests__/team-instance.test.d.ts",
+      "dist/team/__tests__/team-instance.test.d.ts.map",
+      "dist/team/__tests__/team-instance.test.js",
+      "dist/team/__tests__/team-instance.test.js.map",
       "dist/team/__tests__/team-leader-nudge-hook.logging.test.d.ts",
       "dist/team/__tests__/team-leader-nudge-hook.logging.test.d.ts.map",
       "dist/team/__tests__/team-leader-nudge-hook.logging.test.js",
@@ -5773,6 +5958,10 @@
       "dist/team/task-router.d.ts.map",
       "dist/team/task-router.js",
       "dist/team/task-router.js.map",
+      "dist/team/team-instance.d.ts",
+      "dist/team/team-instance.d.ts.map",
+      "dist/team/team-instance.js",
+      "dist/team/team-instance.js.map",
       "dist/team/team-name.d.ts",
       "dist/team/team-name.d.ts.map",
       "dist/team/team-name.js",
@@ -6306,7 +6495,9 @@
       "src/hooks/bridge.ts",
       "src/hooks/circular-fix-detector/index.ts",
       "src/hooks/circular-fix-detector/types.ts",
+      "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
       "src/hooks/code-simplifier/index.ts",
+      "src/hooks/code-simplifier/jev-shadow.ts",
       "src/hooks/codebase-map.ts",
       "src/hooks/comment-checker/constants.ts",
       "src/hooks/comment-checker/filters.ts",
@@ -6333,8 +6524,19 @@
       "src/hooks/factcheck/sentinel.ts",
       "src/hooks/factcheck/types.ts",
       "src/hooks/index.ts",
+      "src/hooks/jev/__tests__/client.test.ts",
+      "src/hooks/jev/__tests__/resolver.test.ts",
+      "src/hooks/jev/client.ts",
+      "src/hooks/jev/config.ts",
+      "src/hooks/jev/index.ts",
+      "src/hooks/jev/points.ts",
+      "src/hooks/jev/resolver.ts",
+      "src/hooks/jev/types.ts",
       "src/hooks/keyword-detector/__tests__/index.test.ts",
+      "src/hooks/keyword-detector/__tests__/jev-shadow.test.ts",
       "src/hooks/keyword-detector/index.ts",
+      "src/hooks/keyword-detector/jev-shadow.ts",
+      "src/hooks/learner/__tests__/jev-extraction-shadow.test.ts",
       "src/hooks/learner/auto-invoke.ts",
       "src/hooks/learner/auto-learner.ts",
       "src/hooks/learner/bridge.ts",
@@ -6344,6 +6546,7 @@
       "src/hooks/learner/detector.ts",
       "src/hooks/learner/finder.ts",
       "src/hooks/learner/index.ts",
+      "src/hooks/learner/jev-shadow.ts",
       "src/hooks/learner/loader.ts",
       "src/hooks/learner/matcher.ts",
       "src/hooks/learner/parser.ts",
@@ -6379,6 +6582,7 @@
       "src/hooks/persistent-mode/__tests__/error-handling.test.ts",
       "src/hooks/persistent-mode/__tests__/idle-cooldown.test.ts",
       "src/hooks/persistent-mode/__tests__/idle-repo-state.test.ts",
+      "src/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.ts",
       "src/hooks/persistent-mode/__tests__/oversize-tool-result-redirect.test.ts",
       "src/hooks/persistent-mode/__tests__/prompt-truncation.test.ts",
       "src/hooks/persistent-mode/__tests__/ralph-hard-max.test.ts",
@@ -6396,14 +6600,17 @@
       "src/hooks/persistent-mode/idle-cooldown.test.ts",
       "src/hooks/persistent-mode/idle-repo-state.ts",
       "src/hooks/persistent-mode/index.ts",
+      "src/hooks/persistent-mode/jev-shadow.ts",
       "src/hooks/persistent-mode/session-isolation.test.ts",
       "src/hooks/persistent-mode/stop-hook-blocking.test.ts",
       "src/hooks/plugin-patterns/__tests__/index.test.ts",
       "src/hooks/plugin-patterns/index.ts",
       "src/hooks/pre-compact/index.ts",
       "src/hooks/pre-compact/restore.ts",
+      "src/hooks/preemptive-compaction/__tests__/jev-shadow.test.ts",
       "src/hooks/preemptive-compaction/constants.ts",
       "src/hooks/preemptive-compaction/index.ts",
+      "src/hooks/preemptive-compaction/jev-shadow.ts",
       "src/hooks/preemptive-compaction/types.ts",
       "src/hooks/project-memory/__tests__/detector.test.ts",
       "src/hooks/project-memory/__tests__/formatter.test.ts",
@@ -6425,7 +6632,9 @@
       "src/hooks/project-memory/storage.ts",
       "src/hooks/project-memory/types.ts",
       "src/hooks/prompt-prerequisites/index.ts",
+      "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
       "src/hooks/ralph/index.ts",
+      "src/hooks/ralph/jev-shadow.ts",
       "src/hooks/ralph/loop.ts",
       "src/hooks/ralph/prd.ts",
       "src/hooks/ralph/progress.ts",
@@ -6501,7 +6710,9 @@
       "src/hooks/subagent-tracker/session-replay.ts",
       "src/hooks/subagent-tracker/worktree-evidence.ts",
       "src/hooks/task-size-detector/__tests__/index.test.ts",
+      "src/hooks/task-size-detector/__tests__/jev-shadow.test.ts",
       "src/hooks/task-size-detector/index.ts",
+      "src/hooks/task-size-detector/jev-shadow.ts",
       "src/hooks/team-canonical-state.ts",
       "src/hooks/team-dispatch-hook.ts",
       "src/hooks/team-leader-nudge-hook.ts",
@@ -6609,7 +6820,6 @@
       "src/mcp/prompt-persistence.ts",
       "src/ralphthon/deep-interview-prompt.ts",
       "src/team/__tests__/prompt-sanitization.test.ts",
-      "src/team/__tests__/runtime-prompt-mode.test.ts",
       "templates/hooks/lib/workflow-stage-prompts.mjs",
       "tests/fixtures/prompt-projection/README.md",
       "tests/fixtures/prompt-projection/claude-body.normalized",
@@ -6619,6 +6829,8 @@
     "featureFiles": [
       "src/features/AGENTS.md",
       "src/features/__tests__/checkpoint.test.ts",
+      "src/features/__tests__/jev-model-routing.test.ts",
+      "src/features/__tests__/jev-slop-warning.test.ts",
       "src/features/__tests__/magic-keywords.test.ts",
       "src/features/agent-addressability/__tests__/addressability.test.ts",
       "src/features/agent-addressability/index.ts",
@@ -6654,6 +6866,8 @@
       "src/features/delegation-routing/resolver.ts",
       "src/features/delegation-routing/types.ts",
       "src/features/index.ts",
+      "src/features/jev-model-routing.ts",
+      "src/features/jev-slop-warning.ts",
       "src/features/lookout/__tests__/lookout-workspace.test.ts",
       "src/features/lookout/__tests__/lookout.test.ts",
       "src/features/lookout/command-parser.ts",
@@ -6875,6 +7089,11 @@
         "path": ".npmignore"
       },
       {
+        "id": ".omc/skills/README.md",
+        "kind": "other",
+        "path": ".omc/skills/README.md"
+      },
+      {
         "id": ".omc/skills/branching-strategy-expertise.md",
         "kind": "other",
         "path": ".omc/skills/branching-strategy-expertise.md"
@@ -6988,6 +7207,11 @@
         "id": "CLAUDE.md",
         "kind": "prompt",
         "path": "CLAUDE.md"
+      },
+      {
+        "id": "CONTEXT.md",
+        "kind": "other",
+        "path": "CONTEXT.md"
       },
       {
         "id": "CONTRIBUTING.md",
@@ -7668,6 +7892,16 @@
         "id": "commands/wiki.md",
         "kind": "command",
         "path": "commands/wiki.md"
+      },
+      {
+        "id": "design-system/README.md",
+        "kind": "other",
+        "path": "design-system/README.md"
+      },
+      {
+        "id": "design-system/tokens/README.md",
+        "kind": "other",
+        "path": "design-system/tokens/README.md"
       },
       {
         "id": "dist/__tests__/advisory-agent-final-output-contract.test.d.ts",
@@ -8428,6 +8662,26 @@
         "id": "dist/__tests__/delegation-enforcer.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/delegation-enforcer.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/directory-context-injector-registration.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/directory-context-injector-registration.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/directory-context-injector-registration.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/directory-context-injector-registration.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/directory-context-injector-registration.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/directory-context-injector-registration.test.js"
+      },
+      {
+        "id": "dist/__tests__/directory-context-injector-registration.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/directory-context-injector-registration.test.js.map"
       },
       {
         "id": "dist/__tests__/directory-context-injector.test.d.ts",
@@ -9708,6 +9962,26 @@
         "id": "dist/__tests__/hud/update-hint.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud/update-hint.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hud/usage-api-header-fallback.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/usage-api-header-fallback.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/usage-api-header-fallback.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/usage-api-header-fallback.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/usage-api-header-fallback.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/usage-api-header-fallback.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/usage-api-header-fallback.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/usage-api-header-fallback.test.js.map"
       },
       {
         "id": "dist/__tests__/hud/usage-api-lock.test.d.ts",
@@ -11688,6 +11962,26 @@
         "id": "dist/__tests__/rate-limit-wait/tmux-detector.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/rate-limit-wait/tmux-detector.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/read-budget-preflight.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/read-budget-preflight.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/read-budget-preflight.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/read-budget-preflight.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/read-budget-preflight.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/read-budget-preflight.test.js"
+      },
+      {
+        "id": "dist/__tests__/read-budget-preflight.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/read-budget-preflight.test.js.map"
       },
       {
         "id": "dist/__tests__/release-boundary.test.d.ts",
@@ -14310,6 +14604,26 @@
         "path": "dist/cli/__tests__/hud-watch.test.js.map"
       },
       {
+        "id": "dist/cli/__tests__/launch-secure-transport.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/launch-secure-transport.test.d.ts"
+      },
+      {
+        "id": "dist/cli/__tests__/launch-secure-transport.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/launch-secure-transport.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/__tests__/launch-secure-transport.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/launch-secure-transport.test.js"
+      },
+      {
+        "id": "dist/cli/__tests__/launch-secure-transport.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/launch-secure-transport.test.js.map"
+      },
+      {
         "id": "dist/cli/__tests__/launch.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/__tests__/launch.test.d.ts"
@@ -15635,6 +15949,46 @@
         "path": "dist/features/__tests__/checkpoint.test.js.map"
       },
       {
+        "id": "dist/features/__tests__/jev-model-routing.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/jev-model-routing.test.d.ts"
+      },
+      {
+        "id": "dist/features/__tests__/jev-model-routing.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/jev-model-routing.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/__tests__/jev-model-routing.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/jev-model-routing.test.js"
+      },
+      {
+        "id": "dist/features/__tests__/jev-model-routing.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/jev-model-routing.test.js.map"
+      },
+      {
+        "id": "dist/features/__tests__/jev-slop-warning.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/jev-slop-warning.test.d.ts"
+      },
+      {
+        "id": "dist/features/__tests__/jev-slop-warning.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/jev-slop-warning.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/__tests__/jev-slop-warning.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/jev-slop-warning.test.js"
+      },
+      {
+        "id": "dist/features/__tests__/jev-slop-warning.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/__tests__/jev-slop-warning.test.js.map"
+      },
+      {
         "id": "dist/features/__tests__/magic-keywords.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/features/__tests__/magic-keywords.test.d.ts"
@@ -16293,6 +16647,46 @@
         "id": "dist/features/index.js.map",
         "kind": "generated-dist",
         "path": "dist/features/index.js.map"
+      },
+      {
+        "id": "dist/features/jev-model-routing.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/jev-model-routing.d.ts"
+      },
+      {
+        "id": "dist/features/jev-model-routing.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/jev-model-routing.d.ts.map"
+      },
+      {
+        "id": "dist/features/jev-model-routing.js",
+        "kind": "generated-dist",
+        "path": "dist/features/jev-model-routing.js"
+      },
+      {
+        "id": "dist/features/jev-model-routing.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/jev-model-routing.js.map"
+      },
+      {
+        "id": "dist/features/jev-slop-warning.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/jev-slop-warning.d.ts"
+      },
+      {
+        "id": "dist/features/jev-slop-warning.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/jev-slop-warning.d.ts.map"
+      },
+      {
+        "id": "dist/features/jev-slop-warning.js",
+        "kind": "generated-dist",
+        "path": "dist/features/jev-slop-warning.js"
+      },
+      {
+        "id": "dist/features/jev-slop-warning.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/jev-slop-warning.js.map"
       },
       {
         "id": "dist/features/lookout/__tests__/lookout-workspace.test.d.ts",
@@ -17375,6 +17769,26 @@
         "path": "dist/graph/__tests__/runtime/journal.test.js.map"
       },
       {
+        "id": "dist/graph/__tests__/runtime/native-contained-fs.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/__tests__/runtime/native-contained-fs.test.d.ts"
+      },
+      {
+        "id": "dist/graph/__tests__/runtime/native-contained-fs.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/__tests__/runtime/native-contained-fs.test.d.ts.map"
+      },
+      {
+        "id": "dist/graph/__tests__/runtime/native-contained-fs.test.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/__tests__/runtime/native-contained-fs.test.js"
+      },
+      {
+        "id": "dist/graph/__tests__/runtime/native-contained-fs.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/__tests__/runtime/native-contained-fs.test.js.map"
+      },
+      {
         "id": "dist/graph/__tests__/runtime/progress.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/graph/__tests__/runtime/progress.test.d.ts"
@@ -17713,6 +18127,26 @@
         "id": "dist/graph/runtime/journal.js.map",
         "kind": "generated-dist",
         "path": "dist/graph/runtime/journal.js.map"
+      },
+      {
+        "id": "dist/graph/runtime/native-contained-fs.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/native-contained-fs.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/native-contained-fs.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/native-contained-fs.d.ts.map"
+      },
+      {
+        "id": "dist/graph/runtime/native-contained-fs.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/native-contained-fs.js"
+      },
+      {
+        "id": "dist/graph/runtime/native-contained-fs.js.map",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/native-contained-fs.js.map"
       },
       {
         "id": "dist/graph/runtime/progress.d.ts",
@@ -19295,6 +19729,26 @@
         "path": "dist/hooks/circular-fix-detector/types.js.map"
       },
       {
+        "id": "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.js"
+      },
+      {
+        "id": "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.js.map"
+      },
+      {
         "id": "dist/hooks/code-simplifier/index.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/code-simplifier/index.d.ts"
@@ -19313,6 +19767,26 @@
         "id": "dist/hooks/code-simplifier/index.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/code-simplifier/index.js.map"
+      },
+      {
+        "id": "dist/hooks/code-simplifier/jev-shadow.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/code-simplifier/jev-shadow.d.ts"
+      },
+      {
+        "id": "dist/hooks/code-simplifier/jev-shadow.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/code-simplifier/jev-shadow.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/code-simplifier/jev-shadow.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/code-simplifier/jev-shadow.js"
+      },
+      {
+        "id": "dist/hooks/code-simplifier/jev-shadow.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/code-simplifier/jev-shadow.js.map"
       },
       {
         "id": "dist/hooks/codebase-map.d.ts",
@@ -19835,6 +20309,166 @@
         "path": "dist/hooks/index.js.map"
       },
       {
+        "id": "dist/hooks/jev/__tests__/client.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/__tests__/client.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/jev/__tests__/client.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/__tests__/client.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/jev/__tests__/client.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/__tests__/client.test.js"
+      },
+      {
+        "id": "dist/hooks/jev/__tests__/client.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/__tests__/client.test.js.map"
+      },
+      {
+        "id": "dist/hooks/jev/__tests__/resolver.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/__tests__/resolver.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/jev/__tests__/resolver.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/__tests__/resolver.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/jev/__tests__/resolver.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/__tests__/resolver.test.js"
+      },
+      {
+        "id": "dist/hooks/jev/__tests__/resolver.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/__tests__/resolver.test.js.map"
+      },
+      {
+        "id": "dist/hooks/jev/client.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/client.d.ts"
+      },
+      {
+        "id": "dist/hooks/jev/client.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/client.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/jev/client.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/client.js"
+      },
+      {
+        "id": "dist/hooks/jev/client.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/client.js.map"
+      },
+      {
+        "id": "dist/hooks/jev/config.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/config.d.ts"
+      },
+      {
+        "id": "dist/hooks/jev/config.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/config.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/jev/config.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/config.js"
+      },
+      {
+        "id": "dist/hooks/jev/config.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/config.js.map"
+      },
+      {
+        "id": "dist/hooks/jev/index.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/index.d.ts"
+      },
+      {
+        "id": "dist/hooks/jev/index.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/index.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/jev/index.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/index.js"
+      },
+      {
+        "id": "dist/hooks/jev/index.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/index.js.map"
+      },
+      {
+        "id": "dist/hooks/jev/points.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/points.d.ts"
+      },
+      {
+        "id": "dist/hooks/jev/points.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/points.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/jev/points.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/points.js"
+      },
+      {
+        "id": "dist/hooks/jev/points.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/points.js.map"
+      },
+      {
+        "id": "dist/hooks/jev/resolver.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/resolver.d.ts"
+      },
+      {
+        "id": "dist/hooks/jev/resolver.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/resolver.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/jev/resolver.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/resolver.js"
+      },
+      {
+        "id": "dist/hooks/jev/resolver.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/resolver.js.map"
+      },
+      {
+        "id": "dist/hooks/jev/types.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/types.d.ts"
+      },
+      {
+        "id": "dist/hooks/jev/types.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/types.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/jev/types.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/types.js"
+      },
+      {
+        "id": "dist/hooks/jev/types.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/types.js.map"
+      },
+      {
         "id": "dist/hooks/keyword-detector/__tests__/index.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/keyword-detector/__tests__/index.test.d.ts"
@@ -19855,6 +20489,26 @@
         "path": "dist/hooks/keyword-detector/__tests__/index.test.js.map"
       },
       {
+        "id": "dist/hooks/keyword-detector/__tests__/jev-shadow.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/keyword-detector/__tests__/jev-shadow.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/keyword-detector/__tests__/jev-shadow.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/keyword-detector/__tests__/jev-shadow.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/keyword-detector/__tests__/jev-shadow.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/keyword-detector/__tests__/jev-shadow.test.js"
+      },
+      {
+        "id": "dist/hooks/keyword-detector/__tests__/jev-shadow.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/keyword-detector/__tests__/jev-shadow.test.js.map"
+      },
+      {
         "id": "dist/hooks/keyword-detector/index.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/keyword-detector/index.d.ts"
@@ -19873,6 +20527,46 @@
         "id": "dist/hooks/keyword-detector/index.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/keyword-detector/index.js.map"
+      },
+      {
+        "id": "dist/hooks/keyword-detector/jev-shadow.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/keyword-detector/jev-shadow.d.ts"
+      },
+      {
+        "id": "dist/hooks/keyword-detector/jev-shadow.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/keyword-detector/jev-shadow.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/keyword-detector/jev-shadow.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/keyword-detector/jev-shadow.js"
+      },
+      {
+        "id": "dist/hooks/keyword-detector/jev-shadow.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/keyword-detector/jev-shadow.js.map"
+      },
+      {
+        "id": "dist/hooks/learner/__tests__/jev-extraction-shadow.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/learner/__tests__/jev-extraction-shadow.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/learner/__tests__/jev-extraction-shadow.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/learner/__tests__/jev-extraction-shadow.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/learner/__tests__/jev-extraction-shadow.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/learner/__tests__/jev-extraction-shadow.test.js"
+      },
+      {
+        "id": "dist/hooks/learner/__tests__/jev-extraction-shadow.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/learner/__tests__/jev-extraction-shadow.test.js.map"
       },
       {
         "id": "dist/hooks/learner/auto-invoke.d.ts",
@@ -20053,6 +20747,26 @@
         "id": "dist/hooks/learner/index.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/learner/index.js.map"
+      },
+      {
+        "id": "dist/hooks/learner/jev-shadow.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/learner/jev-shadow.d.ts"
+      },
+      {
+        "id": "dist/hooks/learner/jev-shadow.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/learner/jev-shadow.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/learner/jev-shadow.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/learner/jev-shadow.js"
+      },
+      {
+        "id": "dist/hooks/learner/jev-shadow.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/learner/jev-shadow.js.map"
       },
       {
         "id": "dist/hooks/learner/loader.d.ts",
@@ -20755,6 +21469,26 @@
         "path": "dist/hooks/persistent-mode/__tests__/idle-repo-state.test.js.map"
       },
       {
+        "id": "dist/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.js"
+      },
+      {
+        "id": "dist/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.js.map"
+      },
+      {
         "id": "dist/hooks/persistent-mode/__tests__/oversize-tool-result-redirect.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/persistent-mode/__tests__/oversize-tool-result-redirect.test.d.ts"
@@ -21095,6 +21829,26 @@
         "path": "dist/hooks/persistent-mode/index.js.map"
       },
       {
+        "id": "dist/hooks/persistent-mode/jev-shadow.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/persistent-mode/jev-shadow.d.ts"
+      },
+      {
+        "id": "dist/hooks/persistent-mode/jev-shadow.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/persistent-mode/jev-shadow.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/persistent-mode/jev-shadow.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/persistent-mode/jev-shadow.js"
+      },
+      {
+        "id": "dist/hooks/persistent-mode/jev-shadow.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/persistent-mode/jev-shadow.js.map"
+      },
+      {
         "id": "dist/hooks/persistent-mode/session-isolation.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/persistent-mode/session-isolation.test.d.ts"
@@ -21215,6 +21969,26 @@
         "path": "dist/hooks/pre-compact/restore.js.map"
       },
       {
+        "id": "dist/hooks/preemptive-compaction/__tests__/jev-shadow.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/preemptive-compaction/__tests__/jev-shadow.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/preemptive-compaction/__tests__/jev-shadow.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/preemptive-compaction/__tests__/jev-shadow.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/preemptive-compaction/__tests__/jev-shadow.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/preemptive-compaction/__tests__/jev-shadow.test.js"
+      },
+      {
+        "id": "dist/hooks/preemptive-compaction/__tests__/jev-shadow.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/preemptive-compaction/__tests__/jev-shadow.test.js.map"
+      },
+      {
         "id": "dist/hooks/preemptive-compaction/constants.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/preemptive-compaction/constants.d.ts"
@@ -21253,6 +22027,26 @@
         "id": "dist/hooks/preemptive-compaction/index.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/preemptive-compaction/index.js.map"
+      },
+      {
+        "id": "dist/hooks/preemptive-compaction/jev-shadow.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/preemptive-compaction/jev-shadow.d.ts"
+      },
+      {
+        "id": "dist/hooks/preemptive-compaction/jev-shadow.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/preemptive-compaction/jev-shadow.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/preemptive-compaction/jev-shadow.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/preemptive-compaction/jev-shadow.js"
+      },
+      {
+        "id": "dist/hooks/preemptive-compaction/jev-shadow.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/preemptive-compaction/jev-shadow.js.map"
       },
       {
         "id": "dist/hooks/preemptive-compaction/types.d.ts",
@@ -21675,6 +22469,26 @@
         "path": "dist/hooks/prompt-prerequisites/index.js.map"
       },
       {
+        "id": "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.js"
+      },
+      {
+        "id": "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.js.map"
+      },
+      {
         "id": "dist/hooks/ralph/index.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/ralph/index.d.ts"
@@ -21693,6 +22507,26 @@
         "id": "dist/hooks/ralph/index.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/ralph/index.js.map"
+      },
+      {
+        "id": "dist/hooks/ralph/jev-shadow.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/jev-shadow.d.ts"
+      },
+      {
+        "id": "dist/hooks/ralph/jev-shadow.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/jev-shadow.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/ralph/jev-shadow.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/jev-shadow.js"
+      },
+      {
+        "id": "dist/hooks/ralph/jev-shadow.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/jev-shadow.js.map"
       },
       {
         "id": "dist/hooks/ralph/loop.d.ts",
@@ -23180,6 +24014,26 @@
         "path": "dist/hooks/task-size-detector/__tests__/index.test.js.map"
       },
       {
+        "id": "dist/hooks/task-size-detector/__tests__/jev-shadow.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/task-size-detector/__tests__/jev-shadow.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/task-size-detector/__tests__/jev-shadow.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/task-size-detector/__tests__/jev-shadow.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/task-size-detector/__tests__/jev-shadow.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/task-size-detector/__tests__/jev-shadow.test.js"
+      },
+      {
+        "id": "dist/hooks/task-size-detector/__tests__/jev-shadow.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/task-size-detector/__tests__/jev-shadow.test.js.map"
+      },
+      {
         "id": "dist/hooks/task-size-detector/index.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/task-size-detector/index.d.ts"
@@ -23198,6 +24052,26 @@
         "id": "dist/hooks/task-size-detector/index.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/task-size-detector/index.js.map"
+      },
+      {
+        "id": "dist/hooks/task-size-detector/jev-shadow.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/task-size-detector/jev-shadow.d.ts"
+      },
+      {
+        "id": "dist/hooks/task-size-detector/jev-shadow.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/task-size-detector/jev-shadow.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/task-size-detector/jev-shadow.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/task-size-detector/jev-shadow.js"
+      },
+      {
+        "id": "dist/hooks/task-size-detector/jev-shadow.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/task-size-detector/jev-shadow.js.map"
       },
       {
         "id": "dist/hooks/team-canonical-state.d.ts",
@@ -25723,6 +26597,26 @@
         "id": "dist/lib/__tests__/mode-state-io.test.js.map",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/mode-state-io.test.js.map"
+      },
+      {
+        "id": "dist/lib/__tests__/mode-state-lock.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/mode-state-lock.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/mode-state-lock.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/mode-state-lock.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/mode-state-lock.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/mode-state-lock.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/mode-state-lock.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/mode-state-lock.test.js.map"
       },
       {
         "id": "dist/lib/__tests__/payload-limits.test.d.ts",
@@ -30025,6 +30919,26 @@
         "path": "dist/team/__tests__/runtime-prompt-mode.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/runtime-storage-boundary.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-storage-boundary.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-storage-boundary.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-storage-boundary.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-storage-boundary.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-storage-boundary.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-storage-boundary.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-storage-boundary.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/runtime-v2-role-routing.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/runtime-v2-role-routing.test.d.ts"
@@ -30183,6 +31097,26 @@
         "id": "dist/team/__tests__/runtime-v2.service-repair.test.js.map",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/runtime-v2.service-repair.test.js.map"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-v2.shutdown-interruption.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-v2.shutdown-interruption.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-v2.shutdown-interruption.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-v2.shutdown-interruption.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-v2.shutdown-interruption.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-v2.shutdown-interruption.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-v2.shutdown-interruption.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-v2.shutdown-interruption.test.js.map"
       },
       {
         "id": "dist/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.d.ts",
@@ -30465,6 +31399,26 @@
         "path": "dist/team/__tests__/task-router.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/task-storage-integrity.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/task-storage-integrity.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/task-storage-integrity.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/task-storage-integrity.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/task-storage-integrity.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/task-storage-integrity.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/task-storage-integrity.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/task-storage-integrity.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/team-config-revision-lock.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/team-config-revision-lock.test.d.ts"
@@ -30483,6 +31437,26 @@
         "id": "dist/team/__tests__/team-config-revision-lock.test.js.map",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/team-config-revision-lock.test.js.map"
+      },
+      {
+        "id": "dist/team/__tests__/team-instance.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/team-instance.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/team-instance.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/team-instance.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/team-instance.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/team-instance.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/team-instance.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/team-instance.test.js.map"
       },
       {
         "id": "dist/team/__tests__/team-leader-nudge-hook.logging.test.d.ts",
@@ -32243,6 +33217,26 @@
         "id": "dist/team/task-router.js.map",
         "kind": "generated-dist",
         "path": "dist/team/task-router.js.map"
+      },
+      {
+        "id": "dist/team/team-instance.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/team-instance.d.ts"
+      },
+      {
+        "id": "dist/team/team-instance.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/team-instance.d.ts.map"
+      },
+      {
+        "id": "dist/team/team-instance.js",
+        "kind": "generated-dist",
+        "path": "dist/team/team-instance.js"
+      },
+      {
+        "id": "dist/team/team-instance.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/team-instance.js.map"
       },
       {
         "id": "dist/team/team-name.d.ts",
@@ -34590,6 +35584,16 @@
         "path": "docs/adr/03664-ralph-prd-criterion-amendment.md"
       },
       {
+        "id": "docs/adr/03665-jev-degradation-contract.md",
+        "kind": "other",
+        "path": "docs/adr/03665-jev-degradation-contract.md"
+      },
+      {
+        "id": "docs/adr/03671-script-side-judgment-channel.md",
+        "kind": "other",
+        "path": "docs/adr/03671-script-side-judgment-channel.md"
+      },
+      {
         "id": "docs/agent-templates/README.md",
         "kind": "other",
         "path": "docs/agent-templates/README.md"
@@ -34608,6 +35612,11 @@
         "id": "docs/agents/model-compatibility.md",
         "kind": "other",
         "path": "docs/agents/model-compatibility.md"
+      },
+      {
+        "id": "docs/business/README.md",
+        "kind": "other",
+        "path": "docs/business/README.md"
       },
       {
         "id": "docs/cancel-skill-active-state-gap.md",
@@ -34690,9 +35699,19 @@
         "path": "docs/geobench.md"
       },
       {
+        "id": "docs/graph-contained-filesystem.md",
+        "kind": "other",
+        "path": "docs/graph-contained-filesystem.md"
+      },
+      {
         "id": "docs/issues/issue-3668-ralph-namespace.md",
         "kind": "other",
         "path": "docs/issues/issue-3668-ralph-namespace.md"
+      },
+      {
+        "id": "docs/issues/issue-3669-jev-judgment-points.md",
+        "kind": "other",
+        "path": "docs/issues/issue-3669-jev-judgment-points.md"
       },
       {
         "id": "docs/issues/windows-hud-missing.png",
@@ -34733,6 +35752,21 @@
         "id": "docs/shipyard.md",
         "kind": "other",
         "path": "docs/shipyard.md"
+      },
+      {
+        "id": "docs/standards/architecture.md",
+        "kind": "other",
+        "path": "docs/standards/architecture.md"
+      },
+      {
+        "id": "docs/standards/data.md",
+        "kind": "other",
+        "path": "docs/standards/data.md"
+      },
+      {
+        "id": "docs/standards/process.md",
+        "kind": "other",
+        "path": "docs/standards/process.md"
       },
       {
         "id": "docs/ultragoal.md",
@@ -34878,6 +35912,11 @@
         "id": "external:net",
         "kind": "external",
         "path": "net"
+      },
+      {
+        "id": "external:node:assert/strict",
+        "kind": "external",
+        "path": "node:assert/strict"
       },
       {
         "id": "external:node:async_hooks",
@@ -35135,6 +36174,11 @@
         "path": "missions/prove-reliability-by-finding-and-fixing-flaky-te/sandbox.md"
       },
       {
+        "id": "native/contained-fs.c",
+        "kind": "other",
+        "path": "native/contained-fs.c"
+      },
+      {
         "id": "package-lock.json",
         "kind": "other",
         "path": "package-lock.json"
@@ -35248,6 +36292,16 @@
         "id": "scripts/build-cli.mjs",
         "kind": "script",
         "path": "scripts/build-cli.mjs"
+      },
+      {
+        "id": "scripts/build-contained-fs.mjs",
+        "kind": "script",
+        "path": "scripts/build-contained-fs.mjs"
+      },
+      {
+        "id": "scripts/build-generated-artifact-authorization.mjs",
+        "kind": "script",
+        "path": "scripts/build-generated-artifact-authorization.mjs"
       },
       {
         "id": "scripts/build-mcp-server.mjs",
@@ -35380,6 +36434,11 @@
         "path": "scripts/inventory-issue-3698.mjs"
       },
       {
+        "id": "scripts/jev-eval.mjs",
+        "kind": "script",
+        "path": "scripts/jev-eval.mjs"
+      },
+      {
         "id": "scripts/keyword-detector.mjs",
         "kind": "script",
         "path": "scripts/keyword-detector.mjs"
@@ -35475,6 +36534,11 @@
         "path": "scripts/lib/precompact-restore.mjs"
       },
       {
+        "id": "scripts/lib/read-budget-preflight.mjs",
+        "kind": "script",
+        "path": "scripts/lib/read-budget-preflight.mjs"
+      },
+      {
         "id": "scripts/lib/skill-entitlements.mjs",
         "kind": "script",
         "path": "scripts/lib/skill-entitlements.mjs"
@@ -35543,6 +36607,11 @@
         "id": "scripts/plugin-shipping-surface.mjs",
         "kind": "script",
         "path": "scripts/plugin-shipping-surface.mjs"
+      },
+      {
+        "id": "scripts/post-tool-directory-context-injector.mjs",
+        "kind": "script",
+        "path": "scripts/post-tool-directory-context-injector.mjs"
       },
       {
         "id": "scripts/post-tool-rules-injector.mjs",
@@ -35680,6 +36749,11 @@
         "path": "scripts/setup-progress.sh"
       },
       {
+        "id": "scripts/shipyard-audit.mjs",
+        "kind": "script",
+        "path": "scripts/shipyard-audit.mjs"
+      },
+      {
         "id": "scripts/skill-injector.mjs",
         "kind": "script",
         "path": "scripts/skill-injector.mjs"
@@ -35758,6 +36832,11 @@
         "id": "scripts/verify-generated-artifact-authorization.mjs",
         "kind": "script",
         "path": "scripts/verify-generated-artifact-authorization.mjs"
+      },
+      {
+        "id": "scripts/verify-graph-contained-fs.mjs",
+        "kind": "script",
+        "path": "scripts/verify-graph-contained-fs.mjs"
       },
       {
         "id": "scripts/wiki-pre-compact.mjs",
@@ -35885,6 +36964,11 @@
         "path": "skills/ai-slop-cleaner/SKILL.md"
       },
       {
+        "id": "skills/architecture-survey/SKILL.md",
+        "kind": "skill",
+        "path": "skills/architecture-survey/SKILL.md"
+      },
+      {
         "id": "skills/ask-navigator/SKILL.md",
         "kind": "skill",
         "path": "skills/ask-navigator/SKILL.md"
@@ -35940,6 +37024,11 @@
         "path": "skills/deepinit/SKILL.md"
       },
       {
+        "id": "skills/diagram/SKILL.md",
+        "kind": "skill",
+        "path": "skills/diagram/SKILL.md"
+      },
+      {
         "id": "skills/discover/SKILL.md",
         "kind": "skill",
         "path": "skills/discover/SKILL.md"
@@ -35975,6 +37064,11 @@
         "path": "skills/hud/SKILL.md"
       },
       {
+        "id": "skills/intent/SKILL.md",
+        "kind": "skill",
+        "path": "skills/intent/SKILL.md"
+      },
+      {
         "id": "skills/launch/SKILL.md",
         "kind": "skill",
         "path": "skills/launch/SKILL.md"
@@ -35988,6 +37082,11 @@
         "id": "skills/minimal-code-discipline/SKILL.md",
         "kind": "skill",
         "path": "skills/minimal-code-discipline/SKILL.md"
+      },
+      {
+        "id": "skills/minimal-prose-discipline/SKILL.md",
+        "kind": "skill",
+        "path": "skills/minimal-prose-discipline/SKILL.md"
       },
       {
         "id": "skills/omc-ado-auto-review/SKILL.md",
@@ -36510,6 +37609,11 @@
         "path": "src/__tests__/delegation-enforcer.test.ts"
       },
       {
+        "id": "src/__tests__/directory-context-injector-registration.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/directory-context-injector-registration.test.ts"
+      },
+      {
         "id": "src/__tests__/directory-context-injector.test.ts",
         "kind": "src",
         "path": "src/__tests__/directory-context-injector.test.ts"
@@ -36865,6 +37969,11 @@
         "path": "src/__tests__/hud/update-hint.test.ts"
       },
       {
+        "id": "src/__tests__/hud/usage-api-header-fallback.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/usage-api-header-fallback.test.ts"
+      },
+      {
         "id": "src/__tests__/hud/usage-api-lock.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/usage-api-lock.test.ts"
@@ -36943,6 +38052,11 @@
         "id": "src/__tests__/issue-3867-legacy-l-update.test.ts",
         "kind": "src",
         "path": "src/__tests__/issue-3867-legacy-l-update.test.ts"
+      },
+      {
+        "id": "src/__tests__/jev-eval-script.test.mjs",
+        "kind": "src",
+        "path": "src/__tests__/jev-eval-script.test.mjs"
       },
       {
         "id": "src/__tests__/job-management-sqlite.test.ts",
@@ -37365,6 +38479,11 @@
         "path": "src/__tests__/rate-limit-wait/tmux-detector.test.ts"
       },
       {
+        "id": "src/__tests__/read-budget-preflight.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/read-budget-preflight.test.ts"
+      },
+      {
         "id": "src/__tests__/release-boundary.test.ts",
         "kind": "src",
         "path": "src/__tests__/release-boundary.test.ts"
@@ -37428,11 +38547,6 @@
         "id": "src/__tests__/runtime-guidance-plan-ralph.test.ts",
         "kind": "src",
         "path": "src/__tests__/runtime-guidance-plan-ralph.test.ts"
-      },
-      {
-        "id": "src/__tests__/runtime-task-orphan.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/runtime-task-orphan.test.ts"
       },
       {
         "id": "src/__tests__/safe-command-approver.test.ts",
@@ -38045,6 +39159,11 @@
         "path": "src/cli/__tests__/hud-watch.test.ts"
       },
       {
+        "id": "src/cli/__tests__/launch-secure-transport.test.ts",
+        "kind": "src",
+        "path": "src/cli/__tests__/launch-secure-transport.test.ts"
+      },
+      {
         "id": "src/cli/__tests__/launch.test.ts",
         "kind": "src",
         "path": "src/cli/__tests__/launch.test.ts"
@@ -38385,6 +39504,16 @@
         "path": "src/features/__tests__/checkpoint.test.ts"
       },
       {
+        "id": "src/features/__tests__/jev-model-routing.test.ts",
+        "kind": "feature",
+        "path": "src/features/__tests__/jev-model-routing.test.ts"
+      },
+      {
+        "id": "src/features/__tests__/jev-slop-warning.test.ts",
+        "kind": "feature",
+        "path": "src/features/__tests__/jev-slop-warning.test.ts"
+      },
+      {
         "id": "src/features/__tests__/magic-keywords.test.ts",
         "kind": "feature",
         "path": "src/features/__tests__/magic-keywords.test.ts"
@@ -38558,6 +39687,16 @@
         "id": "src/features/index.ts",
         "kind": "feature",
         "path": "src/features/index.ts"
+      },
+      {
+        "id": "src/features/jev-model-routing.ts",
+        "kind": "feature",
+        "path": "src/features/jev-model-routing.ts"
+      },
+      {
+        "id": "src/features/jev-slop-warning.ts",
+        "kind": "feature",
+        "path": "src/features/jev-slop-warning.ts"
       },
       {
         "id": "src/features/lookout/__tests__/lookout-workspace.test.ts",
@@ -38850,6 +39989,11 @@
         "path": "src/graph/__tests__/runtime/journal.test.ts"
       },
       {
+        "id": "src/graph/__tests__/runtime/native-contained-fs.test.ts",
+        "kind": "src",
+        "path": "src/graph/__tests__/runtime/native-contained-fs.test.ts"
+      },
+      {
         "id": "src/graph/__tests__/runtime/progress.test.ts",
         "kind": "src",
         "path": "src/graph/__tests__/runtime/progress.test.ts"
@@ -38933,6 +40077,11 @@
         "id": "src/graph/runtime/journal.ts",
         "kind": "src",
         "path": "src/graph/runtime/journal.ts"
+      },
+      {
+        "id": "src/graph/runtime/native-contained-fs.ts",
+        "kind": "src",
+        "path": "src/graph/runtime/native-contained-fs.ts"
       },
       {
         "id": "src/graph/runtime/progress.ts",
@@ -39335,9 +40484,19 @@
         "path": "src/hooks/circular-fix-detector/types.ts"
       },
       {
+        "id": "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts"
+      },
+      {
         "id": "src/hooks/code-simplifier/index.ts",
         "kind": "hook",
         "path": "src/hooks/code-simplifier/index.ts"
+      },
+      {
+        "id": "src/hooks/code-simplifier/jev-shadow.ts",
+        "kind": "hook",
+        "path": "src/hooks/code-simplifier/jev-shadow.ts"
       },
       {
         "id": "src/hooks/codebase-map.ts",
@@ -39470,14 +40629,69 @@
         "path": "src/hooks/index.ts"
       },
       {
+        "id": "src/hooks/jev/__tests__/client.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/jev/__tests__/client.test.ts"
+      },
+      {
+        "id": "src/hooks/jev/__tests__/resolver.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/jev/__tests__/resolver.test.ts"
+      },
+      {
+        "id": "src/hooks/jev/client.ts",
+        "kind": "hook",
+        "path": "src/hooks/jev/client.ts"
+      },
+      {
+        "id": "src/hooks/jev/config.ts",
+        "kind": "hook",
+        "path": "src/hooks/jev/config.ts"
+      },
+      {
+        "id": "src/hooks/jev/index.ts",
+        "kind": "hook",
+        "path": "src/hooks/jev/index.ts"
+      },
+      {
+        "id": "src/hooks/jev/points.ts",
+        "kind": "hook",
+        "path": "src/hooks/jev/points.ts"
+      },
+      {
+        "id": "src/hooks/jev/resolver.ts",
+        "kind": "hook",
+        "path": "src/hooks/jev/resolver.ts"
+      },
+      {
+        "id": "src/hooks/jev/types.ts",
+        "kind": "hook",
+        "path": "src/hooks/jev/types.ts"
+      },
+      {
         "id": "src/hooks/keyword-detector/__tests__/index.test.ts",
         "kind": "hook",
         "path": "src/hooks/keyword-detector/__tests__/index.test.ts"
       },
       {
+        "id": "src/hooks/keyword-detector/__tests__/jev-shadow.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/keyword-detector/__tests__/jev-shadow.test.ts"
+      },
+      {
         "id": "src/hooks/keyword-detector/index.ts",
         "kind": "hook",
         "path": "src/hooks/keyword-detector/index.ts"
+      },
+      {
+        "id": "src/hooks/keyword-detector/jev-shadow.ts",
+        "kind": "hook",
+        "path": "src/hooks/keyword-detector/jev-shadow.ts"
+      },
+      {
+        "id": "src/hooks/learner/__tests__/jev-extraction-shadow.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/learner/__tests__/jev-extraction-shadow.test.ts"
       },
       {
         "id": "src/hooks/learner/auto-invoke.ts",
@@ -39523,6 +40737,11 @@
         "id": "src/hooks/learner/index.ts",
         "kind": "hook",
         "path": "src/hooks/learner/index.ts"
+      },
+      {
+        "id": "src/hooks/learner/jev-shadow.ts",
+        "kind": "hook",
+        "path": "src/hooks/learner/jev-shadow.ts"
       },
       {
         "id": "src/hooks/learner/loader.ts",
@@ -39700,6 +40919,11 @@
         "path": "src/hooks/persistent-mode/__tests__/idle-repo-state.test.ts"
       },
       {
+        "id": "src/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.ts"
+      },
+      {
         "id": "src/hooks/persistent-mode/__tests__/oversize-tool-result-redirect.test.ts",
         "kind": "hook",
         "path": "src/hooks/persistent-mode/__tests__/oversize-tool-result-redirect.test.ts"
@@ -39785,6 +41009,11 @@
         "path": "src/hooks/persistent-mode/index.ts"
       },
       {
+        "id": "src/hooks/persistent-mode/jev-shadow.ts",
+        "kind": "hook",
+        "path": "src/hooks/persistent-mode/jev-shadow.ts"
+      },
+      {
         "id": "src/hooks/persistent-mode/session-isolation.test.ts",
         "kind": "hook",
         "path": "src/hooks/persistent-mode/session-isolation.test.ts"
@@ -39815,6 +41044,11 @@
         "path": "src/hooks/pre-compact/restore.ts"
       },
       {
+        "id": "src/hooks/preemptive-compaction/__tests__/jev-shadow.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/preemptive-compaction/__tests__/jev-shadow.test.ts"
+      },
+      {
         "id": "src/hooks/preemptive-compaction/constants.ts",
         "kind": "hook",
         "path": "src/hooks/preemptive-compaction/constants.ts"
@@ -39823,6 +41057,11 @@
         "id": "src/hooks/preemptive-compaction/index.ts",
         "kind": "hook",
         "path": "src/hooks/preemptive-compaction/index.ts"
+      },
+      {
+        "id": "src/hooks/preemptive-compaction/jev-shadow.ts",
+        "kind": "hook",
+        "path": "src/hooks/preemptive-compaction/jev-shadow.ts"
       },
       {
         "id": "src/hooks/preemptive-compaction/types.ts",
@@ -39930,9 +41169,19 @@
         "path": "src/hooks/prompt-prerequisites/index.ts"
       },
       {
+        "id": "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts"
+      },
+      {
         "id": "src/hooks/ralph/index.ts",
         "kind": "hook",
         "path": "src/hooks/ralph/index.ts"
+      },
+      {
+        "id": "src/hooks/ralph/jev-shadow.ts",
+        "kind": "hook",
+        "path": "src/hooks/ralph/jev-shadow.ts"
       },
       {
         "id": "src/hooks/ralph/loop.ts",
@@ -40310,9 +41559,19 @@
         "path": "src/hooks/task-size-detector/__tests__/index.test.ts"
       },
       {
+        "id": "src/hooks/task-size-detector/__tests__/jev-shadow.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/task-size-detector/__tests__/jev-shadow.test.ts"
+      },
+      {
         "id": "src/hooks/task-size-detector/index.ts",
         "kind": "hook",
         "path": "src/hooks/task-size-detector/index.ts"
+      },
+      {
+        "id": "src/hooks/task-size-detector/jev-shadow.ts",
+        "kind": "hook",
+        "path": "src/hooks/task-size-detector/jev-shadow.ts"
       },
       {
         "id": "src/hooks/team-canonical-state.ts",
@@ -41003,6 +42262,11 @@
         "id": "src/lib/__tests__/mode-state-io.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/mode-state-io.test.ts"
+      },
+      {
+        "id": "src/lib/__tests__/mode-state-lock.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/mode-state-lock.test.ts"
       },
       {
         "id": "src/lib/__tests__/payload-limits.test.ts",
@@ -42050,11 +43314,6 @@
         "path": "src/team/__tests__/role-router.test.ts"
       },
       {
-        "id": "src/team/__tests__/runtime-assign.test.ts",
-        "kind": "src",
-        "path": "src/team/__tests__/runtime-assign.test.ts"
-      },
-      {
         "id": "src/team/__tests__/runtime-cli.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/runtime-cli.test.ts"
@@ -42075,9 +43334,9 @@
         "path": "src/team/__tests__/runtime-owner-client.test.ts"
       },
       {
-        "id": "src/team/__tests__/runtime-prompt-mode.test.ts",
+        "id": "src/team/__tests__/runtime-storage-boundary.test.ts",
         "kind": "src",
-        "path": "src/team/__tests__/runtime-prompt-mode.test.ts"
+        "path": "src/team/__tests__/runtime-storage-boundary.test.ts"
       },
       {
         "id": "src/team/__tests__/runtime-v2-role-routing.test.ts",
@@ -42118,6 +43377,11 @@
         "id": "src/team/__tests__/runtime-v2.service-repair.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/runtime-v2.service-repair.test.ts"
+      },
+      {
+        "id": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts"
       },
       {
         "id": "src/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.ts",
@@ -42190,9 +43454,19 @@
         "path": "src/team/__tests__/task-router.test.ts"
       },
       {
+        "id": "src/team/__tests__/task-storage-integrity.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/task-storage-integrity.test.ts"
+      },
+      {
         "id": "src/team/__tests__/team-config-revision-lock.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/team-config-revision-lock.test.ts"
+      },
+      {
+        "id": "src/team/__tests__/team-instance.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/team-instance.test.ts"
       },
       {
         "id": "src/team/__tests__/team-leader-nudge-hook.logging.test.ts",
@@ -42633,6 +43907,11 @@
         "id": "src/team/task-router.ts",
         "kind": "src",
         "path": "src/team/task-router.ts"
+      },
+      {
+        "id": "src/team/team-instance.ts",
+        "kind": "src",
+        "path": "src/team/team-instance.ts"
       },
       {
         "id": "src/team/team-name.ts",
@@ -43505,6 +44784,11 @@
         "path": "tests/lint/subagent-lock-test-contract.test.ts"
       },
       {
+        "id": "tests/lint/team-resume-contract.test.ts",
+        "kind": "other",
+        "path": "tests/lint/team-resume-contract.test.ts"
+      },
+      {
         "id": "tests/lint/windows-hide-hooks.test.ts",
         "kind": "other",
         "path": "tests/lint/windows-hide-hooks.test.ts"
@@ -43513,6 +44797,11 @@
         "id": "tests/perf/subagent-lock.bench.ts",
         "kind": "other",
         "path": "tests/perf/subagent-lock.bench.ts"
+      },
+      {
+        "id": "tests/shipyard-audit.test.ts",
+        "kind": "other",
+        "path": "tests/shipyard-audit.test.ts"
       },
       {
         "id": "tsconfig.json",
@@ -44047,6 +45336,46 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/build-contained-fs.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/build-contained-fs.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/build-contained-fs.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/build-contained-fs.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/build-contained-fs.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/build-generated-artifact-authorization.mjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/build-generated-artifact-authorization.mjs",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/build-generated-artifact-authorization.mjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/build-mcp-server.mjs",
         "to": "external:esbuild",
         "kind": "imports"
@@ -44442,6 +45771,31 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/jev-eval.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/jev-eval.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/jev-eval.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/jev-eval.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/jev-eval.mjs",
+        "to": "scripts/lib/state-root.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/keyword-detector.mjs",
         "to": "dist/hooks/subagent-tracker/flow-tracer.js",
         "kind": "imports"
@@ -44659,6 +46013,16 @@
       {
         "from": "scripts/lib/precompact-restore.mjs",
         "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/read-budget-preflight.mjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/read-budget-preflight.mjs",
+        "to": "external:path",
         "kind": "imports"
       },
       {
@@ -44918,6 +46282,11 @@
       },
       {
         "from": "scripts/plugin-setup.mjs",
+        "to": "external:better-sqlite3",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/plugin-setup.mjs",
         "to": "external:node:child_process",
         "kind": "imports"
       },
@@ -44994,6 +46363,21 @@
       {
         "from": "scripts/plugin-shipping-surface.mjs",
         "to": "external:typescript",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/post-tool-directory-context-injector.mjs",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/post-tool-directory-context-injector.mjs",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/post-tool-directory-context-injector.mjs",
+        "to": "scripts/lib/stdin.mjs",
         "kind": "imports"
       },
       {
@@ -45174,6 +46558,11 @@
       {
         "from": "scripts/pre-tool-enforcer.mjs",
         "to": "scripts/lib/pre-tool-enforcer-preflight.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/pre-tool-enforcer.mjs",
+        "to": "scripts/lib/read-budget-preflight.mjs",
         "kind": "imports"
       },
       {
@@ -45602,6 +46991,21 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/shipyard-audit.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/shipyard-audit.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/shipyard-audit.mjs",
+        "to": "scripts/lib/state-root.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/skill-injector.mjs",
         "to": "dist/hooks/skill-bridge.cjs",
         "kind": "imports"
@@ -45872,6 +47276,36 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/verify-graph-contained-fs.mjs",
+        "to": "external:node:assert/strict",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/verify-graph-contained-fs.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/verify-graph-contained-fs.mjs",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/verify-graph-contained-fs.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/verify-graph-contained-fs.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/verify-graph-contained-fs.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/wiki-pre-compact.mjs",
         "to": "dist/hooks/wiki/session-hooks.js",
         "kind": "imports"
@@ -45942,6 +47376,11 @@
         "kind": "registers"
       },
       {
+        "from": "skills/architecture-survey/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
         "from": "skills/ask-navigator/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -45997,6 +47436,11 @@
         "kind": "registers"
       },
       {
+        "from": "skills/diagram/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
         "from": "skills/discover/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -46032,6 +47476,11 @@
         "kind": "registers"
       },
       {
+        "from": "skills/intent/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
         "from": "skills/launch/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -46043,6 +47492,11 @@
       },
       {
         "from": "skills/minimal-code-discipline/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/minimal-prose-discipline/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
@@ -47069,6 +48523,31 @@
       {
         "from": "src/__tests__/delegation-enforcer.test.ts",
         "to": "src/features/delegation-routing/resolver.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/directory-context-injector-registration.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/directory-context-injector-registration.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/directory-context-injector-registration.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/directory-context-injector-registration.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/directory-context-injector-registration.test.ts",
+        "to": "external:vitest",
         "kind": "imports"
       },
       {
@@ -48552,6 +50031,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/__tests__/hud/usage-api-header-fallback.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/usage-api-header-fallback.test.ts",
+        "to": "src/hud/usage-api.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/hud/usage-api-lock.test.ts",
         "to": "external:events",
         "kind": "imports"
@@ -48952,6 +50441,41 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/__tests__/jev-eval-script.test.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/jev-eval-script.test.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/jev-eval-script.test.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/jev-eval-script.test.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/jev-eval-script.test.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/jev-eval-script.test.mjs",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/jev-eval-script.test.mjs",
+        "to": "scripts/jev-eval.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/job-management-sqlite.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -49083,6 +50607,11 @@
       },
       {
         "from": "src/__tests__/keyword-detector-script.test.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/keyword-detector-script.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -49109,6 +50638,11 @@
       {
         "from": "src/__tests__/keyword-detector-script.test.ts",
         "to": "src/installer/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/keyword-detector-script.test.ts",
+        "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
       {
@@ -49894,6 +51428,11 @@
       {
         "from": "src/__tests__/plugin-setup-deps.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/plugin-setup-deps.test.ts",
+        "to": "scripts/lib/hook-command-normalizer.mjs",
         "kind": "imports"
       },
       {
@@ -50872,6 +52411,31 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/__tests__/read-budget-preflight.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/read-budget-preflight.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/read-budget-preflight.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/read-budget-preflight.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/read-budget-preflight.test.ts",
+        "to": "scripts/lib/read-budget-preflight.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/release-boundary.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -51225,31 +52789,6 @@
         "from": "src/__tests__/runtime-guidance-plan-ralph.test.ts",
         "to": "src/team/model-contract.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/__tests__/runtime-task-orphan.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/runtime-task-orphan.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/runtime-task-orphan.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/runtime-task-orphan.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/runtime-task-orphan.test.ts",
-        "to": "src/team/runtime.ts",
-        "kind": "imports"
       },
       {
         "from": "src/__tests__/safe-command-approver.test.ts",
@@ -51908,6 +53447,11 @@
       },
       {
         "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -52044,6 +53588,26 @@
       {
         "from": "src/__tests__/skill-injector-script.test.ts",
         "to": "src/installer/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skills-frontmatter-regression.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skills-frontmatter-regression.test.ts",
+        "to": "external:node:module",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skills-frontmatter-regression.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skills-frontmatter-regression.test.ts",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -52284,6 +53848,11 @@
       {
         "from": "src/__tests__/state-root-resolution.test.ts",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/state-root-resolution.test.ts",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -54013,8 +55582,38 @@
       },
       {
         "from": "src/cli/__tests__/hud-watch.test.ts",
+        "to": "src/cli/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/hud-watch.test.ts",
         "to": "src/mcp/standalone-shutdown.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/__tests__/launch-secure-transport.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/launch-secure-transport.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/launch-secure-transport.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/launch-secure-transport.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/launch-secure-transport.test.ts",
+        "to": "src/cli/launch.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/__tests__/launch.test.ts",
@@ -54688,6 +56287,11 @@
       },
       {
         "from": "src/cli/commands/__tests__/team.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team.test.ts",
         "to": "external:fs/promises",
         "kind": "imports"
       },
@@ -55049,6 +56653,11 @@
       {
         "from": "src/cli/commands/team.ts",
         "to": "src/team/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
+        "to": "src/team/types.ts",
         "kind": "type-imports"
       },
       {
@@ -55224,6 +56833,11 @@
       {
         "from": "src/cli/graph.ts",
         "to": "src/notifications/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/hud-watch.ts",
+        "to": "external:commander",
         "kind": "imports"
       },
       {
@@ -55543,11 +57157,6 @@
       },
       {
         "from": "src/cli/team.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/team.ts",
         "to": "src/planning/artifacts.ts",
         "kind": "imports"
       },
@@ -55563,17 +57172,17 @@
       },
       {
         "from": "src/cli/team.ts",
-        "to": "src/team/git-worktree.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/team.ts",
         "to": "src/team/governance.ts",
         "kind": "imports"
       },
       {
         "from": "src/cli/team.ts",
         "to": "src/team/monitor.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/team.ts",
+        "to": "src/team/process-identity-lock.ts",
         "kind": "imports"
       },
       {
@@ -55598,7 +57207,7 @@
       },
       {
         "from": "src/cli/team.ts",
-        "to": "src/team/tmux-session.ts",
+        "to": "src/team/types.ts",
         "kind": "imports"
       },
       {
@@ -55864,6 +57473,76 @@
       {
         "from": "src/features/__tests__/checkpoint.test.ts",
         "to": "src/features/checkpoint/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-model-routing.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-model-routing.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-model-routing.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-model-routing.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-model-routing.test.ts",
+        "to": "src/features/delegation-enforcer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-model-routing.test.ts",
+        "to": "src/features/delegation-enforcer.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-model-routing.test.ts",
+        "to": "src/features/jev-model-routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-model-routing.test.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-slop-warning.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-slop-warning.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-slop-warning.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-slop-warning.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-slop-warning.test.ts",
+        "to": "src/features/jev-slop-warning.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/__tests__/jev-slop-warning.test.ts",
+        "to": "src/hooks/jev/index.ts",
         "kind": "imports"
       },
       {
@@ -56268,6 +57947,11 @@
       },
       {
         "from": "src/features/delegation-enforcer.ts",
+        "to": "src/features/jev-model-routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/delegation-enforcer.ts",
         "to": "src/shared/types.ts",
         "kind": "type-imports"
       },
@@ -56485,6 +58169,31 @@
         "from": "src/features/index.ts",
         "to": "src/features/verification/index.ts",
         "kind": "type-exports"
+      },
+      {
+        "from": "src/features/jev-model-routing.ts",
+        "to": "src/features/delegation-enforcer.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/features/jev-model-routing.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/jev-model-routing.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/features/jev-slop-warning.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/jev-slop-warning.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/features/lookout/__tests__/lookout-workspace.test.ts",
@@ -57537,6 +59246,31 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/graph/__tests__/runtime/native-contained-fs.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/native-contained-fs.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/native-contained-fs.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/native-contained-fs.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/native-contained-fs.test.ts",
+        "to": "src/graph/runtime/native-contained-fs.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/graph/__tests__/runtime/progress.test.ts",
         "to": "external:stream",
         "kind": "imports"
@@ -57788,12 +59522,22 @@
       },
       {
         "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
+        "to": "src/graph/runtime/contained-fd.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
         "to": "src/graph/runtime/run-dir.ts",
         "kind": "imports"
       },
       {
         "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
         "to": "src/graph/runtime/safe-fs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
+        "to": "src/lib/atomic-write.ts",
         "kind": "imports"
       },
       {
@@ -57922,6 +59666,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/graph/runtime/contained-fd.ts",
+        "to": "src/graph/runtime/native-contained-fs.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/graph/runtime/executors/agent.ts",
         "to": "external:@anthropic-ai/claude-agent-sdk",
         "kind": "imports"
@@ -57988,13 +59737,8 @@
       },
       {
         "from": "src/graph/runtime/fence.ts",
-        "to": "external:fs",
+        "to": "src/graph/runtime/contained-fd.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/graph/runtime/fence.ts",
-        "to": "external:path",
-        "kind": "imports"
       },
       {
         "from": "src/graph/runtime/fence.ts",
@@ -58077,6 +59821,26 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/graph/runtime/native-contained-fs.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/native-contained-fs.ts",
+        "to": "external:node:module",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/native-contained-fs.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/native-contained-fs.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
         "from": "src/graph/runtime/progress.ts",
         "to": "src/graph/runtime/types.ts",
         "kind": "type-imports"
@@ -58090,6 +59854,11 @@
         "from": "src/graph/runtime/remote-approval.ts",
         "to": "external:path",
         "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/remote-approval.ts",
+        "to": "src/graph/runtime/contained-fd.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/graph/runtime/remote-approval.ts",
@@ -58110,11 +59879,6 @@
         "from": "src/graph/runtime/remote-approval.ts",
         "to": "src/graph/runtime/types.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/graph/runtime/remote-approval.ts",
-        "to": "src/lib/atomic-write.ts",
-        "kind": "imports"
       },
       {
         "from": "src/graph/runtime/run-dir.ts",
@@ -58198,6 +59962,11 @@
       },
       {
         "from": "src/graph/runtime/safe-fs.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/safe-fs.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -58209,6 +59978,16 @@
       {
         "from": "src/graph/runtime/safe-fs.ts",
         "to": "src/graph/runtime/contained-fd.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/safe-fs.ts",
+        "to": "src/graph/runtime/contained-fd.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/runtime/safe-fs.ts",
+        "to": "src/graph/runtime/run-dir.ts",
         "kind": "imports"
       },
       {
@@ -60068,6 +61847,11 @@
       },
       {
         "from": "src/hooks/bridge.ts",
+        "to": "src/hooks/keyword-detector/jev-shadow.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/bridge.ts",
         "to": "src/hooks/omc-orchestrator/index.ts",
         "kind": "imports"
       },
@@ -60173,6 +61957,11 @@
       },
       {
         "from": "src/hooks/bridge.ts",
+        "to": "src/hooks/task-size-detector/jev-shadow.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/bridge.ts",
         "to": "src/hooks/team-canonical-state.ts",
         "kind": "imports"
       },
@@ -60272,6 +62061,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
+        "to": "src/hooks/code-simplifier/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
+        "to": "src/hooks/code-simplifier/jev-shadow.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/code-simplifier/index.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -60288,8 +62117,28 @@
       },
       {
         "from": "src/hooks/code-simplifier/index.ts",
+        "to": "src/hooks/code-simplifier/jev-shadow.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/index.ts",
         "to": "src/utils/paths.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/jev-shadow.ts",
+        "to": "src/hooks/code-simplifier/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/codebase-map.ts",
@@ -61027,6 +62876,131 @@
         "kind": "type-exports"
       },
       {
+        "from": "src/hooks/jev/__tests__/client.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/client.test.ts",
+        "to": "src/hooks/jev/client.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/client.test.ts",
+        "to": "src/hooks/jev/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/resolver.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/resolver.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/resolver.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/resolver.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/resolver.test.ts",
+        "to": "src/hooks/jev/resolver.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/resolver.test.ts",
+        "to": "src/hooks/jev/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/jev/client.ts",
+        "to": "src/hooks/jev/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/jev/config.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/config.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/index.ts",
+        "to": "src/hooks/jev/client.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/hooks/jev/index.ts",
+        "to": "src/hooks/jev/config.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/hooks/jev/index.ts",
+        "to": "src/hooks/jev/points.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/hooks/jev/index.ts",
+        "to": "src/hooks/jev/resolver.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/hooks/jev/index.ts",
+        "to": "src/hooks/jev/types.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/hooks/jev/points.ts",
+        "to": "src/hooks/jev/resolver.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/points.ts",
+        "to": "src/hooks/jev/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/jev/points.ts",
+        "to": "src/hooks/keyword-detector/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/resolver.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/resolver.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/resolver.ts",
+        "to": "src/hooks/jev/client.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/resolver.ts",
+        "to": "src/hooks/jev/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/resolver.ts",
+        "to": "src/hooks/jev/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/hooks/keyword-detector/__tests__/index.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -61042,6 +63016,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/keyword-detector/__tests__/jev-shadow.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/keyword-detector/__tests__/jev-shadow.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/keyword-detector/__tests__/jev-shadow.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/keyword-detector/__tests__/jev-shadow.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/keyword-detector/__tests__/jev-shadow.test.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/keyword-detector/__tests__/jev-shadow.test.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/keyword-detector/__tests__/jev-shadow.test.ts",
+        "to": "src/hooks/keyword-detector/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/keyword-detector/__tests__/jev-shadow.test.ts",
+        "to": "src/hooks/keyword-detector/jev-shadow.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/keyword-detector/index.ts",
         "to": "src/hooks/task-size-detector/index.ts",
         "kind": "imports"
@@ -61050,6 +63064,61 @@
         "from": "src/hooks/keyword-detector/index.ts",
         "to": "src/hooks/task-size-detector/index.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/keyword-detector/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/keyword-detector/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/keyword-detector/jev-shadow.ts",
+        "to": "src/hooks/keyword-detector/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/keyword-detector/jev-shadow.ts",
+        "to": "src/hooks/keyword-detector/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/learner/__tests__/jev-extraction-shadow.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/learner/__tests__/jev-extraction-shadow.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/learner/__tests__/jev-extraction-shadow.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/learner/__tests__/jev-extraction-shadow.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/learner/__tests__/jev-extraction-shadow.test.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/learner/__tests__/jev-extraction-shadow.test.ts",
+        "to": "src/hooks/learner/detector.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/learner/__tests__/jev-extraction-shadow.test.ts",
+        "to": "src/hooks/learner/jev-shadow.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/learner/auto-invoke.ts",
@@ -61172,6 +63241,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/learner/detection-hook.ts",
+        "to": "src/hooks/learner/jev-shadow.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/learner/finder.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -61290,6 +63364,26 @@
         "from": "src/hooks/learner/index.ts",
         "to": "src/hooks/learner/writer.ts",
         "kind": "exports"
+      },
+      {
+        "from": "src/hooks/learner/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/learner/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/learner/jev-shadow.ts",
+        "to": "src/hooks/learner/detector.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/learner/jev-shadow.ts",
+        "to": "src/hooks/learner/detector.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/learner/loader.ts",
@@ -61887,6 +63981,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/persistent-mode/__tests__/cancel-race.test.ts",
+        "to": "src/hooks/todo-continuation/index.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/persistent-mode/__tests__/deleted-state-writeback.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -61974,6 +64073,41 @@
       {
         "from": "src/hooks/persistent-mode/__tests__/idle-repo-state.test.ts",
         "to": "src/hooks/persistent-mode/idle-repo-state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.ts",
+        "to": "src/hooks/persistent-mode/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.ts",
+        "to": "src/hooks/persistent-mode/jev-shadow.ts",
         "kind": "imports"
       },
       {
@@ -62513,12 +64647,27 @@
       },
       {
         "from": "src/hooks/persistent-mode/index.ts",
+        "to": "src/hooks/persistent-mode/jev-shadow.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/index.ts",
         "to": "src/hooks/ralph/index.ts",
         "kind": "imports"
       },
       {
         "from": "src/hooks/persistent-mode/index.ts",
         "to": "src/hooks/ralph/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/index.ts",
+        "to": "src/hooks/ralph/jev-shadow.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/index.ts",
+        "to": "src/hooks/ralph/prd.ts",
         "kind": "type-imports"
       },
       {
@@ -62590,6 +64739,16 @@
         "from": "src/hooks/persistent-mode/index.ts",
         "to": "src/utils/paths.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/jev-shadow.ts",
+        "to": "src/hooks/persistent-mode/index.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/persistent-mode/session-isolation.test.ts",
@@ -62782,6 +64941,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/preemptive-compaction/__tests__/jev-shadow.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/preemptive-compaction/__tests__/jev-shadow.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/preemptive-compaction/__tests__/jev-shadow.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/preemptive-compaction/__tests__/jev-shadow.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/preemptive-compaction/__tests__/jev-shadow.test.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/preemptive-compaction/__tests__/jev-shadow.test.ts",
+        "to": "src/hooks/preemptive-compaction/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/preemptive-compaction/__tests__/jev-shadow.test.ts",
+        "to": "src/hooks/preemptive-compaction/jev-shadow.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/preemptive-compaction/__tests__/jev-shadow.test.ts",
+        "to": "src/hooks/preemptive-compaction/jev-shadow.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/hooks/preemptive-compaction/index.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -62808,12 +65007,32 @@
       },
       {
         "from": "src/hooks/preemptive-compaction/index.ts",
+        "to": "src/hooks/preemptive-compaction/jev-shadow.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/preemptive-compaction/index.ts",
+        "to": "src/hooks/preemptive-compaction/jev-shadow.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/preemptive-compaction/index.ts",
         "to": "src/hooks/preemptive-compaction/types.ts",
         "kind": "type-exports"
       },
       {
         "from": "src/hooks/preemptive-compaction/index.ts",
         "to": "src/hooks/preemptive-compaction/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/preemptive-compaction/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/preemptive-compaction/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
         "kind": "type-imports"
       },
       {
@@ -63322,6 +65541,36 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
+        "to": "src/hooks/ralph/jev-shadow.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/ralph/index.ts",
         "to": "src/hooks/ralph/loop.ts",
         "kind": "exports"
@@ -63370,6 +65619,11 @@
         "from": "src/hooks/ralph/index.ts",
         "to": "src/hooks/ralph/verifier.ts",
         "kind": "type-exports"
+      },
+      {
+        "from": "src/hooks/ralph/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/ralph/loop.ts",
@@ -64828,12 +67082,12 @@
       },
       {
         "from": "src/hooks/session-end/index.ts",
-        "to": "src/team/runtime.ts",
+        "to": "src/team/team-ops.ts",
         "kind": "imports"
       },
       {
         "from": "src/hooks/session-end/index.ts",
-        "to": "src/team/team-ops.ts",
+        "to": "src/team/types.ts",
         "kind": "imports"
       },
       {
@@ -65375,6 +67629,66 @@
         "from": "src/hooks/task-size-detector/__tests__/index.test.ts",
         "to": "src/hooks/task-size-detector/index.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/hooks/task-size-detector/__tests__/jev-shadow.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/task-size-detector/__tests__/jev-shadow.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/task-size-detector/__tests__/jev-shadow.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/task-size-detector/__tests__/jev-shadow.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/task-size-detector/__tests__/jev-shadow.test.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/task-size-detector/__tests__/jev-shadow.test.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/task-size-detector/__tests__/jev-shadow.test.ts",
+        "to": "src/hooks/task-size-detector/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/task-size-detector/__tests__/jev-shadow.test.ts",
+        "to": "src/hooks/task-size-detector/jev-shadow.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/task-size-detector/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/task-size-detector/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/task-size-detector/jev-shadow.ts",
+        "to": "src/hooks/task-size-detector/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/task-size-detector/jev-shadow.ts",
+        "to": "src/hooks/task-size-detector/index.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/team-canonical-state.ts",
@@ -68587,6 +70901,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/lib/__tests__/mode-state-lock.test.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-lock.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-lock.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-lock.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-lock.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-lock.test.ts",
+        "to": "src/lib/mode-state-io.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-lock.test.ts",
+        "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/lib/__tests__/payload-limits.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -69133,6 +71482,11 @@
       },
       {
         "from": "src/lib/mode-state-io.ts",
+        "to": "external:module",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/mode-state-io.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -69348,22 +71702,7 @@
       },
       {
         "from": "src/mcp/__tests__/team-cleanup.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/mcp/__tests__/team-cleanup.test.ts",
         "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/mcp/__tests__/team-cleanup.test.ts",
-        "to": "external:fs/promises",
-        "kind": "imports"
-      },
-      {
-        "from": "src/mcp/__tests__/team-cleanup.test.ts",
-        "to": "external:os",
         "kind": "imports"
       },
       {
@@ -69378,13 +71717,28 @@
       },
       {
         "from": "src/mcp/__tests__/team-cleanup.test.ts",
-        "to": "src/lib/worktree-paths.ts",
+        "to": "src/mcp/team-job-convergence.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/team-cleanup.test.ts",
+        "to": "src/team/team-owner-epoch.ts",
         "kind": "imports"
       },
       {
         "from": "src/mcp/__tests__/team-cleanup.test.ts",
         "to": "src/team/tmux-session.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/team-cleanup.test.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/mcp/__tests__/team-cleanup.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/mcp/__tests__/team-server-artifact-convergence.test.ts",
@@ -69425,6 +71779,31 @@
         "from": "src/mcp/__tests__/team-server-artifact-convergence.test.ts",
         "to": "src/team/git-worktree.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/team-server-artifact-convergence.test.ts",
+        "to": "src/team/process-identity-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/team-server-artifact-convergence.test.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/team-server-artifact-convergence.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/team-server-artifact-convergence.test.ts",
+        "to": "src/team/team-owner-epoch.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/team-server-artifact-convergence.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/mcp/cli-detection.ts",
@@ -69708,17 +72087,12 @@
       },
       {
         "from": "src/mcp/team-job-convergence.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/mcp/team-job-convergence.ts",
-        "to": "src/team/git-worktree.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/mcp/team-job-convergence.ts",
         "to": "src/team/team-name.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/team-job-convergence.ts",
+        "to": "src/team/types.ts",
         "kind": "imports"
       },
       {
@@ -69740,6 +72114,11 @@
         "from": "src/mcp/team-server.ts",
         "to": "external:child_process",
         "kind": "imports"
+      },
+      {
+        "from": "src/mcp/team-server.ts",
+        "to": "external:child_process",
+        "kind": "type-imports"
       },
       {
         "from": "src/mcp/team-server.ts",
@@ -69793,7 +72172,32 @@
       },
       {
         "from": "src/mcp/team-server.ts",
+        "to": "src/team/idle-nudge.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/mcp/team-server.ts",
         "to": "src/team/monitor.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/team-server.ts",
+        "to": "src/team/process-identity-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/team-server.ts",
+        "to": "src/team/runtime-v2.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/team-server.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/team-server.ts",
+        "to": "src/team/team-instance.ts",
         "kind": "imports"
       },
       {
@@ -69805,6 +72209,21 @@
         "from": "src/mcp/team-server.ts",
         "to": "src/team/tmux-session.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/mcp/team-server.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/mcp/team-server.ts",
+        "to": "src/team/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/team-server.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/mcp/team-server.ts",
@@ -71778,6 +74197,11 @@
       },
       {
         "from": "src/team/__tests__/api-interop.cwd-resolution.test.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/api-interop.cwd-resolution.test.ts",
         "to": "external:os",
         "kind": "imports"
       },
@@ -71793,17 +74217,17 @@
       },
       {
         "from": "src/team/__tests__/api-interop.cwd-resolution.test.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/__tests__/api-interop.cwd-resolution.test.ts",
         "to": "src/team/api-interop.ts",
         "kind": "imports"
       },
       {
         "from": "src/team/__tests__/api-interop.cwd-resolution.test.ts",
         "to": "src/team/recovery-request-store.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/api-interop.cwd-resolution.test.ts",
+        "to": "src/team/team-instance.ts",
         "kind": "imports"
       },
       {
@@ -71844,6 +74268,11 @@
       {
         "from": "src/team/__tests__/api-interop.dispatch.test.ts",
         "to": "src/team/dispatch-queue.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/api-interop.dispatch.test.ts",
+        "to": "src/team/team-owner-epoch.ts",
         "kind": "imports"
       },
       {
@@ -72252,6 +74681,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/__tests__/critic-cli-worker.integration.test.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/critic-cli-worker.integration.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/__tests__/dispatch-queue.strict-read.test.ts",
         "to": "external:node:fs/promises",
         "kind": "imports"
@@ -72483,6 +74922,11 @@
       },
       {
         "from": "src/team/__tests__/governance-enforcement.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/governance-enforcement.test.ts",
         "to": "src/team/team-ops.ts",
         "kind": "imports"
       },
@@ -72568,8 +75012,18 @@
       },
       {
         "from": "src/team/__tests__/idle-nudge.test.ts",
+        "to": "src/team/idle-nudge.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/idle-nudge.test.ts",
         "to": "src/team/tmux-session.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/idle-nudge.test.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/__tests__/inbox-outbox.test.ts",
@@ -73248,6 +75702,16 @@
       },
       {
         "from": "src/team/__tests__/recovery-finalization-concurrency.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/recovery-finalization-concurrency.test.ts",
+        "to": "src/team/team-owner-epoch.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/recovery-finalization-concurrency.test.ts",
         "to": "src/team/types.ts",
         "kind": "type-imports"
       },
@@ -73313,12 +75777,22 @@
       },
       {
         "from": "src/team/__tests__/recovery-pane-rollback.test.ts",
-        "to": "src/team/worker-activation-gate.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/recovery-pane-rollback.test.ts",
+        "to": "src/team/team-owner-epoch.ts",
         "kind": "imports"
       },
       {
         "from": "src/team/__tests__/recovery-pane-rollback.test.ts",
         "to": "src/team/worker-launch-ack.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/recovery-public-api.test.ts",
+        "to": "external:node:crypto",
         "kind": "imports"
       },
       {
@@ -73369,6 +75843,11 @@
       {
         "from": "src/team/__tests__/recovery-public-api.test.ts",
         "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/recovery-public-api.test.ts",
+        "to": "src/team/team-instance.ts",
         "kind": "imports"
       },
       {
@@ -73502,31 +75981,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/team/__tests__/runtime-assign.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/__tests__/runtime-assign.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/__tests__/runtime-assign.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/__tests__/runtime-assign.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/__tests__/runtime-assign.test.ts",
-        "to": "src/team/runtime.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/team/__tests__/runtime-cli.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -73567,6 +76021,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/__tests__/runtime-cli.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/__tests__/runtime-done-recovery.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -73588,12 +76047,17 @@
       },
       {
         "from": "src/team/__tests__/runtime-done-recovery.test.ts",
-        "to": "src/team/runtime.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
         "from": "src/team/__tests__/runtime-done-recovery.test.ts",
-        "to": "src/team/runtime.ts",
+        "to": "src/team/task-file-ops.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-done-recovery.test.ts",
+        "to": "src/team/types.ts",
         "kind": "type-imports"
       },
       {
@@ -73633,12 +76097,27 @@
       },
       {
         "from": "src/team/__tests__/runtime-owner-busy.test.ts",
+        "to": "src/team/recovery-saga.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-owner-busy.test.ts",
         "to": "src/team/runtime-v2.ts",
         "kind": "imports"
       },
       {
         "from": "src/team/__tests__/runtime-owner-busy.test.ts",
+        "to": "src/team/runtime-v2.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-owner-busy.test.ts",
         "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-owner-busy.test.ts",
+        "to": "src/team/team-instance.ts",
         "kind": "imports"
       },
       {
@@ -73703,6 +76182,11 @@
       },
       {
         "from": "src/team/__tests__/runtime-owner-client.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-owner-client.test.ts",
         "to": "src/team/team-owner-epoch.ts",
         "kind": "imports"
       },
@@ -73712,43 +76196,53 @@
         "kind": "type-imports"
       },
       {
-        "from": "src/team/__tests__/runtime-prompt-mode.test.ts",
-        "to": "external:fs",
+        "from": "src/team/__tests__/runtime-storage-boundary.test.ts",
+        "to": "external:node:fs",
         "kind": "imports"
       },
       {
-        "from": "src/team/__tests__/runtime-prompt-mode.test.ts",
-        "to": "external:os",
+        "from": "src/team/__tests__/runtime-storage-boundary.test.ts",
+        "to": "external:node:fs/promises",
         "kind": "imports"
       },
       {
-        "from": "src/team/__tests__/runtime-prompt-mode.test.ts",
-        "to": "external:path",
+        "from": "src/team/__tests__/runtime-storage-boundary.test.ts",
+        "to": "external:node:os",
         "kind": "imports"
       },
       {
-        "from": "src/team/__tests__/runtime-prompt-mode.test.ts",
-        "to": "external:util",
+        "from": "src/team/__tests__/runtime-storage-boundary.test.ts",
+        "to": "external:node:path",
         "kind": "imports"
       },
       {
-        "from": "src/team/__tests__/runtime-prompt-mode.test.ts",
+        "from": "src/team/__tests__/runtime-storage-boundary.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
       {
-        "from": "src/team/__tests__/runtime-prompt-mode.test.ts",
-        "to": "src/team/runtime.ts",
+        "from": "src/team/__tests__/runtime-storage-boundary.test.ts",
+        "to": "src/team/runtime-v2.ts",
         "kind": "imports"
       },
       {
-        "from": "src/team/__tests__/runtime-prompt-mode.test.ts",
-        "to": "src/team/runtime.ts",
+        "from": "src/team/__tests__/runtime-storage-boundary.test.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-storage-boundary.test.ts",
+        "to": "src/team/team-ops.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-storage-boundary.test.ts",
+        "to": "src/team/types.ts",
         "kind": "type-imports"
       },
       {
-        "from": "src/team/__tests__/runtime-prompt-mode.test.ts",
-        "to": "src/team/state-paths.ts",
+        "from": "src/team/__tests__/runtime-v2-role-routing.test.ts",
+        "to": "external:crypto",
         "kind": "imports"
       },
       {
@@ -73773,7 +76267,7 @@
       },
       {
         "from": "src/team/__tests__/runtime-v2-role-routing.test.ts",
-        "to": "src/lib/worktree-paths.ts",
+        "to": "src/team/process-identity-lock.ts",
         "kind": "imports"
       },
       {
@@ -73784,6 +76278,16 @@
       {
         "from": "src/team/__tests__/runtime-v2-role-routing.test.ts",
         "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2-role-routing.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2-role-routing.test.ts",
+        "to": "src/team/team-ops.ts",
         "kind": "imports"
       },
       {
@@ -73818,6 +76322,11 @@
       },
       {
         "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
+        "to": "external:node:util",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
         "to": "external:os",
         "kind": "imports"
       },
@@ -73828,12 +76337,12 @@
       },
       {
         "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
-        "to": "external:util",
+        "to": "external:vitest",
         "kind": "imports"
       },
       {
         "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
-        "to": "external:vitest",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -73855,6 +76364,31 @@
         "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
         "to": "src/team/state-paths.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
+        "to": "src/team/task-recovery-checkpoint.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
+        "to": "src/team/team-ops.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.dispatch.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/__tests__/runtime-v2.explicit-provider-routing.test.ts",
@@ -73948,7 +76482,22 @@
       },
       {
         "from": "src/team/__tests__/runtime-v2.monitor.test.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.monitor.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.monitor.test.ts",
         "to": "src/team/worker-canonicalization.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.monitor.test.ts",
+        "to": "src/team/worker-launch-ack.ts",
         "kind": "imports"
       },
       {
@@ -73964,6 +76513,111 @@
       {
         "from": "src/team/__tests__/runtime-v2.service-repair.test.ts",
         "to": "src/team/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "external:node:child_process",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "src/cli/tmux-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "src/platform/process-utils.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "src/team/runtime-v2.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "src/team/team-owner-epoch.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "src/team/worker-launch-ack.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-interruption.test.ts",
+        "to": "src/team/worker-launch-ack.ts",
         "kind": "type-imports"
       },
       {
@@ -74008,6 +76662,11 @@
       },
       {
         "from": "src/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.ts",
         "to": "src/team/worker-launch-ack.ts",
         "kind": "imports"
       },
@@ -74043,12 +76702,32 @@
       },
       {
         "from": "src/team/__tests__/runtime-v2.shutdown.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown.test.ts",
         "to": "src/team/git-worktree.ts",
         "kind": "imports"
       },
       {
         "from": "src/team/__tests__/runtime-v2.shutdown.test.ts",
+        "to": "src/team/runtime-owner-client.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown.test.ts",
         "to": "src/team/runtime-v2.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown.test.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown.test.ts",
+        "to": "src/team/team-instance.ts",
         "kind": "imports"
       },
       {
@@ -74062,6 +76741,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/__tests__/runtime-v2.shutdown.test.ts",
+        "to": "src/team/worker-launch-ack.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/team/__tests__/runtime-watchdog-retry.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -74083,13 +76767,13 @@
       },
       {
         "from": "src/team/__tests__/runtime-watchdog-retry.test.ts",
-        "to": "src/team/runtime.ts",
+        "to": "src/lib/atomic-write.ts",
         "kind": "imports"
       },
       {
         "from": "src/team/__tests__/runtime-watchdog-retry.test.ts",
-        "to": "src/team/runtime.ts",
-        "kind": "type-imports"
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/__tests__/runtime-watchdog-retry.test.ts",
@@ -74097,6 +76781,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/__tests__/runtime-watchdog-retry.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/team/__tests__/runtime.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -74114,6 +76803,11 @@
       {
         "from": "src/team/__tests__/runtime.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime.test.ts",
+        "to": "src/team/index.ts",
         "kind": "imports"
       },
       {
@@ -74163,6 +76857,16 @@
       },
       {
         "from": "src/team/__tests__/scaling-launch-config.test.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/scaling-launch-config.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/scaling-launch-config.test.ts",
         "to": "src/team/types.ts",
         "kind": "type-imports"
       },
@@ -74199,6 +76903,11 @@
       {
         "from": "src/team/__tests__/scaling.test.ts",
         "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/scaling.test.ts",
+        "to": "src/team/team-instance.ts",
         "kind": "imports"
       },
       {
@@ -74417,6 +77126,51 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/team/__tests__/task-storage-integrity.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/task-storage-integrity.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/task-storage-integrity.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/task-storage-integrity.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/task-storage-integrity.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/task-storage-integrity.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/task-storage-integrity.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/task-storage-integrity.test.ts",
+        "to": "src/team/team-ops.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/task-storage-integrity.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/team/__tests__/team-config-revision-lock.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -74453,6 +77207,11 @@
       },
       {
         "from": "src/team/__tests__/team-config-revision-lock.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-config-revision-lock.test.ts",
         "to": "src/team/team-ops.ts",
         "kind": "imports"
       },
@@ -74463,6 +77222,46 @@
       },
       {
         "from": "src/team/__tests__/team-config-revision-lock.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/team-instance.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-instance.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-instance.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-instance.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-instance.test.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-instance.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-instance.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/team-instance.test.ts",
         "to": "src/team/types.ts",
         "kind": "type-imports"
       },
@@ -74833,6 +77632,11 @@
       },
       {
         "from": "src/team/__tests__/tmux-session.create-team.test.ts",
+        "to": "src/team/team-owner-epoch.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.create-team.test.ts",
         "to": "src/team/tmux-session.ts",
         "kind": "imports"
       },
@@ -74843,8 +77647,18 @@
       },
       {
         "from": "src/team/__tests__/tmux-session.kill-team-session.test.ts",
+        "to": "src/team/team-owner-epoch.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.kill-team-session.test.ts",
         "to": "src/team/tmux-session.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.kill-team-session.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/__tests__/tmux-session.spawn.test.ts",
@@ -74853,7 +77667,22 @@
       },
       {
         "from": "src/team/__tests__/tmux-session.spawn.test.ts",
+        "to": "src/team/team-owner-epoch.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.spawn.test.ts",
         "to": "src/team/tmux-session.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.spawn.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.startup.test.ts",
+        "to": "external:node:crypto",
         "kind": "imports"
       },
       {
@@ -74888,12 +77717,22 @@
       },
       {
         "from": "src/team/__tests__/tmux-session.startup.test.ts",
+        "to": "src/team/team-owner-epoch.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.startup.test.ts",
         "to": "src/team/tmux-session.ts",
         "kind": "imports"
       },
       {
         "from": "src/team/__tests__/tmux-session.startup.test.ts",
         "to": "src/team/tmux-session.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.startup.test.ts",
+        "to": "src/team/types.ts",
         "kind": "type-imports"
       },
       {
@@ -74927,9 +77766,9 @@
         "kind": "type-imports"
       },
       {
-        "from": "src/team/__tests__/tmux-session.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
+        "from": "src/team/__tests__/tmux-session.target-membership.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/__tests__/tmux-session.test.ts",
@@ -74950,6 +77789,21 @@
         "from": "src/team/__tests__/tmux-session.test.ts",
         "to": "src/team/tmux-session.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.test.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/__tests__/unified-team.test.ts",
@@ -75173,6 +78027,11 @@
       },
       {
         "from": "src/team/__tests__/worker-launch-ack.test.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-ack.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -75214,6 +78073,11 @@
       {
         "from": "src/team/__tests__/worker-launch-posix-transport.test.ts",
         "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-posix-transport.test.ts",
+        "to": "external:node:crypto",
         "kind": "imports"
       },
       {
@@ -75483,11 +78347,6 @@
       },
       {
         "from": "src/team/api-interop.ts",
-        "to": "src/team/runtime.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/api-interop.ts",
         "to": "src/team/state-paths.ts",
         "kind": "imports"
       },
@@ -75504,6 +78363,11 @@
       {
         "from": "src/team/api-interop.ts",
         "to": "src/team/tmux-session.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/api-interop.ts",
+        "to": "src/team/types.ts",
         "kind": "imports"
       },
       {
@@ -75840,6 +78704,21 @@
         "from": "src/team/idle-nudge.ts",
         "to": "src/team/tmux-session.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/team/idle-nudge.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/idle-nudge.ts",
+        "to": "src/team/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/idle-nudge.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/inbox-outbox.ts",
@@ -76263,6 +79142,16 @@
       },
       {
         "from": "src/team/mailbox-notification-guard.ts",
+        "to": "src/team/team-owner-epoch.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/mailbox-notification-guard.ts",
+        "to": "src/team/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/mailbox-notification-guard.ts",
         "to": "src/team/types.ts",
         "kind": "type-imports"
       },
@@ -76429,11 +79318,6 @@
       {
         "from": "src/team/mcp-team-bridge.ts",
         "to": "src/team/team-status.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/mcp-team-bridge.ts",
-        "to": "src/team/tmux-session.ts",
         "kind": "imports"
       },
       {
@@ -76623,6 +79507,11 @@
       },
       {
         "from": "src/team/monitor.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/monitor.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -76664,6 +79553,21 @@
       {
         "from": "src/team/monitor.ts",
         "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/monitor.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/monitor.ts",
+        "to": "src/team/team-ops.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/monitor.ts",
+        "to": "src/team/types.ts",
         "kind": "imports"
       },
       {
@@ -76764,6 +79668,11 @@
       {
         "from": "src/team/recovery-request-store.ts",
         "to": "src/team/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/recovery-request-store.ts",
+        "to": "src/team/types.ts",
         "kind": "type-imports"
       },
       {
@@ -76823,11 +79732,6 @@
       },
       {
         "from": "src/team/runtime-cli.ts",
-        "to": "src/team/process-identity-lock.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/runtime-cli.ts",
         "to": "src/team/recovery-request-store.ts",
         "kind": "imports"
       },
@@ -76854,11 +79758,6 @@
       {
         "from": "src/team/runtime-cli.ts",
         "to": "src/team/runtime.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/runtime-cli.ts",
-        "to": "src/team/runtime.ts",
         "kind": "type-imports"
       },
       {
@@ -76873,6 +79772,11 @@
       },
       {
         "from": "src/team/runtime-cli.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime-cli.ts",
         "to": "src/team/team-owner-epoch.ts",
         "kind": "imports"
       },
@@ -76880,6 +79784,21 @@
         "from": "src/team/runtime-cli.ts",
         "to": "src/team/team-owner-epoch.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/runtime-cli.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/team/runtime-cli.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime-cli.ts",
+        "to": "src/team/types.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/runtime-cli.ts",
@@ -76958,7 +79877,17 @@
       },
       {
         "from": "src/team/runtime-owner-client.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime-owner-client.ts",
         "to": "src/team/team-owner-epoch.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime-owner-client.ts",
+        "to": "src/team/types.ts",
         "kind": "imports"
       },
       {
@@ -76994,11 +79923,6 @@
       {
         "from": "src/team/runtime-v2.ts",
         "to": "external:perf_hooks",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/runtime-v2.ts",
-        "to": "src/cli/tmux-utils.ts",
         "kind": "imports"
       },
       {
@@ -77198,7 +80122,17 @@
       },
       {
         "from": "src/team/runtime-v2.ts",
+        "to": "src/team/state/tasks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime-v2.ts",
         "to": "src/team/task-recovery-checkpoint.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime-v2.ts",
+        "to": "src/team/team-instance.ts",
         "kind": "imports"
       },
       {
@@ -77278,11 +80212,6 @@
       },
       {
         "from": "src/team/runtime.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/runtime.ts",
         "to": "external:fs/promises",
         "kind": "imports"
       },
@@ -77298,32 +80227,17 @@
       },
       {
         "from": "src/team/runtime.ts",
-        "to": "src/lib/atomic-write.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/runtime.ts",
-        "to": "src/team/git-worktree.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/runtime.ts",
-        "to": "src/team/model-contract.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/runtime.ts",
         "to": "src/team/model-contract.ts",
         "kind": "type-imports"
       },
       {
         "from": "src/team/runtime.ts",
-        "to": "src/team/state-paths.ts",
+        "to": "src/team/runtime-v2.ts",
         "kind": "imports"
       },
       {
         "from": "src/team/runtime.ts",
-        "to": "src/team/task-file-ops.ts",
+        "to": "src/team/state-paths.ts",
         "kind": "imports"
       },
       {
@@ -77343,8 +80257,13 @@
       },
       {
         "from": "src/team/runtime.ts",
-        "to": "src/team/worker-bootstrap.ts",
+        "to": "src/team/types.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/scaling.ts",
@@ -77364,11 +80283,6 @@
       {
         "from": "src/team/scaling.ts",
         "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/scaling.ts",
-        "to": "src/cli/tmux-utils.ts",
         "kind": "imports"
       },
       {
@@ -77418,11 +80332,6 @@
       },
       {
         "from": "src/team/scaling.ts",
-        "to": "src/team/process-identity-lock.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/scaling.ts",
         "to": "src/team/role-router.ts",
         "kind": "imports"
       },
@@ -77439,6 +80348,11 @@
       {
         "from": "src/team/scaling.ts",
         "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/scaling.ts",
+        "to": "src/team/team-instance.ts",
         "kind": "imports"
       },
       {
@@ -77465,6 +80379,11 @@
         "from": "src/team/scaling.ts",
         "to": "src/team/tmux-session.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/scaling.ts",
+        "to": "src/team/types.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/scaling.ts",
@@ -77528,6 +80447,16 @@
       },
       {
         "from": "src/team/state-paths.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/state-paths.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/state-paths.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -77544,7 +80473,7 @@
       {
         "from": "src/team/state/tasks.ts",
         "to": "external:fs",
-        "kind": "imports"
+        "kind": "type-imports"
       },
       {
         "from": "src/team/state/tasks.ts",
@@ -77554,6 +80483,16 @@
       {
         "from": "src/team/state/tasks.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/state/tasks.ts",
+        "to": "src/lib/swallowed-error.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/state/tasks.ts",
+        "to": "src/team/contracts.ts",
         "kind": "imports"
       },
       {
@@ -77692,6 +80631,51 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/team-instance.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/team-instance.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/team-instance.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/team-instance.ts",
+        "to": "src/team/contracts.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/team-instance.ts",
+        "to": "src/team/process-identity-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/team-instance.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/team-instance.ts",
+        "to": "src/team/team-owner-epoch.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/team-instance.ts",
+        "to": "src/team/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/team-instance.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/team/team-ops.ts",
         "to": "external:node:crypto",
         "kind": "imports"
@@ -77789,6 +80773,11 @@
       {
         "from": "src/team/team-owner-epoch.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/team-owner-epoch.ts",
+        "to": "src/graph/runtime/native-contained-fs.ts",
         "kind": "imports"
       },
       {
@@ -77978,7 +80967,7 @@
       },
       {
         "from": "src/team/tmux-session.ts",
-        "to": "external:fs/promises",
+        "to": "external:os",
         "kind": "imports"
       },
       {
@@ -77993,17 +80982,7 @@
       },
       {
         "from": "src/team/tmux-session.ts",
-        "to": "src/cli/tmux-clipboard.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/tmux-session.ts",
         "to": "src/cli/tmux-utils.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/tmux-session.ts",
-        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -78023,8 +81002,33 @@
       },
       {
         "from": "src/team/tmux-session.ts",
+        "to": "src/team/runtime-owner-client.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/tmux-session.ts",
         "to": "src/team/team-name.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/team/tmux-session.ts",
+        "to": "src/team/team-owner-epoch.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/tmux-session.ts",
+        "to": "src/team/team-owner-epoch.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/tmux-session.ts",
+        "to": "src/team/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/tmux-session.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/tmux-session.ts",
@@ -78302,6 +81306,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/worker-launch-ack.ts",
+        "to": "src/team/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/worker-launch-ack.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/team/worker-restart.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -78463,6 +81477,16 @@
       },
       {
         "from": "src/tools/__tests__/state-tools.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools.test.ts",
         "to": "external:os",
         "kind": "imports"
       },
@@ -78489,6 +81513,16 @@
       {
         "from": "src/tools/__tests__/state-tools.test.ts",
         "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools.test.ts",
+        "to": "src/team/process-identity-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools.test.ts",
+        "to": "src/team/state-paths.ts",
         "kind": "imports"
       },
       {
@@ -79793,6 +82827,11 @@
       },
       {
         "from": "src/tools/state-tools.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/state-tools.ts",
         "to": "src/lib/mode-state-io.ts",
         "kind": "imports"
       },
@@ -79814,6 +82853,11 @@
       {
         "from": "src/tools/state-tools.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/state-tools.ts",
+        "to": "src/team/process-identity-lock.ts",
         "kind": "imports"
       },
       {
@@ -81477,6 +84521,21 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/team-resume-contract.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/team-resume-contract.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/team-resume-contract.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/windows-hide-hooks.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -81537,6 +84596,36 @@
         "kind": "imports"
       },
       {
+        "from": "tests/shipyard-audit.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/shipyard-audit.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/shipyard-audit.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/shipyard-audit.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/shipyard-audit.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/shipyard-audit.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "vitest.config.ts",
         "to": "external:node:url",
         "kind": "imports"
@@ -81548,12 +84637,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7356,
-      "edgeCount": 7600,
-      "importEdgeCount": 6253,
-      "registerEdgeCount": 74
+      "nodeCount": 7571,
+      "edgeCount": 7960,
+      "importEdgeCount": 6543,
+      "registerEdgeCount": 78
     }
   },
-  "inventorySha256": "2f981ee6e021fc1f32035458d1cd4c19e8467e1951f3dfdc017b5461274d9e49",
-  "manifestSha256": "dd8137fc99cc208b6186d35f060276b952c85ab0d07b0181ab5d21decbceedb3"
+  "inventorySha256": "6488102f8b73e9c378c7eb97f637783c11934412d25c341ee944418ba24e2952",
+  "manifestSha256": "6796e85c24176761fbe74cf438a34f2227567655cff1bbd801079616b7c18591"
 }

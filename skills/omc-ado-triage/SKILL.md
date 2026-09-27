@@ -1,9 +1,6 @@
 ---
 name: omc-ado-triage
-description: >
-  Azure DevOps work item triage — surfaces untriaged items, active work, open PRs, pipeline failures, and security alerts.
-  WHEN: User wants to check ADO board status, triage work items, see pipeline health, review open PRs, or get a project health overview.
-  DO NOT USE FOR: Sprint planning (use omc-ado-sprint), PR code review (use omc-ado-review), initial ADO setup (use omc-ado-setup), or non-ADO projects.
+description: "Triage Azure DevOps: untriaged work items, active work, open PRs, pipeline failures, and security alerts for a project health overview. Not for sprint planning or PR code review."
 ---
 
 # OMC ADO Triage

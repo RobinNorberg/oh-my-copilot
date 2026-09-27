@@ -10,6 +10,10 @@
  * lock backend is platform-independent, so only the test-only 'none' switch reports unsupported.
  */
 export declare function isStateMutationLockingSupported(): boolean;
+/** Explain why SQLite coordination is unavailable, when that is the cause. */
+export declare function getStateMutationLockDiagnostic(): string | null;
+/** Preserve lock-contention errors while making native binding failures actionable. */
+export declare function getStateMutationLockFailureMessage(): string;
 /** Executes a read or mutation against a state file under its mutation lock. */
 export declare function withStateFileMutationLock<T>(filePath: string, callback: () => T, requireExclusive?: boolean): {
     acquired: boolean;
