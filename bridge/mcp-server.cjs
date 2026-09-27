@@ -18744,6 +18744,7 @@ var import_fs6 = require("fs");
 var import_path6 = __toESM(require("path"), 1);
 var import_child_process2 = require("child_process");
 var RESOLVE_TIMEOUT_MS = 5e3;
+var DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD";
 var SAFE_BINARY_NAME = /^[A-Za-z0-9._-]+$/;
 function platformModel(platform) {
   const isWindows = platform === "win32";
@@ -18777,11 +18778,22 @@ function resolveCliPath(binary, model) {
     });
     if (result.error || result.signal || result.status !== 0) return void 0;
     const stdout = asText(result.stdout);
+    const candidates = [];
     for (const line of stdout.split(/\r\n|\n|\r/)) {
       const candidate = line.trim();
-      if (candidate && model.pathFlavor.isAbsolute(candidate)) return candidate;
+      if (candidate && model.pathFlavor.isAbsolute(candidate)) candidates.push(candidate);
     }
-    return void 0;
+    if (candidates.length === 0) return void 0;
+    if (model.isWindows) {
+      const pathExtensions = new Set(
+        (process.env.PATHEXT ?? DEFAULT_PATHEXT).split(";").map((extension) => extension.trim().toLowerCase()).filter(Boolean)
+      );
+      const preferredCandidate = candidates.find(
+        (candidate) => pathExtensions.has(model.pathFlavor.extname(candidate).toLowerCase())
+      );
+      if (preferredCandidate) return preferredCandidate;
+    }
+    return candidates[0];
   } catch {
     return void 0;
   }

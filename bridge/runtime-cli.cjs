@@ -5678,7 +5678,7 @@ function skillTriggerCriteria() {
 function skillTriggerQuestions() {
   return {
     "skill-trigger": {
-      type: "Choice",
+      type: "choice",
       instructions: "Which skill or mode should this user prompt trigger?",
       criteria: skillTriggerCriteria()
     }
@@ -5699,7 +5699,7 @@ var init_points = __esm({
     init_resolver2();
     INTENT_QUESTIONS = {
       intent: {
-        type: "Noul",
+        type: "noul",
         instructions: "Does this user prompt start an Intent-intake request (a non-engineer contributor stating a problem/goal/constraints to start the requirements intake flow)?",
         criteria: {
           true: "The prompt states a problem, goal, or constraints from a contributor and starts the Intent intake \u2014 a goal-level intent.md with problem/goal/users-and-systems/constraints/open-questions, not a solution design.",
@@ -5709,14 +5709,14 @@ var init_points = __esm({
     };
     NOUL_QUESTIONS = {
       task_complete: {
-        type: "Noul",
+        type: "noul",
         instructions: "Is the task complete \u2014 is there no substantive work left for this mode?",
         criteria: {}
       }
     };
     SCORE_QUESTIONS = {
       iteration_progress: {
-        type: "Score",
+        type: "score",
         instructions: "How much substantive progress did the current iteration make?",
         criteria: {
           no_progress: "No progress",
@@ -5728,7 +5728,7 @@ var init_points = __esm({
     };
     MODEL_ROUTING_QUESTIONS = {
       "model-tier": {
-        type: "Choice",
+        type: "choice",
         instructions: "Which model tier should this delegated task use?",
         criteria: {
           haiku: "Quick lookups and lightweight, mechanical work",
@@ -5739,7 +5739,7 @@ var init_points = __esm({
     };
     STALENESS_QUESTIONS = {
       staleness: {
-        type: "Score",
+        type: "score",
         instructions: "How stale is this context candidate?",
         criteria: {
           fresh: "Fresh \u2014 keep",
@@ -5751,7 +5751,7 @@ var init_points = __esm({
     };
     VERDICT_QUESTIONS = {
       completion_criteria_met: {
-        type: "Noul",
+        type: "noul",
         instructions: "Does the completion claim satisfy the PRD acceptance criteria for this mode?",
         criteria: {
           true: "All acceptance criteria are demonstrably satisfied by the evidence",
@@ -5761,7 +5761,7 @@ var init_points = __esm({
     };
     TASK_SIZE_QUESTIONS = {
       "task-size": {
-        type: "Choice",
+        type: "choice",
         instructions: "What size is this task \u2014 how much orchestration does it warrant?",
         criteria: {
           small: "Single-file or few-line change; run directly without heavy modes",
@@ -5772,7 +5772,7 @@ var init_points = __esm({
     };
     LEARNER_EXTRACTION_QUESTIONS = {
       extractable_moment: {
-        type: "Noul",
+        type: "noul",
         instructions: "Does this assistant message contain an extractable memory-worthy moment?",
         criteria: {
           true: "Contains a reusable pattern, decision, or correction worth persisting",
@@ -5782,7 +5782,7 @@ var init_points = __esm({
     };
     SLOP_WARNING_QUESTIONS = {
       slop_advisory: {
-        type: "Noul",
+        type: "noul",
         instructions: "Does this tool input contain fallback/workaround language worth an advisory warning?",
         criteria: {
           true: "Contains fallback/workaround phrasing outside doc or self-referential context",
@@ -5792,7 +5792,7 @@ var init_points = __esm({
     };
     SIMPLIFIER_TRIGGER_QUESTIONS = {
       simplification_worthy: {
-        type: "Noul",
+        type: "noul",
         instructions: "Is this change simplification-worthy enough to inject the simplifier delegation?",
         criteria: {
           true: "The change would benefit from a simplification pass (duplication, speculative flexibility, over-abstraction)",
@@ -5994,11 +5994,22 @@ function resolveCliPath(binary, model) {
     });
     if (result.error || result.signal || result.status !== 0) return void 0;
     const stdout = asText(result.stdout);
+    const candidates = [];
     for (const line of stdout.split(/\r\n|\n|\r/)) {
       const candidate = line.trim();
-      if (candidate && model.pathFlavor.isAbsolute(candidate)) return candidate;
+      if (candidate && model.pathFlavor.isAbsolute(candidate)) candidates.push(candidate);
     }
-    return void 0;
+    if (candidates.length === 0) return void 0;
+    if (model.isWindows) {
+      const pathExtensions = new Set(
+        (process.env.PATHEXT ?? DEFAULT_PATHEXT).split(";").map((extension) => extension.trim().toLowerCase()).filter(Boolean)
+      );
+      const preferredCandidate = candidates.find(
+        (candidate) => pathExtensions.has(model.pathFlavor.extname(candidate).toLowerCase())
+      );
+      if (preferredCandidate) return preferredCandidate;
+    }
+    return candidates[0];
   } catch {
     return void 0;
   }
@@ -6007,7 +6018,7 @@ function resolveExecutable(binary, platform = process.platform) {
   if (!isValidBinaryName(binary)) return void 0;
   return resolveCliPath(binary, platformModel(platform));
 }
-var import_fs17, import_path18, import_child_process3, RESOLVE_TIMEOUT_MS, SAFE_BINARY_NAME;
+var import_fs17, import_path18, import_child_process3, RESOLVE_TIMEOUT_MS, DEFAULT_PATHEXT, SAFE_BINARY_NAME;
 var init_executable_resolution = __esm({
   "src/platform/executable-resolution.ts"() {
     "use strict";
@@ -6015,6 +6026,7 @@ var init_executable_resolution = __esm({
     import_path18 = __toESM(require("path"), 1);
     import_child_process3 = require("child_process");
     RESOLVE_TIMEOUT_MS = 5e3;
+    DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD";
     SAFE_BINARY_NAME = /^[A-Za-z0-9._-]+$/;
   }
 });
@@ -7454,13 +7466,18 @@ function buildProviderEnvironment(providerEnv, sourceEnv = process.env, platform
     const value = sourceEnv[key];
     if (typeof value === "string" && value.length > 0) baseline[key] = value;
   }
+  if (platform === "win32") {
+    const systemRoot = [sourceEnv.SystemRoot, sourceEnv.SYSTEMROOT].find((value) => typeof value === "string" && /^[A-Za-z]:\\/.test(value));
+    if (typeof systemRoot === "string") baseline.SystemRoot = systemRoot;
+  }
   const homeKey = platform === "win32" ? "USERPROFILE" : "HOME";
   const home = sourceEnv[homeKey];
-  const hasExplicitHome = Object.keys(normalized).some((key) => platform === "win32" ? key.toUpperCase() === homeKey : key === homeKey);
-  if (!hasExplicitHome && typeof home === "string" && home.length > 0) baseline[homeKey] = home;
+  if (typeof home === "string" && home.length > 0) baseline[homeKey] = home;
   if (platform === "win32") {
-    const systemRoot = sourceEnv.SystemRoot ?? sourceEnv.SYSTEMROOT;
-    if (typeof systemRoot === "string" && /^[A-Za-z]:\\/.test(systemRoot)) baseline.SystemRoot = systemRoot;
+    for (const key of Object.keys(normalized)) {
+      const baselineKey = Object.keys(baseline).find((candidate) => candidate.toUpperCase() === key.toUpperCase());
+      if (baselineKey) delete baseline[baselineKey];
+    }
   }
   return { ...baseline, ...normalized };
 }
@@ -7703,7 +7720,7 @@ async function loadCurrentWorkerLaunchAttempt(input) {
 }
 function buildWorkerLaunchBootstrapSpec(attempt, providerArgv, cwd, options = {}) {
   if (!isValidIdentity(attempt)) throw new Error("worker_launch_attempt_identity_invalid");
-  const providerEnv = buildProviderEnvironment(options.providerEnv);
+  const providerEnv = normalizeProviderEnvironment(options.providerEnv, options.platform ?? process.platform);
   const absoluteCwd = (0, import_node_path4.resolve)(cwd);
   const containmentNonce = (0, import_node_crypto5.randomUUID)();
   const supervisorSourceSha256 = (0, import_node_crypto5.createHash)("sha256").update(buildWindowsSupervisorSource(), "utf8").digest("hex");
@@ -7784,7 +7801,8 @@ async function materializeWorkerLaunchTransport(input) {
   if (!attemptTransportPathsAreDeterministic(attempt)) throw new Error("worker_launch_transport_paths_invalid");
   const spec = buildWorkerLaunchBootstrapSpec(attempt, input.providerArgv, input.cwd, {
     providerEnv: input.providerEnv,
-    releaseAfterSpawn: input.releaseAfterSpawn
+    releaseAfterSpawn: input.releaseAfterSpawn,
+    platform: input.platform
   });
   const windowsDelivery = input.windowsDelivery !== false;
   const owner = {
@@ -7793,7 +7811,7 @@ async function materializeWorkerLaunchTransport(input) {
     authority_digest: spec.authority_digest
   };
   const wrapperRelativePath = windowsDelivery ? windowsWrapperRelativePath(input.cwd, attempt.wrapperPath) : "";
-  const wrapper = buildWorkerLaunchWrapper(attempt, windowsDelivery ? "win32" : process.platform);
+  const wrapper = buildWorkerLaunchWrapper(attempt, windowsDelivery ? "win32" : input.platform ?? process.platform);
   let ownerCreated = false;
   let descriptorCreated = false;
   let wrapperCreated = false;
@@ -7891,7 +7909,7 @@ async function cleanupWorkerLaunchTransport(attempt, reason = "transport_cleanup
     return false;
   }
 }
-async function readAndConsumeWorkerLaunchDescriptor(descriptorPath) {
+async function readAndConsumeWorkerLaunchDescriptor(descriptorPath, platform = process.platform) {
   let parsed;
   let handle;
   try {
@@ -7905,7 +7923,7 @@ async function readAndConsumeWorkerLaunchDescriptor(descriptorPath) {
   } finally {
     await handle?.close().catch(() => void 0);
   }
-  if (!isValidBootstrapSpec(parsed)) throw new Error("worker_launch_descriptor_invalid");
+  if (!isValidBootstrapSpec(parsed, platform)) throw new Error("worker_launch_descriptor_invalid");
   const spec = parsed;
   if ((0, import_node_path4.resolve)(descriptorPath) !== (0, import_node_path4.resolve)(spec.bootstrap_descriptor_path)) throw new Error("worker_launch_descriptor_path_mismatch");
   const owner = await readJson(spec.transport_owner_path);
@@ -8467,10 +8485,10 @@ async function isWorkerLaunchProviderStarted(attempt) {
 function isDeterministicTransportPath(expectedPath, candidate, fileName) {
   return isExactText(candidate) && (0, import_node_path4.resolve)(candidate) === (0, import_node_path4.resolve)((0, import_node_path4.join)((0, import_node_path4.dirname)(expectedPath), fileName));
 }
-function isValidBootstrapSpec(value) {
+function isValidBootstrapSpec(value, platform = process.platform) {
   if (!isValidIdentity(value)) return false;
   const spec = value;
-  return isExactText(spec.current_path) && isExactText(spec.expected_path) && isExactText(spec.ack_path) && isExactText(spec.decision_path) && isExactText(spec.started_path) && isDeterministicTransportPath(spec.expected_path, spec.transport_owner_path, "transport-owner.json") && isDeterministicTransportPath(spec.expected_path, spec.bootstrap_descriptor_path, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE) && isDeterministicTransportPath(spec.expected_path, spec.wrapper_path, "launch.cmd") && isDeterministicTransportPath(spec.expected_path, spec.transport_cleanup_complete_path, "transport-cleanup-complete.json") && Array.isArray(spec.provider_argv) && spec.provider_argv.length > 0 && isExactText(spec.provider_argv[0]) && spec.provider_argv.slice(1).every((argument) => typeof argument === "string") && isValidProviderEnvironment(spec.provider_env) && typeof spec.cwd === "string" && spec.cwd.length > 0 && Number.isSafeInteger(spec.decision_timeout_ms) && typeof spec.release_after_spawn === "boolean" && Number(spec.decision_timeout_ms) > 0 && typeof spec.containment_nonce === "string" && spec.containment_nonce.length > 0 && typeof spec.supervisor_source_sha256 === "string" && /^[0-9a-f]{64}$/.test(spec.supervisor_source_sha256) && spec.supervisor_source_sha256 === (0, import_node_crypto5.createHash)("sha256").update(buildWindowsSupervisorSource(), "utf8").digest("hex") && typeof spec.authority_digest === "string" && /^[0-9a-f]{64}$/.test(spec.authority_digest) && spec.authority_digest === canonicalAuthorityDigest({ identity: spec, providerArgv: spec.provider_argv, providerEnv: spec.provider_env, cwd: spec.cwd, containmentNonce: spec.containment_nonce, supervisorSourceSha256: spec.supervisor_source_sha256 });
+  return isExactText(spec.current_path) && isExactText(spec.expected_path) && isExactText(spec.ack_path) && isExactText(spec.decision_path) && isExactText(spec.started_path) && isDeterministicTransportPath(spec.expected_path, spec.transport_owner_path, "transport-owner.json") && isDeterministicTransportPath(spec.expected_path, spec.bootstrap_descriptor_path, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE) && isDeterministicTransportPath(spec.expected_path, spec.wrapper_path, "launch.cmd") && isDeterministicTransportPath(spec.expected_path, spec.transport_cleanup_complete_path, "transport-cleanup-complete.json") && Array.isArray(spec.provider_argv) && spec.provider_argv.length > 0 && isExactText(spec.provider_argv[0]) && spec.provider_argv.slice(1).every((argument) => typeof argument === "string") && isValidProviderEnvironment(spec.provider_env, platform) && typeof spec.cwd === "string" && spec.cwd.length > 0 && Number.isSafeInteger(spec.decision_timeout_ms) && typeof spec.release_after_spawn === "boolean" && Number(spec.decision_timeout_ms) > 0 && typeof spec.containment_nonce === "string" && spec.containment_nonce.length > 0 && typeof spec.supervisor_source_sha256 === "string" && /^[0-9a-f]{64}$/.test(spec.supervisor_source_sha256) && spec.supervisor_source_sha256 === (0, import_node_crypto5.createHash)("sha256").update(buildWindowsSupervisorSource(), "utf8").digest("hex") && typeof spec.authority_digest === "string" && /^[0-9a-f]{64}$/.test(spec.authority_digest) && spec.authority_digest === canonicalAuthorityDigest({ identity: spec, providerArgv: spec.provider_argv, providerEnv: spec.provider_env, cwd: spec.cwd, containmentNonce: spec.containment_nonce, supervisorSourceSha256: spec.supervisor_source_sha256 });
 }
 async function publishAcknowledgement(spec) {
   const acknowledgement = {
@@ -8505,15 +8523,22 @@ async function waitForBootstrapDecision(spec) {
   }
   return "timeout";
 }
-function buildWindowsSupervisorInvocation(spec) {
-  const env = Object.fromEntries(Object.entries(spec.provider_env).sort(([a], [b]) => a.localeCompare(b)));
+function buildBootstrapProviderEnvironment(spec, sourceEnv, platform) {
+  return {
+    ...buildProviderEnvironment(spec.provider_env, sourceEnv, platform),
+    ...typeof spec.provider_env.OMC_RECOVERY_GATE_SPEC === "string" || typeof spec.provider_env.OMC_RECOVERY_GATE_SPEC_B64 === "string" ? { [WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV]: "1" } : {}
+  };
+}
+function buildWindowsSupervisorInvocation(spec, sourceEnv = process.env) {
+  const authorityEnv = Object.fromEntries(Object.entries(spec.provider_env).sort(([a], [b]) => a.localeCompare(b)));
+  const env = Object.fromEntries(Object.entries(buildBootstrapProviderEnvironment(spec, sourceEnv, "win32")).sort(([a], [b]) => a.localeCompare(b)));
   const canonical_json = JSON.stringify({
     protocol: WORKER_LAUNCH_AUTHORITY_PROTOCOL,
     nonce: spec.containment_nonce,
     supervisor_source_sha256: spec.supervisor_source_sha256,
     identity: identityOf(spec),
     provider_argv: [...spec.provider_argv],
-    provider_env: env,
+    provider_env: authorityEnv,
     cwd: (0, import_node_path4.resolve)(spec.cwd)
   });
   const payload = Buffer.from(JSON.stringify({
@@ -8526,7 +8551,7 @@ function buildWindowsSupervisorInvocation(spec) {
     provider_env: env,
     cwd: (0, import_node_path4.resolve)(spec.cwd)
   }), "utf8").toString("base64");
-  const systemRoot = spec.provider_env.SystemRoot ?? spec.provider_env.SYSTEMROOT;
+  const systemRoot = env.SystemRoot;
   if (!systemRoot || !/^[A-Za-z]:\\/.test(systemRoot)) throw new Error("worker_launch_powershell_authority_missing");
   return {
     command: `${systemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`,
@@ -8664,10 +8689,7 @@ async function runWorkerLaunchBootstrap(value) {
   const decision = await waitForBootstrapDecision(spec);
   if (decision === "timeout") return { outcome: "decision_timeout" };
   if (decision === "revoked") return { outcome: "revoked" };
-  const providerEnv = {
-    ...spec.provider_env,
-    ...typeof spec.provider_env.OMC_RECOVERY_GATE_SPEC === "string" || typeof spec.provider_env.OMC_RECOVERY_GATE_SPEC_B64 === "string" ? { [WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV]: "1" } : {}
-  };
+  const providerEnv = buildBootstrapProviderEnvironment(spec, process.env, process.platform);
   try {
     const launched = await withFileLock(lockPathFor(spec.current_path), async () => {
       if (!await isCurrentLaunchIdentity(spec.current_path, spec) || (await readJson(`${spec.decision_path}.retired`)).kind !== "absent") {
@@ -9233,7 +9255,7 @@ var init_worker_launch_ack = __esm({
     WORKER_LAUNCH_AUTHORITY_PROTOCOL = "worker-launch-authority-v1";
     WINDOWS_SUPERVISOR_PROTOCOL = "worker-launch-windows-supervisor-v1";
     WINDOWS_RESERVED_ENV_KEYS = new Set([...WORKER_LAUNCH_INTERNAL_ENV_KEYS, "SystemRoot"].map((key) => key.toUpperCase()));
-    SAFE_BASELINE_ENV_KEYS = ["PATH", "SystemRoot", "SYSTEMROOT", "TEMP", "TMP"];
+    SAFE_BASELINE_ENV_KEYS = ["PATH", "TEMP", "TMP"];
   }
 });
 
@@ -10473,7 +10495,19 @@ function workerPaneShellCommand() {
   if (process.platform === "win32" && !isUnixLikeOnWindows()) {
     return [getDefaultShell()];
   }
-  return [];
+  if (process.platform === "win32") return [];
+  const shell = getDefaultShell();
+  const baseline = buildProviderEnvironment({ SHELL: shell });
+  const inheritedPaneEnvironment = ["TERM", "TMUX", "TMUX_PANE", "TMUX_TMPDIR", "LANG", "LC_ALL", "LC_CTYPE"].map((key) => `${key}="$${key}"`);
+  const command = [
+    "/usr/bin/env",
+    "-i",
+    ...Object.entries(baseline).map(([key, value]) => `${key}=${shellQuote(value)}`),
+    ...inheritedPaneEnvironment,
+    shellQuote(shell),
+    "-l"
+  ].join(" ");
+  return [command];
 }
 function escapeForCmdSet(value) {
   return value.replace(/(["%])/g, "$1$1");
@@ -11117,7 +11151,8 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
       "-n",
       windowName,
       "-c",
-      cwd
+      cwd,
+      ...workerPaneShellCommand()
     ];
     let newWindowResult;
     try {
@@ -11625,10 +11660,11 @@ async function capturePaneAsync(paneId, opts = {}) {
 async function captureTeamPane(paneId, options = {}) {
   return capturePaneAsync(paneId, options);
 }
-async function captureOwnedTeamPane(ownership) {
-  if (ownership.provider === "cmux") return captureTeamPane(ownership.paneId);
+async function captureOwnedTeamPane(ownership, options = {}) {
+  if (ownership.provider === "cmux") return captureTeamPane(ownership.paneId, options);
   if (!isValidTmuxServerIdentity(ownership.tmuxServerIdentity) || !TMUX_MAILBOX_PANE_ID.test(ownership.paneId)) return "";
   return captureTeamPane(ownership.paneId, {
+    ...options,
     tmuxServerIdentity: ownership.tmuxServerIdentity
   });
 }
@@ -11713,6 +11749,14 @@ function detectPaneTrustPromptKind(captured, provider) {
   if ((provider === void 0 || provider === "cursor") && hasCursorTrustBanner && (hasCursorTrustHint || tail.some((l) => /Do you trust the contents of this directory\?/i.test(l)))) {
     return "cursor_workspace_trust";
   }
+  const hasClaudeDirectoryQuestion = tail.some(
+    (l) => /(?:Do you trust the files in this folder|Quick safety check:\s*Is this a project you created or one you trust)\?/i.test(l)
+  );
+  const hasClaudeDirectoryNoChoice = tail.some((l) => /\bNo,\s*exit\b/i.test(l));
+  const hasClaudeDirectoryYesChoice = tail.some((l) => /\bYes,\s*(?:proceed|I trust this folder)\b/i.test(l));
+  if (provider === "claude" && hasClaudeDirectoryQuestion && hasClaudeDirectoryNoChoice && hasClaudeDirectoryYesChoice) {
+    return "claude_directory";
+  }
   const hasDirectoryQuestion = tail.some((l) => /Do you trust the contents of this directory\?/i.test(l));
   const hasDirectoryChoices = tail.some((l) => /Yes,\s*continue|No,\s*quit|Press enter to continue/i.test(l));
   if (hasDirectoryQuestion && hasDirectoryChoices) return "directory";
@@ -11751,7 +11795,7 @@ function paneHasActiveTask(captured, provider) {
   if (tail.some((l) => /\b\d+\s+background terminal running\b/i.test(l))) return true;
   if (tail.some((l) => /esc to interrupt/i.test(l))) return true;
   if (tail.some((l) => /\bbackground terminal running\b/i.test(l))) return true;
-  if (tail.some((l) => /^[·✻]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})$/u.test(l))) return true;
+  if (tail.some((l) => /^[·✻✢✳✶✽✺✹✸✷*]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})(?:\s*\(.*\))?$/u.test(l))) return true;
   return false;
 }
 function paneLooksReady(captured, provider) {
@@ -11858,14 +11902,22 @@ async function waitForStartupPaneReady(context, opts = {}) {
       if (selector === "cursor_workspace_trust") {
         return { ok: false, reason: "cursor_workspace_untrusted" };
       }
-      const providerSupportsSelector = selector === "codex_hooks" ? context.provider === "codex" : context.provider === "codex" || context.provider === "claude";
+      const providerSupportsSelector = selector === "codex_hooks" ? context.provider === "codex" : selector === "claude_directory" ? context.provider === "claude" : context.provider === "codex" || context.provider === "claude";
       if (!providerSupportsSelector) return { ok: false, reason: "selector_unsupported" };
       if (handledSelectors.has(selector)) return { ok: false, reason: "selector_persistent" };
-      await sendLiteralPaneText(
-        context.ownership.paneId,
-        selector === "directory" ? "1" : "3",
-        context.ownership.tmuxServerIdentity
-      );
+      if (selector === "claude_directory") {
+        await sendTeamPaneKey(
+          context.ownership.paneId,
+          "Down",
+          context.ownership.tmuxServerIdentity
+        );
+      } else {
+        await sendLiteralPaneText(
+          context.ownership.paneId,
+          selector === "directory" ? "1" : "3",
+          context.ownership.tmuxServerIdentity
+        );
+      }
       await sendTeamPaneKey(
         context.ownership.paneId,
         "Enter",
@@ -12671,6 +12723,16 @@ function renderRecoveryContinuationInstruction(instruction) {
     `Before a risky boundary and before yielding, publish the next authenticated checkpoint: \`${checkpoint}\`.`
   ].join("\n");
 }
+function renderWorkerExitContract(agentType, reviewerRole = false) {
+  const transitionTaskStatusCommand = formatOmcCliInvocation("team api transition-task-status");
+  if (agentType === "cursor" && reviewerRole) {
+    return "Write the trusted structured verdict, ACK the leader, and keep waiting for mailbox instructions. Do not call transition-task-status or exit solely because the verdict was written.";
+  }
+  if (agentType === "cursor") {
+    return `Run \`${transitionTaskStatusCommand}\` when the assigned task is done, then keep waiting for the next mailbox message. Exit only when the leader sends an explicit shutdown.`;
+  }
+  return `You MUST call \`${transitionTaskStatusCommand}\` to mark your task as "completed" or "failed" before exiting.`;
+}
 function renderCursorWorkerGuidance(reviewerRole = false) {
   const claimTaskCommand = formatOmcCliInvocation("team api claim-task");
   const transitionTaskStatusCommand = formatOmcCliInvocation("team api transition-task-status");
@@ -12762,6 +12824,7 @@ function generateWorkerOverlay(params) {
   Description: ${t.description}
   Status: pending`).join("\n") : "- No tasks assigned yet. Check your inbox for assignments.";
   const cursorReviewer = agentType === "cursor" && reviewerRole === true;
+  const persistentCursor = agentType === "cursor" && !cursorReviewer;
   const mandatoryWorkflow = cursorReviewer ? [
     "You MUST complete the reviewer steps below. Do NOT skip any step.",
     "",
@@ -12774,7 +12837,7 @@ function generateWorkerOverlay(params) {
     "4. **Write the structured verdict** required by the trusted reviewer contract.",
     "5. **Keep the Cursor session alive** after writing the verdict; the leader consumes it and transitions the task."
   ].join("\n") : [
-    "You MUST complete ALL of these steps. Do NOT skip any step. Do NOT exit without step 4.",
+    persistentCursor ? "You MUST complete ALL of these steps. Transitioning the task does not end the session." : "You MUST complete ALL of these steps. Do NOT skip any step. Do NOT exit without step 4.",
     "",
     "1. **Claim** your task (run this command first):",
     `   \`${claimTaskCommand}\``,
@@ -12782,10 +12845,10 @@ function generateWorkerOverlay(params) {
     "2. **Do the work** described in your task assignment below.",
     "3. **Send ACK** to the leader:",
     `   \`${sendAckCommand}\``,
-    "4. **Transition** the task status (REQUIRED before exit):",
+    persistentCursor ? "4. **Transition** the task status when that task is done:" : "4. **Transition** the task status (REQUIRED before exit):",
     `   - On success: \`${completeTaskCommand}\``,
     `   - On failure: \`${failTaskCommand}\``,
-    "5. **Keep going after replies**: ACK/progress messages are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit."
+    persistentCursor ? `5. **Stay in the session**: ${renderWorkerExitContract(agentType, false)}` : "5. **Keep going after replies**: ACK/progress messages are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit."
   ].join("\n");
   return `# Team Worker Protocol
 
@@ -12878,8 +12941,10 @@ When you see a shutdown request in your inbox:
 
 ${agentTypeGuidance(agentType, reviewerRole)}
 
-${cursorReviewer ? "## BEFORE YOU YIELD THE REVIEW TURN\nWrite the trusted structured verdict, ACK the leader, and keep waiting for mailbox instructions. Do not call transition-task-status or exit solely because the verdict was written." : `## BEFORE YOU EXIT
-You MUST call \`${formatOmcCliInvocation("team api transition-task-status")}\` to mark your task as "completed" or "failed" before exiting.
+${cursorReviewer ? `## BEFORE YOU YIELD THE REVIEW TURN
+${renderWorkerExitContract(agentType, true)}` : persistentCursor ? `## BEFORE YOU YIELD
+${renderWorkerExitContract(agentType, false)}` : `## BEFORE YOU EXIT
+${renderWorkerExitContract(agentType, false)}
 If you skip this step, the leader cannot track your work and the task will appear stuck.`}
 
 ${bootstrapInstructions ? `## Role Context
@@ -16084,6 +16149,38 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
       clearInterval(interval);
       const start = Date.now();
       const unmerged = [];
+      for (const entry of workers.values()) {
+        if (pausedWorkers.has(entry.workerName)) continue;
+        try {
+          const currentSha = gitRevParseHead(config.repoRoot, entry.workerBranch);
+          if (currentSha && currentSha !== entry.lastObservedSha) {
+            entry.lastObservedSha = currentSha;
+            try {
+              persistState();
+            } catch {
+            }
+            try {
+              await appendEvent(config.repoRoot, config.teamName, {
+                type: "commit_observed",
+                worker: entry.workerName,
+                data: { sha: currentSha }
+              });
+            } catch {
+            }
+          }
+        } catch (err) {
+          entry.consecutiveFailures += 1;
+          const reason = err instanceof Error ? err.message : String(err);
+          try {
+            await appendEvent(config.repoRoot, config.teamName, {
+              type: "commit_observed",
+              worker: entry.workerName,
+              reason: `rev_parse_failed:${reason}`
+            });
+          } catch {
+          }
+        }
+      }
       const candidates = Array.from(workers.values()).filter(
         (w) => w.lastObservedSha && w.lastObservedSha !== w.lastMergedSha
       );
@@ -16115,6 +16212,13 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
         }
       }
       if (unmerged.length > 0) {
+        try {
+          process.stderr.write(
+            `[team/merge-orchestrator] WARNING: auto-merge left worker commits unmerged at shutdown: ${unmerged.map((u) => `${u.workerName}:${u.reason}`).join(", ")}
+`
+          );
+        } catch {
+        }
         const auditPath = teardownAuditPath(config.repoRoot, config.teamName);
         await (0, import_promises15.mkdir)((0, import_node_path11.dirname)(auditPath), { recursive: true });
         for (const u of unmerged) {
@@ -16992,17 +17096,18 @@ function buildV2TaskInstruction(teamName, workerName, task, taskId, agentType, c
   const failTaskCommand = formatOmcCliInvocation(
     `team api transition-task-status --input '${JSON.stringify({ team_name: teamName, task_id: taskId, from: "in_progress", to: "failed", claim_token: "<claim_token>" })}' --json`
   );
-  const cursorReviewer = agentType === "cursor" && Boolean(cliOutputContract);
+  const persistentCursor = agentType === "cursor";
+  const cursorReviewer = persistentCursor && Boolean(cliOutputContract);
   const lifecycleInstructions = cursorReviewer ? [
     `3. Write the structured verdict from the trusted reviewer contract below when the review is complete.`,
-    `4. ACK/progress replies are not a stop signal. Keep the Cursor session alive for further mailbox instructions; the leader transitions this task after consuming the verdict.`
+    `4. ${renderWorkerExitContract(agentType, true)}`
   ] : [
     `3. On completion (use claim_token from step 1):`,
     `   ${completeTaskCommand}`,
     `   The result field is required for completion evidence. For broad delegated tasks, include either "Subagent skip reason: <why no nested worker was needed/allowed>" or, only when explicitly allowed by the leader, "Subagent spawn evidence: <child task names/thread ids and integrated findings>".`,
     `4. On failure (use claim_token from step 1):`,
     `   ${failTaskCommand}`,
-    `5. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`
+    persistentCursor ? `5. ${renderWorkerExitContract(agentType, false)}` : `5. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`
   ];
   return [
     `## REQUIRED: Task Lifecycle Commands`,
@@ -17021,7 +17126,7 @@ function buildV2TaskInstruction(teamName, workerName, task, taskId, agentType, c
     ``,
     task.description,
     ``,
-    cursorReviewer ? `REMINDER: Write the verdict before yielding the review turn. Do NOT run transition-task-status or write done.json; the leader owns the terminal transition.` : `REMINDER: You MUST run transition-task-status before exiting. Do NOT write done.json or edit task files directly.`,
+    cursorReviewer ? `REMINDER: ${renderWorkerExitContract(agentType, true)} Do NOT write done.json; the leader owns the terminal transition.` : `REMINDER: ${renderWorkerExitContract(agentType, false)} Do NOT write done.json or edit task files directly.`,
     ...agentType === "cursor" ? [renderCursorWorkerGuidance(Boolean(cliOutputContract))] : [],
     ...cliOutputContract ? [cliOutputContract] : []
   ].join("\n");
@@ -17128,7 +17233,65 @@ async function settleStartupEvidence(policy, waitForCurrentEvidence, resubmit, p
   if (!settled) {
     settled = await waitForCurrentEvidence(engagedPane ? policy.engagedPaneRecheckBudgetMs : policy.finalRecheckBudgetMs);
   }
-  return settled;
+  return { settled, paneBusy: engagedPane };
+}
+function startupEvidenceMissingReason(paneBusy, agentType) {
+  const base = agentType ? `${agentType}_startup_evidence_missing` : "worker_startup_evidence_missing";
+  return paneBusy ? `${base}_pane_busy` : base;
+}
+function normalizePaneLine(line) {
+  return line.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ").replace(/[ \t]+/g, " ").trim();
+}
+function claimFailureSummary(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return void 0;
+  const result = value;
+  if (result.ok !== false) return void 0;
+  const error = result.error;
+  const code = error && typeof error === "object" && !Array.isArray(error) ? error.code : error;
+  return typeof code === "string" && CLAIM_ERROR_CODES.has(code) ? JSON.stringify({ ok: false, error: code }) : void 0;
+}
+function singleLineClaimFailure(line) {
+  const textError = /^error operation=claim-task code=([a-z][a-z0-9_]{0,63})(?:: .*)?$/.exec(line);
+  if (textError) {
+    const code = textError[1];
+    return code && CLAIM_ERROR_CODES.has(code) ? `error operation=claim-task code=${code}` : void 0;
+  }
+  try {
+    const parsed = JSON.parse(line);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return void 0;
+    const envelope = parsed;
+    if (envelope.operation !== "claim-task" || envelope.command !== "omg team api claim-task") return void 0;
+    if (envelope.ok === false) return claimFailureSummary(envelope);
+    return envelope.ok === true ? claimFailureSummary(envelope.data) : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function textModeClaimFailure(lines, index) {
+  if (lines[index] !== "ok operation=claim-task" || lines[index + 1] !== "{") return void 0;
+  const collected = [];
+  let collectedLength = 0;
+  const end = Math.min(lines.length, index + 1 + CLAIM_ERROR_JSON_LINES_MAX);
+  for (let lineIndex = index + 1; lineIndex < end; lineIndex += 1) {
+    const line = lines[lineIndex] ?? "";
+    collectedLength += line.length + 1;
+    if (collectedLength > CLAIM_ERROR_CAPTURE_MAX) return void 0;
+    collected.push(line);
+    try {
+      return claimFailureSummary(JSON.parse(collected.join("\n")));
+    } catch {
+    }
+  }
+  return void 0;
+}
+function claimErrorLineFromPane(captured) {
+  const boundedCapture = captured.length > CLAIM_ERROR_CAPTURE_MAX ? captured.slice(-CLAIM_ERROR_CAPTURE_MAX) : captured;
+  const lines = boundedCapture.split(/\r?\n/).map(normalizePaneLine);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const failure2 = textModeClaimFailure(lines, index) ?? singleLineClaimFailure(lines[index] ?? "");
+    if (failure2) return failure2.slice(0, CLAIM_ERROR_LINE_MAX);
+  }
+  return void 0;
 }
 function promptModeRecoveryRequiresProgressEvidence(promptMode, continuationCount) {
   return promptMode && continuationCount > 0;
@@ -17327,6 +17490,7 @@ async function spawnV2Worker(opts) {
   );
   const probeActivity = opts.agentType === "cursor" || opts.agentType === "codex" ? () => probeStartupPaneActivity(startupContext, { attemptAlreadyFenced: true }) : void 0;
   const waitForBoundedStartupEvidence = (resubmit) => settleStartupEvidence(evidencePolicy, waitForCurrentEvidence, resubmit, probeActivity);
+  let paneBusyEvidenceMiss = false;
   const fencedDispatch = await (async () => {
     try {
       return await withWorkerLaunchAttemptFence(startupContext.attempt, async () => {
@@ -17348,18 +17512,21 @@ async function spawnV2Worker(opts) {
           fallbackAllowed: DEFAULT_TEAM_TRANSPORT_POLICY.dispatch_mode === "hook_preferred_with_fallback",
           inboxCorrelationKey: `startup:${opts.workerName}:${opts.taskId}:${startupContext.attempt.attempt_id}`,
           notify: async (_target, triggerMessage) => {
+            paneBusyEvidenceMiss = false;
             if (usePromptMode) {
-              const settled2 = await waitForBoundedStartupEvidence();
-              return settled2 ? { ok: true, transport: "prompt_stdin", reason: "prompt_mode_worker_confirmed" } : { ok: false, transport: "prompt_stdin", reason: `${opts.agentType}_startup_evidence_missing` };
+              const settlement2 = await waitForBoundedStartupEvidence();
+              paneBusyEvidenceMiss = !settlement2.settled && settlement2.paneBusy;
+              return settlement2.settled ? { ok: true, transport: "prompt_stdin", reason: "prompt_mode_worker_confirmed" } : { ok: false, transport: "prompt_stdin", reason: startupEvidenceMissingReason(settlement2.paneBusy, opts.agentType) };
             }
             const attempted = await deliverStartupInbox(startupContext, triggerMessage, { attemptAlreadyFenced: true });
             if (!attempted.ok) {
               return { ok: false, transport: "tmux_send_keys", reason: `worker_notify_failed:${attempted.reason}` };
             }
-            const settled = await waitForBoundedStartupEvidence(
+            const settlement = await waitForBoundedStartupEvidence(
               opts.agentType === "cursor" || opts.agentType === "codex" ? void 0 : () => retryStartupInboxSubmit(startupContext, triggerMessage, { attemptAlreadyFenced: true })
             );
-            return settled ? { ok: true, transport: "tmux_send_keys", reason: "worker_startup_confirmed" } : { ok: false, transport: "tmux_send_keys", reason: "worker_startup_evidence_missing" };
+            paneBusyEvidenceMiss = !settlement.settled && settlement.paneBusy;
+            return settlement.settled ? { ok: true, transport: "tmux_send_keys", reason: "worker_startup_confirmed" } : { ok: false, transport: "tmux_send_keys", reason: startupEvidenceMissingReason(settlement.paneBusy) };
           },
           deps: { writeWorkerInbox }
         });
@@ -17382,6 +17549,8 @@ async function spawnV2Worker(opts) {
   })();
   const dispatchOutcome = fencedDispatch.ok ? fencedDispatch.value : { ok: false, reason: "worker_launch_attempt_superseded" };
   if (!dispatchOutcome.ok) {
+    const paneBusyFailureReason = startupEvidenceMissingReason(true, usePromptMode ? opts.agentType : void 0);
+    const claimError = paneBusyEvidenceMiss && dispatchOutcome.reason === paneBusyFailureReason ? claimErrorLineFromPane(await captureOwnedTeamPane(ownership, { joinWrappedLines: true })) : void 0;
     try {
       await cleanupStartedLaunch("startup_dispatch_failed");
     } catch (error) {
@@ -17398,6 +17567,7 @@ async function spawnV2Worker(opts) {
       paneId,
       startupAssigned: false,
       startupFailureReason: dispatchOutcome.reason,
+      ...claimError ? { claimError } : {},
       launchAttemptId: startupContext.attempt.attempt_id
     };
   }
@@ -18920,7 +19090,8 @@ ${recoveryContract}` : ""}`;
         const effects = await withWorkerLaunchAttemptFence(startupContext.attempt, async () => {
           await ensureFence();
           if (promptModeRecoveryRequiresProgressEvidence(pending.promptMode, continuations.length)) {
-            if (!await waitForBoundedStartupEvidence()) return { ok: false, error: `${pending.agentType}_startup_evidence_missing` };
+            const settlement = await waitForBoundedStartupEvidence();
+            if (!settlement.settled) return { ok: false, error: startupEvidenceMissingReason(settlement.paneBusy, pending.agentType) };
           } else if (pending.promptMode) {
           } else {
             const recoveryTriggerMessage = `${generateTriggerMessage(
@@ -18944,10 +19115,10 @@ ${recoveryContract}` : ""}`;
                 if (!attempted.ok) {
                   return { ok: false, transport: "tmux_send_keys", reason: `worker_notify_failed:${attempted.reason}` };
                 }
-                const settled = await waitForBoundedStartupEvidence(
+                const settlement = await waitForBoundedStartupEvidence(
                   pending.agentType === "cursor" || pending.agentType === "codex" ? void 0 : () => retryStartupInboxSubmit(startupContext, triggerMessage, { attemptAlreadyFenced: true })
                 );
-                return settled ? { ok: true, transport: "tmux_send_keys", reason: "worker_startup_confirmed" } : { ok: false, transport: "tmux_send_keys", reason: "worker_startup_evidence_missing" };
+                return settlement.settled ? { ok: true, transport: "tmux_send_keys", reason: "worker_startup_confirmed" } : { ok: false, transport: "tmux_send_keys", reason: startupEvidenceMissingReason(settlement.paneBusy) };
               },
               deps: { writeWorkerInbox }
             });
@@ -19159,6 +19330,15 @@ function resolveLeaderClaudeSessionId() {
     }
   }
   return void 0;
+}
+function resolveWorkerBootstrapInstructions(config, workerIndex, preparedRole) {
+  const roles = [preparedRole, config.workerRoles?.[workerIndex]];
+  for (const role of roles) {
+    if (typeof role !== "string" || role.length === 0) continue;
+    const prompt = config.rolePromptByRole?.[role];
+    if (typeof prompt === "string" && prompt.length > 0) return prompt;
+  }
+  return config.rolePrompt;
 }
 async function startTeamV2(config) {
   if (!Array.isArray(config.agentTypes) || config.agentTypes.length === 0) {
@@ -19391,6 +19571,7 @@ async function startTeamV2(config) {
         const prepared = preparedLaunches.get(wName);
         if (!prepared) throw new Error(`Missing prepared launch for ${wName}`);
         await ensureWorkerStateDir(sanitized, wName, leaderCwd);
+        const bootstrapInstructions = resolveWorkerBootstrapInstructions(config, i, prepared.role);
         const overlayPath = await writeWorkerOverlay({
           teamName: sanitized,
           workerName: wName,
@@ -19401,7 +19582,7 @@ async function startTeamV2(config) {
             description: t.description
           })),
           cwd: leaderCwd,
-          ...config.rolePrompt ? { bootstrapInstructions: config.rolePrompt } : {},
+          ...bootstrapInstructions ? { bootstrapInstructions } : {},
           instructionStateRoot: workerInstructionStateRoot(leaderCwd, sanitized),
           ...prepared.role && shouldInjectContract(prepared.role, prepared.agentType) ? { reviewerRole: true } : {}
         });
@@ -19567,6 +19748,7 @@ async function startTeamV2(config) {
       throw error;
     }
     const launchedWorkers = [];
+    const startupFailures = [];
     try {
       for (const [wName, taskIndex] of startupByWorker) {
         const workerIndex = Number.parseInt(wName.replace("worker-", ""), 10) - 1;
@@ -19618,6 +19800,11 @@ async function startTeamV2(config) {
           }
         }
         if (workerLaunch.startupFailureReason) {
+          startupFailures.push({
+            worker: wName,
+            reason: workerLaunch.startupFailureReason,
+            ...workerLaunch.claimError ? { claimError: workerLaunch.claimError } : {}
+          });
           const logEventFailure2 = createSwallowedErrorLogger(
             "team.runtime-v2.startTeamV2 appendTeamEvent failed"
           );
@@ -19743,7 +19930,8 @@ async function startTeamV2(config) {
       sessionName: sessionName2,
       config: teamConfig,
       cwd: leaderCwd,
-      ownsWindow
+      ownsWindow,
+      startupFailures
     };
   });
 }
@@ -20911,7 +21099,9 @@ Then exit your session.
         if (lastLiveness === "alive") paneCleanupAlive.push(worker.name);
         else paneCleanupUnknown.push(worker.name);
         return false;
-      } catch {
+      } catch (err) {
+        process.stderr.write(`[team/runtime-v2] worker pane cleanup failed for ${worker.name}: ${err instanceof Error ? err.message : String(err)}
+`);
         paneCleanupUnknown.push(worker.name);
         return false;
       }
@@ -20923,7 +21113,7 @@ Then exit your session.
   }
   if (paneCleanupUnknown.length > 0) {
     if (!await rollbackShutdownForRetry()) await finalizeAutoMerge();
-    return { outcome: "preserved", reason: "worker_pane_liveness_unknown", workers: paneCleanupUnknown };
+    return { outcome: "preserved", reason: "worker_process_reaped_pane_unconfirmed", workers: paneCleanupUnknown };
   }
   if (providerCleanupFailures.length > 0) {
     process.stderr.write(`[team/runtime-v2] preserving panes/worktrees/state because provider cleanup is unverified: ${providerCleanupFailures.join(", ")}
@@ -20984,10 +21174,10 @@ Then exit your session.
     }
     const unknownWorkers = liveness.filter(([, state]) => state === "unknown").map(([paneId]) => paneById.get(paneId) ?? paneId);
     if (unknownWorkers.length > 0) {
-      process.stderr.write(`[team/runtime-v2] preserving worktrees/state because worker pane liveness is unknown: ${unknownWorkers.join(", ")}
+      process.stderr.write(`[team/runtime-v2] preserving worktrees/state because worker process reaping is verified but pane liveness is unconfirmed: ${unknownWorkers.join(", ")}
 `);
       if (!await rollbackShutdownForRetry()) await finalizeAutoMerge();
-      return { outcome: "preserved", reason: "worker_pane_liveness_unknown", workers: unknownWorkers };
+      return { outcome: "preserved", reason: "worker_process_reaped_pane_unconfirmed", workers: unknownWorkers };
     }
   } catch (err) {
     process.stderr.write(`[team/runtime-v2] tmux cleanup: ${err}
@@ -21059,7 +21249,7 @@ Then exit your session.
     return { outcome: "cleaned" };
   });
 }
-var import_path32, import_fs29, import_promises18, import_perf_hooks, import_node_child_process7, import_node_crypto9, orchestratorByTeam, cadenceByTeam, MONITOR_SIGNAL_STALE_MS, WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS, WORKER_STARTUP_EVIDENCE_POLICIES, ENGAGED_PANE_RECHECK_TIMEOUT_ENV, MAX_ENGAGED_PANE_RECHECK_BUDGET_MS, pendingRecoveryPanes, BOOTSTRAP_RECOVERY_EVIDENCE_POLL_MS, BOOTSTRAP_RECOVERY_EVIDENCE_MAX_WAIT_MS, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION;
+var import_path32, import_fs29, import_promises18, import_perf_hooks, import_node_child_process7, import_node_crypto9, orchestratorByTeam, cadenceByTeam, MONITOR_SIGNAL_STALE_MS, WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS, WORKER_STARTUP_EVIDENCE_POLICIES, ENGAGED_PANE_RECHECK_TIMEOUT_ENV, MAX_ENGAGED_PANE_RECHECK_BUDGET_MS, CLAIM_ERROR_CAPTURE_MAX, CLAIM_ERROR_JSON_LINES_MAX, CLAIM_ERROR_LINE_MAX, CLAIM_ERROR_CODES, pendingRecoveryPanes, BOOTSTRAP_RECOVERY_EVIDENCE_POLL_MS, BOOTSTRAP_RECOVERY_EVIDENCE_MAX_WAIT_MS, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION;
 var init_runtime_v2 = __esm({
   "src/team/runtime-v2.ts"() {
     "use strict";
@@ -21151,6 +21341,18 @@ var init_runtime_v2 = __esm({
     };
     ENGAGED_PANE_RECHECK_TIMEOUT_ENV = "OMC_TEAM_ENGAGED_PANE_RECHECK_MS";
     MAX_ENGAGED_PANE_RECHECK_BUDGET_MS = 12e4;
+    CLAIM_ERROR_CAPTURE_MAX = 16384;
+    CLAIM_ERROR_JSON_LINES_MAX = 80;
+    CLAIM_ERROR_LINE_MAX = 240;
+    CLAIM_ERROR_CODES = /* @__PURE__ */ new Set([
+      "already_terminal",
+      "blocked_dependency",
+      "claim_conflict",
+      "invalid_input",
+      "operation_failed",
+      "task_not_found",
+      "worker_not_found"
+    ]);
     pendingRecoveryPanes = /* @__PURE__ */ new Map();
     BOOTSTRAP_RECOVERY_EVIDENCE_POLL_MS = 25;
     BOOTSTRAP_RECOVERY_EVIDENCE_MAX_WAIT_MS = 1e3;

@@ -3,7 +3,7 @@
 
 # skills
 
-42 skill directories for workflow automation and specialized behaviors.
+61 skill directories for workflow automation and specialized behaviors.
 
 ## Purpose
 
@@ -19,9 +19,13 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | File | Skill | Purpose |
 |-----------|-------|---------|
 | `autopilot/SKILL.md` | autopilot | Full autonomous execution from idea to working code |
+| `execute/SKILL.md` | execute | Carry an approved task through to working, verified code |
 | `launch/SKILL.md` | launch | Governed delivery pipeline: spec → vertical-slice tickets → frontier execution with human checkpoints |
 | `ralph/SKILL.md` | ralph | Persistence until verified complete |
+| `review/SKILL.md` | omc-review | Evaluate finished work for defects, risk, and simplification before it ships |
 | `team/SKILL.md` | team | N coordinated agents with task claiming |
+| `ultragoal/SKILL.md` | ultragoal | Durable multi-goal workflow persisting plan/ledger artifacts under `.omg/ultragoal` |
+| `verify/SKILL.md` | verify | Evidence-backed completion verification for finished work |
 
 ### Planning Skills
 
@@ -31,14 +35,17 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | `ralplan/SKILL.md` | ralplan | Iterative planning (Planner+Architect+Critic) with RALPLAN-DR structured deliberation (`--deliberate` for high-risk) |
 | `deep-interview/SKILL.md` | deep-interview | Socratic deep interview with mathematical ambiguity gating (Ouroboros-inspired) |
 | `ask-navigator/SKILL.md` | ask-navigator | Shipyard navigator: chart foggy efforts into decision-ticket maps, one ticket per session, then hand a mission brief to launch |
-| `ralph-init/SKILL.md` | ralph-init | Initialize PRD for structured ralph |
+| `intent/SKILL.md` | intent | Shipyard requirements intake for non-engineer contributors — turn a pasted chat log into an accepted intent |
 
 ### Exploration Skills
 
 | File | Skill | Purpose |
 |-----------|-------|---------|
 | `deepinit/SKILL.md` | deepinit | Generate hierarchical AGENTS.md |
-| `sciomc/SKILL.md` | sciomc | Parallel scientist orchestration |
+| `research/SKILL.md` | research | Investigate an open question and return grounded, sourced findings |
+| `external-context/SKILL.md` | external-context | Invoke parallel document-specialist agents for external web searches and documentation lookup |
+| `autoresearch/SKILL.md` | autoresearch | Stateful single-mission improvement loop with strict evaluator contract and markdown decision logs |
+| `trace/SKILL.md` | trace | Evidence-driven tracing lane orchestrating competing tracer hypotheses |
 
 ### Visual Skills
 
@@ -56,28 +63,52 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | `drydock/SKILL.md` | drydock | Shipyard harness scaffold: 4-pillar shared environment across 5 surfaces, with --check drift audit |
 | `harbor/SKILL.md` | harbor | Shipyard intake gate: sweeps external issues and PRs, verifies claims, hands the maintainer a signature docket |
 | `loft/SKILL.md` | loft | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions prose cannot settle |
+| `refit/SKILL.md` | refit | Cross-session environment retrospective: OMC instruments (trace, friction, logs, notepads) in, user-approved fixes out onto checks/steering/tooling/information surfaces |
 | `minimal-code-discipline/SKILL.md` | minimal-code-discipline | YAGNI-ladder writing-time discipline: existence-first, reuse before writing, shortest correct diff |
 | `minimal-prose-discipline/SKILL.md` | minimal-prose-discipline | Writing-time discipline for the agent's own prose: protected core, no filler, close on the action |
+| `tdd/SKILL.md` | tdd | Test-first discipline at pre-agreed seams: tracer-bullet red/green, independent expected values, boundary-class-only substitution |
+| `map/SKILL.md` | map | The yard's skill map: which skill owns which job, in delivery-loop order; routes, never executes |
 | `skillify/SKILL.md` | skillify | Extract reusable skill from session |
-| `learner/SKILL.md` | learner | Deprecated compatibility alias/internal implementation history for skillify |
 | `ask/SKILL.md` | ask | Ask Claude, Codex, or Gemini via `omg ask` and capture an artifact |
-| `note/SKILL.md` | note | Save notes for compaction resilience |
 | `cancel/SKILL.md` | cancel | Cancel any active OMC mode |
 | `hud/SKILL.md` | hud | Configure HUD display |
 | `omc-doctor/SKILL.md` | omc-doctor | Diagnose installation issues |
-| `setup/SKILL.md` | setup | Unified setup entrypoint for install, diagnostics, and MCP configuration |
 | `omc-setup/SKILL.md` | omc-setup | One-time setup wizard |
-| `omc-help/SKILL.md` | omc-help | Usage guide |
-| `mcp-setup/SKILL.md` | mcp-setup | Configure MCP servers |
 | `skill/SKILL.md` | skill | Manage local skills |
+| `pr/SKILL.md` | pr | PR body assembly from OMC's paper trail: smallest-visual summary (show-me credit), verify-protocol evidence, ADR-test reversibility |
+| `architecture-survey/SKILL.md` | architecture-survey | Periodic architecture survey: ranked deepening candidates (shallow modules, hypothetical seams), survey never refactors |
+| `configure-notifications/SKILL.md` | configure-notifications | Configure notification integrations (Telegram, Discord, Slack) via natural language |
+| `debug/SKILL.md` | debug | Diagnose the current OMC session or repo state using logs, traces, state, and focused reproduction |
+| `graph/SKILL.md` | graph | Deterministic orchestration graph runtime — declarative DAG pipelines with journal-based crash recovery |
+| `remember/SKILL.md` | remember | Review reusable project knowledge and decide what belongs in project memory, notepad, or durable docs |
+| `self-improve/SKILL.md` | self-improve | Autonomous evolutionary code improvement engine with tournament selection |
+| `wiki/SKILL.md` | wiki | LLM Wiki — persistent markdown knowledge base that compounds across sessions |
 
 ### Domain Skills
 
 | File | Skill | Purpose |
 |-----------|-------|---------|
 | `project-session-manager/SKILL.md` | project-session-manager (+ `psm` alias) | Isolated dev environments |
-| `writer-memory/SKILL.md` | writer-memory | Agentic memory for writers |
 | `release/SKILL.md` | release | Generic release assistant — analyzes repo CI/rules, caches in `.omg/RELEASE_RULE.md`, guides the release |
+
+### Fork-Exclusive Skills (oh-my-copilot)
+
+| File | Skill | Purpose |
+|-----------|-------|---------|
+| `critique/SKILL.md` | critique | Critique all unpushed commits before pushing to remote |
+| `deep-review/SKILL.md` | deep-review | Multi-pass code review with security, quality, structural analysis, and validation |
+| `discover/SKILL.md` | discover | Parallel specialist scan producing a prioritized improvement backlog |
+| `ralph-experiment/SKILL.md` | ralph-experiment | Hypothesis-driven experiment loop with notebook and git checkpoint/revert |
+| `omc-ado-auto-review/SKILL.md` | omc-ado-auto-review | Auto-review Azure DevOps PRs where you are an assigned reviewer |
+| `omc-ado-review/SKILL.md` | omc-ado-review | Review Azure DevOps pull requests interactively |
+| `omc-ado-setup/SKILL.md` | omc-ado-setup | Set up or troubleshoot the Azure DevOps integration |
+| `omc-ado-sprint/SKILL.md` | omc-ado-sprint | Azure DevOps sprint planning, capacity, and backlog grooming |
+| `omc-ado-triage/SKILL.md` | omc-ado-triage | Azure DevOps project health triage |
+| `omc-gh-auto-review/SKILL.md` | omc-gh-auto-review | Auto-review GitHub PRs where you are a requested reviewer |
+| `omc-gh-project/SKILL.md` | omc-gh-project | Manage GitHub Projects (v2) boards |
+| `omc-gh-review/SKILL.md` | omc-gh-review | Review GitHub pull requests interactively |
+| `omc-gh-setup/SKILL.md` | omc-gh-setup | Set up or troubleshoot the GitHub integration |
+| `omc-gh-triage/SKILL.md` | omc-gh-triage | GitHub project health triage |
 
 ## For AI Agents
 
@@ -185,10 +216,10 @@ None - pure markdown files.
 |----------|--------|------------------|
 | Execution | autopilot, ralph, team | "autopilot", "ralph", "team" |
 | Cleanup | ai-slop-cleaner | "deslop", "anti-slop", cleanup/refactor + slop smells |
-| Planning | omc-plan, ralplan, deep-interview, ralph-init | "plan this", "interview me", "ouroboros" |
-| Exploration | deepinit, sciomc, external-context | "deepinit", "research" |
-| Utility | skillify, learner (deprecated alias), note, cancel, hud, setup, omc-doctor, omc-setup, omc-help, mcp-setup | "stop", "cancel" |
-| Domain | psm, writer-memory, release | psm context |
+| Planning | omc-plan, ralplan, deep-interview | "plan this", "interview me", "ouroboros" |
+| Exploration | deepinit, external-context, research | "deepinit", "research" |
+| Utility | skillify, cancel, hud, omc-doctor, omc-setup | "stop", "cancel" |
+| Domain | psm, release | psm context |
 
 ## Auto-Activation
 

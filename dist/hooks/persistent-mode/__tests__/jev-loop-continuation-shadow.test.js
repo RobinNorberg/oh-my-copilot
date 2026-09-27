@@ -41,8 +41,8 @@ afterEach(async () => {
 });
 function jevResponse(questionName) {
     const answers = questionName === 'iteration_progress'
-        ? { iteration_progress: { type: 'Score', score: 2, confidence: 0.7 } }
-        : { task_complete: { type: 'Noul', noul: false, confidence: 0.8 } };
+        ? { iteration_progress: { type: 'score', score: 2, confidence: 0.7 } }
+        : { task_complete: { type: 'noul', noul: false, confidence: 0.8 } };
     return { ok: true, status: 200, json: async () => ({ answers }) };
 }
 function captureFetch(handler) {
@@ -83,7 +83,7 @@ describe('applyLoopContinuationShadow', () => {
             expect(typeof body.state.continuation_excerpt).toBe('string');
             expect(String(body.state.continuation_excerpt).length).toBeLessThanOrEqual(200);
         }
-        expect(bodies.map((b) => Object.values(b.questions)[0].type).sort()).toEqual(['Noul', 'Score']);
+        expect(bodies.map((b) => Object.values(b.questions)[0].type).sort()).toEqual(['noul', 'score']);
         const lines = await readLogLines();
         expect(lines).toHaveLength(2);
         const parsed = lines.map((line) => JSON.parse(line));
@@ -92,7 +92,7 @@ describe('applyLoopContinuationShadow', () => {
             expect(entry.mode).toBe('shadow');
             expect(entry.heuristic).toEqual(TWIN);
         }
-        expect(parsed.map((entry) => entry.jev?.type).sort()).toEqual(['Noul', 'Score']);
+        expect(parsed.map((entry) => entry.jev?.type).sort()).toEqual(['noul', 'score']);
     });
     it('without a key, zero fetch calls and the twin result is returned unchanged', async () => {
         const { fetchFn, calls } = stubFetch();

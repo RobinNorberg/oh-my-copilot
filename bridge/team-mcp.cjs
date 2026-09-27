@@ -11160,7 +11160,7 @@ function skillTriggerCriteria() {
 function skillTriggerQuestions() {
   return {
     "skill-trigger": {
-      type: "Choice",
+      type: "choice",
       instructions: "Which skill or mode should this user prompt trigger?",
       criteria: skillTriggerCriteria()
     }
@@ -11181,7 +11181,7 @@ var init_points = __esm({
     init_resolver2();
     INTENT_QUESTIONS = {
       intent: {
-        type: "Noul",
+        type: "noul",
         instructions: "Does this user prompt start an Intent-intake request (a non-engineer contributor stating a problem/goal/constraints to start the requirements intake flow)?",
         criteria: {
           true: "The prompt states a problem, goal, or constraints from a contributor and starts the Intent intake \u2014 a goal-level intent.md with problem/goal/users-and-systems/constraints/open-questions, not a solution design.",
@@ -11191,14 +11191,14 @@ var init_points = __esm({
     };
     NOUL_QUESTIONS = {
       task_complete: {
-        type: "Noul",
+        type: "noul",
         instructions: "Is the task complete \u2014 is there no substantive work left for this mode?",
         criteria: {}
       }
     };
     SCORE_QUESTIONS = {
       iteration_progress: {
-        type: "Score",
+        type: "score",
         instructions: "How much substantive progress did the current iteration make?",
         criteria: {
           no_progress: "No progress",
@@ -11210,7 +11210,7 @@ var init_points = __esm({
     };
     MODEL_ROUTING_QUESTIONS = {
       "model-tier": {
-        type: "Choice",
+        type: "choice",
         instructions: "Which model tier should this delegated task use?",
         criteria: {
           haiku: "Quick lookups and lightweight, mechanical work",
@@ -11221,7 +11221,7 @@ var init_points = __esm({
     };
     STALENESS_QUESTIONS = {
       staleness: {
-        type: "Score",
+        type: "score",
         instructions: "How stale is this context candidate?",
         criteria: {
           fresh: "Fresh \u2014 keep",
@@ -11233,7 +11233,7 @@ var init_points = __esm({
     };
     VERDICT_QUESTIONS = {
       completion_criteria_met: {
-        type: "Noul",
+        type: "noul",
         instructions: "Does the completion claim satisfy the PRD acceptance criteria for this mode?",
         criteria: {
           true: "All acceptance criteria are demonstrably satisfied by the evidence",
@@ -11243,7 +11243,7 @@ var init_points = __esm({
     };
     TASK_SIZE_QUESTIONS = {
       "task-size": {
-        type: "Choice",
+        type: "choice",
         instructions: "What size is this task \u2014 how much orchestration does it warrant?",
         criteria: {
           small: "Single-file or few-line change; run directly without heavy modes",
@@ -11254,7 +11254,7 @@ var init_points = __esm({
     };
     LEARNER_EXTRACTION_QUESTIONS = {
       extractable_moment: {
-        type: "Noul",
+        type: "noul",
         instructions: "Does this assistant message contain an extractable memory-worthy moment?",
         criteria: {
           true: "Contains a reusable pattern, decision, or correction worth persisting",
@@ -11264,7 +11264,7 @@ var init_points = __esm({
     };
     SLOP_WARNING_QUESTIONS = {
       slop_advisory: {
-        type: "Noul",
+        type: "noul",
         instructions: "Does this tool input contain fallback/workaround language worth an advisory warning?",
         criteria: {
           true: "Contains fallback/workaround phrasing outside doc or self-referential context",
@@ -11274,7 +11274,7 @@ var init_points = __esm({
     };
     SIMPLIFIER_TRIGGER_QUESTIONS = {
       simplification_worthy: {
-        type: "Noul",
+        type: "noul",
         instructions: "Is this change simplification-worthy enough to inject the simplifier delegation?",
         criteria: {
           true: "The change would benefit from a simplification pass (duplication, speculative flexibility, over-abstraction)",
@@ -11395,11 +11395,22 @@ function resolveCliPath(binary, model) {
     });
     if (result.error || result.signal || result.status !== 0) return void 0;
     const stdout = asText(result.stdout);
+    const candidates = [];
     for (const line of stdout.split(/\r\n|\n|\r/)) {
       const candidate = line.trim();
-      if (candidate && model.pathFlavor.isAbsolute(candidate)) return candidate;
+      if (candidate && model.pathFlavor.isAbsolute(candidate)) candidates.push(candidate);
     }
-    return void 0;
+    if (candidates.length === 0) return void 0;
+    if (model.isWindows) {
+      const pathExtensions = new Set(
+        (process.env.PATHEXT ?? DEFAULT_PATHEXT).split(";").map((extension) => extension.trim().toLowerCase()).filter(Boolean)
+      );
+      const preferredCandidate = candidates.find(
+        (candidate) => pathExtensions.has(model.pathFlavor.extname(candidate).toLowerCase())
+      );
+      if (preferredCandidate) return preferredCandidate;
+    }
+    return candidates[0];
   } catch {
     return void 0;
   }
@@ -11408,7 +11419,7 @@ function resolveExecutable(binary, platform = process.platform) {
   if (!isValidBinaryName(binary)) return void 0;
   return resolveCliPath(binary, platformModel(platform));
 }
-var import_fs15, import_path17, import_child_process3, RESOLVE_TIMEOUT_MS, SAFE_BINARY_NAME;
+var import_fs15, import_path17, import_child_process3, RESOLVE_TIMEOUT_MS, DEFAULT_PATHEXT, SAFE_BINARY_NAME;
 var init_executable_resolution = __esm({
   "src/platform/executable-resolution.ts"() {
     "use strict";
@@ -11416,6 +11427,7 @@ var init_executable_resolution = __esm({
     import_path17 = __toESM(require("path"), 1);
     import_child_process3 = require("child_process");
     RESOLVE_TIMEOUT_MS = 5e3;
+    DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD";
     SAFE_BINARY_NAME = /^[A-Za-z0-9._-]+$/;
   }
 });
@@ -12287,13 +12299,18 @@ function buildProviderEnvironment(providerEnv, sourceEnv = process.env, platform
     const value = sourceEnv[key];
     if (typeof value === "string" && value.length > 0) baseline[key] = value;
   }
+  if (platform === "win32") {
+    const systemRoot = [sourceEnv.SystemRoot, sourceEnv.SYSTEMROOT].find((value) => typeof value === "string" && /^[A-Za-z]:\\/.test(value));
+    if (typeof systemRoot === "string") baseline.SystemRoot = systemRoot;
+  }
   const homeKey = platform === "win32" ? "USERPROFILE" : "HOME";
   const home = sourceEnv[homeKey];
-  const hasExplicitHome = Object.keys(normalized).some((key) => platform === "win32" ? key.toUpperCase() === homeKey : key === homeKey);
-  if (!hasExplicitHome && typeof home === "string" && home.length > 0) baseline[homeKey] = home;
+  if (typeof home === "string" && home.length > 0) baseline[homeKey] = home;
   if (platform === "win32") {
-    const systemRoot = sourceEnv.SystemRoot ?? sourceEnv.SYSTEMROOT;
-    if (typeof systemRoot === "string" && /^[A-Za-z]:\\/.test(systemRoot)) baseline.SystemRoot = systemRoot;
+    for (const key of Object.keys(normalized)) {
+      const baselineKey = Object.keys(baseline).find((candidate) => candidate.toUpperCase() === key.toUpperCase());
+      if (baselineKey) delete baseline[baselineKey];
+    }
   }
   return { ...baseline, ...normalized };
 }
@@ -12447,7 +12464,7 @@ async function loadWorkerLaunchAttempt(input) {
 }
 function buildWorkerLaunchBootstrapSpec(attempt, providerArgv, cwd, options = {}) {
   if (!isValidIdentity(attempt)) throw new Error("worker_launch_attempt_identity_invalid");
-  const providerEnv = buildProviderEnvironment(options.providerEnv);
+  const providerEnv = normalizeProviderEnvironment(options.providerEnv, options.platform ?? process.platform);
   const absoluteCwd = (0, import_node_path4.resolve)(cwd);
   const containmentNonce = (0, import_node_crypto5.randomUUID)();
   const supervisorSourceSha256 = (0, import_node_crypto5.createHash)("sha256").update(buildWindowsSupervisorSource(), "utf8").digest("hex");
@@ -12528,7 +12545,8 @@ async function materializeWorkerLaunchTransport(input) {
   if (!attemptTransportPathsAreDeterministic(attempt)) throw new Error("worker_launch_transport_paths_invalid");
   const spec = buildWorkerLaunchBootstrapSpec(attempt, input.providerArgv, input.cwd, {
     providerEnv: input.providerEnv,
-    releaseAfterSpawn: input.releaseAfterSpawn
+    releaseAfterSpawn: input.releaseAfterSpawn,
+    platform: input.platform
   });
   const windowsDelivery = input.windowsDelivery !== false;
   const owner = {
@@ -12537,7 +12555,7 @@ async function materializeWorkerLaunchTransport(input) {
     authority_digest: spec.authority_digest
   };
   const wrapperRelativePath = windowsDelivery ? windowsWrapperRelativePath(input.cwd, attempt.wrapperPath) : "";
-  const wrapper = buildWorkerLaunchWrapper(attempt, windowsDelivery ? "win32" : process.platform);
+  const wrapper = buildWorkerLaunchWrapper(attempt, windowsDelivery ? "win32" : input.platform ?? process.platform);
   let ownerCreated = false;
   let descriptorCreated = false;
   let wrapperCreated = false;
@@ -13042,7 +13060,7 @@ var init_worker_launch_ack = __esm({
     WORKER_LAUNCH_AUTHORITY_PROTOCOL = "worker-launch-authority-v1";
     WINDOWS_SUPERVISOR_PROTOCOL = "worker-launch-windows-supervisor-v1";
     WINDOWS_RESERVED_ENV_KEYS = new Set([...WORKER_LAUNCH_INTERNAL_ENV_KEYS, "SystemRoot"].map((key) => key.toUpperCase()));
-    SAFE_BASELINE_ENV_KEYS = ["PATH", "SystemRoot", "SYSTEMROOT", "TEMP", "TMP"];
+    SAFE_BASELINE_ENV_KEYS = ["PATH", "TEMP", "TMP"];
   }
 });
 
@@ -13991,7 +14009,19 @@ function workerPaneShellCommand() {
   if (process.platform === "win32" && !isUnixLikeOnWindows()) {
     return [getDefaultShell()];
   }
-  return [];
+  if (process.platform === "win32") return [];
+  const shell = getDefaultShell();
+  const baseline = buildProviderEnvironment({ SHELL: shell });
+  const inheritedPaneEnvironment = ["TERM", "TMUX", "TMUX_PANE", "TMUX_TMPDIR", "LANG", "LC_ALL", "LC_CTYPE"].map((key) => `${key}="$${key}"`);
+  const command = [
+    "/usr/bin/env",
+    "-i",
+    ...Object.entries(baseline).map(([key, value]) => `${key}=${shellQuote(value)}`),
+    ...inheritedPaneEnvironment,
+    shellQuote(shell),
+    "-l"
+  ].join(" ");
+  return [command];
 }
 function escapeForCmdSet(value) {
   return value.replace(/(["%])/g, "$1$1");
@@ -14635,7 +14665,8 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
       "-n",
       windowName,
       "-c",
-      cwd
+      cwd,
+      ...workerPaneShellCommand()
     ];
     let newWindowResult;
     try {
@@ -15143,10 +15174,11 @@ async function capturePaneAsync(paneId, opts = {}) {
 async function captureTeamPane(paneId, options = {}) {
   return capturePaneAsync(paneId, options);
 }
-async function captureOwnedTeamPane(ownership) {
-  if (ownership.provider === "cmux") return captureTeamPane(ownership.paneId);
+async function captureOwnedTeamPane(ownership, options = {}) {
+  if (ownership.provider === "cmux") return captureTeamPane(ownership.paneId, options);
   if (!isValidTmuxServerIdentity(ownership.tmuxServerIdentity) || !TMUX_MAILBOX_PANE_ID.test(ownership.paneId)) return "";
   return captureTeamPane(ownership.paneId, {
+    ...options,
     tmuxServerIdentity: ownership.tmuxServerIdentity
   });
 }
@@ -15231,6 +15263,14 @@ function detectPaneTrustPromptKind(captured, provider) {
   if ((provider === void 0 || provider === "cursor") && hasCursorTrustBanner && (hasCursorTrustHint || tail.some((l) => /Do you trust the contents of this directory\?/i.test(l)))) {
     return "cursor_workspace_trust";
   }
+  const hasClaudeDirectoryQuestion = tail.some(
+    (l) => /(?:Do you trust the files in this folder|Quick safety check:\s*Is this a project you created or one you trust)\?/i.test(l)
+  );
+  const hasClaudeDirectoryNoChoice = tail.some((l) => /\bNo,\s*exit\b/i.test(l));
+  const hasClaudeDirectoryYesChoice = tail.some((l) => /\bYes,\s*(?:proceed|I trust this folder)\b/i.test(l));
+  if (provider === "claude" && hasClaudeDirectoryQuestion && hasClaudeDirectoryNoChoice && hasClaudeDirectoryYesChoice) {
+    return "claude_directory";
+  }
   const hasDirectoryQuestion = tail.some((l) => /Do you trust the contents of this directory\?/i.test(l));
   const hasDirectoryChoices = tail.some((l) => /Yes,\s*continue|No,\s*quit|Press enter to continue/i.test(l));
   if (hasDirectoryQuestion && hasDirectoryChoices) return "directory";
@@ -15269,7 +15309,7 @@ function paneHasActiveTask(captured, provider) {
   if (tail.some((l) => /\b\d+\s+background terminal running\b/i.test(l))) return true;
   if (tail.some((l) => /esc to interrupt/i.test(l))) return true;
   if (tail.some((l) => /\bbackground terminal running\b/i.test(l))) return true;
-  if (tail.some((l) => /^[·✻]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})$/u.test(l))) return true;
+  if (tail.some((l) => /^[·✻✢✳✶✽✺✹✸✷*]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})(?:\s*\(.*\))?$/u.test(l))) return true;
   return false;
 }
 function paneLooksReady(captured, provider) {
@@ -15376,14 +15416,22 @@ async function waitForStartupPaneReady(context, opts = {}) {
       if (selector === "cursor_workspace_trust") {
         return { ok: false, reason: "cursor_workspace_untrusted" };
       }
-      const providerSupportsSelector = selector === "codex_hooks" ? context.provider === "codex" : context.provider === "codex" || context.provider === "claude";
+      const providerSupportsSelector = selector === "codex_hooks" ? context.provider === "codex" : selector === "claude_directory" ? context.provider === "claude" : context.provider === "codex" || context.provider === "claude";
       if (!providerSupportsSelector) return { ok: false, reason: "selector_unsupported" };
       if (handledSelectors.has(selector)) return { ok: false, reason: "selector_persistent" };
-      await sendLiteralPaneText(
-        context.ownership.paneId,
-        selector === "directory" ? "1" : "3",
-        context.ownership.tmuxServerIdentity
-      );
+      if (selector === "claude_directory") {
+        await sendTeamPaneKey(
+          context.ownership.paneId,
+          "Down",
+          context.ownership.tmuxServerIdentity
+        );
+      } else {
+        await sendLiteralPaneText(
+          context.ownership.paneId,
+          selector === "directory" ? "1" : "3",
+          context.ownership.tmuxServerIdentity
+        );
+      }
       await sendTeamPaneKey(
         context.ownership.paneId,
         "Enter",
@@ -17430,7 +17478,9 @@ Then exit your session.
         if (lastLiveness === "alive") paneCleanupAlive.push(worker.name);
         else paneCleanupUnknown.push(worker.name);
         return false;
-      } catch {
+      } catch (err) {
+        process.stderr.write(`[team/runtime-v2] worker pane cleanup failed for ${worker.name}: ${err instanceof Error ? err.message : String(err)}
+`);
         paneCleanupUnknown.push(worker.name);
         return false;
       }
@@ -17442,7 +17492,7 @@ Then exit your session.
   }
   if (paneCleanupUnknown.length > 0) {
     if (!await rollbackShutdownForRetry()) await finalizeAutoMerge();
-    return { outcome: "preserved", reason: "worker_pane_liveness_unknown", workers: paneCleanupUnknown };
+    return { outcome: "preserved", reason: "worker_process_reaped_pane_unconfirmed", workers: paneCleanupUnknown };
   }
   if (providerCleanupFailures.length > 0) {
     process.stderr.write(`[team/runtime-v2] preserving panes/worktrees/state because provider cleanup is unverified: ${providerCleanupFailures.join(", ")}
@@ -17503,10 +17553,10 @@ Then exit your session.
     }
     const unknownWorkers = liveness.filter(([, state]) => state === "unknown").map(([paneId]) => paneById.get(paneId) ?? paneId);
     if (unknownWorkers.length > 0) {
-      process.stderr.write(`[team/runtime-v2] preserving worktrees/state because worker pane liveness is unknown: ${unknownWorkers.join(", ")}
+      process.stderr.write(`[team/runtime-v2] preserving worktrees/state because worker process reaping is verified but pane liveness is unconfirmed: ${unknownWorkers.join(", ")}
 `);
       if (!await rollbackShutdownForRetry()) await finalizeAutoMerge();
-      return { outcome: "preserved", reason: "worker_pane_liveness_unknown", workers: unknownWorkers };
+      return { outcome: "preserved", reason: "worker_process_reaped_pane_unconfirmed", workers: unknownWorkers };
     }
   } catch (err) {
     process.stderr.write(`[team/runtime-v2] tmux cleanup: ${err}

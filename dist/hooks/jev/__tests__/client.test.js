@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { JEV_MODEL, JevClientError, queryJev } from '../client.js';
 const QUESTIONS = {
-    trigger: { type: 'Choice', criteria: { ralph: 'persistent loop', tdd: 'test first' } },
+    trigger: { type: 'choice', criteria: { ralph: 'persistent loop', tdd: 'test first' } },
 };
 function okResponse(body) {
     return { ok: true, status: 200, json: async () => body };
@@ -14,9 +14,43 @@ function captureFetch(handler) {
     });
     return { fetchFn, calls };
 }
+describe('question serialization (#4091)', () => {
+    it('sends score criteria as the ordered list the API requires', async () => {
+        const scoreQuestions = {
+            staleness: {
+                type: 'score',
+                criteria: { fresh: 'Fresh — keep', aging: 'Aging', stale: 'Stale — prune candidate' },
+            },
+        };
+        const { fetchFn, calls } = captureFetch(() => okResponse({ answers: { staleness: { type: 'score', score: 2 } } }));
+        await queryJev({}, scoreQuestions, {
+            endpoint: 'https://stub.example',
+            apiKey: 'k',
+            timeoutMs: 250,
+            fetchFn,
+        });
+        const body = JSON.parse(calls[0].init?.body);
+        expect(body.questions.staleness.criteria).toEqual(['Fresh — keep', 'Aging', 'Stale — prune candidate']);
+    });
+    it('leaves choice and noul criteria as the named map', async () => {
+        const questions = {
+            intent: { type: 'noul', criteria: { true: 'yes', false: 'no' } },
+        };
+        const { fetchFn, calls } = captureFetch(() => okResponse({ answers: { intent: { type: 'noul', noul: true } } }));
+        await queryJev({}, questions, {
+            endpoint: 'https://stub.example',
+            apiKey: 'k',
+            timeoutMs: 250,
+            fetchFn,
+        });
+        const body = JSON.parse(calls[0].init?.body);
+        expect(body.questions.intent.criteria).toEqual({ true: 'yes', false: 'no' });
+        expect(body.questions.intent.type).toBe('noul');
+    });
+});
 describe('queryJev', () => {
     it('POSTs state, questions and model with bearer auth to the endpoint', async () => {
-        const { fetchFn, calls } = captureFetch(() => okResponse({ answers: { trigger: { type: 'Choice', choice: 'ralph', confidence: 0.9 } } }));
+        const { fetchFn, calls } = captureFetch(() => okResponse({ answers: { trigger: { type: 'choice', choice: 'ralph', confidence: 0.9 } } }));
         const response = await queryJev({ q: 'x' }, QUESTIONS, {
             endpoint: 'https://stub.example/v1/systemone',
             apiKey: 'test-key',

@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.1.0, the plugin ships 20 agents, 57 skills, 21 command files, and one configured MCP server exposing exactly 55 tools.
+For v5.1.0, the plugin ships 20 agents, 61 skills, 21 command files, and one configured MCP server exposing exactly 55 tools.
 
 ---
 
@@ -16,7 +16,7 @@ For v5.1.0, the plugin ships 20 agents, 57 skills, 21 command files, and one con
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated-opt-in-only)
 - [Agents (20 Total)](#agents-20-total)
 - [Goal Workflow UX: `/goal`, Ralph, Team, Ultragoal](#goal-workflow-ux-goal-ralph-team-ultragoal)
-- [Skills (57 Total)](#skills-57-total)
+- [Skills (61 Total)](#skills-61-total)
 - [Slash Commands](#slash-commands)
 - [Shipyard Methodology](./shipyard.md) — governed delivery & shared harness map
 - [Claude Code `/goal` Adapter Design](#claude-code-goal-adapter-design)
@@ -913,7 +913,7 @@ Autopilot continues to own cancel, resume, cleanup, state inspection, HUD, and S
 
 V1 deliberately defers `stageModels` and all model/provider/role routing, inline/no-spawn execution, dynamic commands/modes/state files, arbitrary stages/prompts/plugins and control-flow extensions, and the separate custom-skill inline-array frontmatter parser mismatch. See [ADR 03487](./adr/03487-named-autopilot-stage-profiles.md) for the decision record.
 
-## Skills (57 Total)
+## Skills (61 Total)
 
 Includes bundled workflow, utility, domain, and compatibility skills. Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
@@ -945,23 +945,27 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `intent`                  | Internal requirements intake for non-engineer contributors                      | `/oh-my-copilot:intent`                  |
 | `launch`                  | Shipyard governed delivery pipeline: spec, tickets, frontier execution          | `/oh-my-copilot:launch`                  |
 | `loft`                    | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions | `/oh-my-copilot:loft`              |
+| `map`                     | The yard's skill map: which skill owns which job, in delivery-loop order; routes, never executes | `/oh-my-copilot:map`                  |
 | `minimal-code-discipline` | YAGNI-ladder writing-time discipline: reuse first, shortest correct diff        | `/oh-my-copilot:minimal-code-discipline` |
 | `minimal-prose-discipline` | Writing-time discipline for the agent's own prose: protected core, no filler, close on the action | `/oh-my-copilot:minimal-prose-discipline` |
 | `omc-doctor`              | Diagnose and fix installation issues                                           | `/oh-my-copilot:omc-doctor`              |
 | `omc-plan`                | Strategic planning with optional interview and consensus modes                 | `/oh-my-copilot:omc-plan`               |
 | `omc-review`              | Evaluate finished work for defects, risk, and simplification                   | `/oh-my-copilot:omc-review`             |
 | `omc-setup`               | Install or refresh OMC for plugin, npm, and local-development setups           | `/oh-my-copilot:omc-setup`              |
+| `pr`                      | PR body assembly from OMC's paper trail: smallest visual, verify evidence, ADR-test reversibility | `/oh-my-copilot:pr` |
 | `project-session-manager` | Manage isolated development environments (git worktrees + tmux)                | `/oh-my-copilot:project-session-manager` |
 | `psm`                     | Deprecated compatibility alias for `project-session-manager`                    | `/oh-my-copilot:psm`                     |
 | `ralph`                   | Persistence loop until verified completion                                     | `/oh-my-copilot:ralph`                   |
 | `ralplan`                 | Consensus planning entrypoint                                                   | `/oh-my-copilot:ralplan`                 |
 | `release`                 | Automated release workflow                                                      | `/oh-my-copilot:release`                 |
+| `refit`                   | Cross-session retrospective; instrument evidence to user-approved environment fixes | `/oh-my-copilot:refit` |
 | `remember`                | Save and retrieve durable session memory                                        | `/oh-my-copilot:remember`                |
 | `research`                | Investigate an open question and return grounded findings                       | `/oh-my-copilot:research`               |
 | `self-improve`            | Autonomous evolutionary code improvement engine                                | `/oh-my-copilot:self-improve`           |
 | `skill`                   | Manage local skills (list/add/remove/search/edit)                              | `/oh-my-copilot:skill`                   |
 | `skillify`                | Extract a reusable skill from the current session                              | `/oh-my-copilot:skillify`                |
 | `team`                    | Coordinated multi-agent workflow                                               | `/oh-my-copilot:team`                    |
+| `tdd`                     | Test-first discipline at pre-agreed seams                                     | `/oh-my-copilot:tdd`                     |
 | `trace`                   | Evidence-driven tracing lane with parallel tracer hypotheses                   | `/oh-my-copilot:trace`                  |
 | `ultragoal`               | Durable multi-goal workflow with checkpointed artifacts                        | `/oh-my-copilot:ultragoal`              |
 | `verify`                  | Verify that a change really works before claiming completion                    | `/oh-my-copilot:verify`                 |
@@ -973,7 +977,7 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 
 ## Slash Commands
 
-Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plugin ships 21 command files alongside the 57 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
+Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plugin ships 21 command files alongside the 61 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
 
 | Command                                                  | Description                                                                                   |
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -1005,17 +1009,20 @@ Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plu
 | `/oh-my-copilot:omc-plan <description>`               | Start planning session (supports consensus structured deliberation)                           |
 | `/oh-my-copilot:omc-review [path]`                    | Review finished work for defects and risk                                                       |
 | `/oh-my-copilot:omc-setup`                            | Install or refresh OMC                                                                        |
+| `/oh-my-copilot:pr`                                   | Assemble a PR body from existing paper-trail evidence                                           |
 | `/oh-my-copilot:project-session-manager <arguments>`  | Manage isolated dev environments with git worktrees + tmux                                    |
 | `/oh-my-copilot:psm <arguments>`                      | Deprecated alias for project session manager                                                  |
 | `/oh-my-copilot:ralph <task>`                         | Persistence loop until task completion (`--critic=architect \| critic \| codex`)             |
 | `/oh-my-copilot:ralplan <description>`                | Iterative planning with consensus structured deliberation                                     |
 | `/oh-my-copilot:release`                              | Automated release workflow                                                                    |
+| `/oh-my-copilot:refit [--scope <area>] [--last <N sessions>]` | Retrospect on OMC instrumentation and propose user-approved environment fixes            |
 | `/oh-my-copilot:remember <note>`                      | Save durable session memory                                                                   |
 | `/oh-my-copilot:research <question>`                  | Investigate an open question and return grounded findings                                      |
 | `/oh-my-copilot:self-improve <topic>`                 | Run the autonomous code-improvement workflow                                                   |
 | `/oh-my-copilot:skill <action>`                       | Manage local skills                                                                           |
 | `/oh-my-copilot:skillify`                             | Extract a reusable skill from the current session                                             |
 | `/oh-my-copilot:team <N>:<agent> <task>`               | Coordinated native team workflow                                                              |
+| `/oh-my-copilot:tdd`                                  | Test-first discipline at pre-agreed seams                                                     |
 | `/oh-my-copilot:trace`                                | Evidence-driven tracing lane                                                                  |
 | `/oh-my-copilot:ultragoal <condition>`                | Track a durable multi-goal workflow                                                           |
 | `/oh-my-copilot:verify <target>`                      | Verify that a change really works before claiming completion                                  |

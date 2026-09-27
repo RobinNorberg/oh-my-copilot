@@ -43,7 +43,7 @@ function stubFetch() {
             status: 200,
             json: async () => ({
                 answers: {
-                    slop_advisory: { type: 'Noul', noul: true, confidence: 0.8 },
+                    slop_advisory: { type: 'noul', noul: true, confidence: 0.8 },
                 },
             }),
         };
@@ -81,7 +81,7 @@ describe('slop-warning shadow judgment point (recorder only — no runtime wirin
         expect(entry.point).toBe('slop-warning');
         expect(entry.mode).toBe('shadow');
         expect(entry.heuristic).toBe(true);
-        expect(entry.jev?.type).toBe('Noul');
+        expect(entry.jev?.type).toBe('noul');
         expect(entry.state).toMatchObject({
             tool_name: 'Bash',
             tool_input: toolInput,

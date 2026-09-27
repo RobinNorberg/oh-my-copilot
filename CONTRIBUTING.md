@@ -37,7 +37,7 @@ This guide assumes you're comfortable with terminal commands and git branching.
    # origin    https://github.com/<your-username>/oh-my-copilot.git (fetch)
    # origin    https://github.com/<your-username>/oh-my-copilot.git (push)
    # upstream  https://github.com/Yeachan-Heo/oh-my-copilot.git (fetch)
-   # upstream  https://github.com/Yeachan-Heo/oh-my-copilot.git (read-only)
+   # upstream  https://github.com/Yeachan-Heo/oh-my-copilot.git (push)
    ```
 
 5. **Check available branches**:

@@ -144,7 +144,14 @@ describe('npm trusted publishing contract', () => {
         expect(recoveryJob).toContain('permissions:\n      contents: write');
         expect(recoveryJob).not.toContain('id-token: write');
         expect(recoveryJob).not.toContain('npm publish');
-        expect(recoveryJob).toContain('RECOVERY_TAG: v4.15.4\n      RECOVERY_SHA: cb6932311ac956687e3c66bb6a48d52a8df14d56\n      RECOVERY_INPUT_TAG: ${{ inputs.tag }}\n      RECOVERY_INPUT_SHA: ${{ inputs.sha }}');
+        expect(recoveryJob).toContain('RECOVERY_TAG: ${{ inputs.tag }}\n      RECOVERY_SHA: ${{ inputs.sha }}');
+        // Recovery must work for the tag it is dispatched with: no release identity
+        // may be frozen into the workflow (#4082).
+        expect(recoveryJob).not.toMatch(/v\d+\.\d+\.\d+/);
+        expect(recoveryJob).not.toMatch(/\b[0-9a-f]{40}\b/);
+        expect(recoveryJob).toContain('tag_name: ${{ inputs.tag }}');
+        expect(recoveryJob).toContain('name: npm-release-boundary-recovery-${{ inputs.tag }}');
+        expect(recoveryJob).toContain("printf '%s' \"$RECOVERY_SHA\" | grep -Eq '^[0-9a-f]{40}$'");
         expect(recoveryJob).toContain('node scripts/release-boundary.mjs verify-registry --package oh-my-copilot --version "$VERSION" --tag "$RECOVERY_TAG" --sha "$RECOVERY_SHA" --evidence "$RECOVERY_EVIDENCE_JSON" --tarball "$RECOVERY_TARBALL" --provenance required --audit "$RECOVERY_AUDIT_JSON"');
         expect(recovery).toContain('workflow_dispatch:\n    inputs:\n      tag:\n        description: Exact annotated release tag to recover\n        required: true\n        type: string\n      sha:\n        description: Exact 40-character hexadecimal commit SHA to recover\n        required: true\n        type: string');
     });
