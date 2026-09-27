@@ -123,6 +123,31 @@ When replacing files wholesale, check for these fork-specific additions:
 
 ## Key Gotchas
 
+- **Upstream tags collide with fork tags** (both have v5.0.0, v5.1.0, ...). The `upstream`
+  remote is configured with `tagOpt=--no-tags` and fetches tags into
+  `refs/upstream-tags/*`; always diff `refs/upstream-tags/vX.Y.Z`, never bare `vX.Y.Z`
+  (bare tags are the fork's own releases).
+- **Range-diff workflow** (preferred over per-commit): `git diff --binary <from> <to> -- .
+  ':!dist' ':!bridge' ':!package-lock.json' ':!package.json' ':!CHANGELOG.md' ':!README.md'
+  ':!.github/release-body.md' ':!inventory' > r.patch && git apply -3 r.patch`. `git apply` is
+  atomic: a file upstream deleted but the fork diverged on aborts everything — `git rm` it and
+  exclude it from the patch. Port package.json deltas by hand. Afterwards: `npm run build`,
+  `git add -f dist bridge`, `npm run generate:inventory`, then commit.
+- **Judge test results against a dev baseline, not zero**: ~725 tests fail on this Windows host
+  at dev (symlink EPERM, POSIX modes, tmux, win32 graph guard). Build a baseline worktree of dev,
+  run the full suite there, and diff failing test titles (normalize random tmp suffixes).
+- **Upstream POSIX-isms that recur**: `x.includes('/templates/hooks/')` on native paths,
+  `PACKAGE_ROOT + '/file'` compared to `realpathSync`, `execFileSync('npx', ...)` (use
+  `process.execPath` + `node_modules/tsx/dist/cli.mjs`), `--import C:\...` / `import("C:\\...")`
+  (use `pathToFileURL`), process identities with `:` used in filenames (NTFS ADS).
+- **win32 liveness probes spawn PowerShell (~300ms)**: upstream lock loops that re-probe per retry
+  time out on Windows; races invisible on Linux show up here.
+- **Known gap (since v5.5.0)**: upstream strict process identity accepts only linux/darwin, so team
+  instance recovery fails closed on win32 and ~90 team tests fail on this host.
+- **lean-ctx shell hook** rewrites some piped binaries to an undefined `_lc`; prefix with
+  `command` (`command git ...`). Delegated agents must never rewrite repo files through shell
+  redirects — two emptied files that way.
+
 - **Always base port branches on `dev`** (latest code), never feature branches
 - **Windows-hostile upstream tests**: upstream writes temp-path and team-dispatch
   expectations for POSIX hosts (`/tmp/...` allowances, `$OMC_TEAM_STATE_ROOT`
