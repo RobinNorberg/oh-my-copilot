@@ -2,6 +2,19 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## Unreleased
+
+### Removed
+
+- **Fork safe-command auto-approver:** `scripts/safe-command-approver.mjs`
+  (the v4-era Copilot `preToolUse` hook that auto-approved "safe" Bash
+  commands) and the unused `src/installer/permissions.ts` allowlist generator
+  (`generatePermissionAllowList`) are gone. The hook was no longer registered
+  in `hooks/hooks.json`, and a review found it approved chained commands
+  such as `cat x; curl … | sh`. Use Copilot CLI's native `--allow-tool` /
+  `--deny-tool` rules or its assisted-approval mode instead. Upstream's
+  `src/hooks/permission-handler/` is unchanged.
+
 # oh-my-copilot v5.1.0
 
 ## [5.1.0] - 2026-09-06

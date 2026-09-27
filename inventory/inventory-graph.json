@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "ff850dd0653678537783908aa6808e28e738c37a",
-    "sourceSha256": "8d23b7a8cd8f02c96eb288d864384e8afe7baccf6e57f0d0bd87e223125e21eb",
+    "head": "6fde86c8b8eb2afe28622497ba2b51ed98cd6a77",
+    "sourceSha256": "091ea26177573fa5d13d2603d2419343fca6c2d22386eb0476d31c7716c6c953",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "ff850dd0653678537783908aa6808e28e738c37a",
-  "sourceSha256": "8d23b7a8cd8f02c96eb288d864384e8afe7baccf6e57f0d0bd87e223125e21eb",
+  "head": "6fde86c8b8eb2afe28622497ba2b51ed98cd6a77",
+  "sourceSha256": "091ea26177573fa5d13d2603d2419343fca6c2d22386eb0476d31c7716c6c953",
   "counts": {
     "public": {
       "skills": 61,
@@ -28,13 +28,13 @@
       "toolFiles": 61,
       "libFiles": 43,
       "templateHooks": 22,
-      "srcFiles": 1424,
-      "total": 1446
+      "srcFiles": 1422,
+      "total": 1444
     },
     "generated": {
-      "distFiles": 5539,
+      "distFiles": 5531,
       "bridgeFiles": 9,
-      "total": 5548
+      "total": 5540
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -867,7 +867,6 @@
       "scripts/risk-assess.mjs",
       "scripts/run-provider-advisor.js",
       "scripts/run.cjs",
-      "scripts/safe-command-approver.mjs",
       "scripts/session-end.mjs",
       "scripts/session-start.mjs",
       "scripts/session-summary.mjs",
@@ -1780,10 +1779,6 @@
       "dist/__tests__/runtime-task-orphan.test.d.ts.map",
       "dist/__tests__/runtime-task-orphan.test.js",
       "dist/__tests__/runtime-task-orphan.test.js.map",
-      "dist/__tests__/safe-command-approver.test.d.ts",
-      "dist/__tests__/safe-command-approver.test.d.ts.map",
-      "dist/__tests__/safe-command-approver.test.js",
-      "dist/__tests__/safe-command-approver.test.js.map",
       "dist/__tests__/security-config.test.d.ts",
       "dist/__tests__/security-config.test.d.ts.map",
       "dist/__tests__/security-config.test.js",
@@ -4627,10 +4622,6 @@
       "dist/installer/mcp-registry.d.ts.map",
       "dist/installer/mcp-registry.js",
       "dist/installer/mcp-registry.js.map",
-      "dist/installer/permissions.d.ts",
-      "dist/installer/permissions.d.ts.map",
-      "dist/installer/permissions.js",
-      "dist/installer/permissions.js.map",
       "dist/interop/__tests__/mcp-bridge.test.d.ts",
       "dist/interop/__tests__/mcp-bridge.test.d.ts.map",
       "dist/interop/__tests__/mcp-bridge.test.js",
@@ -12316,26 +12307,6 @@
         "id": "dist/__tests__/runtime-task-orphan.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/runtime-task-orphan.test.js.map"
-      },
-      {
-        "id": "dist/__tests__/safe-command-approver.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/safe-command-approver.test.d.ts"
-      },
-      {
-        "id": "dist/__tests__/safe-command-approver.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/safe-command-approver.test.d.ts.map"
-      },
-      {
-        "id": "dist/__tests__/safe-command-approver.test.js",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/safe-command-approver.test.js"
-      },
-      {
-        "id": "dist/__tests__/safe-command-approver.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/safe-command-approver.test.js.map"
       },
       {
         "id": "dist/__tests__/security-config.test.d.ts",
@@ -26553,26 +26524,6 @@
         "path": "dist/installer/mcp-registry.js.map"
       },
       {
-        "id": "dist/installer/permissions.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/installer/permissions.d.ts"
-      },
-      {
-        "id": "dist/installer/permissions.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/installer/permissions.d.ts.map"
-      },
-      {
-        "id": "dist/installer/permissions.js",
-        "kind": "generated-dist",
-        "path": "dist/installer/permissions.js"
-      },
-      {
-        "id": "dist/installer/permissions.js.map",
-        "kind": "generated-dist",
-        "path": "dist/installer/permissions.js.map"
-      },
-      {
         "id": "dist/interop/__tests__/mcp-bridge.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/interop/__tests__/mcp-bridge.test.d.ts"
@@ -36873,11 +36824,6 @@
         "path": "scripts/run.cjs"
       },
       {
-        "id": "scripts/safe-command-approver.mjs",
-        "kind": "script",
-        "path": "scripts/safe-command-approver.mjs"
-      },
-      {
         "id": "scripts/session-end.mjs",
         "kind": "script",
         "path": "scripts/session-end.mjs"
@@ -38766,11 +38712,6 @@
         "id": "src/__tests__/runtime-guidance-plan-ralph.test.ts",
         "kind": "src",
         "path": "src/__tests__/runtime-guidance-plan-ralph.test.ts"
-      },
-      {
-        "id": "src/__tests__/safe-command-approver.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/safe-command-approver.test.ts"
       },
       {
         "id": "src/__tests__/security-config.test.ts",
@@ -42451,11 +42392,6 @@
         "id": "src/installer/mcp-registry.ts",
         "kind": "src",
         "path": "src/installer/mcp-registry.ts"
-      },
-      {
-        "id": "src/installer/permissions.ts",
-        "kind": "src",
-        "path": "src/installer/permissions.ts"
       },
       {
         "id": "src/interop/__tests__/mcp-bridge.test.ts",
@@ -47157,11 +47093,6 @@
       {
         "from": "scripts/run.cjs",
         "to": "external:worker_threads",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/safe-command-approver.mjs",
-        "to": "scripts/lib/stdin.mjs",
         "kind": "imports"
       },
       {
@@ -53308,21 +53239,6 @@
         "from": "src/__tests__/runtime-guidance-plan-ralph.test.ts",
         "to": "src/team/model-contract.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/__tests__/safe-command-approver.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/safe-command-approver.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/safe-command-approver.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
       },
       {
         "from": "src/__tests__/security-config.test.ts",
@@ -64481,6 +64397,11 @@
       },
       {
         "from": "src/hooks/permission-handler/index.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/permission-handler/index.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -71506,12 +71427,32 @@
       },
       {
         "from": "src/lib/__tests__/mode-state-lock.test.ts",
+        "to": "external:better-sqlite3",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-lock.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-lock.test.ts",
+        "to": "external:node:child_process",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-lock.test.ts",
         "to": "external:node:crypto",
         "kind": "imports"
       },
       {
         "from": "src/lib/__tests__/mode-state-lock.test.ts",
         "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-lock.test.ts",
+        "to": "external:node:module",
         "kind": "imports"
       },
       {
@@ -71527,6 +71468,11 @@
       {
         "from": "src/lib/__tests__/mode-state-lock.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-lock.test.ts",
+        "to": "scripts/lib/state-lock.mjs",
         "kind": "imports"
       },
       {
@@ -77428,6 +77374,11 @@
         "from": "src/team/__tests__/runtime.test.ts",
         "to": "src/team/runtime.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime.test.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/__tests__/scaling-launch-config.test.ts",
@@ -85341,12 +85292,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7615,
-      "edgeCount": 8050,
-      "importEdgeCount": 6627,
+      "nodeCount": 7604,
+      "edgeCount": 8053,
+      "importEdgeCount": 6629,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "21ec2797dbcbe2565b784a320926fd29c4bea690a447b491e59ca6fe7edaf72d",
-  "manifestSha256": "5f3dcef700daeadbb8cc658e1945976b7620b42c5c77dc2020d1d56ccec13b80"
+  "inventorySha256": "9b8bec2d21f961d6b9db3055f40bedf252b93a1c646cf651112af4de066aeaa6",
+  "manifestSha256": "7b6df64db74abcc34b5baab843d6fb7d99db14da130367a7e50646dfe3ebe2e3"
 }

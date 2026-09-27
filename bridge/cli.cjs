@@ -34557,6 +34557,9 @@ function lockArtifactIdentity(path27) {
   }
 }
 function reclaimDeadLockOwner(path27, observedOwner, observedIdentity) {
+  const currentOwner2 = readLockOwner(path27);
+  const currentIdentity = lockArtifactIdentity(path27);
+  if (currentOwner2 === "absent" || currentOwner2 === null || !sameOwner(currentOwner2, observedOwner) || currentIdentity === null || currentIdentity.dev !== observedIdentity.dev || currentIdentity.ino !== observedIdentity.ino) return "changed";
   const quarantinePath = `${path27}.reclaim.${process.pid}.${(0, import_crypto8.randomUUID)()}`;
   try {
     (0, import_fs23.renameSync)(path27, quarantinePath);
@@ -34588,6 +34591,7 @@ function reclaimDeadLockOwner(path27, observedOwner, observedIdentity) {
   return "changed";
 }
 function ownerLive(owner) {
+  if (owner.pid === process.pid && abandonedOwnNonces.has(owner.nonce) && owner.processStart === ownProcessStartIdentity()) return false;
   if (process.env.NODE_ENV === "test" && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(owner.pid)) return null;
   const current = owner.pid === process.pid ? ownProcessStartIdentity() : processStartIdentity2(owner.pid);
   if (current === null) return null;
@@ -34712,12 +34716,19 @@ function acquireFileLockAt(path27, attempts) {
       }
       const code = error2?.code;
       if (code !== "EEXIST") {
+        abandonedOwnNonces.add(owner.nonce);
         lastMutationLockFailure = "unverifiable";
         return null;
       }
       const existing = readLockOwner(path27);
       if (existing === "absent") continue;
       if (!existing) {
+        lastMutationLockFailure = "unverifiable";
+        return null;
+      }
+      const observedIdentity = lockArtifactIdentity(path27);
+      if (observedIdentity === null) {
+        if (readLockOwner(path27) === "absent") continue;
         lastMutationLockFailure = "unverifiable";
         return null;
       }
@@ -34735,12 +34746,6 @@ function acquireFileLockAt(path27, attempts) {
         }
         return null;
       }
-      const observedIdentity = lockArtifactIdentity(path27);
-      if (observedIdentity === null) {
-        if (readLockOwner(path27) === "absent") continue;
-        lastMutationLockFailure = "unverifiable";
-        return null;
-      }
       const reclaimed = reclaimDeadLockOwner(path27, existing, observedIdentity);
       if (reclaimed === "failed") {
         lastMutationLockFailure = "unverifiable";
@@ -34751,7 +34756,17 @@ function acquireFileLockAt(path27, attempts) {
   lastMutationLockFailure = "contention";
   return null;
 }
-function acquireLockAt(path27, attempts = 50) {
+function cachedOwnerLive(owner, verified, slot, probe) {
+  const cached2 = verified[slot];
+  if (cached2 !== null && sameOwner(owner, cached2)) return true;
+  if (verified.dead.some((dead) => sameOwner(owner, dead))) return false;
+  if (!probe) return void 0;
+  const live = ownerLive(owner);
+  if (live) verified[slot] = owner;
+  else if (live === false) verified.dead.push(owner);
+  return live;
+}
+function acquireLockAt(path27, attempts = 50, verified = { row: null, artifact: null, dead: [] }) {
   lastMutationLockFailureDetail = null;
   (0, import_fs23.mkdirSync)((0, import_path28.dirname)(path27), { recursive: true });
   const key = (() => {
@@ -34776,7 +34791,7 @@ function acquireLockAt(path27, attempts = 50) {
       return null;
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    return acquireLockAt(path27, attempts - 1);
+    return acquireLockAt(path27, attempts - 1, verified);
   }
   const processStart = ownProcessStartIdentity();
   if (!processStart) {
@@ -34790,12 +34805,36 @@ function acquireLockAt(path27, attempts = 50) {
       return null;
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    return acquireLockAt(path27, attempts - 1);
+    return acquireLockAt(path27, attempts - 1, verified);
   }
   const owner = { version: 1, pid: process.pid, processStart, createdAt: (/* @__PURE__ */ new Date()).toISOString(), nonce: (0, import_crypto8.randomUUID)() };
+  const selectRow = () => db.prepare("SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?").get(key);
+  let preLive = false;
+  try {
+    const preRow = ownerFromRow(selectRow());
+    if (preRow) preLive = cachedOwnerLive(preRow, verified, "row", true);
+    if (preLive === false) {
+      const preArtifact = readLockOwner(path27);
+      if (preArtifact && preArtifact !== "absent") preLive = cachedOwnerLive(preArtifact, verified, "artifact", true);
+    }
+  } catch {
+    preLive = false;
+  }
+  if (preLive === null || preLive) {
+    try {
+      db.close();
+    } catch {
+    }
+    if (preLive === null || attempts <= 1) {
+      lastMutationLockFailure = preLive === null ? "unverifiable" : "contention";
+      return null;
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    return acquireLockAt(path27, attempts - 1, verified);
+  }
   try {
     db.exec("BEGIN IMMEDIATE");
-    const rawRow = db.prepare("SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?").get(key);
+    const rawRow = selectRow();
     if (rawRow) {
       const row = ownerFromRow(rawRow);
       if (!row) {
@@ -34805,17 +34844,17 @@ function acquireLockAt(path27, attempts = 50) {
         if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt row-invalid ${path27}`);
         return null;
       }
-      const live = ownerLive(row);
-      if (live === null || live) {
+      const live = cachedOwnerLive(row, verified, "row", false);
+      if (live !== false) {
         db.exec("ROLLBACK");
         db.close();
         if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt row-live=${live} ${path27}`);
-        if (live === null || attempts <= 1) {
-          lastMutationLockFailure = live === null ? "unverifiable" : "contention";
+        if (attempts <= 1) {
+          lastMutationLockFailure = "contention";
           return null;
         }
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-        return acquireLockAt(path27, attempts - 1);
+        return acquireLockAt(path27, attempts - 1, verified);
       }
       db.prepare("DELETE FROM state_mutation_locks WHERE lock_key = ?").run(key);
     }
@@ -34828,24 +34867,28 @@ function acquireLockAt(path27, attempts = 50) {
         console.error(`[omc-lock] state_mutation_lock_unverifiable: ${path27}`);
         return null;
       }
-      const live = ownerLive(artifact);
-      if (live === null || live) {
-        db.exec("ROLLBACK");
-        db.close();
-        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt artifact-live=${live} ${path27}`);
-        if (live === null || attempts <= 1) {
-          lastMutationLockFailure = live === null ? "unverifiable" : "contention";
-          return null;
-        }
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-        return acquireLockAt(path27, attempts - 1);
-      }
       const observedIdentity = lockArtifactIdentity(path27);
       if (observedIdentity === null) {
         db.exec("ROLLBACK");
         db.close();
+        if (readLockOwner(path27) === "absent" && attempts > 1) {
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+          return acquireLockAt(path27, attempts - 1, verified);
+        }
         lastMutationLockFailure = "unverifiable";
         return null;
+      }
+      const live = cachedOwnerLive(artifact, verified, "artifact", false);
+      if (live !== false) {
+        db.exec("ROLLBACK");
+        db.close();
+        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt artifact-live=${live} ${path27}`);
+        if (attempts <= 1) {
+          lastMutationLockFailure = "contention";
+          return null;
+        }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+        return acquireLockAt(path27, attempts - 1, verified);
       }
       const reclaimed = reclaimDeadLockOwner(path27, artifact, observedIdentity);
       if (reclaimed !== "removed") {
@@ -34853,7 +34896,7 @@ function acquireLockAt(path27, attempts = 50) {
         db.close();
         if (reclaimed === "changed" && attempts > 1) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-          return acquireLockAt(path27, attempts - 1);
+          return acquireLockAt(path27, attempts - 1, verified);
         }
         lastMutationLockFailure = reclaimed === "changed" ? "contention" : "unverifiable";
         return null;
@@ -34861,6 +34904,7 @@ function acquireLockAt(path27, attempts = 50) {
     }
     db.prepare("INSERT INTO state_mutation_locks (lock_key, version, pid, process_start, created_at, nonce) VALUES (?, 1, ?, ?, ?, ?)").run(key, owner.pid, owner.processStart, owner.createdAt, owner.nonce);
     if (!publishLockOwner(path27, owner)) {
+      abandonedOwnNonces.add(owner.nonce);
       db.exec("ROLLBACK");
       db.close();
       if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt publish-failed ${path27}`);
@@ -34869,7 +34913,7 @@ function acquireLockAt(path27, attempts = 50) {
         return null;
       }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-      return acquireLockAt(path27, attempts - 1);
+      return acquireLockAt(path27, attempts - 1, verified);
     }
     db.exec("COMMIT");
     const lock = { backend: "sqlite", db, key, path: path27, owner, depth: 1 };
@@ -34878,6 +34922,7 @@ function acquireLockAt(path27, attempts = 50) {
     lastMutationLockFailureDetail = null;
     return lock;
   } catch (error2) {
+    abandonedOwnNonces.add(owner.nonce);
     try {
       db.exec("ROLLBACK");
     } catch {
@@ -34890,7 +34935,7 @@ function acquireLockAt(path27, attempts = 50) {
     if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt caught-error ${path27} code=${code} msg=${error2?.message}`);
     if ((code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") && attempts > 1) {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-      return acquireLockAt(path27, attempts - 1);
+      return acquireLockAt(path27, attempts - 1, verified);
     }
     lastMutationLockFailure = code === "SQLITE_BUSY" || code === "SQLITE_LOCKED" ? "contention" : "unverifiable";
     return null;
@@ -34919,26 +34964,31 @@ function releaseMutationLock(lock) {
       (0, import_fs23.unlinkSync)(lock.path);
       return true;
     } catch (error2) {
+      abandonedOwnNonces.add(lock.owner.nonce);
       lastMutationLockFailure = "unverifiable";
       lastMutationLockFailureDetail = `State mutation lock release failed for ${lock.path}: ${error2.code ?? "unknown error"}`;
       console.error(`[omc-lock] state_mutation_lock_release_failed: ${lock.path} ${error2.code ?? ""}`.trim());
       return false;
     }
   }
+  const deadline = Date.now() + RELEASE_BUSY_BUDGET_MS;
   try {
-    for (let attempt = 1; ; attempt += 1) {
+    for (; ; ) {
       try {
+        lock.db.pragma(`busy_timeout = ${Math.max(1, Math.min(2e3, deadline - Date.now()))}`);
         lock.db.exec("BEGIN IMMEDIATE");
         const row = ownerFromRow(lock.db.prepare("SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?").get(lock.key));
         const artifact = readLockOwner(lock.path);
-        if (!sameOwner(row, lock.owner) || !sameOwner(artifact === "absent" ? null : artifact, lock.owner)) {
+        const artifactOk = artifact === "absent" || sameOwner(artifact, lock.owner);
+        if (!sameOwner(row, lock.owner) || !artifactOk) {
+          abandonedOwnNonces.add(lock.owner.nonce);
           lock.db.exec("ROLLBACK");
           lastMutationLockFailure = "unverifiable";
           lastMutationLockFailureDetail = `State mutation lock release failed; owner metadata changed or disappeared: ${lock.path}`;
           console.error(`[omc-lock] state_mutation_lock_release_failed: ${lock.path}`);
           return false;
         }
-        (0, import_fs23.unlinkSync)(lock.path);
+        if (artifact !== "absent") (0, import_fs23.unlinkSync)(lock.path);
         lock.db.prepare("DELETE FROM state_mutation_locks WHERE lock_key = ?").run(lock.key);
         lock.db.exec("COMMIT");
         return true;
@@ -34948,10 +34998,11 @@ function releaseMutationLock(lock) {
         } catch {
         }
         const code = error2?.code;
-        if ((code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") && attempt < RELEASE_BUSY_ATTEMPTS) {
+        if ((code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") && Date.now() < deadline) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
           continue;
         }
+        abandonedOwnNonces.add(lock.owner.nonce);
         lastMutationLockFailure = "unverifiable";
         lastMutationLockFailureDetail = `State mutation lock release failed for ${lock.path}: ${code ?? "unknown error"}`;
         console.error(`[omc-lock] state_mutation_lock_release_failed: ${lock.path} ${code ?? ""}`.trim());
@@ -36129,7 +36180,7 @@ function clearModeStateFile(mode, directory, sessionId, expectedState, cleanupSn
   }
   return success;
 }
-var import_fs23, import_path28, import_crypto8, import_module2, require2, SQLITE_NATIVE_BINDING, SQLITE_NATIVE_BINDING_REMEDIATION, Database, sqliteBindingLoadError, localLocks, lastMutationLockFailure, lastMutationLockFailureDetail, ownProcessStartIdentityCache, RELEASE_BUSY_ATTEMPTS;
+var import_fs23, import_path28, import_crypto8, import_module2, require2, SQLITE_NATIVE_BINDING, SQLITE_NATIVE_BINDING_REMEDIATION, Database, sqliteBindingLoadError, localLocks, lastMutationLockFailure, lastMutationLockFailureDetail, abandonedOwnNonces, ownProcessStartIdentityCache, RELEASE_BUSY_BUDGET_MS;
 var init_mode_state_io = __esm({
   "src/lib/mode-state-io.ts"() {
     "use strict";
@@ -36160,8 +36211,9 @@ var init_mode_state_io = __esm({
     localLocks = /* @__PURE__ */ new Map();
     lastMutationLockFailure = null;
     lastMutationLockFailureDetail = null;
+    abandonedOwnNonces = /* @__PURE__ */ new Set();
     ownProcessStartIdentityCache = null;
-    RELEASE_BUSY_ATTEMPTS = 30;
+    RELEASE_BUSY_BUDGET_MS = 5e3;
   }
 });
 
@@ -53065,14 +53117,28 @@ function readPermissionStringEntries(filePath, key) {
     return [];
   }
 }
+function getClaudeConfigDir() {
+  const home = os4.homedir();
+  const configured = process.env.CLAUDE_CONFIG_DIR?.trim();
+  if (!configured) return path16.join(home, ".claude");
+  if (configured === "~") return home;
+  if (configured.startsWith("~/") || configured.startsWith("~\\")) {
+    return path16.join(home, configured.slice(2));
+  }
+  return configured;
+}
+function getPermissionSettingsPaths(directory) {
+  return [
+    { project: ".claude", global: getClaudeConfigDir() },
+    { project: ".copilot", global: getCopilotConfigDir() }
+  ].flatMap(({ project, global: global2 }) => [
+    path16.join(directory, project, "settings.local.json"),
+    path16.join(global2, "settings.local.json"),
+    path16.join(global2, "settings.json")
+  ]);
+}
 function getCopilotPermissionAllowEntries(directory) {
-  const projectSettingsPath = path16.join(directory, ".copilot", "settings.local.json");
-  const globalConfigDir = getCopilotConfigDir();
-  const candidatePaths = [
-    projectSettingsPath,
-    path16.join(globalConfigDir, "settings.local.json"),
-    path16.join(globalConfigDir, "settings.json")
-  ];
+  const candidatePaths = getPermissionSettingsPaths(directory);
   const allowEntries = /* @__PURE__ */ new Set();
   for (const candidatePath of candidatePaths) {
     for (const entry2 of readPermissionStringEntries(candidatePath, "allow")) {
@@ -53099,13 +53165,7 @@ function hasClaudePermissionApproval(directory, toolName, command) {
   return allowEntries.includes(`Bash(${trimmedCommand})`);
 }
 function getCopilotPermissionAskEntries(directory) {
-  const projectSettingsPath = path16.join(directory, ".copilot", "settings.local.json");
-  const globalConfigDir = getCopilotConfigDir();
-  const candidatePaths = [
-    projectSettingsPath,
-    path16.join(globalConfigDir, "settings.local.json"),
-    path16.join(globalConfigDir, "settings.json")
-  ];
+  const candidatePaths = getPermissionSettingsPaths(directory);
   const askEntries = /* @__PURE__ */ new Set();
   for (const candidatePath of candidatePaths) {
     for (const entry2 of readPermissionStringEntries(candidatePath, "ask")) {
@@ -53421,16 +53481,20 @@ function isActiveModeRunning(directory) {
   return false;
 }
 function processPermissionRequest(input) {
-  const toolName = input.tool_name.replace(/^proxy_/, "");
-  if (toolName !== "Bash") {
+  const raw = input;
+  const rawToolName = raw.tool_name ?? raw.toolName;
+  const toolInput = raw.tool_input ?? raw.toolInput;
+  const cwd2 = typeof raw.cwd === "string" && raw.cwd ? raw.cwd : process.cwd();
+  const toolName = typeof rawToolName === "string" ? rawToolName.replace(/^proxy_/, "") : "";
+  if (toolName !== "Bash" && !COPILOT_SHELL_TOOL_NAMES.has(toolName)) {
     return { continue: true };
   }
-  const command = input.tool_input.command;
+  const command = toolInput?.command;
   if (!command || typeof command !== "string") {
     return { continue: true };
   }
-  const shouldAskBashPermission = hasClaudePermissionAsk(input.cwd, "Bash", command);
-  if (!shouldAskBashPermission && isSafeAutoApprovedCommand(command, input.cwd)) {
+  const shouldAskBashPermission = hasClaudePermissionAsk(cwd2, "Bash", command);
+  if (!shouldAskBashPermission && isSafeAutoApprovedCommand(command, cwd2)) {
     const reason = isHeredocWithSafeBase(command) ? "Safe command with heredoc content" : "Safe read-only or test command";
     return {
       continue: true,
@@ -53448,11 +53512,12 @@ function processPermissionRequest(input) {
 async function handlePermissionRequest(input) {
   return processPermissionRequest(input);
 }
-var fs10, path16, SAFE_PATTERNS, DANGEROUS_SHELL_CHARS, HEREDOC_PATTERN, SAFE_HEREDOC_PATTERNS, SAFE_RIPGREP_FLAGS, BACKGROUND_MUTATION_SUBAGENTS;
+var fs10, os4, path16, SAFE_PATTERNS, DANGEROUS_SHELL_CHARS, HEREDOC_PATTERN, SAFE_HEREDOC_PATTERNS, SAFE_RIPGREP_FLAGS, BACKGROUND_MUTATION_SUBAGENTS, COPILOT_SHELL_TOOL_NAMES;
 var init_permission_handler = __esm({
   "src/hooks/permission-handler/index.ts"() {
     "use strict";
     fs10 = __toESM(require("fs"), 1);
+    os4 = __toESM(require("os"), 1);
     path16 = __toESM(require("path"), 1);
     init_worktree_paths();
     init_config_dir();
@@ -53496,6 +53561,7 @@ var init_permission_handler = __esm({
       "qa-tester",
       "document-specialist"
     ]);
+    COPILOT_SHELL_TOOL_NAMES = /* @__PURE__ */ new Set(["powershell", "bash", "shell"]);
   }
 });
 
@@ -57960,7 +58026,7 @@ function openClawRoutingEnvironment(payload) {
 }
 function runnerEnvironment(context) {
   const baseKeys = ["PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "TMP", "SystemRoot", "COMSPEC", "LANG", "LC_ALL", "NODE_ENV", "COPILOT_CONFIG_DIR", "OMC_STATE_DIR", "OMC_HOOK_CONFIG", "OMC_CONFIG_PATH", "OMC_NOTIFY", "OMC_NOTIFY_PROFILE", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"];
-  const notificationKeys = ["OMC_TELEGRAM", "OMC_DISCORD", "OMC_SLACK", "OMC_WEBHOOK", "OMC_DISCORD_MENTION", "OMC_DISCORD_NOTIFIER_BOT_TOKEN", "OMC_DISCORD_NOTIFIER_CHANNEL", "OMC_DISCORD_WEBHOOK_URL", "OMC_TELEGRAM_BOT_TOKEN", "OMC_TELEGRAM_NOTIFIER_BOT_TOKEN", "OMC_TELEGRAM_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_UID", "OMC_SLACK_WEBHOOK_URL", "OMC_SLACK_MENTION", "OMC_SLACK_BOT_TOKEN", "OMC_SLACK_APP_TOKEN", "OMC_SLACK_BOT_CHANNEL"];
+  const notificationKeys = ["OMC_TELEGRAM", "OMC_DISCORD", "OMC_SLACK", "OMC_WEBHOOK", "OMC_DISCORD_MENTION", "OMC_DISCORD_NOTIFIER_BOT_TOKEN", "OMC_DISCORD_NOTIFIER_CHANNEL", "OMC_DISCORD_WEBHOOK_URL", "OMC_TELEGRAM_BOT_TOKEN", "OMC_TELEGRAM_NOTIFIER_BOT_TOKEN", "OMC_TELEGRAM_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_UID", "OMC_SLACK_WEBHOOK_URL", "OMC_SLACK_MENTION", "OMC_SLACK_BOT_TOKEN", "OMC_SLACK_APP_TOKEN", "OMC_SLACK_BOT_CHANNEL", "OMC_MICROSOFT_TEAMS_WEBHOOK_URL"];
   const keys = context.actionName === "callback" || context.actionName === "notification" ? [...baseKeys, ...notificationKeys] : baseKeys;
   const exact = Object.fromEntries(keys.flatMap((key) => process.env[key] === void 0 ? [] : [[key, process.env[key]]]));
   if (context.actionName !== "openclaw") return exact;
@@ -84025,7 +84091,7 @@ __export(worker_exports, {
   workerEnvironment: () => workerEnvironment
 });
 function workerEnvironment() {
-  const keys = ["PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "TMP", "SystemRoot", "COMSPEC", "LANG", "LC_ALL", "NODE_ENV", "COPILOT_CONFIG_DIR", "OMC_STATE_DIR", "OMC_HOOK_CONFIG", "OMC_CONFIG_PATH", "OMC_NOTIFY", "OMC_NOTIFY_PROFILE", "OMC_TELEGRAM", "OMC_DISCORD", "OMC_SLACK", "OMC_WEBHOOK", "OMC_DISCORD_MENTION", "OMC_DISCORD_NOTIFIER_BOT_TOKEN", "OMC_DISCORD_NOTIFIER_CHANNEL", "OMC_DISCORD_WEBHOOK_URL", "OMC_TELEGRAM_BOT_TOKEN", "OMC_TELEGRAM_NOTIFIER_BOT_TOKEN", "OMC_TELEGRAM_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_UID", "OMC_SLACK_WEBHOOK_URL", "OMC_SLACK_MENTION", "OMC_SLACK_BOT_TOKEN", "OMC_SLACK_APP_TOKEN", "OMC_SLACK_BOT_CHANNEL", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", ...process.env.NODE_ENV === "test" ? ["OMC_SESSION_END_TEST_PRODUCER_GRACE_MS"] : []];
+  const keys = ["PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "TMP", "SystemRoot", "COMSPEC", "LANG", "LC_ALL", "NODE_ENV", "COPILOT_CONFIG_DIR", "OMC_STATE_DIR", "OMC_HOOK_CONFIG", "OMC_CONFIG_PATH", "OMC_NOTIFY", "OMC_NOTIFY_PROFILE", "OMC_TELEGRAM", "OMC_DISCORD", "OMC_SLACK", "OMC_WEBHOOK", "OMC_DISCORD_MENTION", "OMC_DISCORD_NOTIFIER_BOT_TOKEN", "OMC_DISCORD_NOTIFIER_CHANNEL", "OMC_DISCORD_WEBHOOK_URL", "OMC_TELEGRAM_BOT_TOKEN", "OMC_TELEGRAM_NOTIFIER_BOT_TOKEN", "OMC_TELEGRAM_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_UID", "OMC_SLACK_WEBHOOK_URL", "OMC_SLACK_MENTION", "OMC_SLACK_BOT_TOKEN", "OMC_SLACK_APP_TOKEN", "OMC_SLACK_BOT_CHANNEL", "OMC_MICROSOFT_TEAMS_WEBHOOK_URL", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", ...process.env.NODE_ENV === "test" ? ["OMC_SESSION_END_TEST_PRODUCER_GRACE_MS"] : []];
   return Object.fromEntries(keys.flatMap((key) => process.env[key] === void 0 ? [] : [[key, process.env[key]]]));
 }
 function spawnSessionEndWorker(payload) {

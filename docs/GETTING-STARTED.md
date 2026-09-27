@@ -65,7 +65,7 @@ npm i -g oh-my-copilot@latest
 > yet. The warning is tracked in [#2913](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/2913)
 > and does not by itself mean the OMC CLI install failed.
 
-Both can be installed at the same time. The CLI auto-detects the plugin install and will not double-register skills under `~/.claude/skills/` (if you previously hit the duplicate-skill bug, run `omg update` once on 4.11.2+ — it self-heals leftover standalone skills that the plugin now provides via `prunePluginDuplicateSkills`).
+Both can be installed at the same time. The CLI auto-detects the plugin install and will not double-register skills under `~/.copilot/skills/` (if you previously hit the duplicate-skill bug, run `omg update` once on 4.11.7+ — it self-heals leftover standalone skills that the plugin now provides via `prunePluginDuplicateSkills`).
 
 ### Step 3: Run initial setup
 

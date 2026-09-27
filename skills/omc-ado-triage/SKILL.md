@@ -1,6 +1,6 @@
 ---
 name: omc-ado-triage
-description: "Triage Azure DevOps: untriaged work items, active work, open PRs, pipeline failures, and security alerts for a project health overview. Not for sprint planning or PR code review."
+description: "Triage Azure DevOps: board status, untriaged work items, active work, open PRs, pipeline failures, and security alerts for a project health overview. Not for sprint planning, PR code review, or GitHub repos (omc-gh-triage)."
 ---
 
 # OMC ADO Triage

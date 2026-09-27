@@ -631,7 +631,7 @@ import { scanLookout } from './features/index.js';
 const report = scanLookout({ repo: process.cwd(), brief: taskBriefText });
 if (report.summary.verdict === 'review-recommended') {
   // surface findings; pair the run with:
-  // omc graph run --approval-mode remote --checkpoint
+  // omg graph run --approval-mode remote --checkpoint
 }
 ```
 

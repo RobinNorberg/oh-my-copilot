@@ -782,6 +782,8 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 | **Data Analysis** | -                       | `scientist`           | `scientist-high`    |
 | **Git**            | -                       | `git-master`          | -                   |
 | **Simplification** | -                       | -                     | `code-simplifier`   |
+| **Verification**   | -                       | `verifier`            | -                   |
+| **Pre-Push Critique** | -                    | -                     | `devils-advocate`   |
 
 ### Agent Selection Guide
 
@@ -818,6 +820,8 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 | Deep data analysis            | `scientist-high`                                                       | opus   |
 | Git operations                 | `git-master`                                                           | sonnet |
 | Code simplification            | `code-simplifier`                                                      | opus   |
+| Completion verification        | `verifier`                                                             | sonnet |
+| Pre-push critique of commits   | `devils-advocate`                                                      | opus   |
 
 ---
 
@@ -933,13 +937,17 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `cancel`                  | Unified cancellation for active modes                                          | `/oh-my-copilot:cancel`                  |
 | `cancel-ralph`            | Deprecated compatibility alias for `cancel`                                   | `/oh-my-copilot:cancel-ralph`            |
 | `configure-notifications` | Configure Telegram, Discord, and Slack notification integrations               | `/oh-my-copilot:configure-notifications` |
+| `critique`                | Critique all unpushed commits before pushing to remote                          | `/oh-my-copilot:critique`                |
 | `debug`                   | Diagnose the current OMC session or repository state                           | `/oh-my-copilot:debug`                   |
 | `deep-interview`          | Socratic deep interview with ambiguity gating                                  | `/oh-my-copilot:deep-interview`                |
+| `deep-review`             | Multi-pass code review with security, quality, structural analysis, and validation | `/oh-my-copilot:deep-review`         |
 | `deepinit`                | Generate hierarchical AGENTS.md documentation                                  | `/oh-my-copilot:deepinit`                |
 | `diagram`                 | Model-invoked visual explanations — smallest view (pseudocode, tree, Mermaid, diff) that carries the point | `/oh-my-copilot:diagram`                |
+| `discover`                | Parallel specialist scan of the codebase producing a prioritized improvement backlog | `/oh-my-copilot:discover`          |
 | `drydock`                 | Shipyard harness scaffold: 4-pillar shared environment, --check drift audit    | `/oh-my-copilot:drydock`                 |
 | `execute`                 | Carry an approved task through to working, verified code                       | `/oh-my-copilot:execute`                |
 | `external-context`        | Parallel document-specialist research                                          | `/oh-my-copilot:external-context`       |
+| `graph`                   | Deterministic orchestration graph runtime: declarative DAG pipelines with journal-based crash recovery | `/oh-my-copilot:graph` |
 | `harbor`                  | Shipyard intake gate: verify external issues and PRs, hand a signature docket  | `/oh-my-copilot:harbor`                  |
 | `hud`                     | Configure HUD/statusline                                                        | `/oh-my-copilot:hud`                     |
 | `intent`                  | Internal requirements intake for non-engineer contributors                      | `/oh-my-copilot:intent`                  |
@@ -948,7 +956,17 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `map`                     | The yard's skill map: which skill owns which job, in delivery-loop order; routes, never executes | `/oh-my-copilot:map`                  |
 | `minimal-code-discipline` | YAGNI-ladder writing-time discipline: reuse first, shortest correct diff        | `/oh-my-copilot:minimal-code-discipline` |
 | `minimal-prose-discipline` | Writing-time discipline for the agent's own prose: protected core, no filler, close on the action | `/oh-my-copilot:minimal-prose-discipline` |
+| `omc-ado-auto-review`     | Auto-review Azure DevOps PRs where you are an assigned reviewer                 | `/oh-my-copilot:omc-ado-auto-review`     |
+| `omc-ado-review`          | Review Azure DevOps pull requests: diffs, reviewers, comments, votes, threads   | `/oh-my-copilot:omc-ado-review`          |
+| `omc-ado-setup`           | Set up or troubleshoot the Azure DevOps integration (`.omg/config.json`)        | `/oh-my-copilot:omc-ado-setup`           |
+| `omc-ado-sprint`          | Azure DevOps sprint planning: iterations, capacity, backlog grooming            | `/oh-my-copilot:omc-ado-sprint`          |
+| `omc-ado-triage`          | Azure DevOps project health: work items, PRs, pipeline failures, security alerts | `/oh-my-copilot:omc-ado-triage`         |
 | `omc-doctor`              | Diagnose and fix installation issues                                           | `/oh-my-copilot:omc-doctor`              |
+| `omc-gh-auto-review`      | Auto-review GitHub PRs where you are a requested reviewer                       | `/oh-my-copilot:omc-gh-auto-review`      |
+| `omc-gh-project`          | Manage GitHub Projects (v2) boards: items, status, iterations                   | `/oh-my-copilot:omc-gh-project`          |
+| `omc-gh-review`           | Review GitHub pull requests: diffs, review comments, approve or request changes | `/oh-my-copilot:omc-gh-review`           |
+| `omc-gh-setup`            | Set up or troubleshoot the GitHub integration (`.omg/config.json`)              | `/oh-my-copilot:omc-gh-setup`            |
+| `omc-gh-triage`           | GitHub project health: open issues, PRs needing review, failing CI, security alerts | `/oh-my-copilot:omc-gh-triage`       |
 | `omc-plan`                | Strategic planning with optional interview and consensus modes                 | `/oh-my-copilot:omc-plan`               |
 | `omc-review`              | Evaluate finished work for defects, risk, and simplification                   | `/oh-my-copilot:omc-review`             |
 | `omc-setup`               | Install or refresh OMC for plugin, npm, and local-development setups           | `/oh-my-copilot:omc-setup`              |
@@ -956,6 +974,7 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `project-session-manager` | Manage isolated development environments (git worktrees + tmux)                | `/oh-my-copilot:project-session-manager` |
 | `psm`                     | Deprecated compatibility alias for `project-session-manager`                    | `/oh-my-copilot:psm`                     |
 | `ralph`                   | Persistence loop until verified completion                                     | `/oh-my-copilot:ralph`                   |
+| `ralph-experiment`        | Hypothesis-driven experiment loop with notebook, git checkpoint/revert, and agent delegation | `/oh-my-copilot:ralph-experiment` |
 | `ralplan`                 | Consensus planning entrypoint                                                   | `/oh-my-copilot:ralplan`                 |
 | `release`                 | Automated release workflow                                                      | `/oh-my-copilot:release`                 |
 | `refit`                   | Cross-session retrospective; instrument evidence to user-approved environment fixes | `/oh-my-copilot:refit` |

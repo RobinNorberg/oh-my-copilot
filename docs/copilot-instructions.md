@@ -21,7 +21,7 @@ Route code to `executor` (use `model=opus` for complex work). Uncertain SDK usag
 
 <model_routing>
 `haiku` (quick lookups), `sonnet` (standard), `opus` (architecture, deep analysis).
-Direct writes OK for: `~/.copilot/**`, `.omg/**`, `.copilot/**`, `copilot-instructions.md`, `AGENTS.md`.
+Direct writes OK for: `.omg/**`, `~/.copilot/skills/**`, `.copilot/skills/**`, `.github/copilot-instructions.md`, `copilot-instructions.md`, `CLAUDE.md`, `AGENTS.md`.
 </model_routing>
 
 <agent_catalog>

@@ -1,6 +1,6 @@
 ---
 name: omc-ado-review
-description: "Review Azure DevOps pull requests: read diffs, add reviewers, comment, vote, and manage PR threads. Not for automated review (omc-ado-auto-review), triage, or sprint planning."
+description: "Review Azure DevOps pull requests: read diffs, add reviewers, comment, vote, and manage PR threads. Not for automated review (omc-ado-auto-review), triage, or GitHub repos (omc-gh-review). Creating PRs → git-master."
 ---
 
 # OMC ADO Review

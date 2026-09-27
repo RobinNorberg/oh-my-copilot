@@ -12,7 +12,11 @@ function journalIsOwned(path, transactionId, owner) { const current = readEmerge
 function isSameEmergencyOwner(left, right) { return left && right && left.pid === right.pid && left.processStart === right.processStart && left.nonce === right.nonce; }
 function emergencyJournalPath(path) { return `${path}.emergency-journal.json`; }
 function stateDigest(raw) { return createHash('sha256').update(raw).digest('hex'); }
-function publishEmergencyFileExclusive(path, content) { const processStart = processStartIdentity(process.pid); if (!processStart || processStart === 'absent') return false; const tempPath = `${path}.${process.pid}.${processStart}.${randomUUID()}.tmp`; let fd; try { ensureDirSync(dirname(path)); fd = openSync(tempPath, 'wx', 0o600); writeAllSync(fd, content, 'emergency publication'); fsyncSync(fd); closeSync(fd); fd = undefined; linkSync(tempPath, path); unlinkSync(tempPath); return true; } catch { try { if (fd !== undefined) closeSync(fd); } catch {} try { unlinkSync(tempPath); } catch {} return false; } }
+// Fork fix: the win32 identity is `ticks:NNN`; a literal colon in a filename names an NTFS
+// alternate data stream (linkSync EINVAL, stray empty file), so encode it (TS twin: mode-state-io).
+function encodeProcessStartForFilename(processStart) { return processStart.replace(/:/g, '_c_'); }
+function decodeProcessStartFromFilename(encoded) { return encoded.replace(/_c_/g, ':'); }
+function publishEmergencyFileExclusive(path, content) { const processStart = processStartIdentity(process.pid); if (!processStart || processStart === 'absent') return false; const tempPath = `${path}.${process.pid}.${encodeProcessStartForFilename(processStart)}.${randomUUID()}.tmp`; let fd; try { ensureDirSync(dirname(path)); fd = openSync(tempPath, 'wx', 0o600); writeAllSync(fd, content, 'emergency publication'); fsyncSync(fd); closeSync(fd); fd = undefined; linkSync(tempPath, path); unlinkSync(tempPath); return true; } catch { try { if (fd !== undefined) closeSync(fd); } catch {} try { unlinkSync(tempPath); } catch {} return false; } }
 function writeEmergencyJournal(path, journal, requireOwnership = true) {
   try {
     if (requireOwnership && !journalIsOwned(path, journal.transactionId, journal.owner)) return false;
@@ -144,15 +148,17 @@ function sameFile(path, expected) {
 function reconcileEmergencyPublicationTemps(filePath, authorizeState) {
   const directory = dirname(filePath);
   const base = filePath.slice(directory.length + 1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`^${base}\\.emergency-(journal\\.json|recovery\\.claim|quarantine\\.[0-9a-f-]{36}\\.payload)\\.(\\d+)\\.(\\d+)\\.([0-9a-f-]{36})\\.tmp$`, 'i');
+  // Fork fix: the process-start segment is filename-encoded (`ticks_c_NNN` on win32), not digits.
+  const pattern = new RegExp(`^${base}\\.emergency-(journal\\.json|recovery\\.claim|quarantine\\.[0-9a-f-]{36}\\.payload)\\.(\\d+)\\.([^.]+)\\.([0-9a-f-]{36})\\.tmp$`, 'i');
   let names;
   try { names = readdirSync(directory); } catch (error) { return error?.code === 'ENOENT'; }
   for (const name of names) {
     const match = pattern.exec(name);
     if (!match) continue;
     const path = join(directory, name);
+    const matchedProcessStart = decodeProcessStartFromFilename(match[3]);
     const currentStart = processStartIdentity(Number(match[2]));
-    if (currentStart === null || currentStart === match[3]) return false;
+    if (currentStart === null || currentStart === matchedProcessStart) return false;
     const generation = fileIdentity(path);
     try {
       if (!generation) return false;
@@ -166,7 +172,7 @@ function reconcileEmergencyPublicationTemps(filePath, authorizeState) {
           if (!state || typeof state !== 'object' || Array.isArray(state) || !authorizeState(state)) return false;
         } else {
           const claim = readRecoveryClaim(path);
-          if (!claim || claim.pid !== Number(match[2]) || claim.processStart !== match[3] || claim.nonce !== match[4]) return false;
+          if (!claim || claim.pid !== Number(match[2]) || claim.processStart !== matchedProcessStart || claim.nonce !== match[4]) return false;
         }
       }
       if (!sameFile(path, generation) || stateDigest(readFileSync(path, 'utf8')) !== stateDigest(raw)) return false;
@@ -201,7 +207,7 @@ function recoveryGenerationsAuthorized(filePath, journal, authorizeState) {
 function hasUnattributableRecoveryClaimArtifact(filePath, recoveryClaim) {
   const directory = dirname(filePath);
   const base = filePath.slice(directory.length + 1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const tempPattern = new RegExp(`^${base}\\.emergency-recovery\\.claim\\.\\d+\\.\\d+\\.[0-9a-f-]{36}\\.tmp$`, 'i');
+  const tempPattern = new RegExp(`^${base}\\.emergency-recovery\\.claim\\.\\d+\\.[^.]+\\.[0-9a-f-]{36}\\.tmp$`, 'i'); // Fork fix: encoded start segment.
   try {
     if (readdirSync(directory).some((name) => tempPattern.test(name))) return true;
     const claimPath = `${filePath}.emergency-recovery.claim`;

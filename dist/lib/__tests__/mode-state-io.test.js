@@ -1001,7 +1001,8 @@ describe('mode-state-io', () => {
             const processStart = currentProcessStart();
             for (const [index, recover] of helpers.entries()) {
                 const path = join(tempDir, '.omg', 'state', `autopilot-live-publication-${index}.json`);
-                const temp = `${path}.emergency-journal.json.${process.pid}.${processStart}.${randomUUID()}.tmp`;
+                // Fork fix: publication temps carry the filename-encoded identity (`ticks:` is illegal on NTFS).
+                const temp = `${path}.emergency-journal.json.${process.pid}.${processStart.replace(/:/g, '_c_')}.${randomUUID()}.tmp`;
                 mkdirSync(dirname(path), { recursive: true });
                 writeFileSync(path, '{}');
                 writeFileSync(temp, 'unpublished');

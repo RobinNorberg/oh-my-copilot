@@ -2366,22 +2366,28 @@ describe('runClaude outside-tmux — env forwarding', () => {
     const originalPlatform = process.platform;
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
     process.env.COPILOT_CONFIG_DIR = 'C:\\Users\\bellman\\config dir';
+    // Git Bash/MSYS2 hosts export these; they would make the real tmux-utils treat this run as Unix-like.
+    vi.stubEnv('MSYSTEM', '');
+    vi.stubEnv('MINGW_PREFIX', '');
     vi.mocked(isNativeWindowsShell).mockReturnValue(true);
 
-    runClaude('/tmp', ['--print-system-prompt', 'hello world'], 'sid');
+    try {
+      runClaude('/tmp', ['--print-system-prompt', 'hello world'], 'sid');
 
-    expect(vi.mocked(buildTmuxShellCommandWithEnv)).toHaveBeenCalledWith(
-      'claude',
-      ['--print-system-prompt', 'hello world'],
-      expect.objectContaining({ COPILOT_CONFIG_DIR: 'C:\\Users\\bellman\\config dir' }),
-    );
-    const rawCommand = vi.mocked(wrapWithLoginShell).mock.calls[0][0];
-    expect(rawCommand).toContain('COPILOT_CONFIG_DIR=C:\\Users\\bellman\\config dir');
-    expect(rawCommand).toContain('claude --print-system-prompt "hello world"');
-    expect(rawCommand).not.toContain('sleep 0.3');
-    expect(rawCommand).not.toContain('tcflush');
-
-    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      expect(vi.mocked(buildTmuxShellCommandWithEnv)).toHaveBeenCalledWith(
+        'claude',
+        ['--print-system-prompt', 'hello world'],
+        expect.objectContaining({ COPILOT_CONFIG_DIR: 'C:\\Users\\bellman\\config dir' }),
+      );
+      const rawCommand = vi.mocked(wrapWithLoginShell).mock.calls[0][0];
+      expect(rawCommand).toContain('COPILOT_CONFIG_DIR=C:\\Users\\bellman\\config dir');
+      expect(rawCommand).toContain('claude --print-system-prompt "hello world"');
+      expect(rawCommand).not.toContain('sleep 0.3');
+      expect(rawCommand).not.toContain('tcflush');
+    } finally {
+      vi.unstubAllEnvs();
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    }
   });
 
   it('keeps credential values off the native psmux command line while preserving percent escaping', () => {

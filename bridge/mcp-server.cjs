@@ -24677,6 +24677,7 @@ try {
 var localLocks = /* @__PURE__ */ new Map();
 var lastMutationLockFailure = null;
 var lastMutationLockFailureDetail = null;
+var abandonedOwnNonces = /* @__PURE__ */ new Set();
 var ownProcessStartIdentityCache = null;
 function ownProcessStartIdentity() {
   if (ownProcessStartIdentityCache === null) {
@@ -24759,6 +24760,9 @@ function lockArtifactIdentity(path14) {
   }
 }
 function reclaimDeadLockOwner(path14, observedOwner, observedIdentity) {
+  const currentOwner = readLockOwner(path14);
+  const currentIdentity = lockArtifactIdentity(path14);
+  if (currentOwner === "absent" || currentOwner === null || !sameOwner(currentOwner, observedOwner) || currentIdentity === null || currentIdentity.dev !== observedIdentity.dev || currentIdentity.ino !== observedIdentity.ino) return "changed";
   const quarantinePath = `${path14}.reclaim.${process.pid}.${(0, import_crypto4.randomUUID)()}`;
   try {
     (0, import_fs16.renameSync)(path14, quarantinePath);
@@ -24790,6 +24794,7 @@ function reclaimDeadLockOwner(path14, observedOwner, observedIdentity) {
   return "changed";
 }
 function ownerLive(owner) {
+  if (owner.pid === process.pid && abandonedOwnNonces.has(owner.nonce) && owner.processStart === ownProcessStartIdentity()) return false;
   if (process.env.NODE_ENV === "test" && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(owner.pid)) return null;
   const current = owner.pid === process.pid ? ownProcessStartIdentity() : processStartIdentity(owner.pid);
   if (current === null) return null;
@@ -24914,12 +24919,19 @@ function acquireFileLockAt(path14, attempts) {
       }
       const code = error2?.code;
       if (code !== "EEXIST") {
+        abandonedOwnNonces.add(owner.nonce);
         lastMutationLockFailure = "unverifiable";
         return null;
       }
       const existing = readLockOwner(path14);
       if (existing === "absent") continue;
       if (!existing) {
+        lastMutationLockFailure = "unverifiable";
+        return null;
+      }
+      const observedIdentity = lockArtifactIdentity(path14);
+      if (observedIdentity === null) {
+        if (readLockOwner(path14) === "absent") continue;
         lastMutationLockFailure = "unverifiable";
         return null;
       }
@@ -24937,12 +24949,6 @@ function acquireFileLockAt(path14, attempts) {
         }
         return null;
       }
-      const observedIdentity = lockArtifactIdentity(path14);
-      if (observedIdentity === null) {
-        if (readLockOwner(path14) === "absent") continue;
-        lastMutationLockFailure = "unverifiable";
-        return null;
-      }
       const reclaimed = reclaimDeadLockOwner(path14, existing, observedIdentity);
       if (reclaimed === "failed") {
         lastMutationLockFailure = "unverifiable";
@@ -24953,7 +24959,17 @@ function acquireFileLockAt(path14, attempts) {
   lastMutationLockFailure = "contention";
   return null;
 }
-function acquireLockAt(path14, attempts = 50) {
+function cachedOwnerLive(owner, verified, slot, probe) {
+  const cached2 = verified[slot];
+  if (cached2 !== null && sameOwner(owner, cached2)) return true;
+  if (verified.dead.some((dead) => sameOwner(owner, dead))) return false;
+  if (!probe) return void 0;
+  const live = ownerLive(owner);
+  if (live) verified[slot] = owner;
+  else if (live === false) verified.dead.push(owner);
+  return live;
+}
+function acquireLockAt(path14, attempts = 50, verified = { row: null, artifact: null, dead: [] }) {
   lastMutationLockFailureDetail = null;
   (0, import_fs16.mkdirSync)((0, import_path16.dirname)(path14), { recursive: true });
   const key = (() => {
@@ -24978,7 +24994,7 @@ function acquireLockAt(path14, attempts = 50) {
       return null;
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    return acquireLockAt(path14, attempts - 1);
+    return acquireLockAt(path14, attempts - 1, verified);
   }
   const processStart = ownProcessStartIdentity();
   if (!processStart) {
@@ -24992,12 +25008,36 @@ function acquireLockAt(path14, attempts = 50) {
       return null;
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    return acquireLockAt(path14, attempts - 1);
+    return acquireLockAt(path14, attempts - 1, verified);
   }
   const owner = { version: 1, pid: process.pid, processStart, createdAt: (/* @__PURE__ */ new Date()).toISOString(), nonce: (0, import_crypto4.randomUUID)() };
+  const selectRow = () => db.prepare("SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?").get(key);
+  let preLive = false;
+  try {
+    const preRow = ownerFromRow(selectRow());
+    if (preRow) preLive = cachedOwnerLive(preRow, verified, "row", true);
+    if (preLive === false) {
+      const preArtifact = readLockOwner(path14);
+      if (preArtifact && preArtifact !== "absent") preLive = cachedOwnerLive(preArtifact, verified, "artifact", true);
+    }
+  } catch {
+    preLive = false;
+  }
+  if (preLive === null || preLive) {
+    try {
+      db.close();
+    } catch {
+    }
+    if (preLive === null || attempts <= 1) {
+      lastMutationLockFailure = preLive === null ? "unverifiable" : "contention";
+      return null;
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    return acquireLockAt(path14, attempts - 1, verified);
+  }
   try {
     db.exec("BEGIN IMMEDIATE");
-    const rawRow = db.prepare("SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?").get(key);
+    const rawRow = selectRow();
     if (rawRow) {
       const row = ownerFromRow(rawRow);
       if (!row) {
@@ -25007,17 +25047,17 @@ function acquireLockAt(path14, attempts = 50) {
         if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt row-invalid ${path14}`);
         return null;
       }
-      const live = ownerLive(row);
-      if (live === null || live) {
+      const live = cachedOwnerLive(row, verified, "row", false);
+      if (live !== false) {
         db.exec("ROLLBACK");
         db.close();
         if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt row-live=${live} ${path14}`);
-        if (live === null || attempts <= 1) {
-          lastMutationLockFailure = live === null ? "unverifiable" : "contention";
+        if (attempts <= 1) {
+          lastMutationLockFailure = "contention";
           return null;
         }
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-        return acquireLockAt(path14, attempts - 1);
+        return acquireLockAt(path14, attempts - 1, verified);
       }
       db.prepare("DELETE FROM state_mutation_locks WHERE lock_key = ?").run(key);
     }
@@ -25030,24 +25070,28 @@ function acquireLockAt(path14, attempts = 50) {
         console.error(`[omc-lock] state_mutation_lock_unverifiable: ${path14}`);
         return null;
       }
-      const live = ownerLive(artifact);
-      if (live === null || live) {
-        db.exec("ROLLBACK");
-        db.close();
-        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt artifact-live=${live} ${path14}`);
-        if (live === null || attempts <= 1) {
-          lastMutationLockFailure = live === null ? "unverifiable" : "contention";
-          return null;
-        }
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-        return acquireLockAt(path14, attempts - 1);
-      }
       const observedIdentity = lockArtifactIdentity(path14);
       if (observedIdentity === null) {
         db.exec("ROLLBACK");
         db.close();
+        if (readLockOwner(path14) === "absent" && attempts > 1) {
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+          return acquireLockAt(path14, attempts - 1, verified);
+        }
         lastMutationLockFailure = "unverifiable";
         return null;
+      }
+      const live = cachedOwnerLive(artifact, verified, "artifact", false);
+      if (live !== false) {
+        db.exec("ROLLBACK");
+        db.close();
+        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt artifact-live=${live} ${path14}`);
+        if (attempts <= 1) {
+          lastMutationLockFailure = "contention";
+          return null;
+        }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+        return acquireLockAt(path14, attempts - 1, verified);
       }
       const reclaimed = reclaimDeadLockOwner(path14, artifact, observedIdentity);
       if (reclaimed !== "removed") {
@@ -25055,7 +25099,7 @@ function acquireLockAt(path14, attempts = 50) {
         db.close();
         if (reclaimed === "changed" && attempts > 1) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-          return acquireLockAt(path14, attempts - 1);
+          return acquireLockAt(path14, attempts - 1, verified);
         }
         lastMutationLockFailure = reclaimed === "changed" ? "contention" : "unverifiable";
         return null;
@@ -25063,6 +25107,7 @@ function acquireLockAt(path14, attempts = 50) {
     }
     db.prepare("INSERT INTO state_mutation_locks (lock_key, version, pid, process_start, created_at, nonce) VALUES (?, 1, ?, ?, ?, ?)").run(key, owner.pid, owner.processStart, owner.createdAt, owner.nonce);
     if (!publishLockOwner(path14, owner)) {
+      abandonedOwnNonces.add(owner.nonce);
       db.exec("ROLLBACK");
       db.close();
       if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt publish-failed ${path14}`);
@@ -25071,7 +25116,7 @@ function acquireLockAt(path14, attempts = 50) {
         return null;
       }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-      return acquireLockAt(path14, attempts - 1);
+      return acquireLockAt(path14, attempts - 1, verified);
     }
     db.exec("COMMIT");
     const lock = { backend: "sqlite", db, key, path: path14, owner, depth: 1 };
@@ -25080,6 +25125,7 @@ function acquireLockAt(path14, attempts = 50) {
     lastMutationLockFailureDetail = null;
     return lock;
   } catch (error2) {
+    abandonedOwnNonces.add(owner.nonce);
     try {
       db.exec("ROLLBACK");
     } catch {
@@ -25092,7 +25138,7 @@ function acquireLockAt(path14, attempts = 50) {
     if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt caught-error ${path14} code=${code} msg=${error2?.message}`);
     if ((code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") && attempts > 1) {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-      return acquireLockAt(path14, attempts - 1);
+      return acquireLockAt(path14, attempts - 1, verified);
     }
     lastMutationLockFailure = code === "SQLITE_BUSY" || code === "SQLITE_LOCKED" ? "contention" : "unverifiable";
     return null;
@@ -25101,7 +25147,7 @@ function acquireLockAt(path14, attempts = 50) {
 function acquireMutationLock(filePath) {
   return acquireLockAt(`${filePath}.mutation.lock`);
 }
-var RELEASE_BUSY_ATTEMPTS = 30;
+var RELEASE_BUSY_BUDGET_MS = 5e3;
 function releaseMutationLock(lock) {
   if (!lock) return true;
   if (lock.depth > 1) {
@@ -25122,26 +25168,31 @@ function releaseMutationLock(lock) {
       (0, import_fs16.unlinkSync)(lock.path);
       return true;
     } catch (error2) {
+      abandonedOwnNonces.add(lock.owner.nonce);
       lastMutationLockFailure = "unverifiable";
       lastMutationLockFailureDetail = `State mutation lock release failed for ${lock.path}: ${error2.code ?? "unknown error"}`;
       console.error(`[omc-lock] state_mutation_lock_release_failed: ${lock.path} ${error2.code ?? ""}`.trim());
       return false;
     }
   }
+  const deadline = Date.now() + RELEASE_BUSY_BUDGET_MS;
   try {
-    for (let attempt = 1; ; attempt += 1) {
+    for (; ; ) {
       try {
+        lock.db.pragma(`busy_timeout = ${Math.max(1, Math.min(2e3, deadline - Date.now()))}`);
         lock.db.exec("BEGIN IMMEDIATE");
         const row = ownerFromRow(lock.db.prepare("SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?").get(lock.key));
         const artifact = readLockOwner(lock.path);
-        if (!sameOwner(row, lock.owner) || !sameOwner(artifact === "absent" ? null : artifact, lock.owner)) {
+        const artifactOk = artifact === "absent" || sameOwner(artifact, lock.owner);
+        if (!sameOwner(row, lock.owner) || !artifactOk) {
+          abandonedOwnNonces.add(lock.owner.nonce);
           lock.db.exec("ROLLBACK");
           lastMutationLockFailure = "unverifiable";
           lastMutationLockFailureDetail = `State mutation lock release failed; owner metadata changed or disappeared: ${lock.path}`;
           console.error(`[omc-lock] state_mutation_lock_release_failed: ${lock.path}`);
           return false;
         }
-        (0, import_fs16.unlinkSync)(lock.path);
+        if (artifact !== "absent") (0, import_fs16.unlinkSync)(lock.path);
         lock.db.prepare("DELETE FROM state_mutation_locks WHERE lock_key = ?").run(lock.key);
         lock.db.exec("COMMIT");
         return true;
@@ -25151,10 +25202,11 @@ function releaseMutationLock(lock) {
         } catch {
         }
         const code = error2?.code;
-        if ((code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") && attempt < RELEASE_BUSY_ATTEMPTS) {
+        if ((code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") && Date.now() < deadline) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
           continue;
         }
+        abandonedOwnNonces.add(lock.owner.nonce);
         lastMutationLockFailure = "unverifiable";
         lastMutationLockFailureDetail = `State mutation lock release failed for ${lock.path}: ${code ?? "unknown error"}`;
         console.error(`[omc-lock] state_mutation_lock_release_failed: ${lock.path} ${code ?? ""}`.trim());

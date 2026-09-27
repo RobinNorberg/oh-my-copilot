@@ -389,6 +389,47 @@ describe('state file locking without flock', () => {
     expect(existsSync(lockPath)).toBe(false);
   });
 
+  // Fork fix: an already-absent artifact must not strand the row this process still owns.
+  it('releases a SQLite lock whose artifact already disappeared without stranding its row', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'state-lock-absent-'));
+    directories.push(directory);
+    const filePath = join(directory, 'state.json');
+    const lockPath = `${filePath}.mutation.lock`;
+
+    const held = acquireStateFileLockSync(filePath, 5, true);
+    expect(held?.backend).toBe('sqlite');
+    unlinkSync(lockPath);
+    expect(releaseStateFileLockSync(held)).toBe(true);
+    const next = acquireStateFileLockSync(filePath, 1, true);
+    expect(next).not.toBeNull();
+    expect(releaseStateFileLockSync(next)).toBe(true);
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  // Fork fix: SQLITE_BUSY on release is transient contention, not a reason to strand the row.
+  it('retries a SQLite release that meets SQLITE_BUSY', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'state-lock-busy-'));
+    directories.push(directory);
+    const filePath = join(directory, 'state.json');
+    const lockPath = `${filePath}.mutation.lock`;
+
+    const held = acquireStateFileLockSync(filePath, 5, true);
+    expect(held?.backend).toBe('sqlite');
+    const exec = held.db.exec.bind(held.db);
+    let injected = false;
+    held.db.exec = (sql: string) => {
+      if (sql === 'BEGIN IMMEDIATE' && !injected) {
+        injected = true;
+        throw Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY' });
+      }
+      return exec(sql);
+    };
+
+    expect(releaseStateFileLockSync(held)).toBe(true);
+    expect(injected).toBe(true);
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
   it('refuses to claim exclusivity over an unreadable lock artifact', () => {
     const directory = mkdtempSync(join(tmpdir(), 'state-lock-corrupt-'));
     directories.push(directory);
@@ -404,7 +445,8 @@ describe('state file locking without flock', () => {
     }
   });
 
-  it('serializes concurrent processes so no counter increment is lost', async () => {
+  // Fork fix: cover both backends; '0' forces the owner-file fallback, '1' keeps SQLite.
+  it.each(['0', '1'])('serializes concurrent processes so no counter increment is lost (OMC_TEST_FLOCK_AVAILABLE=%s)', async flock => {
     const directory = mkdtempSync(join(tmpdir(), 'state-lock-concurrent-'));
     directories.push(directory);
     const counterPath = join(directory, 'counter.json');
@@ -429,7 +471,7 @@ process.stdout.write(String(acquired));
 
     const acquisitions = await Promise.all([0, 1, 2].map(() => new Promise<number>(resolve => {
       const child = spawn(process.execPath, [childPath, counterPath], {
-        env: { ...process.env, NODE_ENV: 'test' },
+        env: { ...process.env, NODE_ENV: 'test', OMC_TEST_FLOCK_AVAILABLE: flock },
       });
       let output = '';
       child.stdout.on('data', chunk => { output += String(chunk); });

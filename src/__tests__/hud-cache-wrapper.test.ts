@@ -435,7 +435,7 @@ describe('HUD cache wrapper per-session cache TTL (issue #3938)', () => {
   });
 
   it('does not re-sweep the shared cache directory while the sweep stamp is fresh (issue #4045)', () => {
-    const tempRoot = mkdtempSync(join(tmpdir(), 'omc-hud-4045-throttle-'));
+    const tempRoot = mkdtempSync(join(tmpdir(), 'omg-hud-4045-throttle-'));
     const cacheDir = join(tempRoot, 'cache');
     mkdirSync(cacheDir, { recursive: true });
 
@@ -482,7 +482,7 @@ describe('HUD cache wrapper per-session cache TTL (issue #3938)', () => {
   });
 
   it('sweeps expired session caches without spawning a process per file (issue #4045)', () => {
-    const tempRoot = mkdtempSync(join(tmpdir(), 'omc-hud-4045-fanout-'));
+    const tempRoot = mkdtempSync(join(tmpdir(), 'omg-hud-4045-fanout-'));
     const cacheDir = join(tempRoot, 'cache');
     mkdirSync(cacheDir, { recursive: true });
 

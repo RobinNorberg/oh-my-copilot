@@ -493,7 +493,7 @@ Do NOT mark the task as completed. Leave it in_progress so the lead can reassign
 When composing teammate prompts, append a short addendum based on worker type:
 
 - `claude_worker`: Emphasize strict TodoWrite/task-list updates, active team/conversation messages, and no orchestration commands.
-- `codex_worker`: Emphasize CLI API lifecycle (`omc team api ... --json`) and explicit failure ACKs with stderr.
+- `codex_worker`: Emphasize CLI API lifecycle (`omg team api ... --json`) and explicit failure ACKs with stderr.
 - `gemini_worker`: Emphasize bounded file ownership and milestone ACKs after each completed sub-step.
 - `antigravity_worker`: Same expectations as `gemini_worker`; emphasize bounded file ownership and milestone ACKs after each completed sub-step.
 

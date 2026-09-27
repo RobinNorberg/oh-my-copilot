@@ -99,6 +99,14 @@ describe('readRequestFile', () => {
     expect(readRequestFile(path)).toEqual({ point: 'slop-warning', heuristic: true });
     expect(existsSync(path)).toBe(false);
   });
+
+  it('removes the caller mkdtemp dir once the request file is gone', () => {
+    const dir = mkdtempSync(join(tmp, 'omc-jev-'));
+    const path = join(dir, 'request.json');
+    writeFileSync(path, JSON.stringify({ point: 'slop-warning', heuristic: true }), 'utf8');
+    expect(readRequestFile(path)).toEqual({ point: 'slop-warning', heuristic: true });
+    expect(existsSync(dir)).toBe(false);
+  });
 });
 
 describe('validateJevResponse', () => {

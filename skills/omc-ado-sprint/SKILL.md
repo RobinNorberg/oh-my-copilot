@@ -1,6 +1,6 @@
 ---
 name: omc-ado-sprint
-description: "Azure DevOps sprint planning: manage iterations, check team capacity, groom the backlog, and assign work to sprints. Not for work item triage (omc-ado-triage) or PR review."
+description: "Azure DevOps sprint planning: manage iterations, check team capacity, groom the backlog, and assign work to sprints. Not for work item triage (omc-ado-triage), PR review, pipeline management, or GitHub repos (omc-gh-project)."
 ---
 
 # OMC ADO Sprint

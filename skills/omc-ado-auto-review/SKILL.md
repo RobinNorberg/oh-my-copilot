@@ -1,6 +1,6 @@
 ---
 name: omc-ado-auto-review
-description: "Auto-review Azure DevOps PRs where you are an assigned reviewer and post AI review comments. Not for interactive review (omc-ado-review) or creating PRs."
+description: "Auto-review Azure DevOps PRs where you are an assigned reviewer and post AI review comments. Not for interactive review (omc-ado-review) or GitHub repos (omc-gh-auto-review). Creating PRs → git-master."
 ---
 
 # OMC ADO Auto Review

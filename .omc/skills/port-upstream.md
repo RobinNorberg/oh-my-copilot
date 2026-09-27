@@ -104,7 +104,7 @@ Apply these substitutions when porting upstream code:
 | `omc` CLI invocations in docs/messages | `omg` |
 | `.claude/omc.jsonc` (project config) | `.copilot/omg.jsonc` |
 | Host dir `.claude/` (Copilot host surface) | `.copilot/` (keep `.claude` fallbacks where dev already has them) |
-| Agent files `.md` | `.agent.md` |
+| Agent files `agents/*.md` | unchanged `agents/*.md` (installer also accepts `.agent.md`) |
 | Runtime/state root `.omc/` (OmcPaths + scripts + skill docs) | `.omg/` |
 
 ### DO NOT Rename
@@ -117,7 +117,6 @@ Apply these substitutions when porting upstream code:
 When replacing files wholesale, check for these fork-specific additions:
 - `formatTeamsAdaptiveCard` + `parseTeamsMention` in notifications
 - `RecentTools` in HUD
-- `LifecycleProfile` in team types
 - `isRunningAsPlugin` dual check (`PLUGIN_ROOT` and `CLAUDE_PLUGIN_ROOT`)
 - HUD wrapper template at `scripts/lib/hud-wrapper-template.txt`
 
@@ -161,7 +160,7 @@ When replacing files wholesale, check for these fork-specific additions:
   session-end-process-exit (timing ceilings), 3 in runtime-v2.dispatch
   ($OMC_TEAM_STATE_ROOT placeholder vs win32 absolute paths), plus tmux/POSIX
   permission suites under src/team.
-- **Agent file extension**: Upstream uses `.md`, we use `.agent.md`
+- **Agent file extension**: both upstream and the fork ship `agents/*.md`; the installer also accepts `.agent.md`
 - **State directory**: `.omg/` everywhere (OmcPaths.ROOT, scripts, templates); the pre-tool-use template additionally allows legacy `.omc/`
 - **Test mocks**: When upstream adds new exports, grep for `vi.mock.*{module}` and update all mocks
 - **Bridge bundles**: Never manually edit — rebuild from source with `npm run build`

@@ -50,6 +50,12 @@ catch (error) {
 const localLocks = new Map();
 let lastMutationLockFailure = null;
 let lastMutationLockFailureDetail = null;
+// Fork fix: nonces of lock owners this module published but no longer holds (a failed release,
+// or a failed acquire after publication). Only this module instance could hold them, so a row or
+// artifact carrying one is orphaned-by-self and reclaimable instead of self-deadlocking the
+// process for its lifetime. Keyed by nonce, not pid+processStart, so another thread's live lock
+// in the same process is never mistaken for an orphan.
+const abandonedOwnNonces = new Set();
 // The current process's own start identity is immutable for the process
 // lifetime once successfully captured. acquireLockAt spawns a real
 // subprocess (ps on Darwin, powershell on Windows) to compute it; caching
@@ -163,6 +169,15 @@ function lockArtifactIdentity(path) {
  * final path and is never removed.
  */
 function reclaimDeadLockOwner(path, observedOwner, observedIdentity) {
+    // Fork fix: the liveness verdict can be seconds old (win32 probe), and the owner may have
+    // exited and been replaced meanwhile. Renaming a live replacement into quarantine lets a third
+    // contender publish before the restore, leaving two holders, so re-verify the exact artifact
+    // immediately before the rename.
+    const currentOwner = readLockOwner(path);
+    const currentIdentity = lockArtifactIdentity(path);
+    if (currentOwner === 'absent' || currentOwner === null || !sameOwner(currentOwner, observedOwner) ||
+        currentIdentity === null || currentIdentity.dev !== observedIdentity.dev || currentIdentity.ino !== observedIdentity.ino)
+        return 'changed';
     const quarantinePath = `${path}.reclaim.${process.pid}.${randomUUID()}`;
     try {
         renameSync(path, quarantinePath);
@@ -212,6 +227,9 @@ function reclaimDeadLockOwner(path, observedOwner, observedIdentity) {
     return 'changed';
 }
 function ownerLive(owner) {
+    // Fork fix: an owner this module abandoned is orphaned-by-self (see abandonedOwnNonces).
+    if (owner.pid === process.pid && abandonedOwnNonces.has(owner.nonce) && owner.processStart === ownProcessStartIdentity())
+        return false;
     if (process.env.NODE_ENV === 'test' && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(owner.pid))
         return null;
     // Fork fix: reuse the cached own identity instead of a PowerShell probe per retry on win32.
@@ -362,6 +380,8 @@ function acquireFileLockAt(path, attempts) {
             catch { /* best effort */ }
             const code = error?.code;
             if (code !== 'EEXIST') {
+                // Fork fix: the owner may already be published (e.g. temp cleanup failed after link).
+                abandonedOwnNonces.add(owner.nonce);
                 lastMutationLockFailure = 'unverifiable';
                 return null;
             }
@@ -369,6 +389,17 @@ function acquireFileLockAt(path, attempts) {
             if (existing === 'absent')
                 continue;
             if (!existing) {
+                lastMutationLockFailure = 'unverifiable';
+                return null;
+            }
+            // Fork fix: capture the artifact identity together with the owner record, before the slow
+            // liveness probe; read afterwards it can belong to a newer, live owner.
+            const observedIdentity = lockArtifactIdentity(path);
+            if (observedIdentity === null) {
+                // Fork fix: a concurrent contender may reclaim the dead owner and release its own lock
+                // in between. A vanished artifact is contention, not unverifiable metadata, so retry.
+                if (readLockOwner(path) === 'absent')
+                    continue;
                 lastMutationLockFailure = 'unverifiable';
                 return null;
             }
@@ -389,15 +420,6 @@ function acquireFileLockAt(path, attempts) {
                 }
                 return null;
             }
-            const observedIdentity = lockArtifactIdentity(path);
-            if (observedIdentity === null) {
-                // Fork fix: a concurrent contender may reclaim the dead owner and release its own
-                // lock during the slow win32 liveness probe; a vanished artifact is retryable.
-                if (readLockOwner(path) === 'absent')
-                    continue;
-                lastMutationLockFailure = 'unverifiable';
-                return null;
-            }
             const reclaimed = reclaimDeadLockOwner(path, existing, observedIdentity);
             if (reclaimed === 'failed') {
                 lastMutationLockFailure = 'unverifiable';
@@ -408,7 +430,22 @@ function acquireFileLockAt(path, attempts) {
     lastMutationLockFailure = 'contention';
     return null;
 }
-function acquireLockAt(path, attempts = 50) {
+function cachedOwnerLive(owner, verified, slot, probe) {
+    const cached = verified[slot];
+    if (cached !== null && sameOwner(owner, cached))
+        return true;
+    if (verified.dead.some(dead => sameOwner(owner, dead)))
+        return false;
+    if (!probe)
+        return undefined;
+    const live = ownerLive(owner);
+    if (live)
+        verified[slot] = owner;
+    else if (live === false)
+        verified.dead.push(owner);
+    return live;
+}
+function acquireLockAt(path, attempts = 50, verified = { row: null, artifact: null, dead: [] }) {
     lastMutationLockFailureDetail = null;
     mkdirSync(dirname(path), { recursive: true });
     const key = (() => { try {
@@ -435,7 +472,7 @@ function acquireLockAt(path, attempts = 50) {
             return null;
         }
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-        return acquireLockAt(path, attempts - 1);
+        return acquireLockAt(path, attempts - 1, verified);
     }
     const processStart = ownProcessStartIdentity();
     if (!processStart) {
@@ -453,12 +490,42 @@ function acquireLockAt(path, attempts = 50) {
             return null;
         }
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-        return acquireLockAt(path, attempts - 1);
+        return acquireLockAt(path, attempts - 1, verified);
     }
     const owner = { version: 1, pid: process.pid, processStart, createdAt: new Date().toISOString(), nonce: randomUUID() };
+    const selectRow = () => db.prepare('SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?').get(key);
+    // Fork fix: adjudicate liveness before BEGIN IMMEDIATE, so the slow win32 probe does not hold
+    // the write lock (which also blocks the holder's own release). Inside the transaction only the
+    // cached verdict for an unchanged owner is acted on; a changed owner is re-probed on a retry.
+    let preLive = false;
+    try {
+        const preRow = ownerFromRow(selectRow());
+        if (preRow)
+            preLive = cachedOwnerLive(preRow, verified, 'row', true);
+        if (preLive === false) {
+            const preArtifact = readLockOwner(path);
+            if (preArtifact && preArtifact !== 'absent')
+                preLive = cachedOwnerLive(preArtifact, verified, 'artifact', true);
+        }
+    }
+    catch {
+        preLive = false;
+    }
+    if (preLive === null || preLive) {
+        try {
+            db.close();
+        }
+        catch { /* best effort */ }
+        if (preLive === null || attempts <= 1) {
+            lastMutationLockFailure = preLive === null ? 'unverifiable' : 'contention';
+            return null;
+        }
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+        return acquireLockAt(path, attempts - 1, verified);
+    }
     try {
         db.exec('BEGIN IMMEDIATE');
-        const rawRow = db.prepare('SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?').get(key);
+        const rawRow = selectRow();
         if (rawRow) {
             const row = ownerFromRow(rawRow);
             if (!row) {
@@ -469,18 +536,18 @@ function acquireLockAt(path, attempts = 50) {
                     console.error(`[lock-debug] acquireLockAt row-invalid ${path}`);
                 return null;
             }
-            const live = ownerLive(row);
-            if (live === null || live) {
+            const live = cachedOwnerLive(row, verified, 'row', false);
+            if (live !== false) {
                 db.exec('ROLLBACK');
                 db.close();
                 if (process.env.OMC_LOCK_DEBUG)
                     console.error(`[lock-debug] acquireLockAt row-live=${live} ${path}`);
-                if (live === null || attempts <= 1) {
-                    lastMutationLockFailure = live === null ? 'unverifiable' : 'contention';
+                if (attempts <= 1) {
+                    lastMutationLockFailure = 'contention';
                     return null;
                 }
                 Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-                return acquireLockAt(path, attempts - 1);
+                return acquireLockAt(path, attempts - 1, verified);
             }
             db.prepare('DELETE FROM state_mutation_locks WHERE lock_key = ?').run(key);
         }
@@ -493,25 +560,30 @@ function acquireLockAt(path, attempts = 50) {
                 console.error(`[omc-lock] state_mutation_lock_unverifiable: ${path}`);
                 return null;
             }
-            const live = ownerLive(artifact);
-            if (live === null || live) {
-                db.exec('ROLLBACK');
-                db.close();
-                if (process.env.OMC_LOCK_DEBUG)
-                    console.error(`[lock-debug] acquireLockAt artifact-live=${live} ${path}`);
-                if (live === null || attempts <= 1) {
-                    lastMutationLockFailure = live === null ? 'unverifiable' : 'contention';
-                    return null;
-                }
-                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-                return acquireLockAt(path, attempts - 1);
-            }
+            // Fork fix: capture the identity together with the owner record it is reclaimed under.
             const observedIdentity = lockArtifactIdentity(path);
             if (observedIdentity === null) {
                 db.exec('ROLLBACK');
                 db.close();
+                if (readLockOwner(path) === 'absent' && attempts > 1) {
+                    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+                    return acquireLockAt(path, attempts - 1, verified);
+                }
                 lastMutationLockFailure = 'unverifiable';
                 return null;
+            }
+            const live = cachedOwnerLive(artifact, verified, 'artifact', false);
+            if (live !== false) {
+                db.exec('ROLLBACK');
+                db.close();
+                if (process.env.OMC_LOCK_DEBUG)
+                    console.error(`[lock-debug] acquireLockAt artifact-live=${live} ${path}`);
+                if (attempts <= 1) {
+                    lastMutationLockFailure = 'contention';
+                    return null;
+                }
+                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+                return acquireLockAt(path, attempts - 1, verified);
             }
             const reclaimed = reclaimDeadLockOwner(path, artifact, observedIdentity);
             if (reclaimed !== 'removed') {
@@ -519,7 +591,7 @@ function acquireLockAt(path, attempts = 50) {
                 db.close();
                 if (reclaimed === 'changed' && attempts > 1) {
                     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-                    return acquireLockAt(path, attempts - 1);
+                    return acquireLockAt(path, attempts - 1, verified);
                 }
                 lastMutationLockFailure = reclaimed === 'changed' ? 'contention' : 'unverifiable';
                 return null;
@@ -527,6 +599,7 @@ function acquireLockAt(path, attempts = 50) {
         }
         db.prepare('INSERT INTO state_mutation_locks (lock_key, version, pid, process_start, created_at, nonce) VALUES (?, 1, ?, ?, ?, ?)').run(key, owner.pid, owner.processStart, owner.createdAt, owner.nonce);
         if (!publishLockOwner(path, owner)) {
+            abandonedOwnNonces.add(owner.nonce); // Fork fix: publication may have linked before failing.
             db.exec('ROLLBACK');
             db.close();
             if (process.env.OMC_LOCK_DEBUG)
@@ -540,7 +613,7 @@ function acquireLockAt(path, attempts = 50) {
                 return null;
             }
             Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-            return acquireLockAt(path, attempts - 1);
+            return acquireLockAt(path, attempts - 1, verified);
         }
         db.exec('COMMIT');
         const lock = { backend: 'sqlite', db, key, path, owner, depth: 1 };
@@ -550,6 +623,7 @@ function acquireLockAt(path, attempts = 50) {
         return lock;
     }
     catch (error) {
+        abandonedOwnNonces.add(owner.nonce); // Fork fix: e.g. COMMIT failed after the owner was published.
         try {
             db.exec('ROLLBACK');
         }
@@ -567,7 +641,7 @@ function acquireLockAt(path, attempts = 50) {
             console.error(`[lock-debug] acquireLockAt caught-error ${path} code=${code} msg=${error?.message}`);
         if ((code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED') && attempts > 1) {
             Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-            return acquireLockAt(path, attempts - 1);
+            return acquireLockAt(path, attempts - 1, verified);
         }
         lastMutationLockFailure = code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED'
             ? 'contention'
@@ -581,8 +655,9 @@ function acquireMutationLock(filePath) {
 // Fork fix: a contender adjudicates the holder's liveness inside its BEGIN IMMEDIATE, and on
 // win32 that probe is a PowerShell spawn (~1-2s), so a release can exceed busy_timeout. Giving up
 // on SQLITE_BUSY rolled the release back and left the row owned by this still-live process, which
-// then deadlocked every later acquisition (including its own). Retry transient contention instead.
-const RELEASE_BUSY_ATTEMPTS = 30;
+// then deadlocked every later acquisition (including its own). Retry transient contention instead,
+// bounded by wall clock: 30 attempts x busy_timeout 2000 ms blocked a hook for up to ~60 s.
+const RELEASE_BUSY_BUDGET_MS = 5000;
 function releaseMutationLock(lock) {
     if (!lock)
         return true;
@@ -606,26 +681,34 @@ function releaseMutationLock(lock) {
             return true;
         }
         catch (error) {
+            abandonedOwnNonces.add(lock.owner.nonce); // Fork fix: a failed unlink must not self-deadlock.
             lastMutationLockFailure = 'unverifiable';
             lastMutationLockFailureDetail = `State mutation lock release failed for ${lock.path}: ${error.code ?? 'unknown error'}`;
             console.error(`[omc-lock] state_mutation_lock_release_failed: ${lock.path} ${error.code ?? ''}`.trim());
             return false;
         }
     }
+    const deadline = Date.now() + RELEASE_BUSY_BUDGET_MS;
     try {
-        for (let attempt = 1;; attempt += 1) {
+        for (;;) {
             try {
+                lock.db.pragma(`busy_timeout = ${Math.max(1, Math.min(2000, deadline - Date.now()))}`);
                 lock.db.exec('BEGIN IMMEDIATE');
                 const row = ownerFromRow(lock.db.prepare('SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?').get(lock.key));
                 const artifact = readLockOwner(lock.path);
-                if (!sameOwner(row, lock.owner) || !sameOwner(artifact === 'absent' ? null : artifact, lock.owner)) {
+                // Fork fix: an already-absent artifact must not strand a row this process still owns, and
+                // the row is deleted in the same transaction as the unlink so a failed unlink rolls back.
+                const artifactOk = artifact === 'absent' || sameOwner(artifact, lock.owner);
+                if (!sameOwner(row, lock.owner) || !artifactOk) {
+                    abandonedOwnNonces.add(lock.owner.nonce); // Fork fix: a row still ours must stay reclaimable.
                     lock.db.exec('ROLLBACK');
                     lastMutationLockFailure = 'unverifiable';
                     lastMutationLockFailureDetail = `State mutation lock release failed; owner metadata changed or disappeared: ${lock.path}`;
                     console.error(`[omc-lock] state_mutation_lock_release_failed: ${lock.path}`);
                     return false;
                 }
-                unlinkSync(lock.path);
+                if (artifact !== 'absent')
+                    unlinkSync(lock.path);
                 lock.db.prepare('DELETE FROM state_mutation_locks WHERE lock_key = ?').run(lock.key);
                 lock.db.exec('COMMIT');
                 return true;
@@ -636,10 +719,11 @@ function releaseMutationLock(lock) {
                 }
                 catch { /* best effort */ }
                 const code = error?.code;
-                if ((code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED') && attempt < RELEASE_BUSY_ATTEMPTS) {
+                if ((code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED') && Date.now() < deadline) {
                     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
                     continue;
                 }
+                abandonedOwnNonces.add(lock.owner.nonce); // Fork fix: a failed release must not self-deadlock.
                 lastMutationLockFailure = 'unverifiable';
                 lastMutationLockFailureDetail = `State mutation lock release failed for ${lock.path}: ${code ?? 'unknown error'}`;
                 console.error(`[omc-lock] state_mutation_lock_release_failed: ${lock.path} ${code ?? ''}`.trim());

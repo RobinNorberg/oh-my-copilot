@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { monitorTeam, resumeTeam, startTeam } from '../runtime.js';
 import type { TeamConfig } from '../runtime.js';
+import { teamStateRoot } from '../state-paths.js';
 
 describe('runtime types', () => {
   it('TeamConfig has required fields', () => {
@@ -58,7 +59,7 @@ describe('runtime types', () => {
         tasks: [{ subject: 'task', description: 'task' }],
         cwd,
       })).rejects.toThrow('team_start_unsafe_runtime_v1');
-      expect(existsSync(join(cwd, '.omc', 'state', 'team', 'legacy-start'))).toBe(false);
+      expect(existsSync(teamStateRoot(cwd, 'legacy-start'))).toBe(false);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
@@ -66,8 +67,13 @@ describe('runtime types', () => {
 
   it('resumeTeam refuses state without immutable instance ownership', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'team-runtime-v1-resume-'));
+    vi.stubEnv('HOME', cwd);
+    vi.stubEnv('USERPROFILE', cwd);
+    vi.stubEnv('OMC_STATE_DIR', '');
     try {
-      const root = join(cwd, '.omc', 'state', 'team', 'legacy-resume');
+      // Same resolver resumeTeam uses, so the config below is what reaches the instance-id check.
+      const root = teamStateRoot(cwd, 'legacy-resume');
+      expect(root).toBe(join(cwd, '.omg', 'state', 'team', 'legacy-resume'));
       mkdirSync(root, { recursive: true });
       writeFileSync(join(root, 'config.json'), JSON.stringify({
         teamName: 'legacy-resume',
@@ -80,6 +86,7 @@ describe('runtime types', () => {
       }), 'utf-8');
       await expect(resumeTeam('legacy-resume', cwd)).resolves.toBeNull();
     } finally {
+      vi.unstubAllEnvs();
       rmSync(cwd, { recursive: true, force: true });
     }
   });

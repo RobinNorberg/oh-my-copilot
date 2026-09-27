@@ -1,6 +1,6 @@
 ---
 name: omc-gh-triage
-description: "Triage GitHub: open issues, PRs needing review, failing CI, and security alerts for a project health overview. Not for PR code review (omc-gh-review) or project boards."
+description: "Triage GitHub: open issues, PRs needing review, failing CI, and security alerts for a project health overview. Not for PR code review (omc-gh-review) or project boards. ADO projects → omc-ado-triage."
 ---
 
 # OMC GitHub Triage

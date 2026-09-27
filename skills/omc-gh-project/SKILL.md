@@ -1,6 +1,6 @@
 ---
 name: omc-gh-project
-description: "Manage GitHub Projects (v2) boards: list items, move status, manage iterations, and add issues/PRs to a project. Not for issue triage (omc-gh-triage) or PR review."
+description: "Manage GitHub Projects (v2) boards: list items, move status, manage iterations, and add issues/PRs to a project. Not for issue triage (omc-gh-triage) or PR review. ADO sprints → omc-ado-sprint."
 ---
 
 # OMC GitHub Project

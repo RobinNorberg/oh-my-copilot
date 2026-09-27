@@ -160,7 +160,7 @@ On a later explicit Launch invocation, first require the owning Team lifecycle t
   | ruled-out directions (concept + why rejected) | `docs/adr/` (a rejection is a decision too; the why is the load-bearing part) |
   | business rules / background | `docs/business/` |
   | UI patterns / component contracts | `design-system/` |
-  | reusable craft | `.omc/skills/` (through the skillify gate) |
+  | reusable craft | `.omg/skills/` (through the skillify gate) |
   | repeatedly needed automation / integrations | `scripts/` or `.mcp.json` |
   | no slot fits | decline explicitly with the reason |
 

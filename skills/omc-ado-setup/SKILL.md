@@ -1,6 +1,6 @@
 ---
 name: omc-ado-setup
-description: "Set up or troubleshoot the Azure DevOps integration for this project (.omg/config.json connection). Not for triage, sprint planning, PR review, or Azure cloud service configuration."
+description: "Set up or troubleshoot the Azure DevOps integration for this project (.omg/config.json connection). Not for triage, sprint planning, PR review, Azure cloud service config, or GitHub repos (omc-gh-setup)."
 role: config-writer
 scope: .omg/**
 ---

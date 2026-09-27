@@ -24,9 +24,9 @@
  * deliberate mirrors; parity with the TS parse is locked by the test suite.
  */
 
-import { readFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, rmdirSync, unlinkSync } from 'node:fs';
 import { appendFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
@@ -220,6 +220,12 @@ export function readRequestFile(path) {
     unlinkSync(path);
   } catch {
     // Best effort: the caller's temp dir is cleaned up independently.
+  }
+  try {
+    // The caller's mkdtemp dir holds only request.json; rmdir fails harmlessly if anything else remains.
+    rmdirSync(dirname(path));
+  } catch {
+    // Best effort.
   }
   return JSON.parse(raw);
 }
