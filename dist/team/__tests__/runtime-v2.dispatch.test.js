@@ -336,6 +336,25 @@ describe('runtime v2 startup inbox dispatch', () => {
             }),
         ]);
     }
+    async function runThroughClaudeFinalStartupRecheck(start) {
+        const deliveryGate = deferred();
+        const finalRecheckGate = deferred();
+        startupDeliveryGate = deliveryGate;
+        mocks.retryStartupInboxSubmit.mockImplementationOnce(async () => {
+            finalRecheckGate.resolve();
+            return 'unavailable';
+        });
+        const startup = start();
+        await awaitGateOrRecoveryFailure(deliveryGate.promise, startup, 'startup delivery');
+        await awaitGateOrRecoveryFailure(finalRecheckGate.promise, startup, 'final startup recheck');
+        vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+        await flushRealIo();
+        const policy = getWorkerStartupEvidencePolicy('claude');
+        vi.setSystemTime(Date.now() + policy.finalRecheckBudgetMs);
+        await vi.advanceTimersByTimeAsync(250);
+        await flushRealIo();
+        return startup;
+    }
     async function configureRealUnresolvedStartupLaunch(options) {
         const launchActual = await vi.importActual('../worker-launch-ack.js');
         let attempt;
@@ -2442,13 +2461,13 @@ describe('runtime v2 startup inbox dispatch', () => {
         cwd = await mkdtempFixture('omc-runtime-v2-claude-evidence-missing-');
         mocks.autoStartupEvidence = false;
         const { startTeamV2 } = await import('../runtime-v2.js');
-        const runtime = await startTeamV2({
+        const runtime = await runThroughClaudeFinalStartupRecheck(() => startTeamV2({
             teamName: 'dispatch-team',
             workerCount: 1,
             agentTypes: ['claude'],
             tasks: [{ subject: 'Dispatch test', description: 'Verify Claude startup evidence gate' }],
             cwd,
-        });
+        }));
         expect(runtime.config.workers[0]?.pane_id).toBe('%2');
         expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
         expect(runtime.startupFailures).toEqual([
@@ -2618,18 +2637,34 @@ describe('runtime v2 startup inbox dispatch', () => {
         await expect(evidencePromise).resolves.toEqual({ settled: false, paneBusy: true });
         expect(Date.now() - startedAt).toBe(31_250);
     });
-    it('still fails an unengaged Claude pane at the fast 1.25s boundary', async () => {
+    it('accepts delayed evidence for an unengaged Claude pane during the final recheck', async () => {
+        vi.useFakeTimers();
+        const policy = getWorkerStartupEvidencePolicy('claude');
+        const startedAt = Date.now();
+        let hasEvidence = false;
+        setTimeout(() => { hasEvidence = true; }, 20_000);
+        const evidencePromise = settleStartupEvidence(policy, budgetMs => waitForStartupEvidenceBudget(async () => hasEvidence, budgetMs), async () => 'unavailable');
+        let settled = false;
+        void evidencePromise.finally(() => { settled = true; });
+        await vi.advanceTimersByTimeAsync(19_999);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await expect(evidencePromise).resolves.toEqual({ settled: true, paneBusy: false });
+        expect(Date.now() - startedAt).toBe(20_000);
+        expect(policy.finalRecheckBudgetMs).toBe(30_000);
+    });
+    it('fails an unengaged Claude pane after its bounded final recheck', async () => {
         vi.useFakeTimers();
         const policy = getWorkerStartupEvidencePolicy('claude');
         const startedAt = Date.now();
         const evidencePromise = settleStartupEvidence(policy, budgetMs => waitForStartupEvidenceBudget(async () => false, budgetMs), async () => 'unavailable');
         let settled = false;
         void evidencePromise.finally(() => { settled = true; });
-        await vi.advanceTimersByTimeAsync(1_249);
+        await vi.advanceTimersByTimeAsync(31_249);
         expect(settled).toBe(false);
         await vi.advanceTimersByTimeAsync(1);
         await expect(evidencePromise).resolves.toEqual({ settled: false, paneBusy: false });
-        expect(Date.now() - startedAt).toBe(1_250);
+        expect(Date.now() - startedAt).toBe(31_250);
     });
     it('honors OMC_TEAM_ENGAGED_PANE_RECHECK_MS when bounding the engaged recheck', async () => {
         vi.useFakeTimers();
@@ -2649,7 +2684,7 @@ describe('runtime v2 startup inbox dispatch', () => {
         let hasEvidence = false;
         const evidencePromise = settleStartupEvidence(policy, budgetMs => waitForStartupEvidenceBudget(async () => hasEvidence, budgetMs), async () => {
             // The pane is not engaged, but the worker publishes status evidence at
-            // the exact moment the probe runs; the terminal read-only check must
+            // the exact moment the probe runs; the final read-only check must
             // observe it instead of discarding a healthy launch.
             hasEvidence = true;
             return 'unavailable';
@@ -3199,13 +3234,13 @@ describe('runtime v2 startup inbox dispatch', () => {
             };
         });
         const { startTeamV2 } = await import('../runtime-v2.js');
-        const runtime = await startTeamV2({
+        const runtime = await runThroughClaudeFinalStartupRecheck(() => startTeamV2({
             teamName: 'dispatch-team',
             workerCount: 1,
             agentTypes: ['claude'],
             tasks: [{ subject: 'Dispatch test', description: 'Reject stale status evidence' }],
             cwd,
-        });
+        }));
         expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
         const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
         expect(requests[0]).toMatchObject({ status: 'failed', last_reason: 'worker_startup_evidence_missing' });
@@ -3234,13 +3269,13 @@ describe('runtime v2 startup inbox dispatch', () => {
             };
         });
         const { startTeamV2 } = await import('../runtime-v2.js');
-        const runtime = await startTeamV2({
+        const runtime = await runThroughClaudeFinalStartupRecheck(() => startTeamV2({
             teamName: 'dispatch-team',
             workerCount: 1,
             agentTypes: ['claude'],
             tasks: [{ subject: 'Dispatch test', description: 'Reject stale claim evidence' }],
             cwd,
-        });
+        }));
         expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
         const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
         expect(requests[0]).toMatchObject({ status: 'failed', last_reason: 'worker_startup_evidence_missing' });
@@ -3273,13 +3308,13 @@ describe('runtime v2 startup inbox dispatch', () => {
             };
         });
         const { startTeamV2 } = await import('../runtime-v2.js');
-        const runtime = await startTeamV2({
+        const runtime = await runThroughClaudeFinalStartupRecheck(() => startTeamV2({
             teamName: 'dispatch-team',
             workerCount: 1,
             agentTypes: ['claude'],
             tasks: [{ subject: 'Already owned', description: 'Preserve the existing owner.' }],
             cwd,
-        });
+        }));
         expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
         expect(JSON.parse(await readFile(absPath(cwd, TeamPaths.taskFile('dispatch-team', 'task-1')), 'utf8'))).toMatchObject({
             status: 'in_progress',
@@ -3308,13 +3343,13 @@ describe('runtime v2 startup inbox dispatch', () => {
             return true;
         });
         const { startTeamV2 } = await import('../runtime-v2.js');
-        const runtime = await startTeamV2({
+        const runtime = await runThroughClaudeFinalStartupRecheck(() => startTeamV2({
             teamName: 'dispatch-team',
             workerCount: 1,
             agentTypes: ['claude'],
             tasks: [{ subject: 'Dispatch test', description: 'Verify Claude mailbox ack evidence' }],
             cwd,
-        });
+        }));
         expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
         expect(mocks.sendToWorker).toHaveBeenCalledTimes(1);
     });
@@ -3350,13 +3385,13 @@ describe('runtime v2 startup inbox dispatch', () => {
             return true;
         });
         const { startTeamV2 } = await import('../runtime-v2.js');
-        const runtime = await startTeamV2({
+        const runtime = await runThroughClaudeFinalStartupRecheck(() => startTeamV2({
             teamName: 'dispatch-team',
             workerCount: 1,
             agentTypes: ['claude'],
             tasks: [{ subject: 'Dispatch test', description: 'Reject wrong-attempt evidence' }],
             cwd,
-        });
+        }));
         expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
         const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
         expect(requests[0]).toMatchObject({ status: 'failed', last_reason: 'worker_startup_evidence_missing' });
@@ -3470,26 +3505,26 @@ describe('runtime v2 startup inbox dispatch', () => {
         expect(mocks.killOwnedWorkerPane).toHaveBeenCalledWith(expect.objectContaining({ paneId: '%2' }));
         expect(launchMocks.retireAndCleanupCurrentWorkerLaunchAttempt).toHaveBeenCalledWith(expect.objectContaining({ attempt_id: 'attempt-worker-1' }), 'startup_dispatch_failed', expect.any(Function));
     });
-    it('breaks the resubmit loop immediately and fails fast when the pane is not engaged', async () => {
+    it('fails closed after the final evidence recheck when the pane is not engaged', async () => {
         cwd = await mkdtempFixture('omc-runtime-v2-claude-unengaged-');
         mocks.autoStartupEvidence = false;
         mocks.retryStartupInboxSubmit.mockImplementation(async () => 'unavailable');
         const startedAt = Date.now();
         const { startTeamV2 } = await import('../runtime-v2.js');
-        const runtime = await startTeamV2({
+        const runtime = await runThroughClaudeFinalStartupRecheck(() => startTeamV2({
             teamName: 'dispatch-team',
             workerCount: 1,
             agentTypes: ['claude'],
-            tasks: [{ subject: 'Dispatch test', description: 'Verify unengaged pane fails fast' }],
+            tasks: [{ subject: 'Dispatch test', description: 'Verify unengaged pane fails closed' }],
             cwd,
-        });
+        }));
         expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
         expect(runtime.startupFailures).toEqual([
             { worker: 'worker-1', reason: 'worker_startup_evidence_missing' },
         ]);
         expect(mocks.captureOwnedTeamPane).not.toHaveBeenCalled();
         expect(mocks.retryStartupInboxSubmit).toHaveBeenCalledTimes(1);
-        expect(Date.now() - startedAt).toBeLessThan(5_000);
+        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(31_250);
         const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
         expect(requests[0]).toMatchObject({ status: 'failed', last_reason: 'worker_startup_evidence_missing' });
         expect(mocks.killOwnedWorkerPane).toHaveBeenCalledWith(expect.objectContaining({ paneId: '%2' }));

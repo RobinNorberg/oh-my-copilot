@@ -45423,16 +45423,19 @@ function readStandalonePackageIdentity(packageDir) {
 function standaloneStateLockBridge(packageDir) {
   const identity = readStandalonePackageIdentity(packageDir);
   return `import { lstatSync, readFileSync, realpathSync } from 'node:fs';
-import { join, relative, isAbsolute, sep } from 'node:path';
+import { join, relative, resolve, isAbsolute, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 const PACKAGE_ROOT = ${JSON.stringify(identity.root)};
 const EXPECTED_PACKAGE_NAME = ${JSON.stringify(identity.name)};
 const EXPECTED_PACKAGE_VERSION = ${JSON.stringify(identity.version)};
 const PACKAGE_JSON = join(PACKAGE_ROOT, 'package.json');
-const HELPER_PATH = join(PACKAGE_ROOT, 'scripts/lib/state-lock.mjs');
+const HELPER_PATH = join(PACKAGE_ROOT, 'scripts', 'lib', 'state-lock.mjs');
+function samePath(left, right) {
+  return resolve(left) === resolve(right);
+}
 function validatePackageOwnedHelper() {
-  if (!lstatSync(PACKAGE_ROOT).isDirectory() || realpathSync(PACKAGE_ROOT) !== PACKAGE_ROOT || !lstatSync(PACKAGE_JSON).isFile() || !lstatSync(HELPER_PATH).isFile()) throw new Error('OMC state-lock bridge package root is unavailable');
-  if (realpathSync(PACKAGE_JSON) !== PACKAGE_JSON) throw new Error('OMC state-lock bridge manifest identity changed');
+  if (!lstatSync(PACKAGE_ROOT).isDirectory() || !samePath(realpathSync(PACKAGE_ROOT), PACKAGE_ROOT) || !lstatSync(PACKAGE_JSON).isFile() || !lstatSync(HELPER_PATH).isFile()) throw new Error('OMC state-lock bridge package root is unavailable');
+  if (!samePath(realpathSync(PACKAGE_JSON), PACKAGE_JSON)) throw new Error('OMC state-lock bridge manifest identity changed');
   const helperReal = realpathSync(HELPER_PATH);
   const helperRelative = relative(PACKAGE_ROOT, helperReal);
   if (isAbsolute(helperRelative) || helperRelative === '..' || helperRelative.startsWith('..' + sep)) throw new Error('OMC state-lock bridge helper escapes package root');
@@ -81631,10 +81634,11 @@ var init_runtime_v2 = __esm({
       // bounded resubmit behavior and its effective 6 + (4 * 12) poll windows.
       // An engaged pane (issue #3849: WSL2 cold starts publish first-turn claim
       // evidence well after the initial budget) gets one bounded read-only recheck
-      // before teardown; idle, wrong, or dead panes keep the fast fail-closed path.
+      // before teardown. Unengaged panes also receive a bounded final evidence
+      // recheck and still fail closed when no worker evidence appears.
       claude: {
         initialBudgetMs: 1250,
-        finalRecheckBudgetMs: 0,
+        finalRecheckBudgetMs: 3e4,
         resubmitAttempts: 4,
         resubmitBudgetMs: 2750,
         engagedPaneRecheckBudgetMs: 3e4
