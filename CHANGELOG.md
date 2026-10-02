@@ -2,11 +2,13 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
-## Unreleased
+# oh-my-copilot v5.5.0
 
-Next release: fork **v5.5.0** (from v5.1.0). It ports upstream
+## [5.5.0] - 2026-10-02
+
+Fork **v5.5.0** (from v5.1.0) ports upstream
 oh-my-claudecode v5.4.0, v5.5.0 and upstream `dev` through 862c69273
-(#4135, #4140), and it makes the fork work as a native GitHub Copilot CLI
+(#4135, #4140), and makes the fork work as a native GitHub Copilot CLI
 plugin: hooks, agents, team workers and `omg launch` now follow the Copilot
 CLI 1.0.88 contract. Before this release every fork hook was a silent no-op
 under Copilot on Windows. Ten new skills (61 canonical total). Upgrading?
