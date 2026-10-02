@@ -592,7 +592,7 @@ ${'- oversized startup guidance\n'.repeat(700)}
         HOME: fakeHome,
         USERPROFILE: fakeHome,
         CLAUDE_PLUGIN_ROOT: pluginRoot,
-        COPILOT_CONFIG_DIR: join(fakeHome, '.copilot'),
+        COPILOT_HOME: join(fakeHome, '.copilot'),
         OMC_NOTIFY: '0',
       },
       timeout: 15000,
@@ -632,13 +632,13 @@ ${'- oversized startup guidance\n'.repeat(700)}
         source: 'npm',
       }),
     );
-    // COPILOT_CONFIG_DIR beats HOME. A leaked host/empty config dir would hide
+    // COPILOT_HOME beats HOME. A leaked host/empty config dir would hide
     // the fixture marketplace clone and leave the npm 5.0.0 cache in place.
     const leakedHostConfigDir = join(tempDir, 'host-empty-claude-config');
     mkdirSync(leakedHostConfigDir, { recursive: true });
     const leakedHostEnv = {
       ...process.env,
-      COPILOT_CONFIG_DIR: leakedHostConfigDir,
+      COPILOT_HOME: leakedHostConfigDir,
     };
 
     const result = spawnSync(NODE, [SCRIPT_PATH], {
@@ -653,7 +653,7 @@ ${'- oversized startup guidance\n'.repeat(700)}
         HOME: fakeHome,
         USERPROFILE: fakeHome,
         CLAUDE_PLUGIN_ROOT: pluginRoot,
-        COPILOT_CONFIG_DIR: join(fakeHome, '.copilot'),
+        COPILOT_HOME: join(fakeHome, '.copilot'),
         OMC_NOTIFY: '0',
       },
       timeout: 15000,

@@ -10,7 +10,7 @@ This is the **only command you need to learn**. After running this, everything e
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
-Note: All `~/.claude/...` paths in this guide respect `COPILOT_CONFIG_DIR` when that environment variable is set.
+Note: All `~/.claude/...` paths in this guide respect `COPILOT_HOME` when that environment variable is set.
 
 ## Best-Fit Use
 
@@ -100,7 +100,7 @@ The script is the sole cache resolver. It accepts only complete plugin roots (ca
 **CRITICAL**: Before doing anything else, check if setup has already been completed. This prevents users from having to re-run the full setup wizard after every update.
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-config.json');if(f.existsSync(t)===false){console.log('ALREADY_CONFIGURED=false');process.exit(0)}let c;try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: Existing OMC config is invalid JSON. Existing config was not modified.');process.exit(1)}if(c&&c.setupCompleted){console.log('OMC setup was already completed on: '+c.setupCompleted);if(c.setupVersion)console.log('Setup version: '+c.setupVersion);console.log('ALREADY_CONFIGURED=true')}else{console.log('ALREADY_CONFIGURED=false')}"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_HOME||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-config.json');if(f.existsSync(t)===false){console.log('ALREADY_CONFIGURED=false');process.exit(0)}let c;try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: Existing OMC config is invalid JSON. Existing config was not modified.');process.exit(1)}if(c&&c.setupCompleted){console.log('OMC setup was already completed on: '+c.setupCompleted);if(c.setupVersion)console.log('Setup version: '+c.setupVersion);console.log('ALREADY_CONFIGURED=true')}else{console.log('ALREADY_CONFIGURED=false')}"
 ```
 
 Treat `ALREADY_CONFIGURED=true` in the output as the configured case. A non-zero exit

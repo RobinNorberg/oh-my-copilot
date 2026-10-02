@@ -1,4 +1,5 @@
 import type { CliAgentType } from './model-contract.js';
+import { type TeamInstanceId } from './types.js';
 declare const WORKER_LAUNCH_SCHEMA_VERSION: 1;
 /** Internal handoff marker for a recovery gate nested inside this bootstrap. */
 export declare const WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV: "OMC_WORKER_LAUNCH_RECOVERY_GATE_CONTAINED";
@@ -7,6 +8,7 @@ interface WorkerLaunchIdentity {
     schema_version: typeof WORKER_LAUNCH_SCHEMA_VERSION;
     attempt_id: string;
     nonce: string;
+    instance_id: TeamInstanceId;
     team_name: string;
     worker_name: string;
     pane_id: string;
@@ -76,7 +78,14 @@ export interface MaterializedProviderSpawnInvocation {
     args: string[];
     cleanup: () => Promise<void>;
     completionPath?: string;
+    completionBinding?: WorkerLaunchCompletionBinding;
     stdinPayload?: string;
+    /** Extra POSIX descriptor used to hold provider execution until ownership is proven. */
+    providerGateFd?: number;
+}
+export interface WorkerLaunchCompletionBinding extends WorkerLaunchIdentity {
+    containment_nonce: string;
+    authority_digest: string;
 }
 export interface MaterializedWorkerLaunchTransport {
     wrapperPath: string;
@@ -84,10 +93,14 @@ export interface MaterializedWorkerLaunchTransport {
     wrapperRelativePath: string;
 }
 export declare function buildProviderEnvironment(providerEnv: NodeJS.ProcessEnv | Record<string, string> | undefined, sourceEnv?: NodeJS.ProcessEnv, platform?: NodeJS.Platform): Record<string, string>;
+/** Read one launch-owned completion marker, or an unbound numeric marker for
+ * generic process-wrapper callers that have no worker launch identity. */
+export declare function readProviderCompletionExitCode(path: string, binding?: WorkerLaunchCompletionBinding): Promise<number | undefined>;
 export declare function prepareWorkerLaunchAttempt(input: {
     cwd: string;
     teamName: string;
     workerName: string;
+    instanceId: string;
     paneId: string;
     provider: CliAgentType;
     runtimeCliPath: string;
@@ -97,6 +110,7 @@ export declare function loadWorkerLaunchAttempt(input: {
     cwd: string;
     teamName: string;
     workerName: string;
+    instanceId: string;
     paneId: string;
     provider: CliAgentType;
     attemptId: string;
@@ -106,11 +120,13 @@ export declare function loadCurrentWorkerLaunchAttempt(input: {
     cwd: string;
     teamName: string;
     workerName: string;
+    instanceId: string;
     provider: CliAgentType;
 }): Promise<WorkerLaunchAttempt | null>;
 export declare function buildWorkerLaunchBootstrapSpec(attempt: WorkerLaunchAttempt, providerArgv: string[], cwd: string, options?: {
     releaseAfterSpawn?: boolean;
     providerEnv?: NodeJS.ProcessEnv | Record<string, string>;
+    platform?: NodeJS.Platform;
 }): WorkerLaunchBootstrapSpec;
 export declare function buildWorkerLaunchWrapper(attempt: WorkerLaunchAttempt, platform?: NodeJS.Platform): string;
 export declare function quotePosixShellArgument(value: string): string;
@@ -120,13 +136,14 @@ export declare function materializeWorkerLaunchTransport(input: {
     cwd: string;
     providerEnv?: NodeJS.ProcessEnv | Record<string, string>;
     releaseAfterSpawn?: boolean;
+    platform?: NodeJS.Platform;
     /** Native-Windows delivery resolves a cwd-relative wrapper command. POSIX
      *  delivery launches the runtime CLI with OMC_WORKER_LAUNCH_SPEC_FILE, so
      *  the wrapper relative path is neither computed nor returned. */
     windowsDelivery?: boolean;
 }): Promise<MaterializedWorkerLaunchTransport>;
 export declare function cleanupWorkerLaunchTransport(attempt: WorkerLaunchAttempt, reason?: string): Promise<boolean>;
-export declare function readAndConsumeWorkerLaunchDescriptor(descriptorPath: string): Promise<unknown>;
+export declare function readAndConsumeWorkerLaunchDescriptor(descriptorPath: string, platform?: NodeJS.Platform): Promise<unknown>;
 export declare function revokeWorkerLaunchAttempt(attempt: WorkerLaunchAttempt, reason: string): Promise<boolean>;
 export declare function awaitWorkerLaunchAcknowledgement(attempt: WorkerLaunchAttempt, options?: {
     timeoutMs?: number;
@@ -142,17 +159,30 @@ export declare function withWorkerLaunchAttemptFence<T>(attempt: WorkerLaunchAtt
 }>;
 export declare function retireWorkerLaunchAttempt(attempt: WorkerLaunchAttempt, reason: string): Promise<boolean>;
 export declare function retireAndCleanupCurrentWorkerLaunchAttempt(attempt: WorkerLaunchAttempt, reason: string, cleanup: () => Promise<boolean>): Promise<boolean>;
+/**
+ * Read the exact launch evidence and provider process identity without
+ * changing launch receipts or attempting cleanup. `dead` describes provider
+ * execution only; supervised completion is accepted only when the producer's
+ * exact completion-binding receipt matches the started record. It never grants
+ * authority to delete the provider tree or pane resources. Callers must retain
+ * `terminateWorkerLaunchProvider` for creation-bound cleanup.
+ */
+export declare function observeWorkerLaunchProvider(attempt: WorkerLaunchAttempt): Promise<'alive' | 'dead' | 'unknown'>;
 export declare function terminateWorkerLaunchProvider(attempt: WorkerLaunchAttempt, timeoutMs?: number): Promise<boolean>;
 export declare function awaitWorkerLaunchProviderStarted(attempt: WorkerLaunchAttempt, options?: {
     timeoutMs?: number;
     pollIntervalMs?: number;
 }): Promise<boolean>;
 export declare function isWorkerLaunchProviderStarted(attempt: WorkerLaunchAttempt): Promise<boolean>;
+export declare function buildWindowsSupervisorInvocation(spec: WorkerLaunchBootstrapSpec, sourceEnv?: NodeJS.ProcessEnv): MaterializedProviderSpawnInvocation;
 export declare function quoteWindowsCreateProcessArgument(value: string): string;
 export declare function buildProviderSpawnInvocation(providerArgv: readonly string[], platform?: NodeJS.Platform, env?: NodeJS.ProcessEnv): ProviderSpawnInvocation;
 export declare function materializeProviderSpawnInvocation(invocation: ProviderSpawnInvocation, options?: {
     superviseWindowsTree?: boolean;
     superviseProcessTree?: boolean;
+    gateProviderExecution?: boolean;
+    /** Bind the supervisor's completion marker to this validated launch spec. */
+    completionIdentity?: WorkerLaunchBootstrapSpec;
 }): Promise<MaterializedProviderSpawnInvocation>;
 export declare function runWorkerLaunchBootstrap(value: unknown): Promise<WorkerLaunchBootstrapResult>;
 export {};

@@ -10,13 +10,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mkdirInterlock = vi.hoisted(() => ({
     before: undefined,
 }));
-vi.mock("fs", async (importOriginal) => {
+vi.mock("../../runtime/contained-fd.js", async (importOriginal) => {
     const actual = await importOriginal();
     return {
         ...actual,
-        mkdirSync: (...args) => {
-            mkdirInterlock.before?.(args[0]);
-            return Reflect.apply(actual.mkdirSync, actual, args);
+        directoryOperations: (...args) => {
+            const operations = actual.directoryOperations(...args);
+            return {
+                ...operations,
+                mkdir: (name, mode) => {
+                    mkdirInterlock.before?.(name);
+                    operations.mkdir(name, mode);
+                },
+            };
         },
     };
 });
@@ -52,7 +58,7 @@ function makeRecord(seq) {
 describe("resolveRunDir containment [P1-3]", () => {
     const tempDirs = [];
     function makeRunsRoot() {
-        const dir = mkdtempSync(join(tmpdir(), "omc-rundir-test-"));
+        const dir = mkdtempSync(join(realpathSync(tmpdir()), "omc-rundir-test-"));
         tempDirs.push(dir);
         return dir;
     }
@@ -111,7 +117,7 @@ describe("resolveRunDir containment [P1-3]", () => {
         mkdirInterlock.before = (path) => {
             if (!swapped &&
                 typeof path === "string" &&
-                (path === target || /\/proc\/self\/fd\/\d+\/run-root-replaced$/.test(path))) {
+                path === runId) {
                 swapped = true;
                 renameSync(runsRoot, originalRoot);
                 symlinkSync(outside, runsRoot, "dir");
@@ -143,7 +149,7 @@ describe("resolveRunDir containment [P1-3]", () => {
         mkdirInterlock.before = (path) => {
             if (!swapped &&
                 typeof path === "string" &&
-                (path === target || /\/proc\/self\/fd\/\d+\/run-target-replaced$/.test(path))) {
+                path === runId) {
                 swapped = true;
                 symlinkSync(escaped, target, "dir");
             }

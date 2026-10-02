@@ -6,7 +6,7 @@ import { detectSlashCommand } from '../hooks/auto-slash-command/detector.js';
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const COMMAND_PATH = join(PROJECT_ROOT, 'commands', 'compact.md');
 const PLUGIN_MANIFEST_PATH = join(PROJECT_ROOT, '.claude-plugin', 'plugin.json');
-const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+const originalConfigDir = process.env.COPILOT_HOME;
 let tempConfigDir;
 async function loadCommandsModule() {
     // getCopilotConfigDir reads env at module load time in some call paths.
@@ -16,15 +16,15 @@ describe('manual compact command', () => {
     beforeEach(() => {
         tempConfigDir = join(tmpdir(), `omc-manual-compact-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         mkdirSync(join(tempConfigDir, 'commands'), { recursive: true });
-        process.env.COPILOT_CONFIG_DIR = tempConfigDir;
+        process.env.COPILOT_HOME = tempConfigDir;
     });
     afterEach(() => {
         rmSync(tempConfigDir, { recursive: true, force: true });
         if (originalConfigDir === undefined) {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
         else {
-            process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+            process.env.COPILOT_HOME = originalConfigDir;
         }
     });
     it('ships a plugin-scoped compact command without shadowing native /compact', () => {

@@ -129,7 +129,7 @@ When tests create agent fixture files in temp dirs, use `.md` (matching plugin c
 
 ```
 oh-my-claudecode → oh-my-copilot
-CLAUDE_CONFIG_DIR → COPILOT_CONFIG_DIR
+CLAUDE_CONFIG_DIR → COPILOT_HOME
 CLAUDE_FAMILY_DEFAULTS → COPILOT_FAMILY_DEFAULTS
 isNonClaudeProvider → isNonCopilotProvider
 skipClaudeCheck → skipCopilotCheck

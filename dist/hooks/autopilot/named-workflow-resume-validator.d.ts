@@ -4,7 +4,7 @@ export declare function takeNamedWorkflowTranscriptFailure(sessionId: string | u
 type RecordValue = Record<string, unknown>;
 /**
  * Named persisted state needs inter-process exclusion and a no-follow read of the transcript.
- * Both are available on every platform: flock or the portable lockfile for the former, and an
+ * Both are available on every platform: flock or the SQLite lock (owner-file fallback) for the former, and an
  * openat walk or a symlink-rejecting component walk for the latter.
  */
 export declare function namedWorkflowRuntimeSupported(): boolean;

@@ -43,7 +43,7 @@ function compareExpectedMatches(a: SessionHistoryMatch, b: SessionHistoryMatch):
 
 describe('session history search', () => {
   const repoRoot = process.cwd();
-  const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+  const originalConfigDir = process.env.COPILOT_HOME;
   let tempRoot: string;
   let claudeDir: string;
   let otherProject: string;
@@ -54,7 +54,7 @@ describe('session history search', () => {
     claudeDir = join(tempRoot, 'claude');
     otherProject = join(tempRoot, 'other-project');
     tildeClaudeDir = join(homedir(), `.omc-session-search-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    process.env.COPILOT_CONFIG_DIR = claudeDir;
+    process.env.COPILOT_HOME = claudeDir;
     process.env.OMC_STATE_DIR = join(tempRoot, 'omc-state');
 
     const currentProjectDir = join(claudeDir, 'projects', encodeProjectPath(repoRoot));
@@ -100,9 +100,9 @@ describe('session history search', () => {
 
   afterEach(() => {
     if (originalConfigDir === undefined) {
-      delete process.env.COPILOT_CONFIG_DIR;
+      delete process.env.COPILOT_HOME;
     } else {
-      process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+      process.env.COPILOT_HOME = originalConfigDir;
     }
     delete process.env.OMC_STATE_DIR;
     rmSync(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
@@ -270,8 +270,8 @@ describe('session history search', () => {
     expect(retainer.totalMatches).toBe(matches.length);
   });
 
-  it('uses a ~-prefixed COPILOT_CONFIG_DIR for transcript discovery', async () => {
-    process.env.COPILOT_CONFIG_DIR = `~/${basename(tildeClaudeDir)}`;
+  it('uses a ~-prefixed COPILOT_HOME for transcript discovery', async () => {
+    process.env.COPILOT_HOME = `~/${basename(tildeClaudeDir)}`;
 
     const tildeProjectDir = join(tildeClaudeDir, 'projects', encodeProjectPath(repoRoot));
     writeTranscript(join(tildeProjectDir, 'session-tilde.jsonl'), [

@@ -9,7 +9,7 @@
  * - config: Show or edit configuration
  * - setup: Sync all OMC components (hooks, agents, skills)
  */
-import { Command } from 'commander';
+import { Command, CommanderError } from 'commander';
 import chalk from 'chalk';
 import { join } from 'path';
 import { writeFileSync, existsSync } from 'fs';
@@ -37,9 +37,10 @@ import { interopCommand } from './interop.js';
 import { askCommand, ASK_USAGE } from './ask.js';
 import { graphCommand } from './graph.js';
 import { checkpointCommand } from './checkpoint.js';
+import { lookoutCommand } from './lookout.js';
 import { warnIfWin32 } from './win32-warning.js';
 import { autoresearchCommand } from './autoresearch.js';
-import { runHudWatchLoop } from './hud-watch.js';
+import { parseHudWatchInterval, runHudWatchLoop } from './hud-watch.js';
 const version = getRuntimePackageVersion();
 /**
  * Apply a --plugin-dir option value: resolve to absolute path, warn if it
@@ -795,7 +796,7 @@ Examples:
   $ omg install                  Install to config directory (default: ~/.copilot/)
   $ omg install --force          Reinstall, overwriting existing files
   $ omg install --quiet          Silent install for scripts
-  $ COPILOT_CONFIG_DIR=$HOME/.claude-isolated-workspace omg install  Isolated config directory`)
+  $ COPILOT_HOME=$HOME/.claude-isolated-workspace omg install  Isolated config directory`)
     .action(async (options) => {
     if (!options.quiet) {
         console.log(chalk.blue('╔═══════════════════════════════════════════════════════════╗'));
@@ -1302,12 +1303,11 @@ program
     .command('hud')
     .description('Run the OMC HUD statusline renderer')
     .option('--watch', 'Run in watch mode (continuous polling for tmux pane)')
-    .option('--interval <ms>', 'Poll interval in milliseconds', '1000')
+    .option('--interval <ms>', 'Poll interval in milliseconds', parseHudWatchInterval, 1000)
     .action(async (options) => {
     const { main: hudMain } = await import('../hud/index.js');
     if (options.watch) {
-        const intervalMs = parseInt(options.interval, 10);
-        await runHudWatchLoop({ intervalMs, hudMain });
+        await runHudWatchLoop({ intervalMs: options.interval, hudMain });
     }
     else {
         await hudMain();
@@ -1419,6 +1419,7 @@ program
  */
 program.addCommand(graphCommand());
 program.addCommand(checkpointCommand());
+program.addCommand(lookoutCommand());
 /**
  * Returns the fully-configured commander program.
  *
@@ -1437,6 +1438,21 @@ export function buildProgram() {
 // and child processes inherit VITEST from the parent vitest worker, which
 // would cause the CLI to silently exit with no output.
 if (!process.env.OMC_CLI_SKIP_PARSE) {
-    program.parse();
+    try {
+        program.parse();
+    }
+    catch (error) {
+        // Commands with an exitOverride (e.g. lookout remaps usage errors to 2)
+        // surface parse failures as CommanderError. Commander has already
+        // printed the message; honor the remapped exit code without a stack.
+        // Other commands keep commander's default process.exit behavior, and
+        // non-Commander errors stay fatal.
+        if (error instanceof CommanderError) {
+            process.exitCode = error.exitCode;
+        }
+        else {
+            throw error;
+        }
+    }
 }
 //# sourceMappingURL=index.js.map

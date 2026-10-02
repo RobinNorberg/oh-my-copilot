@@ -80,6 +80,16 @@ function buildProviderArgs(provider, prompt, { pipePromptViaStdin = false } = {}
   return pipePromptViaStdin ? ['-p'] : ['-p', prompt];
 }
 
+// Approval-bypass flags each provider's advisor run passes (see buildProviderArgs).
+// claude's `-p` path adds no bypass, so it has no entry and no warning.
+const ADVISOR_BYPASS_FLAGS = {
+  codex: '--dangerously-bypass-approvals-and-sandbox',
+  gemini: '--yolo',
+  antigravity: '--dangerously-skip-permissions',
+  grok: '--always-approve',
+  cursor: '--force --trust --sandbox disabled',
+};
+
 function shouldPipePromptViaStdin(provider, prompt) {
   if (provider === 'codex' || provider === 'gemini') {
     if (typeof prompt === 'string' && (prompt.includes('\n') || prompt.length > 500)) {
@@ -319,6 +329,10 @@ async function main() {
 
   const pipePromptViaStdin = shouldPipePromptViaStdin(provider, prompt);
   const providerArgs = buildProviderArgs(provider, prompt, { pipePromptViaStdin });
+  const bypassFlags = ADVISOR_BYPASS_FLAGS[provider];
+  if (bypassFlags) {
+    console.error(`[ask-${provider}] runs with ${bypassFlags}; host --deny-tool / permissions.workerDenyTools are not applied`);
+  }
   const run = spawnSync(binary, providerArgs, {
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,

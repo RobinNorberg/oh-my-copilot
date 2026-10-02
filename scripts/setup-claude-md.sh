@@ -143,6 +143,31 @@ install_reference_skill() {
   cp "$source" "$SKILL_TARGET_PATH"
   echo "Installed wiki skill to $SKILL_TARGET_PATH"
 }
+
+plugin_is_active() {
+  local settings_path="${CONFIG_DIR}/settings.json"
+  [ -f "$settings_path" ] || return 1
+  node - "$settings_path" <<'NODE'
+const fs = require('node:fs');
+const [settingsPath] = process.argv.slice(2);
+let settings;
+try {
+  settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+} catch {
+  process.exit(1);
+}
+if (!settings || typeof settings !== 'object' || Array.isArray(settings)) process.exit(1);
+const active = [settings.enabledPlugins, settings.plugins].some(candidate => {
+  if (Array.isArray(candidate)) {
+    return candidate.some(id => typeof id === 'string' && id.toLowerCase().includes('oh-my-copilot'));
+  }
+  return candidate && typeof candidate === 'object'
+    && Object.entries(candidate).some(([id, value]) => id.toLowerCase().includes('oh-my-copilot') && value !== false);
+});
+process.exit(active ? 0 : 1);
+NODE
+}
+
 # Issue #3743: installed_plugins.json can record Windows-style installPath
 # values that never string-match POSIX/MSYS roots, which made the re-exec guard
 # exec the same script forever. Canonicalize both sides physically; equal roots
@@ -179,9 +204,11 @@ fi
 ACTIVE_PLUGIN_ROOT_NORMALIZED="$(normalize_plugin_root "$ACTIVE_PLUGIN_ROOT")"
 SCRIPT_PLUGIN_ROOT_NORMALIZED="$(normalize_plugin_root "$SCRIPT_PLUGIN_ROOT")"
 if [ "$ACTIVE_PLUGIN_ROOT_NORMALIZED" = "$SCRIPT_PLUGIN_ROOT_NORMALIZED" ]; then
-  # Same physical plugin root: keep executing this script. Re-exec'ing here is
-  # what turned a Windows-style installPath into an infinite process chain.
-  ACTIVE_PLUGIN_ROOT="$SCRIPT_PLUGIN_ROOT"
+  # Same physical plugin root: continue with the canonical path. The logical
+  # SCRIPT_PLUGIN_ROOT preserves a symlinked invocation path (e.g. a
+  # repair-plugin-cache.mjs compat symlink), which the coordinator rejects;
+  # the normalized form is the same directory without the link (issue #3980).
+  ACTIVE_PLUGIN_ROOT="$ACTIVE_PLUGIN_ROOT_NORMALIZED"
 else
   # Bounded re-exec (issue #3743): a defect that makes the guard compare
   # unequal roots forever must terminate loudly, not hang the user's shell.
@@ -278,7 +305,11 @@ if [ "$VALIDATOR_STATUS" -ne 0 ]; then
   exit "$VALIDATOR_STATUS"
 fi
 
-install_reference_skill "$CANONICAL_REFERENCE_SKILL"
+if plugin_is_active; then
+  echo "Skipped wiki skill install (OMC plugin is active)"
+else
+  install_reference_skill "$CANONICAL_REFERENCE_SKILL"
+fi
 if [ "$MODE" = "local" ]; then ensure_local_omc_git_exclude; fi
 
 if [ "$MODE" = "global" ]; then
@@ -294,7 +325,7 @@ if [ "$MODE" = "global" ]; then
   fi
 fi
 
-if [ -f "$CONFIG_DIR/settings.json" ] && grep -q 'oh-my-copilot' "$CONFIG_DIR/settings.json"; then
+if plugin_is_active; then
   echo "Plugin verified"
 else
   echo "Plugin NOT found - run: claude /install-plugin oh-my-copilot"

@@ -44,7 +44,7 @@ let omcHome: string;
 
 async function loadInstaller() {
   vi.resetModules();
-  process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
+  process.env.COPILOT_HOME = claudeConfigDir;
   process.env.HOME = homeDir;
   process.env.CODEX_HOME = codexHome;
   process.env.OMC_HOME = omcHome;

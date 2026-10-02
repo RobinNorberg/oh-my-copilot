@@ -1,5 +1,5 @@
 <!-- OMC:START -->
-<!-- OMC:VERSION:5.1.0 -->
+<!-- OMC:VERSION:5.5.0 -->
 
 # oh-my-copilot - Intelligent Multi-Agent Orchestration
 
@@ -22,7 +22,7 @@ Route code to `executor` (use `model=opus` for complex work). Uncertain SDK usag
 <model_routing>
 `haiku` (quick lookups), `sonnet` (standard), `opus` (architecture, deep analysis), `fable` (Claude Fable 5, above Opus).
 The session model set via `/model` governs the main loop only; delegated agents run on their pinned tier unless you pass `model` explicitly or set a per-agent `agents.<name>.model` override.
-Direct writes OK for: `~/.copilot/**`, `.omg/**`, `.copilot/**`, `~/.claude/**`, `.claude/**`, `copilot-instructions.md`, `CLAUDE.md`, `AGENTS.md`.
+Direct writes OK for: `.omg/**`, `~/.copilot/skills/**`, `.copilot/skills/**`, `.github/copilot-instructions.md`, `copilot-instructions.md`, `CLAUDE.md`, `AGENTS.md`.
 </model_routing>
 
 <skills>

@@ -36,6 +36,7 @@ export interface ConflictReport {
     envFlags: {
         disableOmc: boolean;
         skipHooks: string[];
+        legacyConfigDirEnv: boolean;
     };
     configIssues: {
         unknownFields: string[];
@@ -47,6 +48,7 @@ export interface ConflictReport {
     }[];
     mcpRegistrySync: ReturnType<typeof inspectUnifiedMcpRegistrySync>;
     workspaceMarker: WorkspaceMarkerStatus;
+    nodeOnPath: boolean;
     hasConflicts: boolean;
 }
 export interface ClaudeMdFileStatus {
@@ -97,6 +99,11 @@ export declare function checkConfigIssues(): ConflictReport['configIssues'];
  *    the resolution-order principle: OMC_STATE_DIR > .omc-workspace > git > cwd).
  */
 export declare function checkWorkspaceMarker(): WorkspaceMarkerStatus;
+/**
+ * Copilot runs every plugin hook as `exec: node`. A missing binary makes each
+ * PreToolUse hook error, which Copilot treats as a deny, so every tool call fails.
+ */
+export declare function checkNodeOnPath(env?: NodeJS.ProcessEnv): boolean;
 /**
  * Run complete conflict check
  */

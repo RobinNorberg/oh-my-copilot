@@ -21,7 +21,7 @@ vi.mock('../lib/worktree-paths.js', () => ({
 const mockedExecSync = vi.mocked(childProcess.execSync);
 const mockedExecFileSync = vi.mocked(childProcess.execFileSync);
 const originalCwd = process.cwd();
-const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+const originalConfigDir = process.env.COPILOT_HOME;
 let projectDir: string;
 let configDir: string;
 
@@ -41,16 +41,16 @@ describe('auto slash live-data security', () => {
       join(projectDir, '.copilot', 'live-data-policy.json'),
       JSON.stringify({ allowed_commands: ['git'] }),
     );
-    process.env.COPILOT_CONFIG_DIR = configDir;
+    process.env.COPILOT_HOME = configDir;
     process.chdir(projectDir);
   });
 
   afterEach(() => {
     process.chdir(originalCwd);
     if (originalConfigDir === undefined) {
-      delete process.env.COPILOT_CONFIG_DIR;
+      delete process.env.COPILOT_HOME;
     } else {
-      process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+      process.env.COPILOT_HOME = originalConfigDir;
     }
     rmSync(projectDir, { recursive: true, force: true });
     rmSync(configDir, { recursive: true, force: true });

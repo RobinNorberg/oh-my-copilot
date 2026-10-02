@@ -1,7 +1,7 @@
 /**
  * Rules Finder
  *
- * Finds rule files in project directories and [$COPILOT_CONFIG_DIR|~/.claude].
+ * Finds rule files in project directories and [$COPILOT_HOME|~/.claude].
  *
  * Ported from oh-my-opencode's rules-injector hook.
  */
@@ -125,7 +125,7 @@ export function calculateDistance(rulePath, currentFile, projectRoot) {
 /**
  * Find all rule files for a given context.
  * Searches from currentFile upward to projectRoot for rule directories,
- * then [$COPILOT_CONFIG_DIR|~/.claude]/rules.
+ * then [$COPILOT_HOME|~/.claude]/rules.
  */
 export function findRuleFiles(projectRoot, currentFile) {
     const candidates = [];

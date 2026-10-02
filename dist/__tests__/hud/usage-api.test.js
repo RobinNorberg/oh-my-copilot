@@ -361,6 +361,7 @@ describe('getUsage routing', () => {
         // Reset env
         delete process.env.ANTHROPIC_BASE_URL;
         delete process.env.ANTHROPIC_AUTH_TOKEN;
+        delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
         // Get the mocked https module for assertions
         httpsModule = await import('https');
     });
@@ -374,12 +375,89 @@ describe('getUsage routing', () => {
         // No network call should be made without credentials
         expect(httpsModule.default.request).not.toHaveBeenCalled();
     });
-    it('uses the raw ~-prefixed COPILOT_CONFIG_DIR value for Keychain service lookup', async () => {
-        process.env.COPILOT_CONFIG_DIR = '~/.claude-personal';
+    it('prefers CLAUDE_CODE_OAUTH_TOKEN over Keychain and uses it as the Bearer token', async () => {
+        process.env.CLAUDE_CODE_OAUTH_TOKEN = 'env-oauth-token';
+        let capturedAuth;
+        httpsModule.default.request.mockImplementationOnce((options, callback) => {
+            capturedAuth = options?.headers?.Authorization;
+            const req = new EventEmitter();
+            req.destroy = vi.fn();
+            req.end = () => {
+                const res = new EventEmitter();
+                res.statusCode = 200;
+                callback(res);
+                res.emit('data', JSON.stringify({
+                    five_hour: { utilization: 20 },
+                    seven_day: { utilization: 40 },
+                }));
+                res.emit('end');
+            };
+            return req;
+        });
+        const result = await getUsage();
+        // Usage is fetched successfully using the env token...
+        expect(result).toEqual({
+            rateLimits: {
+                fiveHourPercent: 20,
+                weeklyPercent: 40,
+                fiveHourResetsAt: null,
+                weeklyResetsAt: null,
+            },
+        });
+        // ...sent as the Bearer credential...
+        expect(capturedAuth).toBe('Bearer env-oauth-token');
+        // ...and the Keychain is never consulted (the env override short-circuits it).
+        expect(vi.mocked(childProcess.execFileSync)).not.toHaveBeenCalled();
+    });
+    it('does not reuse Anthropic usage cache data across env OAuth tokens', async () => {
+        const cachePath = '/tmp/test-claude/plugins/oh-my-copilot/.usage-cache-anthropic.json';
+        // The implementation builds the path with path.join, so normalize Windows separators.
+        const isCachePath = (path) => String(path).replace(/\\/g, '/') === cachePath;
+        let cacheContent = '{}';
+        const capturedAuth = [];
+        vi.mocked(fs.existsSync).mockImplementation(path => isCachePath(path));
+        vi.mocked(fs.readFileSync).mockImplementation(path => {
+            if (isCachePath(path))
+                return cacheContent;
+            return '{}';
+        });
+        vi.mocked(fs.writeFileSync).mockImplementation((path, content) => {
+            if (isCachePath(path))
+                cacheContent = String(content);
+        });
+        const mockUsageResponse = (fiveHourPercent) => {
+            httpsModule.default.request.mockImplementationOnce((options, callback) => {
+                capturedAuth.push(options.headers?.Authorization ?? '');
+                const req = new EventEmitter();
+                req.destroy = vi.fn();
+                req.end = () => {
+                    const res = new EventEmitter();
+                    res.statusCode = 200;
+                    callback(res);
+                    res.emit('data', JSON.stringify({ five_hour: { utilization: fiveHourPercent } }));
+                    res.emit('end');
+                };
+                return req;
+            });
+        };
+        process.env.CLAUDE_CODE_OAUTH_TOKEN = 'env-token-one';
+        mockUsageResponse(10);
+        const first = await getUsage();
+        process.env.CLAUDE_CODE_OAUTH_TOKEN = 'env-token-two';
+        mockUsageResponse(80);
+        const second = await getUsage();
+        expect(first.rateLimits?.fiveHourPercent).toBe(10);
+        expect(second.rateLimits?.fiveHourPercent).toBe(80);
+        expect(capturedAuth).toEqual(['Bearer env-token-one', 'Bearer env-token-two']);
+        expect(cacheContent).not.toContain('env-token-one');
+        expect(cacheContent).not.toContain('env-token-two');
+    });
+    it('uses the raw ~-prefixed COPILOT_HOME value for Keychain service lookup', async () => {
+        process.env.COPILOT_HOME = '~/.claude-personal';
         const oneHourFromNow = Date.now() + 60 * 60 * 1000;
         const execFileMock = vi.mocked(childProcess.execFileSync);
         const username = os.userInfo().username;
-        const expectedService = expectedServiceName(process.env.COPILOT_CONFIG_DIR);
+        const expectedService = expectedServiceName(process.env.COPILOT_HOME);
         execFileMock.mockImplementation((_file, args) => {
             const argsArr = args;
             expect(argsArr).toContain('find-generic-password');
@@ -422,12 +500,12 @@ describe('getUsage routing', () => {
         });
         expect(execFileMock).toHaveBeenCalledOnce();
     });
-    it('uses a different Keychain service when COPILOT_CONFIG_DIR is already expanded', async () => {
-        process.env.COPILOT_CONFIG_DIR = '/Users/test/.claude-personal';
+    it('uses a different Keychain service when COPILOT_HOME is already expanded', async () => {
+        process.env.COPILOT_HOME = '/Users/test/.claude-personal';
         const oneHourFromNow = Date.now() + 60 * 60 * 1000;
         const execFileMock = vi.mocked(childProcess.execFileSync);
         const username = os.userInfo().username;
-        const expectedService = expectedServiceName(process.env.COPILOT_CONFIG_DIR);
+        const expectedService = expectedServiceName(process.env.COPILOT_HOME);
         execFileMock.mockImplementation((_file, args) => {
             const argsArr = args;
             expect(argsArr).toContain('find-generic-password');

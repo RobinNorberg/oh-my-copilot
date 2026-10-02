@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
@@ -53,8 +53,31 @@ describe('buildAutoresearchSetupPrompt', () => {
 });
 
 describe('runAutoresearchSetupSession', () => {
+  beforeEach(() => {
+    vi.stubEnv('COPILOT_CLI', '');
+    vi.stubEnv('COPILOT_AGENT_SESSION_ID', '');
+    vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', 'cli');
+  });
+
   afterEach(() => {
     vi.mocked(spawnSync).mockReset();
+    vi.unstubAllEnvs();
+  });
+
+  it('spawns the Copilot CLI when the host is Copilot', () => {
+    vi.stubEnv('COPILOT_CLI', '1');
+    vi.mocked(spawnSync).mockReturnValue({
+      status: 3,
+      stdout: '',
+      stderr: 'bad',
+      pid: 1,
+      output: [],
+      signal: null,
+    } as ReturnType<typeof spawnSync>);
+
+    expect(() => runAutoresearchSetupSession({ repoRoot: '/repo', missionText: 'Improve launch flow' })).toThrow(/copilot_autoresearch_setup_failed:3/);
+    expect(vi.mocked(spawnSync).mock.calls[0]?.[0]).toBe('copilot');
+    expect(vi.mocked(spawnSync).mock.calls[0]?.[1]).toEqual(['-p', expect.any(String)]);
   });
 
   it('parses validated JSON from claude print mode', () => {

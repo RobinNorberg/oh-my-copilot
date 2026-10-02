@@ -83,7 +83,7 @@ Ask the remaining questions only after language is resolved:
 
 - package/tech stack (for standards and design-system seeds)
 - does this repo have a UI? (no UI → design-system/ is created as a stub with a note, or skipped on request)
-- issue tracker location (GitHub / GitLab / local `.scratch/`) — consumed by tracker-backed flows (the navigator's map home)
+- issue tracker location (GitHub / GitLab / local `.scratch/`) — for V1 harbor intake only GitHub is supported; also record the maintainer's communication authority for intake (issue comments, label changes) — consumed by the navigator's map home and the harbor's intake queue
 
 ### 3. Scaffold (create missing surfaces — seeds render in the document language)
 
@@ -104,6 +104,8 @@ scripts/README.md
 ```
 
 Seed exemplars are reference companions, never a combined payload. Select exactly one companion after resolving `documentLanguage`; do not emit duplicate headings or labels from another companion. Use the longest matching language/script prefix: `en-*` uses English, `zh-Hans-*` uses Simplified Chinese, and `zh-Hant-*` uses Traditional Chinese, while Seed B writes the full resolved tag into `documentLanguage`. For any other valid tag, translate the English canonical companion once while preserving every stable token above.
+
+Before generating seed prose, call the Skill tool with `agent-doc-discipline` and apply its rules; seed prose is ready only when every rule is checkable and carries a why, every surface is self-describing without chat history, and sources are named rather than assumed. A teammate or agent should be able to act on the seed's content by reading alone.
 
 Seed A — CLAUDE.md, en (thin entry; extend in place if the file exists):
 
@@ -207,11 +209,12 @@ documentLanguage: en
 
 # Glossary
 
-One entry per term: definition, boundaries, one resolved ambiguity. Agents write here the moment a term is settled. Vocabulary here is law for all specs, tickets, and code naming.
+One entry per term: definition, boundaries, one resolved ambiguity. Agents write here the moment a term is settled. Vocabulary here is law for all specs, tickets, and code naming. Ship-specific terms only: a concept any sea chart carries does not get an entry.
 
 ## <term>
 - Definition:
 - Boundary: (is X, not Y)
+- Avoid: (near-synonyms this ship does not use)
 - Resolved ambiguity:
 ```
 <!-- shipyard-seed-b:en:end -->
@@ -226,11 +229,12 @@ documentLanguage: zh-Hans
 
 # 术语表
 
-一条术语一个条目：定义、边界、一个已解决的歧义。术语敲定的当下写入。词汇对所有 spec、ticket、代码命名具有法律效力。
+一条术语一个条目：定义、边界、一个已解决的歧义。术语敲定的当下写入。词汇对所有 spec、ticket、代码命名具有法律效力。只收本船特有的词；海图上都有的通用词不立条目。
 
 ## <term>
 - 定义:
 - 边界: （是 X，不是 Y）
+- 禁用: （本船不用的近义词）
 - 已解决的歧义:
 ```
 <!-- shipyard-seed-b:zh-Hans:end -->
@@ -245,16 +249,17 @@ documentLanguage: zh-Hant
 
 # 詞彙表
 
-每個術語一個條目：定義、邊界、一個已解決的歧義。術語確定時立即寫入。這裡的詞彙是所有 spec、ticket 與程式碼命名的準則。
+每個術語一個條目：定義、邊界、一個已解決的歧義。術語確定時立即寫入。這裡的詞彙是所有 spec、ticket 與程式碼命名的準則。只收本船特有的詞；海圖上都有的通用詞不立條目。
 
 ## <term>
 - 定義:
 - 邊界: （是 X，不是 Y）
+- 禁用: （本船不用的近義詞）
 - 已解決的歧義:
 ```
 <!-- shipyard-seed-b:zh-Hant:end -->
 
-Seed C — docs/standards/architecture.md (data.md / process.md same shape; prose renders in the document language):
+Seed C — docs/standards/architecture.md (data.md same shape; process.md additionally seeds a Testing volume — see Seed C2; prose renders in the document language):
 
 ```markdown
 # Architecture Standards
@@ -264,6 +269,23 @@ Rule-shaped, checkable writing; every rule carries a "why". Empty sections are l
 ## Module boundaries
 ## Error handling
 ## Dependency direction
+## Seams and depth
+
+- A seam is a real boundary two modules already cross in both directions. One adapter is a hypothetical seam; two adapters make it real. (Checkable: count the callers. Why: speculative abstraction is a tax paid before the need exists.)
+- A deep module puts much behavior behind a small interface; deepen before widening. (Why: the interface is the permanent tax.)
+- Logic lives behind the seam that owns its data; stable dependencies point inward. (Why: logic that reaches across a boundary it does not own couples every caller to the wrong neighbor.)
+```
+
+Seed C2 — docs/standards/process.md, Testing volume (rendered when the repo tests code; prose renders in the document language):
+
+```markdown
+## Testing
+
+- Tests enter through the interface only: assert observable behavior at the seam. Reaching past the seam — querying the store directly, reading internal state — is false confidence. (Why: a test that survives refactors describes behavior, not plumbing.)
+- Expected values come from an independent source of truth: a known-good literal or a worked example from the spec. (Why: a test that recomputes its expectation the way the code does can never disagree with the code.)
+- One slice at a time: one failing test, one minimal implementation, repeat. Bulk-writing all tests first tests the imagination, not the behavior. (Why: the loop is a feedback engine; batching cuts the feedback.)
+- Refactoring happens at the review axis, not inside the red-green loop. (Why: the loop answers "is the behavior right"; mixing redesign in hides regressions.)
+- Tests open only at seams the reviewing captain approved. (Why: unapproved seams spend effort where the risk is not.)
 ```
 
 Seed D — docs/business/README.md:
@@ -314,6 +336,26 @@ write "this project's specific decision discipline", not generic tutorials.
 
 `.mcp.json` seed: `{"mcpServers": {}}` — servers get added when a tool integration is actually needed, not speculatively.
 
+**Destructive-operation guardrail preset.** On request, drydock seeds a hook preset that blocks destructive git operations — push, force-push, hard reset, clean, and branch deletion — behind explicit approval. It is installed as ordinary, inspectable repo config (a hooks entry the repo can read and audit — the same place the repo's other hooks live, e.g. the agent harness's settings hooks or a git pre-push hook), never a hidden enforcement layer: the rules are listed in the report, and removing the entry is an explicit human act. The preset protects the laid harness, not the agent — no agent session can end the repo's history by accident. Seed shape:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "command": "<confirm-before-destructive-git>",
+        "description": "Block push, force-push, reset --hard, clean, and branch -D behind explicit approval"
+      }
+    ]
+  }
+}
+```
+
+The matcher and command are the repo's own choice of hook mechanism — drydock seeds the shape and the rule list, and the confirmation command lives in the Tools pillar (`scripts/`) where the repo can read and audit it.
+
+**Commit-time quality gate preset.** On request, drydock also seeds a commit-time hook preset that runs the repo's own checks before a commit lands — lint, typecheck, and the test suite, each wired to whatever entrypoints the repo already has (the Tools pillar's `scripts/`, the package manager's standard commands). Same shape as the guardrail preset: ordinary, inspectable repo config, listed in the report, removable only by an explicit human act. The gates are the repo's existing checks wired to the commit boundary — drydock adds no new checker of its own, and a repo without established check commands gets the scaffold with the commands left for the humans to name.
+
 ### 4. Wire the governance loop (this is what makes it a shipyard, not a folder)
 
 Tell the user, and rely on these flows to fill the skeleton:
@@ -334,4 +376,6 @@ The rule that keeps 先动手 aligned: **starting needs no permission; landing g
 
 ## `--check` mode
 
-Diff actual repo state against the shipyard map; report: missing surfaces, a missing or invalid `CONTEXT.md` frontmatter `documentLanguage` tag, CLAUDE.md sections that point at dead paths, CONTEXT.md terms unused in code, and standards never referenced. For each finding, state the confidence (`high` when mechanically checkable, `low` when heuristic) and whether it is actionable after excluding throwaway/scratch repositories explicitly declared by the user. Launch's yard gate treats high-confidence actionable findings as blocking; low-confidence or explicitly-classified false-positive findings, and findings in a user-declared scratch/throwaway scope, may be overridden only with deliberate per-invocation intent (see `/oh-my-copilot:launch`). `/oh-my-copilot:ask-navigator` may also run this audit in report-only mode while charting a foggy effort: findings are recorded verbatim in the map's Notes (never swallowed) and remain live findings for the launch yard gate. Today `--check` has no executable or machine-readable exit contract — the report's wording is the classification source until a structured finding/severity contract ships (planned follow-up). Read-only.
+Diff actual repo state against the shipyard map; report: missing surfaces, a missing or invalid `CONTEXT.md` frontmatter `documentLanguage` tag, CLAUDE.md sections that point at dead paths, CONTEXT.md terms unused in code, and standards never referenced. For each finding, state the confidence (`high` when mechanically checkable, `low` when heuristic) and whether it is actionable after excluding throwaway/scratch repositories explicitly declared by the user. Launch's yard gate treats high-confidence actionable findings as blocking; low-confidence or explicitly-classified false-positive findings, and findings in a user-declared scratch/throwaway scope, may be overridden only with deliberate per-invocation intent (see `/oh-my-copilot:launch`). `/oh-my-copilot:ask-navigator` may also run this audit in report-only mode while charting a foggy effort: findings are recorded verbatim in the map's Notes (never swallowed) and remain live findings for the launch yard gate.
+
+**The structured exit contract.** The mechanical subset of this audit is executable: `node scripts/shipyard-audit.mjs [repoRoot]` checks the high-confidence classes only — missing surfaces, a missing/invalid `documentLanguage` tag, dead paths in `CLAUDE.md`, project-skill triggers present, and intent statuses within the documented vocabulary — and emits JSON on stdout (human summary on stderr) in the same finding vocabulary the lookout CLI uses: `severity` (high/medium/low/info), `confidence` (high/low), `actionable`, plus a stable finding id, evidence, and advice. Exit code 0 = clean, 1 = high-confidence actionable findings present, 2 = invocation error. The heuristic classes (terms unused in code, standards never referenced) stay in this prose layer by design — they are `low`-confidence by construction and the script never invents findings it cannot verify mechanically. Read-only.

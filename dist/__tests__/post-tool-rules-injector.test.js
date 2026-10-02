@@ -14,7 +14,7 @@ function runHook(input, extraEnv) {
         env: {
             ...process.env,
             CLAUDE_PLUGIN_ROOT: REPO_ROOT,
-            COPILOT_CONFIG_DIR: ISOLATED_CONFIG_DIR,
+            COPILOT_HOME: ISOLATED_CONFIG_DIR,
             NODE_ENV: 'test',
             ...extraEnv,
         },
@@ -53,7 +53,7 @@ describe('post-tool-rules-injector.mjs skip guards (DISABLE_OMC / OMC_SKIP_HOOKS
             }, {
                 HOME: home,
                 USERPROFILE: home,
-                COPILOT_CONFIG_DIR: join(root, 'config'),
+                COPILOT_HOME: join(root, 'config'),
                 ...extraEnv,
             })).toEqual({
                 continue: true,

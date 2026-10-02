@@ -28,18 +28,23 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 <br/>This work is based on [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) by Yeachan Heo, but with a Copilot CLI focus.
 
-> **v5.0.0** rebases the fork onto upstream oh-my-claudecode v5.0.2 and renames the
+> **v5.5.0** makes the fork a native GitHub Copilot CLI plugin (hooks, agents,
+> `copilot` team workers) and renames `COPILOT_CONFIG_DIR` to `COPILOT_HOME`.
+> **v5.0.0** rebased the fork onto upstream oh-my-claudecode v5.0.2 and renamed the
 > CLI to **`omg`**. Runtime state moved to `.omg/` and configuration to
-> `.copilot/omg.jsonc`. Upgrading from v4? Read the
+> `.copilot/omg.jsonc`. Upgrading? Read the
 > [Migration Guide](docs/MIGRATION.md).
 
 ## Quick Start
 
 ```bash
-# Step 1: Install
+# Step 1: Install (inside a Copilot CLI session)
 /plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot@omc
-# or
+# or from your shell
+copilot plugin marketplace add RobinNorberg/oh-my-copilot
+copilot plugin install oh-my-copilot@omc
+# plus the terminal CLI (omg)
 npm i -g oh-my-copilot@latest
 
 # Step 2: Setup
@@ -53,6 +58,12 @@ autopilot: build a todo-app
 
 # If you enjoy the output, give the repo a ⭐ and tell a friend
 ```
+
+> **Requirements:** Node.js on PATH (every hook runs `node`; under Copilot a
+> hook that cannot start blocks the tool call). The host config directory is
+> `~/.copilot`, or `$COPILOT_HOME` when set; OMC follows Copilot's own
+> variable. Update with `copilot plugin update oh-my-copilot@omc`; uninstall
+> with `copilot plugin uninstall oh-my-copilot@omc`.
 
 > **Known npm warning:** `npm i -g oh-my-copilot@latest` may print `deprecated prebuild-install@7.1.3`.
 > This comes from the `better-sqlite3` native-addon dependency

@@ -11,6 +11,8 @@ export interface TmuxExecOptions {
 }
 export declare function tmuxEnv(): NodeJS.ProcessEnv;
 export declare function isNativeWindowsShell(): boolean;
+export declare function quoteForCmd(arg: string): string;
+export declare function escapeForCmdSet(value: string): string;
 export declare function tmuxExec(args: string[], opts?: TmuxExecOptions & Omit<ExecFileSyncOptionsWithStringEncoding, 'env' | 'encoding'> & {
     encoding?: BufferEncoding;
 }): string;
@@ -62,9 +64,9 @@ export interface TmuxPaneSnapshot {
  */
 export declare function isTmuxAvailable(): boolean;
 /**
- * Check if claude CLI is available on the system
+ * Check if the host CLI (copilot, or claude under Claude Code) is available
  */
-export declare function isCopilotAvailable(): boolean;
+export declare function isCopilotAvailable(binary?: string): boolean;
 /**
  * Options for `resolveLaunchPolicy`. `requireTmux=true` makes
  * CMUX_SURFACE_ID stop demoting to 'direct'. The caller is responsible for

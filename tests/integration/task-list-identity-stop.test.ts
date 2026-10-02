@@ -33,6 +33,7 @@ function makeFixture(kind: 'mjs' | 'cjs' | 'template') {
     // install does and run the copied persistent-mode.mjs.
     const installed = join(dir, 'installed-hooks');
     cpSync(join(root, 'templates', 'hooks'), installed, { recursive: true });
+    execFileSync(process.execPath, [join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs'), '-e', `import { provisionStandaloneStateLockBridge } from './src/installer/index.ts'; provisionStandaloneStateLockBridge(${JSON.stringify(root)}, ${JSON.stringify(join(installed, 'lib', 'state-lock.mjs'))});`], { cwd: root, stdio: 'inherit' });
     hook = join(installed, 'persistent-mode.mjs');
   }
 
@@ -91,7 +92,7 @@ function invokeStop(f: Fixture, extraEnv: Record<string, string> = {}) {
       ...baseEnv,
       HOME: f.home,
       USERPROFILE: f.home,
-      COPILOT_CONFIG_DIR: f.claudeConfigDir,
+      COPILOT_HOME: f.claudeConfigDir,
       OMC_STATE_DIR: '',
       OMC_PERSISTENT_MODE_TIMEOUT_MS: '3000',
       ...extraEnv,

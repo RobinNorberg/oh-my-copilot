@@ -17,7 +17,7 @@ import { renderSkillResourcesGuidance } from '../../utils/skill-resources.js';
 import { renderSkillRuntimeGuidance } from '../../features/builtin-skills/runtime-guidance.js';
 import { getSkillsDir, renderBundledSkillBody } from '../../features/builtin-skills/skills.js';
 /** Claude config directory */
-const COPILOT_CONFIG_DIR = getCopilotConfigDir();
+const COPILOT_HOME = getCopilotConfigDir();
 /**
  * Claude Code native commands that must not be shadowed by user skills.
  * Skills whose canonical name or alias matches one of these will be prefixed
@@ -159,12 +159,12 @@ function discoverSkillsFromDir(skillsDir) {
  * Discover all available commands from multiple sources
  */
 export function discoverAllCommands() {
-    const userCommandsDir = join(COPILOT_CONFIG_DIR, 'commands');
+    const userCommandsDir = join(COPILOT_HOME, 'commands');
     const projectCommandsDir = join(process.cwd(), '.copilot', 'commands');
     const projectClaudeSkillsDir = join(process.cwd(), '.copilot', 'skills');
     const projectOmcSkillsDir = join(getOmcRoot(), 'skills');
     const projectAgentSkillsDir = join(process.cwd(), '.agents', 'skills');
-    const userSkillsDir = join(COPILOT_CONFIG_DIR, 'skills');
+    const userSkillsDir = join(COPILOT_HOME, 'skills');
     const userCommands = discoverCommandsFromDir(userCommandsDir, 'user');
     const projectCommands = discoverCommandsFromDir(projectCommandsDir, 'project');
     const projectClaudeSkills = discoverSkillsFromDir(projectClaudeSkillsDir);
@@ -325,7 +325,7 @@ export function executeSlashCommand(parsed) {
     if (!command) {
         return {
             success: false,
-            error: `Command "/${parsed.command}" not found. Available commands are in ${COPILOT_CONFIG_DIR}/commands/ or .copilot/commands/`,
+            error: `Command "/${parsed.command}" not found. Available commands are in ${COPILOT_HOME}/commands/ or .copilot/commands/`,
         };
     }
     try {

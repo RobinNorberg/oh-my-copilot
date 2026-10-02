@@ -14,6 +14,8 @@ import {
 import { basename } from 'path';
 import { promisify } from 'util';
 import { resolveExecutable } from '../platform/executable-resolution.js';
+import { getHostCliBinary } from '../utils/host-detection.js';
+import { isPsmux, translatePsmuxArgs } from '../team/psmux-adapter.js';
 
 // ── tmux environment & execution wrappers ────────────────────────────────────
 
@@ -43,22 +45,35 @@ interface TmuxCommandInvocation {
 }
 
 function isUnixLikeOnWindows(): boolean {
-  return process.platform === 'win32' &&
-    !!(process.env.MSYSTEM || process.env.MINGW_PREFIX);
+  if (process.platform !== 'win32') return false;
+  // MSYSTEM is the discriminator exported by MSYS2 shells. SYSTEM is a
+  // Windows system variable and must not make a real POSIX tmux look native.
+  return Boolean(process.env.MSYSTEM?.trim() || process.env.MINGW_PREFIX?.trim());
 }
 
 export function isNativeWindowsShell(): boolean {
   return process.platform === 'win32' && !isUnixLikeOnWindows();
 }
 
-function quoteForCmd(arg: string): string {
+export function quoteForCmd(arg: string): string {
+  assertSafeCmdValue(arg);
   if (arg.length === 0) return '""';
   if (!/[\s"%^&|<>()]/.test(arg)) return arg;
   return `"${arg.replace(/(["%])/g, '$1$1')}"`;
 }
 
-function escapeForCmdSet(value: string): string {
-  return value.replace(/"/g, '""');
+export function escapeForCmdSet(value: string): string {
+  assertSafeCmdValue(value);
+  // The set command is embedded in a command string which is then wrapped in
+  // a second cmd /c invocation. Percent signs therefore need one escaping
+  // layer here, in addition to quoteForCmd's outer layer.
+  return value.replace(/%/g, '%%').replace(/"/g, '""');
+}
+
+function assertSafeCmdValue(value: string): void {
+  if (/[\0\r\n]/.test(value)) {
+    throw new Error('Native Windows tmux command values cannot contain NUL, CR, or LF characters');
+  }
 }
 
 function resolveTmuxInvocation(args: string[]): TmuxCommandInvocation {
@@ -78,11 +93,26 @@ function resolveTmuxInvocation(args: string[]): TmuxCommandInvocation {
   };
 }
 
+// Fork (psmux): `-S <socket>` argv is rewritten to psmux's private `-L`
+// namespace (see src/team/psmux-adapter.ts). Every other invocation, and
+// every non-psmux platform, passes through untouched.
+function psmuxTranslation(args: string[]): { args: string[]; restore: (stdout: string) => string } | null {
+  if (process.platform !== 'win32' || args[0] !== '-S' || !isPsmux()) return null;
+  return translatePsmuxArgs(args);
+}
+
 export function tmuxExec(
   args: string[],
   opts?: TmuxExecOptions & Omit<ExecFileSyncOptionsWithStringEncoding, 'env' | 'encoding'> & { encoding?: BufferEncoding },
 ): string {
   const { stripTmux: _, ...execOpts } = opts ?? {};
+  // Fork (psmux): namespace translation.
+  const psmux = psmuxTranslation(args);
+  if (psmux) {
+    const invocation = resolveTmuxInvocation(psmux.args);
+    const stdout = execFileSync(invocation.command, invocation.args, { encoding: 'utf-8', ...execOpts, env: resolveEnv(opts) });
+    return typeof stdout === 'string' ? psmux.restore(stdout) : stdout;
+  }
   const invocation = resolveTmuxInvocation(args);
   return execFileSync(invocation.command, invocation.args, { encoding: 'utf-8', ...execOpts, env: resolveEnv(opts) });
 }
@@ -92,6 +122,16 @@ export async function tmuxExecAsync(
   opts?: TmuxExecOptions & { timeout?: number },
 ): Promise<{ stdout: string; stderr: string }> {
   const { stripTmux: _, timeout, ...rest } = opts ?? {};
+  // Fork (psmux): namespace translation.
+  const psmux = psmuxTranslation(args);
+  if (psmux) {
+    const invocation = resolveTmuxInvocation(psmux.args);
+    const result = await promisify(execFile)(invocation.command, invocation.args, {
+      encoding: 'utf-8', env: resolveEnv(opts),
+      ...(timeout !== undefined ? { timeout } : {}), ...rest,
+    });
+    return { stdout: psmux.restore(result.stdout), stderr: result.stderr };
+  }
   const invocation = resolveTmuxInvocation(args);
   return promisify(execFile)(invocation.command, invocation.args, {
     encoding: 'utf-8', env: resolveEnv(opts),
@@ -127,6 +167,13 @@ export function tmuxSpawn(
   opts?: TmuxExecOptions & Omit<SpawnSyncOptionsWithStringEncoding, 'env' | 'encoding'> & { encoding?: BufferEncoding },
 ): SpawnSyncReturns<string> {
   const { stripTmux: _, ...spawnOpts } = opts ?? {};
+  // Fork (psmux): namespace translation.
+  const psmux = psmuxTranslation(args);
+  if (psmux) {
+    const invocation = resolveTmuxInvocation(psmux.args);
+    const result = spawnSync(invocation.command, invocation.args, { encoding: 'utf-8', ...spawnOpts, env: resolveEnv(opts) });
+    return typeof result.stdout === 'string' ? { ...result, stdout: psmux.restore(result.stdout) } : result;
+  }
   const invocation = resolveTmuxInvocation(args);
   return spawnSync(invocation.command, invocation.args, { encoding: 'utf-8', ...spawnOpts, env: resolveEnv(opts) });
 }
@@ -183,11 +230,11 @@ export function isTmuxAvailable(): boolean {
 }
 
 /**
- * Check if claude CLI is available on the system
+ * Check if the host CLI (copilot, or claude under Claude Code) is available
  */
-export function isCopilotAvailable(): boolean {
+export function isCopilotAvailable(binary: string = getHostCliBinary()): boolean {
   try {
-    execFileSync('claude', ['--version'], {
+    execFileSync(binary, ['--version'], {
       stdio: 'ignore',
       shell: process.platform === 'win32',
     });

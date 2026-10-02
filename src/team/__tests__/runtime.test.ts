@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import { describe, it, expect, vi } from 'vitest';
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { monitorTeam } from '../runtime.js';
+import { monitorTeam, resumeTeam, startTeam } from '../runtime.js';
 import type { TeamConfig } from '../runtime.js';
+import { teamStateRoot } from '../state-paths.js';
 
 describe('runtime types', () => {
   it('TeamConfig has required fields', () => {
@@ -46,5 +47,57 @@ describe('runtime types', () => {
 
   it('monitorTeam rejects invalid team names before path usage', async () => {
     await expect(monitorTeam('Bad-Team', '/tmp', [])).rejects.toThrow('Invalid team name');
+  });
+
+  it('legacy startTeam fails closed before creating native state', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'team-runtime-v1-start-'));
+    try {
+      await expect(startTeam({
+        teamName: 'legacy-start',
+        workerCount: 1,
+        agentTypes: ['claude'],
+        tasks: [{ subject: 'task', description: 'task' }],
+        cwd,
+      })).rejects.toThrow('team_start_unsafe_runtime_v1');
+      expect(existsSync(teamStateRoot(cwd, 'legacy-start'))).toBe(false);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('resumeTeam refuses state without immutable instance ownership', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'team-runtime-v1-resume-'));
+    vi.stubEnv('HOME', cwd);
+    vi.stubEnv('USERPROFILE', cwd);
+    vi.stubEnv('OMC_STATE_DIR', '');
+    try {
+      // Same resolver resumeTeam uses, so the config below is what reaches the instance-id check.
+      const root = teamStateRoot(cwd, 'legacy-resume');
+      expect(root).toBe(join(cwd, '.omg', 'state', 'team', 'legacy-resume'));
+      mkdirSync(root, { recursive: true });
+      writeFileSync(join(root, 'config.json'), JSON.stringify({
+        teamName: 'legacy-resume',
+        workerCount: 0,
+        agentTypes: ['claude'],
+        tasks: [],
+        cwd,
+        tmuxSession: 'legacy-resume',
+        leaderPaneId: '%1',
+      }), 'utf-8');
+      await expect(resumeTeam('legacy-resume', cwd)).resolves.toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('does not expose retired legacy mutation entrypoints', async () => {
+    const runtimeModule = await import('../runtime.js') as Record<string, unknown>;
+    const teamModule = await import('../index.js') as Record<string, unknown>;
+
+    for (const name of ['watchdogCliWorkers', 'spawnWorkerForTask', 'killWorkerPane', 'assignTask']) {
+      expect(runtimeModule[name]).toBeUndefined();
+      expect(teamModule[name]).toBeUndefined();
+    }
   });
 });

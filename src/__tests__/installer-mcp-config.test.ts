@@ -31,7 +31,7 @@ vi.mock('fs', async () => {
 
 async function loadInstallerWithEnv(claudeConfigDir: string, homeDir: string, codexHome: string, omcHome: string) {
   vi.resetModules();
-  process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
+  process.env.COPILOT_HOME = claudeConfigDir;
   process.env.HOME = homeDir;
   process.env.CODEX_HOME = codexHome;
   process.env.OMC_HOME = omcHome;
@@ -177,7 +177,7 @@ describe('installer MCP config ownership (issue #1802)', () => {
 // That mirror test only proves its own copy of the merge logic is correct; it
 // would keep passing even if the production fix were reverted. This test would
 // not: it runs the actual `install()` entry point against a fresh, empty
-// COPILOT_CONFIG_DIR with no force flags and reads back the real settings.json.
+// COPILOT_HOME with no force flags and reads back the real settings.json.
 // ---------------------------------------------------------------------------
 describe('installer hook merge — first install writes non-empty hook groups', () => {
   let tempRoot: string;

@@ -53,7 +53,7 @@ function fail(message) {
  * moved, and only when the current location has nothing to lose.
  */
 function adoptLegacyConfigFile() {
-  if (process.env.COPILOT_CONFIG_DIR?.trim()) return;
+  if (process.env.COPILOT_HOME?.trim()) return;
   if (existsSync(CONFIG_FILE)) return;
 
   const legacy = join(homedir(), '.claude', '.omc-config.json');

@@ -10,6 +10,7 @@
 5. [Agent Templates](#agent-templates)
 6. [Session Resume](#session-resume)
 7. [Autopilot](#autopilot)
+8. [lookout](#lookout)
 
 ---
 
@@ -580,3 +581,63 @@ All state is persisted to `.omg/state/autopilot-state.json` and includes:
 - [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
 - [MIGRATION.md](./MIGRATION.md) - Migration guide
 - [Agent Definitions](../src/agents/definitions.ts) - Agent configuration
+
+## lookout
+
+Pre-flight danger scan for autonomous runs. Before an unattended effort starts (graph run, autopilot, launch, a multi-agent team), lookout scans the task briefing and the workspace state and reports machine-readable findings. Advisory by design: it never blocks, never mutates, and has no skip-file backdoor.
+
+### Core Functions
+
+```typescript
+// Scan a briefing and/or workspace; read-only by construction.
+function scanLookout(options: ScanLookoutOptions): LookoutReport;
+
+// Resolve a --brief argument ("inline text" or "@path/to/file").
+function resolveBriefArg(briefArg: string): { text: string; source: LookoutReport['briefSource'] };
+```
+
+### Types
+
+```typescript
+interface LookoutFinding {
+  id: string;                    // 'lookout.brief.force-op', 'lookout.ws.dirty-worktree', ...
+  title: string;
+  severity: 'high' | 'medium' | 'low' | 'info';
+  confidence: 'high' | 'low';    // lookout only reports mechanically checkable signals
+  actionable: boolean;
+  evidence: string[];            // exact matched snippets / paths
+  advice: string;                // usually: pair with approval gates / checkpoints
+}
+
+interface LookoutReport {
+  scannedAt: string;
+  repo: string | null;           // null when not inside a git repository
+  briefSource: 'flag' | 'file' | 'none';
+  findings: LookoutFinding[];
+  summary: {
+    counts: Record<LookoutSeverity, number>;
+    verdict: 'clear' | 'advisory' | 'review-recommended';
+  };
+}
+
+class LookoutError extends Error { exitCode: number } // exit 2 = scan error (fail closed)
+```
+
+### Usage Example
+
+```typescript
+import { scanLookout } from './features/index.js';
+
+const report = scanLookout({ repo: process.cwd(), brief: taskBriefText });
+if (report.summary.verdict === 'review-recommended') {
+  // surface findings; pair the run with:
+  // omg graph run --approval-mode remote --checkpoint
+}
+```
+
+### Rules
+
+- Briefing rules flag the dangerous operation itself: force operations, destructive SQL, test deletion/skipping, direct pushes to protected branches (high); secret, CI, and deployment surfaces (medium)
+- Workspace rules flag tracked secret-looking files (environment templates like `.env.example` excluded) and a dirty worktree
+- Design follows the retired risk-assess classifier's lessons (#3164): mechanically checkable signals only, word- and path-anchored patterns, evidence on every finding, prefer misses over alarm fatigue
+- CLI: `omg lookout scan [--brief <text|@file>] [--json] [--strict]` (see REFERENCE.md)

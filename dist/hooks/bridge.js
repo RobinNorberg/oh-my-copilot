@@ -24,6 +24,8 @@ import { dispatchNotificationInBackground } from "./background-notifications.js"
 import { readCanonicalTeamStateCandidate } from "./team-canonical-state.js";
 // Hot-path imports: needed on every/most hook invocations (keyword-detector, pre/post-tool-use)
 import { removeCodeBlocks, getAllKeywordsWithSizeCheck, applyRalplanGate, sanitizeForKeywordDetection, NON_LATIN_SCRIPT_PATTERN, parseExplicitWorkflowSlashInvocation, isRetiredWorkflowSlashInvocation, } from "./keyword-detector/index.js";
+import { recordIntentShadow, recordSkillTriggerShadow, } from "./keyword-detector/jev-shadow.js";
+import { recordTaskSizeShadow } from "./task-size-detector/jev-shadow.js";
 import { processOrchestratorPreTool, processOrchestratorPostTool, } from "./omc-orchestrator/index.js";
 import { normalizeHookInput } from "./bridge-normalize.js";
 import { addBackgroundTask, completeBackgroundTask, completeMostRecentMatchingBackgroundTask, getRunningTaskCount, remapBackgroundTaskId, remapMostRecentMatchingBackgroundTaskId, } from "../hud/background-tasks.js";
@@ -91,8 +93,22 @@ const MODE_CONFIRMATION_SKILL_MAP = {
     autopilot: ["autopilot"],
     ralplan: ["ralplan"],
 };
-const SESSION_START_CONTEXT_BUDGET = 6000;
-const SESSION_START_OMISSION_NOTICE = '[Additional SessionStart context omitted to preserve the 6000-character aggregate budget.]';
+const DEFAULT_SESSION_START_CONTEXT_BUDGET = 6000;
+/**
+ * Aggregate character budget shared by everything SessionStart injects.
+ * Override with OMC_SESSION_START_CONTEXT_BUDGET (positive integer). Any other
+ * value falls back to the default so a bad setting can never blank the context.
+ */
+function resolveSessionStartContextBudget() {
+    const raw = process.env.OMC_SESSION_START_CONTEXT_BUDGET?.trim();
+    if (!raw)
+        return DEFAULT_SESSION_START_CONTEXT_BUDGET;
+    const parsed = Number(raw);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_SESSION_START_CONTEXT_BUDGET;
+}
+function sessionStartOmissionNotice(budget) {
+    return `[Additional SessionStart context omitted to preserve the ${budget}-character aggregate budget.]`;
+}
 const SESSION_STARTED_MARKER_FILE = "session-started.json";
 const LINUX_BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id";
 function compactBudgetedText(text, maxChars) {
@@ -121,16 +137,17 @@ function buildSessionStartAdditionalContext(messages) {
     })
         .sort((a, b) => a.priority - b.priority || a.index - b.index)
         .map((entry) => entry.message);
+    const budget = resolveSessionStartContextBudget();
     let used = 0;
     const selected = [];
     for (const message of ordered) {
         const separatorLength = selected.length > 0 ? 1 : 0;
-        if (used + separatorLength + message.length > SESSION_START_CONTEXT_BUDGET) {
-            const remainingBudget = SESSION_START_CONTEXT_BUDGET - used - separatorLength;
+        if (used + separatorLength + message.length > budget) {
+            const remainingBudget = budget - used - separatorLength;
             if (remainingBudget > 0) {
                 selected.push(remainingBudget > 120
                     ? compactBudgetedText(message, remainingBudget)
-                    : compactBudgetedText(SESSION_START_OMISSION_NOTICE, remainingBudget));
+                    : compactBudgetedText(sessionStartOmissionNotice(budget), remainingBudget));
             }
             break;
         }
@@ -1154,6 +1171,12 @@ async function processKeywordDetector(input) {
                 `Use explicit mode keywords (e.g. \`ralph\`) only when you need full orchestration.`);
         }
     }
+    // Jev shadow points (issue #3669): record skill-trigger, intent, and
+    // task-size comparisons for later eval. Fire-and-forget; never changes
+    // emissions.
+    void recordSkillTriggerShadow(cleanedText).catch(() => { });
+    void recordIntentShadow(cleanedText).catch(() => { });
+    void recordTaskSizeShadow(cleanedText).catch(() => { });
     const promptPrerequisiteParse = parsePromptPrerequisiteSections(promptText, promptPrerequisiteConfig);
     const executionKeywords = fullKeywords.filter((keywordType) => promptPrerequisiteConfig.executionKeywords.includes(keywordType));
     if (shouldEnforcePromptPrerequisites(executionKeywords, promptPrerequisiteParse, promptPrerequisiteConfig)) {

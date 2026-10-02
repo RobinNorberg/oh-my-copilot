@@ -22,6 +22,36 @@ function stageWrapper() {
 const stdinPayload = JSON.stringify({ session_id: 'session-123', cwd: '/tmp', transcript_path: '/tmp/session.jsonl', model: { id: 'claude' } });
 
 describe('HUD cached statusLine launcher', () => {
+  it.each([
+    ['the shipped hud/lib/config-dir.sh helper', true],
+    ['the inline fallback resolver', false],
+  ])('resolves a padded ~-relative COPILOT_HOME via %s', (_label, withHelper) => {
+    const staged = stageWrapper();
+    try {
+      if (withHelper) {
+        mkdirSync(join(staged.hudDir, 'lib'), { recursive: true });
+        writeFileSync(
+          join(staged.hudDir, 'lib', 'config-dir.sh'),
+          readFileSync(join(root, 'scripts', 'lib', 'config-dir.sh'), 'utf8'),
+          'utf8',
+        );
+      }
+      const env: NodeJS.ProcessEnv = { ...process.env, HOME: staged.dir, COPILOT_HOME: '  ~/cfg-home  ' };
+      delete env.OMC_HUD_CACHE_DIR;
+      const result = spawnSync('sh', [staged.wrapperPath, staged.hudPath], {
+        input: '',
+        encoding: 'utf8',
+        env,
+        timeout: 5000,
+      });
+
+      expect(result.status).toBe(0);
+      expect(existsSync(join(staged.dir, 'cfg-home', 'hud', 'cache'))).toBe(true);
+    } finally {
+      rmSync(staged.dir, { recursive: true, force: true });
+    }
+  });
+
   it('cached hot path returns the previous render without invoking Node when refresh is locked', () => {
     const staged = stageWrapper();
     try {
@@ -40,7 +70,7 @@ describe('HUD cached statusLine launcher', () => {
         env: {
           ...process.env,
           PATH: `${fakeBin}:/usr/bin:/bin`,
-          COPILOT_CONFIG_DIR: staged.dir,
+          COPILOT_HOME: staged.dir,
           OMC_HUD_CACHE_DIR: staged.cacheDir,
         },
         timeout: 1000,
@@ -77,7 +107,7 @@ describe('HUD cached statusLine launcher', () => {
         env: {
           ...process.env,
           PATH: `${fakeBin}:/usr/bin:/bin`,
-          COPILOT_CONFIG_DIR: staged.dir,
+          COPILOT_HOME: staged.dir,
           OMC_HUD_CACHE_DIR: staged.cacheDir,
           OMC_HUD_SYNC_REFRESH: '1',
         },
@@ -111,7 +141,7 @@ describe('HUD cached statusLine launcher', () => {
         env: {
           ...process.env,
           PATH: `${fakeBin}:/usr/bin:/bin`,
-          COPILOT_CONFIG_DIR: staged.dir,
+          COPILOT_HOME: staged.dir,
           OMC_HUD_CACHE_DIR: staged.cacheDir,
           OMC_HUD_SYNC_REFRESH: '1',
         },
@@ -144,7 +174,7 @@ describe('HUD cached statusLine launcher', () => {
         env: {
           ...process.env,
           PATH: `${fakeBin}:/usr/bin:/bin`,
-          COPILOT_CONFIG_DIR: staged.dir,
+          COPILOT_HOME: staged.dir,
           OMC_HUD_CACHE_DIR: staged.cacheDir,
         },
         timeout: 1000,
@@ -175,7 +205,7 @@ describe('HUD cached statusLine launcher', () => {
         env: {
           ...process.env,
           PATH: `${fakeBin}:/usr/bin:/bin`,
-          COPILOT_CONFIG_DIR: staged.dir,
+          COPILOT_HOME: staged.dir,
           CLAUDE_SESSION_ID: 'env-session-123',
           OMC_HUD_CACHE_DIR: staged.cacheDir,
         },
@@ -208,7 +238,7 @@ describe('HUD cached statusLine launcher', () => {
         env: {
           ...process.env,
           PATH: `${fakeBin}:/usr/bin:/bin`,
-          COPILOT_CONFIG_DIR: staged.dir,
+          COPILOT_HOME: staged.dir,
           CLAUDE_SESSION_ID: sessionId,
           OMC_HUD_CACHE_DIR: staged.cacheDir,
         },
@@ -237,7 +267,7 @@ describe('HUD cached statusLine launcher', () => {
       const env: NodeJS.ProcessEnv = {
         ...process.env,
         PATH: `${fakeBin}:/usr/bin:/bin`,
-        COPILOT_CONFIG_DIR: staged.dir,
+        COPILOT_HOME: staged.dir,
         CLAUDECODE_SESSION_ID: 'legacy-env-session-123',
         OMC_HUD_CACHE_DIR: staged.cacheDir,
       };
@@ -276,7 +306,7 @@ describe('HUD cached statusLine launcher', () => {
         env: {
           ...process.env,
           PATH: `${fakeBin}:/usr/bin:/bin`,
-          COPILOT_CONFIG_DIR: staged.dir,
+          COPILOT_HOME: staged.dir,
           CLAUDE_SESSION_ID: 'new-env-session',
           CLAUDECODE_SESSION_ID: 'legacy-env-session',
           OMC_HUD_CACHE_DIR: staged.cacheDir,

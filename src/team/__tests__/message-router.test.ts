@@ -22,11 +22,11 @@ describe('message-router', () => {
     previousHome = process.env.HOME;
     previousUserProfile = process.env.USERPROFILE;
     previousStateDir = process.env.OMC_STATE_DIR;
-    previousClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+    previousClaudeConfigDir = process.env.COPILOT_HOME;
     process.env.HOME = testDir;
     process.env.USERPROFILE = testDir;
     delete process.env.OMC_STATE_DIR;
-    process.env.COPILOT_CONFIG_DIR = fixtureClaudeConfigDir;
+    process.env.COPILOT_HOME = fixtureClaudeConfigDir;
   });
 
   afterEach(() => {
@@ -41,8 +41,8 @@ describe('message-router', () => {
     else process.env.USERPROFILE = previousUserProfile;
     if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
     else process.env.OMC_STATE_DIR = previousStateDir;
-    if (previousClaudeConfigDir === undefined) delete process.env.COPILOT_CONFIG_DIR;
-    else process.env.COPILOT_CONFIG_DIR = previousClaudeConfigDir;
+    if (previousClaudeConfigDir === undefined) delete process.env.COPILOT_HOME;
+    else process.env.COPILOT_HOME = previousClaudeConfigDir;
     rmSync(testDir, { recursive: true, force: true });
   });
 

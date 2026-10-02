@@ -290,19 +290,27 @@ jobs:
           PKG_VERSION=$(node -p "require('./package.json').version")
           PLUGIN_VERSION=$(node -p "require('./.claude-plugin/plugin.json').version")
           MARKET_VERSION=$(node -p "require('./.claude-plugin/marketplace.json').version")
-          
+          ROOT_PLUGIN_VERSION=$(node -p "require('./plugin.json').version")
+          ROOT_PLUGIN_NAME=$(node -p "require('./plugin.json').name")
+
           echo "package.json:              $PKG_VERSION"
           echo ".claude-plugin/plugin.json: $PLUGIN_VERSION"
           echo ".claude-plugin/marketplace.json: $MARKET_VERSION"
-          
-          if [ "$PKG_VERSION" != "$PLUGIN_VERSION" ] || [ "$PKG_VERSION" != "$MARKET_VERSION" ]; then
+          echo "plugin.json (Copilot CLI): $ROOT_PLUGIN_VERSION ($ROOT_PLUGIN_NAME)"
+
+          if [ "$PKG_VERSION" != "$PLUGIN_VERSION" ] || [ "$PKG_VERSION" != "$MARKET_VERSION" ] || [ "$PKG_VERSION" != "$ROOT_PLUGIN_VERSION" ]; then
             echo ""
             echo "❌ Version mismatch!"
             echo "  package.json: $PKG_VERSION"
-            echo "  plugin.json:  $PLUGIN_VERSION"
+            echo "  .claude-plugin/plugin.json:  $PLUGIN_VERSION"
             echo "  marketplace.json: $MARKET_VERSION"
+            echo "  plugin.json (root): $ROOT_PLUGIN_VERSION"
             echo ""
-            echo "All three files must have the same version."
+            echo "All four files must have the same version."
+            exit 1
+          fi
+          if [ "$ROOT_PLUGIN_NAME" != "oh-my-copilot" ]; then
+            echo "❌ Root plugin.json name must be oh-my-copilot (got $ROOT_PLUGIN_NAME)"
             exit 1
           fi
           
@@ -517,11 +525,11 @@ jobs:
           SMOKE_ROOT="$RUNNER_TEMP/release-smoke"
           SMOKE_PREFIX="$SMOKE_ROOT/package"
           SMOKE_HOME="$SMOKE_ROOT/home"
-          SMOKE_COPILOT_CONFIG_DIR="$SMOKE_HOME/.claude"
+          SMOKE_COPILOT_HOME="$SMOKE_HOME/.copilot"
           SMOKE_GJC_CONFIG_DIR="$SMOKE_HOME/.gjc"
           SMOKE_PROJECT="$SMOKE_ROOT/project"
           rm -rf "$SMOKE_ROOT"
-          mkdir -p "$SMOKE_HOME" "$SMOKE_PROJECT" "$SMOKE_COPILOT_CONFIG_DIR" "$SMOKE_GJC_CONFIG_DIR"
+          mkdir -p "$SMOKE_HOME" "$SMOKE_PROJECT" "$SMOKE_COPILOT_HOME" "$SMOKE_GJC_CONFIG_DIR"
           npm install --ignore-scripts --prefix "$SMOKE_PREFIX" "$FINAL_TARBALL"
           SMOKE_PACKAGE_ROOT="$SMOKE_PREFIX/node_modules/oh-my-copilot"
           test -f "$SMOKE_PACKAGE_ROOT/bridge/claude-md-coordinator.cjs"
@@ -534,9 +542,9 @@ jobs:
           test -s "$SMOKE_PACKAGE_ROOT/skills/wiki/SKILL.md"
           test -f "$SMOKE_PACKAGE_ROOT/skills/omc-setup/SKILL.md"
           test -f "$SMOKE_PACKAGE_ROOT/skills/omc-setup/phases/01-install-claude-md.md"
-          test "$(env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omg" --version)" = "$VERSION"
-          env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omg" --help
-          API_HELP=$(env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omg-cli" team api --help)
+          test "$(env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_HOME="$SMOKE_COPILOT_HOME" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omg" --version)" = "$VERSION"
+          env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_HOME="$SMOKE_COPILOT_HOME" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omg" --help
+          API_HELP=$(env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_HOME="$SMOKE_COPILOT_HOME" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omg-cli" team api --help)
           case "$API_HELP" in
             *recover-worker*write-task-checkpoint*read-recovery-result*) ;;
             *)
@@ -545,7 +553,7 @@ jobs:
               ;;
           esac
           cd "$SMOKE_PROJECT"
-          env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" bash -c 'node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" local'
+          env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_HOME="$SMOKE_COPILOT_HOME" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" bash -c 'node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" local'
           cmp "$SMOKE_PACKAGE_ROOT/docs/CLAUDE.md" "$SMOKE_PROJECT/.claude/CLAUDE.md"
           cmp "$SMOKE_PACKAGE_ROOT/skills/wiki/SKILL.md" "$SMOKE_PROJECT/.claude/skills/wiki/SKILL.md"
           COORDINATOR_SHA256=$(sha256sum "$SMOKE_PACKAGE_ROOT/bridge/claude-md-coordinator.cjs" | cut -d ' ' -f 1)
@@ -573,7 +581,11 @@ jobs:
           npm publish "$FINAL_TARBALL" --ignore-scripts --access public --provenance 2>&1 | tee npm-publish.log
           VERIFICATION_PREFIX="$RUNNER_TEMP/npm-provenance-verification"
           AUDIT_JSON="$VERIFICATION_PREFIX/audit-signatures.json"
-          MAX_PROPAGATION_ATTEMPTS=12
+          # The archive is already on the registry at this point: everything below
+          # only waits for it to become visible. The budget must outlast real
+          # propagation (#4083 saw the version land 1.7s after a 12-attempt
+          # window gave up), so keep ~28 minutes of polling.
+          MAX_PROPAGATION_ATTEMPTS=30
           ATTEMPT=1
           BACKOFF_SECONDS=10
           while [ "$ATTEMPT" -le "$MAX_PROPAGATION_ATTEMPTS" ]; do
@@ -582,7 +594,8 @@ jobs:
               break
             fi
             if [ "$ATTEMPT" -eq "$MAX_PROPAGATION_ATTEMPTS" ]; then
-              echo "npm registry propagation did not complete after $MAX_PROPAGATION_ATTEMPTS attempts" >&2
+              echo "oh-my-copilot@$VERSION was PUBLISHED to the registry; it did not become visible after $MAX_PROPAGATION_ATTEMPTS attempts" >&2
+              echo "do not republish: recover the GitHub Release with the Release Recovery workflow (tag=$GITHUB_REF_NAME sha=$GITHUB_SHA)" >&2
               exit 1
             fi
             ATTEMPT=$((ATTEMPT + 1))

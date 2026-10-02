@@ -12,7 +12,7 @@
  *   5. Real OMC plugin enabled → existing skip behavior unchanged (independent
  *      of pluginDirMode).
  *
- * These tests run install() against a throwaway COPILOT_CONFIG_DIR and assert on
+ * These tests run install() against a throwaway COPILOT_HOME and assert on
  * the resulting filesystem layout. Module imports are reset between tests so
  * each call picks up the isolated config dir.
  */
@@ -29,7 +29,7 @@ async function freshInstaller() {
 beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'omc-pdm-'));
     // Force a clean, isolated config dir for every test
-    process.env.COPILOT_CONFIG_DIR = testDir;
+    process.env.COPILOT_HOME = testDir;
     // Avoid plugin auto-detection from the developer's real ~/.claude
     delete process.env.CLAUDE_PLUGIN_ROOT;
     delete process.env.OMC_PLUGIN_ROOT;

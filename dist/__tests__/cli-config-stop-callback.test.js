@@ -13,7 +13,7 @@ function runCli(args, homeDir) {
         env: {
             ...process.env,
             HOME: homeDir,
-            COPILOT_CONFIG_DIR: join(homeDir, '.claude'),
+            COPILOT_HOME: join(homeDir, '.claude'),
         },
         encoding: 'utf-8',
     });
@@ -128,7 +128,7 @@ describe('omg config-stop-callback tag options', () => {
         expect(show.stdout).toContain('"webhookUrl"');
         expect(show.stdout).toContain('"tagList"');
     });
-    it('uses COPILOT_CONFIG_DIR for the default file callback path', () => {
+    it('uses COPILOT_HOME for the default file callback path', () => {
         const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-stop-callback-home-'));
         const claudeConfigDir = join(homeDir, '.claude-isolated-workspace');
         const configPath = join(claudeConfigDir, '.omc-config.json');
@@ -142,7 +142,7 @@ describe('omg config-stop-callback tag options', () => {
             env: {
                 ...process.env,
                 HOME: homeDir,
-                COPILOT_CONFIG_DIR: claudeConfigDir,
+                COPILOT_HOME: claudeConfigDir,
             },
             encoding: 'utf-8',
         });

@@ -12,7 +12,7 @@
  *       fold fail closed (CORRUPT_JOURNAL) without executing any node.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, readdirSync, readFileSync, rmSync, writeFileSync, } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
@@ -29,7 +29,7 @@ function loadFixture(name) {
 }
 const tempDirs = [];
 function makeRunsRoot() {
-    const dir = mkdtempSync(join(tmpdir(), "omc-regression-matrix-"));
+    const dir = mkdtempSync(join(realpathSync(tmpdir()), "omc-regression-matrix-"));
     tempDirs.push(dir);
     return dir;
 }

@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { getOmcRoot, probeGitTopLevel } from '../../lib/worktree-paths.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
@@ -104,14 +105,35 @@ function readPermissionStringEntries(filePath: string, key: 'allow' | 'ask'): st
   }
 }
 
+/**
+ * The PermissionRequest hook fires on Claude Code, whose rules live under
+ * `.claude/` and CLAUDE_CONFIG_DIR (default `~/.claude`). The fork's `.copilot`
+ * equivalents are read too; entries from all sources are merged.
+ */
+function getClaudeConfigDir(): string {
+  const home = os.homedir();
+  const configured = process.env.CLAUDE_CONFIG_DIR?.trim();
+  if (!configured) return path.join(home, '.claude');
+  if (configured === '~') return home;
+  if (configured.startsWith('~/') || configured.startsWith('~\\')) {
+    return path.join(home, configured.slice(2));
+  }
+  return configured;
+}
+
+function getPermissionSettingsPaths(directory: string): string[] {
+  return [
+    { project: '.claude', global: getClaudeConfigDir() },
+    { project: '.copilot', global: getCopilotConfigDir() },
+  ].flatMap(({ project, global }) => [
+    path.join(directory, project, 'settings.local.json'),
+    path.join(global, 'settings.local.json'),
+    path.join(global, 'settings.json'),
+  ]);
+}
+
 export function getCopilotPermissionAllowEntries(directory: string): string[] {
-  const projectSettingsPath = path.join(directory, '.copilot', 'settings.local.json');
-  const globalConfigDir = getCopilotConfigDir();
-  const candidatePaths = [
-    projectSettingsPath,
-    path.join(globalConfigDir, 'settings.local.json'),
-    path.join(globalConfigDir, 'settings.json'),
-  ];
+  const candidatePaths = getPermissionSettingsPaths(directory);
 
   const allowEntries = new Set<string>();
   for (const candidatePath of candidatePaths) {
@@ -152,13 +174,7 @@ export function hasClaudePermissionApproval(
 
 
 export function getCopilotPermissionAskEntries(directory: string): string[] {
-  const projectSettingsPath = path.join(directory, '.copilot', 'settings.local.json');
-  const globalConfigDir = getCopilotConfigDir();
-  const candidatePaths = [
-    projectSettingsPath,
-    path.join(globalConfigDir, 'settings.local.json'),
-    path.join(globalConfigDir, 'settings.json'),
-  ];
+  const candidatePaths = getPermissionSettingsPaths(directory);
 
   const askEntries = new Set<string>();
   for (const candidatePath of candidatePaths) {
@@ -636,26 +652,36 @@ export function isActiveModeRunning(directory: string): boolean {
   return false;
 }
 
+const COPILOT_SHELL_TOOL_NAMES = new Set(['powershell', 'bash', 'shell']);
+
 /**
  * Process permission request and decide whether to auto-allow
  */
 export function processPermissionRequest(input: PermissionRequestInput): HookOutput {
+  // Copilot CLI sends PermissionRequest in its native camelCase shape
+  // ({ sessionId, toolName: "powershell" | "bash", toolInput }, no cwd);
+  // Claude Code sends snake_case with tool_name "Bash". Accept both.
+  const raw = input as unknown as Record<string, unknown>;
+  const rawToolName = raw.tool_name ?? raw.toolName;
+  const toolInput = (raw.tool_input ?? raw.toolInput) as PermissionRequestInput['tool_input'] | undefined;
+  const cwd = typeof raw.cwd === 'string' && raw.cwd ? raw.cwd : process.cwd();
+
   // Only process Bash tool for command auto-approval
   // Normalize tool name - handle both proxy_ prefixed and unprefixed versions
-  const toolName = input.tool_name.replace(/^proxy_/, '');
-  if (toolName !== 'Bash') {
+  const toolName = typeof rawToolName === 'string' ? rawToolName.replace(/^proxy_/, '') : '';
+  if (toolName !== 'Bash' && !COPILOT_SHELL_TOOL_NAMES.has(toolName)) {
     return { continue: true };
   }
 
-  const command = input.tool_input.command;
+  const command = toolInput?.command;
   if (!command || typeof command !== 'string') {
     return { continue: true };
   }
 
-  const shouldAskBashPermission = hasClaudePermissionAsk(input.cwd, 'Bash', command);
+  const shouldAskBashPermission = hasClaudePermissionAsk(cwd, 'Bash', command);
 
   // Auto-allow safe commands
-  if (!shouldAskBashPermission && isSafeAutoApprovedCommand(command, input.cwd)) {
+  if (!shouldAskBashPermission && isSafeAutoApprovedCommand(command, cwd)) {
     const reason = isHeredocWithSafeBase(command)
       ? 'Safe command with heredoc content'
       : 'Safe read-only or test command';

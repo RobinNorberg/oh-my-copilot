@@ -1,5 +1,9 @@
 # Architecture
 
+Graph persistence uses directory-descriptor-relative operations on Linux and
+macOS; see [Graph contained filesystem](graph-contained-filesystem.md) for the
+backend boundary, ownership semantics, and packaging requirements.
+
 > How oh-my-copilot orchestrates multi-agent workflows.
 
 ## Overview
@@ -17,17 +21,17 @@ oh-my-copilot enables Claude Code to orchestrate specialized agents through a sk
        │                                │                              │
        ▼                                ▼                              ▼
 ┌─────────────┐              ┌──────────────────┐           ┌─────────────────┐
-│  "ultrawork │              │   CLAUDE.md      │           │ SKILL ACTIVATED │
+│  "team      │              │   CLAUDE.md      │           │ SKILL ACTIVATED │
 │   refactor  │─────────────▶│   Auto-Routing   │──────────▶│                 │
-│   the API"  │              │                  │           │ ultrawork +     │
-└─────────────┘              │ Task Type:       │           │ default +       │
+│   the API"  │              │                  │           │ team + execute  │
+└─────────────┘              │ Task Type:       │           │                 │
                              │  - Implementation│           │ git-master      │
                              │  - Multi-file    │           │                 │
                              │  - Parallel OK   │           │ ┌─────────────┐ │
                              │                  │           │ │ Parallel    │ │
                              │ Skills:          │           │ │ agents      │ │
-                             │  - ultrawork ✓   │           │ │ launched    │ │
-                             │  - default ✓     │           │ └─────────────┘ │
+                             │  - team ✓       │           │ │ launched    │ │
+                             │  - execute ✓    │           │ └─────────────┘ │
                              │  - git-master ✓  │           │                 │
                              └──────────────────┘           │ ┌─────────────┐ │
                                                             │ │ Atomic      │ │
@@ -175,7 +179,7 @@ explore --> analyst --> planner --> critic --> executor --> verifier
 
 ### Overview
 
-Skills are **behavior injections** that modify how the orchestrator operates. Instead of swapping agents, skills add capabilities on top of existing agents. OMC provides 31 skills total (28 user-invocable + 3 internal/pipeline).
+Skills are **behavior injections** that modify how the orchestrator operates. Instead of swapping agents, skills add capabilities on top of existing agents. OMC provides 57 shipped skills.
 
 ### Skill Layers
 
@@ -190,13 +194,13 @@ Skills compose in three layers:
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  ENHANCEMENT LAYER (0-N skills)                              │
-│  ultrawork (parallel) | git-master (commits) | frontend-ui-ux│
+│  team (parallel) | git-master (commits) | execute          │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  EXECUTION LAYER (primary skill)                             │
-│  default (build) | orchestrate (coordinate) | planner (plan) │
+│  execute (approved work) | autopilot (end to end) | planner (plan) │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -204,16 +208,18 @@ Skills compose in three layers:
 
 Example:
 ```
-Task: "ultrawork: refactor API with proper commits"
-Active skills: ultrawork + default + git-master
+Task: "team: refactor API with proper commits"
+Active skills: team + execute + git-master
 ```
 
 ### How to Invoke Skills
 
 **Slash commands:**
 ```bash
-/oh-my-copilot:autopilot build me a todo app
-/oh-my-copilot:ralph refactor the auth module
+/oh-my-copilot:omc-plan "plan a todo app"
+/oh-my-copilot:execute build me a todo app
+/oh-my-copilot:omc-review [path]
+/oh-my-copilot:verify [target]
 /oh-my-copilot:team 3:executor "implement fullstack app"
 ```
 
@@ -221,7 +227,7 @@ Active skills: ultrawork + default + git-master
 ```bash
 autopilot build me a todo app      # activates autopilot
 ralph: refactor the auth module    # activates ralph
-ultrawork implement OAuth          # activates ultrawork
+/oh-my-copilot:team 3:executor "implement OAuth"  # explicit parallel team skill
 ```
 
 ### Core Workflow Skills
@@ -240,12 +246,13 @@ Repeating loop that does not stop until work is verified complete. The `verifier
 ralph: refactor the authentication module
 ```
 
-#### ultrawork
-Maximum parallelism — launches multiple agents simultaneously.
-- Trigger: `ultrawork`, `ulw`
+#### execute
+Carries an approved task through to working, verified code.
+- Manual command: `/oh-my-copilot:execute`
 ```bash
-ultrawork implement user authentication with OAuth
+/oh-my-copilot:execute implement user authentication with OAuth
 ```
+For coordinated parallel workers, use `/oh-my-copilot:team` instead.
 
 #### team
 Coordinates N Claude agents with a 5-stage pipeline: `plan → prd → exec → verify → fix`
@@ -253,11 +260,12 @@ Coordinates N Claude agents with a 5-stage pipeline: `plan → prd → exec → 
 /oh-my-copilot:team 3:executor "implement fullstack todo app"
 ```
 
-#### ccg (Claude-Codex-Gemini)
-Fans out to Codex and Antigravity simultaneously; Claude synthesizes the results. Gemini remains available as an enterprise/API-key fallback when using the legacy Gemini CLI.
-- Trigger: `ccg`, `claude-codex-gemini`
+#### Multi-provider advice with ask + team
+The retired `ccg` workflow is replaced by `/oh-my-copilot:ask` plus `/oh-my-copilot:team`: ask the selected providers for independent advice, then use a team to synthesize the results.
 ```bash
-ccg: review this authentication implementation
+/oh-my-copilot:ask codex "review this authentication implementation"
+/oh-my-copilot:ask antigravity "review this authentication implementation"
+/oh-my-copilot:team 2:executor "synthesize the advisor findings"
 ```
 
 #### ralplan
@@ -275,25 +283,40 @@ ralplan this feature
 | `hud` | Status bar configuration | `/oh-my-copilot:hud` |
 | `omc-setup` | Initial setup wizard | `/oh-my-copilot:omc-setup` |
 | `omc-doctor` | Diagnose installation | `/oh-my-copilot:omc-doctor` |
-| `skillify` | Extract reusable skills from session | `/oh-my-copilot:skillify` (`learner` deprecated alias) |
+| `skillify` | Extract reusable skills from session | `/oh-my-copilot:skillify` |
 | `skill` | Manage local skills (list/add/remove) | `/oh-my-copilot:skill` |
 | `trace` | Evidence-driven causal tracing | `/oh-my-copilot:trace` |
 | `release` | Automated release workflow | `/oh-my-copilot:release` |
 | `deepinit` | Generate hierarchical AGENTS.md | `/oh-my-copilot:deepinit` |
 | `deep-interview` | Socratic deep interview | `/deep-interview` |
-| `sciomc` | Parallel scientist agent orchestration | `/oh-my-copilot:sciomc` |
+| `research` | Parallel or focused research | `/oh-my-copilot:research` |
 | `external-context` | Parallel document-specialist research | `/oh-my-copilot:external-context` |
 | `ai-slop-cleaner` | Clean AI expression patterns | `/oh-my-copilot:ai-slop-cleaner` |
-| `writer-memory` | Memory system for writing projects | `/oh-my-copilot:writer-memory` |
+| `configure-notifications` | Configure Telegram, Discord, and Slack notification integrations | `/oh-my-copilot:configure-notifications` |
+| `remember` | Save durable session memory | `/oh-my-copilot:remember` |
+
+### Shipyard document discipline
+
+The opt-in Shipyard workflows compose `drydock`, `ask-navigator`, `launch`, and
+the writing-time companions `agent-doc-discipline` and
+`minimal-code-discipline`. `agent-doc-discipline` is advisory everywhere else,
+but the `drydock` seed-generation step and the `launch` C5 sediment pass must
+call the Skill tool for it before writing agent-facing prose. This keeps the
+five shared surfaces self-describing without turning a writing aid into a
+default workflow gate.
+
+At Launch closeout, the review is two independent axes: the **standards axis**
+compares the diff with the applicable `docs/standards/` guidance, while the
+**spec axis** compares it with the current ticket's acceptance criteria. The
+axes run in parallel, are reported separately, and are never merged or
+cross-ranked; the ticket fails when either axis fails.
 
 ### Magic Keyword Reference
 
 | Keyword | Effect |
 |---------|--------|
-| `ultrawork`, `ulw`, `uw` | Parallel agent orchestration |
 | `autopilot`, `build me`, `I want a`, `handle it all`, `end to end`, `e2e this` | Autonomous execution pipeline |
 | `ralph`, `don't stop`, `must complete`, `until done` | Loop until verified complete |
-| `ccg`, `claude-codex-gemini` | 3-model orchestration (use `antigravity` workers when using the Antigravity CLI) |
 | `ralplan` | Consensus-based planning |
 | `deep interview`, `ouroboros` | Socratic deep interview |
 | `code review`, `review code` | Comprehensive code review mode |
@@ -305,16 +328,18 @@ ralplan this feature
 | `deslop`, `anti-slop` | AI expression cleanup |
 | `cancelomc`, `stopomc` | Cancel active execution mode |
 
+Parallel work is not a magic keyword; invoke `/oh-my-copilot:team` explicitly. Use `/oh-my-copilot:execute` to carry an approved task through verified code.
+
 ### Keyword Detection Sources
 
 Keywords are processed in two places:
 
 | Source | Role | Customizable |
 |--------|------|--------------|
-| `config.jsonc` `magicKeywords` | 4 categories (ultrawork, search, analyze, ultrathink) | Yes |
-| `keyword-detector` hook | 11+ triggers (autopilot, ralph, ccg, etc.) | No |
+| `config.jsonc` `magicKeywords` | Supported search, analyze, and ultrathink categories | Yes |
+| `keyword-detector` hook | Hardcoded triggers such as autopilot and ralph | No |
 
-The `autopilot`, `ralph`, and `ccg` triggers are hardcoded in the hook and cannot be changed through config.
+The `autopilot` and `ralph` triggers are hardcoded in the hook and cannot be changed through config.
 
 ---
 
@@ -359,13 +384,14 @@ Injected pattern meanings:
 | `hook success: Success` | Hook ran normally, continue as planned |
 | `hook additional context: ...` | Additional context information, take note |
 | `[MAGIC KEYWORD: ...]` | Magic keyword detected, execute indicated skill |
-| `The boulder never stops` | ralph/ultrawork mode is active |
+| `The boulder never stops` | ralph/autopilot mode is active |
+
 
 ### Key Hooks
 
 **keyword-detector** — fires on `UserPromptSubmit`. Detects magic keywords in user input and activates the corresponding skill.
 
-**persistent-mode** — fires on `Stop`. When a persistent mode (ralph, ultrawork) is active, prevents Claude from stopping until work is verified complete.
+**persistent-mode** — fires on `Stop`. When a persistent mode (ralph, autopilot, team, or ultragoal) is active, prevents Claude from stopping until work is verified complete.
 
 **pre-compact** — fires on `PreCompact`. Saves critical information (active modes, TODOs, background jobs, and durable plan anchors: PRD/boulder references) to a checkpoint before the context window is compressed. The `SessionStart` hook restores the newest matching checkpoint when `source === "compact"`, so plan detail survives auto-compaction (issue #3730).
 

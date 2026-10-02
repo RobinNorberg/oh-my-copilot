@@ -10,6 +10,7 @@ import {
   isHeredocWithSafeBase,
   isActiveModeRunning,
   processPermissionRequest,
+  getCopilotPermissionAskEntries,
 } from '../index.js';
 import type { PermissionRequestInput } from '../index.js';
 
@@ -703,6 +704,107 @@ describe('permission-handler', () => {
         const result = processPermissionRequest(createInput('git status; rm -rf /'));
         expect(result.continue).toBe(true);
         expect(result.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
+      });
+    });
+
+    describe('Copilot CLI camelCase payload', () => {
+      const camelInput = (toolName: string, command: string) =>
+        ({
+          hookName: 'permissionRequest',
+          sessionId: 'copilot-session',
+          cwd: testDir,
+          toolName,
+          toolInput: { command },
+        }) as unknown as PermissionRequestInput;
+
+      it.each(['powershell', 'bash', 'shell'])('auto-allows a safe %s command', toolName => {
+        const result = processPermissionRequest(camelInput(toolName, 'git status'));
+        expect(result.hookSpecificOutput?.decision?.behavior).toBe('allow');
+      });
+
+      it('does not auto-allow an unsafe camelCase command', () => {
+        const result = processPermissionRequest(camelInput('powershell', 'git status; rm -rf /'));
+        expect(result.continue).toBe(true);
+        expect(result.hookSpecificOutput).toBeUndefined();
+      });
+
+      it('honors ask rules for camelCase payloads', () => {
+        fs.mkdirSync(path.join(testDir, '.copilot'), { recursive: true });
+        fs.writeFileSync(
+          path.join(testDir, '.copilot', 'settings.local.json'),
+          JSON.stringify({ permissions: { ask: ['Bash(git status*)'] } }),
+        );
+        const result = processPermissionRequest(camelInput('powershell', 'git status'));
+        expect(result.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
+      });
+
+      it('ignores non-shell camelCase tools', () => {
+        const result = processPermissionRequest(camelInput('view', 'git status'));
+        expect(result).toEqual({ continue: true });
+      });
+    });
+
+    describe('ask rule sources (.claude and .copilot)', () => {
+      let previousClaudeConfigDir: string | undefined;
+      let previousCopilotConfigDir: string | undefined;
+
+      beforeEach(() => {
+        previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+        previousCopilotConfigDir = process.env.COPILOT_HOME;
+        process.env.CLAUDE_CONFIG_DIR = path.join(testDir, 'claude-home');
+        process.env.COPILOT_HOME = path.join(testDir, 'copilot-home');
+      });
+
+      afterEach(() => {
+        if (previousClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+        else process.env.CLAUDE_CONFIG_DIR = previousClaudeConfigDir;
+        if (previousCopilotConfigDir === undefined) delete process.env.COPILOT_HOME;
+        else process.env.COPILOT_HOME = previousCopilotConfigDir;
+      });
+
+      const writeAskRules = (dir: string, ask: string[]) => {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(
+          path.join(dir, 'settings.local.json'),
+          JSON.stringify({ permissions: { ask } }, null, 2),
+        );
+      };
+
+      it('honors an ask rule present only in .claude/settings.local.json', () => {
+        writeAskRules(path.join(testDir, '.claude'), ['Bash(git status*)']);
+        const result = processPermissionRequest(createInput('git status'));
+        expect(result.continue).toBe(true);
+        expect(result.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
+      });
+
+      it('honors an ask rule present only in .copilot/settings.local.json', () => {
+        writeAskRules(path.join(testDir, '.copilot'), ['Bash(git status*)']);
+        const result = processPermissionRequest(createInput('git status'));
+        expect(result.continue).toBe(true);
+        expect(result.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
+      });
+
+      it('honors an ask rule from the global CLAUDE_CONFIG_DIR settings', () => {
+        writeAskRules(path.join(testDir, 'claude-home'), ['Bash(git status*)']);
+        const result = processPermissionRequest(createInput('git status'));
+        expect(result.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
+      });
+
+      it('auto-allows git status when no ask rule exists (control)', () => {
+        const result = processPermissionRequest(createInput('git status'));
+        expect(result.hookSpecificOutput?.decision?.behavior).toBe('allow');
+      });
+
+      it('merges ask rules from .claude and .copilot sources', () => {
+        writeAskRules(path.join(testDir, '.claude'), ['Bash(git status*)']);
+        writeAskRules(path.join(testDir, '.copilot'), ['Bash(git diff*)']);
+        expect(getCopilotPermissionAskEntries(testDir).sort()).toEqual(
+          ['Bash(git diff*)', 'Bash(git status*)'],
+        );
+        expect(processPermissionRequest(createInput('git status')).hookSpecificOutput?.decision?.behavior)
+          .not.toBe('allow');
+        expect(processPermissionRequest(createInput('git diff')).hookSpecificOutput?.decision?.behavior)
+          .not.toBe('allow');
       });
     });
   });

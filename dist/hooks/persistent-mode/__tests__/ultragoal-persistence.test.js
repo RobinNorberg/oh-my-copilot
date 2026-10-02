@@ -10,7 +10,7 @@ const ISOLATED_ENV_KEYS = [
     'HOME',
     'USERPROFILE',
     'OMC_STATE_DIR',
-    'COPILOT_CONFIG_DIR',
+    'COPILOT_HOME',
     'XDG_CONFIG_HOME',
     'CLAUDE_PLUGIN_ROOT',
     'OMC_SESSION_ID',
@@ -94,7 +94,7 @@ beforeEach(() => {
     process.env.HOME = home;
     process.env.USERPROFILE = home;
     process.env.OMC_STATE_DIR = '';
-    process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
+    process.env.COPILOT_HOME = claudeConfigDir;
     process.env.XDG_CONFIG_HOME = join(home, '.config');
     process.env.CLAUDE_PLUGIN_ROOT = '';
     process.env.OMC_SESSION_ID = '';

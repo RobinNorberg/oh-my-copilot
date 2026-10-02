@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
-import { claimSessionEndAction, claimSessionEndDiscoveryTickets, claimSessionEndJob, failClosedExhaustedForegroundCleanup, failClosedMissingCoreProducer, finishSessionEndAction, markSessionEndActionRunner, readSessionEndJob, reapStaleSessionEndOwner, recoverPreparedCoreProducer, releaseSessionEndDiscoveryTicket, releaseSessionEndJob, renewSessionEndLease, type SessionEndActionName } from './cleanup-manifest.js';
+import { claimSessionEndAction, claimSessionEndDiscoveryTickets, claimSessionEndJob, failClosedExhaustedForegroundCleanup, failClosedMissingCoreProducer, finishSessionEndAction, markSessionEndActionRunner, readSessionEndJob, reapStaleSessionEndOwner, recoverPreparedCoreProducer, releaseSessionEndDiscoveryTicket, releaseSessionEndJob, renewSessionEndLease, type SessionEndActionName, updateSessionEndActionPayload, type SessionEndActionAuthority } from './cleanup-manifest.js';
 import { runSessionEndAction } from './action-runner.js';
 import { armSessionEndActionWatchdog } from './action-watchdog.js';
 import { getProcessStartIdentity, isProcessIdentityLive } from '../../platform/process-utils.js';
@@ -12,23 +12,37 @@ export interface SessionEndWorkerPayload { directory: string; sessionId: string;
 
 /** Durable OpenClaw routing is supplied from the manifest to the action runner, never from worker ambient state. */
 export function workerEnvironment(): NodeJS.ProcessEnv {
-  const keys = ['PATH', 'HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'COMSPEC', 'LANG', 'LC_ALL', 'NODE_ENV', 'COPILOT_CONFIG_DIR', 'OMC_STATE_DIR', 'OMC_HOOK_CONFIG', 'OMC_CONFIG_PATH', 'OMC_NOTIFY', 'OMC_NOTIFY_PROFILE', 'OMC_TELEGRAM', 'OMC_DISCORD', 'OMC_SLACK', 'OMC_WEBHOOK', 'OMC_DISCORD_MENTION', 'OMC_DISCORD_NOTIFIER_BOT_TOKEN', 'OMC_DISCORD_NOTIFIER_CHANNEL', 'OMC_DISCORD_WEBHOOK_URL', 'OMC_TELEGRAM_BOT_TOKEN', 'OMC_TELEGRAM_NOTIFIER_BOT_TOKEN', 'OMC_TELEGRAM_CHAT_ID', 'OMC_TELEGRAM_NOTIFIER_CHAT_ID', 'OMC_TELEGRAM_NOTIFIER_UID', 'OMC_SLACK_WEBHOOK_URL', 'OMC_SLACK_MENTION', 'OMC_SLACK_BOT_TOKEN', 'OMC_SLACK_APP_TOKEN', 'OMC_SLACK_BOT_CHANNEL', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', ...(process.env.NODE_ENV === 'test' ? ['OMC_SESSION_END_TEST_PRODUCER_GRACE_MS'] : [])];
+  const keys = ['PATH', 'HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'COMSPEC', 'LANG', 'LC_ALL', 'NODE_ENV', 'COPILOT_HOME', 'OMC_STATE_DIR', 'OMC_HOOK_CONFIG', 'OMC_CONFIG_PATH', 'OMC_NOTIFY', 'OMC_NOTIFY_PROFILE', 'OMC_TELEGRAM', 'OMC_DISCORD', 'OMC_SLACK', 'OMC_WEBHOOK', 'OMC_DISCORD_MENTION', 'OMC_DISCORD_NOTIFIER_BOT_TOKEN', 'OMC_DISCORD_NOTIFIER_CHANNEL', 'OMC_DISCORD_WEBHOOK_URL', 'OMC_TELEGRAM_BOT_TOKEN', 'OMC_TELEGRAM_NOTIFIER_BOT_TOKEN', 'OMC_TELEGRAM_CHAT_ID', 'OMC_TELEGRAM_NOTIFIER_CHAT_ID', 'OMC_TELEGRAM_NOTIFIER_UID', 'OMC_SLACK_WEBHOOK_URL', 'OMC_SLACK_MENTION', 'OMC_SLACK_BOT_TOKEN', 'OMC_SLACK_APP_TOKEN', 'OMC_SLACK_BOT_CHANNEL', 'OMC_MICROSOFT_TEAMS_WEBHOOK_URL', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', ...(process.env.NODE_ENV === 'test' ? ['OMC_SESSION_END_TEST_PRODUCER_GRACE_MS'] : [])];
   return Object.fromEntries(keys.flatMap((key) => process.env[key] === undefined ? [] : [[key, process.env[key]]]));
 }
 export function spawnSessionEndWorker(payload: SessionEndWorkerPayload): boolean {
   try { const child = spawn(process.execPath, [fileURLToPath(import.meta.url), WORKER_ARG, JSON.stringify(payload)], { detached: true, stdio: 'ignore', env: workerEnvironment(), windowsHide: true }); child.unref(); return true; } catch { return false; }
 }
-export async function executeSessionEndAction(name: SessionEndActionName, payload: SessionEndWorkerPayload, deadlineAt: number): Promise<void> {
+export async function executeSessionEndAction(name: SessionEndActionName, payload: SessionEndWorkerPayload, deadlineAt: number, authority?: SessionEndActionAuthority): Promise<void> {
   const legacy = await import('./index.js');
-  const routing = readSessionEndJob(payload.directory, payload.sessionId)?.actions.notification.payload;
+  const manifest = readSessionEndJob(payload.directory, payload.sessionId);
+  const input = manifest?.actions['foreground-cleanup'].payload.input;
+  if (name === 'foreground-cleanup') {
+    if (!authority || authority.actionName !== name) throw new Error('foreground-authority-missing');
+    if (input && typeof input === 'object') {
+      const prepared = await legacy.prepareSessionEndWorkerInput(payload.directory, input as Parameters<typeof legacy.prepareSessionEndWorkerInput>[1]);
+      if (!updateSessionEndActionPayload(payload.directory, payload.sessionId, authority, ['foreground-cleanup', 'team-cleanup', 'python-cleanup', 'callback', 'notification', 'openclaw'], prepared)) throw new Error('foreground-payload-not-durable');
+      await legacy.runForegroundSessionEndCleanup(payload.directory, payload.sessionId, false);
+      legacy.exportSessionSummary(payload.directory, prepared.metrics as Parameters<typeof legacy.exportSessionSummary>[1]);
+    } else {
+      await legacy.runForegroundSessionEndCleanup(payload.directory, payload.sessionId, false);
+    }
+    return;
+  }
+  const current = readSessionEndJob(payload.directory, payload.sessionId);
+  const routing = current?.actions.notification.payload;
   if (typeof routing?.notificationProfile === 'string') process.env.OMC_NOTIFY_PROFILE = routing.notificationProfile;
   if (routing?.openClawEnabled === true) process.env.OMC_OPENCLAW = '1';
-  if (name === 'foreground-cleanup') return legacy.runForegroundSessionEndCleanup(payload.directory, payload.sessionId, false).then(() => undefined);
-  if (name === 'wiki-capture') { const intent = readSessionEndJob(payload.directory, payload.sessionId)?.actions['wiki-capture'].payload; const { commitWikiSessionEndCaptureIntent } = await import('../wiki/session-hooks.js'); if (!await commitWikiSessionEndCaptureIntent(intent as unknown as Parameters<typeof commitWikiSessionEndCaptureIntent>[0], { deadlineAt: Math.min(deadlineAt, Date.now() + 9_000) })) throw new Error('wiki-capture-incomplete'); return; }
-  if (name === 'team-cleanup') { const names = readSessionEndJob(payload.directory, payload.sessionId)?.actions['team-cleanup'].payload.initialTeamNames; const result = await legacy.cleanupSessionOwnedTeams(payload.directory, payload.sessionId, Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : []); if (result.failed.length > 0) throw new Error(`team-cleanup-incomplete:${result.failed.map(item => item.teamName).join(',')}`); return; }
+  if (name === 'wiki-capture') { const intent = current?.actions['wiki-capture'].payload; const { commitWikiSessionEndCaptureIntent } = await import('../wiki/session-hooks.js'); if (!await commitWikiSessionEndCaptureIntent(intent as unknown as Parameters<typeof commitWikiSessionEndCaptureIntent>[0], { deadlineAt: Math.min(deadlineAt, Date.now() + 9_000) })) throw new Error('wiki-capture-incomplete'); return; }
+  if (name === 'team-cleanup') { const names = current?.actions['team-cleanup'].payload.initialTeamNames; const result = await legacy.cleanupSessionOwnedTeams(payload.directory, payload.sessionId, Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : []); if (result.failed.length > 0) throw new Error(`team-cleanup-incomplete:${result.failed.map(item => item.teamName).join(',')}`); return; }
   if (name === 'python-cleanup') return legacy.cleanupSessionPython(payload.directory, payload.sessionId).then(() => undefined);
   if (name === 'reply-cleanup') return legacy.cleanupSessionReplies(payload.sessionId);
-  if (name === 'callback') return legacy.runSessionEndCallbacks(payload.directory, payload.sessionId, readSessionEndJob(payload.directory, payload.sessionId)?.actions.callback.idempotencyKey, true);
+  if (name === 'callback') return legacy.runSessionEndCallbacks(payload.directory, payload.sessionId, current?.actions.callback.idempotencyKey, true);
   if (name === 'notification') return legacy.runSessionEndNotifications(payload.directory, payload.sessionId, true);
   return legacy.runSessionEndOpenClaw(payload.directory, payload.sessionId, true);
 }
@@ -72,29 +86,34 @@ export async function processSessionEndWorker(payload: SessionEndWorkerPayload):
   }
   let producerReady = Boolean(admitted && ['sealed', 'no-op'].includes(admitted.producers.core.state) && ['sealed', 'no-op'].includes(admitted.producers.wiki.state));
   let generation = claimed.owner.leaseGeneration;
+  // Every loop exit that is not "all actions settled" leaves the job in
+  // recoverable-failure; naming the exit is what makes that state diagnosable
+  // from the manifest alone (issue #4076).
+  let exitReason = 'actions-settled';
   try {
     for (const name of Object.keys(claimed.actions) as SessionEndActionName[]) {
-      if (Date.now() >= deadlineAt) break;
+      if (Date.now() >= deadlineAt) { exitReason = 'run-deadline-reached'; break; }
       const before = readSessionEndJob(payload.directory, payload.sessionId);
-      if (!before || before.owner?.nonce !== nonce) break;
+      if (!before || before.owner?.nonce !== nonce) { exitReason = before ? 'ownership-lost' : 'manifest-unreadable'; break; }
       if (!producerReady && (name !== 'foreground-cleanup' || !graceExpired || before.producers.core.state !== 'prepared')) continue;
       if (name === 'wiki-capture' && before.producers.wiki.state === 'absent') continue;
       const owned = claimSessionEndAction(payload.directory, payload.sessionId, nonce, name, deadlineAt);
       const action = owned?.actions[name];
       if (!owned || !action || action.status !== 'claimed' || !action.runner) continue;
       const renewed = renewSessionEndLease(payload.directory, payload.sessionId, nonce, generation, deadlineAt);
-      if (!renewed?.owner) break;
+      if (!renewed?.owner) { exitReason = 'lease-renew-failed-before-action'; break; }
       generation = renewed.owner.leaseGeneration;
-      if (!markSessionEndActionRunner(payload.directory, payload.sessionId, nonce, name, action.runner.runnerNonce, 'started')) break;
+      if (!markSessionEndActionRunner(payload.directory, payload.sessionId, nonce, name, action.runner.runnerNonce, 'started')) { exitReason = `runner-start-rejected-${name}`; break; }
       const stopWatchdog = armSessionEndActionWatchdog({ directory: payload.directory, jobId: owned.jobId, action: name, attempt: action.attempts, runnerNonce: action.runner.runnerNonce, deadlineAt: Math.min(deadlineAt, Date.now() + action.budgetMs) });
       const actionDeadline = Math.min(deadlineAt, Date.now() + action.budgetMs);
       let leaseLost = false;
       const heartbeatTimer = setInterval(() => { const renewedLease = renewSessionEndLease(payload.directory, payload.sessionId, nonce, generation, deadlineAt); if (!renewedLease?.owner) leaseLost = true; else generation = renewedLease.owner.leaseGeneration; }, 250);
       heartbeatTimer.unref();
-      const result = await runSessionEndAction({ directory: payload.directory, sessionId: payload.sessionId, job: owned, actionName: name, action, ownerNonce: nonce, runnerNonce: action.runner.runnerNonce, deadlineAt: actionDeadline }, () => executeSessionEndAction(name, payload, actionDeadline));
+      const authority: SessionEndActionAuthority = { jobId: owned.jobId, actionName: name, attempt: action.attempts, ownerNonce: nonce, runnerNonce: action.runner.runnerNonce };
+      const result = await runSessionEndAction({ directory: payload.directory, sessionId: payload.sessionId, job: owned, actionName: name, action, ownerNonce: nonce, runnerNonce: action.runner.runnerNonce, deadlineAt: actionDeadline }, () => executeSessionEndAction(name, payload, actionDeadline, authority));
       clearInterval(heartbeatTimer);
       stopWatchdog();
-      if (leaseLost) break;
+      if (leaseLost) { exitReason = `lease-lost-during-${name}`; break; }
       finishSessionEndAction(payload.directory, payload.sessionId, nonce, name, action.runner.runnerNonce, result.completed, result.code);
       if (name === 'foreground-cleanup' && result.completed) {
         recoverPreparedCoreProducer(payload.directory, payload.sessionId);
@@ -102,11 +121,11 @@ export async function processSessionEndWorker(payload: SessionEndWorkerPayload):
         producerReady = Boolean(recovered && ['sealed', 'no-op'].includes(recovered.producers.core.state) && ['sealed', 'no-op'].includes(recovered.producers.wiki.state));
       }
       const heartbeat = renewSessionEndLease(payload.directory, payload.sessionId, nonce, generation, deadlineAt);
-      if (!heartbeat?.owner) break;
+      if (!heartbeat?.owner) { exitReason = `lease-renew-failed-after-${name}`; break; }
       generation = heartbeat.owner.leaseGeneration;
     }
   } finally {
-    const released = releaseSessionEndJob(payload.directory, payload.sessionId, nonce, generation);
+    const released = releaseSessionEndJob(payload.directory, payload.sessionId, nonce, generation, exitReason);
     const terminalized = failClosedExhaustedForegroundCleanup(payload.directory, payload.sessionId);
     reschedulePendingWorker(payload, terminalized ?? released ?? readSessionEndJob(payload.directory, payload.sessionId));
   }

@@ -153,19 +153,19 @@ describe('pre-tool-use template source extension detection', () => {
       expect(hasDelegationNotice(runPreToolUseHookRaw('Write', { file_path: rejected }, '/home/project', env))).toBe(true);
     });
 
-    it('keeps absolute project metadata and COPILOT_CONFIG_DIR decisions in parity', () => {
+    it('keeps absolute project metadata and COPILOT_HOME decisions in parity', () => {
       const project = mkdtempSync(join(tmpdir(), 'omc-parity-project-'));
       const config = mkdtempSync(join(tmpdir(), 'omc-parity-config-'));
-      const previousConfig = process.env.COPILOT_CONFIG_DIR;
-      process.env.COPILOT_CONFIG_DIR = config;
+      const previousConfig = process.env.COPILOT_HOME;
+      process.env.COPILOT_HOME = config;
       try {
         for (const target of [join(project, '.omg', 'state.ts'), join(config, 'agents', 'worker.ts')]) {
           expect(isAllowedPath(target, project)).toBe(true);
-          expect(hasDelegationNotice(runPreToolUseHookRaw('Write', { file_path: target }, project, { COPILOT_CONFIG_DIR: config }))).toBe(false);
+          expect(hasDelegationNotice(runPreToolUseHookRaw('Write', { file_path: target }, project, { COPILOT_HOME: config }))).toBe(false);
         }
       } finally {
-        if (previousConfig === undefined) delete process.env.COPILOT_CONFIG_DIR;
-        else process.env.COPILOT_CONFIG_DIR = previousConfig;
+        if (previousConfig === undefined) delete process.env.COPILOT_HOME;
+        else process.env.COPILOT_HOME = previousConfig;
         rmSync(project, { recursive: true, force: true });
         rmSync(config, { recursive: true, force: true });
       }
@@ -320,6 +320,7 @@ describe('pre-tool-use template source extension detection', () => {
 
       expect(output.continue).toBe(true);
       expect(hasDelegationNotice(output)).toBe(true);
+      expect(hookSpecificOutput?.additionalContext).toContain('Bash command may modify source files');
     });
   });
 

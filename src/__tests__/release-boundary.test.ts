@@ -102,7 +102,13 @@ function packageManifest(gitHead?: string): Record<string, unknown> {
   };
 }
 
-function releaseTarball(gitHead = SHA, extraEntries: TarEntry[] = [], readme = '# fixture\n'): Buffer {
+function releaseTarball(
+  gitHead = SHA,
+  extraEntries: TarEntry[] = [],
+  readme = '# fixture\n',
+  omit: string[] = [],
+  rootPlugin: Record<string, unknown> = { name: 'oh-my-copilot', version: VERSION },
+): Buffer {
   return makeTarball([
     { path: 'package/package.json', content: `${JSON.stringify(packageManifest(gitHead), null, 2)}\n` },
     {
@@ -130,9 +136,13 @@ function releaseTarball(gitHead = SHA, extraEntries: TarEntry[] = [], readme = '
     { path: 'package/bridge/mcp-server.cjs', content: 'module.exports = {};\n' },
     { path: 'package/bridge/runtime-cli.cjs', content: 'module.exports = {};\n' },
     { path: 'package/bridge/team.js', content: 'export {};\n' },
+    { path: 'package/plugin.json', content: JSON.stringify(rootPlugin) },
+    { path: 'package/copilot/hooks.json', content: '{"version":1,"hooks":{}}' },
+    { path: 'package/copilot/agents/executor.md', content: '---\nname: executor\n---\n' },
+    { path: 'package/scripts/lib/copilot-hook-adapter.cjs', content: 'module.exports = {};\n' },
     { path: 'package/README.md', content: readme },
     ...extraEntries,
-  ]);
+  ].filter(entry => !omit.includes(entry.path)));
 }
 
 function writeTarball(root: string, name: string, bytes: Buffer): string {
@@ -247,6 +257,7 @@ function createTriggerRepository(): { root: string; sha: string } {
   mkdirSync(join(root, 'docs'), { recursive: true });
   writeFileSync(join(root, 'package.json'), JSON.stringify(packageManifest(), null, 2));
   writeFileSync(join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'oh-my-copilot', version: VERSION }));
+  writeFileSync(join(root, 'plugin.json'), JSON.stringify({ name: 'oh-my-copilot', version: VERSION }));
   writeFileSync(join(root, '.claude-plugin', 'marketplace.json'), JSON.stringify({
     version: VERSION,
     plugins: [{ name: 'oh-my-copilot', version: VERSION }],
@@ -323,6 +334,12 @@ describe('release-boundary.mjs', () => {
     expect(() => assertTrigger({ tag: TAG, sha, cwd: root })).toThrow('package.json version');
     writeFileSync(join(root, 'package.json'), JSON.stringify(packageManifest(), null, 2));
 
+    writeFileSync(join(root, 'plugin.json'), JSON.stringify({ name: 'oh-my-copilot', version: '4.15.3' }));
+    expect(() => assertTrigger({ tag: TAG, sha, cwd: root })).toThrow('plugin.json version');
+    writeFileSync(join(root, 'plugin.json'), JSON.stringify({ name: 'oh-my-claudecode', version: VERSION }));
+    expect(() => assertTrigger({ tag: TAG, sha, cwd: root })).toThrow('plugin.json name');
+    writeFileSync(join(root, 'plugin.json'), JSON.stringify({ name: 'oh-my-copilot', version: VERSION }));
+
     writeFileSync(join(root, 'docs', 'CLAUDE.md'), '<!-- OMC:VERSION:4.15.3 -->\n');
     expect(() => assertTrigger({ tag: TAG, sha, cwd: root })).toThrow('does not advertise');
 
@@ -397,7 +414,11 @@ describe('release-boundary.mjs', () => {
       'package/bridge/mcp-server.cjs',
       'package/bridge/runtime-cli.cjs',
       'package/bridge/team.js',
+      'package/copilot/agents/executor.md',
+      'package/copilot/hooks.json',
       'package/package.json',
+      'package/plugin.json',
+      'package/scripts/lib/copilot-hook-adapter.cjs',
     ]);
 
     const forbiddenPath = writeTarball(root, 'forbidden.tgz', releaseTarball(SHA, [
@@ -417,6 +438,30 @@ describe('release-boundary.mjs', () => {
       { path: 'package/bridge/team.js', content: 'export {};\n' },
     ]));
     expect(() => assertArchive(missingCoordinatorPath, { version: VERSION, gitHead: SHA })).toThrow('bridge/claude-md-coordinator.cjs');
+    for (const required of [
+      'plugin.json',
+      'copilot/hooks.json',
+      'copilot/agents/executor.md',
+      'scripts/lib/copilot-hook-adapter.cjs',
+    ]) {
+      const missingPath = writeTarball(
+        root,
+        'missing-copilot-surface.tgz',
+        releaseTarball(SHA, [], '# fixture\n', [`package/${required}`]),
+      );
+      expect(() => assertArchive(missingPath, { version: VERSION, gitHead: SHA })).toThrow(required);
+    }
+    for (const rootPlugin of [
+      { name: 'oh-my-copilot', version: '4.15.3' },
+      { name: 'oh-my-claudecode', version: VERSION },
+    ]) {
+      const wrongRootPluginPath = writeTarball(
+        root,
+        'wrong-root-plugin.tgz',
+        releaseTarball(SHA, [], '# fixture\n', [], rootPlugin),
+      );
+      expect(() => assertArchive(wrongRootPluginPath, { version: VERSION, gitHead: SHA })).toThrow('root plugin.json');
+    }
     await expect(cliMain([
       'assert-evidence',
       '--tarball',

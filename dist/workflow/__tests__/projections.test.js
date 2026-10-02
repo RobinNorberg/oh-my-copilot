@@ -31,12 +31,14 @@ describe('registry projections — canonical JSON and digest', () => {
 describe('registry projections — drift check against installed surfaces', () => {
     it('matches the repository skills/ and commands/ surface exactly', () => {
         const installed = enumerateInstalledSurfaces(process.cwd());
-        // 37 upstream surfaces (incl. v5.1.0's minimal-code-discipline, launch,
-        // and drydock, and v5.3.0's ask-navigator and loft) plus this fork's 14
-        // exclusive skills: the critique / deep-review / discover /
-        // ralph-experiment lanes and the omc-ado-* and omc-gh-* issue-tracker
-        // lanes.
-        expect(installed.skills.length).toBe(51);
+        // 47 upstream surfaces (incl. v5.1.0's minimal-code-discipline, launch,
+        // and drydock, v5.3.0's ask-navigator and loft, v5.4.0's harbor and
+        // agent-doc-discipline, and v5.5.0's architecture-survey, diagram, intent,
+        // and minimal-prose-discipline, and upstream dev's map, pr, refit, and tdd)
+        // plus this fork's 14 exclusive skills: the critique / deep-review /
+        // discover / ralph-experiment lanes and the omc-ado-* and omc-gh-*
+        // issue-tracker lanes.
+        expect(installed.skills.length).toBe(61);
         expect(installed.commands.length).toBe(21);
         const drift = checkProjectionDrift(installed);
         expect(drift.unregistered).toEqual([]);

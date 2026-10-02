@@ -122,7 +122,7 @@ export const loadLocalTool = {
 // Tool 2: load_omc_skills_global
 export const loadGlobalTool = {
   name: 'load_omc_skills_global',
-  description: 'Load and list skills from global user directories (~/.omg/skills/ and [$COPILOT_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.',
+  description: 'Load and list skills from global user directories (~/.omg/skills/ and [$COPILOT_HOME|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.',
   schema: loadGlobalSchema,
   handler: async (_args: Record<string, never>) => {
     const allSkills = loadAllSkills(null);

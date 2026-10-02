@@ -16,8 +16,8 @@ If you're new to Oh My Copilot (OMC), follow the steps below in order.
 
 ### Prerequisites
 
-- [Claude Code](https://docs.anthropic.com/claude-code) must be installed
-- Claude Max/Pro subscription or an Anthropic API key is required
+- [GitHub Copilot CLI](https://github.com/github/copilot-cli) (with a Copilot subscription) or [Claude Code](https://docs.anthropic.com/claude-code) (with a Claude Max/Pro subscription or an Anthropic API key) must be installed
+- Node.js must be on PATH: every OMC hook runs `node`, and under Copilot a hook that cannot start blocks the tool call
 
 ---
 
@@ -27,7 +27,7 @@ OMC ships two surfaces and they are designed to coexist:
 
 | Surface | What you get | Recommended install |
 |---|---|---|
-| **Claude Code plugin** (`oh-my-copilot@omc`) | In-session skills, agents, hooks, statusline, MCP servers — the `/autopilot`, `/ralph`, `/execute`, `/team` slash commands | Marketplace plugin install (Step 1–2 below) |
+| **Plugin** (`oh-my-copilot@omc`, Copilot CLI or Claude Code) | In-session skills, agents, hooks, statusline, MCP servers — the `/oh-my-copilot:autopilot`, `/oh-my-copilot:ralph`, `/oh-my-copilot:execute`, and `/oh-my-copilot:team` slash commands | Marketplace plugin install (Step 1–2 below) |
 | **Terminal CLI** (`omg` binary, package `oh-my-copilot`) | Shell commands: `omg setup`, `omg update`, `omg team`, `omg ask`, and a hard-deprecated `omg autoresearch` shim | `npm i -g oh-my-copilot@latest` |
 
 Most users want **both**: the plugin for the in-session experience, and the npm CLI for shell-side automation and updates. Running them in parallel is fully supported — `omg update` and `omg setup` are idempotent and detect the plugin install to avoid duplicating in-session skills (#2252).
@@ -36,18 +36,27 @@ Most users want **both**: the plugin for the in-session experience, and the npm 
 
 ### Step 1: Add the marketplace source
 
-Run the following command inside Claude Code:
+Run the following command inside a Copilot CLI (or Claude Code) session:
 
 ```bash
 /plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 ```
+
+The marketplace registers as `omc`.
 
 ### Step 2: Install the plugin
 
 After adding the marketplace, install the plugin:
 
 ```bash
-/plugin install oh-my-copilot
+/plugin install oh-my-copilot@omc
+```
+
+From your shell, Copilot CLI offers the same two steps:
+
+```bash
+copilot plugin marketplace add RobinNorberg/oh-my-copilot
+copilot plugin install oh-my-copilot@omc
 ```
 
 ### Step 2b (optional but recommended): install the terminal CLI
@@ -65,17 +74,13 @@ npm i -g oh-my-copilot@latest
 > yet. The warning is tracked in [#2913](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/2913)
 > and does not by itself mean the OMC CLI install failed.
 
-Both can be installed at the same time. The CLI auto-detects the plugin install and will not double-register skills under `~/.claude/skills/` (if you previously hit the duplicate-skill bug, run `omg update` once on 4.11.2+ — it self-heals leftover standalone skills that the plugin now provides via `prunePluginDuplicateSkills`).
+Both can be installed at the same time. The host config directory is `~/.copilot` by default; set `COPILOT_HOME` (Copilot CLI's own variable, which OMC also reads) to move it. The CLI auto-detects the plugin install and will not double-register skills under `~/.copilot/skills/` (if you previously hit the duplicate-skill bug, run `omg update` once on 4.11.7+ — it self-heals leftover standalone skills that the plugin now provides via `prunePluginDuplicateSkills`).
 
 ### Step 3: Run initial setup
 
-After installation, enter one of the following in Claude Code:
+After installation, run this in Claude Code:
 
 ```bash
-# Option 1: natural language
-setup omc
-
-# Option 2: skill command
 /oh-my-copilot:omc-setup
 ```
 
@@ -83,8 +88,9 @@ setup omc
 
 | Item | Requirement |
 |------|-------------|
-| Claude Code | Must be installed |
-| Authentication | Claude Max/Pro subscription or `ANTHROPIC_API_KEY` environment variable |
+| Host CLI | GitHub Copilot CLI or Claude Code |
+| Authentication | Copilot subscription, or Claude Max/Pro subscription / `ANTHROPIC_API_KEY` for Claude Code |
+| Node.js | On PATH (`omg doctor conflicts` checks it) |
 
 ### Choosing a setup scope
 
@@ -151,14 +157,16 @@ This loads agents, skills, and commands directly from your checkout without copy
 
 ### Updates
 
-OMC automatically checks for updates every 24 hours. To update manually, re-run the plugin install command.
+OMC automatically checks for updates every 24 hours. To update manually, run `copilot plugin update oh-my-copilot@omc` (or re-run the plugin install command).
 
 > ⚠️ **Warning:** After a plugin update, run `/oh-my-copilot:omc-setup` again to apply the latest configuration.
 
 ### Uninstalling
 
 ```bash
-/plugin uninstall oh-my-copilot@oh-my-copilot
+/plugin uninstall oh-my-copilot@omc
+# or from your shell
+copilot plugin uninstall oh-my-copilot@omc
 ```
 
 To also strip OMC files and hook entries from your host CLI config directory, run the Node uninstaller from the plugin root. It works on Windows, macOS, and Linux without bash or jq:
@@ -228,7 +236,7 @@ To configure the HUD display, run:
 
 ### Starting smaller
 
-If autopilot feels too large, start with a single-task command:
+If autopilot feels too large, start with a focused skill:
 
 ```bash
 # Code analysis
@@ -237,11 +245,11 @@ analyze why this test is failing
 # File search
 deepsearch for files that handle authentication
 
-# Simple implementation
-ultrawork add a health check endpoint
+# Approved implementation task
+/oh-my-copilot:execute add a health check endpoint
 ```
 
-These keywords invoke a single appropriate agent directly, without running the full pipeline.
+These surfaces invoke focused work without running the full autopilot pipeline. Use `/oh-my-copilot:team` when the task needs parallel agents.
 
 ### Next steps
 
@@ -291,7 +299,6 @@ Defaults → User config (~/.config/claude-omc/config.jsonc)
 
   // Magic keyword customization
   "magicKeywords": {
-    "ultrawork": ["ultrawork", "ulw", "uw"],
     "search": ["search", "find", "locate"],
     "analyze": ["analyze", "investigate", "examine"],
     "ultrathink": ["ultrathink", "think", "reason"]
@@ -343,6 +350,8 @@ You can change the AI model used by each agent:
 }
 ```
 
+> ℹ️ On GitHub Copilot CLI these `agents.<name>.model` overrides are a no-op: they are applied through a hook channel (`updatedInput`) that Copilot does not support. Use Copilot's `subagents.agents.<name>.model` setting in `$COPILOT_HOME/settings.json` instead; otherwise each agent uses the `models:` list generated from its tier. See [REFERENCE.md](./REFERENCE.md#agent-customization).
+
 #### Default model mapping
 
 | Agent | Default model | Role |
@@ -369,14 +378,11 @@ You can change the AI model used by each agent:
 
 ### Customizing magic keywords
 
-You can change keywords in four categories via the `magicKeywords` section of `config.jsonc`:
+You can customize the supported search, analysis, and deep-reasoning categories via the `magicKeywords` section of `config.jsonc`:
 
 ```jsonc
 {
   "magicKeywords": {
-    // Triggers parallel execution mode
-    "ultrawork": ["ultrawork", "ulw", "parallel"],
-
     // Triggers codebase search mode
     "search": ["search", "find", "locate", "grep"],
 
@@ -389,7 +395,7 @@ You can change keywords in four categories via the `magicKeywords` section of `c
 }
 ```
 
-> ℹ️ **Note:** The `magicKeywords` section in `config.jsonc` only allows customizing four categories: `ultrawork`, `search`, `analyze`, and `ultrathink`. Keywords such as `autopilot`, `ralph`, and `ccg` are hardcoded in the keyword-detector hook and cannot be changed via config files.
+> ℹ️ **Note:** Parallel work is not configured as a magic keyword. Use `/oh-my-copilot:team` for coordinated agents, or `/oh-my-copilot:execute` to carry an approved task through verified implementation. Keywords such as `autopilot` and `ralph` are hardcoded in the keyword-detector hook and cannot be changed via config files.
 
 ### Model routing configuration
 

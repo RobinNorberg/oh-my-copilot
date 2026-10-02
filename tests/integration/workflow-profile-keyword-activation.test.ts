@@ -1,14 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { provisionStandaloneStateLockBridge } from '../../src/installer/index.js';
 
 const root = process.cwd();
+const installedHooks = mkdtempSync(join(tmpdir(), 'omc-keyword-installed-hooks-'));
+cpSync(join(root, 'templates', 'hooks'), installedHooks, { recursive: true });
+provisionStandaloneStateLockBridge(root, join(installedHooks, 'lib', 'state-lock.mjs'));
+afterAll(() => rmSync(installedHooks, { recursive: true, force: true }));
 const hooks = [
   join(root, 'scripts', 'keyword-detector.mjs'),
-  join(root, 'templates', 'hooks', 'keyword-detector.mjs'),
+  join(installedHooks, 'keyword-detector.mjs'),
 ];
 const created: string[] = [];
 const sessionId = 'named-activation-fence';
@@ -39,7 +44,7 @@ function invoke(hook: string, directory: string, prompt: string) {
         ...process.env,
         HOME: directory,
         USERPROFILE: directory,
-        COPILOT_CONFIG_DIR: join(directory, '.claude'),
+        COPILOT_HOME: join(directory, '.claude'),
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });

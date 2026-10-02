@@ -64,7 +64,7 @@ describe('AutopilotCancel', () => {
     delete process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_BASE64;
     delete process.env.OMC_TEST_FLOCK_AVAILABLE;
     delete process.env.OMC_TEST_EMERGENCY_CRASH_PHASE;
-    delete process.env.COPILOT_CONFIG_DIR;
+    delete process.env.COPILOT_HOME;
     delete process.env.OMC_TEST_EMERGENCY_REPLACEMENT_PATH;
     delete process.env.OMC_TEST_EMERGENCY_REPLACEMENT_BASE64;
   });
@@ -388,6 +388,29 @@ describe('AutopilotCancel', () => {
       clearAutopilot(testDir);
 
       expect(ralphLoop.clearRalphState).toHaveBeenCalledWith(testDir);
+    });
+
+    it('should request a same-session retry when linked cleanup fails', () => {
+      const sessionId = 'autopilot-linked-cleanup';
+      initAutopilot(testDir, 'test idea', sessionId);
+      vi.mocked(ralphLoop.readRalphState).mockReturnValueOnce({
+        active: true,
+        iteration: 1,
+        max_iterations: 10,
+        started_at: new Date().toISOString(),
+        prompt: 'test idea',
+        session_id: sessionId,
+      });
+      vi.mocked(ralphLoop.clearRalphState).mockReturnValueOnce(false);
+
+      const result = clearAutopilot(testDir, sessionId);
+
+      expect(result.success).toBe(false);
+      expect(result.message).toContain('retry within the same session scope');
+      expect(result.message).toContain('only when the user explicitly requests `--all`');
+      expect(result.message).not.toContain('/cancel --force');
+      expect(ralphLoop.clearRalphState).toHaveBeenCalledWith(testDir, sessionId);
+      expect(ralphLoop.clearRalphState).not.toHaveBeenCalledWith(testDir);
     });
 
     it('should ignore retired linkage metadata when clearing ralph state', () => {
@@ -732,7 +755,7 @@ describe('AutopilotCancel', () => {
     it('rejects a named traversal boundary without mutating paused bytes', () => {
       const sessionId = 'resume-auth-session';
       const root = join(testDir, 'claude-config', 'projects');
-      process.env.COPILOT_CONFIG_DIR = join(testDir, 'claude-config');
+      process.env.COPILOT_HOME = join(testDir, 'claude-config');
       mkdirSync(root, { recursive: true });
       const encodedProject = join(root, '-workspace-project');
       mkdirSync(encodedProject);
@@ -785,7 +808,7 @@ describe('AutopilotCancel', () => {
       const root = join(testDir, 'claude-config', 'projects');
       const project = join(root, '-workspace-project');
       const transcript = join(project, `${sessionId}.jsonl`);
-      process.env.COPILOT_CONFIG_DIR = join(testDir, 'claude-config');
+      process.env.COPILOT_HOME = join(testDir, 'claude-config');
       mkdirSync(project, { recursive: true });
       writeFileSync(transcript, '');
       const initial = statSync(transcript, { bigint: true });

@@ -20,7 +20,10 @@ import { DEFAULT_HUD_LABELS, type HudLabels, type ModelFormat } from '../types.j
 function extractVersion(modelId: string): string | null {
   // Match hyphenated ID patterns like opus-4-6, sonnet-4-5, haiku-4-5
   const idMatch = modelId.match(/(?:opus|sonnet|haiku)-(\d+)-(\d+)/i);
-  if (idMatch) return `${idMatch[1]}.${idMatch[2]}`;
+  if (idMatch) {
+    // A date after the major version, as in sonnet-4-20250514, is not a minor version.
+    return idMatch[2].length === 8 ? idMatch[1] : `${idMatch[1]}.${idMatch[2]}`;
+  }
 
   // Match Claude family IDs with a single trailing numeric version like claude-sonnet-5
   const singleSegmentIdMatch = modelId.match(/(?:^|[.-])claude-(?:opus|sonnet|haiku)-(\d+)$/i);

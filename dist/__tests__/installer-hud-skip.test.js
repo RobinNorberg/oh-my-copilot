@@ -8,12 +8,12 @@ vi.mock('fs', async () => {
     };
 });
 import { existsSync, readFileSync } from 'fs';
-import { isHudEnabledInConfig, isOmcStatusLine, COPILOT_CONFIG_DIR } from '../installer/index.js';
+import { isHudEnabledInConfig, isOmcStatusLine, COPILOT_HOME } from '../installer/index.js';
 import { join } from 'path';
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
 describe('isHudEnabledInConfig', () => {
-    const configPath = join(COPILOT_CONFIG_DIR, '.omc-config.json');
+    const configPath = join(COPILOT_HOME, '.omc-config.json');
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -102,7 +102,7 @@ describe('isOmcStatusLine', () => {
     it('should return true for a legacy omcp-hud command object', () => {
         expect(isOmcStatusLine({
             type: 'command',
-            command: 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs'
+            command: 'node ${COPILOT_HOME:-$HOME/.copilot}/hud/omcp-hud.mjs'
         })).toBe(true);
     });
     it('should return false for non-OMC string', () => {
@@ -129,22 +129,22 @@ describe('isOmcStatusLine', () => {
             command: 'sh $HOME/.claude/hud/find-node.sh $HOME/.claude/hud/omg-hud.mjs'
         })).toBe(true);
     });
-    it('should recognize COPILOT_CONFIG_DIR-aware statusLine as OMC', () => {
+    it('should recognize COPILOT_HOME-aware statusLine as OMC', () => {
         expect(isOmcStatusLine({
             type: 'command',
-            command: 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs'
+            command: 'node ${COPILOT_HOME:-$HOME/.copilot}/hud/omg-hud.mjs'
         })).toBe(true);
     });
-    it('should recognize COPILOT_CONFIG_DIR-aware find-node.sh statusLine as OMC', () => {
+    it('should recognize COPILOT_HOME-aware find-node.sh statusLine as OMC', () => {
         expect(isOmcStatusLine({
             type: 'command',
-            command: 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs'
+            command: 'sh ${COPILOT_HOME:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_HOME:-$HOME/.copilot}/hud/omg-hud.mjs'
         })).toBe(true);
     });
     it('should recognize cached HUD statusLine as OMC', () => {
         expect(isOmcStatusLine({
             type: 'command',
-            command: 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs'
+            command: 'sh ${COPILOT_HOME:-$HOME/.copilot}/hud/omg-hud-cache.sh ${COPILOT_HOME:-$HOME/.copilot}/hud/omg-hud.mjs'
         })).toBe(true);
     });
 });

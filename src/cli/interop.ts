@@ -9,6 +9,8 @@ import { execFileSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { isTmuxAvailable, isCopilotAvailable, tmuxExec } from './tmux-utils.js';
 import { initInteropSession, getInteropDir } from '../interop/shared-state.js';
+import { getHostCliBinary, getHostCliType } from '../utils/host-detection.js';
+import { getContract } from '../team/model-contract.js';
 
 export type InteropMode = 'off' | 'observe' | 'active';
 
@@ -78,7 +80,7 @@ export function launchInteropSession(cwd: string = process.cwd()): void {
   const hasClaude = isCopilotAvailable();
 
   if (!hasClaude) {
-    console.error('Error: claude CLI is not available. Install Claude Code CLI first.');
+    console.error(`Error: ${getHostCliBinary()} CLI is not available. ${getContract(getHostCliType()).installInstructions}`);
     process.exit(1);
   }
 

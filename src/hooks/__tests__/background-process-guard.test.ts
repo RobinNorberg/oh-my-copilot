@@ -60,7 +60,7 @@ describe('Background Process Guard (issue #302)', () => {
 
   beforeEach(() => {
     claudeConfigDir = mkdtempSync(join(tmpdir(), 'omc-bg-perms-'));
-    process.env = { ...originalEnv, COPILOT_CONFIG_DIR: claudeConfigDir };
+    process.env = { ...originalEnv, COPILOT_HOME: claudeConfigDir };
     delete process.env.DISABLE_OMC;
     delete process.env.OMC_SKIP_HOOKS;
     resetSkipHooksCache();

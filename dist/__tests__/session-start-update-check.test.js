@@ -41,9 +41,9 @@ describe('session-start.mjs update check', () => {
                 ...process.env,
                 HOME: fakeHome,
                 USERPROFILE: fakeHome,
-                // config-dir.mjs prefers COPILOT_CONFIG_DIR over HOME; without this the
+                // config-dir.mjs prefers COPILOT_HOME over HOME; without this the
                 // test would write to the developer's real config directory.
-                COPILOT_CONFIG_DIR: join(fakeHome, '.claude'),
+                COPILOT_HOME: join(fakeHome, '.claude'),
                 CLAUDE_PLUGIN_ROOT: pluginRoot,
                 // Never reach the real registry: the marketplace channel is resolved
                 // from local files and the Claude Code entry is already fresh.

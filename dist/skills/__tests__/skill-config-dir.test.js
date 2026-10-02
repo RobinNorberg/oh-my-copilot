@@ -1,8 +1,8 @@
 /**
- * Regression test: skill markdown files must use COPILOT_CONFIG_DIR
+ * Regression test: skill markdown files must use COPILOT_HOME
  *
  * Ensures that bash code blocks in skill files never hardcode $HOME/.claude
- * without a ${COPILOT_CONFIG_DIR:-...} fallback. This prevents skills from
+ * without a ${COPILOT_HOME:-...} fallback. This prevents skills from
  * ignoring the user's custom config directory.
  */
 import { describe, it, expect } from 'vitest';
@@ -38,7 +38,7 @@ function extractBashBlocks(filePath) {
 }
 /**
  * Find lines in bash blocks that use $HOME/.claude without the
- * ${COPILOT_CONFIG_DIR:-$HOME/.copilot} pattern.
+ * ${COPILOT_HOME:-$HOME/.copilot} pattern.
  */
 function findHardcodedHomeClaude(filePath) {
     const blocks = extractBashBlocks(filePath);
@@ -47,8 +47,8 @@ function findHardcodedHomeClaude(filePath) {
         const lines = block.content.split('\n');
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            // Match $HOME/.claude that is NOT inside ${COPILOT_CONFIG_DIR:-$HOME/.copilot}
-            if (/\$HOME\/\.claude/.test(line) && !/\$\{COPILOT_CONFIG_DIR:-\$HOME\/\.claude\}/.test(line)) {
+            // Match $HOME/.claude that is NOT inside ${COPILOT_HOME:-$HOME/.copilot}
+            if (/\$HOME\/\.claude/.test(line) && !/\$\{COPILOT_HOME:-\$HOME\/\.claude\}/.test(line)) {
                 violations.push({
                     line: block.startLine + i,
                     text: line.trim(),
@@ -74,7 +74,7 @@ function findMarkdownFiles(dir) {
 }
 /**
  * Find lines in full skill content (not just bash blocks) that use ~/.claude
- * without portable notation like [$COPILOT_CONFIG_DIR|~/.claude].
+ * without portable notation like [$COPILOT_HOME|~/.claude].
  * Issue #2155 §16 — LLMs read prose and use literal paths in tool calls.
  */
 function findHardcodedTildeClaude(filePath) {
@@ -86,11 +86,11 @@ function findHardcodedTildeClaude(filePath) {
         // Match ~/.claude (tilde form) used in prose/tool directives
         if (!/~\/\.claude/.test(line))
             continue;
-        // Allow: portable notation [$COPILOT_CONFIG_DIR|~/.claude]
-        if (/\[\$COPILOT_CONFIG_DIR\|~\/\.claude\]/.test(line))
+        // Allow: portable notation [$COPILOT_HOME|~/.claude]
+        if (/\[\$COPILOT_HOME\|~\/\.claude\]/.test(line))
             continue;
-        // Allow: env-var fallback ${COPILOT_CONFIG_DIR:-...}
-        if (/\$\{COPILOT_CONFIG_DIR:-/.test(line))
+        // Allow: env-var fallback ${COPILOT_HOME:-...}
+        if (/\$\{COPILOT_HOME:-/.test(line))
             continue;
         // Allow: lines inside bash code blocks (covered by the other test)
         // Allow: comment lines and frontmatter
@@ -99,8 +99,8 @@ function findHardcodedTildeClaude(filePath) {
             continue; // frontmatter/comments
         if (trimmed.startsWith('<!--') && trimmed.endsWith('-->'))
             continue;
-        // Allow: lines that mention COPILOT_CONFIG_DIR (explaining the config dir system)
-        if (/COPILOT_CONFIG_DIR/i.test(line))
+        // Allow: lines that mention COPILOT_HOME (explaining the config dir system)
+        if (/COPILOT_HOME/i.test(line))
             continue;
         // Allow: glob patterns like ~/.claude/** (permission patterns, not path resolution)
         if (/~\/\.claude\/\*/.test(line))
@@ -119,15 +119,15 @@ const ALL_FILES = findMarkdownFiles(SKILLS_ROOT);
 function toSkillLabel(filePath) {
     return filePath.replace(/\\/g, '/').replace(/.*\/skills\//, 'skills/');
 }
-describe('skill markdown bash blocks must respect COPILOT_CONFIG_DIR', () => {
+describe('skill markdown bash blocks must respect COPILOT_HOME', () => {
     it.each(ALL_FILES.map((f) => [toSkillLabel(f), f]))('%s has no hardcoded $HOME/.claude in bash blocks', (_label, filePath) => {
         const violations = findHardcodedHomeClaude(filePath);
         if (violations.length > 0) {
             const details = violations
                 .map((v) => `  line ${v.line}: ${v.text}`)
                 .join('\n');
-            expect.fail(`Found $HOME/.claude without COPILOT_CONFIG_DIR fallback:\n${details}\n` +
-                `Replace with: \${COPILOT_CONFIG_DIR:-$HOME/.copilot}`);
+            expect.fail(`Found $HOME/.claude without COPILOT_HOME fallback:\n${details}\n` +
+                `Replace with: \${COPILOT_HOME:-$HOME/.copilot}`);
         }
     });
 });
@@ -135,7 +135,7 @@ describe('skill markdown prose must not use raw ~/.claude (Contract 6, issue #21
     // Known existing violations per skill directory (baseline snapshot).
     // These are real issues documented in #2155 §16 but predate this regression test.
     // This test prevents NEW violations from being introduced.
-    // To reduce the baseline: fix the skill prose to use [$COPILOT_CONFIG_DIR|~/.claude] notation,
+    // To reduce the baseline: fix the skill prose to use [$COPILOT_HOME|~/.claude] notation,
     // then lower the count here.
     const KNOWN_VIOLATION_BASELINE = {
         'skills/cancel/SKILL.md': 4,
@@ -157,7 +157,7 @@ describe('skill markdown prose must not use raw ~/.claude (Contract 6, issue #21
                 .map((v) => `  line ${v.line}: ${v.text}`)
                 .join('\n');
             expect.fail(`Found ${violations.length} ~/.claude violations (baseline: ${baseline}, new: ${violations.length - baseline}):\n${details}\n` +
-                `Replace with: [$COPILOT_CONFIG_DIR|~/.claude] or use \${COPILOT_CONFIG_DIR:-$HOME/.copilot} in code`);
+                `Replace with: [$COPILOT_HOME|~/.claude] or use \${COPILOT_HOME:-$HOME/.copilot} in code`);
         }
     });
     it('total baseline should not increase (tracks overall progress)', () => {

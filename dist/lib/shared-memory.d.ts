@@ -37,7 +37,7 @@ export interface SharedMemoryListItem {
  * Check if shared memory is enabled via config.
  *
  * Reads `agents.sharedMemory.enabled` from
- * `[$COPILOT_CONFIG_DIR|~/.claude]/.omc-config.json`.
+ * `[$COPILOT_HOME|~/.claude]/.omc-config.json`.
  * Defaults to true when the config key is absent (opt-out rather than opt-in
  * once the feature ships, but tools check this gate).
  */

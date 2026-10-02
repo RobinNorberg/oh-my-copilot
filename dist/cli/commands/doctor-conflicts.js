@@ -2,6 +2,7 @@
  * Conflict diagnostic command
  * Scans for and reports plugin coexistence issues.
  */
+import { spawnSync } from 'child_process';
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
@@ -11,6 +12,25 @@ import { colors } from '../utils/formatting.js';
 import { getSkillsDir, listBuiltinSkillNames } from '../../features/builtin-skills/skills.js';
 import { inspectUnifiedMcpRegistrySync } from '../../installer/mcp-registry.js';
 import { findWorkspaceRoot, WORKSPACE_MARKER } from '../../lib/worktree-paths.js';
+import { getHostCliType } from '../../utils/host-detection.js';
+function hasActiveOmcPluginForDiagnostics() {
+    if (process.env.CLAUDE_PLUGIN_ROOT?.trim())
+        return true;
+    const settingsPath = join(getCopilotConfigDir(), 'settings.json');
+    if (!existsSync(settingsPath))
+        return false;
+    try {
+        const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+        for (const candidate of [settings.enabledPlugins, settings.plugins]) {
+            if (Array.isArray(candidate) && candidate.some((id) => typeof id === 'string' && id.toLowerCase().includes('oh-my-copilot')))
+                return true;
+            if (candidate && typeof candidate === 'object' && Object.entries(candidate).some(([id, value]) => id.toLowerCase().includes('oh-my-copilot') && value !== false))
+                return true;
+        }
+    }
+    catch { /* malformed settings are not proof of an active plugin */ }
+    return false;
+}
 /**
  * Collect hook entries from a single settings.json file.
  */
@@ -275,7 +295,9 @@ export function checkEnvFlags() {
     if (process.env.OMC_SKIP_HOOKS) {
         skipHooks.push(...process.env.OMC_SKIP_HOOKS.split(',').map(h => h.trim()));
     }
-    return { disableOmc, skipHooks };
+    // Copilot CLI reads COPILOT_HOME; the fork's old COPILOT_CONFIG_DIR is ignored.
+    const legacyConfigDirEnv = Boolean(process.env.COPILOT_CONFIG_DIR?.trim()) && !process.env.COPILOT_HOME?.trim();
+    return { disableOmc, skipHooks, legacyConfigDirEnv };
 }
 const SETUP_FALLBACK_SKILL_NAMES = new Set(['omc-reference', 'wiki']);
 function parseSemverLikeVersion(version) {
@@ -376,11 +398,10 @@ function isSupportedSetupFallbackSkill(legacySkillsDir, entry, baseName) {
     if (!SETUP_FALLBACK_SKILL_NAMES.has(baseName)) {
         return false;
     }
-    // scripts/setup-claude-md.sh intentionally syncs the raw bundled
-    // skills/wiki/SKILL.md file into ~/.copilot/skills/wiki/SKILL.md. Keep the
-    // retired omc-reference fallback for already-installed 4.x upgrades.
-    // as a Claude CLI fallback. Suppress only that exact, unmodified sync so real
-    // legacy collisions and user-edited fallback copies still surface.
+    // setup-claude-md.sh may sync the raw bundled wiki skill as a CLI fallback.
+    // Keep the retired omc-reference fallback for already-installed 4.x upgrades.
+    // Suppress only an exact byte-for-byte copy so real legacy collisions and
+    // user-edited fallback copies still surface, even with the plugin active.
     if (entry.toLowerCase() !== baseName) {
         return false;
     }
@@ -389,8 +410,36 @@ function isSupportedSetupFallbackSkill(legacySkillsDir, entry, baseName) {
         return false;
     }
     try {
-        const installedContent = readFileSync(installedSkillPath, 'utf-8');
+        const installedContent = readFileSync(installedSkillPath);
         return getSetupFallbackCanonicalSkillPaths(baseName).some(canonicalSkillPath => (existsSync(canonicalSkillPath)
+            && installedContent.equals(readFileSync(canonicalSkillPath))));
+    }
+    catch {
+        return false;
+    }
+}
+const OMC_MANAGED_SKILL_MARKER = '.omc-managed';
+function isVerifiedStandaloneManagedSkill(legacySkillsDir, entry, baseName) {
+    if (hasActiveOmcPluginForDiagnostics()) {
+        return false;
+    }
+    if (entry.toLowerCase().endsWith('.md')) {
+        return false;
+    }
+    const skillDir = join(legacySkillsDir, entry);
+    const markerPath = join(skillDir, OMC_MANAGED_SKILL_MARKER);
+    const installedSkillPath = join(skillDir, 'SKILL.md');
+    if (!existsSync(markerPath) || !existsSync(installedSkillPath)) {
+        return false;
+    }
+    const canonicalNames = new Set([baseName]);
+    if (baseName.startsWith('omc-')) {
+        canonicalNames.add(baseName.slice('omc-'.length));
+    }
+    const canonicalPaths = Array.from(canonicalNames).flatMap((name) => getSetupFallbackCanonicalSkillPaths(name));
+    try {
+        const installedContent = readFileSync(installedSkillPath, 'utf-8');
+        return canonicalPaths.some((canonicalSkillPath) => (existsSync(canonicalSkillPath)
             && installedContent === readFileSync(canonicalSkillPath, 'utf-8')));
     }
     catch {
@@ -414,6 +463,9 @@ export function checkLegacySkills() {
             // Match .md files or directories whose name collides with a plugin skill
             const baseName = entry.replace(/\.md$/i, '').toLowerCase();
             if (pluginSkillNames.has(baseName)) {
+                if (isVerifiedStandaloneManagedSkill(legacySkillsDir, entry, baseName)) {
+                    continue;
+                }
                 if (isSupportedSetupFallbackSkill(legacySkillsDir, entry, baseName)) {
                     continue;
                 }
@@ -507,6 +559,14 @@ export function checkWorkspaceMarker() {
     return { markerRoot, stateDirEnvSet, stateDirEnvValue, precedenceConflict };
 }
 /**
+ * Copilot runs every plugin hook as `exec: node`. A missing binary makes each
+ * PreToolUse hook error, which Copilot treats as a deny, so every tool call fails.
+ */
+export function checkNodeOnPath(env = process.env) {
+    const result = spawnSync('node', ['--version'], { env, encoding: 'utf8', timeout: 5000, windowsHide: true });
+    return !result.error && result.status === 0;
+}
+/**
  * Run complete conflict check
  */
 export function runConflictCheck() {
@@ -518,8 +578,10 @@ export function runConflictCheck() {
     const windowsUnsafePluginHooks = checkWindowsUnsafePluginHooks();
     const mcpRegistrySync = inspectUnifiedMcpRegistrySync();
     const workspaceMarker = checkWorkspaceMarker();
+    const nodeOnPath = checkNodeOnPath();
     // Determine if there are actual conflicts
-    const hasConflicts = hookConflicts.some(h => !h.isOmc) || // Non-OMC hooks present
+    const hasConflicts = !nodeOnPath || // Copilot fail-closes every PreToolUse hook without node
+        hookConflicts.some(h => !h.isOmc) || // Non-OMC hooks present
         legacySkills.length > 0 || // Legacy skills colliding with plugin
         envFlags.disableOmc || // OMC is disabled
         envFlags.skipHooks.length > 0 || // Hooks are being skipped
@@ -532,6 +594,7 @@ export function runConflictCheck() {
         (claudeMdStatus !== null && (claudeMdStatus.exactLegacyPaths.length > 0 || claudeMdStatus.manualReviewPaths.length > 0));
     // Note: Missing OMC markers is informational (normal for fresh install), not a conflict
     // Note: workspaceMarker.precedenceConflict is a WARN, not a hard conflict
+    // Note: envFlags.legacyConfigDirEnv (retired COPILOT_CONFIG_DIR) is a WARN, not a hard conflict
     return {
         hookConflicts,
         claudeMdStatus,
@@ -541,6 +604,7 @@ export function runConflictCheck() {
         windowsUnsafePluginHooks,
         mcpRegistrySync,
         workspaceMarker,
+        nodeOnPath,
         hasConflicts
     };
 }
@@ -626,6 +690,20 @@ export function formatReport(report, json) {
     }
     else {
         lines.push(`  ${colors.green('✓')} No hooks are being skipped`);
+    }
+    if (report.envFlags.legacyConfigDirEnv) {
+        lines.push(`  ${colors.yellow('⚠')} COPILOT_CONFIG_DIR is no longer read; set COPILOT_HOME instead`);
+    }
+    if (report.nodeOnPath) {
+        lines.push(`  ${colors.green('✓')} node on PATH`);
+    }
+    else {
+        const onCopilot = getHostCliType() === 'copilot';
+        const impact = onCopilot
+            ? 'Copilot denies every tool call because each PreToolUse hook fails closed'
+            : 'Claude Code cannot run any OMC hook';
+        lines.push(`  ${colors.red('✗')} node not found on PATH - ${impact}`);
+        lines.push(`    ${colors.gray(`Install Node.js 20+ and make sure \`node --version\` works in the shell that starts ${onCopilot ? 'copilot' : 'claude'}.`)}`);
     }
     lines.push('');
     // Legacy skills

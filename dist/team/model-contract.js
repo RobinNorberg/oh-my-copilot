@@ -4,6 +4,7 @@ import { validateTeamName } from './team-name.js';
 import { normalizeToCcAlias } from '../features/delegation-enforcer.js';
 import { isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/models.js';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
+import { detectHostCliType } from '../utils/host-signal.js';
 import { probeExecutable, resolveExecutable } from '../platform/executable-resolution.js';
 const resolvedPathCache = new Map();
 // Locations any process can write to, so a binary resolved there is not
@@ -167,6 +168,54 @@ export const _testInternals = {
 export function shouldUseClaudeBareMode(env = process.env) {
     return typeof env.ANTHROPIC_API_KEY === 'string' && env.ANTHROPIC_API_KEY.trim().length > 0;
 }
+/**
+ * Allow set for unattended Copilot worker panes. Spelled out instead of
+ * --yolo/--allow-all so the startup line shows each grant; no --autopilot
+ * (self-continuation races the inbox protocol) and no COPILOT_ALLOW_ALL.
+ */
+export const COPILOT_WORKER_BASE_FLAGS = ['--allow-all-tools', '--allow-all-paths', '--allow-all-urls', '--no-ask-user'];
+/**
+ * First-choice Copilot model per bare tier alias. Duplicates the first column
+ * of MODEL_TABLE in scripts/copilot/build-agents.mjs; keep the two in sync.
+ */
+const COPILOT_TIER_ALIAS_MODELS = {
+    opus: 'claude-opus-5',
+    sonnet: 'claude-sonnet-5',
+    haiku: 'claude-haiku-4.5',
+    fable: 'claude-fable-5.1',
+};
+/**
+ * Copilot lists dotted Claude model IDs (claude-opus-4.8) while the tier
+ * defaults are dashed (claude-opus-4-8). Rewrites that shape (keeping a
+ * trailing variant such as -fast), drops a `[1m]` context suffix and an
+ * 8-digit date stamp, and maps bare tier aliases through the model table.
+ * Anything else passes through unchanged.
+ */
+export function toCopilotModelId(model) {
+    const alias = COPILOT_TIER_ALIAS_MODELS[model.toLowerCase()];
+    if (alias)
+        return alias;
+    if (!/^claude-/.test(model))
+        return model;
+    return model
+        .replace(/\[1m\]$/i, '')
+        .replace(/-\d{8}$/, '')
+        .replace(/^(claude-[a-z]+)-(\d+)-(\d+)(?=$|-[a-z])/, '$1-$2.$3');
+}
+/**
+ * Deny flags forwarded from `permissions.workerDenyTools` / `workerDenyUrls`.
+ * Only Copilot workers enforce them; other providers get [] (their vendor
+ * bypass flags are reported as not enforcing the list at team startup).
+ * The `=` form keeps the variadic flag from swallowing the next argument.
+ */
+export function resolveWorkerPermissionFlags(agentType, perms) {
+    if (agentType !== 'copilot' || !perms)
+        return [];
+    return [
+        ...(perms.workerDenyTools ?? []).map((pattern) => `--deny-tool=${pattern}`),
+        ...(perms.workerDenyUrls ?? []).map((pattern) => `--deny-url=${pattern}`),
+    ];
+}
 const CONTRACTS = {
     claude: {
         agentType: 'claude',
@@ -195,10 +244,14 @@ const CONTRACTS = {
         agentType: 'copilot',
         binary: 'copilot',
         installInstructions: 'Install Copilot CLI: https://github.com/github/copilot-cli',
+        // Persistent interactive pane like claude (inbox + nudge); no -p prompt mode.
+        // Copilot rejects --dangerously-skip-permissions; the unattended pane gets an
+        // explicit allow set instead, and permissions.workerDenyTools/Urls arrive via
+        // extraFlags (deny rules win over allow rules in Copilot).
         buildLaunchArgs(model, extraFlags = []) {
-            const args = ['--dangerously-skip-permissions'];
+            const args = [...COPILOT_WORKER_BASE_FLAGS];
             if (model)
-                args.push('--model', model);
+                args.push('--model', toCopilotModelId(model));
             return [...args, ...extraFlags];
         },
         parseOutput(rawOutput) {
@@ -325,9 +378,12 @@ export function getContract(agentType) {
     if (!contract) {
         throw new Error(`Unknown agent type: ${agentType}. Supported: ${Object.keys(CONTRACTS).join(', ')}`);
     }
-    if (agentType !== 'claude' && isExternalLLMDisabled()) {
+    // Only the current host CLI is the session's own provider; the other host
+    // CLI is as external as any third-party worker under this policy.
+    const host = detectHostCliType(process.env);
+    if (agentType !== host && isExternalLLMDisabled()) {
         throw new Error(`External LLM provider "${agentType}" is blocked by security policy (disableExternalLLM). ` +
-            `Only Claude workers are allowed in the current security configuration.`);
+            `Only the current host CLI worker (${host}) is allowed in the current security configuration.`);
     }
     return contract;
 }
@@ -459,6 +515,10 @@ const WORKER_MODEL_ENV_ALLOWLIST = [
     'OMC_GROK_DEFAULT_MODEL',
     'OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL',
     'OMC_ANTIGRAVITY_DEFAULT_MODEL',
+    // tmux panes inherit the tmux server env; pin Copilot workers to the
+    // leader's config home (login, plugins, deniedUrls) and model.
+    'COPILOT_HOME',
+    'COPILOT_MODEL',
 ];
 export function getWorkerEnv(teamName, workerName, agentType, env = process.env) {
     validateTeamName(teamName);

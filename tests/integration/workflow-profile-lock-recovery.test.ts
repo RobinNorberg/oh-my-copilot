@@ -1,21 +1,31 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { getProcessStartIdentitySync } from '../../src/platform/process-utils.js';
+import { provisionStandaloneStateLockBridge } from '../../src/installer/index.js';
+
+
+
 
 const root = process.cwd();
 const created: string[] = [];
+const installedHooks = mkdtempSync(join(tmpdir(), 'omc-lock-installed-hooks-'));
+cpSync(join(root, 'templates', 'hooks'), installedHooks, { recursive: true });
+provisionStandaloneStateLockBridge(root, join(installedHooks, 'lib', 'state-lock.mjs'));
 const modules = [
   join(root, 'scripts', 'lib', 'atomic-write.mjs'),
-  join(root, 'templates', 'hooks', 'lib', 'atomic-write.mjs'),
+  join(installedHooks, 'lib', 'atomic-write.mjs'),
 ];
+afterAll(() => rmSync(installedHooks, { recursive: true, force: true }));
 
 function processStart(pid = process.pid): string {
-  const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
-  return stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/)[19];
+  const identity = getProcessStartIdentitySync(pid);
+  if (identity === null) throw new Error(`unable to determine process start identity for pid ${pid}`);
+  return identity;
 }
 
 function owner(overrides: Record<string, unknown> = {}) {
@@ -34,13 +44,14 @@ function fixture() {
   created.push(dir);
   const statePath = join(dir, 'state', 'autopilot-state.json');
   mkdirSync(join(dir, 'state'), { recursive: true });
-  return { statePath, lockPath: `${statePath}.mutation.lock` };
+  return { dir, statePath, lockPath: `${statePath}.mutation.lock` };
 }
 
 afterEach(() => {
   vi.restoreAllMocks();
   while (created.length) rmSync(created.pop()!, { recursive: true, force: true });
   delete process.env.OMC_TEST_FLOCK_AVAILABLE;
+  delete process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE;
 });
 
 describe.each(modules)('recoverable workflow mutation lock (%s)', (modulePath) => {
@@ -98,6 +109,8 @@ describe.each(modules)('recoverable workflow mutation lock (%s)', (modulePath) =
 
   it('serializes concurrent reclaimers without removing a live replacement', async () => {
     const { statePath, lockPath } = fixture();
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE = '1';
     writeFileSync(lockPath, JSON.stringify(owner({ pid: 999999999, processStart: '1' })));
     const logPath = `${statePath}.critical.log`;
     const childScript = String.raw`
@@ -105,16 +118,29 @@ describe.each(modules)('recoverable workflow mutation lock (%s)', (modulePath) =
       const [modulePath, statePath, logPath, id] = process.argv.slice(1);
       const api = await import(modulePath);
       const lock = api.acquireStateFileLockSync(statePath, 100);
-      if (!lock) process.exit(2);
+      if (!lock) {
+        process.stderr.write(id + ': ' + (api.getStateFileLockFailureMessage() ?? api.getStateFileLockDiagnostic() ?? 'no diagnostic') + '\n');
+        process.exit(2);
+      }
       appendFileSync(logPath, id + ':start\n');
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
       appendFileSync(logPath, id + ':end\n');
       api.releaseStateFileLockSync(lock);
     `;
     const run = (id: string) => new Promise<void>((resolve, reject) => {
-      const child = spawn(process.execPath, ['--input-type=module', '-e', childScript, pathToFileURL(modulePath).href, statePath, logPath, id], { stdio: 'ignore' });
+      const child = spawn(process.execPath, ['--input-type=module', '-e', childScript, pathToFileURL(modulePath).href, statePath, logPath, id], {
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+      let diagnostic = '';
+      child.stderr?.on('data', chunk => {
+        diagnostic += String(chunk);
+      });
       child.once('error', reject);
-      child.once('close', code => code === 0 ? resolve() : reject(new Error(`reclaimer ${id} exited ${code}`)));
+      child.once('close', code =>
+        code === 0
+          ? resolve()
+          : reject(new Error(`reclaimer ${id} exited ${code}${diagnostic ? ` — ${diagnostic.trim()}` : ''}`)),
+      );
     });
 
     await Promise.all([run('a'), run('b')]);
@@ -138,6 +164,25 @@ describe.each(modules)('recoverable workflow mutation lock (%s)', (modulePath) =
     const second = lockApi.acquireStateFileLockSync(statePath, 2);
     expect(second).not.toBeNull();
     lockApi.releaseStateFileLockSync(second);
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it('uses the shipped owner-file fallback when better-sqlite3 cannot load', async () => {
+    const { statePath, lockPath } = fixture();
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE = '1';
+    const lockApi = await import(`${pathToFileURL(join(root, 'scripts', 'lib', 'state-lock.mjs')).href}?unavailable=${randomUUID()}`) as {
+      acquireStateFileLockSync(path: string, attempts?: number): unknown;
+      getStateFileLockDiagnostic(): string | null;
+      releaseStateFileLockSync(lock: unknown): boolean;
+    };
+
+    const lock = lockApi.acquireStateFileLockSync(statePath, 3);
+    expect(lock).not.toBeNull();
+    expect(lockApi.getStateFileLockDiagnostic()).toContain('better_sqlite3.node');
+    expect(existsSync(join(dirname(statePath), '.state-mutation-locks.db'))).toBe(false);
+    expect(existsSync(lockPath)).toBe(true);
+    expect(lockApi.releaseStateFileLockSync(lock)).toBe(true);
     expect(existsSync(lockPath)).toBe(false);
   });
 });
@@ -183,7 +228,7 @@ describe.each(modules)('guarded emergency recovery claim (%s)', (modulePath) => 
     expect(existsSync(claimPath)).toBe(false);
   });
 
-  it('does not reclaim an existing stale recovery claim without flock', async () => {
+  it('reclaims a proven stale recovery claim using SQLite without flock', async () => {
     const { statePath } = fixture();
     const recovery = await api();
     const raw = JSON.stringify({ active: true, run: 'original' });
@@ -195,8 +240,8 @@ describe.each(modules)('guarded emergency recovery claim (%s)', (modulePath) => 
     process.env.NODE_ENV = 'test';
     process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
 
-    expect(recovery.recoverEmergencyStateFile(statePath)).toBe(false);
-    expect(JSON.parse(readFileSync(claimPath, 'utf8'))).toEqual(stale);
-    expect(readFileSync(statePath, 'utf8')).toBe(raw);
+    expect(recovery.recoverEmergencyStateFile(statePath)).toBe(true);
+    expect(existsSync(claimPath)).toBe(false);
+    expect(JSON.parse(readFileSync(statePath, 'utf8'))).toEqual({ active: false, run: 'recovered' });
   });
 });

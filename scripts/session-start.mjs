@@ -22,7 +22,7 @@ const REFRESH_UPDATE_CACHE_DEADLINE_MS = 3000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-/** Claude config directory (respects COPILOT_CONFIG_DIR env var) */
+/** Claude config directory (respects COPILOT_HOME env var) */
 const configDir = getCopilotConfigDir();
 
 /**
@@ -412,8 +412,22 @@ function semverCompare(a, b) {
   return 0;
 }
 
-const SESSION_START_CONTEXT_BUDGET = 6000;
-const SESSION_START_OMISSION_NOTICE = '[Additional SessionStart context omitted to preserve the 6000-character aggregate budget.]';
+const DEFAULT_SESSION_START_CONTEXT_BUDGET = 6000;
+
+// Aggregate character budget shared by everything SessionStart injects.
+// Override with OMC_SESSION_START_CONTEXT_BUDGET (positive integer). Any other
+// value falls back to the default so a bad setting can never blank the context.
+function resolveSessionStartContextBudget() {
+  const raw = (process.env.OMC_SESSION_START_CONTEXT_BUDGET || '').trim();
+  if (!raw) return DEFAULT_SESSION_START_CONTEXT_BUDGET;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : DEFAULT_SESSION_START_CONTEXT_BUDGET;
+}
+
+function sessionStartOmissionNotice(budget) {
+  return `[Additional SessionStart context omitted to preserve the ${budget}-character aggregate budget.]`;
+}
+
 const SESSION_STARTED_MARKER_FILE = 'session-started.json';
 const SAFE_SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 const LINUX_BOOT_ID_PATH = '/proc/sys/kernel/random/boot_id';
@@ -570,17 +584,18 @@ function buildSessionStartAdditionalContext(messages) {
   const ordered = [...prioritized.sort((a, b) => a.score - b.score || a.index - b.index), ...remaining]
     .map((entry) => entry.message);
 
+  const budget = resolveSessionStartContextBudget();
   let used = 0;
   const selected = [];
   for (const message of ordered) {
     const separator = selected.length > 0 ? 1 : 0;
-    if (used + separator + message.length > SESSION_START_CONTEXT_BUDGET) {
-      const remainingBudget = SESSION_START_CONTEXT_BUDGET - used - separator;
+    if (used + separator + message.length > budget) {
+      const remainingBudget = budget - used - separator;
       if (remainingBudget > 0) {
         selected.push(
           remainingBudget > 120
             ? compactBudgetedText(message, remainingBudget)
-            : compactBudgetedText(SESSION_START_OMISSION_NOTICE, remainingBudget),
+            : compactBudgetedText(sessionStartOmissionNotice(budget), remainingBudget),
         );
       }
       break;
@@ -1094,14 +1109,20 @@ async function main() {
     } catch { /* non-fatal — dist unavailable or no workspace anchor */ }
     const projectMemoryModules = await loadProjectMemoryModules();
 
+    // Issue #3995: single occupancy resolution per session start; assigned in
+    // the plugin-root branch below, consumed by the stale-cache GC scan below.
+    let occupancyResolution = null;
     writeSessionStartedMarker(omcRoot, directory, sessionId);
     if (process.env.CLAUDE_PLUGIN_ROOT) {
+      // Issue #3995: resolve plugin-cache occupancy ONCE per session start.
+      // The win32 batched identity host (the only PowerShell spawn on this
+      // path) runs a single time; its identities map feeds the owner publish
+      // below and the stale-cache GC scan further down. `includePids` covers
+      // the configured owner even before its own record exists.
       const configuredOwnerPid = Number(process.env.OMC_SESSION_OWNER_PID);
-      publishCacheOccupancy(
-        process.env.CLAUDE_PLUGIN_ROOT,
-        configDir,
-        Number.isSafeInteger(configuredOwnerPid) && configuredOwnerPid > 1 ? configuredOwnerPid : process.ppid,
-      );
+      const ownerPid = Number.isSafeInteger(configuredOwnerPid) && configuredOwnerPid > 1 ? configuredOwnerPid : process.ppid;
+      occupancyResolution = readOccupiedPluginRoots(configDir, { includePids: [ownerPid] });
+      publishCacheOccupancy(process.env.CLAUDE_PLUGIN_ROOT, configDir, ownerPid, occupancyResolution.identities.get(ownerPid));
     }
     reconcileAbandonedSessionStarts(omcRoot, sessionId);
     reconcileSessionEndJobsInBackground(getRuntimeBaseDir(), directory);
@@ -1182,9 +1203,9 @@ Treat this as prior-session context only. Prioritize the user's newest request, 
     }
 
     // Check for incomplete todos (project-local only, not global
-    // [$COPILOT_CONFIG_DIR|~/.claude]/todos/)
+    // [$COPILOT_HOME|~/.claude]/todos/)
     // NOTE: We intentionally do NOT scan the global
-    // [$COPILOT_CONFIG_DIR|~/.claude]/todos/ directory.
+    // [$COPILOT_HOME|~/.claude]/todos/ directory.
     // That directory accumulates todo files from ALL past sessions across all
     // projects, causing phantom task counts in fresh sessions (see issue #354).
     const localTodoPaths = [
@@ -1264,7 +1285,12 @@ ${cleanContent}
     // plugin update whose CLAUDE_PLUGIN_ROOT still points to the old version.
     try {
       const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
-      const occupancy = readOccupiedPluginRoots(configDir);
+      // Issue #3995: reuse the occupancy resolution hoisted above the owner
+      // publish (same-process identities map, no second win32 host). The GC
+      // still re-scans the registry files for records published after that
+      // resolution, and conservatively keeps records whose pid has no
+      // precomputed identity.
+      const occupancy = readOccupiedPluginRoots(configDir, { identities: occupancyResolution?.identities ?? [] });
       let versions = [];
       if (existsSync(cacheBase)) {
         versions = readdirSync(cacheBase)

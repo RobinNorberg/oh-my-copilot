@@ -176,7 +176,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     try {
       const config = join(root, ".omc-config.json");
       writeFileSync(config, original);
-      execFileSync("bash", ["-c", snippet!], { env: { ...process.env, COPILOT_CONFIG_DIR: root } });
+      execFileSync("bash", ["-c", snippet!], { env: { ...process.env, COPILOT_HOME: root } });
       const cleaned = JSON.parse(readFileSync(config, "utf8")) as Record<string, unknown>;
       expect(cleaned).toEqual({ silentAutoUpdate: false });
 
@@ -186,19 +186,19 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       writeFileSync(tildeConfig, original);
       // os.homedir() reads USERPROFILE on Windows and HOME elsewhere.
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, HOME: root, USERPROFILE: root, COPILOT_CONFIG_DIR: "~/nested" },
+        env: { ...process.env, HOME: root, USERPROFILE: root, COPILOT_HOME: "~/nested" },
       });
       expect(JSON.parse(readFileSync(tildeConfig, "utf8"))).toEqual({ silentAutoUpdate: false });
       writeFileSync(tildeConfig, original);
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, HOME: root, USERPROFILE: root, COPILOT_CONFIG_DIR: "~\\nested" },
+        env: { ...process.env, HOME: root, USERPROFILE: root, COPILOT_HOME: "~\\nested" },
       });
       expect(JSON.parse(readFileSync(tildeConfig, "utf8"))).toEqual({ silentAutoUpdate: false });
 
       const malformed = "{ \"defaultExecutionMode\":";
       writeFileSync(config, malformed);
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, COPILOT_CONFIG_DIR: root },
+        env: { ...process.env, COPILOT_HOME: root },
         stdio: "ignore",
       });
       expect(readFileSync(config, "utf8")).toBe(malformed);
@@ -224,7 +224,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       try {
         if (denialEnforced) {
           execFileSync("bash", ["-c", snippet!], {
-            env: { ...process.env, COPILOT_CONFIG_DIR: denied },
+            env: { ...process.env, COPILOT_HOME: denied },
             stdio: "ignore",
           });
           expect(readFileSync(deniedConfig, "utf8")).toBe(original);
@@ -237,7 +237,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       // Success path leaves no temp residue behind either.
       writeFileSync(config, original);
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, COPILOT_CONFIG_DIR: root },
+        env: { ...process.env, COPILOT_HOME: root },
         stdio: "ignore",
       });
       expect(JSON.parse(readFileSync(config, "utf8"))).toEqual({ silentAutoUpdate: false });
@@ -298,6 +298,6 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     expect(section).toMatch(/MERGE_JSON_FILE/);
     expect(section).toMatch(/\.omc-config\.json/);
     expect(section, "team config must not rebuild the config path inline").not.toMatch(/CONFIG_FILE=/);
-    expect(section, "team config must not expand ~ inline").not.toMatch(/COPILOT_CONFIG_DIR[^\n]*HOME/);
+    expect(section, "team config must not expand ~ inline").not.toMatch(/COPILOT_HOME[^\n]*HOME/);
   });
 });

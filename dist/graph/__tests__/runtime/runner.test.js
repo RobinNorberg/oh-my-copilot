@@ -2,7 +2,7 @@
  * Runtime runner tests: orchestration loop over FileJournal/FileOwnershipFence/
  * FileProjectionStore with scripted executors (worker-6 brief).
  */
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, } from "fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, writeFileSync, } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -15,7 +15,7 @@ import { EXIT_CODES } from "../../runtime/types.js";
 import { approvalDescriptor, executableNode, forkJoinDescriptor, } from "../fixtures.js";
 const tempDirs = [];
 function makeRunsRoot() {
-    const dir = mkdtempSync(join(tmpdir(), "omc-runner-test-"));
+    const dir = mkdtempSync(join(realpathSync(tmpdir()), "omc-runner-test-"));
     tempDirs.push(dir);
     return dir;
 }

@@ -1,9 +1,6 @@
 ---
 name: omc-gh-review
-description: >
-  Pull request review workflow for GitHub repositories.
-  WHEN: User wants to review PRs, read diffs, post review comments, approve or request changes on GitHub PRs.
-  DO NOT USE FOR: Automated PR review (use omc-gh-auto-review), issue triage (use omc-gh-triage), initial GitHub setup (use omc-gh-setup), or ADO repositories (use omc-ado-review).
+description: "Review GitHub pull requests: read diffs, post review comments, approve or request changes. Not for automated review (omc-gh-auto-review), issue triage, or Azure DevOps repos."
 ---
 
 # OMC GitHub Review

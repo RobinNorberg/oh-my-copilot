@@ -6,7 +6,26 @@
 import { openSync, writeSync, fsyncSync, closeSync, renameSync, unlinkSync, mkdirSync, existsSync, readFileSync, readdirSync, linkSync, statSync, fstatSync } from 'fs';
 import { dirname, basename, join } from 'path';
 import { createHash, randomUUID } from 'crypto';
-import { spawnSync } from 'child_process';
+import { processStartIdentity, acquireStateFileLockSync, releaseStateFileLockSync, withStateFileLockSync, isStateFileLockingSupported, isExclusiveStateLockingAvailable, getStateFileLockDiagnostic, getStateFileLockFailureMessage, acquireRecoveryClaim, readRecoveryClaim, releaseRecoveryClaim, sameRecoveryClaim, isEmergencyOwnerLive } from './state-lock.mjs';
+export { acquireStateFileLockSync, releaseStateFileLockSync, withStateFileLockSync, isStateFileLockingSupported, isExclusiveStateLockingAvailable, getStateFileLockDiagnostic, getStateFileLockFailureMessage };
+function journalIsOwned(path, transactionId, owner) { const current = readEmergencyJournal(path); return current !== null && current.transactionId === transactionId && isSameEmergencyOwner(current.owner, owner); }
+function isSameEmergencyOwner(left, right) { return left && right && left.pid === right.pid && left.processStart === right.processStart && left.nonce === right.nonce; }
+function emergencyJournalPath(path) { return `${path}.emergency-journal.json`; }
+function stateDigest(raw) { return createHash('sha256').update(raw).digest('hex'); }
+// Fork fix: the win32 identity is `ticks:NNN`; a literal colon in a filename names an NTFS
+// alternate data stream (linkSync EINVAL, stray empty file), so encode it (TS twin: mode-state-io).
+function encodeProcessStartForFilename(processStart) { return processStart.replace(/:/g, '_c_'); }
+function decodeProcessStartFromFilename(encoded) { return encoded.replace(/_c_/g, ':'); }
+function publishEmergencyFileExclusive(path, content) { const processStart = processStartIdentity(process.pid); if (!processStart || processStart === 'absent') return false; const tempPath = `${path}.${process.pid}.${encodeProcessStartForFilename(processStart)}.${randomUUID()}.tmp`; let fd; try { ensureDirSync(dirname(path)); fd = openSync(tempPath, 'wx', 0o600); writeAllSync(fd, content, 'emergency publication'); fsyncSync(fd); closeSync(fd); fd = undefined; linkSync(tempPath, path); unlinkSync(tempPath); return true; } catch { try { if (fd !== undefined) closeSync(fd); } catch {} try { unlinkSync(tempPath); } catch {} return false; } }
+function writeEmergencyJournal(path, journal, requireOwnership = true) {
+  try {
+    if (requireOwnership && !journalIsOwned(path, journal.transactionId, journal.owner)) return false;
+    atomicWriteFileSync(path, JSON.stringify(journal, null, 2));
+    return !requireOwnership || journalIsOwned(path, journal.transactionId, journal.owner);
+  } catch { return false; }
+}
+
+
 
 /**
  * Ensure directory exists
@@ -105,449 +124,10 @@ export function atomicWriteFileSync(filePath, content) {
   }
 }
 
-const LOCK_SCHEMA_VERSION = 1;
-const LOCK_OWNER_KEYS = ['createdAt', 'nonce', 'pid', 'processStart', 'version'];
-/**
- * Reclaim a lock whose owner still looks live only once it is this old. Deliberately generous: the
- * critical sections here are synchronous and measured in milliseconds, so this ceiling exists only to
- * break a deadlock against a recycled pid, never as routine expiry. It is compared against a
- * wall-clock stamp, and a laptop suspend or an NTP step can age a healthy holder by hours — at a
- * shorter ceiling that would admit a second writer, so the window is sized to make that implausible.
- * Death of the owning pid, not elapsed time, is the signal that actually frees a lock.
- */
-export const PORTABLE_LOCK_MAX_AGE_MS = 1_800_000;
-const PORTABLE_GUARD_MAX_AGE_MS = 5_000;
-const PORTABLE_GUARD_ATTEMPTS = 200;
-/** Transient read failures (EACCES, EBUSY, a scanner holding the file) get this many retries before we fail closed. */
-const PORTABLE_UNVERIFIABLE_RETRIES = 5;
-
-/** 'none' suppresses locking entirely, 'portable' forces the lockfile fallback; null means probe the platform. */
-function testLockMode() {
-  if (process.env.NODE_ENV !== 'test') return null;
-  if (process.env.OMC_TEST_STATE_LOCK_MODE === 'portable') return 'portable';
-  if (process.env.OMC_TEST_STATE_LOCK_MODE === 'none' || process.env.OMC_TEST_FLOCK_AVAILABLE === '0') return 'none';
-  return null;
-}
-function flockPath() { return testLockMode() ? null : existsSync('/usr/bin/flock') ? '/usr/bin/flock' : existsSync('/bin/flock') ? '/bin/flock' : null; }
-function portableLockingAvailable() { return testLockMode() !== 'none'; }
-const LOCK_REMOVAL_SCRIPT = String.raw`
-const fs = require('fs');
-const [operation, lockPath, expectedRaw] = process.argv.slice(1);
-const keys = ['createdAt', 'nonce', 'pid', 'processStart', 'version'];
-function readOwner() {
-  try {
-    const value = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
-    const actual = Object.keys(value).sort();
-    if (actual.length !== keys.length || !actual.every((key, index) => key === keys[index]) || value.version !== 1 || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.processStart !== 'string' || !/^\d+$/.test(value.processStart) || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== 'string' || !/^[0-9a-f-]{36}$/i.test(value.nonce)) return null;
-    return value;
-  } catch (error) { if (error && error.code === 'ENOENT') process.exit(0); return null; }
-}
-const owner = readOwner();
-if (!owner) process.exit(3);
-if (operation === 'release') {
-  let expected;
-  try { expected = JSON.parse(expectedRaw); } catch { process.exit(3); }
-  if (owner.pid !== expected.pid || owner.processStart !== expected.processStart || owner.nonce !== expected.nonce) process.exit(4);
-  try { fs.unlinkSync(lockPath); process.exit(0); } catch { process.exit(3); }
-}
-if (process.platform !== 'linux') process.exit(3);
-let currentStart;
-try {
-  const stat = fs.readFileSync('/proc/' + owner.pid + '/stat', 'utf8');
-  const end = stat.lastIndexOf(')');
-  const fields = end >= 0 ? stat.slice(end + 2).trim().split(/\s+/) : [];
-  currentStart = fields[19] && /^\d+$/.test(fields[19]) ? fields[19] : null;
-} catch (error) { currentStart = error && error.code === 'ENOENT' ? 'absent' : null; }
-if (currentStart === null) process.exit(3);
-if (currentStart !== 'absent' && currentStart === owner.processStart) process.exit(2);
-try { fs.unlinkSync(lockPath); process.exit(0); } catch { process.exit(3); }
-`;
-
-function processStartIdentity(pid) {
-  if (process.env.NODE_ENV === 'test' && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(pid)) return null;
-  if (!Number.isSafeInteger(pid) || pid <= 0) return null;
-  if (process.platform !== 'linux') return pid === process.pid ? String(Math.max(1, Math.floor(Date.now() - process.uptime() * 1000))) : null;
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
-    const end = stat.lastIndexOf(')');
-    if (end < 0) return null;
-    const fields = stat.slice(end + 2).trim().split(/\s+/);
-    return fields[19] && /^\d+$/.test(fields[19]) ? fields[19] : null;
-  } catch (error) { return error?.code === 'ENOENT' ? 'absent' : null; }
-}
-function readLockOwnerAt(lockPath) {
-  let value;
-  try { value = JSON.parse(readFileSync(lockPath, 'utf8')); }
-  catch (error) { return error?.code === 'ENOENT' ? 'absent' : null; }
-  const actual = Object.keys(value ?? {}).sort();
-  if (actual.length !== LOCK_OWNER_KEYS.length || !actual.every((key, index) => key === LOCK_OWNER_KEYS[index]) || value.version !== LOCK_SCHEMA_VERSION || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.processStart !== 'string' || !/^\d+$/.test(value.processStart) || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== 'string' || !/^[0-9a-f-]{36}$/i.test(value.nonce)) return null;
-  return value;
-}
-
-/** true = running, false = gone, null = undecidable. */
-function pidIsLive(pid) {
-  if (pid === process.pid) return true;
-  try { process.kill(pid, 0); return true; }
-  catch (error) {
-    if (error?.code === 'ESRCH') return false;
-    if (error?.code === 'EPERM') return true;
-    return null;
-  }
-}
-
-/**
- * Best-effort serialization of the reclaim section with an O_EXCL marker. This is deliberately not a
- * mutex: two processes that both observe a stale marker can both delete it and enter, and the loser's
- * delete can remove the winner's fresh marker. That is tolerable because the section re-reads the
- * owner record under the marker and every removal is conditional on what it re-reads, so a double
- * admission costs an extra adjudication pass rather than an unsafe removal. The fd is closed before
- * returning so the later unlink stays portable on Windows.
- */
-function acquirePortableGuard(guardPath) {
-  for (let attempt = 0; attempt < PORTABLE_GUARD_ATTEMPTS; attempt += 1) {
-    let fd;
-    let published = false;
-    try {
-      fd = openSync(guardPath, 'wx', 0o600);
-      writeAllSync(fd, String(process.pid), 'lock guard publication');
-      published = true;
-      closeSync(fd);
-      return true;
-    } catch (error) {
-      if (fd !== undefined) { try { closeSync(fd); } catch {} }
-      // We created the marker but never published it. Drop it now rather than leaving debris that
-      // blocks every other contender until the staleness window expires.
-      if (fd !== undefined && !published) { try { unlinkSync(guardPath); } catch {} }
-      if (error?.code !== 'EEXIST') return false;
-      let age = null;
-      try { age = Date.now() - statSync(guardPath).mtimeMs; } catch {}
-      if (age !== null && age > PORTABLE_GUARD_MAX_AGE_MS) { try { unlinkSync(guardPath); } catch {} continue; }
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    }
-  }
-  return false;
-}
-
-function portableLockIsLive(observed) {
-  const live = pidIsLive(observed.pid);
-  if (live === null) return null;
-  if (!live) return false;
-  // A clock that stepped backwards yields a negative age; that is not expiry, so compare in the
-  // direction that keeps an unreadable or implausible stamp on the holder's side.
-  return !(Date.now() - Date.parse(observed.createdAt) > PORTABLE_LOCK_MAX_AGE_MS);
-}
-
-/** An owner record we cannot parse can never be adjudicated by identity, so its age is the only escape. */
-function unparseableLockIsStale(lockPath) {
-  try { return Date.now() - statSync(lockPath).mtimeMs > PORTABLE_LOCK_MAX_AGE_MS; }
-  catch { return false; }
-}
-
-function portableLockRemoval(lockPath, operation, owner) {
-  // Reading the owner needs no guard; skipping it keeps the common "holder is alive" path off the filesystem.
-  if (operation !== 'release') {
-    const observed = readLockOwnerAt(lockPath);
-    if (observed && observed !== 'absent') {
-      const live = portableLockIsLive(observed);
-      if (live === null) return 'unverifiable';
-      if (live) return 'live';
-    }
-  }
-  const guardPath = `${lockPath}.reclaim.guard`;
-  if (!acquirePortableGuard(guardPath)) return 'unverifiable';
-  try {
-    const current = readLockOwnerAt(lockPath);
-    if (current === 'absent') return 'retry';
-    if (!current) {
-      // Debris we cannot attribute. Release never removes it — an unattributable record is not ours
-      // to delete — but reclaim must have some escape or the path stays wedged forever.
-      if (operation === 'release' || !unparseableLockIsStale(lockPath)) return 'unverifiable';
-    } else if (operation === 'release') {
-      if (!owner || current.pid !== owner.pid || current.processStart !== owner.processStart || current.nonce !== owner.nonce) return 'replaced';
-    } else {
-      const live = portableLockIsLive(current);
-      if (live === null) return 'unverifiable';
-      if (live) return 'live';
-    }
-    try { unlinkSync(lockPath); return 'retry'; }
-    catch (error) { return error?.code === 'ENOENT' ? 'retry' : 'unverifiable'; }
-  } finally {
-    try { unlinkSync(guardPath); } catch {}
-  }
-}
-
-function guardedLockRemoval(lockPath, operation, owner) {
-  const flock = flockPath();
-  if (!flock) return portableLockingAvailable() ? portableLockRemoval(lockPath, operation, owner) : 'unverifiable';
-  const result = spawnSync(flock, ['-x', `${lockPath}.reclaim.guard`, process.execPath, '-e', LOCK_REMOVAL_SCRIPT, operation, lockPath, owner ? JSON.stringify(owner) : ''], { stdio: 'ignore', timeout: 2000 });
-  if (result.status === 0) return 'retry';
-  if (result.status === 2) return 'live';
-  if (result.status === 4) return 'replaced';
-  // The removal script adjudicates liveness only through /proc, so off Linux it reports unverifiable
-  // even where an flock binary exists. Fall through instead of wedging on a platform we do support.
-  return portableLockingAvailable() ? portableLockRemoval(lockPath, operation, owner) : 'unverifiable';
-}
-
-export function isStateFileLockingSupported() {
-  return Boolean(flockPath()) || portableLockingAvailable();
-}
-
-function lockBackoff(attempt) {
-  // Jittered so contending processes do not re-collide in lockstep.
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1 + Math.floor(Math.random() * Math.min(40, 4 * (attempt + 1))));
-}
-
-/**
- * Clear or wait out a lock someone else holds. Returns false only once the holder has stayed
- * unadjudicable across several attempts: a single unreadable read is usually transient (a scanner or
- * backup agent holding the file, EACCES, EBUSY) and must not abandon the acquisition outright.
- */
-function awaitLockTurn(lockPath, attempt, unverifiable) {
-  const disposition = guardedLockRemoval(lockPath, 'reclaim');
-  if (disposition === 'unverifiable' && (unverifiable.count += 1) > PORTABLE_UNVERIFIABLE_RETRIES) return false;
-  if (disposition === 'live' || disposition === 'unverifiable') lockBackoff(attempt);
-  return true;
-}
-
-function acquireLockAt(lockPath, attempts = 50, requireExclusive = false) {
-  ensureDirSync(dirname(lockPath));
-  if (!flockPath() && !portableLockingAvailable()) return requireExclusive ? null : { unlocked: true };
-  const processStart = processStartIdentity(process.pid);
-  if (!processStart || processStart === 'absent') {
-    console.error(`[omc-lock] state_mutation_lock_owner_unverifiable: ${lockPath}`);
-    return null;
-  }
-  const unverifiable = { count: 0 };
-  // Report once on any give-up that saw an unadjudicable holder, whichever budget ran out first —
-  // the attempt budget can be smaller than the retry budget, and failing closed silently would leave
-  // an operator with no signal at all.
-  const abandon = () => {
-    if (unverifiable.count > 0) console.error(`[omc-lock] state_mutation_lock_unverifiable: ${lockPath}`);
-    return null;
-  };
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    // Adjudicate a held lock before paying for owner publication.
-    if (existsSync(lockPath)) {
-      if (!awaitLockTurn(lockPath, attempt, unverifiable)) return abandon();
-      continue;
-    }
-    const owner = { version: LOCK_SCHEMA_VERSION, pid: process.pid, processStart, createdAt: new Date().toISOString(), nonce: randomUUID() };
-    const tempPath = `${lockPath}.${process.pid}.${owner.nonce}.tmp`;
-    let fd;
-    try {
-      fd = openSync(tempPath, 'wx', 0o600);
-      writeAllSync(fd, JSON.stringify(owner), 'lock owner publication');
-      fsyncSync(fd);
-      linkSync(tempPath, lockPath);
-      unlinkSync(tempPath);
-      return { fd, lockPath, owner };
-    } catch (error) {
-      if (fd !== undefined) { try { closeSync(fd); } catch {} }
-      try { unlinkSync(tempPath); } catch {}
-      if (error?.code !== 'EEXIST') return null;
-      if (!awaitLockTurn(lockPath, attempt, unverifiable)) return abandon();
-    }
-  }
-  return abandon();
-}
-
-export function acquireStateFileLockSync(filePath, attempts = 50, requireExclusive = false) {
-  return acquireLockAt(`${filePath}.mutation.lock`, attempts, requireExclusive);
-}
-
-export function releaseStateFileLockSync(lock) {
-  if (!lock || lock.unlocked) return;
-  try { closeSync(lock.fd); } catch {}
-  guardedLockRemoval(lock.lockPath, 'release', lock.owner);
-}
-
-export function withStateFileLockSync(filePath, callback, requireExclusive = false) {
-  const lock = acquireStateFileLockSync(filePath, 50, requireExclusive);
-  if (!lock) return { acquired: false, value: undefined };
-  try {
-    return { acquired: true, value: callback() };
-  } finally {
-    releaseStateFileLockSync(lock);
-  }
-}
-
-/** Recover an interrupted exact emergency state mutation without touching replacements. */
-function stateDigest(raw) {
-  return createHash('sha256').update(raw).digest('hex');
-}
-
-function emergencyJournalPath(filePath) {
-  return `${filePath}.emergency-journal.json`;
-}
-
-
-function sameEmergencyOwner(left, right) {
-  return left.pid === right.pid && left.processStart === right.processStart && left.nonce === right.nonce;
-}
-
-/** Unknown process identity is treated as live; only an exact start identity proves ownership. */
-function isEmergencyOwnerLive(owner) {
-  const currentStart = processStartIdentity(owner.pid);
-  return currentStart !== 'absent' && (currentStart === null || currentStart === owner.processStart);
-}
-
-function journalIsOwned(path, transactionId, owner) {
-  const current = readEmergencyJournal(path);
-  return current !== null && current.transactionId === transactionId && sameEmergencyOwner(current.owner, owner);
-}
-
-function writeEmergencyJournal(path, journal, requireOwnership = true) {
-  try {
-    if (requireOwnership && !journalIsOwned(path, journal.transactionId, journal.owner)) return false;
-    atomicWriteFileSync(path, JSON.stringify(journal, null, 2));
-    return !requireOwnership || journalIsOwned(path, journal.transactionId, journal.owner);
-  } catch { return false; }
-}
-
-function emergencyPublicationTempPath(path) {
-  const processStart = processStartIdentity(process.pid);
-  if (!processStart || processStart === 'absent') return null;
-  return `${path}.${process.pid}.${processStart}.${randomUUID()}.tmp`;
-}
-
-/** Publishes a complete, durable transaction file without exposing a partial final path. */
-function publishEmergencyFileExclusive(path, content) {
-  const tempPath = emergencyPublicationTempPath(path);
-  let fd;
-  try {
-    if (!tempPath) return false;
-    ensureDirSync(dirname(path));
-    fd = openSync(tempPath, 'wx', 0o600);
-    const bytes = Buffer.from(content);
-    let offset = 0;
-    while (offset < bytes.length) {
-      const written = writeSync(fd, bytes, offset, bytes.length - offset);
-      if (written <= 0) throw new Error('emergency publication made no progress');
-      offset += written;
-    }
-    fsyncSync(fd);
-    if (statSync(tempPath).size !== bytes.length) throw new Error('emergency publication truncated');
-    closeSync(fd);
-    fd = undefined;
-    linkSync(tempPath, path);
-    unlinkSync(tempPath);
-    return true;
-  } catch { return false; }
-  finally {
-    if (fd !== undefined) try { closeSync(fd); } catch {}
-    if (tempPath) {
-      const generation = fileIdentity(tempPath);
-      try { if (generation && sameFile(tempPath, generation)) unlinkSync(tempPath); } catch {}
-    }
-  }
-}
-
-const RECOVERY_CLAIM_SCRIPT = String.raw`
-const fs = require('fs');
-const [operation, claimPath, expectedRaw] = process.argv.slice(1);
-const keys = ['createdAt', 'nonce', 'pid', 'processStart', 'version'];
-function readOwner() {
-  try {
-    const value = JSON.parse(fs.readFileSync(claimPath, 'utf8'));
-    const actual = Object.keys(value).sort();
-    if (actual.length !== keys.length || !actual.every((key, index) => key === keys[index]) || value.version !== 1 || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.processStart !== 'string' || !/^\d+$/.test(value.processStart) || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== 'string' || !/^[0-9a-f-]{36}$/i.test(value.nonce)) return null;
-    return value;
-  } catch (error) { return error && error.code === 'ENOENT' ? 'absent' : null; }
-}
-function exact(left, right) { return left.pid === right.pid && left.processStart === right.processStart && left.nonce === right.nonce; }
-function stale(owner) {
-  if (process.platform !== 'linux') return null;
-  try {
-    const stat = fs.readFileSync('/proc/' + owner.pid + '/stat', 'utf8');
-    const end = stat.lastIndexOf(')');
-    const fields = end >= 0 ? stat.slice(end + 2).trim().split(/\s+/) : [];
-    const start = fields[19] && /^\d+$/.test(fields[19]) ? fields[19] : null;
-    return start === null ? null : start !== owner.processStart;
-  } catch (error) { return error && error.code === 'ENOENT' ? true : null; }
-}
-let expected;
-try { expected = JSON.parse(expectedRaw); } catch { process.exit(3); }
-if (operation === 'release') {
-  const current = readOwner();
-  if (current === 'absent') process.exit(0);
-  if (!current || !exact(current, expected)) process.exit(4);
-  try { fs.unlinkSync(claimPath); process.exit(0); } catch { process.exit(3); }
-}
-const current = readOwner();
-if (current !== 'absent') {
-  if (!current) process.exit(3);
-  const isStale = stale(current);
-  if (isStale !== true) process.exit(isStale === false ? 2 : 3);
-  try { fs.unlinkSync(claimPath); } catch { process.exit(3); }
-}
-let fd;
-try {
-  fd = fs.openSync(claimPath, 'wx', 0o600);
-  const bytes = Buffer.from(JSON.stringify(expected));
-  let offset = 0;
-  while (offset < bytes.length) {
-    const written = fs.writeSync(fd, bytes, offset, bytes.length - offset);
-    if (written <= 0) throw new Error('recovery claim made no progress');
-    offset += written;
-  }
-  fs.fsyncSync(fd);
-  if (fs.statSync(claimPath).size !== bytes.length) throw new Error('recovery claim truncated');
-  fs.closeSync(fd);
-  process.exit(0);
-} catch { try { if (fd !== undefined) fs.closeSync(fd); } catch {} try { fs.unlinkSync(claimPath); } catch {} process.exit(3); }
-`;
-
-function guardedRecoveryClaim(path, operation, owner) {
-  const flock = flockPath();
-  if (!flock) return 'unverifiable';
-  const result = spawnSync(flock, ['-x', `${path}.recovery.guard`, process.execPath, '-e', RECOVERY_CLAIM_SCRIPT, operation, path, JSON.stringify(owner)], { stdio: 'ignore', timeout: 2000 });
-  if (result.status === 0) return 'claimed';
-  if (result.status === 2) return 'live';
-  if (result.status === 4) return 'replaced';
-  return 'unverifiable';
-}
-
-function acquireRecoveryClaim(path) {
-  const processStart = processStartIdentity(process.pid);
-  if (!processStart || processStart === 'absent') return null;
-  const owner = { version: 1, pid: process.pid, processStart, createdAt: new Date().toISOString(), nonce: randomUUID() };
-  if (!flockPath()) return publishEmergencyFileExclusive(path, JSON.stringify(owner)) ? owner : null;
-  return guardedRecoveryClaim(path, 'acquire', owner) === 'claimed' ? owner : null;
-}
-
-function readRecoveryClaim(path) {
-  try {
-    const owner = JSON.parse(readFileSync(path, 'utf8'));
-    return owner.version === 1 && Number.isSafeInteger(owner.pid) && owner.pid > 0 && typeof owner.processStart === 'string' && typeof owner.createdAt === 'string' && typeof owner.nonce === 'string' ? owner : null;
-  } catch { return null; }
-}
-
-function sameRecoveryClaim(left, right) {
-  return left.pid === right.pid && left.processStart === right.processStart && left.nonce === right.nonce;
-}
-
-function releaseRecoveryClaim(path, owner) {
-  if (!flockPath()) {
-    try {
-      const current = readRecoveryClaim(path);
-      if (current && sameRecoveryClaim(current, owner)) unlinkSync(path);
-    } catch { /* best-effort exact-owner release */ }
-    return;
-  }
-  guardedRecoveryClaim(path, 'release', owner);
-}
-
 function readEmergencyJournal(path) {
   try {
     const journal = JSON.parse(readFileSync(path, 'utf8'));
-    if (journal.version !== 1 || typeof journal.transactionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(journal.transactionId) ||
-      !journal.owner || !Number.isInteger(journal.owner.pid) || journal.owner.pid <= 0 || typeof journal.owner.processStart !== 'string' ||
-      typeof journal.owner.nonce !== 'string' || !/^[0-9a-f-]{36}$/i.test(journal.owner.nonce) ||
-      (journal.originalDigest !== undefined && (typeof journal.originalDigest !== 'string' || !/^[0-9a-f]{64}$/i.test(journal.originalDigest))) ||
-      (journal.intendedDigest !== undefined && (typeof journal.intendedDigest !== 'string' || !/^[0-9a-f]{64}$/i.test(journal.intendedDigest))) ||
-      (journal.intent !== undefined && journal.intent !== 'clear' && journal.intent !== 'publish') ||
-      typeof journal.quarantinePath !== 'string' ||
-      (journal.phase !== 'preparing' && journal.phase !== 'prepared' && journal.phase !== 'quarantined' && journal.phase !== 'published')) return null;
+    if (journal.version !== 1 || typeof journal.transactionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(journal.transactionId) || !journal.owner || !Number.isInteger(journal.owner.pid) || journal.owner.pid <= 0 || typeof journal.owner.processStart !== 'string' || typeof journal.owner.nonce !== 'string' || !/^[0-9a-f-]{36}$/i.test(journal.owner.nonce) || (journal.originalDigest !== undefined && (typeof journal.originalDigest !== 'string' || !/^[0-9a-f]{64}$/i.test(journal.originalDigest))) || (journal.intendedDigest !== undefined && (typeof journal.intendedDigest !== 'string' || !/^[0-9a-f]{64}$/i.test(journal.intendedDigest))) || (journal.intent !== undefined && journal.intent !== 'clear' && journal.intent !== 'publish') || typeof journal.quarantinePath !== 'string' || (journal.phase !== 'preparing' && journal.phase !== 'prepared' && journal.phase !== 'quarantined' && journal.phase !== 'published')) return null;
     const complete = typeof journal.originalDigest === 'string' && (journal.intent === 'clear' || (journal.intent === 'publish' && typeof journal.intendedDigest === 'string'));
     return journal.phase === 'preparing' || complete ? journal : null;
   } catch { return null; }
@@ -568,15 +148,17 @@ function sameFile(path, expected) {
 function reconcileEmergencyPublicationTemps(filePath, authorizeState) {
   const directory = dirname(filePath);
   const base = filePath.slice(directory.length + 1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`^${base}\\.emergency-(journal\\.json|recovery\\.claim|quarantine\\.[0-9a-f-]{36}\\.payload)\\.(\\d+)\\.(\\d+)\\.([0-9a-f-]{36})\\.tmp$`, 'i');
+  // Fork fix: the process-start segment is filename-encoded (`ticks_c_NNN` on win32), not digits.
+  const pattern = new RegExp(`^${base}\\.emergency-(journal\\.json|recovery\\.claim|quarantine\\.[0-9a-f-]{36}\\.payload)\\.(\\d+)\\.([^.]+)\\.([0-9a-f-]{36})\\.tmp$`, 'i');
   let names;
   try { names = readdirSync(directory); } catch (error) { return error?.code === 'ENOENT'; }
   for (const name of names) {
     const match = pattern.exec(name);
     if (!match) continue;
     const path = join(directory, name);
+    const matchedProcessStart = decodeProcessStartFromFilename(match[3]);
     const currentStart = processStartIdentity(Number(match[2]));
-    if (currentStart === null || currentStart === match[3]) return false;
+    if (currentStart === null || currentStart === matchedProcessStart) return false;
     const generation = fileIdentity(path);
     try {
       if (!generation) return false;
@@ -590,7 +172,7 @@ function reconcileEmergencyPublicationTemps(filePath, authorizeState) {
           if (!state || typeof state !== 'object' || Array.isArray(state) || !authorizeState(state)) return false;
         } else {
           const claim = readRecoveryClaim(path);
-          if (!claim || claim.pid !== Number(match[2]) || claim.processStart !== match[3] || claim.nonce !== match[4]) return false;
+          if (!claim || claim.pid !== Number(match[2]) || claim.processStart !== matchedProcessStart || claim.nonce !== match[4]) return false;
         }
       }
       if (!sameFile(path, generation) || stateDigest(readFileSync(path, 'utf8')) !== stateDigest(raw)) return false;
@@ -625,7 +207,7 @@ function recoveryGenerationsAuthorized(filePath, journal, authorizeState) {
 function hasUnattributableRecoveryClaimArtifact(filePath, recoveryClaim) {
   const directory = dirname(filePath);
   const base = filePath.slice(directory.length + 1).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const tempPattern = new RegExp(`^${base}\\.emergency-recovery\\.claim\\.\\d+\\.\\d+\\.[0-9a-f-]{36}\\.tmp$`, 'i');
+  const tempPattern = new RegExp(`^${base}\\.emergency-recovery\\.claim\\.\\d+\\.[^.]+\\.[0-9a-f-]{36}\\.tmp$`, 'i'); // Fork fix: encoded start segment.
   try {
     if (readdirSync(directory).some((name) => tempPattern.test(name))) return true;
     const claimPath = `${filePath}.emergency-recovery.claim`;

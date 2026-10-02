@@ -8,6 +8,7 @@
 import { colors } from '../utils/formatting.js';
 import { loadConfig } from '../../config/loader.js';
 import { probeCli } from '../../team/cli-detection.js';
+import { getHostCliType } from '../../utils/host-detection.js';
 const PROVIDER_BINARY = {
     claude: 'claude',
     copilot: 'copilot',
@@ -28,12 +29,12 @@ function probeProvider(provider) {
 function collectConfiguredProviders() {
     const cfg = loadConfig();
     const providers = new Set();
-    // Always include claude so orchestrator presence is reported.
-    providers.add('claude');
+    // Always include the host CLI so orchestrator presence is reported.
+    providers.add(getHostCliType());
     const roleRouting = cfg.team?.roleRouting ?? {};
     for (const spec of Object.values(roleRouting)) {
         const provider = spec?.provider;
-        if (provider === 'claude' || provider === 'codex' || provider === 'gemini' || provider === 'grok' || provider === 'cursor' || provider === 'antigravity') {
+        if (provider === 'claude' || provider === 'copilot' || provider === 'codex' || provider === 'gemini' || provider === 'grok' || provider === 'cursor' || provider === 'antigravity') {
             providers.add(provider);
         }
     }

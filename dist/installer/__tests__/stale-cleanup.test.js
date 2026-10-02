@@ -89,16 +89,16 @@ describe('cleanupStaleAgents', () => {
     const log = vi.fn();
     beforeEach(() => {
         tempDir = mkdtempSync(join(tmpdir(), 'omc-stale-agents-'));
-        originalConfigDir = process.env.COPILOT_CONFIG_DIR;
-        process.env.COPILOT_CONFIG_DIR = tempDir;
+        originalConfigDir = process.env.COPILOT_HOME;
+        process.env.COPILOT_HOME = tempDir;
         log.mockClear();
     });
     afterEach(() => {
         if (originalConfigDir === undefined) {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
         else {
-            process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+            process.env.COPILOT_HOME = originalConfigDir;
         }
         rmSync(tempDir, { recursive: true, force: true });
     });
@@ -418,16 +418,16 @@ describe('cleanupStaleSkills', () => {
     const log = vi.fn();
     beforeEach(() => {
         tempDir = mkdtempSync(join(tmpdir(), 'omc-stale-skills-'));
-        originalConfigDir = process.env.COPILOT_CONFIG_DIR;
-        process.env.COPILOT_CONFIG_DIR = tempDir;
+        originalConfigDir = process.env.COPILOT_HOME;
+        process.env.COPILOT_HOME = tempDir;
         log.mockClear();
     });
     afterEach(() => {
         if (originalConfigDir === undefined) {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
         else {
-            process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+            process.env.COPILOT_HOME = originalConfigDir;
         }
         rmSync(tempDir, { recursive: true, force: true });
     });
@@ -549,16 +549,16 @@ describe('prunePluginDuplicateSkills', () => {
     const log = vi.fn();
     beforeEach(() => {
         tempDir = mkdtempSync(join(tmpdir(), 'omc-prune-dupes-'));
-        originalConfigDir = process.env.COPILOT_CONFIG_DIR;
-        process.env.COPILOT_CONFIG_DIR = tempDir;
+        originalConfigDir = process.env.COPILOT_HOME;
+        process.env.COPILOT_HOME = tempDir;
         log.mockClear();
     });
     afterEach(() => {
         if (originalConfigDir === undefined) {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
         else {
-            process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+            process.env.COPILOT_HOME = originalConfigDir;
         }
         rmSync(tempDir, { recursive: true, force: true });
     });
@@ -665,17 +665,17 @@ describe('prunePluginDuplicateAgents', () => {
     const log = vi.fn();
     beforeEach(() => {
         tempDir = mkdtempSync(join(tmpdir(), 'omc-prune-agent-dupes-'));
-        originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+        originalConfigDir = process.env.COPILOT_HOME;
         originalPluginRoots = [process.env.OMC_PLUGIN_ROOT, process.env.CLAUDE_PLUGIN_ROOT];
-        process.env.COPILOT_CONFIG_DIR = tempDir;
+        process.env.COPILOT_HOME = tempDir;
         log.mockClear();
     });
     afterEach(() => {
         if (originalConfigDir === undefined) {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
         else {
-            process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+            process.env.COPILOT_HOME = originalConfigDir;
         }
         for (const [name, value] of [['OMC_PLUGIN_ROOT', originalPluginRoots[0]], ['CLAUDE_PLUGIN_ROOT', originalPluginRoots[1]]]) {
             if (value === undefined)
