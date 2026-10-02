@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { buildResolvedRoutingSnapshot } from '../stage-router.js';
 import { CANONICAL_TEAM_ROLES } from '../../shared/types.js';
 import { COPILOT_FAMILY_DEFAULTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS } from '../../config/models.js';
@@ -30,7 +30,20 @@ afterAll(() => {
         }
     }
 });
+/** Pin host detection (src/utils/host-signal.ts) to Claude Code or Copilot CLI. */
+function stubHost(host) {
+    vi.stubEnv('COPILOT_CLI', host === 'copilot' ? '1' : '');
+    vi.stubEnv('COPILOT_AGENT_SESSION_ID', '');
+    vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', host === 'claude' ? 'cli' : '');
+}
+afterEach(() => {
+    vi.unstubAllEnvs();
+});
 describe('buildResolvedRoutingSnapshot', () => {
+    // These cases pin the Claude-host defaults; the Copilot host is covered below.
+    beforeEach(() => {
+        stubHost('claude');
+    });
     it('produces an entry for every canonical role', () => {
         const snap = buildResolvedRoutingSnapshot({});
         for (const role of CANONICAL_TEAM_ROLES) {
@@ -123,6 +136,24 @@ describe('buildResolvedRoutingSnapshot', () => {
         const snap = buildResolvedRoutingSnapshot(cfg);
         expect(snap['code-reviewer'].primary.provider).toBe('gemini');
         expect(snap['code-reviewer'].fallback.provider).toBe('claude');
+    });
+});
+describe('buildResolvedRoutingSnapshot on the Copilot host', () => {
+    it('fallback is a Copilot worker even for codex/gemini primaries', () => {
+        stubHost('copilot');
+        const cfg = {
+            team: {
+                roleRouting: {
+                    critic: { provider: 'codex', model: 'gpt-5.3-codex' },
+                    'code-reviewer': { provider: 'gemini' },
+                },
+            },
+        };
+        const snap = buildResolvedRoutingSnapshot(cfg);
+        expect(snap.critic.primary.provider).toBe('codex');
+        expect(snap.critic.fallback.provider).toBe('copilot');
+        expect(snap['code-reviewer'].fallback.provider).toBe('copilot');
+        expect(snap.executor.fallback.provider).toBe('copilot');
     });
 });
 //# sourceMappingURL=resolved-routing-snapshot.test.js.map

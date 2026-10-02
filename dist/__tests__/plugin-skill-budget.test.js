@@ -11,7 +11,13 @@ const REPO_ROOT = join(__dirname, '..', '..');
 const PLUGIN_JSON = join(REPO_ROOT, '.claude-plugin', 'plugin.json');
 const SKILLS_DIR = join(REPO_ROOT, 'skills');
 const COMMANDS_DIR = join(REPO_ROOT, 'commands');
-const COMPACT_PLUGIN_SKILL_BUDGET_BYTES = 64 * 1024;
+// Fork: oh-my-copilot ships 61 bundled skills vs upstream's 47, and each compact
+// shim is ~900 bytes of fixed boilerplate (~1.1 KiB average), so the total
+// scales with skill count rather than with any one oversized skill. Upstream's
+// 64 KiB gate is a proxy, not a host limit: only the (already truncated)
+// frontmatter descriptions load at startup, and the per-file 2 KiB cap below
+// still guards each shim. 80 KiB leaves ~19% headroom over the 61-skill payload (65 KiB).
+const COMPACT_PLUGIN_SKILL_BUDGET_BYTES = 80 * 1024;
 const COMPACT_PLUGIN_SKILL_PER_FILE_BUDGET_BYTES = 2 * 1024;
 function readPluginJson() {
     return JSON.parse(readFileSync(PLUGIN_JSON, 'utf-8'));

@@ -124,7 +124,8 @@ describe('repair-plugin-cache.mjs', () => {
     const configDir = join(root, '.claude');
     const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const pluginRoot = join(cacheBase, '4.14.4');
-    const portable = 'node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/session-end.mjs';
+    // The shipped hooks.json form uses the braced placeholder since #4042.
+    const portable = 'node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs "${CLAUDE_PLUGIN_ROOT}"/scripts/session-end.mjs';
     writePluginRoot(pluginRoot, '4.14.4');
     writeFileSync(join(pluginRoot, 'hooks', 'hooks.json'), JSON.stringify({
       hooks: {
@@ -140,7 +141,7 @@ describe('repair-plugin-cache.mjs', () => {
     expect(result.status).toBe(0);
     const hooksJson = JSON.parse(readFileSync(join(pluginRoot, 'hooks', 'hooks.json'), 'utf-8'));
     expect(hooksJson.hooks.SessionEnd[0].hooks[0].command).toBe(
-      'sh "$CLAUDE_PLUGIN_ROOT"/scripts/find-node.sh "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/session-end.mjs',
+      'sh "${CLAUDE_PLUGIN_ROOT}"/scripts/find-node.sh "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs "${CLAUDE_PLUGIN_ROOT}"/scripts/session-end.mjs',
     );
   });
 

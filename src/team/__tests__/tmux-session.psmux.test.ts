@@ -183,6 +183,15 @@ vi.mock('child_process', async (importOriginal) => {
   };
 });
 
+// The adapter only ever runs on Windows and derives its namespace directory
+// from os.homedir() at import time; give it a Windows-shaped home so the suite
+// does not depend on the host OS (a POSIX home such as /home/runner would
+// yield a drive-less `\home\runner\.psmux\...` path under the mocked win32).
+vi.mock('os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('os')>();
+  return { ...actual, homedir: () => 'C:\\Users\\runner' };
+});
+
 vi.mock('../../platform/executable-resolution.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../platform/executable-resolution.js')>(),
   resolveExecutable: vi.fn(() => 'C:\\psmux\\tmux.exe'),
