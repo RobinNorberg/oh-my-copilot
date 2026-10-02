@@ -32,7 +32,7 @@ function writePluginRoot(root: string, version: string): void {
  * it, which sampled the wrong process's environment.
  */
 function hookRepairEnv(configDir: string): NodeJS.ProcessEnv {
-  return { ...process.env, COPILOT_CONFIG_DIR: configDir };
+  return { ...process.env, COPILOT_HOME: configDir };
 }
 
 afterEach(() => {
@@ -62,7 +62,7 @@ describe('repair-plugin-cache.mjs', () => {
     }, null, 2));
 
     const result = spawnSync(process.execPath, [SCRIPT_PATH], {
-      env: { ...process.env, COPILOT_CONFIG_DIR: configDir, OMC_REPAIR_PLUGIN_CACHE_PLATFORM: 'linux' },
+      env: { ...process.env, COPILOT_HOME: configDir, OMC_REPAIR_PLUGIN_CACHE_PLATFORM: 'linux' },
       encoding: 'utf-8',
     });
 
@@ -97,7 +97,7 @@ describe('repair-plugin-cache.mjs', () => {
     }, null, 2));
 
     const result = spawnSync(process.execPath, [SCRIPT_PATH], {
-      env: { ...process.env, COPILOT_CONFIG_DIR: configDir, OMC_REPAIR_PLUGIN_CACHE_PLATFORM: 'linux' },
+      env: { ...process.env, COPILOT_HOME: configDir, OMC_REPAIR_PLUGIN_CACHE_PLATFORM: 'linux' },
       encoding: 'utf-8',
     });
 
@@ -236,7 +236,7 @@ describe('repair-plugin-cache.mjs', () => {
     }, null, 2));
 
     const result = spawnSync(process.execPath, [SCRIPT_PATH], {
-      env: { ...process.env, COPILOT_CONFIG_DIR: configDir, OMC_REPAIR_PLUGIN_CACHE_PLATFORM: 'win32' },
+      env: { ...process.env, COPILOT_HOME: configDir, OMC_REPAIR_PLUGIN_CACHE_PLATFORM: 'win32' },
       encoding: 'utf-8',
     });
 

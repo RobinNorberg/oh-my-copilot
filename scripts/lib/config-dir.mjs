@@ -1,7 +1,7 @@
 /**
  * OMC configuration directory resolution (ESM hook/HUD runtime).
  *
- * Honours COPILOT_CONFIG_DIR (absolute, or ~-prefixed) and falls back to
+ * Honours COPILOT_HOME (absolute, or ~-prefixed) and falls back to
  * ~/.copilot, the host CLI's config directory.
  *
  * Multi-surface mirrors (keep in sync):
@@ -23,7 +23,7 @@ function stripTrailingSep(p) {
 
 export function getCopilotConfigDir() {
   const home = homedir();
-  const configured = process.env.COPILOT_CONFIG_DIR?.trim();
+  const configured = process.env.COPILOT_HOME?.trim();
 
   if (!configured) {
     return stripTrailingSep(normalize(join(home, '.copilot')));

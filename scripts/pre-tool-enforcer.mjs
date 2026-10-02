@@ -993,7 +993,7 @@ async function getTodoStatus(directory) {
   }
 
   // NOTE: We intentionally do NOT scan the global
-  // [$COPILOT_CONFIG_DIR|~/.claude]/todos/ directory.
+  // [$COPILOT_HOME|~/.claude]/todos/ directory.
   // That directory accumulates todo files from ALL past sessions across all
   // projects, causing phantom task counts in fresh sessions (see issue #354).
 

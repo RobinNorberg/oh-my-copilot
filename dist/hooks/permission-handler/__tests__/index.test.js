@@ -626,9 +626,9 @@ describe('permission-handler', () => {
             let previousCopilotConfigDir;
             beforeEach(() => {
                 previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
-                previousCopilotConfigDir = process.env.COPILOT_CONFIG_DIR;
+                previousCopilotConfigDir = process.env.COPILOT_HOME;
                 process.env.CLAUDE_CONFIG_DIR = path.join(testDir, 'claude-home');
-                process.env.COPILOT_CONFIG_DIR = path.join(testDir, 'copilot-home');
+                process.env.COPILOT_HOME = path.join(testDir, 'copilot-home');
             });
             afterEach(() => {
                 if (previousClaudeConfigDir === undefined)
@@ -636,9 +636,9 @@ describe('permission-handler', () => {
                 else
                     process.env.CLAUDE_CONFIG_DIR = previousClaudeConfigDir;
                 if (previousCopilotConfigDir === undefined)
-                    delete process.env.COPILOT_CONFIG_DIR;
+                    delete process.env.COPILOT_HOME;
                 else
-                    process.env.COPILOT_CONFIG_DIR = previousCopilotConfigDir;
+                    process.env.COPILOT_HOME = previousCopilotConfigDir;
             });
             const writeAskRules = (dir, ask) => {
                 fs.mkdirSync(dir, { recursive: true });

@@ -257,6 +257,32 @@ describe('worker launch acknowledgement', () => {
     })).rejects.toThrow('worker_launch_instance_id_invalid');
   });
 
+  it.each(['claude', 'copilot'] as const)('builds a bootstrap spec for a %s worker identity', async (provider) => {
+    cwd = await createFixture(`worker-launch-${provider}-`);
+    const launchAttempt = await prepareWorkerLaunchAttempt({
+      cwd,
+      teamName: 'launch-team',
+      workerName: 'worker-1',
+      instanceId: randomUUID(),
+      paneId: '%2',
+      provider,
+      runtimeCliPath: '/runtime-cli.cjs',
+    });
+    const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, [provider], cwd);
+    expect(spec.provider).toBe(provider);
+    expect(spec.provider_argv).toEqual([provider]);
+    await expect(loadWorkerLaunchAttempt({
+      cwd,
+      teamName: 'launch-team',
+      workerName: 'worker-1',
+      instanceId: launchAttempt.instance_id,
+      paneId: '%2',
+      provider,
+      attemptId: launchAttempt.attempt_id,
+      runtimeCliPath: '/runtime-cli.cjs',
+    })).resolves.toMatchObject({ provider, attempt_id: launchAttempt.attempt_id });
+  });
+
   it('observes a live provider from an exact accepted launch receipt', async () => {
     const launchAttempt = await attempt();
     const expected = await acceptFixtureAttempt(launchAttempt);
@@ -2485,6 +2511,64 @@ describe('worker launch acknowledgement', () => {
     });
   });
 
+  // Fork fix (win32): without SystemDrive a provider expanded `%SystemDrive%`
+  // literally and created a `%SystemDrive%/` folder in the project cwd.
+  it('passes the fixed Windows OS-identity variables through case-insensitively on win32 only', () => {
+    const windowsIdentity: Record<string, string> = {
+      SystemDrive: 'C:',
+      windir: 'C:\\Windows',
+      ProgramData: 'C:\\ProgramData',
+      ProgramFiles: 'C:\\Program Files',
+      'ProgramFiles(x86)': 'C:\\Program Files (x86)',
+      ProgramW6432: 'C:\\Program Files',
+      CommonProgramFiles: 'C:\\Program Files\\Common Files',
+      COMSPEC: 'C:\\Windows\\system32\\cmd.exe',
+      PATHEXT: '.COM;.EXE;.BAT;.CMD',
+      HOMEDRIVE: 'C:',
+      HOMEPATH: '\\Users\\provider',
+      APPDATA: 'C:\\Users\\provider\\AppData\\Roaming',
+      LOCALAPPDATA: 'C:\\Users\\provider\\AppData\\Local',
+      USERNAME: 'provider',
+      USERDOMAIN: 'DOMAIN',
+      COMPUTERNAME: 'HOST',
+      NUMBER_OF_PROCESSORS: '8',
+      PROCESSOR_ARCHITECTURE: 'AMD64',
+      OS: 'Windows_NT',
+      TEMP: 'C:\\Temp',
+      TMP: 'C:\\Temp',
+      PUBLIC: 'C:\\Users\\Public',
+      ALLUSERSPROFILE: 'C:\\ProgramData',
+    };
+    const secrets = { COPILOT_GITHUB_TOKEN: 'ambient-secret', FOO_SECRET: 'ambient-secret', GH_TOKEN: 'ambient-secret' };
+    const windows = buildProviderEnvironment(undefined, {
+      PATH: 'C:\\Windows\\System32',
+      SystemRoot: 'C:\\Windows',
+      USERPROFILE: 'C:\\Users\\provider',
+      ...windowsIdentity,
+      ...secrets,
+    }, 'win32');
+    expect(windows).toEqual({
+      PATH: 'C:\\Windows\\System32',
+      SystemRoot: 'C:\\Windows',
+      USERPROFILE: 'C:\\Users\\provider',
+      ...windowsIdentity,
+    });
+
+    const mixedCase = buildProviderEnvironment(undefined, {
+      systemdrive: 'C:', Windir: 'C:\\Windows', ComSpec: 'C:\\Windows\\system32\\cmd.exe',
+      userprofile: 'C:\\Users\\provider', foo_secret: 'ambient-secret',
+    }, 'win32');
+    expect(mixedCase).toEqual({
+      SystemDrive: 'C:', windir: 'C:\\Windows', COMSPEC: 'C:\\Windows\\system32\\cmd.exe',
+      USERPROFILE: 'C:\\Users\\provider',
+    });
+
+    const posix = buildProviderEnvironment(undefined, {
+      PATH: '/usr/bin:/bin', HOME: '/home/provider', ...windowsIdentity, ...secrets,
+    }, 'linux');
+    expect(posix).toEqual({ PATH: '/usr/bin:/bin', HOME: '/home/provider', TEMP: 'C:\\Temp', TMP: 'C:\\Temp' });
+  });
+
   it('omits missing or empty ambient homes while preserving explicit overrides', () => {
     expect(buildProviderEnvironment(undefined, { PATH: '/usr/bin:/bin' }, 'linux'))
       .toEqual({ PATH: '/usr/bin:/bin' });
@@ -2859,6 +2943,24 @@ describe('worker launch acknowledgement', () => {
     expect(source).toContain('$msg.instance_id -ne $payload.identity.instance_id');
     expect(source).toContain('containment_nonce=$payload.containment_nonce');
     expect(source).toContain('finally {');
+  });
+
+  // Fork fix: each of these made Windows PowerShell 5.1 reject the supervisor.
+  it('emits Windows supervisor source that PowerShell 5.1 and C# can parse', () => {
+    const source = buildWindowsSupervisorSource();
+    expect(source).not.toContain('`n');
+    expect(source.split('\n')[0]).toBe('$ErrorActionPreference = "Stop"');
+    expect(source).toContain("if (c == '\\\\')");
+    expect(source).not.toMatch(/'\\'[,)]/);
+    expect(source).toContain('CreateProcessW([NullString]::Value, $cmd,');
+    expect(source).toContain('CreateJobObjectW([IntPtr]::Zero, [NullString]::Value)');
+    expect(source).toContain('[uint32]::MaxValue');
+    expect(source).not.toContain('0xffffffff');
+    // The provider talks to the pane console, never the protocol pipes.
+    expect(source).toContain("CreateFileW('CONOUT$'");
+    expect(source).toContain('$si.dwFlags = 0x00000100; $si.hStdInput = $conIn; $si.hStdOutput = $conOut; $si.hStdError = $conOut;');
+    expect(source).not.toContain('[Console]::In.ReadLineAsync()');
+    expect(source.match(/\$stdinReader\.ReadLineAsync\(\)/g)).toHaveLength(2);
   });
 
   it('binds every Windows supervisor frame to the exact launch instance', () => {

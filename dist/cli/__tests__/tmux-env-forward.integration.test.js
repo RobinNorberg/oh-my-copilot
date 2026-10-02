@@ -44,22 +44,22 @@ describe.skipIf(!HAS_TMUX)('tmux env forwarding — integration', () => {
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
-    it('COPILOT_CONFIG_DIR set via buildEnvExportPrefix reaches the tmux pane', () => {
+    it('COPILOT_HOME set via buildEnvExportPrefix reaches the tmux pane', () => {
         const testValue = '/tmp/omc-test-config-dir';
         // Build the env export prefix the same way runClaudeOutsideTmux does,
         // but with a controlled env snapshot instead of process.env
-        const savedConfigDir = process.env.COPILOT_CONFIG_DIR;
-        process.env.COPILOT_CONFIG_DIR = testValue;
-        const envPrefix = buildEnvExportPrefix(['COPILOT_CONFIG_DIR']);
+        const savedConfigDir = process.env.COPILOT_HOME;
+        process.env.COPILOT_HOME = testValue;
+        const envPrefix = buildEnvExportPrefix(['COPILOT_HOME']);
         // Restore immediately — we only needed it for the prefix string
         if (savedConfigDir !== undefined) {
-            process.env.COPILOT_CONFIG_DIR = savedConfigDir;
+            process.env.COPILOT_HOME = savedConfigDir;
         }
         else {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
-        // Build command: export env, then write COPILOT_CONFIG_DIR to file
-        const innerCmd = `${envPrefix}printenv COPILOT_CONFIG_DIR > ${quoteShellArg(outFile)}`;
+        // Build command: export env, then write COPILOT_HOME to file
+        const innerCmd = `${envPrefix}printenv COPILOT_HOME > ${quoteShellArg(outFile)}`;
         const shellCmd = wrapWithLoginShell(innerCmd);
         // Create a detached tmux session (same as runClaudeOutsideTmux)
         execFileSync('tmux', [
@@ -87,16 +87,16 @@ describe.skipIf(!HAS_TMUX)('tmux env forwarding — integration', () => {
         const testValue = "/tmp/path with spaces/it's-a-test";
         const specialOutFile = join(tempDir, 'env-special');
         const specialSession = `${SESSION_NAME}-special`;
-        const savedConfigDir = process.env.COPILOT_CONFIG_DIR;
-        process.env.COPILOT_CONFIG_DIR = testValue;
-        const envPrefix = buildEnvExportPrefix(['COPILOT_CONFIG_DIR']);
+        const savedConfigDir = process.env.COPILOT_HOME;
+        process.env.COPILOT_HOME = testValue;
+        const envPrefix = buildEnvExportPrefix(['COPILOT_HOME']);
         if (savedConfigDir !== undefined) {
-            process.env.COPILOT_CONFIG_DIR = savedConfigDir;
+            process.env.COPILOT_HOME = savedConfigDir;
         }
         else {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
-        const innerCmd = `${envPrefix}printenv COPILOT_CONFIG_DIR > ${quoteShellArg(specialOutFile)}`;
+        const innerCmd = `${envPrefix}printenv COPILOT_HOME > ${quoteShellArg(specialOutFile)}`;
         const shellCmd = wrapWithLoginShell(innerCmd);
         try {
             execFileSync('tmux', [

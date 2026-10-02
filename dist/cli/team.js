@@ -14,7 +14,7 @@ import { readApprovedExecutionLaunchHintOutcome } from '../planning/artifacts.js
 import { isValidTeamInstanceId } from '../team/types.js';
 import { withProcessIdentityFileLockSync } from '../team/process-identity-lock.js';
 const JOB_ID_PATTERN = /^omc-[a-z0-9]{1,16}$/;
-const VALID_CLI_AGENT_TYPES = new Set(['claude', 'codex', 'gemini', 'cursor', 'grok', 'antigravity']);
+const VALID_CLI_AGENT_TYPES = new Set(['claude', 'copilot', 'codex', 'gemini', 'cursor', 'grok', 'antigravity']);
 const SUBCOMMANDS = new Set(['start', 'status', 'wait', 'cleanup', 'resume', 'shutdown', 'api', 'help', '--help', '-h']);
 const SUPPORTED_API_OPERATIONS = new Set([
     'send-message',

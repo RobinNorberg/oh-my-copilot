@@ -34,7 +34,7 @@ function writeSettings(content: object): void {
 
 beforeEach(() => {
   testDir = mkdtempSync(join(tmpdir(), 'omc-has-enabled-'));
-  process.env.COPILOT_CONFIG_DIR = testDir;
+  process.env.COPILOT_HOME = testDir;
   delete process.env.CLAUDE_PLUGIN_ROOT;
   delete process.env.OMC_PLUGIN_ROOT;
 });

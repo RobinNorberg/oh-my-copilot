@@ -47,7 +47,7 @@ function runUntilClose(
         USERPROFILE: cwd,
         ...extraEnv,
         CLAUDE_PLUGIN_ROOT: REPO_ROOT,
-        COPILOT_CONFIG_DIR: join(cwd, '.claude'),
+        COPILOT_HOME: join(cwd, '.claude'),
       },
       stdio: ['pipe', 'ignore', 'ignore'],
       windowsHide: true,

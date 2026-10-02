@@ -39,6 +39,8 @@
     "templates",
     "docs",
     ".claude-plugin",
+    "plugin.json",
+    "copilot",
     ".mcp.json",
     "README.md",
     "LICENSE",
@@ -48,7 +50,7 @@
     "prompt-ssot:build": "tsx scripts/build-prompt-ssot.ts",
     "prompt-ssot:check": "tsx scripts/build-prompt-ssot.ts --check",
     "prompt-ssot:measure": "tsx scripts/measure-prompt-ssot.ts",
-    "build": "npm run build:contained-fs && node scripts/generate-skill-entitlements.mjs --verify && tsc && node scripts/build-workflow-stage-prompts.mjs && node scripts/build-skill-bridge.mjs && node scripts/build-mcp-server.mjs && node scripts/build-bridge-entry.mjs && npm run compose-docs && npm run generate:prompt-projections && npm run build:claude-md-coordinator && npm run build:runtime-cli && npm run build:team-server && npm run build:cli",
+    "build": "npm run build:contained-fs && node scripts/generate-skill-entitlements.mjs --verify && tsc && node scripts/build-workflow-stage-prompts.mjs && node scripts/build-skill-bridge.mjs && node scripts/build-mcp-server.mjs && node scripts/build-bridge-entry.mjs && npm run compose-docs && npm run generate:prompt-projections && npm run build:claude-md-coordinator && npm run build:runtime-cli && npm run build:team-server && npm run build:cli && npm run build:copilot-hooks && npm run build:copilot-agents",
     "build:bridge": "node scripts/build-skill-bridge.mjs",
     "build:bridge-entry": "node scripts/build-bridge-entry.mjs",
     "build:claude-md-coordinator": "node scripts/build-claude-md-coordinator.mjs",
@@ -89,7 +91,11 @@
     "verify:skill-entitlements": "node scripts/generate-skill-entitlements.mjs --verify",
     "generate:prompt-projections": "node scripts/generate-prompt-projections.mjs",
     "verify:prompt-projections": "node scripts/generate-prompt-projections.mjs --verify",
-    "build:contained-fs": "node scripts/build-contained-fs.mjs"
+    "build:contained-fs": "node scripts/build-contained-fs.mjs",
+    "build:copilot-hooks": "node scripts/copilot/build-hooks.mjs --write",
+    "verify:copilot-hooks": "node scripts/copilot/build-hooks.mjs --verify",
+    "build:copilot-agents": "node scripts/copilot/build-agents.mjs --write",
+    "verify:copilot-agents": "node scripts/copilot/build-agents.mjs --verify"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.0",

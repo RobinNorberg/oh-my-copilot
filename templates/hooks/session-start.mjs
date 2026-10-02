@@ -674,9 +674,9 @@ async function main() {
     }
 
     // Check for incomplete todos (project-local only, not global
-    // [$COPILOT_CONFIG_DIR|~/.claude]/todos/)
+    // [$COPILOT_HOME|~/.claude]/todos/)
     // NOTE: We intentionally do NOT scan the global
-    // [$COPILOT_CONFIG_DIR|~/.claude]/todos/ directory.
+    // [$COPILOT_HOME|~/.claude]/todos/ directory.
     // That directory accumulates todo files from ALL past sessions across all
     // projects, causing phantom task counts in fresh sessions (see issue #354).
     const omcRootForTodos = await resolveOmcStateRoot(directory);

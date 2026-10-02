@@ -53,6 +53,7 @@ export {
   REPO_OWNER,
   REPO_NAME,
   GITHUB_API_URL,
+  COPILOT_HOME,
   COPILOT_CONFIG_DIR,
   VERSION_FILE,
   // Auto-update functions
@@ -219,6 +220,7 @@ export {
   isInstalled,
   getInstallInfo,
   isCopilotInstalled,
+  COPILOT_HOME as INSTALLER_COPILOT_HOME,
   COPILOT_CONFIG_DIR as INSTALLER_COPILOT_CONFIG_DIR,
   AGENTS_DIR,
   COMMANDS_DIR,

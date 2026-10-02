@@ -27,7 +27,7 @@ export {
   REPO_NAME,
   GITHUB_API_URL,
   GITHUB_RAW_URL,
-  COPILOT_CONFIG_DIR,
+  COPILOT_HOME,
   VERSION_FILE,
   // Functions
   getInstalledVersion,

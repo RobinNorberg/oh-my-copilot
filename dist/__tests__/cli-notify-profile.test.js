@@ -13,7 +13,7 @@ function runCli(args, homeDir) {
         env: {
             ...process.env,
             HOME: homeDir,
-            COPILOT_CONFIG_DIR: join(homeDir, '.claude'),
+            COPILOT_HOME: join(homeDir, '.claude'),
         },
         encoding: 'utf-8',
     });

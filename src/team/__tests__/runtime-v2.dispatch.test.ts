@@ -128,7 +128,9 @@ const mocks = vi.hoisted(() => {
     server_pid: 4242,
     process_started_at: process.platform === 'darwin'
       ? 'darwin:1700000000:123456'
-      : 'linux:01234567-89ab-cdef-0123-456789abcdef:424242',
+      : process.platform === 'win32'
+        ? 'win32:424242'
+        : 'linux:01234567-89ab-cdef-0123-456789abcdef:424242',
   };
   const getWorkerLiveness = vi.fn(async (_paneId: WorkerLivenessInput): Promise<WorkerLiveness> => 'dead');
   const workerPaneBelongsToOwnedProviderTarget = vi.fn(async (
@@ -243,6 +245,7 @@ const modelContractMocks = vi.hoisted(() => ({
       binary: binary ?? config.resolvedBinaryPath ?? `/usr/bin/${agentType}`, args: [...args, ...appendedArgs] };
   }),
   validateWorkerLaunchDescriptor: vi.fn((value: unknown) => value),
+  resolveWorkerPermissionFlags: vi.fn((_agentType: string, _perms?: { workerDenyTools?: string[]; workerDenyUrls?: string[] }): string[] => []),
 }));
 
 async function useActualModelContractLaunchBuilder(): Promise<void> {
@@ -263,6 +266,10 @@ async function useActualModelContractLaunchBuilder(): Promise<void> {
     config as ModelLaunchConfig,
     appendedArgs,
   ));
+  modelContractMocks.resolveWorkerPermissionFlags.mockImplementation((
+    agentType: string,
+    perms?: { workerDenyTools?: string[]; workerDenyUrls?: string[] },
+  ) => actual.resolveWorkerPermissionFlags(agentType as ModelAgentType, perms));
   modelContractMocks.getPromptModeArgs.mockImplementation((agentType: string, instruction: string) =>
     actual.getPromptModeArgs(agentType as ModelAgentType, instruction));
   modelContractMocks.isPromptModeAgent.mockImplementation((agentType: string) =>
@@ -302,6 +309,7 @@ vi.mock('../../cli/tmux-utils.js', async (importOriginal) => {
 });
 
 vi.mock('../model-contract.js', () => ({
+  resolveWorkerPermissionFlags: modelContractMocks.resolveWorkerPermissionFlags,
   buildWorkerArgv: modelContractMocks.buildWorkerArgv,
   resolveValidatedBinaryPath: modelContractMocks.resolveValidatedBinaryPath,
   clearResolvedPathCache: modelContractMocks.clearResolvedPathCache,
@@ -1551,6 +1559,42 @@ describe('runtime v2 startup inbox dispatch', () => {
       if (previousFallback === undefined) delete process.env[fallbackKey];
       else process.env[fallbackKey] = previousFallback;
     }
+  });
+
+  it('launches copilot workers with the allow set plus configured deny flags and prints one grant line', async () => {
+    cwd = await mkdtempFixture('omc-runtime-v2-copilot-permissions-');
+    await useActualModelContractLaunchBuilder();
+    const stderrWrites: string[] = [];
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: string | Uint8Array) => {
+      stderrWrites.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write);
+    try {
+      const { startTeamV2 } = await import('../runtime-v2.js');
+      await startTeamV2({
+        teamName: 'dispatch-team',
+        workerCount: 1,
+        agentTypes: ['copilot'],
+        tasks: [{ subject: 'Copilot worker', description: 'Honor the deny list.' }],
+        cwd,
+        pluginConfig: {
+          permissions: { workerDenyTools: ['shell(git push)'], workerDenyUrls: ['https://*.internal.example'] },
+        },
+      });
+    } finally {
+      stderrSpy.mockRestore();
+    }
+    const launchConfig = mocks.spawnWorkerInPane.mock.calls[0]?.[2] as { launchArgs?: string[] } | undefined;
+    expect(launchConfig?.launchArgs).toEqual(expect.arrayContaining([
+      '--allow-all-tools', '--allow-all-paths', '--allow-all-urls', '--no-ask-user',
+      '--deny-tool=shell(git push)', '--deny-url=https://*.internal.example',
+    ]));
+    expect(launchConfig?.launchArgs).not.toContain('--dangerously-skip-permissions');
+    const grantLines = stderrWrites.join('').split('\n').filter(line => line.startsWith('[omg team] copilot workers'));
+    expect(grantLines).toEqual([
+      '[omg team] copilot workers (x1): --allow-all-tools --allow-all-paths --allow-all-urls --no-ask-user; '
+        + 'deny: shell(git push), url(https://*.internal.example)',
+    ]);
   });
 
   it('forwards Claude provider and tier environment variables at the launch boundary', async () => {
@@ -3390,6 +3434,47 @@ describe('runtime v2 startup inbox dispatch', () => {
     delete process.env.OMC_TEAM_ENGAGED_PANE_RECHECK_MS;
     expect(getWorkerStartupEvidencePolicy('claude').engagedPaneRecheckBudgetMs).toBe(30_000);
     await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it('gives a Copilot cold start a realistic window while Claude budgets stay unchanged', async () => {
+    vi.useFakeTimers();
+    expect(getWorkerStartupEvidencePolicy('claude')).toEqual({
+      initialBudgetMs: 1_250,
+      finalRecheckBudgetMs: 30_000,
+      resubmitAttempts: 4,
+      resubmitBudgetMs: 2_750,
+      engagedPaneRecheckBudgetMs: 30_000,
+    });
+    const policy = getWorkerStartupEvidencePolicy('copilot');
+    expect(policy.finalRecheckBudgetMs).toBe(90_000);
+    expect(policy.engagedPaneRecheckBudgetMs).toBe(120_000);
+
+    // Trust prompt up (resubmit unavailable), pane later observed working, claim
+    // lands ~100 s after the trigger: the engaged recheck must still accept it.
+    const startedAt = Date.now();
+    let hasEvidence = false;
+    setTimeout(() => { hasEvidence = true; }, 100_000);
+    const evidencePromise = settleStartupEvidence(
+      policy,
+      budgetMs => waitForStartupEvidenceBudget(async () => hasEvidence, budgetMs),
+      async () => 'unavailable',
+      async () => 'busy',
+    );
+    await vi.advanceTimersByTimeAsync(100_000);
+    await expect(evidencePromise).resolves.toEqual({ settled: true, paneBusy: true });
+    expect(Date.now() - startedAt).toBe(100_000);
+
+    // A busy Copilot pane that never claims still fails closed at the ceiling.
+    const missStartedAt = Date.now();
+    const missPromise = settleStartupEvidence(
+      policy,
+      budgetMs => waitForStartupEvidenceBudget(async () => false, budgetMs),
+      async () => 'unavailable',
+      async () => 'busy',
+    );
+    await vi.advanceTimersByTimeAsync(121_250);
+    await expect(missPromise).resolves.toEqual({ settled: false, paneBusy: true });
+    expect(Date.now() - missStartedAt).toBe(121_250);
   });
 
   it('keeps Codex at 31s when no activity callback is supplied', async () => {

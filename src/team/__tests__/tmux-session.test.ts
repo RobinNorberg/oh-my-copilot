@@ -131,7 +131,9 @@ describe('verifyTeamTargetOwnership tmux target kinds', () => {
     ? 'linux:test-boot:1'
     : process.platform === 'darwin'
       ? 'darwin:1:1'
-      : 'unsupported:identity';
+      : process.platform === 'win32'
+        ? 'win32:1'
+        : 'unsupported:identity';
   const serverIdentity: TmuxServerIdentity = {
     socket_path: '/tmp/omc-tmux-membership.sock',
     server_pid: 42,
@@ -370,7 +372,9 @@ describe('applyMainVerticalLayout', () => {
   const identity: TmuxServerIdentity = {
     socket_path: '/tmp/layout-test.sock',
     server_pid: 42,
-    process_started_at: process.platform === 'linux' ? 'linux:fixture:42' : 'darwin:42:123456',
+    process_started_at: process.platform === 'linux'
+      ? 'linux:fixture:42'
+      : process.platform === 'win32' ? 'win32:42' : 'darwin:42:123456',
   };
   function guardedResult(args: string[]): { stdout: string; stderr: string } {
     expect(args.slice(0, 3)).toEqual(['-S', identity.socket_path, 'if-shell']);
@@ -1111,6 +1115,44 @@ describe('pane readiness startup banners', () => {
     expect(paneHasTrustPrompt(capture, 'cursor')).toBe(true);
     expect(paneLooksReady(capture, 'cursor')).toBe(false);
     expect(paneLooksReady(capture, 'claude')).toBe(true);
+  });
+
+  // Fork fix: verbatim Copilot CLI 1.0.91 idle capture from a psmux pane.
+  it('treats the Copilot CLI 1.0.9x empty input box as ready for copilot only', () => {
+    const capture = [
+      '  ╭─╮╭─╮',
+      '  ╰─╯╰─╯  Copilot v1.0.91 uses AI.',
+      '  █ ▘▝ █  Check for mistakes.',
+      ' ● MCP Servers reloaded: 2 servers connected',
+      ' ~\\AppData\\L... [⎇ master%] Session: 0 AIC used',
+      '╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄',
+      '┃',
+      '╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀',
+      ' ← open   ·Interactive · · / commands · ? help',
+      ' sidebar   Allow All       · tab next tab',
+      ' GitHub Copilot • Auto',
+    ].join('\n');
+
+    expect(paneLooksReady(capture, 'copilot')).toBe(true);
+    expect(paneLooksReady(capture, 'claude')).toBe(false);
+    expect(paneLooksReady(capture.replace('\n┃\n', '\n┃ typing\n'), 'copilot')).toBe(false);
+  });
+
+  it('treats the Copilot CLI 1.0.9x working status line as an active task', () => {
+    const capture = [
+      '  ❯ Read .omg/state/team/t/workers/worker-1/inbox.md, execute now',
+      ' ○ skill(lean-ctx)',
+      '╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄',
+      '┃',
+      '╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀',
+      ' ○ Working · 25 B esc interrupt',
+      ' GitHub Copilot • Auto → gpt-6-luna',
+    ].join('\n');
+
+    expect(paneHasActiveTask(capture, 'copilot')).toBe(true);
+    expect(paneHasActiveTask(capture, 'claude')).toBe(false);
+    expect(paneHasActiveTask(capture.replace('○ Working · 25 B esc interrupt', '◉ Working esc edit prompt'), 'copilot')).toBe(true);
+    expect(paneHasActiveTask(capture.replace(' ○ Working · 25 B esc interrupt\n', ''), 'copilot')).toBe(false);
   });
 
   it('still treats actual prompt lines as ready', () => {

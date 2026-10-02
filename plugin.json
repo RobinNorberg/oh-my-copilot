@@ -1,0 +1,23 @@
+{
+  "name": "oh-my-copilot",
+  "version": "5.1.0",
+  "description": "Multi-agent orchestration system for GitHub Copilot CLI",
+  "author": {
+    "name": "oh-my-copilot contributors"
+  },
+  "repository": "https://github.com/RobinNorberg/oh-my-copilot",
+  "homepage": "https://github.com/RobinNorberg/oh-my-copilot",
+  "license": "MIT",
+  "keywords": [
+    "copilot-cli",
+    "github-copilot",
+    "plugin",
+    "multi-agent",
+    "orchestration",
+    "automation"
+  ],
+  "commands": "./commands/",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./copilot/hooks.json",
+  "agents": "./copilot/agents/"
+}

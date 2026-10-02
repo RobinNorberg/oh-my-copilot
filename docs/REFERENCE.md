@@ -31,19 +31,27 @@ For v5.1.0, the plugin ships 20 agents, 61 skills, 21 command files, and one con
 
 ## Installation
 
-OMC has two supported public surfaces. Use the Claude Code plugin for in-session slash commands, hooks, agents, skills, and statusline behavior. Use the npm-installed `omg` CLI for terminal commands, setup/update automation, and CI-safe checks.
+OMC has two supported public surfaces. Use the plugin (GitHub Copilot CLI or Claude Code) for in-session slash commands, hooks, agents, skills, and statusline behavior. Use the npm-installed `omg` CLI for terminal commands, setup/update automation, and CI-safe checks.
 
-### Claude Code Plugin
+### Plugin
+
+The plugin is `oh-my-copilot` in the marketplace `omc`, so its full id is `oh-my-copilot@omc`.
 
 ```bash
-# Step 1: Add the marketplace
+# Inside a session
 /plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
+/plugin install oh-my-copilot@omc
 
-# Step 2: Install the plugin
-/plugin install oh-my-copilot
+# Or from your shell (GitHub Copilot CLI)
+copilot plugin marketplace add RobinNorberg/oh-my-copilot
+copilot plugin install oh-my-copilot@omc
 ```
 
-This integrates directly with Claude Code's plugin system and uses Node.js hooks.
+Update with `copilot plugin update oh-my-copilot@omc`, and uninstall with `copilot plugin uninstall oh-my-copilot@omc` (or `/plugin uninstall oh-my-copilot@omc` in a session).
+
+Copilot CLI loads the plugin through the root `plugin.json`, which points at the generated `copilot/hooks.json` and `copilot/agents/`. Claude Code reads `.claude-plugin/plugin.json`, `hooks/hooks.json` and `agents/`. See [Copilot CLI hook projection](HOOKS.md#copilot-cli-hook-projection).
+
+Every hook runs `node`, so `node` must be on PATH for the host CLI process. Under Copilot a PreToolUse hook that cannot start denies the tool call.
 
 ### Terminal CLI
 
@@ -56,10 +64,8 @@ The npm package exposes both `oh-my-copilot` and `omg`; examples prefer `omg` un
 
 ### Requirements
 
-- [Claude Code](https://docs.anthropic.com/claude-code) installed
-- One of:
-  - **Claude Max/Pro subscription** (recommended for individuals)
-  - **Anthropic API key** (`ANTHROPIC_API_KEY` environment variable)
+- [GitHub Copilot CLI](https://github.com/github/copilot-cli) with a Copilot subscription, or [Claude Code](https://docs.anthropic.com/claude-code) with a Claude Max/Pro subscription or `ANTHROPIC_API_KEY`
+- Node.js on PATH (every hook and the MCP server run `node`; `omg doctor conflicts` checks it)
 
 ---
 
@@ -113,6 +119,7 @@ If both configurations exist, **project-scoped takes precedence** over global:
 
 | Variable                   | Default              | Description                                                                                                                                                                                                                                                                 |
 | -------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `COPILOT_HOME`             | `~/.copilot`         | Host config directory. This is GitHub Copilot CLI's own variable, and OMC resolves its config directory (settings, hooks, HUD, user config) from the same value, so one setting moves both. The legacy `COPILOT_CONFIG_DIR` is not read; `omg doctor conflicts` warns when it is set. |
 | `OMC_STATE_DIR`            | _(unset)_            | Centralized state directory. When set, OMC stores state at `$OMC_STATE_DIR/{project-id}/` instead of `{worktree}/.omg/`. This preserves state across worktree deletions. The project identifier is derived from the git remote URL (or worktree path for local-only repos). |
 | `OMC_BRIDGE_SCRIPT`        | _(auto-detected)_    | Path to the Python bridge script                                                                                                                                                                                                                                            |
 | `OMC_PARALLEL_EXECUTION`   | `true`               | Enable/disable parallel agent execution                                                                                                                                                                                                                                     |
@@ -142,7 +149,9 @@ export OMC_STATE_DIR="$HOME/.claude/omc"
 > ```json
 > { "env": { "OMC_STATE_DIR": "/home/you/.claude/omc" } }
 > ```
-> Set it in `~/.copilot/settings.json` (or `$COPILOT_CONFIG_DIR/settings.json`).
+> Set it in `~/.copilot/settings.json` (or `$COPILOT_HOME/settings.json`;
+> `COPILOT_HOME` is Copilot CLI's own config-directory variable, and OMC
+> resolves its config directory from the same variable).
 
 This resolves to `~/.claude/omc/{project-identifier}/` where the project identifier uses a hash of the git remote URL (stable across worktrees/clones) with a fallback to the directory path hash for local-only repos.
 
@@ -371,6 +380,8 @@ Your custom system prompt here...
 
 Bundled OMC agent prompts currently do **not** ship an `effort:` frontmatter field. Any effort language inside `agents/*.md` is behavioral guidance for the prompt body, while runtime effort inherits from the parent Claude Code session unless the agent markdown explicitly declares an override.
 
+**Per-agent model overrides on Copilot.** The `agents.<name>.model` override in `omg.jsonc` is applied by the PreToolUse enforcer through `updatedInput`, which Copilot CLI does not support, so it is a no-op there. On Copilot, each agent's model comes from the `models:` fallback list in the generated `copilot/agents/<name>.md` (from the agent's tier alias), or from Copilot's own `subagents.agents.<name>.model` setting in `$COPILOT_HOME/settings.json`. Under Claude Code the override works as documented.
+
 ### Project-Level Config
 
 Create `.claude/CLAUDE.md` in your project for project-specific instructions:
@@ -598,6 +609,47 @@ Topology behavior:
 - inside classic tmux (`$TMUX` set): reuse the current tmux surface for split-pane or `--new-window` layouts
 - inside cmux (`CMUX_SURFACE_ID` without `$TMUX`): create native cmux splits for visible team workers
 - plain terminal: launch a detached tmux session for team workers
+
+#### Windows (psmux)
+
+On native Windows, `omg team` runs on [psmux](https://github.com/marlocarlo/psmux) (`winget install psmux`, ≥ 3.3.7 required for honored `-L <ns>` namespaces). Teams always launch detached into a private, randomly-named psmux namespace, never the shared default namespace, so they never show up in a bare `psmux ls`. Attach to a running team with:
+
+```bash
+tmux -L <ns> attach
+```
+
+`<ns>` is shown by `omg team status <team>` and recorded as the basename of `tmux_server_identity.socket_path` in `.omg/state/team/<team>/config.json`. If a startup is left unverified (status reports it as incomplete), clean up the leftover namespace directly:
+
+```bash
+tmux -L <ns> kill-server
+```
+
+#### Team worker permissions
+
+Worker types are `claude`, `copilot`, `codex`, `gemini`, `grok`, `cursor` and `antigravity`: `omg team 3:copilot "fix the failing tests"`. Without an explicit `N:agent-type`, OMC uses `team.ops.defaultAgentType` or `team.roleRouting.<role>.provider`, and falls back to the host CLI: `copilot` on a Copilot host, `claude` on a Claude Code host. The host is Copilot when Copilot session markers are present; otherwise `CLAUDE_CODE_ENTRYPOINT` selects Claude Code.
+
+Worker panes run unattended, so each provider launches with its own auto-approve flags. Copilot workers get `--allow-all-tools --allow-all-paths --allow-all-urls --no-ask-user` (no `--yolo`, no `--autopilot`). Deny rules from `.copilot/omg.jsonc` are appended as `--deny-tool=<pattern>` and `--deny-url=<pattern>`, and in Copilot CLI deny beats allow:
+
+```jsonc
+{
+  "permissions": {
+    "workerDenyTools": ["shell(git push)", "shell(rm:*)", "write(.env)"],
+    "workerDenyUrls": ["https://*.internal.example"]
+  }
+}
+```
+
+- Patterns use Copilot's `--deny-tool` / `--deny-url` syntax. Each entry must be a non-empty string; entries starting with `-` or containing NUL are rejected at config load.
+- Only copilot workers enforce the lists. `deniedUrls` in `$COPILOT_HOME/settings.json` also applies, because workers inherit `COPILOT_HOME`.
+- The flags are stored in the worker launch descriptor, so restarts and scale-up reuse them.
+- At startup `omg team` prints one stderr line per provider. For other providers the line says the list is NOT enforced:
+
+  ```text
+  [omg team] copilot workers (x3): --allow-all-tools --allow-all-paths --allow-all-urls --no-ask-user; deny: shell(git push), https://*.internal.example
+  [omg team] codex workers (x1): permissions.workerDenyTools NOT enforced (vendor flags: --dangerously-bypass-approvals-and-sandbox)
+  ```
+
+- `disableExternalLLM` / `OMC_SECURITY=strict` allows only the current host CLI's workers. See [SECURITY.md](../SECURITY.md).
 
 ### `omg session search`
 
@@ -1355,6 +1407,11 @@ Checks for:
 - Hook installation status
 - Agent availability
 - Skill registration
+
+From a shell, `omg doctor conflicts` checks for configuration conflicts. Among its checks:
+
+- **Legacy `COPILOT_CONFIG_DIR`**: warns when it is set. OMC reads only `COPILOT_HOME`, Copilot CLI's own variable; rename it.
+- **`node` on PATH**: every hook runs `node`, and under Copilot a PreToolUse hook that cannot start denies the tool call, so a missing `node` blocks every tool.
 
 ### Configure HUD Statusline
 

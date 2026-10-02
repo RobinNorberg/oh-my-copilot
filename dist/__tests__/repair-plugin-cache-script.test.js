@@ -20,7 +20,7 @@ function writePluginRoot(root, version) {
  * it, which sampled the wrong process's environment.
  */
 function hookRepairEnv(configDir) {
-    return { ...process.env, COPILOT_CONFIG_DIR: configDir };
+    return { ...process.env, COPILOT_HOME: configDir };
 }
 afterEach(() => {
     while (tempRoots.length > 0) {
@@ -47,7 +47,7 @@ describe('repair-plugin-cache.mjs', () => {
             },
         }, null, 2));
         const result = spawnSync(process.execPath, [SCRIPT_PATH], {
-            env: { ...process.env, COPILOT_CONFIG_DIR: configDir, OMC_REPAIR_PLUGIN_CACHE_PLATFORM: 'linux' },
+            env: { ...process.env, COPILOT_HOME: configDir, OMC_REPAIR_PLUGIN_CACHE_PLATFORM: 'linux' },
             encoding: 'utf-8',
         });
         expect(result.status).toBe(0);
@@ -77,7 +77,7 @@ describe('repair-plugin-cache.mjs', () => {
             'oh-my-copilot@omc': [{ installPath: oldRoot, version: '4.11.6' }],
         }, null, 2));
         const result = spawnSync(process.execPath, [SCRIPT_PATH], {
-            env: { ...process.env, COPILOT_CONFIG_DIR: configDir, OMC_REPAIR_PLUGIN_CACHE_PLATFORM: 'linux' },
+            env: { ...process.env, COPILOT_HOME: configDir, OMC_REPAIR_PLUGIN_CACHE_PLATFORM: 'linux' },
             encoding: 'utf-8',
         });
         expect(result.status).toBe(0);
@@ -186,7 +186,7 @@ describe('repair-plugin-cache.mjs', () => {
             },
         }, null, 2));
         const result = spawnSync(process.execPath, [SCRIPT_PATH], {
-            env: { ...process.env, COPILOT_CONFIG_DIR: configDir, OMC_REPAIR_PLUGIN_CACHE_PLATFORM: 'win32' },
+            env: { ...process.env, COPILOT_HOME: configDir, OMC_REPAIR_PLUGIN_CACHE_PLATFORM: 'win32' },
             encoding: 'utf-8',
         });
         expect(result.status).toBe(0);

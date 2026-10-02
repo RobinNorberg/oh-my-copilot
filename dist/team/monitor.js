@@ -129,7 +129,7 @@ function isWorkerInfo(value) {
         return false;
     return (value.role === undefined || typeof value.role === 'string')
         && (value.assigned_tasks === undefined || isStringArray(value.assigned_tasks))
-        && (value.worker_cli === undefined || ['claude', 'codex', 'gemini', 'cursor', 'grok', 'antigravity'].includes(value.worker_cli))
+        && (value.worker_cli === undefined || ['claude', 'copilot', 'codex', 'gemini', 'cursor', 'grok', 'antigravity'].includes(value.worker_cli))
         && (value.pid === undefined || (isSafeCounter(value.pid) && value.pid > 0))
         && (value.pane_id === undefined || typeof value.pane_id === 'string')
         && (value.working_dir === undefined || typeof value.working_dir === 'string')
@@ -149,7 +149,7 @@ function isWorkerInfo(value) {
 }
 function isLaunchDescriptor(value) {
     return isRecord(value) && value.schema_version === 1
-        && ['claude', 'codex', 'gemini', 'cursor', 'grok', 'antigravity'].includes(value.provider)
+        && ['claude', 'copilot', 'codex', 'gemini', 'cursor', 'grok', 'antigravity'].includes(value.provider)
         && (value.model === null || typeof value.model === 'string')
         && isNonEmptyString(value.binary) && isStringArray(value.args);
 }
@@ -180,7 +180,7 @@ function isScaleDownAttempt(value) {
             && (worker.worktree_path === undefined || typeof worker.worktree_path === 'string')
             && (worker.worktree_created === undefined || typeof worker.worktree_created === 'boolean')
             && (worker.launch_attempt_id === undefined || isNonEmptyString(worker.launch_attempt_id))
-            && (worker.provider === undefined || ['claude', 'codex', 'gemini', 'cursor', 'grok', 'antigravity'].includes(worker.provider))
+            && (worker.provider === undefined || ['claude', 'copilot', 'codex', 'gemini', 'cursor', 'grok', 'antigravity'].includes(worker.provider))
             && (worker.launch_descriptor === undefined || isLaunchDescriptor(worker.launch_descriptor)))
         && isSafeCounter(value.state_revision) && isTimestamp(value.created_at) && isTimestamp(value.updated_at)
         && (value.failure_reason === undefined || typeof value.failure_reason === 'string');
@@ -307,8 +307,8 @@ function isResolvedRoleRoute(value) {
 function isRoleAssignment(value, allowEmptyExternalModel = false) {
     const provider = isRecord(value) ? value.provider : undefined;
     return isRecord(value)
-        && ['claude', 'codex', 'gemini', 'grok', 'cursor', 'antigravity'].includes(provider)
-        && (isNonEmptyString(value.model) || (allowEmptyExternalModel && provider !== 'claude' && value.model === ''))
+        && ['claude', 'copilot', 'codex', 'gemini', 'grok', 'cursor', 'antigravity'].includes(provider)
+        && (isNonEmptyString(value.model) || (allowEmptyExternalModel && provider !== 'claude' && provider !== 'copilot' && value.model === ''))
         && KNOWN_AGENT_NAMES.some(agent => agent === value.agent);
 }
 function hasMatchingActiveFenceRevisions(value) {

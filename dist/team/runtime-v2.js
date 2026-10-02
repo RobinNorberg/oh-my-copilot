@@ -29,7 +29,7 @@ import { inferPhase } from './phase-controller.js';
 import { ABSOLUTE_MAX_WORKERS, isValidTeamInstanceId, isValidTmuxServerIdentity } from './types.js';
 import { validateTeamName } from './team-name.js';
 import { TASK_ID_SAFE_PATTERN, WORKER_NAME_SAFE_PATTERN } from './contracts.js';
-import { buildValidatedWorkerLaunchDescriptor, clearResolvedPathCache, validateWorkerLaunchDescriptor, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveDefaultWorkerModel, resolveExternalModelsDefaults, assertHeadlessSupported, } from './model-contract.js';
+import { buildValidatedWorkerLaunchDescriptor, clearResolvedPathCache, validateWorkerLaunchDescriptor, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveDefaultWorkerModel, resolveExternalModelsDefaults, assertHeadlessSupported, resolveWorkerPermissionFlags, } from './model-contract.js';
 import { createTeamSession, spawnOwnedWorkerInPane, deliverStartupInbox, probeStartupPaneActivity, retryStartupInboxSubmit, proveWorkerPaneOwnership, adoptWorkerPaneOwnership, getOwnedWorkerLiveness, captureOwnedTeamPane, workerPaneBelongsToOwnedProviderTarget, observeTmuxServerIdentity, killOwnedWorkerPane, verifyTeamTargetOwnership, observeTeamSessionTargetPresence, redactBoundedDiagnostic, killTeamSession, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, splitTeamWorkerPaneWithEvidence, TeamSessionCreationError, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, generatePromptModeStartupPrompt, renderRecoveryContinuationInstruction, renderCursorWorkerGuidance, renderWorkerExitContract, } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
@@ -38,6 +38,7 @@ import { formatOmcCliInvocation } from '../utils/omc-cli-rendering.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 import { CANONICAL_TEAM_ROLES } from '../shared/types.js';
 import { loadConfig } from '../config/loader.js';
+import { getHostCliType } from '../utils/host-detection.js';
 import { buildResolvedRoutingSnapshot, getRoleRoutingSpec } from './stage-router.js';
 import { routeTaskToRole } from './role-router.js';
 import { normalizeDelegationRole } from '../features/delegation-routing/types.js';
@@ -443,7 +444,7 @@ export function resolveTaskAssignment(task, resolvedRouting, roleRoutingConfig, 
     // opt into resolved_routing, whose default executor primary is Claude — silently
     // launching Claude instead of the requested CLI provider. When `team.roleRouting`
     // *is* configured for the role, that deliberate config still wins (below).
-    if (hasExplicitRole && !hasConfigForRole && fallbackAgent !== 'claude') {
+    if (hasExplicitRole && !hasConfigForRole && fallbackAgent !== getHostCliType()) {
         return { agentType: fallbackAgent, model: '', role: canonical };
     }
     const pair = resolvedRouting[canonical];
@@ -747,12 +748,18 @@ const WORKER_STARTUP_EVIDENCE_POLICIES = {
     // Copilot CLI is this fork's host and shares Claude's interactive transport
     // characteristics, including the lost-submit failure mode, so it gets the same
     // bounded resubmit behavior rather than the external-provider evidence gate.
+    // Fork (copilot): a Windows cold start loads skills, MCP servers and Auto model
+    // routing before the first turn. Measured: folder-trust prompt at ~24 s,
+    // first "◉ Working" at ~33 s, task claim later still. The resubmit loop stops
+    // early ('unavailable') while the trust prompt is up, so a zero final recheck
+    // retired a healthy worker at ~40 s. An unengaged pane gets 90 s; a pane seen
+    // working (paneHasActiveTask) gets the 120 s engaged-recheck ceiling.
     copilot: {
         initialBudgetMs: 1_250,
-        finalRecheckBudgetMs: 0,
+        finalRecheckBudgetMs: 90_000,
         resubmitAttempts: 4,
         resubmitBudgetMs: 2_750,
-        engagedPaneRecheckBudgetMs: 30_000,
+        engagedPaneRecheckBudgetMs: 120_000,
     },
     // External providers can be visibly ready before they publish task/status
     // evidence. Give that distinct evidence gate enough time for a cold start,
@@ -1132,7 +1139,7 @@ async function spawnV2Worker(opts) {
     };
     const evidencePolicy = getWorkerStartupEvidencePolicy(opts.agentType);
     const waitForCurrentEvidence = (budgetMs) => waitForWorkerStartupEvidence(opts.teamName, opts.workerName, opts.taskId, opts.cwd, startupBaseline, startupContext.attempt.attempt_id, budgetMs);
-    const probeActivity = opts.agentType === 'cursor' || opts.agentType === 'codex'
+    const probeActivity = opts.agentType === 'cursor' || opts.agentType === 'codex' || opts.agentType === 'copilot'
         ? () => probeStartupPaneActivity(startupContext, { attemptAlreadyFenced: true })
         : undefined;
     const waitForBoundedStartupEvidence = (resubmit) => settleStartupEvidence(evidencePolicy, waitForCurrentEvidence, resubmit, probeActivity);
@@ -2823,7 +2830,7 @@ export async function executeRecoverDeadWorkerV2Owner(input) {
                 const waitForCurrentEvidence = (budgetMs) => primaryTaskId && startupBaseline
                     ? waitForWorkerStartupEvidence(input.teamName, sagaInput.workerName, primaryTaskId, input.cwd, startupBaseline, startupAttemptId, budgetMs)
                     : waitForWorkerStatusTransition(input.teamName, sagaInput.workerName, input.cwd, statusBaseline, startupAttemptId, budgetMs);
-                const probeActivity = pending.agentType === 'cursor' || pending.agentType === 'codex'
+                const probeActivity = pending.agentType === 'cursor' || pending.agentType === 'codex' || pending.agentType === 'copilot'
                     ? () => probeStartupPaneActivity(startupContext, { attemptAlreadyFenced: true })
                     : undefined;
                 const waitForBoundedStartupEvidence = (resubmit) => settleStartupEvidence(evidencePolicy, waitForCurrentEvidence, resubmit, probeActivity);
@@ -3222,6 +3229,45 @@ function resolveWorkerBootstrapInstructions(config, workerIndex, preparedRole) {
     return config.rolePrompt;
 }
 /**
+ * One stderr line per worker provider describing the permission grant, built
+ * from the launch descriptors so it cannot drift from what actually launches.
+ * @internal Exported for testing
+ */
+export function formatWorkerPermissionLines(launches) {
+    const byProvider = new Map();
+    for (const { agentType, descriptor } of launches) {
+        const entry = byProvider.get(agentType);
+        if (entry)
+            entry.count += 1;
+        else
+            byProvider.set(agentType, { count: 1, args: descriptor.args });
+    }
+    const lines = [];
+    for (const [agentType, { count, args }] of byProvider) {
+        const flags = [];
+        const deny = [];
+        for (let i = 0; i < args.length; i++) {
+            const arg = args[i];
+            // Model and prompt values are not permission grants.
+            if (arg === '--model' || arg === '-p') {
+                i += 1;
+                continue;
+            }
+            if (arg.startsWith('--deny-tool='))
+                deny.push(arg.slice('--deny-tool='.length));
+            else if (arg.startsWith('--deny-url='))
+                deny.push(`url(${arg.slice('--deny-url='.length)})`);
+            else
+                flags.push(arg);
+        }
+        const vendorFlags = flags.join(' ') || '(none)';
+        lines.push(agentType === 'copilot'
+            ? `[omg team] copilot workers (x${count}): ${vendorFlags}; deny: ${deny.join(', ') || '(none)'}`
+            : `[omg team] ${agentType} workers (x${count}): permissions.workerDenyTools NOT enforced (vendor flags: ${vendorFlags})`);
+    }
+    return lines;
+}
+/**
  * Start a team with the v2 event-driven runtime.
  * Creates state directories, writes config + task files, spawns workers via
  * tmux split-panes, and writes CLI API inbox instructions. NO done.json.
@@ -3467,9 +3513,11 @@ export async function startTeamV2(config) {
                     ? startupPrompt.replace(/\s*\r?\n\s*/g, ' ')
                     : startupPrompt;
                 const promptArgs = transportPrompt ? getPromptModeArgs(assignment.agentType, transportPrompt) : [];
+                const permissionFlags = resolveWorkerPermissionFlags(assignment.agentType, pluginCfg.permissions);
                 const descriptor = buildValidatedWorkerLaunchDescriptor(assignment.agentType, {
                     teamName: sanitized, workerName, cwd: worktree?.path ?? leaderCwd, resolvedBinaryPath: binary,
                     model: assignment.model,
+                    ...(permissionFlags.length > 0 ? { extraFlags: permissionFlags } : {}),
                 }, promptArgs);
                 preparedLaunches.set(workerName, { agentType: assignment.agentType,
                     ...(assignment.role ? { role: assignment.role } : {}), descriptor,
@@ -3480,6 +3528,9 @@ export async function startTeamV2(config) {
             if (!await rollbackBeforeConfig(error))
                 throw startupCleanupIncompleteError(error);
             throw error;
+        }
+        for (const line of formatWorkerPermissionLines(preparedLaunches.values())) {
+            process.stderr.write(`${line}\n`);
         }
         // Set up worker state dirs and overlays (with v2 CLI API instructions)
         try {

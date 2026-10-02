@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { existsSync } from 'fs';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
@@ -343,7 +343,48 @@ describe('parseTeamArgs explicit task syntax', () => {
         expect(parsed.explicitWorkerSpec).toBe(false);
     });
 });
+describe('parseTeamArgs host default provider', () => {
+    afterEach(() => {
+        vi.unstubAllEnvs();
+    });
+    it('defaults to copilot workers on a Copilot host (no CLAUDE_CODE_ENTRYPOINT)', () => {
+        vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', '');
+        const parsed = parseTeamArgs(['run all tests']);
+        expect(parsed.agentTypes).toEqual(['copilot', 'copilot', 'copilot']);
+        expect(parseTeamArgs(['2:executor', 'fix the bug']).workerSpecs).toEqual([
+            { agentType: 'copilot', role: 'executor' },
+            { agentType: 'copilot', role: 'executor' },
+        ]);
+        expect(parseTeamArgs(['run all tests'], 'executor').agentTypes).toEqual(['copilot', 'copilot', 'copilot']);
+    });
+    it('defaults to claude workers under Claude Code', () => {
+        vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', 'cli');
+        expect(parseTeamArgs(['run all tests']).agentTypes).toEqual(['claude', 'claude', 'claude']);
+    });
+    it('prefers configured defaultAgentType and explicit specs over the host', () => {
+        vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', '');
+        expect(parseTeamArgs(['run all tests'], 'codex').agentTypes).toEqual(['codex', 'codex', 'codex']);
+        expect(parseTeamArgs(['2:claude', 'fix the bug'], 'codex').agentTypes).toEqual(['claude', 'claude']);
+    });
+    it('accepts explicit copilot worker specs', () => {
+        const parsed = parseTeamArgs(['2:copilot', 'fix the bug']);
+        expect(parsed.agentTypes).toEqual(['copilot', 'copilot']);
+        expect(parsed.explicitWorkerSpec).toBe(true);
+        expect(parseTeamArgs(['1:copilot:architect,1:codex', 'design']).workerSpecs).toEqual([
+            { agentType: 'copilot', role: 'architect' },
+            { agentType: 'codex' },
+        ]);
+    });
+});
 describe('parseTeamArgs comma-separated multi-type specs', () => {
+    // These cases assert the Claude-host default; the host-default block above
+    // covers the Copilot host.
+    beforeEach(() => {
+        vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', 'cli');
+    });
+    afterEach(() => {
+        vi.unstubAllEnvs();
+    });
     it('honors N multipliers and duplicate agent entries in comma specs', () => {
         const mixed = parseTeamArgs(['1:claude,2:codex', 'execute fixed plan']);
         expect(mixed.workerCount).toBe(3);

@@ -40,7 +40,9 @@ const tmuxMocks = vi.hoisted(() => {
     server_pid: 4242,
     process_started_at: process.platform === 'darwin'
       ? 'darwin:1700000000:123456'
-      : 'linux:01234567-89ab-cdef-0123-456789abcdef:424242',
+      : process.platform === 'win32'
+        ? 'win32:424242'
+        : 'linux:01234567-89ab-cdef-0123-456789abcdef:424242',
   };
   const getWorkerLiveness = vi.fn(async (_paneId: WorkerLivenessInput): Promise<WorkerLiveness> => 'dead');
   return {
@@ -1010,7 +1012,9 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
         // interrupted attempt "live" and block adoption.
         process_started_at: process.platform === 'darwin'
           ? 'darwin:1700000000:123456'
-          : 'linux:424242',
+          : process.platform === 'win32'
+            ? 'win32:424242'
+            : 'linux:424242',
         state_revision: 1,
         created_at: new Date().toISOString(),
       },

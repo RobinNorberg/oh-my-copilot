@@ -22,8 +22,11 @@ import {
   assertHeadlessSupported,
   resolveValidatedBinaryPath,
   validateWorkerLaunchDescriptor,
+  resolveWorkerPermissionFlags,
   type CliAgentType,
 } from './model-contract.js';
+import { loadConfig } from '../config/loader.js';
+import { getHostCliType } from '../utils/host-detection.js';
 import { CANONICAL_TEAM_ROLES } from '../shared/types.js';
 import type { CanonicalTeamRole } from '../shared/types.js';
 import { normalizeDelegationRole } from '../features/delegation-routing/types.js';
@@ -88,7 +91,7 @@ import {
 // ── Environment gate ──────────────────────────────────────────────────────────
 
 const OMC_TEAM_SCALING_ENABLED_ENV = 'OMC_TEAM_SCALING_ENABLED';
-const CLI_AGENT_TYPES = new Set<CliAgentType>(['claude', 'codex', 'gemini', 'grok', 'cursor', 'antigravity']);
+const CLI_AGENT_TYPES = new Set<CliAgentType>(['claude', 'copilot', 'codex', 'gemini', 'grok', 'cursor', 'antigravity']);
 
 export function isScalingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = env[OMC_TEAM_SCALING_ENABLED_ENV];
@@ -752,7 +755,7 @@ export async function scaleUpOwned(
       const hasLegacyConfiguredRoute = config.resolved_routing_roles === undefined && resolvedRoute !== undefined;
       const hasConfiguredRoute = canonical !== null
         && (config.resolved_routing_roles?.includes(canonical) === true || hasLegacyConfiguredRoute);
-      const routedPair = canonical && hasExplicitOwnedRole && (hasConfiguredRoute || workerAgentType === 'claude')
+      const routedPair = canonical && hasExplicitOwnedRole && (hasConfiguredRoute || workerAgentType === getHostCliType())
         ? resolvedRoute
         : undefined;
       if (routedPair) {
@@ -763,12 +766,12 @@ export async function scaleUpOwned(
           workerModel = primary.model;
         }
         if (!workerModel) {
-          const modelEnv = workerAgentType === 'claude' || config.external_models_defaults === undefined ? env : {};
+          const modelEnv = workerAgentType === 'claude' || workerAgentType === 'copilot' || config.external_models_defaults === undefined ? env : {};
           workerModel = resolveDefaultWorkerModel(workerAgentType, modelEnv, config.external_models_defaults);
         }
       } else {
         // Honor provider-specific default-model resolution for non-routed workers.
-        const modelEnv = workerAgentType === 'claude' || config.external_models_defaults === undefined ? env : {};
+        const modelEnv = workerAgentType === 'claude' || workerAgentType === 'copilot' || config.external_models_defaults === undefined ? env : {};
         workerModel = resolveDefaultWorkerModel(workerAgentType, modelEnv, config.external_models_defaults);
       }
 
@@ -803,12 +806,14 @@ export async function scaleUpOwned(
       const workerCwd = worktree?.path ?? leaderCwd;
       let launchArgs: string[];
       try {
+        const permissionFlags = resolveWorkerPermissionFlags(workerAgentType, loadConfig().permissions);
         const [, ...args] = buildWorkerArgv(workerAgentType, {
           teamName: sanitized,
           workerName,
           cwd: workerCwd,
           resolvedBinaryPath: launchBinary,
           ...(workerModel ? { model: workerModel } : {}),
+          ...(permissionFlags.length > 0 ? { extraFlags: permissionFlags } : {}),
         });
         launchArgs = args;
       } catch (error) {

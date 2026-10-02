@@ -6,6 +6,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     testTimeout: 30000,
+    setupFiles: ['src/__tests__/setup/clear-copilot-home.ts'],
 
     include: [
       'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',

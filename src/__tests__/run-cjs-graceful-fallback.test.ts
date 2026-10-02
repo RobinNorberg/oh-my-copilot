@@ -571,7 +571,7 @@ describe('run.cjs trusted hook Worker selection', () => {
 
     const result = run(target, {
       CLAUDE_PLUGIN_ROOT: root,
-      COPILOT_CONFIG_DIR: configDir,
+      COPILOT_HOME: configDir,
       HOME: home,
       USERPROFILE: home,
       OMC_QUIET: '1',

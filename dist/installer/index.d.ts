@@ -8,6 +8,8 @@
  * Bash hook scripts were removed in v3.9.0.
  */
 /** Claude Code configuration directory */
+export declare const COPILOT_HOME: string;
+/** @deprecated Renamed to {@link COPILOT_HOME}; kept as a legacy alias for API compatibility. */
 export declare const COPILOT_CONFIG_DIR: string;
 export declare const AGENTS_DIR: string;
 export declare const COMMANDS_DIR: string;

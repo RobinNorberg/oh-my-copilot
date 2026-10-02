@@ -244,13 +244,15 @@ function bumpVersionFiles(newVersion: string, dryRun: boolean): string[] {
     changes.push(`package.json: ${pkg.version} → ${newVersion}`);
   }
 
-  const pluginPath = join(ROOT, '.claude-plugin/plugin.json');
-  if (existsSync(pluginPath)) {
+  // .claude-plugin/plugin.json serves Claude Code; the root plugin.json is the Copilot CLI manifest.
+  for (const pluginFile of ['.claude-plugin/plugin.json', 'plugin.json']) {
+    const pluginPath = join(ROOT, pluginFile);
+    if (!existsSync(pluginPath)) continue;
     const content = readFileSync(pluginPath, 'utf-8');
     const updated = content.replace(/"version":\s*"[^"]*"/, `"version": "${newVersion}"`);
     if (content !== updated) {
       if (!dryRun) writeFileSync(pluginPath, updated, 'utf-8');
-      changes.push(`plugin.json: bumped to ${newVersion}`);
+      changes.push(`${pluginFile}: bumped to ${newVersion}`);
     }
   }
 
@@ -314,7 +316,7 @@ function releaseNextSteps(version: string): string {
   node scripts/generate-inventory-graph.mjs --write
   npm run plugin:shipping:verify
   npm run plugin:shipping:stage
-  git add -- package.json package-lock.json .claude-plugin/plugin.json .claude-plugin/marketplace.json CLAUDE.md docs/CLAUDE.md CHANGELOG.md README.md docs/REFERENCE.md .github/CLAUDE.md docs/ARCHITECTURE.md .github/release-body.md tests/fixtures/prompt-projection/claude-managed-block.golden inventory/inventory-graph.json
+  git add -- package.json package-lock.json .claude-plugin/plugin.json plugin.json .claude-plugin/marketplace.json CLAUDE.md docs/CLAUDE.md CHANGELOG.md README.md docs/REFERENCE.md .github/CLAUDE.md docs/ARCHITECTURE.md .github/release-body.md tests/fixtures/prompt-projection/claude-managed-block.golden inventory/inventory-graph.json
   git commit -S -m "chore(release): bump version to v${version}"
   git push origin HEAD:release/v${version}
   # Open a release PR from release/v${version} to dev. The signed commit is required; do not push or merge a protected branch directly.

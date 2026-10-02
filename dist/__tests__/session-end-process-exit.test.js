@@ -32,7 +32,7 @@ function runUntilClose(script, cwd, input, ceilingMs = COMMAND_CEILING_MS, extra
                 USERPROFILE: cwd,
                 ...extraEnv,
                 CLAUDE_PLUGIN_ROOT: REPO_ROOT,
-                COPILOT_CONFIG_DIR: join(cwd, '.claude'),
+                COPILOT_HOME: join(cwd, '.claude'),
             },
             stdio: ['pipe', 'ignore', 'ignore'],
             windowsHide: true,

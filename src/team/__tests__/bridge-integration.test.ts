@@ -13,8 +13,8 @@ import { getCopilotConfigDir } from '../../utils/config-dir.js';
 const TEST_TEAM = 'test-bridge-int';
 // Resolve symlinks (macOS /var -> /private/var) so validateResolvedPath matches
 const WORK_DIR = join(realpathSync(tmpdir()), '__test_bridge_work__');
-const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
-process.env.COPILOT_CONFIG_DIR = join(WORK_DIR, '.claude');
+const originalClaudeConfigDir = process.env.COPILOT_HOME;
+process.env.COPILOT_HOME = join(WORK_DIR, '.claude');
 // Task files now live in the canonical .omg/state/team path (relative to WORK_DIR)
 const TEAMS_DIR = join(getCopilotConfigDir(), 'teams', TEST_TEAM);
 // Canonical tasks dir for this team
@@ -28,8 +28,8 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  if (originalClaudeConfigDir === undefined) delete process.env.COPILOT_CONFIG_DIR;
-  else process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+  if (originalClaudeConfigDir === undefined) delete process.env.COPILOT_HOME;
+  else process.env.COPILOT_HOME = originalClaudeConfigDir;
   if (originalHome === undefined) delete process.env.HOME;
   else process.env.HOME = originalHome;
   if (originalUserProfile === undefined) delete process.env.USERPROFILE;

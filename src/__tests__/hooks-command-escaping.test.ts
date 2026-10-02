@@ -92,7 +92,7 @@ describe('hooks.json command escaping', () => {
         encoding: 'utf-8',
         env: {
           HOME: homeDir,
-          COPILOT_CONFIG_DIR: configDir,
+          COPILOT_HOME: configDir,
           PATH: '/usr/bin:/bin',
         },
       });

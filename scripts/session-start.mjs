@@ -22,7 +22,7 @@ const REFRESH_UPDATE_CACHE_DEADLINE_MS = 3000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-/** Claude config directory (respects COPILOT_CONFIG_DIR env var) */
+/** Claude config directory (respects COPILOT_HOME env var) */
 const configDir = getCopilotConfigDir();
 
 /**
@@ -1203,9 +1203,9 @@ Treat this as prior-session context only. Prioritize the user's newest request, 
     }
 
     // Check for incomplete todos (project-local only, not global
-    // [$COPILOT_CONFIG_DIR|~/.claude]/todos/)
+    // [$COPILOT_HOME|~/.claude]/todos/)
     // NOTE: We intentionally do NOT scan the global
-    // [$COPILOT_CONFIG_DIR|~/.claude]/todos/ directory.
+    // [$COPILOT_HOME|~/.claude]/todos/ directory.
     // That directory accumulates todo files from ALL past sessions across all
     // projects, causing phantom task counts in fresh sessions (see issue #354).
     const localTodoPaths = [

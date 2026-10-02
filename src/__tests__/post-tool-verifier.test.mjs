@@ -58,7 +58,7 @@ function scopedHookEnvironment(cwd, env) {
     CLAUDE_PLUGIN_ROOT: '',
     HOME: effectiveHome,
     USERPROFILE: env.USERPROFILE || effectiveHome,
-    COPILOT_CONFIG_DIR: env.COPILOT_CONFIG_DIR || join(effectiveHome, '.claude'),
+    COPILOT_HOME: env.COPILOT_HOME || join(effectiveHome, '.claude'),
     ...env,
   };
 
@@ -178,7 +178,7 @@ describe('session statistics retention', () => {
         {
           HOME: tempDir,
           USERPROFILE: tempDir,
-          COPILOT_CONFIG_DIR: configDir,
+          COPILOT_HOME: configDir,
         },
       );
 
@@ -216,7 +216,7 @@ describe('session statistics retention', () => {
         {
           HOME: tempDir,
           USERPROFILE: tempDir,
-          COPILOT_CONFIG_DIR: configDir,
+          COPILOT_HOME: configDir,
           ...env,
         },
       )).toEqual({ continue: true });
@@ -230,7 +230,7 @@ describe('session statistics retention', () => {
 
       expect(runPostToolVerifier(
         { session_id: 'disabled-session', cwd: tempDir, tool_name: 'Read' },
-        { COPILOT_CONFIG_DIR: configDir, DISABLE_OMC: 'true' },
+        { COPILOT_HOME: configDir, DISABLE_OMC: 'true' },
       )).toEqual({ continue: true });
       expect(existsSync(configDir)).toBe(false);
     });

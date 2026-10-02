@@ -64,9 +64,9 @@ export interface TmuxPaneSnapshot {
  */
 export declare function isTmuxAvailable(): boolean;
 /**
- * Check if claude CLI is available on the system
+ * Check if the host CLI (copilot, or claude under Claude Code) is available
  */
-export declare function isCopilotAvailable(): boolean;
+export declare function isCopilotAvailable(binary?: string): boolean;
 /**
  * Options for `resolveLaunchPolicy`. `requireTmux=true` makes
  * CMUX_SURFACE_ID stop demoting to 'direct'. The caller is responsible for

@@ -511,13 +511,13 @@ describe('getUsage routing', () => {
     expect(cacheContent).not.toContain('env-token-two');
   });
 
-  it('uses the raw ~-prefixed COPILOT_CONFIG_DIR value for Keychain service lookup', async () => {
-    process.env.COPILOT_CONFIG_DIR = '~/.claude-personal';
+  it('uses the raw ~-prefixed COPILOT_HOME value for Keychain service lookup', async () => {
+    process.env.COPILOT_HOME = '~/.claude-personal';
 
     const oneHourFromNow = Date.now() + 60 * 60 * 1000;
     const execFileMock = vi.mocked(childProcess.execFileSync);
     const username = os.userInfo().username;
-    const expectedService = expectedServiceName(process.env.COPILOT_CONFIG_DIR);
+    const expectedService = expectedServiceName(process.env.COPILOT_HOME);
 
     execFileMock.mockImplementation((_file, args) => {
       const argsArr = args as string[];
@@ -567,13 +567,13 @@ describe('getUsage routing', () => {
     expect(execFileMock).toHaveBeenCalledOnce();
   });
 
-  it('uses a different Keychain service when COPILOT_CONFIG_DIR is already expanded', async () => {
-    process.env.COPILOT_CONFIG_DIR = '/Users/test/.claude-personal';
+  it('uses a different Keychain service when COPILOT_HOME is already expanded', async () => {
+    process.env.COPILOT_HOME = '/Users/test/.claude-personal';
 
     const oneHourFromNow = Date.now() + 60 * 60 * 1000;
     const execFileMock = vi.mocked(childProcess.execFileSync);
     const username = os.userInfo().username;
-    const expectedService = expectedServiceName(process.env.COPILOT_CONFIG_DIR);
+    const expectedService = expectedServiceName(process.env.COPILOT_HOME);
 
     execFileMock.mockImplementation((_file, args) => {
       const argsArr = args as string[];

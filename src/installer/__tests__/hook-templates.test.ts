@@ -379,7 +379,7 @@ OMC Ultrawork = "특수부대 작전 반"
           // HOME-derived config root only redirects when both are pointed at the fixture.
           USERPROFILE: fakeHome,
           XDG_CONFIG_HOME: join(fakeHome, '.xdg'),
-          COPILOT_CONFIG_DIR: configDir,
+          COPILOT_HOME: configDir,
           ...env,
         },
         input: JSON.stringify({
@@ -501,7 +501,7 @@ OMC Ultrawork = "특수부대 작전 반"
         const result = JSON.parse(
           execFileSync('node', [provisionedTemplatePath(scriptPath)], {
             cwd: packageRoot,
-            env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: join(fakeHome, '.xdg'), COPILOT_CONFIG_DIR: configDir },
+            env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: join(fakeHome, '.xdg'), COPILOT_HOME: configDir },
             input: JSON.stringify({ prompt: 'autopilot build me a CLI', cwd: projectDir, directory: projectDir, session_id: `autopilot-${basename(scriptPath)}` }),
             encoding: 'utf-8',
           }),
@@ -515,7 +515,7 @@ OMC Ultrawork = "특수부대 작전 반"
         const result = JSON.parse(
           execFileSync('node', [provisionedTemplatePath(scriptPath)], {
             cwd: packageRoot,
-            env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: join(fakeHome, '.xdg'), COPILOT_CONFIG_DIR: configDir },
+            env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: join(fakeHome, '.xdg'), COPILOT_HOME: configDir },
             input: JSON.stringify({ prompt: '/ralph-loop fix the parser', cwd: projectDir, directory: projectDir, session_id: `ralphloop-cmd-${basename(scriptPath)}` }),
             encoding: 'utf-8',
           }),
@@ -576,7 +576,7 @@ OMC Ultrawork = "특수부대 작전 반"
         expect(contextOf(runIn(scriptPath, `ralph-malformed-${basename(scriptPath)}`))).not.toContain('ralph-loop');
       }
 
-      // N. Config-root variant: settings lives at HOME/.copilot and COPILOT_CONFIG_DIR is
+      // N. Config-root variant: settings lives at HOME/.copilot and COPILOT_HOME is
       //    unset (HOME-derived root) -> the notice still resolves the same config root.
       writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': true } });
       writeRegistry({
@@ -585,7 +585,7 @@ OMC Ultrawork = "특수부대 작전 반"
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         const result = runWithEnv(scriptPath, `ralph-homeroot-${basename(scriptPath)}`, '/ralph fix the parser', {
-          COPILOT_CONFIG_DIR: undefined,
+          COPILOT_HOME: undefined,
         });
         expect(result.hookSpecificOutput?.additionalContext ?? '').toContain('ralph-loop');
       }
@@ -738,7 +738,7 @@ OMC Ultrawork = "특수부대 작전 반"
               ...process.env,
               HOME: fakeHome,
               XDG_CONFIG_HOME: join(fakeHome, '.xdg'),
-              COPILOT_CONFIG_DIR: configDir,
+              COPILOT_HOME: configDir,
             },
             input: JSON.stringify({
               prompt: '/ralph fix the parser',
@@ -902,7 +902,7 @@ describe('pre-tool-use packaged artifacts', () => {
     const fakeHome = mkdtempSync(join(tmpdir(), 'pre-tool-template-home-'));
     const env = {
       CLAUDE_PLUGIN_ROOT: packageRoot,
-      COPILOT_CONFIG_DIR: join(fakeHome, '.claude'),
+      COPILOT_HOME: join(fakeHome, '.claude'),
       HOME: fakeHome,
       USER_TYPE: '',
     };
@@ -990,7 +990,7 @@ describe('pre-tool-use packaged artifacts', () => {
     writeFileSync(join(pluginRoot, 'skills', 'wiki', 'SKILL.md'), '---\nname: wiki\n---\nskill body\n');
     const env = {
       CLAUDE_PLUGIN_ROOT: pluginRoot,
-      COPILOT_CONFIG_DIR: join(fakeHome, '.claude'),
+      COPILOT_HOME: join(fakeHome, '.claude'),
       HOME: fakeHome,
       USER_TYPE: '',
     };
@@ -1048,7 +1048,7 @@ describe('pre-tool-use packaged artifacts', () => {
 
     try {
       const env = {
-        COPILOT_CONFIG_DIR: configDir,
+        COPILOT_HOME: configDir,
         CLAUDE_PLUGIN_ROOT: undefined,
         HOME: fakeHome,
         USER_TYPE: '',

@@ -13,7 +13,9 @@ import { join, resolve } from 'path';
 import { mkdir, readFile, rm } from 'fs/promises';
 import { existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { buildWorkerArgv, clearResolvedPathCache, getWorkerEnv as getModelWorkerEnv, resolveDefaultWorkerModel, assertHeadlessSupported, resolveValidatedBinaryPath, validateWorkerLaunchDescriptor, } from './model-contract.js';
+import { buildWorkerArgv, clearResolvedPathCache, getWorkerEnv as getModelWorkerEnv, resolveDefaultWorkerModel, assertHeadlessSupported, resolveValidatedBinaryPath, validateWorkerLaunchDescriptor, resolveWorkerPermissionFlags, } from './model-contract.js';
+import { loadConfig } from '../config/loader.js';
+import { getHostCliType } from '../utils/host-detection.js';
 import { CANONICAL_TEAM_ROLES } from '../shared/types.js';
 import { normalizeDelegationRole } from '../features/delegation-routing/types.js';
 import { routeTaskToRole } from './role-router.js';
@@ -31,7 +33,7 @@ import { loadWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt } f
 import { assertTeamInstanceUnderLock, createTeamInstanceBinding, TeamInstanceError, withTeamInstanceLifecycleLock, } from './team-instance.js';
 // ── Environment gate ──────────────────────────────────────────────────────────
 const OMC_TEAM_SCALING_ENABLED_ENV = 'OMC_TEAM_SCALING_ENABLED';
-const CLI_AGENT_TYPES = new Set(['claude', 'codex', 'gemini', 'grok', 'cursor', 'antigravity']);
+const CLI_AGENT_TYPES = new Set(['claude', 'copilot', 'codex', 'gemini', 'grok', 'cursor', 'antigravity']);
 export function isScalingEnabled(env = process.env) {
     const raw = env[OMC_TEAM_SCALING_ENABLED_ENV];
     if (!raw)
@@ -664,7 +666,7 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                 const hasLegacyConfiguredRoute = config.resolved_routing_roles === undefined && resolvedRoute !== undefined;
                 const hasConfiguredRoute = canonical !== null
                     && (config.resolved_routing_roles?.includes(canonical) === true || hasLegacyConfiguredRoute);
-                const routedPair = canonical && hasExplicitOwnedRole && (hasConfiguredRoute || workerAgentType === 'claude')
+                const routedPair = canonical && hasExplicitOwnedRole && (hasConfiguredRoute || workerAgentType === getHostCliType())
                     ? resolvedRoute
                     : undefined;
                 if (routedPair) {
@@ -675,13 +677,13 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                         workerModel = primary.model;
                     }
                     if (!workerModel) {
-                        const modelEnv = workerAgentType === 'claude' || config.external_models_defaults === undefined ? env : {};
+                        const modelEnv = workerAgentType === 'claude' || workerAgentType === 'copilot' || config.external_models_defaults === undefined ? env : {};
                         workerModel = resolveDefaultWorkerModel(workerAgentType, modelEnv, config.external_models_defaults);
                     }
                 }
                 else {
                     // Honor provider-specific default-model resolution for non-routed workers.
-                    const modelEnv = workerAgentType === 'claude' || config.external_models_defaults === undefined ? env : {};
+                    const modelEnv = workerAgentType === 'claude' || workerAgentType === 'copilot' || config.external_models_defaults === undefined ? env : {};
                     workerModel = resolveDefaultWorkerModel(workerAgentType, modelEnv, config.external_models_defaults);
                 }
                 let launchBinary;
@@ -713,12 +715,14 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                 const workerCwd = worktree?.path ?? leaderCwd;
                 let launchArgs;
                 try {
+                    const permissionFlags = resolveWorkerPermissionFlags(workerAgentType, loadConfig().permissions);
                     const [, ...args] = buildWorkerArgv(workerAgentType, {
                         teamName: sanitized,
                         workerName,
                         cwd: workerCwd,
                         resolvedBinaryPath: launchBinary,
                         ...(workerModel ? { model: workerModel } : {}),
+                        ...(permissionFlags.length > 0 ? { extraFlags: permissionFlags } : {}),
                     });
                     launchArgs = args;
                 }

@@ -75,11 +75,12 @@ For each non-skipped commit:
 
 ### Step 4: Finalize
 
-1. Run full test suite: `npm test`
-2. Run type check: `npx tsc --noEmit`
-3. Verify no upstream references leaked: `grep -r "oh-my-claudecode" src/ agents/ skills/ | grep -v node_modules`
-4. Verify bridge bundles are clean: `grep -c "oh-my-claudecode" bridge/cli.cjs` (must be 0)
-5. Create PR to dev: `gh pr create --base dev`
+1. Regenerate the Copilot projections: `node scripts/copilot/build-hooks.mjs --write` and `node scripts/copilot/build-agents.mjs --write`. Keep `hooks/hooks.json` and `agents/*.md` upstream-identical; adapt only the generated `copilot/hooks.json` and `copilot/agents/*.md`, which Copilot loads through the root `plugin.json`. A generator error means upstream changed the hook command form or agent frontmatter: extend the generator, never hand-edit the output. `copilot-hooks-manifest.test.ts` and `copilot-agents-manifest.test.ts` fail on drift (`--verify`).
+2. Run full test suite: `npm test`
+3. Run type check: `npx tsc --noEmit`
+4. Verify no upstream references leaked: `grep -r "oh-my-claudecode" src/ agents/ skills/ | grep -v node_modules`
+5. Verify bridge bundles are clean: `grep -c "oh-my-claudecode" bridge/cli.cjs` (must be 0)
+6. Create PR to dev: `gh pr create --base dev`
 
 ## Rename Map
 
@@ -88,7 +89,7 @@ Apply these substitutions when porting upstream code:
 | Upstream | Fork |
 |----------|------|
 | `oh-my-claudecode` | `oh-my-copilot` |
-| `CLAUDE_CONFIG_DIR` | `COPILOT_CONFIG_DIR` |
+| `CLAUDE_CONFIG_DIR` | `COPILOT_HOME` (except Claude-host-specific reads: `src/hooks/permission-handler/index.ts` `CLAUDE_CONFIG_DIR`, `skills/omc-setup/phases/04-welcome.md`) |
 | `CLAUDE_FAMILY_DEFAULTS` | `COPILOT_FAMILY_DEFAULTS` |
 | `isNonClaudeProvider` | `isNonCopilotProvider` |
 | `skipClaudeCheck` | `skipCopilotCheck` |
@@ -130,8 +131,21 @@ When replacing files wholesale, check for these fork-specific additions:
   ':!dist' ':!bridge' ':!package-lock.json' ':!package.json' ':!CHANGELOG.md' ':!README.md'
   ':!.github/release-body.md' ':!inventory' > r.patch && git apply -3 r.patch`. `git apply` is
   atomic: a file upstream deleted but the fork diverged on aborts everything — `git rm` it and
-  exclude it from the patch. Port package.json deltas by hand. Afterwards: `npm run build`,
-  `git add -f dist bridge`, `npm run generate:inventory`, then commit.
+  exclude it from the patch. Port package.json deltas by hand. Afterwards: `npm run build`
+  (it ends with `build:copilot-hooks` and `build:copilot-agents`; re-run both after every
+  upstream apply, see Step 4), `git add -f dist bridge copilot`, `npm run generate:inventory`,
+  then commit.
+- **macOS tmux rule diverges from upstream**: `omg launch` decides "`--madmax`/`--yolo` require
+  tmux on macOS" from the RAW args on both hosts (upstream evaluates normalized Claude args).
+  Copilot keeps native `--yolo` after normalization, so an upstream rewrite of that check must
+  keep the raw-args source in `src/cli/launch.ts`.
+- **State lock carries fork fixes stronger than upstream #4149/#4148**: `scripts/lib/state-lock.mjs`
+  and `src/lib/mode-state-io.ts` (fork commit d9cc9a808) re-check the owner record and dev/ino
+  immediately before rename, retry when the owner artifact vanished during a slow win32 probe,
+  cache SQLite liveness probes across retries (probed outside `BEGIN IMMEDIATE`), bound release
+  with a 5 s wall-clock budget, and keep the F15 ordering. On the next port keep the fork versions
+  of both files, take only unrelated upstream hunks, and re-run
+  `npx vitest run src/lib/__tests__/mode-state-lock.test.ts src/__tests__/shared-state-locking.test.ts src/installer/__tests__/standalone-state-lock-bridge.test.ts`.
 - **Judge test results against a dev baseline, not zero**: ~725 tests fail on this Windows host
   at dev (symlink EPERM, POSIX modes, tmux, win32 graph guard). Build a baseline worktree of dev,
   run the full suite there, and diff failing test titles (normalize random tmp suffixes).
@@ -142,7 +156,28 @@ When replacing files wholesale, check for these fork-specific additions:
 - **win32 liveness probes spawn PowerShell (~300ms)**: upstream lock loops that re-probe per retry
   time out on Windows; races invisible on Linux show up here.
 - **Known gap (since v5.5.0)**: upstream strict process identity accepts only linux/darwin, so team
-  instance recovery fails closed on win32 and ~90 team tests fail on this host.
+  instance recovery fails closed on win32 and ~90 team tests fail on this host. The fork fix below
+  (`team-owner-epoch.ts` accepting `win32:<ticks>`) addresses this for win32 specifically.
+- **psmux private-server model fork delta** (v5.4.0-v5.5.0 port; design:
+  `scratchpad/design-psmux-server.md`, not tracked in this repo): `src/team/psmux-adapter.ts` (new,
+  fork-owned, no `tmux-session` imports) plus the four `// Fork (psmux):` branches in
+  `src/team/tmux-session.ts` (`buildPrivateTmuxSocketPath`, `runGuardedNativeTmuxCommand`, the
+  fresh-detached-server create branch, and `killTeamSession`'s detached branch) and the `-S`→`-L`
+  exec-layer translation hook in `src/cli/tmux-utils.ts` (`tmuxExec`/`tmuxExecAsync`/`tmuxSpawn`).
+  Teams run detached in a private, randomly-named psmux namespace (`-L <ns>` under
+  `~/.psmux/omg-ns/`) instead of a shared socket path, because psmux 3.3.8's `if-shell` cannot run
+  any condition with arguments reliably (every PowerShell re-tokenisation mangles it), so the guard
+  is replaced by "verify strict identity, then exec argv in the private namespace". On every
+  upstream port that touches these files: re-run `npx vitest run
+  src/team/__tests__/tmux-session.psmux.test.ts`, and re-run the live-acceptance equivalent,
+  `scratchpad/team3.mjs` (made namespace-aware: it polls `config.json`'s
+  `tmux_server_identity.socket_path` for the `omg-ns\<ns>` basename, then uses `tmux -L <ns> ls` /
+  `list-panes` / `capture-pane` for pane evidence, and asserts the team is invisible in the default
+  `psmux ls` and fully torn down after shutdown). That harness lives outside this repo in the
+  session scratchpad directory — copy it to `scripts/dev/` later if the owner wants it tracked.
+  `team-owner-epoch.ts`'s strict process identity accepting a `win32:<UTC ticks>` token (instead of
+  failing closed on win32 like upstream) is also a fork fix owned by this delta; keep it on the
+  next port of that file.
 - **lean-ctx shell hook** rewrites some piped binaries to an undefined `_lc`; prefix with
   `command` (`command git ...`). Delegated agents must never rewrite repo files through shell
   redirects — two emptied files that way.

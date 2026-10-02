@@ -106,7 +106,7 @@ function getDeepInterviewAmbiguityThresholdResolution() {
         return { threshold: projectThreshold, source: './.copilot/settings.json' };
     }
     if (profileThreshold !== null) {
-        return { threshold: profileThreshold, source: '[$COPILOT_CONFIG_DIR|~/.claude]/settings.json' };
+        return { threshold: profileThreshold, source: '[$COPILOT_HOME|~/.claude]/settings.json' };
     }
     return { threshold: DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD, source: 'default' };
 }

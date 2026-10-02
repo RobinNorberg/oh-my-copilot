@@ -15,12 +15,14 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmuxExec } from '../tmux-utils.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { getHostCliType } from '../../utils/host-detection.js';
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const RESERVED_TEAM_SUBCOMMANDS = new Set(['list', 'ls', 'resume', 'logs', 'attach']);
 const MIN_WORKER_COUNT = 1;
 const MAX_WORKER_COUNT = 20;
-const VALID_TEAM_CLI_AGENT_TYPES = new Set(['claude', 'codex', 'gemini', 'grok', 'cursor', 'antigravity']);
-const DEFAULT_TEAM_CLI_AGENT_TYPE = 'claude';
+const VALID_TEAM_CLI_AGENT_TYPES = new Set(['claude', 'copilot', 'codex', 'gemini', 'grok', 'cursor', 'antigravity']);
+// Resolved at use time (not module load) so tests can stub CLAUDE_CODE_ENTRYPOINT.
+const defaultTeamCliAgentType = () => getHostCliType();
 const TEAM_HELP = `
 Usage: omg team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decompose] "<task description>"
        omg team [N:agent-type[:role]] --task "<task description>"
@@ -303,7 +305,7 @@ function normalizeWorkerSpecSegment(match) {
     const token = match[2]?.toLowerCase();
     const explicitRole = match[3]?.toLowerCase();
     if (!token) {
-        return { count, agentType: 'claude' };
+        return { count, agentType: defaultTeamCliAgentType() };
     }
     if (explicitRole) {
         if (!VALID_TEAM_CLI_AGENT_TYPES.has(token)) {
@@ -316,10 +318,10 @@ function normalizeWorkerSpecSegment(match) {
     if (VALID_TEAM_CLI_AGENT_TYPES.has(token)) {
         return { count, agentType: token };
     }
-    return { count, agentType: 'claude', role: token };
+    return { count, agentType: defaultTeamCliAgentType(), role: token };
 }
 /** @internal Exported for testing */
-export function parseTeamArgs(tokens, defaultAgentType = 'claude') {
+export function parseTeamArgs(tokens, defaultAgentType = defaultTeamCliAgentType()) {
     const args = [...tokens];
     let workerCount = 3;
     let agentTypes = [];
@@ -331,7 +333,7 @@ export function parseTeamArgs(tokens, defaultAgentType = 'claude') {
     let taskFromFlag;
     const normalizedDefaultAgentType = VALID_TEAM_CLI_AGENT_TYPES.has(defaultAgentType)
         ? defaultAgentType
-        : DEFAULT_TEAM_CLI_AGENT_TYPE;
+        : defaultTeamCliAgentType();
     // Extract supported flags before parsing positional args
     const filteredArgs = [];
     for (let index = 0; index < args.length; index++) {
@@ -421,7 +423,7 @@ export function parseTeamArgs(tokens, defaultAgentType = 'claude') {
             `(e.g. "3:codex" or "2:codex:architect"), optionally comma-separated ` +
             `(e.g. "1:codex,1:gemini"). Agent type must be one of: ${[...VALID_TEAM_CLI_AGENT_TYPES].join(', ')}.`);
     }
-    // Default: 3 workers with configured default agent type (falls back to claude)
+    // Default: 3 workers with configured default agent type (falls back to the host CLI)
     if (agentTypes.length === 0) {
         agentTypes = Array.from({ length: workerCount }, () => normalizedDefaultAgentType);
         workerSpecs = Array.from({ length: workerCount }, () => ({ agentType: normalizedDefaultAgentType }));
@@ -707,6 +709,71 @@ async function handleTeamStart(parsed, cwd) {
     }
 }
 // ---------------------------------------------------------------------------
+// Fork (psmux): unverified startup cleanup guidance
+// ---------------------------------------------------------------------------
+/**
+ * A startup whose tmux cleanup could not be verified deliberately keeps its
+ * pending (`lifecycle_state: 'starting'`) config, which status/shutdown then
+ * reject as `invalid_persisted_state`. Name the preserved server endpoint and
+ * the manual cleanup instead of the raw error; never act on the pending config.
+ */
+async function startupCleanupIncompleteMessage(teamName, cwd) {
+    const { readFile } = await import('node:fs/promises');
+    const { absPath, TeamPaths } = await import('../../team/state-paths.js');
+    const { validateTeamName } = await import('../../team/team-name.js');
+    const { psmuxNamespaceOf } = await import('../../team/psmux-adapter.js');
+    const readJson = async (path) => {
+        try {
+            const value = JSON.parse(await readFile(path, 'utf-8'));
+            return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+        }
+        catch {
+            return null;
+        }
+    };
+    let name;
+    try {
+        name = validateTeamName(teamName);
+    }
+    catch {
+        return null;
+    }
+    const config = await readJson(absPath(cwd, TeamPaths.config(name)));
+    if (config?.lifecycle_state !== 'starting')
+        return null;
+    const teamRoot = absPath(cwd, TeamPaths.root(name));
+    const failure = await readJson(join(teamRoot, 'startup-failure.json'));
+    const evidence = failure?.creation_evidence;
+    const partial = failure?.partial_session;
+    const socketPath = [evidence?.socketPath, evidence?.tmuxServerIdentity?.socket_path, partial?.tmuxServerIdentity?.socket_path]
+        .find((value) => typeof value === 'string' && value.length > 0);
+    const namespace = socketPath ? psmuxNamespaceOf(socketPath) : null;
+    const cleanup = namespace
+        ? `check \`tmux -L ${namespace} ls\` and end its private psmux namespace with \`tmux -L ${namespace} kill-server\``
+        : socketPath
+            ? `check \`tmux -S ${socketPath} ls\` and end its private server with \`tmux -S ${socketPath} kill-server\``
+            : 'no server endpoint was recorded; check `tmux ls` for a leftover omc-team session';
+    return [
+        `startup_cleanup_incomplete: team "${name}" did not finish starting and its cleanup could not be verified.`,
+        `The pending state is preserved at ${teamRoot}${failure ? ' (see startup-failure.json)' : ''}.`,
+        `Manual cleanup: ${cleanup}.`,
+    ].join('\n');
+}
+async function withStartupCleanupGuidance(teamName, cwd, run) {
+    try {
+        await run();
+    }
+    catch (error) {
+        if (!(error instanceof Error) || error.message !== 'invalid_persisted_state')
+            throw error;
+        const message = await startupCleanupIncompleteMessage(teamName, cwd);
+        if (!message)
+            throw error;
+        console.error(message);
+        process.exitCode = 1;
+    }
+}
+// ---------------------------------------------------------------------------
 // Team status
 // ---------------------------------------------------------------------------
 async function handleTeamStatus(teamName, cwd) {
@@ -894,7 +961,8 @@ export async function teamCommand(args) {
         const name = args[1];
         if (!name)
             throw new Error('Usage: omg team status <team-name>');
-        await handleTeamStatus(name, cwd);
+        // Fork (psmux): actionable message for an unverified startup.
+        await withStartupCleanupGuidance(name, cwd, () => handleTeamStatus(name, cwd));
         return;
     }
     // omg team shutdown <team-name> [--force]
@@ -904,14 +972,15 @@ export async function teamCommand(args) {
         if (!name)
             throw new Error('Usage: omg team shutdown <team-name> [--force]');
         const force = args.includes('--force');
-        await handleTeamShutdown(name, cwd, force);
+        // Fork (psmux): actionable message for an unverified startup.
+        await withStartupCleanupGuidance(name, cwd, () => handleTeamShutdown(name, cwd, force));
         return;
     }
     // Default: omg team [N:agent-type] "task" -> Start team
     try {
         // Honor team.ops.defaultAgentType when user hasn't supplied N:agent-type.
         const cfg = loadConfig();
-        const defaultAgentType = cfg.team?.ops?.defaultAgentType ?? DEFAULT_TEAM_CLI_AGENT_TYPE;
+        const defaultAgentType = cfg.team?.ops?.defaultAgentType ?? defaultTeamCliAgentType();
         const parsed = parseTeamArgs(args, defaultAgentType);
         await handleTeamStart(parsed, cwd);
     }

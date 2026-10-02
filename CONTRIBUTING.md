@@ -121,7 +121,7 @@ omg --plugin-dir "$PWD" setup --plugin-dir-mode
 
 Then launch Claude Code normally — it will use your local checkout.
 
-**Disable the `.mcp.json` server conflict**: The repo ships `.mcp.json` with an MCP server named `"t"` (the OMC bridge). When using `--plugin-dir`, the plugin also registers its own `"t"` server, causing a name collision. To resolve this, add to your `~/.claude/settings.json` (or `$COPILOT_CONFIG_DIR/settings.json`):
+**Disable the `.mcp.json` server conflict**: The repo ships `.mcp.json` with an MCP server named `"t"` (the OMC bridge). When using `--plugin-dir`, the plugin also registers its own `"t"` server, causing a name collision. To resolve this, add to your `~/.claude/settings.json` (or `$COPILOT_HOME/settings.json`):
 
 ```json
 {

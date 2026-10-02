@@ -1,6 +1,7 @@
 /**
  * Native tmux shell launch for omc
- * Launches Claude Code with tmux session management
+ * Launches the host CLI (Copilot CLI, or Claude Code under CLAUDE_CODE_ENTRYPOINT)
+ * with tmux session management
  */
 export declare function prepareOmcLaunchConfigDir(baseConfigDir?: string): string;
 /**
@@ -100,6 +101,14 @@ export declare function extractWebhookFlag(args: string[]): {
  */
 export declare function normalizeClaudeLaunchArgs(args: string[]): string[];
 /**
+ * Normalize Copilot launch arguments
+ * Maps --madmax to Copilot's native --yolo. Native --yolo/--allow-all pass
+ * through. Copilot rejects Claude's --dangerously-skip-permissions, so a
+ * user-supplied one is replaced with --yolo (noted on stderr).
+ * All other flags pass through unchanged.
+ */
+export declare function normalizeCopilotLaunchArgs(args: string[]): string[];
+/**
  * preLaunch: Prepare environment before Claude starts
  * Currently a placeholder - can be extended for:
  * - Session state initialization
@@ -108,9 +117,10 @@ export declare function normalizeClaudeLaunchArgs(args: string[]): string[];
  */
 export declare function preLaunch(_cwd: string, _sessionId: string): Promise<void>;
 /**
- * Check if args contain --print or -p flag.
- * When in print mode, Claude outputs to stdout and must not be wrapped in tmux
- * (which would capture stdout and prevent piping to the parent process).
+ * Check if args contain a print/prompt flag: Claude's --print/-p or
+ * Copilot's -p/--prompt. In print mode the host outputs to stdout and must not
+ * be wrapped in tmux (which would capture stdout and prevent piping to the
+ * parent process). No permission flags are added for print mode.
  */
 export declare function isPrintMode(args: string[]): boolean;
 /**
@@ -133,12 +143,18 @@ export declare function hasMadmaxFlag(args: string[]): boolean;
  * direct. Inside an existing tmux session the current pane is reused. If
  * tmux is installed but new-session/attach-session fails, we surface the
  * error instead of silently demoting to direct mode.
+ *
+ * `options.requireTmux` lets launchCommand key the macOS rule on the RAW user
+ * args: Copilot's native --yolo survives normalization, so deriving it from
+ * normalized args would differ by host.
  */
-export declare function runClaude(cwd: string, args: string[], sessionId: string): void;
+export declare function runClaude(cwd: string, args: string[], sessionId: string, options?: {
+    requireTmux?: boolean;
+}): void;
 /**
  * Env vars that must be forwarded into tmux sessions.
  * tmux new-session inherits the *server's* environment, not the calling
- * process's, so vars set on process.env (e.g. COPILOT_CONFIG_DIR at launch)
+ * process's, so vars set on process.env (e.g. COPILOT_HOME at launch)
  * are silently lost.  We inject them as `export` statements into the shell
  * command that runs inside the tmux pane, *after* .zshrc/.bashrc sourcing
  * so our values take precedence.

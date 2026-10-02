@@ -1261,7 +1261,7 @@ function linkRalphTeam(directory, sessionId, omcRoot) {
 
 /**
  * Check if the team feature is enabled in Claude Code settings.
- * Reads settings.json from [$COPILOT_CONFIG_DIR|~/.claude] and checks for
+ * Reads settings.json from [$COPILOT_HOME|~/.claude] and checks for
  * CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var.
  * @returns {boolean} true if team feature is enabled
  */
@@ -1296,7 +1296,7 @@ function isTeamEnabled() {
  * (`hasEnabledOmcPlugin` in src/installer/index.ts):
  *
  * 1. INSTALLED: the machine-readable plugin registry
- *    `[$COPILOT_CONFIG_DIR|~/.claude]/plugins/installed_plugins.json` contains
+ *    `[$COPILOT_HOME|~/.claude]/plugins/installed_plugins.json` contains
  *    the official id `ralph-loop@claude-plugins-official` with a real
  *    `commands/ralph-loop.md` payload under its installPath. The registry's
  *    own `enabled` flag is deliberately NOT consulted: it does not
@@ -1305,7 +1305,7 @@ function isTeamEnabled() {
  * 2. ENABLED: the official id is enabled by the effective Claude Code settings
  *    for the active project, resolved highest-precedence-first across
  *    `<project>/.claude/settings.local.json`, `<project>/.claude/settings.json`
- *    and `[$COPILOT_CONFIG_DIR|~/.claude]/settings.json`. Within a file the
+ *    and `[$COPILOT_HOME|~/.claude]/settings.json`. Within a file the
  *    canonical `enabledPlugins` field decides (legacy `plugins` field accepted
  *    for backward compatibility), as an array of plugin ids or a map whose
  *    value is not `false`. Missing or malformed settings are treated as not

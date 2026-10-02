@@ -44,7 +44,7 @@ function invoke(hook: string, directory: string, prompt: string) {
         ...process.env,
         HOME: directory,
         USERPROFILE: directory,
-        COPILOT_CONFIG_DIR: join(directory, '.claude'),
+        COPILOT_HOME: join(directory, '.claude'),
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });

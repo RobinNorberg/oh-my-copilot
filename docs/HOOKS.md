@@ -36,6 +36,72 @@ Hooks are defined in a `hooks.json` file. Each hook follows this structure:
 
 Hook output is injected into Claude via `<system-reminder>` tags. Additional context is passed through `hookSpecificOutput.additionalContext`.
 
+## Copilot CLI hook projection
+
+`hooks/hooks.json` is the Claude Code hook file, and it stays byte-identical to upstream. GitHub Copilot CLI does not load it. Copilot reads the root `plugin.json` first (before `.claude-plugin/plugin.json`), and that manifest points `hooks` at the generated `copilot/hooks.json` (and `agents` at the generated `copilot/agents/`). Claude Code never reads the root manifest.
+
+### Generated entries
+
+`scripts/copilot/build-hooks.mjs` derives one Copilot entry per upstream hook command:
+
+```json
+"Stop": [
+  { "type": "command",
+    "exec": "node",
+    "args": ["--require", "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
+             "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+             "${CLAUDE_PLUGIN_ROOT}/scripts/persistent-mode.mjs"],
+    "env": { "OMC_HOOK_EVENT": "Stop" },
+    "timeoutSec": 10 }
+]
+```
+
+- `exec` + `args` runs `node` without a shell. Copilot runs `command` hooks through PowerShell on Windows, which split the upstream `node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ...` form so that node loaded the plugin directory and exited 0. Every hook was a silent no-op. With `args`, a plugin path containing spaces stays one argument, and each hook saves about 0.5 s of PowerShell startup.
+- `OMC_HOOK_EVENT` names the event for the adapter. `timeoutSec` is the upstream `timeout`. Extra script arguments (`subagent-tracker.mjs start`) are kept.
+- The upstream matcher is copied onto each entry, except `*` and empty matchers. `async` is dropped, because Copilot has no such field.
+- The generator throws on a hook command form or field it does not recognise. An upstream change then fails the build instead of shipping a no-op.
+
+**Regenerate, never hand-edit.** Run `npm run build:copilot-hooks` (`node scripts/copilot/build-hooks.mjs --write`) after any change to `hooks/hooks.json`; `npm run build` includes it. `npm run verify:copilot-hooks` and `src/__tests__/copilot-hooks-manifest.test.ts` fail when the file drifts. The agents file set has the same rule: `npm run build:copilot-agents`.
+
+### Output adapter
+
+The hook scripts speak the Claude Code hook contract. `scripts/lib/copilot-hook-adapter.cjs`, preloaded with `node --require`, buffers the hook's stdout and rewrites it on exit to the subset Copilot honours. It is a no-op unless `OMC_HOOK_EVENT` is set, so Claude Code is untouched. It is also a no-op inside run.cjs worker threads.
+
+| Event | Hook output (Claude shape) | Emitted for Copilot |
+|---|---|---|
+| any | `hookSpecificOutput.additionalContext` | Hoisted to top-level `additionalContext` (Copilot drops the nested copy). An existing top-level value wins. |
+| PreToolUse | `{decision: "block", reason}` or `continue: false` | `permissionDecision: "deny"` with the reason (Copilot ignores `decision: "block"` on PreToolUse). |
+| PreToolUse | `hookSpecificOutput.permissionDecision` | Kept, and also hoisted to top level. |
+| PreToolUse | `hookSpecificOutput.updatedInput` | Dropped. Copilot would replace the tool args with a Claude-shaped object. This is why `agents.<name>.model` overrides are a no-op on Copilot. |
+| PreToolUse | exit 2 + stderr | Deny with the stderr text; exit 0. |
+| Stop / SubagentStop | `{decision: "block", reason}` | Passed through; Copilot re-prompts with the reason. |
+| Stop / SubagentStop | `continue: false` + `decision: "block"` | `{}`, reason to stderr. Claude precedence: `continue: false` wins, so the turn stops. |
+| Stop / SubagentStop | exit 2 + stderr | `{decision: "block", reason: <stderr>}`; exit 0. |
+| PostToolUseFailure | exit 2 + stderr | `{additionalContext: <stderr>}`; exit 0. |
+| PermissionRequest | exit 2 | Kept (exit 2 denies on both hosts). |
+| any other | any other non-zero exit | Exit 0 plus one `[omg-hook] <event> internal error: <script> exited <N>; failing open` stderr line. |
+
+The adapter fails **open** on a hook's internal error. Copilot treats a PreToolUse hook that exits non-zero as a deny, so without this one crashing hook would block every tool call.
+
+| Variable | Effect |
+|---|---|
+| `OMC_HOOK_EVENT` | Set by `copilot/hooks.json`; activates the adapter. |
+| `OMC_HOOK_FAIL_CLOSED=1` | Keep the hook's original non-zero exit code (fail closed). |
+| `OMC_HOOK_STRICT=1` | A hook target that is missing or not a file exits 1 instead of 0 plus a stderr line. |
+| `OMC_DEBUG_HOOKS` | Log adapter decisions, such as a dropped `updatedInput`, to stderr. |
+
+### Not projected
+
+SessionStart groups with the `init` and `maintenance` matchers (`setup-init`, `setup-maintenance`) are not written to `copilot/hooks.json`. Copilot ignores SessionStart matchers, so they would run on every session, adding about 1 s, and maintenance would prune state each time. They still run under Claude Code.
+
+### `node` is required
+
+Every generated entry runs `node`. When a PreToolUse hook cannot start at all, for example because `node` is not on PATH, Copilot denies the tool call itself ("hook errored"). The adapter never runs, so it cannot fail open. Copilot CLI ships as a single executable and does not provide `node`; install Node.js and put it on PATH. `omg doctor conflicts` checks it.
+
+### Latency
+
+Copilot runs the hooks for one event sequentially, one `node` process each. A PostToolUse or Stop event with several hooks therefore costs several node start-ups. A per-event dispatcher that runs all scripts for an event in one process is a planned follow-up, to be measured first.
+
 ## Hook Categories
 
 OMC hooks fall into four categories:

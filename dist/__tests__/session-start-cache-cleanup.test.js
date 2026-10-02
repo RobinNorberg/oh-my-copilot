@@ -60,7 +60,7 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
                     ...process.env,
                     HOME: fakeHome,
                     USERPROFILE: fakeHome, // Windows compat
-                    COPILOT_CONFIG_DIR: join(fakeHome, '.claude'), // Override to use fake home
+                    COPILOT_HOME: join(fakeHome, '.claude'), // Override to use fake home
                     CLAUDE_PLUGIN_ROOT: join(fakeCacheBase, '4.4.3'),
                     ...env,
                 },
@@ -204,8 +204,8 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
         }));
         const mixedCaseRoot = staleVersion.replace('oh-my-copilot', 'Oh-My-Copilot');
         const originalPlatform = process.platform;
-        const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
-        process.env.COPILOT_CONFIG_DIR = configDir;
+        const originalConfigDir = process.env.COPILOT_HOME;
+        process.env.COPILOT_HOME = configDir;
         try {
             // Publish through the real occupancy writer so the record carries this
             // process's live PID/start identity; only the path casing is simulated.
@@ -223,9 +223,9 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
         finally {
             Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
             if (originalConfigDir === undefined)
-                delete process.env.COPILOT_CONFIG_DIR;
+                delete process.env.COPILOT_HOME;
             else
-                process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+                process.env.COPILOT_HOME = originalConfigDir;
         }
     });
     it('preserves lexical install-path comparison on non-Windows source purge', () => {
@@ -239,8 +239,8 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
             plugins: { 'other-plugin@other': [{ installPath: relative(process.cwd(), staleVersion) }] },
         }));
         const originalPlatform = process.platform;
-        const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
-        process.env.COPILOT_CONFIG_DIR = configDir;
+        const originalConfigDir = process.env.COPILOT_HOME;
+        process.env.COPILOT_HOME = configDir;
         try {
             Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
             const result = purgeStalePluginCacheVersions({ skipGracePeriod: true });
@@ -250,9 +250,9 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
         finally {
             Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
             if (originalConfigDir === undefined)
-                delete process.env.COPILOT_CONFIG_DIR;
+                delete process.env.COPILOT_HOME;
             else
-                process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+                process.env.COPILOT_HOME = originalConfigDir;
         }
     });
 });

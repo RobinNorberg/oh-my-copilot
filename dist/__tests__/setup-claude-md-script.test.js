@@ -559,7 +559,7 @@ Use the real docs file.
         expect(second.status).toBe(0);
         expect(readFileSync(targetPath, 'utf-8')).toBe(installed);
     });
-    it('uses COPILOT_CONFIG_DIR and skips the wiki fallback when the OMC plugin is active', () => {
+    it('uses COPILOT_HOME and skips the wiki fallback when the OMC plugin is active', () => {
         const fixture = createPluginFixture(`<!-- OMC:START -->
 <!-- OMC:VERSION:9.9.9 -->
 
@@ -578,7 +578,7 @@ Use the real docs file.
             env: {
                 ...process.env,
                 HOME: fixture.homeRoot,
-                COPILOT_CONFIG_DIR: configDir,
+                COPILOT_HOME: configDir,
             },
             encoding: 'utf-8',
         });
@@ -596,7 +596,7 @@ Use the real docs file.
             env: {
                 ...process.env,
                 HOME: fixture.homeRoot,
-                COPILOT_CONFIG_DIR: configDir,
+                COPILOT_HOME: configDir,
             },
             encoding: 'utf-8',
         });
@@ -651,7 +651,7 @@ Use the real docs file.
             env: {
                 ...process.env,
                 HOME: fixture.homeRoot,
-                COPILOT_CONFIG_DIR: configDir,
+                COPILOT_HOME: configDir,
             },
             encoding: 'utf-8',
         });
@@ -684,7 +684,7 @@ Use the real docs file.
             env: {
                 ...process.env,
                 HOME: fixture.homeRoot,
-                COPILOT_CONFIG_DIR: configDir,
+                COPILOT_HOME: configDir,
             },
             encoding: 'utf-8',
         });
@@ -720,7 +720,7 @@ Use the real docs file.
             env: {
                 ...process.env,
                 HOME: fixture.homeRoot,
-                COPILOT_CONFIG_DIR: configDir,
+                COPILOT_HOME: configDir,
             },
             encoding: 'utf-8',
         });
@@ -747,7 +747,7 @@ Use the real docs file.
             env: {
                 ...process.env,
                 HOME: fixture.homeRoot,
-                COPILOT_CONFIG_DIR: configDir,
+                COPILOT_HOME: configDir,
             },
             encoding: 'utf-8',
         });
@@ -776,7 +776,7 @@ Use the real docs file.
             env: {
                 ...process.env,
                 HOME: fixture.homeRoot,
-                COPILOT_CONFIG_DIR: configDir,
+                COPILOT_HOME: configDir,
             },
             encoding: 'utf-8',
         });
@@ -809,7 +809,7 @@ Use the real docs file.
         const env = {
             ...process.env,
             HOME: fixture.homeRoot,
-            COPILOT_CONFIG_DIR: configDir,
+            COPILOT_HOME: configDir,
         };
         const first = spawnSync('bash', [fixture.scriptPath, 'global', 'preserve'], {
             cwd: fixture.projectRoot,
@@ -843,7 +843,7 @@ Use the real docs file.
         const env = {
             ...process.env,
             HOME: fixture.homeRoot,
-            COPILOT_CONFIG_DIR: configDir,
+            COPILOT_HOME: configDir,
         };
         // Run 1: preserve mode — creates companion + import block
         const first = spawnSync('bash', [fixture.scriptPath, 'global', 'preserve'], {
@@ -892,7 +892,7 @@ Use the real docs file.
             env: {
                 ...process.env,
                 HOME: fixture.homeRoot,
-                COPILOT_CONFIG_DIR: configDir,
+                COPILOT_HOME: configDir,
             },
             encoding: 'utf-8',
         });
@@ -936,7 +936,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
             env: {
                 ...process.env,
                 HOME: homeRoot,
-                COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
+                COPILOT_HOME: join(homeRoot, '.claude'),
             },
             encoding: 'utf-8',
         });
@@ -977,7 +977,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
             env: {
                 ...process.env,
                 HOME: homeRoot,
-                COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
+                COPILOT_HOME: join(homeRoot, '.claude'),
             },
             encoding: 'utf-8',
         });
@@ -1028,7 +1028,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
             env: {
                 ...process.env,
                 HOME: homeRoot,
-                COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
+                COPILOT_HOME: join(homeRoot, '.claude'),
             },
             encoding: 'utf-8',
         });
@@ -1081,7 +1081,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
             env: {
                 ...process.env,
                 HOME: homeRoot,
-                COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
+                COPILOT_HOME: join(homeRoot, '.claude'),
             },
             encoding: 'utf-8',
         });
@@ -1130,7 +1130,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
             env: {
                 ...process.env,
                 HOME: homeRoot,
-                COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
+                COPILOT_HOME: join(homeRoot, '.claude'),
             },
             encoding: 'utf-8',
         });
@@ -1170,7 +1170,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
             env: {
                 ...process.env,
                 HOME: homeRoot,
-                COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
+                COPILOT_HOME: join(homeRoot, '.claude'),
             },
             encoding: 'utf-8',
         });
@@ -1215,7 +1215,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
             env: {
                 ...process.env,
                 HOME: homeRoot,
-                COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
+                COPILOT_HOME: join(homeRoot, '.claude'),
             },
             encoding: 'utf-8',
         });
@@ -1288,7 +1288,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
             writeInstalledPlugins(fixture.homeRoot, grammarMismatched);
             const result = spawnSync('bash', [join(fixture.checkoutRoot, 'scripts', 'setup-claude-md.sh'), 'local'], {
                 cwd: fixture.projectRoot,
-                env: { ...process.env, HOME: fixture.homeRoot, COPILOT_CONFIG_DIR: join(fixture.homeRoot, '.claude') },
+                env: { ...process.env, HOME: fixture.homeRoot, COPILOT_HOME: join(fixture.homeRoot, '.claude') },
                 encoding: 'utf-8',
                 timeout: 10_000,
             });
@@ -1318,7 +1318,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
                 env: {
                     ...process.env,
                     HOME: fixture.homeRoot,
-                    COPILOT_CONFIG_DIR: join(fixture.homeRoot, '.claude'),
+                    COPILOT_HOME: join(fixture.homeRoot, '.claude'),
                     OMC_SETUP_REEXEC_DEPTH: '2',
                 },
                 encoding: 'utf-8',
@@ -1349,7 +1349,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
                 env: {
                     ...process.env,
                     HOME: fixture.homeRoot,
-                    COPILOT_CONFIG_DIR: join(fixture.homeRoot, '.claude'),
+                    COPILOT_HOME: join(fixture.homeRoot, '.claude'),
                     PATH: `${shimDir}:${process.env.PATH}`,
                 },
                 encoding: 'utf-8',

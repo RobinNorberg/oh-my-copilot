@@ -18157,7 +18157,7 @@ function stripTrailingSep(p) {
 }
 function getCopilotConfigDir() {
   const home = (0, import_os.homedir)();
-  const configured = process.env.COPILOT_CONFIG_DIR?.trim();
+  const configured = process.env.COPILOT_HOME?.trim();
   if (!configured) {
     return stripTrailingSep((0, import_path.normalize)((0, import_path.join)(home, ".copilot")));
   }
@@ -26637,7 +26637,9 @@ function buildDefaultConfig() {
       allowBash: true,
       allowEdit: true,
       allowWrite: true,
-      maxBackgroundTasks: 5
+      maxBackgroundTasks: 5,
+      workerDenyTools: [],
+      workerDenyUrls: []
     },
     magicKeywords: {
       search: ["search", "find", "locate"],
@@ -27612,7 +27614,6 @@ function probeProcessStartIdentityForPlatform(pid, platform, exec, read, strict)
       return { identity: `linux:${bootId}:${ticks}`, precise: true };
     }
     if (platform === "win32") {
-      if (strict) return { identity: null, precise: false };
       const command = `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`;
       const ticks = exec(
         "powershell.exe",
@@ -34531,7 +34532,7 @@ ${formatSkillOutput(projectSkills)}`
 };
 var loadGlobalTool = {
   name: "load_omc_skills_global",
-  description: "Load and list skills from global user directories (~/.omg/skills/ and [$COPILOT_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.",
+  description: "Load and list skills from global user directories (~/.omg/skills/ and [$COPILOT_HOME|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.",
   schema: loadGlobalSchema,
   handler: async (_args) => {
     const allSkills = loadAllSkills(null);

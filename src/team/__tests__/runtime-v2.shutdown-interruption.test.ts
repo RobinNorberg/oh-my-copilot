@@ -68,7 +68,7 @@ const PRIVATE_ENV_KEYS = [
   'XDG_CONFIG_HOME',
   'XDG_CACHE_HOME',
   'XDG_DATA_HOME',
-  'COPILOT_CONFIG_DIR',
+  'COPILOT_HOME',
   'OMC_STATE_DIR',
   'OMC_RUNTIME_CLI_PATH',
   'TMUX_TMPDIR',
@@ -387,7 +387,7 @@ describe.skipIf(!HAS_POSIX_TMUX)('runtime v2 ordinary shutdown interruption', ()
     process.env.XDG_CONFIG_HOME = join(home, 'config');
     process.env.XDG_CACHE_HOME = join(home, 'cache');
     process.env.XDG_DATA_HOME = join(home, 'data');
-    process.env.COPILOT_CONFIG_DIR = join(home, '.copilot');
+    process.env.COPILOT_HOME = join(home, '.copilot');
     process.env.OMC_STATE_DIR = stateDir;
     process.env.OMC_RUNTIME_CLI_PATH = RUNTIME_CLI_PATH;
     process.env.TMUX_TMPDIR = tmuxTmpDir;

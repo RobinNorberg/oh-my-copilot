@@ -36,7 +36,7 @@ function runEnforcer(input, env) {
             ...process.env,
             HOME: homeDir,
             USERPROFILE: homeDir,
-            COPILOT_CONFIG_DIR: join(homeDir, '.copilot'),
+            COPILOT_HOME: join(homeDir, '.copilot'),
             NODE_ENV: 'test',
             DISABLE_OMC: '',
             OMC_SKIP_HOOKS: '',

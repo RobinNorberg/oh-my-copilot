@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { resolveRoleAssignment, buildResolvedRoutingSnapshot } from '../stage-router.js';
 import { CANONICAL_TEAM_ROLES } from '../../shared/types.js';
 import type { CanonicalTeamRole, PluginConfig, RoleAssignment } from '../../shared/types.js';
@@ -12,6 +12,13 @@ import type { CanonicalTeamRole, PluginConfig, RoleAssignment } from '../../shar
  */
 describe('AC-3: behavior snapshot — empty config preserves pre-patch /team semantics', () => {
   const EMPTY: PluginConfig = {};
+  // Pre-patch semantics are the Claude-host defaults (the host CLI is claude here).
+  beforeAll(() => {
+    vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', 'cli');
+  });
+  afterAll(() => {
+    vi.unstubAllEnvs();
+  });
 
   it('every canonical role resolves to provider=claude when no routing is configured', () => {
     for (const role of CANONICAL_TEAM_ROLES) {

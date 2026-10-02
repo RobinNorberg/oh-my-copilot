@@ -26,7 +26,7 @@ function hookEnv(context, point, overrides = {}) {
     ...process.env,
     HOME: context.home,
     USERPROFILE: context.home,
-    COPILOT_CONFIG_DIR: join(context.home, '.copilot'),
+    COPILOT_HOME: join(context.home, '.copilot'),
     CLAUDE_PLUGIN_ROOT: '',
     DISABLE_OMC: '',
     OMC_SKIP_HOOKS: '',

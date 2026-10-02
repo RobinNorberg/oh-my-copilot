@@ -3,6 +3,7 @@
  * Scans for and reports plugin coexistence issues.
  */
 
+import { spawnSync } from 'child_process';
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
@@ -12,6 +13,7 @@ import { colors } from '../utils/formatting.js';
 import { getSkillsDir, listBuiltinSkillNames } from '../../features/builtin-skills/skills.js';
 import { inspectUnifiedMcpRegistrySync } from '../../installer/mcp-registry.js';
 import { findWorkspaceRoot, WORKSPACE_MARKER } from '../../lib/worktree-paths.js';
+import { getHostCliType } from '../../utils/host-detection.js';
 
 function hasActiveOmcPluginForDiagnostics(): boolean {
   if (process.env.CLAUDE_PLUGIN_ROOT?.trim()) return true;
@@ -51,11 +53,12 @@ export interface ConflictReport {
     manualReviewPaths: string[];
   } | null;
   legacySkills: { name: string; path: string }[];
-  envFlags: { disableOmc: boolean; skipHooks: string[] };
+  envFlags: { disableOmc: boolean; skipHooks: string[]; legacyConfigDirEnv: boolean };
   configIssues: { unknownFields: string[] };
   windowsUnsafePluginHooks: { pluginRoot: string; event: string; command: string }[];
   mcpRegistrySync: ReturnType<typeof inspectUnifiedMcpRegistrySync>;
   workspaceMarker: WorkspaceMarkerStatus;
+  nodeOnPath: boolean;
   hasConflicts: boolean;
 }
 
@@ -357,7 +360,10 @@ export function checkEnvFlags(): ConflictReport['envFlags'] {
     skipHooks.push(...process.env.OMC_SKIP_HOOKS.split(',').map(h => h.trim()));
   }
 
-  return { disableOmc, skipHooks };
+  // Copilot CLI reads COPILOT_HOME; the fork's old COPILOT_CONFIG_DIR is ignored.
+  const legacyConfigDirEnv = Boolean(process.env.COPILOT_CONFIG_DIR?.trim()) && !process.env.COPILOT_HOME?.trim();
+
+  return { disableOmc, skipHooks, legacyConfigDirEnv };
 }
 
 const SETUP_FALLBACK_SKILL_NAMES = new Set(['omc-reference', 'wiki']);
@@ -653,6 +659,15 @@ export function checkWorkspaceMarker(): WorkspaceMarkerStatus {
 }
 
 /**
+ * Copilot runs every plugin hook as `exec: node`. A missing binary makes each
+ * PreToolUse hook error, which Copilot treats as a deny, so every tool call fails.
+ */
+export function checkNodeOnPath(env: NodeJS.ProcessEnv = process.env): boolean {
+  const result = spawnSync('node', ['--version'], { env, encoding: 'utf8', timeout: 5000, windowsHide: true });
+  return !result.error && result.status === 0;
+}
+
+/**
  * Run complete conflict check
  */
 export function runConflictCheck(): ConflictReport {
@@ -664,9 +679,11 @@ export function runConflictCheck(): ConflictReport {
   const windowsUnsafePluginHooks = checkWindowsUnsafePluginHooks();
   const mcpRegistrySync = inspectUnifiedMcpRegistrySync();
   const workspaceMarker = checkWorkspaceMarker();
+  const nodeOnPath = checkNodeOnPath();
 
   // Determine if there are actual conflicts
   const hasConflicts =
+    !nodeOnPath || // Copilot fail-closes every PreToolUse hook without node
     hookConflicts.some(h => !h.isOmc) || // Non-OMC hooks present
     legacySkills.length > 0 || // Legacy skills colliding with plugin
     envFlags.disableOmc || // OMC is disabled
@@ -680,6 +697,7 @@ export function runConflictCheck(): ConflictReport {
     (claudeMdStatus !== null && (claudeMdStatus.exactLegacyPaths.length > 0 || claudeMdStatus.manualReviewPaths.length > 0));
     // Note: Missing OMC markers is informational (normal for fresh install), not a conflict
     // Note: workspaceMarker.precedenceConflict is a WARN, not a hard conflict
+    // Note: envFlags.legacyConfigDirEnv (retired COPILOT_CONFIG_DIR) is a WARN, not a hard conflict
 
   return {
     hookConflicts,
@@ -690,6 +708,7 @@ export function runConflictCheck(): ConflictReport {
     windowsUnsafePluginHooks,
     mcpRegistrySync,
     workspaceMarker,
+    nodeOnPath,
     hasConflicts
   };
 }
@@ -777,6 +796,19 @@ export function formatReport(report: ConflictReport, json: boolean): string {
     lines.push(`  ${colors.yellow('⚠')} OMC_SKIP_HOOKS: ${report.envFlags.skipHooks.join(', ')}`);
   } else {
     lines.push(`  ${colors.green('✓')} No hooks are being skipped`);
+  }
+  if (report.envFlags.legacyConfigDirEnv) {
+    lines.push(`  ${colors.yellow('⚠')} COPILOT_CONFIG_DIR is no longer read; set COPILOT_HOME instead`);
+  }
+  if (report.nodeOnPath) {
+    lines.push(`  ${colors.green('✓')} node on PATH`);
+  } else {
+    const onCopilot = getHostCliType() === 'copilot';
+    const impact = onCopilot
+      ? 'Copilot denies every tool call because each PreToolUse hook fails closed'
+      : 'Claude Code cannot run any OMC hook';
+    lines.push(`  ${colors.red('✗')} node not found on PATH - ${impact}`);
+    lines.push(`    ${colors.gray(`Install Node.js 20+ and make sure \`node --version\` works in the shell that starts ${onCopilot ? 'copilot' : 'claude'}.`)}`);
   }
   lines.push('');
 

@@ -796,7 +796,7 @@ Examples:
   $ omg install                  Install to config directory (default: ~/.copilot/)
   $ omg install --force          Reinstall, overwriting existing files
   $ omg install --quiet          Silent install for scripts
-  $ COPILOT_CONFIG_DIR=$HOME/.claude-isolated-workspace omg install  Isolated config directory`)
+  $ COPILOT_HOME=$HOME/.claude-isolated-workspace omg install  Isolated config directory`)
     .action(async (options) => {
     if (!options.quiet) {
         console.log(chalk.blue('╔═══════════════════════════════════════════════════════════╗'));

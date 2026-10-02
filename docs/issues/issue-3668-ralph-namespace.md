@@ -37,7 +37,7 @@ with zero mention of the official plugin.
 Two independent signals, both already-familiar OMC surfaces, mirroring the
 installer's `hasEnabledOmcPlugin` semantics (`src/installer/index.ts`):
 
-1. **INSTALLED** — `[$COPILOT_CONFIG_DIR|~/.claude]/plugins/installed_plugins.json`
+1. **INSTALLED** — `[$COPILOT_HOME|~/.claude]/plugins/installed_plugins.json`
    (the file OMC's installer/auto-update already owns for plugin-cache
    bookkeeping) contains the exact official id `ralph-loop@claude-plugins-official`
    and `commands/ralph-loop.md` exists under the entry's `installPath`.
@@ -48,7 +48,7 @@ installer's `hasEnabledOmcPlugin` semantics (`src/installer/index.ts`):
    enable the plugin. Scopes are consulted highest-precedence-first, exactly as
    Claude Code resolves settings: `<project>/.claude/settings.local.json`,
    `<project>/.claude/settings.json`, then
-   `[$COPILOT_CONFIG_DIR|~/.claude]/settings.json`. The first scope that mentions
+   `[$COPILOT_HOME|~/.claude]/settings.json`. The first scope that mentions
    the official id decides; scopes that never mention it are transparent. Within
    a file, the canonical `enabledPlugins` field decides (legacy `plugins` field
    accepted for backward compatibility), either as an array of plugin ids or as
@@ -99,7 +99,7 @@ today.
   | K. registry `enabled: true` + settings missing | silent (missing settings = not enabled) |
   | L. legacy `plugins` map | notice present |
   | M. malformed settings.json | silent (fail closed) |
-  | N. config root via `HOME` (no `COPILOT_CONFIG_DIR`) | notice present |
+  | N. config root via `HOME` (no `COPILOT_HOME`) | notice present |
   | O. same-named community plugin enabled, official `false` | silent (ids match on the full `name@marketplace` id) |
   | O2. `enabledPlugins` array with only `ralph-loop@community` | silent |
   | O3. bare marketplace-less `ralph-loop` id | silent (not the official id) |

@@ -348,9 +348,9 @@ jobs:
         run: |
           set -o pipefail
 
-          COPILOT_CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.copilot}"
-          SESSION_HOOK="$COPILOT_CONFIG_DIR/hooks/session-start.mjs"
-          SETTINGS_PATH="$COPILOT_CONFIG_DIR/settings.json"
+          COPILOT_HOME="${COPILOT_HOME:-$HOME/.copilot}"
+          SESSION_HOOK="$COPILOT_HOME/hooks/session-start.mjs"
+          SETTINGS_PATH="$COPILOT_HOME/settings.json"
 
           if [ ! -f "$SESSION_HOOK" ]; then
             echo "FAIL: missing SessionStart hook script at $SESSION_HOOK"

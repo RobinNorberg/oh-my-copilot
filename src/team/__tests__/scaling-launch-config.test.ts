@@ -43,6 +43,7 @@ const modelContractMocks = vi.hoisted(() => ({
   validateWorkerLaunchDescriptor: vi.fn((value: unknown) => value),
   clearResolvedPathCache: vi.fn(),
   resolveValidatedBinaryPath: vi.fn((agentType: string) => `/usr/bin/${agentType}`),
+  resolveWorkerPermissionFlags: vi.fn((): string[] => []),
 }));
 
 const teamOpsMocks = vi.hoisted(() => ({
@@ -154,6 +155,7 @@ vi.mock('../model-contract.js', () => ({
   getWorkerEnv: modelContractMocks.getWorkerEnv,
   resolveDefaultWorkerModel: modelContractMocks.resolveDefaultWorkerModel,
   validateWorkerLaunchDescriptor: modelContractMocks.validateWorkerLaunchDescriptor,
+  resolveWorkerPermissionFlags: modelContractMocks.resolveWorkerPermissionFlags,
   assertHeadlessSupported: () => {},
   isHeadlessSupportedOnPlatform: () => true,
 }));
@@ -398,6 +400,33 @@ describe('scaleUp launch config', () => {
     })!).toBeLessThan(splitIndex);
   });
 
+  it('scales up copilot workers and forwards configured deny flags into the persisted descriptor', async () => {
+    const workerArgv = ['/usr/bin/copilot', '--allow-all-tools', '--allow-all-paths', '--allow-all-urls', '--no-ask-user',
+      '--deny-tool=shell(git push)'];
+    modelContractMocks.resolveWorkerPermissionFlags.mockReturnValueOnce(['--deny-tool=shell(git push)']);
+    modelContractMocks.buildWorkerArgv.mockReturnValue(workerArgv);
+
+    const result = await scaleUp(
+      'demo-team',
+      1,
+      'copilot',
+      [{ subject: 'demo', description: 'demo task' }],
+      cwd,
+      { OMC_TEAM_SCALING_ENABLED: '1' } as NodeJS.ProcessEnv,
+    );
+
+    expect(result).toMatchObject({ ok: true, newWorkerCount: 1 });
+    expect(modelContractMocks.resolveWorkerPermissionFlags).toHaveBeenCalledWith('copilot', expect.anything());
+    expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith('copilot', expect.objectContaining({
+      extraFlags: ['--deny-tool=shell(git push)'],
+    }));
+    const reservation = monitorMocks.saveTeamConfigAtRevision.mock.calls
+      .map(([candidate]) => candidate as TeamConfig)
+      .find(candidate => candidate.workers.some(worker => worker.name === 'worker-1'));
+    expect(reservation!.workers[0]).toMatchObject({ worker_cli: 'copilot',
+      launch_descriptor: { provider: 'copilot', args: workerArgv.slice(1) } });
+  });
+
   it('passes the immutable team defaults to scale-up resolution', async () => {
     modelContractMocks.resolveDefaultWorkerModel.mockReturnValue('composer-2.5');
     modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/cursor', '--model', 'composer-2.5']);
@@ -450,6 +479,28 @@ describe('scaleUp launch config', () => {
       'claude',
       expect.objectContaining({ model: 'claude-env-model' }),
     );
+  });
+
+  it('resolves copilot (host CLI) scale-up defaults from the environment like claude', async () => {
+    modelContractMocks.resolveDefaultWorkerModel.mockReturnValue('claude-env-model');
+    modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/copilot', '--model', 'claude-env-model']);
+    config = makeConfig({ external_models_defaults: {} });
+    const env = {
+      OMC_TEAM_SCALING_ENABLED: '1',
+      ANTHROPIC_MODEL: 'claude-env-model',
+    } as NodeJS.ProcessEnv;
+
+    const result = await scaleUp(
+      'demo-team',
+      1,
+      'copilot',
+      [{ subject: 'demo', description: 'demo task' }],
+      cwd,
+      env,
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(modelContractMocks.resolveDefaultWorkerModel).toHaveBeenCalledWith('copilot', env, {});
   });
 
   it('does not apply the implicit Claude snapshot to an explicitly typed external worker', async () => {

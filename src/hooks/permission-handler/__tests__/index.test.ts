@@ -750,16 +750,16 @@ describe('permission-handler', () => {
 
       beforeEach(() => {
         previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
-        previousCopilotConfigDir = process.env.COPILOT_CONFIG_DIR;
+        previousCopilotConfigDir = process.env.COPILOT_HOME;
         process.env.CLAUDE_CONFIG_DIR = path.join(testDir, 'claude-home');
-        process.env.COPILOT_CONFIG_DIR = path.join(testDir, 'copilot-home');
+        process.env.COPILOT_HOME = path.join(testDir, 'copilot-home');
       });
 
       afterEach(() => {
         if (previousClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
         else process.env.CLAUDE_CONFIG_DIR = previousClaudeConfigDir;
-        if (previousCopilotConfigDir === undefined) delete process.env.COPILOT_CONFIG_DIR;
-        else process.env.COPILOT_CONFIG_DIR = previousCopilotConfigDir;
+        if (previousCopilotConfigDir === undefined) delete process.env.COPILOT_HOME;
+        else process.env.COPILOT_HOME = previousCopilotConfigDir;
       });
 
       const writeAskRules = (dir: string, ask: string[]) => {

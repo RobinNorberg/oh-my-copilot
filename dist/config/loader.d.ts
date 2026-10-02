@@ -40,6 +40,12 @@ export declare function deepMerge<T extends object>(target: T, source: Partial<T
  */
 export declare function loadEnvConfig(): Partial<PluginConfig>;
 export declare function validateTeamConfig(config: PluginConfig): void;
+/**
+ * Validate `permissions.workerDenyTools` / `permissions.workerDenyUrls`.
+ * Each entry becomes a `--deny-tool=` / `--deny-url=` flag on Copilot team
+ * workers, so reject anything that could read as a separate flag or break argv.
+ */
+export declare function validateWorkerPermissionsConfig(config: PluginConfig): void;
 /** Validate the closed v1 workflow block without changing legacy config validation. */
 export declare function validateAutopilotWorkflows(config: unknown, source: string): void;
 export declare function validateAutopilotConfig(config: PluginConfig): void;

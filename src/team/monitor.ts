@@ -159,7 +159,7 @@ function isWorkerInfo(value: unknown): boolean {
   if (!isRecord(value) || typeof value.name !== 'string' || !WORKER_NAME_SAFE_PATTERN.test(value.name) || !isSafeCounter(value.index) || value.index < 1) return false;
   return (value.role === undefined || typeof value.role === 'string')
     && (value.assigned_tasks === undefined || isStringArray(value.assigned_tasks))
-    && (value.worker_cli === undefined || ['claude', 'codex', 'gemini', 'cursor', 'grok', 'antigravity'].includes(value.worker_cli as string))
+    && (value.worker_cli === undefined || ['claude', 'copilot', 'codex', 'gemini', 'cursor', 'grok', 'antigravity'].includes(value.worker_cli as string))
     && (value.pid === undefined || (isSafeCounter(value.pid) && value.pid > 0))
     && (value.pane_id === undefined || typeof value.pane_id === 'string')
     && (value.working_dir === undefined || typeof value.working_dir === 'string')
@@ -180,7 +180,7 @@ function isWorkerInfo(value: unknown): boolean {
 
 function isLaunchDescriptor(value: unknown): boolean {
   return isRecord(value) && value.schema_version === 1
-    && ['claude', 'codex', 'gemini', 'cursor', 'grok', 'antigravity'].includes(value.provider as string)
+    && ['claude', 'copilot', 'codex', 'gemini', 'cursor', 'grok', 'antigravity'].includes(value.provider as string)
     && (value.model === null || typeof value.model === 'string')
     && isNonEmptyString(value.binary) && isStringArray(value.args);
 }
@@ -215,7 +215,7 @@ function isScaleDownAttempt(value: unknown): boolean {
       && (worker.worktree_path === undefined || typeof worker.worktree_path === 'string')
       && (worker.worktree_created === undefined || typeof worker.worktree_created === 'boolean')
       && (worker.launch_attempt_id === undefined || isNonEmptyString(worker.launch_attempt_id))
-      && (worker.provider === undefined || ['claude', 'codex', 'gemini', 'cursor', 'grok', 'antigravity'].includes(worker.provider as string))
+      && (worker.provider === undefined || ['claude', 'copilot', 'codex', 'gemini', 'cursor', 'grok', 'antigravity'].includes(worker.provider as string))
       && (worker.launch_descriptor === undefined || isLaunchDescriptor(worker.launch_descriptor)))
     && isSafeCounter(value.state_revision) && isTimestamp(value.created_at) && isTimestamp(value.updated_at)
     && (value.failure_reason === undefined || typeof value.failure_reason === 'string');
@@ -347,8 +347,8 @@ function isResolvedRoleRoute(value: unknown): value is { primary: RoleAssignment
 function isRoleAssignment(value: unknown, allowEmptyExternalModel = false): value is RoleAssignment {
   const provider = isRecord(value) ? value.provider as string : undefined;
   return isRecord(value)
-    && ['claude', 'codex', 'gemini', 'grok', 'cursor', 'antigravity'].includes(provider as string)
-    && (isNonEmptyString(value.model) || (allowEmptyExternalModel && provider !== 'claude' && value.model === ''))
+    && ['claude', 'copilot', 'codex', 'gemini', 'grok', 'cursor', 'antigravity'].includes(provider as string)
+    && (isNonEmptyString(value.model) || (allowEmptyExternalModel && provider !== 'claude' && provider !== 'copilot' && value.model === ''))
     && KNOWN_AGENT_NAMES.some(agent => agent === value.agent);
 }
 

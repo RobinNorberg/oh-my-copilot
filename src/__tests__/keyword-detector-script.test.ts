@@ -41,7 +41,7 @@ function runKeywordDetector(
     CLAUDE_PLUGIN_ROOT: '',
     HOME: effectiveHome,
     USERPROFILE: env.USERPROFILE || effectiveHome,
-    COPILOT_CONFIG_DIR: env.COPILOT_CONFIG_DIR || join(effectiveHome, '.claude'),
+    COPILOT_HOME: env.COPILOT_HOME || join(effectiveHome, '.claude'),
     ...env,
   };
 

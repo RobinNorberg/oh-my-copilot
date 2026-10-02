@@ -113,7 +113,7 @@ async function main() {
   } catch { /* fall through to next resolution step */ }
 
   // 2. Plugin cache (for production installs)
-  // Respect COPILOT_CONFIG_DIR so installs under a custom config dir are found
+  // Respect COPILOT_HOME so installs under a custom config dir are found
   const configDir = getCopilotConfigDir();
   const pluginCacheBase = join(configDir, "plugins", "cache", "omc", "oh-my-copilot");
   if (existsSync(pluginCacheBase)) {

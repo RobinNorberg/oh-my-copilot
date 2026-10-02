@@ -58,7 +58,7 @@ function stripTrailingSep(p) {
 }
 function getCopilotConfigDir() {
   const home = (0, import_os.homedir)();
-  const configured = process.env.COPILOT_CONFIG_DIR?.trim();
+  const configured = process.env.COPILOT_HOME?.trim();
   if (!configured) {
     return stripTrailingSep((0, import_path.normalize)((0, import_path.join)(home, ".copilot")));
   }

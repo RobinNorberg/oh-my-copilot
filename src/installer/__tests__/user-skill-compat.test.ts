@@ -9,16 +9,16 @@ describe('install() user-skill compatibility shims', () => {
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'omc-installer-user-skill-compat-'));
-    originalConfigDir = process.env.COPILOT_CONFIG_DIR;
-    process.env.COPILOT_CONFIG_DIR = tempDir;
+    originalConfigDir = process.env.COPILOT_HOME;
+    process.env.COPILOT_HOME = tempDir;
     vi.resetModules();
   });
 
   afterEach(() => {
     if (originalConfigDir === undefined) {
-      delete process.env.COPILOT_CONFIG_DIR;
+      delete process.env.COPILOT_HOME;
     } else {
-      process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+      process.env.COPILOT_HOME = originalConfigDir;
     }
     rmSync(tempDir, { recursive: true, force: true });
     vi.resetModules();

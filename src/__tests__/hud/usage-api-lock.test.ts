@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 
-const COPILOT_CONFIG_DIR = '/tmp/test-claude';
-const CACHE_PATH = `${COPILOT_CONFIG_DIR}/plugins/oh-my-copilot/.usage-cache-zai.json`;
+const COPILOT_HOME = '/tmp/test-claude';
+const CACHE_PATH = `${COPILOT_HOME}/plugins/oh-my-copilot/.usage-cache-zai.json`;
 const LOCK_PATH = `${CACHE_PATH}.lock`;
 
 function createFsMock(initialFiles: Record<string, string>) {
   const files = new Map(Object.entries(initialFiles));
-  const directories = new Set<string>([COPILOT_CONFIG_DIR]);
+  const directories = new Set<string>([COPILOT_HOME]);
 
   const existsSync = vi.fn((path: string) => files.has(String(path)) || directories.has(String(path)));
   const readFileSync = vi.fn((path: string) => {
@@ -105,7 +105,7 @@ describe('getUsage lock failure fallback', () => {
     }) as typeof process.kill;
 
     vi.doMock('../../utils/config-dir.js', () => ({
-      getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
+      getCopilotConfigDir: () => COPILOT_HOME,
     }));
     vi.doMock('../../utils/ssrf-guard.js', () => ({
       validateAnthropicBaseUrl: () => ({ allowed: true }),
@@ -152,7 +152,7 @@ describe('getUsage lock failure fallback', () => {
     }) as typeof process.kill;
 
     vi.doMock('../../utils/config-dir.js', () => ({
-      getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
+      getCopilotConfigDir: () => COPILOT_HOME,
     }));
     vi.doMock('../../utils/ssrf-guard.js', () => ({
       validateAnthropicBaseUrl: () => ({ allowed: true }),
@@ -214,7 +214,7 @@ describe('getUsage lock behavior', () => {
     let requestSawLock = false;
 
     vi.doMock('../../utils/config-dir.js', () => ({
-      getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
+      getCopilotConfigDir: () => COPILOT_HOME,
     }));
     vi.doMock('../../utils/ssrf-guard.js', () => ({
       validateAnthropicBaseUrl: () => ({ allowed: true }),

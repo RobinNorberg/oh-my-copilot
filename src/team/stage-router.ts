@@ -26,6 +26,7 @@ import {
   BUILTIN_EXTERNAL_MODEL_DEFAULTS,
   getDefaultTierModels,
 } from '../config/models.js';
+import { getHostCliType } from '../utils/host-detection.js';
 
 /** Map canonical team role → KnownAgentName key (matches PluginConfig.agents.*). */
 const ROLE_TO_AGENT: Record<CanonicalTeamRole, KnownAgentName> = {
@@ -187,8 +188,8 @@ export function resolveRoleAssignment(
 
   const isOrchestrator = canonical === 'orchestrator';
   const provider: TeamRoleProvider = isOrchestrator
-    ? 'claude'
-    : (spec?.provider ?? 'claude');
+    ? getHostCliType()
+    : (spec?.provider ?? getHostCliType());
   // 'copilot' is this fork's host CLI, not an external provider, so it resolves
   // through the host model path alongside 'claude'.
   const model = provider === 'claude' || provider === 'copilot'
@@ -206,7 +207,7 @@ function isCanonicalRole(value: string): value is CanonicalTeamRole {
 /**
  * Pre-resolve EVERY canonical role into a `{ primary, fallback }` pair.
  *
- * Fallback is always a Claude worker with the same model + agent as primary,
+ * Fallback is always a host-CLI worker with the same model + agent as primary,
  * used when the primary provider's CLI binary is missing at spawn time
  * (AC-8). Persisted to `TeamConfig.resolved_routing` at team creation by
  * `startTeamV2`; read (never re-resolved) by spawn / scaleUp / restart paths.
@@ -221,19 +222,20 @@ export function buildResolvedRoutingSnapshot(
 
   for (const role of CANONICAL_TEAM_ROLES) {
     const primary = resolveRoleAssignment(role, cfg);
-    // Fallback is always a Claude worker. Its model is the Claude-tier
+    // Fallback is always a host-CLI worker. Its model is the Claude-tier
     // resolution of the role's spec (so tier stickiness survives fallback),
     // NOT primary.model (which may be a codex/gemini model ID).
     // When primary is external and spec.model is an explicit non-tier id
     // (e.g., 'gpt-5.3-codex'), drop it for fallback so claude doesn't
     // receive an external model id; tier names always survive.
     const spec = getRoleRoutingSpec(roleRouting, role);
-    const isExternalPrimary = primary.provider !== 'claude';
+    const isExternalPrimary = primary.provider !== 'claude' && primary.provider !== 'copilot';
     const fallbackModelInput = isExternalPrimary && spec?.model && !isTier(spec.model)
       ? undefined
       : spec?.model;
+    // The fallback runs on the host CLI (claude under Claude Code, else copilot).
     const fallback: RoleAssignment = {
-      provider: 'claude',
+      provider: getHostCliType(),
       model: resolveClaudeModel(role, fallbackModelInput, cfg),
       agent: primary.agent,
     };

@@ -13,9 +13,9 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const SAVED_ENV_KEYS = ['COPILOT_CONFIG_DIR', 'CLAUDE_PLUGIN_ROOT', 'OMC_PLUGIN_ROOT', 'OMC_DEV'] as const;
+const SAVED_ENV_KEYS = ['COPILOT_HOME', 'CLAUDE_PLUGIN_ROOT', 'OMC_PLUGIN_ROOT', 'OMC_DEV'] as const;
 const ORIG_ENV: Record<(typeof SAVED_ENV_KEYS)[number], string | undefined> = {
-  COPILOT_CONFIG_DIR: process.env.COPILOT_CONFIG_DIR,
+  COPILOT_HOME: process.env.COPILOT_HOME,
   CLAUDE_PLUGIN_ROOT: process.env.CLAUDE_PLUGIN_ROOT,
   OMC_PLUGIN_ROOT: process.env.OMC_PLUGIN_ROOT,
   OMC_DEV: process.env.OMC_DEV,
@@ -61,7 +61,7 @@ beforeEach(() => {
   for (const key of SAVED_ENV_KEYS) {
     delete process.env[key];
   }
-  process.env.COPILOT_CONFIG_DIR = configDir;
+  process.env.COPILOT_HOME = configDir;
 });
 
 afterEach(() => {

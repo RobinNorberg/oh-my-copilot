@@ -1,6 +1,7 @@
 /**
  * Native tmux shell launch for omc
- * Launches Claude Code with tmux session management
+ * Launches the host CLI (Copilot CLI, or Claude Code under CLAUDE_CODE_ENTRYPOINT)
+ * with tmux session management
  */
 import { execFileSync } from 'child_process';
 import { chmodSync, cpSync, copyFileSync, existsSync, lstatSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync, } from 'fs';
@@ -11,6 +12,8 @@ import { lockPathFor, withFileLockSync } from '../lib/file-lock.js';
 import { resolvePluginDirArg } from '../lib/plugin-dir.js';
 import { stripRetiredTeamMcpServers } from '../installer/mcp-registry.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
+import { getHostCliBinary, getHostCliType } from '../utils/host-detection.js';
+import { getContract } from '../team/model-contract.js';
 import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, buildTmuxShellCommandWithEnv, escapeForCmdSet, isNativeWindowsShell, wrapWithLoginShell, isCopilotAvailable, isTmuxAvailable, quoteShellArg, quoteForCmd, tmuxExec, } from './tmux-utils.js';
 import { configureTmuxClipboardForCurrentSession, configureTmuxClipboardForSession } from './tmux-clipboard.js';
 import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
@@ -719,6 +722,31 @@ export function normalizeClaudeLaunchArgs(args) {
     return normalized;
 }
 /**
+ * Normalize Copilot launch arguments
+ * Maps --madmax to Copilot's native --yolo. Native --yolo/--allow-all pass
+ * through. Copilot rejects Claude's --dangerously-skip-permissions, so a
+ * user-supplied one is replaced with --yolo (noted on stderr).
+ * All other flags pass through unchanged.
+ */
+export function normalizeCopilotLaunchArgs(args) {
+    const normalized = [];
+    let hasYolo = false;
+    for (const arg of args) {
+        if (arg === MADMAX_FLAG || arg === YOLO_FLAG || arg === CLAUDE_BYPASS_FLAG) {
+            if (arg === CLAUDE_BYPASS_FLAG) {
+                console.error(`[omc] Note: ${CLAUDE_BYPASS_FLAG} is a Claude flag; passing ${YOLO_FLAG} to copilot instead.`);
+            }
+            if (!hasYolo) {
+                normalized.push(YOLO_FLAG);
+                hasYolo = true;
+            }
+            continue;
+        }
+        normalized.push(arg);
+    }
+    return normalized;
+}
+/**
  * preLaunch: Prepare environment before Claude starts
  * Currently a placeholder - can be extended for:
  * - Session state initialization
@@ -730,12 +758,13 @@ export async function preLaunch(_cwd, _sessionId) {
     // e.g., session state, environment prep, etc.
 }
 /**
- * Check if args contain --print or -p flag.
- * When in print mode, Claude outputs to stdout and must not be wrapped in tmux
- * (which would capture stdout and prevent piping to the parent process).
+ * Check if args contain a print/prompt flag: Claude's --print/-p or
+ * Copilot's -p/--prompt. In print mode the host outputs to stdout and must not
+ * be wrapped in tmux (which would capture stdout and prevent piping to the
+ * parent process). No permission flags are added for print mode.
  */
 export function isPrintMode(args) {
-    return args.some((arg) => arg === '--print' || arg === '-p');
+    return args.some((arg) => arg === '--print' || arg === '-p' || arg === '--prompt' || arg.startsWith('--prompt='));
 }
 /**
  * Detect raw --madmax / --yolo tokens in launch args. Used before
@@ -781,14 +810,18 @@ function abortMadmaxRequiresTmux(reason) {
  * direct. Inside an existing tmux session the current pane is reused. If
  * tmux is installed but new-session/attach-session fails, we surface the
  * error instead of silently demoting to direct mode.
+ *
+ * `options.requireTmux` lets launchCommand key the macOS rule on the RAW user
+ * args: Copilot's native --yolo survives normalization, so deriving it from
+ * normalized args would differ by host.
  */
-export function runClaude(cwd, args, sessionId) {
+export function runClaude(cwd, args, sessionId, options = {}) {
     // Print mode must bypass tmux so stdout flows to the parent process (issue #1665)
     if (isPrintMode(args)) {
         runClaudeDirect(cwd, args);
         return;
     }
-    const requireTmux = process.platform === 'darwin' && hasMadmaxFlag(args);
+    const requireTmux = options.requireTmux ?? (process.platform === 'darwin' && hasMadmaxFlag(args));
     try {
         if (requireTmux && !process.env.TMUX && !isTmuxAvailable()) {
             abortMadmaxRequiresTmux('missing');
@@ -828,7 +861,7 @@ function runClaudeInsideTmux(cwd, args) {
     // pane, and an invalid invocation must not mutate tmux's implicit target.
     const currentPaneId = resolveInvokingTmuxPaneId();
     if (!currentPaneId) {
-        console.error('[omc] Error: unable to identify the invoking tmux pane; refusing to respawn Claude.');
+        console.error(`[omc] Error: unable to identify the invoking tmux pane; refusing to respawn ${getHostCliBinary()}.`);
         process.exit(1);
         return;
     }
@@ -858,7 +891,7 @@ function runClaudeInsideTmux(cwd, args) {
         launch = buildTmuxClaudeLaunch(args, { useExec: true, preflight: '' });
     }
     catch (error) {
-        console.error(`[omc] Error: unable to prepare Claude launch: ${error instanceof Error ? error.message : error}`);
+        console.error(`[omc] Error: unable to prepare ${getHostCliBinary()} launch: ${error instanceof Error ? error.message : error}`);
         throw error;
     }
     respawnArgs.push(launch.command);
@@ -869,7 +902,7 @@ function runClaudeInsideTmux(cwd, args) {
         launch.cleanup();
         const err = error;
         if (err.code === 'ENOENT') {
-            console.error('[omc] Error: unable to respawn Claude in the current tmux pane.');
+            console.error(`[omc] Error: unable to respawn ${getHostCliBinary()} in the current tmux pane.`);
             process.exit(1);
         }
         process.exit(typeof err.status === 'number' ? err.status : 1);
@@ -894,7 +927,7 @@ function resolveInvokingTmuxPaneId() {
 /**
  * Env vars that must be forwarded into tmux sessions.
  * tmux new-session inherits the *server's* environment, not the calling
- * process's, so vars set on process.env (e.g. COPILOT_CONFIG_DIR at launch)
+ * process's, so vars set on process.env (e.g. COPILOT_HOME at launch)
  * are silently lost.  We inject them as `export` statements into the shell
  * command that runs inside the tmux pane, *after* .zshrc/.bashrc sourcing
  * so our values take precedence.
@@ -902,7 +935,14 @@ function resolveInvokingTmuxPaneId() {
 export const TMUX_ENV_FORWARD = [
     // Explicit non-prefix names in the supported launch surface. Prefix-based
     // provider/configuration matching below keeps new supported vars flowing.
-    'COPILOT_CONFIG_DIR',
+    'COPILOT_HOME',
+    'COPILOT_MODEL',
+    'GH_HOST',
+    'COPILOT_GH_HOST',
+    // Copilot auth fallbacks (after COPILOT_GITHUB_TOKEN); credential-shaped, so
+    // they travel via the private transport, never the pane command text.
+    'GH_TOKEN',
+    'GITHUB_TOKEN',
     'OMC_STATE_DIR',
     'DISABLE_OMC',
     'OMC_NOTIFY',
@@ -955,8 +995,12 @@ export const TMUX_ENV_FORWARD = [
  * default instead of leaking until someone remembers to add it.
  */
 export function isSensitiveTmuxEnvironmentVariable(name) {
-    return /(?:_API_KEY|_AUTH_TOKEN|_SESSION_TOKEN|_ACCESS_KEY_ID|SECRET|PASSWORD|PASSWD|_CREDENTIALS?|_TOKEN)$/i.test(name)
-        || /^(?:AWS_SECRET_ACCESS_KEY|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN)$/i.test(name);
+    // _API_KEY_COMMAND (COPILOT_PROVIDER_API_KEY_COMMAND) names a command that
+    // prints the key; it can embed the key or a vault path, so treat it as a secret.
+    return /(?:_API_KEY|_API_KEY_COMMAND|_AUTH_TOKEN|_SESSION_TOKEN|_ACCESS_KEY_ID|SECRET|PASSWORD|PASSWD|_CREDENTIALS?|_TOKEN)$/i.test(name)
+        || /^(?:AWS_SECRET_ACCESS_KEY|ANTHROPIC_API_KEY|ANTHROPIC_AUTH_TOKEN)$/i.test(name)
+        // Copilot BYOK headers commonly carry gateway keys.
+        || /^COPILOT_PROVIDER_HEADERS$/i.test(name);
 }
 function normalizeTmuxEnvironmentName(name) {
     return process.platform === 'win32' ? name.toUpperCase() : name;
@@ -1087,7 +1131,13 @@ function canonicalTmuxEnvironmentName(name) {
     // Keep newly introduced supported provider/configuration variables from
     // regressing at this boundary. Values still come from this launcher's
     // process.env; the prefixes only classify the supported surface.
-    if (normalizedName.startsWith('ANTHROPIC_') || normalizedName.startsWith('CLAUDE_') || normalizedName.startsWith('OMC_')) {
+    // COPILOT_ secrets (COPILOT_GITHUB_TOKEN, COPILOT_PROVIDER_API_KEY,
+    // COPILOT_PROVIDER_BEARER_TOKEN, COPILOT_PROVIDER_HEADERS) match
+    // isSensitiveTmuxEnvironmentVariable and use the private transport.
+    if (normalizedName.startsWith('ANTHROPIC_')
+        || normalizedName.startsWith('CLAUDE_')
+        || normalizedName.startsWith('COPILOT_')
+        || normalizedName.startsWith('OMC_')) {
         return normalizedName;
     }
     if (/^(?:HTTP|HTTPS|ALL|NO)_PROXY$/.test(normalizedName))
@@ -1126,17 +1176,19 @@ function buildTmuxClaudeLaunch(args, options) {
     const nativeWindows = isNativeWindowsShell();
     const transport = buildSensitiveEnvFilePrefix(forwardedEnvNames);
     try {
+        // Contract binary names are fixed [A-Za-z0-9._-] literals, safe to interpolate.
+        const binary = getHostCliBinary();
         const rawClaudeCmd = nativeWindows
-            ? buildTmuxShellCommandWithEnv('claude', args, withoutSensitiveEnv(forwardedEnv))
-            : buildTmuxShellCommand('claude', args);
+            ? buildTmuxShellCommandWithEnv(binary, args, withoutSensitiveEnv(forwardedEnv))
+            : buildTmuxShellCommand(binary, args);
         const envPrefix = forwardedEnvNames.length === 0
             ? ''
             : nativeWindows
                 ? transport.prefix
                 : `${buildEnvExportPrefix(forwardedEnvNames)}${transport.prefix}`;
         const missingBinaryGuard = nativeWindows
-            ? '(where claude >nul 2>nul || (echo [omc] Error: claude CLI not found in PATH. 1>&2 & exit /b 1)) && '
-            : "command -v claude >/dev/null 2>&1 || { echo '[omc] Error: claude CLI not found in PATH.' >&2; exit 127; }; ";
+            ? `(where ${binary} >nul 2>nul || (echo [omc] Error: ${binary} CLI not found in PATH. 1>&2 & exit /b 1)) && `
+            : `command -v ${binary} >/dev/null 2>&1 || { echo '[omc] Error: ${binary} CLI not found in PATH.' >&2; exit 127; }; `;
         const command = wrapWithLoginShell(`${envPrefix}${options.preflight}${missingBinaryGuard}${options.useExec ? 'exec ' : ''}${rawClaudeCmd}`);
         return { command, cleanup: transport.cleanup };
     }
@@ -1170,7 +1222,7 @@ function runClaudeOutsideTmux(cwd, args, _sessionId, options = {}) {
         launch = buildTmuxClaudeLaunch(args, { useExec: false, preflight });
     }
     catch (error) {
-        console.error(`[omc] Error: unable to prepare Claude launch: ${error instanceof Error ? error.message : error}`);
+        console.error(`[omc] Error: unable to prepare ${getHostCliBinary()} launch: ${error instanceof Error ? error.message : error}`);
         throw error;
     }
     const claudeCmd = launch.command;
@@ -1225,8 +1277,9 @@ function runClaudeOutsideTmux(cwd, args, _sessionId, options = {}) {
  * Fallback when tmux is not available
  */
 function runClaudeDirect(cwd, args) {
+    const binary = getHostCliBinary();
     try {
-        execFileSync('claude', args, {
+        execFileSync(binary, args, {
             cwd,
             stdio: 'inherit',
             shell: process.platform === 'win32',
@@ -1235,7 +1288,7 @@ function runClaudeDirect(cwd, args) {
     catch (error) {
         const err = error;
         if (err.code === 'ENOENT') {
-            console.error('[omc] Error: claude CLI not found in PATH.');
+            console.error(`[omc] Error: ${binary} CLI not found in PATH.`);
             process.exit(1);
         }
         // Propagate Claude's exit code so omc does not swallow failures
@@ -1335,25 +1388,42 @@ export async function launchCommand(args) {
         process.env.OMC_WEBHOOK = '0';
     }
     const cwd = process.cwd();
-    // Pre-flight: check for nested session
+    // Pre-flight: check for nested session. Copilot CLI 1.0.88 documents no
+    // in-session environment marker (`copilot help environment`), so there is
+    // no Copilot equivalent to check here.
     if (process.env.CLAUDECODE) {
         console.error('[omc] Error: Already inside a Claude Code session. Nested launches are not supported.');
         process.exit(1);
     }
-    // Pre-flight: check claude CLI availability
-    if (!isCopilotAvailable()) {
-        console.error('[omc] Error: claude CLI not found. Install Claude Code first:');
-        console.error('  https://code.claude.com/docs/en/setup');
+    const host = getHostCliType();
+    const binary = getHostCliBinary();
+    // Pre-flight: check host CLI availability
+    if (!isCopilotAvailable(binary)) {
+        if (host === 'claude') {
+            console.error('[omc] Error: claude CLI not found. Install Claude Code first:');
+            console.error('  https://code.claude.com/docs/en/setup');
+        }
+        else {
+            console.error(`[omc] Error: ${binary} CLI not found. ${getContract(host).installInstructions}`);
+        }
         process.exit(1);
     }
-    const launchConfigDir = prepareOmcLaunchConfigDir();
-    if (isDefaultClaudeConfigDirPath(launchConfigDir)) {
-        delete process.env.COPILOT_CONFIG_DIR;
+    if (host === 'claude') {
+        const launchConfigDir = prepareOmcLaunchConfigDir();
+        if (isDefaultClaudeConfigDirPath(launchConfigDir)) {
+            delete process.env.COPILOT_HOME;
+        }
+        else {
+            process.env.COPILOT_HOME = launchConfigDir;
+        }
     }
-    else {
-        process.env.COPILOT_CONFIG_DIR = launchConfigDir;
-    }
-    const normalizedArgs = normalizeClaudeLaunchArgs(argsAfterWebhook);
+    // Copilot: no config-dir mirror (it would lack config.json, session-store.db
+    // and installed-plugins) and COPILOT_HOME is left exactly as the user set it.
+    // Keyed on the raw args: Copilot's native --yolo survives normalization.
+    const requireTmux = process.platform === 'darwin' && hasMadmaxFlag(argsAfterWebhook);
+    const normalizedArgs = host === 'claude'
+        ? normalizeClaudeLaunchArgs(argsAfterWebhook)
+        : normalizeCopilotLaunchArgs(argsAfterWebhook);
     const sessionId = `omc-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`;
     // Phase 1: preLaunch
     try {
@@ -1365,7 +1435,7 @@ export async function launchCommand(args) {
     }
     // Phase 2: run
     try {
-        runClaude(cwd, normalizedArgs, sessionId);
+        runClaude(cwd, normalizedArgs, sessionId, { requireTmux });
     }
     finally {
         // Phase 3: postLaunch

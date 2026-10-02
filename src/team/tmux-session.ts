@@ -45,6 +45,13 @@ import {
   type WorkerLaunchContext,
 } from './worker-launch-ack.js';
 import { resolveRuntimeCliPath } from './runtime-owner-client.js';
+import {
+  buildPsmuxNamespacePath,
+  disposePsmuxNamespace,
+  isPsmux,
+  psmuxNamespaceIsEmpty,
+  runPsmuxVerifiedCommand,
+} from './psmux-adapter.js';
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const execFileAsync = promisify(execFile);
@@ -99,6 +106,8 @@ export function buildDetachedTmuxServerKeepaliveArgs(socketPath: string): string
  * mistaken for this invocation.
  */
 export function buildPrivateTmuxSocketPath(): string {
+  // Fork (psmux): a private `-L` namespace stands in for the socket.
+  if (isPsmux()) return buildPsmuxNamespacePath();
   const socketDirectory = process.platform === 'darwin' || process.platform === 'linux'
     ? '/tmp'
     : tmpdir();
@@ -398,6 +407,14 @@ async function runGuardedNativeTmuxCommand(
   nativeCommand: string,
 ): Promise<{ outcome: 'executed' | 'not_executed' | 'unknown'; stdout: string; stderr: string }> {
   if (!isValidTmuxServerIdentity(identity)) return { outcome: 'unknown', stdout: '', stderr: '' };
+  // Fork (psmux): psmux 3.3.8 cannot evaluate the if-shell guard; verify the
+  // strict identity, then run argv inside the private namespace.
+  if (isPsmux()) {
+    return runPsmuxVerifiedCommand(identity, nativeCommand, {
+      observe: expected => observeTmuxServerIdentity(expected),
+      exec: tmuxCmdAsync,
+    });
+  }
   const guarded = tmuxGuardedNativeCommand(identity, nativeCommand);
   try {
     const result = await tmuxCmdAsync(
@@ -1918,7 +1935,9 @@ export async function createTeamSession(
   cwd: string,
   options: CreateTeamSessionOptions = {},
 ): Promise<TeamSession> {
-  const multiplexerContext = detectTeamMultiplexerContext();
+  // Fork (psmux): psmux teams always run detached in a private namespace; the
+  // ambient psmux window's namespace cannot be derived and pane ids collide.
+  const multiplexerContext: TeamMultiplexerContext = isPsmux() ? 'none' : detectTeamMultiplexerContext();
   const inTmux = multiplexerContext === 'tmux';
   const inCmux = multiplexerContext === 'cmux';
   const useDedicatedWindow = Boolean(options.newWindow && inTmux);
@@ -1978,7 +1997,8 @@ export async function createTeamSession(
   } else if (!inTmux) {
     // A detached invocation may still find a default tmux server even when
     // TMUX is unset. Capture that server before mutating it.
-    const existingDetachedIdentity = await captureTmuxServerIdentity() ?? undefined;
+    // Fork (psmux): never adopt the ambient psmux server.
+    const existingDetachedIdentity = isPsmux() ? undefined : await captureTmuxServerIdentity() ?? undefined;
     const detachedSessionName = `${TMUX_SESSION_PREFIX}-${sanitizeName(teamName)}-${Date.now().toString(36)}`;
     const partialDetachedSession = (): TeamSession => ({
       sessionName: sessionAndWindow || `${detachedSessionName}:0`,
@@ -1996,6 +2016,10 @@ export async function createTeamSession(
       ...workerPaneShellCommand(),
     ];
     const cleanupFreshDetachedServer = async (): Promise<boolean> => {
+      // Fork (psmux): the private namespace is ours by construction.
+      if (isPsmux() && freshSocketPathForEvidence) {
+        return disposePsmuxNamespace(freshSocketPathForEvidence, tmuxCmdAsync);
+      }
       if (!freshDetachedServerIdentity) return false;
       const result = await runGuardedNativeTmuxCommand(freshDetachedServerIdentity, 'kill-server')
         .catch(() => ({ outcome: 'unknown' as const }));
@@ -2003,6 +2027,8 @@ export async function createTeamSession(
       return await observeTmuxServerIdentity(freshDetachedServerIdentity) === 'dead';
     };
     const cleanupDetachedSession = async (): Promise<boolean> => {
+      // Fork (psmux): cleanup needs no identity once creation was attempted.
+      if (isPsmux() && freshDetachedServerStarted) return cleanupFreshDetachedServer();
       if (freshDetachedServerIdentity) return cleanupFreshDetachedServer();
       // An existing server cannot be cleaned by name until the creating
       // command itself returned a valid association. Unknown/false command
@@ -2036,6 +2062,40 @@ export async function createTeamSession(
           throw new TeamSessionCreationError(
             `tmux_creation_cleanup_unverified:${error instanceof Error ? error.message : String(error)}`,
             partialDetachedSession(),
+          );
+        }
+        throw error;
+      }
+    } else if (isPsmux()) {
+      // Fork (psmux): no guard runtime and no start-server/exit-empty
+      // keepalive (psmux leaves no server after start-server). new-session
+      // creates the first server of a fresh private namespace; its creation
+      // record supplies the strict identity below.
+      const freshSocketPath = buildPrivateTmuxSocketPath();
+      freshSocketPathForEvidence = freshSocketPath;
+      try {
+        if (!await psmuxNamespaceIsEmpty(freshSocketPath, tmuxCmdAsync)) {
+          throw new Error('psmux_namespace_not_empty');
+        }
+        freshDetachedServerStarted = true;
+        const created = await tmuxCmdAsync(
+          ['-S', freshSocketPath, ...detachedArgs],
+          { stripTmux: true, timeout: 10_000 },
+        );
+        detachedResult = { outcome: 'executed', stdout: created.stdout, stderr: created.stderr };
+      } catch (error) {
+        const cleaned = await cleanupDetachedSession();
+        if (!cleaned && freshDetachedServerStarted) {
+          throw new TeamSessionCreationError(
+            `tmux_creation_cleanup_unverified:${error instanceof Error ? error.message : String(error)}`,
+            partialDetachedSession(),
+            {
+              provider: 'tmux',
+              operation: 'new-session',
+              rawOutput: '',
+              stderr: error instanceof Error ? error.message : String(error),
+              socketPath: freshSocketPathForEvidence,
+            },
           );
         }
         throw error;
@@ -2138,6 +2198,29 @@ export async function createTeamSession(
       }
       throw new Error(`Failed to create detached tmux session: "${detachedResult.stdout.trim()}"`);
     }
+    // Fork (psmux): the creation record is the namespace server's first
+    // strict identity; it must name the namespace we created.
+    if (isPsmux() && freshDetachedServerStarted && !freshDetachedServerIdentity) {
+      if (detachedRecord.identity.socket_path === freshSocketPathForEvidence) {
+        freshDetachedServerIdentity = detachedRecord.identity;
+      } else {
+        const cleaned = await cleanupDetachedSession();
+        if (!cleaned) {
+          throw new TeamSessionCreationError(
+            'tmux_creation_cleanup_unverified',
+            partialDetachedSession(),
+            {
+              provider: 'tmux',
+              operation: 'new-session',
+              rawOutput: detachedResult.stdout,
+              stderr: detachedResult.stderr,
+              ...(freshSocketPathForEvidence ? { socketPath: freshSocketPathForEvidence } : {}),
+            },
+          );
+        }
+        throw new Error('tmux_server_identity_creation_mismatch');
+      }
+    }
     if (freshDetachedServerIdentity
       && !sameTmuxServerIdentity(detachedRecord.identity, freshDetachedServerIdentity)) {
       const cleaned = await cleanupDetachedSession();
@@ -2162,7 +2245,8 @@ export async function createTeamSession(
     leaderPaneId = detachedRecord.paneId;
     detachedCreationKnown = true;
     createdDetachedSession = true;
-    if (freshDetachedServerIdentity) {
+    // Fork (psmux): no exit-empty keepalive was set, so nothing to restore.
+    if (freshDetachedServerIdentity && !isPsmux()) {
       const restored = await runGuardedNativeTmuxCommand(
         tmuxServerIdentity,
         tmuxCommandString(['set-option', '-g', 'exit-empty', 'on']),
@@ -2982,7 +3066,7 @@ export async function killOwnedWorkerPane(ownership: WorkerPaneOwnership): Promi
   }
 }
 
-type PaneTrustPromptKind = 'directory' | 'claude_directory' | 'codex_hooks' | 'cursor_workspace_trust';
+type PaneTrustPromptKind = 'directory' | 'claude_directory' | 'copilot_folder' | 'codex_hooks' | 'cursor_workspace_trust';
 
 function detectPaneTrustPromptKind(captured: string, provider?: CliAgentType): PaneTrustPromptKind | null {
   const lines = captured.split('\n').map(l => l.replace(/\r/g, '').trim()).filter(l => l.length > 0);
@@ -3003,6 +3087,16 @@ function detectPaneTrustPromptKind(captured: string, provider?: CliAgentType): P
   if (provider === 'claude' && hasClaudeDirectoryQuestion
     && hasClaudeDirectoryNoChoice && hasClaudeDirectoryYesChoice) {
     return 'claude_directory';
+  }
+
+  // Copilot CLI 1.0.88 "Confirm folder trust" dialog, shown for an untrusted
+  // cwd even with --allow-all-tools/--allow-all-paths (--add-dir does not
+  // suppress it). Focus starts on "1. Yes" (this session only, not persisted).
+  const hasCopilotYesChoice = tail.some(l => /\b1\.\s*Yes\s*(?:│|$)/.test(l));
+  const hasCopilotNoChoice = tail.some(l => /\b3\.\s*No\s*\(Esc\)/i.test(l));
+  if (provider === 'copilot' && hasClaudeDirectoryQuestion
+    && hasCopilotYesChoice && hasCopilotNoChoice) {
+    return 'copilot_folder';
   }
 
   const hasDirectoryQuestion = tail.some(l => /Do you trust the contents of this directory\?/i.test(l));
@@ -3069,6 +3163,9 @@ export function paneHasActiveTask(captured: string, provider?: CliAgentType): bo
   const lines = captured.split('\n').map(l => l.replace(/\r/g, '').trim()).filter(l => l.length > 0);
   const tail = lines.slice(-40);
   if (provider === 'cursor' && tail.some(l => /ctrl\+c\s+to\s+stop/i.test(l))) return true;
+  // Fork fix: Copilot CLI 1.0.9x status lines read "○ Working · 25 B esc interrupt"
+  // and "◉ Working esc edit prompt".
+  if (provider === 'copilot' && tail.some(l => /^\S?\s*Working\b.*\besc\b/u.test(l))) return true;
   if (tail.some(l => /\b\d+\s+background terminal running\b/i.test(l))) return true;
   if (tail.some(l => /esc to interrupt/i.test(l))) return true;
   if (tail.some(l => /\bbackground terminal running\b/i.test(l))) return true;
@@ -3242,9 +3339,19 @@ export async function waitForStartupPaneReady(
         ? context.provider === 'codex'
         : selector === 'claude_directory'
           ? context.provider === 'claude'
-          : context.provider === 'codex' || context.provider === 'claude';
+          : selector === 'copilot_folder'
+            ? context.provider === 'copilot'
+            : context.provider === 'codex' || context.provider === 'claude';
       if (!providerSupportsSelector) return { ok: false, reason: 'selector_unsupported' };
       if (handledSelectors.has(selector)) return { ok: false, reason: 'selector_persistent' };
+      if (selector === 'copilot_folder') {
+        // The digit alone selects "1. Yes" (verified live); no Enter follows,
+        // so nothing is submitted into the composer behind the dialog.
+        await sendLiteralPaneText(context.ownership.paneId, '1', context.ownership.tmuxServerIdentity);
+        handledSelectors.add(selector);
+        await sleep(pollIntervalMs);
+        continue;
+      }
       if (selector === 'claude_directory') {
         // This Claude Code dialog focuses "No, exit" by default; move to the affirmative choice.
         await sendTeamPaneKey(
@@ -3987,6 +4094,10 @@ export async function killTeamSession(
     const serverState = await observeTmuxServerIdentity(identity);
     // Positive death of the original server proves all resources from that
     // incarnation absent; never query the replacement server by name.
+    // Fork (psmux): also end the namespace's warm server, which outlives it.
+    if (serverState === 'dead' && isPsmux() && sessionMode !== 'split-pane') {
+      return disposePsmuxNamespace(identity.socket_path, tmuxCmdAsync);
+    }
     if (serverState === 'dead') return true;
     if (serverState !== 'matching') return false;
   }
@@ -4043,6 +4154,8 @@ export async function killTeamSession(
     const window = matches[0];
     if (!window) {
       // A valid, non-empty inventory proves that the exact target is absent.
+      // Fork (psmux): still end the private namespace's warm server.
+      if (isPsmux()) return disposePsmuxNamespace(identity!.socket_path, tmuxCmdAsync);
       return true;
     }
 
@@ -4050,6 +4163,13 @@ export async function killTeamSession(
       identity!,
       tmuxCommandString(['kill-window', '-t', window.id]),
     );
+    // Fork (psmux): a psmux team owns its whole private namespace (it is
+    // always created detached), so end it including its warm server. Runtime
+    // shutdown reaches this branch for an owned `session:0` window.
+    if (isPsmux()) {
+      const killed = result.outcome === 'executed' || await observeTmuxServerIdentity(identity!) === 'dead';
+      return killed && await disposePsmuxNamespace(identity!.socket_path, tmuxCmdAsync);
+    }
     if (result.outcome === 'executed') return true;
     // A failed guard may race with original-server death; only that positive
     // process evidence authorizes treating the old window as absent.
@@ -4084,6 +4204,8 @@ export async function killTeamSession(
   const session = matches[0];
   if (!session) {
     // A valid, non-empty inventory proves that the exact target is absent.
+    // Fork (psmux): still end the private namespace's warm server.
+    if (isPsmux()) return disposePsmuxNamespace(identity!.socket_path, tmuxCmdAsync);
     return true;
   }
 
@@ -4091,6 +4213,11 @@ export async function killTeamSession(
     identity!,
     tmuxCommandString(['kill-session', '-t', session.id]),
   );
+  // Fork (psmux): end the private namespace, including its warm server.
+  if (isPsmux()) {
+    const killed = result.outcome === 'executed' || await observeTmuxServerIdentity(identity!) === 'dead';
+    return killed && await disposePsmuxNamespace(identity!.socket_path, tmuxCmdAsync);
+  }
   if (result.outcome === 'executed') return true;
   return await observeTmuxServerIdentity(identity!) === 'dead';
 }

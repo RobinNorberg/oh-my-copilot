@@ -29,7 +29,7 @@ function runPreToolEnforcerWithEnv(input, env = {}) {
             ...process.env,
             HOME: homeDir,
             USERPROFILE: homeDir,
-            COPILOT_CONFIG_DIR: join(homeDir, '.claude'),
+            COPILOT_HOME: join(homeDir, '.claude'),
             NODE_ENV: 'test',
             DISABLE_OMC: '',
             OMC_SKIP_HOOKS: '',

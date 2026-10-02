@@ -98,6 +98,7 @@ vi.mock('../model-contract.js', () => ({
   resolveDefaultWorkerModel: modelContractMocks.resolveDefaultWorkerModel,
   buildValidatedWorkerLaunchDescriptor: modelContractMocks.buildValidatedWorkerLaunchDescriptor,
   validateWorkerLaunchDescriptor: modelContractMocks.validateWorkerLaunchDescriptor,
+  resolveWorkerPermissionFlags: () => [],
   // gemini is supported on all platforms, so the preflight headless guard is a no-op here.
   assertHeadlessSupported: () => {},
   isHeadlessSupportedOnPlatform: () => true,

@@ -105,7 +105,7 @@ Notes under this heading are written by humans and preserved on regeneration.
 ### Step 1: Map Directory Structure
 
 ```
-Task(subagent_type="explore", model="haiku",
+Task(subagent_type="oh-my-copilot:explore", model="haiku",
   prompt="List all directories recursively. Exclude: node_modules, .git, dist, build, __pycache__, .venv, coverage, .next, .nuxt")
 ```
 

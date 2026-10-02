@@ -16,7 +16,7 @@ Ralph is an agent-driven persistence loop with no external language dependency. 
 
 ```bash
 node --version || echo "ERROR: Node is required for OMC hooks and Ralph state persistence."
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-write-probe');try{f.mkdirSync(d,{recursive:true});f.writeFileSync(t,'');f.rmSync(t,{force:true});}catch{console.log('WARNING: Config dir is not writable; Ralph state persistence will fail until it is.')}"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_HOME||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-write-probe');try{f.mkdirSync(d,{recursive:true});f.writeFileSync(t,'');f.rmSync(t,{force:true});}catch{console.log('WARNING: Config dir is not writable; Ralph state persistence will fail until it is.')}"
 ```
 
 ## Step 2.1: Setup HUD Statusline
@@ -57,7 +57,7 @@ Notify user if a newer version is available:
 # Detect installed version (cross-platform)
 node -e "
 const p=require('path'),f=require('fs'),h=require('os').homedir();
-const raw=process.env.COPILOT_CONFIG_DIR?.trim();
+const raw=process.env.COPILOT_HOME?.trim();
 const d=raw==null||raw===''? p.join(h,'.claude'):raw==='~'?h:raw.startsWith('~/')||raw.startsWith('~\\\\')?p.join(h,raw.slice(2)):raw;
 let v='';
 // Try cache directory first
@@ -85,7 +85,7 @@ The `ultrawork` workflow was removed in 5.0.0 and the `defaultExecutionMode` con
 The write goes through a temp file, so a failure leaves the existing config untouched:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),os=require('os'),BS=String.fromCharCode(92);let d=(process.env.COPILOT_CONFIG_DIR||'').trim();if(d==='')d=p.join(os.homedir(),'.copilot');else if(d==='~')d=os.homedir();else if(d.slice(0,2)==='~/'||d.slice(0,2)==='~'+BS)d=p.join(os.homedir(),d.slice(2));const t=p.join(d,'.omc-config.json');if(f.existsSync(t)===false)process.exit(0);let c;try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.log('WARNING: '+t+' is not valid JSON. Existing config was not modified.');process.exit(0)}if(c===null||(typeof c==='object')===false||('defaultExecutionMode' in c)===false)process.exit(0);delete c.defaultExecutionMode;const tmp=t+'.tmp.'+process.pid;try{f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Cleared retired defaultExecutionMode key (ultrawork was removed in 5.0.0)')}catch(e){f.rmSync(tmp,{force:true});console.log('WARNING: Failed to clear retired defaultExecutionMode. Existing config was not modified.')}"
+node -e "const p=require('path'),f=require('fs'),os=require('os'),BS=String.fromCharCode(92);let d=(process.env.COPILOT_HOME||'').trim();if(d==='')d=p.join(os.homedir(),'.copilot');else if(d==='~')d=os.homedir();else if(d.slice(0,2)==='~/'||d.slice(0,2)==='~'+BS)d=p.join(os.homedir(),d.slice(2));const t=p.join(d,'.omc-config.json');if(f.existsSync(t)===false)process.exit(0);let c;try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.log('WARNING: '+t+' is not valid JSON. Existing config was not modified.');process.exit(0)}if(c===null||(typeof c==='object')===false||('defaultExecutionMode' in c)===false)process.exit(0);delete c.defaultExecutionMode;const tmp=t+'.tmp.'+process.pid;try{f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Cleared retired defaultExecutionMode key (ultrawork was removed in 5.0.0)')}catch(e){f.rmSync(tmp,{force:true});console.log('WARNING: Failed to clear retired defaultExecutionMode. Existing config was not modified.')}"
 ```
 
 **Note:** Never write a new `defaultExecutionMode` value. Generic keywords no longer route through a configured execution mode; invoke `/oh-my-copilot:execute` or `/oh-my-copilot:team` directly instead.
@@ -148,7 +148,7 @@ Pass the user's selection (`builtin`, `beads`, or `beads-rust`) as the argument.
 goes through a temp file, so a failure leaves the existing config untouched:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-config.json');const tool=process.argv[1];f.mkdirSync(p.dirname(t),{recursive:true});let c={};if(f.existsSync(t)){try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: '+t+' is not valid JSON. Existing config was not modified.');process.exit(1)}}c.taskTool=tool;c.taskToolConfig={injectInstructions:true,useMcp:false};const tmp=t+'.tmp.'+process.pid;try{f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Task tool set to: '+tool)}catch(e){f.rmSync(tmp,{force:true});console.error('ERROR: Failed to update '+t+'. Existing config was not modified.');process.exit(1)}" "USER_CHOICE"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_HOME||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-config.json');const tool=process.argv[1];f.mkdirSync(p.dirname(t),{recursive:true});let c={};if(f.existsSync(t)){try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: '+t+' is not valid JSON. Existing config was not modified.');process.exit(1)}}c.taskTool=tool;c.taskToolConfig={injectInstructions:true,useMcp:false};const tmp=t+'.tmp.'+process.pid;try{f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Task tool set to: '+tool)}catch(e){f.rmSync(tmp,{force:true});console.error('ERROR: Failed to update '+t+'. Existing config was not modified.');process.exit(1)}" "USER_CHOICE"
 ```
 
 **Note:** The beads context instructions will be injected automatically on the next session start.

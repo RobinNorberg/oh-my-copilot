@@ -74,7 +74,7 @@ function hookEnvironment(cwd, configHome, extraEnv = {}) {
         USERPROFILE: home,
         OMC_STATE_DIR: fixtureStateDir(cwd),
         XDG_CONFIG_HOME: configHome,
-        COPILOT_CONFIG_DIR: join(cwd, 'claude-config'),
+        COPILOT_HOME: join(cwd, 'claude-config'),
         ...extraEnv,
     };
 }
@@ -361,7 +361,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
             mkdirSync(nested, { recursive: true });
             mkdirSync(join(parent, '.claude'), { recursive: true });
             writeFileSync(join(parent, '.claude', 'omc.jsonc'), '{ "autopilot": { "workflows": { "release-flow": { "version": 1, "stages": ["ralplan", "execution", "qa"] } } } }');
-            runHook(script, '/autopilot --workflow release-flow ship the release', nested, configHome, transcriptPath, { COPILOT_CONFIG_DIR: join(workspace, 'claude-config') });
+            runHook(script, '/autopilot --workflow release-flow ship the release', nested, configHome, transcriptPath, { COPILOT_HOME: join(workspace, 'claude-config') });
             expect(JSON.parse(stateBytes(nested).toString())).toMatchObject({ workflow: { workflowName: 'release-flow', stages: ['ralplan', 'execution'] } });
         }
         finally {
@@ -856,7 +856,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
         try {
             mkdirSync(join(nested, '.claude'), { recursive: true });
             writeFileSync(join(nested, '.claude', 'omc.jsonc'), JSON.stringify({ autopilot: { workflows: { 'root-only': { version: 1, stages: ['ralplan', 'execution'] } } } }));
-            const output = runHook(script, '/autopilot --workflow root-only ship it', nested, configHome, transcriptPath, { COPILOT_CONFIG_DIR: join(cwd, 'claude-config') });
+            const output = runHook(script, '/autopilot --workflow root-only ship it', nested, configHome, transcriptPath, { COPILOT_HOME: join(cwd, 'claude-config') });
             expect(output.hookSpecificOutput?.additionalContext).toContain('## PIPELINE STAGE: RALPLAN (Consensus Planning)');
         }
         finally {

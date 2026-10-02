@@ -1603,7 +1603,7 @@ export function isValidTranscriptPath(transcriptPath: string): boolean {
   const normalized = normalize(expandedPath);
   const home = homedir();
 
-  // Allowed: [$COPILOT_CONFIG_DIR|~/.claude], ~/.omg/..., system temp dir
+  // Allowed: [$COPILOT_HOME|~/.claude], ~/.omg/..., system temp dir
   const allowedPrefixes = [
     getCopilotConfigDir(),
     join(home, '.omg'),

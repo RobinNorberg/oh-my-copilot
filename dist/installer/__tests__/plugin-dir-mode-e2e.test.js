@@ -3,7 +3,7 @@
  *
  * Unlike `plugin-dir-mode.test.ts`, which exercises the CLI precedence helper
  * in isolation, this suite calls the real `install()` function from
- * `src/installer/index.ts` against a throwaway `COPILOT_CONFIG_DIR` and asserts
+ * `src/installer/index.ts` against a throwaway `COPILOT_HOME` and asserts
  * the resulting on-disk shape matches the documented contract.
  *
  * Scope: installer contract only. The CLI auto-detection log message and the
@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OMC_PLUGIN_ROOT_ENV } from '../../lib/env-vars.js';
 const SAVED_ENV_KEYS = [
-    'COPILOT_CONFIG_DIR',
+    'COPILOT_HOME',
     OMC_PLUGIN_ROOT_ENV,
     'CLAUDE_PLUGIN_ROOT',
     'OMC_DEV',
@@ -37,7 +37,7 @@ beforeEach(() => {
         savedEnv[key] = process.env[key];
         delete process.env[key];
     }
-    process.env.COPILOT_CONFIG_DIR = testDir;
+    process.env.COPILOT_HOME = testDir;
 });
 afterEach(() => {
     for (const key of SAVED_ENV_KEYS) {

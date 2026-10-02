@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   VERSION,
-  COPILOT_CONFIG_DIR,
+  COPILOT_HOME,
   AGENTS_DIR,
   COMMANDS_DIR,
   SKILLS_DIR,
@@ -405,15 +405,15 @@ describe('Installer Constants', () => {
 
   describe('File Paths', () => {
     it('should define valid directory paths', () => {
-      expect(AGENTS_DIR).toBe(join(COPILOT_CONFIG_DIR, 'agents'));
-      expect(COMMANDS_DIR).toBe(join(COPILOT_CONFIG_DIR, 'commands'));
-      expect(SKILLS_DIR).toBe(join(COPILOT_CONFIG_DIR, 'skills'));
-      expect(HOOKS_DIR).toBe(join(COPILOT_CONFIG_DIR, 'hooks'));
+      expect(AGENTS_DIR).toBe(join(COPILOT_HOME, 'agents'));
+      expect(COMMANDS_DIR).toBe(join(COPILOT_HOME, 'commands'));
+      expect(SKILLS_DIR).toBe(join(COPILOT_HOME, 'skills'));
+      expect(HOOKS_DIR).toBe(join(COPILOT_HOME, 'hooks'));
     });
 
     it('should use absolute paths', () => {
       const paths = [
-        COPILOT_CONFIG_DIR,
+        COPILOT_HOME,
         AGENTS_DIR,
         COMMANDS_DIR,
         SKILLS_DIR,
@@ -565,7 +565,7 @@ describe('Installer Constants', () => {
 
     it('should return false for global plugin installation', () => {
       // Global plugins are under ~/.claude/plugins/
-      process.env.CLAUDE_PLUGIN_ROOT = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot', '3.9.0');
+      process.env.CLAUDE_PLUGIN_ROOT = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot', '3.9.0');
       expect(isProjectScopedPlugin()).toBe(false);
     });
 
@@ -588,7 +588,7 @@ describe('Installer Constants', () => {
     });
 
     it('should handle trailing slashes in paths', () => {
-      process.env.CLAUDE_PLUGIN_ROOT = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc') + '/';
+      process.env.CLAUDE_PLUGIN_ROOT = join(COPILOT_HOME, 'plugins', 'cache', 'omc') + '/';
       expect(isProjectScopedPlugin()).toBe(false);
     });
   });

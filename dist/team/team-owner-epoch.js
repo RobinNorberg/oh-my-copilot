@@ -96,8 +96,11 @@ function probeProcessStartIdentityForPlatform(pid, platform, exec, read, strict)
             return { identity: `linux:${bootId}:${ticks}`, precise: true };
         }
         if (platform === 'win32') {
-            if (strict)
-                return { identity: null, precise: false };
+            // Fork fix: upstream v5.5.0 reports win32 as strict-unavailable, which made every native
+            // Windows team launch fail with tmux_server_identity_probe_unavailable. StartTime.Ticks is
+            // the kernel process creation time at 100 ns resolution; it is fixed for the lifetime of a
+            // pid and a recycled pid gets a new creation time, so the same token is precise enough for
+            // destructive ownership. A failed probe still yields null (strict-unavailable).
             const command = `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`;
             const ticks = exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { encoding: 'utf8', windowsHide: true }).trim();
             return /^\d+$/.test(ticks)
@@ -180,6 +183,9 @@ export function isValidStrictProcessStartIdentity(value, platform = process.plat
         // second-resolution fallback and is not destructive evidence.
         return match !== null && Number(match[2]) > 0 && Number(match[2]) < 1_000_000;
     }
+    // Fork fix: native Windows strict token (see probeProcessStartIdentityForPlatform).
+    if (platform === 'win32')
+        return /^win32:[1-9]\d*$/.test(value);
     return false;
 }
 /**
@@ -196,8 +202,14 @@ export function currentProcessStartIdentity(pid = process.pid) {
     ownProcessStartIdentity ??= processStartIdentityForPlatform(pid);
     return ownProcessStartIdentity;
 }
+// Fork fix: same own-pid-only cache rationale as ownProcessStartIdentity — the win32 strict probe
+// is a PowerShell spawn, and strict identity of this process is re-read on every tmux operation.
+let ownStrictProcessStartIdentity = null;
 export function currentStrictProcessStartIdentity(pid = process.pid) {
-    return strictProcessStartIdentityForPlatform(pid);
+    if (process.platform !== 'win32' || pid !== process.pid)
+        return strictProcessStartIdentityForPlatform(pid);
+    ownStrictProcessStartIdentity ??= strictProcessStartIdentityForPlatform(pid);
+    return ownStrictProcessStartIdentity;
 }
 /** Alias used by tmux resource ownership callers. */
 export const currentProcessCreationIdentity = currentStrictProcessStartIdentity;

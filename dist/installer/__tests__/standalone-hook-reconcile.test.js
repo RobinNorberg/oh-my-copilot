@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+const originalClaudeConfigDir = process.env.COPILOT_HOME;
 const originalPluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
 const originalHome = process.env.HOME;
 let testClaudeDir;
@@ -57,7 +57,7 @@ describe('install() standalone hook reconciliation', () => {
         testHomeDir = mkdtempSync(join(tmpdir(), 'omc-home-'));
         mkdirSync(testHomeDir, { recursive: true });
         writeFileSync(join(testHomeDir, 'CLAUDE.md'), '# test home claude');
-        process.env.COPILOT_CONFIG_DIR = testClaudeDir;
+        process.env.COPILOT_HOME = testClaudeDir;
         process.env.HOME = testHomeDir;
         delete process.env.CLAUDE_PLUGIN_ROOT;
     });
@@ -65,10 +65,10 @@ describe('install() standalone hook reconciliation', () => {
         rmSync(testClaudeDir, { recursive: true, force: true });
         rmSync(testHomeDir, { recursive: true, force: true });
         if (originalClaudeConfigDir !== undefined) {
-            process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+            process.env.COPILOT_HOME = originalClaudeConfigDir;
         }
         else {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
         if (originalPluginRoot !== undefined) {
             process.env.CLAUDE_PLUGIN_ROOT = originalPluginRoot;
@@ -198,7 +198,7 @@ describe('install() standalone hook reconciliation', () => {
                     encoding: 'utf-8',
                     env: {
                         ...process.env,
-                        COPILOT_CONFIG_DIR: testClaudeDir,
+                        COPILOT_HOME: testClaudeDir,
                         HOME: testHomeDir,
                         USERPROFILE: testHomeDir,
                     },
@@ -325,7 +325,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         testHomeDir = mkdtempSync(join(tmpdir(), 'omc-home-dedup-'));
         mkdirSync(testHomeDir, { recursive: true });
         writeFileSync(join(testHomeDir, 'CLAUDE.md'), '# test home claude');
-        process.env.COPILOT_CONFIG_DIR = testClaudeDir;
+        process.env.COPILOT_HOME = testClaudeDir;
         process.env.HOME = testHomeDir;
         delete process.env.CLAUDE_PLUGIN_ROOT;
     });
@@ -336,10 +336,10 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         rmSync(testClaudeDir, { recursive: true, force: true });
         rmSync(testHomeDir, { recursive: true, force: true });
         if (originalClaudeConfigDir !== undefined) {
-            process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+            process.env.COPILOT_HOME = originalClaudeConfigDir;
         }
         else {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
         if (originalPluginRoot !== undefined) {
             process.env.CLAUDE_PLUGIN_ROOT = originalPluginRoot;
@@ -489,7 +489,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
                         hooks: [
                             {
                                 type: 'command',
-                                command: 'node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/persistent-mode.mjs"',
+                                command: 'node "${COPILOT_HOME:-$HOME/.copilot}/hooks/persistent-mode.mjs"',
                             },
                             {
                                 type: 'command',
@@ -505,7 +505,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         const writtenSettings = JSON.parse(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'));
         const commands = writtenSettings.hooks?.Stop?.[0]?.hooks.map(hook => hook.command) ?? [];
         expect(result.success).toBe(true);
-        expect(commands).toContain('node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/persistent-mode.mjs"');
+        expect(commands).toContain('node "${COPILOT_HOME:-$HOME/.copilot}/hooks/persistent-mode.mjs"');
         expect(commands).toContain('node $HOME/.claude/hooks/user-stop-hook.mjs');
         expect(existsSync(join(hooksDir, 'persistent-mode.mjs'))).toBe(true);
         expect(existsSync(join(hooksDir, 'keyword-detector.mjs'))).toBe(false);
@@ -526,7 +526,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
                     {
                         hooks: [{
                                 type: 'command',
-                                command: 'node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/keyword-detector.mjs"',
+                                command: 'node "${COPILOT_HOME:-$HOME/.copilot}/hooks/keyword-detector.mjs"',
                             }],
                     },
                 ],
@@ -534,7 +534,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
                     {
                         hooks: [{
                                 type: 'command',
-                                command: 'node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/code-simplifier.mjs"',
+                                command: 'node "${COPILOT_HOME:-$HOME/.copilot}/hooks/code-simplifier.mjs"',
                             }],
                     },
                 ],

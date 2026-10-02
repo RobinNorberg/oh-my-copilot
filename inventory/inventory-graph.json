@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "6fde86c8b8eb2afe28622497ba2b51ed98cd6a77",
-    "sourceSha256": "091ea26177573fa5d13d2603d2419343fca6c2d22386eb0476d31c7716c6c953",
+    "head": "d9cc9a8087eac29cb202d36b6339e4db24233720",
+    "sourceSha256": "46ac04626fa5ea86259f42df4dee5f66d91533769ee5187f68dc0e616aabdf21",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "6fde86c8b8eb2afe28622497ba2b51ed98cd6a77",
-  "sourceSha256": "091ea26177573fa5d13d2603d2419343fca6c2d22386eb0476d31c7716c6c953",
+  "head": "d9cc9a8087eac29cb202d36b6339e4db24233720",
+  "sourceSha256": "46ac04626fa5ea86259f42df4dee5f66d91533769ee5187f68dc0e616aabdf21",
   "counts": {
     "public": {
       "skills": 61,
@@ -23,25 +23,25 @@
       "total": 110
     },
     "internal": {
-      "hookFiles": 328,
+      "hookFiles": 329,
       "featureFiles": 84,
       "toolFiles": 61,
       "libFiles": 43,
       "templateHooks": 22,
-      "srcFiles": 1422,
-      "total": 1444
+      "srcFiles": 1438,
+      "total": 1460
     },
     "generated": {
-      "distFiles": 5531,
+      "distFiles": 5587,
       "bridgeFiles": 9,
-      "total": 5540
+      "total": 5596
     },
     "prompt": {
       "promptLikeFiles": 61
     },
     "skills": 61,
     "commands": 21,
-    "hookFiles": 328,
+    "hookFiles": 329,
     "workflows": 8,
     "agentDefinitions": 18,
     "promptLikeFiles": 61
@@ -258,6 +258,7 @@
       "src/hooks/empty-message-sanitizer/constants.ts",
       "src/hooks/empty-message-sanitizer/index.ts",
       "src/hooks/empty-message-sanitizer/types.ts",
+      "src/hooks/factcheck/__tests__/config-tokens.test.ts",
       "src/hooks/factcheck/__tests__/factcheck.test.ts",
       "src/hooks/factcheck/__tests__/sentinel-gate.test.ts",
       "src/hooks/factcheck/__tests__/sentinel.test.ts",
@@ -801,6 +802,8 @@
       "scripts/compose-docs.mjs",
       "scripts/context-guard-stop.mjs",
       "scripts/context-safety.mjs",
+      "scripts/copilot/build-agents.mjs",
+      "scripts/copilot/build-hooks.mjs",
       "scripts/demo-team.mjs",
       "scripts/eval-autoresearch-json.mjs",
       "scripts/eval-autoresearch-timed-json.mjs",
@@ -823,6 +826,7 @@
       "scripts/lib/config-dir.mjs",
       "scripts/lib/config-dir.sh",
       "scripts/lib/context-usage.mjs",
+      "scripts/lib/copilot-hook-adapter.cjs",
       "scripts/lib/encode-project-path.mjs",
       "scripts/lib/enforcement-log.mjs",
       "scripts/lib/force-agent-delegation-preflight.mjs",
@@ -1011,6 +1015,10 @@
       "dist/__tests__/config-force-inherit-env.test.d.ts.map",
       "dist/__tests__/config-force-inherit-env.test.js",
       "dist/__tests__/config-force-inherit-env.test.js.map",
+      "dist/__tests__/config-worker-permissions.test.d.ts",
+      "dist/__tests__/config-worker-permissions.test.d.ts.map",
+      "dist/__tests__/config-worker-permissions.test.js",
+      "dist/__tests__/config-worker-permissions.test.js.map",
       "dist/__tests__/consensus-execution-handoff.test.d.ts",
       "dist/__tests__/consensus-execution-handoff.test.d.ts.map",
       "dist/__tests__/consensus-execution-handoff.test.js",
@@ -1035,6 +1043,22 @@
       "dist/__tests__/context-usage.test.d.ts.map",
       "dist/__tests__/context-usage.test.js",
       "dist/__tests__/context-usage.test.js.map",
+      "dist/__tests__/copilot-agents-manifest.test.d.ts",
+      "dist/__tests__/copilot-agents-manifest.test.d.ts.map",
+      "dist/__tests__/copilot-agents-manifest.test.js",
+      "dist/__tests__/copilot-agents-manifest.test.js.map",
+      "dist/__tests__/copilot-config-dir-alias.test.d.ts",
+      "dist/__tests__/copilot-config-dir-alias.test.d.ts.map",
+      "dist/__tests__/copilot-config-dir-alias.test.js",
+      "dist/__tests__/copilot-config-dir-alias.test.js.map",
+      "dist/__tests__/copilot-hook-adapter.test.d.ts",
+      "dist/__tests__/copilot-hook-adapter.test.d.ts.map",
+      "dist/__tests__/copilot-hook-adapter.test.js",
+      "dist/__tests__/copilot-hook-adapter.test.js.map",
+      "dist/__tests__/copilot-hooks-manifest.test.d.ts",
+      "dist/__tests__/copilot-hooks-manifest.test.d.ts.map",
+      "dist/__tests__/copilot-hooks-manifest.test.js",
+      "dist/__tests__/copilot-hooks-manifest.test.js.map",
       "dist/__tests__/daemon-module-path.test.d.ts",
       "dist/__tests__/daemon-module-path.test.d.ts.map",
       "dist/__tests__/daemon-module-path.test.js",
@@ -1071,6 +1095,14 @@
       "dist/__tests__/doctor-conflicts.test.d.ts.map",
       "dist/__tests__/doctor-conflicts.test.js",
       "dist/__tests__/doctor-conflicts.test.js.map",
+      "dist/__tests__/doctor-legacy-config-dir.test.d.ts",
+      "dist/__tests__/doctor-legacy-config-dir.test.d.ts.map",
+      "dist/__tests__/doctor-legacy-config-dir.test.js",
+      "dist/__tests__/doctor-legacy-config-dir.test.js.map",
+      "dist/__tests__/doctor-node-on-path.test.d.ts",
+      "dist/__tests__/doctor-node-on-path.test.d.ts.map",
+      "dist/__tests__/doctor-node-on-path.test.js",
+      "dist/__tests__/doctor-node-on-path.test.js.map",
       "dist/__tests__/featured-contributors-generator.test.d.ts",
       "dist/__tests__/featured-contributors-generator.test.d.ts.map",
       "dist/__tests__/featured-contributors-generator.test.js",
@@ -1855,6 +1887,10 @@
       "dist/__tests__/setup-progress-script.test.d.ts.map",
       "dist/__tests__/setup-progress-script.test.js",
       "dist/__tests__/setup-progress-script.test.js.map",
+      "dist/__tests__/setup/clear-copilot-home.d.ts",
+      "dist/__tests__/setup/clear-copilot-home.d.ts.map",
+      "dist/__tests__/setup/clear-copilot-home.js",
+      "dist/__tests__/setup/clear-copilot-home.js.map",
       "dist/__tests__/shared-memory-concurrency.test.d.ts",
       "dist/__tests__/shared-memory-concurrency.test.d.ts.map",
       "dist/__tests__/shared-memory-concurrency.test.js",
@@ -3352,6 +3388,10 @@
       "dist/hooks/empty-message-sanitizer/types.d.ts.map",
       "dist/hooks/empty-message-sanitizer/types.js",
       "dist/hooks/empty-message-sanitizer/types.js.map",
+      "dist/hooks/factcheck/__tests__/config-tokens.test.d.ts",
+      "dist/hooks/factcheck/__tests__/config-tokens.test.d.ts.map",
+      "dist/hooks/factcheck/__tests__/config-tokens.test.js",
+      "dist/hooks/factcheck/__tests__/config-tokens.test.js.map",
       "dist/hooks/factcheck/__tests__/factcheck.test.d.ts",
       "dist/hooks/factcheck/__tests__/factcheck.test.d.ts.map",
       "dist/hooks/factcheck/__tests__/factcheck.test.js",
@@ -5454,6 +5494,10 @@
       "dist/team/__tests__/prompt-sanitization.test.d.ts.map",
       "dist/team/__tests__/prompt-sanitization.test.js",
       "dist/team/__tests__/prompt-sanitization.test.js.map",
+      "dist/team/__tests__/psmux-adapter.test.d.ts",
+      "dist/team/__tests__/psmux-adapter.test.d.ts.map",
+      "dist/team/__tests__/psmux-adapter.test.js",
+      "dist/team/__tests__/psmux-adapter.test.js.map",
       "dist/team/__tests__/rebase-smoke.test.d.ts",
       "dist/team/__tests__/rebase-smoke.test.d.ts.map",
       "dist/team/__tests__/rebase-smoke.test.js",
@@ -5550,6 +5594,10 @@
       "dist/team/__tests__/runtime-v2.monitor.test.d.ts.map",
       "dist/team/__tests__/runtime-v2.monitor.test.js",
       "dist/team/__tests__/runtime-v2.monitor.test.js.map",
+      "dist/team/__tests__/runtime-v2.permission-lines.test.d.ts",
+      "dist/team/__tests__/runtime-v2.permission-lines.test.d.ts.map",
+      "dist/team/__tests__/runtime-v2.permission-lines.test.js",
+      "dist/team/__tests__/runtime-v2.permission-lines.test.js.map",
       "dist/team/__tests__/runtime-v2.service-repair.test.d.ts",
       "dist/team/__tests__/runtime-v2.service-repair.test.d.ts.map",
       "dist/team/__tests__/runtime-v2.service-repair.test.js",
@@ -5690,6 +5738,10 @@
       "dist/team/__tests__/tmux-session.kill-team-session.test.d.ts.map",
       "dist/team/__tests__/tmux-session.kill-team-session.test.js",
       "dist/team/__tests__/tmux-session.kill-team-session.test.js.map",
+      "dist/team/__tests__/tmux-session.psmux.test.d.ts",
+      "dist/team/__tests__/tmux-session.psmux.test.d.ts.map",
+      "dist/team/__tests__/tmux-session.psmux.test.js",
+      "dist/team/__tests__/tmux-session.psmux.test.js.map",
       "dist/team/__tests__/tmux-session.spawn.test.d.ts",
       "dist/team/__tests__/tmux-session.spawn.test.d.ts.map",
       "dist/team/__tests__/tmux-session.spawn.test.js",
@@ -5914,6 +5966,10 @@
       "dist/team/process-identity-lock.d.ts.map",
       "dist/team/process-identity-lock.js",
       "dist/team/process-identity-lock.js.map",
+      "dist/team/psmux-adapter.d.ts",
+      "dist/team/psmux-adapter.d.ts.map",
+      "dist/team/psmux-adapter.js",
+      "dist/team/psmux-adapter.js.map",
       "dist/team/recovery-request-store.d.ts",
       "dist/team/recovery-request-store.d.ts.map",
       "dist/team/recovery-request-store.js",
@@ -6354,6 +6410,10 @@
       "dist/utils/host-detection.d.ts.map",
       "dist/utils/host-detection.js",
       "dist/utils/host-detection.js.map",
+      "dist/utils/host-signal.d.ts",
+      "dist/utils/host-signal.d.ts.map",
+      "dist/utils/host-signal.js",
+      "dist/utils/host-signal.js.map",
       "dist/utils/jsonc.d.ts",
       "dist/utils/jsonc.d.ts.map",
       "dist/utils/jsonc.js",
@@ -6539,6 +6599,7 @@
       "src/hooks/empty-message-sanitizer/constants.ts",
       "src/hooks/empty-message-sanitizer/index.ts",
       "src/hooks/empty-message-sanitizer/types.ts",
+      "src/hooks/factcheck/__tests__/config-tokens.test.ts",
       "src/hooks/factcheck/__tests__/factcheck.test.ts",
       "src/hooks/factcheck/__tests__/sentinel-gate.test.ts",
       "src/hooks/factcheck/__tests__/sentinel.test.ts",
@@ -7919,6 +7980,111 @@
         "path": "commands/wiki.md"
       },
       {
+        "id": "copilot/agents/analyst.md",
+        "kind": "other",
+        "path": "copilot/agents/analyst.md"
+      },
+      {
+        "id": "copilot/agents/architect.md",
+        "kind": "other",
+        "path": "copilot/agents/architect.md"
+      },
+      {
+        "id": "copilot/agents/code-reviewer.md",
+        "kind": "other",
+        "path": "copilot/agents/code-reviewer.md"
+      },
+      {
+        "id": "copilot/agents/code-simplifier.md",
+        "kind": "other",
+        "path": "copilot/agents/code-simplifier.md"
+      },
+      {
+        "id": "copilot/agents/critic.md",
+        "kind": "other",
+        "path": "copilot/agents/critic.md"
+      },
+      {
+        "id": "copilot/agents/debugger.md",
+        "kind": "other",
+        "path": "copilot/agents/debugger.md"
+      },
+      {
+        "id": "copilot/agents/designer.md",
+        "kind": "other",
+        "path": "copilot/agents/designer.md"
+      },
+      {
+        "id": "copilot/agents/devils-advocate.md",
+        "kind": "other",
+        "path": "copilot/agents/devils-advocate.md"
+      },
+      {
+        "id": "copilot/agents/document-specialist.md",
+        "kind": "other",
+        "path": "copilot/agents/document-specialist.md"
+      },
+      {
+        "id": "copilot/agents/executor.md",
+        "kind": "other",
+        "path": "copilot/agents/executor.md"
+      },
+      {
+        "id": "copilot/agents/explore.md",
+        "kind": "other",
+        "path": "copilot/agents/explore.md"
+      },
+      {
+        "id": "copilot/agents/git-master.md",
+        "kind": "other",
+        "path": "copilot/agents/git-master.md"
+      },
+      {
+        "id": "copilot/agents/planner.md",
+        "kind": "other",
+        "path": "copilot/agents/planner.md"
+      },
+      {
+        "id": "copilot/agents/qa-tester.md",
+        "kind": "other",
+        "path": "copilot/agents/qa-tester.md"
+      },
+      {
+        "id": "copilot/agents/scientist.md",
+        "kind": "other",
+        "path": "copilot/agents/scientist.md"
+      },
+      {
+        "id": "copilot/agents/security-reviewer.md",
+        "kind": "other",
+        "path": "copilot/agents/security-reviewer.md"
+      },
+      {
+        "id": "copilot/agents/test-engineer.md",
+        "kind": "other",
+        "path": "copilot/agents/test-engineer.md"
+      },
+      {
+        "id": "copilot/agents/tracer.md",
+        "kind": "other",
+        "path": "copilot/agents/tracer.md"
+      },
+      {
+        "id": "copilot/agents/verifier.md",
+        "kind": "other",
+        "path": "copilot/agents/verifier.md"
+      },
+      {
+        "id": "copilot/agents/writer.md",
+        "kind": "other",
+        "path": "copilot/agents/writer.md"
+      },
+      {
+        "id": "copilot/hooks.json",
+        "kind": "other",
+        "path": "copilot/hooks.json"
+      },
+      {
         "id": "design-system/README.md",
         "kind": "other",
         "path": "design-system/README.md"
@@ -8469,6 +8635,26 @@
         "path": "dist/__tests__/config-force-inherit-env.test.js.map"
       },
       {
+        "id": "dist/__tests__/config-worker-permissions.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/config-worker-permissions.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/config-worker-permissions.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/config-worker-permissions.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/config-worker-permissions.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/config-worker-permissions.test.js"
+      },
+      {
+        "id": "dist/__tests__/config-worker-permissions.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/config-worker-permissions.test.js.map"
+      },
+      {
         "id": "dist/__tests__/consensus-execution-handoff.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/consensus-execution-handoff.test.d.ts"
@@ -8587,6 +8773,86 @@
         "id": "dist/__tests__/context-usage.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/context-usage.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-agents-manifest.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-agents-manifest.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/copilot-agents-manifest.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-agents-manifest.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-agents-manifest.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-agents-manifest.test.js"
+      },
+      {
+        "id": "dist/__tests__/copilot-agents-manifest.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-agents-manifest.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-config-dir-alias.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-config-dir-alias.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/copilot-config-dir-alias.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-config-dir-alias.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-config-dir-alias.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-config-dir-alias.test.js"
+      },
+      {
+        "id": "dist/__tests__/copilot-config-dir-alias.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-config-dir-alias.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-hook-adapter.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-hook-adapter.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/copilot-hook-adapter.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-hook-adapter.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-hook-adapter.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-hook-adapter.test.js"
+      },
+      {
+        "id": "dist/__tests__/copilot-hook-adapter.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-hook-adapter.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-hooks-manifest.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-hooks-manifest.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/copilot-hooks-manifest.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-hooks-manifest.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-hooks-manifest.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-hooks-manifest.test.js"
+      },
+      {
+        "id": "dist/__tests__/copilot-hooks-manifest.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-hooks-manifest.test.js.map"
       },
       {
         "id": "dist/__tests__/daemon-module-path.test.d.ts",
@@ -8767,6 +9033,46 @@
         "id": "dist/__tests__/doctor-conflicts.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/doctor-conflicts.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/doctor-legacy-config-dir.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/doctor-legacy-config-dir.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/doctor-legacy-config-dir.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/doctor-legacy-config-dir.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/doctor-legacy-config-dir.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/doctor-legacy-config-dir.test.js"
+      },
+      {
+        "id": "dist/__tests__/doctor-legacy-config-dir.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/doctor-legacy-config-dir.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/doctor-node-on-path.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/doctor-node-on-path.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/doctor-node-on-path.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/doctor-node-on-path.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/doctor-node-on-path.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/doctor-node-on-path.test.js"
+      },
+      {
+        "id": "dist/__tests__/doctor-node-on-path.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/doctor-node-on-path.test.js.map"
       },
       {
         "id": "dist/__tests__/featured-contributors-generator.test.d.ts",
@@ -12687,6 +12993,26 @@
         "id": "dist/__tests__/setup-progress-script.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/setup-progress-script.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/setup/clear-copilot-home.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/clear-copilot-home.d.ts"
+      },
+      {
+        "id": "dist/__tests__/setup/clear-copilot-home.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/clear-copilot-home.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/setup/clear-copilot-home.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/clear-copilot-home.js"
+      },
+      {
+        "id": "dist/__tests__/setup/clear-copilot-home.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/setup/clear-copilot-home.js.map"
       },
       {
         "id": "dist/__tests__/shared-memory-concurrency.test.d.ts",
@@ -20172,6 +20498,26 @@
         "id": "dist/hooks/empty-message-sanitizer/types.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/empty-message-sanitizer/types.js.map"
+      },
+      {
+        "id": "dist/hooks/factcheck/__tests__/config-tokens.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/factcheck/__tests__/config-tokens.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/factcheck/__tests__/config-tokens.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/factcheck/__tests__/config-tokens.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/factcheck/__tests__/config-tokens.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/factcheck/__tests__/config-tokens.test.js"
+      },
+      {
+        "id": "dist/hooks/factcheck/__tests__/config-tokens.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/factcheck/__tests__/config-tokens.test.js.map"
       },
       {
         "id": "dist/hooks/factcheck/__tests__/factcheck.test.d.ts",
@@ -30684,6 +31030,26 @@
         "path": "dist/team/__tests__/prompt-sanitization.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/psmux-adapter.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/psmux-adapter.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/psmux-adapter.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/psmux-adapter.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/psmux-adapter.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/psmux-adapter.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/psmux-adapter.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/psmux-adapter.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/rebase-smoke.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/rebase-smoke.test.d.ts"
@@ -31162,6 +31528,26 @@
         "id": "dist/team/__tests__/runtime-v2.monitor.test.js.map",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/runtime-v2.monitor.test.js.map"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-v2.permission-lines.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-v2.permission-lines.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-v2.permission-lines.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-v2.permission-lines.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-v2.permission-lines.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-v2.permission-lines.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/runtime-v2.permission-lines.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/runtime-v2.permission-lines.test.js.map"
       },
       {
         "id": "dist/team/__tests__/runtime-v2.service-repair.test.d.ts",
@@ -31862,6 +32248,26 @@
         "id": "dist/team/__tests__/tmux-session.kill-team-session.test.js.map",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/tmux-session.kill-team-session.test.js.map"
+      },
+      {
+        "id": "dist/team/__tests__/tmux-session.psmux.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/tmux-session.psmux.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/tmux-session.psmux.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/tmux-session.psmux.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/tmux-session.psmux.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/tmux-session.psmux.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/tmux-session.psmux.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/tmux-session.psmux.test.js.map"
       },
       {
         "id": "dist/team/__tests__/tmux-session.spawn.test.d.ts",
@@ -32982,6 +33388,26 @@
         "id": "dist/team/process-identity-lock.js.map",
         "kind": "generated-dist",
         "path": "dist/team/process-identity-lock.js.map"
+      },
+      {
+        "id": "dist/team/psmux-adapter.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/psmux-adapter.d.ts"
+      },
+      {
+        "id": "dist/team/psmux-adapter.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/psmux-adapter.d.ts.map"
+      },
+      {
+        "id": "dist/team/psmux-adapter.js",
+        "kind": "generated-dist",
+        "path": "dist/team/psmux-adapter.js"
+      },
+      {
+        "id": "dist/team/psmux-adapter.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/psmux-adapter.js.map"
       },
       {
         "id": "dist/team/recovery-request-store.d.ts",
@@ -35184,6 +35610,26 @@
         "path": "dist/utils/host-detection.js.map"
       },
       {
+        "id": "dist/utils/host-signal.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/utils/host-signal.d.ts"
+      },
+      {
+        "id": "dist/utils/host-signal.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/host-signal.d.ts.map"
+      },
+      {
+        "id": "dist/utils/host-signal.js",
+        "kind": "generated-dist",
+        "path": "dist/utils/host-signal.js"
+      },
+      {
+        "id": "dist/utils/host-signal.js.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/host-signal.js.map"
+      },
+      {
         "id": "dist/utils/jsonc.d.ts",
         "kind": "generated-dist",
         "path": "dist/utils/jsonc.d.ts"
@@ -36299,6 +36745,11 @@
         "path": "package.json"
       },
       {
+        "id": "plugin.json",
+        "kind": "other",
+        "path": "plugin.json"
+      },
+      {
         "id": "receipts/epic-3698/README.md",
         "kind": "other",
         "path": "receipts/epic-3698/README.md"
@@ -36494,6 +36945,16 @@
         "path": "scripts/context-safety.mjs"
       },
       {
+        "id": "scripts/copilot/build-agents.mjs",
+        "kind": "script",
+        "path": "scripts/copilot/build-agents.mjs"
+      },
+      {
+        "id": "scripts/copilot/build-hooks.mjs",
+        "kind": "script",
+        "path": "scripts/copilot/build-hooks.mjs"
+      },
+      {
         "id": "scripts/demo-team.mjs",
         "kind": "script",
         "path": "scripts/demo-team.mjs"
@@ -36602,6 +37063,11 @@
         "id": "scripts/lib/context-usage.mjs",
         "kind": "script",
         "path": "scripts/lib/context-usage.mjs"
+      },
+      {
+        "id": "scripts/lib/copilot-hook-adapter.cjs",
+        "kind": "script",
+        "path": "scripts/lib/copilot-hook-adapter.cjs"
       },
       {
         "id": "scripts/lib/encode-project-path.mjs",
@@ -37699,6 +38165,11 @@
         "path": "src/__tests__/config-force-inherit-env.test.ts"
       },
       {
+        "id": "src/__tests__/config-worker-permissions.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/config-worker-permissions.test.ts"
+      },
+      {
         "id": "src/__tests__/consensus-execution-handoff.test.ts",
         "kind": "src",
         "path": "src/__tests__/consensus-execution-handoff.test.ts"
@@ -37727,6 +38198,26 @@
         "id": "src/__tests__/context-usage.test.ts",
         "kind": "src",
         "path": "src/__tests__/context-usage.test.ts"
+      },
+      {
+        "id": "src/__tests__/copilot-agents-manifest.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/copilot-agents-manifest.test.ts"
+      },
+      {
+        "id": "src/__tests__/copilot-config-dir-alias.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/copilot-config-dir-alias.test.ts"
+      },
+      {
+        "id": "src/__tests__/copilot-hook-adapter.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/copilot-hook-adapter.test.ts"
+      },
+      {
+        "id": "src/__tests__/copilot-hooks-manifest.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/copilot-hooks-manifest.test.ts"
       },
       {
         "id": "src/__tests__/daemon-module-path.test.ts",
@@ -37774,6 +38265,16 @@
         "path": "src/__tests__/doctor-conflicts.test.ts"
       },
       {
+        "id": "src/__tests__/doctor-legacy-config-dir.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/doctor-legacy-config-dir.test.ts"
+      },
+      {
+        "id": "src/__tests__/doctor-node-on-path.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/doctor-node-on-path.test.ts"
+      },
+      {
         "id": "src/__tests__/encode-project-path-mjs-mirror.test.mjs",
         "kind": "src",
         "path": "src/__tests__/encode-project-path-mjs-mirror.test.mjs"
@@ -37792,6 +38293,16 @@
         "id": "src/__tests__/file-lock.test.ts",
         "kind": "src",
         "path": "src/__tests__/file-lock.test.ts"
+      },
+      {
+        "id": "src/__tests__/fixtures/copilot-hook-adapter/hook.mjs",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/copilot-hook-adapter/hook.mjs"
+      },
+      {
+        "id": "src/__tests__/fixtures/copilot-hook-adapter/worker.mjs",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/copilot-hook-adapter/worker.mjs"
       },
       {
         "id": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs",
@@ -38807,6 +39318,11 @@
         "id": "src/__tests__/setup-progress-script.test.ts",
         "kind": "src",
         "path": "src/__tests__/setup-progress-script.test.ts"
+      },
+      {
+        "id": "src/__tests__/setup/clear-copilot-home.ts",
+        "kind": "src",
+        "path": "src/__tests__/setup/clear-copilot-home.ts"
       },
       {
         "id": "src/__tests__/shared-memory-concurrency.test.ts",
@@ -40742,6 +41258,11 @@
         "id": "src/hooks/empty-message-sanitizer/types.ts",
         "kind": "hook",
         "path": "src/hooks/empty-message-sanitizer/types.ts"
+      },
+      {
+        "id": "src/hooks/factcheck/__tests__/config-tokens.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/factcheck/__tests__/config-tokens.test.ts"
       },
       {
         "id": "src/hooks/factcheck/__tests__/factcheck.test.ts",
@@ -43434,6 +43955,11 @@
         "path": "src/team/__tests__/prompt-sanitization.test.ts"
       },
       {
+        "id": "src/team/__tests__/psmux-adapter.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/psmux-adapter.test.ts"
+      },
+      {
         "id": "src/team/__tests__/rebase-smoke.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/rebase-smoke.test.ts"
@@ -43542,6 +44068,11 @@
         "id": "src/team/__tests__/runtime-v2.monitor.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/runtime-v2.monitor.test.ts"
+      },
+      {
+        "id": "src/team/__tests__/runtime-v2.permission-lines.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/runtime-v2.permission-lines.test.ts"
       },
       {
         "id": "src/team/__tests__/runtime-v2.service-repair.test.ts",
@@ -43717,6 +44248,11 @@
         "id": "src/team/__tests__/tmux-session.kill-team-session.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/tmux-session.kill-team-session.test.ts"
+      },
+      {
+        "id": "src/team/__tests__/tmux-session.psmux.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/tmux-session.psmux.test.ts"
       },
       {
         "id": "src/team/__tests__/tmux-session.spawn.test.ts",
@@ -43997,6 +44533,11 @@
         "id": "src/team/process-identity-lock.ts",
         "kind": "src",
         "path": "src/team/process-identity-lock.ts"
+      },
+      {
+        "id": "src/team/psmux-adapter.ts",
+        "kind": "src",
+        "path": "src/team/psmux-adapter.ts"
       },
       {
         "id": "src/team/recovery-request-store.ts",
@@ -44567,6 +45108,11 @@
         "id": "src/utils/host-detection.ts",
         "kind": "src",
         "path": "src/utils/host-detection.ts"
+      },
+      {
+        "id": "src/utils/host-signal.ts",
+        "kind": "src",
+        "path": "src/utils/host-signal.ts"
       },
       {
         "id": "src/utils/jsonc.ts",
@@ -45831,6 +46377,36 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/copilot/build-agents.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/build-agents.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/build-agents.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/build-hooks.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/build-hooks.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/build-hooks.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/demo-team.mjs",
         "to": "dist/team/runtime.js",
         "kind": "imports"
@@ -46198,6 +46774,21 @@
       {
         "from": "scripts/lib/context-usage.mjs",
         "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/copilot-hook-adapter.cjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/copilot-hook-adapter.cjs",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/copilot-hook-adapter.cjs",
+        "to": "external:worker_threads",
         "kind": "imports"
       },
       {
@@ -48596,6 +49187,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/config-worker-permissions.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/config-worker-permissions.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/config-worker-permissions.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/config-worker-permissions.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/config-worker-permissions.test.ts",
+        "to": "src/config/loader.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/config-worker-permissions.test.ts",
+        "to": "src/shared/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/__tests__/consensus-execution-handoff.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -48738,6 +49359,101 @@
       {
         "from": "src/__tests__/context-usage.test.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-agents-manifest.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-agents-manifest.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-agents-manifest.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-agents-manifest.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-config-dir-alias.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-config-dir-alias.test.ts",
+        "to": "src/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-hook-adapter.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-hook-adapter.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-hook-adapter.test.ts",
+        "to": "external:node:module",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-hook-adapter.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-hook-adapter.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-hook-adapter.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-hook-adapter.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-hooks-manifest.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-hooks-manifest.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-hooks-manifest.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-hooks-manifest.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-hooks-manifest.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-hooks-manifest.test.ts",
+        "to": "external:vitest",
         "kind": "imports"
       },
       {
@@ -48946,6 +49662,56 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/doctor-legacy-config-dir.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-legacy-config-dir.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-legacy-config-dir.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-legacy-config-dir.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-legacy-config-dir.test.ts",
+        "to": "src/cli/commands/doctor-conflicts.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-node-on-path.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-node-on-path.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-node-on-path.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-node-on-path.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-node-on-path.test.ts",
+        "to": "src/cli/commands/doctor-conflicts.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/encode-project-path-mjs-mirror.test.mjs",
         "to": "external:vitest",
         "kind": "imports"
@@ -49018,6 +49784,11 @@
       {
         "from": "src/__tests__/file-lock.test.ts",
         "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/fixtures/copilot-hook-adapter/worker.mjs",
+        "to": "external:node:worker_threads",
         "kind": "imports"
       },
       {
@@ -56451,6 +57222,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/__tests__/tmux-utils.test.ts",
+        "to": "src/team/psmux-adapter.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/ask.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -56571,6 +57347,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/autoresearch-guided.ts",
+        "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/autoresearch-intake.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -56624,6 +57405,11 @@
         "from": "src/cli/autoresearch-setup-session.ts",
         "to": "src/autoresearch/setup-contract.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/autoresearch-setup-session.ts",
+        "to": "src/utils/host-detection.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/checkpoint.ts",
@@ -56877,6 +57663,11 @@
       },
       {
         "from": "src/cli/commands/doctor-conflicts.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/doctor-conflicts.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -56921,6 +57712,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/doctor-conflicts.ts",
+        "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/doctor-team-routing.ts",
         "to": "src/cli/utils/formatting.ts",
         "kind": "imports"
@@ -56938,6 +57734,11 @@
       {
         "from": "src/cli/commands/doctor-team-routing.ts",
         "to": "src/team/cli-detection.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/doctor-team-routing.ts",
+        "to": "src/utils/host-detection.ts",
         "kind": "imports"
       },
       {
@@ -57007,6 +57808,11 @@
       },
       {
         "from": "src/cli/commands/team.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -57072,12 +57878,27 @@
       },
       {
         "from": "src/cli/commands/team.ts",
+        "to": "src/team/psmux-adapter.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
         "to": "src/team/runtime-v2.ts",
         "kind": "imports"
       },
       {
         "from": "src/cli/commands/team.ts",
         "to": "src/team/runtime.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
+        "to": "src/team/team-name.ts",
         "kind": "imports"
       },
       {
@@ -57094,6 +57915,11 @@
         "from": "src/cli/commands/team.ts",
         "to": "src/team/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
+        "to": "src/utils/host-detection.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/teleport.ts",
@@ -57476,6 +58302,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/interop.ts",
+        "to": "src/team/model-contract.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/interop.ts",
+        "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/launch.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -57537,7 +58373,17 @@
       },
       {
         "from": "src/cli/launch.ts",
+        "to": "src/team/model-contract.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/launch.ts",
         "to": "src/utils/config-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/launch.ts",
+        "to": "src/utils/host-detection.ts",
         "kind": "imports"
       },
       {
@@ -57678,6 +58524,16 @@
       {
         "from": "src/cli/tmux-utils.ts",
         "to": "src/platform/executable-resolution.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/tmux-utils.ts",
+        "to": "src/team/psmux-adapter.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/tmux-utils.ts",
+        "to": "src/utils/host-detection.ts",
         "kind": "imports"
       },
       {
@@ -62794,6 +63650,21 @@
         "from": "src/hooks/empty-message-sanitizer/index.ts",
         "to": "src/hooks/empty-message-sanitizer/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/factcheck/__tests__/config-tokens.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/factcheck/__tests__/config-tokens.test.ts",
+        "to": "src/hooks/factcheck/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/factcheck/__tests__/config-tokens.test.ts",
+        "to": "src/utils/config-dir.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/factcheck/__tests__/factcheck.test.ts",
@@ -76007,6 +76878,11 @@
       },
       {
         "from": "src/team/__tests__/model-contract.test.ts",
+        "to": "scripts/copilot/build-agents.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/model-contract.test.ts",
         "to": "src/lib/security-config.ts",
         "kind": "imports"
       },
@@ -76179,6 +77055,31 @@
         "from": "src/team/__tests__/prompt-sanitization.test.ts",
         "to": "src/team/mcp-team-bridge.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/psmux-adapter.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/psmux-adapter.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/psmux-adapter.test.ts",
+        "to": "src/team/psmux-adapter.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/psmux-adapter.test.ts",
+        "to": "src/team/psmux-adapter.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/psmux-adapter.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/__tests__/rebase-smoke.test.ts",
@@ -77056,6 +77957,26 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/__tests__/runtime-v2.permission-lines.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.permission-lines.test.ts",
+        "to": "src/team/model-contract.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.permission-lines.test.ts",
+        "to": "src/team/runtime-v2.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.permission-lines.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/team/__tests__/runtime-v2.service-repair.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -77772,6 +78693,11 @@
       },
       {
         "from": "src/team/__tests__/team-config-revision-lock.test.ts",
+        "to": "src/team/stage-router.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-config-revision-lock.test.ts",
         "to": "src/team/state-paths.ts",
         "kind": "imports"
       },
@@ -78234,6 +79160,31 @@
         "from": "src/team/__tests__/tmux-session.kill-team-session.test.ts",
         "to": "src/team/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.psmux.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.psmux.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.psmux.test.ts",
+        "to": "src/team/mailbox-notification-guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.psmux.test.ts",
+        "to": "src/team/psmux-adapter.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.psmux.test.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/__tests__/tmux-session.spawn.test.ts",
@@ -80076,6 +81027,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/team/model-contract.ts",
+        "to": "src/utils/host-signal.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/monitor.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -80219,6 +81175,41 @@
         "from": "src/team/process-identity-lock.ts",
         "to": "src/team/team-owner-epoch.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/team/psmux-adapter.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/psmux-adapter.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/psmux-adapter.ts",
+        "to": "external:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/psmux-adapter.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/psmux-adapter.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/psmux-adapter.ts",
+        "to": "src/platform/executable-resolution.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/psmux-adapter.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/recovery-request-store.ts",
@@ -80787,6 +81778,11 @@
       },
       {
         "from": "src/team/runtime-v2.ts",
+        "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime-v2.ts",
         "to": "src/utils/omc-cli-rendering.ts",
         "kind": "imports"
       },
@@ -80863,6 +81859,11 @@
       {
         "from": "src/team/scaling.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/scaling.ts",
+        "to": "src/config/loader.ts",
         "kind": "imports"
       },
       {
@@ -80981,6 +81982,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/scaling.ts",
+        "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/sentinel-gate.ts",
         "to": "src/hooks/factcheck/config.ts",
         "kind": "imports"
@@ -81019,6 +82025,11 @@
         "from": "src/team/stage-router.ts",
         "to": "src/shared/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/stage-router.ts",
+        "to": "src/utils/host-detection.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/state-paths.ts",
@@ -81578,6 +82589,11 @@
       {
         "from": "src/team/tmux-session.ts",
         "to": "src/team/pane-readiness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/tmux-session.ts",
+        "to": "src/team/psmux-adapter.ts",
         "kind": "imports"
       },
       {
@@ -83781,6 +84797,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/utils/host-detection.ts",
+        "to": "src/utils/host-signal.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/utils/host-detection.ts",
+        "to": "src/utils/host-signal.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/utils/omc-cli-rendering.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -85292,12 +86318,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7604,
-      "edgeCount": 8053,
-      "importEdgeCount": 6629,
+      "nodeCount": 7701,
+      "edgeCount": 8149,
+      "importEdgeCount": 6717,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "9b8bec2d21f961d6b9db3055f40bedf252b93a1c646cf651112af4de066aeaa6",
-  "manifestSha256": "7b6df64db74abcc34b5baab843d6fb7d99db14da130367a7e50646dfe3ebe2e3"
+  "inventorySha256": "aeb238d977aa988886fc4299860e931940bf300e360a0cb3145ee91f085ff565",
+  "manifestSha256": "1188e48277925cef0aa59f769b17aec4125c10d4a5695b8c62d86b2b6fff5bc0"
 }

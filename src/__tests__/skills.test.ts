@@ -8,7 +8,7 @@ describe('Builtin Skills', () => {
   const originalPluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
   const originalPath = process.env.PATH;
   const originalUserType = process.env.USER_TYPE;
-  const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+  const originalClaudeConfigDir = process.env.COPILOT_HOME;
   const originalCwd = process.cwd();
   let tempDirs: string[] = [];
 
@@ -30,9 +30,9 @@ describe('Builtin Skills', () => {
       process.env.USER_TYPE = originalUserType;
     }
     if (originalClaudeConfigDir === undefined) {
-      delete process.env.COPILOT_CONFIG_DIR;
+      delete process.env.COPILOT_HOME;
     } else {
-      process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+      process.env.COPILOT_HOME = originalClaudeConfigDir;
     }
     process.chdir(originalCwd);
     tempDirs = [];
@@ -56,9 +56,9 @@ describe('Builtin Skills', () => {
       process.env.USER_TYPE = originalUserType;
     }
     if (originalClaudeConfigDir === undefined) {
-      delete process.env.COPILOT_CONFIG_DIR;
+      delete process.env.COPILOT_HOME;
     } else {
-      process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+      process.env.COPILOT_HOME = originalClaudeConfigDir;
     }
     process.chdir(originalCwd);
     for (const dir of tempDirs) {
@@ -354,7 +354,7 @@ describe('Builtin Skills', () => {
       const projectDir = mkdtempSync(join(tmpdir(), 'omc-skill-project-'));
       tempDirs.push(profileDir, projectDir);
 
-      process.env.COPILOT_CONFIG_DIR = profileDir;
+      process.env.COPILOT_HOME = profileDir;
       writeFileSync(
         join(profileDir, 'settings.json'),
         JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.15 } } }),
@@ -418,7 +418,7 @@ describe('Builtin Skills', () => {
       const profileDir = mkdtempSync(join(tmpdir(), 'omc-skill-2545-'));
       tempDirs.push(profileDir);
 
-      process.env.COPILOT_CONFIG_DIR = profileDir;
+      process.env.COPILOT_HOME = profileDir;
       writeFileSync(
         join(profileDir, 'settings.json'),
         JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.15 } } }),
@@ -431,9 +431,9 @@ describe('Builtin Skills', () => {
       const t = skill!.template;
 
       // Previously-fixed references (regression guard)
-      expect(t).toContain('Deep Interview threshold: 15% (source: [$COPILOT_CONFIG_DIR|~/.claude]/settings.json)');
+      expect(t).toContain('Deep Interview threshold: 15% (source: [$COPILOT_HOME|~/.claude]/settings.json)');
       expect(t).toContain('"threshold": 0.15,');
-      expect(t).toContain('"threshold_source": "[$COPILOT_CONFIG_DIR|~/.claude]/settings.json",');
+      expect(t).toContain('"threshold_source": "[$COPILOT_HOME|~/.claude]/settings.json",');
       expect(t).toContain('drops below 15%.');
 
       expect(t).toContain('resolved threshold for this run'); // Purpose/Execution_Policy
@@ -460,7 +460,7 @@ describe('Builtin Skills', () => {
       expect(raw).toContain('Phase 0 below remains blocking');
       expect(raw).toContain('must resolve `omc.deepInterview.ambiguityThreshold` from settings');
       expect(raw).toContain('Phase 0: Resolve Ambiguity Threshold (blocking prerequisite)');
-      expect(raw).toContain('User settings: `[$COPILOT_CONFIG_DIR|~/.claude]/settings.json`');
+      expect(raw).toContain('User settings: `[$COPILOT_HOME|~/.claude]/settings.json`');
       expect(raw).toContain('Project settings: `./.claude/settings.json`');
       expect(raw).toContain('"threshold": <resolvedThreshold>,');
       expect(raw).toContain('"threshold_source": "<resolvedThresholdSource>",');
@@ -515,7 +515,7 @@ describe('Builtin Skills', () => {
       const profileDir = mkdtempSync(join(tmpdir(), 'omc-skill-3030-'));
       tempDirs.push(profileDir);
 
-      process.env.COPILOT_CONFIG_DIR = profileDir;
+      process.env.COPILOT_HOME = profileDir;
       writeFileSync(
         join(profileDir, 'settings.json'),
         JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.17 } } }),

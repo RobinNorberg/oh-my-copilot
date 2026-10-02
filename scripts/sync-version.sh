@@ -2,6 +2,7 @@
 # sync-version.sh — called by npm "version" lifecycle hook
 # Syncs the version from package.json to all satellite files:
 #   - .claude-plugin/plugin.json
+#   - plugin.json (root Copilot CLI manifest)
 #   - .claude-plugin/marketplace.json
 #   - docs/CLAUDE.md (OMC:VERSION marker)
 #
@@ -22,6 +23,13 @@ if [ -f "$PLUGIN" ]; then
   echo "  ✓ plugin.json → $VERSION"
 fi
 
+# 1b. root plugin.json (Copilot CLI manifest; found before .claude-plugin/)
+ROOT_PLUGIN="$ROOT/plugin.json"
+if [ -f "$ROOT_PLUGIN" ]; then
+  perl -i -pe "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" "$ROOT_PLUGIN"
+  echo "  ✓ root plugin.json → $VERSION"
+fi
+
 # 2. .claude-plugin/marketplace.json (has 2 version fields)
 MARKET="$ROOT/.claude-plugin/marketplace.json"
 if [ -f "$MARKET" ]; then
@@ -37,6 +45,6 @@ if [ -f "$CLAUDE_MD" ]; then
 fi
 
 # Stage the changed files so they're included in the version commit
-git add "$PLUGIN" "$MARKET" "$CLAUDE_MD" 2>/dev/null || true
+git add "$PLUGIN" "$ROOT_PLUGIN" "$MARKET" "$CLAUDE_MD" 2>/dev/null || true
 
 echo "✅ Version sync complete: $VERSION"

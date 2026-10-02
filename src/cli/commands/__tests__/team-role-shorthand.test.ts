@@ -65,9 +65,12 @@ describe('teamCommand role-only shorthand', () => {
     agentUtilsMocks.loadAgentPrompt.mockImplementation((role: string) => `prompt:${role}`);
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // Role-only shorthand uses the host CLI; these cases pin the Claude host.
+    vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', 'cli');
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     process.chdir(originalCwd);
     logSpy.mockRestore();
     errorSpy.mockRestore();

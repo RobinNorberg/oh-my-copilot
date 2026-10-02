@@ -40,7 +40,7 @@ describe('syncInstalledPluginPayload', () => {
 
   beforeEach(() => {
     tempRoot = mkdtempSync(join(tmpdir(), 'omc-plugin-cache-sync-'));
-    process.env.COPILOT_CONFIG_DIR = join(tempRoot, '.claude');
+    process.env.COPILOT_HOME = join(tempRoot, '.claude');
     delete process.env.CLAUDE_PLUGIN_ROOT;
     delete process.env.OMC_PLUGIN_ROOT;
   });
@@ -55,7 +55,7 @@ describe('syncInstalledPluginPayload', () => {
   });
 
   it('repairs incomplete cache installs from the known marketplace source instead of reusing the installed root', async () => {
-    const configDir = process.env.COPILOT_CONFIG_DIR as string;
+    const configDir = process.env.COPILOT_HOME as string;
     const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.12.0');
     const sourceRoot = join(tempRoot, 'marketplace-source');
 
@@ -98,7 +98,7 @@ describe('syncInstalledPluginPayload', () => {
   });
 
   it('excludes marketplace sources that canonicalize to an installed cache target', async () => {
-    const configDir = process.env.COPILOT_CONFIG_DIR as string;
+    const configDir = process.env.COPILOT_HOME as string;
     const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.12.0');
     const samePhysicalSourceRoot = `${cacheRoot}/../${basename(cacheRoot)}`;
     const sourceRoot = join(tempRoot, 'alternate-marketplace-source');
@@ -145,7 +145,7 @@ describe('syncInstalledPluginPayload', () => {
   });
 
   it('repairs incomplete cache installs during setup before plugin-provided file detection runs', async () => {
-    const configDir = process.env.COPILOT_CONFIG_DIR as string;
+    const configDir = process.env.COPILOT_HOME as string;
     const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.12.0');
     const sourceRoot = join(tempRoot, 'marketplace-source-install');
 
@@ -196,7 +196,7 @@ describe('syncInstalledPluginPayload', () => {
   });
 
   it('does not accept a cache root as plugin-provided when required commands are missing', async () => {
-    const configDir = process.env.COPILOT_CONFIG_DIR as string;
+    const configDir = process.env.COPILOT_HOME as string;
     const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
 
     writePayloadTree(cacheRoot, '4.14.4');
@@ -222,7 +222,7 @@ describe('syncInstalledPluginPayload', () => {
   });
 
   it('rejects malformed plugin manifests instead of treating sentinel files as complete', async () => {
-    const configDir = process.env.COPILOT_CONFIG_DIR as string;
+    const configDir = process.env.COPILOT_HOME as string;
     const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
 
     writePayloadTree(cacheRoot, '4.14.4');
@@ -249,7 +249,7 @@ describe('syncInstalledPluginPayload', () => {
   });
 
   it('rejects partial command and manifest-declared skill surfaces', async () => {
-    const configDir = process.env.COPILOT_CONFIG_DIR as string;
+    const configDir = process.env.COPILOT_HOME as string;
     const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
 
     writePayloadTree(cacheRoot, '4.14.4');
@@ -280,7 +280,7 @@ describe('syncInstalledPluginPayload', () => {
   });
 
   it('rejects schema-malformed plugin manifests even when payload files exist', async () => {
-    const configDir = process.env.COPILOT_CONFIG_DIR as string;
+    const configDir = process.env.COPILOT_HOME as string;
     const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
 
     writePayloadTree(cacheRoot, '4.14.4');
@@ -301,7 +301,7 @@ describe('syncInstalledPluginPayload', () => {
   });
 
   it('rejects manifest-declared skill paths that escape the plugin root', async () => {
-    const configDir = process.env.COPILOT_CONFIG_DIR as string;
+    const configDir = process.env.COPILOT_HOME as string;
     const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
 
     writePayloadTree(cacheRoot, '4.14.4');
@@ -319,7 +319,7 @@ describe('syncInstalledPluginPayload', () => {
   });
 
   it('rejects required plugin file paths that exist only as directories', async () => {
-    const configDir = process.env.COPILOT_CONFIG_DIR as string;
+    const configDir = process.env.COPILOT_HOME as string;
     const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
 
     writePayloadTree(cacheRoot, '4.14.4');
@@ -345,7 +345,7 @@ describe('syncInstalledPluginPayload', () => {
   });
 
   it('repairs cache roots missing commands, runtime dist hook, and bridge coordinator from a complete source', async () => {
-    const configDir = process.env.COPILOT_CONFIG_DIR as string;
+    const configDir = process.env.COPILOT_HOME as string;
     const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
     const sourceRoot = join(tempRoot, 'complete-marketplace-source');
 
@@ -387,7 +387,7 @@ describe('syncInstalledPluginPayload', () => {
   });
 
   it('rejects package sources missing runtime-critical dist hook or bridge payload files', async () => {
-    const configDir = process.env.COPILOT_CONFIG_DIR as string;
+    const configDir = process.env.COPILOT_HOME as string;
     const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
     const incompleteSourceRoot = join(tempRoot, 'incomplete-marketplace-source');
 
@@ -429,7 +429,7 @@ describe('syncInstalledPluginPayload', () => {
   });
 
   it('rejects cache install roots that escape the cache directory via .. segments', async () => {
-    const configDir = process.env.COPILOT_CONFIG_DIR as string;
+    const configDir = process.env.COPILOT_HOME as string;
     const cacheBase = join(configDir, 'plugins', 'cache');
     const escapedInstallPath = `${cacheBase}/../../../escaped-target`;
     const escapedResolvedRoot = join(tempRoot, 'escaped-target');

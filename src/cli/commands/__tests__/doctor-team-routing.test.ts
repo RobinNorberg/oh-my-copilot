@@ -48,11 +48,26 @@ describe('doctorTeamRoutingCommand', () => {
     mocks.probeCli.mockReturnValue({ found: false, error: 'CLI resolver failed' });
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    // The always-present provider is the host CLI; pin the Claude host so the
+    // ordered-probe expectations below do not depend on the developer's shell.
+    vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', 'cli');
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     logSpy.mockRestore();
     errorSpy.mockRestore();
+  });
+
+  it('reports the Copilot host as the always-present provider when not running under Claude Code', async () => {
+    vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', '');
+    mocks.loadConfig.mockReturnValue(configWithProviders(['codex']));
+    mocks.probeCli.mockReturnValue({ found: true, path: 'x', version: '1' });
+
+    await doctorTeamRoutingCommand({ json: true });
+
+    const json = JSON.parse(String(logSpy.mock.calls[0]?.[0] ?? '{}')) as { probes: Array<{ provider: string }> };
+    expect(json.probes.map((probe) => probe.provider)).toEqual(['copilot', 'codex']);
   });
 
   it('emits ordered JSON probes with resolved fields and only missing providers', async () => {

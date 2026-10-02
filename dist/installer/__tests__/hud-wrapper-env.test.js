@@ -20,7 +20,7 @@ import { OMC_PLUGIN_ROOT_ENV } from '../../lib/env-vars.js';
 const CACHE_STUB_MARKER = 'FROM_CACHE_TEST_STUB';
 const CACHE_STUB_VERSION = '0.0.0-test-stub';
 /**
- * Build an isolated COPILOT_CONFIG_DIR with a stub HUD at
+ * Build an isolated COPILOT_HOME with a stub HUD at
  * `<configDir>/plugins/cache/omc/oh-my-copilot/0.0.0-test-stub/dist/hud/index.js`.
  * Used to pin the cache-fallback step (step 2 in the wrapper) so tests can
  * assert the wrapper actually executed that branch instead of accidentally
@@ -100,11 +100,11 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
     });
     it('case 1: OMC_PLUGIN_ROOT set + dist/hud/index.js exists → loads from there', () => {
         const s = staged;
-        // Point COPILOT_CONFIG_DIR at a non-existent dir so cache/marketplace branches
+        // Point COPILOT_HOME at a non-existent dir so cache/marketplace branches
         // cannot accidentally fire.
         const isolatedConfig = join(s.dir, 'isolated-config');
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            COPILOT_CONFIG_DIR: isolatedConfig,
+            COPILOT_HOME: isolatedConfig,
             [OMC_PLUGIN_ROOT_ENV]: s.fakePluginRoot,
         }));
         expect(result.status).toBe(0);
@@ -119,7 +119,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
         const emptyRoot = join(s.dir, 'empty-root');
         mkdirSync(emptyRoot, { recursive: true });
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            COPILOT_CONFIG_DIR: isolatedConfig,
+            COPILOT_HOME: isolatedConfig,
             [OMC_PLUGIN_ROOT_ENV]: emptyRoot,
         }));
         expect(result.status).toBe(0);
@@ -132,7 +132,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
         const s = staged;
         const isolatedConfig = makeStubConfigDir(s.dir);
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            COPILOT_CONFIG_DIR: isolatedConfig,
+            COPILOT_HOME: isolatedConfig,
             // OMC_PLUGIN_ROOT intentionally omitted
         }));
         expect(result.status).toBe(0);
@@ -146,7 +146,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
         const isolatedConfig = makeStubConfigDir(s.dir);
         const ghostRoot = join(s.dir, 'does-not-exist-anywhere');
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            COPILOT_CONFIG_DIR: isolatedConfig,
+            COPILOT_HOME: isolatedConfig,
             [OMC_PLUGIN_ROOT_ENV]: ghostRoot,
         }));
         expect(result.status).toBe(0);
@@ -168,7 +168,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
         writeFileSync(join(stableDir, 'index.js'), 'process.stdout.write("FROM_STABLE_1_0_0\\n");\n', 'utf8');
         writeFileSync(join(preDir, 'index.js'), 'process.stdout.write("FROM_PRERELEASE_1_0_0_ALPHA\\n");\n', 'utf8');
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            COPILOT_CONFIG_DIR: configDir,
+            COPILOT_HOME: configDir,
             // OMC_PLUGIN_ROOT intentionally omitted → cache step fires
         }));
         expect(result.status).toBe(0);
@@ -188,7 +188,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
         writeFileSync(join(rc10Dir, 'index.js'), 'process.stdout.write("FROM_RC_10\\n");\n', 'utf8');
         writeFileSync(join(rc2Dir, 'index.js'), 'process.stdout.write("FROM_RC_2\\n");\n', 'utf8');
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            COPILOT_CONFIG_DIR: configDir,
+            COPILOT_HOME: configDir,
         }));
         expect(result.status).toBe(0);
         expect(result.stdout).toContain('FROM_RC_10');
@@ -205,7 +205,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
         writeFileSync(join(latestBrokenDir, 'index.js'), 'throw new Error("BROKEN_4_11_3");\n', 'utf8');
         writeFileSync(join(olderWorkingDir, 'index.js'), 'process.stdout.write("FROM_OLDER_WORKING_VERSION\\n");\n', 'utf8');
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            COPILOT_CONFIG_DIR: configDir,
+            COPILOT_HOME: configDir,
             // OMC_PLUGIN_ROOT intentionally omitted → cache step fires
         }));
         expect(result.status).toBe(0);

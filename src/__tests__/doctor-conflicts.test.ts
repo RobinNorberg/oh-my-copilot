@@ -83,7 +83,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
     }
     resetTestDirs();
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
-    process.env.COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
+    process.env.COPILOT_HOME = TEST_CLAUDE_DIR;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(TEST_CLAUDE_DIR, '..', '.claude.json');
     process.env.OMC_HOME = join(TEST_PROJECT_DIR, '.omc-home');
     process.env.CODEX_HOME = join(TEST_PROJECT_DIR, '.codex');
@@ -92,7 +92,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
 
   afterEach(() => {
     cwdSpy?.mockRestore();
-    delete process.env.COPILOT_CONFIG_DIR;
+    delete process.env.COPILOT_HOME;
     delete process.env.CLAUDE_MCP_CONFIG_PATH;
     delete process.env.OMC_HOME;
     delete process.env.CODEX_HOME;
@@ -515,7 +515,7 @@ describe('doctor-conflicts: CLAUDE.md companion file detection (issue #1101)', (
     }
     resetTestDirs();
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
-    process.env.COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
+    process.env.COPILOT_HOME = TEST_CLAUDE_DIR;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(TEST_CLAUDE_DIR, '..', '.claude.json');
     process.env.OMC_MCP_REGISTRY_PATH = join(TEST_PROJECT_DIR, '.omc-home', 'mcp-registry.json');
     process.env.CODEX_HOME = join(TEST_PROJECT_DIR, '.codex');
@@ -524,7 +524,7 @@ describe('doctor-conflicts: CLAUDE.md companion file detection (issue #1101)', (
 
   afterEach(() => {
     cwdSpy?.mockRestore();
-    delete process.env.COPILOT_CONFIG_DIR;
+    delete process.env.COPILOT_HOME;
     delete process.env.CLAUDE_MCP_CONFIG_PATH;
     delete process.env.OMC_MCP_REGISTRY_PATH;
     delete process.env.CODEX_HOME;
@@ -954,7 +954,7 @@ describe('doctor-conflicts: config known fields (issue #1499)', () => {
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
     mkdirSync(join(TEST_PROJECT_DIR, '.omg'), { recursive: true });
     mkdirSync(join(TEST_PROJECT_DIR, '.codex'), { recursive: true });
-    process.env.COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
+    process.env.COPILOT_HOME = TEST_CLAUDE_DIR;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(TEST_CLAUDE_DIR, '..', '.claude.json');
     process.env.OMC_HOME = join(TEST_PROJECT_DIR, '.omg');
     process.env.CODEX_HOME = join(TEST_PROJECT_DIR, '.codex');
@@ -963,7 +963,7 @@ describe('doctor-conflicts: config known fields (issue #1499)', () => {
 
   afterEach(() => {
     cwdSpy?.mockRestore();
-    delete process.env.COPILOT_CONFIG_DIR;
+    delete process.env.COPILOT_HOME;
     delete process.env.CLAUDE_MCP_CONFIG_PATH;
     delete process.env.OMC_HOME;
     delete process.env.CODEX_HOME;
@@ -1043,7 +1043,7 @@ describe('doctor-conflicts: workspace marker check (Wave F.2)', () => {
     }
     resetTestDirs();
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
-    process.env.COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
+    process.env.COPILOT_HOME = TEST_CLAUDE_DIR;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(TEST_CLAUDE_DIR, '..', '.claude.json');
     cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(TEST_PROJECT_DIR);
     savedOmcStateDir = process.env.OMC_STATE_DIR;
@@ -1053,7 +1053,7 @@ describe('doctor-conflicts: workspace marker check (Wave F.2)', () => {
 
   afterEach(() => {
     cwdSpy?.mockRestore();
-    delete process.env.COPILOT_CONFIG_DIR;
+    delete process.env.COPILOT_HOME;
     delete process.env.CLAUDE_MCP_CONFIG_PATH;
     if (savedOmcStateDir === undefined) {
       delete process.env.OMC_STATE_DIR;

@@ -596,6 +596,25 @@ describe('team cli', () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
+  it('teamCommand start accepts copilot workers', async () => {
+    const write = vi.fn();
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const cwd = makeProject('omc-team-cli-copilot-');
+    mocks.spawn.mockReturnValue({ pid: 9292, stdin: { write, end: vi.fn() }, unref: vi.fn() });
+
+    const { teamCommand } = await import('../team.js');
+    await teamCommand([
+      'start', '--agent', 'copilot', '--count', '2',
+      '--task', 'apply the implementation', '--name', 'copilot-team', '--cwd', cwd, '--json',
+    ]);
+
+    const stdinPayload = JSON.parse(write.mock.calls[0][0] as string) as { agentTypes: string[] };
+    expect(stdinPayload.agentTypes).toEqual(['copilot', 'copilot']);
+
+    rmSync(cwd, { recursive: true, force: true });
+    logSpy.mockRestore();
+  });
+
   it('startTeamJob rejects runtime v1 before creating job, state, or child effects', async () => {
     const cwd = makeProject('omc-team-cli-runtime-v1-rejected-');
     mocks.isRuntimeV2Enabled.mockReturnValue(false);

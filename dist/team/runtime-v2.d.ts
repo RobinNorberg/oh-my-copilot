@@ -15,7 +15,7 @@
  * Architecture mirrors runtime.ts: startTeam, monitorTeam, shutdownTeam,
  * assignTask, resumeTeam as discrete operations driven by the caller.
  */
-import type { TeamConfig, TeamManifestV2, TeamInstanceId, TeamTask, TeamTaskDelegationPlan, WorkerInfo, WorkerStatus, WorkerHeartbeat } from './types.js';
+import type { TeamConfig, TeamManifestV2, TeamInstanceId, TeamTask, TeamTaskDelegationPlan, WorkerInfo, WorkerLaunchDescriptor, WorkerStatus, WorkerHeartbeat } from './types.js';
 import type { TeamPhase } from './phase-controller.js';
 import type { CliAgentType } from './model-contract.js';
 import { type StartupPaneActivity, type StartupInboxResubmitOutcome, type WorkerPaneLiveness } from './tmux-session.js';
@@ -255,6 +255,15 @@ interface BootstrapRecoveryEvidenceWaitOptions {
 export declare function prepareRecoveryOwnerBootstrap(input: RecoverDeadWorkerOwnerInput, waitOptions?: BootstrapRecoveryEvidenceWaitOptions): Promise<void>;
 /** Private runtime-owner executor. It never calls the public recovery facade. */
 export declare function executeRecoverDeadWorkerV2Owner(input: RecoverDeadWorkerOwnerInput): Promise<RecoverDeadWorkerV2Result>;
+/**
+ * One stderr line per worker provider describing the permission grant, built
+ * from the launch descriptors so it cannot drift from what actually launches.
+ * @internal Exported for testing
+ */
+export declare function formatWorkerPermissionLines(launches: Iterable<{
+    agentType: CliAgentType;
+    descriptor: WorkerLaunchDescriptor;
+}>): string[];
 /**
  * Start a team with the v2 event-driven runtime.
  * Creates state directories, writes config + task files, spawns workers via

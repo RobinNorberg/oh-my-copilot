@@ -14,7 +14,7 @@ vi.mock('../lib/worktree-paths.js', async (importOriginal) => {
 });
 import { writeEntry, readEntry, listEntries, deleteEntry, cleanupExpired, listNamespaces, isSharedMemoryEnabled, } from '../lib/shared-memory.js';
 describe('Shared Memory', () => {
-    const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+    const originalConfigDir = process.env.COPILOT_HOME;
     let testDir;
     let omcDir;
     let tildeConfigDir;
@@ -24,14 +24,14 @@ describe('Shared Memory', () => {
         tildeConfigDir = join(homedir(), `.omc-test-shared-memory-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         mkdirSync(omcDir, { recursive: true });
         mockGetOmcRoot.mockReturnValue(omcDir);
-        delete process.env.COPILOT_CONFIG_DIR;
+        delete process.env.COPILOT_HOME;
     });
     afterEach(() => {
         if (originalConfigDir === undefined) {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
         else {
-            process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+            process.env.COPILOT_HOME = originalConfigDir;
         }
         if (existsSync(testDir)) {
             rmSync(testDir, { recursive: true, force: true });
@@ -310,7 +310,7 @@ describe('Shared Memory', () => {
         it('should return true by default (no config file)', () => {
             expect(isSharedMemoryEnabled()).toBe(true);
         });
-        it('should read config from the active COPILOT_CONFIG_DIR', () => {
+        it('should read config from the active COPILOT_HOME', () => {
             const claudeConfigDir = join(testDir, 'claude-config');
             mkdirSync(claudeConfigDir, { recursive: true });
             writeFileSync(join(claudeConfigDir, '.omc-config.json'), JSON.stringify({
@@ -320,10 +320,10 @@ describe('Shared Memory', () => {
                     },
                 },
             }));
-            process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
+            process.env.COPILOT_HOME = claudeConfigDir;
             expect(isSharedMemoryEnabled()).toBe(false);
         });
-        it('should expand ~-prefixed COPILOT_CONFIG_DIR values', () => {
+        it('should expand ~-prefixed COPILOT_HOME values', () => {
             mkdirSync(tildeConfigDir, { recursive: true });
             writeFileSync(join(tildeConfigDir, '.omc-config.json'), JSON.stringify({
                 agents: {
@@ -332,7 +332,7 @@ describe('Shared Memory', () => {
                     },
                 },
             }));
-            process.env.COPILOT_CONFIG_DIR = `~/${basename(tildeConfigDir)}`;
+            process.env.COPILOT_HOME = `~/${basename(tildeConfigDir)}`;
             expect(isSharedMemoryEnabled()).toBe(false);
         });
     });

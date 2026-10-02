@@ -274,6 +274,7 @@ import {
   spawnOwnedWorkerInPane,
   retryStartupInboxSubmit,
   waitForStartupPaneReady,
+  paneHasTrustPrompt,
   type StartupPaneContext,
   type WorkerPaneOwnership,
 } from '../tmux-session.js';
@@ -695,6 +696,42 @@ describe('worker pane startup safety', () => {
       expect(inboxIndex).toBeGreaterThan(confirmYesIndex);
     },
   );
+
+  // Captured live from Copilot CLI 1.0.88 in an untrusted cwd launched with
+  // --allow-all-tools --allow-all-paths --allow-all-urls (tail of the dialog).
+  const copilotFolderTrustDialog = [
+    '│ Do you trust the files in this folder?                    │',
+    '│                                                            │',
+    '│ ❯ 1. Yes                                                   │',
+    '│   2. Yes, and remember this folder for future sessions     │',
+    '│   3. No (Esc)                                              │',
+    '│                                                            │',
+    '│ ↑/↓ to navigate · enter to select · esc to cancel          │',
+    '╰────────────────────────────────────────────────────────────╯',
+  ].join('\n');
+
+  strictTmuxIt('selects the session-only Yes in Copilot’s folder trust dialog without an extra Enter', async () => {
+    const context = await acceptedContext('copilot');
+    tmuxState.captures = [copilotFolderTrustDialog, '❯ ready\n'];
+
+    await expect(deliverStartupInbox(context, 'Read inbox.md, execute now.')).resolves.toEqual({
+      ok: true,
+      kind: 'attempted_unconfirmed',
+    });
+    const literalInputs = tmuxState.args
+      .filter(args => args[0] === 'send-keys' && args.includes('-l'))
+      .map(args => args.at(-1));
+    expect(literalInputs).toEqual(['1', 'Read inbox.md, execute now.']);
+    const selectIndex = tmuxState.args.findIndex(args => args.at(-1) === '1');
+    const inboxIndex = tmuxState.args.findIndex(args => args.at(-1) === 'Read inbox.md, execute now.');
+    expect(tmuxState.args.slice(selectIndex + 1, inboxIndex).some(args => args.at(-1) === 'Enter')).toBe(false);
+  });
+
+  it('recognises Copilot’s folder trust dialog only for copilot panes', () => {
+    expect(paneHasTrustPrompt(copilotFolderTrustDialog, 'copilot')).toBe(true);
+    expect(paneHasTrustPrompt(copilotFolderTrustDialog, 'claude')).toBe(false);
+    expect(paneHasTrustPrompt(copilotFolderTrustDialog, 'codex')).toBe(false);
+  });
 
   strictTmuxIt('handles the exact Codex directory and hooks selectors in order before delivery', async () => {
     const context = await acceptedContext('codex');

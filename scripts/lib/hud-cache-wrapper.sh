@@ -13,7 +13,36 @@ case "$0" in
   *) SCRIPT_DIR=. ;;
 esac
 SCRIPT_DIR=$(cd "$SCRIPT_DIR" 2>/dev/null && pwd -P) || SCRIPT_DIR=.
-CONFIG_DIR=${COPILOT_CONFIG_DIR:-$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd -P)}
+# Shared COPILOT_HOME resolver (trim + `~` expansion): installed copies ship it
+# as hud/lib/config-dir.sh, the repo copy sits next to this file.
+if [ -f "$SCRIPT_DIR/lib/config-dir.sh" ]; then
+  . "$SCRIPT_DIR/lib/config-dir.sh"
+elif [ -f "$SCRIPT_DIR/config-dir.sh" ]; then
+  . "$SCRIPT_DIR/config-dir.sh"
+fi
+if ! command -v resolve_claude_config_dir >/dev/null 2>&1; then
+  resolve_claude_config_dir() {
+    configured="${COPILOT_HOME:-$HOME/.copilot}"
+    configured="${configured#${configured%%[![:space:]]*}}"
+    configured="${configured%${configured##*[![:space:]]}}"
+    [ -n "$configured" ] || configured="$HOME/.copilot"
+    [ "$configured" = "/" ] || configured="${configured%/}"
+    case "$configured" in
+      \~) printf '%s\n' "$HOME" ;;
+      \~/*) printf '%s/%s\n' "$HOME" "${configured#\~/}" ;;
+      *) printf '%s\n' "$configured" ;;
+    esac
+  }
+fi
+case "${COPILOT_HOME:-}" in
+  *[![:space:]]*) COPILOT_HOME_SET=1 ;;
+  *) COPILOT_HOME_SET= ;;
+esac
+if [ -n "$COPILOT_HOME_SET" ]; then
+  CONFIG_DIR=$(resolve_claude_config_dir)
+else
+  CONFIG_DIR=$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd -P)
+fi
 CACHE_DIR=${OMC_HUD_CACHE_DIR:-"$CONFIG_DIR/hud/cache"}
 HUD_SCRIPT=${1:-"$SCRIPT_DIR/omg-hud.mjs"}
 INPUT_TMP="$CACHE_DIR/stdin.$$.tmp"

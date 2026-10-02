@@ -36,7 +36,7 @@ vi.mock('fs', async () => {
 import { execSync, execFileSync } from 'child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
-import { install, isProjectScopedPlugin, checkNodeVersion, COPILOT_CONFIG_DIR } from '../installer/index.js';
+import { install, isProjectScopedPlugin, checkNodeVersion, COPILOT_HOME } from '../installer/index.js';
 import {
   reconcileUpdateRuntime,
   performUpdate,
@@ -329,7 +329,7 @@ describe('auto-update reconciliation', () => {
 
   it('syncs active plugin cache roots and logs when copy occurs', () => {
     const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const activeRoot = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.1.5');
+    const activeRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.1.5');
 
     mockedReadFileSync.mockImplementation((path: Parameters<typeof readFileSync>[0]) => {
       const normalized = String(path).replace(/\\/g, '/');
@@ -394,7 +394,7 @@ describe('auto-update reconciliation', () => {
 
 
   it('fails reconciliation when active plugin cache repair reports validation errors', () => {
-    const activeRoot = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.1');
+    const activeRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.1');
 
     mockedReadFileSync.mockImplementation((path: Parameters<typeof readFileSync>[0]) => {
       const normalized = String(path).replace(/\\/g, '/');
@@ -459,10 +459,10 @@ describe('auto-update reconciliation', () => {
 
 
   it('updates installed_plugins.json to the new cache version after plugin cache sync succeeds', () => {
-    const cacheRoot = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot');
+    const cacheRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const oldRoot = join(cacheRoot, '4.14.0');
     const newRoot = join(cacheRoot, '4.14.1');
-    const installedPluginsPath = join(COPILOT_CONFIG_DIR, 'plugins', 'installed_plugins.json');
+    const installedPluginsPath = join(COPILOT_HOME, 'plugins', 'installed_plugins.json');
 
     mockedExecSync.mockImplementation((command: string) => {
       if (command === 'npm root -g') {
@@ -509,7 +509,7 @@ describe('auto-update reconciliation', () => {
   });
 
   it('preserves Windows-style installPath separators when rewriting installed_plugins.json', () => {
-    const cacheRoot = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot');
+    const cacheRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const oldWindowsRoot = 'C:\\Users\\bellman\\.claude\\plugins\\cache\\omc\\oh-my-copilot\\4.14.0';
     const newWindowsRoot = 'C:\\Users\\bellman\\.claude\\plugins\\cache\\omc\\oh-my-copilot\\4.14.1';
 
@@ -556,7 +556,7 @@ describe('auto-update reconciliation', () => {
   });
 
   it('does not rewrite installed_plugins.json when plugin cache sync reports copy errors', () => {
-    const cacheRoot = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot');
+    const cacheRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot');
 
     mockedExecSync.mockImplementation((command: string) => {
       if (command === 'npm root -g') {
@@ -600,7 +600,7 @@ describe('auto-update reconciliation', () => {
     expect(mockedRenameSync).not.toHaveBeenCalledWith(expect.stringContaining('installed_plugins.json.tmp-'), expect.anything());
   });
   it('does not rewrite installed_plugins.json when the versioned cache is missing runtime-critical files after sync', () => {
-    const cacheRoot = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot');
+    const cacheRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const versionedCacheRoot = join(cacheRoot, '4.14.1');
 
     mockedExecSync.mockImplementation((command: string) => {
@@ -651,7 +651,7 @@ describe('auto-update reconciliation', () => {
 
   it('syncs the plugin cache directory when cache root exists', () => {
     const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const cacheRoot = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot');
+    const cacheRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const versionedCacheRoot = `${cacheRoot}/4.9.0`;
 
     mockedExecSync.mockImplementation((command: string) => {
@@ -732,7 +732,7 @@ describe('auto-update reconciliation', () => {
   });
 
   it('skips plugin cache sync gracefully when cache dir does not exist', () => {
-    const cacheRoot = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot');
+    const cacheRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot');
     mockedExistsSync.mockImplementation((path: Parameters<typeof existsSync>[0]) => {
       const normalized = String(path).replace(/\\/g, '/');
       if (normalized.endsWith('/.claude-plugin/plugin.json')) {
@@ -753,7 +753,7 @@ describe('auto-update reconciliation', () => {
 
   it('handles plugin cache sync errors non-fatally', () => {
     const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const cacheRoot = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot');
+    const cacheRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const versionedCacheRoot = `${cacheRoot}/4.9.0`;
 
     mockedExecSync.mockImplementation((command: string) => {
@@ -846,8 +846,8 @@ describe('auto-update reconciliation', () => {
 
   it('dedupes plugin roots and ignores missing targets during sync', () => {
     const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const activeRoot = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.1.5');
-    const staleRoot = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.1.4');
+    const activeRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.1.5');
+    const staleRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.1.4');
     process.env.CLAUDE_PLUGIN_ROOT = activeRoot;
 
     mockedReadFileSync.mockImplementation((path: Parameters<typeof readFileSync>[0]) => {
@@ -903,8 +903,8 @@ describe('auto-update reconciliation', () => {
   });
 
   it('allows standalone update when CLAUDE_PLUGIN_ROOT is inherited without an active Claude session', async () => {
-    const pluginRoot = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.1.5');
-    const cacheRoot = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot');
+    const pluginRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.1.5');
+    const cacheRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot');
     process.env.OMC_UPDATE_RECONCILE = '1';
     process.env.CLAUDE_PLUGIN_ROOT = pluginRoot;
     delete process.env.CLAUDE_CODE_ENTRYPOINT;
@@ -1431,7 +1431,7 @@ describe('auto-update reconciliation', () => {
     // (simulates being in the re-exec'd process after npm install)
     process.env.OMC_UPDATE_RECONCILE = '1';
     process.env.CLAUDE_PLUGIN_ROOT = join(
-      COPILOT_CONFIG_DIR,
+      COPILOT_HOME,
       'plugins',
       'cache',
       'omc',

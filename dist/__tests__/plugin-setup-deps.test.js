@@ -85,7 +85,7 @@ describe('plugin-setup.mjs dependency installation', () => {
                 encoding: 'utf8',
                 env: {
                     ...process.env,
-                    COPILOT_CONFIG_DIR: configDir,
+                    COPILOT_HOME: configDir,
                     HOME: fakeHome,
                     PATH: `${fakeBin}:${process.env.PATH ?? ''}`,
                 },
@@ -220,7 +220,7 @@ describe('plugin-setup.mjs hook command portability', () => {
                 cwd: PACKAGE_ROOT,
                 env: {
                     ...process.env,
-                    COPILOT_CONFIG_DIR: configDir,
+                    COPILOT_HOME: configDir,
                     HOME: fakeHome,
                 },
                 stdio: 'pipe',

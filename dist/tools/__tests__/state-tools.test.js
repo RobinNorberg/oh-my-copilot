@@ -1415,9 +1415,9 @@ describe('state-tools', () => {
             };
             mkdirSync(dirname(statePath), { recursive: true });
             writeFileSync(statePath, JSON.stringify(state));
-            const previousConfigDir = process.env.COPILOT_CONFIG_DIR;
+            const previousConfigDir = process.env.COPILOT_HOME;
             try {
-                process.env.COPILOT_CONFIG_DIR = configDir;
+                process.env.COPILOT_HOME = configDir;
                 process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
                 const result = await stateWriteTool.handler({
                     mode: 'autopilot',
@@ -1453,9 +1453,9 @@ describe('state-tools', () => {
             }
             finally {
                 if (previousConfigDir === undefined)
-                    delete process.env.COPILOT_CONFIG_DIR;
+                    delete process.env.COPILOT_HOME;
                 else
-                    process.env.COPILOT_CONFIG_DIR = previousConfigDir;
+                    process.env.COPILOT_HOME = previousConfigDir;
                 rmSync(configDir, { recursive: true, force: true });
             }
         });

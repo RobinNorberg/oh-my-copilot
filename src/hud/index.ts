@@ -561,8 +561,8 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
       apiKeyMode: detectApiKeySource(cwd) !== null,
       subscriptionType: subscriptionInfo.subscriptionType,
       rateLimitTier: subscriptionInfo.rateLimitTier,
-      profileName: process.env.COPILOT_CONFIG_DIR
-        ? basename(process.env.COPILOT_CONFIG_DIR).replace(/^\./, "")
+      profileName: process.env.COPILOT_HOME
+        ? basename(process.env.COPILOT_HOME).replace(/^\./, "")
         : null,
       sessionSummary,
       lastToolName: transcriptData.lastToolName,

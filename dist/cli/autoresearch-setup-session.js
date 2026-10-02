@@ -2,6 +2,7 @@ import { spawnSync } from 'child_process';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { parseAutoresearchSetupHandoffJson, } from '../autoresearch/setup-contract.js';
+import { getHostCliBinary } from '../utils/host-detection.js';
 const AUTORESEARCH_SETUP_ENTRYPOINT = 'autoresearch-setup';
 function safeReadFile(filePath) {
     try {
@@ -114,7 +115,8 @@ export function buildAutoresearchSetupPrompt(input) {
 }
 export function runAutoresearchSetupSession(input) {
     const prompt = buildAutoresearchSetupPrompt(input);
-    const result = spawnSync('claude', ['-p', prompt], {
+    const hostBinary = getHostCliBinary();
+    const result = spawnSync(hostBinary, ['-p', prompt], {
         cwd: input.repoRoot,
         encoding: 'utf-8',
         shell: process.platform === 'win32',
@@ -127,7 +129,7 @@ export function runAutoresearchSetupSession(input) {
         throw result.error;
     }
     if (result.status !== 0) {
-        throw new Error(`claude_autoresearch_setup_failed:${result.status ?? 'unknown'}`);
+        throw new Error(`${hostBinary}_autoresearch_setup_failed:${result.status ?? 'unknown'}`);
     }
     return parseAutoresearchSetupHandoffJson(result.stdout || '');
 }

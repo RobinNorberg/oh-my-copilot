@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { resolveRoleAssignment, buildResolvedRoutingSnapshot } from '../stage-router.js';
 import { CANONICAL_TEAM_ROLES } from '../../shared/types.js';
 import { COPILOT_FAMILY_DEFAULTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS } from '../../config/models.js';
@@ -20,8 +20,11 @@ beforeAll(() => {
         savedEnv[key] = process.env[key];
         delete process.env[key];
     }
+    // These cases pin the Claude-host defaults; the Copilot host is covered below.
+    vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', 'cli');
 });
 afterAll(() => {
+    vi.unstubAllEnvs();
     for (const key of ENV_KEYS) {
         if (savedEnv[key] !== undefined) {
             process.env[key] = savedEnv[key];
@@ -199,6 +202,25 @@ describe('stage-router resolveRoleAssignment', () => {
             };
             const out = resolveRoleAssignment('critic', cfg);
             expect(out.model).toBe('claude-opus-custom-id');
+        });
+    });
+    describe('Copilot host default (no CLAUDE_CODE_ENTRYPOINT)', () => {
+        it('defaults every role, the orchestrator, and the fallback to copilot; explicit providers still win', () => {
+            vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', '');
+            try {
+                expect(resolveRoleAssignment('executor', EMPTY).provider).toBe('copilot');
+                expect(resolveRoleAssignment('orchestrator', EMPTY).provider).toBe('copilot');
+                expect(resolveRoleAssignment('executor', EMPTY).model).toBe(EXPECTED_DEFAULTS.executor.model);
+                const snap = buildResolvedRoutingSnapshot({ team: { roleRouting: { critic: { provider: 'codex' } } } });
+                expect(snap.executor.primary.provider).toBe('copilot');
+                expect(snap.critic.primary.provider).toBe('codex');
+                expect(snap.critic.fallback.provider).toBe('copilot');
+                expect(resolveRoleAssignment('executor', { team: { roleRouting: { executor: { provider: 'claude' } } } }).provider)
+                    .toBe('claude');
+            }
+            finally {
+                vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', 'cli');
+            }
         });
     });
     describe('orchestrator pinning', () => {

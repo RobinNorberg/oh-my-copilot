@@ -72,7 +72,7 @@ try {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'omc-contained-acceptance-')));
   const cwd = join(base, 'unrelated-cwd');
   mkdirSync(cwd);
-  const env = { ...process.env, COPILOT_CONFIG_DIR: join(base, 'copilot-config') };
+  const env = { ...process.env, COPILOT_HOME: join(base, 'copilot-config') };
   for (const key of Object.keys(env)) if (key.startsWith('OMC_') || key === 'CLAUDECODE' || key === 'NODE_OPTIONS') delete env[key];
   report.versionCommand = await start(entry, ['--version'], cwd, env).done;
   success(report.versionCommand);

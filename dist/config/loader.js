@@ -69,6 +69,8 @@ export function buildDefaultConfig() {
             allowEdit: true,
             allowWrite: true,
             maxBackgroundTasks: 5,
+            workerDenyTools: [],
+            workerDenyUrls: [],
         },
         magicKeywords: {
             search: ["search", "find", "locate"],
@@ -449,7 +451,7 @@ function warnOnDeprecatedDelegationRouting(config) {
 const CANONICAL_TEAM_ROLE_SET = new Set(CANONICAL_TEAM_ROLES);
 const KNOWN_AGENT_NAME_SET = new Set(KNOWN_AGENT_NAMES);
 // /team CLI workers — codex/gemini/grok/cursor here are CLI integrations, NOT the deprecated MCP delegationRouting providers.
-const TEAM_ROLE_PROVIDERS = new Set(["claude", "codex", "gemini", "grok", "cursor", "antigravity"]);
+const TEAM_ROLE_PROVIDERS = new Set(["claude", "copilot", "codex", "gemini", "grok", "cursor", "antigravity"]);
 const TEAM_ROLE_TIERS = new Set(["HIGH", "MEDIUM", "LOW"]);
 export function validateTeamConfig(config) {
     const team = config.team;
@@ -509,10 +511,37 @@ export function validateTeamConfig(config) {
         }
     }
 }
+/**
+ * Validate `permissions.workerDenyTools` / `permissions.workerDenyUrls`.
+ * Each entry becomes a `--deny-tool=` / `--deny-url=` flag on Copilot team
+ * workers, so reject anything that could read as a separate flag or break argv.
+ */
+export function validateWorkerPermissionsConfig(config) {
+    const perms = config.permissions;
+    if (!perms || typeof perms !== "object")
+        return;
+    for (const key of ["workerDenyTools", "workerDenyUrls"]) {
+        const value = perms[key];
+        if (value === undefined)
+            continue;
+        if (!Array.isArray(value)) {
+            throw new Error(`[OMC] permissions.${key}: must be an array of strings, got ${typeof value}`);
+        }
+        value.forEach((entry, index) => {
+            if (typeof entry !== "string" ||
+                entry.trim() === "" ||
+                /[\u0000-\u001f\u007f]/.test(entry) ||
+                entry.startsWith("-")) {
+                throw new Error(`[OMC] permissions.${key}[${index}]: invalid value ${JSON.stringify(String(entry))}. Expected a non-empty pattern string that does not start with "-" or contain control characters`);
+            }
+        });
+    }
+}
 const AUTOPILOT_EXECUTION_BACKENDS = new Set(["team", "solo"]);
 const AUTOPILOT_PLANNING_MODES = new Set(["ralplan", "direct"]);
 const AUTOPILOT_TEAM_AGENT_TYPES = new Set([
     "claude",
+    "copilot",
     "codex",
     "gemini",
     "grok",
@@ -717,6 +746,7 @@ export function loadConfig() {
     // Validate /team role routing post-merge. Throws on invalid shape,
     // walking the parsed object so deepMerge bypasses surface here.
     validateTeamConfig(config);
+    validateWorkerPermissionsConfig(config);
     validateAutopilotConfig(config);
     return config;
 }
@@ -984,6 +1014,18 @@ export function generateConfigSchema() {
                         minimum: MIN_BACKGROUND_TASKS,
                         maximum: MAX_BACKGROUND_TASKS,
                     },
+                    workerDenyTools: {
+                        type: "array",
+                        items: { type: "string", minLength: 1 },
+                        default: [],
+                        description: "Copilot team workers: tool patterns passed as --deny-tool=<pattern> (deny wins over the worker allow flags)",
+                    },
+                    workerDenyUrls: {
+                        type: "array",
+                        items: { type: "string", minLength: 1 },
+                        default: [],
+                        description: "Copilot team workers: URL patterns passed as --deny-url=<pattern>",
+                    },
                 },
             },
             magicKeywords: {
@@ -1219,7 +1261,7 @@ export function generateConfigSchema() {
                                 type: "array",
                                 items: {
                                     type: "string",
-                                    enum: ["claude", "codex", "gemini", "grok", "cursor", "antigravity"],
+                                    enum: ["claude", "copilot", "codex", "gemini", "grok", "cursor", "antigravity"],
                                 },
                                 description: "Preferred CLI worker types for executor-style autopilot team execution tasks",
                             },
@@ -1237,8 +1279,8 @@ export function generateConfigSchema() {
                             maxAgents: { type: "integer", minimum: 1 },
                             defaultAgentType: {
                                 type: "string",
-                                enum: ["claude", "codex", "gemini", "grok", "cursor", "antigravity"],
-                                default: "claude",
+                                enum: ["claude", "copilot", "codex", "gemini", "grok", "cursor", "antigravity"],
+                                description: "Default worker CLI; falls back to the host CLI (copilot, or claude under Claude Code)",
                             },
                             monitorIntervalMs: { type: "integer", minimum: 1 },
                             shutdownTimeoutMs: { type: "integer", minimum: 1 },
@@ -1251,7 +1293,7 @@ export function generateConfigSchema() {
                         additionalProperties: {
                             type: "object",
                             properties: {
-                                provider: { type: "string", enum: ["claude", "codex", "gemini", "grok", "cursor", "antigravity"] },
+                                provider: { type: "string", enum: ["claude", "copilot", "codex", "gemini", "grok", "cursor", "antigravity"] },
                                 model: { type: "string" },
                                 agent: { type: "string" },
                             },

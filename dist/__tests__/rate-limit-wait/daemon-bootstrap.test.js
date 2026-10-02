@@ -49,7 +49,7 @@ describe('daemon bootstrap', () => {
         process.env.PATH = '/usr/bin:/bin';
         process.env.TMUX = '/tmp/tmux-1000/default,100,0';
         process.env.OMC_STATE_DIR = '/tmp/omc-central-state';
-        process.env.COPILOT_CONFIG_DIR = '/tmp/claude-profile';
+        process.env.COPILOT_HOME = '/tmp/claude-profile';
         process.env.CLAUDE_SESSION_ID = 'session-current';
         process.env.CLAUDECODE_SESSION_ID = 'session-legacy-alias';
         process.env.ANTHROPIC_API_KEY = 'super-secret';
@@ -81,7 +81,7 @@ describe('daemon bootstrap', () => {
         expect(childEnv.PATH).toBe('/usr/bin:/bin');
         expect(childEnv.TMUX).toBe('/tmp/tmux-1000/default,100,0');
         expect(childEnv.OMC_STATE_DIR).toBe('/tmp/omc-central-state');
-        expect(childEnv.COPILOT_CONFIG_DIR).toBe('/tmp/claude-profile');
+        expect(childEnv.COPILOT_HOME).toBe('/tmp/claude-profile');
         // A detached daemon must not pin itself to the launching session: that
         // session's cache is removed at session end, while another live session
         // may have the version the daemon should use on its next poll.

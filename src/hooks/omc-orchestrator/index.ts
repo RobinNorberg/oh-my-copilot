@@ -54,7 +54,7 @@ export function clearEnforcementCache(): void {
 
 /**
  * Read enforcement level from config.
- * Checks: .omg/config.json → [$COPILOT_CONFIG_DIR|~/.claude]/.omc-config.json → default (warn)
+ * Checks: .omg/config.json → [$COPILOT_HOME|~/.claude]/.omc-config.json → default (warn)
  */
 function getEnforcementLevel(directory: string): EnforcementLevel {
   const now = Date.now();

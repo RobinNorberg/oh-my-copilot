@@ -121,6 +121,26 @@ describe('team config revision transaction', () => {
     }, teamName)).toBeNull();
   });
 
+  it('accepts copilot workers, descriptors and routing, but requires a host model for copilot routes', async () => {
+    const { buildResolvedRoutingSnapshot } = await import('../stage-router.js');
+    const routing = buildResolvedRoutingSnapshot({ team: { roleRouting: { executor: { provider: 'copilot' } } } });
+    const descriptor = { schema_version: 1, provider: 'copilot', model: null, binary: '/usr/bin/copilot',
+      args: ['--allow-all-tools', '--deny-tool=shell(git push)'] };
+    const config = {
+      ...initialConfig(), active_recovery: undefined, instance_id: instanceA,
+      workers: [{ name: 'worker-1', index: 1, role: 'executor', assigned_tasks: [], worker_cli: 'copilot', launch_descriptor: descriptor }],
+      resolved_routing: routing,
+    } as unknown as TeamConfig;
+    expect(routing.executor.primary.provider).toBe('copilot');
+    expect(validateRevisionedTeamConfig(config, teamName)).toBe(config);
+
+    const emptyHostModel = {
+      ...config,
+      resolved_routing: { ...routing, executor: { ...routing.executor, primary: { ...routing.executor.primary, model: '' } } },
+    } as unknown as TeamConfig;
+    expect(validateRevisionedTeamConfig(emptyHostModel, teamName)).toBeNull();
+  });
+
   it('atomically promotes an identity-bearing pending startup config without unlinking it', async () => {
     const startupTeamName = 'initial-commit-team';
     const instance = createTeamInstanceBinding({ teamName: startupTeamName, cwd, instanceId: instanceA });

@@ -163,6 +163,7 @@ vi.mock('../model-contract.js', () => ({
     resolveClaudeWorkerModel: modelContractMocks.resolveClaudeWorkerModel,
     resolveDefaultWorkerModel: modelContractMocks.resolveDefaultWorkerModel,
     validateWorkerLaunchDescriptor: modelContractMocks.validateWorkerLaunchDescriptor,
+    resolveWorkerPermissionFlags: () => [],
     assertHeadlessSupported: () => { },
     isHeadlessSupportedOnPlatform: () => true,
 }));
