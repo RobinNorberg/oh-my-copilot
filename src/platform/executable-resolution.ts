@@ -48,6 +48,7 @@ type PlatformModel = {
 
 const RESOLVE_TIMEOUT_MS = 5000;
 const VERSION_TIMEOUT_MS = 3000;
+const DEFAULT_PATHEXT = '.COM;.EXE;.BAT;.CMD';
 const SAFE_BINARY_NAME = /^[A-Za-z0-9._-]+$/;
 const SAFE_BATCH_PATH = /^[A-Za-z]:\\(?:[A-Za-z0-9 ._-]+\\)*[A-Za-z0-9 ._-]+\.(?:cmd|bat)$/i;
 const SAFE_BATCH_ARG = /^[A-Za-z0-9._=-]+$/;
@@ -126,11 +127,29 @@ function resolveCliPath(binary: string, model: PlatformModel): string | undefine
     if (result.error || result.signal || result.status !== 0) return undefined;
 
     const stdout = asText(result.stdout);
+    const candidates: string[] = [];
     for (const line of stdout.split(/\r\n|\n|\r/)) {
       const candidate = line.trim();
-      if (candidate && model.pathFlavor.isAbsolute(candidate)) return candidate;
+      if (candidate && model.pathFlavor.isAbsolute(candidate)) candidates.push(candidate);
     }
-    return undefined;
+    if (candidates.length === 0) return undefined;
+
+    // where.exe lists extensionless shims (e.g. an npm POSIX shell script)
+    // alongside the .cmd/.exe; prefer the first PATHEXT-executable candidate.
+    if (model.isWindows) {
+      const pathExtensions = new Set(
+        (process.env.PATHEXT ?? DEFAULT_PATHEXT)
+          .split(';')
+          .map((extension) => extension.trim().toLowerCase())
+          .filter(Boolean),
+      );
+      const preferredCandidate = candidates.find((candidate) =>
+        pathExtensions.has(model.pathFlavor.extname(candidate).toLowerCase()),
+      );
+      if (preferredCandidate) return preferredCandidate;
+    }
+
+    return candidates[0];
   } catch {
     return undefined;
   }

@@ -19,16 +19,16 @@ describe('Ralph verification flow', () => {
     mkdirSync(claudeConfigDir, { recursive: true });
     execSync('git init', { cwd: testDir });
 
-    originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
-    process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
+    originalClaudeConfigDir = process.env.COPILOT_HOME;
+    process.env.COPILOT_HOME = claudeConfigDir;
   });
 
   afterEach(() => {
     delete process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64;
     if (originalClaudeConfigDir === undefined) {
-      delete process.env.COPILOT_CONFIG_DIR;
+      delete process.env.COPILOT_HOME;
     } else {
-      process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+      process.env.COPILOT_HOME = originalClaudeConfigDir;
     }
 
     if (existsSync(testDir)) {

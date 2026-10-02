@@ -52,8 +52,8 @@ describe('session-start.mjs detached update-cache refresh', () => {
             ...process.env,
             HOME: fakeHome,
             USERPROFILE: fakeHome,
-            // config-dir.mjs prefers COPILOT_CONFIG_DIR over HOME.
-            COPILOT_CONFIG_DIR: configDir,
+            // config-dir.mjs prefers COPILOT_HOME over HOME.
+            COPILOT_HOME: configDir,
             OMC_UPDATE_REGISTRY_BASE: registryBase,
             CLAUDE_PLUGIN_ROOT: '',
         };

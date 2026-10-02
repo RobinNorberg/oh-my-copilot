@@ -6,13 +6,14 @@ import { getOMCConfig } from '../../features/auto-update.js';
 import { buildConfigFromEnv, getEnabledPlatforms, getNotificationConfig } from '../../notifications/config.js';
 import type { NotificationPlatform } from '../../notifications/types.js';
 import { cleanupBridgeSessions } from '../../tools/python-repl/bridge-manager.js';
-import { resolveToWorktreeRoot, getOmcRoot, validateSessionId, isValidTranscriptPath, resolveSessionStatePath } from '../../lib/worktree-paths.js';
+import { resolveToWorktreeRoot, getOmcRoot, validateSessionId, isValidTranscriptPath, resolveSessionStatePath, withProjectIdentifierScope } from '../../lib/worktree-paths.js';
 import { SESSION_END_MODE_STATE_FILES, SESSION_METRICS_MODE_FILES } from '../../lib/mode-names.js';
 import { canClearStateForSession, clearModeStateFile, clearStateFileLockedIf, readModeStateWithMeta } from '../../lib/mode-state-io.js';
 import { completeForegroundCleanup, completeForegroundCleanupAndSealCore, prepareCoreManifest, readSessionEndJob, sealWikiManifest } from './cleanup-manifest.js';
 import { spawnSessionEndWorker } from './worker.js';
 import { buildWikiSessionEndCaptureIntent } from '../wiki/session-hooks.js';
 import { getSessionEndStalePrdWarning } from '../ralph/stale-prd.js';
+import { isValidTeamInstanceId, isValidLeaderSessionId } from '../../team/types.js';
 
 export interface SessionEndInput {
   session_id: string;
@@ -613,7 +614,7 @@ export function cleanupMissionState(directory: string, sessionId?: string): numb
 
     const before = parsed.missions.length;
     parsed.missions = parsed.missions.filter((mission) => {
-      // Keep non-session missions (e.g., team missions handled by state_clear)
+      // Keep non-session missions.
       if (mission.source !== 'session') return true;
 
       // If sessionId provided, only remove missions for this session
@@ -660,7 +661,21 @@ function extractTeamNameFromState(state: Record<string, unknown> | null): string
   return normalizeSessionEndTeamName(state.team_name ?? state.teamName);
 }
 
-async function findSessionOwnedTeams(directory: string, sessionId: string): Promise<string[]> {
+function extractConfigOwnerSessionId(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const sessionId = (value as { leader_session_id?: unknown }).leader_session_id;
+  return isValidLeaderSessionId(sessionId) ? sessionId : null;
+}
+
+function extractManifestOwnerSessionId(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const leader = (value as { leader?: unknown }).leader;
+  if (!leader || typeof leader !== 'object' || Array.isArray(leader)) return null;
+  const sessionId = (leader as { session_id?: unknown }).session_id;
+  return isValidLeaderSessionId(sessionId) ? sessionId : null;
+}
+
+export async function findSessionOwnedTeams(directory: string, sessionId: string): Promise<string[]> {
   const teamNames = new Set<string>();
   const teamState = readModeStateWithMeta<Record<string, unknown>>('team', directory, sessionId);
   const stateTeamName = canClearStateForSession(teamState, sessionId)
@@ -675,7 +690,7 @@ async function findSessionOwnedTeams(directory: string, sessionId: string): Prom
     return [...teamNames];
   }
 
-  const { teamReadManifest } = await import('../../team/team-ops.js');
+  const { teamReadManifest, teamReadConfig } = await import('../../team/team-ops.js');
 
   try {
     const entries = fs.readdirSync(teamRoot, { withFileTypes: true });
@@ -683,8 +698,17 @@ async function findSessionOwnedTeams(directory: string, sessionId: string): Prom
       if (!entry.isDirectory()) continue;
       const teamName = entry.name;
       try {
+        const config = await teamReadConfig(teamName, directory);
+        if (extractConfigOwnerSessionId(config) === sessionId) {
+          teamNames.add(teamName);
+          continue;
+        }
+      } catch {
+        // Continue with manifest scan when config is unreadable.
+      }
+      try {
         const manifest = await teamReadManifest(teamName, directory);
-        if (manifest?.leader.session_id === sessionId) {
+        if (extractManifestOwnerSessionId(manifest) === sessionId) {
           teamNames.add(teamName);
         }
       } catch {
@@ -719,9 +743,8 @@ export async function cleanupSessionOwnedTeams(
     return { attempted, cleaned, failed };
   }
 
-  const { teamReadConfig } = await import('../../team/team-ops.js');
+  const { teamReadConfig, teamReadManifest } = await import('../../team/team-ops.js');
   const { shutdownTeamV2 } = await import('../../team/runtime-v2.js');
-  const { shutdownTeam } = await import('../../team/runtime.js');
 
   await Promise.all(teamNames.map(async (teamName) => {
     attempted.push(teamName);
@@ -732,43 +755,65 @@ export async function cleanupSessionOwnedTeams(
         return;
       }
 
-      // Classify raw provenance: agentTypes => legacy V1, even if workers:[] was injected.
-      const hasAgentTypes = Array.isArray((config as { agentTypes?: unknown[] }).agentTypes);
-      const workers = (config as { workers?: unknown[] }).workers;
-      // V2 when workers array present and not legacy agentTypes provenance.
-      const hasV2Workers = !hasAgentTypes && Array.isArray(workers);
-
-      if (hasAgentTypes) {
-        const legacyConfig = config as {
-          tmuxSession?: string;
-          leaderPaneId?: string | null;
-          tmuxOwnsWindow?: boolean;
-        };
-        const sessionName = typeof legacyConfig.tmuxSession === 'string' && legacyConfig.tmuxSession.trim() !== ''
-          ? legacyConfig.tmuxSession.trim()
-          : `omc-team-${teamName}`;
-        const leaderPaneId = typeof legacyConfig.leaderPaneId === 'string' && legacyConfig.leaderPaneId.trim() !== ''
-          ? legacyConfig.leaderPaneId.trim()
-          : undefined;
-        if (await shutdownTeam(teamName, sessionName, directory, 0, undefined, leaderPaneId, legacyConfig.tmuxOwnsWindow === true)) {
-          cleaned.push(teamName);
-        } else {
-          failed.push({ teamName, error: 'team-shutdown-failed:legacy_cleanup_unverified' });
-        }
+      // Legacy configs and unclassified state are readable evidence only. A
+      // session-end name hint never authorizes destructive cleanup by itself.
+      if (Array.isArray((config as { agentTypes?: unknown[] }).agentTypes)
+        || !Array.isArray((config as { workers?: unknown[] }).workers)) {
+        failed.push({ teamName, error: 'team-shutdown-preserved:config_cleanup_unsupported' });
         return;
       }
 
-      if (hasV2Workers) {
-        const shutdown = await shutdownTeamV2(teamName, directory, { force: true, timeoutMs: 0 });
-        if (shutdown.outcome === 'cleaned') {
-          cleaned.push(teamName);
-        } else {
-          failed.push({ teamName, error: `team-shutdown-${shutdown.outcome}:${shutdown.reason}` });
-        }
+      let manifest: unknown = null;
+      try {
+        manifest = await teamReadManifest(teamName, directory);
+      } catch (error) {
+        failed.push({
+          teamName,
+          error: `team-shutdown-preserved:ownership_recheck_failed:${error instanceof Error ? error.message : String(error)}`,
+        });
         return;
       }
 
-      failed.push({ teamName, error: 'team-shutdown-preserved:config_cleanup_unsupported' });
+      // Authoritative Claude-session owner lives on config (`leader_session_id`).
+      // Manifest `leader.session_id` is a projection and may still contain a
+      // tmux target on older records; it cannot authorize this cleanup.
+      const configLeaderSessionId = extractConfigOwnerSessionId(config);
+      if (configLeaderSessionId === null) {
+        failed.push({ teamName, error: 'team-shutdown-preserved:session_owner_missing' });
+        return;
+      }
+      if (configLeaderSessionId !== sessionId) {
+        failed.push({ teamName, error: 'team-shutdown-preserved:session_owner_mismatch' });
+        return;
+      }
+
+      const instanceId = (config as { instance_id?: unknown }).instance_id;
+      if (!isValidTeamInstanceId(instanceId)) {
+        failed.push({ teamName, error: 'team-shutdown-preserved:instance_identity_missing' });
+        return;
+      }
+      const manifestInstanceId = manifest && typeof manifest === 'object' && !Array.isArray(manifest)
+        ? (manifest as { instance_id?: unknown }).instance_id
+        : undefined;
+      if (!isValidTeamInstanceId(manifestInstanceId)) {
+        failed.push({ teamName, error: 'team-shutdown-preserved:instance_identity_missing' });
+        return;
+      }
+      if (manifestInstanceId.toLowerCase() !== instanceId.toLowerCase()) {
+        failed.push({ teamName, error: 'team-shutdown-preserved:instance_identity_mismatch' });
+        return;
+      }
+
+      const shutdown = await shutdownTeamV2(teamName, directory, {
+        instanceId,
+        force: true,
+        timeoutMs: 0,
+      });
+      if (shutdown.outcome === 'cleaned') {
+        cleaned.push(teamName);
+      } else {
+        failed.push({ teamName, error: `team-shutdown-${shutdown.outcome}:${shutdown.reason}` });
+      }
     } catch (error) {
       failed.push({
         teamName,
@@ -887,6 +932,12 @@ export async function runForegroundSessionEndCleanup(directory: string, sessionI
   return outcome;
 }
 
+export async function prepareSessionEndWorkerInput(directory: string, input: SessionEndInput): Promise<Record<string, unknown>> {
+  const metrics = recordSessionMetrics(directory, input);
+  const teamNames = await findSessionOwnedTeams(directory, input.session_id);
+  return { transcriptPath: input.transcript_path, cwd: input.cwd, reason: input.reason, input, metrics, initialTeamNames: teamNames };
+}
+
 /** Foreground path: only durable local state and worker launch; deferred adapters are worker-owned. */
 function buildDurableSessionEndPayload(directory: string, input: SessionEndInput, metrics: SessionMetrics): Record<string, unknown> {
   const teamState = readModeStateWithMeta<Record<string, unknown>>('team', directory, input.session_id);
@@ -907,26 +958,28 @@ function buildDurableSessionEndPayload(directory: string, input: SessionEndInput
 }
 
 export async function processSessionEnd(input: SessionEndInput): Promise<HookOutput> {
-  const directory = resolveToWorktreeRoot(input.cwd);
+  return withProjectIdentifierScope(async () => {
+    const directory = resolveToWorktreeRoot(input.cwd);
 
-  // Stale-unfinished-PRD warning (#3669): surface the divergence at session end
-  // BEFORE mode-state cleanup removes the ralph state (the abnormal-exit
-  // signal). Never blocks session end.
-  const stalePrdWarning = getSessionEndStalePrdWarning(directory, input.session_id);
-  if (stalePrdWarning) {
-    console.warn(stalePrdWarning);
-  }
+    // Stale-unfinished-PRD warning (#3669): surface the divergence at session end
+    // BEFORE mode-state cleanup removes the ralph state (the abnormal-exit
+    // signal). Never blocks session end.
+    const stalePrdWarning = getSessionEndStalePrdWarning(directory, input.session_id);
+    if (stalePrdWarning) {
+      console.warn(stalePrdWarning);
+    }
 
-  const metrics = recordSessionMetrics(directory, input);
-  const payload = buildDurableSessionEndPayload(directory, input, metrics);
-  const manifest = prepareCoreManifest(directory, input.session_id, payload);
-  if (!manifest) return { continue: true };
-  exportSessionSummary(directory, metrics);
-  let foregroundOutcome: Record<string, unknown>;
-  try { foregroundOutcome = await runForegroundSessionEndCleanup(directory, input.session_id, false); } catch { return { continue: true }; }
-  const sealed = completeForegroundCleanupAndSealCore(directory, input.session_id, foregroundOutcome);
-  if (sealed) spawnSessionEndWorker({ directory, sessionId: input.session_id });
-  return { continue: true };
+    const metrics = recordSessionMetrics(directory, input);
+    const payload = buildDurableSessionEndPayload(directory, input, metrics);
+    const manifest = prepareCoreManifest(directory, input.session_id, payload);
+    if (!manifest) return { continue: true };
+    exportSessionSummary(directory, metrics);
+    let foregroundOutcome: Record<string, unknown>;
+    try { foregroundOutcome = await runForegroundSessionEndCleanup(directory, input.session_id, false); } catch { return { continue: true }; }
+    const sealed = completeForegroundCleanupAndSealCore(directory, input.session_id, foregroundOutcome);
+    if (sealed) spawnSessionEndWorker({ directory, sessionId: input.session_id });
+    return { continue: true };
+  });
 }
 
 /** Wiki producer has no foreground lock or write; it only seals a durable capture/no-op intent. */

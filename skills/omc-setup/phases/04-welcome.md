@@ -5,7 +5,7 @@
 Check if user has existing 2.x configuration:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');console.log('IS_UPGRADE='+f.existsSync(p.join(d,'commands','ralph-loop.md')))"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_HOME||p.join(require('os').homedir(),'.copilot');console.log('IS_UPGRADE='+f.existsSync(p.join(d,'commands','ralph-loop.md')))"
 ```
 
 If found, this is an upgrade from 2.x. Set `IS_UPGRADE=true`.
@@ -191,4 +191,4 @@ Mark setup complete:
 node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" complete
 ```
 
-With no version argument, `complete` reads the `OMC:VERSION:` marker from `.claude/CLAUDE.md`, falls back to the marker in the global `CLAUDE.md` (honouring `COPILOT_CONFIG_DIR`), then to `omg --version`, and finally records `unknown`.
+With no version argument, `complete` reads the `OMC:VERSION:` marker from `.claude/CLAUDE.md`, falls back to the marker in the global `CLAUDE.md` (honouring `COPILOT_HOME`), then to `omg --version`, and finally records `unknown`.

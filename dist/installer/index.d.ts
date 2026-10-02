@@ -8,6 +8,8 @@
  * Bash hook scripts were removed in v3.9.0.
  */
 /** Claude Code configuration directory */
+export declare const COPILOT_HOME: string;
+/** @deprecated Renamed to {@link COPILOT_HOME}; kept as a legacy alias for API compatibility. */
 export declare const COPILOT_CONFIG_DIR: string;
 export declare const AGENTS_DIR: string;
 export declare const COMMANDS_DIR: string;
@@ -124,6 +126,7 @@ export declare function isRunningAsPlugin(): boolean;
  * @returns true if running as a project-scoped plugin, false otherwise
  */
 export declare function isProjectScopedPlugin(): boolean;
+export declare function provisionStandaloneStateLockBridge(packageDir: string, targetPath: string): void;
 /**
  * Remove stale OMC agents only when their exact raw bytes match the bounded,
  * release-authenticated historical inventory and their basename is absent from

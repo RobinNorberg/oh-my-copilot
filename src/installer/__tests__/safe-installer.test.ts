@@ -78,10 +78,10 @@ describe('isOmcHook detection', () => {
     expect(isOmcHook('node "/tmp/custom-claude/hooks/keyword-detector.mjs"')).toBe(true);
   });
 
-  it('detects COPILOT_CONFIG_DIR-aware hook commands', () => {
-    expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/keyword-detector.mjs"')).toBe(true);
-    expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/pre-tool-use.mjs"')).toBe(true);
-    expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/persistent-mode.mjs"')).toBe(true);
+  it('detects COPILOT_HOME-aware hook commands', () => {
+    expect(isOmcHook('node "${COPILOT_HOME:-$HOME/.copilot}/hooks/keyword-detector.mjs"')).toBe(true);
+    expect(isOmcHook('node "${COPILOT_HOME:-$HOME/.copilot}/hooks/pre-tool-use.mjs"')).toBe(true);
+    expect(isOmcHook('node "${COPILOT_HOME:-$HOME/.copilot}/hooks/persistent-mode.mjs"')).toBe(true);
   });
 
   it('detects Windows-style OMC hook commands (issue #606)', () => {
@@ -110,7 +110,7 @@ describe('Safe Installer - Hook Conflict Detection', () => {
     }
     mkdirSync(TEST_CLAUDE_DIR, { recursive: true });
 
-    // Mock COPILOT_CONFIG_DIR for testing
+    // Mock COPILOT_HOME for testing
     process.env.TEST_COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
   });
 

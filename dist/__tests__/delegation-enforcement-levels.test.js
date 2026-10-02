@@ -63,21 +63,21 @@ import { existsSync, readFileSync } from 'fs';
 const mockExistsSync = vi.mocked(existsSync);
 const mockReadFileSync = vi.mocked(readFileSync);
 describe('delegation-enforcement-levels', () => {
-    const savedConfigDir = process.env.COPILOT_CONFIG_DIR;
+    const savedConfigDir = process.env.COPILOT_HOME;
     beforeEach(() => {
         vi.clearAllMocks();
         clearEnforcementCache();
-        // Ensure tests use the mocked homedir, not a custom COPILOT_CONFIG_DIR
-        delete process.env.COPILOT_CONFIG_DIR;
+        // Ensure tests use the mocked homedir, not a custom COPILOT_HOME
+        delete process.env.COPILOT_HOME;
         // Default: no config files exist
         mockExistsSync.mockReturnValue(false);
     });
     afterEach(() => {
         if (savedConfigDir !== undefined) {
-            process.env.COPILOT_CONFIG_DIR = savedConfigDir;
+            process.env.COPILOT_HOME = savedConfigDir;
         }
         else {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
     });
     // ─── 1. suggestAgentForFile (tested indirectly via warning messages) ───
@@ -571,35 +571,35 @@ describe('delegation-enforcement-levels', () => {
             expect(isTempOrScratchpadPath('/tmp/project/../project/src/app.ts', directory)).toBe(false);
             expect(isAllowedPath('/tmp/project/../project/src/app.ts', directory)).toBe(false);
         });
-        it('returns true for absolute paths under COPILOT_CONFIG_DIR', () => {
-            const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
-            process.env.COPILOT_CONFIG_DIR = '/custom/claude-config';
+        it('returns true for absolute paths under COPILOT_HOME', () => {
+            const originalConfigDir = process.env.COPILOT_HOME;
+            process.env.COPILOT_HOME = '/custom/claude-config';
             try {
                 expect(isAllowedPath('/custom/claude-config/settings.json')).toBe(true);
                 expect(isAllowedPath('/custom/claude-config/agents/test.md')).toBe(true);
             }
             finally {
                 if (originalConfigDir === undefined) {
-                    delete process.env.COPILOT_CONFIG_DIR;
+                    delete process.env.COPILOT_HOME;
                 }
                 else {
-                    process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+                    process.env.COPILOT_HOME = originalConfigDir;
                 }
             }
         });
-        it('returns true for absolute paths under a ~-prefixed COPILOT_CONFIG_DIR', () => {
-            const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
-            process.env.COPILOT_CONFIG_DIR = '~/.claude-alt';
+        it('returns true for absolute paths under a ~-prefixed COPILOT_HOME', () => {
+            const originalConfigDir = process.env.COPILOT_HOME;
+            process.env.COPILOT_HOME = '~/.claude-alt';
             try {
                 expect(isAllowedPath(join('/mock/home', '.claude-alt', 'settings.json'))).toBe(true);
                 expect(isAllowedPath(join('/mock/home', '.claude-alt', 'agents', 'test.md'))).toBe(true);
             }
             finally {
                 if (originalConfigDir === undefined) {
-                    delete process.env.COPILOT_CONFIG_DIR;
+                    delete process.env.COPILOT_HOME;
                 }
                 else {
-                    process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+                    process.env.COPILOT_HOME = originalConfigDir;
                 }
             }
         });

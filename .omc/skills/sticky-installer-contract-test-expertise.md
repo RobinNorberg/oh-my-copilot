@@ -44,7 +44,7 @@ Then add a fourth assertion that's specific to *this* class of regression:
 
 The fourth one matters because partial-revert is the common shape of these regressions: the new code writes the right thing AND leaves the old wrong thing in place, and the CLI picks the wrong one.
 
-For the test itself, prefer integration over unit — drive `runInstaller(...)` against a temp `COPILOT_CONFIG_DIR`, then read both files back and assert their JSON shapes. Mocking `writeFileSync` per-call is brittle; a real fs round-trip is what catches the "writing to the wrong file" class of regression.
+For the test itself, prefer integration over unit — drive `runInstaller(...)` against a temp `COPILOT_HOME`, then read both files back and assert their JSON shapes. Mocking `writeFileSync` per-call is brittle; a real fs round-trip is what catches the "writing to the wrong file" class of regression.
 
 ## Example
 The test that *should* have existed before the AI-slop refactor:
@@ -52,7 +52,7 @@ The test that *should* have existed before the AI-slop refactor:
 ```ts
 it('writes statusLine to config.json with experimental:true, not settings.json', async () => {
   const tmp = await mkdtemp(join(tmpdir(), 'omcp-installer-'));
-  process.env.COPILOT_CONFIG_DIR = tmp;
+  process.env.COPILOT_HOME = tmp;
 
   await runInstaller({ force: false });
 

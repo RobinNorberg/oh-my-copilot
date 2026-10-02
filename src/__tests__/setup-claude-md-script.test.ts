@@ -673,7 +673,7 @@ Use the real docs file.
     expect(readFileSync(targetPath, 'utf-8')).toBe(installed);
   });
 
-  it('uses COPILOT_CONFIG_DIR for global setup targets and plugin verification', () => {
+  it('uses COPILOT_HOME and skips the wiki fallback when the OMC plugin is active', () => {
     const fixture = createPluginFixture(`<!-- OMC:START -->
 <!-- OMC:VERSION:9.9.9 -->
 
@@ -685,24 +685,67 @@ Use the real docs file.
     const configDir = join(fixture.homeRoot, 'custom-profile');
     mkdirSync(join(configDir, 'hooks'), { recursive: true });
     writeFileSync(join(configDir, 'hooks', 'keyword-detector.sh'), 'legacy');
-    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-copilot'] }));
+    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({
+      enabledPlugins: { 'oh-my-copilot@omc': true },
+    }));
 
     const result = spawnSync('bash', [fixture.scriptPath, 'global'], {
       cwd: fixture.projectRoot,
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        COPILOT_CONFIG_DIR: configDir,
+        COPILOT_HOME: configDir,
       },
       encoding: 'utf-8',
     });
 
     expect(result.status).toBe(0);
     expect(existsSync(join(configDir, 'CLAUDE.md'))).toBe(true);
-    expect(existsSync(join(configDir, 'skills', 'wiki', 'SKILL.md'))).toBe(true);
+    const installedSkillPath = join(configDir, 'skills', 'wiki', 'SKILL.md');
+    expect(existsSync(installedSkillPath)).toBe(false);
     expect(existsSync(join(configDir, 'hooks', 'keyword-detector.sh'))).toBe(true);
     expect(`${result.stdout}\n${result.stderr}`).toContain('Plugin verified');
     expect(`${result.stdout}\n${result.stderr}`).toContain('Preserved unverified legacy hook');
+
+    mkdirSync(join(configDir, 'skills', 'wiki'), { recursive: true });
+    writeFileSync(installedSkillPath, '# User-managed wiki skill\n');
+    const rerun = spawnSync('bash', [fixture.scriptPath, 'global'], {
+      cwd: fixture.projectRoot,
+      env: {
+        ...process.env,
+        HOME: fixture.homeRoot,
+        COPILOT_HOME: configDir,
+      },
+      encoding: 'utf-8',
+    });
+
+    expect(rerun.status).toBe(0);
+    expect(readFileSync(installedSkillPath, 'utf-8')).toBe('# User-managed wiki skill\n');
+  });
+
+  it('installs the wiki fallback when the OMC plugin is explicitly disabled', () => {
+    const fixture = createPluginFixture(`<!-- OMC:START -->
+<!-- OMC:VERSION:9.9.9 -->
+
+# Canonical CLAUDE
+Use the real docs file.
+<!-- OMC:END -->
+`);
+    const configDir = join(fixture.homeRoot, '.copilot');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({
+      enabledPlugins: { 'oh-my-copilot@omc': false },
+    }));
+
+    const result = spawnSync('bash', [fixture.scriptPath, 'global'], {
+      cwd: fixture.projectRoot,
+      env: { ...process.env, HOME: fixture.homeRoot },
+      encoding: 'utf-8',
+    });
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(join(configDir, 'skills', 'wiki', 'SKILL.md'), 'utf-8'))
+      .toBe(readFileSync(join(fixture.pluginRoot, 'skills', 'wiki', 'SKILL.md'), 'utf-8'));
   });
 
   it('does not warn for third-party-only settings hooks', () => {
@@ -736,7 +779,7 @@ Use the real docs file.
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        COPILOT_CONFIG_DIR: configDir,
+        COPILOT_HOME: configDir,
       },
       encoding: 'utf-8',
     });
@@ -776,7 +819,7 @@ Use the real docs file.
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        COPILOT_CONFIG_DIR: configDir,
+        COPILOT_HOME: configDir,
       },
       encoding: 'utf-8',
     });
@@ -819,7 +862,7 @@ Use the real docs file.
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        COPILOT_CONFIG_DIR: configDir,
+        COPILOT_HOME: configDir,
       },
       encoding: 'utf-8',
     });
@@ -850,7 +893,7 @@ Use the real docs file.
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        COPILOT_CONFIG_DIR: configDir,
+        COPILOT_HOME: configDir,
       },
       encoding: 'utf-8',
     });
@@ -884,7 +927,7 @@ Use the real docs file.
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        COPILOT_CONFIG_DIR: configDir,
+        COPILOT_HOME: configDir,
       },
       encoding: 'utf-8',
     });
@@ -924,7 +967,7 @@ Use the real docs file.
     const env = {
       ...process.env,
       HOME: fixture.homeRoot,
-      COPILOT_CONFIG_DIR: configDir,
+      COPILOT_HOME: configDir,
     };
 
     const first = spawnSync('bash', [fixture.scriptPath, 'global', 'preserve'], {
@@ -964,7 +1007,7 @@ Use the real docs file.
     const env = {
       ...process.env,
       HOME: fixture.homeRoot,
-      COPILOT_CONFIG_DIR: configDir,
+      COPILOT_HOME: configDir,
     };
 
     // Run 1: preserve mode — creates companion + import block
@@ -1022,7 +1065,7 @@ Use the real docs file.
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        COPILOT_CONFIG_DIR: configDir,
+        COPILOT_HOME: configDir,
       },
       encoding: 'utf-8',
     });
@@ -1080,7 +1123,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
       env: {
         ...process.env,
         HOME: homeRoot,
-        COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
+        COPILOT_HOME: join(homeRoot, '.claude'),
       },
       encoding: 'utf-8',
     });
@@ -1130,7 +1173,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
       env: {
         ...process.env,
         HOME: homeRoot,
-        COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
+        COPILOT_HOME: join(homeRoot, '.claude'),
       },
       encoding: 'utf-8',
     });
@@ -1211,7 +1254,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
         env: {
           ...process.env,
           HOME: homeRoot,
-          COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
+          COPILOT_HOME: join(homeRoot, '.claude'),
         },
         encoding: 'utf-8',
       },
@@ -1289,7 +1332,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
         env: {
           ...process.env,
           HOME: homeRoot,
-          COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
+          COPILOT_HOME: join(homeRoot, '.claude'),
         },
         encoding: 'utf-8',
       },
@@ -1363,7 +1406,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
         env: {
           ...process.env,
           HOME: homeRoot,
-          COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
+          COPILOT_HOME: join(homeRoot, '.claude'),
         },
         encoding: 'utf-8',
       },
@@ -1424,13 +1467,80 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
         env: {
           ...process.env,
           HOME: homeRoot,
-          COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
+          COPILOT_HOME: join(homeRoot, '.claude'),
         },
         encoding: 'utf-8',
       },
     );
 
     expect(result.status).toBe(0);
+
+    const installed = readFileSync(join(projectRoot, '.claude', 'CLAUDE.md'), 'utf-8');
+    expect(installed).toContain('<!-- OMC:VERSION:4.9.0 -->');
+    expect(installed).not.toContain('<!-- OMC:VERSION:4.8.2 -->');
+  });
+  it('succeeds when the launcher path is a repair-plugin-cache compat symlink to the latest version (issue #3980)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omc-3980-symlink-launcher-'));
+    tempRoots.push(root);
+
+    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-copilot');
+    const oldVersion = join(cacheBase, '4.8.2');
+    const newVersion = join(cacheBase, '4.9.0');
+    const projectRoot = join(root, 'project');
+    const homeRoot = join(root, 'home');
+
+    // Real latest version dir with the full setup surface.
+    mkdirSync(join(newVersion, 'docs'), { recursive: true });
+    writeFileSync(
+      join(newVersion, 'docs', 'CLAUDE.md'),
+      `<!-- OMC:START -->\n<!-- OMC:VERSION:4.9.0 -->\n\n# New\n<!-- OMC:END -->\n`,
+    );
+    installSetupSurface(newVersion);
+    buildCoordinatorFixture(newVersion, readFileSync(join(newVersion, 'docs', 'CLAUDE.md'), 'utf-8'), '4.9.0');
+
+    // Post-repair state: repair-plugin-cache.mjs replaces the stale version
+    // dir with a symlink fallback to the latest version.
+    symlinkSync('4.9.0', oldVersion, 'dir');
+
+    // Registry still records the compat path, as left by the repair.
+    mkdirSync(join(homeRoot, '.claude', 'plugins'), { recursive: true });
+    writeFileSync(
+      join(homeRoot, '.claude', 'plugins', 'installed_plugins.json'),
+      JSON.stringify({
+        'oh-my-copilot@omc': [
+          {
+            installPath: oldVersion,
+            version: '4.8.2',
+          },
+        ],
+      }),
+    );
+
+    mkdirSync(projectRoot, { recursive: true });
+    mkdirSync(join(homeRoot, '.claude'), { recursive: true });
+    writeFileSync(
+      join(homeRoot, '.claude', 'settings.json'),
+      JSON.stringify({ plugins: ['oh-my-copilot'] }),
+    );
+
+    // Launch through the symlinked compat path, like a session whose plugin
+    // root is the stale version dir after cache repair.
+    const result = spawnSync(
+      'bash',
+      [join(oldVersion, 'scripts', 'setup-claude-md.sh'), 'local'],
+      {
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          HOME: homeRoot,
+          COPILOT_HOME: join(homeRoot, '.claude'),
+        },
+        encoding: 'utf-8',
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain('must not be a symbolic link');
 
     const installed = readFileSync(join(projectRoot, '.claude', 'CLAUDE.md'), 'utf-8');
     expect(installed).toContain('<!-- OMC:VERSION:4.9.0 -->');
@@ -1512,7 +1622,7 @@ describe('setup-claude-md.sh Volta shim + re-exec loop regression (issue #3743)'
 
     const result = spawnSync('bash', [join(fixture.checkoutRoot, 'scripts', 'setup-claude-md.sh'), 'local'], {
       cwd: fixture.projectRoot,
-      env: { ...process.env, HOME: fixture.homeRoot, COPILOT_CONFIG_DIR: join(fixture.homeRoot, '.claude') },
+      env: { ...process.env, HOME: fixture.homeRoot, COPILOT_HOME: join(fixture.homeRoot, '.claude') },
       encoding: 'utf-8',
       timeout: 10_000,
     });
@@ -1548,7 +1658,7 @@ describe('setup-claude-md.sh Volta shim + re-exec loop regression (issue #3743)'
         env: {
           ...process.env,
           HOME: fixture.homeRoot,
-          COPILOT_CONFIG_DIR: join(fixture.homeRoot, '.claude'),
+          COPILOT_HOME: join(fixture.homeRoot, '.claude'),
           OMC_SETUP_REEXEC_DEPTH: '2',
         },
         encoding: 'utf-8',
@@ -1583,7 +1693,7 @@ describe('setup-claude-md.sh Volta shim + re-exec loop regression (issue #3743)'
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        COPILOT_CONFIG_DIR: join(fixture.homeRoot, '.claude'),
+        COPILOT_HOME: join(fixture.homeRoot, '.claude'),
         PATH: `${shimDir}:${process.env.PATH}`,
       },
       encoding: 'utf-8',

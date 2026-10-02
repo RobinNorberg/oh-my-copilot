@@ -31,7 +31,7 @@ function runScript(script: string, args: string[], cwd: string, configDir: strin
   return spawnSync(process.execPath, [script, ...args], {
     cwd,
     encoding: 'utf-8',
-    env: { ...process.env, COPILOT_CONFIG_DIR: configDir },
+    env: { ...process.env, COPILOT_HOME: configDir },
   });
 }
 
@@ -145,7 +145,7 @@ describe('setup-progress.mjs', () => {
     );
 
     const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };
-    delete env.COPILOT_CONFIG_DIR;
+    delete env.COPILOT_HOME;
     const result = spawnSync(process.execPath, [SETUP_PROGRESS, 'complete', 'v1.2.3'], {
       cwd: project,
       encoding: 'utf-8',
@@ -180,7 +180,7 @@ describe('setup-progress.mjs', () => {
     const result = spawnSync(process.execPath, [SETUP_PROGRESS, 'complete'], {
       cwd: project,
       encoding: 'utf-8',
-      env: { ...process.env, COPILOT_CONFIG_DIR: configDir },
+      env: { ...process.env, COPILOT_HOME: configDir },
     });
 
     expect(result.status).toBe(0);
@@ -204,7 +204,7 @@ describe('setup-progress.mjs', () => {
     const result = spawnSync(process.execPath, [SETUP_PROGRESS, 'complete'], {
       cwd: project,
       encoding: 'utf-8',
-      env: { ...process.env, COPILOT_CONFIG_DIR: configDir, ComSpec: impostor },
+      env: { ...process.env, COPILOT_HOME: configDir, ComSpec: impostor },
     });
 
     expect(result.status).toBe(0);
@@ -224,7 +224,7 @@ describe('setup-progress.mjs', () => {
     writeFileSync(join(home, '.copilot', '.omc-config.json'), JSON.stringify({ taskTool: 'builtin' }));
 
     const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };
-    delete env.COPILOT_CONFIG_DIR;
+    delete env.COPILOT_HOME;
     const result = spawnSync(process.execPath, [SETUP_PROGRESS, 'complete', 'v1.2.3'], {
       cwd: project,
       encoding: 'utf-8',

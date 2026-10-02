@@ -1,9 +1,6 @@
 ---
 name: omc-ado-sprint
-description: >
-  Sprint planning and iteration management for Azure DevOps projects.
-  WHEN: User wants to plan sprints, manage iterations, check team capacity, groom backlogs, or assign work to sprints.
-  DO NOT USE FOR: Work item triage (use omc-ado-triage), PR reviews (use omc-ado-review), pipeline management, or non-ADO projects.
+description: "Azure DevOps sprint planning: manage iterations, check team capacity, groom the backlog, and assign work to sprints. Not for work item triage (omc-ado-triage), PR review, pipeline management, or GitHub repos (omc-gh-project)."
 ---
 
 # OMC ADO Sprint

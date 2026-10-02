@@ -25,6 +25,7 @@ import { spawn } from "child_process";
 import { join, dirname, resolve, normalize, sep } from "path";
 import { homedir } from "os";
 import { fileURLToPath, pathToFileURL } from "url";
+import { isJevShadowOptedIn, recordJevShadow } from "./lib/jev-shadow.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -32,6 +33,54 @@ const __dirname = dirname(__filename);
 const SAFE_CONTINUE = { continue: true, suppressOutput: true };
 const DEFAULT_SAFETY_TIMEOUT_MS = 8500;
 const SAFE_EXIT_FLUSH_TIMEOUT_MS = 100;
+const LOOP_CONTINUATION_NOUL_QUESTIONS = {
+  task_complete: {
+    type: "noul",
+    instructions: "Is the task complete — is there no substantive work left for this mode?",
+    criteria: {},
+  },
+};
+const LEARNER_EXTRACTION_QUESTIONS = {
+  extractable_moment: {
+    type: "noul",
+    instructions: "Does this assistant message contain an extractable memory-worthy moment?",
+    criteria: {
+      true: "Contains a reusable pattern, decision, or correction worth persisting",
+      false: "Routine work with nothing worth extracting",
+    },
+  },
+};
+
+function recordLoopContinuationShadow(state, heuristic) {
+  recordJevShadow({
+    point: "loop-continuation",
+    state,
+    questions: LOOP_CONTINUATION_NOUL_QUESTIONS,
+    heuristic,
+  });
+}
+
+async function recordLearnerExtractionShadow(data) {
+  const assistantMessage = data.last_assistant_message;
+  if (typeof assistantMessage !== "string" || !assistantMessage.trim() || !isJevShadowOptedIn("learner-extraction")) {
+    return;
+  }
+
+  try {
+    const detectorPath = join(__dirname, "..", "dist", "hooks", "learner", "detector.js");
+    if (!existsSync(detectorPath)) return;
+    const { detectExtractableMoment } = await import(pathToFileURL(detectorPath).href);
+    const heuristic = detectExtractableMoment(assistantMessage);
+    recordJevShadow({
+      point: "learner-extraction",
+      state: { assistant_message: assistantMessage, user_message: null },
+      questions: LEARNER_EXTRACTION_QUESTIONS,
+      heuristic,
+    });
+  } catch {
+    // Missing optional detector output or resolver plumbing must not affect Stop.
+  }
+}
 
 
 function getSafetyTimeoutMs() {
@@ -96,7 +145,7 @@ process.on("unhandledRejection", (error) => {
   forceSafeExit(`[persistent-mode] Unhandled rejection: ${error?.message || error}`);
 });
 const { advanceWorkflowOnStop, isValidWorkflowDescriptor, isValidWorkflowTrackingState, isWorkflowRuntimeSupported, refreshWorkflowBoundaryForCommit, resolveWorkflowStagePrompt, takeWorkflowTranscriptFailure } = await import(pathToFileURL(join(__dirname, "lib", "workflow-profile-runtime.mjs")).href);
-const { acquireStateFileLockSync, atomicWriteFileSync, isStateFileLockingSupported, releaseStateFileLockSync, withStateFileLockSync } = await import(pathToFileURL(join(__dirname, "lib", "atomic-write.mjs")).href);
+const { acquireStateFileLockSync, atomicWriteFileSync, getStateFileLockFailureMessage, isExclusiveStateLockingAvailable, isStateFileLockingSupported, releaseStateFileLockSync, withStateFileLockSync } = await import(pathToFileURL(join(__dirname, "lib", "atomic-write.mjs")).href);
 
 const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, "lib", "config-dir.mjs")).href);
 const { readStdin } = await import(
@@ -163,6 +212,25 @@ function writeJsonFile(path, data) {
   }
 }
 
+function lockFailureReason(operation) {
+  const message = getStateFileLockFailureMessage();
+  return `[OMC] ${operation} failed: ${message} Retry the operation after the lock holder exits.`;
+}
+
+/**
+ * A contended or unverifiable state lock is diagnostic, never a turn blocker.
+ * The uncommitted transition is re-derived on the next invocation, so the
+ * stage/phase prompt must still reach the agent; surfacing the shortfall on
+ * stderr keeps #4016's actionable message without losing that contract.
+ */
+function reportLockFailure(operation) {
+  try {
+    process.stderr.write(`${lockFailureReason(operation)}\n`);
+  } catch {
+    // Diagnostics never affect control flow.
+  }
+}
+
 function workflowStopResponse(state) {
   const stage = state?.workflow?.stages?.[state?.pipelineTracking?.currentStageIndex];
   if (!stage) return { continue: false, decision: "block", reason: "[AUTOPILOT WORKFLOW] All selected stages are complete." };
@@ -172,34 +240,48 @@ function workflowStopResponse(state) {
 
 function commitWorkflowAdvance(path, advance) {
   const lock = acquireStateFileLockSync(path);
-  if (!lock) return { committed: false, state: readJsonFile(path) };
+  if (!lock) { reportLockFailure('Autopilot workflow state transition'); return { committed: false, state: readJsonFile(path) }; }
+  let result;
   try {
     const current = readJsonFile(path);
     const currentStage = current?.pipelineTracking?.stages?.[advance.expectedStageIndex];
-    if (!isValidWorkflowDescriptor(current?.workflow) || !isValidWorkflowTrackingState(current, advance.expectedSessionId) || current.workflowRunId !== advance.expectedWorkflowRunId || current?.pipelineTracking?.trackingRevision !== advance.expectedRevision || current.workflow.profileHash !== advance.expectedProfileHash || current?.session_id !== advance.expectedSessionId || current?.active !== true || current?.pipelineTracking?.currentStageIndex !== advance.expectedStageIndex || currentStage?.id !== advance.expectedStageId || currentStage?.status !== 'active') return { committed: false, state: current };
-    if (!refreshWorkflowBoundaryForCommit(advance)) return { committed: false, state: current };
-    if (!writeJsonFile(path, advance.updated)) return { committed: false, state: readJsonFile(path) };
-    return { committed: true, state: advance.updated };
+    if (!isValidWorkflowDescriptor(current?.workflow) || !isValidWorkflowTrackingState(current, advance.expectedSessionId) || current.workflowRunId !== advance.expectedWorkflowRunId || current?.pipelineTracking?.trackingRevision !== advance.expectedRevision || current.workflow.profileHash !== advance.expectedProfileHash || current?.session_id !== advance.expectedSessionId || current?.active !== true || current?.pipelineTracking?.currentStageIndex !== advance.expectedStageIndex || currentStage?.id !== advance.expectedStageId || currentStage?.status !== 'active') {
+      result = { committed: false, state: current };
+    } else if (!refreshWorkflowBoundaryForCommit(advance)) {
+      result = { committed: false, state: current };
+    } else if (!writeJsonFile(path, advance.updated)) {
+      result = { committed: false, state: readJsonFile(path) };
+    } else {
+      result = { committed: true, state: advance.updated };
+    }
   } finally {
-    releaseStateFileLockSync(lock);
+    if (!releaseStateFileLockSync(lock)) { reportLockFailure('Autopilot workflow state transition release'); result = { committed: false, state: readJsonFile(path) }; }
   }
+  return result;
 }
 
 function refreshNamedWorkflowDispatch(path, expected) {
   const lock = acquireStateFileLockSync(path);
-  if (!lock) return { committed: false, state: readJsonFile(path) };
+  if (!lock) { reportLockFailure('Autopilot workflow state refresh'); return { committed: false, state: readJsonFile(path) }; }
+  let result;
   try {
     const current = readJsonFile(path);
     const currentStage = current?.pipelineTracking?.stages?.[expected.stageIndex];
-    if (!isValidWorkflowDescriptor(current?.workflow) || !isValidWorkflowTrackingState(current, expected.sessionId)) return { committed: false, state: current, integrityFailed: true };
-    if (current?.workflowRunId !== expected.workflowRunId || current?.session_id !== expected.sessionId || current?.workflow?.profileHash !== expected.profileHash || current?.pipelineTracking?.trackingRevision !== expected.trackingRevision || current?.pipelineTracking?.currentStageIndex !== expected.stageIndex || currentStage?.id !== expected.stageId || currentStage?.status !== 'active' || current?.phase !== expected.phase || current?.active !== true) return { committed: false, state: current };
-    const now = new Date().toISOString();
-    const refreshed = { ...current, last_checked_at: now, updated_at: now };
-    if (!writeJsonFile(path, refreshed)) return { committed: false, state: readJsonFile(path) };
-    return { committed: true, state: refreshed };
+    if (!isValidWorkflowDescriptor(current?.workflow) || !isValidWorkflowTrackingState(current, expected.sessionId)) {
+      result = { committed: false, state: current, integrityFailed: true };
+    } else if (current?.workflowRunId !== expected.workflowRunId || current?.session_id !== expected.sessionId || current?.workflow?.profileHash !== expected.profileHash || current?.pipelineTracking?.trackingRevision !== expected.trackingRevision || current?.pipelineTracking?.currentStageIndex !== expected.stageIndex || currentStage?.id !== expected.stageId || currentStage?.status !== 'active' || current?.phase !== expected.phase || current?.active !== true) {
+      result = { committed: false, state: current };
+    } else {
+      const now = new Date().toISOString();
+      const refreshed = { ...current, last_checked_at: now, updated_at: now };
+      result = writeJsonFile(path, refreshed)
+        ? { committed: true, state: refreshed }
+        : { committed: false, state: readJsonFile(path) };
+    }
   } finally {
-    releaseStateFileLockSync(lock);
+    if (!releaseStateFileLockSync(lock)) { reportLockFailure('Autopilot workflow state refresh release'); result = { committed: false, state: readJsonFile(path) }; }
   }
+  return result;
 }
 
 function getIdleCooldownSeconds() {
@@ -563,13 +645,14 @@ function clearLoadedStateFile(loaded) {
 
   let cleared = false;
   try {
-    withStateFileLockSync(statePath, () => {
+    const locked = withStateFileLockSync(statePath, () => {
       const current = readJsonFile(statePath);
       if (current && JSON.stringify(current) === expectedSnapshot && existsSync(statePath)) {
         unlinkSync(statePath);
         cleared = true;
       }
     });
+    if (!locked.acquired) process.stderr.write(`${lockFailureReason('Orphaned state cleanup')}\n`);
   } catch {
     // Best effort: failing to clean an orphan should not re-arm stop blocking.
   }
@@ -791,9 +874,17 @@ function isSessionCancelInProgress(stateDir, sessionId, currentAutopilotPath, ca
   const isActiveSignal = (signalPath) => {
     if (!existsSync(signalPath)) return false;
     if (!currentAutopilotPath || !cancellationContext) return validateSignal(signalPath, null);
-    const stateLock = acquireStateFileLockSync(currentAutopilotPath, 50, true);
+    // The flock-absent contract lives here rather than inside the lock
+    // primitive: with no exclusive backend to fail closed against, this path
+    // must not authenticate state through the best-effort fallback lock, while
+    // emergency recovery still gets its SQLite-backed exclusive claim.
+    const stateLock = isExclusiveStateLockingAvailable()
+      ? acquireStateFileLockSync(currentAutopilotPath, 50, true)
+      : null;
     if (!stateLock) {
-      if (isStateFileLockingSupported()) return false;
+      // A real contender holds the lock only when exclusive acquisition is
+      // actually available; without it, fall through to the enforceability check.
+      if (isExclusiveStateLockingAvailable()) return false;
       const currentAutopilot = readJsonFile(currentAutopilotPath);
       if (isEnforceableAutopilotCancellationTarget(currentAutopilot, cancellationContext.directory, cancellationContext.isGlobal, cancellationContext.hasValidSessionId, sessionId)) return false;
       return validateSignal(signalPath, null);
@@ -1096,6 +1187,10 @@ async function main() {
       return;
     }
 
+    // Stop supplies the assistant response text directly; only load the
+    // existing detector when this advisory point is explicitly enabled.
+    await recordLearnerExtractionShadow(data);
+
     const directory = data.cwd || data.directory || process.cwd();
     const sessionIdRaw = data.sessionId || data.session_id || data.sessionid || "";
     const sessionId = sanitizeSessionId(sessionIdRaw);
@@ -1242,6 +1337,22 @@ async function main() {
             reason = errorGuidance + reason;
           }
 
+          const heuristic = {
+            mode: "ralph",
+            shouldBlock: true,
+            iteration: ralph.state.iteration,
+            maxIterations: maxIter,
+          };
+          const judgmentState = {
+            mode_name: "ralph",
+            session_id: sessionId || null,
+            iteration: ralph.state.iteration,
+            phase: null,
+            should_block: true,
+            continuation_excerpt: reason,
+          };
+          recordLoopContinuationShadow(judgmentState, heuristic);
+
           console.log(
             JSON.stringify({
               decision: "block",
@@ -1281,6 +1392,19 @@ async function main() {
         writeJsonFile(ralph.path, ralph.state);
 
         const ralphExtendedReason = `[RALPH LOOP - EXTENDED] Max iterations reached; extending to ${ralph.state.max_iterations} and continuing. When FULLY complete (after Architect verification), run /oh-my-copilot:cancel (or --force).`;
+        recordLoopContinuationShadow({
+          mode_name: "ralph",
+          session_id: sessionId || null,
+          iteration: ralph.state.iteration,
+          phase: null,
+          should_block: true,
+          continuation_excerpt: ralphExtendedReason,
+        }, {
+          mode: "ralph",
+          shouldBlock: true,
+          iteration: ralph.state.iteration,
+          maxIterations: ralph.state.max_iterations,
+        });
         console.log(
           JSON.stringify({
             decision: "block",
@@ -1421,6 +1545,7 @@ async function main() {
               committed = writeJsonFile(autopilot.path, reinforced);
             });
             if (!locked.acquired || !committed) {
+              if (!locked.acquired) reportLockFailure('Autopilot state reinforcement');
               console.log(JSON.stringify(SAFE_CONTINUE));
               return;
             }
@@ -1433,6 +1558,20 @@ async function main() {
             if (errorGuidance) {
               reason = errorGuidance + reason;
             }
+
+            recordLoopContinuationShadow({
+              mode_name: "autopilot",
+              session_id: sessionId || null,
+              iteration: newCount,
+              phase,
+              should_block: true,
+              continuation_excerpt: reason,
+            }, {
+              mode: "autopilot",
+              shouldBlock: true,
+              iteration: newCount,
+              phase,
+            });
 
             console.log(
               JSON.stringify({

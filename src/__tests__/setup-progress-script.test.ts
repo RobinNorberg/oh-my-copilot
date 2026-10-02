@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 describe('setup-progress.sh', () => {
-  it('writes setup completion metadata to COPILOT_CONFIG_DIR', () => {
+  it('writes setup completion metadata to COPILOT_HOME', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-setup-progress-'));
     tempRoots.push(root);
 
@@ -42,7 +42,7 @@ describe('setup-progress.sh', () => {
       env: {
         ...process.env,
         HOME: homeRoot,
-        COPILOT_CONFIG_DIR: configDir,
+        COPILOT_HOME: configDir,
       },
       encoding: 'utf-8',
     });
@@ -87,7 +87,7 @@ describe('setup-progress.sh', () => {
       env: {
         ...process.env,
         HOME: homeRoot,
-        COPILOT_CONFIG_DIR: configDir,
+        COPILOT_HOME: configDir,
         PATH: binDir,
       },
       encoding: 'utf-8',

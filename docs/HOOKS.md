@@ -36,6 +36,72 @@ Hooks are defined in a `hooks.json` file. Each hook follows this structure:
 
 Hook output is injected into Claude via `<system-reminder>` tags. Additional context is passed through `hookSpecificOutput.additionalContext`.
 
+## Copilot CLI hook projection
+
+`hooks/hooks.json` is the Claude Code hook file, and it stays byte-identical to upstream. GitHub Copilot CLI does not load it. Copilot reads the root `plugin.json` first (before `.claude-plugin/plugin.json`), and that manifest points `hooks` at the generated `copilot/hooks.json` (and `agents` at the generated `copilot/agents/`). Claude Code never reads the root manifest.
+
+### Generated entries
+
+`scripts/copilot/build-hooks.mjs` derives one Copilot entry per upstream hook command:
+
+```json
+"Stop": [
+  { "type": "command",
+    "exec": "node",
+    "args": ["--require", "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
+             "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+             "${CLAUDE_PLUGIN_ROOT}/scripts/persistent-mode.mjs"],
+    "env": { "OMC_HOOK_EVENT": "Stop" },
+    "timeoutSec": 10 }
+]
+```
+
+- `exec` + `args` runs `node` without a shell. Copilot runs `command` hooks through PowerShell on Windows, which split the upstream `node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ...` form so that node loaded the plugin directory and exited 0. Every hook was a silent no-op. With `args`, a plugin path containing spaces stays one argument, and each hook saves about 0.5 s of PowerShell startup.
+- `OMC_HOOK_EVENT` names the event for the adapter. `timeoutSec` is the upstream `timeout`. Extra script arguments (`subagent-tracker.mjs start`) are kept.
+- The upstream matcher is copied onto each entry, except `*` and empty matchers. `async` is dropped, because Copilot has no such field.
+- The generator throws on a hook command form or field it does not recognise. An upstream change then fails the build instead of shipping a no-op.
+
+**Regenerate, never hand-edit.** Run `npm run build:copilot-hooks` (`node scripts/copilot/build-hooks.mjs --write`) after any change to `hooks/hooks.json`; `npm run build` includes it. `npm run verify:copilot-hooks` and `src/__tests__/copilot-hooks-manifest.test.ts` fail when the file drifts. The agents file set has the same rule: `npm run build:copilot-agents`.
+
+### Output adapter
+
+The hook scripts speak the Claude Code hook contract. `scripts/lib/copilot-hook-adapter.cjs`, preloaded with `node --require`, buffers the hook's stdout and rewrites it on exit to the subset Copilot honours. It is a no-op unless `OMC_HOOK_EVENT` is set, so Claude Code is untouched. It is also a no-op inside run.cjs worker threads.
+
+| Event | Hook output (Claude shape) | Emitted for Copilot |
+|---|---|---|
+| any | `hookSpecificOutput.additionalContext` | Hoisted to top-level `additionalContext` (Copilot drops the nested copy). An existing top-level value wins. |
+| PreToolUse | `{decision: "block", reason}` or `continue: false` | `permissionDecision: "deny"` with the reason (Copilot ignores `decision: "block"` on PreToolUse). |
+| PreToolUse | `hookSpecificOutput.permissionDecision` | Kept, and also hoisted to top level. |
+| PreToolUse | `hookSpecificOutput.updatedInput` | Dropped. Copilot would replace the tool args with a Claude-shaped object. This is why `agents.<name>.model` overrides are a no-op on Copilot. |
+| PreToolUse | exit 2 + stderr | Deny with the stderr text; exit 0. |
+| Stop / SubagentStop | `{decision: "block", reason}` | Passed through; Copilot re-prompts with the reason. |
+| Stop / SubagentStop | `continue: false` + `decision: "block"` | `{}`, reason to stderr. Claude precedence: `continue: false` wins, so the turn stops. |
+| Stop / SubagentStop | exit 2 + stderr | `{decision: "block", reason: <stderr>}`; exit 0. |
+| PostToolUseFailure | exit 2 + stderr | `{additionalContext: <stderr>}`; exit 0. |
+| PermissionRequest | exit 2 | Kept (exit 2 denies on both hosts). |
+| any other | any other non-zero exit | Exit 0 plus one `[omg-hook] <event> internal error: <script> exited <N>; failing open` stderr line. |
+
+The adapter fails **open** on a hook's internal error. Copilot treats a PreToolUse hook that exits non-zero as a deny, so without this one crashing hook would block every tool call.
+
+| Variable | Effect |
+|---|---|
+| `OMC_HOOK_EVENT` | Set by `copilot/hooks.json`; activates the adapter. |
+| `OMC_HOOK_FAIL_CLOSED=1` | Keep the hook's original non-zero exit code (fail closed). |
+| `OMC_HOOK_STRICT=1` | A hook target that is missing or not a file exits 1 instead of 0 plus a stderr line. |
+| `OMC_DEBUG_HOOKS` | Log adapter decisions, such as a dropped `updatedInput`, to stderr. |
+
+### Not projected
+
+SessionStart groups with the `init` and `maintenance` matchers (`setup-init`, `setup-maintenance`) are not written to `copilot/hooks.json`. Copilot ignores SessionStart matchers, so they would run on every session, adding about 1 s, and maintenance would prune state each time. They still run under Claude Code.
+
+### `node` is required
+
+Every generated entry runs `node`. When a PreToolUse hook cannot start at all, for example because `node` is not on PATH, Copilot denies the tool call itself ("hook errored"). The adapter never runs, so it cannot fail open. Copilot CLI ships as a single executable and does not provide `node`; install Node.js and put it on PATH. `omg doctor conflicts` checks it.
+
+### Latency
+
+Copilot runs the hooks for one event sequentially, one `node` process each. A PostToolUse or Stop event with several hooks therefore costs several node start-ups. A per-event dispatcher that runs all scripts for an event in one process is a planned follow-up, to be measured first.
+
 ## Hook Categories
 
 OMC hooks fall into four categories:
@@ -47,7 +113,7 @@ Handle orchestration, keyword detection, and mode persistence.
 | Hook | Description |
 |------|-------------|
 | keyword-detector | Detects magic keywords and activates corresponding skills |
-| persistent-mode | Enforces continuation when an execution mode (ralph, autopilot, ultrawork, etc.) is active — injects reinforcement messages on Stop to prevent premature halting |
+| persistent-mode | Enforces continuation when an execution mode (ralph, autopilot, team, etc.) is active — injects reinforcement messages on Stop to prevent premature halting |
 
 ### Context Management Hooks
 
@@ -101,7 +167,7 @@ Fires when the user submits a prompt.
 | `keyword-detector.mjs` | Detects magic keywords and invokes the corresponding skill | 30s outer host fuse; 8s trusted Worker limit |
 | `skill-injector.mjs` | Injects skill prompts | 30s outer host fuse; 12s trusted Worker limit |
 
-Runs on all user input (`matcher: "*"`). When the keyword detector finds keywords like "ultrawork", "ralph", or "autopilot", it injects the corresponding skill invocation instruction via `additionalContext`.
+Runs on all user input (`matcher: "*"`). When the keyword detector finds keywords like "ralph" or "autopilot", it injects the corresponding skill invocation instruction via `additionalContext`. Parallel work is invoked explicitly with `/oh-my-copilot:team` and is not auto-detected.
 
 The 30s timeout is a per-command outer host fuse that includes launcher startup before `run.cjs`. Once the runner reaches its exact trusted Worker branch, `keyword-detector.mjs` is limited to 8s and `skill-injector.mjs` to 12s; lower manifest limits are never extended. A command that never reaches `run.cjs` can consume its full 30s outer fuse. The host schedules the two commands externally, so this does not claim an aggregate prompt latency.
 
@@ -201,7 +267,7 @@ Fires when Claude finishes a response.
 |--------|------|---------|
 | `context-guard-stop.mjs` | Monitors context usage | 5s |
 | `workflow-drift-guard.mjs` | Blocks narrow structured-question and fake-completion drift | 3s |
-| `persistent-mode.mjs` | Maintains active mode state (ralph, ultrawork, etc.) | 10s |
+| `persistent-mode.mjs` | Maintains active mode state (ralph, team, etc.) | 10s |
 | `code-simplifier.mjs` | Auto-simplifies modified files (opt-in) | 5s |
 
 `persistent-mode` injects a reinforcement message like "The boulder never stops" when an active execution mode is running, prompting continued work. A fresh unconfirmed ultragoal is exempt while Claude `/goal` confirmation is pending; confirmed runs remain fail-closed.
@@ -228,11 +294,11 @@ Detects magic keywords in user prompts and invokes the corresponding skill.
 
 - **Event**: UserPromptSubmit
 - **Behavior**: Sanitizes the prompt (removes code blocks, URLs, file paths) then matches keyword patterns
-- **Conflict resolution**: cancel has highest priority, then ralph > autopilot > ultrawork
+- **Conflict resolution**: cancel has highest priority, then ralph > autopilot
+
 - **Safety**: Disabled inside team workers to prevent infinite spawning
 
 See the [Magic Keywords](#magic-keywords) section for the full keyword list.
-
 
 #### workflow-drift-guard
 
@@ -263,16 +329,28 @@ Ambiguous-regex and malformed-ternary uncertainty is bounded to the current phys
 
 #### persistent-mode
 
-Enforces continuation when an execution mode is active. This is the hook that keeps skills like autopilot, ralph, and ultrawork running.
+Enforces continuation when an execution mode is active. This is the hook that keeps skills like autopilot, ralph, and team running.
 
 - **Event**: Stop
-- **Behavior**: Checks `.omg/state/` for active mode state files. If any mode (ralph, ultragoal, autopilot, ultrawork, team, pipeline) is active, injects a reinforcement message to prevent Claude from stopping.
+- **Behavior**: Checks `.omg/state/` for active mode state files. If any current mode (ralph, ultragoal, autopilot, team) or legacy/retired state (ultrawork, pipeline) is active, injects a reinforcement message to prevent Claude from stopping.
+
 - **Reinforcement message**: "The boulder never stops" — prompts Claude to continue working
 - **Staleness check**: States older than 2 hours are treated as inactive to prevent stale state from blocking new sessions
 - **Notification**: Sends Discord/Telegram/Slack notification on first stop (if configured)
 - **Cancel**: Use `/oh-my-copilot:cancel` to deactivate modes
 
-> **Note**: autopilot, ralph, and ultrawork are **skills** (invoked via keyword-detector), not hooks. The persistent-mode hook is what enforces their continuation by blocking the Stop event.
+> **Note**: autopilot, ralph, and team are **skills** (invoked through their current skill surfaces), not hooks. Legacy/retired `ultrawork` and `pipeline` state is cleanup-only and must never be invoked or reactivated. The persistent-mode hook enforces continuation by blocking the Stop event.
+
+#### budget-guard (`budget-guard.mjs`)
+
+Enforces `OMC_RUN_BUDGET_TOKENS` for unattended sessions: when an active unattended mode (ralph, autopilot, team, ultragoal) is running and the session's token spend crosses the budget, the hook blocks the Stop event and sends the model back to finish with a resumable budget report.
+
+On a Stop re-entry (`stop_hook_active` or `stopHookActive`), it records a pass and never blocks again, avoiding a self-reinforcing loop.
+
+- **Event**: Stop
+- **Token accounting**: sums the latest usage snapshot for each assistant message in a bounded tail (2 MB) of the session transcript, including cache tokens. Repeated records are deduplicated by `message.id`, falling back to `requestId`; records without either ID are counted individually. The bounded tail can undercount a long session. A missing or unreadable transcript degrades to a logged pass; the hook never blocks on absent evidence.
+- **Rollout (tri-state, mirrors the jev off/shadow/active protocol)**: `OMC_BUDGET_ENFORCE=off` does nothing; `shadow` (default) logs judgments to `.omg/state/enforcement/shadow.jsonl` and never blocks or warns; `active` warns at 90% (system message) and blocks at 100% (exit 2, budget-report contract in the refusal).
+- **Evidence**: every judgment is appended to the shadow log (`{ts, rule, mode, outcome, detail, latencyMs}`) — the promotion evidence for moving the default from shadow to active. A rule promotes only after enough samples with zero false blocks.
 
 ### Mode State Management
 
@@ -282,7 +360,7 @@ Execution mode hooks manage state files in the `.omg/state/` directory.
 {
   "active": true,
   "started_at": "2025-01-15T10:30:00Z",
-  "prompt": "ultrawork implement auth",
+  "prompt": "ralph implement auth",
   "session_id": "abc123",
   "project_path": "/path/to/project",
   "iteration": 0,
@@ -292,8 +370,9 @@ Execution mode hooks manage state files in the `.omg/state/` directory.
 }
 ```
 
-When a session ID is present, state is stored in session scope under `.omg/state/sessions/{sessionId}/`.
+The `linked_ultrawork` field is a legacy state field retained for compatibility with retired state files; it is not an invocable mode.
 
+When a session ID is present, state is stored in session scope under `.omg/state/sessions/{sessionId}/`.
 
 #### ultragoal-state.json lifecycle
 
@@ -318,7 +397,8 @@ or
 /oh-my-copilot:cancel
 ```
 
-`cancel` removes state files for all active modes: ralph, autopilot, ultrawork, and any others.
+`cancel` removes state files for all active modes: ralph, autopilot, team, and any others; it also clears legacy/retired `ultrawork` state.
+
 
 ---
 
@@ -416,8 +496,6 @@ These keywords invoke a skill and create a state file.
 | `cancelomc`, `stopomc` | cancel | Cancels all active modes |
 | `ralph`, `don't stop`, `must complete`, `until done` | ralph | Persistent execution until verification completes |
 | `autopilot`, `build me`, `I want a`, `handle it all`, `end to end`, `auto-pilot`, `full auto`, `fullsend`, `e2e this` | autopilot | Fully autonomous execution |
-| `ultrawork`, `ulw`, `uw` | ultrawork | Maximum parallel execution |
-| `ccg`, `claude-codex-gemini` | ccg | Claude-Codex-Gemini tri-model orchestration (use `antigravity` workers when using the Antigravity CLI) |
 | `ralplan` | ralplan | Consensus-based iterative planning |
 | `deep interview`, `ouroboros` | deep-interview | Socratic deep interview |
 
@@ -471,17 +549,15 @@ When multiple keywords are detected simultaneously, they resolve by the followin
 cancel  (highest priority, exclusive)
   → ralph
     → autopilot
-      → ultrawork
-        → ccg
-          → ralplan
-            → deep-interview
-              → ai-slop-cleaner
-                → tdd
-                  → code-review
-                    → security-review
-                      → ultrathink
-                        → deepsearch
-                          → analyze
+      → ralplan
+        → deep-interview
+          → ai-slop-cleaner
+            → tdd
+              → code-review
+                → security-review
+                  → ultrathink
+                    → deepsearch
+                      → analyze
 ```
 
 `cancel` is exclusive — it ignores all other matches and only runs the cancel action. All other keywords can be matched together and are processed in priority order.
@@ -495,7 +571,7 @@ cancel  (highest priority, exclusive)
 autopilot: implement user authentication with OAuth
 
 # Parallel execution
-ultrawork write all tests for this module
+/oh-my-copilot:team 3:executor "write all tests for this module"
 
 # Persistent execution
 ralph refactor this authentication module
@@ -512,7 +588,7 @@ stopomc
 
 ### Note on the `team` Keyword
 
-`team` is not auto-detected. It must be invoked explicitly via the `/team` slash command to prevent infinite spawning.
+`team` is not auto-detected. It must be invoked explicitly via the `/oh-my-copilot:team` slash command to prevent infinite spawning.
 
 ```
 /oh-my-copilot:team 3:executor "build a fullstack todo app"

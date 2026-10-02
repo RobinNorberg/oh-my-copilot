@@ -23,6 +23,7 @@ import {
 } from './autoresearch-setup-session.js';
 import { buildTmuxShellCommand, buildTmuxShellCommandWithEnv, isTmuxAvailable, quoteShellArg, tmuxExec, wrapWithLoginShell } from './tmux-utils.js';
 import { configureTmuxClipboardForSession } from './tmux-clipboard.js';
+import { getHostCliType } from '../utils/host-detection.js';
 
 const CLAUDE_BYPASS_FLAG = '--dangerously-skip-permissions';
 const AUTORESEARCH_SETUP_SLASH_COMMAND = '/deep-interview --autoresearch';
@@ -410,10 +411,15 @@ export function spawnAutoresearchSetupTmux(repoRoot: string): void {
 
   const sessionName = `omc-autoresearch-setup-${Date.now().toString(36)}`;
   const codexHome = prepareAutoresearchSetupCodexHome(repoRoot, sessionName);
-  const claudeCommand = buildTmuxShellCommandWithEnv('claude', [CLAUDE_BYPASS_FLAG], { CODEX_HOME: codexHome });
-  const wrappedClaudeCommand = wrapWithLoginShell(claudeCommand);
+  // Attended session: on a Copilot host spawn plain `copilot` so the user
+  // approves tool calls in the pane; the bypass flag stays claude-only.
+  const host = getHostCliType();
+  const hostCommand = host === 'claude'
+    ? buildTmuxShellCommandWithEnv('claude', [CLAUDE_BYPASS_FLAG], { CODEX_HOME: codexHome })
+    : buildTmuxShellCommandWithEnv('copilot', [], { CODEX_HOME: codexHome });
+  const wrappedHostCommand = wrapWithLoginShell(hostCommand);
   const paneId = tmuxExec(
-    ['new-session', '-d', '-P', '-F', '#{pane_id}', '-s', sessionName, '-c', repoRoot, wrappedClaudeCommand],
+    ['new-session', '-d', '-P', '-F', '#{pane_id}', '-s', sessionName, '-c', repoRoot, wrappedHostCommand],
     { stripTmux: true },
   ).trim();
   try {
@@ -427,7 +433,7 @@ export function spawnAutoresearchSetupTmux(repoRoot: string): void {
     tmuxExec(['send-keys', '-t', paneId, 'Enter'], { stripTmux: true, stdio: 'ignore' });
   }
 
-  console.log('\nAutoresearch setup launched in background Claude session.');
+  console.log(`\nAutoresearch setup launched in background ${host === 'claude' ? 'Claude' : 'Copilot'} session.`);
   console.log(`  Session:  ${sessionName}`);
   console.log(`  Starter:  ${buildAutoresearchSetupSlashCommand()}`);
   console.log(`  CODEX_HOME: ${quoteShellArg(codexHome)}`);

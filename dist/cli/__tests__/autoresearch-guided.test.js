@@ -365,10 +365,44 @@ describe('spawnAutoresearchSetupTmux', () => {
         wrapWithLoginShellMock.mockClear();
         logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
         dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(1234567890);
+        // Claude host by default; the Copilot-host case clears it explicitly.
+        vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', 'cli');
     });
     afterEach(() => {
+        vi.unstubAllEnvs();
         dateNowSpy.mockRestore();
         logSpy.mockRestore();
+    });
+    it('launches an attended copilot setup session with no allow/bypass flags on a Copilot host', async () => {
+        vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', '');
+        tmuxAvailableMock.mockReturnValue(true);
+        const repo = await initRepo();
+        try {
+            tmuxExecMock.mockImplementation((args) => {
+                if (args[0] === 'new-session')
+                    return '%42\n';
+                if (args[0] === 'set-option' && args.includes('set-clipboard'))
+                    return '';
+                if (args[0] === 'show-options')
+                    return 'xterm*:clipboard:focus\n';
+                if (args[0] === 'set-option' && args.includes('terminal-features'))
+                    return '';
+                if (args[0] === 'has-session' || args[0] === 'send-keys')
+                    return '';
+                throw new Error(`unexpected tmuxExec call: ${String(args)}`);
+            });
+            spawnAutoresearchSetupTmux(repo);
+            expect(buildTmuxShellCommandWithEnvMock).toHaveBeenCalledWith('copilot', [], { CODEX_HOME: expect.stringContaining('codex-home') });
+            const launched = String(wrapWithLoginShellMock.mock.calls[0]?.[0]);
+            expect(launched).toContain('copilot');
+            for (const flag of ['--dangerously-skip-permissions', '--allow-all', '--yolo']) {
+                expect(launched).not.toContain(flag);
+            }
+            expect(logSpy).toHaveBeenCalledWith('\nAutoresearch setup launched in background Copilot session.');
+        }
+        finally {
+            await rm(repo, { recursive: true, force: true });
+        }
     });
     it('launches a detached claude setup session and seeds deep-interview autoresearch mode', async () => {
         tmuxAvailableMock.mockReturnValue(true);

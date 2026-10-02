@@ -3,8 +3,9 @@
  *
  * Verifies that env vars set on the omc process actually arrive inside
  * a tmux session created the same way runClaudeOutsideTmux does.
- * No Claude CLI or API tokens are involved — the test runs `printenv`
- * inside the tmux pane and reads the output from a temp file.
+ * No Claude CLI is involved — the test runs `printenv` inside the tmux pane
+ * and reads the output from a temp file. The credential case uses a synthetic
+ * token and only asserts that it arrives through the private transport.
  *
  * Skipped when tmux is not available (CI without tmux, Windows, etc.).
  */
@@ -15,7 +16,7 @@ import { mkdtempSync, readFileSync, rmSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { wrapWithLoginShell, quoteShellArg } from '../tmux-utils.js';
-import { buildEnvExportPrefix } from '../launch.js';
+import { buildEnvExportPrefix, buildSensitiveEnvFilePrefix } from '../launch.js';
 
 function isTmuxAvailable(): boolean {
   try {
@@ -48,23 +49,23 @@ describe.skipIf(!HAS_TMUX)('tmux env forwarding — integration', () => {
     }
   });
 
-  it('COPILOT_CONFIG_DIR set via buildEnvExportPrefix reaches the tmux pane', () => {
+  it('COPILOT_HOME set via buildEnvExportPrefix reaches the tmux pane', () => {
     const testValue = '/tmp/omc-test-config-dir';
 
     // Build the env export prefix the same way runClaudeOutsideTmux does,
     // but with a controlled env snapshot instead of process.env
-    const savedConfigDir = process.env.COPILOT_CONFIG_DIR;
-    process.env.COPILOT_CONFIG_DIR = testValue;
-    const envPrefix = buildEnvExportPrefix(['COPILOT_CONFIG_DIR']);
+    const savedConfigDir = process.env.COPILOT_HOME;
+    process.env.COPILOT_HOME = testValue;
+    const envPrefix = buildEnvExportPrefix(['COPILOT_HOME']);
     // Restore immediately — we only needed it for the prefix string
     if (savedConfigDir !== undefined) {
-      process.env.COPILOT_CONFIG_DIR = savedConfigDir;
+      process.env.COPILOT_HOME = savedConfigDir;
     } else {
-      delete process.env.COPILOT_CONFIG_DIR;
+      delete process.env.COPILOT_HOME;
     }
 
-    // Build command: export env, then write COPILOT_CONFIG_DIR to file
-    const innerCmd = `${envPrefix}printenv COPILOT_CONFIG_DIR > ${quoteShellArg(outFile)}`;
+    // Build command: export env, then write COPILOT_HOME to file
+    const innerCmd = `${envPrefix}printenv COPILOT_HOME > ${quoteShellArg(outFile)}`;
     const shellCmd = wrapWithLoginShell(innerCmd);
 
     // Create a detached tmux session (same as runClaudeOutsideTmux)
@@ -96,16 +97,16 @@ describe.skipIf(!HAS_TMUX)('tmux env forwarding — integration', () => {
     const specialOutFile = join(tempDir, 'env-special');
     const specialSession = `${SESSION_NAME}-special`;
 
-    const savedConfigDir = process.env.COPILOT_CONFIG_DIR;
-    process.env.COPILOT_CONFIG_DIR = testValue;
-    const envPrefix = buildEnvExportPrefix(['COPILOT_CONFIG_DIR']);
+    const savedConfigDir = process.env.COPILOT_HOME;
+    process.env.COPILOT_HOME = testValue;
+    const envPrefix = buildEnvExportPrefix(['COPILOT_HOME']);
     if (savedConfigDir !== undefined) {
-      process.env.COPILOT_CONFIG_DIR = savedConfigDir;
+      process.env.COPILOT_HOME = savedConfigDir;
     } else {
-      delete process.env.COPILOT_CONFIG_DIR;
+      delete process.env.COPILOT_HOME;
     }
 
-    const innerCmd = `${envPrefix}printenv COPILOT_CONFIG_DIR > ${quoteShellArg(specialOutFile)}`;
+    const innerCmd = `${envPrefix}printenv COPILOT_HOME > ${quoteShellArg(specialOutFile)}`;
     const shellCmd = wrapWithLoginShell(innerCmd);
 
     try {
@@ -130,6 +131,47 @@ describe.skipIf(!HAS_TMUX)('tmux env forwarding — integration', () => {
       try {
         execFileSync('tmux', ['kill-session', '-t', specialSession], { stdio: 'ignore' });
       } catch { /* already gone */ }
+    }
+  });
+
+  it('forwards sensitive credentials through the path-only new-session transport', () => {
+    const sensitiveSession = `${SESSION_NAME}-sensitive`;
+    const secret = "sk-new-session-secret; it's not inline";
+    const sensitiveOutFile = join(tempDir, 'env-sensitive');
+    const savedApiKey = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = secret;
+    const transport = buildSensitiveEnvFilePrefix(['ANTHROPIC_API_KEY']);
+
+    try {
+      const innerCmd = `${transport.prefix}printenv ANTHROPIC_API_KEY > ${quoteShellArg(sensitiveOutFile)}`;
+      expect(innerCmd).not.toContain(secret);
+      const shellCmd = wrapWithLoginShell(innerCmd);
+
+      execFileSync('tmux', [
+        'new-session', '-d', '-s', sensitiveSession, shellCmd,
+      ]);
+
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        try {
+          execFileSync('tmux', ['has-session', '-t', sensitiveSession], { stdio: 'ignore' });
+          execFileSync('sleep', ['0.1']);
+        } catch {
+          break;
+        }
+      }
+
+      expect(existsSync(sensitiveOutFile)).toBe(true);
+      expect(readFileSync(sensitiveOutFile, 'utf-8').trim()).toBe(secret);
+      expect(existsSync(transport.paths[0])).toBe(false);
+      expect(existsSync(transport.paths[1])).toBe(false);
+    } finally {
+      transport.cleanup();
+      try {
+        execFileSync('tmux', ['kill-session', '-t', sensitiveSession], { stdio: 'ignore' });
+      } catch { /* already gone */ }
+      if (savedApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = savedApiKey;
     }
   });
 });

@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { executeTeamApiOperation } from '../api-interop.js';
 import { reserveRecoveryRequest, writeRecoveryPhase } from '../recovery-request-store.js';
+import { activateTeamInstanceUnderLock, createTeamInstanceBinding, reserveTeamInstanceUnderLock, withTeamInstanceLifecycleLock, } from '../team-instance.js';
 function isolateFixtureRoot(root) {
     const previousHome = process.env.HOME;
     const previousUserProfile = process.env.USERPROFILE;
@@ -31,38 +33,52 @@ describe('team api working-directory resolution', () => {
     let cwd;
     let restoreFixtureEnv;
     const teamName = 'resolution-team';
-    async function seedTeamState() {
-        const base = join(getOmcRoot(cwd), 'state', 'team', teamName);
-        await mkdir(join(base, 'tasks'), { recursive: true });
-        await mkdir(join(base, 'mailbox'), { recursive: true });
-        await writeFile(join(base, 'config.json'), JSON.stringify({
-            name: teamName,
-            task: 'resolution test',
-            agent_type: 'claude',
-            worker_count: 1,
-            max_workers: 20,
-            workers: [{ name: 'worker-1', index: 1, role: 'claude', assigned_tasks: [] }],
-            created_at: '2026-03-06T00:00:00.000Z',
-            next_task_id: 2,
-            team_state_root: base,
-        }, null, 2));
-        await writeFile(join(base, 'tasks', 'task-1.json'), JSON.stringify({
-            id: '1',
-            subject: 'Resolution test task',
-            description: 'Ensure API finds the real team root',
-            status: 'pending',
-            owner: null,
-            created_at: '2026-03-06T00:00:00.000Z',
-            version: 1,
-        }, null, 2));
-        return base;
+    async function seedTeamState(workspace = cwd) {
+        const instance = createTeamInstanceBinding({ teamName, cwd: workspace });
+        const base = instance.state_root;
+        await withTeamInstanceLifecycleLock(instance.cwd, instance.team_name, async () => {
+            await reserveTeamInstanceUnderLock({
+                teamName,
+                cwd: workspace,
+                instanceId: instance.instance_id,
+            });
+            await mkdir(join(base, 'tasks'), { recursive: true });
+            await mkdir(join(base, 'mailbox'), { recursive: true });
+            await writeFile(join(base, 'config.json'), JSON.stringify({
+                name: teamName,
+                instance_id: instance.instance_id,
+                leader_cwd: workspace,
+                lifecycle_state: 'active',
+                task: 'resolution test',
+                agent_type: 'claude',
+                worker_launch_mode: 'interactive',
+                worker_count: 1,
+                max_workers: 20,
+                workers: [{ name: 'worker-1', index: 1, role: 'claude', assigned_tasks: [] }],
+                created_at: '2026-03-06T00:00:00.000Z',
+                next_task_id: 2,
+                team_state_root: base,
+            }, null, 2));
+            await writeFile(join(base, 'tasks', 'task-1.json'), JSON.stringify({
+                id: '1',
+                subject: 'Resolution test task',
+                description: 'Ensure API finds the real team root',
+                status: 'pending',
+                owner: null,
+                created_at: '2026-03-06T00:00:00.000Z',
+                version: 1,
+            }, null, 2));
+            await activateTeamInstanceUnderLock(instance);
+        });
+        return { root: base, instanceId: instance.instance_id };
     }
-    function seedRecoveryPhase(workspace, recoveryId, stateRevision) {
+    function seedRecoveryPhase(workspace, recoveryId, stateRevision, instanceId) {
         reserveRecoveryRequest(workspace, 'request-a', {
             operation: 'recover-worker',
-            workspaceHash: 'a'.repeat(64),
+            workspaceHash: createHash('sha256').update(workspace).digest('hex'),
             teamName,
             workerName: 'worker-1',
+            instanceId,
         }, recoveryId);
         writeRecoveryPhase(workspace, {
             schema_version: 1,
@@ -88,6 +104,7 @@ describe('team api working-directory resolution', () => {
         restoreFixtureEnv?.();
         restoreFixtureEnv = undefined;
         delete process.env.OMC_TEAM_STATE_ROOT;
+        delete process.env.OMC_TEAM_LEADER_CWD;
         delete process.env.OMC_TEAM_WORKER;
         await rm(cwd, { recursive: true, force: true });
     });
@@ -112,8 +129,8 @@ describe('team api working-directory resolution', () => {
         expect(typeof claimResult.data.claimToken).toBe('string');
     });
     it('resolves workspace cwd from OMC_TEAM_STATE_ROOT when it points at a team-specific root', async () => {
-        const teamStateRoot = await seedTeamState();
-        process.env.OMC_TEAM_STATE_ROOT = teamStateRoot;
+        const seeded = await seedTeamState();
+        process.env.OMC_TEAM_STATE_ROOT = seeded.root;
         const nestedCwd = join(cwd, 'nested', 'worker');
         await mkdir(nestedCwd, { recursive: true });
         const claimResult = await executeTeamApiOperation('claim-task', {
@@ -126,19 +143,42 @@ describe('team api working-directory resolution', () => {
             return;
         expect(typeof claimResult.data.claimToken).toBe('string');
     });
+    it('resolves centralized team state from the leader cwd when a worker uses OMC_STATE_DIR', async () => {
+        const centralStateDir = await mkdtemp(join(tmpdir(), 'omc-team-api-central-'));
+        try {
+            execFileSync('git', ['init', '-q'], { cwd });
+            execFileSync('git', ['remote', 'add', 'origin', 'https://example.com/omc/team-api.git'], { cwd });
+            process.env.OMC_STATE_DIR = centralStateDir;
+            const seeded = await seedTeamState();
+            process.env.OMC_TEAM_STATE_ROOT = seeded.root;
+            process.env.OMC_TEAM_LEADER_CWD = cwd;
+            process.env.OMC_TEAM_WORKER = `${teamName}/worker-1`;
+            const workerCwd = join(cwd, 'nested', 'worker');
+            await mkdir(workerCwd, { recursive: true });
+            const claimResult = await executeTeamApiOperation('claim-task', {
+                team_name: teamName,
+                task_id: '1',
+                worker: 'worker-1',
+            }, workerCwd);
+            expect(claimResult.ok).toBe(true);
+            if (!claimResult.ok)
+                return;
+            expect(claimResult.data.ok).toBe(true);
+            expect(typeof claimResult.data.claimToken).toBe('string');
+        }
+        finally {
+            await rm(centralStateDir, { recursive: true, force: true });
+        }
+    });
     it('reads recovery results from canonical leader state rather than a colliding foreign worker cwd', async () => {
-        const leaderStateRoot = await seedTeamState();
+        const leader = await seedTeamState();
+        const leaderStateRoot = leader.root;
         const foreignCwd = join(cwd, 'worktrees', 'worker-1', 'nested');
-        seedRecoveryPhase(cwd, 'leader-recovery', 7);
+        seedRecoveryPhase(cwd, 'leader-recovery', 7, leader.instanceId);
         const restoreForeignFixtureEnv = isolateFixtureRoot(foreignCwd);
         try {
-            const foreignTeamRoot = join(getOmcRoot(foreignCwd), 'state', 'team', teamName);
-            await mkdir(foreignTeamRoot, { recursive: true });
-            await writeFile(join(foreignTeamRoot, 'config.json'), JSON.stringify({
-                name: teamName,
-                team_state_root: foreignTeamRoot,
-            }));
-            seedRecoveryPhase(foreignCwd, 'foreign-recovery', 99);
+            const foreign = await seedTeamState(foreignCwd);
+            seedRecoveryPhase(foreignCwd, 'foreign-recovery', 99, foreign.instanceId);
         }
         finally {
             restoreForeignFixtureEnv();
@@ -155,15 +195,16 @@ describe('team api working-directory resolution', () => {
         });
     });
     it('claims tasks using config workers even when manifest workers are stale', async () => {
-        const teamStateRoot = await seedTeamState();
-        await writeFile(join(teamStateRoot, 'manifest.json'), JSON.stringify({
+        const seeded = await seedTeamState();
+        await writeFile(join(seeded.root, 'manifest.json'), JSON.stringify({
             schema_version: 2,
             name: teamName,
+            instance_id: seeded.instanceId,
             task: 'resolution test',
             worker_count: 0,
             workers: [],
             created_at: '2026-03-06T00:00:00.000Z',
-            team_state_root: teamStateRoot,
+            team_state_root: seeded.root,
         }, null, 2));
         const claimResult = await executeTeamApiOperation('claim-task', {
             team_name: teamName,
@@ -177,9 +218,12 @@ describe('team api working-directory resolution', () => {
         expect(typeof claimResult.data.claimToken).toBe('string');
     });
     it('recognizes workers implied by worker_count when workers array is temporarily empty', async () => {
-        const teamStateRoot = await seedTeamState();
-        await writeFile(join(teamStateRoot, 'config.json'), JSON.stringify({
+        const seeded = await seedTeamState();
+        await writeFile(join(seeded.root, 'config.json'), JSON.stringify({
             name: teamName,
+            instance_id: seeded.instanceId,
+            leader_cwd: cwd,
+            lifecycle_state: 'active',
             task: 'resolution test',
             agent_type: 'claude',
             worker_count: 2,
@@ -187,7 +231,7 @@ describe('team api working-directory resolution', () => {
             workers: [],
             created_at: '2026-03-06T00:00:00.000Z',
             next_task_id: 2,
-            team_state_root: teamStateRoot,
+            team_state_root: seeded.root,
         }, null, 2));
         const claimResult = await executeTeamApiOperation('claim-task', {
             team_name: teamName,

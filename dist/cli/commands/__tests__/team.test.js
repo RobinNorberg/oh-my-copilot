@@ -1,4 +1,5 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { existsSync } from 'fs';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -37,6 +38,11 @@ describe('teamCommand help output', () => {
     it('prints team help for --help', async () => {
         const logs = await captureLog(() => teamCommand(['--help']));
         expect(logs[0]).toContain('omg team api <operation>');
+        expect(logs[0]).toContain('--force skips the task-status gate and graceful waits');
+        expect(logs[0]).toContain('Unverified worker/provider cleanup preserves worktrees and team state');
+        expect(logs[0]).toContain('Errors report the outcome and reason/detail');
+        expect(logs[0]).toContain('preserved outcomes name affected workers');
+        expect(logs[0]).toContain('Some failures also write details to stderr');
     });
     it('prints team help for help alias', async () => {
         const logs = await captureLog(() => teamCommand(['help']));
@@ -204,6 +210,32 @@ describe('teamCommand api operations', () => {
             process.exitCode = 0;
         }
     });
+    it('rejects the legacy runtime before creating native team state', async () => {
+        wd = await mkdtemp(join(tmpdir(), 'omc-team-cli-v1-rejected-'));
+        isolateFixtureHome(wd);
+        previousCwd = process.cwd();
+        process.chdir(wd);
+        const previousRuntimeFlag = process.env.OMC_RUNTIME_V2;
+        const errors = [];
+        const originalError = console.error;
+        try {
+            process.env.OMC_RUNTIME_V2 = '0';
+            console.error = (...args) => errors.push(args.map(String).join(' '));
+            await teamCommand(['1:codex', 'do work']);
+            expect(errors.join('\n')).toContain('team_start_unsafe_runtime_v1');
+            expect(errors.join('\n')).toContain('OMC_RUNTIME_V2=1');
+            expect(existsSync(join(wd, '.omg', 'state', 'team'))).toBe(false);
+            expect(process.exitCode).toBe(1);
+        }
+        finally {
+            console.error = originalError;
+            if (previousRuntimeFlag === undefined)
+                delete process.env.OMC_RUNTIME_V2;
+            else
+                process.env.OMC_RUNTIME_V2 = previousRuntimeFlag;
+            process.exitCode = 0;
+        }
+    });
     it('reports malformed worker specs without dumping generic team usage', async () => {
         const errors = [];
         const originalError = console.error;
@@ -288,7 +320,71 @@ describe('teamCommand api operations', () => {
         }
     });
 });
+describe('parseTeamArgs explicit task syntax', () => {
+    it('accepts a quoted positional task with the configured default workers', () => {
+        const parsed = parseTeamArgs(['review auth flow']);
+        expect(parsed.task).toBe('review auth flow');
+        expect(parsed.workerCount).toBe(3);
+        expect(parsed.explicitWorkerSpec).toBe(false);
+    });
+    it('accepts --task for a single-word task without a worker spec', () => {
+        const parsed = parseTeamArgs(['--task', 'list']);
+        expect(parsed.task).toBe('list');
+        expect(parsed.workerCount).toBe(3);
+        expect(parsed.explicitWorkerSpec).toBe(false);
+    });
+    it('rejects a single bare word without --task or an explicit worker spec', () => {
+        expect(() => parseTeamArgs(['unknown-word'])).toThrow(/Usage: omg team/);
+    });
+    it('joins an unquoted multi-token task without a worker spec', () => {
+        const parsed = parseTeamArgs(['fix', 'the', 'login', 'bug']);
+        expect(parsed.task).toBe('fix the login bug');
+        expect(parsed.workerCount).toBe(3);
+        expect(parsed.explicitWorkerSpec).toBe(false);
+    });
+});
+describe('parseTeamArgs host default provider', () => {
+    afterEach(() => {
+        vi.unstubAllEnvs();
+    });
+    it('defaults to copilot workers on a Copilot host (no CLAUDE_CODE_ENTRYPOINT)', () => {
+        vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', '');
+        const parsed = parseTeamArgs(['run all tests']);
+        expect(parsed.agentTypes).toEqual(['copilot', 'copilot', 'copilot']);
+        expect(parseTeamArgs(['2:executor', 'fix the bug']).workerSpecs).toEqual([
+            { agentType: 'copilot', role: 'executor' },
+            { agentType: 'copilot', role: 'executor' },
+        ]);
+        expect(parseTeamArgs(['run all tests'], 'executor').agentTypes).toEqual(['copilot', 'copilot', 'copilot']);
+    });
+    it('defaults to claude workers under Claude Code', () => {
+        vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', 'cli');
+        expect(parseTeamArgs(['run all tests']).agentTypes).toEqual(['claude', 'claude', 'claude']);
+    });
+    it('prefers configured defaultAgentType and explicit specs over the host', () => {
+        vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', '');
+        expect(parseTeamArgs(['run all tests'], 'codex').agentTypes).toEqual(['codex', 'codex', 'codex']);
+        expect(parseTeamArgs(['2:claude', 'fix the bug'], 'codex').agentTypes).toEqual(['claude', 'claude']);
+    });
+    it('accepts explicit copilot worker specs', () => {
+        const parsed = parseTeamArgs(['2:copilot', 'fix the bug']);
+        expect(parsed.agentTypes).toEqual(['copilot', 'copilot']);
+        expect(parsed.explicitWorkerSpec).toBe(true);
+        expect(parseTeamArgs(['1:copilot:architect,1:codex', 'design']).workerSpecs).toEqual([
+            { agentType: 'copilot', role: 'architect' },
+            { agentType: 'codex' },
+        ]);
+    });
+});
 describe('parseTeamArgs comma-separated multi-type specs', () => {
+    // These cases assert the Claude-host default; the host-default block above
+    // covers the Copilot host.
+    beforeEach(() => {
+        vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', 'cli');
+    });
+    afterEach(() => {
+        vi.unstubAllEnvs();
+    });
     it('honors N multipliers and duplicate agent entries in comma specs', () => {
         const mixed = parseTeamArgs(['1:claude,2:codex', 'execute fixed plan']);
         expect(mixed.workerCount).toBe(3);
@@ -389,7 +485,7 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
         expect(tasks.map((task) => task.description)).toEqual([parsed.task, parsed.task, parsed.task]);
     });
     it('trims slugs after length clipping and suffixes stale launch state', async () => {
-        const parsed = parseTeamArgs(['abcdefghijklmnopqrstuvwxyz abc', 'task body']);
+        const parsed = parseTeamArgs(['--task', 'abcdefghijklmnopqrstuvwxyz abc task body']);
         expect(parsed.teamName.endsWith('-')).toBe(false);
         const slugWd = await mkdtemp(join(tmpdir(), 'omc-team-slug-'));
         const originalHome = process.env.HOME;

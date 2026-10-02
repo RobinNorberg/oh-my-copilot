@@ -8,9 +8,9 @@
  * Bash hook scripts were removed in v3.9.0.
  */
 
-import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmodSync, readdirSync, cpSync, unlinkSync, rmSync, realpathSync, statSync, lstatSync } from 'fs';
-import { createHash } from 'crypto';
-import { join, dirname, resolve, isAbsolute, basename } from 'path';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmodSync, readdirSync, cpSync, unlinkSync, rmSync, realpathSync, statSync, lstatSync, renameSync, openSync, closeSync } from 'fs';
+import { createHash, randomUUID } from 'crypto';
+import { join, dirname, resolve, isAbsolute, basename, relative, sep } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
@@ -36,14 +36,16 @@ import { HISTORICAL_AGENT_OWNERSHIP, type HistoricalAgentOwnership } from './his
 import entitlementManifest from '../config/builtin-skill-entitlements.json' with { type: 'json' };
 
 /** Claude Code configuration directory */
-export const COPILOT_CONFIG_DIR = getCopilotConfigDir();
-export const AGENTS_DIR = join(COPILOT_CONFIG_DIR, 'agents');
-export const COMMANDS_DIR = join(COPILOT_CONFIG_DIR, 'commands');
-export const SKILLS_DIR = join(COPILOT_CONFIG_DIR, 'skills');
-export const HOOKS_DIR = join(COPILOT_CONFIG_DIR, 'hooks');
-export const HUD_DIR = join(COPILOT_CONFIG_DIR, 'hud');
-export const SETTINGS_FILE = join(COPILOT_CONFIG_DIR, 'settings.json');
-export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omc-version.json');
+export const COPILOT_HOME = getCopilotConfigDir();
+/** @deprecated Renamed to {@link COPILOT_HOME}; kept as a legacy alias for API compatibility. */
+export const COPILOT_CONFIG_DIR = COPILOT_HOME;
+export const AGENTS_DIR = join(COPILOT_HOME, 'agents');
+export const COMMANDS_DIR = join(COPILOT_HOME, 'commands');
+export const SKILLS_DIR = join(COPILOT_HOME, 'skills');
+export const HOOKS_DIR = join(COPILOT_HOME, 'hooks');
+export const HUD_DIR = join(COPILOT_HOME, 'hud');
+export const SETTINGS_FILE = join(COPILOT_HOME, 'settings.json');
+export const VERSION_FILE = join(COPILOT_HOME, '.omc-version.json');
 const OMC_MANAGED_SKILL_MARKER = '.omc-managed';
 const PLUGIN_FULL_SKILL_BODIES_DIR = 'skill-bodies';
 const PLUGIN_COMPACT_SKILL_SHIM_MARKER = '<!-- OMC:COMPACT-PLUGIN-SKILL -->';
@@ -186,7 +188,7 @@ function getNewestInstalledVersionHint(): string | null {
   }
 
   const claudeCandidates = [
-    join(COPILOT_CONFIG_DIR, 'CLAUDE.md'),
+    join(COPILOT_HOME, 'CLAUDE.md'),
     join(homedir(), 'CLAUDE.md'),
   ];
 
@@ -245,19 +247,19 @@ function buildStatusLineCommand(
   const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, '/');
 
   if (cacheWrapperPath) {
-    if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
-      return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs';
+    if (isDefaultClaudeConfigDirPath(COPILOT_HOME)) {
+      return 'sh ${COPILOT_HOME:-$HOME/.copilot}/hud/omg-hud-cache.sh ${COPILOT_HOME:-$HOME/.copilot}/hud/omg-hud.mjs';
     }
 
     return `sh ${quoteShellArg(cacheWrapperPath.replace(/\\/g, '/'))} ${quoteShellArg(normalizedHudScriptPath)}`;
   }
 
-  if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
+  if (isDefaultClaudeConfigDirPath(COPILOT_HOME)) {
     if (findNodePath) {
-      return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs';
+      return 'sh ${COPILOT_HOME:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_HOME:-$HOME/.copilot}/hud/omg-hud.mjs';
     }
 
-    return 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs';
+    return 'node ${COPILOT_HOME:-$HOME/.copilot}/hud/omg-hud.mjs';
   }
 
   if (findNodePath) {
@@ -320,7 +322,7 @@ export interface InstallOptions {
  * (avoids circular dependency since auto-update imports from installer)
  */
 export function isHudEnabledInConfig(): boolean {
-  const configPath = join(COPILOT_CONFIG_DIR, OMC_CONFIG_FILE_REL);
+  const configPath = join(COPILOT_HOME, OMC_CONFIG_FILE_REL);
   if (!existsSync(configPath)) {
     return true; // default: enabled
   }
@@ -411,6 +413,7 @@ function listStandaloneHookLibPayloadFilenames(): Set<string> {
   const filenames = listTemplateHookLibFilenames();
   filenames.add('config-dir.mjs');
   filenames.add('config-dir.sh');
+  filenames.add('state-lock.mjs');
   return filenames;
 }
 
@@ -442,6 +445,9 @@ function getShippedStandaloneHookPayloadPath(filename: string, location: 'hooks'
   }
   if (filename === 'config-dir.mjs' || filename === 'config-dir.sh') {
     return join(packageDir, 'scripts', 'lib', filename);
+  }
+  if (filename === 'state-lock.mjs') {
+    return join(packageDir, 'scripts', 'lib', 'state-lock.mjs');
   }
   return join(packageDir, 'templates', 'hooks', 'lib', filename);
 }
@@ -594,7 +600,7 @@ export function isProjectScopedPlugin(): boolean {
   }
 
   // Global plugins are installed under ~/.claude/plugins/
-  const globalPluginBase = join(COPILOT_CONFIG_DIR, 'plugins');
+  const globalPluginBase = join(COPILOT_HOME, 'plugins');
 
   // If the plugin root is NOT under the global plugin directory, it's project-scoped
   // Normalize paths for comparison (resolve symlinks, trailing slashes, etc.)
@@ -726,7 +732,7 @@ function pruneLegacyStandaloneHookScripts(log: (msg: string) => void, activeStan
   }
 
   if (removed > 0) {
-    log(`  Removed ${removed} legacy hook script file${removed === 1 ? '' : 's'} from ${basename(COPILOT_CONFIG_DIR)}/hooks`);
+    log(`  Removed ${removed} legacy hook script file${removed === 1 ? '' : 's'} from ${basename(COPILOT_HOME)}/hooks`);
   }
 }
 
@@ -905,6 +911,87 @@ const STANDALONE_HOOK_TEMPLATE_FILES = [
   'code-simplifier.mjs',
 ] as const;
 
+function readStandalonePackageIdentity(packageDir: string): { root: string; name: string; version: string; helperPath: string } {
+  let root: string;
+  try { root = realpathSync(packageDir); } catch { throw new Error('Standalone state-lock provisioning requires a canonical package root'); }
+  const packagePath = join(root, 'package.json');
+  const helperPath = join(root, 'scripts', 'lib', 'state-lock.mjs');
+  try {
+    if (!lstatSync(root).isDirectory() || !lstatSync(packagePath).isFile() || !lstatSync(helperPath).isFile()) throw new Error();
+    if (realpathSync(packagePath) !== packagePath) throw new Error();
+    const helperReal = realpathSync(helperPath);
+    const helperRelative = relative(root, helperReal);
+    if (isAbsolute(helperRelative) || helperRelative === '..' || helperRelative.startsWith(`..${sep}`)) throw new Error();
+  } catch {
+    throw new Error('Standalone state-lock provisioning requires a regular package root, package.json, and scripts/lib/state-lock.mjs');
+  }
+  let manifest: unknown;
+  try { manifest = JSON.parse(readFileSync(packagePath, 'utf8')); } catch { throw new Error('Standalone state-lock provisioning requires a valid package.json'); }
+  if (!manifest || typeof manifest !== 'object' || (manifest as Record<string, unknown>).name !== 'oh-my-copilot' || (manifest as Record<string, unknown>).version !== VERSION) {
+    throw new Error(`Standalone state-lock provisioning requires package oh-my-copilot version ${VERSION}`);
+  }
+  return { root, name: 'oh-my-copilot', version: VERSION, helperPath };
+}
+
+function standaloneStateLockBridge(packageDir: string): string {
+  const identity = readStandalonePackageIdentity(packageDir);
+  return `import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { join, relative, resolve, isAbsolute, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const PACKAGE_ROOT = ${JSON.stringify(identity.root)};
+const EXPECTED_PACKAGE_NAME = ${JSON.stringify(identity.name)};
+const EXPECTED_PACKAGE_VERSION = ${JSON.stringify(identity.version)};
+const PACKAGE_JSON = join(PACKAGE_ROOT, 'package.json');
+const HELPER_PATH = join(PACKAGE_ROOT, 'scripts', 'lib', 'state-lock.mjs');
+function samePath(left, right) {
+  return resolve(left) === resolve(right);
+}
+function validatePackageOwnedHelper() {
+  if (!lstatSync(PACKAGE_ROOT).isDirectory() || !samePath(realpathSync(PACKAGE_ROOT), PACKAGE_ROOT) || !lstatSync(PACKAGE_JSON).isFile() || !lstatSync(HELPER_PATH).isFile()) throw new Error('OMC state-lock bridge package root is unavailable');
+  if (!samePath(realpathSync(PACKAGE_JSON), PACKAGE_JSON)) throw new Error('OMC state-lock bridge manifest identity changed');
+  const helperReal = realpathSync(HELPER_PATH);
+  const helperRelative = relative(PACKAGE_ROOT, helperReal);
+  if (isAbsolute(helperRelative) || helperRelative === '..' || helperRelative.startsWith('..' + sep)) throw new Error('OMC state-lock bridge helper escapes package root');
+  let manifest;
+  try { manifest = JSON.parse(readFileSync(PACKAGE_JSON, 'utf8')); } catch { throw new Error('OMC state-lock bridge package manifest is invalid'); }
+  if (!manifest || manifest.name !== EXPECTED_PACKAGE_NAME || manifest.version !== EXPECTED_PACKAGE_VERSION) throw new Error('OMC state-lock bridge package identity mismatch');
+}
+validatePackageOwnedHelper();
+const canonical = await import(pathToFileURL(HELPER_PATH).href);
+export const processStartIdentity = canonical.processStartIdentity;
+export const isStateFileLockingSupported = canonical.isStateFileLockingSupported;
+export const isExclusiveStateLockingAvailable = canonical.isExclusiveStateLockingAvailable;
+export const getStateFileLockDiagnostic = canonical.getStateFileLockDiagnostic;
+export const getStateFileLockFailureMessage = canonical.getStateFileLockFailureMessage;
+export const acquireStateFileLockSync = canonical.acquireStateFileLockSync;
+export const releaseStateFileLockSync = canonical.releaseStateFileLockSync;
+export const withStateFileLockSync = canonical.withStateFileLockSync;
+export const acquireRecoveryClaim = canonical.acquireRecoveryClaim;
+export const readRecoveryClaim = canonical.readRecoveryClaim;
+export const releaseRecoveryClaim = canonical.releaseRecoveryClaim;
+export const sameRecoveryClaim = canonical.sameRecoveryClaim;
+export const isEmergencyOwnerLive = canonical.isEmergencyOwnerLive;
+`;
+}
+
+export function provisionStandaloneStateLockBridge(packageDir: string, targetPath: string): void {
+  readStandalonePackageIdentity(packageDir);
+  mkdirSync(dirname(targetPath), { recursive: true });
+  const tempPath = `${targetPath}.${process.pid}.${randomUUID()}.tmp`;
+  const fd = openSync(tempPath, 'wx', 0o755);
+  let closed = false;
+  try {
+    writeFileSync(fd, standaloneStateLockBridge(packageDir));
+    closeSync(fd);
+    closed = true;
+    renameSync(tempPath, targetPath);
+  } catch (error) {
+    if (!closed) closeSync(fd);
+    if (existsSync(tempPath)) unlinkSync(tempPath);
+    throw error;
+  }
+}
+
 function ensureStandaloneHookScripts(log: (msg: string) => void): void {
   const packageDir = getPackageDir();
   const templatesDir = join(packageDir, 'templates', 'hooks');
@@ -917,6 +1004,9 @@ function ensureStandaloneHookScripts(log: (msg: string) => void): void {
   if (!existsSync(hooksLibDir)) {
     mkdirSync(hooksLibDir, { recursive: true });
   }
+  const stateLockDest = join(hooksLibDir, 'state-lock.mjs');
+  provisionStandaloneStateLockBridge(packageDir, stateLockDest);
+  if (!isWindows()) chmodSync(stateLockDest, 0o755);
 
   // Hook entrypoints import ./lib/*.mjs at module load time. Reconcile the
   // helper payload before replacing entrypoints so an interrupted update cannot
@@ -928,6 +1018,7 @@ function ensureStandaloneHookScripts(log: (msg: string) => void): void {
         if (!statSync(sourcePath).isFile()) {
           continue;
         }
+        if (filename === 'state-lock.mjs') continue;
       } catch {
         continue;
       }
@@ -1361,7 +1452,7 @@ function resolveInstalledOmcPluginRoots(): PluginRootResolution {
     return { mode: 'plugin', roots: [explicitRoot], cleanupAllowed: true };
   }
 
-  const installedPluginsPath = join(COPILOT_CONFIG_DIR, 'plugins', 'installed_plugins.json');
+  const installedPluginsPath = join(COPILOT_HOME, 'plugins', 'installed_plugins.json');
   if (!existsSync(installedPluginsPath)) {
     return { mode: 'legacy', roots: [], cleanupAllowed: true };
   }
@@ -1691,7 +1782,7 @@ function countPluginSyncPayloadEntries(root: string): number {
 }
 
 function getKnownMarketplaceInstallRoots(): string[] {
-  const knownMarketplacesPath = join(COPILOT_CONFIG_DIR, 'plugins', 'known_marketplaces.json');
+  const knownMarketplacesPath = join(COPILOT_HOME, 'plugins', 'known_marketplaces.json');
   if (!existsSync(knownMarketplacesPath)) {
     return [];
   }
@@ -1747,7 +1838,7 @@ function getGlobalInstalledPackageRoot(): string | null {
 
 function isCacheInstalledPluginRoot(root: string): boolean {
   const normalizedRoot = normalizePath(root);
-  const cacheBase = normalizePath(join(COPILOT_CONFIG_DIR, 'plugins', 'cache'));
+  const cacheBase = normalizePath(join(COPILOT_HOME, 'plugins', 'cache'));
   if (!(normalizedRoot === cacheBase || normalizedRoot.startsWith(`${cacheBase}/`))) {
     return false;
   }
@@ -2231,6 +2322,22 @@ function syncBundledSkillDefinitions(log: (msg: string) => void, options?: { saf
 
     const relativePath = join(targetDirName, 'SKILL.md');
     const targetDir = join(SKILLS_DIR, targetDirName);
+
+    let targetStat: ReturnType<typeof lstatSync> | null = null;
+    try {
+      targetStat = lstatSync(targetDir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        log(`  Warning: Could not safely inspect ${targetDir}; treating it as a user-managed entry, so the bundled skill was not installed. Remove or rename it to enable OMC's version.`);
+        continue;
+      }
+    }
+
+    if (targetStat && (targetStat.isSymbolicLink() || !targetStat.isDirectory())) {
+      log(`  Warning: ${targetDir} is a user-managed entry; the bundled skill was not installed. Remove or rename it to enable OMC's version.`);
+      continue;
+    }
+
     cpSync(sourceDir, targetDir, { recursive: true, force: true });
     markSkillAsOmcManaged(targetDir);
     installedSkills.push(relativePath.replace(/\\/g, '/'));
@@ -2286,7 +2393,7 @@ export function syncPersistedSetupVersion(options?: {
   version?: string;
   onlyIfConfigured?: boolean;
 }): boolean {
-  const configPath = options?.configPath ?? join(COPILOT_CONFIG_DIR, OMC_CONFIG_FILE_REL);
+  const configPath = options?.configPath ?? join(COPILOT_HOME, OMC_CONFIG_FILE_REL);
   let config: Record<string, unknown> = {};
 
   if (existsSync(configPath)) {
@@ -2304,7 +2411,7 @@ export function syncPersistedSetupVersion(options?: {
 
   let detectedVersion = options?.version?.trim();
   if (!detectedVersion) {
-    const claudeMdPath = options?.claudeMdPath ?? join(COPILOT_CONFIG_DIR, 'CLAUDE.md');
+    const claudeMdPath = options?.claudeMdPath ?? join(COPILOT_HOME, 'CLAUDE.md');
     if (existsSync(claudeMdPath)) {
       detectedVersion = extractOmcVersionFromClaudeMd(readFileSync(claudeMdPath, 'utf-8')) ?? undefined;
     }
@@ -2483,8 +2590,8 @@ export function install(options: InstallOptions = {}): InstallResult {
 
   try {
     // Ensure base config directory exists (skip for project-scoped plugins)
-    if ((!projectScoped || shouldInstallBundledSkills) && !existsSync(COPILOT_CONFIG_DIR)) {
-      mkdirSync(COPILOT_CONFIG_DIR, { recursive: true });
+    if ((!projectScoped || shouldInstallBundledSkills) && !existsSync(COPILOT_HOME)) {
+      mkdirSync(COPILOT_HOME, { recursive: true });
     }
 
     if (shouldInstallBundledSkills && !existsSync(SKILLS_DIR)) {
@@ -2634,7 +2741,7 @@ export function install(options: InstallOptions = {}): InstallResult {
     if (!projectScoped) {
       const transaction = executeClaudeMdTransaction({
         mode: 'global-overwrite',
-        root: COPILOT_CONFIG_DIR,
+        root: COPILOT_HOME,
         source: join(getPackageDir(), 'docs', 'CLAUDE.md'),
         sourceRoot: getPackageDir(),
         version: targetVersion,
@@ -2712,7 +2819,7 @@ export function install(options: InstallOptions = {}): InstallResult {
       //    find-node.sh (used in hooks/hooks.json) can locate it at hook runtime
       //    even when node is not on PATH (nvm/fnm users, issue #892).
       try {
-        const configPath = join(COPILOT_CONFIG_DIR, OMC_CONFIG_FILE_REL);
+        const configPath = join(COPILOT_HOME, OMC_CONFIG_FILE_REL);
         let omcConfig: Record<string, unknown> = {};
         if (existsSync(configPath)) {
           omcConfig = JSON.parse(readFileSync(configPath, 'utf-8'));

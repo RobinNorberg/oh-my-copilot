@@ -83,7 +83,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
     }
     resetTestDirs();
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
-    process.env.COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
+    process.env.COPILOT_HOME = TEST_CLAUDE_DIR;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(TEST_CLAUDE_DIR, '..', '.claude.json');
     process.env.OMC_HOME = join(TEST_PROJECT_DIR, '.omc-home');
     process.env.CODEX_HOME = join(TEST_PROJECT_DIR, '.codex');
@@ -92,7 +92,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
 
   afterEach(() => {
     cwdSpy?.mockRestore();
-    delete process.env.COPILOT_CONFIG_DIR;
+    delete process.env.COPILOT_HOME;
     delete process.env.CLAUDE_MCP_CONFIG_PATH;
     delete process.env.OMC_HOME;
     delete process.env.CODEX_HOME;
@@ -515,7 +515,7 @@ describe('doctor-conflicts: CLAUDE.md companion file detection (issue #1101)', (
     }
     resetTestDirs();
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
-    process.env.COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
+    process.env.COPILOT_HOME = TEST_CLAUDE_DIR;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(TEST_CLAUDE_DIR, '..', '.claude.json');
     process.env.OMC_MCP_REGISTRY_PATH = join(TEST_PROJECT_DIR, '.omc-home', 'mcp-registry.json');
     process.env.CODEX_HOME = join(TEST_PROJECT_DIR, '.codex');
@@ -524,7 +524,7 @@ describe('doctor-conflicts: CLAUDE.md companion file detection (issue #1101)', (
 
   afterEach(() => {
     cwdSpy?.mockRestore();
-    delete process.env.COPILOT_CONFIG_DIR;
+    delete process.env.COPILOT_HOME;
     delete process.env.CLAUDE_MCP_CONFIG_PATH;
     delete process.env.OMC_MCP_REGISTRY_PATH;
     delete process.env.CODEX_HOME;
@@ -798,6 +798,21 @@ describe('doctor-conflicts: legacy skills collision check (issue #1101)', () => 
     expect(collisions).toHaveLength(0);
   });
 
+  it('does not flag an exact setup-installed wiki fallback while the plugin is active (issue #4118)', () => {
+    const canonicalContent = '# Canonical wiki skill\n';
+    const canonicalPath = join(TEST_DIRS.builtinSkillsDir, 'wiki', 'SKILL.md');
+    mkdirSync(join(TEST_DIRS.builtinSkillsDir, 'wiki'), { recursive: true });
+    writeFileSync(canonicalPath, canonicalContent);
+    writeFileSync(join(TEST_CLAUDE_DIR, 'settings.json'), JSON.stringify({
+      enabledPlugins: { 'oh-my-copilot@omc': true },
+    }));
+    const installedPath = join(TEST_CLAUDE_DIR, 'skills', 'wiki');
+    mkdirSync(installedPath, { recursive: true });
+    writeFileSync(join(installedPath, 'SKILL.md'), canonicalContent);
+
+    expect(checkLegacySkills()).toEqual([]);
+  });
+
   it('does NOT flag setup-installed omc-reference fallback when setup resolved a newer active cache root (issue #2992)', () => {
     const oldContent = '# Old omc-reference skill\n';
     const newerContent = '# Newer setup-installed omc-reference skill\n';
@@ -819,30 +834,41 @@ describe('doctor-conflicts: legacy skills collision check (issue #1101)', () => 
     expect(collisions).toHaveLength(0);
   });
 
-  it('does NOT flag setup-installed omc-reference fallback when it matches CLAUDE_PLUGIN_ROOT (issue #2992)', () => {
+  it('does not flag an exact setup-installed omc-reference fallback when a plugin is active', () => {
     const currentContent = '# Current omc-reference skill\n';
     const sessionContent = '# Session root omc-reference skill\n';
     const sessionPluginRoot = join(TEST_PROJECT_DIR, 'session-plugin-root');
     writeCanonicalOmcReferenceSkill(currentContent);
     writePluginRoot(sessionPluginRoot, sessionContent);
     process.env.CLAUDE_PLUGIN_ROOT = sessionPluginRoot;
+    writeFileSync(join(TEST_CLAUDE_DIR, 'settings.json'), JSON.stringify({
+      enabledPlugins: { 'oh-my-copilot@omc': true },
+    }));
     const skillsDir = join(TEST_CLAUDE_DIR, 'skills');
     mkdirSync(join(skillsDir, 'omc-reference'), { recursive: true });
-    writeFileSync(join(skillsDir, 'omc-reference', 'SKILL.md'), sessionContent);
+    const installedPath = join(skillsDir, 'omc-reference');
+    writeFileSync(join(installedPath, 'SKILL.md'), sessionContent);
 
     const collisions = checkLegacySkills();
-    expect(collisions).toHaveLength(0);
+    expect(collisions).toEqual([]);
   });
 
-  it('flags user-modified omc-reference fallback content as a real collision (issue #2992)', () => {
-    writeCanonicalOmcReferenceSkill('# Canonical omc-reference skill\n');
+  it('flags user-modified omc-reference fallback content with an active plugin (issue #2992)', () => {
+    const canonicalContent = '# Canonical omc-reference skill\n';
+    const sessionPluginRoot = join(TEST_PROJECT_DIR, 'session-plugin-root');
+    writeCanonicalOmcReferenceSkill(canonicalContent);
+    writePluginRoot(sessionPluginRoot, canonicalContent);
+    process.env.CLAUDE_PLUGIN_ROOT = sessionPluginRoot;
+    writeFileSync(join(TEST_CLAUDE_DIR, 'settings.json'), JSON.stringify({
+      enabledPlugins: { 'oh-my-copilot@omc': true },
+    }));
     const skillsDir = join(TEST_CLAUDE_DIR, 'skills');
     mkdirSync(join(skillsDir, 'omc-reference'), { recursive: true });
-    writeFileSync(join(skillsDir, 'omc-reference', 'SKILL.md'), '# Modified omc-reference skill\n');
+    const installedPath = join(skillsDir, 'omc-reference');
+    writeFileSync(join(installedPath, 'SKILL.md'), '# Modified omc-reference skill\n');
 
     const collisions = checkLegacySkills();
-    expect(collisions).toHaveLength(1);
-    expect(collisions[0].name).toBe('omc-reference');
+    expect(collisions).toEqual([{ name: 'omc-reference', path: installedPath }]);
   });
 
   it('still flags non-contract omc-reference.md legacy files (issue #2992)', () => {
@@ -866,6 +892,40 @@ describe('doctor-conflicts: legacy skills collision check (issue #1101)', () => 
     const report = runConflictCheck();
     expect(report.legacySkills).toHaveLength(0);
     expect(report.hasConflicts).toBe(false);
+  });
+
+  it('does not flag an unchanged marker-owned standalone skill without an active plugin', () => {
+    const canonicalContent = '# Canonical autopilot skill\n';
+    mkdirSync(join(TEST_DIRS.builtinSkillsDir, 'autopilot'), { recursive: true });
+    writeFileSync(join(TEST_DIRS.builtinSkillsDir, 'autopilot', 'SKILL.md'), canonicalContent);
+    const installedDir = join(TEST_CLAUDE_DIR, 'skills', 'autopilot');
+    mkdirSync(installedDir, { recursive: true });
+    writeFileSync(join(installedDir, 'SKILL.md'), canonicalContent);
+    writeFileSync(join(installedDir, '.omc-managed'), 'omc-managed\n');
+    expect(checkLegacySkills()).toEqual([]);
+  });
+
+  it('flags marker-owned skills when the content was modified', () => {
+    const canonicalContent = '# Canonical autopilot skill\n';
+    mkdirSync(join(TEST_DIRS.builtinSkillsDir, 'autopilot'), { recursive: true });
+    writeFileSync(join(TEST_DIRS.builtinSkillsDir, 'autopilot', 'SKILL.md'), canonicalContent);
+    const installedDir = join(TEST_CLAUDE_DIR, 'skills', 'autopilot');
+    mkdirSync(installedDir, { recursive: true });
+    writeFileSync(join(installedDir, 'SKILL.md'), `${canonicalContent}user edit\n`);
+    writeFileSync(join(installedDir, '.omc-managed'), 'omc-managed\n');
+    expect(checkLegacySkills()).toEqual([{ name: 'autopilot', path: installedDir }]);
+  });
+
+  it('keeps marker-owned skills visible when an OMC plugin is active', () => {
+    const canonicalContent = '# Canonical autopilot skill\n';
+    mkdirSync(join(TEST_DIRS.builtinSkillsDir, 'autopilot'), { recursive: true });
+    writeFileSync(join(TEST_DIRS.builtinSkillsDir, 'autopilot', 'SKILL.md'), canonicalContent);
+    const installedDir = join(TEST_CLAUDE_DIR, 'skills', 'autopilot');
+    mkdirSync(installedDir, { recursive: true });
+    writeFileSync(join(installedDir, 'SKILL.md'), canonicalContent);
+    writeFileSync(join(installedDir, '.omc-managed'), 'omc-managed\n');
+    writeFileSync(join(TEST_CLAUDE_DIR, 'settings.json'), JSON.stringify({ enabledPlugins: ['oh-my-copilot@omc'] }));
+    expect(checkLegacySkills()).toEqual([{ name: 'autopilot', path: installedDir }]);
   });
 
   it('reports hasConflicts when legacy skills collide (issue #1101)', () => {
@@ -894,7 +954,7 @@ describe('doctor-conflicts: config known fields (issue #1499)', () => {
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
     mkdirSync(join(TEST_PROJECT_DIR, '.omg'), { recursive: true });
     mkdirSync(join(TEST_PROJECT_DIR, '.codex'), { recursive: true });
-    process.env.COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
+    process.env.COPILOT_HOME = TEST_CLAUDE_DIR;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(TEST_CLAUDE_DIR, '..', '.claude.json');
     process.env.OMC_HOME = join(TEST_PROJECT_DIR, '.omg');
     process.env.CODEX_HOME = join(TEST_PROJECT_DIR, '.codex');
@@ -903,7 +963,7 @@ describe('doctor-conflicts: config known fields (issue #1499)', () => {
 
   afterEach(() => {
     cwdSpy?.mockRestore();
-    delete process.env.COPILOT_CONFIG_DIR;
+    delete process.env.COPILOT_HOME;
     delete process.env.CLAUDE_MCP_CONFIG_PATH;
     delete process.env.OMC_HOME;
     delete process.env.CODEX_HOME;
@@ -983,7 +1043,7 @@ describe('doctor-conflicts: workspace marker check (Wave F.2)', () => {
     }
     resetTestDirs();
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
-    process.env.COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
+    process.env.COPILOT_HOME = TEST_CLAUDE_DIR;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(TEST_CLAUDE_DIR, '..', '.claude.json');
     cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(TEST_PROJECT_DIR);
     savedOmcStateDir = process.env.OMC_STATE_DIR;
@@ -993,7 +1053,7 @@ describe('doctor-conflicts: workspace marker check (Wave F.2)', () => {
 
   afterEach(() => {
     cwdSpy?.mockRestore();
-    delete process.env.COPILOT_CONFIG_DIR;
+    delete process.env.COPILOT_HOME;
     delete process.env.CLAUDE_MCP_CONFIG_PATH;
     if (savedOmcStateDir === undefined) {
       delete process.env.OMC_STATE_DIR;

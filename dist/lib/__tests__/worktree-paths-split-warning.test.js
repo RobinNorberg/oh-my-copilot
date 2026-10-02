@@ -26,7 +26,7 @@ describe('state root split symmetric warning (issue #3937)', () => {
     let prevConfigDir;
     beforeEach(() => {
         prevStateDir = process.env.OMC_STATE_DIR;
-        prevConfigDir = process.env.COPILOT_CONFIG_DIR;
+        prevConfigDir = process.env.COPILOT_HOME;
         clearDualDirWarnings();
         clearWorktreeCache();
     });
@@ -36,9 +36,9 @@ describe('state root split symmetric warning (issue #3937)', () => {
         else
             process.env.OMC_STATE_DIR = prevStateDir;
         if (prevConfigDir === undefined)
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         else
-            process.env.COPILOT_CONFIG_DIR = prevConfigDir;
+            process.env.COPILOT_HOME = prevConfigDir;
         clearDualDirWarnings();
         clearWorktreeCache();
     });
@@ -97,7 +97,7 @@ describe('state root split symmetric warning (issue #3937)', () => {
         try {
             // Discoverable via settings.json env
             writeFileSync(join(cfg, 'settings.json'), JSON.stringify({ env: { OMC_STATE_DIR: central } }));
-            process.env.COPILOT_CONFIG_DIR = cfg;
+            process.env.COPILOT_HOME = cfg;
             delete process.env.OMC_STATE_DIR;
             clearWorktreeCache();
             const projectId = getProjectIdentifier(repo);
@@ -126,10 +126,10 @@ describe('state root split symmetric warning (issue #3937)', () => {
         const central = mkdtempSync(join(tmpdir(), '3937-central-'));
         try {
             delete process.env.OMC_STATE_DIR;
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
             // No settings.json anywhere — undiscoverable
             const cfgMaybe = join(tmpdir(), '3937-nocfg-' + Date.now());
-            process.env.COPILOT_CONFIG_DIR = cfgMaybe;
+            process.env.COPILOT_HOME = cfgMaybe;
             clearWorktreeCache();
             const prev = process.env.OMC_STATE_DIR;
             process.env.OMC_STATE_DIR = central;
@@ -162,7 +162,7 @@ describe('state root split symmetric warning (issue #3937)', () => {
         const cfg = mkdtempSync(join(tmpdir(), '3937-cfg-'));
         try {
             writeFileSync(join(cfg, 'settings.json'), JSON.stringify({ env: { OMC_STATE_DIR: central } }));
-            process.env.COPILOT_CONFIG_DIR = cfg;
+            process.env.COPILOT_HOME = cfg;
             delete process.env.OMC_STATE_DIR;
             clearWorktreeCache();
             // Do NOT create centralized sibling
@@ -188,7 +188,7 @@ describe('state root split symmetric warning (issue #3937)', () => {
         const cfg = mkdtempSync(join(tmpdir(), '3937-cfg-'));
         try {
             writeFileSync(join(cfg, 'settings.json'), JSON.stringify({ env: { OMC_STATE_DIR: central } }));
-            process.env.COPILOT_CONFIG_DIR = cfg;
+            process.env.COPILOT_HOME = cfg;
             delete process.env.OMC_STATE_DIR;
             clearWorktreeCache();
             const projectId = getProjectIdentifier(repo);
@@ -228,7 +228,7 @@ describe('state root split symmetric warning (issue #3937)', () => {
                 expect(getOmcRoot(repo)).toBe(join(central, projectId));
                 // Legacy — with discovery, still chooses legacy
                 delete process.env.OMC_STATE_DIR;
-                process.env.COPILOT_CONFIG_DIR = cfg;
+                process.env.COPILOT_HOME = cfg;
                 clearWorktreeCache();
                 clearDualDirWarnings();
                 expect(getOmcRoot(repo)).toBe(join(repo, '.omg'));

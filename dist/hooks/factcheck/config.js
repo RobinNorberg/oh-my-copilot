@@ -14,7 +14,7 @@ const DEFAULT_FACTCHECK_POLICY = {
     enabled: false,
     mode: 'quick',
     strict_project_patterns: [],
-    forbidden_path_prefixes: ['${COPILOT_CONFIG_DIR}/plugins/cache/omc/'],
+    forbidden_path_prefixes: ['${COPILOT_HOME}/plugins/cache/omc/'],
     forbidden_path_substrings: ['/.omg/', '.omc-config.json'],
     readonly_command_prefixes: [
         'ls ', 'cat ', 'find ', 'grep ', 'head ', 'tail ', 'stat ', 'echo ', 'wc ',
@@ -41,7 +41,8 @@ export const DEFAULT_GUARDS_CONFIG = {
 // Token expansion
 // ---------------------------------------------------------------------------
 /**
- * Expand ${HOME}, ${WORKSPACE}, and ${COPILOT_CONFIG_DIR} tokens in a string.
+ * Expand ${HOME}, ${WORKSPACE}, and ${COPILOT_HOME} tokens in a string.
+ * ${COPILOT_CONFIG_DIR} is accepted as a legacy alias of ${COPILOT_HOME}.
  */
 export function expandTokens(value, workspace) {
     const home = homedir();
@@ -49,7 +50,7 @@ export function expandTokens(value, workspace) {
     return value
         .replace(/\$\{HOME\}/g, home)
         .replace(/\$\{WORKSPACE\}/g, ws)
-        .replace(/\$\{COPILOT_CONFIG_DIR\}/g, getCopilotConfigDir());
+        .replace(/\$\{(?:COPILOT_HOME|COPILOT_CONFIG_DIR)\}/g, getCopilotConfigDir());
 }
 /**
  * Recursively expand tokens in string values within an object or array.
@@ -97,7 +98,7 @@ function deepMergeGuards(target, source) {
  * Load guards config from the OMC config system.
  *
  * Reads the `guards` key from the merged OMC config, deep-merges over
- * defaults, and expands ${HOME}/${WORKSPACE}/${COPILOT_CONFIG_DIR} tokens.
+ * defaults, and expands ${HOME}/${WORKSPACE}/${COPILOT_HOME} tokens.
  */
 export function loadGuardsConfig(workspace) {
     try {

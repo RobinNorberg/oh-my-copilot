@@ -537,7 +537,8 @@ describe('run-provider-advisor script contract', () => {
             });
             expect(result.error).toBeUndefined();
             expect(result.status).toBe(0);
-            expect(result.stderr).toBe('');
+            // Only the one-line bypass notice; no Rust logs leak to stderr.
+            expect(result.stderr).toBe('[ask-codex] runs with --dangerously-bypass-approvals-and-sandbox; host --deny-tool / permissions.workerDenyTools are not applied\n');
             const artifactPath = result.stdout.trim();
             const artifact = readFileSync(artifactPath, 'utf8');
             expect(artifact).toContain('CODEX_OK');

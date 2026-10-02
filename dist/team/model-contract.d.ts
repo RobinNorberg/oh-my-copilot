@@ -62,6 +62,30 @@ export declare const _testInternals: {
  * interactive OAuth/session login path for team worker panes.
  */
 export declare function shouldUseClaudeBareMode(env?: NodeJS.ProcessEnv): boolean;
+/**
+ * Allow set for unattended Copilot worker panes. Spelled out instead of
+ * --yolo/--allow-all so the startup line shows each grant; no --autopilot
+ * (self-continuation races the inbox protocol) and no COPILOT_ALLOW_ALL.
+ */
+export declare const COPILOT_WORKER_BASE_FLAGS: readonly ["--allow-all-tools", "--allow-all-paths", "--allow-all-urls", "--no-ask-user"];
+/**
+ * Copilot lists dotted Claude model IDs (claude-opus-4.8) while the tier
+ * defaults are dashed (claude-opus-4-8). Rewrites that shape (keeping a
+ * trailing variant such as -fast), drops a `[1m]` context suffix and an
+ * 8-digit date stamp, and maps bare tier aliases through the model table.
+ * Anything else passes through unchanged.
+ */
+export declare function toCopilotModelId(model: string): string;
+/**
+ * Deny flags forwarded from `permissions.workerDenyTools` / `workerDenyUrls`.
+ * Only Copilot workers enforce them; other providers get [] (their vendor
+ * bypass flags are reported as not enforcing the list at team startup).
+ * The `=` form keeps the variadic flag from swallowing the next argument.
+ */
+export declare function resolveWorkerPermissionFlags(agentType: CliAgentType, perms?: {
+    workerDenyTools?: string[];
+    workerDenyUrls?: string[];
+}): string[];
 export declare function getContract(agentType: CliAgentType): CliAgentContract;
 export declare function isCliAvailable(agentType: CliAgentType): boolean;
 export declare function validateCliAvailable(agentType: CliAgentType): void;

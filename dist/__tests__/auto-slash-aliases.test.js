@@ -20,14 +20,14 @@ describe('auto slash aliases + skill guidance', () => {
         tempProjectDir = join(tmpdir(), `omc-auto-slash-project-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         mkdirSync(tempConfigDir, { recursive: true });
         mkdirSync(tempProjectDir, { recursive: true });
-        process.env.COPILOT_CONFIG_DIR = tempConfigDir;
+        process.env.COPILOT_HOME = tempConfigDir;
         process.chdir(tempProjectDir);
     });
     afterEach(() => {
         process.chdir(originalCwd);
         rmSync(tempConfigDir, { recursive: true, force: true });
         rmSync(tempProjectDir, { recursive: true, force: true });
-        delete process.env.COPILOT_CONFIG_DIR;
+        delete process.env.COPILOT_HOME;
         if (originalPluginRoot === undefined) {
             delete process.env.CLAUDE_PLUGIN_ROOT;
         }

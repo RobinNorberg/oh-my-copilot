@@ -34,7 +34,7 @@ vi.mock('fs', async () => {
 });
 async function loadInstallerWithEnv(claudeConfigDir, homeDir) {
     vi.resetModules();
-    process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
+    process.env.COPILOT_HOME = claudeConfigDir;
     process.env.HOME = homeDir;
     return import('../installer/index.js');
 }
@@ -92,15 +92,15 @@ describe('installer bundled + standalone skill sync', () => {
         claudeConfigDir = join(homeDir, '.claude');
         mkdirSync(homeDir, { recursive: true });
         mkdirSync(claudeConfigDir, { recursive: true });
-        originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+        originalClaudeConfigDir = process.env.COPILOT_HOME;
         originalHome = process.env.HOME;
     });
     afterEach(() => {
         if (originalClaudeConfigDir === undefined) {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
         else {
-            process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+            process.env.COPILOT_HOME = originalClaudeConfigDir;
         }
         if (originalHome === undefined) {
             delete process.env.HOME;

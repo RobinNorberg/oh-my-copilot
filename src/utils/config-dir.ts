@@ -2,9 +2,9 @@
  * Host CLI Configuration Directory Resolution
  *
  * Resolves the active host CLI configuration directory, honouring
- * COPILOT_CONFIG_DIR (absolute path, or ~-prefixed) with fallback to
+ * COPILOT_HOME (absolute path, or ~-prefixed) with fallback to
  * ~/.copilot.  Trailing separators are stripped; filesystem roots are
- * preserved.
+ * preserved.  COPILOT_HOME is the variable GitHub Copilot CLI itself reads.
  *
  * Multi-surface mirrors (keep in sync):
  *   scripts/lib/config-dir.mjs   — ESM hook/HUD runtime
@@ -29,13 +29,13 @@ function stripTrailingSep(p: string): string {
 /**
  * Resolve the host CLI configuration directory.
  *
- * Honours COPILOT_CONFIG_DIR (absolute path, or ~-prefixed) with fallback
+ * Honours COPILOT_HOME (absolute path, or ~-prefixed) with fallback
  * to ~/.copilot.  Trailing separators are stripped; filesystem roots are
  * preserved.
  */
 export function getCopilotConfigDir(): string {
   const home = homedir();
-  const configured = process.env.COPILOT_CONFIG_DIR?.trim();
+  const configured = process.env.COPILOT_HOME?.trim();
 
   if (!configured) {
     return stripTrailingSep(normalize(join(home, '.copilot')));
@@ -54,7 +54,7 @@ export function getCopilotConfigDir(): string {
 
 /**
  * Resolve the OMC global configuration/cache directory under the active Claude
- * config dir. This keeps hook/updater/HUD caches aligned with COPILOT_CONFIG_DIR
+ * config dir. This keeps hook/updater/HUD caches aligned with COPILOT_HOME
  * instead of mixing in ~/.omc.
  */
 export function getOmcConfigDir(): string {

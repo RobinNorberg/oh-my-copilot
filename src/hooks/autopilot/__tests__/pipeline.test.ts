@@ -667,6 +667,22 @@ describe("autopilot team CLI worker configuration", () => {
     expect(config.team?.agentTypes).toEqual(["cursor"]);
   });
 
+  it("routes copilot team agentTypes through the omg team CLI runtime", () => {
+    const prompt = executionAdapter.getPrompt({
+      idea: "test",
+      directory: "/tmp",
+      planPath: ".omg/plans/autopilot-impl.md",
+      config: {
+        ...DEFAULT_PIPELINE_CONFIG,
+        execution: "team",
+        team: { agentTypes: ["copilot"] },
+      },
+    });
+
+    expect(prompt).toContain("CLI Team Runtime Required");
+    expect(prompt).toContain("omg team 1:copilot");
+  });
+
   it("instructs team execution to use omg team for Cursor workers", () => {
     const prompt = executionAdapter.getPrompt({
       idea: "test",

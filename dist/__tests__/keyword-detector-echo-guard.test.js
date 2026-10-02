@@ -12,7 +12,7 @@ const ROOT_ENV_KEYS = [
     'HOME',
     'USERPROFILE',
     'OMC_STATE_DIR',
-    'COPILOT_CONFIG_DIR',
+    'COPILOT_HOME',
     'CLAUDE_PLUGIN_ROOT',
     'OMC_DISABLE_MULTIREPO',
 ];
@@ -51,7 +51,7 @@ function runKeywordDetector(prompt, cwd, sessionId) {
         CLAUDE_PLUGIN_ROOT: '',
         HOME: homeDir,
         USERPROFILE: homeDir,
-        COPILOT_CONFIG_DIR: join(homeDir, '.claude'),
+        COPILOT_HOME: join(homeDir, '.claude'),
         XDG_CONFIG_HOME: join(homeDir, '.config'),
         APPDATA: join(homeDir, 'AppData', 'Roaming'),
     };

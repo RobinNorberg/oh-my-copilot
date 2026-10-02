@@ -16,11 +16,13 @@ import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { encodeProjectPath } from './lib/encode-project-path.mjs';
 import { evaluateAgentHeavyPreflight } from './lib/pre-tool-enforcer-preflight.mjs';
 import { evaluateForceAgentDelegation } from './lib/force-agent-delegation-preflight.mjs';
+import { evaluateReadBudget } from './lib/read-budget-preflight.mjs';
 import { resolveOmcStateRoot, resolveSessionStatePathsForHook } from './lib/state-root.mjs';
 import { readStdin } from './lib/stdin.mjs';
 import { resolveConfiguredAgentModel } from './lib/agent-model-config.mjs';
 import { BOUNDED_GIT_TIMEOUT_MS } from './lib/bounded-git-timeout.mjs';
 import { isSkillVisibleToUser } from './lib/skill-entitlements.mjs';
+import { isJevShadowOptedIn, recordJevShadow } from './lib/jev-shadow.mjs';
 
 // Inlined from src/config/models.ts — avoids a dist/ import so the hook works
 // before a build and stays consistent with the TypeScript source.
@@ -552,6 +554,80 @@ function shouldWarnForSlopFallbackLanguage(data, toolName, inspectedText) {
   return hasSlopFallbackActionShape(inspectedText);
 }
 
+// --- Jev script-side shadow points ---
+
+const SLOP_WARNING_QUESTIONS = {
+  slop_advisory: {
+    type: 'noul',
+    instructions: 'Does this tool input contain fallback/workaround language worth an advisory warning?',
+    criteria: {
+      'true': 'Contains fallback/workaround phrasing outside doc or self-referential context',
+      'false': 'No advisory-worthy language',
+    },
+  },
+};
+
+const MODEL_ROUTING_QUESTIONS = {
+  'model-tier': {
+    type: 'choice',
+    instructions: 'Which model tier should this delegated task use?',
+    criteria: {
+      haiku: 'Quick lookups and lightweight, mechanical work',
+      sonnet: 'Standard coding and orchestration work',
+      opus: 'Complex architecture and deep analysis',
+    },
+  },
+};
+
+function recordSlopWarningShadow(toolName, toolInput, warned) {
+  recordJevShadow({
+    point: 'slop-warning',
+    state: { toolName, toolInput },
+    questions: SLOP_WARNING_QUESTIONS,
+    heuristic: warned,
+  });
+}
+
+const MODEL_ROUTING_METADATA_MAX_CHARS = 500;
+
+function boundModelRoutingInput(toolInput) {
+  const bounded = {};
+  for (const key of ['description', 'prompt', 'subagent_type', 'model', 'resume']) {
+    if (typeof toolInput[key] === 'string') {
+      bounded[key] = toolInput[key].slice(0, MODEL_ROUTING_METADATA_MAX_CHARS);
+    }
+  }
+  if (typeof toolInput.run_in_background === 'boolean') {
+    bounded.run_in_background = toolInput.run_in_background;
+  }
+  return bounded;
+}
+
+function recordModelRoutingShadow(toolName, toolInput, updatedToolInput) {
+  if (!isJevShadowOptedIn('model-routing')) return;
+
+  const originalInput = boundModelRoutingInput(toolInput);
+  const modifiedInput = boundModelRoutingInput(updatedToolInput || toolInput);
+  const selectedModel = modifiedInput.model || readAgentDefinitionModel(originalInput.subagent_type);
+  const model = isTierAlias(selectedModel) ? selectedModel.toLowerCase() : normalizeToCcAlias(selectedModel);
+  if (!['haiku', 'sonnet', 'opus'].includes(model)) return;
+  recordJevShadow({
+    point: 'model-routing',
+    state: {
+      tool_name: toolName,
+      subagent_type: originalInput.subagent_type || '',
+      task: originalInput.prompt || '',
+    },
+    questions: MODEL_ROUTING_QUESTIONS,
+    heuristic: {
+      originalInput,
+      modifiedInput,
+      injected: Boolean(updatedToolInput),
+      model,
+    },
+  });
+}
+
 function generateSlopWarning(data, toolName) {
   const toolInput = data.toolInput || data.tool_input || {};
   const promptLikeFields = {
@@ -563,7 +639,9 @@ function generateSlopWarning(data, toolName) {
   const inspectedText = collectStringValues(toolInput)
     .concat(collectStringValues(promptLikeFields))
     .join('\n');
-  if (!shouldWarnForSlopFallbackLanguage(data, toolName, inspectedText)) return '';
+  const warned = shouldWarnForSlopFallbackLanguage(data, toolName, inspectedText);
+  recordSlopWarningShadow(toolName, data.toolInput || data.tool_input || {}, warned);
+  if (!warned) return '';
 
   return '[SLOP WARNING] Detected fallback/workaround language in this tool input. ' +
     'Do not make potential slop: avoid ad-hoc fallback layers, workaround shims, or environment-specific patches unless explicitly justified. ' +
@@ -915,7 +993,7 @@ async function getTodoStatus(directory) {
   }
 
   // NOTE: We intentionally do NOT scan the global
-  // [$COPILOT_CONFIG_DIR|~/.claude]/todos/ directory.
+  // [$COPILOT_HOME|~/.claude]/todos/ directory.
   // That directory accumulates todo files from ALL past sessions across all
   // projects, causing phantom task counts in fresh sessions (see issue #354).
 
@@ -1856,6 +1934,11 @@ async function main() {
       }
     }
 
+    if (toolName === 'Task' || toolName === 'Agent') {
+      const toolInput = data.toolInput || data.tool_input || {};
+      recordModelRoutingShadow(toolName, toolInput, updatedToolInput);
+    }
+
     // Send notification when AskUserQuestion is about to execute (user input needed)
     // Fires in PreToolUse so users get notified BEFORE the tool blocks for input (#597)
     if (toolName === 'AskUserQuestion') {
@@ -1903,6 +1986,39 @@ async function main() {
           hookEventName: 'PreToolUse',
           permissionDecision: 'deny',
           permissionDecisionReason: delegationBlock.reason,
+        },
+      }));
+      return;
+    }
+
+    // Read budget (issue #4054): enforce the <Context_Budget> rule that has only
+    // existed as prose in agents/explore.md. A full-file Read of an oversized file
+    // is warned once and denied afterwards; targeted reads, small files,
+    // allowlisted paths, and OMC_READ_BUDGET=off pass through.
+    const readBudget = evaluateReadBudget({
+      toolName,
+      toolInput: data.toolInput || data.tool_input || {},
+      stateDir,
+      loadOmcConfig,
+      cwd: directory,
+    });
+    if (readBudget?.decision === 'block') {
+      console.log(JSON.stringify({
+        continue: true,
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: readBudget.reason,
+        },
+      }));
+      return;
+    }
+    if (readBudget?.decision === 'warn') {
+      console.log(JSON.stringify({
+        continue: true,
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          additionalContext: readBudget.reason,
         },
       }));
       return;

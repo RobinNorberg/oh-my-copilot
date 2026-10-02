@@ -16,7 +16,7 @@ describe('session friction report', () => {
     beforeEach(() => {
         tempRoot = mkdtempSync(join(tmpdir(), 'omc-session-friction-'));
         claudeDir = join(tempRoot, 'claude');
-        process.env.COPILOT_CONFIG_DIR = claudeDir;
+        process.env.COPILOT_HOME = claudeDir;
         process.env.OMC_STATE_DIR = join(tempRoot, 'omc-state');
         const currentProjectDir = join(claudeDir, 'projects', encodeProjectPath(repoRoot));
         writeJsonl(join(currentProjectDir, 'session-current.jsonl'), [
@@ -51,7 +51,7 @@ describe('session friction report', () => {
         ]);
     });
     afterEach(() => {
-        delete process.env.COPILOT_CONFIG_DIR;
+        delete process.env.COPILOT_HOME;
         delete process.env.OMC_STATE_DIR;
         rmSync(tempRoot, { recursive: true, force: true });
     });

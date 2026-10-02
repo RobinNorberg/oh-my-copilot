@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+const originalClaudeConfigDir = process.env.COPILOT_HOME;
 const originalPluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
 const originalHome = process.env.HOME;
 let tempRoot;
@@ -19,17 +19,17 @@ describe('install() CLAUDE.md target resolution', () => {
         testHomeDir = join(tempRoot, 'home');
         mkdirSync(testClaudeDir, { recursive: true });
         mkdirSync(testHomeDir, { recursive: true });
-        process.env.COPILOT_CONFIG_DIR = testClaudeDir;
+        process.env.COPILOT_HOME = testClaudeDir;
         process.env.HOME = testHomeDir;
         delete process.env.CLAUDE_PLUGIN_ROOT;
     });
     afterEach(() => {
         rmSync(tempRoot, { recursive: true, force: true });
         if (originalClaudeConfigDir !== undefined) {
-            process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+            process.env.COPILOT_HOME = originalClaudeConfigDir;
         }
         else {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
         if (originalPluginRoot !== undefined) {
             process.env.CLAUDE_PLUGIN_ROOT = originalPluginRoot;

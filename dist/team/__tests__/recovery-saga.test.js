@@ -8,6 +8,7 @@ let cwd;
 let previousHome;
 let previousUserProfile;
 let previousOmcStateDir;
+const TEAM_INSTANCE_ID = '33333333-3333-4333-8333-333333333333';
 const input = {
     requestId: 'request-a',
     recoveryId: 'recovery-a',
@@ -34,7 +35,7 @@ beforeEach(() => {
     process.env.USERPROFILE = cwd;
     delete process.env.OMC_STATE_DIR;
     reserveRecoveryRequest(cwd, input.requestId, { operation: 'recover-worker', workspaceHash: 'a'.repeat(64),
-        teamName: input.teamName, workerName: input.workerName }, input.recoveryId);
+        teamName: input.teamName, workerName: input.workerName, instanceId: TEAM_INSTANCE_ID }, input.recoveryId);
 });
 afterEach(() => {
     if (previousHome === undefined)
@@ -111,6 +112,20 @@ describe('recovery saga ordering and rollback contract', () => {
         }));
         expect(result).toMatchObject({ outcome: 'recovered', committed: true, oldPaneId: '%old-worker-pane', newPaneId: '%9' });
         expect(order).toEqual(['liveness', 'list', 'validate', 'requeue', 'spawn', 'activate', 'adopt', 'repair', 'run:new-claim']);
+        expect(order).not.toContain('kill');
+    });
+    it('surfaces provider startup rejection after commit without repeating persistence or killing the replacement', async () => {
+        const order = [];
+        await expect(runRecoverySaga(input, dependencies(order, {
+            spawnGatedPane: async () => {
+                order.push('spawn');
+                return { ok: true, paneId: '%9', paneAttemptId: 'attempt-a', committed: true, stateRevision: 8, manifestSync: 'synced' };
+            },
+            persistActive: async () => { order.push('persist'); throw new Error('must not persist committed pane'); },
+            writeRun: async () => { order.push('run'); throw new Error('startup_evidence_missing'); },
+        }))).rejects.toThrow('startup_evidence_missing');
+        expect(order).toEqual(['liveness', 'list', 'validate', 'requeue', 'spawn', 'activate', 'adopt', 'repair', 'run']);
+        expect(order).not.toContain('persist');
         expect(order).not.toContain('kill');
     });
     it('does not kill a committed replacement or start its provider when adoption is incomplete', async () => {

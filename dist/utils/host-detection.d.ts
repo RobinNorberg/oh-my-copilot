@@ -6,12 +6,10 @@
  * inside both Copilot CLI and Claude Code.
  */
 import type { CliAgentType } from '../team/model-contract.js';
+export { detectHostCliType } from './host-signal.js';
 /**
  * Detect which CLI host this plugin is running under.
- *
- * Detection order:
- * 1. CLAUDE_CODE_ENTRYPOINT — set by Claude Code when running plugins
- * 2. Default — 'copilot' (this fork's identity)
+ * See detectHostCliType for the signal order.
  */
 export declare function getHostCliType(): CliAgentType;
 /**

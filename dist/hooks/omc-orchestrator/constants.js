@@ -97,7 +97,7 @@ As an ORCHESTRATOR, you MUST:
 
 **ALLOWED direct file operations:**
 - Files inside \`.omg/\` (plans, notepads, drafts)
-- Files inside \`[$COPILOT_CONFIG_DIR|~/.claude]/\`
+- Files inside \`[$COPILOT_HOME|~/.claude]/\`
 - \`CLAUDE.md\` and \`AGENTS.md\` files
 - Reading files for verification
 - Running diagnostics/tests

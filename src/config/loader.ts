@@ -87,6 +87,8 @@ export function buildDefaultConfig(): PluginConfig {
       allowEdit: true,
       allowWrite: true,
       maxBackgroundTasks: 5,
+      workerDenyTools: [],
+      workerDenyUrls: [],
     },
     magicKeywords: {
       search: ["search", "find", "locate"],
@@ -269,6 +271,15 @@ export function deepMerge<T extends object>(target: T, source: Partial<T>): T {
   return result as T;
 }
 
+const MIN_BACKGROUND_TASKS = 1;
+const MAX_BACKGROUND_TASKS = 50;
+
+function parseBackgroundTaskLimit(value: string | undefined): number | null {
+  if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed <= MAX_BACKGROUND_TASKS ? parsed : null;
+}
+
 /**
  * Load configuration from environment variables
  */
@@ -298,14 +309,14 @@ export function loadEnvConfig(): Partial<PluginConfig> {
     };
   }
 
-  if (process.env.OMC_MAX_BACKGROUND_TASKS) {
-    const maxTasks = parseInt(process.env.OMC_MAX_BACKGROUND_TASKS, 10);
-    if (!isNaN(maxTasks)) {
-      config.permissions = {
-        ...config.permissions,
-        maxBackgroundTasks: maxTasks,
-      };
-    }
+  const maxBackgroundTasks = parseBackgroundTaskLimit(
+    process.env.OMC_MAX_BACKGROUND_TASKS,
+  );
+  if (maxBackgroundTasks !== null) {
+    config.permissions = {
+      ...config.permissions,
+      maxBackgroundTasks,
+    };
   }
 
   // Routing configuration from environment
@@ -505,7 +516,7 @@ function warnOnDeprecatedDelegationRouting(config: PluginConfig): void {
 const CANONICAL_TEAM_ROLE_SET = new Set<string>(CANONICAL_TEAM_ROLES);
 const KNOWN_AGENT_NAME_SET = new Set<string>(KNOWN_AGENT_NAMES);
 // /team CLI workers — codex/gemini/grok/cursor here are CLI integrations, NOT the deprecated MCP delegationRouting providers.
-const TEAM_ROLE_PROVIDERS = new Set(["claude", "codex", "gemini", "grok", "cursor", "antigravity"]);
+const TEAM_ROLE_PROVIDERS = new Set(["claude", "copilot", "codex", "gemini", "grok", "cursor", "antigravity"]);
 const TEAM_ROLE_TIERS = new Set(["HIGH", "MEDIUM", "LOW"]);
 
 export function validateTeamConfig(config: PluginConfig): void {
@@ -595,10 +606,45 @@ export function validateTeamConfig(config: PluginConfig): void {
   }
 }
 
+/**
+ * Validate `permissions.workerDenyTools` / `permissions.workerDenyUrls`.
+ * Each entry becomes a `--deny-tool=` / `--deny-url=` flag on Copilot team
+ * workers, so reject anything that could read as a separate flag or break argv.
+ */
+export function validateWorkerPermissionsConfig(config: PluginConfig): void {
+  const perms = (config as Record<string, unknown>).permissions as
+    | Record<string, unknown>
+    | undefined;
+  if (!perms || typeof perms !== "object") return;
+
+  for (const key of ["workerDenyTools", "workerDenyUrls"] as const) {
+    const value = perms[key];
+    if (value === undefined) continue;
+    if (!Array.isArray(value)) {
+      throw new Error(
+        `[OMC] permissions.${key}: must be an array of strings, got ${typeof value}`,
+      );
+    }
+    value.forEach((entry, index) => {
+      if (
+        typeof entry !== "string" ||
+        entry.trim() === "" ||
+        /[\u0000-\u001f\u007f]/.test(entry) ||
+        entry.startsWith("-")
+      ) {
+        throw new Error(
+          `[OMC] permissions.${key}[${index}]: invalid value ${JSON.stringify(String(entry))}. Expected a non-empty pattern string that does not start with "-" or contain control characters`,
+        );
+      }
+    });
+  }
+}
+
 const AUTOPILOT_EXECUTION_BACKENDS = new Set(["team", "solo"]);
 const AUTOPILOT_PLANNING_MODES = new Set(["ralplan", "direct"]);
 const AUTOPILOT_TEAM_AGENT_TYPES = new Set([
   "claude",
+  "copilot",
   "codex",
   "gemini",
   "grok",
@@ -849,6 +895,7 @@ export function loadConfig(): PluginConfig {
   // Validate /team role routing post-merge. Throws on invalid shape,
   // walking the parsed object so deepMerge bypasses surface here.
   validateTeamConfig(config);
+  validateWorkerPermissionsConfig(config);
   validateAutopilotConfig(config);
 
   return config;
@@ -1138,8 +1185,20 @@ export function generateConfigSchema(): object {
           maxBackgroundTasks: {
             type: "integer",
             default: 5,
-            minimum: 1,
-            maximum: 50,
+            minimum: MIN_BACKGROUND_TASKS,
+            maximum: MAX_BACKGROUND_TASKS,
+          },
+          workerDenyTools: {
+            type: "array",
+            items: { type: "string", minLength: 1 },
+            default: [],
+            description: "Copilot team workers: tool patterns passed as --deny-tool=<pattern> (deny wins over the worker allow flags)",
+          },
+          workerDenyUrls: {
+            type: "array",
+            items: { type: "string", minLength: 1 },
+            default: [],
+            description: "Copilot team workers: URL patterns passed as --deny-url=<pattern>",
           },
         },
       },
@@ -1381,7 +1440,7 @@ export function generateConfigSchema(): object {
                 type: "array",
                 items: {
                   type: "string",
-                  enum: ["claude", "codex", "gemini", "grok", "cursor", "antigravity"],
+                  enum: ["claude", "copilot", "codex", "gemini", "grok", "cursor", "antigravity"],
                 },
                 description:
                   "Preferred CLI worker types for executor-style autopilot team execution tasks",
@@ -1400,8 +1459,8 @@ export function generateConfigSchema(): object {
               maxAgents: { type: "integer", minimum: 1 },
               defaultAgentType: {
                 type: "string",
-                enum: ["claude", "codex", "gemini", "grok", "cursor", "antigravity"],
-                default: "claude",
+                enum: ["claude", "copilot", "codex", "gemini", "grok", "cursor", "antigravity"],
+                description: "Default worker CLI; falls back to the host CLI (copilot, or claude under Claude Code)",
               },
               monitorIntervalMs: { type: "integer", minimum: 1 },
               shutdownTimeoutMs: { type: "integer", minimum: 1 },
@@ -1414,7 +1473,7 @@ export function generateConfigSchema(): object {
             additionalProperties: {
               type: "object",
               properties: {
-                provider: { type: "string", enum: ["claude", "codex", "gemini", "grok", "cursor", "antigravity"] },
+                provider: { type: "string", enum: ["claude", "copilot", "codex", "gemini", "grok", "cursor", "antigravity"] },
                 model: { type: "string" },
                 agent: { type: "string" },
               },

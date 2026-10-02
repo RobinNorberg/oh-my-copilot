@@ -6,6 +6,9 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [Unreleased: Team Instance Ownership](#unreleased-team-instance-ownership)
+- [Unreleased: Cancellation Scope](#unreleased-cancellation-scope)
+- [v5.1.0 → v5.5.0: Fork Upgrade Guide](#v510--v550-fork-upgrade-guide)
 - [v4.13.102 → v5.0.0: Fork Upgrade Guide](#v413102--v500-fork-upgrade-guide)
 - [v4.x → v5.0: Workflow Retirement](#v4x--v50-workflow-retirement)
 - [Unreleased: Team MCP Runtime Deprecation (CLI-Only)](#unreleased-team-mcp-runtime-deprecation-cli-only)
@@ -18,6 +21,79 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
 
 ---
+
+## Unreleased: Team Instance Ownership
+
+Team startup reserves an immutable instance ID before creating tasks or workers.
+An existing reservation or team state is not overwritten by another start using
+the same name. CLI/MCP jobs retain their original instance ID: cleanup of an old
+job cannot adopt a newer team's configuration.
+
+Native CLI jobs no longer start through the legacy v1 opt-out path. Unset
+`OMC_RUNTIME_V2=0`, `false`, `no`, or `off` before starting a job; disabling v2 is
+rejected before native startup effects rather than selecting weaker cleanup.
+
+Cleanup now requires matching instance and worker-launch evidence. A missing or
+corrupt receipt is not permission to kill a pane or remove state, even with
+`--force`. Older jobs and teams without this evidence are preserved rather than
+automatically upgraded or forcibly deleted. Complete their shutdown using the
+owning runtime before upgrading; do not fabricate IDs or discard receipts to
+bypass a blocked cleanup.
+
+This also applies to API `cleanup` and `orphan-cleanup`: neither is a raw state
+deletion escape hatch. The unsafe low-level `teamCleanup` deletion API is removed.
+SessionEnd cleanup checks the ending session's ownership via config
+`leader_session_id` (not the tmux target projected into `leader.session_id`)
+and passes the captured instance ID; stale team-name hints cannot authorize
+cleanup of another session's team.
+
+Provider execution and pane liveness are observed separately. An exited provider
+can be recovered even when its pane shell remains, but recovery does not treat
+that observation as proof that all descendant processes have terminated.
+
+Tmux ownership additionally binds the socket, server PID, and precise process
+creation time captured at startup. Reused session names or pane IDs after a
+server restart cannot replace that evidence. Missing historical server identity
+does not authorize adoption, input, or destruction. Confirmed death of the
+original server proves only that its panes are gone, not provider cleanup.
+Strict server identity requires the native addon on macOS or boot-bound process
+evidence on Linux; unavailable precision preserves resources without a coarse
+process-listing fallback.
+Native Windows/MSYS tmux control has no verified process-identity mapping and
+therefore cannot authorize these effects. Running Node inside WSL uses the Linux
+identity path.
+
+The legacy mutation exports `watchdogCliWorkers`, `spawnWorkerForTask`,
+`killWorkerPane`, `assignTask`, and `killWorkerPanes` have been removed. Use the instance-bound v2
+startup, dispatch, recovery, scaling, and shutdown APIs instead. The former
+`done.json` watchdog, five automatic pane-death retries, lowest-index scheduling,
+and watchdog timer `stop()` contract are retired, not recreated inside v2.
+
+Final state removal retains instance-bound cleanup records outside the disposable
+team directory. After a partial removal failure, retry cleanup for the original
+job. Do not manually delete these records, including completed receipts: they
+prevent reuse of a retired instance identity. Detached state is removed by the
+validated cleanup protocol.
+
+Pending recovery reservations, intents, and owner requests also retain the
+original instance ID. Records without that evidence are not automatically
+adopted, and retrying an old request cannot attach it to a same-named replacement.
+
+`state_clear(mode="team", ...)` clears orchestration/session state, not native
+team runtime directories or name-only native mission records. Shut down native
+teams through `omg team shutdown` or the original job's cleanup API first.
+Session ownership alone does not prove ownership of a same-name runtime instance.
+
+## Unreleased: Cancellation Scope
+
+`/oh-my-copilot:cancel --force` now targets only the current session; it no longer
+means clearing every session. It skips graceful waits, not state locks or ownership checks.
+If the current session cannot be identified, cancellation fails closed.
+
+Use `--all` explicitly for all-session cancellation. It follows normal cancellation
+within each session; use `--force --all` when forced cancellation across sessions is intended.
+Update prompts or automation that previously used `--force` for a workspace-wide reset.
+The deprecated `cancel-ralph` alias follows the same contract.
 
 ## Unreleased: Git-less State Root Recovery
 
@@ -41,6 +117,188 @@ locations and descendants of system temp/OS roots are never used as roots.
   foreign repositories and failed Git probes are rejected visibly.
 - Session-scoped state remains owned by its `session_id`. No time-based cleanup
   or cancellation was added.
+
+---
+
+## v5.1.0 → v5.5.0: Fork Upgrade Guide
+
+This section covers the upgrade from fork **v5.1.0** to fork **v5.5.0**. The
+release ports upstream oh-my-claudecode v5.4.0 and v5.5.0, and it makes the
+fork work as a native GitHub Copilot CLI plugin. Claude Code stays supported.
+
+### TL;DR
+
+1. Rename `COPILOT_CONFIG_DIR` to `COPILOT_HOME` in your shell profile, CI and
+   scripts. The old name is no longer read.
+2. Update or reinstall the plugin, because the plugin layout changed:
+   `copilot plugin update oh-my-copilot@omc`.
+3. Make sure `node` is on PATH for the Copilot process. Run
+   `omg doctor conflicts` to check both points.
+4. Optional: add `permissions.workerDenyTools` / `workerDenyUrls` to
+   `.copilot/omg.jsonc` before running `omg team` with copilot workers.
+
+### `COPILOT_CONFIG_DIR` → `COPILOT_HOME`
+
+`COPILOT_HOME` is GitHub Copilot CLI's own config-directory variable. Earlier
+fork builds read `COPILOT_CONFIG_DIR`, which Copilot ignores. A user who moved
+Copilot with `COPILOT_HOME` therefore got a split: Copilot used one directory
+while OMC's hooks, HUD and installer used `~/.copilot`. Now one variable moves
+both.
+
+- OMC resolves `${COPILOT_HOME:-~/.copilot}`. There is no fallback to
+  `COPILOT_CONFIG_DIR`.
+- `omg doctor conflicts` warns when `COPILOT_CONFIG_DIR` is still set.
+- The `${COPILOT_CONFIG_DIR}` token in `omg.jsonc` guards keeps working as an
+  alias of `${COPILOT_HOME}`. You do not have to edit existing guards.
+- The package's JS export `COPILOT_CONFIG_DIR` remains as a deprecated alias.
+  New code should use the `COPILOT_HOME` export.
+
+```bash
+# before
+export COPILOT_CONFIG_DIR="$HOME/.copilot-work"
+# after
+export COPILOT_HOME="$HOME/.copilot-work"
+```
+
+### Plugin layout: update or reinstall
+
+Copilot CLI now loads the fork through a root `plugin.json`, which it reads
+before `.claude-plugin/plugin.json`. That manifest points at generated files:
+
+| Copilot loads | Generated from | Regenerate with |
+|---|---|---|
+| `copilot/hooks.json` | `hooks/hooks.json` | `npm run build:copilot-hooks` |
+| `copilot/agents/*.md` | `agents/*.md` | `npm run build:copilot-agents` |
+
+Claude Code keeps reading `.claude-plugin/plugin.json`, `hooks/hooks.json` and
+`agents/*.md`, which stay identical to upstream. Never hand-edit the generated
+files; `npm run build` regenerates both.
+
+An installed plugin cache from v5.1.0 has no root `plugin.json`, so update it:
+
+```bash
+copilot plugin update oh-my-copilot@omc
+# or reinstall
+copilot plugin uninstall oh-my-copilot@omc
+copilot plugin install oh-my-copilot@omc
+```
+
+Inside a session, `/plugin install oh-my-copilot@omc` does the same. Then
+re-run `/oh-my-copilot:omc-setup`. A standalone install that copied agents
+into `~/.copilot/agents/` shadows the plugin's agents by name, so re-run
+`omg setup` after upgrading.
+
+What changes under Copilot:
+
+- **Hooks run.** Before v5.5.0 every fork hook was a silent no-op under Copilot
+  on Windows. Hooks such as persistent-mode, context-guard and
+  pre-tool-enforcer now take effect, including their blocks and denies.
+- **SessionStart `init` / `maintenance` hooks are not projected.** Copilot
+  ignores SessionStart matchers, so they would run, and prune state, on every
+  session. They still run under Claude Code.
+- **Read-only agents are enforced.** Copilot ignores `disallowedTools`, so the
+  generated read-only agents (architect, critic, verifier and others) get a
+  `tools:` allowlist without create/edit/apply_patch. Shell stays allowed, as
+  it does under Claude.
+- **Agent model aliases** (`opus`, `sonnet`, `haiku`, `fable`) become
+  Copilot `models:` fallback lists. Copilot uses the first model your plan can
+  access.
+
+### `node` must be on PATH
+
+Copilot CLI ships as a single executable and does not provide `node`. Every
+OMC hook runs `node`. When a PreToolUse hook cannot start, Copilot itself
+denies the tool call, so a missing `node` blocks every tool. OMC cannot catch
+that case. `omg doctor conflicts` checks that `node` resolves on PATH.
+
+### Team workers on a Copilot host
+
+- `copilot` is a first-class worker type (`omg team 3:copilot "..."`) and the
+  default worker on a Copilot host. An explicit `N:agent-type`,
+  `team.ops.defaultAgentType` or `team.roleRouting.<role>.provider` still wins.
+- Copilot workers are unattended panes, so they launch with
+  `--allow-all-tools --allow-all-paths --allow-all-urls --no-ask-user`.
+- Your deny rules come from `.copilot/omg.jsonc` and are forwarded as
+  `--deny-tool=<pattern>` / `--deny-url=<pattern>`. In Copilot CLI, deny beats
+  allow, even with `--allow-all-tools`:
+
+  ```jsonc
+  {
+    "permissions": {
+      "workerDenyTools": ["shell(git push)", "shell(rm:*)", "write(.env)"],
+      "workerDenyUrls": ["https://*.internal.example"]
+    }
+  }
+  ```
+
+  Entries must be non-empty strings. An entry that starts with `-` or contains
+  NUL is rejected. `deniedUrls` in `$COPILOT_HOME/settings.json` also applies,
+  because workers inherit `COPILOT_HOME`.
+- Only copilot workers enforce the deny list. At startup `omg team` prints one
+  stderr line per provider, for example:
+
+  ```text
+  [omg team] copilot workers (x3): --allow-all-tools --allow-all-paths --allow-all-urls --no-ask-user; deny: shell(git push), https://*.internal.example
+  [omg team] codex workers (x1): permissions.workerDenyTools NOT enforced (vendor flags: --dangerously-bypass-approvals-and-sandbox)
+  ```
+
+### Windows (psmux)
+
+`omg team` on native Windows runs on [psmux](https://github.com/marlocarlo/psmux); install or upgrade with `winget install psmux` (≥ 3.3.7 required so `-L <ns>` namespaces are honored). Teams always launch detached into a private psmux namespace, so they are invisible to a bare `psmux ls`. Attach with `tmux -L <ns> attach`, where `<ns>` is printed by `omg team status <team>` and recorded in `.omg/state/team/<team>/config.json`. If a startup is left unverified, clean it up with `tmux -L <ns> kill-server`.
+
+### `disableExternalLLM` semantics
+
+`disableExternalLLM` (and `OMC_SECURITY=strict`) now means "only the current
+host CLI's workers": claude on a Claude Code host, copilot on a Copilot host.
+Before, only claude workers were exempt, so a Copilot user with the setting on
+could not start any worker.
+
+### Host detection and `omg launch`
+
+- The host is Copilot when Copilot session markers are present. Otherwise
+  `CLAUDE_CODE_ENTRYPOINT` selects Claude Code.
+- `omg launch` spawns and probes the host binary (`copilot` or `claude`).
+- On Copilot, `--madmax` becomes `--yolo`. A typed
+  `--dangerously-skip-permissions`, which Copilot rejects, is also replaced
+  by `--yolo`.
+- `-p` / `--prompt` print mode adds no allow flags. Pass
+  `--allow-all-tools` yourself when a non-interactive run needs it.
+- The launcher forwards `COPILOT_HOME`, `COPILOT_MODEL`, `GH_HOST` and
+  `COPILOT_GH_HOST` into tmux. Tokens travel only through the private
+  transport, never on the command line.
+- **macOS:** `--madmax` and `--yolo` require tmux on both hosts. The rule is
+  judged from the arguments you typed.
+
+### `agents.<name>.model` is a no-op on Copilot
+
+The `agents.<name>.model` override is applied by rewriting the delegation call
+through the PreToolUse `updatedInput` channel. Copilot does not support that
+channel, so the adapter drops it. On Copilot, per-agent models come from the
+generated `models:` lists or from Copilot's own
+`subagents.agents.<name>.model` setting in `$COPILOT_HOME/settings.json`. Use
+the agent id as Copilot shows it; plugin agents are namespaced
+(`oh-my-copilot:<name>`):
+
+```json
+{ "subagents": { "agents": { "oh-my-copilot:executor": { "model": "claude-opus-5" } } } }
+```
+
+Under Claude Code the override works as before.
+
+### Removed: the safe-command approver
+
+The v4-era `scripts/safe-command-approver.mjs` hook and the
+`src/installer/permissions.ts` allowlist generator are gone. The hook had not
+been registered since v5.0.0, and it approved chained commands such as
+`cat x; curl … | sh`. Use Copilot CLI's `--allow-tool` / `--deny-tool` rules
+or its assisted-approval mode instead.
+
+### New skills
+
+Ten upstream skills are added (61 canonical): `harbor`, `agent-doc-discipline`,
+`architecture-survey`, `diagram`, `intent`, `minimal-prose-discipline`, `map`,
+`pr`, `refit` and `tdd`. See [CHANGELOG.md](../CHANGELOG.md) for the full
+port summary.
 
 ---
 
@@ -137,6 +395,8 @@ skills, plugins, rules, tasks, and worktrees.
   completes, copying rather than moving so nothing is destroyed.
   `/oh-my-copilot:omc-doctor` reports a stranded copy and can adopt it on its
   own, and setting `COPILOT_CONFIG_DIR` overrides the location entirely.
+  (v5.5.0 renames that variable to `COPILOT_HOME`; see
+  [v5.1.0 → v5.5.0](#v510--v550-fork-upgrade-guide).)
 
 **2. `.omc/` → `.omg/`.** All oh-my-copilot runtime files move: state,
 sessions, logs, plans, research, `notepad.md`, `project-memory.json`,
@@ -992,7 +1252,7 @@ All existing configurations, plans, and workflows continue working unchanged.
 
 #### Default Execution Mode
 
-Set your preferred execution mode in `${COPILOT_CONFIG_DIR:-~/.copilot}/.omc-config.json`:
+Set your preferred execution mode in `${COPILOT_HOME:-~/.copilot}/.omc-config.json`:
 
 ```json
 {

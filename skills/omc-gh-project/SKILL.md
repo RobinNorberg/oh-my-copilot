@@ -1,9 +1,6 @@
 ---
 name: omc-gh-project
-description: >
-  GitHub Projects (v2) board management — list items, update status, manage iterations, and add issues/PRs to projects.
-  WHEN: User wants to manage project boards, move cards between statuses, check project progress, or assign items to iterations.
-  DO NOT USE FOR: Issue triage (use omc-gh-triage), PR review (use omc-gh-review), initial GitHub setup (use omc-gh-setup), or ADO sprint planning (use omc-ado-sprint).
+description: "Manage GitHub Projects (v2) boards: list items, move status, manage iterations, and add issues/PRs to a project. Not for issue triage (omc-gh-triage) or PR review. ADO sprints → omc-ado-sprint."
 ---
 
 # OMC GitHub Project

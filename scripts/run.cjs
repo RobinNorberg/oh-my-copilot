@@ -408,6 +408,10 @@ function ensureProcessDestGuards() {
 }
 
 function createProtocolSink(hooks = {}) {
+  const destinations = {
+    stdout: hooks.stdout || process.stdout,
+    stderr: hooks.stderr || process.stderr,
+  };
   const discarded = { stdout: false, stderr: false };
   const closedDest = { stdout: false, stderr: false };
   const bindings = { stdout: [], stderr: [] };
@@ -415,8 +419,8 @@ function createProtocolSink(hooks = {}) {
   let installed = false;
   let pendingWrites = 0;
   let uninstallRequested = false;
-  const onStdoutError = (error) => handleDestError('stdout', process.stdout, error);
-  const onStderrError = (error) => handleDestError('stderr', process.stderr, error);
+  const onStdoutError = (error) => handleDestError('stdout', destinations.stdout, error);
+  const onStderrError = (error) => handleDestError('stderr', destinations.stderr, error);
 
   function teardownChannel(name) {
     discarded[name] = true;
@@ -475,15 +479,15 @@ function createProtocolSink(hooks = {}) {
     ensureProcessDestGuards();
     if (installed) return;
     installed = true;
-    process.stdout.on('error', onStdoutError);
-    process.stderr.on('error', onStderrError);
+    destinations.stdout.on('error', onStdoutError);
+    destinations.stderr.on('error', onStderrError);
   }
 
   function flushUninstall() {
     if (!uninstallRequested || pendingWrites > 0 || !installed) return;
     installed = false;
-    process.stdout.removeListener('error', onStdoutError);
-    process.stderr.removeListener('error', onStderrError);
+    destinations.stdout.removeListener('error', onStdoutError);
+    destinations.stderr.removeListener('error', onStderrError);
     // Process-lifetime closed-dest guards remain so a late write callback
     // EPIPE after finish() cannot crash the runner.
   }
@@ -500,13 +504,14 @@ function createProtocolSink(hooks = {}) {
   }
 
   function closeDestinations() {
-    try { process.stdout.destroy(); } catch { /* already closed */ }
-    try { process.stderr.destroy(); } catch { /* already closed */ }
+    for (const dest of [destinations.stdout, destinations.stderr]) {
+      try { dest.destroy(); } catch { /* already closed */ }
+    }
   }
 
   function write(dest, data) {
     install();
-    const name = dest === process.stderr ? 'stderr' : 'stdout';
+    const name = dest === destinations.stderr ? 'stderr' : 'stdout';
     if (discarded[name] || !dest || dest.destroyed || !dest.writable) return Promise.resolve();
     if (dest.writableNeedDrain) {
       discarded[name] = true;
@@ -598,8 +603,8 @@ function createProtocolSink(hooks = {}) {
       writer.on('finish', () => { binding.completed = true; });
       writer.on('error', (error) => handleDestError(name, dest, error));
     };
-    bind(child.stdout, process.stdout, 'stdout');
-    bind(child.stderr, process.stderr, 'stderr');
+    bind(child.stdout, destinations.stdout, 'stdout');
+    bind(child.stderr, destinations.stderr, 'stderr');
   }
 
   function settleOutputs(timeoutMs, idleMs = PROTOCOL_SOURCE_IDLE_MS, reapIdleSources = true) {
@@ -620,7 +625,7 @@ function createProtocolSink(hooks = {}) {
           finish(false);
           return;
         }
-        if (active.every(binding => binding.completed || binding.writer.destroyed)) {
+        if (active.every(binding => (binding.completed && !binding.dest.writableNeedDrain) || binding.writer.destroyed)) {
           finish(true);
           return;
         }
@@ -716,7 +721,7 @@ function superviseGenericChild(targetPath, extraArgs) {
   child.once('error', () => finish(0));
 }
 
-function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
+function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook, options = {}) {
   let child;
   let childIdentity = null;
   let reaped = false;
@@ -728,6 +733,8 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
   let destinationClosed = false;
   let startClosedDestinationCleanup = () => {};
   const sink = createProtocolSink({
+    stdout: options.stdout,
+    stderr: options.stderr,
     beforeSourceDestroy: reapOnce,
     onDestinationClose: () => {
       destinationClosed = true;
@@ -880,6 +887,49 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
   });
 }
 
+// A Worker created with `stdin: true` owns a stdio MessagePort that stays
+// referenced until its stdin reaches EOF, and the parent cannot release it from
+// the outside: ending or destroying `worker.stdin` leaves the worker-side
+// readable open, so the worker never exits. A hook that returns before touching
+// stdin — every `OMC_SKIP_HOOKS` / `DISABLE_OMC=1` early return — therefore
+// idled until the manifest budget expired and was reported as a bogus timeout
+// while the payload sat unread (#4086).
+//
+// This bootstrap runs the hook unchanged and, once its module evaluation has
+// settled, resumes stdin only when the hook provably never looked at it: not
+// flowing and no reader attached. Resuming drains the already-delivered payload
+// to EOF, which releases the port; destroying the stream instead would break
+// the EOF path and pin the worker forever. A hook that does read stdin attaches
+// its listeners synchronously inside `main()` before its first await, so it is
+// always observed as a consumer and keeps the untouched behaviour. Only
+// 'data'/'readable' count as a reader: Node attaches its own internal 'end'
+// listener to a worker stdin.
+//
+// `process.argv[1]` is restored to the hook path so entry guards of the form
+// `import.meta.url === pathToFileURL(process.argv[1]).href` still fire.
+const WORKER_STDIN_BOOTSTRAP = `
+const { workerData } = require('node:worker_threads');
+const { fileURLToPath } = require('node:url');
+const targetUrl = workerData.omcWorkerTarget;
+process.argv[1] = fileURLToPath(targetUrl);
+function drainUnreadStdin() {
+  const stdin = process.stdin;
+  if (!stdin || stdin.destroyed || stdin.readableEnded) return;
+  if (stdin.readableFlowing === true) return;
+  if (stdin.listenerCount('data') > 0 || stdin.listenerCount('readable') > 0) return;
+  try { stdin.resume(); } catch { /* already closed */ }
+}
+import(targetUrl).then(
+  () => { setImmediate(drainUnreadStdin); },
+  (error) => {
+    setImmediate(() => {
+      drainUnreadStdin();
+      throw error;
+    });
+  },
+);
+`;
+
 async function runWorker(targetPath, manifestHook, timeoutMs) {
   let worker;
   let terminal = false;
@@ -940,11 +990,13 @@ async function runWorker(targetPath, manifestHook, timeoutMs) {
       }, timeoutMs);
 
       try {
-        worker = new Worker(pathToFileURL(targetPath), {
+        worker = new Worker(WORKER_STDIN_BOOTSTRAP, {
+          eval: true,
           stdin: true,
           stdout: true,
           stderr: true,
           env: process.env,
+          workerData: { omcWorkerTarget: pathToFileURL(targetPath).href },
         });
         if (process.stdin.readableEnded) worker.stdin.end();
         else process.stdin.pipe(worker.stdin);

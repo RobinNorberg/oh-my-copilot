@@ -53,6 +53,7 @@ export {
   REPO_OWNER,
   REPO_NAME,
   GITHUB_API_URL,
+  COPILOT_HOME,
   COPILOT_CONFIG_DIR,
   VERSION_FILE,
   // Auto-update functions
@@ -66,6 +67,17 @@ export {
   compareVersions
 } from './features/auto-update.js';
 export * from './shared/index.js';
+
+// Lookout pre-flight danger scanning API.
+export { LookoutError, resolveBriefArg, scanLookout } from './features/lookout/index.js';
+export type {
+  LookoutConfidence,
+  LookoutFinding,
+  LookoutReport,
+  LookoutSeverity,
+  LookoutVerdict,
+  ScanLookoutOptions,
+} from './features/lookout/index.js';
 
 // Hooks module exports
 export * from './hooks/index.js';
@@ -208,6 +220,7 @@ export {
   isInstalled,
   getInstallInfo,
   isCopilotInstalled,
+  COPILOT_HOME as INSTALLER_COPILOT_HOME,
   COPILOT_CONFIG_DIR as INSTALLER_COPILOT_CONFIG_DIR,
   AGENTS_DIR,
   COMMANDS_DIR,

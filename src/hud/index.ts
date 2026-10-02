@@ -78,6 +78,29 @@ function extractSessionIdFromPath(transcriptPath: string): string | null {
   return match ? match[1] : null;
 }
 
+// The two sources round reset times differently (e.g. 17:59:59.924Z vs 18:00:00Z).
+const SAME_WINDOW_TOLERANCE_MS = 60 * 1000;
+
+/**
+ * Stdin rate limits only move when this session makes a request, so usage from
+ * other sessions or background agents leaves them stale. Usage within a window
+ * never decreases, so when both sources describe the same window the higher
+ * percentage is the fresher one.
+ */
+function pickFresherPercent(
+  stdinPercent: number | undefined,
+  stdinResetsAt: Date | null | undefined,
+  apiPercent: number | undefined,
+  apiResetsAt: Date | null | undefined,
+): number | undefined {
+  if (stdinPercent == null || apiPercent == null || !stdinResetsAt || !apiResetsAt) {
+    return stdinPercent;
+  }
+  const isSameWindow =
+    Math.abs(stdinResetsAt.getTime() - apiResetsAt.getTime()) <= SAME_WINDOW_TOLERANCE_MS;
+  return isSameWindow ? Math.max(stdinPercent, apiPercent) : stdinPercent;
+}
+
 function mergeStdinRateLimits(
   stdinRateLimits: RateLimits | null,
   usageResult: UsageResult | null,
@@ -86,12 +109,28 @@ function mergeStdinRateLimits(
     return usageResult;
   }
 
+  const apiRateLimits = usageResult?.rateLimits ?? {};
+  const merged: RateLimits = { ...apiRateLimits, ...stdinRateLimits };
+  if (stdinRateLimits.fiveHourPercent != null) {
+    merged.fiveHourPercent = pickFresherPercent(
+      stdinRateLimits.fiveHourPercent,
+      stdinRateLimits.fiveHourResetsAt,
+      apiRateLimits.fiveHourPercent,
+      apiRateLimits.fiveHourResetsAt,
+    );
+  }
+  if (stdinRateLimits.weeklyPercent != null) {
+    merged.weeklyPercent = pickFresherPercent(
+      stdinRateLimits.weeklyPercent,
+      stdinRateLimits.weeklyResetsAt,
+      apiRateLimits.weeklyPercent,
+      apiRateLimits.weeklyResetsAt,
+    );
+  }
+
   return {
     ...(usageResult ?? {}),
-    rateLimits: {
-      ...(usageResult?.rateLimits ?? {}),
-      ...stdinRateLimits,
-    },
+    rateLimits: merged,
   };
 }
 
@@ -522,8 +561,8 @@ async function mainImpl(watchMode = false, skipInit = false): Promise<void> {
       apiKeyMode: detectApiKeySource(cwd) !== null,
       subscriptionType: subscriptionInfo.subscriptionType,
       rateLimitTier: subscriptionInfo.rateLimitTier,
-      profileName: process.env.COPILOT_CONFIG_DIR
-        ? basename(process.env.COPILOT_CONFIG_DIR).replace(/^\./, "")
+      profileName: process.env.COPILOT_HOME
+        ? basename(process.env.COPILOT_HOME).replace(/^\./, "")
         : null,
       sessionSummary,
       lastToolName: transcriptData.lastToolName,

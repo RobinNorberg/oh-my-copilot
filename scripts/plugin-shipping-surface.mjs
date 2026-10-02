@@ -236,6 +236,37 @@ function collectManifestEntrypoints(root) {
     }
   }
 
+  // Root plugin.json is the Copilot CLI manifest (looked up before .claude-plugin/);
+  // its generated hooks file uses flat exec+args entries.
+  if (existsSync(join(root, 'plugin.json'))) {
+    paths.add('plugin.json');
+    const copilotPluginJson = readJson(root, 'plugin.json');
+    if (typeof copilotPluginJson.hooks === 'string') {
+      const hooksPath = normalizeRepoPath(copilotPluginJson.hooks, 'plugin.json hooks');
+      paths.add(hooksPath);
+      const copilotHooks = readJson(root, hooksPath);
+      for (const entries of Object.values(copilotHooks.hooks ?? {})) {
+        if (!Array.isArray(entries)) continue;
+        for (const entry of entries) {
+          for (const value of Array.isArray(entry?.args) ? entry.args : []) {
+            for (const repoPath of pluginRootPaths(value, `${hooksPath} args`)) paths.add(repoPath);
+          }
+        }
+      }
+    }
+    // Generated custom agents (`agents` names a directory of *.agent.md / *.md files).
+    if (typeof copilotPluginJson.agents === 'string') {
+      const agentsDir = normalizeRepoPath(copilotPluginJson.agents, 'plugin.json agents');
+      const absoluteAgentsDir = join(root, agentsDir);
+      if (!existsSync(absoluteAgentsDir) || !lstatSync(absoluteAgentsDir).isDirectory()) {
+        fail(`plugin.json agents directory is missing: ${agentsDir}`);
+      }
+      for (const entry of readdirSync(absoluteAgentsDir, { withFileTypes: true })) {
+        if (entry.isFile() && entry.name.endsWith('.md')) paths.add(`${agentsDir}/${entry.name}`);
+      }
+    }
+  }
+
   if (existsSync(join(root, 'scripts', 'setup-claude-md.sh'))) paths.add('scripts/setup-claude-md.sh');
   if (existsSync(join(root, 'scripts', 'lib', 'config-dir.sh'))) paths.add('scripts/lib/config-dir.sh');
   // Node setup lifecycle: the documented, bash-free entry points.
@@ -415,8 +446,9 @@ function moduleReferences(source, repoPath) {
 }
 
 function resolveLocalReference(root, importer, specifier) {
-  const base = resolve(dirname(join(root, importer)), specifier);
-  if (!isInside(realpathSync(root), base)) fail(`runtime import escapes package root: ${importer} -> ${specifier}`);
+  const canonicalRoot = realpathSync(root);
+  const base = resolve(dirname(join(canonicalRoot, importer)), specifier);
+  if (!isInside(canonicalRoot, base)) fail(`runtime import escapes package root: ${importer} -> ${specifier}`);
   const candidates = [];
   if (isDeclarationPath(importer) && MODULE_EXTENSIONS.has(extname(base))) {
     candidates.push(`${base.slice(0, -extname(base).length)}${DECLARATION_EXTENSION}`);
@@ -428,7 +460,7 @@ function resolveLocalReference(root, importer, specifier) {
   }
   for (const candidate of candidates) {
     if (!existsSync(candidate)) continue;
-    const repoPath = normalizeRepoPath(relative(root, candidate).split(sep).join('/'), 'resolved runtime dependency');
+    const repoPath = normalizeRepoPath(relative(canonicalRoot, candidate).split(sep).join('/'), 'resolved runtime dependency');
     containedRegularFile(root, repoPath, `runtime dependency ${importer} -> ${specifier}`);
     return repoPath;
   }

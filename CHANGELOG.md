@@ -2,6 +2,187 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.5.0
+
+## [5.5.0] - 2026-10-02
+
+Fork **v5.5.0** (from v5.1.0) ports upstream
+oh-my-claudecode v5.4.0, v5.5.0 and upstream `dev` through 862c69273
+(#4135, #4140), and makes the fork work as a native GitHub Copilot CLI
+plugin: hooks, agents, team workers and `omg launch` now follow the Copilot
+CLI 1.0.88 contract. Before this release every fork hook was a silent no-op
+under Copilot on Windows. Ten new skills (61 canonical total). Upgrading?
+Read the [v5.1.0 → v5.5.0 guide](docs/MIGRATION.md#v510--v550-fork-upgrade-guide).
+
+### Ported from upstream oh-my-claudecode dev (v5.5.0..862c69273)
+
+- **Four new skills (57 → 61):** `map` (yard router, which also routes the
+  fork-exclusive skills), `pr`, `refit`, and `tdd`. Delivery-loop hardening
+  in `launch`.
+- **jev** active mode (env-activated), the script-side judgment channel,
+  token usage in the shadow log, and `OMC_JEV_QUIET`.
+- **budget-guard Stop hook** (`OMC_RUN_BUDGET_TOKENS`) and its enforcement
+  log.
+- **Team:** honest start-failure reporting, busy-pane vs startup success,
+  Windows worker launch environments (#4102, including the PATHEXT
+  preference in `src/platform/executable-resolution.ts`), and a final recheck
+  window for startup evidence (#4135).
+- **Hooks:** unread worker stdin is released, env overrides are validated,
+  and the state root resolves without git on PATH.
+- **Installer:** user-owned collisions are skipped during bundled skill sync;
+  upstream's Windows state-lock bridge path fix (#4140) replaces the fork's
+  interim fix.
+
+### Ported from upstream oh-my-claudecode v5.5.0 (v5.4.0..v5.5.0)
+
+- **Four new skills (53 → 57):** `architecture-survey`, `diagram`, `intent`,
+  and `minimal-prose-discipline`. Adds the shipyard-audit script (auditing
+  `.omg/skills`), the shipyard/launch/drydock discipline rounds, and the
+  `cancel` skill rewrite.
+- **jev judgment points** (shadow mode) across hooks, plus the `jev-eval`
+  script. On win32 the shadow recorder detaches so it survives hook exit.
+- **Team:** immutable team instance id lifecycle, scoped cancellation, and
+  consistent task claims and monitor snapshots.
+- **Hooks:** read-budget preflight, directory-context injector registration,
+  and the `${CLAUDE_PLUGIN_ROOT}` brace form in hook commands.
+- **State lock:** a file fallback when `better-sqlite3` cannot load. On a
+  slow win32 liveness probe the fork retries when the owner artifact vanished
+  instead of failing as unverifiable.
+- **Launch:** credentials stay off the command line, and the tmux pane is
+  exec-replaced.
+- **Known Windows gap:** upstream's strict process identity accepts only
+  linux/darwin, so team instance recovery fails closed on win32.
+
+### Ported from upstream oh-my-claudecode v5.4.0 (v5.3.0..v5.4.0)
+
+- **Two new skills (51 → 53):** `harbor` (shipyard intake gate) and
+  `agent-doc-discipline`.
+- **`omg lookout scan`:** a pre-flight danger scan and its parsers.
+- **SQLite state-mutation lock** (`scripts/lib/state-lock.mjs`) with
+  standalone hook bridge provisioning. It replaces the fork's portable-lockfile
+  backend. On win32 the release retries on `SQLITE_BUSY`/`SQLITE_LOCKED`.
+- A configurable SessionStart context budget, worktree-paths locale and
+  bare-repo probes, team provider preflight and launch-gate hardening, and
+  contained-FD graph traversal on Darwin. The Ruby prerequisite is removed.
+
+### Added
+
+- **Copilot plugin manifest.** A root `plugin.json` is the manifest Copilot
+  CLI reads; it takes precedence over `.claude-plugin/plugin.json`, which
+  Claude Code keeps using. It points `hooks` at the generated
+  `copilot/hooks.json` and `agents` at the generated `copilot/agents/`, and
+  it carries the MCP server and commands.
+- **Generated Copilot hooks** (`npm run build:copilot-hooks`,
+  `scripts/copilot/build-hooks.mjs`). `copilot/hooks.json` is derived from
+  the upstream-identical `hooks/hooks.json`. Each entry uses `exec: "node"`
+  with an `args` array, so no shell runs and a plugin path containing spaces
+  stays one argument. `OMC_HOOK_EVENT` names the event. The generator throws
+  on a hook command form it does not recognise, so an upstream change breaks
+  the build instead of shipping a no-op.
+- **Copilot hook output adapter** (`scripts/lib/copilot-hook-adapter.cjs`,
+  preloaded with `node --require`). It translates Claude-shaped hook output
+  to Copilot's contract: it hoists `additionalContext` to the top level, turns
+  PreToolUse blocks into `permissionDecision: "deny"`, maps Stop blocks, and
+  converts exit code 2. It fails open on a hook's internal error.
+  `OMC_HOOK_FAIL_CLOSED=1` keeps the original exit code, and
+  `OMC_HOOK_STRICT=1` makes a hook target that is not a file exit 1. See
+  [docs/HOOKS.md](docs/HOOKS.md#copilot-cli-hook-projection).
+- **Generated Copilot agents** (`npm run build:copilot-agents`,
+  `scripts/copilot/build-agents.mjs`). `copilot/agents/*.md` has the same body
+  as `agents/*.md`. Model aliases become Copilot `models:` fallback lists.
+  Read-only agents get a `tools:` allowlist without create/edit/apply_patch;
+  shell stays allowed, as with Claude's `disallowedTools`. Agents that review
+  or edit code get `include-custom-instructions: true`.
+- **`copilot` team worker type.** `omg team N:copilot` is accepted by every
+  worker validator, and `copilot` is the default worker on a Copilot host.
+  Copilot workers launch with `--allow-all-tools --allow-all-paths
+  --allow-all-urls --no-ask-user`. Claude-style model ids are mapped to
+  Copilot's dotted form (`claude-opus-4-8` → `claude-opus-4.8`).
+- **Worker deny rules:** `permissions.workerDenyTools` and
+  `permissions.workerDenyUrls` in `omg.jsonc` are forwarded to copilot workers
+  as `--deny-tool=` / `--deny-url=`. Deny beats allow. Only copilot workers
+  enforce them. `omg team` prints one `[omg team] <provider> workers (xN): ...`
+  line per provider to stderr, and for other providers that line says the deny
+  list is NOT enforced. Provider advisors print a bypass warning.
+- **`omg doctor conflicts`** warns when the legacy `COPILOT_CONFIG_DIR` is set
+  and checks that `node` is on PATH.
+
+### Changed
+
+- **Config directory variable:** `COPILOT_CONFIG_DIR` renamed to
+  `COPILOT_HOME`, the variable GitHub Copilot CLI actually reads. The old
+  name is no longer honoured (no env fallback); `omg doctor conflicts` warns
+  when it is set. The `${COPILOT_CONFIG_DIR}` token in `omg.jsonc` guards
+  still works as an alias of `${COPILOT_HOME}`, and the package's JS export
+  `COPILOT_CONFIG_DIR` remains as a deprecated alias.
+- **Host detection:** the host is Copilot when Copilot session markers are
+  present; otherwise `CLAUDE_CODE_ENTRYPOINT` selects Claude Code. The team
+  default worker, stage routing, scale-up, and the routing-snapshot fallback
+  all follow the host.
+- **`disableExternalLLM`** now means "only the current host CLI's workers":
+  claude on a Claude Code host, copilot on a Copilot host.
+- **`omg launch`** spawns and probes the host binary. On Copilot, `--madmax`
+  and a typed `--dangerously-skip-permissions` become `--yolo`, and `-p` /
+  `--prompt` print mode adds no allow flags. The launcher forwards
+  `COPILOT_HOME`, `COPILOT_MODEL`, `GH_HOST`, and `COPILOT_GH_HOST` into tmux;
+  tokens travel only through the private transport. The config-dir mirror is
+  skipped on Copilot. On macOS, `--madmax` / `--yolo` require tmux on both
+  hosts, judged from the raw arguments.
+- **`agents.<name>.model`** overrides are applied through the PreToolUse
+  `updatedInput` channel, which Copilot does not support, so they are a no-op
+  on Copilot. Per-agent models there come from the generated `models:` lists
+  or Copilot's own `subagents.agents.<name>.model` setting.
+- **SessionStart `init` and `maintenance` hooks** are not projected to
+  Copilot. Copilot ignores SessionStart matchers, so they would run (and
+  prune state) on every session. Claude Code is unchanged.
+- `hooks/hooks.json` and `agents/*.md` stay byte-identical to upstream for
+  Claude Code.
+- **`node` must be on PATH** under Copilot: a PreToolUse hook that cannot
+  start is denied by Copilot itself, which blocks every tool call.
+
+### Removed
+
+- **Fork safe-command auto-approver:** `scripts/safe-command-approver.mjs`
+  (the v4-era Copilot `preToolUse` hook that auto-approved "safe" Bash
+  commands) and the unused `src/installer/permissions.ts` allowlist generator
+  (`generatePermissionAllowList`) are gone. The hook was no longer registered
+  in `hooks/hooks.json`, and a review found it approved chained commands
+  such as `cat x; curl … | sh`. Use Copilot CLI's native `--allow-tool` /
+  `--deny-tool` rules or its assisted-approval mode instead. Upstream's
+  `src/hooks/permission-handler/` is unchanged.
+- **`--dangerously-skip-permissions` in the copilot worker contract.**
+  Copilot rejects the flag, so copilot workers could not launch at all.
+
+### Fixed
+
+- **Every fork hook was a silent no-op under Copilot on Windows.** Copilot
+  runs hook commands through PowerShell, which split
+  `node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ...` so that node loaded the
+  plugin directory and exited 0. The generated `exec`+`args` hooks remove that
+  class of bug and save about 0.5 s of PowerShell startup per hook.
+- **State-lock owner-file race** (upstream #4146; fixed upstream by #4149).
+  The file-fallback lock captures the artifact identity before the liveness
+  probe and re-checks owner and dev/ino immediately before rename, so a live
+  replacement lock is never quarantined (8×15 contention: 37/120 → 120/120).
+- **State-lock temp names on NTFS** (upstream #4147; fixed upstream by #4148).
+  Emergency temp names and reconcile regexes in `scripts/lib/state-lock.mjs`
+  use the encoded process identity, because NTFS rejects `:`.
+- **SQLite lock probe caching.** Liveness is probed outside
+  `BEGIN IMMEDIATE`, and verified owners are cached across retries (give-up
+  12.8 s → 1.2 s; 8×15 contention 212 s → 2.5 s). Release has a 5 s
+  wall-clock retry budget, accepts an already-absent artifact when the row
+  still matches, and can reclaim abandoned own nonces.
+- The `copilot` worker was rejected by the team validators and its contract
+  could not launch; Copilot model ids used the dashed Claude form.
+- **`omg team` startup on native Windows (psmux)** (fork fix over upstream
+  #4059): teams run in a private psmux namespace via `-L <ns>` instead of a
+  shared socket path, server identity is captured from the session's own
+  `new-session` record rather than reconstructed, the `if-shell` guard is
+  dropped because psmux cannot run it (every PowerShell condition form is
+  mangled or misreported on 3.3.8), and `team-owner-epoch.ts` accepts a
+  strict `win32:<ticks>` process identity instead of failing closed on
+  win32.
+
 # oh-my-copilot v5.1.0
 
 ## [5.1.0] - 2026-09-06
@@ -162,6 +343,14 @@ and command names outright rather than aliasing them.
   command probes CLI presence for every provider referenced by
   `team.roleRouting`. See `skills/team/SKILL.md` § Per-Role Provider & Model
   Routing.
+- **Deep Interview: Round 0 topology enumeration** (#2919; first shipped in
+  the fork's v4.13.7). It confirms and locks top-level components before
+  ambiguity scoring, rotates multi-component targeting, and includes confirmed
+  components plus deferrals in generated specs. Existing `deep-interview`
+  state files without `state.topology` are treated as legacy state: on resume,
+  unfinished interviews run the Round 0 topology gate before the next scoring
+  pass, and already-finalized specs are left unchanged as
+  topology-not-captured legacy artifacts.
 
 ### Fixed
 
@@ -314,16 +503,6 @@ and command names outright rather than aliasing them.
 ```bash
 npm install -g oh-my-copilot@5.0.0
 ```
-
-## Unreleased
-
-### New Features
-
-- **Deep Interview: Round 0 topology enumeration** (#2919) — confirms and locks top-level components before ambiguity scoring, rotates multi-component targeting, and includes confirmed components plus deferrals in generated specs.
-
-### Migration Notes
-
-- Existing `deep-interview` state files without `state.topology` are treated as legacy state. On resume, unfinished interviews run the new Round 0 topology gate before the next scoring pass; already-finalized specs are left unchanged and should be treated as topology-not-captured legacy artifacts.
 
 ---
 

@@ -99,9 +99,9 @@ describe('resolveTranscriptPath', () => {
         // hard-coded `.copilot/worktrees/` marker (and lastIndexOf('/')) never
         // matched and Strategy 2 was dead. Uses join() so the CWD carries whatever
         // separator the host OS produces, exercising the fix on that OS.
-        const origClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+        const origClaudeConfigDir = process.env.COPILOT_HOME;
         const fakeClaudeDir = join(tempDir, 'fake-claude');
-        process.env.COPILOT_CONFIG_DIR = fakeClaudeDir;
+        process.env.COPILOT_HOME = fakeClaudeDir;
         try {
             const projectRoot = join(tempDir, 'myproject');
             const realDir = join(fakeClaudeDir, 'projects', encodeProjectPath(projectRoot));
@@ -118,10 +118,10 @@ describe('resolveTranscriptPath', () => {
         }
         finally {
             if (origClaudeConfigDir === undefined) {
-                delete process.env.COPILOT_CONFIG_DIR;
+                delete process.env.COPILOT_HOME;
             }
             else {
-                process.env.COPILOT_CONFIG_DIR = origClaudeConfigDir;
+                process.env.COPILOT_HOME = origClaudeConfigDir;
             }
         }
     });
@@ -132,8 +132,8 @@ describe('resolveTranscriptPath', () => {
         let fakeClaudeDir;
         let origClaudeConfigDir;
         beforeEach(() => {
-            // Save and override COPILOT_CONFIG_DIR so Strategy 3 finds our fake projects dir
-            origClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+            // Save and override COPILOT_HOME so Strategy 3 finds our fake projects dir
+            origClaudeConfigDir = process.env.COPILOT_HOME;
             // Create a real git repo with a linked worktree
             mainRepoDir = join(tempDir, 'main-repo');
             mkdirSync(mainRepoDir, { recursive: true });
@@ -155,19 +155,19 @@ describe('resolveTranscriptPath', () => {
             });
             // Simulate ~/.claude/projects/ with a transcript at the main repo's encoded path
             fakeClaudeDir = join(tempDir, 'fake-claude');
-            process.env.COPILOT_CONFIG_DIR = fakeClaudeDir;
+            process.env.COPILOT_HOME = fakeClaudeDir;
             const encodedMain = encodeProjectPath(mainRepoDir);
             const projectDir = join(fakeClaudeDir, 'projects', encodedMain);
             mkdirSync(projectDir, { recursive: true });
             writeFileSync(join(projectDir, 'session-abc.jsonl'), '{}');
         });
         afterEach(() => {
-            // Restore COPILOT_CONFIG_DIR
+            // Restore COPILOT_HOME
             if (origClaudeConfigDir === undefined) {
-                delete process.env.COPILOT_CONFIG_DIR;
+                delete process.env.COPILOT_HOME;
             }
             else {
-                process.env.COPILOT_CONFIG_DIR = origClaudeConfigDir;
+                process.env.COPILOT_HOME = origClaudeConfigDir;
             }
             // Clean up worktree before the main afterEach removes tempDir
             try {

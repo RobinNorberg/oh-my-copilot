@@ -6,7 +6,7 @@
  * share state.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, realpathSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -15,7 +15,7 @@ const ISOLATED_ENV_KEYS = [
     'HOME',
     'USERPROFILE',
     'OMC_STATE_DIR',
-    'COPILOT_CONFIG_DIR',
+    'COPILOT_HOME',
     'XDG_CONFIG_HOME',
     'CLAUDE_PLUGIN_ROOT',
     'OMC_SESSION_ID',
@@ -59,7 +59,7 @@ describe('self-improve session isolation (Wave B2)', () => {
         process.env.HOME = home;
         process.env.USERPROFILE = home;
         process.env.OMC_STATE_DIR = '';
-        process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
+        process.env.COPILOT_HOME = claudeConfigDir;
         process.env.XDG_CONFIG_HOME = join(home, '.config');
         process.env.CLAUDE_PLUGIN_ROOT = '';
         process.env.OMC_SESSION_ID = '';
@@ -87,7 +87,7 @@ describe('self-improve session isolation (Wave B2)', () => {
         const slug = 'code-quality';
         const sid = 'abc123';
         const paths = readJson('node', [RESOLVER, '--project-root', root, '--slug', slug, '--session-id', sid]);
-        const expectedRoot = join(root, '.omg', 'self-improve', 'topics', slug, 'sessions', sid);
+        const expectedRoot = join(realpathSync(root), '.omg', 'self-improve', 'topics', slug, 'sessions', sid);
         expect(paths.root).toBe(expectedRoot);
     });
     it('without session-id, two runs with same slug share the same topic root', () => {

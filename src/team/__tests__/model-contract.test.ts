@@ -21,6 +21,9 @@ import {
   _testInternals,
   buildValidatedWorkerLaunchDescriptor,
   validateWorkerLaunchDescriptor,
+  COPILOT_WORKER_BASE_FLAGS,
+  toCopilotModelId,
+  resolveWorkerPermissionFlags,
 } from '../model-contract.js';
 import type { CliAgentType } from '../model-contract.js';
 
@@ -356,20 +359,22 @@ describe('model-contract', () => {
       }
     });
 
-    it('allows claude even when external LLM is disabled', async () => {
-      const origSecurity = process.env.OMC_SECURITY;
-      process.env.OMC_SECURITY = 'strict';
+    it.each([
+      ['claude', { CLAUDE_CODE_ENTRYPOINT: 'cli', COPILOT_CLI: '', COPILOT_AGENT_SESSION_ID: '' }, 'copilot'],
+      ['copilot', { CLAUDE_CODE_ENTRYPOINT: '', CLAUDECODE: '', COPILOT_CLI: '1', COPILOT_AGENT_SESSION_ID: '' }, 'claude'],
+    ] as const)('exempts only the current host CLI (%s) when external LLM is disabled', async (host, hostEnv, otherHost) => {
+      for (const [key, value] of Object.entries(hostEnv)) vi.stubEnv(key, value);
+      vi.stubEnv('OMC_SECURITY', 'strict');
+      const { clearSecurityConfigCache } = await import('../../lib/security-config.js');
       try {
-        const { clearSecurityConfigCache } = await import('../../lib/security-config.js');
         clearSecurityConfigCache();
-        expect(() => getContract('claude')).not.toThrow();
+        expect(() => getContract(host)).not.toThrow();
+        expect(() => getContract(otherHost)).toThrow(
+          `External LLM provider "${otherHost}" is blocked by security policy (disableExternalLLM). `
+          + `Only the current host CLI worker (${host}) is allowed in the current security configuration.`,
+        );
       } finally {
-        if (origSecurity === undefined) {
-          delete process.env.OMC_SECURITY;
-        } else {
-          process.env.OMC_SECURITY = origSecurity;
-        }
-        const { clearSecurityConfigCache } = await import('../../lib/security-config.js');
+        vi.unstubAllEnvs();
         clearSecurityConfigCache();
       }
     });
@@ -547,6 +552,74 @@ describe('model-contract', () => {
       const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'gpt-4o' });
       expect(args).toContain('gpt-4o');
     });
+
+    it('copilot uses exactly the explicit worker allow set and no bypass flags', () => {
+      const args = buildLaunchArgs('copilot', { teamName: 't', workerName: 'w', cwd: '/tmp' });
+      expect(args).toEqual(['--allow-all-tools', '--allow-all-paths', '--allow-all-urls', '--no-ask-user']);
+      expect(args).toEqual([...COPILOT_WORKER_BASE_FLAGS]);
+      for (const forbidden of ['--dangerously-skip-permissions', '--yolo', '--autopilot', '--allow-all', '--mode']) {
+        expect(args).not.toContain(forbidden);
+      }
+      expect(getContract('copilot').supportsPromptMode).toBeUndefined();
+    });
+
+    it('copilot maps dashed Claude tier IDs to Copilot dotted IDs', () => {
+      expect(toCopilotModelId('claude-opus-4-8')).toBe('claude-opus-4.8');
+      expect(toCopilotModelId('claude-haiku-4-5')).toBe('claude-haiku-4.5');
+      expect(toCopilotModelId('claude-sonnet-5')).toBe('claude-sonnet-5');
+      expect(toCopilotModelId('gpt-5.5')).toBe('gpt-5.5');
+      expect(toCopilotModelId('claude-opus-4.8')).toBe('claude-opus-4.8');
+      const args = buildLaunchArgs('copilot', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'claude-opus-4-8' });
+      expect(args).toEqual([...COPILOT_WORKER_BASE_FLAGS, '--model', 'claude-opus-4.8']);
+    });
+
+    it('copilot model ids: variant suffix, date stamp, [1m] suffix and bare tier aliases', () => {
+      expect(toCopilotModelId('claude-opus-4-8-fast')).toBe('claude-opus-4.8-fast');
+      expect(toCopilotModelId('claude-sonnet-4-5-20250929')).toBe('claude-sonnet-4.5');
+      expect(toCopilotModelId('claude-opus-4-8[1m]')).toBe('claude-opus-4.8');
+      expect(toCopilotModelId('claude-sonnet-5[1m]')).toBe('claude-sonnet-5');
+      // First column of MODEL_TABLE in scripts/copilot/build-agents.mjs.
+      expect(toCopilotModelId('opus')).toBe('claude-opus-5');
+      expect(toCopilotModelId('sonnet')).toBe('claude-sonnet-5');
+      expect(toCopilotModelId('haiku')).toBe('claude-haiku-4.5');
+      expect(toCopilotModelId('fable')).toBe('claude-fable-5.1');
+      expect(toCopilotModelId('gpt-5.4-mini')).toBe('gpt-5.4-mini');
+    });
+
+    it('copilot tier alias table matches build-agents.mjs MODEL_TABLE', async () => {
+      // @ts-expect-error -- untyped .mjs build script (TS7016)
+      const { MODEL_TABLE } = await import('../../../scripts/copilot/build-agents.mjs') as { MODEL_TABLE: Record<string, string[]> };
+      for (const [alias, ids] of Object.entries(MODEL_TABLE)) {
+        expect(toCopilotModelId(alias)).toBe(ids[0]);
+      }
+    });
+
+    it('copilot appends deny flags after the allow set', () => {
+      const args = buildLaunchArgs('copilot', {
+        teamName: 't', workerName: 'w', cwd: '/tmp',
+        extraFlags: resolveWorkerPermissionFlags('copilot', { workerDenyTools: ['shell(git push)'] }),
+      });
+      expect(args).toEqual([...COPILOT_WORKER_BASE_FLAGS, '--deny-tool=shell(git push)']);
+    });
+  });
+
+  describe('resolveWorkerPermissionFlags', () => {
+    const perms = { workerDenyTools: ['shell(git push)', 'write(.env)'], workerDenyUrls: ['x.com'] };
+
+    it('emits = form deny flags for copilot', () => {
+      expect(resolveWorkerPermissionFlags('copilot', perms)).toEqual([
+        '--deny-tool=shell(git push)',
+        '--deny-tool=write(.env)',
+        '--deny-url=x.com',
+      ]);
+    });
+
+    it('returns [] for non-copilot providers and for missing config', () => {
+      expect(resolveWorkerPermissionFlags('codex', perms)).toEqual([]);
+      expect(resolveWorkerPermissionFlags('claude', perms)).toEqual([]);
+      expect(resolveWorkerPermissionFlags('copilot', undefined)).toEqual([]);
+      expect(resolveWorkerPermissionFlags('copilot', {})).toEqual([]);
+    });
   });
 
   describe('getWorkerEnv', () => {
@@ -593,6 +666,18 @@ describe('model-contract', () => {
       expect(env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL).toBe('gpt-5');
       expect(env.OMC_GEMINI_DEFAULT_MODEL).toBe('gemini-2.5-pro');
       expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+    });
+
+    it('forwards COPILOT_HOME and COPILOT_MODEL to copilot workers', () => {
+      const env = getWorkerEnv('my-team', 'worker-1', 'copilot', {
+        COPILOT_HOME: '/x',
+        COPILOT_MODEL: 'claude-opus-4.8',
+        GITHUB_TOKEN: 'should-not-be-forwarded',
+      });
+      expect(env.COPILOT_HOME).toBe('/x');
+      expect(env.COPILOT_MODEL).toBe('claude-opus-4.8');
+      expect(env.OMC_WORKER_AGENT_TYPE).toBe('copilot');
+      expect(env.GITHUB_TOKEN).toBeUndefined();
     });
 
     it('rejects invalid team names', () => {
@@ -1031,6 +1116,20 @@ describe('model-contract', () => {
         args: ['--yolo', '--model', 'composer-2.5', '--trust', '--force'],
       });
       expect(validated.args).toEqual(['--force', '--trust', '--model', 'composer-2.5']);
+    });
+
+    it('round-trips a copilot descriptor with deny flags intact', () => {
+      const descriptor = buildValidatedWorkerLaunchDescriptor('copilot', {
+        teamName: 'team', workerName: 'worker-1', cwd: '/tmp', model: 'claude-opus-4-8',
+        resolvedBinaryPath: '/usr/bin/copilot',
+        extraFlags: resolveWorkerPermissionFlags('copilot', { workerDenyTools: ['shell(git push)'] }),
+      });
+      const expected = {
+        schema_version: 1, provider: 'copilot', model: 'claude-opus-4-8', binary: '/usr/bin/copilot',
+        args: [...COPILOT_WORKER_BASE_FLAGS, '--model', 'claude-opus-4.8', '--deny-tool=shell(git push)'],
+      };
+      expect(descriptor).toEqual(expected);
+      expect(validateWorkerLaunchDescriptor(JSON.parse(JSON.stringify(descriptor)))).toEqual(expected);
     });
   });
 

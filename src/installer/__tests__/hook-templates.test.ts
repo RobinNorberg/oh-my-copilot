@@ -1,14 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs';
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs';
+import { readdirSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { KEYWORD_DETECTOR_SCRIPT_NODE } from '../hooks.js';
+import { provisionStandaloneStateLockBridge } from '../index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const packageRoot = join(__dirname, '..', '..', '..');
+const provisionedTemplatePaths = new Map<string, string>();
+function provisionedTemplatePath(scriptPath: string): string {
+  if (!scriptPath.replace(/\\/g, '/').includes('/templates/hooks/')) return scriptPath;
+  const existing = provisionedTemplatePaths.get(scriptPath);
+  if (existing) return existing;
+  const root = mkdtempSync(join(tmpdir(), 'omc-template-fixture-'));
+  const hooksDir = join(root, 'hooks');
+  cpSync(dirname(scriptPath), hooksDir, { recursive: true });
+  provisionStandaloneStateLockBridge(packageRoot, join(hooksDir, 'lib', 'state-lock.mjs'));
+  const provisioned = join(hooksDir, basename(scriptPath));
+  provisionedTemplatePaths.set(scriptPath, provisioned);
+  return provisioned;
+}
+function provisionedTemplateLibPath(helperPath: string): string {
+  if (!helperPath.replace(/\\/g, '/').includes('/templates/hooks/')) return helperPath;
+  const root = mkdtempSync(join(tmpdir(), 'omc-template-lib-fixture-'));
+  const hooksDir = join(root, 'hooks');
+  cpSync(dirname(dirname(helperPath)), hooksDir, { recursive: true });
+  provisionStandaloneStateLockBridge(packageRoot, join(hooksDir, 'lib', 'state-lock.mjs'));
+  return join(hooksDir, 'lib', basename(helperPath));
+}
 
 const STALE_PIPELINE_SNIPPETS = [
   "matches.push({ name: 'pipeline', args: '' });",
@@ -19,7 +42,7 @@ const STALE_PIPELINE_SNIPPETS = [
 
 function runKeywordHook(scriptPath: string, prompt: string) {
   return JSON.parse(
-    execFileSync('node', [scriptPath], {
+    execFileSync('node', [provisionedTemplatePath(scriptPath)], {
       cwd: packageRoot,
       input: JSON.stringify({ prompt }),
       encoding: 'utf-8',
@@ -28,7 +51,7 @@ function runKeywordHook(scriptPath: string, prompt: string) {
 }
 
 function runPersistentModeHook(scriptPath: string, payload: Record<string, unknown>) {
-  const output = execFileSync('node', [scriptPath], {
+  const output = execFileSync('node', [provisionedTemplatePath(scriptPath)], {
     cwd: packageRoot,
     input: JSON.stringify(payload),
     encoding: 'utf-8',
@@ -50,7 +73,7 @@ function runPreToolPayload(
   env: Record<string, string | undefined> = {},
 ) {
   return JSON.parse(
-    execFileSync('node', [scriptPath], {
+    execFileSync('node', [provisionedTemplatePath(scriptPath)], {
       cwd: packageRoot,
       input: JSON.stringify(payload),
       encoding: 'utf-8',
@@ -164,7 +187,7 @@ describe('keyword-detector packaged artifacts', () => {
         [pluginPath, join(tempDir, '.omg', 'state', 'sessions', 'hook-session', 'ralph-state.json')],
       ] as const) {
         execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-        execFileSync('node', [scriptPath], {
+        execFileSync('node', [provisionedTemplatePath(scriptPath)], {
           cwd: packageRoot,
           env: { ...process.env, HOME: fakeHome },
           input: JSON.stringify({
@@ -205,7 +228,7 @@ describe('keyword-detector packaged artifacts', () => {
       writeFileSync(globalStatePath, foreignState);
       writeFileSync(deadTempPath, foreignState);
 
-      execFileSync('node', [templatePath], {
+      execFileSync('node', [provisionedTemplatePath(templatePath)], {
         cwd: packageRoot,
         env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: emptyXdg, NODE_ENV: 'test' },
         input: JSON.stringify({ prompt: 'autopilot fix the regression', directory: projectA, cwd: projectA, session_id: 'project-a-session' }),
@@ -218,7 +241,7 @@ describe('keyword-detector packaged artifacts', () => {
 
       const malformedJournalPath = `${globalStatePath}.emergency-journal.json`;
       writeFileSync(malformedJournalPath, '{not-json');
-      execFileSync('node', [templatePath], {
+      execFileSync('node', [provisionedTemplatePath(templatePath)], {
         cwd: packageRoot,
         env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: emptyXdg, NODE_ENV: 'test' },
         input: JSON.stringify({ prompt: 'autopilot fix another regression', directory: projectA, cwd: projectA, session_id: 'project-a-session-2' }),
@@ -301,7 +324,7 @@ OMC Ultrawork = "특수부대 작전 반"
 
     const runInDir = (scriptPath: string, prompt: string, dir: string) =>
       JSON.parse(
-        execFileSync('node', [scriptPath], {
+        execFileSync('node', [provisionedTemplatePath(scriptPath)], {
           cwd: packageRoot,
           env: { ...process.env, XDG_CONFIG_HOME: emptyXdg },
           input: JSON.stringify({ prompt, cwd: dir, directory: dir }),
@@ -347,7 +370,7 @@ OMC Ultrawork = "특수부대 작전 반"
     const registryPath = join(configDir, 'plugins', 'installed_plugins.json');
     const settingsPath = join(configDir, 'settings.json');
     const runWithEnv = (scriptPath: string, sessionId: string, prompt: string, env: Record<string, string | undefined>) => JSON.parse(
-      execFileSync('node', [scriptPath], {
+      execFileSync('node', [provisionedTemplatePath(scriptPath)], {
         cwd: packageRoot,
         env: {
           ...process.env,
@@ -356,7 +379,7 @@ OMC Ultrawork = "특수부대 작전 반"
           // HOME-derived config root only redirects when both are pointed at the fixture.
           USERPROFILE: fakeHome,
           XDG_CONFIG_HOME: join(fakeHome, '.xdg'),
-          COPILOT_CONFIG_DIR: configDir,
+          COPILOT_HOME: configDir,
           ...env,
         },
         input: JSON.stringify({
@@ -476,9 +499,9 @@ OMC Ultrawork = "특수부대 작전 반"
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         const result = JSON.parse(
-          execFileSync('node', [scriptPath], {
+          execFileSync('node', [provisionedTemplatePath(scriptPath)], {
             cwd: packageRoot,
-            env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: join(fakeHome, '.xdg'), COPILOT_CONFIG_DIR: configDir },
+            env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: join(fakeHome, '.xdg'), COPILOT_HOME: configDir },
             input: JSON.stringify({ prompt: 'autopilot build me a CLI', cwd: projectDir, directory: projectDir, session_id: `autopilot-${basename(scriptPath)}` }),
             encoding: 'utf-8',
           }),
@@ -490,9 +513,9 @@ OMC Ultrawork = "특수부대 작전 반"
       //    carries the notice (it is the other plugin's surface, not an alias).
       for (const scriptPath of [templatePath, pluginPath]) {
         const result = JSON.parse(
-          execFileSync('node', [scriptPath], {
+          execFileSync('node', [provisionedTemplatePath(scriptPath)], {
             cwd: packageRoot,
-            env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: join(fakeHome, '.xdg'), COPILOT_CONFIG_DIR: configDir },
+            env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: join(fakeHome, '.xdg'), COPILOT_HOME: configDir },
             input: JSON.stringify({ prompt: '/ralph-loop fix the parser', cwd: projectDir, directory: projectDir, session_id: `ralphloop-cmd-${basename(scriptPath)}` }),
             encoding: 'utf-8',
           }),
@@ -553,7 +576,7 @@ OMC Ultrawork = "특수부대 작전 반"
         expect(contextOf(runIn(scriptPath, `ralph-malformed-${basename(scriptPath)}`))).not.toContain('ralph-loop');
       }
 
-      // N. Config-root variant: settings lives at HOME/.copilot and COPILOT_CONFIG_DIR is
+      // N. Config-root variant: settings lives at HOME/.copilot and COPILOT_HOME is
       //    unset (HOME-derived root) -> the notice still resolves the same config root.
       writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': true } });
       writeRegistry({
@@ -562,7 +585,7 @@ OMC Ultrawork = "특수부대 작전 반"
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         const result = runWithEnv(scriptPath, `ralph-homeroot-${basename(scriptPath)}`, '/ralph fix the parser', {
-          COPILOT_CONFIG_DIR: undefined,
+          COPILOT_HOME: undefined,
         });
         expect(result.hookSpecificOutput?.additionalContext ?? '').toContain('ralph-loop');
       }
@@ -709,13 +732,13 @@ OMC Ultrawork = "특수부대 작전 반"
           { enabledPlugins: { 'ralph-loop@claude-plugins-official': false } },
         );
         const runFromSandbox = (scriptPath: string, sessionId: string, payloadCwd: string) => JSON.parse(
-          execFileSync('node', [scriptPath], {
+          execFileSync('node', [provisionedTemplatePath(scriptPath)], {
             cwd: sandboxCwd,
             env: {
               ...process.env,
               HOME: fakeHome,
               XDG_CONFIG_HOME: join(fakeHome, '.xdg'),
-              COPILOT_CONFIG_DIR: configDir,
+              COPILOT_HOME: configDir,
             },
             input: JSON.stringify({
               prompt: '/ralph fix the parser',
@@ -744,6 +767,63 @@ OMC Ultrawork = "특수부대 작전 반"
       rmSync(projectDir, { recursive: true, force: true });
     }
   });
+  it('keeps SessionStart occupancy single-host: publish takes a precomputed identity and read reuses an identity map', async () => {
+    const helperPaths = [
+      join(packageRoot, 'templates', 'hooks', 'lib', 'cache-occupancy.mjs'),
+      join(packageRoot, 'scripts', 'lib', 'cache-occupancy.mjs'),
+    ];
+    const helpers = await Promise.all(helperPaths.map(async (helperPath) => import(pathToFileURL(helperPath).href)));
+    const originalPlatform = process.platform;
+    const tempDir = mkdtempSync(join(tmpdir(), 'cache-occupancy-single-host-'));
+
+    try {
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      for (const [index, helper] of helpers.entries()) {
+        const configDir = join(tempDir, `config-${index}`);
+        const pluginRoot = join(tempDir, `MiXeD-Plugin-${index}`, 'Version-1');
+
+        // Simulate the identity resolved by the ONE batched host and hand it
+        // to publish: the record must carry it verbatim (no second probe).
+        const precomputed = 'ticks:638933184000000001';
+        expect(helper.publishCacheOccupancy(pluginRoot, configDir, process.pid, precomputed)).toBe(true);
+        const registryDir = join(configDir, '.omg', 'cache-occupancy');
+        const records = readdirSync(registryDir);
+        expect(records).toHaveLength(1);
+        const record = JSON.parse(readFileSync(join(registryDir, records[0]!), 'utf8')) as { processStartIdentity: string };
+        expect(record.processStartIdentity).toBe(precomputed);
+
+        // The map-backed read must verify that record without spawning a
+        // fresh batched host (pids absent from the map stay conservatively).
+        const identityMap = new Map([[process.pid, precomputed]]);
+        const occupancy = helper.readOccupiedPluginRoots(configDir, { identities: identityMap });
+        expect(occupancy.unavailable).toBe(false);
+        expect(occupancy.roots).toEqual(new Set([pluginRoot.toLowerCase()]));
+        expect(occupancy.identities).toBe(identityMap);
+      }
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('session-start hooks resolve plugin-cache occupancy once and pass the owner identity to publish', () => {
+    for (const hookPath of [
+      join(packageRoot, 'scripts', 'session-start.mjs'),
+      join(packageRoot, 'templates', 'hooks', 'session-start.mjs'),
+    ]) {
+      const source = readFileSync(hookPath, 'utf8');
+      // Exactly one batched readOccupiedPluginRoots CALL per execution path:
+      // the runtime hook calls it twice (hoisted owner resolution + GC scan
+      // that reuses the hoisted identities map); the template calls it once
+      // and has no GC consumer. The publish call must carry the identity
+      // resolved from that single host, and no hook may spawn its own
+      // PowerShell probe.
+      const expectedReadCalls = hookPath.endsWith(join('scripts', 'session-start.mjs')) ? 2 : 1;
+      expect(source.match(/readOccupiedPluginRoots\(/g)!.length).toBe(expectedReadCalls);
+      expect(source).toMatch(/publishCacheOccupancy\([^)]*identit(?:ies\.get|y)/s);
+      expect(source).not.toMatch(/spawnSync\(\s*'powershell'/);
+    }
+  });
 });
 
 describe('pre-tool-use packaged artifacts', () => {
@@ -762,8 +842,10 @@ describe('pre-tool-use packaged artifacts', () => {
       join(packageRoot, 'templates', 'hooks', 'lib', 'cache-occupancy.mjs'),
       join(packageRoot, 'scripts', 'lib', 'cache-occupancy.mjs'),
     ];
-    const helpers = await Promise.all(helperPaths.map(async (helperPath) => import(pathToFileURL(helperPath).href)));
+    const helpers = await Promise.all(helperPaths.map(async (helperPath) => import(pathToFileURL(provisionedTemplateLibPath(helperPath)).href)));
     const originalPlatform = process.platform;
+    const originalLocale = process.env.LC_ALL;
+    process.env.LC_ALL = 'C';
     const tempDir = mkdtempSync(join(tmpdir(), 'cache-occupancy-template-parity-'));
 
     try {
@@ -786,6 +868,7 @@ describe('pre-tool-use packaged artifacts', () => {
       }
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      if (originalLocale === undefined) delete process.env.LC_ALL; else process.env.LC_ALL = originalLocale;
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
@@ -819,7 +902,7 @@ describe('pre-tool-use packaged artifacts', () => {
     const fakeHome = mkdtempSync(join(tmpdir(), 'pre-tool-template-home-'));
     const env = {
       CLAUDE_PLUGIN_ROOT: packageRoot,
-      COPILOT_CONFIG_DIR: join(fakeHome, '.claude'),
+      COPILOT_HOME: join(fakeHome, '.claude'),
       HOME: fakeHome,
       USER_TYPE: '',
     };
@@ -907,7 +990,7 @@ describe('pre-tool-use packaged artifacts', () => {
     writeFileSync(join(pluginRoot, 'skills', 'wiki', 'SKILL.md'), '---\nname: wiki\n---\nskill body\n');
     const env = {
       CLAUDE_PLUGIN_ROOT: pluginRoot,
-      COPILOT_CONFIG_DIR: join(fakeHome, '.claude'),
+      COPILOT_HOME: join(fakeHome, '.claude'),
       HOME: fakeHome,
       USER_TYPE: '',
     };
@@ -965,7 +1048,7 @@ describe('pre-tool-use packaged artifacts', () => {
 
     try {
       const env = {
-        COPILOT_CONFIG_DIR: configDir,
+        COPILOT_HOME: configDir,
         CLAUDE_PLUGIN_ROOT: undefined,
         HOME: fakeHome,
         USER_TYPE: '',
@@ -1018,7 +1101,7 @@ describe('pre-tool-use packaged artifacts', () => {
 describe('atomic write packaged helpers', () => {
   it.each([
     ['plugin helper', join(packageRoot, 'scripts', 'lib', 'atomic-write.mjs')],
-    ['standalone hook helper', join(packageRoot, 'templates', 'hooks', 'lib', 'atomic-write.mjs')],
+    ['standalone hook helper', provisionedTemplateLibPath(join(packageRoot, 'templates', 'hooks', 'lib', 'atomic-write.mjs'))],
   ])('allows its own recovery claim to converge while preserving foreign claim artifacts through the %s', async (_label, helperPath) => {
     const tempDir = mkdtempSync(join(tmpdir(), 'atomic-write-recovery-claim-'));
     const statePath = join(tempDir, '.omg', 'state', 'autopilot-state.json');
@@ -1105,6 +1188,7 @@ describe('workflow profile runtime packaged artifacts (#3487)', () => {
     }
   });
 
+
   it('loads workflow profile transition helpers before running either persistent hook', () => {
     for (const script of [
       join(packageRoot, 'scripts', 'persistent-mode.mjs'),
@@ -1115,5 +1199,15 @@ describe('workflow profile runtime packaged artifacts (#3487)', () => {
       expect(payload).toContain('advanceWorkflowOnStop');
       expect(payload).toContain('pipelineTracking?.trackingRevision');
     }
+  });
+
+});
+
+describe('standalone state-lock bridge contract', () => {
+  it('keeps the source template fail-closed and exposes installer provisioning separately', async () => {
+    const template = readFileSync(join(packageRoot, 'templates', 'hooks', 'lib', 'state-lock.mjs'), 'utf8');
+    expect(template).toContain('Unprovisioned standalone state-lock template');
+    const installer = await import('../index.js');
+    expect(typeof installer.provisionStandaloneStateLockBridge).toBe('function');
   });
 });

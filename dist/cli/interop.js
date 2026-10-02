@@ -8,6 +8,8 @@ import { execFileSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { isTmuxAvailable, isCopilotAvailable, tmuxExec } from './tmux-utils.js';
 import { initInteropSession, getInteropDir } from '../interop/shared-state.js';
+import { getHostCliBinary, getHostCliType } from '../utils/host-detection.js';
+import { getContract } from '../team/model-contract.js';
 export function readInteropRuntimeFlags(env = process.env) {
     const rawMode = (env.OMX_OMC_INTEROP_MODE || 'off').toLowerCase();
     const mode = rawMode === 'observe' || rawMode === 'active' ? rawMode : 'off';
@@ -59,7 +61,7 @@ export function launchInteropSession(cwd = process.cwd()) {
     const hasCodex = isCodexAvailable();
     const hasClaude = isCopilotAvailable();
     if (!hasClaude) {
-        console.error('Error: claude CLI is not available. Install Claude Code CLI first.');
+        console.error(`Error: ${getHostCliBinary()} CLI is not available. ${getContract(getHostCliType()).installInstructions}`);
         process.exit(1);
     }
     if (!hasCodex) {

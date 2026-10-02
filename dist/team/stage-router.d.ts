@@ -35,7 +35,7 @@ export declare function resolveRoleAssignment(role: CanonicalTeamRole, cfg: Plug
 /**
  * Pre-resolve EVERY canonical role into a `{ primary, fallback }` pair.
  *
- * Fallback is always a Claude worker with the same model + agent as primary,
+ * Fallback is always a host-CLI worker with the same model + agent as primary,
  * used when the primary provider's CLI binary is missing at spawn time
  * (AC-8). Persisted to `TeamConfig.resolved_routing` at team creation by
  * `startTeamV2`; read (never re-resolved) by spawn / scaleUp / restart paths.

@@ -9,7 +9,7 @@ const entitlementFixture = {
 };
 const entitlementNames = ['remember', 'verify', 'debug'];
 const originalUserType = process.env.USER_TYPE;
-const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+const originalClaudeConfigDir = process.env.COPILOT_HOME;
 const originalHome = process.env.HOME;
 
 async function withEntitlementFixture(run: () => Promise<void>): Promise<void> {
@@ -28,8 +28,8 @@ async function withEntitlementFixture(run: () => Promise<void>): Promise<void> {
 afterEach(() => {
   if (originalUserType === undefined) delete process.env.USER_TYPE;
   else process.env.USER_TYPE = originalUserType;
-  if (originalClaudeConfigDir === undefined) delete process.env.COPILOT_CONFIG_DIR;
-  else process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+  if (originalClaudeConfigDir === undefined) delete process.env.COPILOT_HOME;
+  else process.env.COPILOT_HOME = originalClaudeConfigDir;
   if (originalHome === undefined) delete process.env.HOME;
   else process.env.HOME = originalHome;
 });
@@ -78,7 +78,7 @@ describe('nonempty skill entitlement fixture', () => {
         const claudeConfigDir = join(homeDir, '.claude');
         mkdirSync(claudeConfigDir, { recursive: true });
         process.env.HOME = homeDir;
-        process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
+        process.env.COPILOT_HOME = claudeConfigDir;
         process.env.USER_TYPE = '';
 
         const installer = await import('../installer/index.js');

@@ -71,7 +71,7 @@ function entry(e) {
 }
 const ALIAS_MILESTONE = REMOVAL_MILESTONE;
 // ---------------------------------------------------------------------------
-// Skills — all 41 installed surfaces + defined Tier-0 targets + legacy alias
+// Skills — all 61 installed surfaces + defined Tier-0 targets + legacy alias
 // names. Classification per plan §4.2 with the owner's authoritative Tier-0
 // decision (plan/execute/review/verify; specialists remain internal).
 // ---------------------------------------------------------------------------
@@ -117,13 +117,23 @@ const SKILL_ENTRIES = [
     entry({ name: 'remember', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),
     entry({ name: 'configure-notifications', kind: 'skill', decision: 'keep', riskClass: 'secrets-privacy', owner: REGISTRY_OWNER, notes: 'Opt-in integration handling secrets; hard boundary retained.' }),
     entry({ name: 'project-session-manager', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Utility only; workflow-gate behavior removed per plan.' }),
+    entry({ name: 'pr', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Advisory PR-body assembly from existing verify evidence; never recollects evidence or gates delivery.' }),
+    entry({ name: 'refit', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'User-invoked retrospective; only lands findings approved by the user.' }),
+    entry({ name: 'map', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Router over shipped skills; routes and never executes.' }),
+    entry({ name: 'tdd', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Test-first discipline at pre-agreed seams; opt-in, never a default gate.' }),
     entry({ name: 'ai-slop-cleaner', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in review tool; never a default gate.' }),
     entry({ name: 'minimal-code-discipline', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in writing-time discipline; never a default gate.' }),
+    entry({ name: 'agent-doc-discipline', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in writing-time discipline for agent-facing documents; mandatory at drydock seed generation and launch C5 sediment; never a default gate.' }),
+    entry({ name: 'minimal-prose-discipline', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in writing-time discipline for the prose an agent speaks to a human; suspends itself for security warnings, irreversible-action confirmations, and multi-step sequences; never a default gate.' }),
     entry({ name: 'launch', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in governed delivery pipeline (spec -> tickets -> frontier); never a default gate.' }),
+    entry({ name: 'intent', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in internal requirements intake for non-engineer contributors; never a default gate, never implements.' }),
     entry({ name: 'ask-navigator', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in navigator: charts foggy efforts into decision-ticket maps; never a default gate, never builds.' }),
     entry({ name: 'loft', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in shape-before-steel discipline: throwaway artifacts answer design questions; never a default gate, never lands.' }),
+    entry({ name: 'harbor', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in intake gate for external issues and PRs: verifies claims, drafts dispositions; never a default gate, never merges.' }),
     entry({ name: 'drydock', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in harness scaffold (shipyard keel); never a default gate.' }),
+    entry({ name: 'architecture-survey', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in periodic architecture survey; reports ranked deepening candidates with evidence, never refactors on its own.' }),
     entry({ name: 'visual-verdict', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in for visual surfaces.' }),
+    entry({ name: 'diagram', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Model-invoked explanation aid: picks the smallest visual (pseudocode, tree, Mermaid, diff, focused HTML) that carries the point; never gates, never edits code on its own.' }),
     entry({ name: 'external-context', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in external evidence tool.' }),
     entry({ name: 'graph', kind: 'skill', decision: 'keep', riskClass: 'security-boundary', owner: REGISTRY_OWNER, notes: 'Declarative graph runtime with command execution and bounded read-only Agent SDK execution; CLI + skill entrypoints.' }),
     entry({ name: 'debug', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),

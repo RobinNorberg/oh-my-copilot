@@ -16,7 +16,7 @@ describe('session search cli command', () => {
     beforeEach(() => {
         tempRoot = mkdtempSync(join(tmpdir(), 'omc-session-search-cli-'));
         claudeDir = join(tempRoot, 'claude');
-        process.env.COPILOT_CONFIG_DIR = claudeDir;
+        process.env.COPILOT_HOME = claudeDir;
         process.env.OMC_STATE_DIR = join(tempRoot, 'omc-state');
         writeTranscript(join(claudeDir, 'projects', encodeProjectPath(repoRoot), 'session-current.jsonl'), [
             {
@@ -29,7 +29,7 @@ describe('session search cli command', () => {
         ]);
     });
     afterEach(() => {
-        delete process.env.COPILOT_CONFIG_DIR;
+        delete process.env.COPILOT_HOME;
         delete process.env.OMC_STATE_DIR;
         // Windows can throw ENOTEMPTY on rmdir when handles/indexing linger;
         // retry to avoid a flaky teardown failure in the Windows path suite.

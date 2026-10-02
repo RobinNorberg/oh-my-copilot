@@ -5,7 +5,7 @@ export { createMagicKeywordProcessor, detectMagicKeywords, builtInMagicKeywords 
 export { createContinuationHook, continuationSystemPromptAddition, detectCompletionSignals, generateVerificationPrompt } from './continuation-enforcement.js';
 export { 
 // Constants
-REPO_OWNER, REPO_NAME, GITHUB_API_URL, GITHUB_RAW_URL, COPILOT_CONFIG_DIR, VERSION_FILE, 
+REPO_OWNER, REPO_NAME, GITHUB_API_URL, GITHUB_RAW_URL, COPILOT_HOME, VERSION_FILE, 
 // Functions
 getInstalledVersion, saveVersionMetadata, updateLastCheckTime, fetchLatestRelease, compareVersions, checkForUpdates, performUpdate, formatUpdateNotification, shouldCheckForUpdates, backgroundUpdateCheck, interactiveUpdate, 
 // Silent auto-update
@@ -82,4 +82,7 @@ decomposeTask, analyzeTask, identifyComponents, generateSubtasks, assignFileOwne
 export { searchSessionHistory, parseSinceSpec, } from './session-history-search/index.js';
 // Agent Addressability & Discoverability - unnamed agent addressing/listing contract (#3665)
 export { shortId, hasExplicitName, hasDescription, addressFor, listingLabel, notificationReference, resolveAgent, formatAgentList, SHORT_ID_LENGTH, } from './agent-addressability/index.js';
+;
+// lookout - pre-flight danger scan for autonomous runs (advisory only)
+export { LookoutError, resolveBriefArg, scanLookout, } from './lookout/index.js';
 //# sourceMappingURL=index.js.map

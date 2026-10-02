@@ -67,7 +67,7 @@ function isWhitelisted(filePath) {
 
 /**
  * A match is benign when the first argument resolves to a known GLOBAL config root
- * (homedir(), os.homedir(), getCopilotConfigDir(), COPILOT_CONFIG_DIR). These are
+ * (homedir(), os.homedir(), getCopilotConfigDir(), COPILOT_HOME). These are
  * NOT workspace state — they're per-user installs of the OMC binary itself.
  * The multi-repo enforcement applies only to workspace-scoped `.omg/`.
  */
@@ -77,7 +77,7 @@ const GLOBAL_FIRST_ARG_PATTERNS = [
   /^(?:path\.)?join\(\s*homedir\(\)\s*,/,
   /^(?:path\.)?join\(\s*os\.homedir\(\)\s*,/,
   /^(?:path\.)?join\(\s*getCopilotConfigDir\(\)\s*,/,
-  /^(?:path\.)?join\(\s*COPILOT_CONFIG_DIR\s*,/,
+  /^(?:path\.)?join\(\s*COPILOT_HOME\s*,/,
   /^(?:path\.)?join\(\s*configDir\s*,/,
 ];
 function isGlobalConfigMatch(matchText) {

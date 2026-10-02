@@ -124,6 +124,17 @@ afterEach(() => {
 });
 
 describe('plugin shipping surface transaction', () => {
+  it('resolves runtime dependencies beneath a symlinked trusted package root', async () => {
+    const fixture = createFixture({ trackCli: false });
+    const aliasParent = mkdtempSync(join(tmpdir(), 'omc-shipping-root-alias-'));
+    tempRoots.push(aliasParent);
+    const alias = join(aliasParent, 'package');
+    symlinkSync(fixture.root, alias, process.platform === 'win32' ? 'junction' : 'dir');
+    const module = await shippingSurface;
+    expect(module.inspectPluginShippingSurface(alias).stagePaths).toEqual(
+      module.inspectPluginShippingSurface(fixture.root).stagePaths,
+    );
+  });
   it('fails closed when the declared coordinator is absent from a clean plugin checkout', () => {
     const fixture = createFixture({ includeCoordinator: false });
 
@@ -154,6 +165,63 @@ describe('plugin shipping surface transaction', () => {
 
     expect(surface.ignoredUntrackedRequiredPaths).toEqual(['bridge/cli.cjs']);
     expect(surface.stagePaths).toEqual(['bridge/cli.cjs']);
+  });
+
+  it('seeds the closure from the root Copilot manifest and its exec+args hooks file', async () => {
+    const fixture = createFixture();
+    mkdirSync(join(fixture.root, 'copilot', 'agents'), { recursive: true });
+    mkdirSync(join(fixture.root, 'scripts', 'lib'), { recursive: true });
+    writeJson(join(fixture.root, 'plugin.json'), {
+      name: 'fixture-plugin',
+      version: '1.0.0',
+      hooks: './copilot/hooks.json',
+      agents: './copilot/agents/',
+    });
+    writeFileSync(join(fixture.root, 'copilot', 'agents', 'executor.md'), '---\nname: executor\n---\n');
+    writeFileSync(join(fixture.root, 'copilot', 'agents', 'critic.md'), '---\nname: critic\n---\n');
+    writeJson(join(fixture.root, 'copilot', 'hooks.json'), {
+      version: 1,
+      hooks: {
+        Stop: [{
+          type: 'command',
+          exec: 'node',
+          args: [
+            '--require',
+            '${CLAUDE_PLUGIN_ROOT}/scripts/lib/adapter.cjs',
+            '${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs',
+            '${CLAUDE_PLUGIN_ROOT}/scripts/stop.mjs',
+          ],
+        }],
+      },
+    });
+    writeFileSync(join(fixture.root, 'scripts', 'lib', 'adapter.cjs'), 'module.exports = true;\n');
+    writeFileSync(join(fixture.root, 'scripts', 'run.cjs'), 'module.exports = true;\n');
+    writeFileSync(join(fixture.root, 'scripts', 'stop.mjs'), 'export default true;\n');
+    const module = await shippingSurface;
+
+    const surface = module.inspectPluginShippingSurface(fixture.root);
+
+    expect(surface.requiredPaths).toEqual(expect.arrayContaining([
+      'plugin.json',
+      'copilot/hooks.json',
+      'copilot/agents/executor.md',
+      'copilot/agents/critic.md',
+      'scripts/lib/adapter.cjs',
+      'scripts/run.cjs',
+      'scripts/stop.mjs',
+    ]));
+  });
+
+  it('fails closed when the root Copilot manifest names a missing agents directory', async () => {
+    const fixture = createFixture();
+    writeJson(join(fixture.root, 'plugin.json'), {
+      name: 'fixture-plugin',
+      version: '1.0.0',
+      agents: './copilot/agents/',
+    });
+    const module = await shippingSurface;
+
+    expect(() => module.inspectPluginShippingSurface(fixture.root)).toThrow('plugin.json agents directory is missing');
   });
 
   it('expands declared generated directories into exact runtime payload files only', async () => {

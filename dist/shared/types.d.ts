@@ -15,7 +15,7 @@ export interface AgentConfig {
 }
 export type AutopilotExecutionBackend = "team" | "solo";
 export type AutopilotPlanningMode = "ralplan" | "direct" | false;
-export type AutopilotTeamAgentType = "claude" | "codex" | "gemini" | "grok" | "cursor" | "antigravity";
+export type AutopilotTeamAgentType = "claude" | "copilot" | "codex" | "gemini" | "grok" | "cursor" | "antigravity";
 /** Built-in stages admitted by version 1 named autopilot workflows. */
 export type AutopilotWorkflowStage = "ralplan" | "execution" | "ralph" | "qa";
 /** Closed, versioned named autopilot workflow profile. */
@@ -151,6 +151,10 @@ export interface PluginConfig {
         allowEdit?: boolean;
         allowWrite?: boolean;
         maxBackgroundTasks?: number;
+        /** Copilot team workers: each entry becomes `--deny-tool=<pattern>`. */
+        workerDenyTools?: string[];
+        /** Copilot team workers: each entry becomes `--deny-url=<pattern>`. */
+        workerDenyUrls?: string[];
     };
     magicKeywords?: {
         search?: string[];
@@ -438,7 +442,7 @@ export interface TeamRoleAssignmentSpec {
     model?: TeamRoleTier | string;
     agent?: KnownAgentName;
 }
-/** Orchestrator is pinned to claude; only `model` is user-configurable. */
+/** Orchestrator is pinned to the host CLI; only `model` is user-configurable. */
 export type OrchestratorSpec = Pick<TeamRoleAssignmentSpec, 'model'>;
 /** Cost mode reserved for future downgrade behavior (no implementation yet). */
 export type TeamCostMode = 'normal' | 'downgrade';

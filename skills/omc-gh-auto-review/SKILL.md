@@ -1,9 +1,6 @@
 ---
 name: omc-gh-auto-review
-description: >
-  Automated code review for GitHub pull requests where you are requested as reviewer.
-  WHEN: User wants automated code reviews on PRs they're assigned to, wants AI-powered PR review comments, or wants to auto-review pending PRs on GitHub.
-  DO NOT USE FOR: Manual interactive PR review (use omc-gh-review), issue triage (use omc-gh-triage), initial GitHub setup (use omc-gh-setup), or ADO repositories (use omc-ado-auto-review).
+description: "Auto-review GitHub PRs where you are a requested reviewer and post AI review comments. Not for interactive review (omc-gh-review), issue triage, or Azure DevOps repos."
 ---
 
 # OMC GitHub Auto Review

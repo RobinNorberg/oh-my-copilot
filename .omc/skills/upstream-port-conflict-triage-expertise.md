@@ -29,7 +29,7 @@ These six categories cover ~95% of conflicts when porting an upstream PR:
 1. **State path divergence** — file has `.omc/state/sessions/` (upstream) but OMC stores state under `.omcp/state/sessions/`. Symptom: tests pass on Linux upstream but assertions read `undefined` in CI logs.
 2. **Skill prefix divergence** — strings like `Skill("oh-my-claudecode:plan")` need to become `Skill("oh-my-copilot:plan")`. Frontmatter `name:` values stay (e.g. `name: omc-plan`).
 3. **NPM package rename** — upstream renamed to `oh-my-copilot`; OMC publishes as `oh-my-copilot`. Affects doctor SKILL.md and `npm view` invocations.
-4. **Config-dir rebrand** — `CLAUDE_CONFIG_DIR`/`.claude` (upstream) ↔ `COPILOT_CONFIG_DIR`/`.copilot` (OMC); `CLAUDE-omc.md` ↔ `copilot-instructions-omc.md`.
+4. **Config-dir rebrand** — `CLAUDE_CONFIG_DIR`/`.claude` (upstream) ↔ `COPILOT_HOME`/`.copilot` (OMC); `CLAUDE-omc.md` ↔ `copilot-instructions-omc.md`.
 5. **Deleted-in-fork files (`DU` git status)** — files OMC removed intentionally (`setup-contracts-regression.test.ts`, `plugin-dir-capture.test.ts`, etc.). Always `git rm -f`.
 6. **Upstream tests encoding OMC-inverted design choices** — `plugin-skill-budget.test.ts` (OMC kept glob), `Commands directory removed (#582)` (OMC re-added commands/), `deep-interview-provider-options.test.ts` (parser not wired in OMC's loader), Korean cross-script tests (OMC is English-only). Always `it.skip` or `describe.skip` with a comment explaining the divergence.
 

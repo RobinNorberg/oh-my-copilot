@@ -64,7 +64,7 @@ describe('OMC_PLUGIN_ROOT tmux env forwarding', () => {
  * the parent `process.env` snapshot at call time, then throws to short-circuit
  * the rest of `runClaude`. We also mock `./tmux-utils.js` so the launch policy
  * is forced to `direct` (no tmux dependency) and `claude` is reported as
- * available. COPILOT_CONFIG_DIR is pointed at a throwaway tmpdir so
+ * available. COPILOT_HOME is pointed at a throwaway tmpdir so
  * `prepareOmcLaunchConfigDir` short-circuits cheaply.
  *
  * The thing under test: `launchCommand` mutates `process.env[OMC_PLUGIN_ROOT_ENV]`
@@ -81,7 +81,8 @@ vi.mock('child_process', async () => {
   return {
     ...actual,
     execFileSync: vi.fn((file: string, _args?: readonly string[], options?: { env?: NodeJS.ProcessEnv }) => {
-      if (file === 'claude') {
+      // Host binary: copilot by default, claude under CLAUDE_CODE_ENTRYPOINT.
+      if (file === 'claude' || file === 'copilot') {
         // execFileSync inherits parent env when options.env is undefined,
         // so the source of truth is process.env at call time.
         capturedEnv = { ...(options?.env ?? process.env) };
@@ -114,14 +115,14 @@ describe('launchCommand → child env propagation (OMC_PLUGIN_ROOT)', () => {
     tmpConfigDir = mkdtempSync(join(tmpdir(), 'omc-pdc-'));
     savedEnv = {
       [OMC_PLUGIN_ROOT_ENV]: process.env[OMC_PLUGIN_ROOT_ENV],
-      COPILOT_CONFIG_DIR: process.env.COPILOT_CONFIG_DIR,
+      COPILOT_HOME: process.env.COPILOT_HOME,
       CLAUDECODE: process.env.CLAUDECODE,
       OMC_NOTIFY: process.env.OMC_NOTIFY,
     };
     savedCwd = process.cwd();
     delete process.env[OMC_PLUGIN_ROOT_ENV];
     delete process.env.CLAUDECODE;
-    process.env.COPILOT_CONFIG_DIR = tmpConfigDir;
+    process.env.COPILOT_HOME = tmpConfigDir;
     capturedEnv = null;
   });
 

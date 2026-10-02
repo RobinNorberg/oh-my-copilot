@@ -99,7 +99,7 @@ grep "<test-name>" <file>
 # 4. Extract only the genuinely-new lines (e.g. lines 869-1010 in the e.g. above)
 sed -n '<new-start>,<new-end>p' <file> > /tmp/new-tests.txt
 
-# 5. Apply fork rename map (.omc → .omcp, CLAUDE_CONFIG_DIR → COPILOT_CONFIG_DIR, etc.) via sed
+# 5. Apply fork rename map (.omc → .omcp, CLAUDE_CONFIG_DIR → COPILOT_HOME, etc.) via sed
 sed -i "s|'.omc'|'.omcp'|g; s|.omc/state|.omcp/state|g" /tmp/new-tests.txt
 
 # 6. Rebuild file: pre-conflict + new tests + post-conflict

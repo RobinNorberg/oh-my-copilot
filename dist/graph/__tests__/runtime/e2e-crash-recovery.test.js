@@ -12,7 +12,7 @@
  */
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { spawn, spawnSync } from "child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, utimesSync, } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, statSync, utimesSync, } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
@@ -93,7 +93,7 @@ function spawnGraphRun(runsRoot, markerDir) {
     const env = {
         ...process.env,
         [MARKER_ENV_VAR]: markerDir,
-        COPILOT_CONFIG_DIR: join(runsRoot, ".claude-config"),
+        COPILOT_HOME: join(runsRoot, ".claude-config"),
         NODE_NO_WARNINGS: "1",
     };
     // The spawned CLI must parse its argv; the vitest opt-out must not leak.
@@ -175,7 +175,7 @@ describe("e2e crash recovery via spawned CLI (AC-2/AC-3)", () => {
         }
     });
     it("resumes a killed run without re-executing journaled nodes and converges to the direct-run projection", async () => {
-        baseDir = mkdtempSync(join(tmpdir(), "omc-graph-e2e-crash-"));
+        baseDir = mkdtempSync(join(realpathSync(tmpdir()), "omc-graph-e2e-crash-"));
         const runsRoot = join(baseDir, "runs-resume");
         const markers = join(baseDir, "markers-resume");
         const directRunsRoot = join(baseDir, "runs-direct");

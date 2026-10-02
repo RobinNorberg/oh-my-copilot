@@ -39,6 +39,11 @@ const REQUIRED_ENTRYPOINTS = Object.freeze([
   'bridge/mcp-server.cjs',
   'bridge/runtime-cli.cjs',
   'bridge/team.js',
+  // Copilot CLI plugin surface: root manifest, hooks, agents, hook adapter.
+  'plugin.json',
+  'copilot/hooks.json',
+  'copilot/agents/executor.md',
+  'scripts/lib/copilot-hook-adapter.cjs',
 ]);
 
 function fail(message) {
@@ -366,6 +371,10 @@ export function assertArchiveEntries(entries, { version, gitHead, packageName = 
   if (!isPlainObject(pluginJson) || pluginJson.name !== PLUGIN_NAME || pluginJson.version !== expectedVersion) {
     fail('archive plugin manifest has an unexpected name or version');
   }
+  const rootPluginJson = parseArchiveJson(entriesByPath, 'plugin.json');
+  if (!isPlainObject(rootPluginJson) || rootPluginJson.name !== PLUGIN_NAME || rootPluginJson.version !== expectedVersion) {
+    fail('archive root plugin.json has an unexpected name or version');
+  }
   const marketplaceJson = parseArchiveJson(entriesByPath, '.claude-plugin/marketplace.json');
   if (!isPlainObject(marketplaceJson) || marketplaceJson.version !== expectedVersion || !Array.isArray(marketplaceJson.plugins)) {
     fail('archive marketplace manifest has an unexpected version or plugins list');
@@ -614,6 +623,11 @@ export function assertTrigger({ tag, sha, cwd = process.cwd() }) {
   const marketplaceJson = readJsonFile(join(cwd, '.claude-plugin', 'marketplace.json'), '.claude-plugin/marketplace.json');
   assertVersionedManifest(packageJson, 'package.json', version);
   assertVersionedManifest(pluginJson, '.claude-plugin/plugin.json', version);
+  const rootPluginJson = readJsonFile(join(cwd, 'plugin.json'), 'plugin.json');
+  assertVersionedManifest(rootPluginJson, 'plugin.json', version);
+  if (rootPluginJson.name !== PLUGIN_NAME) {
+    fail(`plugin.json name must be ${PLUGIN_NAME}`);
+  }
   assertVersionedManifest(marketplaceJson, '.claude-plugin/marketplace.json', version);
   if (!Array.isArray(marketplaceJson.plugins) || !marketplaceJson.plugins.some(plugin =>
     isPlainObject(plugin) && plugin.name === PLUGIN_NAME && plugin.version === version,

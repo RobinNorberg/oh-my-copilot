@@ -22,7 +22,9 @@ export declare function syncPluginCache(verbose?: boolean): {
     skipped: boolean;
     errors: string[];
 };
-/** Installation paths (respects COPILOT_CONFIG_DIR env var) */
+/** Installation paths (respects COPILOT_HOME env var) */
+export declare const COPILOT_HOME: string;
+/** @deprecated Renamed to {@link COPILOT_HOME}; kept as a legacy alias for API compatibility. */
 export declare const COPILOT_CONFIG_DIR: string;
 export declare const VERSION_FILE: string;
 export declare const CONFIG_FILE: string;

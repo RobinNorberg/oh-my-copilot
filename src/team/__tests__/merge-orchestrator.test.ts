@@ -5,7 +5,7 @@
 // the mocked exec*Sync surface.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -78,21 +78,30 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('node:child_process', () => ({
-  execFileSync: mocks.execFileSync,
-  exec: mocks.exec,
-  execSync: mocks.execSync,
-  execFile: mocks.execFile,
-}));
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return {
+    ...actual,
+    execFileSync: mocks.execFileSync,
+    exec: mocks.exec,
+    execSync: mocks.execSync,
+    execFile: mocks.execFile,
+  };
+});
 
 // Re-mount the same mock for the unprefixed module name (some callers import
-// 'child_process' rather than 'node:child_process').
-vi.mock('child_process', () => ({
-  execFileSync: mocks.execFileSync,
-  exec: mocks.exec,
-  execSync: mocks.execSync,
-  execFile: mocks.execFile,
-}));
+// 'child_process' rather than 'node:child_process'). Preserve `spawn` so
+// transitive imports such as runtime-owner-client can load.
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return {
+    ...actual,
+    execFileSync: mocks.execFileSync,
+    exec: mocks.exec,
+    execSync: mocks.execSync,
+    execFile: mocks.execFile,
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Imports of the SUT (after mocks are installed).
@@ -445,7 +454,6 @@ describe('commit watcher + auto-merge', () => {
       const branchA = `omc-team/demo-team/${sanitizeName('alice')}`;
       const branchB = `omc-team/demo-team/${sanitizeName('bob')}`;
       let aCount = 0;
-      let bCount = 0;
       on(
         (args) => args[0] === 'rev-parse' && args[1] === `refs/heads/${branchA}`,
         () => {
@@ -456,7 +464,6 @@ describe('commit watcher + auto-merge', () => {
       on(
         (args) => args[0] === 'rev-parse' && args[1] === `refs/heads/${branchB}`,
         () => {
-          bCount += 1;
           // Bob never advances — stays at the same sha.
           return 'b-sha-0\n';
         },

@@ -3,8 +3,8 @@
  *
  * Guards against recurring setup violations found in issues #2155, #2084, #2348, #2347.
  * Two core contracts:
- *   1. Never hardcode paths — use getCopilotConfigDir() or COPILOT_CONFIG_DIR env var
- *   2. Never install to root ~/.claude when COPILOT_CONFIG_DIR is set to a custom path
+ *   1. Never hardcode paths — use getCopilotConfigDir() or COPILOT_HOME env var
+ *   2. Never install to root ~/.claude when COPILOT_HOME is set to a custom path
  *
  * Scanning approach: narrow construction-pattern matching (not broad string literals)
  * to avoid false positives and allowlist bloat.
@@ -103,7 +103,7 @@ describe('Contract 1: no join(homedir()...".claude") outside canonical helpers',
   const EXCLUDED_FUNCTIONS = [
     'isDefaultClaudeConfigDir',
     'isDefaultClaudeConfigDirPath',
-    'prepareOmcLaunchConfigDir', // entry-point with its own COPILOT_CONFIG_DIR || fallback
+    'prepareOmcLaunchConfigDir', // entry-point with its own COPILOT_HOME || fallback
   ];
 
   // Pattern: join(homedir() ... '.claude') — the dangerous inline path construction
@@ -144,7 +144,7 @@ describe('Contract 1: no join(homedir()...".claude") outside canonical helpers',
 });
 
 // ── Contract 2: No unguarded $HOME/.claude in runtime shell scripts ──────────
-// Issue #2155 §11-13 — scripts with inline $HOME/.claude without COPILOT_CONFIG_DIR guard
+// Issue #2155 §11-13 — scripts with inline $HOME/.claude without COPILOT_HOME guard
 
 describe('Contract 2: no unguarded $HOME/.claude in shell/script files', () => {
   const SCRIPT_DIRS = [
@@ -158,8 +158,8 @@ describe('Contract 2: no unguarded $HOME/.claude in shell/script files', () => {
     'scripts/lib/config-dir.sh',
   ]);
 
-  // The safe pattern: ${COPILOT_CONFIG_DIR:-$HOME/.copilot}
-  const SAFE_PATTERN = /\$\{COPILOT_CONFIG_DIR:-\$HOME\/\.copilot\}/;
+  // The safe pattern: ${COPILOT_HOME:-$HOME/.copilot}
+  const SAFE_PATTERN = /\$\{COPILOT_HOME:-\$HOME\/\.copilot\}/;
   const DANGEROUS_PATTERN = /\$HOME\/\.claude/;
 
   const violations: { file: string; line: number; text: string }[] = [];
@@ -185,14 +185,14 @@ describe('Contract 2: no unguarded $HOME/.claude in shell/script files', () => {
     }
   }
 
-  it('has no $HOME/.claude without ${COPILOT_CONFIG_DIR:-...} guard in scripts', () => {
+  it('has no $HOME/.claude without ${COPILOT_HOME:-...} guard in scripts', () => {
     if (violations.length > 0) {
       const details = violations
         .map(v => `  ${v.file}:${v.line}: ${v.text}`)
         .join('\n');
       expect.fail(
-        `Found $HOME/.claude without COPILOT_CONFIG_DIR guard:\n${details}\n\n` +
-        `Replace with: \${COPILOT_CONFIG_DIR:-$HOME/.copilot}`
+        `Found $HOME/.claude without COPILOT_HOME guard:\n${details}\n\n` +
+        `Replace with: \${COPILOT_HOME:-$HOME/.copilot}`
       );
     }
   });
@@ -302,18 +302,18 @@ describe('Contract 3: no raw __dirname path resolution in installer outside getP
 // Issue #2348 — CI baked /opt/hostedtoolcache/node/... into hooks
 
 describe('Contract 4: no absolute node binary paths in hook commands', () => {
-  const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+  const originalConfigDir = process.env.COPILOT_HOME;
 
   afterEach(() => {
     if (originalConfigDir === undefined) {
-      delete process.env.COPILOT_CONFIG_DIR;
+      delete process.env.COPILOT_HOME;
     } else {
-      process.env.COPILOT_CONFIG_DIR = originalConfigDir;
+      process.env.COPILOT_HOME = originalConfigDir;
     }
   });
 
   it('getHooksSettingsConfig() produces no absolute node paths (default config)', async () => {
-    delete process.env.COPILOT_CONFIG_DIR;
+    delete process.env.COPILOT_HOME;
 
     // Dynamic import to get fresh module evaluation
     const { getHooksSettingsConfig } = await import('../installer/hooks.js');
@@ -351,11 +351,11 @@ describe('Contract 5: no hardcoded ~/.claude in LLM-consumed artifacts', () => {
   const AGENTS_DIR = join(REPO_ROOT, 'agents');
   const DOCS_DIR = join(REPO_ROOT, 'docs');
 
-  // Match ~/.claude NOT inside portable notation [$COPILOT_CONFIG_DIR|~/.claude]
-  // or ${COPILOT_CONFIG_DIR:-...} pattern
+  // Match ~/.claude NOT inside portable notation [$COPILOT_HOME|~/.claude]
+  // or ${COPILOT_HOME:-...} pattern
   const TILDE_CLAUDE_PATTERN = /~\/\.claude/;
-  const SAFE_PORTABLE = /\[\$COPILOT_CONFIG_DIR\|~\/\.claude\]/;
-  const SAFE_ENV_FALLBACK = /\$\{COPILOT_CONFIG_DIR:-/;
+  const SAFE_PORTABLE = /\[\$COPILOT_HOME\|~\/\.claude\]/;
+  const SAFE_ENV_FALLBACK = /\$\{COPILOT_HOME:-/;
 
   function scanForViolations(dir: string): { file: string; line: number; text: string }[] {
     const violations: { file: string; line: number; text: string }[] = [];
@@ -371,10 +371,10 @@ describe('Contract 5: no hardcoded ~/.claude in LLM-consumed artifacts', () => {
           // Skip markdown comments
           const trimmed = line.trim();
           if (trimmed.startsWith('<!--') && trimmed.endsWith('-->')) continue;
-          // Skip lines that are just describing what COPILOT_CONFIG_DIR defaults to
+          // Skip lines that are just describing what COPILOT_HOME defaults to
           if (/default.*~\/\.claude/i.test(line) || /fallback.*~\/\.claude/i.test(line)) continue;
           // Skip lines documenting the config-dir behavior
-          if (/COPILOT_CONFIG_DIR/i.test(line)) continue;
+          if (/COPILOT_HOME/i.test(line)) continue;
           violations.push({ file: relPath(file), line: i + 1, text: trimmed });
         }
       }
@@ -389,7 +389,7 @@ describe('Contract 5: no hardcoded ~/.claude in LLM-consumed artifacts', () => {
       const details = violations.map(v => `  ${v.file}:${v.line}: ${v.text}`).join('\n');
       expect.fail(
         `Found unguarded ~/.claude in agent definitions:\n${details}\n\n` +
-        `Use [$COPILOT_CONFIG_DIR|~/.claude] notation in LLM-consumed artifacts.`
+        `Use [$COPILOT_HOME|~/.claude] notation in LLM-consumed artifacts.`
       );
     }
   });
@@ -410,7 +410,7 @@ describe('Contract 5: no hardcoded ~/.claude in LLM-consumed artifacts', () => {
         const trimmed = line.trim();
         if (trimmed.startsWith('<!--') && trimmed.endsWith('-->')) continue;
         if (/default.*~\/\.claude/i.test(line) || /fallback.*~\/\.claude/i.test(line)) continue;
-        if (/COPILOT_CONFIG_DIR/i.test(line)) continue;
+        if (/COPILOT_HOME/i.test(line)) continue;
         // Skip glob/permission patterns like ~/.claude/** (describes allowed paths, not path resolution)
         if (/~\/\.claude\/\*/.test(line)) continue;
         violations.push({ file: 'docs/CLAUDE.md', line: i + 1, text: trimmed });
@@ -421,13 +421,13 @@ describe('Contract 5: no hardcoded ~/.claude in LLM-consumed artifacts', () => {
       const details = violations.map(v => `  ${v.file}:${v.line}: ${v.text}`).join('\n');
       expect.fail(
         `Found unguarded ~/.claude in docs/CLAUDE.md:\n${details}\n\n` +
-        `Use [$COPILOT_CONFIG_DIR|~/.claude] notation in LLM-consumed artifacts.`
+        `Use [$COPILOT_HOME|~/.claude] notation in LLM-consumed artifacts.`
       );
     }
   });
 });
 
-// ── Contract 9: hooks/hooks.json commands use $CLAUDE_PLUGIN_ROOT, no absolute paths ──
+// ── Contract 9: hooks/hooks.json commands use ${CLAUDE_PLUGIN_ROOT}, no absolute paths ──
 // Issue #2348 — plugin hook delivery must be portable
 
 describe('Contract 9: hooks/hooks.json portability', () => {
@@ -437,7 +437,7 @@ describe('Contract 9: hooks/hooks.json portability', () => {
   // restore hooks/hooks.json from git here: hook portability hotfixes intentionally
   // change that source file, and a checkout would hide the working-tree contract.
 
-  it('all hook commands reference $CLAUDE_PLUGIN_ROOT', () => {
+  it('all hook commands reference ${CLAUDE_PLUGIN_ROOT}', () => {
     if (!existsSync(HOOKS_JSON_PATH)) return;
 
     const hooksJson = JSON.parse(readFileSync(HOOKS_JSON_PATH, 'utf-8'));
@@ -447,7 +447,7 @@ describe('Contract 9: hooks/hooks.json portability', () => {
       for (const hookGroup of eventHooks as Array<{ hooks: Array<{ type: string; command: string }> }>) {
         for (const hook of hookGroup.hooks) {
           if (hook.type !== 'command') continue;
-          if (!hook.command.includes('$CLAUDE_PLUGIN_ROOT')) {
+          if (!hook.command.includes('${CLAUDE_PLUGIN_ROOT}')) {
             violations.push({ event: eventType, command: hook.command });
           }
         }
@@ -457,8 +457,8 @@ describe('Contract 9: hooks/hooks.json portability', () => {
     if (violations.length > 0) {
       const details = violations.map(v => `  ${v.event}: ${v.command}`).join('\n');
       expect.fail(
-        `Found hook commands not using $CLAUDE_PLUGIN_ROOT:\n${details}\n\n` +
-        `All plugin hook commands must reference $CLAUDE_PLUGIN_ROOT for portability.`
+        `Found hook commands not using \${CLAUDE_PLUGIN_ROOT}:\n${details}\n\n` +
+        `All plugin hook commands must reference \${CLAUDE_PLUGIN_ROOT} for portability.`
       );
     }
   });
@@ -501,7 +501,7 @@ describe('Contract 9: hooks/hooks.json portability', () => {
       for (const hookGroup of eventHooks as Array<{ hooks: Array<{ type: string; command: string }> }>) {
         for (const hook of hookGroup.hooks) {
           if (hook.type !== 'command') continue;
-          if (!hook.command.startsWith('node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs ')) {
+          if (!hook.command.startsWith('node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ')) {
             violations.push({ event: eventType, command: hook.command, reason: 'not direct node run.cjs' });
           }
           if (/^(?:"\/bin\/sh"|sh)\s/.test(hook.command) || hook.command.includes('find-node.sh')) {
@@ -515,7 +515,7 @@ describe('Contract 9: hooks/hooks.json portability', () => {
       const details = violations.map(v => `  ${v.event} (${v.reason}): ${v.command}`).join('\n');
       expect.fail(
         `Found non-Windows-safe source hook commands in hooks.json:\n${details}\n\n` +
-        `Source plugin manifest commands must be direct: node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs ...`
+        `Source plugin manifest commands must be direct: node "\${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ...`
       );
     }
   });
@@ -570,10 +570,17 @@ describe('Contract 10: installer manages stale OMC-created agents and skills', (
   });
 
   it('syncBundledSkillDefinitions overwrites existing OMC skills (force copy)', () => {
-    // The installer uses cpSync with { force: true } which overwrites stale versions
-    // Verify this by checking the source code pattern
+    // Existing real directories keep force-copy behavior, while unsafe collisions
+    // are rejected before the copy and marker write.
     const installerSource = readFileSync(join(REPO_ROOT, 'src', 'installer', 'index.ts'), 'utf-8');
-    expect(installerSource).toContain('cpSync(sourceDir, targetDir, { recursive: true, force: true })');
+    const targetCheck = installerSource.indexOf('targetStat = lstatSync(targetDir)');
+    const collisionGuard = installerSource.indexOf('targetStat.isSymbolicLink() || !targetStat.isDirectory()');
+    const forceCopy = installerSource.indexOf('cpSync(sourceDir, targetDir, { recursive: true, force: true })');
+    const markerWrite = installerSource.indexOf('markSkillAsOmcManaged(targetDir)');
+    expect(targetCheck).toBeGreaterThanOrEqual(0);
+    expect(collisionGuard).toBeGreaterThan(targetCheck);
+    expect(forceCopy).toBeGreaterThan(collisionGuard);
+    expect(markerWrite).toBeGreaterThan(collisionGuard);
   });
 
   it('install() overwrites existing agent files when force option is used', () => {
@@ -606,18 +613,17 @@ describe('Contract 10: installer manages stale OMC-created agents and skills', (
 });
 
 
-describe('OMC setup Ralph Ruby dependency guidance (issue #2969)', () => {
-  it('checks Ruby during setup with product-facing Ralph remediation', () => {
+describe('OMC setup Ralph runtime prerequisites guidance (issue #3996)', () => {
+  it('checks Node and a writable config dir instead of the retired Ruby probe', () => {
     const phasePath = join(REPO_ROOT, 'skills', 'omc-setup', 'phases', '02-configure.md');
     const content = readFileSync(phasePath, 'utf-8');
 
-    expect(content).toContain('Step 2.0: Check Ralph Ruby Dependency');
-    // Detection runs through Node so the check works on Windows too, where
-    // `command -v` does not exist.
-    expect(content).toContain("spawnSync('ruby'");
-    expect(content).toContain('Ralph workflows require Ruby');
-    expect(content).toContain('sudo apt update && sudo apt install ruby-full');
-    expect(content).toContain('restart Claude Code');
+    expect(content).toContain('Step 2.0: Check Ralph Runtime Prerequisites');
+    expect(content).toContain('node --version');
+    // The Ruby check was a false positive (issue #3996): OMC has never used Ruby.
+    expect(content).not.toMatch(/\bruby\b/i);
+    expect(content).not.toContain('ruby-full');
+    expect(content).not.toContain('brew install ruby');
   });
 });
 
@@ -668,8 +674,8 @@ describe('Contract 11: SessionEnd hooks are async (issue #3240)', () => {
       .filter(hook => hook.type === 'command')
       .map(hook => hook.command);
 
-    expect(commands).toContain('node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/session-end.mjs');
-    expect(commands).toContain('node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/wiki-session-end.mjs');
+    expect(commands).toContain('node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs "${CLAUDE_PLUGIN_ROOT}"/scripts/session-end.mjs');
+    expect(commands).toContain('node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs "${CLAUDE_PLUGIN_ROOT}"/scripts/wiki-session-end.mjs');
   });
 
   it('non-SessionEnd hooks do not unconditionally carry async:true', () => {

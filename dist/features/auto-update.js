@@ -420,10 +420,12 @@ export function syncPluginCache(verbose = false) {
         return { synced: false, skipped: false, errors: [message] };
     }
 }
-/** Installation paths (respects COPILOT_CONFIG_DIR env var) */
-export const COPILOT_CONFIG_DIR = getCopilotConfigDir();
-export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omc-version.json');
-export const CONFIG_FILE = join(COPILOT_CONFIG_DIR, OMC_CONFIG_FILE_REL);
+/** Installation paths (respects COPILOT_HOME env var) */
+export const COPILOT_HOME = getCopilotConfigDir();
+/** @deprecated Renamed to {@link COPILOT_HOME}; kept as a legacy alias for API compatibility. */
+export const COPILOT_CONFIG_DIR = COPILOT_HOME;
+export const VERSION_FILE = join(COPILOT_HOME, '.omc-version.json');
+export const CONFIG_FILE = join(COPILOT_HOME, OMC_CONFIG_FILE_REL);
 /**
  * Read the OMC configuration
  */
@@ -478,7 +480,7 @@ export function isAutoUpgradePromptEnabled() {
  */
 export function isTeamEnabled() {
     try {
-        const settingsPath = join(COPILOT_CONFIG_DIR, 'settings.json');
+        const settingsPath = join(COPILOT_HOME, 'settings.json');
         if (existsSync(settingsPath)) {
             const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
             const val = settings.env?.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS;
@@ -1032,7 +1034,7 @@ export async function interactiveUpdate() {
     }
 }
 /** State file for tracking silent update status */
-const SILENT_UPDATE_STATE_FILE = join(COPILOT_CONFIG_DIR, '.omc-silent-update.json');
+const SILENT_UPDATE_STATE_FILE = join(COPILOT_HOME, '.omc-silent-update.json');
 /**
  * Read silent update state
  */
@@ -1093,7 +1095,7 @@ function silentLog(message, logFile) {
  * @returns Promise resolving to update result or null if skipped
  */
 export async function silentAutoUpdate(config = {}) {
-    const { checkIntervalHours = 24, autoApply = true, logFile = join(COPILOT_CONFIG_DIR, '.omc-update.log'), maxRetries = 3 } = config;
+    const { checkIntervalHours = 24, autoApply = true, logFile = join(COPILOT_HOME, '.omc-update.log'), maxRetries = 3 } = config;
     // SECURITY: Check if silent auto-update is enabled in configuration
     // Default is disabled - users must explicitly opt-in during installation
     if (!isSilentAutoUpdateEnabled()) {

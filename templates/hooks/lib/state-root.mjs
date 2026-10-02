@@ -50,17 +50,47 @@ function workspaceIdentifier(workspaceRoot) {
   return `${basename(workspaceRoot).replace(/[^a-zA-Z0-9_-]/g, '_')}-${hash}`;
 }
 
+// git localizes its error messages; probeGitRoot() classifies "not a git
+// repository" by matching the English stderr, so every spawn forces the C
+// locale. Without it a non-English shell turns a benign non-git directory
+// into a thrown error (#4033, mirrors the src/lib/worktree-paths.ts fix).
+function gitEnv() { return { ...process.env, LC_ALL: 'C' }; }
+
 function primaryGitRoot(gitRoot) {
   try {
-    const commonDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim();
+    const commonDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000, env: gitEnv() }).trim();
     if (basename(commonDir) === '.git' && !commonDir.includes('/.git/modules/')) return dirname(commonDir);
   } catch {}
   return gitRoot;
 }
 
+function findGitRootFs(directory) {
+  // PATH-independent git-root discovery: walk up for a `.git` entry (a
+  // directory for normal repos, a file for linked worktrees/submodules).
+  // Mirrors `git rev-parse --show-toplevel` for every layout a hook can
+  // realistically run in, without ever spawning git.
+  let cursor = resolve(directory);
+  while (true) {
+    if (existsSync(join(cursor, '.git'))) return cursor;
+    const parent = dirname(cursor);
+    if (parent === cursor) return null;
+    cursor = parent;
+  }
+}
+
 function probeGitRoot(directory) {
-  try { return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, timeout: 5000 }).trim() || null; }
-  catch (error) { if (error?.code === 'ENOENT' || (error?.status === 128 && /not a git repository/i.test(String(error?.stderr ?? '')))) return null; throw error; }
+  // The filesystem walk is the primary probe. The git spawn is a refinement
+  // for exotic layouts only, and its failure must NEVER degrade the answer
+  // to a HOME fallback: when git is absent from PATH, ENOENT used to be
+  // swallowed as "not a repository" here, silently re-aiming every state
+  // consumer (guardrails, watchdog, session restore) at ~/.omg.
+  const fsRoot = findGitRootFs(directory);
+  if (!fsRoot) return null;
+  try {
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, timeout: 5000, env: gitEnv() }).trim() || fsRoot;
+  } catch {
+    return fsRoot;
+  }
 }
 
 function isSafeWorkspaceRoot(workspaceRoot) {
@@ -105,7 +135,7 @@ export async function resolveOmcStateRoot(directory) {
     const primaryRoot = primaryGitRoot(gitRoot);
     let source = primaryRoot;
     try {
-      source = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || primaryRoot;
+      source = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000, env: gitEnv() }).trim() || primaryRoot;
     } catch {}
     const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
     const dirName = basename(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, '_');

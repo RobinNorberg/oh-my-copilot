@@ -180,7 +180,7 @@ describe('HUD Windows Compatibility', () => {
       expect(content).toContain('pathToFileURL(pluginPath).href');
     });
 
-    it('shared HUD wrapper template should respect COPILOT_CONFIG_DIR for plugin cache base', () => {
+    it('shared HUD wrapper template should respect COPILOT_HOME for plugin cache base', () => {
       const templatePath = join(packageRoot, 'scripts', 'lib', 'hud-wrapper-template.txt');
       const content = readFileSync(templatePath, 'utf-8');
       expect(content).toContain('getCopilotConfigDir()');

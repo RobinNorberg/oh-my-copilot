@@ -22,7 +22,7 @@ function clearWorkflowTranscriptFailure(sessionId) { if (sessionId) workflowTran
 
 
 function workflowPlatform() { return process.env.NODE_ENV === 'test' && process.env.OMC_WORKFLOW_TEST_PLATFORM ? process.env.OMC_WORKFLOW_TEST_PLATFORM : process.platform; }
-/** Named workflows need inter-process exclusion, not a particular platform: flock where it exists, the portable lockfile otherwise. */
+/** Named workflows need inter-process exclusion, not a particular platform: flock where it exists, the SQLite lock or owner-file fallback otherwise. */
 export function isWorkflowRuntimeSupported() { return process.env.OMC_WORKFLOW_TEST_FLOCK_AVAILABLE !== '0' && (existsSync('/usr/bin/flock') || existsSync('/bin/flock') || isStateFileLockingSupported()); }
 function assertWorkflowRuntimeSupported() { if (!isWorkflowRuntimeSupported()) throw new Error('named autopilot workflow profiles require a working state file lock'); }
 function isApprovedSequence(stages) { return Array.isArray(stages) && SEQUENCES.some(sequence => stages.length === sequence.length && stages.every((stage, index) => typeof stage === 'string' && stage === sequence[index])); }

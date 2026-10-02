@@ -7,16 +7,16 @@ describe('Claude Code compatibility for OMC-authored user skills', () => {
     let originalClaudeConfigDir;
     beforeEach(() => {
         tempDir = mkdtempSync(join(tmpdir(), 'omc-user-skill-compat-'));
-        originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
-        process.env.COPILOT_CONFIG_DIR = tempDir;
+        originalClaudeConfigDir = process.env.COPILOT_HOME;
+        process.env.COPILOT_HOME = tempDir;
         vi.resetModules();
     });
     afterEach(() => {
         if (originalClaudeConfigDir === undefined) {
-            delete process.env.COPILOT_CONFIG_DIR;
+            delete process.env.COPILOT_HOME;
         }
         else {
-            process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+            process.env.COPILOT_HOME = originalClaudeConfigDir;
         }
         rmSync(tempDir, { recursive: true, force: true });
         vi.resetModules();
