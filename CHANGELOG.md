@@ -2,6 +2,93 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## Unreleased
+
+Ports upstream oh-my-claudecode v5.6.0 and v5.6.1 (862c69273..e3e96dea9).
+The fork version stays 5.5.0 until release; the skill count stays 61.
+
+### Ported from upstream oh-my-claudecode v5.6.0 / v5.6.1
+
+- **Software factory:** a SessionEnd chain enqueuer driven by the project
+  route table (`.omg/factory-routes.json`, the single source of truth),
+  gate grading, chain guardrails (serial single-session lock and a daily
+  cap of 10), check evidence, a diff-first review gate, and a stalled-chain
+  watchdog. `omg factory listen` (HMAC-signed tracker intake, bound to
+  127.0.0.1), `omg factory init` (seeds the route table and checks
+  prerequisites), and `omg factory status` (read-only chain audit).
+- **Intake:** `omg intake run --headless` runs the harbor sweep headless;
+  `omg intake schedule --cron <expr>` / `--off` registers it with the host
+  scheduler (cron, or Task Scheduler on Windows). A run ledger with
+  SessionStart reconciliation records unattended-run lifecycles.
+- **Ralph:** `omg ralph afk` launches an isolated headless ralph run;
+  `omg ralph verify` is the only command that computes the feedback
+  baseline diff; `omg ralph from-map` plans, claims and launches a run from
+  a wayfinder map. Stories are risk-ordered, and the PRD carries a repo
+  quality class.
+- **Unattended-run hardening:** closeouts in ralph, autopilot and team;
+  an AFK assumption protocol; an opt-in budget stop; headless harbor and
+  refit invocations; a destructive-git guardrail hook
+  (`OMC_GIT_GUARDRAILS`); and a stale-run watchdog (`OMC_STALE_RUN_HOURS`).
+- **Host-load gate:** expensive operations wait while CPU load, free
+  memory or the sibling-session count is over its threshold, and proceed
+  if metrics are unavailable (`OMC_HOST_LOAD_*`,
+  `OMC_MAX_SIBLING_SESSIONS`).
+- **Windows:** the host CLI launches via `COMSPEC` instead of `shell:true`
+  (#4154; the fork applies this to both host binaries), zero `lstat` dev is
+  tolerated in file identity checks (#4156), and team owner epochs use a
+  strict process-start identity (#4211). Session-end deferred chain actions
+  survive on Windows, and the omc-setup star endpoint drops its leading
+  slash so Git Bash does not rewrite it.
+- **Team:** the supervised worker start command stays under 1024 bytes
+  (#4191), detached sessions use a dynamic window index (#4193),
+  `OMC_TEAM_WORKER_ENV_PASSTHROUGH` forwards custom provider credentials
+  (#4194), and `roleRouting` takes a per-role `reasoningEffort` (#4206).
+  The fork applies `reasoningEffort` only to providers with a verified CLI
+  flag, which excludes Copilot workers.
+- **jev:** `:active` mode now acts on the Jev answer in script and TS
+  callers, and its configuration and judgment points are documented in
+  `docs/HOOKS.md` (#4164, #4208).
+- **LSP:** diagnostic URI keys are normalized so Windows drive-letter
+  encodings match; malformed escapes are kept verbatim (#4185).
+- **Session end:** workers receive `ANTHROPIC_*`, `OMC_HOOK_BRIDGE` and
+  model-provider auth alongside the fork's Copilot, Teams, Discord and
+  Telegram keys (#4168, #4178), and failed bridge forwards are now reported.
+- **State lock:** upstream's owner-file fallback race fix (#4149) and its
+  regression test are covered by the fork's stronger variants
+  (`scripts/lib/state-lock.mjs`, `src/lib/mode-state-io.ts`). The fork
+  keeps capturing identity before the liveness probe and rechecks both the
+  owner record and dev/ino before rename. The win32 `ticks:` identity
+  encoding in the atomic-write twins is reconciled with upstream's (#4148).
+
+### Fork: Copilot host adaptations and security fixes
+
+- **Unattended runs on Copilot:** `omg factory`, `omg intake` and
+  `omg ralph afk|from-map` launch the Copilot host binary with
+  `--no-ask-user` and a scoped permission profile
+  (`--allow-tool=shell(gh issue view|comment|edit, gh pr view|list,
+  gh label list)`, `--allow-tool=write`, `--allow-url=github.com`, plus
+  `--deny-tool=write(.git)`, `--deny-tool=write(package.json)` and
+  `--deny-tool=shell(git push)`); single-token `--verify` commands are
+  refused on Copilot. Copilot cannot pin a session id, so a factory chain
+  stops after its first link and the watchdog reports it.
+- **Prompt never on a `cmd.exe` command line (security):** on Windows the
+  host binary receives the prompt on stdin for both hosts (verified against
+  Copilot CLI 1.0.91). Native `.exe` binaries are spawned directly with an
+  argv array (`resolveHostBinaryLaunch`, `buildHostBinarySpawn`); only
+  `.cmd`/`.bat` shims go through `COMSPEC`, and `quoteForCmd` now keeps
+  CRT and cmd quote parity and refuses `%`. Before this, a prompt containing
+  `\" --allow-all-tools \"` split the argument vector and `%GH_TOKEN%`
+  expanded inside quotes; both were reachable from `package.json` scripts
+  (autoresearch setup) and `check_suite.head_branch` (factory listener).
+- **`COPILOT_ALLOW_ALL` (security):** excluded from the session-end
+  `COPILOT_*` passthrough and forced to `false` on every AFK child, so an
+  exported value can no longer widen the AFK profile to unrestricted shell.
+- `check_suite.head_branch` is validated before it enters a prompt, and
+  `omg intake --host-bin` is validated like the team launch contract.
+- The copilot worker contract follows #4206's
+  `buildLaunchArgs(model, reasoningEffort, extraFlags)` signature, so deny
+  flags keep reaching Copilot workers.
+
 # oh-my-copilot v5.5.0
 
 ## [5.5.0] - 2026-10-02

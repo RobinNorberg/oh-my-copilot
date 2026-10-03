@@ -23,6 +23,19 @@ export interface CliProbeResult {
  * Returns undefined for an unsafe name or any resolution failure.
  */
 export declare function resolveExecutable(binary: string, platform?: NodeJS.Platform): string | undefined;
+export interface HostBinaryLaunch {
+    /** What to start: the resolved absolute path, or the bare name when it could not be resolved. */
+    file: string;
+    /** True when `file` must be started through cmd.exe (a `.cmd`/`.bat` shim, or an unresolved name). */
+    viaCmd: boolean;
+}
+/**
+ * How to start a host CLI. On win32 only a `.cmd`/`.bat` shim needs cmd.exe; a
+ * native `.exe`/`.com` is spawned directly, so Node applies CRT argv quoting
+ * and cmd.exe never sees (or `%VAR%`-expands) the arguments. A name that does
+ * not resolve keeps the cmd.exe route, whose own PATHEXT search finds it.
+ */
+export declare function resolveHostBinaryLaunch(binary: string, platform?: NodeJS.Platform): HostBinaryLaunch;
 /**
  * Presence check for a command. Absolute paths are checked on disk; bare names
  * go through the PATH resolver, which is bounded by a timeout so a hook cannot

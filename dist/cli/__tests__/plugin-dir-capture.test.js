@@ -82,6 +82,15 @@ vi.mock('child_process', async () => {
             // Allow non-claude execFileSync calls (e.g. tmux probes) to be no-ops.
             return Buffer.alloc(0);
         }),
+        // Windows test hosts: runClaudeDirect launches the host CLI through
+        // `COMSPEC /d /s /c "<binary> ..."` via spawnSync (#4154), inheriting env.
+        spawnSync: vi.fn((file, args, options) => {
+            if (Array.isArray(args) && args[2] === '/c' && /^"?(claude|copilot)\b/.test(String(args[3]))) {
+                capturedEnv = { ...(options?.env ?? process.env) };
+                return { status: 0 };
+            }
+            return actual.spawnSync(file, args, options);
+        }),
     };
 });
 vi.mock('../tmux-utils.js', async () => {

@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { parseAutoresearchSetupHandoffJson, } from '../autoresearch/setup-contract.js';
 import { getHostCliBinary } from '../utils/host-detection.js';
+import { buildHostBinarySpawn } from './tmux-utils.js';
 const AUTORESEARCH_SETUP_ENTRYPOINT = 'autoresearch-setup';
 function safeReadFile(filePath) {
     try {
@@ -116,15 +117,34 @@ export function buildAutoresearchSetupPrompt(input) {
 export function runAutoresearchSetupSession(input) {
     const prompt = buildAutoresearchSetupPrompt(input);
     const hostBinary = getHostCliBinary();
-    const result = spawnSync(hostBinary, ['-p', prompt], {
-        cwd: input.repoRoot,
-        encoding: 'utf-8',
-        shell: process.platform === 'win32',
-        env: {
-            ...process.env,
-            CLAUDE_CODE_ENTRYPOINT: AUTORESEARCH_SETUP_ENTRYPOINT,
-        },
-    });
+    const result = (() => {
+        if (process.platform === 'win32') {
+            // The prompt never rides argv on Windows: a .cmd shim goes through
+            // cmd.exe, which cannot carry LF and expands %VAR% even inside quotes.
+            // claude reads the prompt from stdin under `-p`; copilot reads a piped
+            // prompt in non-interactive mode with no `-p` at all (verified on
+            // Copilot CLI 1.0.91).
+            const launch = buildHostBinarySpawn(hostBinary, hostBinary === 'claude' ? ['-p'] : []);
+            return spawnSync(launch.command, launch.args, {
+                cwd: input.repoRoot,
+                encoding: 'utf-8',
+                input: prompt,
+                env: {
+                    ...process.env,
+                    CLAUDE_CODE_ENTRYPOINT: AUTORESEARCH_SETUP_ENTRYPOINT,
+                },
+                windowsVerbatimArguments: launch.windowsVerbatimArguments,
+            });
+        }
+        return spawnSync(hostBinary, ['-p', prompt], {
+            cwd: input.repoRoot,
+            encoding: 'utf-8',
+            env: {
+                ...process.env,
+                CLAUDE_CODE_ENTRYPOINT: AUTORESEARCH_SETUP_ENTRYPOINT,
+            },
+        });
+    })();
     if (result.error) {
         throw result.error;
     }

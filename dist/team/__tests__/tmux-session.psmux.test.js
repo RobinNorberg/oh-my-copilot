@@ -232,6 +232,17 @@ beforeEach(() => {
     fake.alive.clear();
     fake.nextPid = 5000;
     fake.failOn = null;
+    // Upstream #4211 adds a win32 `process.kill(pid, 0)` liveness probe for tmux server pids;
+    // answer it from the fake process table so fake psmux servers read as live/dead consistently.
+    const realKill = process.kill.bind(process);
+    vi.spyOn(process, 'kill').mockImplementation(((pid, signal) => {
+        if (signal === 0 && pid !== process.pid) {
+            if (fake.alive.has(pid))
+                return true;
+            throw Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' });
+        }
+        return realKill(pid, signal);
+    }));
     // The user's own default-namespace session; its pane ids collide with ours.
     startSession('default', 'user', 3);
 });
@@ -240,6 +251,7 @@ afterEach(() => {
     if (originalPlatform)
         Object.defineProperty(process, 'platform', originalPlatform);
     vi.unstubAllEnvs();
+    vi.mocked(process.kill).mockRestore();
 });
 function nsOf(socketPath) {
     const ns = psmuxNamespaceOf(socketPath);

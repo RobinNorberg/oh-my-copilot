@@ -8,7 +8,7 @@
  * Adapted for Claude Code's shell hook system.
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { loadInjectedPaths, saveInjectedPaths, clearInjectedPaths, } from './storage.js';
 import { CONTEXT_FILENAMES, TRACKED_TOOLS } from './constants.js';
 // Re-export submodules
@@ -57,6 +57,15 @@ export function createDirectoryReadmeInjectorHook(workingDirectory) {
         return resolve(workingDirectory, filePath);
     }
     /**
+     * True when `dir` is the working directory or lies under it. A plain
+     * string-prefix test would also accept a sibling such as `app-legacy`
+     * for a working directory of `app`.
+     */
+    function isWithinWorkingDirectory(dir) {
+        const rel = relative(workingDirectory, dir);
+        return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+    }
+    /**
      * Find context files (README.md, AGENTS.md) by walking up the directory tree.
      * Returns paths in order from root to leaf.
      */
@@ -78,7 +87,7 @@ export function createDirectoryReadmeInjectorHook(workingDirectory) {
             if (parent === current)
                 break;
             // Stop if we've gone outside the working directory
-            if (!parent.startsWith(workingDirectory))
+            if (!isWithinWorkingDirectory(parent))
                 break;
             current = parent;
         }

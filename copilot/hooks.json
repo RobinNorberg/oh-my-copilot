@@ -74,6 +74,34 @@
           "OMC_HOOK_EVENT": "SessionStart"
         },
         "timeoutSec": 5
+      },
+      {
+        "type": "command",
+        "exec": "node",
+        "args": [
+          "--require",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/stale-run-reporter.mjs"
+        ],
+        "env": {
+          "OMC_HOOK_EVENT": "SessionStart"
+        },
+        "timeoutSec": 5
+      },
+      {
+        "type": "command",
+        "exec": "node",
+        "args": [
+          "--require",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/runs-reconciler.mjs"
+        ],
+        "env": {
+          "OMC_HOOK_EVENT": "SessionStart"
+        },
+        "timeoutSec": 5
       }
     ],
     "PreToolUse": [
@@ -85,6 +113,21 @@
           "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
           "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
           "${CLAUDE_PLUGIN_ROOT}/scripts/pre-tool-enforcer.mjs"
+        ],
+        "env": {
+          "OMC_HOOK_EVENT": "PreToolUse"
+        },
+        "timeoutSec": 5
+      },
+      {
+        "type": "command",
+        "matcher": "Bash",
+        "exec": "node",
+        "args": [
+          "--require",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/git-guardrails.mjs"
         ],
         "env": {
           "OMC_HOOK_EVENT": "PreToolUse"

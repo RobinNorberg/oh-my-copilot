@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, utimesSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { detectStalePrd, formatStalePrdWarning, getSessionEndStalePrdWarning, reconcileStalePrd, reconcileStalePrdForStartup, runObservableCheck, PRD_RECONCILIATION_AUDIT_FILENAME, DEFAULT_STALE_PRD_AFTER_MS, readPrd, writePrd, getPrdStatus, shouldCompleteByPrd, ensurePrdForStartup, getRalphContext, writeRalphState, createRalphLoopHook, getSessionPrdPath, getStoryGoverningCriteriaRevision, getPrdRevision, } from '../hooks/ralph/index.js';
+import { detectStalePrd, formatStalePrdWarning, getSessionEndStalePrdWarning, reconcileStalePrd, reconcileStalePrdForStartup, runObservableCheck, PRD_RECONCILIATION_AUDIT_FILENAME, DEFAULT_STALE_PRD_AFTER_MS, readPrd, writePrd, getPrdStatus, shouldCompleteByPrd, ensurePrdForStartup, getRalphContext, writeRalphState, createRalphLoopHook, ralphFeedbackGateNotice, getSessionPrdPath, getStoryGoverningCriteriaRevision, getPrdRevision, } from '../hooks/ralph/index.js';
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -435,6 +435,17 @@ describe('Ralph PRD Stale-State Detection & Reconciliation (#3669)', () => {
         expect(started).toBe(true);
         const prdAfter = readPrd(testDir, 'session-start');
         expect(prdAfter?.userStories.every(s => s.passes === true)).toBe(true);
+    });
+    it('injects the mandatory feedback-gate command at Ralph startup (#45)', () => {
+        // Skill text alone did not make headless executors call the gate (live
+        // smoke evidence), so startLoop surfaces it where the stale warning already
+        // proves reliable. The notice is a pure function so its contract is testable
+        // without state IO (startLoop itself is exercised by the CI suite).
+        const gateLine = ralphFeedbackGateNotice('session-gate');
+        expect(gateLine).toContain('[RALPH FEEDBACK GATE]');
+        expect(gateLine).toContain('omg ralph verify --write-baseline --session session-gate');
+        expect(gateLine).toContain('omg ralph verify --session session-gate');
+        expect(gateLine).toContain('Never hand-roll the diff');
     });
     it('reconcileStalePrdForStartup never throws and reports the remaining warning', () => {
         mkdirSync(join(testDir, 'src'), { recursive: true });

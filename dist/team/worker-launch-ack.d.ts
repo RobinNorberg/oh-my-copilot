@@ -92,7 +92,7 @@ export interface MaterializedWorkerLaunchTransport {
     bootstrapDescriptorPath: string;
     wrapperRelativePath: string;
 }
-export declare function buildProviderEnvironment(providerEnv: NodeJS.ProcessEnv | Record<string, string> | undefined, sourceEnv?: NodeJS.ProcessEnv, platform?: NodeJS.Platform): Record<string, string>;
+export declare function buildProviderEnvironment(providerEnv: NodeJS.ProcessEnv | Record<string, string> | undefined, sourceEnv?: NodeJS.ProcessEnv, platform?: NodeJS.Platform, envPassthrough?: readonly string[]): Record<string, string>;
 /** Read one launch-owned completion marker, or an unbound numeric marker for
  * generic process-wrapper callers that have no worker launch identity. */
 export declare function readProviderCompletionExitCode(path: string, binding?: WorkerLaunchCompletionBinding): Promise<number | undefined>;

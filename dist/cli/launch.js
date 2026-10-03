@@ -3,7 +3,7 @@
  * Launches the host CLI (Copilot CLI, or Claude Code under CLAUDE_CODE_ENTRYPOINT)
  * with tmux session management
  */
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { chmodSync, cpSync, copyFileSync, existsSync, lstatSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync, } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { basename, dirname, isAbsolute, join, resolve } from 'path';
@@ -14,7 +14,7 @@ import { stripRetiredTeamMcpServers } from '../installer/mcp-registry.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { getHostCliBinary, getHostCliType } from '../utils/host-detection.js';
 import { getContract } from '../team/model-contract.js';
-import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, buildTmuxShellCommandWithEnv, escapeForCmdSet, isNativeWindowsShell, wrapWithLoginShell, isCopilotAvailable, isTmuxAvailable, quoteShellArg, quoteForCmd, tmuxExec, } from './tmux-utils.js';
+import { resolveLaunchPolicy, buildHostBinarySpawn, buildTmuxSessionName, buildTmuxShellCommand, buildTmuxShellCommandWithEnv, escapeForCmdSet, isNativeWindowsShell, wrapWithLoginShell, isCopilotAvailable, isTmuxAvailable, quoteShellArg, quoteForCmd, tmuxExec, } from './tmux-utils.js';
 import { configureTmuxClipboardForCurrentSession, configureTmuxClipboardForSession } from './tmux-clipboard.js';
 import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
 import { OMC_CONFIG_FILE_REL } from '../lib/paths.js';
@@ -1279,16 +1279,41 @@ function runClaudeOutsideTmux(cwd, args, _sessionId, options = {}) {
 function runClaudeDirect(cwd, args) {
     const binary = getHostCliBinary();
     try {
-        execFileSync(binary, args, {
-            cwd,
-            stdio: 'inherit',
-            shell: process.platform === 'win32',
-        });
+        if (process.platform === 'win32') {
+            // A native .exe is spawned directly; only a .cmd shim goes through
+            // cmd.exe, where quoteForCmd refuses `%` rather than let it expand.
+            const launch = buildHostBinarySpawn(binary, args);
+            const result = spawnSync(launch.command, launch.args, {
+                cwd,
+                stdio: 'inherit',
+                windowsVerbatimArguments: launch.windowsVerbatimArguments,
+            });
+            // Handle a missing binary/cmd.exe (ENOENT) or cmd's command-not-recognized (exit 9009)
+            const spawnError = result.error;
+            if (spawnError?.code === 'ENOENT' || (launch.windowsVerbatimArguments && result.status === 9009)) {
+                console.error(`[omc] Error: ${binary} CLI not found in PATH.`);
+                process.exit(1);
+            }
+            // Propagate the host CLI's exit code so omc does not swallow failures
+            if (result.status !== 0) {
+                process.exit(result.status ?? 1);
+            }
+        }
+        else {
+            execFileSync(binary, args, {
+                cwd,
+                stdio: 'inherit',
+            });
+        }
     }
     catch (error) {
         const err = error;
         if (err.code === 'ENOENT') {
             console.error(`[omc] Error: ${binary} CLI not found in PATH.`);
+            process.exit(1);
+        }
+        if (err.message === 'cmd_argv_percent_unsupported') {
+            console.error(`[omc] Error: ${binary} is a .cmd shim on this machine and cmd.exe would expand '%' in its arguments; remove the '%' or install the native ${binary} executable.`);
             process.exit(1);
         }
         // Propagate Claude's exit code so omc does not swallow failures

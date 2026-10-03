@@ -516,3 +516,57 @@ describe('Ralph PRD Module', () => {
     });
   });
 });
+
+describe('PRD run-field preservation (repoQualityClass / feedbackCommands)', () => {
+  let dir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  beforeEach(() => {
+    dir = join(tmpdir(), `ralph-prd-fields-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = dir;
+    process.env.USERPROFILE = dir;
+    mkdirSync(dir, { recursive: true });
+  });
+  afterEach(() => {
+    if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = previousUserProfile;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const base: PRD = {
+    project: 'Fields',
+    branchName: 'ralph/fields',
+    description: 'Run fields survive code-mediated writes',
+    userStories: [
+      {
+        id: 'US-001',
+        title: 'One story',
+        description: 'd',
+        acceptanceCriteria: ['Criterion one that is long enough to count'],
+        priority: 1,
+        passes: false,
+        architectVerified: false
+      }
+    ]
+  };
+
+  it('preserves valid repoQualityClass and feedbackCommands through markStoryComplete', () => {
+    const prd: PRD = { ...base, repoQualityClass: 'library', feedbackCommands: ['npm run build', 'npm test'] };
+    expect(writePrd(dir, prd)).toBe(true);
+    expect(markStoryComplete(dir, 'US-001')).toBe(true);
+    const after = readPrd(dir);
+    expect(after?.repoQualityClass).toBe('library');
+    expect(after?.feedbackCommands).toEqual(['npm run build', 'npm test']);
+  });
+
+  it('drops invalid values fail-soft without invalidating the PRD', () => {
+    const prd = { ...base, repoQualityClass: 'garbage', feedbackCommands: ['npm test', 42, ''] } as unknown as PRD;
+    expect(writePrd(dir, prd)).toBe(true);
+    const after = readPrd(dir);
+    expect(after).not.toBeNull();
+    expect(after?.repoQualityClass).toBeUndefined();
+    expect(after?.feedbackCommands).toEqual(['npm test']);
+  });
+});

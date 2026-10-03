@@ -3034,4 +3034,122 @@ describe('worker launch acknowledgement', () => {
     await symlink(materialized.wrapperPath, materialized.bootstrapDescriptorPath);
     await expect(readAndConsumeWorkerLaunchDescriptor(materialized.bootstrapDescriptorPath)).rejects.toThrow();
   });
+
+  it('resolves env passthrough at provider exec time without persisting to bootstrap.json', async () => {
+    const sourceEnv = {
+      PATH: '/usr/bin:/bin',
+      HOME: '/home/provider',
+      CUSTOM_PROVIDER_TOKEN: 'secret-token-123',
+      ANOTHER_CUSTOM_VAR: 'another-value',
+    };
+
+    // Verify that without passthrough, custom vars are NOT in the environment
+    const runtimeEnv = buildProviderEnvironment(
+      { EXPLICIT: 'yes' },
+      sourceEnv,
+      'linux',
+    );
+    expect(runtimeEnv).toHaveProperty('EXPLICIT', 'yes');
+    expect(runtimeEnv).not.toHaveProperty('CUSTOM_PROVIDER_TOKEN');
+    expect(runtimeEnv).not.toHaveProperty('ANOTHER_CUSTOM_VAR');
+
+    // Verify that custom vars ARE included when passthrough is specified
+    const runtimeEnvWithPassthrough = buildProviderEnvironment(
+      { EXPLICIT: 'yes' },
+      sourceEnv,
+      'linux',
+      ['CUSTOM_PROVIDER_TOKEN', 'ANOTHER_CUSTOM_VAR'],
+    );
+    expect(runtimeEnvWithPassthrough).toHaveProperty('EXPLICIT', 'yes');
+    expect(runtimeEnvWithPassthrough).toHaveProperty('CUSTOM_PROVIDER_TOKEN', 'secret-token-123');
+    expect(runtimeEnvWithPassthrough).toHaveProperty('ANOTHER_CUSTOM_VAR', 'another-value');
+
+    // Passthrough vars that don't exist in sourceEnv should be silently skipped
+    const runtimeEnvMissingVar = buildProviderEnvironment(
+      { EXPLICIT: 'yes' },
+      sourceEnv,
+      'linux',
+      ['NONEXISTENT_VAR', 'CUSTOM_PROVIDER_TOKEN'],
+    );
+    expect(runtimeEnvMissingVar).toHaveProperty('CUSTOM_PROVIDER_TOKEN', 'secret-token-123');
+    expect(runtimeEnvMissingVar).not.toHaveProperty('NONEXISTENT_VAR');
+  });
+
+  it('parses OMC_TEAM_WORKER_ENV_PASSTHROUGH from source environment', () => {
+    const sourceEnv = {
+      PATH: '/usr/bin',
+      HOME: '/home/user',
+      OMC_TEAM_WORKER_ENV_PASSTHROUGH: 'CUSTOM_VAR1, CUSTOM_VAR2, CUSTOM_VAR3',
+      CUSTOM_VAR1: 'value1',
+      CUSTOM_VAR2: 'value2',
+      CUSTOM_VAR3: 'value3',
+    };
+
+    // When OMC_TEAM_WORKER_ENV_PASSTHROUGH is set, those vars should be included
+    const runtimeEnv = buildProviderEnvironment(
+      {},
+      sourceEnv,
+      'linux',
+    );
+    expect(runtimeEnv).toHaveProperty('CUSTOM_VAR1', 'value1');
+    expect(runtimeEnv).toHaveProperty('CUSTOM_VAR2', 'value2');
+    expect(runtimeEnv).toHaveProperty('CUSTOM_VAR3', 'value3');
+    // The passthrough env var itself should NOT be in the output
+    expect(runtimeEnv).not.toHaveProperty('OMC_TEAM_WORKER_ENV_PASSTHROUGH');
+  });
+
+  it('validates passthrough env var names and rejects invalid syntax', () => {
+    const sourceEnv = {
+      PATH: '/usr/bin',
+      HOME: '/home/user',
+      VALID_NAME: 'value',
+    };
+
+    // Valid names should work
+    expect(() => buildProviderEnvironment(
+      {},
+      sourceEnv,
+      'linux',
+      ['VALID_NAME', '_UNDERSCORE_PREFIX', 'VAR123'],
+    )).not.toThrow();
+
+    // Invalid names should be rejected
+    expect(() => buildProviderEnvironment(
+      {},
+      sourceEnv,
+      'linux',
+      ['INVALID-NAME'],
+    )).toThrow('worker_launch_env_passthrough_key_invalid');
+
+    expect(() => buildProviderEnvironment(
+      {},
+      sourceEnv,
+      'linux',
+      ['123INVALID'],
+    )).toThrow('worker_launch_env_passthrough_key_invalid');
+  });
+
+  it('rejects reserved and internal env var names in passthrough', () => {
+    const sourceEnv = {
+      PATH: '/usr/bin',
+      HOME: '/home/user',
+      OMC_WORKER_LAUNCH_SPEC: 'value',
+    };
+
+    // Internal keys should be rejected
+    expect(() => buildProviderEnvironment(
+      {},
+      sourceEnv,
+      'linux',
+      ['OMC_WORKER_LAUNCH_SPEC'],
+    )).toThrow('worker_launch_env_passthrough_key_reserved');
+
+    // Windows reserved keys should be rejected on win32
+    expect(() => buildProviderEnvironment(
+      {},
+      sourceEnv,
+      'win32',
+      ['SYSTEMROOT'],
+    )).toThrow('worker_launch_env_passthrough_key_reserved');
+  });
 });

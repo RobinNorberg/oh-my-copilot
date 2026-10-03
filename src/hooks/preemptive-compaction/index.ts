@@ -230,13 +230,14 @@ export function createPreemptiveCompactionHook(
   return {
     /**
      * PostToolUse - Check context usage after large tool outputs
+     * Returns Promise<string | null> to support active mode Jev resolution
      */
-    postToolUse: (input: {
+    postToolUse: async (input: {
       tool_name: string;
       session_id: string;
       tool_input: Record<string, unknown>;
       tool_response?: string;
-    }): string | null => {
+    }): Promise<string | null> => {
       if (!input.tool_response) {
         return null;
       }
@@ -290,17 +291,22 @@ export function createPreemptiveCompactionHook(
         return null;
       }
 
-      // Jev shadow judgment (point 5, context-pruning): fire-and-forget. The
-      // heuristic decision above is untouched; with no key configured this is
-      // a no-op with zero HTTP calls.
-      void recordContextPruningShadow({
+      // Jev shadow judgment (point 5, context-pruning): await for active mode,
+      // fire-and-forget for shadow/off. In active mode, use Jev's action;
+      // otherwise use the heuristic.
+      let finalAction = usage.action;
+      const jevResult = await recordContextPruningShadow({
         action: usage.action,
         totalTokens: state.estimatedTokens,
         candidates: [buildPruningCandidate(input.tool_name, input.tool_response)],
         fetchFn: config?.jevFetchFn,
-      }).catch(() => {
-        // Shadow-only recording must never affect the compaction path.
-      });
+      }).catch(() => undefined);
+      
+      // In active mode with valid answer, use Jev's action instead of heuristic
+      if (jevResult && jevResult.mode === 'active' && jevResult.source === 'jev') {
+        finalAction = jevResult.answer as 'none' | 'warn' | 'compact';
+        usage.action = finalAction;
+      }
 
       if (!shouldShowWarning(input.session_id, config)) {
         return null;

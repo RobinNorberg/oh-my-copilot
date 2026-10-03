@@ -92,6 +92,39 @@ describe('runtime owner epochs', () => {
         const missingHelpers = vi.fn(() => { throw new Error('missing'); });
         expect(processStartIdentityForPlatform(42, 'darwin', missingHelpers)).toBeNull();
     });
+    it('uses positive PowerShell creation ticks as a strict Windows process identity', () => {
+        const ticks = '638878752000000000';
+        const exec = vi.fn(() => `${ticks}\n`);
+        expect(strictProcessStartIdentityForPlatform(42, 'win32', exec)).toBe(`win32:${ticks}`);
+        expect(exec).toHaveBeenCalledWith('powershell.exe', [
+            '-NoProfile', '-NonInteractive', '-Command',
+            '(Get-Process -Id 42 -ErrorAction Stop).StartTime.ToUniversalTime().Ticks',
+        ], { encoding: 'utf8', windowsHide: true });
+        expect(isValidStrictProcessStartIdentity(`win32:${ticks}`, 'win32')).toBe(true);
+        expect(isValidStrictProcessStartIdentity('win32:0', 'win32')).toBe(false);
+        expect(isValidStrictProcessStartIdentity('win32:not-ticks', 'win32')).toBe(false);
+        expect(isValidStrictProcessStartIdentity('win32:', 'win32')).toBe(false);
+    });
+    it.each(['', '0', '0000000000000000000', 'garbage'])('rejects invalid strict Windows probe output %j', (output) => {
+        const exec = vi.fn(() => output);
+        expect(strictProcessStartIdentityForPlatform(42, 'win32', exec)).toBeNull();
+    });
+    it('round-trips Windows process-start ticks through owner-epoch records', () => {
+        const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        const identity = 'win32:638878752000000000';
+        try {
+            const record = publishOwnerEpoch(cwd, teamName, 1, {
+                pid: 42,
+                processStartedAt: identity,
+                nonce: 'windows-owner',
+            });
+            expect(isValidProcessStartIdentity(identity)).toBe(true);
+            expect(readLatestOwnerEpoch(cwd, teamName)).toEqual(record);
+        }
+        finally {
+            platform.mockRestore();
+        }
+    });
     it('binds strict Linux identities to boot id and start ticks', () => {
         const fields = Array.from({ length: 20 }, () => '1');
         fields[18] = '456';

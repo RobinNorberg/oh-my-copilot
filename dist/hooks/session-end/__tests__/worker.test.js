@@ -33,8 +33,15 @@ const actionRunner = vi.hoisted(() => ({
 vi.mock('../index.js', () => actions);
 vi.mock('../../../platform/process-utils.js', () => processIdentity);
 vi.mock('../action-runner.js', () => actionRunner);
+// executeSpawnNext must never reach the real spawn in tests; the self-heal test
+// asserts the backstop hands the enqueued chain to it.
+vi.mock('../spawn-next.js', async (importOriginal) => {
+    const actual = await importOriginal();
+    return { ...actual, executeSpawnNext: vi.fn(() => undefined) };
+});
 import { isManifestTerminal, mutateSessionEndJob, prepareCoreManifest, readSessionEndJob, sealCoreManifest, sealWikiManifest, takeSessionEndDiscoveryPage } from '../cleanup-manifest.js';
 import { processSessionEndWorker, reconcileSessionEndJobs, workerEnvironment } from '../worker.js';
+import { executeSpawnNext } from '../spawn-next.js';
 const directories = [];
 let previousHome;
 let previousUserProfile;
@@ -168,6 +175,72 @@ describe('SessionEnd durable worker', () => {
             producers: { core: { state: 'sealed', sealedBy: 'recovery' }, wiki: { state: 'sealed' } },
         });
     });
+    it('reschedules a sealed-core manifest with absent wiki through producer grace and completes deferred actions', async () => {
+        vi.useFakeTimers();
+        actionRunner.runSessionEndAction.mockResolvedValue({ code: 'completed', completed: true });
+        const directory = project();
+        const sessionId = 'sealed-core-absent-wiki-grace';
+        expect(prepareCoreManifest(directory, sessionId, {})).not.toBeNull();
+        const initial = readSessionEndJob(directory, sessionId);
+        // Simulate the inline foreground path: core sealed by foreground, foreground cleanup completed inline, wiki producer never registered.
+        expect(mutateSessionEndJob(directory, sessionId, initial.revision, (job) => {
+            job.producers.core = { state: 'sealed', intentKey: job.producers.core.intentKey, payloadDigest: job.producers.core.payloadDigest, sealedAt: new Date().toISOString(), sealedBy: 'foreground' };
+            const foreground = job.actions['foreground-cleanup'];
+            foreground.status = 'completed';
+            foreground.completedAt = new Date().toISOString();
+            foreground.lastOutcomeCode = 'completed';
+            job.producerGraceExpiresAt = new Date(Date.now() + 1_000).toISOString();
+        })).not.toBeNull();
+        await processSessionEndWorker({ directory, sessionId });
+        expect(vi.getTimerCount()).toBeGreaterThan(0);
+        expect(readSessionEndJob(directory, sessionId)).toMatchObject({
+            producers: { core: { state: 'sealed' }, wiki: { state: 'absent' } },
+        });
+        await vi.advanceTimersByTimeAsync(1_000);
+        await vi.runAllTimersAsync();
+        expect(readSessionEndJob(directory, sessionId)).toMatchObject({
+            phase: 'complete',
+            producers: { core: { state: 'sealed' }, wiki: { state: 'no-op', sealedBy: 'recovery' } },
+        });
+        expect(readSessionEndJob(directory, sessionId).actions['spawn-next']).toMatchObject({ status: 'completed', attempts: 1 });
+    });
+    it('producer-absent self-heal: enqueued chain advances via executeSpawnNext after grace', async () => {
+        vi.useFakeTimers();
+        // mockResolvedValue in earlier tests replaces the executing hoisted mock;
+        // restore the behavior that runs executeSessionEndAction's callback.
+        actionRunner.runSessionEndAction.mockImplementation(async (_context, execute) => {
+            await execute();
+            return { code: 'completed', completed: true };
+        });
+        const directory = project();
+        const sessionId = 'selfheal-chain-advance';
+        const chain = { outcome: 'success', reason: 'prompt_input_exit', routeTable: { 'success:*': { stage: 'launch', skill: 'launch' } }, sessionId, intentId: 'i-selfheal' };
+        expect(prepareCoreManifest(directory, sessionId, { chain })).not.toBeNull();
+        const initial = readSessionEndJob(directory, sessionId);
+        // Simulate the standalone hook flow: core sealed by foreground, foreground
+        // cleanup completed inline, no wiki producer and no listener (producer absent).
+        expect(mutateSessionEndJob(directory, sessionId, initial.revision, (job) => {
+            job.producers.core = { state: 'sealed', intentKey: job.producers.core.intentKey, payloadDigest: job.producers.core.payloadDigest, sealedAt: new Date().toISOString(), sealedBy: 'foreground' };
+            const foreground = job.actions['foreground-cleanup'];
+            foreground.status = 'completed';
+            foreground.completedAt = new Date().toISOString();
+            foreground.lastOutcomeCode = 'completed';
+            job.producerGraceExpiresAt = new Date(Date.now() + 1_000).toISOString();
+        })).not.toBeNull();
+        // First worker pass: wiki absent so the backstop has not fired yet.
+        await processSessionEndWorker({ directory, sessionId });
+        expect(executeSpawnNext).not.toHaveBeenCalled();
+        // Self-wake after producer grace: recovery converts absent wiki → no-op and
+        // the deferred spawn-next action advances the chain one stage.
+        await vi.advanceTimersByTimeAsync(1_000);
+        await vi.runAllTimersAsync();
+        expect(vi.mocked(executeSpawnNext)).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(executeSpawnNext)).toHaveBeenCalledWith(chain, directory);
+        expect(readSessionEndJob(directory, sessionId).actions['spawn-next']).toMatchObject({ status: 'completed', attempts: 1 });
+        // Restore the mock shape later tests in this file inherit (mock
+        // implementations survive clearAllMocks).
+        actionRunner.runSessionEndAction.mockResolvedValue({ code: 'completed', completed: true });
+    });
     it('fails closed after grace when a wiki-first manifest never receives core, without a 250ms recovery loop', async () => {
         vi.useFakeTimers();
         const directory = project();
@@ -222,6 +295,35 @@ describe('SessionEnd durable worker', () => {
             tmuxPane: '%42',
         });
         expect(JSON.stringify(routing)).not.toContain('original-secret');
+        // On Windows, APPDATA/LOCALAPPDATA should be forwarded for gh auth
+        const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+        try {
+            vi.stubEnv('APPDATA', 'C:\\Users\\Test\\AppData\\Roaming');
+            vi.stubEnv('LOCALAPPDATA', 'C:\\Users\\Test\\AppData\\Local');
+            expect(workerEnvironment()).toHaveProperty('APPDATA');
+            expect(workerEnvironment()).toHaveProperty('LOCALAPPDATA');
+        }
+        finally {
+            if (originalPlatform)
+                Object.defineProperty(process, 'platform', originalPlatform);
+            else
+                Object.defineProperty(process, 'platform', { value: process.platform === 'win32' ? 'linux' : process.platform, configurable: true });
+        }
+        // Model provider auth must reach worker-spawned sessions, or they exit "Not logged in"
+        vi.stubEnv('ANTHROPIC_AUTH_TOKEN', 'test-token');
+        vi.stubEnv('ANTHROPIC_BASE_URL', 'https://example.invalid');
+        expect(workerEnvironment()).toHaveProperty('ANTHROPIC_AUTH_TOKEN', 'test-token');
+        expect(workerEnvironment()).toHaveProperty('ANTHROPIC_BASE_URL', 'https://example.invalid');
+        vi.stubEnv('COPILOT_GITHUB_TOKEN', 'copilot-token');
+        vi.stubEnv('COPILOT_ALLOW_ALL', 'true');
+        expect(workerEnvironment()).toHaveProperty('COPILOT_GITHUB_TOKEN', 'copilot-token');
+        expect(workerEnvironment()).not.toHaveProperty('COPILOT_ALLOW_ALL');
+        // On POSIX, APPDATA/LOCALAPPDATA should not be forwarded
+        if (process.platform !== 'win32') {
+            expect(workerEnvironment()).not.toHaveProperty('APPDATA');
+            expect(workerEnvironment()).not.toHaveProperty('LOCALAPPDATA');
+        }
         expect(workerEnvironment()).not.toHaveProperty('OMC_OPENCLAW_CONFIG');
         expect(workerEnvironment()).not.toHaveProperty('OPENCLAW_REPLY_THREAD');
         expect(workerEnvironment()).not.toHaveProperty('TMUX');

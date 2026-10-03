@@ -7,16 +7,37 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>();
+  const execFileSync = vi.fn();
+  // Windows test hosts: runClaudeDirect routes the host CLI through
+  // `COMSPEC /d /s /c "<line>"` (spawnSync, #4154) instead of execFileSync.
+  // By default, replay that command line into the execFileSync mock so the
+  // shared direct-launch assertions hold on every platform; the dedicated
+  // #4154 tests override spawnSync with explicit return values.
+  const spawnSync = vi.fn((file: string, args?: readonly string[], options?: { cwd?: string; stdio?: unknown }) => {
+    if (!Array.isArray(args) || args[0] !== '/d' || args[2] !== '/c') return { status: 0 };
+    // `/s` strips the outer quote pair buildHostBinarySpawn wraps the line in.
+    const line = String(args[3]).replace(/^"([\s\S]*)"$/, '$1');
+    const tokens = [...line.matchAll(/"((?:[^"]|"")*)"|(\S+)/g)]
+      .map((m) => (m[1] !== undefined ? m[1].replace(/""/g, '"') : m[2]));
+    try {
+      execFileSync(tokens[0], tokens.slice(1), { cwd: options?.cwd, stdio: options?.stdio });
+      return { status: 0 };
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException & { status?: number | null };
+      return err.code === 'ENOENT' ? { status: null, error: err } : { status: err.status ?? null };
+    }
+  });
   return {
     ...actual,
-    execFileSync: vi.fn(),
+    execFileSync,
+    spawnSync,
   };
 });
 
@@ -228,20 +249,65 @@ describe('runClaude — exit code propagation', () => {
       expect(processExitSpy).not.toHaveBeenCalled();
     });
 
-    it('uses shell:true on win32 so claude.cmd can launch', () => {
+    it('launches claude via COMSPEC with verbatim args on win32 (no shell:true, #4154)', () => {
+      const originalPlatform = process.platform;
+      const originalComspec = process.env.COMSPEC;
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      process.env.COMSPEC = 'C:\\Windows\\System32\\cmd.exe';
+      try {
+        vi.mocked(spawnSync).mockReturnValue({ status: 0 } as ReturnType<typeof spawnSync>);
+
+        runClaude('/tmp', ['--resume', 'a b'], 'sid');
+
+        expect(vi.mocked(execFileSync)).not.toHaveBeenCalled();
+        expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+          'C:\\Windows\\System32\\cmd.exe',
+          ['/d', '/s', '/c', '"claude --resume "a b""'],
+          { cwd: '/tmp', stdio: 'inherit', windowsVerbatimArguments: true },
+        );
+      } finally {
+        Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+        if (originalComspec === undefined) delete process.env.COMSPEC;
+        else process.env.COMSPEC = originalComspec;
+      }
+    });
+
+    it('spawns a native host .exe directly on win32 with the argv array (no cmd.exe)', () => {
       const originalPlatform = process.platform;
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-      (execFileSync as ReturnType<typeof vi.fn>).mockReturnValue(Buffer.from(''));
+      try {
+        // where.exe (run by resolveHostBinaryLaunch) reports a native install.
+        vi.mocked(spawnSync).mockImplementation(((file: string) => (file === 'where.exe'
+          ? { status: 0, signal: null, stdout: 'C:\\bin\\claude.exe\r\n' }
+          : { status: 0 })) as unknown as typeof spawnSync);
 
-      runClaude('/tmp', ['--resume'], 'sid');
+        runClaude('/tmp', ['--resume', '%PATH% "x"'], 'sid');
 
-      expect(vi.mocked(execFileSync)).toHaveBeenCalledWith('claude', ['--resume'], {
-        cwd: '/tmp',
-        stdio: 'inherit',
-        shell: true,
-      });
+        expect(vi.mocked(spawnSync)).toHaveBeenCalledWith(
+          'C:\\bin\\claude.exe',
+          ['--resume', '%PATH% "x"'],
+          { cwd: '/tmp', stdio: 'inherit', windowsVerbatimArguments: false },
+        );
+      } finally {
+        Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      }
+    });
 
-      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    it('maps cmd.exe exit 9009 on win32 to the claude-not-found error', () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        vi.mocked(spawnSync).mockReturnValue({ status: 9009 } as ReturnType<typeof spawnSync>);
+        runClaude('/tmp', [], 'sid');
+        expect(errSpy).toHaveBeenCalledWith('[omc] Error: claude CLI not found in PATH.');
+        expect(exitSpy).toHaveBeenCalledWith(1);
+      } finally {
+        exitSpy.mockRestore();
+        errSpy.mockRestore();
+        Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      }
     });
   });
 

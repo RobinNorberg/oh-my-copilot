@@ -96,7 +96,9 @@ describe('copilot/hooks.json generation', () => {
         expect(scripts).not.toContain('setup-maintenance.mjs');
     });
     it('keeps PreToolUse/PermissionRequest matchers that are not "*"', () => {
-        expect(generated.hooks.PreToolUse.every(entry => entry.matcher === undefined)).toBe(true);
+        // Only upstream's Bash-scoped git-guardrails entry (#4140-era) carries a PreToolUse matcher.
+        expect(generated.hooks.PreToolUse.map(entry => entry.matcher)).toEqual([undefined, 'Bash']);
+        expect(generated.hooks.PreToolUse[1].args.at(-1)).toMatch(/git-guardrails\.mjs$/);
         expect(generated.hooks.PermissionRequest.map(entry => entry.matcher)).toEqual(['Bash']);
     });
     it('throws on any command or field outside the upstream form', async () => {

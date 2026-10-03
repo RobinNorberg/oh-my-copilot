@@ -131,5 +131,13 @@ export declare function processHook(hookType: HookType, rawInput: HookInput): Pr
  * Reads JSON from stdin, processes hook, writes JSON to stdout
  */
 export declare function main(): Promise<void>;
+/**
+ * Symlink-robust entry comparison: two URLs are the same entry when they are
+ * identical or when their realpaths match. A symlinked entry (e.g.
+ * ~/.local/bin/omc -> bridge/cli.cjs) yields a different URL than the module's
+ * own, but points at the same real file — the bridge must still dispatch
+ * instead of exiting silently. Exported for tests.
+ */
+export declare function isSameEntryRealpath(entryUrl: string | undefined, moduleUrl: string): boolean;
 export {};
 //# sourceMappingURL=bridge.d.ts.map

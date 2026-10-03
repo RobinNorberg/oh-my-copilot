@@ -167,6 +167,30 @@ export function resolveExecutable(
   return resolveCliPath(binary, platformModel(platform));
 }
 
+export interface HostBinaryLaunch {
+  /** What to start: the resolved absolute path, or the bare name when it could not be resolved. */
+  file: string;
+  /** True when `file` must be started through cmd.exe (a `.cmd`/`.bat` shim, or an unresolved name). */
+  viaCmd: boolean;
+}
+
+/**
+ * How to start a host CLI. On win32 only a `.cmd`/`.bat` shim needs cmd.exe; a
+ * native `.exe`/`.com` is spawned directly, so Node applies CRT argv quoting
+ * and cmd.exe never sees (or `%VAR%`-expands) the arguments. A name that does
+ * not resolve keeps the cmd.exe route, whose own PATHEXT search finds it.
+ */
+export function resolveHostBinaryLaunch(
+  binary: string,
+  platform: NodeJS.Platform = process.platform,
+): HostBinaryLaunch {
+  if (platform !== 'win32') return { file: binary, viaCmd: false };
+  const resolved = path.win32.isAbsolute(binary) ? binary : resolveExecutable(binary, platform);
+  if (resolved && /\.(exe|com)$/i.test(resolved)) return { file: resolved, viaCmd: false };
+  if (resolved && /\.(cmd|bat)$/i.test(resolved)) return { file: resolved, viaCmd: true };
+  return { file: binary, viaCmd: true };
+}
+
 /**
  * Presence check for a command. Absolute paths are checked on disk; bare names
  * go through the PATH resolver, which is bounded by a timeout so a hook cannot

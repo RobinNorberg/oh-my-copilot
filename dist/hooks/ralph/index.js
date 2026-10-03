@@ -11,7 +11,7 @@ export {
 // State management
 readRalphState, writeRalphState, restoreRalphStateIfAbsent, clearRalphState, incrementRalphIteration, 
 // Loop control
-createRalphLoopHook, 
+createRalphLoopHook, ralphFeedbackGateNotice, 
 // PRD flag helpers
 detectNoPrdFlag, stripNoPrdFlag, detectCriticModeFlag, stripCriticModeFlag, normalizeRalphCriticMode, 
 // Team coordination

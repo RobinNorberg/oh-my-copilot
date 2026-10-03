@@ -11,7 +11,33 @@ export interface TmuxExecOptions {
 }
 export declare function tmuxEnv(): NodeJS.ProcessEnv;
 export declare function isNativeWindowsShell(): boolean;
+/**
+ * Quote one argv element for a `COMSPEC /d /s /c "<line>"` command line that
+ * starts a `.cmd`/`.bat` shim. The element must survive two parsers:
+ * - cmd.exe toggles quote state on every `"`, so embedded quotes are doubled
+ *   (`""`) to keep parity and leave `&|<>^()` inside a quoted region;
+ * - the CRT argv parser of the program the shim starts treats backslashes as
+ *   literal unless they precede a quote, so a run of backslashes before an
+ *   embedded quote or the closing quote is doubled. `""` inside a quoted
+ *   region reads back as one literal `"` (MSVC 2008+ CRT, UCRT).
+ * `%` is rejected outright: cmd.exe expands `%VAR%` even inside quotes and
+ * has no escape for it on a `/c` command line. Free text (prompts, bodies)
+ * must reach the child over stdin, or the child must be a native .exe
+ * spawned without cmd.exe.
+ */
 export declare function quoteForCmd(arg: string): string;
+export interface HostBinarySpawn {
+    command: string;
+    args: string[];
+    windowsVerbatimArguments: boolean;
+}
+/**
+ * Spawn plan for a host CLI (copilot/claude/gh). A native executable is
+ * started directly with an argv array; only a `.cmd`/`.bat` shim (or an
+ * unresolved name) goes through `COMSPEC /d /s /c "<line>"` with every element
+ * quoted by quoteForCmd.
+ */
+export declare function buildHostBinarySpawn(binary: string, args: readonly string[], comspec?: string): HostBinarySpawn;
 export declare function escapeForCmdSet(value: string): string;
 export declare function tmuxExec(args: string[], opts?: TmuxExecOptions & Omit<ExecFileSyncOptionsWithStringEncoding, 'env' | 'encoding'> & {
     encoding?: BufferEncoding;

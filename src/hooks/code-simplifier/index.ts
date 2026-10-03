@@ -4,7 +4,7 @@
  * Intercepts Stop events to automatically delegate recently modified files
  * to the code-simplifier agent for cleanup and simplification.
  *
- * Opt-in via global OMC config.json (XDG-aware on Linux/Unix, legacy ~/.omc fallback)
+ * Opt-in via global OMC config.json (XDG-aware on Linux/Unix, legacy ~/.omg fallback)
  * Default: disabled (opt-in only)
  */
 

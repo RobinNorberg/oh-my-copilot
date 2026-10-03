@@ -19,7 +19,13 @@ vi.mock('child_process', async (importOriginal) => {
         spawnSync: vi.fn(),
     };
 });
-import { buildTmuxShellCommand, buildTmuxShellCommandWithEnv, createHudWatchPane, isCopilotAvailable, isNativeWindowsShell, killTmuxPane, listHudWatchPaneIdsInCurrentWindow, resolveLaunchPolicy, tmuxExec, tmuxEnv, tmuxSpawn, tmuxCmdAsync, wrapWithLoginShell, quoteShellArg, sanitizeTmuxToken, } from '../tmux-utils.js';
+const resolution = vi.hoisted(() => ({ resolveHostBinaryLaunch: vi.fn() }));
+vi.mock('../../platform/executable-resolution.js', async (importOriginal) => {
+    const actual = await importOriginal();
+    resolution.resolveHostBinaryLaunch.mockImplementation(actual.resolveHostBinaryLaunch);
+    return { ...actual, resolveHostBinaryLaunch: resolution.resolveHostBinaryLaunch };
+});
+import { buildHostBinarySpawn, buildTmuxShellCommand, buildTmuxShellCommandWithEnv, createHudWatchPane, quoteForCmd, isCopilotAvailable, isNativeWindowsShell, killTmuxPane, listHudWatchPaneIdsInCurrentWindow, resolveLaunchPolicy, tmuxExec, tmuxEnv, tmuxSpawn, tmuxCmdAsync, wrapWithLoginShell, quoteShellArg, sanitizeTmuxToken, } from '../tmux-utils.js';
 import { win32 } from 'path';
 import { PSMUX_NS_DIR, __setPsmuxDetectionForTests } from '../../team/psmux-adapter.js';
 const mockedExecFileSync = vi.mocked(execFileSync);
@@ -149,40 +155,150 @@ describe('resolveLaunchPolicy', () => {
         Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     });
 });
+describe('quoteForCmd (cmd.exe + CRT argv quoting)', () => {
+    it('doubles a backslash run before an embedded quote so `\\"` cannot split argv', () => {
+        // Reviewer repro (t2.js): `a\" --allow-all-tools \"` must reach the child as ONE element.
+        expect(quoteForCmd('a\\" --allow-all-tools \\"')).toBe('"a\\\\"" --allow-all-tools \\\\"""');
+    });
+    it('doubles embedded quotes so cmd.exe quote parity stays even', () => {
+        expect(quoteForCmd('x" & echo PWNED & "')).toBe('"x"" & echo PWNED & """');
+        expect(quoteForCmd('a"b')).toBe('"a""b"');
+    });
+    it('rejects % instead of pretending to escape it (cmd.exe expands %VAR% inside quotes)', () => {
+        expect(() => quoteForCmd('%PATH%')).toThrow('cmd_argv_percent_unsupported');
+        expect(() => quoteForCmd('100% done')).toThrow('cmd_argv_percent_unsupported');
+        expect(() => quoteForCmd('%%SECRET%%')).toThrow('cmd_argv_percent_unsupported');
+    });
+    it.each(['a & b', 'a|b', 'a^b', 'a<b>c', '(a)', 'a !VAR! b'])('keeps cmd metacharacters inside one quoted element: %j', (arg) => {
+        expect(quoteForCmd(arg)).toBe(`"${arg}"`);
+    });
+    it('doubles a trailing backslash run before the closing quote', () => {
+        expect(quoteForCmd('C:\\Program Files\\x\\')).toBe('"C:\\Program Files\\x\\\\"');
+        expect(quoteForCmd('trail two\\\\')).toBe('"trail two\\\\\\\\"');
+        // Unquoted (no metacharacters): backslashes are literal to the CRT.
+        expect(quoteForCmd('trailing\\')).toBe('trailing\\');
+    });
+    it('quotes the empty string and still rejects CR/LF/NUL', () => {
+        expect(quoteForCmd('')).toBe('""');
+        expect(() => quoteForCmd('a\nb')).toThrow();
+        expect(() => quoteForCmd('a\rb')).toThrow();
+        expect(() => quoteForCmd('a\0b')).toThrow();
+    });
+});
+describe('buildHostBinarySpawn', () => {
+    it('spawns a native .exe directly with the argv array (no cmd.exe, no verbatim)', () => {
+        resolution.resolveHostBinaryLaunch.mockReturnValueOnce({ file: 'C:\\bin\\copilot.exe', viaCmd: false });
+        expect(buildHostBinarySpawn('copilot', ['-p', '%PATH% "x"'], 'C:\\Windows\\System32\\cmd.exe')).toEqual({
+            command: 'C:\\bin\\copilot.exe',
+            args: ['-p', '%PATH% "x"'],
+            windowsVerbatimArguments: false,
+        });
+    });
+    it('routes a .cmd shim through COMSPEC /d /s /c with an outer-quoted, quoteForCmd-quoted line', () => {
+        resolution.resolveHostBinaryLaunch.mockReturnValueOnce({ file: 'C:\\Program Files\\nodejs\\copilot.cmd', viaCmd: true });
+        expect(buildHostBinarySpawn('copilot', ['--allow-tool=shell(npm test)', '--no-ask-user'], 'C:\\Windows\\System32\\cmd.exe')).toEqual({
+            command: 'C:\\Windows\\System32\\cmd.exe',
+            args: ['/d', '/s', '/c', '""C:\\Program Files\\nodejs\\copilot.cmd" "--allow-tool=shell(npm test)" --no-ask-user"'],
+            windowsVerbatimArguments: true,
+        });
+    });
+    it('throws rather than put % on a cmd.exe line', () => {
+        resolution.resolveHostBinaryLaunch.mockReturnValueOnce({ file: 'copilot', viaCmd: true });
+        expect(() => buildHostBinarySpawn('copilot', ['%USERPROFILE%'])).toThrow('cmd_argv_percent_unsupported');
+    });
+});
+describe('resolveHostBinaryLaunch', () => {
+    it('never routes through cmd.exe off win32', async () => {
+        const { resolveHostBinaryLaunch } = await vi.importActual('../../platform/executable-resolution.js');
+        expect(resolveHostBinaryLaunch('copilot', 'linux')).toEqual({ file: 'copilot', viaCmd: false });
+    });
+    it('classifies absolute win32 paths by extension', async () => {
+        const { resolveHostBinaryLaunch } = await vi.importActual('../../platform/executable-resolution.js');
+        expect(resolveHostBinaryLaunch('C:\\bin\\copilot.exe', 'win32')).toEqual({ file: 'C:\\bin\\copilot.exe', viaCmd: false });
+        expect(resolveHostBinaryLaunch('C:\\npm\\copilot.cmd', 'win32')).toEqual({ file: 'C:\\npm\\copilot.cmd', viaCmd: true });
+        expect(resolveHostBinaryLaunch('C:\\npm\\copilot.BAT', 'win32')).toEqual({ file: 'C:\\npm\\copilot.BAT', viaCmd: true });
+    });
+});
 describe('isCopilotAvailable', () => {
-    it('uses shell:true on win32 so npm .cmd wrappers resolve', () => {
+    it('probes the host CLI via COMSPEC with verbatim args on win32 so npm .cmd wrappers resolve (#4154)', () => {
         vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', undefined);
         const originalPlatform = process.platform;
+        const originalComspec = process.env.COMSPEC;
         Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-        mockedExecFileSync.mockReturnValue(Buffer.from('2.1.116'));
-        expect(isCopilotAvailable()).toBe(true);
-        expect(mockedExecFileSync).toHaveBeenCalledWith('copilot', ['--version'], {
-            stdio: 'ignore',
-            shell: true,
-        });
-        Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+        process.env.COMSPEC = 'C:\\Windows\\System32\\cmd.exe';
+        try {
+            mockedSpawnSync.mockClear();
+            mockedExecFileSync.mockClear();
+            resolution.resolveHostBinaryLaunch.mockReturnValueOnce({ file: 'copilot', viaCmd: true });
+            mockedSpawnSync.mockReturnValueOnce({ status: 0 });
+            expect(isCopilotAvailable()).toBe(true);
+            expect(mockedExecFileSync).not.toHaveBeenCalled();
+            expect(mockedSpawnSync).toHaveBeenCalledWith('C:\\Windows\\System32\\cmd.exe', ['/d', '/s', '/c', '"copilot --version"'], { stdio: 'ignore', windowsVerbatimArguments: true });
+            resolution.resolveHostBinaryLaunch.mockReturnValueOnce({ file: 'copilot', viaCmd: true });
+            mockedSpawnSync.mockReturnValueOnce({ status: 9009 });
+            expect(isCopilotAvailable()).toBe(false);
+        }
+        finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+            if (originalComspec === undefined)
+                delete process.env.COMSPEC;
+            else
+                process.env.COMSPEC = originalComspec;
+        }
     });
-    it('probes copilot --version by default (no CLAUDE_CODE_ENTRYPOINT)', () => {
+    it('probes a native copilot.exe directly on win32 (no cmd.exe)', () => {
+        vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', undefined);
+        const originalPlatform = process.platform;
+        const originalComspec = process.env.COMSPEC;
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+        try {
+            mockedSpawnSync.mockClear();
+            resolution.resolveHostBinaryLaunch.mockReturnValueOnce({ file: 'C:\\bin\\copilot.exe', viaCmd: false });
+            mockedSpawnSync.mockReturnValueOnce({ status: 0 });
+            expect(isCopilotAvailable()).toBe(true);
+            expect(mockedSpawnSync).toHaveBeenCalledWith('C:\\bin\\copilot.exe', ['--version'], { stdio: 'ignore', windowsVerbatimArguments: false });
+        }
+        finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+            if (originalComspec === undefined)
+                delete process.env.COMSPEC;
+            else
+                process.env.COMSPEC = originalComspec;
+        }
+    });
+    // Binary-selection cases run on the POSIX branch (execFileSync); the win32
+    // COMSPEC branch is covered above.
+    const onPosix = (fn) => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+        try {
+            fn();
+        }
+        finally {
+            Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+        }
+    };
+    it('probes copilot --version by default (no CLAUDE_CODE_ENTRYPOINT)', () => onPosix(() => {
         vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', undefined);
         mockedExecFileSync.mockClear();
         mockedExecFileSync.mockReturnValue(Buffer.from('1.0.88'));
         expect(isCopilotAvailable()).toBe(true);
         expect(mockedExecFileSync.mock.calls.at(-1)?.slice(0, 2)).toEqual(['copilot', ['--version']]);
-    });
-    it('probes claude --version when CLAUDE_CODE_ENTRYPOINT is set', () => {
+    }));
+    it('probes claude --version when CLAUDE_CODE_ENTRYPOINT is set', () => onPosix(() => {
         vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', 'cli');
         mockedExecFileSync.mockClear();
         mockedExecFileSync.mockReturnValue(Buffer.from('2.1.116'));
         expect(isCopilotAvailable()).toBe(true);
         expect(mockedExecFileSync.mock.calls.at(-1)?.slice(0, 2)).toEqual(['claude', ['--version']]);
-    });
-    it('probes an explicitly passed binary', () => {
+    }));
+    it('probes an explicitly passed binary', () => onPosix(() => {
         vi.stubEnv('CLAUDE_CODE_ENTRYPOINT', undefined);
         mockedExecFileSync.mockClear();
         mockedExecFileSync.mockReturnValue(Buffer.from('2.1.116'));
         expect(isCopilotAvailable('claude')).toBe(true);
         expect(mockedExecFileSync.mock.calls.at(-1)?.slice(0, 2)).toEqual(['claude', ['--version']]);
-    });
+    }));
 });
 // ---------------------------------------------------------------------------
 // tmuxEnv — psmux detached-session env stripping (issue #3265)

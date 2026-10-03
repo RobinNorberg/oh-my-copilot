@@ -17,6 +17,17 @@ import { detectStalePrd, formatStalePrdWarning, reconcileStalePrdForStartup, } f
 import { findProgressPath, getProgressContext, appendProgress, initProgress, addPattern, } from "./progress.js";
 import { readTeamPipelineState } from "../team-pipeline/state.js";
 export const RALPH_CRITIC_MODES = ['architect', 'critic', 'codex'];
+/**
+ * The startup line that makes the feedback gate non-optional for executors
+ * (#45). Skill text alone lost to executor improvisation in live smokes; this
+ * notice is printed by `startLoop` where the stale-PRD warning already proves
+ * reliable, and named here so its contract is testable without state IO.
+ */
+export function ralphFeedbackGateNotice(sessionId) {
+    const session = sessionId ? ` --session ${sessionId}` : '';
+    return (`[RALPH FEEDBACK GATE] Before the first story: run \`omg ralph verify --write-baseline${session}\` to record the feedback baseline. ` +
+        `Every later gate (story verification, post-deslop re-verification): run \`omg ralph verify${session}\` — exit 0 = pass (baseline-only failures are warnings), exit 1 = new failures to fix. Never hand-roll the diff.`);
+}
 const DEFAULT_MAX_ITERATIONS = 10;
 const DEFAULT_RALPH_CRITIC_MODE = 'architect';
 /**
@@ -140,6 +151,11 @@ export function createRalphLoopHook(directory) {
         if (staleReconcile.warning) {
             console.error(staleReconcile.warning);
         }
+        // Feedback-gate contract (#45). Skill text alone did not make headless
+        // executors call `omg ralph verify` — a live smoke watched one check that
+        // omc existed and then hand-roll `npm test` judgment anyway. The command
+        // output below lands where the stale-PRD warning already proves reliable.
+        console.error(ralphFeedbackGateNotice(sessionId));
         if (!findProgressPath(directory)) {
             initProgress(directory);
         }
@@ -213,6 +229,11 @@ export function getPrdCompletionStatus(directory, sessionId) {
  */
 export function getRalphContext(directory, sessionId) {
     const parts = [];
+    // Feedback-gate contract (#45): the gate command must run at every loop
+    // iteration. Skill text alone lost to executor improvisation in live smokes,
+    // so the instruction rides the same injection that carries the stale warning
+    // into every continuation prompt.
+    parts.push(`<feedback-gate>\n${ralphFeedbackGateNotice(sessionId)}\n</feedback-gate>\n`);
     // Add stale-unfinished-PRD warning (#3669): the live loop excludes the
     // active-ralph-state signal (it is the normal case here) and only reports
     // divergence backed by age / stale-pointer signals.

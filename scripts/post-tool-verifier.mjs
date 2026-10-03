@@ -551,11 +551,12 @@ async function maybeBuildPreemptiveCompactionMessage(toolName, data, directory) 
     return '';
   }
 
-  const action = percentUsed >= criticalThreshold ? 'compact' : 'warn';
+  let action = percentUsed >= criticalThreshold ? 'compact' : 'warn';
   const rawResponse = data.tool_response || data.toolOutput || '';
   const toolResponse = typeof rawResponse === 'string' ? rawResponse : JSON.stringify(rawResponse);
   const firstLine = toolResponse.split(/\r?\n/, 1)[0] || '';
-  recordJevShadow({
+  
+  const jevResult = recordJevShadow({
     point: 'context-pruning',
     state: {
       action,
@@ -570,6 +571,11 @@ async function maybeBuildPreemptiveCompactionMessage(toolName, data, directory) 
     questions: CONTEXT_PRUNING_QUESTIONS,
     heuristic: action,
   });
+  
+  // In active mode, use Jev's action instead of heuristic
+  if (jevResult && jevResult.mode === 'active' && jevResult.source === 'jev') {
+    action = jevResult.answer || action;
+  }
 
   const severity = percentUsed >= criticalThreshold ? 'critical' : 'warning';
   const now = Date.now();
