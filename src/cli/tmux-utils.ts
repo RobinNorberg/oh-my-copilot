@@ -13,7 +13,7 @@ import {
 } from 'child_process';
 import { basename } from 'path';
 import { promisify } from 'util';
-import { resolveExecutable } from '../platform/executable-resolution.js';
+import { resolveExecutable, resolveHostBinaryLaunch } from '../platform/executable-resolution.js';
 import { getHostCliBinary } from '../utils/host-detection.js';
 import { isPsmux, translatePsmuxArgs } from '../team/psmux-adapter.js';
 
@@ -55,11 +55,62 @@ export function isNativeWindowsShell(): boolean {
   return process.platform === 'win32' && !isUnixLikeOnWindows();
 }
 
+/**
+ * Quote one argv element for a `COMSPEC /d /s /c "<line>"` command line that
+ * starts a `.cmd`/`.bat` shim. The element must survive two parsers:
+ * - cmd.exe toggles quote state on every `"`, so embedded quotes are doubled
+ *   (`""`) to keep parity and leave `&|<>^()` inside a quoted region;
+ * - the CRT argv parser of the program the shim starts treats backslashes as
+ *   literal unless they precede a quote, so a run of backslashes before an
+ *   embedded quote or the closing quote is doubled. `""` inside a quoted
+ *   region reads back as one literal `"` (MSVC 2008+ CRT, UCRT).
+ * `%` is rejected outright: cmd.exe expands `%VAR%` even inside quotes and
+ * has no escape for it on a `/c` command line. Free text (prompts, bodies)
+ * must reach the child over stdin, or the child must be a native .exe
+ * spawned without cmd.exe.
+ */
 export function quoteForCmd(arg: string): string {
   assertSafeCmdValue(arg);
+  if (arg.includes('%')) throw new Error('cmd_argv_percent_unsupported');
   if (arg.length === 0) return '""';
-  if (!/[\s"%^&|<>()]/.test(arg)) return arg;
-  return `"${arg.replace(/(["%])/g, '$1$1')}"`;
+  if (!/[\s"^&|<>()]/.test(arg)) return arg;
+  return `"${arg.replace(/(\\*)"/g, '$1$1""').replace(/(\\+)$/, '$1$1')}"`;
+}
+
+/**
+ * Pre-existing quoting for the tmux layer only (tmux's own argv on a .cmd tmux,
+ * and the login-shell wrapper's `/c` payload): those carry OMC-built strings
+ * such as `%0` pane ids and `set "K=%%V%%"` prefixes, never free text, so they
+ * keep their old semantics. Host CLI argv must use quoteForCmd.
+ */
+function quoteForTmuxCmdLayer(command: string): string {
+  assertSafeCmdValue(command);
+  if (command.length === 0) return '""';
+  if (!/[\s"%^&|<>()]/.test(command)) return command;
+  return `"${command.replace(/(["%])/g, '$1$1')}"`;
+}
+
+export interface HostBinarySpawn {
+  command: string;
+  args: string[];
+  windowsVerbatimArguments: boolean;
+}
+
+/**
+ * Spawn plan for a host CLI (copilot/claude/gh). A native executable is
+ * started directly with an argv array; only a `.cmd`/`.bat` shim (or an
+ * unresolved name) goes through `COMSPEC /d /s /c "<line>"` with every element
+ * quoted by quoteForCmd.
+ */
+export function buildHostBinarySpawn(
+  binary: string,
+  args: readonly string[],
+  comspec: string = process.env.COMSPEC || 'cmd.exe',
+): HostBinarySpawn {
+  const launch = resolveHostBinaryLaunch(binary);
+  if (!launch.viaCmd) return { command: launch.file, args: [...args], windowsVerbatimArguments: false };
+  const line = [launch.file, ...args].map(quoteForCmd).join(' ');
+  return { command: comspec, args: ['/d', '/s', '/c', `"${line}"`], windowsVerbatimArguments: true };
 }
 
 export function escapeForCmdSet(value: string): string {
@@ -80,7 +131,7 @@ function resolveTmuxInvocation(args: string[]): TmuxCommandInvocation {
   const resolvedBinary = resolveTmuxBinaryPath();
   if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedBinary)) {
     const comspec = process.env.COMSPEC || 'cmd.exe';
-    const commandLine = [quoteForCmd(resolvedBinary), ...args.map(quoteForCmd)].join(' ');
+    const commandLine = [quoteForTmuxCmdLayer(resolvedBinary), ...args.map(quoteForTmuxCmdLayer)].join(' ');
     return {
       command: comspec,
       args: ['/d', '/s', '/c', commandLine],
@@ -234,10 +285,18 @@ export function isTmuxAvailable(): boolean {
  */
 export function isCopilotAvailable(binary: string = getHostCliBinary()): boolean {
   try {
-    execFileSync(binary, ['--version'], {
-      stdio: 'ignore',
-      shell: process.platform === 'win32',
-    });
+    if (process.platform === 'win32') {
+      const launch = buildHostBinarySpawn(binary, ['--version']);
+      const result = spawnSync(launch.command, launch.args, {
+        stdio: 'ignore',
+        windowsVerbatimArguments: launch.windowsVerbatimArguments,
+      });
+      return result.status === 0;
+    } else {
+      execFileSync(binary, ['--version'], {
+        stdio: 'ignore',
+      });
+    }
     return true;
   } catch {
     return false;
@@ -375,7 +434,7 @@ export function buildTmuxShellCommandWithEnv(
 export function wrapWithLoginShell(command: string): string {
   if (isNativeWindowsShell()) {
     const comspec = process.env.COMSPEC || 'cmd.exe';
-    return `${quoteForCmd(comspec)} /d /s /c ${quoteForCmd(command)}`;
+    return `${quoteForTmuxCmdLayer(comspec)} /d /s /c ${quoteForTmuxCmdLayer(command)}`;
   }
 
   const shell = process.env.SHELL || '/bin/sh';

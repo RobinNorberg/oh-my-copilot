@@ -18,11 +18,12 @@ import {
   type KeywordType,
 } from './index.js';
 import { recordJudgment } from '../jev/index.js';
-import type { ResolveResult } from '../jev/index.js';
+import type { JevAnswer, ResolveResult } from '../jev/index.js';
 
 /**
- * Point "skill-trigger" (ticket 04): the keyword list decides; Jev's Choice
- * over the triggerable skills/modes is recorded per prompt.
+ * Point "skill-trigger" (ticket 04): the keyword list decides in shadow/off
+ * mode; Jev's Choice over the triggerable skills/modes is recorded per
+ * prompt. In active mode, Jev's answer is mapped to a keyword list.
  */
 export function recordSkillTriggerShadow(
   prompt: string,
@@ -31,6 +32,13 @@ export function recordSkillTriggerShadow(
   return recordJudgment<KeywordType[]>('skill-trigger', {
     state: { prompt, source: 'user-prompt-submit' },
     twin: () => getAllKeywords(prompt),
+    mapAnswer: (answer: JevAnswer) => {
+      // Jev Choice answer has { type: 'choice', choice: <keyword> | 'none' }
+      const choice = (answer.choice as string | undefined)?.toLowerCase();
+      if (choice === 'none' || !choice) return [];
+      // Return the chosen keyword as a single-element array
+      return [choice as KeywordType];
+    },
     fetchFn,
   });
 }
@@ -45,8 +53,9 @@ export function recordSkillTriggerShadow(
 const INTENT_SLASH_PATTERN = /^\s*\/(?:oh-my-copilot:|omc:)?intent(?=\s|$|[?!.,;:])/i;
 
 /**
- * Point "intent" (ticket 02): the detector's existing trigger answer decides;
- * Jev's Noul judgment is recorded per prompt.
+ * Point "intent" (ticket 02): the detector's existing trigger answer decides
+ * in shadow/off mode; Jev's Noul judgment is recorded per prompt. In active
+ * mode, Jev's answer is used to decide whether this is an intent request.
  */
 export function recordIntentShadow(
   prompt: string,
@@ -55,6 +64,10 @@ export function recordIntentShadow(
   return recordJudgment<boolean>('intent', {
     state: { prompt, mode_name: 'intent' },
     twin: () => INTENT_SLASH_PATTERN.test(prompt),
+    mapAnswer: (answer: JevAnswer) => {
+      // Jev Noul answer has { type: 'noul', noul: boolean | undefined }
+      return answer.noul === true;
+    },
     fetchFn,
   });
 }

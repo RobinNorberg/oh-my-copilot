@@ -515,6 +515,39 @@ describe('model-contract', () => {
             const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'gpt-4o' });
             expect(args).toContain('gpt-4o');
         });
+        it('claude includes --effort when reasoningEffort is provided', () => {
+            const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp', reasoningEffort: 'high' });
+            expect(args).toContain('--effort');
+            expect(args).toContain('high');
+        });
+        it('codex includes -c model_reasoning_effort when reasoningEffort is provided', () => {
+            const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp', reasoningEffort: 'ultra' });
+            expect(args).toContain('-c');
+            expect(args).toContain('model_reasoning_effort="ultra"');
+        });
+        it('antigravity includes --effort when reasoningEffort is provided', () => {
+            const args = buildLaunchArgs('antigravity', { teamName: 't', workerName: 'w', cwd: '/tmp', reasoningEffort: 'medium' });
+            expect(args).toContain('--effort');
+            expect(args).toContain('medium');
+        });
+        it.each(['gemini', 'grok', 'cursor', 'copilot'])('%s ignores reasoningEffort (no verified CLI flag)', (agent) => {
+            const args = buildLaunchArgs(agent, { teamName: 't', workerName: 'w', cwd: '/tmp', reasoningEffort: 'high' });
+            expect(args).not.toContain('--effort');
+            expect(args).not.toContain('high');
+            expect(args.some((a) => a.includes('reasoning_effort'))).toBe(false);
+        });
+        it('does not include reasoning effort flags when reasoningEffort is not provided', () => {
+            const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp' });
+            expect(args).not.toContain('--effort');
+            expect(args).not.toContain('model_reasoning_effort');
+        });
+        it('copilot keeps deny extraFlags when reasoningEffort is also set', () => {
+            const args = buildLaunchArgs('copilot', {
+                teamName: 't', workerName: 'w', cwd: '/tmp', reasoningEffort: 'high',
+                extraFlags: resolveWorkerPermissionFlags('copilot', { workerDenyTools: ['shell(git push)'] }),
+            });
+            expect(args).toEqual([...COPILOT_WORKER_BASE_FLAGS, '--deny-tool=shell(git push)']);
+        });
         it('copilot uses exactly the explicit worker allow set and no bypass flags', () => {
             const args = buildLaunchArgs('copilot', { teamName: 't', workerName: 'w', cwd: '/tmp' });
             expect(args).toEqual(['--allow-all-tools', '--allow-all-paths', '--allow-all-urls', '--no-ask-user']);
@@ -583,8 +616,10 @@ describe('model-contract', () => {
             expect(env.OMC_TEAM_NAME).toBe('my-team');
             expect(env.OMC_WORKER_AGENT_TYPE).toBe('codex');
         });
-        it('propagates allowlisted model selection env vars into worker startup env', () => {
+        it('propagates allowlisted Claude startup env vars into worker startup env', () => {
             const env = getWorkerEnv('my-team', 'worker-1', 'claude', {
+                CLAUDE_CONFIG_DIR: '/home/tester/.claude-third-party',
+                CLAUDE_CODE_EFFORT_LEVEL: 'high',
                 ANTHROPIC_MODEL: 'claude-opus-4-1',
                 CLAUDE_MODEL: 'claude-sonnet-4-5',
                 ANTHROPIC_BASE_URL: 'https://example-gateway.invalid',
@@ -601,7 +636,10 @@ describe('model-contract', () => {
                 OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL: 'gpt-5',
                 OMC_GEMINI_DEFAULT_MODEL: 'gemini-2.5-pro',
                 ANTHROPIC_API_KEY: 'should-not-be-forwarded',
+                ANTHROPIC_AUTH_TOKEN: 'should-not-be-forwarded',
             });
+            expect(env.CLAUDE_CONFIG_DIR).toBe('/home/tester/.claude-third-party');
+            expect(env.CLAUDE_CODE_EFFORT_LEVEL).toBe('high');
             expect(env.ANTHROPIC_MODEL).toBe('claude-opus-4-1');
             expect(env.CLAUDE_MODEL).toBe('claude-sonnet-4-5');
             expect(env.ANTHROPIC_BASE_URL).toBe('https://example-gateway.invalid');
@@ -618,6 +656,15 @@ describe('model-contract', () => {
             expect(env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL).toBe('gpt-5');
             expect(env.OMC_GEMINI_DEFAULT_MODEL).toBe('gemini-2.5-pro');
             expect(env.ANTHROPIC_API_KEY).toBeUndefined();
+            expect(env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+        });
+        it('does not propagate Claude-only profile env vars to non-Claude workers', () => {
+            const env = getWorkerEnv('my-team', 'worker-1', 'codex', {
+                CLAUDE_CONFIG_DIR: '/home/tester/.claude-third-party',
+                CLAUDE_CODE_EFFORT_LEVEL: 'high',
+            });
+            expect(env.CLAUDE_CONFIG_DIR).toBeUndefined();
+            expect(env.CLAUDE_CODE_EFFORT_LEVEL).toBeUndefined();
         });
         it('forwards COPILOT_HOME and COPILOT_MODEL to copilot workers', () => {
             const env = getWorkerEnv('my-team', 'worker-1', 'copilot', {
@@ -632,6 +679,21 @@ describe('model-contract', () => {
         });
         it('rejects invalid team names', () => {
             expect(() => getWorkerEnv('Bad-Team', 'worker-1', 'codex')).toThrow('Invalid team name');
+        });
+        it('includes OMC_TEAM_ROLE when role is provided', () => {
+            const env = getWorkerEnv('my-team', 'worker-1', 'claude', process.env, 'executor');
+            expect(env.OMC_TEAM_ROLE).toBe('executor');
+        });
+        it('does not include OMC_TEAM_ROLE when role is not provided', () => {
+            const env = getWorkerEnv('my-team', 'worker-1', 'claude');
+            expect(env.OMC_TEAM_ROLE).toBeUndefined();
+        });
+        it('includes OMC_TEAM_ROLE for any role type', () => {
+            const roles = ['architect', 'code-reviewer', 'orchestrator'];
+            for (const role of roles) {
+                const env = getWorkerEnv('my-team', 'worker-1', 'claude', process.env, role);
+                expect(env.OMC_TEAM_ROLE).toBe(role);
+            }
         });
     });
     describe('buildWorkerArgv', () => {

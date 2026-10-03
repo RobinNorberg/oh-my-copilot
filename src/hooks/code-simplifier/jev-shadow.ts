@@ -18,7 +18,7 @@ import {
   isCodeSimplifierEnabled,
 } from './index.js';
 import { recordJudgment } from '../jev/index.js';
-import type { ResolveResult } from '../jev/index.js';
+import type { JevAnswer, ResolveResult } from '../jev/index.js';
 
 export interface SimplifierTriggerShadowArgs {
   cwd: string;
@@ -45,10 +45,11 @@ export function computeSimplifierTriggerTwin(
 }
 
 /**
- * Record the shadow comparison for one stop event and return the twin
- * decision unchanged. With no TYPESAFE_API_KEY (or OMC_JEV not naming this
- * point) the resolver short-circuits: zero HTTP calls, no logging, same
- * decision.
+ * Record the shadow comparison for one stop event and return the decision
+ * (twin in shadow/off mode, Jev-mapped in active mode). With no
+ * TYPESAFE_API_KEY (or OMC_JEV not naming this point) the resolver
+ * short-circuits: zero HTTP calls, no logging, same decision. Jev errors
+ * degrade inside the resolver and fall back to the twin.
  */
 export function recordSimplifierTriggerShadow(
   args: SimplifierTriggerShadowArgs,
@@ -60,6 +61,10 @@ export function recordSimplifierTriggerShadow(
       source: 'code-simplifier-stop',
     },
     twin: () => computeSimplifierTriggerTwin(args.stateDir, args.files),
+    mapAnswer: (answer: JevAnswer) => {
+      // Jev Noul answer has { type: 'noul', noul: boolean | undefined }
+      return answer.noul === true;
+    },
     fetchFn: args.fetchFn,
   });
 }

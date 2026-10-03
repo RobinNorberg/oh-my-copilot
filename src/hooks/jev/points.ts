@@ -15,7 +15,7 @@
 
 import { KEYWORD_PRIORITY } from '../keyword-detector/index.js';
 import { resolveJudgment } from './resolver.js';
-import type { JevQuestions, JudgmentPointName, ResolveResult } from './types.js';
+import type { JevAnswer, JevQuestions, JudgmentPointName, ResolveResult } from './types.js';
 
 /**
  * Top emit-able keyword types, derived from the detector's own priority
@@ -250,6 +250,8 @@ export interface RecordJudgmentCall<T> {
   state: unknown;
   /** Heuristic twin thunk. Errors propagate (twins must not be masked). */
   twin: () => T;
+  /** Maps Jev's answer onto the result type. Only used in active mode. */
+  mapAnswer?: (answer: JevAnswer) => T;
   /** Index into the point's question sets (loop-continuation's Score call uses 1). */
   questionSet?: number;
   /** Test hook: injected transport. */
@@ -273,6 +275,7 @@ export function recordJudgment<T>(pointName: string, call: RecordJudgmentCall<T>
     state: call.state,
     questions: typeof questions === 'function' ? questions() : questions,
     twin: call.twin,
+    mapAnswer: call.mapAnswer,
     blocking: point.blocking,
     fetchFn: call.fetchFn,
   });

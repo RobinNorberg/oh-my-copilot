@@ -1254,14 +1254,22 @@ async function checkRalphLoop(
     if (sessionId) {
       // Check for architect approval
       if (checkArchitectApprovalInTranscript(sessionId, verificationState)) {
-        // Jev ralph-verdict shadow: the detected approval is the twin; the
-        // verdict flow below is unchanged with and without a Jev key.
-        await applyRalphVerdictShadow({
+        // Jev ralph-verdict shadow: the detected approval is the twin;
+        // in active mode, use Jev's verdict instead.
+        const verdict = await applyRalphVerdictShadow({
           verdict: true,
           prdContext: verificationCriteriaExcerpt(workingDir, sessionId, verifiedStory),
           claim: verificationState.completion_claim,
           criticMode: verificationState.critic_mode,
         });
+        if (!verdict) {
+          // Jev active-mode override: completion verdict is false, continue loop
+          return {
+            shouldBlock: true,
+            message: '[jev-verdict] completion criteria not met; continuing iteration',
+            mode: 'ralph',
+          } as PersistentModeResult;
+        }
         if (verificationState.verification_scope === 'story' && verificationState.story_id) {
           const consumed = consumeStoryArchitectApproval(
             workingDir,
@@ -1365,14 +1373,22 @@ async function checkRalphLoop(
       // Check for architect rejection
       const rejection = checkArchitectRejectionInTranscript(sessionId);
       if (verificationState && rejection.rejected) {
-        // Jev ralph-verdict shadow: the detected rejection is the twin; the
-        // feedback flow below is unchanged with and without a Jev key.
-        await applyRalphVerdictShadow({
+        // Jev ralph-verdict shadow: the detected rejection is the twin;
+        // in active mode, use Jev's verdict instead.
+        const verdict = await applyRalphVerdictShadow({
           verdict: false,
           prdContext: verificationCriteriaExcerpt(workingDir, sessionId, verifiedStory),
           claim: verificationState.completion_claim,
           criticMode: verificationState.critic_mode,
         });
+        if (verdict) {
+          // Jev active-mode override: completion verdict is true, exit loop
+          return {
+            shouldBlock: false,
+            message: '[jev-verdict] completion criteria met; exiting iteration',
+            mode: 'none',
+          } as PersistentModeResult;
+        }
         if (verificationState.verification_scope === 'story' && verificationState.story_id) {
           markStoryIncomplete(workingDir, verificationState.story_id, rejection.feedback, sessionId);
         }

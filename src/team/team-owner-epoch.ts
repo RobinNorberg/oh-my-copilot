@@ -128,15 +128,13 @@ function probeProcessStartIdentityForPlatform(
       return { identity: `linux:${bootId}:${ticks}`, precise: true };
     }
     if (platform === 'win32') {
-      // Fork fix: upstream v5.5.0 reports win32 as strict-unavailable, which made every native
-      // Windows team launch fail with tmux_server_identity_probe_unavailable. StartTime.Ticks is
-      // the kernel process creation time at 100 ns resolution; it is fixed for the lifetime of a
-      // pid and a recycled pid gets a new creation time, so the same token is precise enough for
-      // destructive ownership. A failed probe still yields null (strict-unavailable).
+      // .NET StartTime.Ticks is an absolute UTC creation timestamp, not an
+      // uptime-relative value, so pairing it with the PID remains unique
+      // across reboots without a separate boot identifier.
       const command = `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`;
       const ticks = exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command],
         { encoding: 'utf8', windowsHide: true }).trim();
-      return /^\d+$/.test(ticks)
+      return /^[1-9]\d*$/.test(ticks)
         ? { identity: `win32:${ticks}`, precise: true }
         : { identity: null, precise: false };
     }
@@ -219,7 +217,6 @@ export function isValidStrictProcessStartIdentity(
     // second-resolution fallback and is not destructive evidence.
     return match !== null && Number(match[2]) > 0 && Number(match[2]) < 1_000_000;
   }
-  // Fork fix: native Windows strict token (see probeProcessStartIdentityForPlatform).
   if (platform === 'win32') return /^win32:[1-9]\d*$/.test(value);
   return false;
 }

@@ -141,7 +141,7 @@ describe('recordContextPruningShadow', () => {
     });
 });
 describe('hook wiring: createPreemptiveCompactionHook + context-pruning shadow', () => {
-    function postToolUseOnce(fetchFn, sessionId) {
+    async function postToolUseOnce(fetchFn, sessionId) {
         clearRapidFireDebounce(sessionId);
         const hook = createPreemptiveCompactionHook(fetchFn
             ? { jevFetchFn: fetchFn, warningThreshold: 0.1 }
@@ -158,10 +158,10 @@ describe('hook wiring: createPreemptiveCompactionHook + context-pruning shadow',
         process.env.TYPESAFE_API_KEY = 'test-key-123';
         process.env.OMC_JEV = 'context-pruning';
         const { fetchFn } = captureFetch(4);
-        const withKey = postToolUseOnce(fetchFn, 'jev-wiring-with-key');
+        const withKey = await postToolUseOnce(fetchFn, 'jev-wiring-with-key');
         expect(withKey).toBe(CONTEXT_WARNING_MESSAGE);
         delete process.env.TYPESAFE_API_KEY;
-        const withoutKey = postToolUseOnce(undefined, 'jev-wiring-without-key');
+        const withoutKey = await postToolUseOnce(undefined, 'jev-wiring-without-key');
         expect(withoutKey).toBe(CONTEXT_WARNING_MESSAGE);
         expect(withoutKey).toBe(withKey);
         const line = JSON.parse(await readLogLine());

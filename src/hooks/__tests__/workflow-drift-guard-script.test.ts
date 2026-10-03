@@ -322,6 +322,36 @@ describe('workflow-drift-guard Stop hook', () => {
     expect(result.reason).toContain('index.test.ts');
   });
 
+  it('blocks unconditional skips: no argument, template title, and a wrapped argument list', () => {
+    for (const body of [
+      "test('a', () => {\n  test.skip();\n});\n",
+      "it.skip(`covers ${'edge'}`, () => {});\n",
+      "describe.skip(\n  'wrapped title',\n  () => {},\n);\n",
+    ]) {
+      const cwd = makeRepo();
+      writeFileSync(join(cwd, 'index.test.ts'), body);
+      const result = runGuard({ hook_event_name: 'Stop', last_assistant_message: 'Implemented and complete.', cwd });
+      expect(result.decision).toBe('block');
+      expect(result.reason).toContain('skipped test');
+    }
+  });
+
+  it('allows runtime-conditional skips (issue #4189)', () => {
+    const cwd = makeRepo();
+    writeFileSync(join(cwd, 'screens.spec.ts'), [
+      "import { test } from '@playwright/test';",
+      "const ENABLED = process.env.E2E_SCREENSHOTS === '1';",
+      "test('screenshots', async ({ page }) => {",
+      "  test.skip(!ENABLED, 'set E2E_SCREENSHOTS=1 to run');",
+      "  test.skip(process.env.CI === 'true', 'local only');",
+      "});",
+      "test.skip(({ browserName }) => browserName === 'webkit', 'no webkit');",
+      '',
+    ].join('\n'));
+
+    expectPass(runGuard({ hook_event_name: 'Stop', last_assistant_message: 'Implemented and complete.', cwd }));
+  });
+
   it('allows ready-to-continue wording while work is not being claimed complete', () => {
     const cwd = makeRepo();
     writeFileSync(join(cwd, 'index.ts'), 'export function next() {\n  // TODO: implement follow-up\n  return 1;\n}\n');

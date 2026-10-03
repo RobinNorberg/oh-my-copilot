@@ -169,7 +169,7 @@ Use AskUserQuestion:
 If user chooses "Yes, star it!":
 
 ```bash
-node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('gh',['api','-X','PUT','/user/starred/Yeachan-Heo/oh-my-copilot'],{encoding:'utf8',shell:process.platform==='win32'});if(r.status===0)console.log('Thanks for starring')"
+node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('gh',['api','-X','PUT','user/starred/Yeachan-Heo/oh-my-copilot'],{encoding:'utf8',shell:process.platform==='win32'});if(r.status===0)console.log('Thanks for starring')"
 ```
 
 **Note:** Fail silently if the API call doesn't work - never block setup completion.

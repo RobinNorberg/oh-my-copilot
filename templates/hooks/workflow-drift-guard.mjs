@@ -43,7 +43,12 @@ const SELECTION_CLOSERS = new Set([
   'which should i take?',
 ]);
 const BLOCKER_PATTERNS = [
-  { kind: 'skipped test', pattern: /\b(?:it|test|describe)\.skip\s*\(/i },
+  // Unconditional skips only: no argument, a title literal, or an argument
+  // list that continues on the next line. The scan text has string literals
+  // blanked to spaces, so a title leaves `.skip(   ,` / `.skip(   )`. A runtime
+  // condition as the first argument (Playwright's `test.skip(!ENABLED, 'why')`
+  // or `test.skip(({ browserName }) => ..., 'why')`) is a legitimate gate.
+  { kind: 'skipped test', pattern: /\b(?:it|test|describe)\.skip\s*\(\s*(?:\)|,|$)/i },
   { kind: 'focused test', pattern: /\b(?:it|test|describe)\.only\s*\(/i },
   { kind: 'placeholder TODO', pattern: /\bTODO\b(?:\([^)]*\))?\s*:?\s*(?:implement|fix|replace|stub|placeholder|later|follow[- ]?up|wire|add\b|fill)/i },
   { kind: 'unimplemented throw', pattern: /throw\s+new\s+Error\s*\(\s*["'`](?:TODO|Not implemented|unimplemented|stub)/i },

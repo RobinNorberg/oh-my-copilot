@@ -15,6 +15,7 @@ import { validateTeamName } from './team-name.js';
 import { tmuxExec, tmuxExecAsync, tmuxShell, tmuxCmdAsync } from '../cli/tmux-utils.js';
 import { isValidTeamInstanceId, isValidTmuxServerIdentity, } from './types.js';
 import { currentStrictProcessStartIdentity, isValidStrictProcessStartIdentity, observeProcessIdentity, } from './team-owner-epoch.js';
+import { getNativeContainedFs } from '../graph/runtime/native-contained-fs.js';
 import { paneLineLooksLikeIdlePrompt } from './pane-readiness.js';
 import { awaitWorkerLaunchAcknowledgement, awaitWorkerLaunchProviderStarted, buildProviderEnvironment, cleanupWorkerLaunchTransport, isWorkerLaunchAttemptAccepted, isWorkerLaunchAttemptCurrent, materializeWorkerLaunchTransport, prepareWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt, revokeWorkerLaunchAttempt, } from './worker-launch-ack.js';
 import { resolveRuntimeCliPath } from './runtime-owner-client.js';
@@ -143,6 +144,14 @@ function buildTmuxServerIdentity(socketPath, pid, processIdentity) {
     const processStartedAt = processIdentity(pid);
     if (!processStartedAt || !isValidStrictProcessStartIdentity(processStartedAt))
         return null;
+    if (process.platform === 'win32') {
+        try {
+            process.kill(pid, 0);
+        }
+        catch {
+            return null;
+        }
+    }
     const identity = {
         socket_path: socketPath,
         server_pid: pid,
@@ -222,20 +231,31 @@ export async function observeTmuxServerIdentity(expected, dependencies = {}) {
     if (!isValidTmuxServerIdentity(expected)
         || !isValidStrictProcessStartIdentity(expected.process_started_at))
         return 'unknown';
-    let processState;
-    try {
-        processState = deps.processObservation({
-            server_pid: expected.server_pid,
-            process_started_at: expected.process_started_at,
-        });
+    const singleWindowsProbe = process.platform === 'win32' && dependencies.processObservation === undefined;
+    if (singleWindowsProbe) {
+        try {
+            process.kill(expected.server_pid, 0);
+        }
+        catch (error) {
+            return error.code === 'ESRCH' ? 'dead' : 'unknown';
+        }
     }
-    catch {
-        return 'unknown';
+    else {
+        let processState;
+        try {
+            processState = deps.processObservation({
+                server_pid: expected.server_pid,
+                process_started_at: expected.process_started_at,
+            });
+        }
+        catch {
+            return 'unknown';
+        }
+        if (processState === 'dead')
+            return 'dead';
+        if (processState !== 'matching')
+            return 'unknown';
     }
-    if (processState === 'dead')
-        return 'dead';
-    if (processState !== 'matching')
-        return 'unknown';
     try {
         const result = await deps.tmuxQuery(tmuxArgsForIdentity(expected, ['display-message', '-p', '#{pid}']), { timeout: 2_000, stripTmux: true });
         if (result.stderr.trim())
@@ -247,8 +267,20 @@ export async function observeTmuxServerIdentity(expected, dependencies = {}) {
         if (actualPid !== expected.server_pid)
             return 'unknown';
         const actualStart = deps.processIdentity(actualPid);
+        if (singleWindowsProbe && actualStart
+            && isValidStrictProcessStartIdentity(actualStart)
+            && actualStart !== expected.process_started_at)
+            return 'dead';
         if (!actualStart || actualStart !== expected.process_started_at)
             return 'unknown';
+        if (singleWindowsProbe) {
+            try {
+                process.kill(actualPid, 0);
+            }
+            catch (error) {
+                return error.code === 'ESRCH' ? 'dead' : 'unknown';
+            }
+        }
         return 'matching';
     }
     catch {
@@ -1187,11 +1219,13 @@ export function buildWorkerStartCommand(config) {
         : providerLaunchWords;
     const envVars = config.launchAttempt
         ? {
-            ...config.envVars,
             // Supervised launches carry the attempt-owned bootstrap descriptor by
             // path (never inline): secrets stay out of the process list and tmux
             // scrollback, and the delivered command stays small. The runtime CLI
             // validates and consumes the descriptor before running the provider.
+            // Team identity (team_name, worker_name, provider, instance_id) is read
+            // from the descriptor, not from environment vars, keeping the typed
+            // command under 1024 bytes even with long cwd paths.
             OMC_WORKER_LAUNCH_SPEC_FILE: config.launchAttempt.bootstrapDescriptorPath,
         }
         : config.envVars;
@@ -1513,6 +1547,23 @@ export async function splitTeamWorkerPaneWithEvidence(splitTarget, direction, cw
 export async function splitTeamWorkerPane(splitTarget, direction, cwd) {
     return (await splitTeamWorkerPaneWithEvidence(splitTarget, direction, cwd)).paneId;
 }
+/**
+ * Darwin strict identity comes only from the contained-fs native addon (no
+ * sysctl/ps fallback), so a missing addon is the common cause of an unavailable
+ * probe there. Name it and the build command instead of a bare error code.
+ */
+export function strictIdentityUnavailableError(platform, loadNative = getNativeContainedFs) {
+    if (platform === 'darwin') {
+        try {
+            loadNative();
+        }
+        catch (cause) {
+            const detail = cause instanceof Error ? cause.message : String(cause);
+            return new Error(`tmux_server_identity_probe_unavailable: ${detail}`, { cause });
+        }
+    }
+    return new Error('tmux_server_identity_probe_unavailable');
+}
 export async function createTeamSession(teamName, workerCount, cwd, options = {}) {
     // Fork (psmux): psmux teams always run detached in a private namespace; the
     // ambient psmux window's namespace cannot be derived and pane ids collide.
@@ -1528,7 +1579,7 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
     // an empty private server held without an ownership token. CMUX has its own
     // provider identity and is intentionally excluded.
     if (!inCmux && !currentStrictProcessStartIdentity()) {
-        throw new Error('tmux_server_identity_probe_unavailable');
+        throw strictIdentityUnavailableError(process.platform);
     }
     let tmuxServerIdentity;
     let freshDetachedServerIdentity;
@@ -1585,7 +1636,7 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
                 : {}),
         });
         const detachedArgs = [
-            'new-session', '-d', '-P', '-F', '#S:0\t#{pane_id}\t#{socket_path}\t#{pid}',
+            'new-session', '-d', '-P', '-F', '#S:#{window_index}\t#{pane_id}\t#{socket_path}\t#{pid}',
             '-s', detachedSessionName,
             '-c', cwd,
             ...workerPaneShellCommand(),
@@ -3254,7 +3305,8 @@ function parseDedicatedWindowTarget(sessionName) {
 }
 /**
  * Normalize only the response form published for a detached session.  A
- * detached `new-session -P` record is represented as `session:0`, while
+ * detached `new-session -P` record is represented as `session:<window_index>`
+ * (the real first window, which follows the user's tmux base-index), while
  * session inventory stores the native session name without a window suffix.
  * Split/dedicated-window callers must not use this normalization.
  */
@@ -3263,7 +3315,7 @@ export function normalizeDetachedSessionTarget(sessionName) {
         ? parseDedicatedWindowTarget(sessionName)
         : null;
     const sessionTarget = detachedTarget
-        ? detachedTarget.windowIndex === '0' ? detachedTarget.sessionName : ''
+        ? detachedTarget.sessionName
         : sessionName;
     return sessionTarget && /^[^\s:]+$/.test(sessionTarget) ? sessionTarget : null;
 }
@@ -3425,8 +3477,8 @@ export async function killTeamSession(sessionName, workerPaneIds, leaderPaneId, 
         // process evidence authorizes treating the old window as absent.
         return await observeTmuxServerIdentity(identity) === 'dead';
     }
-    // Detached creation publishes `session:0` because the creating response
-    // includes its window resource. Normalize that validated zero-window form
+    // Detached creation publishes `session:<window_index>` because the creating
+    // response includes its window resource. Normalize that validated window form
     // to the native session target before inventory resolution; never strip an
     // arbitrary suffix or fall back to a name lookup on another server.
     const sessionTarget = normalizeDetachedSessionTarget(sessionName);

@@ -17,6 +17,8 @@ import { join } from 'path';
 import { getOmcRoot, getSessionStateDir } from '../../lib/worktree-paths.js';
 import { withStateFileMutationLock } from '../../lib/mode-state-io.js';
 import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
+export const REPO_QUALITY_CLASSES = ['prototype', 'production', 'library'];
+export const MAX_FEEDBACK_COMMANDS = 20;
 // ============================================================================
 // Constants
 // ============================================================================
@@ -188,13 +190,36 @@ function normalizePrd(candidate) {
         return null;
     }
     const reconciliation = normalizeReconciliation(prd.reconciliation);
+    const repoQualityClass = normalizeRepoQualityClass(prd.repoQualityClass);
+    const feedbackCommands = normalizeFeedbackCommands(prd.feedbackCommands);
     return {
         project: prd.project,
         branchName: prd.branchName,
         description: prd.description,
         userStories: userStories,
-        ...(reconciliation ? { reconciliation } : {})
+        ...(reconciliation ? { reconciliation } : {}),
+        ...(repoQualityClass ? { repoQualityClass } : {}),
+        ...(feedbackCommands ? { feedbackCommands } : {})
     };
+}
+/**
+ * Fail-soft validators for the executor-declared run fields: an invalid value
+ * is dropped (the run falls back to defaults) rather than invalidating an
+ * otherwise valid PRD.
+ */
+function normalizeRepoQualityClass(candidate) {
+    return typeof candidate === 'string' && REPO_QUALITY_CLASSES.includes(candidate)
+        ? candidate
+        : undefined;
+}
+function normalizeFeedbackCommands(candidate) {
+    if (!Array.isArray(candidate)) {
+        return undefined;
+    }
+    const commands = candidate
+        .filter((entry) => typeof entry === 'string' && entry.trim().length > 0)
+        .slice(0, MAX_FEEDBACK_COMMANDS);
+    return commands.length > 0 ? commands : undefined;
 }
 /**
  * Validate and preserve the optional reconciliation config. Returns undefined

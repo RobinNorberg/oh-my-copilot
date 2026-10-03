@@ -304,6 +304,7 @@ export function isOmcStatusLine(statusLine) {
 const OMC_HOOK_FILENAMES = new Set([
     'keyword-detector.mjs',
     'session-start.mjs',
+    'session-end.mjs',
     'pre-tool-use.mjs',
     'post-tool-use.mjs',
     'post-tool-use-failure.mjs',
@@ -748,6 +749,7 @@ function configureInstallerSettings(baseSettings, context) {
 const STANDALONE_HOOK_TEMPLATE_FILES = [
     'keyword-detector.mjs',
     'session-start.mjs',
+    'session-end.mjs',
     'pre-tool-use.mjs',
     'post-tool-use.mjs',
     'post-tool-use-failure.mjs',
@@ -914,7 +916,7 @@ function ensureStandaloneHookScripts(log) {
     }
     log('  Installed standalone hook scripts');
 }
-function mergeHookGroups(eventType, existingGroups, newOmcGroups, options, log, result) {
+export function mergeHookGroups(eventType, existingGroups, newOmcGroups, options, log, result) {
     const nonOmcGroups = existingGroups.filter(group => group.hooks.some(h => h.type === 'command' && !isOmcHook(h.command)));
     const hasNonOmcHook = nonOmcGroups.length > 0;
     const nonOmcCommand = hasNonOmcHook

@@ -324,4 +324,87 @@ describe('LspClient handleData byte-length fix (#1026)', () => {
         expect(resolved).toBe(true);
     });
 });
+describe('LspClient Windows URI key normalization (#4185)', () => {
+    afterEach(() => {
+        vi.clearAllTimers();
+    });
+    it('should normalize Windows-encoded file URIs when publishing diagnostics', () => {
+        const client = new LspClient('/tmp/ws', SERVER_CONFIG);
+        setupWritableClient(client);
+        // Simulate server publishing diagnostics with percent-encoded Windows path
+        // This mimics what typescript-language-server sends on Windows: file:///c%3A/Users/...
+        const serverMessage = buildLspMessage(JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'textDocument/publishDiagnostics',
+            params: {
+                uri: 'file:///c%3A/Users/test/lsp_test.ts',
+                diagnostics: [
+                    {
+                        range: { start: { line: 1, character: 28 }, end: { line: 1, character: 35 } },
+                        severity: 1,
+                        message: 'Argument of type \'"1"\' is not assignable to parameter of type \'number\'.',
+                    },
+                ],
+            },
+        }));
+        client.handleData(serverMessage);
+        // Verify diagnostic was stored with normalized key (file:///C:/Users/...)
+        const diags = client.diagnostics;
+        expect(diags.size).toBe(1);
+        // The key should be normalized: uppercase drive letter, percent-encoded colon decoded
+        const key = Array.from(diags.keys())[0];
+        expect(key).toContain('file:///C:/');
+        expect(key).not.toContain('%3A');
+    });
+    it('should retrieve diagnostics after Windows-encoded publish', () => {
+        const client = new LspClient('/tmp/ws', SERVER_CONFIG);
+        setupWritableClient(client);
+        // Publish with percent-encoded URI
+        const serverMessage = buildLspMessage(JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'textDocument/publishDiagnostics',
+            params: {
+                uri: 'file:///c%3A/Users/test/lsp_test.ts',
+                diagnostics: [
+                    {
+                        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 5 } },
+                        severity: 1,
+                        message: 'Test error',
+                    },
+                ],
+            },
+        }));
+        client.handleData(serverMessage);
+        // Retrieve using normalized URI - should find diagnostics
+        const diags = client.diagnostics.get('file:///C:/Users/test/lsp_test.ts');
+        expect(diags).toBeDefined();
+        expect(diags).toHaveLength(1);
+        expect(diags[0].message).toBe('Test error');
+    });
+    it('should keep non-file URIs unchanged', () => {
+        // This test verifies that the uriKey function doesn't modify non-file URIs
+        const client = new LspClient('/tmp/ws', SERVER_CONFIG);
+        setupWritableClient(client);
+        // Simulate publishing diagnostics with a non-file URI
+        const serverMessage = buildLspMessage(JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'textDocument/publishDiagnostics',
+            params: {
+                uri: 'untitled:Untitled-1',
+                diagnostics: [
+                    {
+                        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+                        severity: 1,
+                        message: 'Error in untitled doc',
+                    },
+                ],
+            },
+        }));
+        client.handleData(serverMessage);
+        // Verify the diagnostic was stored with the exact URI (unchanged)
+        const diags = client.diagnostics;
+        expect(diags.has('untitled:Untitled-1')).toBe(true);
+        expect(diags.get('untitled:Untitled-1')).toHaveLength(1);
+    });
+});
 //# sourceMappingURL=client-handle-data.test.js.map

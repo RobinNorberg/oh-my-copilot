@@ -219,13 +219,13 @@ describe('createPreemptiveCompactionHook - Rapid-Fire Debounce (issue #453)', ()
     clearRapidFireDebounce(SESSION_ID);
   });
 
-  it('should process the first postToolUse call normally', () => {
+  it('should process the first postToolUse call normally', async () => {
     const hook = createPreemptiveCompactionHook({
       warningThreshold: 0.01, // Very low threshold to trigger easily
       criticalThreshold: 0.02,
     });
 
-    const result = hook.postToolUse({
+    const result = await hook.postToolUse({
       tool_name: 'Task',
       session_id: SESSION_ID,
       tool_input: {},
@@ -238,7 +238,7 @@ describe('createPreemptiveCompactionHook - Rapid-Fire Debounce (issue #453)', ()
     expect(result === null || typeof result === 'string').toBe(true);
   });
 
-  it('should debounce rapid-fire calls within the debounce window', () => {
+  it('should debounce rapid-fire calls within the debounce window', async () => {
     const hook = createPreemptiveCompactionHook({
       warningThreshold: 0.01,
       criticalThreshold: 0.02,
@@ -252,13 +252,13 @@ describe('createPreemptiveCompactionHook - Rapid-Fire Debounce (issue #453)', ()
     });
 
     // First call runs analysis
-    hook.postToolUse(makeInput());
+    await hook.postToolUse(makeInput());
 
     // Rapid-fire calls within debounce window should be skipped
-    const result2 = hook.postToolUse(makeInput());
-    const result3 = hook.postToolUse(makeInput());
-    const result4 = hook.postToolUse(makeInput());
-    const result5 = hook.postToolUse(makeInput());
+    const result2 = await hook.postToolUse(makeInput());
+    const result3 = await hook.postToolUse(makeInput());
+    const result4 = await hook.postToolUse(makeInput());
+    const result5 = await hook.postToolUse(makeInput());
 
     // All debounced calls should return null (skipped)
     expect(result2).toBeNull();
@@ -267,7 +267,7 @@ describe('createPreemptiveCompactionHook - Rapid-Fire Debounce (issue #453)', ()
     expect(result5).toBeNull();
   });
 
-  it('should still accumulate tokens even when debounced', () => {
+  it('should still accumulate tokens even when debounced', async () => {
     const hook = createPreemptiveCompactionHook();
 
     const makeInput = (response: string) => ({
@@ -278,11 +278,11 @@ describe('createPreemptiveCompactionHook - Rapid-Fire Debounce (issue #453)', ()
     });
 
     // First call
-    hook.postToolUse(makeInput('x'.repeat(1000)));
+    await hook.postToolUse(makeInput('x'.repeat(1000)));
 
     // Debounced calls - tokens should still accumulate
-    hook.postToolUse(makeInput('y'.repeat(2000)));
-    hook.postToolUse(makeInput('z'.repeat(3000)));
+    await hook.postToolUse(makeInput('y'.repeat(2000)));
+    await hook.postToolUse(makeInput('z'.repeat(3000)));
 
     // Verify tokens accumulated
     const tokens = getSessionTokenEstimate(SESSION_ID);
@@ -311,20 +311,20 @@ describe('createPreemptiveCompactionHook - Rapid-Fire Debounce (issue #453)', ()
       });
 
       // First call runs analysis
-      hook.postToolUse(makeInput());
+      await hook.postToolUse(makeInput());
 
       // Advance past debounce window
       vi.advanceTimersByTime(RAPID_FIRE_DEBOUNCE_MS + 10);
 
       // Next call should run analysis again (not be debounced)
-      const result = hook.postToolUse(makeInput());
+      const result = await hook.postToolUse(makeInput());
       expect(result === null || typeof result === 'string').toBe(true);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('should not debounce calls for different sessions', () => {
+  it('should not debounce calls for different sessions', async () => {
     const hook = createPreemptiveCompactionHook({
       warningThreshold: 0.01,
       criticalThreshold: 0.02,
@@ -334,15 +334,15 @@ describe('createPreemptiveCompactionHook - Rapid-Fire Debounce (issue #453)', ()
 
     try {
       // Call for session 1
-      hook.postToolUse({
+      await hook.postToolUse({
         tool_name: 'Task',
         session_id: SESSION_ID,
         tool_input: {},
-        tool_response: 'x'.repeat(100_000),
+        tool_response: 'x'.repeat(1_000_000),
       });
 
       // Call for session 2 should NOT be debounced
-      const result = hook.postToolUse({
+      const result = await hook.postToolUse({
         tool_name: 'Task',
         session_id: SESSION_2,
         tool_input: {},
@@ -357,7 +357,7 @@ describe('createPreemptiveCompactionHook - Rapid-Fire Debounce (issue #453)', ()
     }
   });
 
-  it('should clear debounce state on stop', () => {
+  it('should clear debounce state on stop', async () => {
     const hook = createPreemptiveCompactionHook();
 
     // Trigger a call to set debounce state
@@ -373,7 +373,7 @@ describe('createPreemptiveCompactionHook - Rapid-Fire Debounce (issue #453)', ()
 
     // Next call after stop should not be debounced (runs analysis)
     // We verify indirectly: no crash, runs without error
-    const result = hook.postToolUse({
+    const result = await hook.postToolUse({
       tool_name: 'Bash',
       session_id: SESSION_ID,
       tool_input: {},

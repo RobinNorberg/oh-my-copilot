@@ -50,6 +50,37 @@ function fileUri(filePath: string): string {
   return pathToFileURL(resolve(filePath)).href;
 }
 
+/**
+ * Normalize a URI for use as a diagnostics key.
+ * Handles Windows drive letter encoding (%3A/%3a colon) and case normalization.
+ * Platform-independent: works correctly whether the input comes from Windows or POSIX systems.
+ * Non-file URIs pass through unchanged.
+ */
+function uriKey(uri: string): string {
+  if (!uri.startsWith('file://')) {
+    return uri;
+  }
+
+  // Decode percent-encoded characters to handle %3A/%3a (colon). A malformed
+  // escape must not throw out of the notification handler: keep it verbatim.
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(uri);
+  } catch {
+    decoded = uri;
+  }
+
+  // For Windows paths like file:///c:/Users/... normalize drive letter to uppercase
+  // Match: file:///<single_char>:/ and uppercase the drive letter
+  const match = decoded.match(/^(file:\/\/)(\/[a-zA-Z])(:.*)$/);
+  if (match) {
+    const driveLetter = match[2].charAt(1).toUpperCase();
+    decoded = `${match[1]}/${driveLetter}${match[3]}`;
+  }
+
+  return decoded;
+}
+
 function createCancellationSignal(): { promise: Promise<void>; cancel: () => void } {
   let cancel!: () => void;
   const promise = new Promise<void>((resolveCancellation) => {
@@ -570,11 +601,12 @@ export class LspClient {
   private handleNotification(notification: JsonRpcNotification): void {
     if (notification.method === 'textDocument/publishDiagnostics') {
       const params = this.translateIncomingPayload(notification.params) as { uri: string; diagnostics: Diagnostic[] };
-      this.diagnostics.set(params.uri, params.diagnostics);
+      const key = uriKey(params.uri);
+      this.diagnostics.set(key, params.diagnostics);
       // Wake any waiters registered via waitForDiagnostics()
-      const waiters = this.diagnosticWaiters.get(params.uri);
+      const waiters = this.diagnosticWaiters.get(key);
       if (waiters && waiters.length > 0) {
-        this.diagnosticWaiters.delete(params.uri);
+        this.diagnosticWaiters.delete(key);
         for (const wake of waiters) wake();
       }
     }
@@ -800,7 +832,7 @@ export class LspClient {
 
     // A reopened document needs fresh diagnostics rather than a cached result
     // from its previous didOpen/didClose lifecycle.
-    this.diagnostics.delete(hostUri);
+    this.diagnostics.delete(uriKey(hostUri));
 
     await this.notifyWithBackpressure('textDocument/didOpen', {
       textDocument: {
@@ -1020,7 +1052,7 @@ export class LspClient {
    */
   getDiagnostics(filePath: string): Diagnostic[] {
     const uri = fileUri(filePath);
-    return this.diagnostics.get(uri) || [];
+    return this.diagnostics.get(uriKey(uri)) || [];
   }
 
   /**
@@ -1061,6 +1093,7 @@ export class LspClient {
    */
   waitForDiagnostics(filePath: string, timeoutMs = 2000): Promise<void> {
     const uri = fileUri(filePath);
+    const key = uriKey(uri);
     try {
       this.throwIfTerminal();
     } catch (error) {
@@ -1068,21 +1101,21 @@ export class LspClient {
     }
 
     // If diagnostics are already present, resolve immediately.
-    if (this.diagnostics.has(uri)) {
+    if (this.diagnostics.has(key)) {
       return Promise.resolve();
     }
 
     return new Promise<void>((resolve, reject) => {
       let resolved = false;
       const removeWaiter = (waiter: (error?: Error) => void) => {
-        const waiters = this.diagnosticWaiters.get(uri);
+        const waiters = this.diagnosticWaiters.get(key);
         if (!waiters) return;
 
         const remaining = waiters.filter(candidate => candidate !== waiter);
         if (remaining.length === 0) {
-          this.diagnosticWaiters.delete(uri);
+          this.diagnosticWaiters.delete(key);
         } else {
-          this.diagnosticWaiters.set(uri, remaining);
+          this.diagnosticWaiters.set(key, remaining);
         }
       };
       const waiter = (error?: Error) => {
@@ -1105,9 +1138,9 @@ export class LspClient {
       }, timeoutMs);
 
       // Store the resolver so handleNotification can wake it up.
-      const existing = this.diagnosticWaiters.get(uri) || [];
+      const existing = this.diagnosticWaiters.get(key) || [];
       existing.push(waiter);
-      this.diagnosticWaiters.set(uri, existing);
+      this.diagnosticWaiters.set(key, existing);
     });
   }
 

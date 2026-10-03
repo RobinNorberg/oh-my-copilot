@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "60d267e1b191b263c5c5b5461e3fa35cdbf81fad",
-    "sourceSha256": "b054d134a2b666a51e0b36ad9d5f84c7ae5fcd70f6a081e03594a181550080c4",
+    "head": "03baaa8006560a05a8137a6de0694d9644df70e2",
+    "sourceSha256": "7476012438a4db5851c0e735cc1d8a21ffa6f496b8c60f83c6c875b404c15afe",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "60d267e1b191b263c5c5b5461e3fa35cdbf81fad",
-  "sourceSha256": "b054d134a2b666a51e0b36ad9d5f84c7ae5fcd70f6a081e03594a181550080c4",
+  "head": "03baaa8006560a05a8137a6de0694d9644df70e2",
+  "sourceSha256": "7476012438a4db5851c0e735cc1d8a21ffa6f496b8c60f83c6c875b404c15afe",
   "counts": {
     "public": {
       "skills": 61,
@@ -23,25 +23,25 @@
       "total": 110
     },
     "internal": {
-      "hookFiles": 329,
+      "hookFiles": 346,
       "featureFiles": 84,
       "toolFiles": 61,
-      "libFiles": 43,
-      "templateHooks": 22,
-      "srcFiles": 1438,
-      "total": 1460
+      "libFiles": 47,
+      "templateHooks": 23,
+      "srcFiles": 1481,
+      "total": 1504
     },
     "generated": {
-      "distFiles": 5587,
+      "distFiles": 5759,
       "bridgeFiles": 9,
-      "total": 5596
+      "total": 5768
     },
     "prompt": {
       "promptLikeFiles": 61
     },
     "skills": 61,
     "commands": 21,
-    "hookFiles": 329,
+    "hookFiles": 346,
     "workflows": 8,
     "agentDefinitions": 18,
     "promptLikeFiles": 61
@@ -238,6 +238,7 @@
       "src/hooks/bridge.ts",
       "src/hooks/circular-fix-detector/index.ts",
       "src/hooks/circular-fix-detector/types.ts",
+      "src/hooks/code-simplifier/__tests__/global-config-path.test.ts",
       "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
       "src/hooks/code-simplifier/index.ts",
       "src/hooks/code-simplifier/jev-shadow.ts",
@@ -268,6 +269,7 @@
       "src/hooks/factcheck/sentinel.ts",
       "src/hooks/factcheck/types.ts",
       "src/hooks/index.ts",
+      "src/hooks/jev/__tests__/active-mode.test.ts",
       "src/hooks/jev/__tests__/client.test.ts",
       "src/hooks/jev/__tests__/points-wire-shape.test.ts",
       "src/hooks/jev/__tests__/resolver.test.ts",
@@ -377,7 +379,9 @@
       "src/hooks/project-memory/storage.ts",
       "src/hooks/project-memory/types.ts",
       "src/hooks/prompt-prerequisites/index.ts",
+      "src/hooks/ralph/__tests__/feedback-baseline.test.ts",
       "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
+      "src/hooks/ralph/feedback-baseline.ts",
       "src/hooks/ralph/index.ts",
       "src/hooks/ralph/jev-shadow.ts",
       "src/hooks/ralph/loop.ts",
@@ -409,6 +413,7 @@
       "src/hooks/rules-injector/finder.test.ts",
       "src/hooks/rules-injector/finder.ts",
       "src/hooks/rules-injector/index.ts",
+      "src/hooks/rules-injector/matcher.test.ts",
       "src/hooks/rules-injector/matcher.ts",
       "src/hooks/rules-injector/parser.test.ts",
       "src/hooks/rules-injector/parser.ts",
@@ -417,23 +422,35 @@
       "src/hooks/self-improve/__tests__/session-isolation.test.ts",
       "src/hooks/session-end/__tests__/action-runner.test.ts",
       "src/hooks/session-end/__tests__/callbacks.test.ts",
+      "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+      "src/hooks/session-end/__tests__/check-evidence.test.ts",
       "src/hooks/session-end/__tests__/cleanup-manifest.test.ts",
       "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
+      "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
+      "src/hooks/session-end/__tests__/guardrails.test.ts",
       "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
       "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
+      "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts",
       "src/hooks/session-end/__tests__/python-repl-cleanup.test.ts",
+      "src/hooks/session-end/__tests__/routing.test.ts",
       "src/hooks/session-end/__tests__/session-duration.test.ts",
       "src/hooks/session-end/__tests__/session-end-bridge-cleanup.test.ts",
       "src/hooks/session-end/__tests__/session-end-timeout.test.ts",
+      "src/hooks/session-end/__tests__/spawn-next.test.ts",
       "src/hooks/session-end/__tests__/subdirectory-cwd.test.ts",
       "src/hooks/session-end/__tests__/team-cleanup.test.ts",
       "src/hooks/session-end/__tests__/worker.test.ts",
       "src/hooks/session-end/action-runner.ts",
       "src/hooks/session-end/action-watchdog.ts",
       "src/hooks/session-end/callbacks.ts",
+      "src/hooks/session-end/chain-enqueuer.ts",
+      "src/hooks/session-end/check-evidence.ts",
       "src/hooks/session-end/cleanup-manifest.ts",
       "src/hooks/session-end/foreground-bootstrap.ts",
+      "src/hooks/session-end/guardrails.ts",
       "src/hooks/session-end/index.ts",
+      "src/hooks/session-end/routing.ts",
+      "src/hooks/session-end/spawn-next.ts",
       "src/hooks/session-end/worker.ts",
       "src/hooks/setup/README.md",
       "src/hooks/setup/__tests__/prune.test.ts",
@@ -649,10 +666,12 @@
     ],
     "libFiles": [
       "src/lib/__tests__/atomic-write.test.ts",
+      "src/lib/__tests__/host-load-gate.test.ts",
       "src/lib/__tests__/mode-state-io.test.ts",
       "src/lib/__tests__/mode-state-lock.test.ts",
       "src/lib/__tests__/payload-limits.test.ts",
       "src/lib/__tests__/plugin-dir.test.ts",
+      "src/lib/__tests__/runs-ledger.test.ts",
       "src/lib/__tests__/session-id.test.ts",
       "src/lib/__tests__/session-state-paths.type-test.ts",
       "src/lib/__tests__/swallowed-error.test.ts",
@@ -673,6 +692,7 @@
       "src/lib/env-vars.ts",
       "src/lib/featured-contributors.ts",
       "src/lib/file-lock.ts",
+      "src/lib/host-load-gate.ts",
       "src/lib/hud-wrapper-template.ts",
       "src/lib/job-state-db.ts",
       "src/lib/mode-names.ts",
@@ -682,6 +702,7 @@
       "src/lib/plugin-dir.ts",
       "src/lib/project-memory-merge.ts",
       "src/lib/release-generation.ts",
+      "src/lib/runs-ledger.ts",
       "src/lib/security-config.ts",
       "src/lib/session-id.ts",
       "src/lib/session-isolation.ts",
@@ -712,6 +733,7 @@
       "templates/hooks/post-tool-use-failure.mjs",
       "templates/hooks/post-tool-use.mjs",
       "templates/hooks/pre-tool-use.mjs",
+      "templates/hooks/session-end.mjs",
       "templates/hooks/session-start.mjs",
       "templates/hooks/stop-continuation.mjs",
       "templates/hooks/workflow-drift-guard.mjs"
@@ -805,6 +827,7 @@
       "scripts/copilot/build-agents.mjs",
       "scripts/copilot/build-hooks.mjs",
       "scripts/demo-team.mjs",
+      "scripts/dev/repro-state-lock.mjs",
       "scripts/eval-autoresearch-json.mjs",
       "scripts/eval-autoresearch-timed-json.mjs",
       "scripts/find-node.sh",
@@ -813,6 +836,7 @@
       "scripts/generate-inventory-graph.mjs",
       "scripts/generate-prompt-projections.mjs",
       "scripts/generate-skill-entitlements.mjs",
+      "scripts/git-guardrails.mjs",
       "scripts/graph-agent-demo.mjs",
       "scripts/inventory-issue-3698.mjs",
       "scripts/jev-eval.mjs",
@@ -840,6 +864,7 @@
       "scripts/lib/precompact-publisher.mjs",
       "scripts/lib/precompact-restore.mjs",
       "scripts/lib/read-budget-preflight.mjs",
+      "scripts/lib/run-reaper.mjs",
       "scripts/lib/skill-entitlements.mjs",
       "scripts/lib/state-lock.mjs",
       "scripts/lib/state-root.cjs",
@@ -871,6 +896,7 @@
       "scripts/risk-assess.mjs",
       "scripts/run-provider-advisor.js",
       "scripts/run.cjs",
+      "scripts/runs-reconciler.mjs",
       "scripts/session-end.mjs",
       "scripts/session-start.mjs",
       "scripts/session-summary.mjs",
@@ -884,6 +910,7 @@
       "scripts/shipyard-audit.mjs",
       "scripts/skill-injector.mjs",
       "scripts/smoke-multirepo.mjs",
+      "scripts/stale-run-reporter.mjs",
       "scripts/status.mjs",
       "scripts/subagent-tracker.mjs",
       "scripts/sync-metadata.ts",
@@ -975,6 +1002,10 @@
       "dist/__tests__/bridge-help-question-regex.test.d.ts.map",
       "dist/__tests__/bridge-help-question-regex.test.js",
       "dist/__tests__/bridge-help-question-regex.test.js.map",
+      "dist/__tests__/chain-enqueuer-registration.test.d.ts",
+      "dist/__tests__/chain-enqueuer-registration.test.d.ts.map",
+      "dist/__tests__/chain-enqueuer-registration.test.js",
+      "dist/__tests__/chain-enqueuer-registration.test.js.map",
       "dist/__tests__/claude-goal-adapter-doc.test.d.ts",
       "dist/__tests__/claude-goal-adapter-doc.test.d.ts.map",
       "dist/__tests__/claude-goal-adapter-doc.test.js",
@@ -1127,6 +1158,10 @@
       "dist/__tests__/helpers/prompt-test-helpers.d.ts.map",
       "dist/__tests__/helpers/prompt-test-helpers.js",
       "dist/__tests__/helpers/prompt-test-helpers.js.map",
+      "dist/__tests__/hook-bridge-main-module.test.d.ts",
+      "dist/__tests__/hook-bridge-main-module.test.d.ts.map",
+      "dist/__tests__/hook-bridge-main-module.test.js",
+      "dist/__tests__/hook-bridge-main-module.test.js.map",
       "dist/__tests__/hook-command-normalizer.test.d.ts",
       "dist/__tests__/hook-command-normalizer.test.d.ts.map",
       "dist/__tests__/hook-command-normalizer.test.js",
@@ -1819,6 +1854,10 @@
       "dist/__tests__/session-end-empty-stdin.test.d.ts.map",
       "dist/__tests__/session-end-empty-stdin.test.js",
       "dist/__tests__/session-end-empty-stdin.test.js.map",
+      "dist/__tests__/session-end-forwarder-fallback.test.d.ts",
+      "dist/__tests__/session-end-forwarder-fallback.test.d.ts.map",
+      "dist/__tests__/session-end-forwarder-fallback.test.js",
+      "dist/__tests__/session-end-forwarder-fallback.test.js.map",
       "dist/__tests__/session-end-process-exit.test.d.ts",
       "dist/__tests__/session-end-process-exit.test.d.ts.map",
       "dist/__tests__/session-end-process-exit.test.js",
@@ -2299,6 +2338,10 @@
       "dist/cli/__tests__/plugin-dir-capture.test.d.ts.map",
       "dist/cli/__tests__/plugin-dir-capture.test.js",
       "dist/cli/__tests__/plugin-dir-capture.test.js.map",
+      "dist/cli/__tests__/ralph-afk.test.d.ts",
+      "dist/cli/__tests__/ralph-afk.test.d.ts.map",
+      "dist/cli/__tests__/ralph-afk.test.js",
+      "dist/cli/__tests__/ralph-afk.test.js.map",
       "dist/cli/__tests__/self-improve-paths.test.d.ts",
       "dist/cli/__tests__/self-improve-paths.test.d.ts.map",
       "dist/cli/__tests__/self-improve-paths.test.js",
@@ -2391,6 +2434,14 @@
       "dist/cli/commands/__tests__/doctor-team-routing.test.d.ts.map",
       "dist/cli/commands/__tests__/doctor-team-routing.test.js",
       "dist/cli/commands/__tests__/doctor-team-routing.test.js.map",
+      "dist/cli/commands/__tests__/factory-init.test.d.ts",
+      "dist/cli/commands/__tests__/factory-init.test.d.ts.map",
+      "dist/cli/commands/__tests__/factory-init.test.js",
+      "dist/cli/commands/__tests__/factory-init.test.js.map",
+      "dist/cli/commands/__tests__/intake.test.d.ts",
+      "dist/cli/commands/__tests__/intake.test.d.ts.map",
+      "dist/cli/commands/__tests__/intake.test.js",
+      "dist/cli/commands/__tests__/intake.test.js.map",
       "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts",
       "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts.map",
       "dist/cli/commands/__tests__/team-role-shorthand.test.js",
@@ -2423,6 +2474,18 @@
       "dist/cli/commands/doctor-team-routing.d.ts.map",
       "dist/cli/commands/doctor-team-routing.js",
       "dist/cli/commands/doctor-team-routing.js.map",
+      "dist/cli/commands/factory.d.ts",
+      "dist/cli/commands/factory.d.ts.map",
+      "dist/cli/commands/factory.js",
+      "dist/cli/commands/factory.js.map",
+      "dist/cli/commands/intake.d.ts",
+      "dist/cli/commands/intake.d.ts.map",
+      "dist/cli/commands/intake.js",
+      "dist/cli/commands/intake.js.map",
+      "dist/cli/commands/ralph.d.ts",
+      "dist/cli/commands/ralph.d.ts.map",
+      "dist/cli/commands/ralph.js",
+      "dist/cli/commands/ralph.js.map",
       "dist/cli/commands/ralphthon.d.ts",
       "dist/cli/commands/ralphthon.d.ts.map",
       "dist/cli/commands/ralphthon.js",
@@ -2548,6 +2611,58 @@
       "dist/constants/names.d.ts.map",
       "dist/constants/names.js",
       "dist/constants/names.js.map",
+      "dist/factory/__tests__/check-run.test.d.ts",
+      "dist/factory/__tests__/check-run.test.d.ts.map",
+      "dist/factory/__tests__/check-run.test.js",
+      "dist/factory/__tests__/check-run.test.js.map",
+      "dist/factory/__tests__/listener.test.d.ts",
+      "dist/factory/__tests__/listener.test.d.ts.map",
+      "dist/factory/__tests__/listener.test.js",
+      "dist/factory/__tests__/listener.test.js.map",
+      "dist/factory/__tests__/map-frontier.test.d.ts",
+      "dist/factory/__tests__/map-frontier.test.d.ts.map",
+      "dist/factory/__tests__/map-frontier.test.js",
+      "dist/factory/__tests__/map-frontier.test.js.map",
+      "dist/factory/__tests__/map-ingest.test.d.ts",
+      "dist/factory/__tests__/map-ingest.test.d.ts.map",
+      "dist/factory/__tests__/map-ingest.test.js",
+      "dist/factory/__tests__/map-ingest.test.js.map",
+      "dist/factory/__tests__/map-run.test.d.ts",
+      "dist/factory/__tests__/map-run.test.d.ts.map",
+      "dist/factory/__tests__/map-run.test.js",
+      "dist/factory/__tests__/map-run.test.js.map",
+      "dist/factory/__tests__/status.test.d.ts",
+      "dist/factory/__tests__/status.test.d.ts.map",
+      "dist/factory/__tests__/status.test.js",
+      "dist/factory/__tests__/status.test.js.map",
+      "dist/factory/listener.d.ts",
+      "dist/factory/listener.d.ts.map",
+      "dist/factory/listener.js",
+      "dist/factory/listener.js.map",
+      "dist/factory/map-frontier.d.ts",
+      "dist/factory/map-frontier.d.ts.map",
+      "dist/factory/map-frontier.js",
+      "dist/factory/map-frontier.js.map",
+      "dist/factory/map-ingest.d.ts",
+      "dist/factory/map-ingest.d.ts.map",
+      "dist/factory/map-ingest.js",
+      "dist/factory/map-ingest.js.map",
+      "dist/factory/map-run.d.ts",
+      "dist/factory/map-run.d.ts.map",
+      "dist/factory/map-run.js",
+      "dist/factory/map-run.js.map",
+      "dist/factory/status.d.ts",
+      "dist/factory/status.d.ts.map",
+      "dist/factory/status.js",
+      "dist/factory/status.js.map",
+      "dist/factory/watchdog.d.ts",
+      "dist/factory/watchdog.d.ts.map",
+      "dist/factory/watchdog.js",
+      "dist/factory/watchdog.js.map",
+      "dist/factory/watchdog.test.d.ts",
+      "dist/factory/watchdog.test.d.ts.map",
+      "dist/factory/watchdog.test.js",
+      "dist/factory/watchdog.test.js.map",
       "dist/features/__tests__/checkpoint.test.d.ts",
       "dist/features/__tests__/checkpoint.test.d.ts.map",
       "dist/features/__tests__/checkpoint.test.js",
@@ -3308,6 +3423,10 @@
       "dist/hooks/circular-fix-detector/types.d.ts.map",
       "dist/hooks/circular-fix-detector/types.js",
       "dist/hooks/circular-fix-detector/types.js.map",
+      "dist/hooks/code-simplifier/__tests__/global-config-path.test.d.ts",
+      "dist/hooks/code-simplifier/__tests__/global-config-path.test.d.ts.map",
+      "dist/hooks/code-simplifier/__tests__/global-config-path.test.js",
+      "dist/hooks/code-simplifier/__tests__/global-config-path.test.js.map",
       "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.d.ts",
       "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.d.ts.map",
       "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.js",
@@ -3428,6 +3547,10 @@
       "dist/hooks/index.d.ts.map",
       "dist/hooks/index.js",
       "dist/hooks/index.js.map",
+      "dist/hooks/jev/__tests__/active-mode.test.d.ts",
+      "dist/hooks/jev/__tests__/active-mode.test.d.ts.map",
+      "dist/hooks/jev/__tests__/active-mode.test.js",
+      "dist/hooks/jev/__tests__/active-mode.test.js.map",
       "dist/hooks/jev/__tests__/client.test.d.ts",
       "dist/hooks/jev/__tests__/client.test.d.ts.map",
       "dist/hooks/jev/__tests__/client.test.js",
@@ -3864,10 +3987,18 @@
       "dist/hooks/prompt-prerequisites/index.d.ts.map",
       "dist/hooks/prompt-prerequisites/index.js",
       "dist/hooks/prompt-prerequisites/index.js.map",
+      "dist/hooks/ralph/__tests__/feedback-baseline.test.d.ts",
+      "dist/hooks/ralph/__tests__/feedback-baseline.test.d.ts.map",
+      "dist/hooks/ralph/__tests__/feedback-baseline.test.js",
+      "dist/hooks/ralph/__tests__/feedback-baseline.test.js.map",
       "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.d.ts",
       "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.d.ts.map",
       "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.js",
       "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.js.map",
+      "dist/hooks/ralph/feedback-baseline.d.ts",
+      "dist/hooks/ralph/feedback-baseline.d.ts.map",
+      "dist/hooks/ralph/feedback-baseline.js",
+      "dist/hooks/ralph/feedback-baseline.js.map",
       "dist/hooks/ralph/index.d.ts",
       "dist/hooks/ralph/index.d.ts.map",
       "dist/hooks/ralph/index.js",
@@ -3996,6 +4127,10 @@
       "dist/hooks/rules-injector/matcher.d.ts.map",
       "dist/hooks/rules-injector/matcher.js",
       "dist/hooks/rules-injector/matcher.js.map",
+      "dist/hooks/rules-injector/matcher.test.d.ts",
+      "dist/hooks/rules-injector/matcher.test.d.ts.map",
+      "dist/hooks/rules-injector/matcher.test.js",
+      "dist/hooks/rules-injector/matcher.test.js.map",
       "dist/hooks/rules-injector/parser.d.ts",
       "dist/hooks/rules-injector/parser.d.ts.map",
       "dist/hooks/rules-injector/parser.js",
@@ -4024,6 +4159,14 @@
       "dist/hooks/session-end/__tests__/callbacks.test.d.ts.map",
       "dist/hooks/session-end/__tests__/callbacks.test.js",
       "dist/hooks/session-end/__tests__/callbacks.test.js.map",
+      "dist/hooks/session-end/__tests__/chain-enqueuer.test.d.ts",
+      "dist/hooks/session-end/__tests__/chain-enqueuer.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/chain-enqueuer.test.js",
+      "dist/hooks/session-end/__tests__/chain-enqueuer.test.js.map",
+      "dist/hooks/session-end/__tests__/check-evidence.test.d.ts",
+      "dist/hooks/session-end/__tests__/check-evidence.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/check-evidence.test.js",
+      "dist/hooks/session-end/__tests__/check-evidence.test.js.map",
       "dist/hooks/session-end/__tests__/cleanup-manifest.test.d.ts",
       "dist/hooks/session-end/__tests__/cleanup-manifest.test.d.ts.map",
       "dist/hooks/session-end/__tests__/cleanup-manifest.test.js",
@@ -4032,6 +4175,14 @@
       "dist/hooks/session-end/__tests__/duplicate-notifications.test.d.ts.map",
       "dist/hooks/session-end/__tests__/duplicate-notifications.test.js",
       "dist/hooks/session-end/__tests__/duplicate-notifications.test.js.map",
+      "dist/hooks/session-end/__tests__/foreground-bootstrap.test.d.ts",
+      "dist/hooks/session-end/__tests__/foreground-bootstrap.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/foreground-bootstrap.test.js",
+      "dist/hooks/session-end/__tests__/foreground-bootstrap.test.js.map",
+      "dist/hooks/session-end/__tests__/guardrails.test.d.ts",
+      "dist/hooks/session-end/__tests__/guardrails.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/guardrails.test.js",
+      "dist/hooks/session-end/__tests__/guardrails.test.js.map",
       "dist/hooks/session-end/__tests__/mode-state-cleanup.test.d.ts",
       "dist/hooks/session-end/__tests__/mode-state-cleanup.test.d.ts.map",
       "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js",
@@ -4040,10 +4191,18 @@
       "dist/hooks/session-end/__tests__/openclaw-session-end.test.d.ts.map",
       "dist/hooks/session-end/__tests__/openclaw-session-end.test.js",
       "dist/hooks/session-end/__tests__/openclaw-session-end.test.js.map",
+      "dist/hooks/session-end/__tests__/process-session-end-worker-spawn.test.d.ts",
+      "dist/hooks/session-end/__tests__/process-session-end-worker-spawn.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/process-session-end-worker-spawn.test.js",
+      "dist/hooks/session-end/__tests__/process-session-end-worker-spawn.test.js.map",
       "dist/hooks/session-end/__tests__/python-repl-cleanup.test.d.ts",
       "dist/hooks/session-end/__tests__/python-repl-cleanup.test.d.ts.map",
       "dist/hooks/session-end/__tests__/python-repl-cleanup.test.js",
       "dist/hooks/session-end/__tests__/python-repl-cleanup.test.js.map",
+      "dist/hooks/session-end/__tests__/routing.test.d.ts",
+      "dist/hooks/session-end/__tests__/routing.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/routing.test.js",
+      "dist/hooks/session-end/__tests__/routing.test.js.map",
       "dist/hooks/session-end/__tests__/session-duration.test.d.ts",
       "dist/hooks/session-end/__tests__/session-duration.test.d.ts.map",
       "dist/hooks/session-end/__tests__/session-duration.test.js",
@@ -4056,6 +4215,10 @@
       "dist/hooks/session-end/__tests__/session-end-timeout.test.d.ts.map",
       "dist/hooks/session-end/__tests__/session-end-timeout.test.js",
       "dist/hooks/session-end/__tests__/session-end-timeout.test.js.map",
+      "dist/hooks/session-end/__tests__/spawn-next.test.d.ts",
+      "dist/hooks/session-end/__tests__/spawn-next.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/spawn-next.test.js",
+      "dist/hooks/session-end/__tests__/spawn-next.test.js.map",
       "dist/hooks/session-end/__tests__/subdirectory-cwd.test.d.ts",
       "dist/hooks/session-end/__tests__/subdirectory-cwd.test.d.ts.map",
       "dist/hooks/session-end/__tests__/subdirectory-cwd.test.js",
@@ -4080,6 +4243,14 @@
       "dist/hooks/session-end/callbacks.d.ts.map",
       "dist/hooks/session-end/callbacks.js",
       "dist/hooks/session-end/callbacks.js.map",
+      "dist/hooks/session-end/chain-enqueuer.d.ts",
+      "dist/hooks/session-end/chain-enqueuer.d.ts.map",
+      "dist/hooks/session-end/chain-enqueuer.js",
+      "dist/hooks/session-end/chain-enqueuer.js.map",
+      "dist/hooks/session-end/check-evidence.d.ts",
+      "dist/hooks/session-end/check-evidence.d.ts.map",
+      "dist/hooks/session-end/check-evidence.js",
+      "dist/hooks/session-end/check-evidence.js.map",
       "dist/hooks/session-end/cleanup-manifest.d.ts",
       "dist/hooks/session-end/cleanup-manifest.d.ts.map",
       "dist/hooks/session-end/cleanup-manifest.js",
@@ -4088,10 +4259,22 @@
       "dist/hooks/session-end/foreground-bootstrap.d.ts.map",
       "dist/hooks/session-end/foreground-bootstrap.js",
       "dist/hooks/session-end/foreground-bootstrap.js.map",
+      "dist/hooks/session-end/guardrails.d.ts",
+      "dist/hooks/session-end/guardrails.d.ts.map",
+      "dist/hooks/session-end/guardrails.js",
+      "dist/hooks/session-end/guardrails.js.map",
       "dist/hooks/session-end/index.d.ts",
       "dist/hooks/session-end/index.d.ts.map",
       "dist/hooks/session-end/index.js",
       "dist/hooks/session-end/index.js.map",
+      "dist/hooks/session-end/routing.d.ts",
+      "dist/hooks/session-end/routing.d.ts.map",
+      "dist/hooks/session-end/routing.js",
+      "dist/hooks/session-end/routing.js.map",
+      "dist/hooks/session-end/spawn-next.d.ts",
+      "dist/hooks/session-end/spawn-next.d.ts.map",
+      "dist/hooks/session-end/spawn-next.js",
+      "dist/hooks/session-end/spawn-next.js.map",
       "dist/hooks/session-end/worker.d.ts",
       "dist/hooks/session-end/worker.d.ts.map",
       "dist/hooks/session-end/worker.js",
@@ -4690,6 +4873,10 @@
       "dist/lib/__tests__/atomic-write.test.d.ts.map",
       "dist/lib/__tests__/atomic-write.test.js",
       "dist/lib/__tests__/atomic-write.test.js.map",
+      "dist/lib/__tests__/host-load-gate.test.d.ts",
+      "dist/lib/__tests__/host-load-gate.test.d.ts.map",
+      "dist/lib/__tests__/host-load-gate.test.js",
+      "dist/lib/__tests__/host-load-gate.test.js.map",
       "dist/lib/__tests__/mode-state-io.test.d.ts",
       "dist/lib/__tests__/mode-state-io.test.d.ts.map",
       "dist/lib/__tests__/mode-state-io.test.js",
@@ -4706,6 +4893,10 @@
       "dist/lib/__tests__/plugin-dir.test.d.ts.map",
       "dist/lib/__tests__/plugin-dir.test.js",
       "dist/lib/__tests__/plugin-dir.test.js.map",
+      "dist/lib/__tests__/runs-ledger.test.d.ts",
+      "dist/lib/__tests__/runs-ledger.test.d.ts.map",
+      "dist/lib/__tests__/runs-ledger.test.js",
+      "dist/lib/__tests__/runs-ledger.test.js.map",
       "dist/lib/__tests__/session-id.test.d.ts",
       "dist/lib/__tests__/session-id.test.d.ts.map",
       "dist/lib/__tests__/session-id.test.js",
@@ -4786,6 +4977,10 @@
       "dist/lib/file-lock.d.ts.map",
       "dist/lib/file-lock.js",
       "dist/lib/file-lock.js.map",
+      "dist/lib/host-load-gate.d.ts",
+      "dist/lib/host-load-gate.d.ts.map",
+      "dist/lib/host-load-gate.js",
+      "dist/lib/host-load-gate.js.map",
       "dist/lib/hud-wrapper-template.d.ts",
       "dist/lib/hud-wrapper-template.d.ts.map",
       "dist/lib/hud-wrapper-template.js",
@@ -4822,6 +5017,10 @@
       "dist/lib/release-generation.d.ts.map",
       "dist/lib/release-generation.js",
       "dist/lib/release-generation.js.map",
+      "dist/lib/runs-ledger.d.ts",
+      "dist/lib/runs-ledger.d.ts.map",
+      "dist/lib/runs-ledger.js",
+      "dist/lib/runs-ledger.js.map",
       "dist/lib/security-config.d.ts",
       "dist/lib/security-config.d.ts.map",
       "dist/lib/security-config.js",
@@ -6579,6 +6778,7 @@
       "src/hooks/bridge.ts",
       "src/hooks/circular-fix-detector/index.ts",
       "src/hooks/circular-fix-detector/types.ts",
+      "src/hooks/code-simplifier/__tests__/global-config-path.test.ts",
       "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
       "src/hooks/code-simplifier/index.ts",
       "src/hooks/code-simplifier/jev-shadow.ts",
@@ -6609,6 +6809,7 @@
       "src/hooks/factcheck/sentinel.ts",
       "src/hooks/factcheck/types.ts",
       "src/hooks/index.ts",
+      "src/hooks/jev/__tests__/active-mode.test.ts",
       "src/hooks/jev/__tests__/client.test.ts",
       "src/hooks/jev/__tests__/points-wire-shape.test.ts",
       "src/hooks/jev/__tests__/resolver.test.ts",
@@ -6718,7 +6919,9 @@
       "src/hooks/project-memory/storage.ts",
       "src/hooks/project-memory/types.ts",
       "src/hooks/prompt-prerequisites/index.ts",
+      "src/hooks/ralph/__tests__/feedback-baseline.test.ts",
       "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
+      "src/hooks/ralph/feedback-baseline.ts",
       "src/hooks/ralph/index.ts",
       "src/hooks/ralph/jev-shadow.ts",
       "src/hooks/ralph/loop.ts",
@@ -6750,6 +6953,7 @@
       "src/hooks/rules-injector/finder.test.ts",
       "src/hooks/rules-injector/finder.ts",
       "src/hooks/rules-injector/index.ts",
+      "src/hooks/rules-injector/matcher.test.ts",
       "src/hooks/rules-injector/matcher.ts",
       "src/hooks/rules-injector/parser.test.ts",
       "src/hooks/rules-injector/parser.ts",
@@ -6758,23 +6962,35 @@
       "src/hooks/self-improve/__tests__/session-isolation.test.ts",
       "src/hooks/session-end/__tests__/action-runner.test.ts",
       "src/hooks/session-end/__tests__/callbacks.test.ts",
+      "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+      "src/hooks/session-end/__tests__/check-evidence.test.ts",
       "src/hooks/session-end/__tests__/cleanup-manifest.test.ts",
       "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
+      "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
+      "src/hooks/session-end/__tests__/guardrails.test.ts",
       "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
       "src/hooks/session-end/__tests__/openclaw-session-end.test.ts",
+      "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts",
       "src/hooks/session-end/__tests__/python-repl-cleanup.test.ts",
+      "src/hooks/session-end/__tests__/routing.test.ts",
       "src/hooks/session-end/__tests__/session-duration.test.ts",
       "src/hooks/session-end/__tests__/session-end-bridge-cleanup.test.ts",
       "src/hooks/session-end/__tests__/session-end-timeout.test.ts",
+      "src/hooks/session-end/__tests__/spawn-next.test.ts",
       "src/hooks/session-end/__tests__/subdirectory-cwd.test.ts",
       "src/hooks/session-end/__tests__/team-cleanup.test.ts",
       "src/hooks/session-end/__tests__/worker.test.ts",
       "src/hooks/session-end/action-runner.ts",
       "src/hooks/session-end/action-watchdog.ts",
       "src/hooks/session-end/callbacks.ts",
+      "src/hooks/session-end/chain-enqueuer.ts",
+      "src/hooks/session-end/check-evidence.ts",
       "src/hooks/session-end/cleanup-manifest.ts",
       "src/hooks/session-end/foreground-bootstrap.ts",
+      "src/hooks/session-end/guardrails.ts",
       "src/hooks/session-end/index.ts",
+      "src/hooks/session-end/routing.ts",
+      "src/hooks/session-end/spawn-next.ts",
       "src/hooks/session-end/worker.ts",
       "src/hooks/setup/README.md",
       "src/hooks/setup/__tests__/prune.test.ts",
@@ -7300,14 +7516,14 @@
         "path": "CLAUDE.md"
       },
       {
-        "id": "CONTEXT.md",
-        "kind": "other",
-        "path": "CONTEXT.md"
-      },
-      {
         "id": "CONTRIBUTING.md",
         "kind": "other",
         "path": "CONTRIBUTING.md"
+      },
+      {
+        "id": "GLOSSARY.md",
+        "kind": "other",
+        "path": "GLOSSARY.md"
       },
       {
         "id": "LICENSE",
@@ -8440,6 +8656,26 @@
         "path": "dist/__tests__/bridge-help-question-regex.test.js.map"
       },
       {
+        "id": "dist/__tests__/chain-enqueuer-registration.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/chain-enqueuer-registration.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/chain-enqueuer-registration.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/chain-enqueuer-registration.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/chain-enqueuer-registration.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/chain-enqueuer-registration.test.js"
+      },
+      {
+        "id": "dist/__tests__/chain-enqueuer-registration.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/chain-enqueuer-registration.test.js.map"
+      },
+      {
         "id": "dist/__tests__/claude-goal-adapter-doc.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/claude-goal-adapter-doc.test.d.ts"
@@ -9198,6 +9434,26 @@
         "id": "dist/__tests__/helpers/prompt-test-helpers.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/helpers/prompt-test-helpers.js.map"
+      },
+      {
+        "id": "dist/__tests__/hook-bridge-main-module.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hook-bridge-main-module.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hook-bridge-main-module.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hook-bridge-main-module.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hook-bridge-main-module.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hook-bridge-main-module.test.js"
+      },
+      {
+        "id": "dist/__tests__/hook-bridge-main-module.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hook-bridge-main-module.test.js.map"
       },
       {
         "id": "dist/__tests__/hook-command-normalizer.test.d.ts",
@@ -12660,6 +12916,26 @@
         "path": "dist/__tests__/session-end-empty-stdin.test.js.map"
       },
       {
+        "id": "dist/__tests__/session-end-forwarder-fallback.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-end-forwarder-fallback.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/session-end-forwarder-fallback.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-end-forwarder-fallback.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/session-end-forwarder-fallback.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-end-forwarder-fallback.test.js"
+      },
+      {
+        "id": "dist/__tests__/session-end-forwarder-fallback.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/session-end-forwarder-fallback.test.js.map"
+      },
+      {
         "id": "dist/__tests__/session-end-process-exit.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/session-end-process-exit.test.d.ts"
@@ -15060,6 +15336,26 @@
         "path": "dist/cli/__tests__/plugin-dir-capture.test.js.map"
       },
       {
+        "id": "dist/cli/__tests__/ralph-afk.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/ralph-afk.test.d.ts"
+      },
+      {
+        "id": "dist/cli/__tests__/ralph-afk.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/ralph-afk.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/__tests__/ralph-afk.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/ralph-afk.test.js"
+      },
+      {
+        "id": "dist/cli/__tests__/ralph-afk.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/ralph-afk.test.js.map"
+      },
+      {
         "id": "dist/cli/__tests__/self-improve-paths.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/__tests__/self-improve-paths.test.d.ts"
@@ -15520,6 +15816,46 @@
         "path": "dist/cli/commands/__tests__/doctor-team-routing.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/factory-init.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-init.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-init.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-init.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-init.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-init.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-init.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-init.test.js.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/intake.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/intake.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/intake.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/intake.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/intake.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/intake.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/intake.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/intake.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts"
@@ -15678,6 +16014,66 @@
         "id": "dist/cli/commands/doctor-team-routing.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/doctor-team-routing.js.map"
+      },
+      {
+        "id": "dist/cli/commands/factory.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/factory.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/factory.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory.js"
+      },
+      {
+        "id": "dist/cli/commands/factory.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/factory.js.map"
+      },
+      {
+        "id": "dist/cli/commands/intake.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/intake.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/intake.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/intake.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/intake.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/intake.js"
+      },
+      {
+        "id": "dist/cli/commands/intake.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/intake.js.map"
+      },
+      {
+        "id": "dist/cli/commands/ralph.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/ralph.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/ralph.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/ralph.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/ralph.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/ralph.js"
+      },
+      {
+        "id": "dist/cli/commands/ralph.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/ralph.js.map"
       },
       {
         "id": "dist/cli/commands/ralphthon.d.ts",
@@ -16303,6 +16699,266 @@
         "id": "dist/constants/names.js.map",
         "kind": "generated-dist",
         "path": "dist/constants/names.js.map"
+      },
+      {
+        "id": "dist/factory/__tests__/check-run.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/check-run.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/check-run.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/check-run.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/check-run.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/check-run.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/check-run.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/check-run.test.js.map"
+      },
+      {
+        "id": "dist/factory/__tests__/listener.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/listener.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/listener.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/listener.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/listener.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/listener.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/listener.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/listener.test.js.map"
+      },
+      {
+        "id": "dist/factory/__tests__/map-frontier.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/map-frontier.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/map-frontier.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/map-frontier.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/map-frontier.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/map-frontier.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/map-frontier.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/map-frontier.test.js.map"
+      },
+      {
+        "id": "dist/factory/__tests__/map-ingest.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/map-ingest.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/map-ingest.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/map-ingest.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/map-ingest.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/map-ingest.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/map-ingest.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/map-ingest.test.js.map"
+      },
+      {
+        "id": "dist/factory/__tests__/map-run.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/map-run.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/map-run.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/map-run.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/map-run.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/map-run.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/map-run.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/map-run.test.js.map"
+      },
+      {
+        "id": "dist/factory/__tests__/status.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/status.test.d.ts"
+      },
+      {
+        "id": "dist/factory/__tests__/status.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/status.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/__tests__/status.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/status.test.js"
+      },
+      {
+        "id": "dist/factory/__tests__/status.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/__tests__/status.test.js.map"
+      },
+      {
+        "id": "dist/factory/listener.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/listener.d.ts"
+      },
+      {
+        "id": "dist/factory/listener.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/listener.d.ts.map"
+      },
+      {
+        "id": "dist/factory/listener.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/listener.js"
+      },
+      {
+        "id": "dist/factory/listener.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/listener.js.map"
+      },
+      {
+        "id": "dist/factory/map-frontier.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/map-frontier.d.ts"
+      },
+      {
+        "id": "dist/factory/map-frontier.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/map-frontier.d.ts.map"
+      },
+      {
+        "id": "dist/factory/map-frontier.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/map-frontier.js"
+      },
+      {
+        "id": "dist/factory/map-frontier.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/map-frontier.js.map"
+      },
+      {
+        "id": "dist/factory/map-ingest.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/map-ingest.d.ts"
+      },
+      {
+        "id": "dist/factory/map-ingest.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/map-ingest.d.ts.map"
+      },
+      {
+        "id": "dist/factory/map-ingest.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/map-ingest.js"
+      },
+      {
+        "id": "dist/factory/map-ingest.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/map-ingest.js.map"
+      },
+      {
+        "id": "dist/factory/map-run.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/map-run.d.ts"
+      },
+      {
+        "id": "dist/factory/map-run.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/map-run.d.ts.map"
+      },
+      {
+        "id": "dist/factory/map-run.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/map-run.js"
+      },
+      {
+        "id": "dist/factory/map-run.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/map-run.js.map"
+      },
+      {
+        "id": "dist/factory/status.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/status.d.ts"
+      },
+      {
+        "id": "dist/factory/status.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/status.d.ts.map"
+      },
+      {
+        "id": "dist/factory/status.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/status.js"
+      },
+      {
+        "id": "dist/factory/status.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/status.js.map"
+      },
+      {
+        "id": "dist/factory/watchdog.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/watchdog.d.ts"
+      },
+      {
+        "id": "dist/factory/watchdog.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/watchdog.d.ts.map"
+      },
+      {
+        "id": "dist/factory/watchdog.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/watchdog.js"
+      },
+      {
+        "id": "dist/factory/watchdog.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/watchdog.js.map"
+      },
+      {
+        "id": "dist/factory/watchdog.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/factory/watchdog.test.d.ts"
+      },
+      {
+        "id": "dist/factory/watchdog.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/watchdog.test.d.ts.map"
+      },
+      {
+        "id": "dist/factory/watchdog.test.js",
+        "kind": "generated-dist",
+        "path": "dist/factory/watchdog.test.js"
+      },
+      {
+        "id": "dist/factory/watchdog.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/factory/watchdog.test.js.map"
       },
       {
         "id": "dist/features/__tests__/checkpoint.test.d.ts",
@@ -20105,6 +20761,26 @@
         "path": "dist/hooks/circular-fix-detector/types.js.map"
       },
       {
+        "id": "dist/hooks/code-simplifier/__tests__/global-config-path.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/code-simplifier/__tests__/global-config-path.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/code-simplifier/__tests__/global-config-path.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/code-simplifier/__tests__/global-config-path.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/code-simplifier/__tests__/global-config-path.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/code-simplifier/__tests__/global-config-path.test.js"
+      },
+      {
+        "id": "dist/hooks/code-simplifier/__tests__/global-config-path.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/code-simplifier/__tests__/global-config-path.test.js.map"
+      },
+      {
         "id": "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.d.ts"
@@ -20703,6 +21379,26 @@
         "id": "dist/hooks/index.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/index.js.map"
+      },
+      {
+        "id": "dist/hooks/jev/__tests__/active-mode.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/__tests__/active-mode.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/jev/__tests__/active-mode.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/__tests__/active-mode.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/jev/__tests__/active-mode.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/__tests__/active-mode.test.js"
+      },
+      {
+        "id": "dist/hooks/jev/__tests__/active-mode.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/jev/__tests__/active-mode.test.js.map"
       },
       {
         "id": "dist/hooks/jev/__tests__/client.test.d.ts",
@@ -22885,6 +23581,26 @@
         "path": "dist/hooks/prompt-prerequisites/index.js.map"
       },
       {
+        "id": "dist/hooks/ralph/__tests__/feedback-baseline.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/__tests__/feedback-baseline.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/ralph/__tests__/feedback-baseline.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/__tests__/feedback-baseline.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/ralph/__tests__/feedback-baseline.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/__tests__/feedback-baseline.test.js"
+      },
+      {
+        "id": "dist/hooks/ralph/__tests__/feedback-baseline.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/__tests__/feedback-baseline.test.js.map"
+      },
+      {
         "id": "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.d.ts"
@@ -22903,6 +23619,26 @@
         "id": "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/ralph/__tests__/jev-verdict-shadow.test.js.map"
+      },
+      {
+        "id": "dist/hooks/ralph/feedback-baseline.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/feedback-baseline.d.ts"
+      },
+      {
+        "id": "dist/hooks/ralph/feedback-baseline.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/feedback-baseline.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/ralph/feedback-baseline.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/feedback-baseline.js"
+      },
+      {
+        "id": "dist/hooks/ralph/feedback-baseline.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ralph/feedback-baseline.js.map"
       },
       {
         "id": "dist/hooks/ralph/index.d.ts",
@@ -23545,6 +24281,26 @@
         "path": "dist/hooks/rules-injector/matcher.js.map"
       },
       {
+        "id": "dist/hooks/rules-injector/matcher.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/rules-injector/matcher.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/rules-injector/matcher.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/rules-injector/matcher.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/rules-injector/matcher.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/rules-injector/matcher.test.js"
+      },
+      {
+        "id": "dist/hooks/rules-injector/matcher.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/rules-injector/matcher.test.js.map"
+      },
+      {
         "id": "dist/hooks/rules-injector/parser.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/rules-injector/parser.d.ts"
@@ -23685,6 +24441,46 @@
         "path": "dist/hooks/session-end/__tests__/callbacks.test.js.map"
       },
       {
+        "id": "dist/hooks/session-end/__tests__/chain-enqueuer.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/chain-enqueuer.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/chain-enqueuer.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/chain-enqueuer.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/chain-enqueuer.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/chain-enqueuer.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/chain-enqueuer.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/chain-enqueuer.test.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/check-evidence.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/check-evidence.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/check-evidence.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/check-evidence.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/check-evidence.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/check-evidence.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/check-evidence.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/check-evidence.test.js.map"
+      },
+      {
         "id": "dist/hooks/session-end/__tests__/cleanup-manifest.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/__tests__/cleanup-manifest.test.d.ts"
@@ -23723,6 +24519,46 @@
         "id": "dist/hooks/session-end/__tests__/duplicate-notifications.test.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/__tests__/duplicate-notifications.test.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/foreground-bootstrap.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/foreground-bootstrap.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/foreground-bootstrap.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/foreground-bootstrap.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/foreground-bootstrap.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/foreground-bootstrap.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/foreground-bootstrap.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/foreground-bootstrap.test.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/guardrails.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/guardrails.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/guardrails.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/guardrails.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/guardrails.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/guardrails.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/guardrails.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/guardrails.test.js.map"
       },
       {
         "id": "dist/hooks/session-end/__tests__/mode-state-cleanup.test.d.ts",
@@ -23765,6 +24601,26 @@
         "path": "dist/hooks/session-end/__tests__/openclaw-session-end.test.js.map"
       },
       {
+        "id": "dist/hooks/session-end/__tests__/process-session-end-worker-spawn.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/process-session-end-worker-spawn.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/process-session-end-worker-spawn.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/process-session-end-worker-spawn.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/process-session-end-worker-spawn.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/process-session-end-worker-spawn.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/process-session-end-worker-spawn.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/process-session-end-worker-spawn.test.js.map"
+      },
+      {
         "id": "dist/hooks/session-end/__tests__/python-repl-cleanup.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/__tests__/python-repl-cleanup.test.d.ts"
@@ -23783,6 +24639,26 @@
         "id": "dist/hooks/session-end/__tests__/python-repl-cleanup.test.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/__tests__/python-repl-cleanup.test.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/routing.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/routing.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/routing.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/routing.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/routing.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/routing.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/routing.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/routing.test.js.map"
       },
       {
         "id": "dist/hooks/session-end/__tests__/session-duration.test.d.ts",
@@ -23843,6 +24719,26 @@
         "id": "dist/hooks/session-end/__tests__/session-end-timeout.test.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/__tests__/session-end-timeout.test.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/spawn-next.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/spawn-next.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/spawn-next.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/spawn-next.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/spawn-next.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/spawn-next.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/spawn-next.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/spawn-next.test.js.map"
       },
       {
         "id": "dist/hooks/session-end/__tests__/subdirectory-cwd.test.d.ts",
@@ -23965,6 +24861,46 @@
         "path": "dist/hooks/session-end/callbacks.js.map"
       },
       {
+        "id": "dist/hooks/session-end/chain-enqueuer.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/chain-enqueuer.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/chain-enqueuer.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/chain-enqueuer.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/chain-enqueuer.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/chain-enqueuer.js"
+      },
+      {
+        "id": "dist/hooks/session-end/chain-enqueuer.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/chain-enqueuer.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/check-evidence.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/check-evidence.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/check-evidence.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/check-evidence.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/check-evidence.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/check-evidence.js"
+      },
+      {
+        "id": "dist/hooks/session-end/check-evidence.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/check-evidence.js.map"
+      },
+      {
         "id": "dist/hooks/session-end/cleanup-manifest.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/cleanup-manifest.d.ts"
@@ -24005,6 +24941,26 @@
         "path": "dist/hooks/session-end/foreground-bootstrap.js.map"
       },
       {
+        "id": "dist/hooks/session-end/guardrails.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/guardrails.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/guardrails.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/guardrails.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/guardrails.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/guardrails.js"
+      },
+      {
+        "id": "dist/hooks/session-end/guardrails.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/guardrails.js.map"
+      },
+      {
         "id": "dist/hooks/session-end/index.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/index.d.ts"
@@ -24023,6 +24979,46 @@
         "id": "dist/hooks/session-end/index.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/index.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/routing.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/routing.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/routing.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/routing.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/routing.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/routing.js"
+      },
+      {
+        "id": "dist/hooks/session-end/routing.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/routing.js.map"
+      },
+      {
+        "id": "dist/hooks/session-end/spawn-next.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/spawn-next.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/spawn-next.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/spawn-next.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/spawn-next.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/spawn-next.js"
+      },
+      {
+        "id": "dist/hooks/session-end/spawn-next.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/spawn-next.js.map"
       },
       {
         "id": "dist/hooks/session-end/worker.d.ts",
@@ -27015,6 +28011,26 @@
         "path": "dist/lib/__tests__/atomic-write.test.js.map"
       },
       {
+        "id": "dist/lib/__tests__/host-load-gate.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/host-load-gate.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/host-load-gate.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/host-load-gate.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/host-load-gate.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/host-load-gate.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/host-load-gate.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/host-load-gate.test.js.map"
+      },
+      {
         "id": "dist/lib/__tests__/mode-state-io.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/mode-state-io.test.d.ts"
@@ -27093,6 +28109,26 @@
         "id": "dist/lib/__tests__/plugin-dir.test.js.map",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/plugin-dir.test.js.map"
+      },
+      {
+        "id": "dist/lib/__tests__/runs-ledger.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/runs-ledger.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/runs-ledger.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/runs-ledger.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/runs-ledger.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/runs-ledger.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/runs-ledger.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/runs-ledger.test.js.map"
       },
       {
         "id": "dist/lib/__tests__/session-id.test.d.ts",
@@ -27495,6 +28531,26 @@
         "path": "dist/lib/file-lock.js.map"
       },
       {
+        "id": "dist/lib/host-load-gate.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/host-load-gate.d.ts"
+      },
+      {
+        "id": "dist/lib/host-load-gate.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/host-load-gate.d.ts.map"
+      },
+      {
+        "id": "dist/lib/host-load-gate.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/host-load-gate.js"
+      },
+      {
+        "id": "dist/lib/host-load-gate.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/host-load-gate.js.map"
+      },
+      {
         "id": "dist/lib/hud-wrapper-template.d.ts",
         "kind": "generated-dist",
         "path": "dist/lib/hud-wrapper-template.d.ts"
@@ -27673,6 +28729,26 @@
         "id": "dist/lib/release-generation.js.map",
         "kind": "generated-dist",
         "path": "dist/lib/release-generation.js.map"
+      },
+      {
+        "id": "dist/lib/runs-ledger.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/runs-ledger.d.ts"
+      },
+      {
+        "id": "dist/lib/runs-ledger.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/runs-ledger.d.ts.map"
+      },
+      {
+        "id": "dist/lib/runs-ledger.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/runs-ledger.js"
+      },
+      {
+        "id": "dist/lib/runs-ledger.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/runs-ledger.js.map"
       },
       {
         "id": "dist/lib/security-config.d.ts",
@@ -36205,6 +37281,11 @@
         "path": "docs/design/CONSOLIDATION_PHASE3_ROADMAP.md"
       },
       {
+        "id": "docs/design/FACTORY-FINAL-DESIGN.md",
+        "kind": "other",
+        "path": "docs/design/FACTORY-FINAL-DESIGN.md"
+      },
+      {
         "id": "docs/design/ISSUE-3698-LIGHTWEIGHT-WORKFLOW-PLAN.md",
         "kind": "other",
         "path": "docs/design/ISSUE-3698-LIGHTWEIGHT-WORKFLOW-PLAN.md"
@@ -36223,6 +37304,11 @@
         "id": "docs/design/ISSUE-3712-RELEASE-VERIFICATION.md",
         "kind": "other",
         "path": "docs/design/ISSUE-3712-RELEASE-VERIFICATION.md"
+      },
+      {
+        "id": "docs/design/P2-RUN-LEDGER-AND-INTAKE-PLAN.md",
+        "kind": "other",
+        "path": "docs/design/P2-RUN-LEDGER-AND-INTAKE-PLAN.md"
       },
       {
         "id": "docs/design/SKILLS_2_0_ADAPTATION.md",
@@ -36253,6 +37339,11 @@
         "id": "docs/design/project-session-manager.md",
         "kind": "other",
         "path": "docs/design/project-session-manager.md"
+      },
+      {
+        "id": "docs/factory/t6-acceptance/acceptance-comment.md",
+        "kind": "other",
+        "path": "docs/factory/t6-acceptance/acceptance-comment.md"
       },
       {
         "id": "docs/geobench.md",
@@ -36538,6 +37629,11 @@
         "id": "external:node:path/win32",
         "kind": "external",
         "path": "node:path/win32"
+      },
+      {
+        "id": "external:node:perf_hooks",
+        "kind": "external",
+        "path": "node:perf_hooks"
       },
       {
         "id": "external:node:process",
@@ -36965,6 +38061,11 @@
         "path": "scripts/demo-team.mjs"
       },
       {
+        "id": "scripts/dev/repro-state-lock.mjs",
+        "kind": "script",
+        "path": "scripts/dev/repro-state-lock.mjs"
+      },
+      {
         "id": "scripts/eval-autoresearch-json.mjs",
         "kind": "script",
         "path": "scripts/eval-autoresearch-json.mjs"
@@ -37003,6 +38104,11 @@
         "id": "scripts/generate-skill-entitlements.mjs",
         "kind": "script",
         "path": "scripts/generate-skill-entitlements.mjs"
+      },
+      {
+        "id": "scripts/git-guardrails.mjs",
+        "kind": "script",
+        "path": "scripts/git-guardrails.mjs"
       },
       {
         "id": "scripts/graph-agent-demo.mjs",
@@ -37138,6 +38244,11 @@
         "id": "scripts/lib/read-budget-preflight.mjs",
         "kind": "script",
         "path": "scripts/lib/read-budget-preflight.mjs"
+      },
+      {
+        "id": "scripts/lib/run-reaper.mjs",
+        "kind": "script",
+        "path": "scripts/lib/run-reaper.mjs"
       },
       {
         "id": "scripts/lib/skill-entitlements.mjs",
@@ -37295,6 +38406,11 @@
         "path": "scripts/run.cjs"
       },
       {
+        "id": "scripts/runs-reconciler.mjs",
+        "kind": "script",
+        "path": "scripts/runs-reconciler.mjs"
+      },
+      {
         "id": "scripts/session-end.mjs",
         "kind": "script",
         "path": "scripts/session-end.mjs"
@@ -37358,6 +38474,11 @@
         "id": "scripts/smoke-multirepo.mjs",
         "kind": "script",
         "path": "scripts/smoke-multirepo.mjs"
+      },
+      {
+        "id": "scripts/stale-run-reporter.mjs",
+        "kind": "script",
+        "path": "scripts/stale-run-reporter.mjs"
       },
       {
         "id": "scripts/status.mjs",
@@ -38120,6 +39241,11 @@
         "path": "src/__tests__/bridge-help-question-regex.test.ts"
       },
       {
+        "id": "src/__tests__/chain-enqueuer-registration.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/chain-enqueuer-registration.test.ts"
+      },
+      {
         "id": "src/__tests__/claude-goal-adapter-doc.test.ts",
         "kind": "src",
         "path": "src/__tests__/claude-goal-adapter-doc.test.ts"
@@ -38353,6 +39479,11 @@
         "id": "src/__tests__/helpers/prompt-test-helpers.ts",
         "kind": "src",
         "path": "src/__tests__/helpers/prompt-test-helpers.ts"
+      },
+      {
+        "id": "src/__tests__/hook-bridge-main-module.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hook-bridge-main-module.test.ts"
       },
       {
         "id": "src/__tests__/hook-command-normalizer.test.ts",
@@ -39240,6 +40371,11 @@
         "path": "src/__tests__/session-end-empty-stdin.test.ts"
       },
       {
+        "id": "src/__tests__/session-end-forwarder-fallback.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/session-end-forwarder-fallback.test.ts"
+      },
+      {
         "id": "src/__tests__/session-end-process-exit.test.ts",
         "kind": "src",
         "path": "src/__tests__/session-end-process-exit.test.ts"
@@ -39860,6 +40996,11 @@
         "path": "src/cli/__tests__/plugin-dir-capture.test.ts"
       },
       {
+        "id": "src/cli/__tests__/ralph-afk.test.ts",
+        "kind": "src",
+        "path": "src/cli/__tests__/ralph-afk.test.ts"
+      },
+      {
         "id": "src/cli/__tests__/self-improve-paths.test.ts",
         "kind": "src",
         "path": "src/cli/__tests__/self-improve-paths.test.ts"
@@ -39975,6 +41116,16 @@
         "path": "src/cli/commands/__tests__/doctor-team-routing.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/factory-init.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/factory-init.test.ts"
+      },
+      {
+        "id": "src/cli/commands/__tests__/intake.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/intake.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/team-role-shorthand.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/team-role-shorthand.test.ts"
@@ -40013,6 +41164,21 @@
         "id": "src/cli/commands/doctor-team-routing.ts",
         "kind": "src",
         "path": "src/cli/commands/doctor-team-routing.ts"
+      },
+      {
+        "id": "src/cli/commands/factory.ts",
+        "kind": "src",
+        "path": "src/cli/commands/factory.ts"
+      },
+      {
+        "id": "src/cli/commands/intake.ts",
+        "kind": "src",
+        "path": "src/cli/commands/intake.ts"
+      },
+      {
+        "id": "src/cli/commands/ralph.ts",
+        "kind": "src",
+        "path": "src/cli/commands/ralph.ts"
       },
       {
         "id": "src/cli/commands/ralphthon.ts",
@@ -40173,6 +41339,71 @@
         "id": "src/constants/names.ts",
         "kind": "src",
         "path": "src/constants/names.ts"
+      },
+      {
+        "id": "src/factory/__tests__/check-run.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/check-run.test.ts"
+      },
+      {
+        "id": "src/factory/__tests__/listener.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/listener.test.ts"
+      },
+      {
+        "id": "src/factory/__tests__/map-frontier.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/map-frontier.test.ts"
+      },
+      {
+        "id": "src/factory/__tests__/map-ingest.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/map-ingest.test.ts"
+      },
+      {
+        "id": "src/factory/__tests__/map-run.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/map-run.test.ts"
+      },
+      {
+        "id": "src/factory/__tests__/status.test.ts",
+        "kind": "src",
+        "path": "src/factory/__tests__/status.test.ts"
+      },
+      {
+        "id": "src/factory/listener.ts",
+        "kind": "src",
+        "path": "src/factory/listener.ts"
+      },
+      {
+        "id": "src/factory/map-frontier.ts",
+        "kind": "src",
+        "path": "src/factory/map-frontier.ts"
+      },
+      {
+        "id": "src/factory/map-ingest.ts",
+        "kind": "src",
+        "path": "src/factory/map-ingest.ts"
+      },
+      {
+        "id": "src/factory/map-run.ts",
+        "kind": "src",
+        "path": "src/factory/map-run.ts"
+      },
+      {
+        "id": "src/factory/status.ts",
+        "kind": "src",
+        "path": "src/factory/status.ts"
+      },
+      {
+        "id": "src/factory/watchdog.test.ts",
+        "kind": "src",
+        "path": "src/factory/watchdog.test.ts"
+      },
+      {
+        "id": "src/factory/watchdog.ts",
+        "kind": "src",
+        "path": "src/factory/watchdog.ts"
       },
       {
         "id": "src/features/AGENTS.md",
@@ -41165,6 +42396,11 @@
         "path": "src/hooks/circular-fix-detector/types.ts"
       },
       {
+        "id": "src/hooks/code-simplifier/__tests__/global-config-path.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/code-simplifier/__tests__/global-config-path.test.ts"
+      },
+      {
         "id": "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
         "kind": "hook",
         "path": "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts"
@@ -41313,6 +42549,11 @@
         "id": "src/hooks/index.ts",
         "kind": "hook",
         "path": "src/hooks/index.ts"
+      },
+      {
+        "id": "src/hooks/jev/__tests__/active-mode.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/jev/__tests__/active-mode.test.ts"
       },
       {
         "id": "src/hooks/jev/__tests__/client.test.ts",
@@ -41860,9 +43101,19 @@
         "path": "src/hooks/prompt-prerequisites/index.ts"
       },
       {
+        "id": "src/hooks/ralph/__tests__/feedback-baseline.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/ralph/__tests__/feedback-baseline.test.ts"
+      },
+      {
         "id": "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
         "kind": "hook",
         "path": "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts"
+      },
+      {
+        "id": "src/hooks/ralph/feedback-baseline.ts",
+        "kind": "hook",
+        "path": "src/hooks/ralph/feedback-baseline.ts"
       },
       {
         "id": "src/hooks/ralph/index.ts",
@@ -42020,6 +43271,11 @@
         "path": "src/hooks/rules-injector/index.ts"
       },
       {
+        "id": "src/hooks/rules-injector/matcher.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/rules-injector/matcher.test.ts"
+      },
+      {
         "id": "src/hooks/rules-injector/matcher.ts",
         "kind": "hook",
         "path": "src/hooks/rules-injector/matcher.ts"
@@ -42060,6 +43316,16 @@
         "path": "src/hooks/session-end/__tests__/callbacks.test.ts"
       },
       {
+        "id": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts"
+      },
+      {
+        "id": "src/hooks/session-end/__tests__/check-evidence.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/check-evidence.test.ts"
+      },
+      {
         "id": "src/hooks/session-end/__tests__/cleanup-manifest.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/cleanup-manifest.test.ts"
@@ -42068,6 +43334,16 @@
         "id": "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/duplicate-notifications.test.ts"
+      },
+      {
+        "id": "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts"
+      },
+      {
+        "id": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/guardrails.test.ts"
       },
       {
         "id": "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
@@ -42080,9 +43356,19 @@
         "path": "src/hooks/session-end/__tests__/openclaw-session-end.test.ts"
       },
       {
+        "id": "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts"
+      },
+      {
         "id": "src/hooks/session-end/__tests__/python-repl-cleanup.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/python-repl-cleanup.test.ts"
+      },
+      {
+        "id": "src/hooks/session-end/__tests__/routing.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/routing.test.ts"
       },
       {
         "id": "src/hooks/session-end/__tests__/session-duration.test.ts",
@@ -42098,6 +43384,11 @@
         "id": "src/hooks/session-end/__tests__/session-end-timeout.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/session-end-timeout.test.ts"
+      },
+      {
+        "id": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/spawn-next.test.ts"
       },
       {
         "id": "src/hooks/session-end/__tests__/subdirectory-cwd.test.ts",
@@ -42130,6 +43421,16 @@
         "path": "src/hooks/session-end/callbacks.ts"
       },
       {
+        "id": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/chain-enqueuer.ts"
+      },
+      {
+        "id": "src/hooks/session-end/check-evidence.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/check-evidence.ts"
+      },
+      {
         "id": "src/hooks/session-end/cleanup-manifest.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/cleanup-manifest.ts"
@@ -42140,9 +43441,24 @@
         "path": "src/hooks/session-end/foreground-bootstrap.ts"
       },
       {
+        "id": "src/hooks/session-end/guardrails.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/guardrails.ts"
+      },
+      {
         "id": "src/hooks/session-end/index.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/index.ts"
+      },
+      {
+        "id": "src/hooks/session-end/routing.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/routing.ts"
+      },
+      {
+        "id": "src/hooks/session-end/spawn-next.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/spawn-next.ts"
       },
       {
         "id": "src/hooks/session-end/worker.ts",
@@ -42955,6 +44271,11 @@
         "path": "src/lib/__tests__/atomic-write.test.ts"
       },
       {
+        "id": "src/lib/__tests__/host-load-gate.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/host-load-gate.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/mode-state-io.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/mode-state-io.test.ts"
@@ -42973,6 +44294,11 @@
         "id": "src/lib/__tests__/plugin-dir.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/plugin-dir.test.ts"
+      },
+      {
+        "id": "src/lib/__tests__/runs-ledger.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/runs-ledger.test.ts"
       },
       {
         "id": "src/lib/__tests__/session-id.test.ts",
@@ -43075,6 +44401,11 @@
         "path": "src/lib/file-lock.ts"
       },
       {
+        "id": "src/lib/host-load-gate.ts",
+        "kind": "lib",
+        "path": "src/lib/host-load-gate.ts"
+      },
+      {
         "id": "src/lib/hud-wrapper-template.ts",
         "kind": "lib",
         "path": "src/lib/hud-wrapper-template.ts"
@@ -43118,6 +44449,11 @@
         "id": "src/lib/release-generation.ts",
         "kind": "lib",
         "path": "src/lib/release-generation.ts"
+      },
+      {
+        "id": "src/lib/runs-ledger.ts",
+        "kind": "lib",
+        "path": "src/lib/runs-ledger.ts"
       },
       {
         "id": "src/lib/security-config.ts",
@@ -45320,6 +46656,11 @@
         "path": "templates/hooks/pre-tool-use.mjs"
       },
       {
+        "id": "templates/hooks/session-end.mjs",
+        "kind": "template-hook",
+        "path": "templates/hooks/session-end.mjs"
+      },
+      {
         "id": "templates/hooks/session-start.mjs",
         "kind": "template-hook",
         "path": "templates/hooks/session-start.mjs"
@@ -45445,14 +46786,39 @@
         "path": "tests/integration/epic-3698-closure-verifier.test.ts"
       },
       {
+        "id": "tests/integration/git-guardrails-hook.test.ts",
+        "kind": "other",
+        "path": "tests/integration/git-guardrails-hook.test.ts"
+      },
+      {
+        "id": "tests/integration/jev-active-mode-repro.test.ts",
+        "kind": "other",
+        "path": "tests/integration/jev-active-mode-repro.test.ts"
+      },
+      {
         "id": "tests/integration/multirepo-workspace.test.ts",
         "kind": "other",
         "path": "tests/integration/multirepo-workspace.test.ts"
       },
       {
+        "id": "tests/integration/runs-reconciler.test.ts",
+        "kind": "other",
+        "path": "tests/integration/runs-reconciler.test.ts"
+      },
+      {
         "id": "tests/integration/skill-map-references.test.ts",
         "kind": "other",
         "path": "tests/integration/skill-map-references.test.ts"
+      },
+      {
+        "id": "tests/integration/stale-run-reporter.test.ts",
+        "kind": "other",
+        "path": "tests/integration/stale-run-reporter.test.ts"
+      },
+      {
+        "id": "tests/integration/state-lock-owner-reclaim.test.ts",
+        "kind": "other",
+        "path": "tests/integration/state-lock-owner-reclaim.test.ts"
       },
       {
         "id": "tests/integration/state-root-fs-probe.test.ts",
@@ -45500,6 +46866,11 @@
         "path": "tests/lint/handoffs-writers.test.ts"
       },
       {
+        "id": "tests/lint/hooks-async-configuration.test.ts",
+        "kind": "other",
+        "path": "tests/lint/hooks-async-configuration.test.ts"
+      },
+      {
         "id": "tests/lint/inventory-graph-drift.test.ts",
         "kind": "other",
         "path": "tests/lint/inventory-graph-drift.test.ts"
@@ -45508,6 +46879,26 @@
         "id": "tests/lint/issue-3996-ruby-false-positive.test.ts",
         "kind": "other",
         "path": "tests/lint/issue-3996-ruby-false-positive.test.ts"
+      },
+      {
+        "id": "tests/lint/issue-4147-processStart-encoding.test.ts",
+        "kind": "other",
+        "path": "tests/lint/issue-4147-processStart-encoding.test.ts"
+      },
+      {
+        "id": "tests/lint/issue-4154-windows-claude-invocation.test.ts",
+        "kind": "other",
+        "path": "tests/lint/issue-4154-windows-claude-invocation.test.ts"
+      },
+      {
+        "id": "tests/lint/issue-4156-windows-dev-zero.test.ts",
+        "kind": "other",
+        "path": "tests/lint/issue-4156-windows-dev-zero.test.ts"
+      },
+      {
+        "id": "tests/lint/session-end-forwarder-no-op.test.ts",
+        "kind": "other",
+        "path": "tests/lint/session-end-forwarder-no-op.test.ts"
       },
       {
         "id": "tests/lint/setup-phases-drift.test.ts",
@@ -46417,6 +47808,36 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/dev/repro-state-lock.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/dev/repro-state-lock.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/dev/repro-state-lock.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/dev/repro-state-lock.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/dev/repro-state-lock.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/dev/repro-state-lock.mjs",
+        "to": "scripts/lib/state-lock.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/eval-autoresearch-json.mjs",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -46539,6 +47960,21 @@
       {
         "from": "scripts/generate-skill-entitlements.mjs",
         "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/git-guardrails.mjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/git-guardrails.mjs",
+        "to": "scripts/lib/state-root.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/git-guardrails.mjs",
+        "to": "scripts/lib/stdin.mjs",
         "kind": "imports"
       },
       {
@@ -46857,6 +48293,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/lib/jev-shadow.mjs",
+        "to": "scripts/jev-resolve.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/lib/pre-tool-enforcer-preflight.mjs",
         "to": "external:fs",
         "kind": "imports"
@@ -46908,6 +48349,16 @@
       },
       {
         "from": "scripts/lib/read-budget-preflight.mjs",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/run-reaper.mjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/run-reaper.mjs",
         "to": "external:path",
         "kind": "imports"
       },
@@ -47692,6 +49143,26 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/runs-reconciler.mjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/runs-reconciler.mjs",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/runs-reconciler.mjs",
+        "to": "scripts/lib/state-root.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/runs-reconciler.mjs",
+        "to": "scripts/lib/stdin.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/session-end.mjs",
         "to": "dist/hooks/session-end/foreground-bootstrap.js",
         "kind": "imports"
@@ -47974,6 +49445,21 @@
       {
         "from": "scripts/smoke-multirepo.mjs",
         "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/stale-run-reporter.mjs",
+        "to": "scripts/lib/run-reaper.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/stale-run-reporter.mjs",
+        "to": "scripts/lib/state-root.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/stale-run-reporter.mjs",
+        "to": "scripts/lib/stdin.mjs",
         "kind": "imports"
       },
       {
@@ -48977,6 +50463,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/chain-enqueuer-registration.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/chain-enqueuer-registration.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/chain-enqueuer-registration.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/chain-enqueuer-registration.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/chain-enqueuer-registration.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/chain-enqueuer-registration.test.ts",
+        "to": "src/installer/hooks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/chain-enqueuer-registration.test.ts",
+        "to": "src/installer/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/chain-enqueuer-registration.test.ts",
+        "to": "src/installer/index.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/__tests__/claude-goal-adapter-doc.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -49879,6 +51405,36 @@
       {
         "from": "src/__tests__/helpers/prompt-test-helpers.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hook-bridge-main-module.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hook-bridge-main-module.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hook-bridge-main-module.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hook-bridge-main-module.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hook-bridge-main-module.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hook-bridge-main-module.test.ts",
+        "to": "src/hooks/bridge.ts",
         "kind": "imports"
       },
       {
@@ -54047,6 +55603,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/session-end-forwarder-fallback.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-end-forwarder-fallback.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-end-forwarder-fallback.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-end-forwarder-fallback.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-end-forwarder-fallback.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/session-end-process-exit.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -56927,6 +58508,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "src/cli/commands/ralph.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/ralph-afk.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/__tests__/self-improve-paths.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -57413,6 +59029,11 @@
       },
       {
         "from": "src/cli/autoresearch-setup-session.ts",
+        "to": "src/cli/tmux-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/autoresearch-setup-session.ts",
         "to": "src/utils/host-detection.ts",
         "kind": "imports"
       },
@@ -57499,6 +59120,61 @@
       {
         "from": "src/cli/commands/__tests__/doctor-team-routing.test.ts",
         "to": "src/shared/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-init.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-init.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-init.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-init.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-init.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-init.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-init.test.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/intake.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/intake.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/intake.test.ts",
+        "to": "src/cli/commands/intake.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/intake.test.ts",
+        "to": "src/cli/commands/intake.ts",
         "kind": "type-imports"
       },
       {
@@ -57743,6 +59419,161 @@
       },
       {
         "from": "src/cli/commands/doctor-team-routing.ts",
+        "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/listener.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/status.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/factory/status.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/intake.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/intake.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/intake.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/intake.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/intake.ts",
+        "to": "src/cli/tmux-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/intake.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/intake.ts",
+        "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "external:commander",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "src/factory/map-ingest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "src/factory/map-run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "src/hooks/ralph/feedback-baseline.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "src/hooks/ralph/feedback-baseline.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "src/hooks/ralph/prd.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralph.ts",
         "to": "src/utils/host-detection.ts",
         "kind": "imports"
       },
@@ -58164,6 +59995,21 @@
       {
         "from": "src/cli/index.ts",
         "to": "src/cli/commands/doctor-team-routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
+        "to": "src/cli/commands/intake.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
+        "to": "src/cli/commands/ralph.ts",
         "kind": "imports"
       },
       {
@@ -58740,6 +60586,436 @@
         "from": "src/constants/index.ts",
         "to": "src/constants/names.ts",
         "kind": "type-exports"
+      },
+      {
+        "from": "src/factory/__tests__/check-run.test.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/check-run.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/check-run.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/check-run.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/check-run.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/check-run.test.ts",
+        "to": "src/factory/listener.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/check-run.test.ts",
+        "to": "src/factory/listener.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/check-run.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/check-run.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/factory/listener.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/factory/listener.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-frontier.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-frontier.test.ts",
+        "to": "src/factory/map-frontier.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-frontier.test.ts",
+        "to": "src/factory/map-frontier.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-ingest.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-ingest.test.ts",
+        "to": "src/factory/map-frontier.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-ingest.test.ts",
+        "to": "src/factory/map-frontier.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-ingest.test.ts",
+        "to": "src/factory/map-ingest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-ingest.test.ts",
+        "to": "src/factory/map-ingest.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-run.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-run.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-run.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-run.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-run.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-run.test.ts",
+        "to": "src/factory/map-frontier.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-run.test.ts",
+        "to": "src/factory/map-ingest.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-run.test.ts",
+        "to": "src/factory/map-run.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/map-run.test.ts",
+        "to": "src/hooks/ralph/prd.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/status.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/status.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/status.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/status.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/status.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/status.test.ts",
+        "to": "src/factory/status.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/status.test.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "external:http",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "external:http",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/factory/watchdog.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/hooks/session-end/guardrails.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/listener.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/map-ingest.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/map-ingest.ts",
+        "to": "src/factory/map-frontier.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/map-ingest.ts",
+        "to": "src/factory/map-frontier.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/map-run.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/map-run.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/map-run.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/map-run.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/map-run.ts",
+        "to": "src/factory/map-frontier.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/map-run.ts",
+        "to": "src/factory/map-ingest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/map-run.ts",
+        "to": "src/factory/map-ingest.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/map-run.ts",
+        "to": "src/hooks/ralph/prd.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/map-run.ts",
+        "to": "src/hooks/ralph/prd.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/map-run.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/status.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/status.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/status.ts",
+        "to": "src/factory/watchdog.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/status.ts",
+        "to": "src/factory/watchdog.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/status.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.test.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.test.ts",
+        "to": "src/factory/watchdog.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.test.ts",
+        "to": "src/factory/watchdog.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/watchdog.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/watchdog.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/watchdog.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
       },
       {
         "from": "src/features/__tests__/checkpoint.test.ts",
@@ -63357,6 +65633,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/code-simplifier/__tests__/global-config-path.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/__tests__/global-config-path.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/__tests__/global-config-path.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/__tests__/global-config-path.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/code-simplifier/__tests__/global-config-path.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/code-simplifier/__tests__/jev-trigger-shadow.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -64185,6 +66486,41 @@
         "from": "src/hooks/index.ts",
         "to": "src/hooks/todo-continuation/index.ts",
         "kind": "type-exports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/active-mode.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/active-mode.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/active-mode.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/active-mode.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/active-mode.test.ts",
+        "to": "src/hooks/jev/points.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/active-mode.test.ts",
+        "to": "src/hooks/jev/resolver.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/jev/__tests__/active-mode.test.ts",
+        "to": "src/hooks/jev/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/jev/__tests__/client.test.ts",
@@ -66088,6 +68424,11 @@
       },
       {
         "from": "src/hooks/persistent-mode/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/jev-shadow.ts",
         "to": "src/hooks/persistent-mode/index.ts",
         "kind": "type-imports"
       },
@@ -66882,6 +69223,36 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/ralph/__tests__/feedback-baseline.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/__tests__/feedback-baseline.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/__tests__/feedback-baseline.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/__tests__/feedback-baseline.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/__tests__/feedback-baseline.test.ts",
+        "to": "src/hooks/ralph/feedback-baseline.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/__tests__/feedback-baseline.test.ts",
+        "to": "src/hooks/ralph/feedback-baseline.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
         "to": "external:node:fs/promises",
         "kind": "imports"
@@ -66909,6 +69280,16 @@
       {
         "from": "src/hooks/ralph/__tests__/jev-verdict-shadow.test.ts",
         "to": "src/hooks/ralph/jev-shadow.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/feedback-baseline.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/feedback-baseline.ts",
+        "to": "external:path",
         "kind": "imports"
       },
       {
@@ -66965,6 +69346,11 @@
         "from": "src/hooks/ralph/jev-shadow.ts",
         "to": "src/hooks/jev/index.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/jev-shadow.ts",
+        "to": "src/hooks/jev/index.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/ralph/loop.ts",
@@ -67702,6 +70088,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/rules-injector/matcher.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/rules-injector/matcher.test.ts",
+        "to": "src/hooks/rules-injector/matcher.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/rules-injector/matcher.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -67837,6 +70233,81 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "src/hooks/session-end/guardrails.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "src/hooks/session-end/guardrails.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/check-evidence.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/check-evidence.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/check-evidence.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/check-evidence.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/check-evidence.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/check-evidence.test.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/check-evidence.test.ts",
+        "to": "src/hooks/session-end/check-evidence.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/__tests__/cleanup-manifest.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -67905,6 +70376,91 @@
         "from": "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
         "to": "src/notifications/index.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
+        "to": "src/hooks/session-end/cleanup-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
+        "to": "src/hooks/session-end/foreground-bootstrap.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
+        "to": "src/hooks/session-end/worker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "src/hooks/session-end/guardrails.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "src/hooks/session-end/guardrails.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/guardrails.test.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/session-end/__tests__/mode-state-cleanup.test.ts",
@@ -67977,6 +70533,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts",
+        "to": "src/hooks/session-end/cleanup-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/process-session-end-worker-spawn.test.ts",
+        "to": "src/hooks/session-end/index.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/__tests__/python-repl-cleanup.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -68000,6 +70586,21 @@
         "from": "src/hooks/session-end/__tests__/python-repl-cleanup.test.ts",
         "to": "src/hooks/session-end/index.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/routing.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/routing.test.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/routing.test.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/session-end/__tests__/session-duration.test.ts",
@@ -68102,6 +70703,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/spawn-next.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/hooks/session-end/__tests__/subdirectory-cwd.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -68179,6 +70815,11 @@
       {
         "from": "src/hooks/session-end/__tests__/worker.test.ts",
         "to": "src/hooks/session-end/cleanup-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/worker.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
         "kind": "imports"
       },
       {
@@ -68297,6 +70938,66 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "src/hooks/session-end/check-evidence.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "src/hooks/session-end/guardrails.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/chain-enqueuer.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/check-evidence.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/check-evidence.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/check-evidence.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/cleanup-manifest.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -68323,6 +71024,11 @@
       },
       {
         "from": "src/hooks/session-end/foreground-bootstrap.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/foreground-bootstrap.ts",
         "to": "src/hooks/session-end/cleanup-manifest.ts",
         "kind": "imports"
       },
@@ -68333,6 +71039,31 @@
       },
       {
         "from": "src/hooks/session-end/foreground-bootstrap.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/guardrails.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/guardrails.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/guardrails.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/guardrails.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/guardrails.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -68364,6 +71095,11 @@
       {
         "from": "src/hooks/session-end/index.ts",
         "to": "src/hooks/session-end/callbacks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/index.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
         "kind": "imports"
       },
       {
@@ -68437,6 +71173,56 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "external:child_process",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/cli/tmux-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/hooks/session-end/routing.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/spawn-next.ts",
+        "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/worker.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -68463,6 +71249,11 @@
       },
       {
         "from": "src/hooks/session-end/worker.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/worker.ts",
         "to": "src/hooks/session-end/cleanup-manifest.ts",
         "kind": "imports"
       },
@@ -68474,6 +71265,11 @@
       {
         "from": "src/hooks/session-end/worker.ts",
         "to": "src/hooks/session-end/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/worker.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
         "kind": "imports"
       },
       {
@@ -72237,6 +75033,21 @@
         "kind": "imports"
       },
       {
+        "from": "src/lib/__tests__/host-load-gate.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/host-load-gate.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/host-load-gate.test.ts",
+        "to": "src/lib/host-load-gate.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/lib/__tests__/mode-state-io.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -72384,6 +75195,31 @@
       {
         "from": "src/lib/__tests__/plugin-dir.test.ts",
         "to": "src/lib/plugin-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/runs-ledger.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/runs-ledger.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/runs-ledger.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/runs-ledger.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/runs-ledger.test.ts",
+        "to": "src/lib/runs-ledger.ts",
         "kind": "imports"
       },
       {
@@ -72852,6 +75688,26 @@
         "kind": "imports"
       },
       {
+        "from": "src/lib/host-load-gate.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/host-load-gate.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/host-load-gate.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/host-load-gate.ts",
+        "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/lib/hud-wrapper-template.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -72923,6 +75779,11 @@
       },
       {
         "from": "src/lib/mode-state-io.ts",
+        "to": "src/lib/runs-ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/mode-state-io.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -72944,6 +75805,16 @@
       {
         "from": "src/lib/release-generation.ts",
         "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/runs-ledger.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/runs-ledger.ts",
+        "to": "external:path",
         "kind": "imports"
       },
       {
@@ -79337,6 +82208,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/team/__tests__/tmux-session.test.ts",
+        "to": "src/team/worker-launch-ack.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/team/__tests__/unified-team.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -82583,6 +85459,11 @@
       },
       {
         "from": "src/team/tmux-session.ts",
+        "to": "src/graph/runtime/native-contained-fs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/tmux-session.ts",
         "to": "src/team/mailbox-notification-guard.ts",
         "kind": "type-imports"
       },
@@ -82889,6 +85770,11 @@
       {
         "from": "src/team/worker-launch-ack.ts",
         "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/worker-launch-ack.ts",
+        "to": "src/lib/host-load-gate.ts",
         "kind": "imports"
       },
       {
@@ -85557,6 +88443,36 @@
         "kind": "imports"
       },
       {
+        "from": "templates/hooks/session-end.mjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/session-end.mjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/session-end.mjs",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/session-end.mjs",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/session-end.mjs",
+        "to": "hooks/hooks.json",
+        "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/session-end.mjs",
+        "to": "src/hooks/bridge.ts",
+        "kind": "projects"
+      },
+      {
         "from": "templates/hooks/session-start.mjs",
         "to": "external:child_process",
         "kind": "imports"
@@ -85812,6 +88728,81 @@
         "kind": "imports"
       },
       {
+        "from": "tests/integration/git-guardrails-hook.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/git-guardrails-hook.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/git-guardrails-hook.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/git-guardrails-hook.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/git-guardrails-hook.test.ts",
+        "to": "external:node:perf_hooks",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/git-guardrails-hook.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/git-guardrails-hook.test.ts",
+        "to": "scripts/lib/state-root.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/jev-active-mode-repro.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/jev-active-mode-repro.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/jev-active-mode-repro.test.ts",
+        "to": "external:node:http",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/jev-active-mode-repro.test.ts",
+        "to": "external:node:http",
+        "kind": "type-imports"
+      },
+      {
+        "from": "tests/integration/jev-active-mode-repro.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/jev-active-mode-repro.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/jev-active-mode-repro.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/jev-active-mode-repro.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/integration/multirepo-workspace.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -85837,6 +88828,31 @@
         "kind": "imports"
       },
       {
+        "from": "tests/integration/runs-reconciler.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/runs-reconciler.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/runs-reconciler.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/runs-reconciler.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/runs-reconciler.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/integration/skill-map-references.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -85848,6 +88864,66 @@
       },
       {
         "from": "tests/integration/skill-map-references.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/stale-run-reporter.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/stale-run-reporter.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/stale-run-reporter.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/stale-run-reporter.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/stale-run-reporter.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/stale-run-reporter.test.ts",
+        "to": "scripts/lib/state-root.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/state-lock-owner-reclaim.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/state-lock-owner-reclaim.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/state-lock-owner-reclaim.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/state-lock-owner-reclaim.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/state-lock-owner-reclaim.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/state-lock-owner-reclaim.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -86112,6 +89188,21 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/hooks-async-configuration.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/hooks-async-configuration.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/hooks-async-configuration.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/inventory-graph-drift.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -86148,6 +89239,81 @@
       },
       {
         "from": "tests/lint/issue-3996-ruby-false-positive.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4147-processStart-encoding.test.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4147-processStart-encoding.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4147-processStart-encoding.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4147-processStart-encoding.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4154-windows-claude-invocation.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4154-windows-claude-invocation.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4154-windows-claude-invocation.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4154-windows-claude-invocation.test.ts",
+        "to": "src/cli/tmux-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4156-windows-dev-zero.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4156-windows-dev-zero.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4156-windows-dev-zero.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/session-end-forwarder-no-op.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/session-end-forwarder-no-op.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/session-end-forwarder-no-op.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/session-end-forwarder-no-op.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -86323,12 +89489,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7702,
-      "edgeCount": 8149,
-      "importEdgeCount": 6717,
+      "nodeCount": 7937,
+      "edgeCount": 8504,
+      "importEdgeCount": 7030,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "901e80a50d09a6849175207836f559015f5ef97ef231e0eff64040bc5fbc941e",
-  "manifestSha256": "5e2a938b117718db48541fd405158a1e136c03d7ac978125e96ac7b2c00d7ac6"
+  "inventorySha256": "6b8b8e8684b0af817b9d4c22edb639647cb85f5898a15b1f35aeefcaec1952c0",
+  "manifestSha256": "0aae31371ba280067e72a834e7de6a8af244910a2768a1a138fa1aa3b2f06d41"
 }

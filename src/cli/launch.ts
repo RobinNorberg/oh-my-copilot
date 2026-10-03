@@ -4,7 +4,7 @@
  * with tmux session management
  */
 
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import {
   chmodSync,
   cpSync,
@@ -32,6 +32,7 @@ import { getHostCliBinary, getHostCliType } from '../utils/host-detection.js';
 import { getContract } from '../team/model-contract.js';
 import {
   resolveLaunchPolicy,
+  buildHostBinarySpawn,
   buildTmuxSessionName,
   buildTmuxShellCommand,
   buildTmuxShellCommandWithEnv,
@@ -1444,15 +1445,39 @@ function runClaudeOutsideTmux(
 function runClaudeDirect(cwd: string, args: string[]): void {
   const binary = getHostCliBinary();
   try {
-    execFileSync(binary, args, {
-      cwd,
-      stdio: 'inherit',
-      shell: process.platform === 'win32',
-    });
+    if (process.platform === 'win32') {
+      // A native .exe is spawned directly; only a .cmd shim goes through
+      // cmd.exe, where quoteForCmd refuses `%` rather than let it expand.
+      const launch = buildHostBinarySpawn(binary, args);
+      const result = spawnSync(launch.command, launch.args, {
+        cwd,
+        stdio: 'inherit',
+        windowsVerbatimArguments: launch.windowsVerbatimArguments,
+      });
+      // Handle a missing binary/cmd.exe (ENOENT) or cmd's command-not-recognized (exit 9009)
+      const spawnError = result.error as NodeJS.ErrnoException | undefined;
+      if (spawnError?.code === 'ENOENT' || (launch.windowsVerbatimArguments && result.status === 9009)) {
+        console.error(`[omc] Error: ${binary} CLI not found in PATH.`);
+        process.exit(1);
+      }
+      // Propagate the host CLI's exit code so omc does not swallow failures
+      if (result.status !== 0) {
+        process.exit(result.status ?? 1);
+      }
+    } else {
+      execFileSync(binary, args, {
+        cwd,
+        stdio: 'inherit',
+      });
+    }
   } catch (error) {
     const err = error as NodeJS.ErrnoException & { status?: number | null };
     if (err.code === 'ENOENT') {
       console.error(`[omc] Error: ${binary} CLI not found in PATH.`);
+      process.exit(1);
+    }
+    if (err.message === 'cmd_argv_percent_unsupported') {
+      console.error(`[omc] Error: ${binary} is a .cmd shim on this machine and cmd.exe would expand '%' in its arguments; remove the '%' or install the native ${binary} executable.`);
       process.exit(1);
     }
     // Propagate Claude's exit code so omc does not swallow failures

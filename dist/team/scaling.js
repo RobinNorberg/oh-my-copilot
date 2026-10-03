@@ -669,12 +669,14 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                 const routedPair = canonical && hasExplicitOwnedRole && (hasConfiguredRoute || workerAgentType === getHostCliType())
                     ? resolvedRoute
                     : undefined;
+                let workerReasoningEffort;
                 if (routedPair) {
                     const { primary } = routedPair;
                     const primaryProvider = primary.provider;
                     if (CLI_AGENT_TYPES.has(primaryProvider)) {
                         workerAgentType = primaryProvider;
                         workerModel = primary.model;
+                        workerReasoningEffort = primary.reasoningEffort;
                     }
                     if (!workerModel) {
                         const modelEnv = workerAgentType === 'claude' || workerAgentType === 'copilot' || config.external_models_defaults === undefined ? env : {};
@@ -722,6 +724,7 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                         cwd: workerCwd,
                         resolvedBinaryPath: launchBinary,
                         ...(workerModel ? { model: workerModel } : {}),
+                        ...(workerReasoningEffort ? { reasoningEffort: workerReasoningEffort } : {}),
                         ...(permissionFlags.length > 0 ? { extraFlags: permissionFlags } : {}),
                     });
                     launchArgs = args;
@@ -758,7 +761,7 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                 reservedLaunchDescriptors.set(workerName, launchDescriptor);
                 // Rebuild env using the final agentType (fallback may have swapped it).
                 const extraEnv = {
-                    ...getModelWorkerEnv(sanitized, workerName, workerAgentType, env),
+                    ...getModelWorkerEnv(sanitized, workerName, workerAgentType, env, canonical && hasExplicitOwnedRole ? canonical : undefined),
                     OMC_TEAM_STATE_ROOT: teamStateRoot,
                     OMC_TEAM_LEADER_CWD: leaderCwd,
                     ...(worktree ? { OMC_TEAM_WORKTREE_PATH: worktree.path, OMC_TEAM_WORKER_CWD: workerCwd } : {}),

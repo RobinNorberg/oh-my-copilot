@@ -165,16 +165,23 @@ function ownerArtifactIdentity(path) {
   }
 }
 
+/** Windows reports dev=0 from some stat paths (#4156); compare ino always, dev only when both are known. */
+function sameArtifactIdentity(a, b) {
+  if (a.ino !== b.ino) return false;
+  if (process.platform === 'win32' && (a.dev === 0 || b.dev === 0)) return true;
+  return a.dev === b.dev;
+}
+
 /** Remove only the exact dead publication that was inspected. */
 function reclaimDeadOwner(path, observed, identity) {
   // Fork fix: the liveness verdict can be seconds old (win32 probe), and the owner may have
   // exited and been replaced meanwhile. Renaming a live replacement into quarantine lets a third
   // contender publish before the restore, leaving two holders, so re-verify the exact artifact
-  // immediately before the rename.
+  // (owner record AND dev/ino, upstream #4149 checks only the latter) immediately before the rename.
   const current = readOwner(path);
   const currentIdentity = ownerArtifactIdentity(path);
   if (current === 'absent' || !current || !sameOwner(current, observed) || !currentIdentity ||
-      currentIdentity.dev !== identity.dev || currentIdentity.ino !== identity.ino) return 'changed';
+      !sameArtifactIdentity(currentIdentity, identity)) return 'changed';
   const quarantinePath = `${path}.reclaim.${process.pid}.${randomUUID()}`;
   try {
     renameSync(path, quarantinePath);
@@ -187,8 +194,7 @@ function reclaimDeadOwner(path, observed, identity) {
   try {
     moved = readOwner(quarantinePath);
     movedIdentity = ownerArtifactIdentity(quarantinePath);
-    if (moved !== 'absent' && moved && movedIdentity &&
-        movedIdentity.dev === identity.dev && movedIdentity.ino === identity.ino &&
+    if (moved !== 'absent' && moved && movedIdentity && sameArtifactIdentity(movedIdentity, identity) &&
         sameOwner(moved, observed)) {
       try {
         unlinkSync(quarantinePath);
@@ -357,15 +363,8 @@ function acquireFileLock(lockPath, attempts) {
         return null;
       }
 
-      const existing = readOwner(lockPath);
-      if (existing === 'absent') continue;
-      if (!existing) {
-        recordFailure('unverifiable');
-        console.error(`[omc-lock] state_mutation_lock_unverifiable: ${lockPath}`);
-        return null;
-      }
-      // Fork fix: capture the artifact identity together with the owner record, before the slow
-      // liveness probe; read afterwards it can belong to a newer, live owner.
+      // Capture the artifact identity together with the owner record, before the slow liveness
+      // probe; read afterwards it can belong to a newer, live owner (fork fix + upstream #4149).
       const identity = ownerArtifactIdentity(lockPath);
       if (!identity) {
         // Fork fix: a concurrent contender may reclaim the dead owner and release its own lock
@@ -374,6 +373,16 @@ function acquireFileLock(lockPath, attempts) {
         recordFailure('unverifiable');
         return null;
       }
+      const existing = readOwner(lockPath);
+      if (existing === 'absent') continue;
+      if (!existing) {
+        recordFailure('unverifiable');
+        console.error(`[omc-lock] state_mutation_lock_unverifiable: ${lockPath}`);
+        return null;
+      }
+      // Re-verify the identity hasn't changed while the owner record was read.
+      const recheck = ownerArtifactIdentity(lockPath);
+      if (!recheck || !sameArtifactIdentity(recheck, identity)) continue;
       // Fork fix: on win32 each liveness probe is a PowerShell spawn, so re-probing the same
       // live owner on every retry turns a contended fallback into a hook timeout. An owner
       // already verified live in this loop is treated as still live (fail closed).
