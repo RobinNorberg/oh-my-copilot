@@ -77,7 +77,24 @@ export interface PRD {
      * PRDs without this field read back as undefined and are fully supported.
      */
     reconciliation?: PrdReconciliationConfig;
+    /**
+     * Optional repo quality class — the bar the ralph skill writes acceptance
+     * criteria against (prototype / production / library). Preserved by
+     * normalizePrd so a code-mediated write (markStoryComplete and friends go
+     * read → normalize → write) cannot silently erase the executor's
+     * declaration. Invalid values are dropped, not fatal.
+     */
+    repoQualityClass?: RepoQualityClass;
+    /**
+     * Optional feedback command list (build / lint / test style) the run's
+     * feedback baseline and gates execute. Same preservation guarantee as
+     * repoQualityClass; invalid entries are dropped and the list is capped.
+     */
+    feedbackCommands?: string[];
 }
+export declare const REPO_QUALITY_CLASSES: readonly ["prototype", "production", "library"];
+export type RepoQualityClass = (typeof REPO_QUALITY_CLASSES)[number];
+export declare const MAX_FEEDBACK_COMMANDS = 20;
 export interface PRDStatus {
     /** Total number of stories */
     total: number;

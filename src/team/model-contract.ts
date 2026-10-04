@@ -15,7 +15,7 @@ export interface CliAgentContract {
   agentType: CliAgentType;
   binary: string;
   installInstructions: string;
-  buildLaunchArgs(model?: string, extraFlags?: string[]): string[];
+  buildLaunchArgs(model?: string, reasoningEffort?: string, extraFlags?: string[]): string[];
   parseOutput(rawOutput: string): string;
   /** Whether this agent supports a prompt/headless mode that bypasses TUI input */
   supportsPromptMode?: boolean;
@@ -27,6 +27,7 @@ export interface WorkerLaunchConfig {
   teamName: string;
   workerName: string;
   model?: string;
+  reasoningEffort?: string;
   cwd: string;
   extraFlags?: string[];
   /**
@@ -289,7 +290,7 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
     agentType: 'claude',
     binary: 'claude',
     installInstructions: 'Install Claude CLI: https://claude.ai/download',
-    buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
+    buildLaunchArgs(model?: string, reasoningEffort?: string, extraFlags: string[] = []): string[] {
       const args = ['--dangerously-skip-permissions'];
       if (shouldUseClaudeBareMode() && !extraFlags.includes('--bare')) {
         args.push('--bare');
@@ -301,6 +302,9 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
         // these providers. (issue #1695)
         const resolved = isProviderSpecificModelId(model) ? model : normalizeToCcAlias(model);
         args.push('--model', resolved);
+      }
+      if (reasoningEffort) {
+        args.push('--effort', reasoningEffort);
       }
       return [...args, ...extraFlags];
     },
@@ -315,8 +319,9 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
     // Persistent interactive pane like claude (inbox + nudge); no -p prompt mode.
     // Copilot rejects --dangerously-skip-permissions; the unattended pane gets an
     // explicit allow set instead, and permissions.workerDenyTools/Urls arrive via
-    // extraFlags (deny rules win over allow rules in Copilot).
-    buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
+    // extraFlags (deny rules win over allow rules in Copilot). Copilot has no verified
+    // reasoning-effort flag, so per-role reasoningEffort (upstream #4206) is not forwarded.
+    buildLaunchArgs(model?: string, _reasoningEffort?: string, extraFlags: string[] = []): string[] {
       const args: string[] = [...COPILOT_WORKER_BASE_FLAGS];
       if (model) args.push('--model', toCopilotModelId(model));
       return [...args, ...extraFlags];
@@ -333,9 +338,12 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
     // or positional prompt mode here; runtime dispatch writes inbox.md and nudges
     // the live Codex TUI with `codex` as the worker process.
     supportsPromptMode: false,
-    buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
+    buildLaunchArgs(model?: string, reasoningEffort?: string, extraFlags: string[] = []): string[] {
       const args = ['--dangerously-bypass-approvals-and-sandbox'];
       if (model) args.push('--model', model);
+      if (reasoningEffort) {
+        args.push('-c', `model_reasoning_effort="${reasoningEffort}"`);
+      }
       return [...args, ...extraFlags];
     },
     parseOutput(rawOutput: string): string {
@@ -363,7 +371,7 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
     installInstructions: 'Install Gemini CLI: npm install -g @google/gemini-cli',
     supportsPromptMode: true,
     promptModeFlag: '-p',
-    buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
+    buildLaunchArgs(model?: string, reasoningEffort?: string, extraFlags: string[] = []): string[] {
       const args = ['--approval-mode', 'yolo'];
       if (model) args.push('--model', model);
       return [...args, ...extraFlags];
@@ -378,7 +386,7 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
     installInstructions: 'Install Grok Build: https://build.grok.com',
     supportsPromptMode: true,
     promptModeFlag: '-p',
-    buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
+    buildLaunchArgs(model?: string, reasoningEffort?: string, extraFlags: string[] = []): string[] {
       const args = ['--always-approve'];
       if (model) args.push('--model', model);
       return [...args, ...extraFlags];
@@ -393,7 +401,7 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
     installInstructions: 'Install the Antigravity CLI (agy) per the official instructions at https://antigravity.google, then verify with `agy --version`.',
     supportsPromptMode: true,
     promptModeFlag: '-p',
-    buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
+    buildLaunchArgs(model?: string, reasoningEffort?: string, extraFlags: string[] = []): string[] {
       // agy's `-p`/`--print` is appended by getPromptModeArgs as `-p <instruction>`,
       // where the prompt is the VALUE of `-p` (not a boolean). All other flags
       // MUST precede that `-p`, so buildLaunchArgs returns only the leading flags
@@ -401,6 +409,9 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
       // so no trust-confirm send-keys is needed (unlike gemini). Verified agy 1.0.10.
       const args = ['--dangerously-skip-permissions'];
       if (model) args.push('--model', model);
+      if (reasoningEffort) {
+        args.push('--effort', reasoningEffort);
+      }
       return [...args, ...extraFlags];
     },
     parseOutput(rawOutput: string): string {
@@ -414,7 +425,7 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
     // Team workers must be persistent interactive panes, so the one-shot
     // `-p/--print` path is deliberately unused here (same stance as codex).
     supportsPromptMode: false,
-    buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
+    buildLaunchArgs(model?: string, reasoningEffort?: string, extraFlags: string[] = []): string[] {
       // `--force` suppresses per-command approval prompts and `--trust` accepts
       // the workspace, which together are cursor-agent's equivalent of the
       // approval bypass every other provider already passes. Without them a
@@ -506,7 +517,7 @@ export function resolveValidatedBinaryPath(agentType: CliAgentType): string {
 }
 
 export function buildLaunchArgs(agentType: CliAgentType, config: WorkerLaunchConfig): string[] {
-  return getContract(agentType).buildLaunchArgs(config.model, config.extraFlags);
+  return getContract(agentType).buildLaunchArgs(config.model, config.reasoningEffort, config.extraFlags);
 }
 
 export function buildWorkerArgv(agentType: CliAgentType, config: WorkerLaunchConfig): string[] {
@@ -600,11 +611,17 @@ const WORKER_MODEL_ENV_ALLOWLIST = [
   'COPILOT_MODEL',
 ] as const;
 
+const CLAUDE_WORKER_ENV_ALLOWLIST = [
+  'CLAUDE_CONFIG_DIR',
+  'CLAUDE_CODE_EFFORT_LEVEL',
+] as const;
+
 export function getWorkerEnv(
   teamName: string,
   workerName: string,
   agentType: CliAgentType,
   env: NodeJS.ProcessEnv = process.env,
+  role?: string,
 ): Record<string, string> {
   validateTeamName(teamName);
   const workerEnv: Record<string, string> = {
@@ -612,11 +629,23 @@ export function getWorkerEnv(
     OMC_TEAM_NAME: teamName,
     OMC_WORKER_AGENT_TYPE: agentType,
   };
+  if (role) {
+    workerEnv.OMC_TEAM_ROLE = role;
+  }
 
   for (const key of WORKER_MODEL_ENV_ALLOWLIST) {
     const value = env[key];
     if (typeof value === 'string' && value.length > 0) {
       workerEnv[key] = value;
+    }
+  }
+
+  if (agentType === 'claude') {
+    for (const key of CLAUDE_WORKER_ENV_ALLOWLIST) {
+      const value = env[key];
+      if (typeof value === 'string' && value.length > 0) {
+        workerEnv[key] = value;
+      }
     }
   }
 

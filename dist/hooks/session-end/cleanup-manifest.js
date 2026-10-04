@@ -19,7 +19,7 @@ function withOpenClawRouting(payload) {
 }
 const ACTIONS = [
     ['foreground-cleanup', 'required'], ['wiki-capture', 'required'], ['team-cleanup', 'required'], ['python-cleanup', 'required'], ['reply-cleanup', 'required'],
-    ['callback', 'best-effort'], ['notification', 'best-effort'], ['openclaw', 'best-effort'],
+    ['callback', 'best-effort'], ['notification', 'best-effort'], ['openclaw', 'best-effort'], ['spawn-next', 'best-effort'],
 ];
 const TEST_PRODUCER_GRACE_ENV = 'OMC_SESSION_END_TEST_PRODUCER_GRACE_MS';
 const PRODUCER_GRACE_MS = process.env.NODE_ENV === 'test' && /^\d+$/.test(process.env[TEST_PRODUCER_GRACE_ENV] ?? '')
@@ -234,9 +234,29 @@ export function prepareCoreManifest(directory, sessionId, payload) {
         const result = withLock(jobPath, () => {
             const existing = readPath(jobPath);
             if (existing) {
-                if (existing.phase === 'complete' || existing.producers.core.state !== 'absent')
+                if (existing.phase === 'complete')
                     return existing;
+                // Coexistence: a manifest created by an older OMC build (e.g. a plugin
+                // install predating this version) carries a stale action list. Seed any
+                // actions this build knows that the manifest lacks — otherwise new
+                // deferred actions (spawn-next chain enqueue) are silently dropped and
+                // the chain halts despite a recorded 'enqueued' decision.
+                const missing = ACTIONS.filter(([name]) => !(name in existing.actions));
+                if (existing.producers.core.state !== 'absent') {
+                    if (missing.length === 0)
+                        return existing;
+                    const next = { ...existing, actions: { ...existing.actions }, revision: existing.revision + 1, updatedAt: nowIso() };
+                    for (const [name, klass] of missing)
+                        next.actions[name] = newAction(name, klass, durablePayload);
+                    atomicWriteJsonSync(jobPath, next);
+                    const reread = readPath(jobPath);
+                    if (!reread || reread.revision !== next.revision)
+                        throw new Error('session-end-manifest-reread-mismatch');
+                    return reread;
+                }
                 const next = { ...existing, producers: { ...existing.producers, core: { state: 'prepared', intentKey: digest(durablePayload), payloadDigest: digest(durablePayload) } }, actions: { ...existing.actions }, revision: existing.revision + 1, updatedAt: nowIso() };
+                for (const [name, klass] of missing)
+                    next.actions[name] = newAction(name, klass, durablePayload);
                 for (const [name, action] of Object.entries(next.actions))
                     if (name !== 'wiki-capture')
                         action.payload = durablePayload;

@@ -1921,33 +1921,50 @@ async function main() {
     }
 
     // Resolve conflicts
-    const resolved = resolveConflicts(uniqueMatches);
+    let resolved = resolveConflicts(uniqueMatches);
 
     if (isJevShadowOptedIn('skill-trigger')) {
-      recordJevShadow({
+      const jevResult = recordJevShadow({
         point: 'skill-trigger',
         state: { prompt: cleanPrompt, source: 'user-prompt-submit' },
         questions: SKILL_TRIGGER_QUESTIONS,
         heuristic: resolved.map((match) => match.name),
       });
+      
+      // In active mode, use Jev's skill choice
+      if (jevResult && jevResult.mode === 'active' && jevResult.answer) {
+        const jevChoice = jevResult.answer.choice?.toLowerCase();
+        if (jevChoice && jevChoice !== 'none') {
+          // Override with Jev's chosen skill
+          const matchedKeyword = uniqueMatches.find((m) => m.name === jevChoice);
+          resolved = matchedKeyword ? [matchedKeyword] : resolved;
+        } else if (jevChoice === 'none') {
+          // Jev says no trigger
+          resolved = [];
+        }
+      }
     }
     if (isJevShadowOptedIn('intent')) {
-      recordJevShadow({
+      const jevResult = recordJevShadow({
         point: 'intent',
         state: { prompt: cleanPrompt, mode_name: 'intent' },
         questions: INTENT_QUESTIONS,
         heuristic: INTENT_SLASH_PATTERN.test(cleanPrompt),
       });
+      // In active mode, intent Jev answer could be used here if needed
+      // Currently logging-only: resolved keywords come from skill-trigger
     }
     if (isJevShadowOptedIn('task-size')) {
       try {
         const { classifyTaskSize } = await import('../dist/hooks/task-size-detector/index.js');
-        recordJevShadow({
+        const jevResult = recordJevShadow({
           point: 'task-size',
           state: { prompt: cleanPrompt, source: 'user-prompt-submit' },
           questions: TASK_SIZE_QUESTIONS,
           heuristic: classifyTaskSize(cleanPrompt),
         });
+        // In active mode, task-size Jev answer could be used here if needed
+        // Currently logging-only: task sizing is handled on TypeScript side
       } catch {
         // The compiled twin is optional for script-only installs; never affect prompt handling.
       }

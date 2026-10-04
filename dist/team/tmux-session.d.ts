@@ -283,6 +283,12 @@ export declare function workerPaneBelongsToOwnedProviderTarget(input: {
 }): Promise<boolean>;
 export declare function splitTeamWorkerPaneWithEvidence(splitTarget: string, direction: 'right' | 'down', cwd: string, provider?: WorkerPaneSplitEvidence['provider'], tmuxServerIdentity?: TmuxServerIdentity, serverIdentityDependencies?: TmuxServerIdentityDependencies): Promise<WorkerPaneSplitEvidence>;
 export declare function splitTeamWorkerPane(splitTarget: string, direction: 'right' | 'down', cwd: string): Promise<string | null>;
+/**
+ * Darwin strict identity comes only from the contained-fs native addon (no
+ * sysctl/ps fallback), so a missing addon is the common cause of an unavailable
+ * probe there. Name it and the build command instead of a bare error code.
+ */
+export declare function strictIdentityUnavailableError(platform: NodeJS.Platform, loadNative?: () => unknown): Error;
 export declare function createTeamSession(teamName: string, workerCount: number, cwd: string, options?: CreateTeamSessionOptions): Promise<TeamSession>;
 /**
  * Spawn a CLI agent in a specific pane.
@@ -396,7 +402,8 @@ export declare function getOwnedWorkerLiveness(ownership: WorkerPaneOwnership): 
 export declare function isWorkerAlive(paneId: string): Promise<boolean>;
 /**
  * Normalize only the response form published for a detached session.  A
- * detached `new-session -P` record is represented as `session:0`, while
+ * detached `new-session -P` record is represented as `session:<window_index>`
+ * (the real first window, which follows the user's tmux base-index), while
  * session inventory stores the native session name without a window suffix.
  * Split/dedicated-window callers must not use this normalization.
  */

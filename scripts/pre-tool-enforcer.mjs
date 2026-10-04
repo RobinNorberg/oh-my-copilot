@@ -611,7 +611,15 @@ function recordModelRoutingShadow(toolName, toolInput, updatedToolInput) {
   const selectedModel = modifiedInput.model || readAgentDefinitionModel(originalInput.subagent_type);
   const model = isTierAlias(selectedModel) ? selectedModel.toLowerCase() : normalizeToCcAlias(selectedModel);
   if (!['haiku', 'sonnet', 'opus'].includes(model)) return;
-  recordJevShadow({
+  
+  const heuristic = {
+    originalInput,
+    modifiedInput,
+    injected: Boolean(updatedToolInput),
+    model,
+  };
+  
+  const jevResult = recordJevShadow({
     point: 'model-routing',
     state: {
       tool_name: toolName,
@@ -619,13 +627,20 @@ function recordModelRoutingShadow(toolName, toolInput, updatedToolInput) {
       task: originalInput.prompt || '',
     },
     questions: MODEL_ROUTING_QUESTIONS,
-    heuristic: {
-      originalInput,
-      modifiedInput,
-      injected: Boolean(updatedToolInput),
-      model,
-    },
+    heuristic,
   });
+  
+  // In active mode with valid answer, update the toolInput model to Jev's choice
+  if (jevResult && jevResult.mode === 'active' && jevResult.answer) {
+    const jevChoice = jevResult.answer.choice?.toLowerCase();
+    if (jevChoice && ['haiku', 'sonnet', 'opus'].includes(jevChoice)) {
+      // Jev says use this tier; update the tool input
+      if (!updatedToolInput) updatedToolInput = { ...toolInput };
+      updatedToolInput.model = jevChoice;
+    }
+  }
+  
+  return updatedToolInput;
 }
 
 function generateSlopWarning(data, toolName) {
@@ -1936,7 +1951,9 @@ async function main() {
 
     if (toolName === 'Task' || toolName === 'Agent') {
       const toolInput = data.toolInput || data.tool_input || {};
-      recordModelRoutingShadow(toolName, toolInput, updatedToolInput);
+      const jevUpdated = recordModelRoutingShadow(toolName, toolInput, updatedToolInput);
+      // In active mode, Jev may override the model choice
+      if (jevUpdated) updatedToolInput = jevUpdated;
     }
 
     // Send notification when AskUserQuestion is about to execute (user input needed)

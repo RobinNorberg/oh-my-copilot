@@ -151,6 +151,7 @@ export declare function resolveTaskAssignment(task: {
 }>, roleRoutingConfig: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> | undefined, fallbackAgent: CliAgentType): {
     agentType: CliAgentType;
     model: string;
+    reasoningEffort?: string;
     role: CanonicalTeamRole | null;
 };
 export interface StartTeamV2Config {

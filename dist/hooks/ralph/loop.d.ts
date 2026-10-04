@@ -34,6 +34,13 @@ export interface RalphLoopState {
 }
 export declare const RALPH_CRITIC_MODES: readonly ["architect", "critic", "codex"];
 export type RalphCriticMode = typeof RALPH_CRITIC_MODES[number];
+/**
+ * The startup line that makes the feedback gate non-optional for executors
+ * (#45). Skill text alone lost to executor improvisation in live smokes; this
+ * notice is printed by `startLoop` where the stale-PRD warning already proves
+ * reliable, and named here so its contract is testable without state IO.
+ */
+export declare function ralphFeedbackGateNotice(sessionId?: string): string;
 export interface RalphLoopOptions {
     /** Maximum iterations (default: 10) */
     maxIterations?: number;

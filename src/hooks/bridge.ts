@@ -13,11 +13,12 @@
  * ```
  */
 
-import { pathToFileURL } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import {
   existsSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmdirSync,
 } from "fs";
 import { dirname, join } from "path";
@@ -1579,6 +1580,10 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
   const taskSizeConfig = config.taskSizeDetection ?? {};
   const promptPrerequisiteConfig = getPromptPrerequisiteConfig(config);
 
+  // Record task-size judgment (Jev active/shadow/off); use Jev result if active
+  const taskSizeJudgment = await recordTaskSizeShadow(cleanedText).catch(() => undefined);
+  const jevTaskSizeResult = taskSizeJudgment?.mode === 'active' ? taskSizeJudgment.answer : undefined;
+
   // Get all keywords with optional task-size filtering (issue #790)
   const sizeCheckResult = getAllKeywordsWithSizeCheck(cleanedText, {
     enabled: taskSizeConfig.enabled !== false,
@@ -1586,6 +1591,7 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
     largeWordLimit: taskSizeConfig.largeWordLimit ?? 200,
     suppressHeavyModesForSmallTasks:
       taskSizeConfig.suppressHeavyModesForSmallTasks !== false,
+    jevTaskSizeResult,
   });
 
   // Apply ralplan-first gate BEFORE task-size suppression (issue #997).
@@ -1631,12 +1637,11 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
     }
   }
 
-  // Jev shadow points (issue #3669): record skill-trigger, intent, and
-  // task-size comparisons for later eval. Fire-and-forget; never changes
-  // emissions.
+  // Jev shadow points (issue #3669): record skill-trigger and intent
+  // comparisons for later eval (task-size already recorded above).
+  // Fire-and-forget for shadow/off mode; awaited for active mode.
   void recordSkillTriggerShadow(cleanedText).catch(() => {});
   void recordIntentShadow(cleanedText).catch(() => {});
-  void recordTaskSizeShadow(cleanedText).catch(() => {});
 
   const promptPrerequisiteParse = parsePromptPrerequisiteSections(promptText, promptPrerequisiteConfig);
   const executionKeywords = fullKeywords.filter((keywordType) =>
@@ -3480,12 +3485,45 @@ export async function main(): Promise<void> {
 // Run if called directly (works in both ESM and bundled CJS)
 // In CJS bundle, check if this is the main module by comparing with process.argv[1]
 // In ESM, we can use import.meta.url comparison
+/**
+ * Symlink-robust entry comparison: two URLs are the same entry when they are
+ * identical or when their realpaths match. A symlinked entry (e.g.
+ * ~/.local/bin/omc -> bridge/cli.cjs) yields a different URL than the module's
+ * own, but points at the same real file — the bridge must still dispatch
+ * instead of exiting silently. Exported for tests.
+ */
+export function isSameEntryRealpath(
+  entryUrl: string | undefined,
+  moduleUrl: string,
+): boolean {
+  if (!entryUrl) return true;
+  if (entryUrl === moduleUrl) return true;
+  try {
+    return (
+      realpathSync(fileURLToPath(entryUrl)) ===
+      realpathSync(fileURLToPath(moduleUrl))
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isMainModule(): boolean {
   try {
-    return import.meta.url === pathToFileURL(process.argv[1]).href;
+    // First check: must have --hook=<type> argument, otherwise this is not a hook invocation
+    const hasHookArg = process.argv.slice(2).some((a) => a.startsWith("--hook="));
+    if (!hasHookArg) {
+      return false;
+    }
+
+    const argvPath = process.argv[1];
+    return isSameEntryRealpath(
+      argvPath ? pathToFileURL(argvPath).href : undefined,
+      import.meta.url,
+    );
   } catch {
-    // In CJS bundle, always run main() when loaded directly
-    return true;
+    // In CJS bundle, only run main() when loaded directly AND has hook arguments
+    return false;
   }
 }
 

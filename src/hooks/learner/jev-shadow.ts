@@ -13,13 +13,14 @@
 
 import { detectExtractableMoment, type DetectionResult } from './detector.js';
 import { recordJudgment } from '../jev/index.js';
-import type { ResolveResult } from '../jev/index.js';
+import type { JevAnswer, ResolveResult } from '../jev/index.js';
 
 /**
  * Record the shadow comparison for one assistant message and return the
- * twin detection unchanged. With no TYPESAFE_API_KEY (or OMC_JEV not
- * naming this point) the resolver short-circuits: zero HTTP calls, no
- * logging, same detection.
+ * detection (twin in shadow/off mode, Jev-mapped in active mode). With no
+ * TYPESAFE_API_KEY (or OMC_JEV not naming this point) the resolver
+ * short-circuits: zero HTTP calls, no logging, same detection. Jev errors
+ * degrade inside the resolver and fall back to the twin.
  */
 export function recordLearnerExtractionShadow(
   assistantMessage: string,
@@ -33,6 +34,16 @@ export function recordLearnerExtractionShadow(
       source: 'learner-detection',
     },
     twin: () => detectExtractableMoment(assistantMessage, userMessage),
+    mapAnswer: (answer: JevAnswer) => {
+      // Jev Noul answer has { type: 'noul', noul: boolean | undefined }
+      return {
+        detected: answer.noul === true,
+        confidence: (answer.confidence ?? 0.5) * 100, // Scale to 0-100
+        patternType: 'technique' as const,
+        suggestedTriggers: [],
+        reason: 'Jev active-mode detection',
+      };
+    },
     fetchFn,
   });
 }

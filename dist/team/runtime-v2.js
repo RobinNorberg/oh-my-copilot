@@ -426,7 +426,7 @@ export function resolveTaskAssignment(task, resolvedRouting, roleRoutingConfig, 
     const normalized = normalizeDelegationRole(rawRole);
     const canonical = canonicalRoles.has(normalized) ? normalized : null;
     if (!canonical) {
-        return { agentType: fallbackAgent, model: '', role: null };
+        return { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: null };
     }
     // Snapshot routing only overrides the caller's CLI agentType when the user
     // has explicitly opted in — either by setting `task.role` or by configuring
@@ -435,7 +435,7 @@ export function resolveTaskAssignment(task, resolvedRouting, roleRoutingConfig, 
     // per-role routing, even if the task text incidentally mentions "reviewer".
     const hasConfigForRole = !!getRoleRoutingSpec(roleRoutingConfig, canonical);
     if (!hasExplicitRole && !hasConfigForRole) {
-        return { agentType: fallbackAgent, model: '', role: canonical };
+        return { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: canonical };
     }
     // Explicit provider + explicit role with NO per-role routing config: the user
     // named the provider directly on the worker spec (e.g. `1:antigravity:executor`
@@ -445,11 +445,11 @@ export function resolveTaskAssignment(task, resolvedRouting, roleRoutingConfig, 
     // launching Claude instead of the requested CLI provider. When `team.roleRouting`
     // *is* configured for the role, that deliberate config still wins (below).
     if (hasExplicitRole && !hasConfigForRole && fallbackAgent !== getHostCliType()) {
-        return { agentType: fallbackAgent, model: '', role: canonical };
+        return { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: canonical };
     }
     const pair = resolvedRouting[canonical];
     if (!pair) {
-        return { agentType: fallbackAgent, model: '', role: canonical };
+        return { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: canonical };
     }
     // A routed provider is authoritative. Missing or untrusted binaries fail later
     // before any worker launch instead of silently changing provider identity.
@@ -457,6 +457,7 @@ export function resolveTaskAssignment(task, resolvedRouting, roleRoutingConfig, 
     return {
         agentType: chosen.provider,
         model: chosen.model,
+        reasoningEffort: chosen.reasoningEffort,
         role: canonical,
     };
 }
@@ -1066,7 +1067,7 @@ async function spawnV2Worker(opts) {
         await composeInitialInbox(opts.teamName, opts.workerName, instruction, opts.cwd, cliOutputContract);
     }
     const envVars = {
-        ...getModelWorkerEnv(opts.teamName, opts.workerName, opts.agentType),
+        ...getModelWorkerEnv(opts.teamName, opts.workerName, opts.agentType, process.env, opts.role),
         OMC_TEAM_STATE_ROOT: teamStateRoot(opts.cwd, opts.teamName),
         OMC_TEAM_LEADER_CWD: opts.cwd,
         ...(opts.worktreePath ? { OMC_TEAM_WORKTREE_PATH: opts.worktreePath } : {}),
@@ -3387,11 +3388,12 @@ export async function startTeamV2(config) {
         const taskIndex = startupByWorker.get(workerName);
         const fallbackAgent = (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude');
         const resolvedAssignment = taskIndex === undefined
-            ? { agentType: fallbackAgent, model: '', role: undefined }
+            ? { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: undefined }
             : resolveTaskAssignment(config.tasks[taskIndex], resolvedRouting, pluginCfg.team?.roleRouting, fallbackAgent);
         const assignment = {
             agentType: resolvedAssignment.agentType,
             model: resolvedAssignment.model || resolveDefaultModel(resolvedAssignment.agentType),
+            reasoningEffort: resolvedAssignment.reasoningEffort,
             ...(resolvedAssignment.role ? { role: resolvedAssignment.role } : {}),
         };
         startupAssignments.set(workerName, assignment);
@@ -3517,6 +3519,7 @@ export async function startTeamV2(config) {
                 const descriptor = buildValidatedWorkerLaunchDescriptor(assignment.agentType, {
                     teamName: sanitized, workerName, cwd: worktree?.path ?? leaderCwd, resolvedBinaryPath: binary,
                     model: assignment.model,
+                    reasoningEffort: assignment.reasoningEffort,
                     ...(permissionFlags.length > 0 ? { extraFlags: permissionFlags } : {}),
                 }, promptArgs);
                 preparedLaunches.set(workerName, { agentType: assignment.agentType,

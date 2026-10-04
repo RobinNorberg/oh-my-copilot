@@ -24,6 +24,18 @@ export interface AtomicWriteHooks {
     readonly beforeRename?: () => void;
     readonly afterRename?: () => void;
 }
+/** Restore the prior target without exposing a partially written generation. */
+export interface FileIdentity {
+    readonly dev: number;
+    readonly ino: number;
+}
+/**
+ * Compare two file identities for equality.
+ * On Windows, Node returns real volume serial from fstat but 0 from lstat/stat,
+ * so we compare dev only when NOT on Windows OR both dev values are non-zero.
+ * Inode comparison is always performed.
+ */
+export declare function sameFileIdentity(a: FileIdentity, b: FileIdentity): boolean;
 /**
  * Write JSON data atomically to a file.
  * Uses temp file + atomic rename pattern to ensure durability.
@@ -77,6 +89,10 @@ export interface AtomicBatchWrite {
     content: string;
     mode?: number;
 }
+/**
+ * Exported for use in other state management functions.
+ * Shared file identity comparison that handles Windows dev=0 quirk.
+ */
 export declare function atomicWriteBatchSync(writes: AtomicBatchWrite[], hooks?: AtomicWriteHooks): void;
 export declare function safeReadJson<T>(filePath: string): Promise<T | null>;
 //# sourceMappingURL=atomic-write.d.ts.map

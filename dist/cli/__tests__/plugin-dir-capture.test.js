@@ -64,6 +64,24 @@ describe('OMC_PLUGIN_ROOT tmux env forwarding', () => {
  */
 const SHORTCIRCUIT = Symbol('child_process mock short-circuit');
 let capturedEnv = null;
+let capturedInput = undefined;
+let hostSpawnCalls = 0;
+// Which Windows route the mocked resolver reports for the host CLI: a `.cmd`
+// shim (COMSPEC /d /s /c line) or a native `.exe` (spawned directly).
+let hostLaunchRoute = 'cmd';
+const HOST_BIN_RE = /^(claude|copilot)(\.cmd|\.exe)?$/i;
+// Never let the resolver find (and the test spawn) a real host binary.
+vi.mock('../../platform/executable-resolution.js', async () => {
+    const actual = await vi.importActual('../../platform/executable-resolution.js');
+    return {
+        ...actual,
+        resolveHostBinaryLaunch: (binary) => (process.platform !== 'win32'
+            ? { file: binary, viaCmd: false }
+            : hostLaunchRoute === 'native'
+                ? { file: `${binary}.exe`, viaCmd: false }
+                : { file: `${binary}.cmd`, viaCmd: true }),
+    };
+});
 vi.mock('child_process', async () => {
     const actual = await vi.importActual('child_process');
     return {
@@ -73,7 +91,9 @@ vi.mock('child_process', async () => {
             if (file === 'claude' || file === 'copilot') {
                 // execFileSync inherits parent env when options.env is undefined,
                 // so the source of truth is process.env at call time.
+                hostSpawnCalls++;
                 capturedEnv = { ...(options?.env ?? process.env) };
+                capturedInput = options?.input;
                 const err = new Error('mocked claude exit');
                 err.__omc = SHORTCIRCUIT;
                 // Throwing aborts runClaude/launchCommand cleanly via the try/finally.
@@ -81,6 +101,19 @@ vi.mock('child_process', async () => {
             }
             // Allow non-claude execFileSync calls (e.g. tmux probes) to be no-ops.
             return Buffer.alloc(0);
+        }),
+        // Windows test hosts: runClaudeDirect spawns the host CLI via spawnSync,
+        // either directly (native .exe) or through `COMSPEC /d /s /c "<shim> ..."`
+        // (.cmd shim), inheriting env in both cases.
+        spawnSync: vi.fn((file, args, options) => {
+            const viaCmd = Array.isArray(args) && args[2] === '/c' && /^"?(claude|copilot)\b/.test(String(args[3]));
+            if (viaCmd || HOST_BIN_RE.test(String(file))) {
+                hostSpawnCalls++;
+                capturedEnv = { ...(options?.env ?? process.env) };
+                capturedInput = options?.input;
+                return { status: 0 };
+            }
+            return actual.spawnSync(file, args, options);
         }),
     };
 });
@@ -109,6 +142,9 @@ describe('launchCommand → child env propagation (OMC_PLUGIN_ROOT)', () => {
         delete process.env.CLAUDECODE;
         process.env.COPILOT_HOME = tmpConfigDir;
         capturedEnv = null;
+        capturedInput = undefined;
+        hostSpawnCalls = 0;
+        hostLaunchRoute = 'cmd';
     });
     afterEach(() => {
         for (const [k, v] of Object.entries(savedEnv)) {
@@ -136,6 +172,9 @@ describe('launchCommand → child env propagation (OMC_PLUGIN_ROOT)', () => {
         catch {
             // Expected: our mocked execFileSync throws to short-circuit.
         }
+        // The host CLI launch must have hit a mock, never a real binary.
+        expect(hostSpawnCalls).toBe(1);
+        expect(capturedInput).toBeUndefined();
     }
     it('1. --plugin-dir <path> → child env contains absolute OMC_PLUGIN_ROOT', async () => {
         await runLaunch(['--plugin-dir', '/tmp/foo']);
@@ -158,6 +197,12 @@ describe('launchCommand → child env propagation (OMC_PLUGIN_ROOT)', () => {
         expect(capturedEnv[OMC_PLUGIN_ROOT_ENV]).toBe(resolve('/tmp/foo'));
     });
     it('5. parent env set + no flag → child inherits parent OMC_PLUGIN_ROOT', async () => {
+        process.env[OMC_PLUGIN_ROOT_ENV] = '/tmp/bar';
+        await runLaunch([]);
+        expect(capturedEnv[OMC_PLUGIN_ROOT_ENV]).toBe('/tmp/bar');
+    });
+    it('5b. native .exe host route → child inherits parent OMC_PLUGIN_ROOT', async () => {
+        hostLaunchRoute = 'native';
         process.env[OMC_PLUGIN_ROOT_ENV] = '/tmp/bar';
         await runLaunch([]);
         expect(capturedEnv[OMC_PLUGIN_ROOT_ENV]).toBe('/tmp/bar');

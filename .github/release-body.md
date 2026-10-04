@@ -1,75 +1,92 @@
-# oh-my-copilot v5.5.0
+# oh-my-copilot v5.6.1
 
-This release makes oh-my-copilot a native GitHub Copilot CLI plugin and
-brings the fork to parity with upstream oh-my-claudecode v5.5.0 (plus
-upstream `dev` through 862c69273). Before this release, every fork hook was a
-silent no-op under Copilot CLI on Windows; hooks, agents, team workers and
-`omg launch` now follow the Copilot CLI 1.0.88 contract, verified against the
-installed binary.
+This release brings the unattended-run / software-factory surface of upstream
+oh-my-claudecode v5.6.0 and v5.6.1 to GitHub Copilot CLI, hardens how host
+binaries are launched on Windows, and brings the fork to parity with upstream
+`dev` through 4280efb1f. Unattended Copilot sessions run under a scoped AFK
+permission profile instead of blanket allow flags.
 
-Install with `npm install -g oh-my-copilot@5.5.0`, or from the plugin
-marketplace: `copilot plugin marketplace add RobinNorberg/oh-my-copilot` then
-`copilot plugin install oh-my-copilot@omc`. Upgrading from 5.1.0? Read the
-[v5.1.0 → v5.5.0 guide](docs/MIGRATION.md#v510--v550-fork-upgrade-guide):
-one change is breaking.
-
-## Breaking
-
-- **`COPILOT_CONFIG_DIR` is renamed to `COPILOT_HOME`**, the variable Copilot
-  CLI itself reads. The old name is no longer honoured; `omg doctor conflicts`
-  warns when it is set. The `${COPILOT_CONFIG_DIR}` guards token in
-  `omg.jsonc` and the package's JS export keep working as deprecated aliases.
+Install with `npm install -g oh-my-copilot@5.6.1`, or from the plugin
+marketplace: `copilot plugin update oh-my-copilot@omc`. Upgrading from 5.5.0?
+Read the [v5.5.0 → v5.6.1 guide](docs/MIGRATION.md#v550--v561-fork-upgrade-guide).
+There are **no breaking changes**: nothing is renamed or removed.
 
 ## Highlights
 
-- **Native Copilot plugin surface.** A root `plugin.json` (the manifest
-  Copilot reads first) points at generated `copilot/hooks.json` and
-  `copilot/agents/`. Hooks run as `exec: node` with an argument list, so no
-  shell is involved and Windows paths with spaces work. A `--require` adapter
-  translates Claude-shaped hook output to Copilot's contract (top-level
-  `additionalContext`, `permissionDecision: deny`, Stop blocks). Upstream's
-  `hooks/hooks.json` and `agents/*.md` stay byte-identical for Claude Code.
-- **Generated Copilot agents.** Model aliases become `models:` fallback
-  lists; read-only agents get a `tools:` allowlist without create/edit;
-  agents that review or edit code receive `include-custom-instructions`.
-- **`copilot` team workers.** `omg team N:copilot` is first-class and the
-  default on a Copilot host. Workers launch with the flags Copilot requires
-  for unattended use, plus `permissions.workerDenyTools` /
-  `workerDenyUrls` from `omg.jsonc` forwarded as `--deny-tool=` /
-  `--deny-url=` (deny beats allow). `omg team` prints what each provider's
-  workers were granted. The folder-trust prompt in fresh worktrees is answered
-  for the session only. On native Windows, teams run detached in a private
-  psmux namespace (`-L <ns>`), so they never appear in a bare `psmux ls`;
-  attach with `tmux -L <ns> attach` using the namespace shown by
-  `omg team status <team>`.
-- **`omg launch` targets the host binary** (Copilot unless running under
-  Claude Code), maps `--madmax` to `--yolo`, forwards `COPILOT_HOME` and
-  related variables, and keeps tokens off the command line.
-- **Ten new skills (61 canonical total):** `harbor`, `agent-doc-discipline`,
-  `architecture-survey`, `diagram`, `intent`, `minimal-prose-discipline`,
-  `map` (the yard router, which also routes the fork-exclusive skills),
-  `pr`, `refit`, and `tdd`.
-- **State lock hardening on Windows.** The owner-file fallback no longer
-  loses mutual exclusion when an owner exits during a liveness probe
-  (upstream #4146 / #4149); the hook-side `.mjs` copies encode the win32
-  process identity in temp names (#4147 / #4148); the SQLite path caches
-  liveness verdicts and probes outside the write transaction (contended
-  give-up 12.8 s → 1.2 s); release retries are bounded.
-- **Removed:** the legacy safe-command auto-approver. Copilot's own
-  `--allow-tool` / `--deny-tool` rules and assisted approval replace it.
+- **Software factory.** A SessionEnd chain enqueuer routes finished sessions
+  through `.omg/factory-routes.json`, with gate grading, a serial
+  single-session lock, a daily cap of 10 links, a diff-first review gate and a
+  stalled-chain watchdog. `omg factory init` seeds the route table,
+  `omg factory listen` accepts HMAC-signed tracker events on 127.0.0.1, and
+  `omg factory status` audits chains read-only.
+- **Headless intake.** `omg intake run` runs one harbor sweep without a
+  human; `omg intake schedule --cron <expr>` registers it with cron, or with
+  Task Scheduler on Windows. A run ledger records every unattended run.
+- **Ralph AFK.** `omg ralph afk "<task>"` launches an isolated headless ralph
+  run, `omg ralph verify` judges it against the recorded feedback baseline,
+  and `omg ralph from-map` plans, claims and launches a run from a wayfinder
+  map.
+- **Copilot AFK permission profile.** Factory links and ralph AFK runs launch
+  `copilot` with `--no-ask-user`, an allowlist (`gh issue view|comment|edit`,
+  `gh pr view|list`, `gh label list`, file writes, `github.com`) and deny rules
+  for `write(.git)`, `write(package.json)` and `shell(git push)`. Deny beats
+  allow. Declared `--verify` commands are added one `--allow-tool` rule each;
+  a bare program or interpreter flag is refused.
+- **Unattended-run guardrails.** A destructive-git PreToolUse hook
+  (`OMC_GIT_GUARDRAILS`), a stale-run watchdog (`OMC_STALE_RUN_HOURS`) and a
+  host-load gate (`OMC_HOST_LOAD_THRESHOLD`, `OMC_FREE_MEMORY_THRESHOLD`,
+  `OMC_MAX_SIBLING_SESSIONS`) keep dark runs from damaging the repo or the
+  machine.
+- **Team.** `OMC_TEAM_WORKER_ENV_PASSTHROUGH` forwards custom provider
+  credentials to workers, `team.roleRouting.<role>.reasoningEffort` sets
+  effort per role, and the supervised start command stays under 1024 bytes.
+
+## Security fixes
+
+- **The prompt never reaches a `cmd.exe` command line.** On Windows, factory
+  links and ralph AFK runs hand the host binary its prompt (and `gh` its
+  `--body`) on stdin, native `.exe` binaries are spawned
+  directly with an argument array, and only `.cmd`/`.bat` shims go through
+  `COMSPEC` with stricter quoting that refuses `%`. Before, a prompt
+  containing `\" --allow-all-tools \"` could add flags and `%GH_TOKEN%`
+  expanded inside quotes; both were reachable from `package.json` scripts and
+  from `check_suite.head_branch` in the factory listener.
+- **`COPILOT_ALLOW_ALL` is excluded.** It is no longer passed through to
+  session-end children, and every AFK child gets `COPILOT_ALLOW_ALL=false`, so
+  an exported value cannot widen the AFK profile to unrestricted shell.
+
+## Behaviour changes
+
+- An exported `COPILOT_ALLOW_ALL` no longer applies to factory links,
+  `omg ralph afk|from-map` or `omg intake run`. Interactive sessions and
+  `omg team` workers are unaffected.
+- On Windows, factory links and ralph AFK runs pipe the prompt to `copilot`
+  on stdin instead of passing `-p <prompt>` (verified against Copilot CLI
+  1.0.91); `claude` keeps `-p` and reads the prompt from stdin.
+
+## Known limitations
+
+- **Copilot factory chains stop after one link.** Copilot CLI has no
+  `--session-id`, so the next link cannot be pinned; the watchdog reports the
+  stalled chain.
+- **`reasoningEffort` is ignored for Copilot workers.** Copilot CLI has no
+  verified reasoning-effort flag; claude and codex workers honour it.
+- **git-guardrails under Copilot on Windows is not live-verified.** The hook
+  is projected and unit-tested, but its PreToolUse payload has not been
+  exercised against a live Copilot session on Windows.
 
 ## Requirements
 
-- GitHub Copilot CLI 1.0.88 or later (Claude Code remains supported).
-- `node` on PATH: Copilot denies every tool call if a PreToolUse hook cannot
-  start.
-- `omg team` on native Windows: [psmux](https://github.com/marlocarlo/psmux)
-  3.3.7 or later (`winget install psmux`), so `-L <ns>` namespaces are
-  honoured.
+- GitHub Copilot CLI 1.0.88 or later (1.0.91 verified for stdin prompts);
+  Claude Code remains supported.
+- `node` on PATH, as in v5.5.0.
+- Factory and intake: the host binary on PATH and `gh` authenticated for the
+  repository.
 
 ## Upstream credits
 
 Ported work originates from
 [Yeachan-Heo/oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode)
-v5.4.0, v5.5.0 and `dev` through 862c69273; see `CHANGELOG.md` for the
-per-release breakdown and the fork-specific adaptations.
+v5.6.0, v5.6.1 and `dev` through 4280efb1f (862c69273..4280efb1f); see
+`CHANGELOG.md` for the per-release breakdown and the fork-specific
+adaptations.

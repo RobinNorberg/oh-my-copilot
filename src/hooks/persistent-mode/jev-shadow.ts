@@ -15,6 +15,7 @@
  */
 
 import { recordJudgment } from '../jev/index.js';
+import type { JevAnswer } from '../jev/index.js';
 import type { PersistentModeResult } from './index.js';
 
 /**
@@ -44,11 +45,13 @@ export interface LoopContinuationShadowArgs {
 
 /**
  * Record the shadow comparison for one loop-continuation decision and return
- * the twin unchanged. With no TYPESAFE_API_KEY (or OMC_JEV=off / grayscale
- * exclusion) the resolver short-circuits: zero HTTP calls, no logging, and
- * the result is returned as-is. Jev errors degrade inside the resolver and
- * can never alter the returned decision; the twin returns a captured value
- * so twin errors cannot occur.
+ * the result (twin in shadow/off mode, Jev-modified in active mode). With no
+ * TYPESAFE_API_KEY (or OMC_JEV=off / grayscale exclusion) the resolver
+ * short-circuits: zero HTTP calls, no logging, and the result is returned
+ * as-is. Jev errors degrade inside the resolver and fall back to the twin.
+ * 
+ * In active mode, Jev's Noul answer (task complete?) can override the heuristic
+ * continuation decision.
  */
 export async function applyLoopContinuationShadow(args: LoopContinuationShadowArgs): Promise<PersistentModeResult> {
   const { result } = args;
@@ -57,10 +60,25 @@ export async function applyLoopContinuationShadow(args: LoopContinuationShadowAr
   if (result.mode === 'none') return result;
 
   const state = buildLoopContinuationState(result, args.sessionId);
-  await Promise.all([
+  
+  // For active mode, map Jev's Noul answer (task complete?) to a boolean
+  const mapTaskCompletionAnswer = (answer: JevAnswer): PersistentModeResult => {
+    // Jev Noul answer: noul=true means task is complete, noul=false/undefined means not complete
+    const taskComplete = answer.noul === true;
+    if (taskComplete) {
+      // Task is complete, exit the loop
+      return { ...result, shouldBlock: false, message: '[jev-completion] task complete; exiting loop' };
+    } else {
+      // Task is not complete, continue the loop  
+      return result;
+    }
+  };
+  
+  const results = await Promise.all([
     recordJudgment<PersistentModeResult>('loop-continuation', {
       state,
       twin: () => result,
+      mapAnswer: mapTaskCompletionAnswer,
       fetchFn: args.fetchFn,
     }),
     recordJudgment<PersistentModeResult>('loop-continuation', {
@@ -70,5 +88,13 @@ export async function applyLoopContinuationShadow(args: LoopContinuationShadowAr
       fetchFn: args.fetchFn,
     }),
   ]);
+  
+  // In active mode, use Jev's mapped result; otherwise return the twin
+  const noulResult = results[0];
+  if (noulResult.mode === 'active') {
+    return noulResult.answer;
+  }
+  
+  // Shadow/off/degraded: return unchanged
   return result;
 }

@@ -20,7 +20,21 @@ import {
   listSessionIds,
 } from './worktree-paths.js';
 import { getProcessStartIdentitySync } from '../platform/process-utils.js';
-import { atomicWriteJsonSync } from './atomic-write.js';
+import { atomicWriteJsonSync, sameFileIdentity } from './atomic-write.js';
+import { observeModeStateClear, observeModeStateWrite } from './runs-ledger.js';
+
+/**
+ * Derive the .omc root from a state file path itself: state files always
+ * live under `<omcRoot>/state/...`, so the last `/state/` boundary is the
+ * anchor. Deterministic — unlike getOmcRoot() with no argument, which falls
+ * back to process.cwd() and is unreliable inside MCP/server processes.
+ */
+function omcRootFromStatePath(filePath: string): string | null {
+  const normalized = filePath.replaceAll('\\', '/');
+  const idx = normalized.lastIndexOf('/state/');
+  if (idx === -1) return null;
+  return normalized.slice(0, idx);
+}
 
 type MutationLockOwner = { version: 1; pid: number; processStart: string; createdAt: string; nonce: string };
 type BetterSqlite3 = import('better-sqlite3').Database;
@@ -206,12 +220,12 @@ function reclaimDeadLockOwner(
   // Fork fix: the liveness verdict can be seconds old (win32 probe), and the owner may have
   // exited and been replaced meanwhile. Renaming a live replacement into quarantine lets a third
   // contender publish before the restore, leaving two holders, so re-verify the exact artifact
-  // immediately before the rename.
+  // (owner record AND dev/ino, upstream #4149 checks only the latter) immediately before the rename.
   const currentOwner = readLockOwner(path);
   const currentIdentity = lockArtifactIdentity(path);
   if (
     currentOwner === 'absent' || currentOwner === null || !sameOwner(currentOwner, observedOwner) ||
-    currentIdentity === null || currentIdentity.dev !== observedIdentity.dev || currentIdentity.ino !== observedIdentity.ino
+    currentIdentity === null || !sameFileIdentity(currentIdentity, observedIdentity)
   ) return 'changed';
   const quarantinePath = `${path}.reclaim.${process.pid}.${randomUUID()}`;
   try {
@@ -229,8 +243,7 @@ function reclaimDeadLockOwner(
       movedOwner !== 'absent' &&
       movedOwner !== null &&
       movedIdentity !== null &&
-      movedIdentity.dev === observedIdentity.dev &&
-      movedIdentity.ino === observedIdentity.ino &&
+      sameFileIdentity(movedIdentity, observedIdentity) &&
       sameOwner(movedOwner, observedOwner)
     ) {
       try {
@@ -387,14 +400,8 @@ function acquireFileLockAt(path: string, attempts: number): MutationLock | null 
         return null;
       }
 
-      const existing = readLockOwner(path);
-      if (existing === 'absent') continue;
-      if (!existing) {
-        lastMutationLockFailure = 'unverifiable';
-        return null;
-      }
-      // Fork fix: capture the artifact identity together with the owner record, before the slow
-      // liveness probe; read afterwards it can belong to a newer, live owner.
+      // Capture the artifact identity together with the owner record, before the slow liveness
+      // probe; read afterwards it can belong to a newer, live owner (fork fix + upstream #4149).
       const observedIdentity = lockArtifactIdentity(path);
       if (observedIdentity === null) {
         // Fork fix: a concurrent contender may reclaim the dead owner and release its own lock
@@ -403,6 +410,15 @@ function acquireFileLockAt(path: string, attempts: number): MutationLock | null 
         lastMutationLockFailure = 'unverifiable';
         return null;
       }
+      const existing = readLockOwner(path);
+      if (existing === 'absent') continue;
+      if (!existing) {
+        lastMutationLockFailure = 'unverifiable';
+        return null;
+      }
+      // Re-verify the identity hasn't changed while the owner record was read.
+      const recheck = lockArtifactIdentity(path);
+      if (!recheck || !sameFileIdentity(recheck, observedIdentity)) continue;
       // Fork fix: on win32 each liveness probe is a PowerShell spawn, so re-probing the same
       // live owner on every retry turns a contended fallback into a hook timeout. An owner
       // already verified live in this loop is treated as still live (fail closed).
@@ -740,6 +756,10 @@ export function writeStateFileLocked(filePath: string, state: Record<string, unk
   } catch {
     success = false;
   }
+  if (success) {
+    const omcRoot = omcRootFromStatePath(filePath);
+    if (omcRoot) observeModeStateWrite(omcRoot, filePath, state);
+  }
   return releaseMutationLock(lock) && success;
 }
 
@@ -747,6 +767,12 @@ export function clearStateFileLocked(filePath: string, expectedGeneration?: Stat
   if (!recoverEmergencyStateFile(filePath)) return false;
   const lock = acquireMutationLock(filePath);
   if (!lock) return false;
+  let previousState: Record<string, unknown> | null = null;
+  try {
+    if (existsSync(filePath)) previousState = JSON.parse(readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+  } catch {
+    previousState = null;
+  }
   let success = false;
   try {
     if (existsSync(filePath)) {
@@ -766,6 +792,10 @@ export function clearStateFileLocked(filePath: string, expectedGeneration?: Stat
     }
   } catch {
     success = false;
+  }
+  if (success) {
+    const omcRoot = omcRootFromStatePath(filePath);
+    if (omcRoot) observeModeStateClear(omcRoot, filePath, previousState);
   }
   return releaseMutationLock(lock) && success;
 }
@@ -824,6 +854,8 @@ export function clearStateFileLockedIf(
         } else {
           unlinkSync(filePath);
           result = 'cleared';
+          const omcRoot = omcRootFromStatePath(filePath);
+          if (omcRoot) observeModeStateClear(omcRoot, filePath, current);
         }
       }
     }
@@ -1161,9 +1193,8 @@ function fileIdentity(path: string): FileIdentity | null {
   } catch { return null; }
 }
 
-function sameFileIdentity(left: FileIdentity, right: FileIdentity): boolean {
-  return left.dev === right.dev && left.ino === right.ino;
-}
+// sameFileIdentity is imported from atomic-write.js and handles Windows dev=0 quirk
+// Do not redefine it locally
 
 function captureStateFile(path: string): CapturedStateFile | null {
   try {
@@ -1219,7 +1250,7 @@ function replaceGenerationForTest(path: string): void {
 
 function sameFile(path: string, expected: FileIdentity): boolean {
   const actual = fileIdentity(path);
-  return actual !== null && actual.dev === expected.dev && actual.ino === expected.ino;
+  return actual !== null && sameFileIdentity(actual, expected);
 }
 
 function reconcileEmergencyPublicationTemps(filePath: string, authorizeState?: EmergencyStateAuthorization): boolean {

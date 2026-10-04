@@ -678,7 +678,7 @@ export function resolveTaskAssignment(
   resolvedRouting: Record<CanonicalTeamRole, { primary: RoleAssignment; fallback: RoleAssignment }>,
   roleRoutingConfig: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> | undefined,
   fallbackAgent: CliAgentType,
-): { agentType: CliAgentType; model: string; role: CanonicalTeamRole | null } {
+): { agentType: CliAgentType; model: string; reasoningEffort?: string; role: CanonicalTeamRole | null } {
   const canonicalRoles = new Set<string>(CANONICAL_TEAM_ROLES as readonly string[]);
   const hasExplicitRole = typeof task.role === 'string' && task.role.length > 0;
   const rawRole = hasExplicitRole
@@ -688,7 +688,7 @@ export function resolveTaskAssignment(
   const canonical = canonicalRoles.has(normalized) ? (normalized as CanonicalTeamRole) : null;
 
   if (!canonical) {
-    return { agentType: fallbackAgent, model: '', role: null };
+    return { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: null };
   }
 
   // Snapshot routing only overrides the caller's CLI agentType when the user
@@ -701,7 +701,7 @@ export function resolveTaskAssignment(
     canonical,
   );
   if (!hasExplicitRole && !hasConfigForRole) {
-    return { agentType: fallbackAgent, model: '', role: canonical };
+    return { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: canonical };
   }
 
   // Explicit provider + explicit role with NO per-role routing config: the user
@@ -712,12 +712,12 @@ export function resolveTaskAssignment(
   // launching Claude instead of the requested CLI provider. When `team.roleRouting`
   // *is* configured for the role, that deliberate config still wins (below).
   if (hasExplicitRole && !hasConfigForRole && fallbackAgent !== getHostCliType()) {
-    return { agentType: fallbackAgent, model: '', role: canonical };
+    return { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: canonical };
   }
 
   const pair = resolvedRouting[canonical];
   if (!pair) {
-    return { agentType: fallbackAgent, model: '', role: canonical };
+    return { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: canonical };
   }
 
   // A routed provider is authoritative. Missing or untrusted binaries fail later
@@ -726,6 +726,7 @@ export function resolveTaskAssignment(
   return {
     agentType: chosen.provider as CliAgentType,
     model: chosen.model,
+    reasoningEffort: chosen.reasoningEffort,
     role: canonical,
   };
 }
@@ -1563,7 +1564,7 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
   }
 
   const envVars = {
-    ...getModelWorkerEnv(opts.teamName, opts.workerName, opts.agentType),
+    ...getModelWorkerEnv(opts.teamName, opts.workerName, opts.agentType, process.env, opts.role),
     OMC_TEAM_STATE_ROOT: teamStateRoot(opts.cwd, opts.teamName),
     OMC_TEAM_LEADER_CWD: opts.cwd,
     ...(opts.worktreePath ? { OMC_TEAM_WORKTREE_PATH: opts.worktreePath } : {}),
@@ -4125,24 +4126,27 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
   // providers fail before any team state or multiplexer side effect is created.
   const resolvedBinaryPaths: Partial<Record<CliAgentType, string>> = {};
   const missingBinaryReasons: Array<{ agentType: CliAgentType; reason: string }> = [];
-  const startupAssignments = new Map<string, {
+  type StartupAssignment = {
     agentType: CliAgentType;
     model?: string;
+    reasoningEffort?: string;
     role?: CanonicalTeamRole;
-  }>();
+  };
+  const startupAssignments = new Map<string, StartupAssignment>();
   const effectiveAgentTypes = new Set<CliAgentType>();
   for (let i = 0; i < workerNames.length; i++) {
     const workerName = workerNames[i]!;
     const taskIndex = startupByWorker.get(workerName);
     const fallbackAgent = (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude') as CliAgentType;
     const resolvedAssignment = taskIndex === undefined
-      ? { agentType: fallbackAgent, model: '', role: undefined }
+      ? { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: undefined }
       : resolveTaskAssignment(config.tasks[taskIndex]!, resolvedRouting,
         pluginCfg.team?.roleRouting as Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> | undefined,
         fallbackAgent);
-    const assignment = {
+    const assignment: StartupAssignment = {
       agentType: resolvedAssignment.agentType,
       model: resolvedAssignment.model || resolveDefaultModel(resolvedAssignment.agentType),
+      reasoningEffort: resolvedAssignment.reasoningEffort,
       ...(resolvedAssignment.role ? { role: resolvedAssignment.role } : {}),
     };
     startupAssignments.set(workerName, assignment);
@@ -4264,6 +4268,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     const descriptor = buildValidatedWorkerLaunchDescriptor(assignment.agentType, {
       teamName: sanitized, workerName, cwd: worktree?.path ?? leaderCwd, resolvedBinaryPath: binary,
       model: assignment.model,
+      reasoningEffort: assignment.reasoningEffort,
       ...(permissionFlags.length > 0 ? { extraFlags: permissionFlags } : {}),
     }, promptArgs);
     preparedLaunches.set(workerName, { agentType: assignment.agentType,

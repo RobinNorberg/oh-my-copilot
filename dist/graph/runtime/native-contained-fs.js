@@ -19,7 +19,7 @@ export function getNativeContainedFs() {
                     return loaded;
                 }
                 catch (cause) {
-                    throw new Error(`The contained filesystem backend is unavailable at ${binary}. Build it with node scripts/build-contained-fs.mjs before running graph commands.`, { cause });
+                    throw new Error(`The contained filesystem backend is unavailable at ${binary}. Build it with node scripts/build-contained-fs.mjs (from the installed package directory) before running graph or team commands.`, { cause });
                 }
             }
         }

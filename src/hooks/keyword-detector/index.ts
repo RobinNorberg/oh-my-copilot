@@ -909,6 +909,8 @@ export interface TaskSizeFilterOptions {
   largeWordLimit?: number;
   /** Suppress heavy modes for small tasks. Default: true */
   suppressHeavyModesForSmallTasks?: boolean;
+  /** Jev-provided task size result (used in active mode). Overrides heuristic if provided. */
+  jevTaskSizeResult?: TaskSizeResult;
 }
 
 /**
@@ -936,16 +938,17 @@ export function getAllKeywordsWithSizeCheck(
     smallWordLimit = 50,
     largeWordLimit = 200,
     suppressHeavyModesForSmallTasks = true,
+    jevTaskSizeResult,
   } = options;
 
   const keywords = getAllKeywords(text);
 
   if (!enabled || !suppressHeavyModesForSmallTasks || keywords.length === 0) {
-    return { keywords, taskSizeResult: null, suppressedKeywords: [] };
+    return { keywords, taskSizeResult: jevTaskSizeResult ?? null, suppressedKeywords: [] };
   }
 
   const thresholds: TaskSizeThresholds = { smallWordLimit, largeWordLimit };
-  const taskSizeResult = classifyTaskSize(text, thresholds);
+  const taskSizeResult = jevTaskSizeResult ?? classifyTaskSize(text, thresholds);
 
   // Only suppress heavy modes for small tasks
   if (taskSizeResult.size !== 'small') {

@@ -342,15 +342,67 @@ function syncClaudeMcpConfig(
 }
 
 function escapeTomlString(value: string): string {
-  return value
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"');
+  // TOML basic strings (double-quoted) forbid all control chars U+0000-U+001F except tab (U+0009),
+  // and also forbid U+007F (DEL).
+  // Escape order: backslash first to avoid re-escaping.
+  let result = value.replace(/\\/g, '\\\\');
+  
+  // Escape other special characters and control codes
+  result = result.replace(/["\n\r\t\b\f\0-\x07\x0b\x0e-\x1f\x7f]/g, (char) => {
+    switch (char) {
+      case '"':
+        return '\\"';
+      case '\n':
+        return '\\n';
+      case '\r':
+        return '\\r';
+      case '\t':
+        return '\\t';
+      case '\b':
+        return '\\b';
+      case '\f':
+        return '\\f';
+      default: {
+        // All other control chars: escape as \uXXXX
+        const code = char.charCodeAt(0);
+        return `\\u${code.toString(16).padStart(4, '0')}`;
+      }
+    }
+  });
+  
+  return result;
 }
 
 function unescapeTomlString(value: string): string {
-  return value
-    .replace(/\\"/g, '"')
-    .replace(/\\\\/g, '\\');
+  // Handle escape sequences in a single pass to avoid round-trip bugs:
+  // - \uXXXX (unicode escape)
+  // - \" (quote), \\ (backslash), \n (newline), \r (carriage return), \t (tab), \b (backspace), \f (form feed)
+  // Single pass prevents issues like C:\\users\\u0041dir being incorrectly decoded.
+  return value.replace(/\\(u[0-9a-fA-F]{4}|["\\nrtbf])/g, (_, escaped: string) => {
+    if (escaped[0] === 'u') {
+      // \uXXXX: decode unicode escape
+      return String.fromCharCode(parseInt(escaped.slice(1), 16));
+    }
+    // Single-character escapes
+    switch (escaped) {
+      case 'n':
+        return '\n';
+      case 'r':
+        return '\r';
+      case 't':
+        return '\t';
+      case 'b':
+        return '\b';
+      case 'f':
+        return '\f';
+      case '"':
+        return '"';
+      case '\\':
+        return '\\';
+      default:
+        return escaped;
+    }
+  });
 }
 
 function renderTomlString(value: string): string {

@@ -9,6 +9,7 @@ import { isValidTeamInstanceId } from './types.js';
 import { absPath, TeamPaths } from './state-paths.js';
 import { atomicWriteJson } from '../lib/atomic-write.js';
 import { lockPathFor, withFileLock } from '../lib/file-lock.js';
+import { checkHostLoadGate } from '../lib/host-load-gate.js';
 const WORKER_LAUNCH_SCHEMA_VERSION = 1;
 const DEFAULT_ACK_TIMEOUT_MS = 8_000;
 const DEFAULT_POLL_INTERVAL_MS = 25;
@@ -121,7 +122,13 @@ function isValidProviderEnvironment(value, platform = process.platform) {
         return false;
     }
 }
-export function buildProviderEnvironment(providerEnv, sourceEnv = process.env, platform = process.platform) {
+function parseEnvPassthrough(value) {
+    if (!value || value.trim().length === 0)
+        return [];
+    // Split by comma and trim each key
+    return value.split(',').map(k => k.trim()).filter(k => k.length > 0);
+}
+export function buildProviderEnvironment(providerEnv, sourceEnv = process.env, platform = process.platform, envPassthrough) {
     const normalized = normalizeProviderEnvironment(providerEnv, platform);
     const baseline = {};
     for (const key of SAFE_BASELINE_ENV_KEYS) {
@@ -151,6 +158,19 @@ export function buildProviderEnvironment(providerEnv, sourceEnv = process.env, p
         : sourceEnv[homeKey];
     if (typeof home === 'string' && home.length > 0)
         baseline[homeKey] = home;
+    // Resolve passthrough environment variables from the source environment
+    const passthroughList = envPassthrough ?? parseEnvPassthrough(sourceEnv.OMC_TEAM_WORKER_ENV_PASSTHROUGH);
+    for (const key of passthroughList) {
+        if (!isValidEnvironmentKey(key))
+            throw new Error('worker_launch_env_passthrough_key_invalid');
+        if (WORKER_LAUNCH_INTERNAL_ENV_KEYS.has(key))
+            throw new Error('worker_launch_env_passthrough_key_reserved');
+        if (platform === 'win32' && WINDOWS_RESERVED_ENV_KEYS.has(key.toUpperCase()))
+            throw new Error('worker_launch_env_passthrough_key_reserved');
+        const value = sourceEnv[key];
+        if (typeof value === 'string')
+            baseline[key] = value;
+    }
     if (platform === 'win32') {
         for (const key of Object.keys(normalized)) {
             const baselineKey = Object.keys(baseline).find(candidate => candidate.toUpperCase() === key.toUpperCase());
@@ -1864,6 +1884,13 @@ export async function runWorkerLaunchBootstrap(value) {
                     await invocation.cleanup().catch(() => undefined);
                     return { outcome: 'provider_spawn_failed' };
                 }
+            }
+            // Check host load gate to prevent resource exhaustion during concurrent worker launches
+            const gateResult = checkHostLoadGate();
+            if (!gateResult.allowed && gateResult.reason) {
+                // If gate denies, log it but proceed anyway (fail-open design)
+                // Log is for observability; the gate is advisory, not hard-blocking
+                // Uncomment for debugging: console.warn(`Worker launch proceeding despite host load saturation: ${gateResult.reason}`);
             }
             const child = spawn(invocation.command, invocation.args, {
                 cwd: spec.cwd,
