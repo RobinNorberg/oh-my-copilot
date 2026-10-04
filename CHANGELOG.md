@@ -2,12 +2,18 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
-## Unreleased
+# oh-my-copilot v5.6.1
 
-Ports upstream oh-my-claudecode v5.6.0 and v5.6.1 (862c69273..e3e96dea9).
-The fork version stays 5.5.0 until release; the skill count stays 61.
+## [5.6.1] - 2026-10-04
 
-### Ported from upstream oh-my-claudecode v5.6.0 / v5.6.1
+Fork **v5.6.1** (from v5.5.0) ports upstream oh-my-claudecode v5.6.0, v5.6.1
+and upstream `dev` through 4280efb1f (862c69273..4280efb1f). It brings the
+unattended-run / software-factory surface to Copilot under a scoped AFK
+permission profile and hardens host launches on Windows. No breaking changes;
+the skill count stays 61. Upgrading? Read the
+[v5.5.0 → v5.6.1 guide](docs/MIGRATION.md#v550--v561-fork-upgrade-guide).
+
+### Ported from upstream oh-my-claudecode v5.6.0 / v5.6.1 and dev (862c69273..4280efb1f)
 
 - **Software factory:** a SessionEnd chain enqueuer driven by the project
   route table (`.omg/factory-routes.json`, the single source of truth),
@@ -16,15 +22,19 @@ The fork version stays 5.5.0 until release; the skill count stays 61.
   watchdog. `omg factory listen` (HMAC-signed tracker intake, bound to
   127.0.0.1), `omg factory init` (seeds the route table and checks
   prerequisites), and `omg factory status` (read-only chain audit).
-- **Intake:** `omg intake run --headless` runs the harbor sweep headless;
+- **Intake:** `omg intake run` runs the harbor sweep headless;
   `omg intake schedule --cron <expr>` / `--off` registers it with the host
   scheduler (cron, or Task Scheduler on Windows). A run ledger with
-  SessionStart reconciliation records unattended-run lifecycles.
+  SessionStart reconciliation records unattended-run lifecycles; the
+  runs-reconciler test fixtures use relative timestamps so they no longer
+  expire.
 - **Ralph:** `omg ralph afk` launches an isolated headless ralph run;
   `omg ralph verify` is the only command that computes the feedback
   baseline diff; `omg ralph from-map` plans, claims and launches a run from
   a wayfinder map. Stories are risk-ordered, and the PRD carries a repo
-  quality class.
+  quality class. The feedback baseline normalizes `node:test` `duration_ms`
+  and drops pass/test counters from failure signatures, so a timing-only
+  change no longer reads as a new failure (#4215).
 - **Unattended-run hardening:** closeouts in ralph, autopilot and team;
   an AFK assumption protocol; an opt-in budget stop; headless harbor and
   refit invocations; a destructive-git guardrail hook
@@ -62,15 +72,16 @@ The fork version stays 5.5.0 until release; the skill count stays 61.
 
 ### Fork: Copilot host adaptations and security fixes
 
-- **Unattended runs on Copilot:** `omg factory`, `omg intake` and
+- **Unattended runs on Copilot:** factory chain links and
   `omg ralph afk|from-map` launch the Copilot host binary with
-  `--no-ask-user` and a scoped permission profile
+  `--no-ask-user` and a scoped AFK permission profile
   (`--allow-tool=shell(gh issue view|comment|edit, gh pr view|list,
   gh label list)`, `--allow-tool=write`, `--allow-url=github.com`, plus
   `--deny-tool=write(.git)`, `--deny-tool=write(package.json)` and
   `--deny-tool=shell(git push)`); single-token `--verify` commands are
-  refused on Copilot. Copilot cannot pin a session id, so a factory chain
-  stops after its first link and the watchdog reports it.
+  refused on Copilot. `omg intake run` launches Copilot with
+  `--no-ask-user` and no allow rules. Copilot cannot pin a session id, so a
+  factory chain stops after its first link and the watchdog reports it.
 - **Prompt never on a `cmd.exe` command line (security):** on Windows the
   host binary receives the prompt on stdin for both hosts (verified against
   Copilot CLI 1.0.91). Native `.exe` binaries are spawned directly with an
@@ -85,6 +96,9 @@ The fork version stays 5.5.0 until release; the skill count stays 61.
   exported value can no longer widen the AFK profile to unrestricted shell.
 - `check_suite.head_branch` is validated before it enters a prompt, and
   `omg intake --host-bin` is validated like the team launch contract.
+- `omg intake run` accepts `--headless`, the flag the entry written by
+  `omg intake schedule` passes; before this, every scheduled sweep exited with
+  `unknown option '--headless'` (also present upstream).
 - The copilot worker contract follows #4206's
   `buildLaunchArgs(model, reasoningEffort, extraFlags)` signature, so deny
   flags keep reaching Copilot workers.

@@ -8,6 +8,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 - [Unreleased: Team Instance Ownership](#unreleased-team-instance-ownership)
 - [Unreleased: Cancellation Scope](#unreleased-cancellation-scope)
+- [v5.5.0 → v5.6.1: Fork Upgrade Guide](#v550--v561-fork-upgrade-guide)
 - [v5.1.0 → v5.5.0: Fork Upgrade Guide](#v510--v550-fork-upgrade-guide)
 - [v4.13.102 → v5.0.0: Fork Upgrade Guide](#v413102--v500-fork-upgrade-guide)
 - [v4.x → v5.0: Workflow Retirement](#v4x--v50-workflow-retirement)
@@ -117,6 +118,120 @@ locations and descendants of system temp/OS roots are never used as roots.
   foreign repositories and failed Git probes are rejected visibly.
 - Session-scoped state remains owned by its `session_id`. No time-based cleanup
   or cancellation was added.
+
+---
+
+## v5.5.0 → v5.6.1: Fork Upgrade Guide
+
+This section covers the upgrade from fork **v5.5.0** to fork **v5.6.1**. The
+release ports upstream oh-my-claudecode v5.6.0, v5.6.1 and `dev` through
+4280efb1f, and it runs the new unattended-run commands on Copilot under a
+scoped permission profile. Nothing is renamed or removed, so there are no
+breaking changes.
+
+### TL;DR
+
+1. Update the package (`npm install -g oh-my-copilot@5.6.1`) or the plugin
+   (`copilot plugin update oh-my-copilot@omc`). No config edits are required.
+2. If you export `COPILOT_ALLOW_ALL`, note that unattended children now
+   ignore it (see [Behaviour change](#copilot_allow_all-on-unattended-children)).
+3. Optional: try `omg factory init`, `omg intake run` and `omg ralph afk`.
+   They need the host binary on PATH and `gh` authenticated.
+
+### New commands
+
+| Command | What it does |
+|---|---|
+| `omg factory init [--no-narrow] [--force] [--cwd <dir>]` | Seeds `.omg/factory-routes.json`, the chain-routing source of truth. Refuses unless `.omg/state/` and `docs/design/` exist, and never overwrites a table without `--force`. |
+| `omg factory listen --repo <owner/name,...> [--port 7788] [--host 127.0.0.1] [--cwd <dir>]` | Tracker intake daemon. Requires `OMC_FACTORY_HMAC_SECRET`; binds to 127.0.0.1 unless `--host` says otherwise. |
+| `omg factory status [--json]` | Read-only audit of factory chains. |
+| `omg intake run [--headless] [--allow-docket-only] [--host-bin <bin>] [--cwd <dir>]` | One headless harbor sweep. Refuses without a verified notification channel unless `--allow-docket-only` is passed. |
+| `omg intake schedule --cron <expr> [--off] [--cwd <dir>]` | Installs (or with `--off` removes) the sweep in cron, or in Task Scheduler on Windows (`*/N * * * *` and `M H * * *` only). |
+| `omg ralph afk "<task>" [--verify <command>]...` | Launches an isolated headless ralph run. `--verify` is repeatable. |
+| `omg ralph verify [--write-baseline] [--session <id>] [--json]` | The only command that records or judges the feedback baseline. |
+| `omg ralph from-map --map <repo#number> [--repo <name>] [--execute] [--launch] [--finalize] [--session <id>] [--json]` | Plans, claims and launches a ralph run from a wayfinder map. |
+
+### What these commands need on Copilot
+
+- **The host binary on PATH.** Factory links and ralph AFK runs spawn
+  `copilot` (or `claude` under Claude Code). `omg intake run --host-bin <bin>`
+  overrides the binary; the value is validated like the team launch contract.
+- **`gh` authenticated** for the repository. `omg intake run` refuses when
+  `gh repo view` or `gh label list` fails, and AFK sessions talk to the
+  tracker through `gh`.
+- **The AFK permission profile.** Factory links and `omg ralph afk|from-map`
+  launch Copilot with:
+
+  ```text
+  --no-ask-user
+  --allow-tool=shell(gh issue view)  --allow-tool=shell(gh issue comment)
+  --allow-tool=shell(gh issue edit)  --allow-tool=shell(gh pr view)
+  --allow-tool=shell(gh pr list)     --allow-tool=shell(gh label list)
+  --allow-tool=write  --allow-url=github.com
+  --deny-tool=write(.git)  --deny-tool=write(package.json)  --deny-tool=shell(git push)
+  ```
+
+  Deny beats allow, so the session cannot edit git plumbing, rewrite
+  `package.json` (which would turn an allowed `npm test` into arbitrary
+  shell) or push. Ralph AFK runs also get
+  `--allow-tool=shell(omg ralph verify)`. Each declared `--verify` command
+  becomes one `--allow-tool=shell(<command>)` rule; on Copilot a command that
+  is a bare program or an interpreter flag (for example `node -e`) is
+  refused, because a prefix rule would admit arbitrary code.
+- `omg intake run` launches Copilot with `-p <prompt> --no-ask-user` and no
+  allow rules, plus `OMC_GIT_GUARDRAILS=1`.
+
+### `COPILOT_ALLOW_ALL` on unattended children
+
+This is the one behaviour change. `COPILOT_ALLOW_ALL` is no longer forwarded
+by the session-end `COPILOT_*` passthrough, and every AFK child (factory
+links, `omg ralph afk|from-map`, `omg intake run`) is started with
+`COPILOT_ALLOW_ALL=false`. Before, an exported value widened the AFK profile
+to unrestricted shell. Interactive sessions and `omg team` workers are not
+affected.
+
+### New environment variables
+
+| Variable | Default | Effect |
+|---|---|---|
+| `OMC_GIT_GUARDRAILS` | unset | `1` blocks `git push`, `git reset --hard`, `git clean -f`, `git branch -D` and `git checkout/restore .` in every session; `0` turns the hook off even during an unattended mode. Unset, it is on only while ralph, autopilot, team or ultragoal is active. |
+| `OMC_STALE_RUN_HOURS` | `2` | Age after which the SessionStart watchdog reports an `active: true` unattended run as stale. It reports only; it never resumes or clears state. |
+| `OMC_HOST_LOAD_THRESHOLD` | 80% of CPU cores | CPU load above which expensive operations wait. |
+| `OMC_FREE_MEMORY_THRESHOLD` | `256` (MB) | Free memory below which expensive operations wait. |
+| `OMC_MAX_SIBLING_SESSIONS` | `8` | Live sibling OMC sessions above which expensive operations wait. |
+| `OMC_HOST_LOAD_GATE_DISABLED` | unset | Any value disables the host-load gate. The gate also proceeds when metrics are unavailable. |
+| `OMC_TEAM_WORKER_ENV_PASSTHROUGH` | unset | Comma-separated variable names forwarded to team workers, for custom provider credentials. Reserved and invalid names are rejected. |
+| `OMC_FACTORY_HMAC_SECRET` | unset | Required by `omg factory listen` to verify tracker events. |
+
+### `team.roleRouting.<role>.reasoningEffort`
+
+`roleRouting` entries take a per-role `reasoningEffort`. The fork forwards it
+only to providers with a verified CLI flag: claude workers (`--effort`) and
+codex workers (`model_reasoning_effort`). **Copilot workers ignore it**,
+because Copilot CLI has no verified reasoning-effort flag.
+
+### Windows launch change
+
+On Windows, factory links and ralph AFK runs no longer put the prompt on a
+command line. The prompt goes to the host binary on stdin (`copilot` reads a
+piped prompt without `-p`, verified on Copilot CLI 1.0.91; `claude` keeps
+`-p`), and a `gh --body` becomes `--body-file -`. Native `.exe` binaries are
+spawned directly with an argument array; only `.cmd`/`.bat` npm shims go
+through `COMSPEC`, with quoting that refuses `%`. Nothing to configure, but
+wrappers that inspected the child's argv for the prompt will no longer find
+it there.
+
+### Known limitations
+
+- **Copilot factory chains stop after one link.** Copilot CLI has no
+  `--session-id`, so the next link cannot be pinned; `omg factory status` and
+  the watchdog report the stalled chain.
+- **git-guardrails under Copilot on Windows is not live-verified.** The hook
+  is projected and unit-tested, but its PreToolUse payload has not been
+  exercised in a live Copilot session on Windows. Plant a violation (for
+  example ask for `git push`) before relying on it.
+
+See [CHANGELOG.md](../CHANGELOG.md) for the full port summary.
 
 ---
 

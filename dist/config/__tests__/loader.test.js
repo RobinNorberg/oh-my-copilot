@@ -631,9 +631,9 @@ describe("team.roleRouting (Option E)", () => {
     it("accepts valid reasoningEffort per provider", () => {
         const tempDir = mkdtempSync(join(tmpdir(), "omc-team-reasoning-effort-"));
         try {
-            const claudeDir = join(tempDir, ".claude");
-            require("node:fs").mkdirSync(claudeDir, { recursive: true });
-            writeFileSync(join(claudeDir, "omc.jsonc"), JSON.stringify({
+            const copilotDir = join(tempDir, ".copilot");
+            require("node:fs").mkdirSync(copilotDir, { recursive: true });
+            writeFileSync(join(copilotDir, "omg.jsonc"), JSON.stringify({
                 team: {
                     roleRouting: {
                         executor: { provider: "claude", reasoningEffort: "high" },
@@ -655,9 +655,9 @@ describe("team.roleRouting (Option E)", () => {
     it("rejects invalid reasoningEffort for claude provider", () => {
         const tempDir = mkdtempSync(join(tmpdir(), "omc-team-bad-reasoning-effort-claude-"));
         try {
-            const claudeDir = join(tempDir, ".claude");
-            require("node:fs").mkdirSync(claudeDir, { recursive: true });
-            writeFileSync(join(claudeDir, "omc.jsonc"), JSON.stringify({
+            const copilotDir = join(tempDir, ".copilot");
+            require("node:fs").mkdirSync(copilotDir, { recursive: true });
+            writeFileSync(join(copilotDir, "omg.jsonc"), JSON.stringify({
                 team: {
                     roleRouting: {
                         executor: { provider: "claude", reasoningEffort: "ultra" },
@@ -674,9 +674,9 @@ describe("team.roleRouting (Option E)", () => {
     it("rejects invalid reasoningEffort for codex provider", () => {
         const tempDir = mkdtempSync(join(tmpdir(), "omc-team-bad-reasoning-effort-codex-"));
         try {
-            const claudeDir = join(tempDir, ".claude");
-            require("node:fs").mkdirSync(claudeDir, { recursive: true });
-            writeFileSync(join(claudeDir, "omc.jsonc"), JSON.stringify({
+            const copilotDir = join(tempDir, ".copilot");
+            require("node:fs").mkdirSync(copilotDir, { recursive: true });
+            writeFileSync(join(copilotDir, "omg.jsonc"), JSON.stringify({
                 team: {
                     roleRouting: {
                         executor: { provider: "codex", reasoningEffort: "invalid" },
@@ -693,9 +693,9 @@ describe("team.roleRouting (Option E)", () => {
     it("rejects invalid reasoningEffort for antigravity provider", () => {
         const tempDir = mkdtempSync(join(tmpdir(), "omc-team-bad-reasoning-effort-agy-"));
         try {
-            const claudeDir = join(tempDir, ".claude");
-            require("node:fs").mkdirSync(claudeDir, { recursive: true });
-            writeFileSync(join(claudeDir, "omc.jsonc"), JSON.stringify({
+            const copilotDir = join(tempDir, ".copilot");
+            require("node:fs").mkdirSync(copilotDir, { recursive: true });
+            writeFileSync(join(copilotDir, "omg.jsonc"), JSON.stringify({
                 team: {
                     roleRouting: {
                         executor: { provider: "antigravity", reasoningEffort: "ultra" },
@@ -712,9 +712,9 @@ describe("team.roleRouting (Option E)", () => {
     it.each(["gemini", "grok", "cursor"])("rejects reasoningEffort for %s (no verified CLI flag)", (provider) => {
         const tempDir = mkdtempSync(join(tmpdir(), `omc-team-reasoning-effort-${provider}-`));
         try {
-            const claudeDir = join(tempDir, ".claude");
-            require("node:fs").mkdirSync(claudeDir, { recursive: true });
-            writeFileSync(join(claudeDir, "omc.jsonc"), JSON.stringify({
+            const copilotDir = join(tempDir, ".copilot");
+            require("node:fs").mkdirSync(copilotDir, { recursive: true });
+            writeFileSync(join(copilotDir, "omg.jsonc"), JSON.stringify({
                 team: {
                     roleRouting: {
                         executor: { provider, reasoningEffort: "high" },
@@ -731,9 +731,9 @@ describe("team.roleRouting (Option E)", () => {
     it("rejects reasoningEffort with non-string value", () => {
         const tempDir = mkdtempSync(join(tmpdir(), "omc-team-reasoning-effort-non-string-"));
         try {
-            const claudeDir = join(tempDir, ".claude");
-            require("node:fs").mkdirSync(claudeDir, { recursive: true });
-            writeFileSync(join(claudeDir, "omc.jsonc"), JSON.stringify({
+            const copilotDir = join(tempDir, ".copilot");
+            require("node:fs").mkdirSync(copilotDir, { recursive: true });
+            writeFileSync(join(copilotDir, "omg.jsonc"), JSON.stringify({
                 team: {
                     roleRouting: {
                         executor: { provider: "claude", reasoningEffort: 5 },
@@ -750,9 +750,9 @@ describe("team.roleRouting (Option E)", () => {
     it("rejects reasoningEffort on orchestrator", () => {
         const tempDir = mkdtempSync(join(tmpdir(), "omc-team-orchestrator-reasoning-effort-"));
         try {
-            const claudeDir = join(tempDir, ".claude");
-            require("node:fs").mkdirSync(claudeDir, { recursive: true });
-            writeFileSync(join(claudeDir, "omc.jsonc"), JSON.stringify({
+            const copilotDir = join(tempDir, ".copilot");
+            require("node:fs").mkdirSync(copilotDir, { recursive: true });
+            writeFileSync(join(copilotDir, "omg.jsonc"), JSON.stringify({
                 team: {
                     roleRouting: {
                         orchestrator: { model: "HIGH", reasoningEffort: "high" },

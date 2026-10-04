@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.5.0, the plugin ships 20 agents, 61 skills, 21 command files, and one configured MCP server exposing exactly 55 tools.
+For v5.6.1, the plugin ships 20 agents, 61 skills, 21 command files, and one configured MCP server exposing exactly 55 tools.
 
 ---
 

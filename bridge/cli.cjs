@@ -124344,8 +124344,10 @@ var MAX_SIGNATURES_PER_COMMAND = 200;
 var ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 var VOLATILE_PATTERNS = [
   /\b\d+(?:\.\d+)?\s*(?:ms|s|sec|secs|seconds)\b/gi,
+  /\bduration_ms\s*:?\s*\d+(?:\.\d+)?\b/gi,
+  /\bduration\s*:?\s*\d+(?:\.\d+)?\b/gi,
   /\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g,
-  /[A-Za-z]:\\[^\s:]*\\[^\s]*(?:omc|omc-)[^\s\\/]+/g,
+  /[A-Za-z]:\\[^\s:]*\\[^\s]*(?:omc|omc-)[^\s\\\/]+/g,
   /\/tmp\/[\w.-]+/g,
   /\b[0-9a-f]{8,}\b/gi
 ];
@@ -124357,7 +124359,12 @@ function signatureLines(output) {
     for (const pattern of VOLATILE_PATTERNS) line = line.replace(pattern, "<v>");
     line = line.replace(/\s+/g, " ").trim();
     if (!line || line.length > 500) continue;
-    if (/^(running|collecting|compiling|building|passing|✓|√|%|\s*at\s)/i.test(line) && !/fail|error|✗|×/i.test(line)) continue;
+    if (/^(running|collecting|compiling|building|passing|tap\s+version|✓|√|%|\s*at\s)/i.test(line) && !/fail|error|✗|×/i.test(line)) continue;
+    if (/^#\s*(?:pass|tests?|skipped|cancelled|todo)\s+\d+\s*$/.test(line)) continue;
+    if (/^#\s*fail\s+0\s*$/.test(line)) continue;
+    if (/^#\s*<v>\s*(<v>\s*)*$/.test(line)) continue;
+    if (/^\d+\.\.\d+\s*$/.test(line)) continue;
+    if (/^ok\s+\d+\s+/i.test(line) && !line.includes("not ok")) continue;
     seen.add(line);
     if (seen.size >= MAX_SIGNATURES_PER_COMMAND) break;
   }
@@ -132045,7 +132052,7 @@ ${create.stderr.trim().slice(0, 400)}` };
 function intakeCommand() {
   const cmd = new Command("intake");
   cmd.description("Harbor intake power: run the headless sweep or install its host-native schedule (P2, docs/design/P2-RUN-LEDGER-AND-INTAKE-PLAN.md)");
-  cmd.command("run").description("Run one headless harbor sweep: preconditions are validated, dispositions stay in the harbor skill").option("--allow-docket-only", "confirm the docket is the only signal (no notification channel verified)", false).option("--cwd <dir>", "repository to sweep (defaults to the working directory)").option("--host-bin <bin>", "host CLI binary to spawn for the headless session (default: copilot, or claude under Claude Code)").action((options) => {
+  cmd.command("run").description("Run one headless harbor sweep: preconditions are validated, dispositions stay in the harbor skill").option("--headless", "run without a human (always the case; accepted for scheduled entries)", false).option("--allow-docket-only", "confirm the docket is the only signal (no notification channel verified)", false).option("--cwd <dir>", "repository to sweep (defaults to the working directory)").option("--host-bin <bin>", "host CLI binary to spawn for the headless session (default: copilot, or claude under Claude Code)").action((options) => {
     const result = runHeadlessIntake({ cwd: options.cwd, hostBin: options.hostBin, allowDocketOnly: options.allowDocketOnly });
     console.log(result.message);
     process.exitCode = result.exitCode;
