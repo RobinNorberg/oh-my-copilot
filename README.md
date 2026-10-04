@@ -28,6 +28,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 <br/>This work is based on [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) by Yeachan Heo, but with a Copilot CLI focus.
 
+> **v5.6.1** brings the software factory, headless intake and `omg ralph afk` to Copilot under a scoped AFK permission profile ([upgrade guide](docs/MIGRATION.md#v550--v561-fork-upgrade-guide)).
 > **v5.5.0** makes the fork a native GitHub Copilot CLI plugin (hooks, agents,
 > `copilot` team workers) and renames `COPILOT_CONFIG_DIR` to `COPILOT_HOME`.
 > **v5.0.0** rebased the fork onto upstream oh-my-claudecode v5.0.2 and renamed the

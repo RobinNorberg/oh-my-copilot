@@ -53,11 +53,18 @@ function runReporter(payload: Record<string, unknown>): Promise<RunResult> {
 }
 
 describe('runs reconciler hook', () => {
+  // Generate recent timestamps relative to now to avoid time-bomb failures (issue #4215 CI unblock).
+  // Keep deliberately-old 2020 fixtures as-is for lookback window tests.
+  const now = Date.now();
+  const recentStart = new Date(now - 2 * 60 * 60 * 1000).toISOString();
+  const recentEnd = new Date(now - 1 * 60 * 60 * 1000).toISOString();
+  const recentEnd2 = new Date(now - 30 * 60 * 1000).toISOString();
+
   it('reports completed runs missing their closeout as advisory context', async () => {
     const dir = fixture();
     writeLedger(dir, [
-      { ts: '2026-09-27T00:00:00Z', run: 'ralph', sessionId: 's1', event: 'start', outcome: 'running' },
-      { ts: '2026-09-27T01:00:00Z', run: 'ralph', sessionId: 's1', event: 'end', outcome: 'completed', closeoutWritten: false },
+      { ts: recentStart, run: 'ralph', sessionId: 's1', event: 'start', outcome: 'running' },
+      { ts: recentEnd, run: 'ralph', sessionId: 's1', event: 'end', outcome: 'completed', closeoutWritten: false },
     ]);
     const result = await runReporter({ cwd: dir });
     const ctx = result.parsed.hookSpecificOutput?.additionalContext ?? '';
@@ -69,8 +76,8 @@ describe('runs reconciler hook', () => {
   it('stays silent when every ended run wrote its closeout', async () => {
     const dir = fixture();
     writeLedger(dir, [
-      { ts: '2026-09-27T00:00:00Z', run: 'ralph', event: 'start', outcome: 'running' },
-      { ts: '2026-09-27T01:00:00Z', run: 'ralph', event: 'end', outcome: 'completed', closeoutWritten: true },
+      { ts: recentStart, run: 'ralph', event: 'start', outcome: 'running' },
+      { ts: recentEnd, run: 'ralph', event: 'end', outcome: 'completed', closeoutWritten: true },
     ]);
     const result = await runReporter({ cwd: dir });
     expect(result.parsed.suppressOutput).toBe(true);
@@ -89,7 +96,7 @@ describe('runs reconciler hook', () => {
     const dir = fixture();
     const result = await runReporter({ cwd: dir });
     expect(result.parsed.suppressOutput).toBe(true);
-    writeLedger(dir, [{ broken: true }, { ts: '2026-09-27T00:00:00Z', run: 'autopilot', event: 'end', outcome: 'failed', closeoutWritten: false }]);
+    writeLedger(dir, [{ broken: true }, { ts: recentEnd, run: 'autopilot', event: 'end', outcome: 'failed', closeoutWritten: false }]);
     const second = await runReporter({ cwd: dir });
     const ctx = second.parsed.hookSpecificOutput?.additionalContext ?? '';
     expect(ctx).toContain('autopilot');
@@ -98,9 +105,9 @@ describe('runs reconciler hook', () => {
   it('deduplicates per run+session, keeping only the latest end edge', async () => {
     const dir = fixture();
     writeLedger(dir, [
-      { ts: '2026-09-27T00:00:00Z', run: 'ralph', sessionId: 's1', event: 'start', outcome: 'running' },
-      { ts: '2026-09-27T01:00:00Z', run: 'ralph', sessionId: 's1', event: 'end', outcome: 'completed', closeoutWritten: false },
-      { ts: '2026-09-27T02:00:00Z', run: 'ralph', sessionId: 's1', event: 'end', outcome: 'cancelled', closeoutWritten: true },
+      { ts: recentStart, run: 'ralph', sessionId: 's1', event: 'start', outcome: 'running' },
+      { ts: recentEnd, run: 'ralph', sessionId: 's1', event: 'end', outcome: 'completed', closeoutWritten: false },
+      { ts: recentEnd2, run: 'ralph', sessionId: 's1', event: 'end', outcome: 'cancelled', closeoutWritten: true },
     ]);
     const result = await runReporter({ cwd: dir });
     expect(result.parsed.suppressOutput).toBe(true);
