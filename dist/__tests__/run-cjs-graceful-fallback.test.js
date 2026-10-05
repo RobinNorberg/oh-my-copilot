@@ -406,6 +406,7 @@ describe('run.cjs trusted hook Worker selection', () => {
         for (const [name, contents] of Object.entries(scripts))
             writeFileSync(join(root, 'scripts', name), contents);
         for (const expectedScript of [
+            'git-guardrails.mjs',
             'keyword-detector.mjs',
             'skill-injector.mjs',
             'pre-tool-enforcer.mjs',
@@ -446,6 +447,7 @@ describe('run.cjs trusted hook Worker selection', () => {
         expect(result).toMatchObject({ status: 0, stdout: 'worker' });
     });
     it.each([
+        ['git-guardrails.mjs', 'PreToolUse'],
         ['pre-tool-enforcer.mjs', 'PreToolUse'],
         ['post-tool-verifier.mjs', 'PostToolUse'],
         ['project-memory-posttool.mjs', 'PostToolUse'],
