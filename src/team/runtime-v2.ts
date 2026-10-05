@@ -4466,7 +4466,10 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     if (!await rollbackBeforeConfig(error)) throw startupCleanupIncompleteError(error);
     throw error;
   }
-  for (const line of formatWorkerPermissionLines(preparedLaunches.values())) {
+  const permissionLines = sdkSettings
+    ? [`[omg team] copilot sdk workers (x${preparedLaunches.size}): no allow-all; host permission policy (writes: worktree + team state; shell: all but team control/smoke/tmux/git push); deny: ${[...sdkSettings.denyTools, ...sdkSettings.denyUrls.map((u) => `url(${u})`)].join(', ') || '(none)'}; credit cap ${sdkSettings.maxCreditsPerWorker}/worker`]
+    : formatWorkerPermissionLines(preparedLaunches.values());
+  for (const line of permissionLines) {
     process.stderr.write(`${line}\n`);
   }
 
