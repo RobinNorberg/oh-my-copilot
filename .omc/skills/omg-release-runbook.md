@@ -39,6 +39,14 @@ run plus a retag cycle. Work through pre-flight completely BEFORE tagging.
    `oh-my-copilot`). `release-boundary.mjs` asserts the root manifest in the
    archive and at tag time; the CI version-consistency job checks it too.
    `scripts/release.ts` and `scripts/sync-version.sh` bump all of them.
+   PITFALL (seen on v5.6.1/v5.6.2/v5.7.0): `bash scripts/sync-version.sh X`
+   does NOT bump `package.json`/`package-lock.json` — it assumes `npm version`
+   ran first, and `npm version X` breaks on Windows via the `version` script
+   (MSYS path). Run `npm version X --no-git-tag-version --ignore-scripts`
+   FIRST, then `sync-version.sh X`, then stamp
+   `tests/fixtures/prompt-projection/claude-managed-block.golden`. The prompt
+   projections take their version from `package.json`, and
+   `verify:prompt-projections` reports "bridge not built" until `npm run build`.
 1b. `npm run build` runs `build:copilot-hooks` and `build:copilot-agents`;
    `copilot/hooks.json` and `copilot/agents/*.md` are tracked (not ignored)
    generated files — commit them, and `node scripts/copilot/build-*.mjs --verify`
@@ -109,8 +117,12 @@ run plus a retag cycle. Work through pre-flight completely BEFORE tagging.
 
 `session-end-process-exit` (producer grace), `runtime-done-recovery`
 (briefly-malformed window), `tests/perf/subagent-lock.bench.ts` (45ms latency
-guardrail on shared runners). One `gh run rerun <id> --failed` clears them;
-only investigate if the SAME test fails twice.
+guardrail on shared runners), `runtime-v2.dispatch` ("requeues the selected
+task through an exact read…", 30 s timeout — hit on the v5.6.1 tag run),
+`subagent-tracker` ("persists durably under the already-held lock", 310 ms
+latency bound — hit on PR #209). One `gh run rerun <id> --failed` clears them;
+only investigate if the SAME test fails twice. A rerun keeps the tag and
+workflow path, so the provenance attestation is unaffected.
 
 ## Verification (a green run is necessary, not sufficient — check the outputs)
 

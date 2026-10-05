@@ -8,6 +8,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 - [Unreleased: Team Instance Ownership](#unreleased-team-instance-ownership)
 - [Unreleased: Cancellation Scope](#unreleased-cancellation-scope)
+- [v5.6.2 → v5.7.0: Smoke Harness](#v562--v570-smoke-harness)
 - [v5.6.1 → v5.6.2: Postinstall Hook](#v561--v562-postinstall-hook)
 - [v5.5.0 → v5.6.1: Fork Upgrade Guide](#v550--v561-fork-upgrade-guide)
 - [v5.1.0 → v5.5.0: Fork Upgrade Guide](#v510--v550-fork-upgrade-guide)
@@ -119,6 +120,76 @@ locations and descendants of system temp/OS roots are never used as roots.
   foreign repositories and failed Git probes are rejected visibly.
 - Session-scoped state remains owned by its `session_id`. No time-based cleanup
   or cancellation was added.
+
+---
+
+## v5.6.2 → v5.7.0: Smoke Harness
+
+Fork **v5.7.0** adds a headless smoke harness and ports upstream
+oh-my-claudecode `dev` 486b85bbb..bcaceb136. There is nothing to migrate: no
+config, command or skill is renamed or removed.
+
+- Update with `npm install -g oh-my-copilot@5.7.0` or
+  `copilot plugin update oh-my-copilot@omc`.
+
+### Adopting `omg smoke copilot` and `host_smoke`
+
+Build first (`npm run build`); the MCP check spawns
+`dist/mcp/standalone-server.js`.
+
+| Tier | Command | Cost |
+| --- | --- | --- |
+| 0 | `omg smoke copilot --tier 0` | Free, no model call |
+| 1 | `omg smoke copilot --tier 1` | 1 premium request |
+| 2 static | `omg smoke copilot --sdk-static` | Free, no model call |
+| 2 | `omg smoke copilot --tier 2 [--scenario all]` | About 1 premium request per scenario; the default `smoke` + `guardrail` costs about 2 |
+
+`--max-credits` (default and minimum 30) caps a run. The CLI has no opt-in
+gate. The MCP tool `host_smoke` has two, set as env vars on the MCP server:
+
+- **`OMC_SMOKE_ALLOW_LIVE=1`** allows `{ "tier": 1 }` and tier 2 with
+  scenarios. `{ "tier": 2, "scenarios": [] }` runs the free static checks
+  without it.
+- **`OMC_SMOKE_ALLOW_ANY_ROOT=1`** allows a `pluginRoot` other than the
+  server's own package root.
+
+`OMC_DISABLE_TOOLS=smoke` hides the tool. From vitest, `npm run test:live`
+runs tier 0 whenever the `copilot` binary resolves. It runs tier 1 only with
+`OMC_LIVE_SMOKE=1` and the tier 2 scenarios only with `OMC_LIVE_SMOKE=2`.
+Details are in
+[DEVELOPERS.md](DEVELOPERS.md#headless-smoke-against-a-local-build).
+
+### Optional SDK for tier 2
+
+`@github/copilot-sdk` is an optional peer dependency; installing
+oh-my-copilot never pulls it in. Install it only if you want tier 2:
+
+```bash
+npm i -g @github/copilot-sdk --omit=optional --ignore-scripts
+```
+
+`--ignore-scripts` avoids a CMake source build on Windows. If a global
+install still adds the SDK's bundled platform runtime (about 128 MB), delete
+it; tier 2 always uses the installed `copilot` binary.
+
+### `OMC_HOOK_FAIL_CLOSED=1`
+
+The variable is opt-in and unset by default. Without it, the Copilot hook
+adapter turns a hook's non-zero exit into `0` plus one `[omg-hook]` stderr
+line, and a hook that times out in `scripts/run.cjs` exits `0`, so hooks fail
+open. With `OMC_HOOK_FAIL_CLOSED=1` the adapter keeps the hook's exit code,
+and a hook timeout in `scripts/run.cjs` exits `124`. Exit `2` on
+PermissionRequest means deny in both modes. The smoke harness sets the
+variable for its own sessions.
+
+### Team env passthrough on POSIX (#4236)
+
+`OMC_TEAM_WORKER_ENV_PASSTHROUGH` keeps the same configuration. On POSIX tmux
+teams its values are no longer inlined into the worker pane's command line.
+They are written to a private `0600` file in a `0700` directory, which the
+pane's `/bin/sh` sources and removes before it execs the login shell. Nothing
+changes for you, but the values no longer appear in `ps` output or tmux
+`pane_start_command`.
 
 ---
 

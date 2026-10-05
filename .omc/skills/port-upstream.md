@@ -203,3 +203,20 @@ When replacing files wholesale, check for these fork-specific additions:
 - **Test mocks**: When upstream adds new exports, grep for `vi.mock.*{module}` and update all mocks
 - **Bridge bundles**: Never manually edit — rebuild from source with `npm run build`
 - **Count assertions**: New agents/skills require updating hardcoded counts in tests (see `omc-new-agent-skill-checklist` skill)
+- **Our own fixes returning from upstream** (2026-10-05, 486b85bbb..bcaceb136): when a range contains
+  PRs we authored upstream, the conflict is "same fix, different words" — take THEIRS and re-apply the
+  rename map, keeping only genuinely fork-only hunks (state-lock SQLite probe caching, release budget,
+  abandoned-nonce recovery). Upstream text is canonical; future ports then apply cleanly.
+- **`package.json` is excluded from the range diff** — port `files`/`scripts`/peer-dep deltas by hand
+  (`git diff <from>..upstream/dev -- package.json`).
+- **Upstream tests may write `.claude/omc.jsonc`** → `.copilot/omg.jsonc`; on Windows the real assertion
+  failure is masked by the temp-dir `rmSync` EPERM in `finally`, so check the Linux CI run, not the
+  local log, before classifying a loader/config test as "baseline EPERM".
+- **Gitignored fixtures**: `*.log` is ignored, so `git add -A` silently skips captured `.log` fixtures;
+  CI then fails with ENOENT and mocked replays that read them hang to the 30 s timeout. Un-ignore with
+  a scoped negation (`!src/<area>/__tests__/fixtures/*.log`) and `git add -f`.
+- **New vitest scripts** in package.json must be classified in
+  `tests/lint/subagent-lock-test-contract.test.ts` (`FUNCTIONAL_SCRIPTS` or `LIVE_SCRIPTS`), or CI fails
+  with "unclassified Vitest script".
+- **Smoke gates** (since v5.7.0): `omg smoke copilot --tier 2 --sdk-static` after the generators (free),
+  `--tier 2` default scenarios before the PR (~2 premium requests) — replaces opening Copilot by hand.

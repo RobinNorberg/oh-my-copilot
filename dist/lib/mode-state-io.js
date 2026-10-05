@@ -168,7 +168,7 @@ function sameOwner(left, right) {
 }
 function lockArtifactIdentity(path) {
     try {
-        const stats = statSync(path);
+        const stats = statSync(path, { bigint: true });
         return stats.isFile() ? { dev: stats.dev, ino: stats.ino } : null;
     }
     catch {
@@ -183,16 +183,22 @@ function lockArtifactIdentity(path) {
  * final path and is never removed.
  */
 function reclaimDeadLockOwner(path, observedOwner, observedIdentity) {
-    // Fork fix: the liveness verdict can be seconds old (win32 probe), and the owner may have
-    // exited and been replaced meanwhile. Renaming a live replacement into quarantine lets a third
-    // contender publish before the restore, leaving two holders, so re-verify the exact artifact
-    // (owner record AND dev/ino, upstream #4149 checks only the latter) immediately before the rename.
-    const currentOwner = readLockOwner(path);
-    const currentIdentity = lockArtifactIdentity(path);
-    if (currentOwner === 'absent' || currentOwner === null || !sameOwner(currentOwner, observedOwner) ||
-        currentIdentity === null || !sameFileIdentity(currentIdentity, observedIdentity))
-        return 'changed';
     const quarantinePath = `${path}.reclaim.${process.pid}.${randomUUID()}`;
+    // The liveness verdict can be seconds old (the win32 probe spawns PowerShell),
+    // and the identity alone cannot tell a replacement apart when its inode reuses
+    // the old one (or when the identity was captured after the probe). Renaming a
+    // live replacement into quarantine opens a window in which a third contender
+    // publishes, leaving two holders. Re-verify the exact artifact, owner record
+    // AND file identity, immediately before the rename. Bracketing the read with
+    // two stats binds the record that was read to the identity that was checked.
+    const before = lockArtifactIdentity(path);
+    const currentOwner = readLockOwner(path);
+    const after = lockArtifactIdentity(path);
+    if (currentOwner === 'absent' || currentOwner === null || !sameOwner(currentOwner, observedOwner) ||
+        before === null || after === null ||
+        !sameFileIdentity(before, observedIdentity) || !sameFileIdentity(after, observedIdentity)) {
+        return 'changed';
+    }
     try {
         renameSync(path, quarantinePath);
     }
@@ -1247,7 +1253,7 @@ function readEmergencyJournal(path) {
 }
 function fileIdentity(path) {
     try {
-        const stat = statSync(path);
+        const stat = statSync(path, { bigint: true });
         return { dev: stat.dev, ino: stat.ino };
     }
     catch {
@@ -1285,7 +1291,7 @@ export function captureStateFileGeneration(path) {
 function sameStateFileGeneration(path, expected) {
     try {
         const identity = fileIdentity(path);
-        if (!identity || identity.dev !== expected.dev || identity.ino !== expected.ino)
+        if (!identity || !sameFileIdentity(identity, expected))
             return false;
         return stateDigest(readFileSync(path, 'utf8')) === expected.digest;
     }
