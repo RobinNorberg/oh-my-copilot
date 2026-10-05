@@ -1,0 +1,8 @@
+2026-10-05T09:53:11.747Z [DEBUG] Plugin activation [agents]: fingerprint=legacy, plugins=2, loaded=20
+2026-10-05T09:53:11.753Z [DEBUG] Plugins loaded: ["oh-my-copilot"]
+2026-10-05T09:53:11.896Z [DEBUG] [rust:copilot_runtime::session::mcp::session_host] mcp discover_and_start_root {"force":false,"root_present":false,"signature_matches":false,"previous_signature":"<none>","signature":"{\"servers\":[[\"t\",\"{\\\"args\\\":[\\\"${CLAUDE_PLUGIN_ROOT}/bridge/mcp-server.cjs\\\"],\\\"command\\\":\\\"node\\\",\\\"cwd\\\":\\\"${PLUGIN_ROOT}\\\",\\\"env\\\":{\\\"CLAUDE_PLUGIN_ROOT\\\":\\\"C:\\\\\\\\Code\\\\\\\\OMC\\\",\\\"COPILOT_PLUGIN_ROOT\\\":\\\"C:\\\\\\\\Code\\\\\\\\OMC\\\",\\\"PLUGIN_ROOT\\\":\\\"C:\\\\\\\\Code\\\\\\\\OMC\\\"},\\\"tools\\\":[\\\"*\\\"],\\\"type\\\…
+2026-10-05T09:53:12.393Z [DEBUG] [rust:copilot_runtime::mcp::native_connector] MCP server stderr {"server_name":"t","stderr":"OMC Tools MCP Server running on stdio"}
+2026-10-05T09:53:14.135Z [DEBUG] [rust:github_telemetry::service] Sending telemetry event: cli.telemetry (kind: auto_mode_resolved)
+2026-10-05T09:53:22.558Z [DEBUG] runHeadlessMode: operation=prompt, succeeded=true
+2026-10-05T09:53:22.558Z [DEBUG] runHeadlessMode: exiting with code 0
+2026-10-05T09:53:22.576Z [DEBUG] [rust:github_telemetry::service] Sending telemetry event: cli.telemetry (kind: subagent_parallelism_triggered)

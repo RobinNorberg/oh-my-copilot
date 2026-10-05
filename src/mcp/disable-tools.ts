@@ -23,6 +23,7 @@ export const DISABLE_TOOLS_GROUP_MAP: Record<string, ToolCategory> = {
   'deepinit': TOOL_CATEGORIES.DEEPINIT,
   'deepinit-manifest': TOOL_CATEGORIES.DEEPINIT,
   'wiki': TOOL_CATEGORIES.WIKI,
+  'smoke': TOOL_CATEGORIES.SMOKE,
 };
 
 /**

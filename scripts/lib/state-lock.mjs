@@ -156,33 +156,41 @@ function sameOwner(left, right) {
   return Boolean(left && right && left.pid === right.pid && left.processStart === right.processStart && left.nonce === right.nonce);
 }
 
+// BigInt ids: NTFS file IDs exceed 2^53 once the MFT sequence number reaches
+// 32, and a Number ino rounds distinct files onto the same value.
 function ownerArtifactIdentity(path) {
   try {
-    const stats = statSync(path);
+    const stats = statSync(path, { bigint: true });
     return stats.isFile() ? { dev: stats.dev, ino: stats.ino } : null;
   } catch {
     return null;
   }
 }
 
-/** Windows reports dev=0 from some stat paths (#4156); compare ino always, dev only when both are known. */
+/** Mirrors sameFileIdentity in src/lib/atomic-write.ts: ino always, dev unless win32 reports 0 (#4156). */
 function sameArtifactIdentity(a, b) {
   if (a.ino !== b.ino) return false;
-  if (process.platform === 'win32' && (a.dev === 0 || b.dev === 0)) return true;
+  if (process.platform === 'win32' && (a.dev === 0n || b.dev === 0n)) return true;
   return a.dev === b.dev;
 }
 
 /** Remove only the exact dead publication that was inspected. */
 function reclaimDeadOwner(path, observed, identity) {
-  // Fork fix: the liveness verdict can be seconds old (win32 probe), and the owner may have
-  // exited and been replaced meanwhile. Renaming a live replacement into quarantine lets a third
-  // contender publish before the restore, leaving two holders, so re-verify the exact artifact
-  // (owner record AND dev/ino, upstream #4149 checks only the latter) immediately before the rename.
-  const current = readOwner(path);
-  const currentIdentity = ownerArtifactIdentity(path);
-  if (current === 'absent' || !current || !sameOwner(current, observed) || !currentIdentity ||
-      !sameArtifactIdentity(currentIdentity, identity)) return 'changed';
   const quarantinePath = `${path}.reclaim.${process.pid}.${randomUUID()}`;
+  // The liveness verdict can be seconds old (the win32 probe spawns PowerShell),
+  // and the identity alone cannot tell a replacement apart when its inode reuses
+  // the old one (or when the identity was captured after the probe). Renaming a
+  // live replacement into quarantine opens a window in which a third contender
+  // publishes, leaving two holders. Re-verify the exact artifact, owner record
+  // AND file identity, immediately before the rename. Bracketing the read with
+  // two stats binds the record that was read to the identity that was checked.
+  const before = ownerArtifactIdentity(path);
+  const current = readOwner(path);
+  const after = ownerArtifactIdentity(path);
+  if (current === 'absent' || !current || !sameOwner(current, observed) ||
+      !before || !after || !sameArtifactIdentity(before, identity) || !sameArtifactIdentity(after, identity)) {
+    return 'changed';
+  }
   try {
     renameSync(path, quarantinePath);
   } catch (error) {
@@ -194,7 +202,8 @@ function reclaimDeadOwner(path, observed, identity) {
   try {
     moved = readOwner(quarantinePath);
     movedIdentity = ownerArtifactIdentity(quarantinePath);
-    if (moved !== 'absent' && moved && movedIdentity && sameArtifactIdentity(movedIdentity, identity) &&
+    if (moved !== 'absent' && moved && movedIdentity &&
+        sameArtifactIdentity(movedIdentity, identity) &&
         sameOwner(moved, observed)) {
       try {
         unlinkSync(quarantinePath);

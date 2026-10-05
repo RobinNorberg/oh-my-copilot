@@ -1,4 +1,4 @@
-// Repro for upstream issue #4146: mutual exclusion of the owner-file fallback in
+// Repro for issue #4146: mutual exclusion of the owner-file fallback in
 // scripts/lib/state-lock.mjs (owner releases/exits during a reclaimer's liveness
 // probe; the reclaimer must not quarantine a live replacement owner).
 //

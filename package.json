@@ -1,6 +1,6 @@
 {
   "name": "oh-my-copilot",
-  "version": "5.6.2",
+  "version": "5.7.0",
   "description": "Multi-agent orchestration system for Copilot CLI - Inspired by oh-my-opencode",
   "type": "module",
   "main": "dist/index.js",
@@ -74,6 +74,7 @@
     "test:ui": "vitest --ui --exclude \"tests/perf/**\"",
     "test:run": "vitest run --exclude \"tests/perf/**\"",
     "test:coverage": "vitest run --coverage --exclude \"tests/perf/**\"",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "prepack": "npm run build",
     "lint": "eslint src",
     "format": "prettier --write src/**/*.ts",
@@ -130,6 +131,14 @@
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.53.0",
     "vitest": "^4.1.11"
+  },
+  "peerDependencies": {
+    "@github/copilot-sdk": "^1.0.16"
+  },
+  "peerDependenciesMeta": {
+    "@github/copilot-sdk": {
+      "optional": true
+    }
   },
   "engines": {
     "node": "20.x || 22.x || 23.x || 24.x || 25.x || 26.x"

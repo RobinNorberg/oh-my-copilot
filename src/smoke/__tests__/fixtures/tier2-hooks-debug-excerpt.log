@@ -1,0 +1,12 @@
+2026-10-05T10:57:38.984Z [DEBUG] loadDeferredRepoHooks(0b1c94f5-11ca-4aa4-82ab-115518d47ec6): loaded repo hooks (hookCount=28)
+2026-10-05T10:57:40.925Z [DEBUG] [rust:hooks] [hook stdout] {"continue":true,"suppressOutput":true}
+2026-10-05T10:57:40.925Z [DEBUG] [rust:hooks] [hook stdout] {"continue":true,"suppressOutput":true}
+2026-10-05T10:57:43.125Z [DEBUG] [rust:hooks] [hook stdout] {"continue":true,"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"<system-reminder>\n[OMC] HUD not configured (HUD script missing). Run /hud setup then restart Claude Code.\n</system-reminder>"},"additionalContext":"<system-reminder>\n[OMC] HUD not configured (HUD script missing). Run /hud setup then restart Claud
+2026-10-05T10:57:43.125Z [DEBUG] [rust:hooks] [hook stdout] {"continue":true,"suppressOutput":true}
+2026-10-05T10:57:43.125Z [DEBUG] [rust:hooks] [hook stdout] {"continue":true,"suppressOutput":true}
+2026-10-05T10:57:43.125Z [DEBUG] [rust:hooks] [hook stdout] {"continue":true,"suppressOutput":true}
+2026-10-05T10:58:03.538Z [DEBUG] [rust:hooks] [hook stderr] [run.cjs] Hook wiki-session-end.mjs timed out after 300ms; exiting fail-open.
+2026-10-05T11:16:04.025Z [DEBUG] loadDeferredRepoHooks(d7197990-a002-4ca5-9b73-cccf062fb22a): loaded repo hooks (hookCount=28)
+2026-10-05T11:16:04.943Z [DEBUG] loadDeferredRepoHooks(4d736e82-2ab4-4b97-a2b7-2f01366e12c6): loaded repo hooks (hookCount=28)
+2026-10-05T11:16:14.353Z [DEBUG] loadDeferredRepoHooks(64c55bcb-f11b-4af7-afe8-6a2ce86c46d0): loaded repo hooks (hookCount=28)
+2026-10-05T11:16:21.385Z [DEBUG] [rust:hooks] [hook stderr] Git guardrail: blocked "git push".

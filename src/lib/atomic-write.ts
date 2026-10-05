@@ -68,18 +68,18 @@ function verifyPrivateTempFile(
   label: string,
   operations?: AtomicWriteOperations,
 ): void {
-  const fdStats = fsSync.fstatSync(fd);
-  let pathStats: ReturnType<AtomicWriteOperations["lstat"]>;
+  const fdStats = descriptorStats(fd, operations);
+  let pathStats: IdentityStats;
   try {
-    pathStats = (operations?.lstat ?? fsSync.lstatSync)(tempPath);
+    pathStats = pathnameStats(tempPath, operations);
   } catch {
     throw new Error(`${label} temporary file was replaced before rename`);
   }
   const isWindows = process.platform === "win32";
-  const isPrivateRegularSingleLink = (stats: ReturnType<AtomicWriteOperations["lstat"]>): boolean =>
+  const isPrivateRegularSingleLink = (stats: IdentityStats): boolean =>
     stats.isFile() &&
-    (isWindows ? stats.nlink <= 1 : stats.nlink === 1) &&
-    (isWindows || (stats.mode & 0o777) === 0o600);
+    (isWindows ? Number(stats.nlink) <= 1 : Number(stats.nlink) === 1) &&
+    (isWindows || (Number(stats.mode) & 0o777) === 0o600);
   if (
     !isPrivateRegularSingleLink(fdStats) ||
     !isPrivateRegularSingleLink(pathStats)
@@ -88,23 +88,23 @@ function verifyPrivateTempFile(
       `${label} temporary file must be a private regular single-link file`,
     );
   }
-  if (!sameFileIdentity(fdStats as FileIdentity, pathStats as FileIdentity)) {
+  if (!sameFileIdentity(fileIdentityOf(fdStats), fileIdentityOf(pathStats))) {
     throw new Error(`${label} temporary file was replaced before rename`);
   }
 }
 
 /** Verify that publication installed the exact inode we opened and wrote. */
 function verifyPublishedFile(fd: number, filePath: string, label: string, operations?: AtomicWriteOperations): void {
-  const fdStats = fsSync.fstatSync(fd);
-  let pathStats: ReturnType<AtomicWriteOperations["lstat"]>;
+  const fdStats = descriptorStats(fd, operations);
+  let pathStats: IdentityStats;
   try {
-    pathStats = (operations?.lstat ?? fsSync.lstatSync)(filePath);
+    pathStats = pathnameStats(filePath, operations);
   } catch {
     throw new Error(`${label} target was replaced at publication`);
   }
   if (
     !pathStats.isFile() ||
-    !sameFileIdentity(fdStats as FileIdentity, pathStats as FileIdentity)
+    !sameFileIdentity(fileIdentityOf(fdStats), fileIdentityOf(pathStats))
   ) {
     throw new Error(`${label} target was replaced at publication`);
   }
@@ -142,10 +142,42 @@ function preservePriorTarget(filePath: string, operations?: AtomicWriteOperation
   }
 }
 
-/** Restore the prior target without exposing a partially written generation. */
+/**
+ * Exact file identity. `dev`/`ino` are BigInt because NTFS file IDs are
+ * `(sequence << 48) | mftIndex`: once the sequence number reaches 32 the
+ * value exceeds Number.MAX_SAFE_INTEGER and a Number `ino` rounds away the
+ * low MFT-index bits, so two distinct files can compare equal.
+ */
 export interface FileIdentity {
-  readonly dev: number;
-  readonly ino: number;
+  readonly dev: bigint;
+  readonly ino: bigint;
+}
+
+/** The stat fields identity and private-file checks read, in either precision. */
+type IdentityStats = {
+  readonly dev: number | bigint;
+  readonly ino: number | bigint;
+  readonly mode: number | bigint;
+  readonly nlink: number | bigint;
+  isFile(): boolean;
+};
+
+/**
+ * Stat with BigInt ids. A contained backend (`operations`, Linux/macOS only)
+ * reports Number stats, so the descriptor side then uses Number stats too and
+ * both sides of a comparison always carry the same precision.
+ */
+function descriptorStats(fd: number, operations?: AtomicWriteOperations): IdentityStats {
+  return operations ? fsSync.fstatSync(fd) : fsSync.fstatSync(fd, { bigint: true });
+}
+
+function pathnameStats(filePath: string, operations?: AtomicWriteOperations): IdentityStats {
+  return operations ? operations.lstat(filePath) : fsSync.lstatSync(filePath, { bigint: true });
+}
+
+/** Normalize a stat result (BigInt or Number) into a comparable identity. */
+export function fileIdentityOf(stats: { readonly dev: number | bigint; readonly ino: number | bigint }): FileIdentity {
+  return { dev: BigInt(stats.dev), ino: BigInt(stats.ino) };
 }
 
 /**
@@ -157,36 +189,35 @@ export interface FileIdentity {
 export function sameFileIdentity(a: FileIdentity, b: FileIdentity): boolean {
   // Always compare inode
   if (a.ino !== b.ino) return false;
-  
+
   // On Windows, lstat returns dev=0, so skip dev comparison when on Windows
   // unless both are non-zero (indicating a real comparison is possible)
   const isWindows = process.platform === "win32";
-  if (isWindows && (a.dev === 0 || b.dev === 0)) {
+  if (isWindows && (a.dev === 0n || b.dev === 0n)) {
     return true; // Skip dev comparison on Windows when either is 0
   }
-  
+
   // On POSIX or when both dev values are non-zero, require dev match
   return a.dev === b.dev;
 }
 
 function currentFileIdentity(filePath: string, operations?: AtomicWriteOperations): FileIdentity | null {
   try {
-    const stats = (operations?.lstat ?? fsSync.lstatSync)(filePath);
-    return { dev: stats.dev, ino: stats.ino };
+    return fileIdentityOf(pathnameStats(filePath, operations));
   } catch {
     return null;
   }
 }
 
-function descriptorIdentity(fd: number): FileIdentity | null {
+function descriptorIdentity(fd: number, operations?: AtomicWriteOperations): FileIdentity | null {
   try {
-    const stats = fsSync.fstatSync(fd);
-    return { dev: stats.dev, ino: stats.ino };
+    return fileIdentityOf(descriptorStats(fd, operations));
   } catch {
     return null;
   }
 }
 
+/** Restore the prior target without exposing a partially written generation. */
 function rollbackPriorTarget(
   filePath: string,
   backupPath: string | null,
@@ -388,7 +419,7 @@ export function atomicWriteFileSync(
     let publishedIdentity: FileIdentity | null = null;
     try {
       verifyPublishedFile(fd, filePath, "atomic write", operations);
-      publishedIdentity = descriptorIdentity(fd);
+      publishedIdentity = descriptorIdentity(fd, operations);
       hooks?.afterRename?.();
       verifyPublishedFile(fd, filePath, "atomic write", operations);
     } catch (error) {

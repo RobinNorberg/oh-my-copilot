@@ -39,6 +39,14 @@ run plus a retag cycle. Work through pre-flight completely BEFORE tagging.
    `oh-my-copilot`). `release-boundary.mjs` asserts the root manifest in the
    archive and at tag time; the CI version-consistency job checks it too.
    `scripts/release.ts` and `scripts/sync-version.sh` bump all of them.
+   PITFALL (seen on v5.6.1/v5.6.2/v5.7.0): `bash scripts/sync-version.sh X`
+   does NOT bump `package.json`/`package-lock.json` — it assumes `npm version`
+   ran first, and `npm version X` breaks on Windows via the `version` script
+   (MSYS path). Run `npm version X --no-git-tag-version --ignore-scripts`
+   FIRST, then `sync-version.sh X`, then stamp
+   `tests/fixtures/prompt-projection/claude-managed-block.golden`. The prompt
+   projections take their version from `package.json`, and
+   `verify:prompt-projections` reports "bridge not built" until `npm run build`.
 1b. `npm run build` runs `build:copilot-hooks` and `build:copilot-agents`;
    `copilot/hooks.json` and `copilot/agents/*.md` are tracked (not ignored)
    generated files — commit them, and `node scripts/copilot/build-*.mjs --verify`
@@ -67,6 +75,25 @@ run plus a retag cycle. Work through pre-flight completely BEFORE tagging.
    `release-boundary.mjs` EXPECTED_BINS, its test, package.json, AND
    package-lock.json (regenerate the lock with `npm install
    --package-lock-only` if bins changed; it drifts silently).
+9. After the full build, `omg smoke copilot --tier 1` must be green before
+   tagging. It loads the build into the real Copilot CLI in a throwaway
+   `COPILOT_HOME` and runs one live session with the prompt on stdin, which
+   costs one premium request. It reuses your `copilot /login` identity and
+   drops `GH_TOKEN`/`GITHUB_TOKEN` from the session, so do not export a token
+   for it; `--model` is optional (Copilot auto-selects). Hooks run
+   fail-closed, so a red `hooks.*` or `hooks.adapter_errors` is a real hook
+   failure. CI cannot catch a plugin that Copilot
+   refuses to load. Exit `2` means the `copilot` binary was not found, which
+   is not a pass.
+10. Then `omg smoke copilot --tier 2` (default scenarios `smoke` and
+   `guardrail`, about two premium requests, one per scenario) must also be green before
+   tagging. It drives the installed Copilot CLI through `@github/copilot-sdk`
+   (install once: `npm i -g @github/copilot-sdk --omit=optional
+   --ignore-scripts`) and proves the git guardrail hook really denies a
+   `git push --force`. Exit `2` here means the SDK or the binary is missing,
+   which is not a pass. A red `scn.<name>.adapter_errors` names the hook
+   script behind an `[omg-hook]` error or a `[run.cjs]` hook timeout line;
+   fix it, do not ship around it.
 
 ## Ship sequence
 
@@ -90,8 +117,12 @@ run plus a retag cycle. Work through pre-flight completely BEFORE tagging.
 
 `session-end-process-exit` (producer grace), `runtime-done-recovery`
 (briefly-malformed window), `tests/perf/subagent-lock.bench.ts` (45ms latency
-guardrail on shared runners). One `gh run rerun <id> --failed` clears them;
-only investigate if the SAME test fails twice.
+guardrail on shared runners), `runtime-v2.dispatch` ("requeues the selected
+task through an exact read…", 30 s timeout — hit on the v5.6.1 tag run),
+`subagent-tracker` ("persists durably under the already-held lock", 310 ms
+latency bound — hit on PR #209). One `gh run rerun <id> --failed` clears them;
+only investigate if the SAME test fails twice. A rerun keeps the tag and
+workflow path, so the provenance attestation is unaffected.
 
 ## Verification (a green run is necessary, not sufficient — check the outputs)
 
@@ -109,6 +140,7 @@ only investigate if the SAME test fails twice.
 | `env: '…/.bin/<name>': No such file or directory` in smoke | ci.yml smoke step drives a bin name the package doesn't ship |
 | `npm error 404 … PUT` | token auth rejected (expired/revoked token era; now OIDC) |
 | `npm error code EOTP` | token subject to 2FA — use trusted publishing, not tokens |
+| `omg smoke copilot` fails `copilot.plugin_list`: plugin list returns `[]` | Bad `--plugin-dir` or manifest path; Copilot only warns on a bad dir. The manifest must be at `plugin.json`, `.github/plugin/plugin.json`, or `.claude-plugin/plugin.json` under the root |
 | inventory-graph `sourceSha256 must match` | a commit landed after the last baseline regeneration |
 | `coordinator source digest mismatch` | docs/CLAUDE.md edited without rebuilding bridge in the same commit |
 | `reachable generated runtime module is missing` | new/deleted source without a full dist rebuild force-added |

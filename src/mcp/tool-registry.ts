@@ -26,6 +26,7 @@ import { traceTools } from '../tools/trace-tools.js';
 import { sharedMemoryTools } from '../tools/shared-memory-tools.js';
 import { deepinitManifestTool } from '../tools/deepinit-manifest.js';
 import { wikiTools } from '../tools/wiki-tools.js';
+import { hostSmokeTool } from '../tools/host-smoke-tool.js';
 import { skillsTools } from '../tools/skills-tools.js';
 import { TOOL_CATEGORIES, type ToolCategory } from '../constants/index.js';
 import { filterDisabledTools, tagCategory } from './disable-tools.js';
@@ -61,6 +62,7 @@ export const allTools: ToolDef[] = [
   { ...(deepinitManifestTool as unknown as ToolDef), category: TOOL_CATEGORIES.DEEPINIT },
   ...tagCategory(wikiTools as unknown as ToolDef[], TOOL_CATEGORIES.WIKI),
   ...tagCategory(skillsTools as unknown as ToolDef[], TOOL_CATEGORIES.SKILLS),
+  { ...(hostSmokeTool as unknown as ToolDef), category: TOOL_CATEGORIES.SMOKE },
 ];
 
 /** Tools currently enabled for standalone ListTools after OMC_DISABLE_TOOLS filtering. */

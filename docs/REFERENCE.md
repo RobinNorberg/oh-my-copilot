@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.6.2, the plugin ships 20 agents, 61 skills, 21 command files, and one configured MCP server exposing exactly 55 tools.
+For v5.7.0, the plugin ships 20 agents, 61 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
 
 ---
 
@@ -731,6 +731,47 @@ omg lookout scan --strict   # exit 1 when review is recommended (for scripts)
 - Every finding carries `id`, `severity`, `confidence`, `actionable`, `evidence`, and `advice` — the same vocabulary drydock's `--check` audit documents, so a structured contract can be shared by both surfaces
 - `--json` emits the full report; exit codes: `0` for every successful non-strict scan and for strict scans without a review-recommended verdict, `1` for `--strict` with a review-recommended verdict, `2` for a usage/scan error
 - High-risk verdicts pair with approval gates and checkpoints: `omg graph run --approval-mode remote --checkpoint`, `omg checkpoint create`
+
+### `omg smoke copilot`
+
+Headless smoke check of a plugin root against the real GitHub Copilot CLI, in a throwaway `COPILOT_HOME`. Use it on a local build before opening a PR or tagging a release.
+
+```bash
+omg smoke copilot                     # tier 0: load check, no model call
+omg smoke copilot --tier 1            # tier 0 + one live session, prompt on stdin (one premium request)
+omg smoke copilot --plugin-root /path/to/oh-my-copilot --json
+omg smoke copilot --tier 1 --keep-home --delegate --model <id> --max-credits 30 --timeout 180000
+omg smoke copilot --sdk-static        # tier 2 SDK static checks only, no model call
+omg smoke copilot --tier 2            # tier 2 default scenarios smoke,guardrail (~2 premium requests, 1 per scenario)
+omg smoke copilot --tier 2 --scenario skill,delegate   # or --scenario all
+```
+
+- **Tier 0** checks: `plugin.manifest`, `plugin.hooks`, `copilot.binary`, `copilot.plugin_list`, `copilot.skill_list`, `copilot.agents`, `mcp.list_tools`. `mcp.list_tools` spawns `dist/mcp/standalone-server.js`, so run `npm run build` first.
+- **Tier 1** adds `session.exit`, `session.events`, `hooks.*` (including `hooks.adapter_errors`), `plugins.loaded`, `mcp.server_loaded`, `state.written`, and with `--delegate` `subagent.selected`. Hooks run with `OMC_HOOK_FAIL_CLOSED=1`; a `hook.end` without `success: true` fails its check, and `hooks.adapter_errors` fails on any `[omg-hook]` error line.
+- **Tier 2** drives the installed `copilot` binary through the optional peer `@github/copilot-sdk` (install it with `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`; a nested `@github/copilot-sdk-<platform>` runtime package is unused and can be deleted, see [DEVELOPERS.md](./DEVELOPERS.md#tier-2--sdk-scenarios)). It runs the tier 0 checks, then the SDK static checks `sdk.available`, `sdk.runtime`, `sdk.plugins`, `sdk.skills`, `sdk.agents`, `sdk.mcp`, `sdk.tools_excluded` (our `<server>-host_smoke` tool is absent from the session's tool list), then the chosen scenarios. It does not run the tier 1 `-p` session. `--sdk-static` runs no scenario and makes no model call.
+- **Tier 2 scenarios** yield checks prefixed `scn.<name>.`. Each one also gets `scn.<name>.exit`, `scn.<name>.adapter_errors` (fails on any `[omg-hook]` or `[run.cjs]` hook stderr line, such as a hook timeout), and `scn.<name>.cost`. Each scenario costs about one premium request, so the default run costs about two.
+
+| Scenario | Prompt exercises | Key checks |
+|---|---|---|
+| `smoke` (default) | a plain reply, no tools | `scn.smoke.reply`, `scn.smoke.hooks`, `scn.smoke.no_tools` |
+| `guardrail` (default) | `git push --force` with `OMC_GIT_GUARDRAILS=1` against a bare remote | `scn.guardrail.denied`, `scn.guardrail.no_push`, `scn.guardrail.hooks` |
+| `skill` | `/oh-my-copilot:plan` | `scn.skill.invoked` |
+| `delegate` | a hand-off to `oh-my-copilot:architect` | `scn.delegate.selected`, `scn.delegate.hooks`, `scn.delegate.completed` |
+
+- **Tier 2 report** adds `sdk` (SDK version, runtime version, protocol version), `cost` (premium requests and credits summed over scenarios), and `artifacts.events` with one events JSONL path per scenario. Human output groups the `sdk.*` checks and each scenario's `scn.<name>.*` checks under a heading.
+- **Model:** `--model` is optional. Copilot auto-selects when it is omitted (1.0.91 picked `mai-code-1.1-flash`); explicit ids may be rejected as unavailable.
+- **Auth:** tier 1 reuses the login identity from your Copilot config, so `copilot /login` is enough. When a login is found the session drops `GH_TOKEN` and `GITHUB_TOKEN`, which would otherwise shadow it. `COPILOT_GITHUB_TOKEN` always passes through, and without a stored login (CI) all three do.
+- `--max-credits` must be at least 30, the Copilot CLI minimum. At tier 1 it is passed as `--max-ai-credits`. At tier 2 it caps the whole run: the runtime also gets `--max-ai-credits`, a scenario whose credits pass what is left is aborted, and the remaining scenarios fail with `skipped: credit cap reached`. `--model` applies to tiers 1 and 2. `--timeout` applies per subprocess at tier 0, to the session at tier 1, and per scenario at tier 2; the MCP check is fixed at 10 s.
+- Under a test runner (`VITEST` or `NODE_ENV=test`), a run that would call a model is refused with one `cli.guard` check before anything is spawned, unless `OMC_LIVE_SMOKE=1` (tier 1) or `OMC_LIVE_SMOKE=2` (tier 2 scenarios) is set.
+- Exit codes: `0` all checks pass, `1` a check failed or an option was invalid, `2` skipped because the `copilot` binary or, at tier 2, `@github/copilot-sdk` did not resolve and nothing else failed. Resolution order is PATH, then `COPILOT_CLI_PATH`, then the WinGet install location on Windows, so a `copilot` on PATH wins over `COPILOT_CLI_PATH`.
+- `--json` always prints a `SmokeReport`, with one `cli.error` check for invalid options. `--keep-home` keeps the temp homes and project and reports them as `artifacts.listHome` (tier 0) and `artifacts.copilotHome` (tier 1).
+- The same check is exposed as the MCP tool `host_smoke` (arguments `tier`, `pluginRoot`, `model`, `maxCredits`, `timeoutMs`, `keepHome`, `delegate`, `scenarios`). It returns the report JSON with `isError` set when any check fails. Tier 1 and tier 2 with scenarios need `OMC_SMOKE_ALLOW_LIVE=1` in the MCP server env; tier 2 with `scenarios: []` is free and needs no opt-in, and a `pluginRoot` other than the server's own package root needs `OMC_SMOKE_ALLOW_ANY_ROOT=1`. To call it from Claude Code against a local build, register the standalone server:
+
+```bash
+claude mcp add omg-dev -- node C:/Code/OMC/dist/mcp/standalone-server.js
+```
+
+`OMC_DISABLE_TOOLS=smoke` hides `host_smoke`. See [DEVELOPERS.md](./DEVELOPERS.md#headless-smoke-against-a-local-build) for the developer workflow.
 
 ### Graph approval gates (remote approvals)
 
