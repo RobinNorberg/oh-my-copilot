@@ -58,6 +58,12 @@ interface HookRun {
 export declare function collectHookRuns(events: CopilotEvent[]): HookRun[];
 export declare function evaluateHooks(events: CopilotEvent[]): SmokeCheck[];
 /**
+ * `[omg-hook]` stderr lines from scripts/lib/copilot-hook-adapter.cjs that are
+ * informational, not failures. Every other `[omg-hook]` line (internal error /
+ * failing open, adapter error, hook target is not a file) fails the check.
+ */
+export declare const BENIGN_ADAPTER_NOTES: RegExp[];
+/**
  * The adapter fails open by default (non-zero exit -> 0 plus an `[omg-hook]`
  * stderr line), which Copilot records as `hook.end success:true`. The smoke
  * runs with OMC_HOOK_FAIL_CLOSED=1, and this check catches what still slips

@@ -6,26 +6,44 @@
  * `plugin list`/`skill list` against `--plugin-dir`, and the standalone MCP
  * server's tools/list. Tier 1 adds one cheap non-interactive session in a
  * throwaway COPILOT_HOME and asserts on its persisted events, debug log and
- * the `.omg/` state our hooks write.
+ * the `.omg/` state our hooks write. Tier 2 replaces that session with
+ * `@github/copilot-sdk` static checks and scripted scenarios
+ * (src/smoke/copilot-sdk-driver.ts).
  */
 import { type BinaryResolverDeps } from './copilot-binary.js';
 import { type SmokeCheck } from './copilot-session-eval.js';
 import { type SpawnFn, type SpawnSyncFn } from './process-utils.js';
+import { type LoadSdkFn } from './copilot-sdk-driver.js';
+import { type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 export type { SmokeCheck } from './copilot-session-eval.js';
-export type SmokeTier = 0 | 1;
+export type { Scenario } from './copilot-sdk-scenarios.js';
+export { ALL_SCENARIOS, DEFAULT_SCENARIOS } from './copilot-sdk-scenarios.js';
+export type SmokeTier = 0 | 1 | 2;
 export interface SmokeOptions {
     /** Default: OMC_PLUGIN_ROOT, else the package root of the running omg. */
     pluginRoot: string;
-    /** 0 = load check (no model call); 1 = tier 0 + one live session. */
+    /**
+     * 0 = load check (no model call); 1 = tier 0 + one live session;
+     * 2 = tier 0 + @github/copilot-sdk static checks + {@link SmokeOptions.scenarios}.
+     */
     tier: SmokeTier;
     copilotBin?: string;
-    /** Tier 1 model. Default {@link DEFAULT_SMOKE_MODEL}. */
+    /**
+     * Tier 1 model. Default {@link DEFAULT_SMOKE_MODEL}. Tier 2: the session
+     * model (default: a cheap explicit model from models.list, else auto).
+     */
     model?: string;
-    /** Tier 1 `--max-ai-credits` (CLI minimum is {@link MIN_MAX_CREDITS}). */
+    /**
+     * Tier 1 `--max-ai-credits` (CLI minimum is {@link MIN_MAX_CREDITS}).
+     * Tier 2: a cap for the whole run. A scenario whose `assistant.usage`
+     * credits pass what is left is aborted, later scenarios are skipped, and the
+     * runtime also gets `--max-ai-credits` (raised to the CLI minimum).
+     */
     maxCredits?: number;
     /**
-     * Per subprocess at tier 0 (default 60 s); the tier 1 session (default 180 s,
-     * tier 0 steps of a tier 1 run keep 60 s). The mcp.list_tools check is fixed at 10 s.
+     * Per subprocess at tier 0 (default 60 s); the tier 1 session (default 180 s);
+     * each tier 2 scenario (default 120 s, then abort). Tier 0 steps of a tier 1/2
+     * run keep 60 s. The mcp.list_tools check is fixed at 10 s.
      */
     timeoutMs?: number;
     /** Keep the throwaway COPILOT_HOME and project dir for debugging. */
@@ -34,6 +52,8 @@ export interface SmokeOptions {
     prompt?: string;
     /** Tier 1: use the delegation prompt and add the `subagent.selected` check. */
     delegate?: boolean;
+    /** Tier 2 scenarios (default {@link DEFAULT_SCENARIOS}); [] = SDK static checks only, zero model calls. */
+    scenarios?: Scenario[];
     env?: NodeJS.ProcessEnv;
     /** Test seams; defaults are the real implementations. */
     deps?: SmokeDeps;
@@ -46,6 +66,8 @@ export interface SmokeDeps extends BinaryResolverDeps {
     randomUUID?: () => string;
     /** Real Copilot config dir to copy the login identity from (default getCopilotConfigDir()). */
     userConfigDir?: string;
+    /** Tier 2: resolve @github/copilot-sdk (default {@link loadCopilotSdk}); null = not installed. */
+    loadSdk?: LoadSdkFn;
 }
 export interface SmokeReport {
     ok: boolean;
@@ -60,6 +82,15 @@ export interface SmokeReport {
     artifacts: SmokeArtifacts;
     durationMs: number;
     skipped?: string;
+    /** Tier 2: SDK package and runtime it drove; `model` is the scenario model or `auto`. */
+    sdk?: {
+        version: string | null;
+        runtimeVersion: string | null;
+        protocolVersion: number | null;
+        model?: string;
+    };
+    /** Tier 2: summed over the scenarios (AI credits = nano-AIU / 1e9). */
+    cost?: ScenarioCost;
 }
 /**
  * Paths kept with keepHome (else deleted and omitted). `listHome` is the tier 0
@@ -72,6 +103,8 @@ export interface SmokeArtifacts {
     eventsLog?: string;
     debugLog?: string;
     stdout?: string;
+    /** Tier 2: per-scenario SDK event stream (JSONL) under copilotHome. */
+    events?: Partial<Record<Scenario, string>>;
 }
 /**
  * No default model id: on Copilot CLI 1.0.91 every explicit `--model` tried
@@ -181,5 +214,15 @@ export interface Tier1Inputs {
 }
 /** Evaluate captured Tier 1 artifacts (exported for fixture-driven tests). */
 export declare function evaluateTier1(input: Tier1Inputs): SmokeCheck[];
+export declare const LIVE_RUN_REFUSED_DETAIL = "live run refused under vitest \u2014 set OMC_LIVE_SMOKE=1 (tier 1) / =2 (tier 2 scenarios)";
+/**
+ * Hard no-billing guard: under a test runner (`VITEST` or `NODE_ENV=test` in
+ * the real process env) a run that would call a model (tier 1; tier 2 with
+ * any scenario, the default included) is refused before any subprocess or SDK
+ * client, unless `OMC_LIVE_SMOKE` names that tier or the test injected the
+ * seam that would otherwise bill (`deps.spawn` at tier 1, `deps.loadSdk` at
+ * tier 2). Returns the refusal detail, or null to proceed.
+ */
+export declare function liveRunRefusal(tier: SmokeTier, scenarios: Scenario[] | undefined, deps: SmokeDeps, env?: NodeJS.ProcessEnv): string | null;
 export declare function runCopilotSmoke(input?: Partial<SmokeOptions>): Promise<SmokeReport>;
 //# sourceMappingURL=copilot-smoke.d.ts.map

@@ -503,7 +503,7 @@ describe('CLI option mapping and output', () => {
     expect(toSmokeOptions({ tier: '1', maxCredits: '40', timeout: '5000', keepHome: true, delegate: true, model: 'm' }))
       .toEqual({ tier: 1, maxCredits: 40, timeoutMs: 5000, keepHome: true, delegate: true, model: 'm' });
     expect(toSmokeOptions({})).toEqual({ tier: 0, keepHome: false, delegate: false });
-    expect(() => toSmokeOptions({ tier: '2' })).toThrow(/--tier/);
+    expect(() => toSmokeOptions({ tier: '3' })).toThrow(/--tier/);
     expect(() => toSmokeOptions({ maxCredits: 'abc' })).toThrow(/--max-credits/);
     expect(() => toSmokeOptions({ maxCredits: '10' })).toThrow(/at least 30/);
   });
@@ -512,7 +512,8 @@ describe('CLI option mapping and output', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      for (const cli of [{ tier: '2', json: true }, { maxCredits: '10', json: true }]) {
+      // An invalid tier (never 2: that would run a real, billed tier 2 smoke).
+      for (const cli of [{ tier: '3', json: true }, { maxCredits: '10', json: true }]) {
         log.mockClear();
         expect(await smokeCopilotCommand(cli)).toBe(1);
         const report = JSON.parse(String(log.mock.calls[0][0])) as SmokeReport;

@@ -86,7 +86,7 @@ The adapter fails **open** on a hook's internal error. Copilot treats a PreToolU
 | Variable | Effect |
 |---|---|
 | `OMC_HOOK_EVENT` | Set by `copilot/hooks.json`; activates the adapter. |
-| `OMC_HOOK_FAIL_CLOSED=1` | Keep the hook's original non-zero exit code (fail closed). |
+| `OMC_HOOK_FAIL_CLOSED=1` | Keep the hook's original non-zero exit code (fail closed). The hook runner `scripts/run.cjs` also exits `124` when a hook times out, instead of the default fail-open `0`, and its stderr line says `exiting fail-closed (124)`. |
 | `OMC_HOOK_STRICT=1` | A hook target that is missing or not a file exits 1 instead of 0 plus a stderr line. |
 | `OMC_DEBUG_HOOKS` | Log adapter decisions, such as a dropped `updatedInput`, to stderr. |
 

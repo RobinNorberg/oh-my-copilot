@@ -15,7 +15,8 @@ export async function runWikiSessionEndHook() {
   }
 
   try {
-    const { processWikiSessionEnd } = await import('../dist/hooks/session-end/index.js');
+    // Lean entry (not index.js): the full SessionEnd graph costs ~100ms of the 300ms budget.
+    const { processWikiSessionEnd } = await import('../dist/hooks/session-end/wiki-foreground-bootstrap.js');
     const result = await processWikiSessionEnd(frame.value);
     console.log(JSON.stringify(result));
   } catch (error) {

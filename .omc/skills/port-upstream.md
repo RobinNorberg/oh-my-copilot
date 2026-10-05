@@ -76,7 +76,7 @@ For each non-skipped commit:
 ### Step 4: Finalize
 
 1. Regenerate the Copilot projections: `node scripts/copilot/build-hooks.mjs --write` and `node scripts/copilot/build-agents.mjs --write`. Keep `hooks/hooks.json` and `agents/*.md` upstream-identical; adapt only the generated `copilot/hooks.json` and `copilot/agents/*.md`, which Copilot loads through the root `plugin.json`. A generator error means upstream changed the hook command form or agent frontmatter: extend the generator, never hand-edit the output. `copilot-hooks-manifest.test.ts` and `copilot-agents-manifest.test.ts` fail on drift (`--verify`).
-2. Load check instead of installing and opening Copilot by hand: `npm run build`, then `omg smoke copilot --tier 0`. It makes no model call and confirms Copilot loads the plugin, its skills, agents, hooks, and MCP tools. A failed `copilot.plugin_list` with `[]` means a bad `--plugin-dir` or manifest path.
+2. Load check instead of installing and opening Copilot by hand: `npm run build`, then `omg smoke copilot --tier 0`. It makes no model call and confirms Copilot loads the plugin, its skills, agents, hooks, and MCP tools. A failed `copilot.plugin_list` with `[]` means a bad `--plugin-dir` or manifest path. Then `omg smoke copilot --tier 2 --sdk-static`, also free: it checks the plugin, skills, agents, and MCP tools as the runtime itself lists them through `@github/copilot-sdk` (install once: `npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`; exit `2` means it is missing).
 3. Run full test suite: `npm test`
 4. Run type check: `npx tsc --noEmit`
 5. Verify no upstream references leaked: `grep -r "oh-my-claudecode" src/ agents/ skills/ | grep -v node_modules`
@@ -122,6 +122,7 @@ When replacing files wholesale, check for these fork-specific additions:
 - `RecentTools` in HUD
 - `isRunningAsPlugin` dual check (`PLUGIN_ROOT` and `CLAUDE_PLUGIN_ROOT`)
 - HUD wrapper template at `scripts/lib/hud-wrapper-template.txt`
+- `scripts/run.cjs` fail-closed timeout contract: `hookTimeoutStatus()` returns `124` under `OMC_HOOK_FAIL_CLOSED=1`, used at the generic-child and Worker timeout resolves; keep it when taking upstream `run.cjs` and re-run `npx vitest run src/__tests__/run-cjs-fail-closed-timeout.test.ts`
 
 ## Key Gotchas
 

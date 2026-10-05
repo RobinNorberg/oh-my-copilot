@@ -21,6 +21,26 @@ All notable changes to oh-my-copilot will be documented in this file.
   `npm run test:live` runs `tests/live/copilot-smoke.test.ts` (Tier 1 only
   with `OMC_LIVE_SMOKE=1`); the default test run excludes `tests/live/**`.
   See [docs/DEVELOPERS.md](docs/DEVELOPERS.md#headless-smoke-against-a-local-build).
+- **Smoke tier 2, SDK-driven scenarios:** `omg smoke copilot --tier 2` drives
+  the installed Copilot CLI through `@github/copilot-sdk`, now an optional
+  peer dependency that npm does not install
+  (`npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`). It adds
+  free `sdk.*` checks of the runtime's plugin, skill, agent, and MCP lists
+  (`--sdk-static` runs only these) and the scenarios `smoke` and `guardrail`
+  by default, plus `skill` and `delegate` (`--scenario <list|all>`), each
+  about one premium request, so the default run costs about two.
+  `--max-credits` caps the whole run: a scenario that passes it is aborted
+  and the rest are skipped. `sdk.tools_excluded` proves the smoke's own
+  `host_smoke` tool is hidden from the model. Under vitest a billable run is
+  refused unless `OMC_LIVE_SMOKE` names the tier. The report gains `sdk`,
+  `cost`, and per-scenario `artifacts.events`. `host_smoke` accepts `tier: 2` and `scenarios`; tier 2
+  with scenarios needs `OMC_SMOKE_ALLOW_LIVE=1`, `scenarios: []` does not.
+  `npm run test:live` runs the tier 2 static checks when the SDK resolves and
+  the default scenarios with `OMC_LIVE_SMOKE=2`.
+  See [docs/DEVELOPERS.md](docs/DEVELOPERS.md#tier-2--sdk-scenarios).
+- **Hook runner fails closed on timeout when asked:** with
+  `OMC_HOOK_FAIL_CLOSED=1`, `scripts/run.cjs` exits `124` when a hook times
+  out, instead of `0`. Without the variable it still fails open.
 
 # oh-my-copilot v5.6.2
 

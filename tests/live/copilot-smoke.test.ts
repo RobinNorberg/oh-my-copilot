@@ -8,6 +8,10 @@
  * - Tier 0 (no model call) runs whenever the copilot binary resolves; it skips
  *   itself when the smoke report says the binary is missing.
  * - Tier 1 spends one premium request and runs only with OMC_LIVE_SMOKE=1.
+ * - Tier 2 static (SDK introspection, no model call) runs whenever the copilot
+ *   binary and the optional peer `@github/copilot-sdk` resolve; it skips itself
+ *   otherwise. Tier 2 default scenarios (smoke, guardrail; ~2 premium requests)
+ *   run only with OMC_LIVE_SMOKE=2.
  */
 
 import { fileURLToPath } from 'node:url';
@@ -16,6 +20,9 @@ import { runCopilotSmoke, type SmokeReport } from '../../src/smoke/copilot-smoke
 
 const pluginRoot = fileURLToPath(new URL('../..', import.meta.url));
 const liveTier1 = process.env.OMC_LIVE_SMOKE === '1';
+const liveTier2 = process.env.OMC_LIVE_SMOKE === '2';
+
+const SDK_STATIC_IDS = ['sdk.available', 'sdk.runtime', 'sdk.plugins', 'sdk.skills', 'sdk.agents', 'sdk.mcp', 'sdk.tools_excluded'];
 
 function failures(report: SmokeReport): string {
   return report.checks
@@ -57,4 +64,28 @@ describe('copilot smoke (live)', () => {
     );
     expect(report.ok, failures(report)).toBe(true);
   }, 300_000);
+
+  it('tier 2 static: SDK sees plugin, skills, agents and MCP tools (no model call)', async (ctx) => {
+    const report = await runCopilotSmoke({ tier: 2, pluginRoot, scenarios: [] });
+    if (report.skipped) {
+      ctx.skip(`copilot binary or @github/copilot-sdk not resolved: ${report.skipped}`);
+      return;
+    }
+    expect(report.tier).toBe(2);
+    expect(report.checks.map((c) => c.id)).toEqual(expect.arrayContaining(SDK_STATIC_IDS));
+    expect(report.checks.some((c) => c.id.startsWith('scn.'))).toBe(false);
+    expect(report.ok, failures(report)).toBe(true);
+  }, 180_000);
+
+  it.runIf(liveTier2)('tier 2 scenarios: smoke + guardrail through the SDK (~2 premium requests, 1 per scenario)', async (ctx) => {
+    const report = await runCopilotSmoke({ tier: 2, pluginRoot });
+    if (report.skipped) {
+      ctx.skip(`copilot binary or @github/copilot-sdk not resolved: ${report.skipped}`);
+      return;
+    }
+    expect(report.checks.map((c) => c.id)).toEqual(
+      expect.arrayContaining([...SDK_STATIC_IDS, 'scn.smoke.reply', 'scn.guardrail.denied', 'scn.guardrail.no_push']),
+    );
+    expect(report.ok, failures(report)).toBe(true);
+  }, 600_000);
 });

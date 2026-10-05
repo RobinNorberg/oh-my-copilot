@@ -1296,22 +1296,32 @@ const smokeCmd = program
 
 smokeCmd
   .command('copilot')
-  .description('Load-check oh-my-copilot in GitHub Copilot CLI (tier 0: no model call; tier 1: one cheap live session)')
-  .option('--tier <0|1>', 'Tier 0 = static/load checks only; tier 1 adds one model-invoking session', '0')
+  .description('Load-check oh-my-copilot in GitHub Copilot CLI (tier 0: no model call; tier 1: one cheap live session; tier 2: SDK-driven scenarios)')
+  .option('--tier <0|1|2>', 'Tier 0 = static/load checks only; tier 1 adds one -p session; tier 2 = tier 0 + SDK static checks + scenarios (default 0, or 2 with --scenario/--sdk-static)')
   .option('--plugin-root <dir>', 'Plugin directory to load via --plugin-dir (default: this omg package root)')
-  .option('--model <id>', 'Tier 1 model id (default: none, the CLI auto-picks)')
-  .option('--max-credits <n>', 'Tier 1 --max-ai-credits soft cap (default: 30, the CLI minimum)')
-  .option('--timeout <ms>', 'Tier 1 session timeout (default 180000); tier 0 per-subprocess timeout (default 60000); the MCP check is fixed at 10 s')
+  .option('--model <id>', 'Tiers 1-2 model id (default: tier 1 lets the CLI auto-pick; tier 2 a cheap listed model, else auto)')
+  .option('--max-credits <n>', 'Tiers 1-2 AI credit cap (default and minimum 30): tier 1 passes --max-ai-credits; tier 2 also aborts a scenario and skips the rest once the run passes it')
+  .option('--timeout <ms>', 'Tiers 1-2: tier 1 session timeout (default 180000), tier 2 per-scenario timeout (default 120000, then abort); tier 0 per-subprocess timeout (default 60000); the MCP check is fixed at 10 s')
   .option('--keep-home', 'Keep the throwaway COPILOT_HOME and project dir for debugging')
   .option('--delegate', 'Tier 1: ask for a delegation to oh-my-copilot:architect and check subagent.selected')
+  .option('--scenario <list|all>', 'Tier 2 scenarios, comma-separated: smoke, guardrail, skill, delegate, or all (default: smoke,guardrail)')
+  .option('--sdk-static', 'Tier 2 with no scenarios: SDK static checks only, zero model calls')
   .option('--json', 'Print the full SmokeReport as JSON (always, also for option errors)')
   .addHelpText('after', `
-Exit codes: 0 all checks ok, 1 a check failed or bad options, 2 skipped (copilot binary not found, no other failure).
+Exit codes: 0 all checks ok, 1 a check failed or bad options, 2 skipped (copilot binary or
+@github/copilot-sdk not found, no other failure).
+
+Tier 2 needs the optional peer @github/copilot-sdk:
+  npm i -g @github/copilot-sdk --omit=optional --ignore-scripts
+It always drives the installed copilot binary, never the SDK's bundled runtime.
 
 Examples:
   $ omg smoke copilot                           Tier 0 load check (no model call)
   $ omg smoke copilot --tier 1                  Add one cheap live session
-  $ omg smoke copilot --tier 1 --keep-home --json`)
+  $ omg smoke copilot --tier 1 --keep-home --json
+  $ omg smoke copilot --sdk-static              Tier 2 SDK static checks (no model call)
+  $ omg smoke copilot --tier 2                  Default scenarios smoke,guardrail (~2 premium requests, 1 per scenario)
+  $ omg smoke copilot --tier 2 --scenario all   All four scenarios`)
   .action(async (options) => {
     const exitCode = await smokeCopilotCommand(options);
     process.exit(exitCode);

@@ -132,6 +132,14 @@
     "typescript-eslint": "^8.53.0",
     "vitest": "^4.1.11"
   },
+  "peerDependencies": {
+    "@github/copilot-sdk": "^1.0.16"
+  },
+  "peerDependenciesMeta": {
+    "@github/copilot-sdk": {
+      "optional": true
+    }
+  },
   "engines": {
     "node": "20.x || 22.x || 23.x || 24.x || 25.x || 26.x"
   },
