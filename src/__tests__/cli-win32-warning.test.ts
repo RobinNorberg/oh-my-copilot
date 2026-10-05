@@ -75,4 +75,14 @@ describe('CLI win32 platform warning (#923)', () => {
 
     expect(continued).toBe(true);
   });
+
+  it('should suppress the warning when --json is present in argv, even without tmux', async () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    vi.mocked(spawnSync).mockReturnValue({ status: 1 } as ReturnType<typeof spawnSync>);
+
+    const { warnIfWin32 } = await import('../cli/win32-warning.js');
+    warnIfWin32(['node', 'bridge/cli.cjs', 'smoke', 'copilot', '--tier', '0', '--json']);
+
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
 });

@@ -1,8 +1,14 @@
 import { describe, it, expect } from 'vitest';
+import { spawnSync } from 'child_process';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import type { SmokeReport } from '../../../smoke/copilot-smoke.js';
 import { formatSmokeReport, parseScenarios, smokeExitCode, toSmokeOptions } from '../smoke.js';
 
 import { SDK_MISSING_DETAIL as SDK_HINT } from '../../../smoke/copilot-sdk-scenarios.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const CLI_ENTRY = join(__dirname, '../../../../bridge/cli.cjs');
 
 function report(partial: Partial<SmokeReport>): SmokeReport {
   return {
@@ -75,5 +81,37 @@ describe('omg smoke copilot — tier 2 exit codes and output', () => {
     expect(text).toContain('cost: 3 premium request(s), 0.7 credit(s)');
     expect(text).toContain('events.smoke: /h/smoke.jsonl');
     expect(text).not.toContain('[object Object]');
+  });
+});
+
+describe('omg smoke copilot — --json stdout purity (regression)', () => {
+  it('keeps stdout a single parseable JSON document; startup diagnostics (if any) land on stderr', () => {
+    // Force the no-tmux win32 warning path: PATH is stripped so no
+    // tmux/psmux binary can be resolved, which is what the warning depends
+    // on when process.platform === 'win32' (a no-op guard on other OSes).
+    const result = spawnSync(process.execPath, [CLI_ENTRY, 'smoke', 'copilot', '--tier', '0', '--json'], {
+      cwd: join(__dirname, '../../../..'),
+      encoding: 'utf-8',
+      timeout: 30_000,
+      env: { ...process.env, NODE_NO_WARNINGS: '1', PATH: '', Path: '' },
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(() => JSON.parse(result.stdout)).not.toThrow();
+
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed).toHaveProperty('tier', 0);
+    expect(parsed).toHaveProperty('checks');
+
+    // Diagnostics such as the native-Windows no-tmux warning must never
+    // reach stdout — only the JSON report may.
+    expect(result.stdout).not.toContain('WARNING');
+    expect(result.stdout).not.toContain('tmux');
+
+    // When the warning does fire (win32 without tmux/psmux on PATH), it
+    // must be on stderr, not swallowed or duplicated onto stdout.
+    if (process.platform === 'win32' && result.stderr.includes('WARNING')) {
+      expect(result.stderr).toContain('no tmux found');
+    }
   });
 });
