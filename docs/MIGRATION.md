@@ -8,6 +8,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 - [Unreleased: Team Instance Ownership](#unreleased-team-instance-ownership)
 - [Unreleased: Cancellation Scope](#unreleased-cancellation-scope)
+- [v5.6.1 → v5.6.2: Postinstall Hook](#v561--v562-postinstall-hook)
 - [v5.5.0 → v5.6.1: Fork Upgrade Guide](#v550--v561-fork-upgrade-guide)
 - [v5.1.0 → v5.5.0: Fork Upgrade Guide](#v510--v550-fork-upgrade-guide)
 - [v4.13.102 → v5.0.0: Fork Upgrade Guide](#v413102--v500-fork-upgrade-guide)
@@ -118,6 +119,22 @@ locations and descendants of system temp/OS roots are never used as roots.
   foreign repositories and failed Git probes are rejected visibly.
 - Session-scoped state remains owned by its `session_id`. No time-based cleanup
   or cancellation was added.
+
+---
+
+## v5.6.1 → v5.6.2: Postinstall Hook
+
+Fork **v5.6.2** ports upstream oh-my-claudecode `dev` 4280efb1f..486b85bbb.
+There is nothing to migrate: no config, command or skill changes.
+
+- Update with `npm install -g oh-my-copilot@5.6.2` or
+  `copilot plugin update oh-my-copilot@omc`.
+- `npm install` now runs `scripts/postinstall-contained-fs.mjs`. On macOS it
+  builds the contained-fs native addon if it is missing; if Node headers or
+  Xcode Command Line Tools are unavailable it prints a warning and you can
+  build later with `node scripts/build-contained-fs.mjs` from the package
+  root. On Linux and Windows it does nothing. The hook always exits 0, so it
+  never fails the install.
 
 ---
 

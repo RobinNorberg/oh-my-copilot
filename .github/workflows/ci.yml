@@ -355,6 +355,35 @@ jobs:
             echo "packaged bridge registers $tool"
           done
 
+          echo "🔎 Verifying contained-fs in packaged tarball (issue #4217)..."
+          for script in scripts/build-contained-fs.mjs scripts/postinstall-contained-fs.mjs scripts/verify-graph-contained-fs.mjs; do
+            if ! tar -tzf "$TARBALL" | grep -q "package/$script"; then
+              echo "::error::npm package missing required script: $script"
+              exit 1
+            fi
+            echo "✓ $script included in tarball"
+          done
+          if ! tar -tzf "$TARBALL" | grep -q "package/native/contained-fs.c"; then
+            echo "::error::npm package missing native source: native/contained-fs.c"
+            exit 1
+          fi
+          echo "✓ native source included in tarball"
+          PKG_JSON=$(tar -xzOf "$TARBALL" package/package.json)
+          if ! echo "$PKG_JSON" | grep -q '"postinstall".*postinstall-contained-fs.mjs'; then
+            echo "::error::npm package missing postinstall hook"
+            exit 1
+          fi
+          echo "✓ postinstall hook configured"
+
+          # The postinstall hook must never break installing the published tarball.
+          # (The addon itself is darwin-only; its build is exercised by the macOS harness.)
+          echo "🔎 Installing packed tarball to verify postinstall does not fail..."
+          TEST_PREFIX=$(mktemp -d)
+          npm install --prefix "$TEST_PREFIX" "./$TARBALL" --no-audit --no-fund
+          test -f "$TEST_PREFIX/node_modules/oh-my-copilot/scripts/postinstall-contained-fs.mjs"
+          rm -rf "$TEST_PREFIX"
+          echo "✓ packed tarball installs cleanly with postinstall hook"
+
           # ENOTEMPTY hardening (mirrors .github/workflows/upgrade-test.yml):
           # the global node_modules dir is reused across runs on GitHub-hosted
           # runners and inside the GitHub-hosted tool cache. A previously

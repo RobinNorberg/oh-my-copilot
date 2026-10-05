@@ -975,12 +975,30 @@ async function handleTeamStatus(teamName: string, cwd: string): Promise<void> {
 
 async function handleTeamShutdown(teamName: string, cwd: string, force: boolean): Promise<void> {
   const { readTeamConfig } = await import('../../team/monitor.js');
-  const { shutdownTeamV2 } = await import('../../team/runtime-v2.js');
-  const config = await readTeamConfig(teamName, cwd);
-  const instanceId = config?.instance_id;
-  if (!instanceId || !isValidTeamInstanceId(instanceId)) {
-    throw new Error('team_shutdown_instance_identity_missing');
+  const { shutdownTeamV2, cleanupStaleReservations } = await import('../../team/runtime-v2.js');
+  
+  // Attempt to clean up any stale reservations from dead processes first
+  try {
+    await cleanupStaleReservations(teamName, cwd);
+  } catch (error) {
+    // Best-effort cleanup; proceed with shutdown attempt
   }
+  
+  const config = await readTeamConfig(teamName, cwd);
+  
+  // If team doesn't exist, report cleanly without error (like team status)
+  if (!config) {
+    console.log(`No team state found for ${teamName}`);
+    return;
+  }
+  
+  const instanceId = config.instance_id;
+  if (!instanceId || !isValidTeamInstanceId(instanceId)) {
+    // Team exists but has no valid instance ID - this shouldn't happen in normal operation
+    console.log(`Team ${teamName} has no valid instance ID; no shutdown needed`);
+    return;
+  }
+  
   const shutdown = await shutdownTeamV2(teamName, cwd, {
     instanceId,
     force,
@@ -1124,8 +1142,13 @@ export async function teamCommand(args: string[]): Promise<void> {
     const name = nameOrFlag[1]; // skip 'shutdown' itself
     if (!name) throw new Error('Usage: omg team shutdown <team-name> [--force]');
     const force = args.includes('--force');
-    // Fork (psmux): actionable message for an unverified startup.
-    await withStartupCleanupGuidance(name, cwd, () => handleTeamShutdown(name, cwd, force));
+    try {
+      // Fork (psmux): actionable message for an unverified startup.
+      await withStartupCleanupGuidance(name, cwd, () => handleTeamShutdown(name, cwd, force));
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
     return;
   }
 

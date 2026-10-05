@@ -333,6 +333,18 @@ export declare function processCliWorkerVerdicts(teamName: string, cwd: string, 
  */
 export declare function monitorTeamV2(teamName: string, cwd: string, expectedInstanceId?: TeamInstanceId): Promise<TeamSnapshotV2 | null>;
 /**
+ * Best-effort cleanup of stale team reservations owned by dead processes.
+ * Acquires the lifecycle lock to ensure race-safe removal.
+ * This allows new teams to be created even if a previous team's reservation
+ * file was left behind due to process death during startup.
+ */
+export declare function cleanupStaleReservations(teamName: string, cwd: string): Promise<void>;
+/**
+ * Clean up abandoned team state when config exists but has no valid instance_id.
+ * This handles partial startup failures and ensures no state is left behind.
+ */
+export declare function cleanupAbandonedTeamState(teamName: string, cwd: string): Promise<void>;
+/**
  * Graceful team shutdown:
  * 1. Shutdown gate check (unless force)
  * 2. Send shutdown request to all workers via inbox

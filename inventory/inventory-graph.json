@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "03f31c898f1704881d81cedc594aeaae98516fab",
-    "sourceSha256": "898f6915accc85ac21a28245271db10c554730d74568f1d5e2b22089e25398c4",
+    "head": "389e4a8350de5cbe5e995e11e77f30057f52b5c9",
+    "sourceSha256": "0013b3f6718d2a5738712c148a911c546728b131b3b63364948ed94ea0606f49",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "03f31c898f1704881d81cedc594aeaae98516fab",
-  "sourceSha256": "898f6915accc85ac21a28245271db10c554730d74568f1d5e2b22089e25398c4",
+  "head": "389e4a8350de5cbe5e995e11e77f30057f52b5c9",
+  "sourceSha256": "0013b3f6718d2a5738712c148a911c546728b131b3b63364948ed94ea0606f49",
   "counts": {
     "public": {
       "skills": 61,
@@ -883,6 +883,7 @@
       "scripts/post-tool-rules-injector.mjs",
       "scripts/post-tool-use-failure.mjs",
       "scripts/post-tool-verifier.mjs",
+      "scripts/postinstall-contained-fs.mjs",
       "scripts/pre-compact.mjs",
       "scripts/pre-tool-enforcer.mjs",
       "scripts/project-memory-posttool.mjs",
@@ -38365,6 +38366,11 @@
         "path": "scripts/post-tool-verifier.mjs"
       },
       {
+        "id": "scripts/postinstall-contained-fs.mjs",
+        "kind": "script",
+        "path": "scripts/postinstall-contained-fs.mjs"
+      },
+      {
         "id": "scripts/pre-compact.mjs",
         "kind": "script",
         "path": "scripts/pre-compact.mjs"
@@ -46810,6 +46816,11 @@
         "path": "tests/integration/concurrent-ralph-sessions.test.ts"
       },
       {
+        "id": "tests/integration/contained-fs-packaging.test.ts",
+        "kind": "other",
+        "path": "tests/integration/contained-fs-packaging.test.ts"
+      },
+      {
         "id": "tests/integration/epic-3698-closure-verifier.test.ts",
         "kind": "other",
         "path": "tests/integration/epic-3698-closure-verifier.test.ts"
@@ -48854,6 +48865,26 @@
       {
         "from": "scripts/post-tool-verifier.mjs",
         "to": "scripts/lib/stdin.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/postinstall-contained-fs.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/postinstall-contained-fs.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/postinstall-contained-fs.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/postinstall-contained-fs.mjs",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -58738,6 +58769,11 @@
       },
       {
         "from": "src/cli/__tests__/team.test.ts",
+        "to": "external:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/team.test.ts",
         "to": "external:os",
         "kind": "imports"
       },
@@ -58754,6 +58790,26 @@
       {
         "from": "src/cli/__tests__/team.test.ts",
         "to": "src/cli/team.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/team.test.ts",
+        "to": "src/team/runtime-v2.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/team.test.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/team.test.ts",
+        "to": "src/team/team-instance.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/team.test.ts",
+        "to": "src/team/team-owner-epoch.ts",
         "kind": "imports"
       },
       {
@@ -88737,6 +88793,21 @@
         "kind": "imports"
       },
       {
+        "from": "tests/integration/contained-fs-packaging.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/contained-fs-packaging.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/contained-fs-packaging.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/integration/epic-3698-closure-verifier.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -89528,12 +89599,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7942,
-      "edgeCount": 8506,
-      "importEdgeCount": 7032,
+      "nodeCount": 7944,
+      "edgeCount": 8518,
+      "importEdgeCount": 7044,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "3678b5105a6c3ef1e30ce102631ea24d9e2f98d9a72e37b2b4a929d480ba7de9",
-  "manifestSha256": "0b89d72ad820b8d8a251bcc45c7661145d3912cb73e4fab07908040b3d426220"
+  "inventorySha256": "d94364ef151ceb3955a9a96531e8389a78d154cdb854e657ff00889ee2da0862",
+  "manifestSha256": "7b0d6566b636c666e471a2e19adc1de8e91078992259ca97d459b69f63105756"
 }
