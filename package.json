@@ -74,6 +74,7 @@
     "test:ui": "vitest --ui --exclude \"tests/perf/**\"",
     "test:run": "vitest run --exclude \"tests/perf/**\"",
     "test:coverage": "vitest run --coverage --exclude \"tests/perf/**\"",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "prepack": "npm run build",
     "lint": "eslint src",
     "format": "prettier --write src/**/*.ts",

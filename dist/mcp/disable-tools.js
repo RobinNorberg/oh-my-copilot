@@ -22,6 +22,7 @@ export const DISABLE_TOOLS_GROUP_MAP = {
     'deepinit': TOOL_CATEGORIES.DEEPINIT,
     'deepinit-manifest': TOOL_CATEGORIES.DEEPINIT,
     'wiki': TOOL_CATEGORIES.WIKI,
+    'smoke': TOOL_CATEGORIES.SMOKE,
 };
 /**
  * Parse OMC_DISABLE_TOOLS env var value into a Set of disabled ToolCategory values.

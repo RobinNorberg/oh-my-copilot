@@ -23,6 +23,7 @@ import { waitCommand, waitStatusCommand, waitDaemonCommand, waitDetectCommand } 
 import { doctorConflictsCommand } from './commands/doctor-conflicts.js';
 import { ralphCommand } from './commands/ralph.js';
 import { doctorTeamRoutingCommand } from './commands/doctor-team-routing.js';
+import { smokeCopilotCommand } from './commands/smoke.js';
 import { capabilitiesCheckCommand, capabilitiesLockCommand } from './commands/capabilities.js';
 import { sessionSearchCommand } from './commands/session-search.js';
 import { sessionFrictionReportCommand } from './commands/session-friction-report.js';
@@ -1167,6 +1168,34 @@ Examples:
     .action(async (options) => {
     applyPluginDirOption(options.pluginDir);
     const exitCode = await doctorConflictsCommand(options);
+    process.exit(exitCode);
+});
+/**
+ * Smoke command - load-check the plugin inside a real host CLI
+ */
+const smokeCmd = program
+    .command('smoke')
+    .description('Smoke-test the plugin inside a real host CLI');
+smokeCmd
+    .command('copilot')
+    .description('Load-check oh-my-copilot in GitHub Copilot CLI (tier 0: no model call; tier 1: one cheap live session)')
+    .option('--tier <0|1>', 'Tier 0 = static/load checks only; tier 1 adds one model-invoking session', '0')
+    .option('--plugin-root <dir>', 'Plugin directory to load via --plugin-dir (default: this omg package root)')
+    .option('--model <id>', 'Tier 1 model id (default: none, the CLI auto-picks)')
+    .option('--max-credits <n>', 'Tier 1 --max-ai-credits soft cap (default: 30, the CLI minimum)')
+    .option('--timeout <ms>', 'Tier 1 session timeout (default 180000); tier 0 per-subprocess timeout (default 60000); the MCP check is fixed at 10 s')
+    .option('--keep-home', 'Keep the throwaway COPILOT_HOME and project dir for debugging')
+    .option('--delegate', 'Tier 1: ask for a delegation to oh-my-copilot:architect and check subagent.selected')
+    .option('--json', 'Print the full SmokeReport as JSON (always, also for option errors)')
+    .addHelpText('after', `
+Exit codes: 0 all checks ok, 1 a check failed or bad options, 2 skipped (copilot binary not found, no other failure).
+
+Examples:
+  $ omg smoke copilot                           Tier 0 load check (no model call)
+  $ omg smoke copilot --tier 1                  Add one cheap live session
+  $ omg smoke copilot --tier 1 --keep-home --json`)
+    .action(async (options) => {
+    const exitCode = await smokeCopilotCommand(options);
     process.exit(exitCode);
 });
 // Headless AFK ralph launcher (factory AFK profile + declared verify commands).

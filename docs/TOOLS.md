@@ -2,7 +2,7 @@
 
 > OMC provides MCP tools for state management, code intelligence, and data analysis.
 
-At v5.3.0, the configured MCP server exposes exactly 55 tools.
+The configured MCP server exposes exactly 56 tools.
 
 Unlike skills that users invoke directly, tools are used internally by agents during task execution.
 
@@ -19,6 +19,7 @@ Unlike skills that users invoke directly, tools are used internally by agents du
 - [Shared Memory](#shared-memory) — Cross-agent shared memory for team coordination
 - [Skills](#skills) — Internal skill management tools
 - [Deepinit Manifest](#deepinit-manifest) — Incremental AGENTS.md regeneration manifest
+- [Host Smoke](#host-smoke) — Headless Copilot CLI smoke check of a plugin root
 
 ---
 
@@ -768,3 +769,29 @@ deepinit_manifest(action="check")
 ```
 
 Used internally by the `deepinit` skill (`/oh-my-copilot:deepinit`) to enable incremental AGENTS.md regeneration instead of full re-scans.
+
+---
+
+## Host Smoke
+
+Runs the same check as `omg smoke copilot` against a plugin root and returns the `SmokeReport` JSON. The result has `isError` set when any check fails. `OMC_DISABLE_TOOLS=smoke` hides it.
+
+### Tool
+
+#### `host_smoke`
+
+| Argument     | Type    | Meaning                                                                 |
+| ------------ | ------- | ----------------------------------------------------------------------- |
+| `tier`       | 0 or 1  | `0` load check without a model call (default); `1` adds one live session, one premium request. Tier 1 needs `OMC_SMOKE_ALLOW_LIVE=1` in the server env |
+| `pluginRoot` | string  | Plugin root passed to `--plugin-dir`; defaults to the package root. Any other root needs `OMC_SMOKE_ALLOW_ANY_ROOT=1` |
+| `model`      | string  | Tier 1 model id; omitted means Copilot auto-selects                     |
+| `maxCredits` | integer | Tier 1 `--max-ai-credits` cap, default and minimum 30                   |
+| `timeoutMs`  | integer | Per subprocess at tier 0 (default 60000) or for the session at tier 1 (default 180000); the MCP check is fixed at 10 s |
+| `keepHome`   | boolean | Keep the temp `COPILOT_HOME` and project; paths are in `artifacts`      |
+| `delegate`   | boolean | Tier 1: also exercise one delegation to `oh-my-copilot:architect`       |
+
+```
+host_smoke(tier=0)
+```
+
+See [DEVELOPERS.md](./DEVELOPERS.md#headless-smoke-against-a-local-build) for the check list and how to register a local build in Claude Code.
