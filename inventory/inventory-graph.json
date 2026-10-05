@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "c7444784eeabab8c9b745f1e904e3cb2b102a263",
-    "sourceSha256": "0b28975d156ffaf9ac5328fa095a77cdb340fe04c43833c47bcf31bcda8de442",
+    "head": "2445f60c716f869beebaf8410107b919c7544af9",
+    "sourceSha256": "d85ff64ab2eb3bfa87ef96ed5ad21ac62bf27809f5808a5e795cc22622ccd33f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "c7444784eeabab8c9b745f1e904e3cb2b102a263",
-  "sourceSha256": "0b28975d156ffaf9ac5328fa095a77cdb340fe04c43833c47bcf31bcda8de442",
+  "head": "2445f60c716f869beebaf8410107b919c7544af9",
+  "sourceSha256": "d85ff64ab2eb3bfa87ef96ed5ad21ac62bf27809f5808a5e795cc22622ccd33f",
   "counts": {
     "public": {
       "skills": 61,
@@ -28,8 +28,8 @@
       "toolFiles": 62,
       "libFiles": 47,
       "templateHooks": 23,
-      "srcFiles": 1495,
-      "total": 1518
+      "srcFiles": 1497,
+      "total": 1520
     },
     "generated": {
       "distFiles": 5799,
@@ -45289,6 +45289,16 @@
         "path": "src/smoke/__tests__/copilot-smoke.test.ts"
       },
       {
+        "id": "src/smoke/__tests__/fixtures/tier1-debug-excerpt.log",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier1-debug-excerpt.log"
+      },
+      {
+        "id": "src/smoke/__tests__/fixtures/tier1-delegate-debug-excerpt.log",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier1-delegate-debug-excerpt.log"
+      },
+      {
         "id": "src/smoke/__tests__/fixtures/tier1-delegate-events.jsonl",
         "kind": "src",
         "path": "src/smoke/__tests__/fixtures/tier1-delegate-events.jsonl"
@@ -90222,12 +90232,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7995,
+      "nodeCount": 7997,
       "edgeCount": 8584,
       "importEdgeCount": 7101,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "937194389a0d2fac980caa252f3ad71f9babc03405daf559e3e8b985c3615016",
-  "manifestSha256": "88b2608e63e75a00661868f8dc5acdbba4225f1a68f219a173a12be65ba0845d"
+  "inventorySha256": "c78c0a3c7e22ed037d7fcef30a87b81c86df92fb8205377f44b8f31fca94c365",
+  "manifestSha256": "a3fe88b4ce81681cf3aa6b038c6442f9b0d4ad2e95cd27c9ad2c397830395e61"
 }
