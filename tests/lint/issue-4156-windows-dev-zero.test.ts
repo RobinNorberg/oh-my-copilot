@@ -31,7 +31,7 @@ describe('issue #4156: Windows file identity comparison (dev=0 from lstat)', () 
     expect(content).toContain('const isWindows = process.platform === "win32"');
 
     // Check for the dev comparison logic
-    expect(content).toContain('if (isWindows && (a.dev === 0 || b.dev === 0))');
+    expect(content).toContain('if (isWindows && (a.dev === 0n || b.dev === 0n))');
 
     // Check for inode comparison
     expect(content).toContain('if (a.ino !== b.ino) return false');
@@ -50,7 +50,7 @@ describe('issue #4156: Windows file identity comparison (dev=0 from lstat)', () 
     const functionBody = content.substring(functionStart, functionEnd);
 
     // Should use sameFileIdentity instead of comparing dev and ino separately
-    expect(functionBody).toContain('sameFileIdentity(fdStats as FileIdentity, pathStats as FileIdentity)');
+    expect(functionBody).toContain('sameFileIdentity(fileIdentityOf(fdStats), fileIdentityOf(pathStats))');
     expect(functionBody).not.toContain('fdStats.dev !== pathStats.dev || fdStats.ino !== pathStats.ino');
   });
 
@@ -64,7 +64,7 @@ describe('issue #4156: Windows file identity comparison (dev=0 from lstat)', () 
     const functionBody = content.substring(functionStart, functionEnd);
 
     // Should use sameFileIdentity
-    expect(functionBody).toContain('sameFileIdentity(fdStats as FileIdentity, pathStats as FileIdentity)');
+    expect(functionBody).toContain('sameFileIdentity(fileIdentityOf(fdStats), fileIdentityOf(pathStats))');
   });
 
   it('src/lib/atomic-write.ts uses sameFileIdentity in rollbackPriorTarget', () => {
@@ -91,7 +91,7 @@ describe('issue #4156: Windows file identity comparison (dev=0 from lstat)', () 
     expect(content).toContain("const isWindows = process.platform === 'win32'");
 
     // Check for the dev comparison logic
-    expect(content).toContain('if (isWindows && (a.dev === 0 || b.dev === 0))');
+    expect(content).toContain('if (isWindows && (a.dev === 0n || b.dev === 0n))');
 
     // Check for inode comparison
     expect(content).toContain('if (a.ino !== b.ino) return false');
@@ -125,7 +125,7 @@ describe('issue #4156: Windows file identity comparison (dev=0 from lstat)', () 
     expect(content).toContain("const isWindows = process.platform === 'win32'");
 
     // Check for the dev comparison logic
-    expect(content).toContain('if (isWindows && (a.dev === 0 || b.dev === 0))');
+    expect(content).toContain('if (isWindows && (a.dev === 0n || b.dev === 0n))');
 
     // Check for inode comparison
     expect(content).toContain('if (a.ino !== b.ino) return false');
@@ -158,7 +158,7 @@ describe('issue #4156: Windows file identity comparison (dev=0 from lstat)', () 
 
     // Extract the sameFileIdentity function logic
     // On Windows with different dev values (one is 0), it should still return true if ino matches
-    expect(content).toContain('if (isWindows && (a.dev === 0 || b.dev === 0))');
+    expect(content).toContain('if (isWindows && (a.dev === 0n || b.dev === 0n))');
     expect(content).toContain('return true; // Skip dev comparison on Windows when either is 0');
   });
 
@@ -173,7 +173,7 @@ describe('issue #4156: Windows file identity comparison (dev=0 from lstat)', () 
 
     // Inode comparison must come first and must reject mismatches
     const inoCheckIndex = functionBody.indexOf('if (a.ino !== b.ino) return false');
-    const devCheckIndex = functionBody.indexOf('if (isWindows && (a.dev === 0 || b.dev === 0))');
+    const devCheckIndex = functionBody.indexOf('if (isWindows && (a.dev === 0n || b.dev === 0n))');
     expect(inoCheckIndex).toBeLessThan(devCheckIndex);
   });
 
@@ -230,7 +230,7 @@ describe('issue #4156: Windows file identity comparison (dev=0 from lstat)', () 
 
     // Must have Windows handling
     expect(functionBody).toContain("const isWindows = process.platform === 'win32'");
-    expect(functionBody).toContain('if (isWindows && (a.dev === 0 || b.dev === 0))');
+    expect(functionBody).toContain('if (isWindows && (a.dev === 0n || b.dev === 0n))');
   });
 
   it('scripts/lib/atomic-write.mjs has sameFileIdentity with Windows handling', () => {
@@ -243,6 +243,6 @@ describe('issue #4156: Windows file identity comparison (dev=0 from lstat)', () 
 
     // Must have Windows handling
     expect(functionBody).toContain("const isWindows = process.platform === 'win32'");
-    expect(functionBody).toContain('if (isWindows && (a.dev === 0 || b.dev === 0))');
+    expect(functionBody).toContain('if (isWindows && (a.dev === 0n || b.dev === 0n))');
   });
 });

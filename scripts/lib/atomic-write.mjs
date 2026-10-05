@@ -137,9 +137,11 @@ function readEmergencyJournal(path) {
   } catch { return null; }
 }
 
+// BigInt ids: NTFS file IDs exceed 2^53 once the MFT sequence number reaches
+// 32, and a Number ino rounds distinct files onto the same value.
 function fileIdentity(path) {
   try {
-    const stat = statSync(path);
+    const stat = statSync(path, { bigint: true });
     return { dev: stat.dev, ino: stat.ino };
   } catch { return null; }
 }
@@ -157,7 +159,7 @@ function sameFileIdentity(a, b) {
   // On Windows, lstat returns dev=0, so skip dev comparison when on Windows
   // unless both are non-zero (indicating a real comparison is possible)
   const isWindows = process.platform === 'win32';
-  if (isWindows && (a.dev === 0 || b.dev === 0)) {
+  if (isWindows && (a.dev === 0n || b.dev === 0n)) {
     return true; // Skip dev comparison on Windows when either is 0
   }
   
