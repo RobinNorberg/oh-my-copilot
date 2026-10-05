@@ -2,7 +2,48 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
-## Unreleased
+# oh-my-copilot v5.7.0
+
+## [5.7.0] - 2026-10-05
+
+Fork **v5.7.0** (from v5.6.2) is a minor release: it adds the headless smoke
+harness (`omg smoke copilot` and the MCP tool `host_smoke`, tiers 0 to 2),
+fixes two hook behaviours, and ports upstream oh-my-claudecode `dev`
+486b85bbb..bcaceb136. Upstream is still at version 5.6.1. No breaking
+changes: the new peer dependency `@github/copilot-sdk` is optional and
+`OMC_HOOK_FAIL_CLOSED` is opt-in. The skill count stays 61. See the
+[v5.6.2 → v5.7.0 note](docs/MIGRATION.md#v562--v570-smoke-harness).
+
+### Ported from upstream oh-my-claudecode dev (486b85bbb..bcaceb136)
+
+#4231 to #4234 originated in this fork and were merged upstream; they return
+here in upstream's canonical form.
+
+- **`intake run --headless` (#4231):** `intake run` registers `--headless`,
+  the flag the entry written by `intake schedule` passes, so scheduled
+  sweeps no longer exit with `unknown option '--headless'`. Covered by
+  `src/cli/commands/__tests__/intake-headless-flag.test.ts`.
+- **Team shutdown tests (#4232):** the dead-owner identity in
+  `src/cli/__tests__/team.test.ts` is derived from the host platform, so the
+  tests pass on Windows as well as POSIX.
+- **State-lock owner-reclaim test (#4233):** adds the missing
+  `scripts/dev/repro-state-lock.mjs` and makes
+  `tests/integration/state-lock-owner-reclaim.test.ts` assert real lock
+  acquisitions.
+- **State-lock file identity (#4234):** identity helpers that guard a lock
+  artifact or a publication stat with `{ bigint: true }`, so NTFS file ids
+  above 2^53 stay distinct (state-lock, mode-state-io and the atomic-write
+  twins; the win32 zero-dev tolerance is kept as `0n`).
+  `sameStateFileGeneration` compares through `sameFileIdentity`, so a
+  generation-bound clear no longer fails closed on win32 dev 0. Before
+  quarantining a dead owner, both lock twins re-read the owner record and
+  require the same owner as well as the same identity.
+- **Team worker env passthrough off the command line (#4236, fixes #4230):**
+  `OMC_TEAM_WORKER_ENV_PASSTHROUGH` values are no longer inlined into the
+  worker pane's `env -i KEY='value'` command, where they showed in argv and
+  tmux `pane_start_command`. Only the fixed baseline stays inline; the
+  passthrough values go to a private `0600` file in a `0700` directory that
+  the pane's `/bin/sh` sources, removes, and then execs the login shell.
 
 ### Fork
 
@@ -41,6 +82,11 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **Hook runner fails closed on timeout when asked:** with
   `OMC_HOOK_FAIL_CLOSED=1`, `scripts/run.cjs` exits `124` when a hook times
   out, instead of `0`. Without the variable it still fails open.
+- **Wiki capture fits the SessionEnd budget:** `scripts/wiki-session-end.mjs`
+  imports the lean `dist/hooks/session-end/wiki-foreground-bootstrap.js`
+  entry instead of the full SessionEnd module graph, which cost about 100 ms
+  of the 300 ms SessionEnd budget. Wiki capture now completes reliably under
+  Copilot instead of being cut off.
 
 # oh-my-copilot v5.6.2
 

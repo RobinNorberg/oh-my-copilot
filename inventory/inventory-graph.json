@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "5f8b80dd2b55a9d57b9cb2bf2b11ad1e0ddccee2",
-    "sourceSha256": "ee5f5d187151825d5349b6afa2063fefb8e23b3867d2f708cd08fd59dc3d2aaa",
+    "head": "f71a6c547bfc26319d6c2589ce63c7344f28fd33",
+    "sourceSha256": "1a1dfbc50f3232f0ae54c01715003efcae21d39cd8143cd6d8513bb249203337",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "5f8b80dd2b55a9d57b9cb2bf2b11ad1e0ddccee2",
-  "sourceSha256": "ee5f5d187151825d5349b6afa2063fefb8e23b3867d2f708cd08fd59dc3d2aaa",
+  "head": "f71a6c547bfc26319d6c2589ce63c7344f28fd33",
+  "sourceSha256": "1a1dfbc50f3232f0ae54c01715003efcae21d39cd8143cd6d8513bb249203337",
   "counts": {
     "public": {
       "skills": 61,
@@ -28,13 +28,13 @@
       "toolFiles": 62,
       "libFiles": 47,
       "templateHooks": 23,
-      "srcFiles": 1509,
-      "total": 1532
+      "srcFiles": 1510,
+      "total": 1533
     },
     "generated": {
-      "distFiles": 5827,
+      "distFiles": 5831,
       "bridgeFiles": 9,
-      "total": 5836
+      "total": 5840
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -6004,6 +6004,10 @@
       "dist/team/__tests__/tmux-session.kill-team-session.test.d.ts.map",
       "dist/team/__tests__/tmux-session.kill-team-session.test.js",
       "dist/team/__tests__/tmux-session.kill-team-session.test.js.map",
+      "dist/team/__tests__/tmux-session.pane-env.test.d.ts",
+      "dist/team/__tests__/tmux-session.pane-env.test.d.ts.map",
+      "dist/team/__tests__/tmux-session.pane-env.test.js",
+      "dist/team/__tests__/tmux-session.pane-env.test.js.map",
       "dist/team/__tests__/tmux-session.psmux.test.d.ts",
       "dist/team/__tests__/tmux-session.psmux.test.d.ts.map",
       "dist/team/__tests__/tmux-session.psmux.test.js",
@@ -7522,6 +7526,11 @@
         "id": ".omc/skills/sticky-installer-contract-test-expertise.md",
         "kind": "other",
         "path": ".omc/skills/sticky-installer-contract-test-expertise.md"
+      },
+      {
+        "id": ".omc/skills/upstream-contribute.md",
+        "kind": "other",
+        "path": ".omc/skills/upstream-contribute.md"
       },
       {
         "id": ".omc/skills/upstream-merge-expertise.md",
@@ -33724,6 +33733,26 @@
         "path": "dist/team/__tests__/tmux-session.kill-team-session.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/tmux-session.pane-env.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/tmux-session.pane-env.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/tmux-session.pane-env.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/tmux-session.pane-env.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/tmux-session.pane-env.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/tmux-session.pane-env.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/tmux-session.pane-env.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/tmux-session.pane-env.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/tmux-session.psmux.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/tmux-session.psmux.test.d.ts"
@@ -46144,6 +46173,11 @@
         "path": "src/team/__tests__/tmux-session.kill-team-session.test.ts"
       },
       {
+        "id": "src/team/__tests__/tmux-session.pane-env.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/tmux-session.pane-env.test.ts"
+      },
+      {
         "id": "src/team/__tests__/tmux-session.psmux.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/tmux-session.psmux.test.ts"
@@ -47422,6 +47456,11 @@
         "id": "tests/lint/fable-routing-docs.test.ts",
         "kind": "other",
         "path": "tests/lint/fable-routing-docs.test.ts"
+      },
+      {
+        "id": "tests/lint/file-identity-bigint.test.ts",
+        "kind": "other",
+        "path": "tests/lint/file-identity-bigint.test.ts"
       },
       {
         "id": "tests/lint/handoffs-writers.test.ts",
@@ -83226,6 +83265,31 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/team/__tests__/tmux-session.pane-env.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.pane-env.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.pane-env.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.pane-env.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.pane-env.test.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/__tests__/tmux-session.psmux.test.ts",
         "to": "external:path",
         "kind": "imports"
@@ -90406,6 +90470,21 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/file-identity-bigint.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/file-identity-bigint.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/file-identity-bigint.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/handoffs-writers.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -90752,12 +90831,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8037,
-      "edgeCount": 8642,
-      "importEdgeCount": 7142,
+      "nodeCount": 8044,
+      "edgeCount": 8650,
+      "importEdgeCount": 7150,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "2308e3afd5e9b686d3701192d51ffd9bd6541c7e631b81c0522a223f9e8e0a7a",
-  "manifestSha256": "f30089b7de4d33db5c48ce0ee3ec99c81a140de1a32765812b9f20e98b2bef18"
+  "inventorySha256": "a6e7fd0ede538c83a796514663fbff45264de75b514b4fd209dbd206f3f6e04e",
+  "manifestSha256": "f15e4a2f1f83cdcfefa5260976e83301f22a169b8b2d268473c18ab6faa3899a"
 }

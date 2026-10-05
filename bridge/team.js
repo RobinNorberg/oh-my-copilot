@@ -9197,33 +9197,33 @@ function ensureDirSync(dir) {
   }
 }
 function verifyPrivateTempFile(fd, tempPath, label, operations) {
-  const fdStats = fsSync.fstatSync(fd);
+  const fdStats = descriptorStats(fd, operations);
   let pathStats;
   try {
-    pathStats = (operations?.lstat ?? fsSync.lstatSync)(tempPath);
+    pathStats = pathnameStats(tempPath, operations);
   } catch {
     throw new Error(`${label} temporary file was replaced before rename`);
   }
   const isWindows = process.platform === "win32";
-  const isPrivateRegularSingleLink = (stats) => stats.isFile() && (isWindows ? stats.nlink <= 1 : stats.nlink === 1) && (isWindows || (stats.mode & 511) === 384);
+  const isPrivateRegularSingleLink = (stats) => stats.isFile() && (isWindows ? Number(stats.nlink) <= 1 : Number(stats.nlink) === 1) && (isWindows || (Number(stats.mode) & 511) === 384);
   if (!isPrivateRegularSingleLink(fdStats) || !isPrivateRegularSingleLink(pathStats)) {
     throw new Error(
       `${label} temporary file must be a private regular single-link file`
     );
   }
-  if (!sameFileIdentity(fdStats, pathStats)) {
+  if (!sameFileIdentity(fileIdentityOf(fdStats), fileIdentityOf(pathStats))) {
     throw new Error(`${label} temporary file was replaced before rename`);
   }
 }
 function verifyPublishedFile(fd, filePath, label, operations) {
-  const fdStats = fsSync.fstatSync(fd);
+  const fdStats = descriptorStats(fd, operations);
   let pathStats;
   try {
-    pathStats = (operations?.lstat ?? fsSync.lstatSync)(filePath);
+    pathStats = pathnameStats(filePath, operations);
   } catch {
     throw new Error(`${label} target was replaced at publication`);
   }
-  if (!pathStats.isFile() || !sameFileIdentity(fdStats, pathStats)) {
+  if (!pathStats.isFile() || !sameFileIdentity(fileIdentityOf(fdStats), fileIdentityOf(pathStats))) {
     throw new Error(`${label} target was replaced at publication`);
   }
 }
@@ -9247,26 +9247,33 @@ function preservePriorTarget(filePath, operations) {
     return null;
   }
 }
+function descriptorStats(fd, operations) {
+  return operations ? fsSync.fstatSync(fd) : fsSync.fstatSync(fd, { bigint: true });
+}
+function pathnameStats(filePath, operations) {
+  return operations ? operations.lstat(filePath) : fsSync.lstatSync(filePath, { bigint: true });
+}
+function fileIdentityOf(stats) {
+  return { dev: BigInt(stats.dev), ino: BigInt(stats.ino) };
+}
 function sameFileIdentity(a, b) {
   if (a.ino !== b.ino) return false;
   const isWindows = process.platform === "win32";
-  if (isWindows && (a.dev === 0 || b.dev === 0)) {
+  if (isWindows && (a.dev === 0n || b.dev === 0n)) {
     return true;
   }
   return a.dev === b.dev;
 }
 function currentFileIdentity(filePath, operations) {
   try {
-    const stats = (operations?.lstat ?? fsSync.lstatSync)(filePath);
-    return { dev: stats.dev, ino: stats.ino };
+    return fileIdentityOf(pathnameStats(filePath, operations));
   } catch {
     return null;
   }
 }
-function descriptorIdentity(fd) {
+function descriptorIdentity(fd, operations) {
   try {
-    const stats = fsSync.fstatSync(fd);
-    return { dev: stats.dev, ino: stats.ino };
+    return fileIdentityOf(descriptorStats(fd, operations));
   } catch {
     return null;
   }
@@ -11768,13 +11775,14 @@ __export(tmux_session_exports, {
   waitForPaneReady: () => waitForPaneReady,
   waitForStartupPaneReady: () => waitForStartupPaneReady,
   workerPaneBelongsToOwnedProviderTarget: () => workerPaneBelongsToOwnedProviderTarget,
-  workerPaneBelongsToProviderTarget: () => workerPaneBelongsToProviderTarget
+  workerPaneBelongsToProviderTarget: () => workerPaneBelongsToProviderTarget,
+  workerPaneShellCommand: () => workerPaneShellCommand
 });
-import { existsSync as existsSync23, statSync as statSync4 } from "fs";
+import { existsSync as existsSync23, mkdtempSync, rmSync as rmSync2, statSync as statSync4, writeFileSync as writeFileSync6 } from "fs";
 import { createHash as createHash10, randomUUID as randomUUID14 } from "crypto";
 import { execFile as execFile3 } from "child_process";
 import { promisify as promisify3 } from "util";
-import { join as join25, basename as basename12, isAbsolute as isAbsolute7, win32 as win323 } from "path";
+import { join as join25, basename as basename12, dirname as dirname22, isAbsolute as isAbsolute7, win32 as win323 } from "path";
 import { tmpdir as tmpdir3 } from "os";
 function tmuxArgsForIdentity(identity, args) {
   return ["-S", identity.socket_path, ...args];
@@ -12649,23 +12657,66 @@ async function verifyWorkerStartCommandSubmitted(paneId, startCmd, opts = {}) {
   }
   return false;
 }
+function writePaneEnvFile(values) {
+  const directory = mkdtempSync(join25(tmpdir3(), "omc-pane-env-"));
+  const file = join25(directory, "env");
+  const body = Object.entries(values).map(([key, value]) => `export ${key}=${shellQuote(value)}
+`).join("");
+  writeFileSync6(file, body, { mode: 384, flag: "wx" });
+  return file;
+}
+function discardPaneEnvFile(envFile) {
+  if (!envFile) return;
+  rmSync2(dirname22(envFile), { recursive: true, force: true });
+}
 function workerPaneShellCommand() {
   if (process.platform === "win32" && !isUnixLikeOnWindows()) {
-    return [getDefaultShell()];
+    return { args: [getDefaultShell()], envFile: null };
   }
-  if (process.platform === "win32") return [];
+  if (process.platform === "win32") return { args: [], envFile: null };
   const shell = getDefaultShell();
   const baseline = buildProviderEnvironment({ SHELL: shell });
+  const inline = buildProviderEnvironment({ SHELL: shell }, process.env, process.platform, []);
+  const passthrough = Object.fromEntries(
+    Object.entries(baseline).filter(([key, value]) => inline[key] !== value)
+  );
   const inheritedPaneEnvironment = ["TERM", "TMUX", "TMUX_PANE", "TMUX_TMPDIR", "LANG", "LC_ALL", "LC_CTYPE"].map((key) => `${key}="$${key}"`);
+  const inlineAssignments = Object.entries(inline).map(([key, value]) => `${key}=${shellQuote(value)}`);
+  if (Object.keys(passthrough).length === 0) {
+    const command2 = [
+      "/usr/bin/env",
+      "-i",
+      ...inlineAssignments,
+      ...inheritedPaneEnvironment,
+      shellQuote(shell),
+      "-l"
+    ].join(" ");
+    return { args: [command2], envFile: null };
+  }
+  const envFile = writePaneEnvFile(passthrough);
+  const bootstrap = '. "$OMC_PANE_ENV_FILE" && rm -rf -- "${OMC_PANE_ENV_FILE%/*}" && unset OMC_PANE_ENV_FILE && exec "$SHELL" -l';
   const command = [
     "/usr/bin/env",
     "-i",
-    ...Object.entries(baseline).map(([key, value]) => `${key}=${shellQuote(value)}`),
+    ...inlineAssignments,
+    `OMC_PANE_ENV_FILE=${shellQuote(envFile)}`,
     ...inheritedPaneEnvironment,
-    shellQuote(shell),
-    "-l"
+    "/bin/sh",
+    "-c",
+    shellQuote(bootstrap)
   ].join(" ");
-  return [command];
+  return { args: [command], envFile };
+}
+async function runPaneCreationCommand(identity, nativeCommand, paneShell) {
+  let result;
+  try {
+    result = await runGuardedNativeTmuxCommand(identity, nativeCommand);
+  } catch (error) {
+    discardPaneEnvFile(paneShell.envFile);
+    throw error;
+  }
+  if (result.outcome === "not_executed") discardPaneEnvFile(paneShell.envFile);
+  return result;
 }
 function escapeForCmdSet(value) {
   return value.replace(/(["%])/g, "$1$1");
@@ -12964,6 +13015,7 @@ async function splitTeamWorkerPaneWithEvidence(splitTarget, direction, cwd, prov
       };
     }
     const splitType = direction === "right" ? "-h" : "-v";
+    const splitPaneShell = workerPaneShellCommand();
     const splitArgs = [
       "split-window",
       splitType,
@@ -12975,11 +13027,12 @@ async function splitTeamWorkerPaneWithEvidence(splitTarget, direction, cwd, prov
       "#{pane_id}	#{socket_path}	#{pid}",
       "-c",
       cwd,
-      ...workerPaneShellCommand()
+      ...splitPaneShell.args
     ];
-    const splitResult = await runGuardedNativeTmuxCommand(
+    const splitResult = await runPaneCreationCommand(
       identity,
-      tmuxCommandString(splitArgs, ["#{pane_id}	#{socket_path}	#{pid}"])
+      tmuxCommandString(splitArgs, ["#{pane_id}	#{socket_path}	#{pid}"]),
+      splitPaneShell
     );
     const parsed = splitResult.outcome === "executed" ? parseTmuxCreationRecord(
       splitResult.stdout,
@@ -13081,6 +13134,7 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
       sessionMode: "detached-session",
       ...tmuxServerIdentity ? { tmuxServerIdentity: { ...tmuxServerIdentity } } : {}
     });
+    const detachedPaneShell = workerPaneShellCommand();
     const detachedArgs = [
       "new-session",
       "-d",
@@ -13091,7 +13145,7 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
       detachedSessionName,
       "-c",
       cwd,
-      ...workerPaneShellCommand()
+      ...detachedPaneShell.args
     ];
     const cleanupFreshDetachedServer = async () => {
       if (isPsmux() && freshSocketPathForEvidence) {
@@ -13120,9 +13174,10 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
     if (existingDetachedIdentity) {
       tmuxServerIdentity = existingDetachedIdentity;
       try {
-        detachedResult = await runGuardedNativeTmuxCommand(
+        detachedResult = await runPaneCreationCommand(
           existingDetachedIdentity,
-          tmuxCommandString(detachedArgs, ["#S:0	#{pane_id}	#{socket_path}	#{pid}"])
+          tmuxCommandString(detachedArgs, ["#S:0	#{pane_id}	#{socket_path}	#{pid}"]),
+          detachedPaneShell
         );
       } catch (error) {
         const cleaned = await cleanupDetachedSession();
@@ -13182,11 +13237,13 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
           throw new Error("tmux_server_identity_unavailable");
         }
         freshDetachedServerIdentity = tmuxServerIdentity;
-        detachedResult = await runGuardedNativeTmuxCommand(
+        detachedResult = await runPaneCreationCommand(
           tmuxServerIdentity,
-          tmuxCommandString(detachedArgs, ["#S:0	#{pane_id}	#{socket_path}	#{pid}"])
+          tmuxCommandString(detachedArgs, ["#S:0	#{pane_id}	#{socket_path}	#{pid}"]),
+          detachedPaneShell
         );
       } catch (error) {
+        discardPaneEnvFile(detachedPaneShell.envFile);
         const cleaned = await cleanupDetachedSession();
         if (!cleaned && freshDetachedServerStarted) {
           throw new TeamSessionCreationError(
@@ -13366,6 +13423,7 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
   if (useDedicatedWindow) {
     const targetSession = sessionAndWindow.split(":")[0] ?? sessionAndWindow;
     const windowName = `omc-${sanitizeName(teamName)}`.slice(0, 32);
+    const newWindowPaneShell = workerPaneShellCommand();
     const newWindowArgs = [
       "new-window",
       "-d",
@@ -13378,13 +13436,14 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
       windowName,
       "-c",
       cwd,
-      ...workerPaneShellCommand()
+      ...newWindowPaneShell.args
     ];
     let newWindowResult;
     try {
-      newWindowResult = await runGuardedNativeTmuxCommand(
+      newWindowResult = await runPaneCreationCommand(
         tmuxServerIdentity,
-        tmuxCommandString(newWindowArgs, ["#S:#I	#{pane_id}	#{socket_path}	#{pid}"])
+        tmuxCommandString(newWindowArgs, ["#S:#I	#{pane_id}	#{socket_path}	#{pid}"]),
+        newWindowPaneShell
       );
     } catch (error) {
       const creationError = new TeamSessionCreationError(
@@ -13534,6 +13593,7 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
         continue;
       }
       const splitType = i === 0 ? "-h" : "-v";
+      const splitPaneShell = workerPaneShellCommand();
       const splitArgs = [
         "split-window",
         splitType,
@@ -13545,11 +13605,12 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
         "#{pane_id}	#{socket_path}	#{pid}",
         "-c",
         cwd,
-        ...workerPaneShellCommand()
+        ...splitPaneShell.args
       ];
-      const splitResult = await runGuardedNativeTmuxCommand(
+      const splitResult = await runPaneCreationCommand(
         tmuxServerIdentity,
-        tmuxCommandString(splitArgs, ["#{pane_id}	#{socket_path}	#{pid}"])
+        tmuxCommandString(splitArgs, ["#{pane_id}	#{socket_path}	#{pid}"]),
+        splitPaneShell
       );
       if (splitResult.outcome !== "executed") {
         const creationError = new TeamSessionCreationError(
@@ -14824,7 +14885,7 @@ var init_tmux_session = __esm({
 
 // src/team/mcp-comm.ts
 import { realpathSync as realpathSync4 } from "node:fs";
-import { basename as basename13, dirname as dirname22, join as join26 } from "node:path";
+import { basename as basename13, dirname as dirname23, join as join26 } from "node:path";
 function isConfirmedNotification(outcome) {
   if (!outcome.ok) return false;
   if (outcome.transport !== "hook") return true;
@@ -14850,7 +14911,7 @@ function canonicalNotificationLockIdentity(lockPath) {
     return realpathSync4(lockPath);
   } catch {
     try {
-      return join26(realpathSync4(dirname22(lockPath)), basename13(lockPath));
+      return join26(realpathSync4(dirname23(lockPath)), basename13(lockPath));
     } catch {
       return lockPath;
     }
@@ -15316,12 +15377,12 @@ var init_mcp_comm = __esm({
 
 // src/agents/prompt-helpers.ts
 import { readdirSync as readdirSync10 } from "fs";
-import { join as join27, dirname as dirname23, basename as basename14 } from "path";
+import { join as join27, dirname as dirname24, basename as basename14 } from "path";
 import { fileURLToPath as fileURLToPath4 } from "url";
 function getPackageDir3() {
   if (typeof __dirname !== "undefined" && __dirname) {
     const currentDirName = basename14(__dirname);
-    const parentDirName = basename14(dirname23(__dirname));
+    const parentDirName = basename14(dirname24(__dirname));
     if (currentDirName === "bridge") {
       return join27(__dirname, "..");
     }
@@ -15331,7 +15392,7 @@ function getPackageDir3() {
   }
   try {
     const __filename = fileURLToPath4(import.meta.url);
-    const __dirname2 = dirname23(__filename);
+    const __dirname2 = dirname24(__filename);
     const currentDirName = basename14(__dirname2);
     if (currentDirName === "bridge") {
       return join27(__dirname2, "..");
@@ -15385,7 +15446,7 @@ var init_prompt_helpers = __esm({
 
 // src/team/worker-bootstrap.ts
 import { mkdir as mkdir9, writeFile as writeFile7, appendFile as appendFile2 } from "fs/promises";
-import { join as join28, dirname as dirname24 } from "path";
+import { join as join28, dirname as dirname25 } from "path";
 function buildInstructionPath(...parts) {
   return join28(...parts).replaceAll("\\", "/");
 }
@@ -15655,7 +15716,7 @@ ${bootstrapInstructions}
 }
 async function composeInitialInbox(teamName, workerName, content, cwd, cliOutputContract) {
   const inboxPath = join28(teamStateRoot(cwd, sanitizeName(teamName)), "workers", sanitizeName(workerName), "inbox.md");
-  await mkdir9(dirname24(inboxPath), { recursive: true });
+  await mkdir9(dirname25(inboxPath), { recursive: true });
   const finalContent = cliOutputContract && !content.includes(cliOutputContract) ? `${content}
 ${cliOutputContract}` : content;
   await writeFile7(inboxPath, finalContent, "utf-8");
@@ -15665,7 +15726,7 @@ async function appendToInbox(teamName, workerName, message, cwd) {
   const safeWorker = sanitizeName(workerName);
   const inboxPath = join28(teamStateRoot(cwd, safeTeam), "workers", safeWorker, "inbox.md");
   validateResolvedPath(inboxPath, teamStateRoot(cwd, safeTeam));
-  await mkdir9(dirname24(inboxPath), { recursive: true });
+  await mkdir9(dirname25(inboxPath), { recursive: true });
   await appendFile2(inboxPath, `
 
 ---
@@ -15684,7 +15745,7 @@ async function writeWorkerOverlay(params) {
   const { teamName, workerName, cwd } = params;
   const overlay = generateWorkerOverlay(params);
   const overlayPath = join28(teamStateRoot(cwd, sanitizeName(teamName)), "workers", sanitizeName(workerName), "AGENTS.md");
-  await mkdir9(dirname24(overlayPath), { recursive: true });
+  await mkdir9(dirname25(overlayPath), { recursive: true });
   await writeFile7(overlayPath, overlay, "utf-8");
   return overlayPath;
 }
@@ -15884,7 +15945,7 @@ var init_mailbox_outstanding = __esm({
 
 // src/team/events.ts
 import { randomUUID as randomUUID15 } from "crypto";
-import { dirname as dirname25 } from "path";
+import { dirname as dirname26 } from "path";
 import { mkdir as mkdir10, readFile as readFile12, appendFile as appendFile3 } from "fs/promises";
 import { existsSync as existsSync25 } from "fs";
 async function appendTeamEvent(teamName, event, cwd) {
@@ -15895,7 +15956,7 @@ async function appendTeamEvent(teamName, event, cwd) {
     ...event
   };
   const p = absPath(cwd, TeamPaths.events(teamName));
-  await mkdir10(dirname25(p), { recursive: true });
+  await mkdir10(dirname26(p), { recursive: true });
   await appendFile3(p, `${JSON.stringify(full)}
 `, "utf8");
   return full;
@@ -15938,7 +15999,7 @@ async function emitMonitorDerivedEvents(teamName, tasks, workers, previousSnapsh
       }, cwd).catch(logDerivedEventFailure);
     }
     if (prevState === "working" && worker.status.state === "idle") {
-      const mailboxDir = dirname25(absPath(cwd, TeamPaths.mailbox(teamName, worker.name)));
+      const mailboxDir = dirname26(absPath(cwd, TeamPaths.mailbox(teamName, worker.name)));
       const outstanding = await countOutstandingForWorker(mailboxDir, worker.name);
       await appendTeamEvent(teamName, {
         type: "worker_idle",
@@ -16091,7 +16152,7 @@ var init_worktree_cleanup_safety = __esm({
 });
 
 // src/team/git-worktree.ts
-import { existsSync as existsSync27, realpathSync as realpathSync6, readFileSync as readFileSync18, readdirSync as readdirSync11, rmSync as rmSync2, unlinkSync as unlinkSync9, writeFileSync as writeFileSync6 } from "node:fs";
+import { existsSync as existsSync27, realpathSync as realpathSync6, readFileSync as readFileSync18, readdirSync as readdirSync11, rmSync as rmSync3, unlinkSync as unlinkSync9, writeFileSync as writeFileSync7 } from "node:fs";
 import { join as join31, resolve as resolve10 } from "node:path";
 import { execFileSync as execFileSync5 } from "node:child_process";
 function getWorktreePath(repoRoot, teamName, workerName) {
@@ -16240,7 +16301,7 @@ function installWorktreeRootAgents(teamName, workerName, repoRoot, worktreePath,
     installedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
   atomicWriteJson(backupPath, backup);
-  writeFileSync6(agentsPath, overlayContent, "utf-8");
+  writeFileSync7(agentsPath, overlayContent, "utf-8");
 }
 function restoreWorktreeRootAgents(teamName, workerName, repoRoot, worktreePath) {
   const omcRoot = getOmcRoot(repoRoot);
@@ -16265,7 +16326,7 @@ function restoreWorktreeRootAgents(teamName, workerName, repoRoot, worktreePath)
     return { restored: false, reason: "agents_dirty" };
   }
   if (backup.hadOriginal) {
-    writeFileSync6(agentsPath, backup.originalContent ?? "", "utf-8");
+    writeFileSync7(agentsPath, backup.originalContent ?? "", "utf-8");
   } else if (existsSync27(agentsPath)) {
     unlinkSync9(agentsPath);
   }
@@ -16489,7 +16550,7 @@ function removeWorkerWorktree(teamName, workerName, repoRoot) {
         expectedRoots: [join31(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
         mainRepoRoots: [repoRoot]
       });
-      rmSync2(wtPath, { recursive: true, force: true });
+      rmSync3(wtPath, { recursive: true, force: true });
     }
     forgetMetadataUnlocked(repoRoot, teamName, workerName);
   });
@@ -17182,7 +17243,7 @@ var init_merge_coordinator = __esm({
 // src/team/leader-inbox.ts
 import { appendFile as appendFile4, mkdir as mkdir11, writeFile as writeFile8 } from "fs/promises";
 import { existsSync as existsSync28 } from "fs";
-import { dirname as dirname26, join as join33 } from "path";
+import { dirname as dirname27, join as join33 } from "path";
 function leaderInboxPath(teamName, cwd) {
   const safe = sanitizeName(teamName);
   return join33(teamStateRoot(cwd, safe), "leader", "inbox.md");
@@ -17190,7 +17251,7 @@ function leaderInboxPath(teamName, cwd) {
 async function ensureLeaderInbox(teamName, cwd) {
   const inboxPath = leaderInboxPath(teamName, cwd);
   validateResolvedPath(inboxPath, teamStateRoot(cwd, sanitizeName(teamName)));
-  await mkdir11(dirname26(inboxPath), { recursive: true });
+  await mkdir11(dirname27(inboxPath), { recursive: true });
   if (!existsSync28(inboxPath)) {
     await writeFile8(inboxPath, LEADER_INBOX_HEADER, "utf-8");
   }
@@ -17199,7 +17260,7 @@ async function ensureLeaderInbox(teamName, cwd) {
 async function appendToLeaderInbox(teamName, message, cwd) {
   const inboxPath = leaderInboxPath(teamName, cwd);
   validateResolvedPath(inboxPath, teamStateRoot(cwd, sanitizeName(teamName)));
-  await mkdir11(dirname26(inboxPath), { recursive: true });
+  await mkdir11(dirname27(inboxPath), { recursive: true });
   await appendFile4(inboxPath, `
 
 ---
@@ -17289,7 +17350,7 @@ var init_conflict_mailbox = __esm({
 // src/team/worker-commit-cadence.ts
 import { existsSync as existsSync29, watch as fsWatch } from "fs";
 import { readFile as readFile13, writeFile as writeFile9, mkdir as mkdir12, unlink as unlink6 } from "fs/promises";
-import { join as join34, dirname as dirname27 } from "path";
+import { join as join34, dirname as dirname28 } from "path";
 import { exec } from "child_process";
 function ownsCadence(ctx) {
   const current = cadenceOwners.get(ctx.worktreePath);
@@ -17356,7 +17417,7 @@ async function installPostToolUseHook(worktreePath, workerName) {
 }
 async function pauseHookViaSentinel(worktreePath) {
   const sentinelPath = join34(worktreePath, SENTINEL_FILENAME);
-  await mkdir12(dirname27(sentinelPath), { recursive: true });
+  await mkdir12(dirname28(sentinelPath), { recursive: true });
   await writeFile9(sentinelPath, "", "utf-8");
 }
 async function resumeHookViaSentinel(worktreePath) {
@@ -17467,7 +17528,7 @@ var init_worker_commit_cadence = __esm({
 import { execFileSync as execFileSync7 } from "node:child_process";
 import { existsSync as existsSync30 } from "node:fs";
 import { mkdir as mkdir13, appendFile as appendFile5 } from "node:fs/promises";
-import { dirname as dirname28, join as join35 } from "node:path";
+import { dirname as dirname29, join as join35 } from "node:path";
 function mergerWorktreePathFor(repoRoot, teamName) {
   return join35(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "merger");
 }
@@ -17511,7 +17572,7 @@ function assertRuntimeV2Gate() {
 }
 async function appendEvent(repoRoot, teamName, event) {
   const path5 = orchestratorEventLogPath(repoRoot, teamName);
-  await mkdir13(dirname28(path5), { recursive: true });
+  await mkdir13(dirname29(path5), { recursive: true });
   const full = {
     ts: (/* @__PURE__ */ new Date()).toISOString(),
     team: teamName,
@@ -17570,7 +17631,7 @@ function isWorktreeRegistered(repoRoot, wtPath) {
   return false;
 }
 function ensureMergerWorktree(repoRoot, mergerPath, leaderBranch) {
-  ensureDirWithMode(dirname28(mergerPath));
+  ensureDirWithMode(dirname29(mergerPath));
   if (existsSync30(mergerPath) && isWorktreeRegistered(repoRoot, mergerPath)) {
     return;
   }
@@ -18025,7 +18086,7 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
         } catch {
         }
         const auditPath = teardownAuditPath(config.repoRoot, config.teamName);
-        await mkdir13(dirname28(auditPath), { recursive: true });
+        await mkdir13(dirname29(auditPath), { recursive: true });
         for (const u of unmerged) {
           const row = JSON.stringify({
             type: "unmerged_at_shutdown",
@@ -23279,10 +23340,10 @@ import {
   readFileSync as readFileSync22,
   renameSync as renameSync5,
   unlinkSync as unlinkSync10,
-  writeFileSync as writeFileSync7
+  writeFileSync as writeFileSync8
 } from "fs";
 import { readFile as readFile18 } from "fs/promises";
-import { dirname as dirname30, join as join41, resolve as resolve13 } from "path";
+import { dirname as dirname31, join as join41, resolve as resolve13 } from "path";
 import { fileURLToPath as fileURLToPath5 } from "url";
 
 // src/team/api-interop.ts
@@ -23302,7 +23363,7 @@ init_git_worktree();
 init_swallowed_error();
 init_types();
 import { existsSync as existsSync32, readFileSync as readFileSync20 } from "node:fs";
-import { dirname as dirname29, join as join38, resolve as resolvePath } from "node:path";
+import { dirname as dirname30, join as join38, resolve as resolvePath } from "node:path";
 var TEAM_UPDATE_TASK_MUTABLE_FIELDS = /* @__PURE__ */ new Set(["subject", "description", "blocked_by", "requires_code_change", "delegation"]);
 var TEAM_UPDATE_TASK_REQUEST_FIELDS = /* @__PURE__ */ new Set(["team_name", "task_id", "workingDirectory", ...TEAM_UPDATE_TASK_MUTABLE_FIELDS]);
 var RECOVER_WORKER_REQUEST_FIELDS = /* @__PURE__ */ new Set(["team_name", "worker", "request_id", "timeout_ms"]);
@@ -23536,7 +23597,7 @@ function stateRootToWorkingDirectory(stateRoot2) {
     if (idx >= 0) {
       const workspaceRoot = absolute.slice(0, idx);
       if (workspaceRoot && workspaceRoot !== "/") return workspaceRoot;
-      return dirname29(dirname29(dirname29(dirname29(absolute))));
+      return dirname30(dirname30(dirname30(dirname30(absolute))));
     }
   }
   for (const marker of ["/.omg/state", "/.omx/state"]) {
@@ -23544,10 +23605,10 @@ function stateRootToWorkingDirectory(stateRoot2) {
     if (idx >= 0) {
       const workspaceRoot = absolute.slice(0, idx);
       if (workspaceRoot && workspaceRoot !== "/") return workspaceRoot;
-      return dirname29(dirname29(absolute));
+      return dirname30(dirname30(absolute));
     }
   }
-  return dirname29(dirname29(absolute));
+  return dirname30(dirname30(absolute));
 }
 function resolveTeamWorkingDirectoryFromMetadata(teamName, candidateCwd, workerContext) {
   const teamRoot = join38(getOmcRoot(candidateCwd), "state", "team", teamName);
@@ -23590,7 +23651,7 @@ function resolveTeamWorkingDirectory(teamName, preferredCwd) {
       if (teamStateExists(normalizedTeamName, cursor)) {
         return resolveTeamWorkingDirectoryFromMetadata(normalizedTeamName, cursor, workerContext) ?? cursor;
       }
-      const parent = dirname29(cursor);
+      const parent = dirname30(cursor);
       if (!parent || parent === cursor) break;
       cursor = parent;
     }
@@ -24836,7 +24897,7 @@ function resolveRuntimeCliPath2(env = process.env) {
   if (env.OMC_RUNTIME_CLI_PATH) {
     return env.OMC_RUNTIME_CLI_PATH;
   }
-  const moduleDir = dirname30(fileURLToPath5(import.meta.url));
+  const moduleDir = dirname31(fileURLToPath5(import.meta.url));
   return join41(moduleDir, "../../bridge/runtime-cli.cjs");
 }
 function ensureJobsDir(jobsDir) {
@@ -24961,7 +25022,7 @@ function writeJobToDiskUnlocked(jobId, job, jobsDir) {
   const targetPath = jobPath(jobsDir, jobId);
   const tempPath = `${targetPath}.tmp.${process.pid}.${randomUUID17()}`;
   try {
-    writeFileSync7(tempPath, JSON.stringify(job), { encoding: "utf-8", mode: 384 });
+    writeFileSync8(tempPath, JSON.stringify(job), { encoding: "utf-8", mode: 384 });
     renameSync5(tempPath, targetPath);
   } finally {
     try {

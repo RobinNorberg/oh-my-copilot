@@ -63,7 +63,7 @@ async function runLockTest(
   // Force the owner-file fallback
   const env = { ...process.env, NODE_ENV: 'test', OMC_TEST_FLOCK_AVAILABLE: '0' };
 
-  // Repro script from upstream issue #4146, run in worker mode
+  // Repro script from issue #4146, run in worker mode
   const reproPath = join(REPO_ROOT, 'scripts', 'dev', 'repro-state-lock.mjs');
 
   return new Promise((resolve) => {

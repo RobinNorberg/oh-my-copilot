@@ -36220,33 +36220,33 @@ function writeAllSync(fd, content, label) {
   }
 }
 function verifyPrivateTempFile(fd, tempPath, label, operations) {
-  const fdStats = fsSync.fstatSync(fd);
+  const fdStats = descriptorStats(fd, operations);
   let pathStats;
   try {
-    pathStats = (operations?.lstat ?? fsSync.lstatSync)(tempPath);
+    pathStats = pathnameStats(tempPath, operations);
   } catch {
     throw new Error(`${label} temporary file was replaced before rename`);
   }
   const isWindows2 = process.platform === "win32";
-  const isPrivateRegularSingleLink = (stats) => stats.isFile() && (isWindows2 ? stats.nlink <= 1 : stats.nlink === 1) && (isWindows2 || (stats.mode & 511) === 384);
+  const isPrivateRegularSingleLink = (stats) => stats.isFile() && (isWindows2 ? Number(stats.nlink) <= 1 : Number(stats.nlink) === 1) && (isWindows2 || (Number(stats.mode) & 511) === 384);
   if (!isPrivateRegularSingleLink(fdStats) || !isPrivateRegularSingleLink(pathStats)) {
     throw new Error(
       `${label} temporary file must be a private regular single-link file`
     );
   }
-  if (!sameFileIdentity(fdStats, pathStats)) {
+  if (!sameFileIdentity(fileIdentityOf(fdStats), fileIdentityOf(pathStats))) {
     throw new Error(`${label} temporary file was replaced before rename`);
   }
 }
 function verifyPublishedFile(fd, filePath, label, operations) {
-  const fdStats = fsSync.fstatSync(fd);
+  const fdStats = descriptorStats(fd, operations);
   let pathStats;
   try {
-    pathStats = (operations?.lstat ?? fsSync.lstatSync)(filePath);
+    pathStats = pathnameStats(filePath, operations);
   } catch {
     throw new Error(`${label} target was replaced at publication`);
   }
-  if (!pathStats.isFile() || !sameFileIdentity(fdStats, pathStats)) {
+  if (!pathStats.isFile() || !sameFileIdentity(fileIdentityOf(fdStats), fileIdentityOf(pathStats))) {
     throw new Error(`${label} target was replaced at publication`);
   }
 }
@@ -36270,26 +36270,33 @@ function preservePriorTarget(filePath, operations) {
     return null;
   }
 }
+function descriptorStats(fd, operations) {
+  return operations ? fsSync.fstatSync(fd) : fsSync.fstatSync(fd, { bigint: true });
+}
+function pathnameStats(filePath, operations) {
+  return operations ? operations.lstat(filePath) : fsSync.lstatSync(filePath, { bigint: true });
+}
+function fileIdentityOf(stats) {
+  return { dev: BigInt(stats.dev), ino: BigInt(stats.ino) };
+}
 function sameFileIdentity(a, b) {
   if (a.ino !== b.ino) return false;
   const isWindows2 = process.platform === "win32";
-  if (isWindows2 && (a.dev === 0 || b.dev === 0)) {
+  if (isWindows2 && (a.dev === 0n || b.dev === 0n)) {
     return true;
   }
   return a.dev === b.dev;
 }
 function currentFileIdentity(filePath, operations) {
   try {
-    const stats = (operations?.lstat ?? fsSync.lstatSync)(filePath);
-    return { dev: stats.dev, ino: stats.ino };
+    return fileIdentityOf(pathnameStats(filePath, operations));
   } catch {
     return null;
   }
 }
-function descriptorIdentity(fd) {
+function descriptorIdentity(fd, operations) {
   try {
-    const stats = fsSync.fstatSync(fd);
-    return { dev: stats.dev, ino: stats.ino };
+    return fileIdentityOf(descriptorStats(fd, operations));
   } catch {
     return null;
   }
@@ -36404,7 +36411,7 @@ function atomicWriteFileSync(filePath, content, hooks, operations) {
     let publishedIdentity = null;
     try {
       verifyPublishedFile(fd, filePath, "atomic write", operations);
-      publishedIdentity = descriptorIdentity(fd);
+      publishedIdentity = descriptorIdentity(fd, operations);
       hooks?.afterRename?.();
       verifyPublishedFile(fd, filePath, "atomic write", operations);
     } catch (error2) {
@@ -39058,17 +39065,20 @@ function sameOwner(left, right) {
 }
 function lockArtifactIdentity(path28) {
   try {
-    const stats = (0, import_fs24.statSync)(path28);
+    const stats = (0, import_fs24.statSync)(path28, { bigint: true });
     return stats.isFile() ? { dev: stats.dev, ino: stats.ino } : null;
   } catch {
     return null;
   }
 }
 function reclaimDeadLockOwner(path28, observedOwner, observedIdentity) {
-  const currentOwner2 = readLockOwner(path28);
-  const currentIdentity = lockArtifactIdentity(path28);
-  if (currentOwner2 === "absent" || currentOwner2 === null || !sameOwner(currentOwner2, observedOwner) || currentIdentity === null || !sameFileIdentity(currentIdentity, observedIdentity)) return "changed";
   const quarantinePath = `${path28}.reclaim.${process.pid}.${(0, import_crypto8.randomUUID)()}`;
+  const before = lockArtifactIdentity(path28);
+  const currentOwner2 = readLockOwner(path28);
+  const after = lockArtifactIdentity(path28);
+  if (currentOwner2 === "absent" || currentOwner2 === null || !sameOwner(currentOwner2, observedOwner) || before === null || after === null || !sameFileIdentity(before, observedIdentity) || !sameFileIdentity(after, observedIdentity)) {
+    return "changed";
+  }
   try {
     (0, import_fs24.renameSync)(path28, quarantinePath);
   } catch (error2) {
@@ -39918,7 +39928,7 @@ function readEmergencyJournal(path28) {
 }
 function fileIdentity(path28) {
   try {
-    const stat2 = (0, import_fs24.statSync)(path28);
+    const stat2 = (0, import_fs24.statSync)(path28, { bigint: true });
     return { dev: stat2.dev, ino: stat2.ino };
   } catch {
     return null;
@@ -39948,7 +39958,7 @@ function captureStateFileGeneration(path28) {
 function sameStateFileGeneration(path28, expected) {
   try {
     const identity = fileIdentity(path28);
-    if (!identity || identity.dev !== expected.dev || identity.ino !== expected.ino) return false;
+    if (!identity || !sameFileIdentity(identity, expected)) return false;
     return stateDigest((0, import_fs24.readFileSync)(path28, "utf8")) === expected.digest;
   } catch {
     return false;
@@ -82387,7 +82397,8 @@ __export(tmux_session_exports, {
   waitForPaneReady: () => waitForPaneReady,
   waitForStartupPaneReady: () => waitForStartupPaneReady,
   workerPaneBelongsToOwnedProviderTarget: () => workerPaneBelongsToOwnedProviderTarget,
-  workerPaneBelongsToProviderTarget: () => workerPaneBelongsToProviderTarget
+  workerPaneBelongsToProviderTarget: () => workerPaneBelongsToProviderTarget,
+  workerPaneShellCommand: () => workerPaneShellCommand
 });
 function tmuxArgsForIdentity(identity, args) {
   return ["-S", identity.socket_path, ...args];
@@ -83262,23 +83273,66 @@ async function verifyWorkerStartCommandSubmitted(paneId, startCmd, opts = {}) {
   }
   return false;
 }
+function writePaneEnvFile(values) {
+  const directory = (0, import_fs85.mkdtempSync)((0, import_path106.join)((0, import_os18.tmpdir)(), "omc-pane-env-"));
+  const file = (0, import_path106.join)(directory, "env");
+  const body = Object.entries(values).map(([key, value]) => `export ${key}=${shellQuote(value)}
+`).join("");
+  (0, import_fs85.writeFileSync)(file, body, { mode: 384, flag: "wx" });
+  return file;
+}
+function discardPaneEnvFile(envFile) {
+  if (!envFile) return;
+  (0, import_fs85.rmSync)((0, import_path106.dirname)(envFile), { recursive: true, force: true });
+}
 function workerPaneShellCommand() {
   if (process.platform === "win32" && !isUnixLikeOnWindows2()) {
-    return [getDefaultShell()];
+    return { args: [getDefaultShell()], envFile: null };
   }
-  if (process.platform === "win32") return [];
+  if (process.platform === "win32") return { args: [], envFile: null };
   const shell = getDefaultShell();
   const baseline = buildProviderEnvironment({ SHELL: shell });
+  const inline = buildProviderEnvironment({ SHELL: shell }, process.env, process.platform, []);
+  const passthrough = Object.fromEntries(
+    Object.entries(baseline).filter(([key, value]) => inline[key] !== value)
+  );
   const inheritedPaneEnvironment = ["TERM", "TMUX", "TMUX_PANE", "TMUX_TMPDIR", "LANG", "LC_ALL", "LC_CTYPE"].map((key) => `${key}="$${key}"`);
+  const inlineAssignments = Object.entries(inline).map(([key, value]) => `${key}=${shellQuote(value)}`);
+  if (Object.keys(passthrough).length === 0) {
+    const command2 = [
+      "/usr/bin/env",
+      "-i",
+      ...inlineAssignments,
+      ...inheritedPaneEnvironment,
+      shellQuote(shell),
+      "-l"
+    ].join(" ");
+    return { args: [command2], envFile: null };
+  }
+  const envFile = writePaneEnvFile(passthrough);
+  const bootstrap = '. "$OMC_PANE_ENV_FILE" && rm -rf -- "${OMC_PANE_ENV_FILE%/*}" && unset OMC_PANE_ENV_FILE && exec "$SHELL" -l';
   const command = [
     "/usr/bin/env",
     "-i",
-    ...Object.entries(baseline).map(([key, value]) => `${key}=${shellQuote(value)}`),
+    ...inlineAssignments,
+    `OMC_PANE_ENV_FILE=${shellQuote(envFile)}`,
     ...inheritedPaneEnvironment,
-    shellQuote(shell),
-    "-l"
+    "/bin/sh",
+    "-c",
+    shellQuote(bootstrap)
   ].join(" ");
-  return [command];
+  return { args: [command], envFile };
+}
+async function runPaneCreationCommand(identity, nativeCommand, paneShell) {
+  let result;
+  try {
+    result = await runGuardedNativeTmuxCommand(identity, nativeCommand);
+  } catch (error2) {
+    discardPaneEnvFile(paneShell.envFile);
+    throw error2;
+  }
+  if (result.outcome === "not_executed") discardPaneEnvFile(paneShell.envFile);
+  return result;
 }
 function escapeForCmdSet2(value) {
   return value.replace(/(["%])/g, "$1$1");
@@ -83577,6 +83631,7 @@ async function splitTeamWorkerPaneWithEvidence(splitTarget, direction, cwd2, pro
       };
     }
     const splitType = direction === "right" ? "-h" : "-v";
+    const splitPaneShell = workerPaneShellCommand();
     const splitArgs = [
       "split-window",
       splitType,
@@ -83588,11 +83643,12 @@ async function splitTeamWorkerPaneWithEvidence(splitTarget, direction, cwd2, pro
       "#{pane_id}	#{socket_path}	#{pid}",
       "-c",
       cwd2,
-      ...workerPaneShellCommand()
+      ...splitPaneShell.args
     ];
-    const splitResult = await runGuardedNativeTmuxCommand(
+    const splitResult = await runPaneCreationCommand(
       identity,
-      tmuxCommandString(splitArgs, ["#{pane_id}	#{socket_path}	#{pid}"])
+      tmuxCommandString(splitArgs, ["#{pane_id}	#{socket_path}	#{pid}"]),
+      splitPaneShell
     );
     const parsed = splitResult.outcome === "executed" ? parseTmuxCreationRecord(
       splitResult.stdout,
@@ -83694,6 +83750,7 @@ async function createTeamSession(teamName, workerCount, cwd2, options = {}) {
       sessionMode: "detached-session",
       ...tmuxServerIdentity ? { tmuxServerIdentity: { ...tmuxServerIdentity } } : {}
     });
+    const detachedPaneShell = workerPaneShellCommand();
     const detachedArgs = [
       "new-session",
       "-d",
@@ -83704,7 +83761,7 @@ async function createTeamSession(teamName, workerCount, cwd2, options = {}) {
       detachedSessionName,
       "-c",
       cwd2,
-      ...workerPaneShellCommand()
+      ...detachedPaneShell.args
     ];
     const cleanupFreshDetachedServer = async () => {
       if (isPsmux() && freshSocketPathForEvidence) {
@@ -83733,9 +83790,10 @@ async function createTeamSession(teamName, workerCount, cwd2, options = {}) {
     if (existingDetachedIdentity) {
       tmuxServerIdentity = existingDetachedIdentity;
       try {
-        detachedResult = await runGuardedNativeTmuxCommand(
+        detachedResult = await runPaneCreationCommand(
           existingDetachedIdentity,
-          tmuxCommandString(detachedArgs, ["#S:0	#{pane_id}	#{socket_path}	#{pid}"])
+          tmuxCommandString(detachedArgs, ["#S:0	#{pane_id}	#{socket_path}	#{pid}"]),
+          detachedPaneShell
         );
       } catch (error2) {
         const cleaned = await cleanupDetachedSession();
@@ -83795,11 +83853,13 @@ async function createTeamSession(teamName, workerCount, cwd2, options = {}) {
           throw new Error("tmux_server_identity_unavailable");
         }
         freshDetachedServerIdentity = tmuxServerIdentity;
-        detachedResult = await runGuardedNativeTmuxCommand(
+        detachedResult = await runPaneCreationCommand(
           tmuxServerIdentity,
-          tmuxCommandString(detachedArgs, ["#S:0	#{pane_id}	#{socket_path}	#{pid}"])
+          tmuxCommandString(detachedArgs, ["#S:0	#{pane_id}	#{socket_path}	#{pid}"]),
+          detachedPaneShell
         );
       } catch (error2) {
+        discardPaneEnvFile(detachedPaneShell.envFile);
         const cleaned = await cleanupDetachedSession();
         if (!cleaned && freshDetachedServerStarted) {
           throw new TeamSessionCreationError(
@@ -83979,6 +84039,7 @@ async function createTeamSession(teamName, workerCount, cwd2, options = {}) {
   if (useDedicatedWindow) {
     const targetSession = sessionAndWindow.split(":")[0] ?? sessionAndWindow;
     const windowName = `omc-${sanitizeName(teamName)}`.slice(0, 32);
+    const newWindowPaneShell = workerPaneShellCommand();
     const newWindowArgs = [
       "new-window",
       "-d",
@@ -83991,13 +84052,14 @@ async function createTeamSession(teamName, workerCount, cwd2, options = {}) {
       windowName,
       "-c",
       cwd2,
-      ...workerPaneShellCommand()
+      ...newWindowPaneShell.args
     ];
     let newWindowResult;
     try {
-      newWindowResult = await runGuardedNativeTmuxCommand(
+      newWindowResult = await runPaneCreationCommand(
         tmuxServerIdentity,
-        tmuxCommandString(newWindowArgs, ["#S:#I	#{pane_id}	#{socket_path}	#{pid}"])
+        tmuxCommandString(newWindowArgs, ["#S:#I	#{pane_id}	#{socket_path}	#{pid}"]),
+        newWindowPaneShell
       );
     } catch (error2) {
       const creationError = new TeamSessionCreationError(
@@ -84147,6 +84209,7 @@ async function createTeamSession(teamName, workerCount, cwd2, options = {}) {
         continue;
       }
       const splitType = i === 0 ? "-h" : "-v";
+      const splitPaneShell = workerPaneShellCommand();
       const splitArgs = [
         "split-window",
         splitType,
@@ -84158,11 +84221,12 @@ async function createTeamSession(teamName, workerCount, cwd2, options = {}) {
         "#{pane_id}	#{socket_path}	#{pid}",
         "-c",
         cwd2,
-        ...workerPaneShellCommand()
+        ...splitPaneShell.args
       ];
-      const splitResult = await runGuardedNativeTmuxCommand(
+      const splitResult = await runPaneCreationCommand(
         tmuxServerIdentity,
-        tmuxCommandString(splitArgs, ["#{pane_id}	#{socket_path}	#{pid}"])
+        tmuxCommandString(splitArgs, ["#{pane_id}	#{socket_path}	#{pid}"]),
+        splitPaneShell
       );
       if (splitResult.outcome !== "executed") {
         const creationError = new TeamSessionCreationError(
