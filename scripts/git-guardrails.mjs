@@ -554,6 +554,14 @@ async function main() {
     process.exit(0);
   }
 
+  // Blocking requires both a destructive command and an active guard. The
+  // command parse is pure and cheap; the mode lookup reads state and runs git,
+  // so only pay for it when the command could actually be blocked (#4221).
+  const command = commandFromPayload(payload);
+  if (!command) process.exit(0);
+  const label = destructiveCommandLabel(command);
+  if (!label) process.exit(0);
+
   const explicit = process.env.OMC_GIT_GUARDRAILS === '1';
   let activeMode = null;
   if (!explicit) {
@@ -566,15 +574,8 @@ async function main() {
     if (!activeMode) process.exit(0);
   }
 
-  const command = commandFromPayload(payload);
-  if (!command) process.exit(0);
-
-  const label = destructiveCommandLabel(command);
-  if (label) {
-    process.stderr.write(`${guardMessage(label, activeMode)}\n`);
-    process.exit(2);
-  }
-  process.exit(0);
+  process.stderr.write(`${guardMessage(label, activeMode)}\n`);
+  process.exit(2);
 }
 
 await main();

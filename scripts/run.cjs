@@ -166,6 +166,7 @@ function resolveInnerTimeoutMs(manifestHook, platform = process.platform) {
 const TRUSTED_WORKER_HOOKS = new Map([
   ['keyword-detector.mjs', { event: 'UserPromptSubmit', timeoutCapMs: 8000 }],
   ['skill-injector.mjs', { event: 'UserPromptSubmit', timeoutCapMs: 12000 }],
+  ['git-guardrails.mjs', { event: 'PreToolUse' }],
   ['pre-tool-enforcer.mjs', { event: 'PreToolUse' }],
   ['post-tool-verifier.mjs', { event: 'PostToolUse' }],
   ['project-memory-posttool.mjs', { event: 'PostToolUse' }],
@@ -930,6 +931,15 @@ import(targetUrl).then(
 );
 `;
 
+/**
+ * git-guardrails.mjs is a no-op when explicitly disabled; skip starting its
+ * worker entirely. Returns 0 to exit, or null to run the worker.
+ */
+function gitGuardrailsPreCheck() {
+  if (process.env.OMC_GIT_GUARDRAILS === '0') return 0;
+  return null;
+}
+
 async function runWorker(targetPath, manifestHook, timeoutMs) {
   let worker;
   let terminal = false;
@@ -1034,6 +1044,14 @@ if (require.main === module) {
       const extraArgs = process.argv.slice(3);
       const workerManifestHook = resolveWorkerTarget(resolution, extraArgs);
       if (workerManifestHook) {
+        // Pre-check for git-guardrails: exit immediately if guard is disabled
+        if (basename(resolution.targetPath) === 'git-guardrails.mjs') {
+          const preCheckResult = gitGuardrailsPreCheck();
+          if (preCheckResult === 0) {
+            process.exitCode = 0;
+            return;
+          }
+        }
         const workerTimeoutMs = resolveTrustedWorkerTimeoutMs(resolution.targetPath, workerManifestHook);
         runWorker(resolution.targetPath, workerManifestHook, workerTimeoutMs).then(status => {
           process.exitCode = status;
