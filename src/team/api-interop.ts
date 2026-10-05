@@ -60,6 +60,7 @@ import {
 } from './mailbox-notification-guard.js';
 import { listDispatchRequests, markDispatchRequestDelivered, markDispatchRequestNotified } from './dispatch-queue.js';
 import { generateMailboxTriggerMessage } from './worker-bootstrap.js';
+import { isSdkTarget, ringDoorbell } from './sdk-transport.js';
 import { shutdownTeamV2, recoverDeadWorkerV2, readRecoverDeadWorkerV2Outcome } from './runtime-v2.js';
 import { isSafeRecoveryRequestId } from './recovery-request-store.js';
 import { inspectTeamWorktreeCleanupSafety } from './git-worktree.js';
@@ -547,6 +548,13 @@ async function notifyMailboxTarget(params: {
   messageId: string;
   cwd: string;
 }): Promise<DispatchOutcome> {
+  // SDK workers have no pane to type into: the host sends the trigger once its session is idle.
+  const recipient = (await teamReadConfig(params.teamName, params.cwd).catch(() => null))?.workers
+    .find((worker) => worker.name === params.toWorker);
+  if (isSdkTarget(recipient?.pane_id)) {
+    ringDoorbell(teamStateRoot(params.cwd, params.teamName), params.toWorker, { kind: 'prompt', text: params.triggerMessage, from: 'mailbox' });
+    return { ok: true, transport: 'mailbox', reason: 'sdk_doorbell_queued', request_id: params.requestId, message_id: params.messageId, to_worker: params.toWorker };
+  }
   return runMailboxNotificationAttempt({
     teamName: params.teamName,
     recipient: params.toWorker,

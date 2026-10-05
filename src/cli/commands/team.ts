@@ -33,7 +33,7 @@ const VALID_TEAM_CLI_AGENT_TYPES = new Set(['claude', 'copilot', 'codex', 'gemin
 const defaultTeamCliAgentType = (): CliAgentType => getHostCliType();
 
 const TEAM_HELP = `
-Usage: omg team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decompose] "<task description>"
+Usage: omg team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decompose] [--transport pane|sdk] "<task description>"
        omg team [N:agent-type[:role]] --task "<task description>"
        omg team status <team-name>
        omg team shutdown <team-name> [--force]
@@ -307,6 +307,8 @@ export interface ParsedTeamArgs {
   autoMerge: boolean;
   explicitWorkerSpec: boolean;
   noDecompose: boolean;
+  /** Worker transport override (`--transport pane|sdk`). */
+  transport?: 'pane' | 'sdk';
 }
 
 interface NormalizedWorkerSpecSegment {
@@ -413,6 +415,7 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = defau
   let newWindow = false;
   let autoMerge: boolean = process.env.OMC_TEAMS_AUTO_MERGE === '1';
   let noDecompose = false;
+  let transport: 'pane' | 'sdk' | undefined;
   let taskFromFlag: string | undefined;
   const normalizedDefaultAgentType = VALID_TEAM_CLI_AGENT_TYPES.has(defaultAgentType as CliAgentType)
     ? defaultAgentType
@@ -430,6 +433,10 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = defau
       autoMerge = true;
     } else if (arg === '--no-decompose' || arg === '--fixed-workers' || arg === '--preformed-plan') {
       noDecompose = true;
+    } else if (arg === '--transport' || arg.startsWith('--transport=')) {
+      const value = arg.includes('=') ? arg.slice('--transport='.length) : args[++index];
+      if (value !== 'pane' && value !== 'sdk') throw new Error('Usage: --transport pane|sdk');
+      transport = value;
     } else if (arg === '--task') {
       if (taskFromFlag !== undefined || args[index + 1] === undefined) {
         throw new Error('Usage: omg team [N:agent-type[:role]] --task "<task description>"');
@@ -535,7 +542,7 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = defau
   }
 
   const teamName = slugifyTask(task);
-  return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow, autoMerge, explicitWorkerSpec, noDecompose };
+  return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow, autoMerge, explicitWorkerSpec, noDecompose, ...(transport ? { transport } : {}) };
 }
 
 export function buildStartupTasks(parsed: ParsedTeamArgs): Array<{ subject: string; description: string; owner?: string; delegation?: TeamTaskDelegationPlan }> {
@@ -801,6 +808,7 @@ async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<voi
     workerRoles: parsed.workerSpecs.map((spec) => spec.role ?? spec.agentType),
     ...rolePromptOptions,
     ...(parsed.autoMerge ? { autoMerge: true } : {}),
+    ...(parsed.transport ? { transport: parsed.transport } : {}),
   });
 
   const uniqueTypes = [...new Set(parsed.agentTypes)].join(',');
@@ -946,6 +954,11 @@ async function handleTeamStatus(teamName: string, cwd: string): Promise<void> {
     console.log(`workers: total=${snapshot.workers.length}`);
     for (const worker of config?.workers ?? []) {
       console.log(`worker=${worker.name} working_dir=${worker.working_dir ?? 'n/a'} worktree_repo_root=${worker.worktree_repo_root ?? 'n/a'} worktree_path=${worker.worktree_path ?? 'n/a'} worktree_branch=${worker.worktree_branch ?? 'n/a'} worktree_detached=${String(worker.worktree_detached ?? false)} worktree_created=${String(worker.worktree_created ?? false)}`);
+    }
+    for (const worker of snapshot.workers) {
+      if (!worker.sdk) continue;
+      const sdk = worker.sdk;
+      console.log(`sdk_worker=${worker.name} provider=${worker.providerLiveness} state=${sdk.state} turns=${sdk.turns} queued=${sdk.queued} premium_requests=${sdk.premium_requests} credits=${sdk.credits.toFixed(2)} model=${sdk.model ?? 'auto'} last_event=${sdk.last_event_type ?? 'n/a'}@${sdk.last_event_at ?? 'n/a'}${sdk.last_error ? ` last_error=${JSON.stringify(sdk.last_error)}` : ''}`);
     }
     console.log(`tasks: total=${snapshot.tasks.total} pending=${snapshot.tasks.pending} blocked=${snapshot.tasks.blocked} in_progress=${snapshot.tasks.in_progress} completed=${snapshot.tasks.completed} failed=${snapshot.tasks.failed}`);
     console.log(`leader_next_action=${leaderGuidance.nextAction}`);
@@ -1106,6 +1119,15 @@ export async function teamCommand(args: string[]): Promise<void> {
 
   if (HELP_TOKENS.has(subcommand) || !subcommand) {
     console.log(TEAM_HELP.trim());
+    return;
+  }
+
+  // omg team sdk-host --spec <file>: internal, the detached per-worker host of --transport sdk.
+  if (subcommand === 'sdk-host') {
+    const specPath = args[args.indexOf('--spec') + 1];
+    if (!args.includes('--spec') || !specPath) throw new Error('Usage: omg team sdk-host --spec <sdk-host-spec.json>');
+    const { runSdkHostMain } = await import('../../team/sdk-host.js');
+    await runSdkHostMain(specPath);
     return;
   }
 

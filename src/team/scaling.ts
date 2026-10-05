@@ -69,6 +69,7 @@ import {
   teamStateRoot as resolveTeamStateRoot,
 } from './state-paths.js';
 import { writeWorkerOverlay } from './worker-bootstrap.js';
+import { isSdkTarget } from './sdk-transport.js';
 import {
   ensureWorkerWorktree,
   installWorktreeRootAgents,
@@ -1615,6 +1616,7 @@ export async function scaleUp(
   cwd: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ScaleUpResult | ScaleError> {
+  if (await isSdkTeam(teamName, cwd)) return { ok: false, error: 'scaling_unsupported_transport:sdk' };
   return scaleUpOwned(teamName, count, agentType, tasks, cwd, env);
 }
 
@@ -1625,10 +1627,16 @@ export async function scaleDown(
   options: ScaleDownOptions = {},
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ScaleDownResult | ScaleError> {
+  if (await isSdkTeam(teamName, cwd)) return { ok: false, error: 'scaling_unsupported_transport:sdk' };
   return scaleDownOwned(teamName, cwd, options, env);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function isSdkTeam(teamName: string, cwd: string): Promise<boolean> {
+  const current = await readRevisionedTeamConfig(teamName, cwd).catch(() => null);
+  return isSdkTarget(current?.config.tmux_session);
+}
 
 function resolveWorkerReadyTimeoutMs(env: NodeJS.ProcessEnv): number {
   const raw = env.OMC_TEAM_READY_TIMEOUT_MS;
