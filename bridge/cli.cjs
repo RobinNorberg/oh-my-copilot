@@ -78362,6 +78362,8 @@ var runtime_v2_exports = {};
 __export(runtime_v2_exports, {
   CircuitBreakerV2: () => CircuitBreakerV2,
   claimErrorLineFromPane: () => claimErrorLineFromPane,
+  cleanupAbandonedTeamState: () => cleanupAbandonedTeamState,
+  cleanupStaleReservations: () => cleanupStaleReservations,
   executeRecoverDeadWorkerV2Owner: () => executeRecoverDeadWorkerV2Owner,
   finalizeRecoveryOwnerResult: () => finalizeRecoveryOwnerResult,
   findActiveTeamsV2: () => findActiveTeamsV2,
@@ -81255,6 +81257,10 @@ async function startTeamV2(config2) {
     const missing = missingBinaryReasons.map(({ agentType, reason }) => `${agentType}:${reason}`).join(";");
     throw new Error(`cli_binary_preflight_failed:${missing}`);
   }
+  try {
+    await cleanupStaleReservations(sanitized, leaderCwd);
+  } catch {
+  }
   return withTeamInstanceLifecycleLock(leaderCwd, sanitized, async () => {
     const reservation2 = await reserveTeamInstanceUnderLock({
       teamName: instance.team_name,
@@ -82573,6 +82579,70 @@ async function monitorTeamV2(teamName, cwd2, expectedInstanceId) {
       updated_at: updatedAt
     }
   };
+}
+async function cleanupStaleReservations(teamName, cwd2) {
+  const sanitized = sanitizeTeamName(teamName);
+  try {
+    await withTeamInstanceLifecycleLock(cwd2, sanitized, async () => {
+      const workspaceHash2 = teamWorkspaceHash(cwd2, sanitized);
+      const reservationPath2 = canonicalTeamStatePath(
+        cwd2,
+        TeamPaths.teamInstanceReservation(workspaceHash2, sanitized)
+      );
+      if (!(0, import_fs90.existsSync)(reservationPath2)) return;
+      const contentStr = await (0, import_promises26.readFile)(reservationPath2, "utf-8");
+      const reservation2 = JSON.parse(contentStr);
+      if (!(reservation2 && typeof reservation2 === "object" && !Array.isArray(reservation2) && "owner" in reservation2 && typeof reservation2.owner === "object")) {
+        return;
+      }
+      const owner = reservation2.owner;
+      if (!(owner && typeof owner === "object" && !Array.isArray(owner) && "pid" in owner && "process_started_at" in owner)) {
+        return;
+      }
+      const ownerRecord = owner;
+      if (isProcessIdentityDead(ownerRecord)) {
+        await (0, import_promises26.unlink)(reservationPath2);
+      }
+    }, 5e3);
+  } catch {
+  }
+}
+async function cleanupAbandonedTeamState(teamName, cwd2) {
+  const sanitized = sanitizeTeamName(teamName);
+  await withTeamInstanceLifecycleLock(cwd2, sanitized, async () => {
+    const workspaceHash2 = teamWorkspaceHash(cwd2, sanitized);
+    const reservationPath2 = canonicalTeamStatePath(
+      cwd2,
+      TeamPaths.teamInstanceReservation(workspaceHash2, sanitized)
+    );
+    if ((0, import_fs90.existsSync)(reservationPath2)) {
+      try {
+        const contentStr = await (0, import_promises26.readFile)(reservationPath2, "utf-8");
+        const reservation2 = JSON.parse(contentStr);
+        const owner = reservation2.owner;
+        if (!owner || isProcessIdentityDead(owner) || ownerMatchesCurrent2(owner)) {
+          await (0, import_promises26.unlink)(reservationPath2);
+        }
+      } catch {
+        try {
+          await (0, import_promises26.unlink)(reservationPath2);
+        } catch {
+        }
+      }
+    }
+    const teamRoot = teamStateRoot(cwd2, sanitized);
+    if ((0, import_fs90.existsSync)(teamRoot)) {
+      try {
+        await (0, import_promises26.rm)(teamRoot, { recursive: true, force: true });
+      } catch (error2) {
+        throw new Error(`Failed to remove team state directory at ${teamRoot}: ${error2 instanceof Error ? error2.message : String(error2)}`);
+      }
+    }
+  }, 1e4);
+}
+function ownerMatchesCurrent2(owner) {
+  const processStartedAt = currentProcessStartIdentity();
+  return processStartedAt !== null && owner.pid === process.pid && processStartedAt === owner.process_started_at;
 }
 async function shutdownTeamV2(teamName, cwd2, options = {}) {
   const logEventFailure = createSwallowedErrorLogger(
@@ -126501,11 +126571,20 @@ async function handleTeamStatus(teamName, cwd2) {
 }
 async function handleTeamShutdown(teamName, cwd2, force) {
   const { readTeamConfig: readTeamConfig2 } = await Promise.resolve().then(() => (init_monitor(), monitor_exports));
-  const { shutdownTeamV2: shutdownTeamV22 } = await Promise.resolve().then(() => (init_runtime_v2(), runtime_v2_exports));
+  const { shutdownTeamV2: shutdownTeamV22, cleanupStaleReservations: cleanupStaleReservations2 } = await Promise.resolve().then(() => (init_runtime_v2(), runtime_v2_exports));
+  try {
+    await cleanupStaleReservations2(teamName, cwd2);
+  } catch (error2) {
+  }
   const config2 = await readTeamConfig2(teamName, cwd2);
-  const instanceId = config2?.instance_id;
+  if (!config2) {
+    console.log(`No team state found for ${teamName}`);
+    return;
+  }
+  const instanceId = config2.instance_id;
   if (!instanceId || !isValidTeamInstanceId(instanceId)) {
-    throw new Error("team_shutdown_instance_identity_missing");
+    console.log(`Team ${teamName} has no valid instance ID; no shutdown needed`);
+    return;
   }
   const shutdown = await shutdownTeamV22(teamName, cwd2, {
     instanceId,
@@ -126613,7 +126692,12 @@ async function teamCommand(args) {
     const name = nameOrFlag[1];
     if (!name) throw new Error("Usage: omg team shutdown <team-name> [--force]");
     const force = args.includes("--force");
-    await withStartupCleanupGuidance(name, cwd2, () => handleTeamShutdown(name, cwd2, force));
+    try {
+      await withStartupCleanupGuidance(name, cwd2, () => handleTeamShutdown(name, cwd2, force));
+    } catch (error2) {
+      console.error(error2 instanceof Error ? error2.message : String(error2));
+      process.exitCode = 1;
+    }
     return;
   }
   try {

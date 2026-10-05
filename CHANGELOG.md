@@ -2,6 +2,49 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.6.2
+
+## [5.6.2] - 2026-10-05
+
+Fork **v5.6.2** (from v5.6.1) ports upstream oh-my-claudecode `dev`
+4280efb1f..486b85bbb. Upstream is still at version 5.6.1; the fork bumps its
+own patch version. No breaking changes; the skill count stays 61. Nothing to
+migrate; see the [v5.6.1 → v5.6.2 note](docs/MIGRATION.md#v561--v562-postinstall-hook).
+
+### Ported from upstream oh-my-claudecode dev (4280efb1f..486b85bbb)
+
+- **contained-fs postinstall (#4217):** `npm install` now runs a
+  `postinstall` hook (`scripts/postinstall-contained-fs.mjs`). On macOS it
+  builds the contained-fs native addon when no prebuilt
+  `native/contained-fs-darwin-<arch>.node` is present; if the build cannot
+  run (no Node headers or Xcode Command Line Tools), it prints a one-line
+  warning with the manual `node scripts/build-contained-fs.mjs` command and
+  exits 0. On Linux and Windows, and in a source checkout (a `.git`
+  directory at the package root), it exits 0 without doing anything.
+  `scripts/build-contained-fs.mjs` takes a new `--optional` flag that skips
+  instead of throwing when the platform is unsupported or no headers are
+  found. CI checks that the packed tarball contains the build, postinstall
+  and verify scripts, `native/contained-fs.c` and the `postinstall` entry,
+  and that the tarball installs cleanly;
+  `tests/integration/contained-fs-packaging.test.ts` covers the packaging.
+- **Production-safe `team shutdown` (#4218):** shutdown first removes a stale
+  team reservation whose owner process is dead (`cleanupStaleReservations`,
+  under the lifecycle lock). Shutting down a team with no state prints
+  `No team state found for <name>` instead of throwing, and a shutdown error
+  prints its message and sets exit code 1 instead of an uncaught failure.
+  In the runtime CLI (`src/cli/team.ts`), a team whose config has no valid
+  `instance_id` (a partial startup) has its reservation and state directory
+  removed (`cleanupAbandonedTeamState`) and exits 1. `startTeamV2` runs the
+  stale-reservation cleanup before taking the lifecycle lock, so a dead
+  owner's leftover reservation no longer blocks a new team of the same name.
+- **git-guardrails latency (#4221):** the destructive-git PreToolUse hook
+  runs in a worker thread inside `scripts/run.cjs` instead of a second Node
+  process, and `run.cjs` skips it entirely when `OMC_GIT_GUARDRAILS=0`. The
+  hook parses the command before the mode lookup, so the state read and git
+  calls only happen for a destructive command; there is no substring
+  prefilter that could skip a real git command. The Copilot projection
+  (`copilot/hooks.json`) invokes the hook through the same `scripts/run.cjs`.
+
 # oh-my-copilot v5.6.1
 
 ## [5.6.1] - 2026-10-04

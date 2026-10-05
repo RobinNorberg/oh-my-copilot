@@ -20145,6 +20145,10 @@ async function startTeamV2(config) {
     const missing = missingBinaryReasons.map(({ agentType, reason }) => `${agentType}:${reason}`).join(";");
     throw new Error(`cli_binary_preflight_failed:${missing}`);
   }
+  try {
+    await cleanupStaleReservations(sanitized, leaderCwd);
+  } catch {
+  }
   return withTeamInstanceLifecycleLock(leaderCwd, sanitized, async () => {
     const reservation = await reserveTeamInstanceUnderLock({
       teamName: instance.team_name,
@@ -21440,6 +21444,33 @@ async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
       updated_at: updatedAt
     }
   };
+}
+async function cleanupStaleReservations(teamName, cwd) {
+  const sanitized = sanitizeTeamName(teamName);
+  try {
+    await withTeamInstanceLifecycleLock(cwd, sanitized, async () => {
+      const workspaceHash = teamWorkspaceHash(cwd, sanitized);
+      const reservationPath2 = canonicalTeamStatePath(
+        cwd,
+        TeamPaths.teamInstanceReservation(workspaceHash, sanitized)
+      );
+      if (!(0, import_fs30.existsSync)(reservationPath2)) return;
+      const contentStr = await (0, import_promises19.readFile)(reservationPath2, "utf-8");
+      const reservation = JSON.parse(contentStr);
+      if (!(reservation && typeof reservation === "object" && !Array.isArray(reservation) && "owner" in reservation && typeof reservation.owner === "object")) {
+        return;
+      }
+      const owner = reservation.owner;
+      if (!(owner && typeof owner === "object" && !Array.isArray(owner) && "pid" in owner && "process_started_at" in owner)) {
+        return;
+      }
+      const ownerRecord = owner;
+      if (isProcessIdentityDead(ownerRecord)) {
+        await (0, import_promises19.unlink)(reservationPath2);
+      }
+    }, 5e3);
+  } catch {
+  }
 }
 async function shutdownTeamV2(teamName, cwd, options = {}) {
   const logEventFailure = createSwallowedErrorLogger(

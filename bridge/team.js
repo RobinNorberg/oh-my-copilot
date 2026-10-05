@@ -18285,6 +18285,8 @@ var runtime_v2_exports = {};
 __export(runtime_v2_exports, {
   CircuitBreakerV2: () => CircuitBreakerV2,
   claimErrorLineFromPane: () => claimErrorLineFromPane,
+  cleanupAbandonedTeamState: () => cleanupAbandonedTeamState,
+  cleanupStaleReservations: () => cleanupStaleReservations,
   executeRecoverDeadWorkerV2Owner: () => executeRecoverDeadWorkerV2Owner,
   finalizeRecoveryOwnerResult: () => finalizeRecoveryOwnerResult,
   findActiveTeamsV2: () => findActiveTeamsV2,
@@ -21184,6 +21186,10 @@ async function startTeamV2(config) {
     const missing = missingBinaryReasons.map(({ agentType, reason }) => `${agentType}:${reason}`).join(";");
     throw new Error(`cli_binary_preflight_failed:${missing}`);
   }
+  try {
+    await cleanupStaleReservations(sanitized, leaderCwd);
+  } catch {
+  }
   return withTeamInstanceLifecycleLock(leaderCwd, sanitized, async () => {
     const reservation = await reserveTeamInstanceUnderLock({
       teamName: instance.team_name,
@@ -22502,6 +22508,70 @@ async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
       updated_at: updatedAt
     }
   };
+}
+async function cleanupStaleReservations(teamName, cwd) {
+  const sanitized = sanitizeTeamName(teamName);
+  try {
+    await withTeamInstanceLifecycleLock(cwd, sanitized, async () => {
+      const workspaceHash2 = teamWorkspaceHash(cwd, sanitized);
+      const reservationPath2 = canonicalTeamStatePath(
+        cwd,
+        TeamPaths.teamInstanceReservation(workspaceHash2, sanitized)
+      );
+      if (!existsSync31(reservationPath2)) return;
+      const contentStr = await readFile16(reservationPath2, "utf-8");
+      const reservation = JSON.parse(contentStr);
+      if (!(reservation && typeof reservation === "object" && !Array.isArray(reservation) && "owner" in reservation && typeof reservation.owner === "object")) {
+        return;
+      }
+      const owner = reservation.owner;
+      if (!(owner && typeof owner === "object" && !Array.isArray(owner) && "pid" in owner && "process_started_at" in owner)) {
+        return;
+      }
+      const ownerRecord = owner;
+      if (isProcessIdentityDead(ownerRecord)) {
+        await unlink7(reservationPath2);
+      }
+    }, 5e3);
+  } catch {
+  }
+}
+async function cleanupAbandonedTeamState(teamName, cwd) {
+  const sanitized = sanitizeTeamName(teamName);
+  await withTeamInstanceLifecycleLock(cwd, sanitized, async () => {
+    const workspaceHash2 = teamWorkspaceHash(cwd, sanitized);
+    const reservationPath2 = canonicalTeamStatePath(
+      cwd,
+      TeamPaths.teamInstanceReservation(workspaceHash2, sanitized)
+    );
+    if (existsSync31(reservationPath2)) {
+      try {
+        const contentStr = await readFile16(reservationPath2, "utf-8");
+        const reservation = JSON.parse(contentStr);
+        const owner = reservation.owner;
+        if (!owner || isProcessIdentityDead(owner) || ownerMatchesCurrent2(owner)) {
+          await unlink7(reservationPath2);
+        }
+      } catch {
+        try {
+          await unlink7(reservationPath2);
+        } catch {
+        }
+      }
+    }
+    const teamRoot = teamStateRoot(cwd, sanitized);
+    if (existsSync31(teamRoot)) {
+      try {
+        await rm9(teamRoot, { recursive: true, force: true });
+      } catch (error) {
+        throw new Error(`Failed to remove team state directory at ${teamRoot}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }, 1e4);
+}
+function ownerMatchesCurrent2(owner) {
+  const processStartedAt = currentProcessStartIdentity();
+  return processStartedAt !== null && owner.pid === process.pid && processStartedAt === owner.process_started_at;
 }
 async function shutdownTeamV2(teamName, cwd, options = {}) {
   const logEventFailure = createSwallowedErrorLogger(
@@ -25380,10 +25450,45 @@ async function teamShutdownByName(teamName, options = {}) {
   validateTeamName2(teamName);
   const cwd = options.cwd ?? process.cwd();
   const runtimeV2 = await Promise.resolve().then(() => (init_runtime_v2(), runtime_v2_exports));
+  try {
+    await runtimeV2.cleanupStaleReservations(teamName, cwd);
+  } catch {
+  }
   const config = await readTeamConfig(teamName, cwd);
-  const instanceId = config?.instance_id;
+  if (!config) {
+    console.log(`No team state found for ${teamName}`);
+    return {
+      teamName,
+      shutdown: false,
+      forced: Boolean(options.force),
+      sessionFound: false
+    };
+  }
+  const instanceId = config.instance_id;
   if (!instanceId || !isValidTeamInstanceId(instanceId)) {
-    throw new Error("team_shutdown_instance_identity_missing");
+    console.error(`Team ${teamName} has incomplete startup state (config but no valid instance_id); cleaning up...`);
+    try {
+      await runtimeV2.cleanupAbandonedTeamState(teamName, cwd);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to clean up abandoned team state: ${detail}`);
+      process.exitCode = 1;
+      return {
+        teamName,
+        shutdown: false,
+        forced: Boolean(options.force),
+        sessionFound: false,
+        error: `cleanup_failed:${detail}`
+      };
+    }
+    process.exitCode = 1;
+    return {
+      teamName,
+      shutdown: false,
+      forced: Boolean(options.force),
+      sessionFound: false,
+      cleaned: true
+    };
   }
   const shutdown = await runtimeV2.shutdownTeamV2(teamName, cwd, {
     instanceId,
@@ -25956,11 +26061,21 @@ async function teamCommand(argv) {
   }
   if (command === "shutdown") {
     const parsed = parseTeamTargetArgs(rest, "shutdown");
-    const result = await teamShutdownByName(parsed.teamName, {
-      cwd: parsed.cwd ?? process.cwd(),
-      force: Boolean(parsed.force)
-    });
-    output(result, parsed.json);
+    try {
+      const result = await teamShutdownByName(parsed.teamName, {
+        cwd: parsed.cwd ?? process.cwd(),
+        force: Boolean(parsed.force)
+      });
+      output(result, parsed.json);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!parsed.json) {
+        console.error(message);
+        process.exitCode = 1;
+      } else {
+        output({ ok: false, error: { message } }, parsed.json);
+      }
+    }
     return;
   }
   if (command === "api") {

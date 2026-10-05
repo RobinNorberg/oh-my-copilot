@@ -19,7 +19,7 @@ import { join, resolve } from 'path';
 import { existsSync } from 'fs';
 import { link, lstat, mkdir, open, readdir, readFile, rm, unlink, writeFile } from 'fs/promises';
 import { performance } from 'perf_hooks';
-import { TeamPaths, absPath, teamStateRoot } from './state-paths.js';
+import { TeamPaths, absPath, canonicalTeamStatePath, teamStateRoot, teamWorkspaceHash } from './state-paths.js';
 import { getOmcRoot, validateSessionId } from '../lib/worktree-paths.js';
 import { allocateTasksToWorkers } from './allocation-policy.js';
 import { readTeamConfig, readWorkerStatus, readWorkerHeartbeat, writeShutdownRequest, readShutdownAck, writeWorkerInbox, saveTeamConfig, commitInitialTeamConfigUnderLock, readRevisionedTeamConfig, saveTeamConfigAtRevision, migrateTeamConfigRevision, withTeamConfigMutationLock, readTeamManifest, } from './monitor.js';
@@ -3412,6 +3412,14 @@ export async function startTeamV2(config) {
         const missing = missingBinaryReasons.map(({ agentType, reason }) => `${agentType}:${reason}`).join(';');
         throw new Error(`cli_binary_preflight_failed:${missing}`);
     }
+    // Clean up any stale reservations from dead processes BEFORE acquiring the lifecycle lock.
+    // This prevents nested lock acquisition and ensures old dead-owner reservations don't block startup.
+    try {
+        await cleanupStaleReservations(sanitized, leaderCwd);
+    }
+    catch {
+        // Best-effort; proceed even if cleanup fails
+    }
     return withTeamInstanceLifecycleLock(leaderCwd, sanitized, async () => {
         // Reserve the name before creating any state, worktree, pane, or provider
         // effect.  The reservation remains external and blocks same-name startup
@@ -4936,6 +4944,100 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
             updated_at: updatedAt,
         },
     };
+}
+// ---------------------------------------------------------------------------
+// cleanupStaleReservations — remove reservations owned by dead processes
+// ---------------------------------------------------------------------------
+/**
+ * Best-effort cleanup of stale team reservations owned by dead processes.
+ * Acquires the lifecycle lock to ensure race-safe removal.
+ * This allows new teams to be created even if a previous team's reservation
+ * file was left behind due to process death during startup.
+ */
+export async function cleanupStaleReservations(teamName, cwd) {
+    const sanitized = sanitizeTeamName(teamName);
+    try {
+        await withTeamInstanceLifecycleLock(cwd, sanitized, async () => {
+            const workspaceHash = teamWorkspaceHash(cwd, sanitized);
+            const reservationPath = canonicalTeamStatePath(cwd, TeamPaths.teamInstanceReservation(workspaceHash, sanitized));
+            if (!existsSync(reservationPath))
+                return;
+            const contentStr = await readFile(reservationPath, 'utf-8');
+            const reservation = JSON.parse(contentStr);
+            // Validate basic shape
+            if (!(reservation &&
+                typeof reservation === 'object' &&
+                !Array.isArray(reservation) &&
+                'owner' in reservation &&
+                typeof reservation.owner === 'object')) {
+                return; // Malformed, leave alone
+            }
+            const owner = reservation.owner;
+            if (!(owner &&
+                typeof owner === 'object' &&
+                !Array.isArray(owner) &&
+                'pid' in owner &&
+                'process_started_at' in owner)) {
+                return; // Malformed owner, leave alone
+            }
+            // Check if the process is dead
+            const ownerRecord = owner;
+            if (isProcessIdentityDead(ownerRecord)) {
+                // Owner process is dead; clean up this reservation
+                await unlink(reservationPath);
+            }
+        }, 5_000);
+    }
+    catch {
+        // Best-effort; silently proceed on any error
+    }
+}
+/**
+ * Clean up abandoned team state when config exists but has no valid instance_id.
+ * This handles partial startup failures and ensures no state is left behind.
+ */
+export async function cleanupAbandonedTeamState(teamName, cwd) {
+    const sanitized = sanitizeTeamName(teamName);
+    await withTeamInstanceLifecycleLock(cwd, sanitized, async () => {
+        // Clean up the reservation if it exists and owner is dead or missing
+        const workspaceHash = teamWorkspaceHash(cwd, sanitized);
+        const reservationPath = canonicalTeamStatePath(cwd, TeamPaths.teamInstanceReservation(workspaceHash, sanitized));
+        if (existsSync(reservationPath)) {
+            try {
+                const contentStr = await readFile(reservationPath, 'utf-8');
+                const reservation = JSON.parse(contentStr);
+                const owner = reservation.owner;
+                // Remove if owner is dead or if this process owns it
+                if (!owner || isProcessIdentityDead(owner) || ownerMatchesCurrent(owner)) {
+                    await unlink(reservationPath);
+                }
+            }
+            catch {
+                // If reservation is malformed, try to remove it anyway
+                try {
+                    await unlink(reservationPath);
+                }
+                catch {
+                    // Reservation removal failed; continue with state dir cleanup
+                }
+            }
+        }
+        // Clean up the team state directory
+        const teamRoot = teamStateRoot(cwd, sanitized);
+        if (existsSync(teamRoot)) {
+            try {
+                await rm(teamRoot, { recursive: true, force: true });
+            }
+            catch (error) {
+                throw new Error(`Failed to remove team state directory at ${teamRoot}: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
+    }, 10_000);
+}
+// Helper to check if owner matches current process
+function ownerMatchesCurrent(owner) {
+    const processStartedAt = currentProcessStartIdentity();
+    return processStartedAt !== null && owner.pid === process.pid && processStartedAt === owner.process_started_at;
 }
 // ---------------------------------------------------------------------------
 // shutdownTeam — graceful shutdown with gate, ack, force kill
