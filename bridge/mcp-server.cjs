@@ -30444,6 +30444,7 @@ async function runSdkTier(input) {
       }
       const path14 = (0, import_path58.join)(input.home, `events-${name}.jsonl`);
       events[name] = path14;
+      if (entries.length > 0) await new Promise((resolve22) => setTimeout(resolve22, 2));
       const start = Date.now();
       const { wedged: stuck, ...run } = await runScenario(client, input, name, choice.model, modelLabel, path14, input.maxCredits - total.credits);
       entries.push({ name, run, start });

@@ -106863,6 +106863,7 @@ async function runSdkTier(input) {
       }
       const path28 = (0, import_path161.join)(input.home, `events-${name}.jsonl`);
       events[name] = path28;
+      if (entries.length > 0) await new Promise((resolve50) => setTimeout(resolve50, 2));
       const start = Date.now();
       const { wedged: stuck, ...run } = await runScenario(client, input, name, choice.model, modelLabel, path28, input.maxCredits - total.credits);
       entries.push({ name, run, start });

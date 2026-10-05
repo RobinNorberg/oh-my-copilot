@@ -484,6 +484,11 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
       if (stopReason) { entries.push({ name, skip: stopReason }); continue; }
       const path = join(input.home, `events-${name}.jsonl`);
       events[name] = path;
+      // Log lines are attributed to scenarios by millisecond timestamp
+      // (sliceLogByTime), so a scenario must start strictly after the previous
+      // one's last activity; a fast fake can otherwise finish within the same
+      // millisecond. Negligible against real runs, which take seconds.
+      if (entries.length > 0) await new Promise<void>((resolve) => setTimeout(resolve, 2));
       const start = Date.now();
       const { wedged: stuck, ...run } = await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
       entries.push({ name, run, start });
