@@ -57,7 +57,7 @@ export const SDK_SHELL_DENY_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string
   { re: /\bcli\.cjs["']?\s+team\s+(?!api\b)/i, reason: 'team control outside `team api`' },
   { re: /\b(?:omg|omc|oh-my-copilot)(?:\.cmd|\.ps1)?\s+smoke\b/i, reason: '`omg smoke` from a worker' },
   { re: /(?:^|[\s;&|(])(?:tmux|psmux)(?:\.exe)?\b/i, reason: 'multiplexer control' },
-  { re: /\bgit(?:\.exe)?\s+(?:-[^\s]+\s+)*push\b/i, reason: '`git push` from a worker' },
+  { re: /\bgit(?:\.exe)?\s[^|;&\n]*?\bpush\b/i, reason: '`git push` from a worker' },
 ];
 
 function canon(p: string, platform: NodeJS.Platform): string {

@@ -177,6 +177,20 @@ function writeOmgShims(binDir: string, cliPath: string, nodePath: string): void 
   writeFileSync(join(binDir, 'omg'), `#!/bin/sh\nexec "${nodePath}" "${cliPath}" "$@"\n`, { mode: 0o755 });
 }
 
+/** Zero-model introspection: the offered tool names and MCP server states. */
+async function probeSession(s: SdkSessionLike): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = { at: new Date().toISOString() };
+  try {
+    const tools = s.rpc.tools;
+    if (tools?.initializeAndValidate) await withTimeout(tools.initializeAndValidate(), RPC_TIMEOUT_MS, 'tools.initializeAndValidate');
+    const meta = tools?.getCurrentMetadata ? await withTimeout(tools.getCurrentMetadata(), RPC_TIMEOUT_MS, 'tools.getCurrentMetadata') : null;
+    const list = (meta as { tools?: Array<{ name?: string }> } | null)?.tools ?? [];
+    out.tools = list.map((t) => t.name).filter(Boolean).sort();
+  } catch (err) { out.tools_error = errText(err); }
+  try { out.mcp = await withTimeout(s.rpc.mcp.list(), RPC_TIMEOUT_MS, 'mcp.list'); } catch (err) { out.mcp_error = errText(err); }
+  return out;
+}
+
 export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<SdkHostOutcome> {
   const files = sdkWorkerFiles(spec.state_root, spec.worker_name);
   const log = deps.log ?? (() => {});
@@ -220,7 +234,13 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
     if (!dirty && !force) return;
     dirty = false;
     session.updated_at = new Date().toISOString();
-    try { await atomicWriteJson(files.session, session); } catch (err) { log(`session write failed: ${errText(err)}`); }
+    try {
+      await atomicWriteJson(files.session, session);
+    } catch (err) {
+      // win32: the rename fails (EPERM/EBUSY) while a reader holds the file; retry on the next tick.
+      dirty = true;
+      log(`session write failed: ${errText(err)}`);
+    }
   };
   const mark = (stamp?: keyof SdkSessionFile['timeline']) => {
     if (stamp && !session.timeline[stamp]) session.timeline[stamp] = new Date().toISOString();
@@ -441,6 +461,8 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
         stop = 'graceful';
       } else if (entry.kind === 'stop') {
         stop = 'graceful';
+      } else if (entry.kind === 'probe' && !busy) {
+        await atomicWriteJson(files.probe, await probeSession(s)).catch(() => undefined);
       }
     }
     if (!stop && existsSync(`${attempt.startedPath}.termination-request`)) { stop = 'hard'; outcome = 'terminated'; }

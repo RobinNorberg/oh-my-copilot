@@ -52,6 +52,7 @@ export function sdkWorkerFiles(stateRoot: string, workerName: string) {
     spec: join(dir, 'sdk-host-spec.json'),
     doorbell: join(dir, 'sdk-doorbell.jsonl'),
     session: join(dir, 'sdk-session.json'),
+    probe: join(dir, 'sdk-probe.json'),
     events: join(dir, 'sdk-events.jsonl'),
     log: join(dir, 'sdk-host.log'),
     home: join(dir, 'copilot-home'),
@@ -89,7 +90,8 @@ export interface SdkHostSpec {
 
 export interface SdkDoorbellEntry {
   id: string;
-  kind: 'prompt' | 'abort' | 'stop' | 'shutdown';
+  /** `probe`: zero-model introspection (tools offered, MCP servers) written to `sdk-probe.json`. */
+  kind: 'prompt' | 'abort' | 'stop' | 'shutdown' | 'probe';
   text?: string;
   at: string;
   from?: string;
