@@ -13,7 +13,8 @@ export default defineConfig({
       'tests/**/*.bench.ts',
       'tests/**/*.{test,spec}.ts',
     ],
-    exclude: ['node_modules', 'dist', '.omc'],
+    // tests/live/** drives real host binaries; run it with `npm run test:live`.
+    exclude: ['node_modules', 'dist', '.omc', 'tests/live/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

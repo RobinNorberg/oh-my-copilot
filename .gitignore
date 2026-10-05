@@ -1,5 +1,7 @@
 node_modules/
 *.log
+# Captured Copilot debug-log excerpts used as smoke-test fixtures
+!src/smoke/__tests__/fixtures/*.log
 .DS_Store
 !.omc/
 .omc/*

@@ -1,0 +1,801 @@
+/**
+ * `omg smoke copilot` — load-check the oh-my-copilot plugin inside the real
+ * GitHub Copilot CLI.
+ *
+ * Tier 0 makes no model call: manifest/version, generated hooks/agents drift,
+ * `plugin list`/`skill list` against `--plugin-dir`, and the standalone MCP
+ * server's tools/list. Tier 1 adds one cheap non-interactive session in a
+ * throwaway COPILOT_HOME and asserts on its persisted events, debug log and
+ * the `.omg/` state our hooks write.
+ */
+
+import { spawn, spawnSync } from 'child_process';
+import { randomUUID } from 'crypto';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { dirname, join, resolve, sep } from 'path';
+import { fileURLToPath } from 'url';
+import { buildHostBinarySpawn } from '../cli/tmux-utils.js';
+import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
+import { parseJsonc } from '../utils/jsonc.js';
+import { parseCopilotVersion, resolveCopilotBinary, type BinaryResolverDeps } from './copilot-binary.js';
+import {
+  EVIDENCE_MAX,
+  evaluateAdapterErrors,
+  evaluateEventsLog,
+  evaluateHooks,
+  evaluateMcpLoaded,
+  evaluatePluginsLoaded,
+  evaluateSessionExit,
+  evaluateStateWritten,
+  evaluateSubagent,
+  excerpt,
+  parseJsonl,
+  REQUIRED_HOOK_TYPES,
+  TOOL_HOOK_TYPES,
+  type SmokeCheck,
+} from './copilot-session-eval.js';
+import { hasExited, killProcessTree, runAsync, useProcessGroup, type SpawnFn, type SpawnSyncFn } from './process-utils.js';
+
+export type { SmokeCheck } from './copilot-session-eval.js';
+
+export type SmokeTier = 0 | 1;
+
+export interface SmokeOptions {
+  /** Default: OMC_PLUGIN_ROOT, else the package root of the running omg. */
+  pluginRoot: string;
+  /** 0 = load check (no model call); 1 = tier 0 + one live session. */
+  tier: SmokeTier;
+  copilotBin?: string;
+  /** Tier 1 model. Default {@link DEFAULT_SMOKE_MODEL}. */
+  model?: string;
+  /** Tier 1 `--max-ai-credits` (CLI minimum is {@link MIN_MAX_CREDITS}). */
+  maxCredits?: number;
+  /**
+   * Per subprocess at tier 0 (default 60 s); the tier 1 session (default 180 s,
+   * tier 0 steps of a tier 1 run keep 60 s). The mcp.list_tools check is fixed at 10 s.
+   */
+  timeoutMs?: number;
+  /** Keep the throwaway COPILOT_HOME and project dir for debugging. */
+  keepHome?: boolean;
+  /** Tier 1 prompt override. */
+  prompt?: string;
+  /** Tier 1: use the delegation prompt and add the `subagent.selected` check. */
+  delegate?: boolean;
+  env?: NodeJS.ProcessEnv;
+  /** Test seams; defaults are the real implementations. */
+  deps?: SmokeDeps;
+}
+
+export interface SmokeDeps extends BinaryResolverDeps {
+  spawn?: SpawnFn;
+  spawnSync?: SpawnSyncFn;
+  /** Expected standalone MCP tool count (default: tool-registry `allTools.length`). */
+  loadExpectedToolCount?: () => Promise<number>;
+  randomUUID?: () => string;
+  /** Real Copilot config dir to copy the login identity from (default getCopilotConfigDir()). */
+  userConfigDir?: string;
+}
+
+export interface SmokeReport {
+  ok: boolean;
+  tier: SmokeTier;
+  pluginRoot: string;
+  pluginVersion: string | null;
+  copilot: { bin: string | null; version: string | null };
+  checks: SmokeCheck[];
+  artifacts: SmokeArtifacts;
+  durationMs: number;
+  skipped?: string;
+}
+
+/**
+ * Paths kept with keepHome (else deleted and omitted). `listHome` is the tier 0
+ * COPILOT_HOME used for `plugin list`/`skill list`; `copilotHome` is the tier 1
+ * session's COPILOT_HOME (its parent also holds the temp project).
+ */
+export interface SmokeArtifacts {
+  listHome?: string;
+  copilotHome?: string;
+  eventsLog?: string;
+  debugLog?: string;
+  stdout?: string;
+}
+
+/**
+ * No default model id: on Copilot CLI 1.0.91 every explicit `--model` tried
+ * (gpt-5-mini, gpt-6-luna, claude-sonnet-5) failed with `Model "<id>" from
+ * --model flag is not available` before any model call, while omitting the
+ * flag lets the CLI auto-pick (it chose mai-code-1.1-flash, a low-price flash
+ * model). Cost stays bounded by --max-ai-credits. Pass --model to pin one.
+ */
+export const DEFAULT_SMOKE_MODEL: string | undefined = undefined;
+export const DEFAULT_MAX_CREDITS = 30;
+/** Copilot CLI rejects `--max-ai-credits` below this. */
+export const MIN_MAX_CREDITS = 30;
+export const DEFAULT_TIER0_TIMEOUT_MS = 60_000;
+export const DEFAULT_TIER1_TIMEOUT_MS = 180_000;
+export const MCP_LIST_TIMEOUT_MS = 10_000;
+export const PLUGIN_NAME = 'oh-my-copilot';
+export const DELEGATE_AGENT = 'oh-my-copilot:architect';
+
+export const DEFAULT_SMOKE_PROMPT = 'Reply with exactly: SMOKE_OK. Do not use tools.';
+export const DELEGATE_SMOKE_PROMPT =
+  `Delegate one task to the ${DELEGATE_AGENT} agent: ask it to reply with one line. `
+  + 'Then reply with exactly: SMOKE_OK. Do not edit any files.';
+
+/**
+ * Copy of the non-interactive permission flags from COPILOT_WORKER_BASE_FLAGS
+ * (src/team/model-contract.ts), minus the path/url grants the smoke does not
+ * need. Copied rather than imported so the smoke does not pull in team code.
+ */
+const SMOKE_PERMISSION_FLAGS = ['--allow-all-tools', '--no-ask-user'] as const;
+
+/**
+ * Tier 1 session sandboxing (spellings verified against `copilot --help` and
+ * `copilot help permissions`, CLI 1.0.91; deny rules beat --allow-all-tools):
+ * - never let the model call our own `host_smoke` tool (server `t`) recursively;
+ * - no built-in MCP servers (github-mcp-server, githubiq) in the smoke;
+ * - the default prompt forbids tools, so also deny shell and file writes.
+ *   `--delegate` keeps them, because the subagent hand-off is a tool call.
+ */
+export function sessionSandboxFlags(delegate: boolean): string[] {
+  return [
+    '--deny-tool', 't(host_smoke)',
+    '--disable-builtin-mcps',
+    ...(delegate ? [] : ['--deny-tool', 'shell', '--deny-tool', 'write']),
+  ];
+}
+
+/**
+ * Env policy for every copilot child the smoke spawns (the caller's env minus
+ * what could redirect, disable, or re-host our hooks; precedent:
+ * scripts/verify-graph-contained-fs.mjs).
+ *
+ * Stripped:
+ * - every `OMC_*` var and `DISABLE_OMC` (state dir, plugin root, skip/disable
+ *   switches, debug toggles), then only {@link SMOKE_SET_ENV} is re-added;
+ * - Claude Code host markers: `CLAUDECODE`, `CLAUDE_SESSION_ID`,
+ *   `CLAUDE_PLUGIN_ROOT`, and every `CLAUDE_CODE_*` (incl. CLAUDE_CODE_ENTRYPOINT);
+ * - `NODE_OPTIONS` (preloads would run inside our node hooks);
+ * - `COPILOT_HOME`, `COPILOT_OFFLINE`, `COPILOT_MODEL` (only `--model` picks the
+ *   model), every `COPILOT_PROVIDER_*` (BYO provider routing);
+ * - tier 1 with a copied login identity: `GH_TOKEN`, `GITHUB_TOKEN` (see
+ *   {@link buildSessionEnv}).
+ * Kept: everything else, notably PATH/PATHEXT/SystemRoot/HOME/USERPROFILE/
+ * APPDATA/LOCALAPPDATA/TEMP (hooks spawn node and resolve home dirs),
+ * `COPILOT_GITHUB_TOKEN`, and the remaining `COPILOT_*` (e.g. COPILOT_CLI_PATH).
+ */
+export const STRIPPED_ENV_EXACT = [
+  'DISABLE_OMC',
+  'CLAUDECODE',
+  'CLAUDE_SESSION_ID',
+  'CLAUDE_PLUGIN_ROOT',
+  'NODE_OPTIONS',
+  'COPILOT_HOME',
+  'COPILOT_OFFLINE',
+  'COPILOT_MODEL',
+] as const;
+export const STRIPPED_ENV_PREFIXES = ['OMC_', 'CLAUDE_CODE_', 'COPILOT_PROVIDER_'] as const;
+/** Generic GitHub tokens dropped from the tier 1 session when a stored login was copied. */
+export const LOGIN_SHADOWING_TOKENS = ['GH_TOKEN', 'GITHUB_TOKEN'] as const;
+/** Set on every copilot child (on top of COPILOT_HOME). */
+export const SMOKE_SET_ENV = {
+  COPILOT_ALLOW_ALL: 'false',
+  COPILOT_AUTO_UPDATE: 'false',
+  NO_COLOR: '1',
+} as const;
+/** Set on the tier 1 session only: a failing hook must surface as hook.end success:false. */
+export const SESSION_SET_ENV = { OMC_HOOK_FAIL_CLOSED: '1' } as const;
+
+export function isStrippedEnvKey(key: string): boolean {
+  const upper = process.platform === 'win32' ? key.toUpperCase() : key;
+  return (STRIPPED_ENV_EXACT as readonly string[]).includes(upper)
+    || STRIPPED_ENV_PREFIXES.some((p) => upper.startsWith(p));
+}
+
+const TIER0_COPILOT_IDS = ['copilot.binary', 'copilot.plugin_list', 'copilot.skill_list'] as const;
+
+function tier1Ids(delegate: boolean): string[] {
+  return [
+    'session.exit',
+    'session.events',
+    ...REQUIRED_HOOK_TYPES.map((t) => `hooks.${t}`),
+    ...TOOL_HOOK_TYPES.map((t) => `hooks.${t}`),
+    'hooks.adapter_errors',
+    'plugins.loaded',
+    'mcp.server_loaded',
+    'state.written',
+    ...(delegate ? ['subagent.selected'] : []),
+  ];
+}
+
+/** Walk up from this module to the directory holding the oh-my-copilot plugin.json. */
+export function resolveDefaultPluginRoot(env: NodeJS.ProcessEnv = process.env): string {
+  const fromEnv = env[OMC_PLUGIN_ROOT_ENV]?.trim();
+  if (fromEnv) return resolve(fromEnv);
+  return findPluginRoot([...moduleDirs(), process.cwd()]) ?? process.cwd();
+}
+
+/**
+ * The oh-my-copilot package root that contains the running module (no env,
+ * no cwd fallback), or null when this code is not running from a plugin tree.
+ */
+export function resolvePackageRoot(): string | null {
+  return findPluginRoot(moduleDirs());
+}
+
+function moduleDirs(): string[] {
+  const starts: string[] = [];
+  if (typeof __dirname !== 'undefined' && __dirname) starts.push(__dirname);
+  try { starts.push(dirname(fileURLToPath(import.meta.url))); } catch { /* CJS bundle */ }
+  return starts;
+}
+
+function findPluginRoot(starts: string[]): string | null {
+  for (const start of starts) {
+    let dir = resolve(start);
+    for (let i = 0; i < 8; i++) {
+      if (isPluginRoot(dir)) return dir;
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return null;
+}
+
+function isPluginRoot(dir: string): boolean {
+  try {
+    const manifest = JSON.parse(readFileSync(join(dir, 'plugin.json'), 'utf-8')) as { name?: unknown };
+    return manifest.name === PLUGIN_NAME && existsSync(join(dir, 'package.json'));
+  } catch {
+    return false;
+  }
+}
+
+function readJson(path: string): Record<string, unknown> | null {
+  try { return JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>; } catch { return null; }
+}
+
+function countDirsWith(dir: string, file: string): string[] {
+  try {
+    return readdirSync(dir).filter((name) => existsSync(join(dir, name, file))).sort();
+  } catch {
+    return [];
+  }
+}
+
+function countFiles(dir: string, ext: string): number {
+  try { return readdirSync(dir).filter((name) => name.endsWith(ext)).length; } catch { return -1; }
+}
+
+/** Extract the first JSON array from CLI output that may carry warnings around it. */
+export function extractJsonArray(text: string): unknown[] | null {
+  const start = text.indexOf('[');
+  const end = text.lastIndexOf(']');
+  if (start === -1 || end < start) return null;
+  try {
+    const parsed = JSON.parse(text.slice(start, end + 1)) as unknown;
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function makeTempDir(prefix: string): string {
+  return mkdtempSync(join(tmpdir(), prefix));
+}
+
+function removeDir(path: string | undefined): void {
+  if (!path) return;
+  try { rmSync(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 }); } catch { /* best effort */ }
+}
+
+interface Ctx {
+  root: string;
+  env: NodeJS.ProcessEnv;
+  spawnFn: SpawnFn;
+  spawnSyncFn: SpawnSyncFn;
+  deps: SmokeDeps;
+  timeoutMs: number;
+}
+
+// ---------------------------------------------------------------------------
+// Tier 0
+// ---------------------------------------------------------------------------
+
+function checkManifest(root: string): { check: SmokeCheck; pluginVersion: string | null; packageVersion: string | null } {
+  const manifest = readJson(join(root, 'plugin.json'));
+  const pkg = readJson(join(root, 'package.json'));
+  const pluginVersion = typeof manifest?.version === 'string' ? manifest.version : null;
+  const packageVersion = typeof pkg?.version === 'string' ? pkg.version : null;
+  const problems: string[] = [];
+  if (!manifest) problems.push('plugin.json missing or not JSON');
+  else {
+    if (manifest.name !== PLUGIN_NAME) problems.push(`name is ${JSON.stringify(manifest.name)}, expected ${PLUGIN_NAME}`);
+    if (!packageVersion) problems.push('package.json version missing');
+    else if (pluginVersion !== packageVersion) problems.push(`version ${pluginVersion} != package.json ${packageVersion}`);
+  }
+  return {
+    check: {
+      id: 'plugin.manifest',
+      ok: problems.length === 0,
+      detail: problems.length === 0 ? `${PLUGIN_NAME}@${pluginVersion}` : problems.join('; '),
+    },
+    pluginVersion,
+    packageVersion,
+  };
+}
+
+function checkGeneratedHooks(ctx: Ctx): SmokeCheck {
+  const scripts = ['scripts/copilot/build-hooks.mjs', 'scripts/copilot/build-agents.mjs'];
+  const failures: string[] = [];
+  const evidence: string[] = [];
+  for (const script of scripts) {
+    const res = ctx.spawnSyncFn(process.execPath, [script, '--verify'], {
+      cwd: ctx.root,
+      env: ctx.env,
+      encoding: 'utf8',
+      timeout: ctx.timeoutMs,
+      windowsHide: true,
+    });
+    const out = `${res.stdout ?? ''}${res.stderr ?? ''}`.trim();
+    if (res.status !== 0) {
+      failures.push(`${script} --verify exit ${res.status ?? res.error?.message ?? 'null'}`);
+      evidence.push(out);
+    }
+  }
+  return {
+    id: 'plugin.hooks',
+    ok: failures.length === 0,
+    detail: failures.length === 0 ? 'build-hooks and build-agents --verify pass' : failures.join('; '),
+    ...(failures.length ? { evidence: excerpt(evidence.join('\n')) } : {}),
+  };
+}
+
+function checkAgents(root: string): SmokeCheck {
+  const source = countFiles(join(root, 'agents'), '.md');
+  const generated = countFiles(join(root, 'copilot', 'agents'), '.md');
+  const ok = source > 0 && source === generated;
+  return {
+    id: 'copilot.agents',
+    ok,
+    detail: `copilot/agents ${generated} vs agents ${source} *.md`,
+  };
+}
+
+function runCopilotSync(ctx: Ctx, bin: string, args: string[], env: NodeJS.ProcessEnv, cwd: string) {
+  const plan = buildHostBinarySpawn(bin, args);
+  return ctx.spawnSyncFn(plan.command, plan.args, {
+    cwd,
+    env,
+    encoding: 'utf8',
+    timeout: ctx.timeoutMs,
+    windowsHide: true,
+    windowsVerbatimArguments: plan.windowsVerbatimArguments,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+}
+
+function checkPluginList(ctx: Ctx, bin: string, env: NodeJS.ProcessEnv, cwd: string, packageVersion: string | null): SmokeCheck {
+  const res = runCopilotSync(ctx, bin, ['--plugin-dir', ctx.root, '--no-auto-update', 'plugin', 'list', '--json'], env, cwd);
+  const stdout = String(res.stdout ?? '');
+  const list = extractJsonArray(stdout);
+  if (res.status !== 0 || !list) {
+    return { id: 'copilot.plugin_list', ok: false, detail: `plugin list exit ${res.status}${list ? '' : ', no JSON array'}`, evidence: excerpt(`${stdout}${res.stderr ?? ''}`) };
+  }
+  // A bad --plugin-dir only warns and returns [] with exit 0: assert the exact entry.
+  const entry = list.find((p) => (p as { name?: unknown }).name === PLUGIN_NAME) as { version?: unknown; source?: unknown } | undefined;
+  const ok = !!entry && entry.version === packageVersion && entry.source === 'external';
+  return {
+    id: 'copilot.plugin_list',
+    ok,
+    detail: entry
+      ? `${PLUGIN_NAME}@${String(entry.version)} source=${String(entry.source)}${ok ? '' : ` (expected ${packageVersion}, external)`}`
+      : `${PLUGIN_NAME} not listed (${list.length} plugin(s))`,
+    ...(ok ? {} : { evidence: excerpt(`${stdout}${res.stderr ?? ''}`) }),
+  };
+}
+
+/** Canonical path for comparisons: realpath (symlinked roots), case-folded on win32. */
+function normalizePath(p: string): string {
+  let out = resolve(p);
+  try { out = realpathSync.native(out); } catch { /* missing path: keep the resolved form */ }
+  return process.platform === 'win32' ? out.toLowerCase() : out;
+}
+
+function checkSkillList(ctx: Ctx, bin: string, env: NodeJS.ProcessEnv, cwd: string): SmokeCheck {
+  const expected = countDirsWith(join(ctx.root, 'skills'), 'SKILL.md');
+  const res = runCopilotSync(ctx, bin, ['--plugin-dir', ctx.root, '--no-auto-update', 'skill', 'list', '--json'], env, cwd);
+  const stdout = String(res.stdout ?? '');
+  const list = extractJsonArray(stdout) as Array<{ name?: unknown; source?: unknown; path?: unknown }> | null;
+  if (res.status !== 0 || !list) {
+    return { id: 'copilot.skill_list', ok: false, detail: `skill list exit ${res.status}${list ? '' : ', no JSON array'}`, evidence: excerpt(`${stdout}${res.stderr ?? ''}`) };
+  }
+  // Copilot also surfaces plugin `commands/*.md` as plugin skills, so count only
+  // plugin-sourced entries whose path is a skills/<dir>.
+  const skillsDir = normalizePath(join(ctx.root, 'skills')) + sep;
+  const pluginSkills = list.filter((s) => s.source === 'plugin');
+  const fromSkillsDir = new Set(pluginSkills
+    .filter((s) => typeof s.path === 'string' && normalizePath(s.path).startsWith(skillsDir))
+    .map((s) => normalizePath(s.path as string).slice(skillsDir.length).split(/[\\/]/)[0]));
+  const missing = expected.filter((d) => !fromSkillsDir.has(process.platform === 'win32' ? d.toLowerCase() : d));
+  const ok = expected.length > 0 && missing.length === 0 && fromSkillsDir.size === expected.length;
+  return {
+    id: 'copilot.skill_list',
+    ok,
+    detail: `${fromSkillsDir.size}/${expected.length} skills/*/SKILL.md loaded as source=plugin (${pluginSkills.length} plugin entries incl. commands)`,
+    ...(ok ? {} : { evidence: excerpt(missing.length ? `missing: ${missing.join(', ')}` : stdout) }),
+  };
+}
+
+async function defaultExpectedToolCount(): Promise<number> {
+  const registry = await import('../mcp/tool-registry.js');
+  return registry.allTools.length;
+}
+
+async function checkMcpListTools(ctx: Ctx): Promise<SmokeCheck> {
+  const id = 'mcp.list_tools';
+  const server = join(ctx.root, 'dist', 'mcp', 'standalone-server.js');
+  if (!existsSync(server)) return { id, ok: false, detail: `${server} missing; run npm run build` };
+  let expected: number;
+  try {
+    expected = await (ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount)();
+  } catch (err) {
+    return { id, ok: false, detail: `could not load tool registry: ${(err as Error).message}` };
+  }
+  const env = { ...ctx.env };
+  delete env.OMC_DISABLE_TOOLS; // compare against the full registry
+
+  return new Promise<SmokeCheck>((resolveCheck) => {
+    let settled = false;
+    let buffer = '';
+    let stderr = '';
+    const child = ctx.spawnFn(process.execPath, [server], {
+      cwd: ctx.root,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+      detached: useProcessGroup(),
+    });
+    const done = (check: SmokeCheck) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { child.stdin?.end(); } catch { /* closed */ }
+      if (!hasExited(child)) killProcessTree(child.pid, ctx.spawnSyncFn);
+      resolveCheck(check);
+    };
+    const timer = setTimeout(() => done({ id, ok: false, detail: `no tools/list response within ${MCP_LIST_TIMEOUT_MS} ms`, evidence: excerpt(stderr) }), MCP_LIST_TIMEOUT_MS);
+    const send = (msg: unknown) => { try { child.stdin?.write(`${JSON.stringify(msg)}\n`); } catch { /* closed */ } };
+
+    child.on('error', (err) => done({ id, ok: false, detail: `spawn failed: ${err.message}` }));
+    child.on('close', (code) => done({ id, ok: false, detail: `server exited (${code}) before tools/list`, evidence: excerpt(stderr) }));
+    child.stdin?.on('error', () => { /* server gone */ });
+    child.stderr?.setEncoding('utf8');
+    child.stderr?.on('data', (c: string) => { if (stderr.length < 64_000) stderr += c; });
+    child.stdout?.setEncoding('utf8');
+    child.stdout?.on('data', (chunk: string) => {
+      buffer += chunk;
+      let nl: number;
+      while ((nl = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line) continue;
+        let msg: { id?: unknown; result?: { tools?: unknown[] }; error?: unknown };
+        try { msg = JSON.parse(line); } catch { continue; }
+        if (msg.id === 1) {
+          if (msg.error) { done({ id, ok: false, detail: 'initialize failed', evidence: excerpt(JSON.stringify(msg.error)) }); return; }
+          send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+          send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+        } else if (msg.id === 2) {
+          const tools = msg.result?.tools;
+          if (!Array.isArray(tools)) { done({ id, ok: false, detail: 'tools/list returned no tools array', evidence: excerpt(line) }); return; }
+          const ok = tools.length === expected;
+          done({ id, ok, detail: `tools/list returned ${tools.length}, registry allTools ${expected}${ok ? '' : ' (stale dist? run npm run build)'}` });
+          return;
+        }
+      }
+    });
+
+    send({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'omg-smoke', version: '1' } },
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tier 1
+// ---------------------------------------------------------------------------
+
+export interface SessionEnvOptions {
+  /** Tier 1 session (adds {@link SESSION_SET_ENV}); false for the tier 0 list commands. */
+  session?: boolean;
+  /** A stored login was copied into the home: drop {@link LOGIN_SHADOWING_TOKENS}. */
+  hasLogin?: boolean;
+}
+
+/** Apply the env policy documented at {@link STRIPPED_ENV_EXACT}. */
+export function buildSessionEnv(base: NodeJS.ProcessEnv, home: string, opts: SessionEnvOptions = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (isStrippedEnvKey(key)) continue;
+    if (opts.hasLogin && (LOGIN_SHADOWING_TOKENS as readonly string[]).includes(key.toUpperCase())) continue;
+    env[key] = value;
+  }
+  env.COPILOT_HOME = home;
+  Object.assign(env, SMOKE_SET_ENV);
+  if (opts.session) Object.assign(env, SESSION_SET_ENV);
+  return env;
+}
+
+/**
+ * Copy only the login identity (`loggedInUsers`, `lastLoggedInUser`) from the
+ * user's real config. The token stays in the OS credential store; without
+ * these keys an empty COPILOT_HOME falls back to `gh auth token`, whose OAuth
+ * app is not entitled to Copilot models ("Model ... is not available").
+ *
+ * Token precedence (`copilot help environment`, 1.0.91): COPILOT_GITHUB_TOKEN,
+ * GH_TOKEN, GITHUB_TOKEN each take precedence over stored credentials. So when
+ * a login was copied, the session drops GH_TOKEN/GITHUB_TOKEN (typically gh or
+ * Actions tokens, which would shadow the entitled login) and keeps
+ * COPILOT_GITHUB_TOKEN (an explicit Copilot opt-in). Without a stored login
+ * (CI) all three pass through, since a token is then the only credential.
+ */
+export function loginIdentity(userConfigDir: string): Record<string, unknown> {
+  try {
+    const parsed = parseJsonc(readFileSync(join(userConfigDir, 'config.json'), 'utf-8')) as Record<string, unknown> | null;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const out: Record<string, unknown> = {};
+    for (const key of ['loggedInUsers', 'lastLoggedInUser']) if (parsed[key] !== undefined) out[key] = parsed[key];
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function initProject(ctx: Ctx, projectDir: string, env: NodeJS.ProcessEnv): void {
+  const res = ctx.spawnSyncFn('git', ['init', '-q'], { cwd: projectDir, env, encoding: 'utf8', timeout: 30_000, windowsHide: true });
+  if (res.status !== 0 || !existsSync(join(projectDir, '.git'))) mkdirSync(join(projectDir, '.git'), { recursive: true });
+}
+
+function readText(path: string): string | null {
+  try { return readFileSync(path, 'utf-8'); } catch { return null; }
+}
+
+/** All process logs under the log dir, newest last, joined; plus the newest path. */
+function readDebugLogs(logDir: string): { text: string | null; path?: string } {
+  let files: string[];
+  try {
+    files = readdirSync(logDir).filter((f) => f.endsWith('.log')).map((f) => join(logDir, f));
+  } catch {
+    return { text: null };
+  }
+  if (files.length === 0) return { text: null };
+  files.sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs);
+  return { text: files.map((f) => readText(f) ?? '').join('\n'), path: files[files.length - 1] };
+}
+
+function mcpServerNames(root: string): string[] {
+  const mcp = readJson(join(root, '.mcp.json'));
+  const servers = mcp?.mcpServers;
+  return servers && typeof servers === 'object' ? Object.keys(servers) : [];
+}
+
+/**
+ * Run the live session. Registers its temp dir in `cleanup` and its paths in
+ * `artifacts` as soon as they exist, so the caller's `finally` removes them
+ * even when this throws midway.
+ */
+async function runTier1(ctx: Ctx, bin: string, opts: SmokeOptions, cleanup: string[], artifacts: SmokeArtifacts): Promise<SmokeCheck[]> {
+  // One parent so --keep-home leaves home/ and project/ side by side.
+  const parent = makeTempDir('omg-smoke-');
+  cleanup.push(parent);
+  const home = join(parent, 'home');
+  artifacts.copilotHome = home;
+  const projectDir = join(parent, 'project');
+  mkdirSync(home);
+  mkdirSync(projectDir);
+  const logDir = join(home, 'logs');
+  const sessionId = (ctx.deps.randomUUID ?? randomUUID)();
+  const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
+  const env = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== undefined });
+  const config = { ...identity, trustedFolders: [projectDir] };
+  writeFileSync(join(home, 'config.json'), `${JSON.stringify(config, null, 2)}\n`);
+  initProject(ctx, projectDir, env);
+
+  const prompt = opts.prompt ?? (opts.delegate ? DELEGATE_SMOKE_PROMPT : DEFAULT_SMOKE_PROMPT);
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIER1_TIMEOUT_MS;
+  const args = [
+    '--plugin-dir', ctx.root,
+    '--session-id', sessionId,
+    '--output-format', 'json',
+    ...SMOKE_PERMISSION_FLAGS,
+    ...sessionSandboxFlags(!!opts.delegate),
+    '--no-auto-update',
+    '--log-level', 'debug',
+    '--log-dir', logDir,
+    ...((opts.model ?? DEFAULT_SMOKE_MODEL) ? ['--model', (opts.model ?? DEFAULT_SMOKE_MODEL) as string] : []),
+    '--max-ai-credits', String(opts.maxCredits ?? DEFAULT_MAX_CREDITS),
+  ];
+  // No -p: `-p <text>` would put the prompt on argv. Piped stdin is the
+  // CLI's other non-interactive entry (verified on 1.0.91).
+  const plan = buildHostBinarySpawn(bin, args);
+  const run = await runAsync(ctx.spawnFn, ctx.spawnSyncFn, plan.command, plan.args, {
+    cwd: projectDir,
+    env,
+    input: `${prompt}\n`,
+    timeoutMs,
+    windowsVerbatimArguments: plan.windowsVerbatimArguments,
+  });
+
+  const stdoutPath = join(home, 'smoke-stdout.jsonl');
+  try { writeFileSync(stdoutPath, run.stdout); } catch { /* best effort */ }
+
+  const eventsPath = join(home, 'session-state', sessionId, 'events.jsonl');
+  const logs = readDebugLogs(logDir);
+  Object.assign(artifacts, { eventsLog: eventsPath, debugLog: logs.path, stdout: stdoutPath });
+  return evaluateTier1({
+    exitCode: run.code,
+    timedOut: run.timedOut,
+    error: run.error,
+    stdout: run.stdout,
+    stderr: run.stderr,
+    timeoutMs,
+    eventsPath,
+    eventsText: readText(eventsPath),
+    logText: logs.text,
+    projectDir,
+    mcpServerNames: mcpServerNames(ctx.root),
+    delegate: !!opts.delegate,
+  });
+}
+
+export interface Tier1Inputs {
+  exitCode: number | null;
+  timedOut: boolean;
+  error?: string;
+  stdout: string;
+  stderr: string;
+  timeoutMs: number;
+  eventsPath: string;
+  eventsText: string | null;
+  logText: string | null;
+  projectDir: string;
+  mcpServerNames: string[];
+  delegate: boolean;
+}
+
+/** Evaluate captured Tier 1 artifacts (exported for fixture-driven tests). */
+export function evaluateTier1(input: Tier1Inputs): SmokeCheck[] {
+  const checks: SmokeCheck[] = [];
+  checks.push(evaluateSessionExit(input));
+  const { check: eventsCheck, events } = evaluateEventsLog(input.eventsPath, input.eventsText);
+  checks.push(eventsCheck);
+  // Ephemeral events (e.g. MCP status changes) only reach stdout, so evaluate both streams.
+  const stdoutEvents = parseJsonl(input.stdout).events;
+  const allEvents = [...events, ...stdoutEvents.filter((e) => !e.id || !events.some((p) => p.id === e.id))];
+  checks.push(...evaluateHooks(events.length ? events : stdoutEvents));
+  checks.push(evaluateAdapterErrors([
+    { name: 'debug log', text: input.logText },
+    { name: 'session stderr', text: input.stderr },
+    { name: 'events.jsonl', text: input.eventsText },
+    { name: 'stdout', text: input.stdout },
+  ]));
+  checks.push(evaluatePluginsLoaded(input.logText));
+  checks.push(evaluateMcpLoaded(allEvents, input.logText, input.mcpServerNames.length ? input.mcpServerNames : ['t']));
+  checks.push(evaluateStateWritten(input.projectDir));
+  if (input.delegate) checks.push(evaluateSubagent(allEvents, DELEGATE_AGENT));
+  return checks.map((c) => (c.evidence && c.evidence.length > EVIDENCE_MAX ? { ...c, evidence: excerpt(c.evidence) } : c));
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+export async function runCopilotSmoke(input: Partial<SmokeOptions> = {}): Promise<SmokeReport> {
+  const started = Date.now();
+  const env = input.env ?? process.env;
+  const deps = input.deps ?? {};
+  const tier: SmokeTier = input.tier === 1 ? 1 : 0;
+  const root = resolve(input.pluginRoot ?? resolveDefaultPluginRoot(env));
+  const opts: SmokeOptions = { ...input, pluginRoot: root, tier };
+
+  if (opts.prompt !== undefined && /\0/.test(opts.prompt)) throw new Error('smoke prompt must not contain NUL');
+
+  const ctx: Ctx = {
+    root,
+    env: { ...env },
+    spawnFn: deps.spawn ?? spawn,
+    spawnSyncFn: deps.spawnSync ?? spawnSync,
+    deps,
+    timeoutMs: tier === 0 ? (opts.timeoutMs ?? DEFAULT_TIER0_TIMEOUT_MS) : DEFAULT_TIER0_TIMEOUT_MS,
+  };
+
+  const checks: SmokeCheck[] = [];
+  const artifacts: SmokeArtifacts = {};
+  const cleanup: string[] = [];
+  try {
+    return await runChecks(ctx, opts, started, checks, artifacts, cleanup);
+  } finally {
+    if (!opts.keepHome) {
+      for (const dir of cleanup) removeDir(dir);
+      for (const key of Object.keys(artifacts) as Array<keyof SmokeArtifacts>) delete artifacts[key];
+    }
+  }
+}
+
+async function runChecks(
+  ctx: Ctx,
+  opts: SmokeOptions,
+  started: number,
+  checks: SmokeCheck[],
+  artifacts: SmokeArtifacts,
+  cleanup: string[],
+): Promise<SmokeReport> {
+  const { root, deps, env } = ctx;
+  const tier = opts.tier;
+  let skipped: string | undefined;
+
+  const manifest = checkManifest(root);
+  checks.push(manifest.check);
+  checks.push(checkGeneratedHooks(ctx));
+
+  const resolution = resolveCopilotBinary(opts.copilotBin, env, deps);
+  let version: string | null = null;
+  if (!resolution.bin) {
+    skipped = opts.copilotBin
+      ? `copilot binary not found: ${opts.copilotBin}`
+      : 'copilot binary not found on PATH, COPILOT_CLI_PATH, or the WinGet package dir';
+    checks.push({ id: 'copilot.binary', ok: false, detail: skipped });
+    for (const id of TIER0_COPILOT_IDS.slice(1)) checks.push({ id, ok: false, detail: 'skipped' });
+  } else {
+    const bin = resolution.bin;
+    // cwd is tmpdir, not the plugin root: a missing --plugin-root must not
+    // surface as an ENOENT on the binary probe.
+    const res = runCopilotSync(ctx, bin, ['--version'], ctx.env, tmpdir());
+    version = parseCopilotVersion(String(res.stdout ?? ''));
+    const binaryOk = res.status === 0 && version !== null;
+    checks.push({
+      id: 'copilot.binary',
+      ok: binaryOk,
+      detail: binaryOk ? `${bin} (${resolution.source}) v${version}` : `${bin} --version exit ${res.status ?? res.error?.message}`,
+      ...(binaryOk ? {} : { evidence: excerpt(`${res.stdout ?? ''}${res.stderr ?? ''}`) }),
+    });
+
+    const listHome = makeTempDir('omg-smoke-list-');
+    cleanup.push(listHome);
+    artifacts.listHome = listHome;
+    const listEnv = buildSessionEnv(ctx.env, listHome);
+    checks.push(checkPluginList(ctx, bin, listEnv, listHome, manifest.packageVersion));
+    checks.push(checkSkillList(ctx, bin, listEnv, listHome));
+  }
+
+  checks.push(checkAgents(root));
+  checks.push(await checkMcpListTools(ctx));
+
+  if (tier === 1) {
+    if (!resolution.bin) {
+      for (const id of tier1Ids(!!opts.delegate)) checks.push({ id, ok: false, detail: 'skipped' });
+    } else {
+      checks.push(...await runTier1(ctx, resolution.bin, opts, cleanup, artifacts));
+    }
+  }
+
+  return {
+    ok: checks.every((c) => c.ok),
+    tier,
+    pluginRoot: root,
+    pluginVersion: manifest.pluginVersion,
+    copilot: { bin: resolution.bin, version },
+    checks,
+    artifacts,
+    durationMs: Date.now() - started,
+    ...(skipped ? { skipped } : {}),
+  };
+}

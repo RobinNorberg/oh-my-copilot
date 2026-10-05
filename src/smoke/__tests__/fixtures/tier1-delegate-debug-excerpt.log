@@ -1,0 +1,15 @@
+2026-10-05T09:54:33.187Z [DEBUG] Plugin activation [agents]: fingerprint=legacy, plugins=2, loaded=20
+2026-10-05T09:54:33.194Z [DEBUG] Plugins loaded: ["oh-my-copilot"]
+2026-10-05T09:54:33.344Z [DEBUG] [rust:copilot_runtime::session::mcp::session_host] mcp discover_and_start_root {"force":false,"root_present":false,"signature_matches":false,"previous_signature":"<none>","signature":"{\"servers\":[[\"t\",\"{\\\"args\\\":[\\\"${CLAUDE_PLUGIN_ROOT}/bridge/mcp-server.cjs\\\"],\\\"command\\\":\\\"node\\\",\\\"cwd\\\":\\\"${PLUGIN_ROOT}\\\",\\\"env\\\":{\\\"CLAUDE_PLUGIN_ROOT\\\":\\\"C:\\\\\\\\Code\\\\\\\\OMC\\\",\\\"COPILOT_PLUGIN_ROOT\\\":\\\"C:\\\\\\\\Code\\\\\\\\OMC\\\",\\\"PLUGIN_ROOT\\\":\\\"C:\\\\\\\\Code\\\\\\\\OMC\\\"},\\\"tools\\\":[\\\"*\\\"],\\\"type\\\…
+2026-10-05T09:54:33.943Z [DEBUG] [rust:copilot_runtime::mcp::native_connector] MCP server stderr {"server_name":"t","stderr":"OMC Tools MCP Server running on stdio"}
+2026-10-05T09:54:33.999Z [DEBUG] [rust:copilot_runtime::session::mcp::session_host] mcp discover_and_start_root {"force":true,"root_present":true,"signature_matches":false,"previous_signature":"{\"servers\":[[\"t\",\"{\\\"args\\\":[\\\"${CLAUDE_PLUGIN_ROOT}/bridge/mcp-server.cjs\\\"],\\\"command\\\":\\\"node\\\",\\\"cwd\\\":\\\"${PLUGIN_ROOT}\\\",\\\"env\\\":{\\\"CLAUDE_PLUGIN_ROOT\\\":\\\"C:\\\\\\\\Code\\\\\\\\OMC\\\",\\\"COPILOT_PLUGIN_ROOT\\\":\\\"C:\\\\\\\\Code\\\\\\\\OMC\\\",\\\"PLUGIN_ROOT\\\":\\\"C:\\\\\\\\Code\\\\\\\\OMC\\\"},\\\"tools\\\":[\\\"*\\\"],\\\"type\\\":\\\"local\\\"}\",fals…
+2026-10-05T09:54:34.881Z [DEBUG] [rust:copilot_runtime::mcp::native_connector] MCP server stderr {"server_name":"t","stderr":"OMC Tools MCP Server running on stdio"}
+2026-10-05T09:54:36.164Z [DEBUG] [rust:github_telemetry::service] Sending telemetry event: cli.telemetry (kind: auto_mode_resolved)
+2026-10-05T09:54:44.605Z [DEBUG] [rust:github_telemetry::service] Sending telemetry event: cli.telemetry (kind: subagent_started)
+2026-10-05T09:54:45.292Z [DEBUG] [rust:github_telemetry::service] Sending telemetry event: cli.telemetry (kind: subagent_selected)
+2026-10-05T09:54:46.464Z [DEBUG] [rust:hooks] [hook stdout] {"continue":true,"hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"Agent undefined started (undefined)","agent_count":1,"stale_agents":[]},"additionalContext":"Agent undefined started (undefined)"}
+2026-10-05T09:54:46.961Z [DEBUG] [rust:github_telemetry::service] Sending telemetry event: cli.telemetry (kind: auto_mode_resolved)
+2026-10-05T09:54:53.910Z [DEBUG] [rust:github_telemetry::service] Sending telemetry event: cli.telemetry (kind: subagent_completed)
+2026-10-05T09:54:59.932Z [DEBUG] runHeadlessMode: operation=prompt, succeeded=true
+2026-10-05T09:54:59.932Z [DEBUG] runHeadlessMode: exiting with code 0
+2026-10-05T09:54:59.951Z [DEBUG] [rust:github_telemetry::service] Sending telemetry event: cli.telemetry (kind: subagent_parallelism_triggered)

@@ -67,6 +67,16 @@ run plus a retag cycle. Work through pre-flight completely BEFORE tagging.
    `release-boundary.mjs` EXPECTED_BINS, its test, package.json, AND
    package-lock.json (regenerate the lock with `npm install
    --package-lock-only` if bins changed; it drifts silently).
+9. After the full build, `omg smoke copilot --tier 1` must be green before
+   tagging. It loads the build into the real Copilot CLI in a throwaway
+   `COPILOT_HOME` and runs one live session with the prompt on stdin, which
+   costs one premium request. It reuses your `copilot /login` identity and
+   drops `GH_TOKEN`/`GITHUB_TOKEN` from the session, so do not export a token
+   for it; `--model` is optional (Copilot auto-selects). Hooks run
+   fail-closed, so a red `hooks.*` or `hooks.adapter_errors` is a real hook
+   failure. CI cannot catch a plugin that Copilot
+   refuses to load. Exit `2` means the `copilot` binary was not found, which
+   is not a pass.
 
 ## Ship sequence
 
@@ -109,6 +119,7 @@ only investigate if the SAME test fails twice.
 | `env: '…/.bin/<name>': No such file or directory` in smoke | ci.yml smoke step drives a bin name the package doesn't ship |
 | `npm error 404 … PUT` | token auth rejected (expired/revoked token era; now OIDC) |
 | `npm error code EOTP` | token subject to 2FA — use trusted publishing, not tokens |
+| `omg smoke copilot` fails `copilot.plugin_list`: plugin list returns `[]` | Bad `--plugin-dir` or manifest path; Copilot only warns on a bad dir. The manifest must be at `plugin.json`, `.github/plugin/plugin.json`, or `.claude-plugin/plugin.json` under the root |
 | inventory-graph `sourceSha256 must match` | a commit landed after the last baseline regeneration |
 | `coordinator source digest mismatch` | docs/CLAUDE.md edited without rebuilding bridge in the same commit |
 | `reachable generated runtime module is missing` | new/deleted source without a full dist rebuild force-added |

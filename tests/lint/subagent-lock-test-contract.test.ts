@@ -14,6 +14,12 @@ const FUNCTIONAL_SCRIPTS = {
   "test:ui": ["vitest", "--ui"],
   "test:coverage": ["vitest", "run", "--coverage"],
 } as const;
+// Live scripts run against real host binaries through their own config whose
+// include list is tests/live/** only, so the perf glob can never be collected;
+// they are exempt from the functional perf-exclusion contract above.
+const LIVE_SCRIPTS = {
+  "test:live": ["vitest", "run", "--config", "vitest.live.config.ts"],
+} as const;
 
 function readRepoFile(path: string): string {
   return readFileSync(join(REPO_ROOT, path), "utf8");
@@ -144,10 +150,14 @@ describe("subagent-lock test contract", () => {
       );
     }
 
+    for (const [name, expectedTokens] of Object.entries(LIVE_SCRIPTS)) {
+      expect(tokens(pkg.scripts[name])).toEqual(expectedTokens);
+    }
+
     for (const [name, command] of Object.entries(pkg.scripts)) {
       if (/(?:^|\s)vitest(?:\s|$)/.test(command)) {
         expect(
-          Object.keys(FUNCTIONAL_SCRIPTS),
+          [...Object.keys(FUNCTIONAL_SCRIPTS), ...Object.keys(LIVE_SCRIPTS)],
           `unclassified Vitest script: ${name}`,
         ).toContain(name);
       }

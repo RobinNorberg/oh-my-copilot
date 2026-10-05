@@ -2,6 +2,26 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## Unreleased
+
+### Fork
+
+- **`omg smoke copilot` and MCP tool `host_smoke`:** a headless smoke check
+  that loads a plugin root into the real GitHub Copilot CLI inside a
+  throwaway `COPILOT_HOME`. Tier 0 makes no model call: it checks the
+  manifest, generated hooks and agents, `plugin list` / `skill list`, and the
+  MCP tool count. Tier 1 (`--tier 1`) adds one live session with the prompt
+  on stdin, costing one premium request, and asserts the session events,
+  hook runs (hooks run fail-closed; `hooks.adapter_errors` fails on any
+  `[omg-hook]` error line), plugin and MCP load, and `.omg/` state writes.
+  The standalone MCP server now exposes 56 tools; `OMC_DISABLE_TOOLS=smoke`
+  hides `host_smoke`. The MCP tool only smokes its own package root unless
+  `OMC_SMOKE_ALLOW_ANY_ROOT=1`, and refuses tier 1 unless
+  `OMC_SMOKE_ALLOW_LIVE=1`.
+  `npm run test:live` runs `tests/live/copilot-smoke.test.ts` (Tier 1 only
+  with `OMC_LIVE_SMOKE=1`); the default test run excludes `tests/live/**`.
+  See [docs/DEVELOPERS.md](docs/DEVELOPERS.md#headless-smoke-against-a-local-build).
+
 # oh-my-copilot v5.6.2
 
 ## [5.6.2] - 2026-10-05

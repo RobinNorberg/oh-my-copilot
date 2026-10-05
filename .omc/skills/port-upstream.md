@@ -76,11 +76,13 @@ For each non-skipped commit:
 ### Step 4: Finalize
 
 1. Regenerate the Copilot projections: `node scripts/copilot/build-hooks.mjs --write` and `node scripts/copilot/build-agents.mjs --write`. Keep `hooks/hooks.json` and `agents/*.md` upstream-identical; adapt only the generated `copilot/hooks.json` and `copilot/agents/*.md`, which Copilot loads through the root `plugin.json`. A generator error means upstream changed the hook command form or agent frontmatter: extend the generator, never hand-edit the output. `copilot-hooks-manifest.test.ts` and `copilot-agents-manifest.test.ts` fail on drift (`--verify`).
-2. Run full test suite: `npm test`
-3. Run type check: `npx tsc --noEmit`
-4. Verify no upstream references leaked: `grep -r "oh-my-claudecode" src/ agents/ skills/ | grep -v node_modules`
-5. Verify bridge bundles are clean: `grep -c "oh-my-claudecode" bridge/cli.cjs` (must be 0)
-6. Create PR to dev: `gh pr create --base dev`
+2. Load check instead of installing and opening Copilot by hand: `npm run build`, then `omg smoke copilot --tier 0`. It makes no model call and confirms Copilot loads the plugin, its skills, agents, hooks, and MCP tools. A failed `copilot.plugin_list` with `[]` means a bad `--plugin-dir` or manifest path.
+3. Run full test suite: `npm test`
+4. Run type check: `npx tsc --noEmit`
+5. Verify no upstream references leaked: `grep -r "oh-my-claudecode" src/ agents/ skills/ | grep -v node_modules`
+6. Verify bridge bundles are clean: `grep -c "oh-my-claudecode" bridge/cli.cjs` (must be 0)
+7. Live check before the PR: `omg smoke copilot --tier 1`. It runs one real Copilot session with the prompt on stdin and costs one premium request. It reuses your `copilot /login` identity and drops `GH_TOKEN`/`GITHUB_TOKEN` from the session, so do not export a token for it; `--model` is optional because Copilot auto-selects. It proves the hooks fire, run without `[omg-hook]` errors, and write `.omg/` state.
+8. Create PR to dev: `gh pr create --base dev`
 
 ## Rename Map
 
