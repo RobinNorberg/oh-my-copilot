@@ -135487,7 +135487,8 @@ function runFactoryInit(options = {}) {
 
 // src/cli/win32-warning.ts
 init_tmux_utils();
-function warnIfWin32() {
+function warnIfWin32(argv = process.argv) {
+  if (argv.includes("--json")) return;
   if (process.platform === "win32" && !isTmuxAvailable()) {
     console.warn(source_default.yellow.bold("\n\u26A0  WARNING: Native Windows (win32) detected \u2014 no tmux found"));
     console.warn(source_default.yellow("   OMC features that require tmux will not work."));
