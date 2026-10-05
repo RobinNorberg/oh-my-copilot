@@ -1,11 +1,12 @@
 /**
  * `omg smoke copilot` — load-check the plugin inside the real Copilot CLI.
  * Exit codes: 0 all checks ok; 1 any check failed (or bad options / a crash);
- * 2 skipped because the copilot binary is missing and no static check failed.
+ * 2 skipped because the copilot binary or the optional `@github/copilot-sdk`
+ * peer is missing and no other check failed.
  * With --json a SmokeReport is ALWAYS printed, including for option errors and
  * crashes (then `ok:false` with one `cli.error` check).
  */
-import { type SmokeOptions, type SmokeReport } from '../../smoke/copilot-smoke.js';
+import { type Scenario, type SmokeOptions, type SmokeReport } from '../../smoke/copilot-smoke.js';
 export interface SmokeCopilotCliOptions {
     tier?: string;
     pluginRoot?: string;
@@ -14,11 +15,17 @@ export interface SmokeCopilotCliOptions {
     timeout?: string;
     keepHome?: boolean;
     delegate?: boolean;
+    /** Tier 2: comma-separated scenario names, or `all`. */
+    scenario?: string;
+    /** Tier 2 with no scenarios: SDK static checks only, zero model calls. */
+    sdkStatic?: boolean;
     json?: boolean;
 }
+/** Parse `--scenario a,b` / `all` into a deduplicated, validated list. */
+export declare function parseScenarios(raw: string): Scenario[];
 export declare function toSmokeOptions(cli: SmokeCopilotCliOptions): Partial<SmokeOptions>;
 /**
- * 2 only for a pure skip: every failed check is the missing binary or a
+ * 2 only for a pure skip: every failed check is the missing binary/SDK or a
  * dependent "skipped" check. A real failure alongside the skip is 1.
  */
 export declare function smokeExitCode(report: SmokeReport): number;

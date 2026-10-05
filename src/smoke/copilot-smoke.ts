@@ -6,7 +6,9 @@
  * `plugin list`/`skill list` against `--plugin-dir`, and the standalone MCP
  * server's tools/list. Tier 1 adds one cheap non-interactive session in a
  * throwaway COPILOT_HOME and asserts on its persisted events, debug log and
- * the `.omg/` state our hooks write.
+ * the `.omg/` state our hooks write. Tier 2 replaces that session with
+ * `@github/copilot-sdk` static checks and scripted scenarios
+ * (src/smoke/copilot-sdk-driver.ts).
  */
 
 import { spawn, spawnSync } from 'child_process';
@@ -37,24 +39,40 @@ import {
   type SmokeCheck,
 } from './copilot-session-eval.js';
 import { hasExited, killProcessTree, runAsync, useProcessGroup, type SpawnFn, type SpawnSyncFn } from './process-utils.js';
+import { DEFAULT_SCENARIO_TIMEOUT_MS, loadCopilotSdk, runSdkTier, type LoadSdkFn } from './copilot-sdk-driver.js';
+import { ALL_SCENARIOS, DEFAULT_SCENARIOS, failedTier2Checks, RUNTIME_MIN_MAX_CREDITS, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 
 export type { SmokeCheck } from './copilot-session-eval.js';
+export type { Scenario } from './copilot-sdk-scenarios.js';
+export { ALL_SCENARIOS, DEFAULT_SCENARIOS } from './copilot-sdk-scenarios.js';
 
-export type SmokeTier = 0 | 1;
+export type SmokeTier = 0 | 1 | 2;
 
 export interface SmokeOptions {
   /** Default: OMC_PLUGIN_ROOT, else the package root of the running omg. */
   pluginRoot: string;
-  /** 0 = load check (no model call); 1 = tier 0 + one live session. */
+  /**
+   * 0 = load check (no model call); 1 = tier 0 + one live session;
+   * 2 = tier 0 + @github/copilot-sdk static checks + {@link SmokeOptions.scenarios}.
+   */
   tier: SmokeTier;
   copilotBin?: string;
-  /** Tier 1 model. Default {@link DEFAULT_SMOKE_MODEL}. */
+  /**
+   * Tier 1 model. Default {@link DEFAULT_SMOKE_MODEL}. Tier 2: the session
+   * model (default: a cheap explicit model from models.list, else auto).
+   */
   model?: string;
-  /** Tier 1 `--max-ai-credits` (CLI minimum is {@link MIN_MAX_CREDITS}). */
+  /**
+   * Tier 1 `--max-ai-credits` (CLI minimum is {@link MIN_MAX_CREDITS}).
+   * Tier 2: a cap for the whole run. A scenario whose `assistant.usage`
+   * credits pass what is left is aborted, later scenarios are skipped, and the
+   * runtime also gets `--max-ai-credits` (raised to the CLI minimum).
+   */
   maxCredits?: number;
   /**
-   * Per subprocess at tier 0 (default 60 s); the tier 1 session (default 180 s,
-   * tier 0 steps of a tier 1 run keep 60 s). The mcp.list_tools check is fixed at 10 s.
+   * Per subprocess at tier 0 (default 60 s); the tier 1 session (default 180 s);
+   * each tier 2 scenario (default 120 s, then abort). Tier 0 steps of a tier 1/2
+   * run keep 60 s. The mcp.list_tools check is fixed at 10 s.
    */
   timeoutMs?: number;
   /** Keep the throwaway COPILOT_HOME and project dir for debugging. */
@@ -63,6 +81,8 @@ export interface SmokeOptions {
   prompt?: string;
   /** Tier 1: use the delegation prompt and add the `subagent.selected` check. */
   delegate?: boolean;
+  /** Tier 2 scenarios (default {@link DEFAULT_SCENARIOS}); [] = SDK static checks only, zero model calls. */
+  scenarios?: Scenario[];
   env?: NodeJS.ProcessEnv;
   /** Test seams; defaults are the real implementations. */
   deps?: SmokeDeps;
@@ -76,6 +96,8 @@ export interface SmokeDeps extends BinaryResolverDeps {
   randomUUID?: () => string;
   /** Real Copilot config dir to copy the login identity from (default getCopilotConfigDir()). */
   userConfigDir?: string;
+  /** Tier 2: resolve @github/copilot-sdk (default {@link loadCopilotSdk}); null = not installed. */
+  loadSdk?: LoadSdkFn;
 }
 
 export interface SmokeReport {
@@ -88,6 +110,10 @@ export interface SmokeReport {
   artifacts: SmokeArtifacts;
   durationMs: number;
   skipped?: string;
+  /** Tier 2: SDK package and runtime it drove; `model` is the scenario model or `auto`. */
+  sdk?: { version: string | null; runtimeVersion: string | null; protocolVersion: number | null; model?: string };
+  /** Tier 2: summed over the scenarios (AI credits = nano-AIU / 1e9). */
+  cost?: ScenarioCost;
 }
 
 /**
@@ -101,6 +127,8 @@ export interface SmokeArtifacts {
   eventsLog?: string;
   debugLog?: string;
   stdout?: string;
+  /** Tier 2: per-scenario SDK event stream (JSONL) under copilotHome. */
+  events?: Partial<Record<Scenario, string>>;
 }
 
 /**
@@ -113,7 +141,7 @@ export interface SmokeArtifacts {
 export const DEFAULT_SMOKE_MODEL: string | undefined = undefined;
 export const DEFAULT_MAX_CREDITS = 30;
 /** Copilot CLI rejects `--max-ai-credits` below this. */
-export const MIN_MAX_CREDITS = 30;
+export const MIN_MAX_CREDITS = RUNTIME_MIN_MAX_CREDITS;
 export const DEFAULT_TIER0_TIMEOUT_MS = 60_000;
 export const DEFAULT_TIER1_TIMEOUT_MS = 180_000;
 export const MCP_LIST_TIMEOUT_MS = 10_000;
@@ -698,15 +726,52 @@ export function evaluateTier1(input: Tier1Inputs): SmokeCheck[] {
 // Entry point
 // ---------------------------------------------------------------------------
 
+export const LIVE_RUN_REFUSED_DETAIL = 'live run refused under vitest — set OMC_LIVE_SMOKE=1 (tier 1) / =2 (tier 2 scenarios)';
+
+/**
+ * Hard no-billing guard: under a test runner (`VITEST` or `NODE_ENV=test` in
+ * the real process env) a run that would call a model (tier 1; tier 2 with
+ * any scenario, the default included) is refused before any subprocess or SDK
+ * client, unless `OMC_LIVE_SMOKE` names that tier or the test injected the
+ * seam that would otherwise bill (`deps.spawn` at tier 1, `deps.loadSdk` at
+ * tier 2). Returns the refusal detail, or null to proceed.
+ */
+export function liveRunRefusal(tier: SmokeTier, scenarios: Scenario[] | undefined, deps: SmokeDeps, env: NodeJS.ProcessEnv = process.env): string | null {
+  const underTest = !!env.VITEST || env.NODE_ENV === 'test';
+  if (!underTest) return null;
+  const billable = tier === 1 || (tier === 2 && (scenarios ?? DEFAULT_SCENARIOS).length > 0);
+  if (!billable) return null;
+  if (env.OMC_LIVE_SMOKE === String(tier)) return null;
+  if ((tier === 1 && deps.spawn) || (tier === 2 && deps.loadSdk)) return null;
+  return LIVE_RUN_REFUSED_DETAIL;
+}
+
 export async function runCopilotSmoke(input: Partial<SmokeOptions> = {}): Promise<SmokeReport> {
   const started = Date.now();
   const env = input.env ?? process.env;
   const deps = input.deps ?? {};
-  const tier: SmokeTier = input.tier === 1 ? 1 : 0;
+  const tier: SmokeTier = input.tier === 1 || input.tier === 2 ? input.tier : 0;
   const root = resolve(input.pluginRoot ?? resolveDefaultPluginRoot(env));
   const opts: SmokeOptions = { ...input, pluginRoot: root, tier };
 
   if (opts.prompt !== undefined && /\0/.test(opts.prompt)) throw new Error('smoke prompt must not contain NUL');
+  const unknown = (opts.scenarios ?? []).filter((s) => !ALL_SCENARIOS.includes(s));
+  if (unknown.length) throw new Error(`unknown smoke scenario(s): ${unknown.join(', ')} (known: ${ALL_SCENARIOS.join(', ')})`);
+
+  const refusal = liveRunRefusal(tier, opts.scenarios, deps);
+  if (refusal) {
+    return {
+      ok: false,
+      tier,
+      pluginRoot: root,
+      pluginVersion: null,
+      copilot: { bin: null, version: null },
+      checks: [{ id: 'cli.guard', ok: false, detail: refusal }],
+      artifacts: {},
+      durationMs: Date.now() - started,
+      skipped: refusal,
+    };
+  }
 
   const ctx: Ctx = {
     root,
@@ -787,6 +852,18 @@ async function runChecks(
     }
   }
 
+  let tier2: Awaited<ReturnType<typeof runTier2>> | undefined;
+  if (tier === 2) {
+    const scenarios = [...new Set(opts.scenarios ?? DEFAULT_SCENARIOS)];
+    if (!resolution.bin) {
+      checks.push(...failedTier2Checks(scenarios, 'skipped'));
+    } else {
+      tier2 = await runTier2(ctx, resolution.bin, version, manifest.packageVersion, opts, scenarios, cleanup, artifacts);
+      checks.push(...tier2.checks);
+      skipped ??= tier2.skipped;
+    }
+  }
+
   return {
     ok: checks.every((c) => c.ok),
     tier,
@@ -797,5 +874,68 @@ async function runChecks(
     artifacts,
     durationMs: Date.now() - started,
     ...(skipped ? { skipped } : {}),
+    ...(tier2?.sdk ? { sdk: tier2.sdk } : {}),
+    ...(tier2?.cost ? { cost: tier2.cost } : {}),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Tier 2
+// ---------------------------------------------------------------------------
+
+/**
+ * Same isolation as tier 1 (throwaway COPILOT_HOME with the copied login
+ * identity and trustedFolders, {@link buildSessionEnv} with
+ * OMC_HOOK_FAIL_CLOSED=1), driven through one SDK client. Env is per client,
+ * so OMC_GIT_GUARDRAILS=1 holds for every scenario; only the guardrail
+ * scenario is permitted a shell, so the others never reach the guardrail.
+ */
+async function runTier2(
+  ctx: Ctx,
+  bin: string,
+  binVersion: string | null,
+  packageVersion: string | null,
+  opts: SmokeOptions,
+  scenarios: Scenario[],
+  cleanup: string[],
+  artifacts: SmokeArtifacts,
+) {
+  const parent = makeTempDir('omg-smoke-sdk-');
+  cleanup.push(parent);
+  const home = join(parent, 'home');
+  const projectDir = join(parent, 'project');
+  mkdirSync(home);
+  artifacts.copilotHome = home;
+  const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
+  const env = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== undefined });
+  env.OMC_GIT_GUARDRAILS = '1';
+  writeFileSync(join(home, 'config.json'), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}\n`);
+
+  let agentFiles: string[] = [];
+  try { agentFiles = readdirSync(join(ctx.root, 'agents')).filter((f) => f.endsWith('.md')).sort(); } catch { /* evaluated as 0 */ }
+  const result = await runSdkTier({
+    root: ctx.root,
+    bin,
+    binVersion,
+    packageVersion,
+    home,
+    projectDir,
+    remoteDir: join(parent, 'remote.git'),
+    env,
+    scenarios,
+    model: opts.model,
+    timeoutMs: opts.timeoutMs ?? DEFAULT_SCENARIO_TIMEOUT_MS,
+    maxCredits: opts.maxCredits ?? DEFAULT_MAX_CREDITS,
+    keepHome: !!opts.keepHome,
+    loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(ctx.env, ctx.spawnSyncFn)),
+    loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
+    spawnSync: ctx.spawnSyncFn,
+    skillDirs: countDirsWith(join(ctx.root, 'skills'), 'SKILL.md'),
+    agentFiles,
+    mcpServer: mcpServerNames(ctx.root)[0] ?? 't',
+  });
+  if (Object.keys(result.events).length) artifacts.events = result.events;
+  const logs = readDebugLogs(join(home, 'logs'));
+  if (logs.path) artifacts.debugLog = logs.path;
+  return result;
 }

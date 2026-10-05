@@ -170,7 +170,7 @@ export function evaluateHooks(events) {
  * informational, not failures. Every other `[omg-hook]` line (internal error /
  * failing open, adapter error, hook target is not a file) fails the check.
  */
-const BENIGN_ADAPTER_NOTES = [/continue:false overrides decision:block/, /dropped hookSpecificOutput\.updatedInput/];
+export const BENIGN_ADAPTER_NOTES = [/continue:false overrides decision:block/, /dropped hookSpecificOutput\.updatedInput/];
 /**
  * The adapter fails open by default (non-zero exit -> 0 plus an `[omg-hook]`
  * stderr line), which Copilot records as `hook.end success:true`. The smoke

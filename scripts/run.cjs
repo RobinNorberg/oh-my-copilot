@@ -271,8 +271,17 @@ function resolveTrustedSessionEndTarget(resolution, extraArgs) {
 }
 
 
+// oh-my-copilot fail-closed contract (fork-only): with OMC_HOOK_FAIL_CLOSED=1
+// a hook timeout exits 124 so the host records a failed hook. Unset keeps the
+// upstream fail-open exit 0.
+const HOOK_TIMEOUT_FAIL_CLOSED_STATUS = 124;
+function hookTimeoutStatus() {
+  return process.env.OMC_HOOK_FAIL_CLOSED === '1' ? HOOK_TIMEOUT_FAIL_CLOSED_STATUS : 0;
+}
+
 function writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink) {
-  const message = `[run.cjs] Hook ${basename(targetPath)} timed out after ${timeoutMs}ms; exiting fail-open.\n`;
+  const outcome = hookTimeoutStatus() === 0 ? 'fail-open' : `fail-closed (${HOOK_TIMEOUT_FAIL_CLOSED_STATUS})`;
+  const message = `[run.cjs] Hook ${basename(targetPath)} timed out after ${timeoutMs}ms; exiting ${outcome}.\n`;
   if (manifestHook?.event !== 'UserPromptSubmit' || isDebugHooksEnabled()) {
     if (sink) return sink.write(process.stderr, Buffer.from(message));
     try { process.stderr.write(message); } catch { /* protocol dest may already be closed */ }
@@ -842,7 +851,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook, options
         if (require.main === module) {
           sink.closeDestinations();
         }
-        finish(0);
+        finish(hookTimeoutStatus()); // fork: fail-closed contract, see hookTimeoutStatus
       });
     }, timeoutMs);
 
@@ -996,7 +1005,8 @@ async function runWorker(targetPath, manifestHook, timeoutMs) {
         }
         await writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink);
         sink.uninstall();
-        resolve(0);
+        // Also the SessionEnd foreground-budget path. Fork: fail-closed contract, see hookTimeoutStatus.
+        resolve(hookTimeoutStatus());
       }, timeoutMs);
 
       try {

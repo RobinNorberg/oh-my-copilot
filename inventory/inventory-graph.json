@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "2445f60c716f869beebaf8410107b919c7544af9",
-    "sourceSha256": "d85ff64ab2eb3bfa87ef96ed5ad21ac62bf27809f5808a5e795cc22622ccd33f",
+    "head": "5f8b80dd2b55a9d57b9cb2bf2b11ad1e0ddccee2",
+    "sourceSha256": "ee5f5d187151825d5349b6afa2063fefb8e23b3867d2f708cd08fd59dc3d2aaa",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "2445f60c716f869beebaf8410107b919c7544af9",
-  "sourceSha256": "d85ff64ab2eb3bfa87ef96ed5ad21ac62bf27809f5808a5e795cc22622ccd33f",
+  "head": "5f8b80dd2b55a9d57b9cb2bf2b11ad1e0ddccee2",
+  "sourceSha256": "ee5f5d187151825d5349b6afa2063fefb8e23b3867d2f708cd08fd59dc3d2aaa",
   "counts": {
     "public": {
       "skills": 61,
@@ -23,25 +23,25 @@
       "total": 110
     },
     "internal": {
-      "hookFiles": 346,
+      "hookFiles": 347,
       "featureFiles": 84,
       "toolFiles": 62,
       "libFiles": 47,
       "templateHooks": 23,
-      "srcFiles": 1497,
-      "total": 1520
+      "srcFiles": 1509,
+      "total": 1532
     },
     "generated": {
-      "distFiles": 5799,
+      "distFiles": 5827,
       "bridgeFiles": 9,
-      "total": 5808
+      "total": 5836
     },
     "prompt": {
       "promptLikeFiles": 61
     },
     "skills": 61,
     "commands": 21,
-    "hookFiles": 346,
+    "hookFiles": 347,
     "workflows": 8,
     "agentDefinitions": 18,
     "promptLikeFiles": 61
@@ -451,6 +451,7 @@
       "src/hooks/session-end/index.ts",
       "src/hooks/session-end/routing.ts",
       "src/hooks/session-end/spawn-next.ts",
+      "src/hooks/session-end/wiki-foreground-bootstrap.ts",
       "src/hooks/session-end/worker.ts",
       "src/hooks/setup/README.md",
       "src/hooks/setup/__tests__/prune.test.ts",
@@ -1824,6 +1825,10 @@
       "dist/__tests__/routing-force-inherit.test.d.ts.map",
       "dist/__tests__/routing-force-inherit.test.js",
       "dist/__tests__/routing-force-inherit.test.js.map",
+      "dist/__tests__/run-cjs-fail-closed-timeout.test.d.ts",
+      "dist/__tests__/run-cjs-fail-closed-timeout.test.d.ts.map",
+      "dist/__tests__/run-cjs-fail-closed-timeout.test.js",
+      "dist/__tests__/run-cjs-fail-closed-timeout.test.js.map",
       "dist/__tests__/run-cjs-generic-timeout.test.d.ts",
       "dist/__tests__/run-cjs-generic-timeout.test.d.ts.map",
       "dist/__tests__/run-cjs-generic-timeout.test.js",
@@ -2448,6 +2453,10 @@
       "dist/cli/commands/__tests__/intake.test.d.ts.map",
       "dist/cli/commands/__tests__/intake.test.js",
       "dist/cli/commands/__tests__/intake.test.js.map",
+      "dist/cli/commands/__tests__/smoke-tier2.test.d.ts",
+      "dist/cli/commands/__tests__/smoke-tier2.test.d.ts.map",
+      "dist/cli/commands/__tests__/smoke-tier2.test.js",
+      "dist/cli/commands/__tests__/smoke-tier2.test.js.map",
       "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts",
       "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts.map",
       "dist/cli/commands/__tests__/team-role-shorthand.test.js",
@@ -4285,6 +4294,10 @@
       "dist/hooks/session-end/spawn-next.d.ts.map",
       "dist/hooks/session-end/spawn-next.js",
       "dist/hooks/session-end/spawn-next.js.map",
+      "dist/hooks/session-end/wiki-foreground-bootstrap.d.ts",
+      "dist/hooks/session-end/wiki-foreground-bootstrap.d.ts.map",
+      "dist/hooks/session-end/wiki-foreground-bootstrap.js",
+      "dist/hooks/session-end/wiki-foreground-bootstrap.js.map",
       "dist/hooks/session-end/worker.d.ts",
       "dist/hooks/session-end/worker.d.ts.map",
       "dist/hooks/session-end/worker.js",
@@ -5483,6 +5496,14 @@
       "dist/skills/__tests__/skill-config-dir.test.d.ts.map",
       "dist/skills/__tests__/skill-config-dir.test.js",
       "dist/skills/__tests__/skill-config-dir.test.js.map",
+      "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts",
+      "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts.map",
+      "dist/smoke/__tests__/copilot-sdk-driver.test.js",
+      "dist/smoke/__tests__/copilot-sdk-driver.test.js.map",
+      "dist/smoke/__tests__/copilot-sdk-scenarios.test.d.ts",
+      "dist/smoke/__tests__/copilot-sdk-scenarios.test.d.ts.map",
+      "dist/smoke/__tests__/copilot-sdk-scenarios.test.js",
+      "dist/smoke/__tests__/copilot-sdk-scenarios.test.js.map",
       "dist/smoke/__tests__/copilot-session-eval.test.d.ts",
       "dist/smoke/__tests__/copilot-session-eval.test.d.ts.map",
       "dist/smoke/__tests__/copilot-session-eval.test.js",
@@ -5495,6 +5516,14 @@
       "dist/smoke/copilot-binary.d.ts.map",
       "dist/smoke/copilot-binary.js",
       "dist/smoke/copilot-binary.js.map",
+      "dist/smoke/copilot-sdk-driver.d.ts",
+      "dist/smoke/copilot-sdk-driver.d.ts.map",
+      "dist/smoke/copilot-sdk-driver.js",
+      "dist/smoke/copilot-sdk-driver.js.map",
+      "dist/smoke/copilot-sdk-scenarios.d.ts",
+      "dist/smoke/copilot-sdk-scenarios.d.ts.map",
+      "dist/smoke/copilot-sdk-scenarios.js",
+      "dist/smoke/copilot-sdk-scenarios.js.map",
       "dist/smoke/copilot-session-eval.d.ts",
       "dist/smoke/copilot-session-eval.d.ts.map",
       "dist/smoke/copilot-session-eval.js",
@@ -7033,6 +7062,7 @@
       "src/hooks/session-end/index.ts",
       "src/hooks/session-end/routing.ts",
       "src/hooks/session-end/spawn-next.ts",
+      "src/hooks/session-end/wiki-foreground-bootstrap.ts",
       "src/hooks/session-end/worker.ts",
       "src/hooks/setup/README.md",
       "src/hooks/setup/__tests__/prune.test.ts",
@@ -12799,6 +12829,26 @@
         "path": "dist/__tests__/routing-force-inherit.test.js.map"
       },
       {
+        "id": "dist/__tests__/run-cjs-fail-closed-timeout.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-fail-closed-timeout.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-fail-closed-timeout.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-fail-closed-timeout.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-fail-closed-timeout.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-fail-closed-timeout.test.js"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-fail-closed-timeout.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-fail-closed-timeout.test.js.map"
+      },
+      {
         "id": "dist/__tests__/run-cjs-generic-timeout.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/run-cjs-generic-timeout.test.d.ts"
@@ -15917,6 +15967,26 @@
         "id": "dist/cli/commands/__tests__/intake.test.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/intake.test.js.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/smoke-tier2.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/smoke-tier2.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/smoke-tier2.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/smoke-tier2.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/smoke-tier2.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/smoke-tier2.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/smoke-tier2.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/smoke-tier2.test.js.map"
       },
       {
         "id": "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts",
@@ -25104,6 +25174,26 @@
         "path": "dist/hooks/session-end/spawn-next.js.map"
       },
       {
+        "id": "dist/hooks/session-end/wiki-foreground-bootstrap.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/wiki-foreground-bootstrap.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/wiki-foreground-bootstrap.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/wiki-foreground-bootstrap.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/wiki-foreground-bootstrap.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/wiki-foreground-bootstrap.js"
+      },
+      {
+        "id": "dist/hooks/session-end/wiki-foreground-bootstrap.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/wiki-foreground-bootstrap.js.map"
+      },
+      {
         "id": "dist/hooks/session-end/worker.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/worker.d.ts"
@@ -31094,6 +31184,46 @@
         "path": "dist/skills/__tests__/skill-config-dir.test.js.map"
       },
       {
+        "id": "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-sdk-driver.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-sdk-driver.test.js"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-sdk-driver.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-sdk-driver.test.js.map"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-sdk-scenarios.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-sdk-scenarios.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-sdk-scenarios.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-sdk-scenarios.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-sdk-scenarios.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-sdk-scenarios.test.js"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-sdk-scenarios.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-sdk-scenarios.test.js.map"
+      },
+      {
         "id": "dist/smoke/__tests__/copilot-session-eval.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/smoke/__tests__/copilot-session-eval.test.d.ts"
@@ -31152,6 +31282,46 @@
         "id": "dist/smoke/copilot-binary.js.map",
         "kind": "generated-dist",
         "path": "dist/smoke/copilot-binary.js.map"
+      },
+      {
+        "id": "dist/smoke/copilot-sdk-driver.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-sdk-driver.d.ts"
+      },
+      {
+        "id": "dist/smoke/copilot-sdk-driver.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-sdk-driver.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/copilot-sdk-driver.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-sdk-driver.js"
+      },
+      {
+        "id": "dist/smoke/copilot-sdk-driver.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-sdk-driver.js.map"
+      },
+      {
+        "id": "dist/smoke/copilot-sdk-scenarios.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-sdk-scenarios.d.ts"
+      },
+      {
+        "id": "dist/smoke/copilot-sdk-scenarios.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-sdk-scenarios.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/copilot-sdk-scenarios.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-sdk-scenarios.js"
+      },
+      {
+        "id": "dist/smoke/copilot-sdk-scenarios.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-sdk-scenarios.js.map"
       },
       {
         "id": "dist/smoke/copilot-session-eval.d.ts",
@@ -40584,6 +40754,11 @@
         "path": "src/__tests__/routing-force-inherit.test.ts"
       },
       {
+        "id": "src/__tests__/run-cjs-fail-closed-timeout.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/run-cjs-fail-closed-timeout.test.ts"
+      },
+      {
         "id": "src/__tests__/run-cjs-generic-timeout.test.ts",
         "kind": "src",
         "path": "src/__tests__/run-cjs-generic-timeout.test.ts"
@@ -41377,6 +41552,11 @@
         "id": "src/cli/commands/__tests__/intake.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/intake.test.ts"
+      },
+      {
+        "id": "src/cli/commands/__tests__/smoke-tier2.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/smoke-tier2.test.ts"
       },
       {
         "id": "src/cli/commands/__tests__/team-role-shorthand.test.ts",
@@ -43719,6 +43899,11 @@
         "path": "src/hooks/session-end/spawn-next.ts"
       },
       {
+        "id": "src/hooks/session-end/wiki-foreground-bootstrap.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/wiki-foreground-bootstrap.ts"
+      },
+      {
         "id": "src/hooks/session-end/worker.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/worker.ts"
@@ -45279,6 +45464,16 @@
         "path": "src/skills/__tests__/skill-config-dir.test.ts"
       },
       {
+        "id": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "kind": "src",
+        "path": "src/smoke/__tests__/copilot-sdk-driver.test.ts"
+      },
+      {
+        "id": "src/smoke/__tests__/copilot-sdk-scenarios.test.ts",
+        "kind": "src",
+        "path": "src/smoke/__tests__/copilot-sdk-scenarios.test.ts"
+      },
+      {
         "id": "src/smoke/__tests__/copilot-session-eval.test.ts",
         "kind": "src",
         "path": "src/smoke/__tests__/copilot-session-eval.test.ts"
@@ -45319,9 +45514,44 @@
         "path": "src/smoke/__tests__/fixtures/tier1-stdout.jsonl"
       },
       {
+        "id": "src/smoke/__tests__/fixtures/tier2-delegate-events.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-delegate-events.jsonl"
+      },
+      {
+        "id": "src/smoke/__tests__/fixtures/tier2-guardrail-events.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-guardrail-events.jsonl"
+      },
+      {
+        "id": "src/smoke/__tests__/fixtures/tier2-hooks-debug-excerpt.log",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-hooks-debug-excerpt.log"
+      },
+      {
+        "id": "src/smoke/__tests__/fixtures/tier2-skill-events.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-skill-events.jsonl"
+      },
+      {
+        "id": "src/smoke/__tests__/fixtures/tier2-smoke-events.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-smoke-events.jsonl"
+      },
+      {
         "id": "src/smoke/copilot-binary.ts",
         "kind": "src",
         "path": "src/smoke/copilot-binary.ts"
+      },
+      {
+        "id": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "src",
+        "path": "src/smoke/copilot-sdk-driver.ts"
+      },
+      {
+        "id": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "src",
+        "path": "src/smoke/copilot-sdk-scenarios.ts"
       },
       {
         "id": "src/smoke/copilot-session-eval.ts",
@@ -50062,7 +50292,7 @@
       },
       {
         "from": "scripts/wiki-session-end.mjs",
-        "to": "dist/hooks/session-end/index.js",
+        "to": "dist/hooks/session-end/wiki-foreground-bootstrap.js",
         "kind": "imports"
       },
       {
@@ -55806,6 +56036,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/run-cjs-fail-closed-timeout.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-fail-closed-timeout.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-fail-closed-timeout.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-fail-closed-timeout.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-fail-closed-timeout.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/run-cjs-generic-timeout.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -59576,6 +59831,26 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/__tests__/smoke-tier2.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/smoke-tier2.test.ts",
+        "to": "src/cli/commands/smoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/smoke-tier2.test.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/smoke-tier2.test.ts",
+        "to": "src/smoke/copilot-smoke.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/team-role-shorthand.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -60043,6 +60318,11 @@
       {
         "from": "src/cli/commands/smoke.ts",
         "to": "src/cli/utils/formatting.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/smoke.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
         "kind": "imports"
       },
       {
@@ -71532,12 +71812,12 @@
       },
       {
         "from": "src/hooks/session-end/index.ts",
-        "to": "src/hooks/session-end/worker.ts",
-        "kind": "imports"
+        "to": "src/hooks/session-end/wiki-foreground-bootstrap.ts",
+        "kind": "exports"
       },
       {
         "from": "src/hooks/session-end/index.ts",
-        "to": "src/hooks/wiki/session-hooks.ts",
+        "to": "src/hooks/session-end/worker.ts",
         "kind": "imports"
       },
       {
@@ -71643,6 +71923,26 @@
       {
         "from": "src/hooks/session-end/spawn-next.ts",
         "to": "src/utils/host-detection.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/wiki-foreground-bootstrap.ts",
+        "to": "src/hooks/session-end/cleanup-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/wiki-foreground-bootstrap.ts",
+        "to": "src/hooks/session-end/worker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/wiki-foreground-bootstrap.ts",
+        "to": "src/hooks/wiki/session-hooks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/wiki-foreground-bootstrap.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -78811,6 +79111,121 @@
         "kind": "imports"
       },
       {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "external:events",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "external:stream",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/cli/commands/smoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/smoke/copilot-smoke.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/smoke/copilot-smoke.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-scenarios.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-scenarios.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-scenarios.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-scenarios.test.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-scenarios.test.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-scenarios.test.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-scenarios.test.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/smoke/__tests__/copilot-session-eval.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -78916,6 +79331,81 @@
         "kind": "imports"
       },
       {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "external:module",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-scenarios.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-scenarios.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-scenarios.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-scenarios.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/smoke/copilot-session-eval.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -78978,6 +79468,36 @@
       {
         "from": "src/smoke/copilot-smoke.ts",
         "to": "src/smoke/copilot-binary.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-smoke.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-smoke.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-smoke.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/smoke/copilot-smoke.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-smoke.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "type-exports"
+      },
+      {
+        "from": "src/smoke/copilot-smoke.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
         "kind": "type-imports"
       },
       {
@@ -90232,12 +90752,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7997,
-      "edgeCount": 8584,
-      "importEdgeCount": 7101,
+      "nodeCount": 8037,
+      "edgeCount": 8642,
+      "importEdgeCount": 7142,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "c78c0a3c7e22ed037d7fcef30a87b81c86df92fb8205377f44b8f31fca94c365",
-  "manifestSha256": "a3fe88b4ce81681cf3aa6b038c6442f9b0d4ad2e95cd27c9ad2c397830395e61"
+  "inventorySha256": "2308e3afd5e9b686d3701192d51ffd9bd6541c7e631b81c0522a223f9e8e0a7a",
+  "manifestSha256": "f30089b7de4d33db5c48ce0ee3ec99c81a140de1a32765812b9f20e98b2bef18"
 }

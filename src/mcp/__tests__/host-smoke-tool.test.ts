@@ -97,6 +97,49 @@ describe('host_smoke MCP tool', () => {
     expect(runCopilotSmoke).not.toHaveBeenCalled();
   });
 
+  it('exposes the tier 2 scenarios enum in the JSON schema', () => {
+    const entry = buildListToolsResponse('').tools.find((t) => t.name === 'host_smoke');
+    const props = entry!.inputSchema.properties as Record<string, Record<string, unknown>>;
+    expect(props.scenarios).toMatchObject({
+      type: 'array',
+      items: { enum: ['smoke', 'guardrail', 'skill', 'delegate', 'all'] },
+    });
+  });
+
+  it('runs tier 2 static checks (scenarios: []) without OMC_SMOKE_ALLOW_LIVE', async () => {
+    runCopilotSmoke.mockResolvedValue(fakeReport(true));
+    const result = await hostSmokeTool.handler({ tier: 2, scenarios: [] });
+    expect(result.isError).toBeUndefined();
+    expect(runCopilotSmoke).toHaveBeenCalledWith({ tier: 2, scenarios: [] });
+  });
+
+  it('refuses tier 2 with scenarios (explicit or default) without OMC_SMOKE_ALLOW_LIVE=1', async () => {
+    for (const args of [{ tier: 2 }, { tier: 2, scenarios: ['smoke' as const] }]) {
+      const result = await hostSmokeTool.handler(args);
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/OMC_SMOKE_ALLOW_LIVE=1/);
+      expect(result.content[0].text).toMatch(/scenarios: \[\]/);
+    }
+    expect(runCopilotSmoke).not.toHaveBeenCalled();
+  });
+
+  it('expands "all" and dedupes scenarios at tier 2 when opted in', async () => {
+    vi.stubEnv('OMC_SMOKE_ALLOW_LIVE', '1');
+    runCopilotSmoke.mockResolvedValue(fakeReport(true));
+    await hostSmokeTool.handler({ tier: 2, scenarios: ['skill', 'all'] });
+    expect(runCopilotSmoke).toHaveBeenCalledWith({ tier: 2, scenarios: ['skill', 'smoke', 'guardrail', 'delegate'] });
+    runCopilotSmoke.mockClear();
+    await hostSmokeTool.handler({ tier: 2 });
+    expect(runCopilotSmoke).toHaveBeenCalledWith({ tier: 2 });
+  });
+
+  it('rejects scenarios below tier 2', async () => {
+    const result = await hostSmokeTool.handler({ tier: 0, scenarios: [] });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toMatch(/tier 2 only/);
+    expect(runCopilotSmoke).not.toHaveBeenCalled();
+  });
+
   it('refuses a foreign pluginRoot unless OMC_SMOKE_ALLOW_ANY_ROOT=1', async () => {
     runCopilotSmoke.mockResolvedValue(fakeReport(true));
     const foreign = mkdtempSync(join(tmpdir(), 'host-smoke-foreign-'));
