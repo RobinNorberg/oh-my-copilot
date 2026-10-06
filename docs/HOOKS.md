@@ -88,6 +88,7 @@ The adapter fails **open** on a hook's internal error. Copilot treats a PreToolU
 | `OMC_HOOK_EVENT` | Set by `copilot/hooks.json`; activates the adapter. |
 | `OMC_HOOK_FAIL_CLOSED=1` | Keep the hook's original non-zero exit code (fail closed). The hook runner `scripts/run.cjs` also exits `124` when a hook times out, instead of the default fail-open `0`, and its stderr line says `exiting fail-closed (124)`. |
 | `OMC_HOOK_STRICT=1` | A hook target that is missing or not a file exits 1 instead of 0 plus a stderr line. |
+| `OMC_SESSION_END_BUDGET_MS` | Foreground budget of each SessionEnd hook (`session-end.mjs`, `wiki-session-end.mjs`) in `scripts/run.cjs`, on both hosts. An integer from 1 to 60000; any other value is ignored. The default is 1500 under Copilot and 300 under Claude Code (see [SessionEnd](#sessionend)). |
 | `OMC_DEBUG_HOOKS` | Log adapter decisions, such as a dropped `updatedInput`, to stderr. |
 
 ### Not projected
@@ -281,6 +282,15 @@ Fires when a session ends.
 | `session-end.mjs` | Saves session summary, sends callback notifications | 30s |
 
 Saves agent activity, token usage, and other session data to `.omg/sessions/`. If configured, sends completion notifications via Discord, Telegram, or Slack.
+
+**Foreground budget.** `scripts/run.cjs` runs `session-end.mjs` and `wiki-session-end.mjs` in a Worker with a short foreground budget. The hook publishes a durable cleanup intent and hands the work to a detached worker. Past the budget the runner exits 0, or 124 under `OMC_HOOK_FAIL_CLOSED=1`, and the foreground work is dropped.
+
+| Host | Budget | Why |
+|---|---|---|
+| Claude Code | 300 ms (upstream) | Claude Code kills SessionEnd hooks when it exits. |
+| Copilot (`OMC_HOOK_EVENT=SessionEnd`) | 1500 ms | Copilot fires SessionEnd after every turn and waits up to `timeoutSec` (30 s). At 300 ms, ordinary load (parallel sessions, a cold disk) dropped the cleanup and failed the hook. |
+
+The budget counts Worker boot, stdin, imports and the git root probe. 1500 ms is a chosen value, about 5x the idle foreground cost, not a measured limit. `OMC_SESSION_END_BUDGET_MS` overrides it on both hosts. The manifest timeout still caps it. `session-end.mjs` imports the factory chain enqueuer only when the session has a chain ledger or an `OMC_CHAIN_LINK` claim.
 
 ---
 

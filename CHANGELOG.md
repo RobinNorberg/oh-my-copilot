@@ -43,6 +43,16 @@ All notable changes to oh-my-copilot will be documented in this file.
   [docs/DEVELOPERS.md](docs/DEVELOPERS.md#tier-2-in-ci).
 - **Smoke on Linux:** the missing-binary message no longer names the WinGet
   directory off Windows; it points at `npm i -g @github/copilot`.
+- **Copilot SessionEnd foreground budget is 1500 ms:** `scripts/run.cjs` gave
+  `session-end.mjs` and `wiki-session-end.mjs` 300 ms on both hosts, so under
+  load Copilot recorded failed SessionEnd hooks (exit 124 with
+  `OMC_HOOK_FAIL_CLOSED=1`) and dropped the cleanup. Copilot waits up to 30 s
+  for SessionEnd, so the budget is now 1500 ms when `OMC_HOOK_EVENT=SessionEnd`.
+  Claude Code keeps 300 ms. `OMC_SESSION_END_BUDGET_MS` overrides both. With 4
+  parallel lanes of 8 SessionEnd pairs, 0/64 runs fail (before: 56-63/64).
+  `session-end.mjs` also loads the factory chain enqueuer only when a chain
+  ledger or `OMC_CHAIN_LINK` exists, which cuts its idle median from 300 ms
+  to about 260 ms.
 
 # oh-my-copilot v5.7.0
 

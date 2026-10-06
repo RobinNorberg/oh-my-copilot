@@ -270,6 +270,29 @@ function resolveTrustedSessionEndTarget(resolution, extraArgs) {
   }
 }
 
+// Fork (oh-my-copilot): SessionEnd foreground budget per host. Claude Code
+// kills SessionEnd hooks at exit, so upstream caps the foreground at 300ms.
+// Copilot (OMC_HOOK_EVENT=SessionEnd from copilot/hooks.json) fires SessionEnd
+// per turn and waits up to timeoutSec, so 300ms only drops the work under load.
+// 1500ms is chosen (~5x the idle foreground cost), not derived.
+// OMC_SESSION_END_BUDGET_MS overrides both hosts (integer 1..60000); the
+// manifest-derived timeout still caps the result at the call site.
+const SESSION_END_BUDGET_MS = 300;
+const COPILOT_SESSION_END_BUDGET_MS = 1500;
+function resolveSessionEndBudgetMs(env = process.env) {
+  // Test-only widening (upstream contract) wins, and only under NODE_ENV=test.
+  const requestedTestTimeout = env.NODE_ENV === 'test'
+    ? Number(env.OMC_SESSION_END_TEST_FOREGROUND_TIMEOUT_MS)
+    : NaN;
+  if (Number.isFinite(requestedTestTimeout) && requestedTestTimeout > 0) return requestedTestTimeout;
+  const override = String(env.OMC_SESSION_END_BUDGET_MS ?? '').trim();
+  if (/^\d+$/.test(override)) {
+    const value = Number(override);
+    if (value >= 1 && value <= MAX_DECLARED_GENERIC_TIMEOUT_MS) return value;
+  }
+  return env.OMC_HOOK_EVENT === 'SessionEnd' ? COPILOT_SESSION_END_BUDGET_MS : SESSION_END_BUDGET_MS;
+}
+
 
 // oh-my-copilot fail-closed contract (fork-only): with OMC_HOOK_FAIL_CLOSED=1
 // a hook timeout exits 124 so the host records a failed hook. Unset keeps the
@@ -1069,14 +1092,8 @@ if (require.main === module) {
       } else {
         const sessionEndManifestHook = resolveTrustedSessionEndTarget(resolution, extraArgs);
         if (sessionEndManifestHook) {
-          // The shipped foreground budget stays 300ms unconditionally; only the
-          // test harness may widen it, and only under NODE_ENV=test.
-          const requestedTestTimeout = process.env.NODE_ENV === 'test'
-            ? Number(process.env.OMC_SESSION_END_TEST_FOREGROUND_TIMEOUT_MS)
-            : NaN;
-          const budgetMs = Number.isFinite(requestedTestTimeout) && requestedTestTimeout > 0
-            ? requestedTestTimeout
-            : 300;
+          // Fork: 300ms on Claude Code, 1500ms under Copilot; see resolveSessionEndBudgetMs.
+          const budgetMs = resolveSessionEndBudgetMs();
           const timeoutMs = Math.min(resolveGenericTimeoutMs(sessionEndManifestHook), budgetMs);
           runWorker(resolution.targetPath, sessionEndManifestHook, timeoutMs).then(status => {
             process.exitCode = status;
@@ -1119,4 +1136,5 @@ module.exports = {
   NESTED_INNER_FLOOR_MS,
   MAX_DECLARED_GENERIC_TIMEOUT_MS,
   resolveTrustedSessionEndTarget,
+  resolveSessionEndBudgetMs,
 };
