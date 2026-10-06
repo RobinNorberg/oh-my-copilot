@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "fdb10c69e880b746539bec3d8402d5f160193a13",
-    "sourceSha256": "984ef649fc8e5fea247dda7551b7811d7c1e50ae148e7cc90a0c59eee584555c",
+    "head": "2b4a1afd2847dc2c50cfaa2e43ebb9466dfceefc",
+    "sourceSha256": "fc239695e24583fc08512a7441add4aac3fa1a81c5ba9935015c4cb3e63e4c1f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "fdb10c69e880b746539bec3d8402d5f160193a13",
-  "sourceSha256": "984ef649fc8e5fea247dda7551b7811d7c1e50ae148e7cc90a0c59eee584555c",
+  "head": "2b4a1afd2847dc2c50cfaa2e43ebb9466dfceefc",
+  "sourceSha256": "fc239695e24583fc08512a7441add4aac3fa1a81c5ba9935015c4cb3e63e4c1f",
   "counts": {
     "public": {
       "skills": 61,
@@ -28,8 +28,8 @@
       "toolFiles": 62,
       "libFiles": 47,
       "templateHooks": 23,
-      "srcFiles": 1536,
-      "total": 1559
+      "srcFiles": 1531,
+      "total": 1554
     },
     "generated": {
       "distFiles": 5911,
@@ -7592,6 +7592,11 @@
         "id": ".omc/skills/omg-release-runbook.md",
         "kind": "other",
         "path": ".omc/skills/omg-release-runbook.md"
+      },
+      {
+        "id": ".omc/skills/port-and-release-cycle.md",
+        "kind": "other",
+        "path": ".omc/skills/port-and-release-cycle.md"
       },
       {
         "id": ".omc/skills/port-upstream.md",
@@ -40099,11 +40104,6 @@
         "path": "src/__tests__/agent-boundary-guidance.test.ts"
       },
       {
-        "id": "src/__tests__/agent-model-config.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/agent-model-config.test.ts"
-      },
-      {
         "id": "src/__tests__/agent-registry.test.ts",
         "kind": "src",
         "path": "src/__tests__/agent-registry.test.ts"
@@ -40337,11 +40337,6 @@
         "id": "src/__tests__/doctor-legacy-config-dir.test.ts",
         "kind": "src",
         "path": "src/__tests__/doctor-legacy-config-dir.test.ts"
-      },
-      {
-        "id": "src/__tests__/doctor-legacy-project-config.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/doctor-legacy-project-config.test.ts"
       },
       {
         "id": "src/__tests__/doctor-node-on-path.test.ts",
@@ -41659,11 +41654,6 @@
         "path": "src/__tests__/workflow-profile-activation-script.test.ts"
       },
       {
-        "id": "src/__tests__/workflow-profile-runtime.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/workflow-profile-runtime.test.ts"
-      },
-      {
         "id": "src/__tests__/worktree-metadata-locking.test.ts",
         "kind": "src",
         "path": "src/__tests__/worktree-metadata-locking.test.ts"
@@ -42304,11 +42294,6 @@
         "path": "src/config/__tests__/plan-output.test.ts"
       },
       {
-        "id": "src/config/__tests__/project-config-path.test.ts",
-        "kind": "src",
-        "path": "src/config/__tests__/project-config-path.test.ts"
-      },
-      {
         "id": "src/config/__tests__/test-helpers.ts",
         "kind": "src",
         "path": "src/config/__tests__/test-helpers.ts"
@@ -42342,11 +42327,6 @@
         "id": "src/config/plan-output.ts",
         "kind": "src",
         "path": "src/config/plan-output.ts"
-      },
-      {
-        "id": "src/config/project-config-path.ts",
-        "kind": "src",
-        "path": "src/config/project-config-path.ts"
       },
       {
         "id": "src/constants/index.ts",
@@ -51381,31 +51361,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/__tests__/agent-model-config.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/agent-model-config.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/agent-model-config.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/agent-model-config.test.ts",
-        "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/agent-model-config.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
         "from": "src/__tests__/agent-registry.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -52512,31 +52467,6 @@
       },
       {
         "from": "src/__tests__/doctor-legacy-config-dir.test.ts",
-        "to": "src/cli/commands/doctor-conflicts.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/doctor-legacy-project-config.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/doctor-legacy-project-config.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/doctor-legacy-project-config.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/doctor-legacy-project-config.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/doctor-legacy-project-config.test.ts",
         "to": "src/cli/commands/doctor-conflicts.ts",
         "kind": "imports"
       },
@@ -58711,36 +58641,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/__tests__/workflow-profile-runtime.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/workflow-profile-runtime.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/workflow-profile-runtime.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/workflow-profile-runtime.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/workflow-profile-runtime.test.ts",
-        "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/workflow-profile-runtime.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
         "from": "src/__tests__/worktree-metadata-locking.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -60982,16 +60882,6 @@
       },
       {
         "from": "src/cli/commands/doctor-conflicts.ts",
-        "to": "src/config/project-config-path.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/doctor-conflicts.ts",
-        "to": "src/config/project-config-path.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/doctor-conflicts.ts",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "imports"
       },
@@ -62156,41 +62046,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/config/__tests__/project-config-path.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/config/__tests__/project-config-path.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/config/__tests__/project-config-path.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/config/__tests__/project-config-path.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/config/__tests__/project-config-path.test.ts",
-        "to": "src/config/loader.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/config/__tests__/project-config-path.test.ts",
-        "to": "src/config/project-config-path.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/config/__tests__/project-config-path.test.ts",
-        "to": "src/lib/security-config.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/config/ado-config.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -62223,11 +62078,6 @@
       {
         "from": "src/config/loader.ts",
         "to": "src/config/models.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/config/loader.ts",
-        "to": "src/config/project-config-path.ts",
         "kind": "imports"
       },
       {
@@ -62279,16 +62129,6 @@
         "from": "src/config/plan-output.ts",
         "to": "src/shared/types.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/config/project-config-path.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/config/project-config-path.ts",
-        "to": "external:path",
-        "kind": "imports"
       },
       {
         "from": "src/constants/index.ts",
@@ -77707,11 +77547,6 @@
       },
       {
         "from": "src/lib/security-config.ts",
-        "to": "src/config/project-config-path.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/lib/security-config.ts",
         "to": "src/utils/jsonc.ts",
         "kind": "imports"
       },
@@ -92467,12 +92302,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8152,
-      "edgeCount": 8852,
-      "importEdgeCount": 7327,
+      "nodeCount": 8148,
+      "edgeCount": 8823,
+      "importEdgeCount": 7299,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "ad44d1b114d39e2dd29024d0f8954ce2cb7c3c0f5117aa2474ef9f413c24f918",
-  "manifestSha256": "124116157bf161136678c1bf76a61be7d9ddc7ed6b1c1959265d1b942b1cab23"
+  "inventorySha256": "3d773b154a39d0d54a4d5bf0ca7e1791db3e40b7170409a4faefd00da60a243c",
+  "manifestSha256": "dd7948fa128b8c299caac77589ddf73af1f5f5483b9809384380353282d9f6c1"
 }
