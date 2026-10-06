@@ -543,6 +543,17 @@ export interface TeamOpsConfig {
 /** `team` config block in PluginConfig. */
 export interface TeamConfigBlock {
   ops?: TeamOpsConfig;
+  /** Worker transport: `pane` (tmux/psmux, default) or `sdk` (headless copilot-sdk sessions; copilot workers only). */
+  transport?: 'pane' | 'sdk';
+  /** `transport: "sdk"` tuning. */
+  sdk?: {
+    /** Per-worker credit cap; the runtime gets `--max-ai-credits max(30, cap)`. Default 10. */
+    maxCreditsPerWorker?: number;
+    /** Explicit model for every sdk worker (default: the worker's resolved model, else runtime auto). */
+    model?: string;
+    /** Startup evidence (task claim) budget per worker in ms. Default 180000. */
+    startupEvidenceMs?: number;
+  };
   roleRouting?: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> & {
     orchestrator?: OrchestratorSpec;
   };

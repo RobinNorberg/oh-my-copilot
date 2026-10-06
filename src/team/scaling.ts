@@ -69,6 +69,7 @@ import {
   teamStateRoot as resolveTeamStateRoot,
 } from './state-paths.js';
 import { writeWorkerOverlay } from './worker-bootstrap.js';
+import { isSdkTarget } from './sdk-transport.js';
 import {
   ensureWorkerWorktree,
   installWorktreeRootAgents,
@@ -302,6 +303,7 @@ export async function scaleUpOwned(
     }
     let config = revisioned.config;
     let configRevision = revisioned.stateRevision;
+    if (isSdkTarget(config.tmux_session)) return { ok: false, error: 'scaling_unsupported_transport:sdk' };
     if (!config.instance_id) return { ok: false, error: 'team_instance_authority_missing' };
     let originalInstanceId = config.instance_id;
     if (config.active_recovery || config.active_scale_down) return { ok: false, error: 'team_mutation_busy' };
@@ -1107,6 +1109,7 @@ export async function scaleDownOwned(
     if (!loadedConfig) {
       return { ok: false, error: `Team ${sanitized} not found` };
     }
+    if (isSdkTarget(loadedConfig.tmux_session)) return { ok: false, error: 'scaling_unsupported_transport:sdk' };
     if (!loadedConfig.instance_id) return { ok: false, error: 'team_instance_authority_missing' };
     let originalInstanceId = loadedConfig.instance_id;
     if (loadedConfig.active_recovery || scaleUpFenceBlocks(loadedConfig)) return { ok: false, error: 'team_mutation_busy' };

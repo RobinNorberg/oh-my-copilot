@@ -459,6 +459,8 @@ export interface WorkerInfo {
     launch_attempt_id?: string;
     operational_state?: 'starting' | 'active' | 'dead' | 'stopped';
     launch_descriptor?: WorkerLaunchDescriptor;
+    /** `sdk`: a headless copilot-sdk session owned by `omg team sdk-host` (pane_id `sdk:<name>`). Absent: pane. */
+    transport?: 'pane' | 'sdk';
 }
 export interface TeamScaleDownAttempt {
     /** Missing on older records, which cannot authorize instance-bound effects. */
