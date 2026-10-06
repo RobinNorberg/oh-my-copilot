@@ -172,6 +172,7 @@ function input(loaded, over = {}, gitCalls = []) {
         skillDirs: ['alpha', 'plan'],
         agentFiles: ['architect.md'],
         mcpServer: 't',
+        runChain: async () => { throw new Error('chain runner not stubbed'); },
         ...over,
     };
 }

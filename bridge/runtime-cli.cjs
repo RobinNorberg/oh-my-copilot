@@ -9,9 +9,6 @@ var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
-var __commonJS = (cb, mod) => function __require() {
-  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
-};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -232,11 +229,11 @@ function isSensitiveStateLocation(dir) {
   }
   const home = (() => {
     try {
-      const path6 = (0, import_path2.resolve)((0, import_os2.homedir)());
+      const path5 = (0, import_path2.resolve)((0, import_os2.homedir)());
       try {
-        return (0, import_fs.realpathSync)(path6);
+        return (0, import_fs.realpathSync)(path5);
       } catch {
-        return path6;
+        return path5;
       }
     } catch {
       return null;
@@ -300,11 +297,11 @@ function gitErrorStderr(error) {
   }
   return typeof err.message === "string" ? err.message : "";
 }
-function isGitCommandPath(path6) {
-  if (typeof path6 !== "string" || path6.length === 0) {
+function isGitCommandPath(path5) {
+  if (typeof path5 !== "string" || path5.length === 0) {
     return false;
   }
-  const base = (0, import_path2.basename)(path6);
+  const base = (0, import_path2.basename)(path5);
   return base === "git" || base === "git.exe" || base === "git.cmd" || base === "git.bat";
 }
 function isConfirmedGitExecutableNotFound(error) {
@@ -386,8 +383,8 @@ function findGitMetadataDir(start) {
     current = parent;
   }
 }
-function expandPathForCompare(path6) {
-  const normalized = (0, import_path2.resolve)(path6);
+function expandPathForCompare(path5) {
+  const normalized = (0, import_path2.resolve)(path5);
   try {
     return import_fs.realpathSync.native(normalized);
   } catch {
@@ -398,9 +395,9 @@ function expandPathForCompare(path6) {
     }
   }
 }
-function canonicalizeExistingPath(path6) {
+function canonicalizeExistingPath(path5) {
   try {
-    return (0, import_fs.realpathSync)((0, import_path2.resolve)(path6));
+    return (0, import_fs.realpathSync)((0, import_path2.resolve)(path5));
   } catch {
     return null;
   }
@@ -495,11 +492,11 @@ function probeGitTopLevel(cwd) {
   }
   return result;
 }
-function gitMetadataFileSignature(path6) {
+function gitMetadataFileSignature(path5) {
   try {
-    const metadata = (0, import_fs.statSync)(path6);
+    const metadata = (0, import_fs.statSync)(path5);
     return [
-      path6,
+      path5,
       metadata.dev,
       metadata.ino,
       metadata.mode,
@@ -508,14 +505,14 @@ function gitMetadataFileSignature(path6) {
       metadata.ctimeMs
     ].join(":");
   } catch {
-    return `${path6}:missing`;
+    return `${path5}:missing`;
   }
 }
-function readGitMarker(path6) {
+function readGitMarker(path5) {
   let descriptor;
   try {
-    if (!(0, import_fs.lstatSync)(path6).isFile()) return null;
-    descriptor = (0, import_fs.openSync)(path6, "r");
+    if (!(0, import_fs.lstatSync)(path5).isFile()) return null;
+    descriptor = (0, import_fs.openSync)(path5, "r");
     const buffer = Buffer.alloc(MAX_GIT_MARKER_BYTES);
     const bytesRead = (0, import_fs.readSync)(descriptor, buffer, 0, buffer.length, 0);
     return buffer.toString("utf8", 0, bytesRead);
@@ -1062,8 +1059,8 @@ function canonicalTeamCwd(cwd) {
     }
   }
 }
-function canonicalStoragePath(path6) {
-  let cursor = (0, import_path3.resolve)(path6);
+function canonicalStoragePath(path5) {
+  let cursor = (0, import_path3.resolve)(path5);
   const missingSuffix = [];
   const visitedLinks = /* @__PURE__ */ new Set();
   while (true) {
@@ -1086,7 +1083,7 @@ function canonicalStoragePath(path6) {
     } catch (error) {
       if (error instanceof Error && error.message === "team_storage_anchor_symlink_cycle") throw error;
       const parent = (0, import_path3.dirname)(cursor);
-      if (parent === cursor) return (0, import_path3.resolve)(path6);
+      if (parent === cursor) return (0, import_path3.resolve)(path5);
       missingSuffix.push((0, import_path3.basename)(cursor));
       cursor = parent;
     }
@@ -1129,9 +1126,9 @@ function canonicalTeamStateRoot(cwd, teamName) {
 function teamWorkspaceHash(cwd, teamName) {
   return (0, import_node_crypto.createHash)("sha256").update(canonicalTeamStateRoot(cwd, teamName)).digest("hex");
 }
-async function assertTeamStatePathSafe(cwd, path6) {
+async function assertTeamStatePathSafe(cwd, path5) {
   const storageRoot = canonicalTeamOmcRoot(cwd);
-  const target = canonicalTeamStatePath(cwd, path6);
+  const target = canonicalTeamStatePath(cwd, path5);
   const suffix = (0, import_path3.relative)(storageRoot, target);
   if (suffix === ".." || suffix.startsWith(`..${import_path3.sep}`) || (0, import_path3.isAbsolute)(suffix)) {
     throw new Error("team_instance_path_outside_storage_root");
@@ -1149,9 +1146,9 @@ async function assertTeamStatePathSafe(cwd, path6) {
     }
   }
 }
-function assertTeamStatePathSafeSync(cwd, path6) {
+function assertTeamStatePathSafeSync(cwd, path5) {
   const storageRoot = canonicalTeamOmcRoot(cwd);
-  const target = canonicalTeamStatePath(cwd, path6);
+  const target = canonicalTeamStatePath(cwd, path5);
   const suffix = (0, import_path3.relative)(storageRoot, target);
   if (suffix === ".." || suffix.startsWith(`..${import_path3.sep}`) || (0, import_path3.isAbsolute)(suffix)) {
     throw new Error("team_instance_path_outside_storage_root");
@@ -2234,16 +2231,16 @@ function getConfigPaths() {
     project: (0, import_path9.join)(process.cwd(), ".copilot", "omg.jsonc")
   };
 }
-function loadJsoncFile(path6) {
-  if (!(0, import_fs7.existsSync)(path6)) {
+function loadJsoncFile(path5) {
+  if (!(0, import_fs7.existsSync)(path5)) {
     return null;
   }
   try {
-    const content = (0, import_fs7.readFileSync)(path6, "utf-8");
+    const content = (0, import_fs7.readFileSync)(path5, "utf-8");
     const result = parseJsonc(content);
     return result;
   } catch (error) {
-    console.error(`Error loading config from ${path6}:`, error);
+    console.error(`Error loading config from ${path5}:`, error);
     return null;
   }
 }
@@ -2548,8 +2545,8 @@ function isAutopilotWorkflowSequence(stages) {
     (sequence) => stages.length === sequence.length && stages.every((stage, index) => typeof stage === "string" && stage === sequence[index])
   );
 }
-function workflowError(source, path6, message) {
-  throw new Error(`[OMC] ${source} ${path6}: ${message}`);
+function workflowError(source, path5, message) {
+  throw new Error(`[OMC] ${source} ${path5}: ${message}`);
 }
 function validateAutopilotWorkflows(config, source) {
   if (!config || typeof config !== "object" || Array.isArray(config)) return;
@@ -2562,32 +2559,32 @@ function validateAutopilotWorkflows(config, source) {
     workflowError(source, "autopilot.workflows", "must be an object map");
   }
   for (const [name, profile] of Object.entries(workflows)) {
-    const path6 = `autopilot.workflows.${name}`;
+    const path5 = `autopilot.workflows.${name}`;
     if (!AUTOPILOT_WORKFLOW_NAME.test(name)) {
-      workflowError(source, path6, "name must match ^[a-z][a-z0-9-]{0,62}$");
+      workflowError(source, path5, "name must match ^[a-z][a-z0-9-]{0,62}$");
     }
     if (AUTOPILOT_WORKFLOW_RESERVED_NAMES.has(name)) {
-      workflowError(source, path6, `name "${name}" is reserved`);
+      workflowError(source, path5, `name "${name}" is reserved`);
     }
     if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
-      workflowError(source, path6, "must be an object");
+      workflowError(source, path5, "must be an object");
     }
     const profileRecord = profile;
     for (const key of Object.keys(profileRecord)) {
       if (key !== "version" && key !== "stages") {
-        workflowError(source, `${path6}.${key}`, "unknown profile key");
+        workflowError(source, `${path5}.${key}`, "unknown profile key");
       }
     }
     if (profileRecord.version !== 1) {
-      workflowError(source, `${path6}.version`, "must be the number 1");
+      workflowError(source, `${path5}.version`, "must be the number 1");
     }
     if (!Array.isArray(profileRecord.stages)) {
-      workflowError(source, `${path6}.stages`, "must be an array");
+      workflowError(source, `${path5}.stages`, "must be an array");
     }
     if (!isAutopilotWorkflowSequence(profileRecord.stages)) {
       workflowError(
         source,
-        `${path6}.stages`,
+        `${path5}.stages`,
         "must be one of: [ralplan, execution], [ralplan, execution, ralph], [ralplan, execution, qa], [ralplan, execution, ralph, qa]"
       );
     }
@@ -2897,9 +2894,9 @@ function recordBytes(record) {
   const payloadHash = digest(record);
   return canonicalize({ ...record, payload_hash: payloadHash });
 }
-function parseRecord(path6, expectedEpoch) {
+function parseRecord(path5, expectedEpoch) {
   try {
-    const parsed = JSON.parse((0, import_fs9.readFileSync)(path6, "utf8"));
+    const parsed = JSON.parse((0, import_fs9.readFileSync)(path5, "utf8"));
     if (parsed.schema_version !== 1 || !Number.isSafeInteger(parsed.epoch) || parsed.epoch < 1 || expectedEpoch !== void 0 && parsed.epoch !== expectedEpoch || typeof parsed.nonce !== "string" || typeof parsed.pid !== "number" || !isValidProcessStartIdentity(parsed.process_started_at) || typeof parsed.payload_hash !== "string") return null;
     const { payload_hash, ...unsigned } = parsed;
     return digest(unsigned) === payload_hash ? parsed : null;
@@ -3132,9 +3129,9 @@ var init_team_owner_epoch = __esm({
 });
 
 // src/team/process-identity-lock.ts
-function readLock(path6) {
+function readLock(path5) {
   try {
-    const record = JSON.parse((0, import_node_fs3.readFileSync)(path6, "utf8"));
+    const record = JSON.parse((0, import_node_fs3.readFileSync)(path5, "utf8"));
     return record.schema_version === 1 && Number.isSafeInteger(record.pid) && record.pid > 0 && isValidProcessStartIdentity(record.process_started_at) && typeof record.nonce === "string" && record.nonce.length > 0 ? record : null;
   } catch {
     return null;
@@ -3168,7 +3165,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve19) => setTimeout(resolve19, 25));
+        await new Promise((resolve17) => setTimeout(resolve17, 25));
         continue;
       }
       try {
@@ -3189,7 +3186,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve19) => setTimeout(resolve19, 25));
+        await new Promise((resolve17) => setTimeout(resolve17, 25));
       }
     }
     return await fn();
@@ -3532,8 +3529,8 @@ async function assertExternalCleanupPathsSafe(binding) {
     fail("team_instance_state_corrupt", error instanceof Error ? error.message : String(error));
   }
 }
-function canonicalPath(path6) {
-  return (0, import_node_path3.resolve)(path6);
+function canonicalPath(path5) {
+  return (0, import_node_path3.resolve)(path5);
 }
 function sameBinding(a, b) {
   return a.instance_id === b.instance_id && a.team_name === b.team_name && canonicalTeamCwd(a.cwd) === b.cwd && a.workspace_hash === b.workspace_hash && canonicalTeamStatePath(b.cwd, a.state_root) === canonicalPath(b.state_root);
@@ -3553,35 +3550,35 @@ function ownerMatchesCurrent(owner) {
   const processStartedAt = currentProcessStartIdentity();
   return processStartedAt !== null && owner.pid === process.pid && owner.process_started_at === processStartedAt;
 }
-async function readJsonState(path6) {
+async function readJsonState(path5) {
   try {
-    const stat2 = await (0, import_promises5.lstat)(path6);
+    const stat2 = await (0, import_promises5.lstat)(path5);
     if (!stat2.isFile()) return { kind: "invalid" };
-    return { kind: "value", value: JSON.parse(await (0, import_promises5.readFile)(path6, "utf8")) };
+    return { kind: "value", value: JSON.parse(await (0, import_promises5.readFile)(path5, "utf8")) };
   } catch (error) {
     if (error.code === "ENOENT") return { kind: "missing" };
     return { kind: "invalid" };
   }
 }
-async function pathKind(path6) {
+async function pathKind(path5) {
   try {
-    const stat2 = await (0, import_promises5.lstat)(path6);
+    const stat2 = await (0, import_promises5.lstat)(path5);
     if (stat2.isDirectory()) return "directory";
     if (stat2.isFile()) return "file";
     return "other";
   } catch (error) {
     if (error.code === "ENOENT") return "missing";
-    fail("team_instance_state_corrupt", `state_path_unreadable:${path6}`);
+    fail("team_instance_state_corrupt", `state_path_unreadable:${path5}`);
   }
 }
-async function defaultPublish(path6, value) {
+async function defaultPublish(path5, value) {
   const bytes = JSON.stringify(value, null, 2);
-  await (0, import_promises5.mkdir)((0, import_node_path3.dirname)(path6), { recursive: true, mode: 448 });
-  const tempPath = `${path6}.tmp.${process.pid}.${(0, import_node_crypto3.randomUUID)()}`;
+  await (0, import_promises5.mkdir)((0, import_node_path3.dirname)(path5), { recursive: true, mode: 448 });
+  const tempPath = `${path5}.tmp.${process.pid}.${(0, import_node_crypto3.randomUUID)()}`;
   try {
     await (0, import_promises5.writeFile)(tempPath, bytes, { encoding: "utf8", mode: 384, flag: "wx" });
-    await (0, import_promises5.rename)(tempPath, path6);
-    const persisted = JSON.parse(await (0, import_promises5.readFile)(path6, "utf8"));
+    await (0, import_promises5.rename)(tempPath, path5);
+    const persisted = JSON.parse(await (0, import_promises5.readFile)(path5, "utf8"));
     if (stableJson(persisted) !== stableJson(value)) {
       throw new Error("publication_verification_failed");
     }
@@ -3592,8 +3589,8 @@ async function defaultPublish(path6, value) {
     }
   }
 }
-async function verifyPublished(path6, value) {
-  const state = await readJsonState(path6);
+async function verifyPublished(path5, value) {
+  const state = await readJsonState(path5);
   if (state.kind !== "value" || stableJson(state.value) !== stableJson(value)) {
     throw new Error("publication_verification_failed");
   }
@@ -3612,12 +3609,12 @@ async function publishReservation(record, io) {
     );
   }
 }
-async function publishCleanupReceipt(record, io, path6 = record.receipt_path) {
+async function publishCleanupReceipt(record, io, path5 = record.receipt_path) {
   try {
-    await assertTeamStatePathSafe(record.cwd, path6);
-    if (io?.publishCleanupReceipt) await io.publishCleanupReceipt(path6, record);
-    else await defaultPublish(path6, record);
-    await verifyPublished(path6, record);
+    await assertTeamStatePathSafe(record.cwd, path5);
+    if (io?.publishCleanupReceipt) await io.publishCleanupReceipt(path5, record);
+    else await defaultPublish(path5, record);
+    await verifyPublished(path5, record);
   } catch (error) {
     throw new TeamInstanceError(
       "team_instance_receipt_publish_failed",
@@ -3664,8 +3661,8 @@ async function publishInitialCleanupReceipt(record, io) {
   }
 }
 async function readReservation(binding) {
-  const path6 = expectedPaths(binding).reservation;
-  const state = await readJsonState(path6);
+  const path5 = expectedPaths(binding).reservation;
+  const state = await readJsonState(path5);
   if (state.kind === "missing") return null;
   if (state.kind !== "value" || !isValidReservation(state.value)) {
     fail("team_instance_authority_corrupt", "invalid_team_instance_reservation");
@@ -3675,8 +3672,8 @@ async function readReservation(binding) {
 async function readCleanupReceipt(binding) {
   await assertExternalCleanupPathsSafe(binding);
   const paths = expectedPaths(binding);
-  const path6 = paths.cleanup;
-  const state = await readJsonState(path6);
+  const path5 = paths.cleanup;
+  const state = await readJsonState(path5);
   if (state.kind === "missing") {
     const rootKind = await pathKind(paths.cleanupRoot);
     if (rootKind !== "missing") fail("team_instance_authority_corrupt", "cleanup_receipt_missing");
@@ -3763,11 +3760,11 @@ async function inspectTeamState(binding) {
   if (entries.length === 0) return { observed_state: "empty" };
   const identities = [];
   for (const fileName of ["config.json", "manifest.json"]) {
-    const path6 = (0, import_node_path3.join)(root, fileName);
-    const fileKind = await pathKind(path6);
+    const path5 = (0, import_node_path3.join)(root, fileName);
+    const fileKind = await pathKind(path5);
     if (fileKind === "missing") continue;
     if (fileKind !== "file") fail("team_instance_state_corrupt", `team_state_document_not_file:${fileName}`);
-    const state = await readJsonState(path6);
+    const state = await readJsonState(path5);
     if (state.kind !== "value") fail("team_instance_state_corrupt", `invalid_team_state_document:${fileName}`);
     const identity = identityFromDocument(state.value, binding);
     if (identity === void 0) fail("team_instance_state_unknown", "team_state_identity_missing");
@@ -3976,33 +3973,33 @@ async function removeDetachedRoot(binding, options) {
   }
 }
 async function clearReservationIfOwned(binding) {
-  const path6 = expectedPaths(binding).reservation;
+  const path5 = expectedPaths(binding).reservation;
   try {
-    await assertTeamStatePathSafe(binding.cwd, path6);
+    await assertTeamStatePathSafe(binding.cwd, path5);
   } catch {
     return;
   }
   let stat2;
   try {
-    stat2 = await (0, import_promises5.lstat)(path6);
+    stat2 = await (0, import_promises5.lstat)(path5);
   } catch (error) {
     if (error.code === "ENOENT") return;
     return;
   }
   if (!stat2.isFile()) return;
-  const state = await readJsonState(path6);
+  const state = await readJsonState(path5);
   if (state.kind !== "value" || !isValidReservation(state.value)) return;
   const reservation = state.value;
   if (!sameBinding(reservation, binding)) return;
   try {
-    await (0, import_promises5.unlink)(path6);
+    await (0, import_promises5.unlink)(path5);
   } catch (error) {
     if (error.code !== "ENOENT") {
       throw new TeamInstanceError("team_instance_reservation_release_failed", `reservation_release_failed:${String(error)}`, { cause: error });
     }
   }
   try {
-    const after = await (0, import_promises5.lstat)(path6);
+    const after = await (0, import_promises5.lstat)(path5);
     if (after.isSymbolicLink() || after.isFile()) return;
   } catch (error) {
     if (error.code !== "ENOENT") return;
@@ -6174,9 +6171,9 @@ function getTrustedPrefixes() {
 function isTrustedPrefix(resolvedPath) {
   const flavor = pathFlavor();
   return getTrustedPrefixes().some((prefix) => {
-    const relative12 = flavor.relative(prefix, resolvedPath);
-    if (relative12 === "") return true;
-    return !relative12.startsWith("..") && !flavor.isAbsolute(relative12);
+    const relative11 = flavor.relative(prefix, resolvedPath);
+    if (relative11 === "") return true;
+    return !relative11.startsWith("..") && !flavor.isAbsolute(relative11);
   });
 }
 function assertBinaryName(binary) {
@@ -7721,7 +7718,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve19) => setTimeout(resolve19, ms));
+  return new Promise((resolve17) => setTimeout(resolve17, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -7939,7 +7936,7 @@ function canonicalAuthorityDigest(input) {
   return (0, import_node_crypto5.createHash)("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep2(ms) {
-  return new Promise((resolve19) => setTimeout(resolve19, ms));
+  return new Promise((resolve17) => setTimeout(resolve17, ms));
 }
 function isExactText(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -8095,16 +8092,16 @@ function parseProviderCompletionExitCode(raw, binding) {
   if (!identityMatches(record, binding) || record.kind !== "worker_launch_provider_completion" || record.containment_nonce !== binding.containment_nonce || record.authority_digest !== binding.authority_digest || !Number.isSafeInteger(record.exit_code) || Number(record.exit_code) < 0) return void 0;
   return Number(record.exit_code);
 }
-async function readProviderCompletionExitCode(path6, binding) {
+async function readProviderCompletionExitCode(path5, binding) {
   try {
-    return parseProviderCompletionExitCode(await (0, import_promises8.readFile)(path6, "utf8"), binding);
+    return parseProviderCompletionExitCode(await (0, import_promises8.readFile)(path5, "utf8"), binding);
   } catch {
     return void 0;
   }
 }
-async function readJson(path6) {
+async function readJson(path5) {
   try {
-    return { kind: "value", value: JSON.parse(await (0, import_promises8.readFile)(path6, "utf8")) };
+    return { kind: "value", value: JSON.parse(await (0, import_promises8.readFile)(path5, "utf8")) };
   } catch (error) {
     if (error.code === "ENOENT") return { kind: "absent" };
     return { kind: "malformed" };
@@ -8114,9 +8111,9 @@ async function isCurrentLaunchIdentity(currentPath, identity) {
   const current = await readJson(currentPath);
   return current.kind === "value" && identityMatches(current.value, identity);
 }
-async function writeExclusiveAtomic(path6, value) {
-  await (0, import_promises8.mkdir)((0, import_node_path4.dirname)(path6), { recursive: true });
-  const candidate = `${path6}.candidate.${process.pid}.${(0, import_node_crypto5.randomUUID)()}`;
+async function writeExclusiveAtomic(path5, value) {
+  await (0, import_promises8.mkdir)((0, import_node_path4.dirname)(path5), { recursive: true });
+  const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto5.randomUUID)()}`;
   const handle = await (0, import_promises8.open)(candidate, "wx", 384);
   try {
     await handle.writeFile(JSON.stringify(value), "utf8");
@@ -8125,14 +8122,14 @@ async function writeExclusiveAtomic(path6, value) {
     await handle.close();
   }
   try {
-    await (0, import_promises8.link)(candidate, path6);
+    await (0, import_promises8.link)(candidate, path5);
   } finally {
     await (0, import_promises8.unlink)(candidate).catch(() => void 0);
   }
 }
-async function writeExclusiveTextAtomic(path6, value) {
-  await (0, import_promises8.mkdir)((0, import_node_path4.dirname)(path6), { recursive: true });
-  const candidate = `${path6}.candidate.${process.pid}.${(0, import_node_crypto5.randomUUID)()}`;
+async function writeExclusiveTextAtomic(path5, value) {
+  await (0, import_promises8.mkdir)((0, import_node_path4.dirname)(path5), { recursive: true });
+  const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto5.randomUUID)()}`;
   const handle = await (0, import_promises8.open)(candidate, "wx", 384);
   try {
     await handle.writeFile(value, "utf8");
@@ -8141,7 +8138,7 @@ async function writeExclusiveTextAtomic(path6, value) {
     await handle.close();
   }
   try {
-    await (0, import_promises8.link)(candidate, path6);
+    await (0, import_promises8.link)(candidate, path5);
   } finally {
     await (0, import_promises8.unlink)(candidate).catch(() => void 0);
   }
@@ -9297,11 +9294,11 @@ async function runWorkerLaunchBootstrap(value) {
       let resolveCompletion;
       let resolveWindowsReady;
       let resolveWindowsTerminal;
-      const windowsReady = new Promise((resolve19) => {
-        resolveWindowsReady = resolve19;
+      const windowsReady = new Promise((resolve17) => {
+        resolveWindowsReady = resolve17;
       });
-      const windowsTerminal = new Promise((resolve19) => {
-        resolveWindowsTerminal = resolve19;
+      const windowsTerminal = new Promise((resolve17) => {
+        resolveWindowsTerminal = resolve17;
       });
       if (providerGate) {
         providerGate.on("error", (error) => {
@@ -9362,8 +9359,8 @@ async function runWorkerLaunchBootstrap(value) {
           }
         });
       }
-      const completion = new Promise((resolve19) => {
-        resolveCompletion = resolve19;
+      const completion = new Promise((resolve17) => {
+        resolveCompletion = resolve17;
         child.once("exit", async (exitCode, signal) => {
           if (settled && process.platform === "win32" || childExitObserved) return;
           childExitObserved = true;
@@ -9420,7 +9417,7 @@ async function runWorkerLaunchBootstrap(value) {
             written_at: (/* @__PURE__ */ new Date()).toISOString()
           }).catch(() => void 0);
           await invocation.cleanup().catch(() => void 0);
-          resolve19(gateCleanupRequired ? cleanupVerified ? { outcome: "provider_spawn_failed" } : { outcome: "provider_cleanup_unverified" } : cleanupVerified ? { outcome: "ran", exitCode: effectiveExitCode, signal: effectiveSignal } : { outcome: "provider_cleanup_unverified" });
+          resolve17(gateCleanupRequired ? cleanupVerified ? { outcome: "provider_spawn_failed" } : { outcome: "provider_cleanup_unverified" } : cleanupVerified ? { outcome: "ran", exitCode: effectiveExitCode, signal: effectiveSignal } : { outcome: "provider_cleanup_unverified" });
         });
         child.once("error", async () => {
           if (settled) return;
@@ -9438,7 +9435,7 @@ async function runWorkerLaunchBootstrap(value) {
             written_at: (/* @__PURE__ */ new Date()).toISOString()
           }).catch(() => void 0);
           await invocation.cleanup().catch(() => void 0);
-          resolve19({ outcome: "provider_spawn_failed" });
+          resolve17({ outcome: "provider_spawn_failed" });
         });
       });
       const terminateProvider = async () => {
@@ -9470,7 +9467,7 @@ async function runWorkerLaunchBootstrap(value) {
 `);
           return await Promise.race([
             windowsTerminal,
-            new Promise((resolve19) => setTimeout(() => resolve19(false), 5e3))
+            new Promise((resolve17) => setTimeout(() => resolve17(false), 5e3))
           ]);
         }
         if (child.pid && providerStartIdentity && launchGroup) {
@@ -9482,11 +9479,11 @@ async function runWorkerLaunchBootstrap(value) {
             force: true
           });
           await terminationResult;
-          const completed = await new Promise((resolve19) => {
-            const timer = setTimeout(() => resolve19(false), 2e3);
+          const completed = await new Promise((resolve17) => {
+            const timer = setTimeout(() => resolve17(false), 2e3);
             void completion.then((result) => {
               clearTimeout(timer);
-              resolve19(result.outcome !== "provider_cleanup_unverified");
+              resolve17(result.outcome !== "provider_cleanup_unverified");
             });
           });
           return completed;
@@ -9505,20 +9502,20 @@ async function runWorkerLaunchBootstrap(value) {
           if (!providerGate || providerGate.destroyed) return false;
           let callbackCalled = false;
           let callbackError = false;
-          const closeResultPromise = new Promise((resolve19) => {
-            providerGateOperationResolve = resolve19;
+          const closeResultPromise = new Promise((resolve17) => {
+            providerGateOperationResolve = resolve17;
             const finish = (error) => {
               providerGateError ??= error ?? null;
               providerGateOperationResolve = null;
               callbackCalled = true;
               callbackError = providerGateError !== null;
-              resolve19(!callbackError);
+              resolve17(!callbackError);
             };
             try {
               providerGate.end(finish);
             } catch {
               providerGateOperationResolve = null;
-              resolve19(false);
+              resolve17(false);
             }
           });
           providerGateOperationPromise = closeResultPromise;
@@ -9542,8 +9539,8 @@ async function runWorkerLaunchBootstrap(value) {
         if (providerGateReleased) return providerGateError === null;
         if (providerGateReleaseAttempted || providerGateClosed || !providerGate || providerGate.destroyed) return false;
         providerGateReleaseAttempted = true;
-        const releasePromise = new Promise((resolve19) => {
-          providerGateOperationResolve = resolve19;
+        const releasePromise = new Promise((resolve17) => {
+          providerGateOperationResolve = resolve17;
           try {
             providerGate.end("release\n", (error) => {
               providerGateError ??= error ?? null;
@@ -9553,11 +9550,11 @@ async function runWorkerLaunchBootstrap(value) {
                 providerGateReleased = true;
                 terminateProviderOnGateError = null;
               }
-              resolve19(released);
+              resolve17(released);
             });
           } catch {
             providerGateOperationResolve = null;
-            resolve19(false);
+            resolve17(false);
           }
         });
         providerGateOperationPromise = releasePromise;
@@ -9586,9 +9583,9 @@ async function runWorkerLaunchBootstrap(value) {
           for (const signal of cleanupSignals) process.removeListener(signal, onBootstrapSignal);
         });
       }
-      const spawned = await new Promise((resolve19) => {
-        child.once("spawn", () => resolve19(true));
-        child.once("error", () => resolve19(false));
+      const spawned = await new Promise((resolve17) => {
+        child.once("spawn", () => resolve17(true));
+        child.once("error", () => resolve17(false));
       });
       if (!spawned) {
         await completion;
@@ -9597,7 +9594,7 @@ async function runWorkerLaunchBootstrap(value) {
       if (process.platform === "win32") {
         const ready = await Promise.race([
           windowsReady,
-          new Promise((resolve19) => setTimeout(() => resolve19(false), 1e4))
+          new Promise((resolve17) => setTimeout(() => resolve17(false), 1e4))
         ]);
         if (!ready || !providerPid || !providerStartIdentity || settled) {
           return cleanupProvider("provider_spawn_failed");
@@ -9632,7 +9629,7 @@ async function runWorkerLaunchBootstrap(value) {
         if (!await releaseProviderGate() || providerGateError !== null) {
           return cleanupProvider("provider_spawn_failed");
         }
-        if (!spec.release_after_spawn) await new Promise((resolve19) => setTimeout(resolve19, 75));
+        if (!spec.release_after_spawn) await new Promise((resolve17) => setTimeout(resolve17, 75));
         if (settled) return { completion };
       }
       if (invocation.completionPath && (0, import_node_fs4.existsSync)(invocation.completionPath)) {
@@ -9837,9 +9834,9 @@ function canonicalize2(value) {
 function sha256(value) {
   return (0, import_crypto6.createHash)("sha256").update(canonicalize2(value)).digest("hex");
 }
-function parseCanonical(path6) {
+function parseCanonical(path5) {
   try {
-    const text = (0, import_fs23.readFileSync)(path6, "utf8");
+    const text = (0, import_fs23.readFileSync)(path5, "utf8");
     const parsed = JSON.parse(text);
     return canonicalize2(parsed) === text ? parsed : null;
   } catch {
@@ -10005,9 +10002,9 @@ function isValidRecoveryResult(value) {
   return (result.outcome === "failed" || result.outcome === "commit_unknown") && result.committed === false && typeof result.error === "string" && RECOVERY_ERRORS.has(result.error) && (result.message === void 0 || typeof result.message === "string");
 }
 function readRecoveryFinalState(cwd, requestId) {
-  const path6 = finalPath(cwd, requestId);
-  if (!(0, import_fs23.existsSync)(path6)) return { kind: "missing" };
-  const final = parseCanonical(path6);
+  const path5 = finalPath(cwd, requestId);
+  if (!(0, import_fs23.existsSync)(path5)) return { kind: "missing" };
+  const final = parseCanonical(path5);
   if (!final || final.schema_version !== 1 || final.kind !== "final" || !isMatchingRecoveryFinal(final, { requestId })) {
     return { kind: "invalid" };
   }
@@ -10264,10 +10261,10 @@ function resolveTmuxServerGuardRuntime() {
   }
   return { nodePath, runtimePath };
 }
-function isRegularFile(path6) {
-  if (!(0, import_fs24.existsSync)(path6)) return false;
+function isRegularFile(path5) {
+  if (!(0, import_fs24.existsSync)(path5)) return false;
   try {
-    return (0, import_fs24.statSync)(path6).isFile();
+    return (0, import_fs24.statSync)(path5).isFile();
   } catch {
     return false;
   }
@@ -13437,9 +13434,9 @@ var init_fs_utils = __esm({
 function buildInstructionPath(...parts) {
   return (0, import_path28.join)(...parts).replaceAll("\\", "/");
 }
-function shellPath(path6) {
-  if (path6.startsWith("$OMC_TEAM_STATE_ROOT/")) return `"${path6}"`;
-  return `'${path6.replaceAll("'", "'\\''")}'`;
+function shellPath(path5) {
+  if (path5.startsWith("$OMC_TEAM_STATE_ROOT/")) return `"${path5}"`;
+  return `'${path5.replaceAll("'", "'\\''")}'`;
 }
 function buildTeamStateInstructionPath(teamName, instructionStateRoot, ...teamRelativeParts) {
   const baseParts = instructionStateRoot === DEFAULT_INSTRUCTION_STATE_ROOT ? [instructionStateRoot, "team", teamName] : [instructionStateRoot];
@@ -13800,7 +13797,7 @@ async function withDispatchLock(teamName, cwd, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve19) => setTimeout(resolve19, Math.floor(pollMs * jitter)));
+      await new Promise((resolve17) => setTimeout(resolve17, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -13817,10 +13814,10 @@ async function withDispatchLock(teamName, cwd, fn) {
   }
 }
 async function readDispatchRequestsFromFile(teamName, cwd) {
-  const path6 = absPath(cwd, TeamPaths.dispatchRequests(teamName));
+  const path5 = absPath(cwd, TeamPaths.dispatchRequests(teamName));
   try {
-    if (!(0, import_fs27.existsSync)(path6)) return [];
-    const raw = await (0, import_promises10.readFile)(path6, "utf8");
+    if (!(0, import_fs27.existsSync)(path5)) return [];
+    const raw = await (0, import_promises10.readFile)(path5, "utf8");
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.map((entry) => normalizeDispatchRequest(teamName, entry)).filter((req) => req !== null);
@@ -13829,10 +13826,10 @@ async function readDispatchRequestsFromFile(teamName, cwd) {
   }
 }
 async function writeDispatchRequestsToFile(teamName, requests, cwd) {
-  const path6 = absPath(cwd, TeamPaths.dispatchRequests(teamName));
-  const dir = (0, import_path29.dirname)(path6);
+  const path5 = absPath(cwd, TeamPaths.dispatchRequests(teamName));
+  const dir = (0, import_path29.dirname)(path5);
   ensureDirWithMode(dir);
-  atomicWriteJson2(path6, requests);
+  atomicWriteJson2(path5, requests);
 }
 function normalizeDispatchRequest(teamName, raw, nowIso = (/* @__PURE__ */ new Date()).toISOString()) {
   if (!isDispatchKind(raw.kind)) return null;
@@ -14117,7 +14114,7 @@ async function transitionTaskStatus(taskId, from, to, claimToken, terminalData, 
 }
 async function listTasks(teamName, cwd, deps) {
   const tasksRoot = (0, import_path30.join)(deps.teamDir(teamName, cwd), "tasks");
-  const invalidState = (path6, cause) => deps.stateError?.(path6, cause) ?? new Error("invalid_persisted_state");
+  const invalidState = (path5, cause) => deps.stateError?.(path5, cause) ?? new Error("invalid_persisted_state");
   let entries;
   try {
     entries = await (0, import_promises11.readdir)(tasksRoot, { withFileTypes: true });
@@ -14141,57 +14138,57 @@ async function listTasks(teamName, cwd, deps) {
   for (const [id, paths] of candidates) {
     let fileName = paths.canonical ?? paths.legacy;
     if (!fileName) continue;
-    let path6 = (0, import_path30.join)(tasksRoot, fileName);
+    let path5 = (0, import_path30.join)(tasksRoot, fileName);
     let fileStat;
     try {
-      fileStat = await (0, import_promises11.lstat)(path6);
+      fileStat = await (0, import_promises11.lstat)(path5);
     } catch (error) {
       if (error.code === "ENOENT") {
         if (fileName === paths.canonical && paths.legacy) {
           fileName = paths.legacy;
-          path6 = (0, import_path30.join)(tasksRoot, fileName);
+          path5 = (0, import_path30.join)(tasksRoot, fileName);
           try {
-            fileStat = await (0, import_promises11.lstat)(path6);
+            fileStat = await (0, import_promises11.lstat)(path5);
           } catch (legacyError) {
             if (legacyError.code === "ENOENT") continue;
-            throw invalidState(path6, "unreadable");
+            throw invalidState(path5, "unreadable");
           }
         } else {
           continue;
         }
       } else {
-        throw invalidState(path6, "unreadable");
+        throw invalidState(path5, "unreadable");
       }
     }
     if (fileStat.isSymbolicLink() || !fileStat.isFile()) {
-      throw invalidState(path6, "unreadable");
+      throw invalidState(path5, "unreadable");
     }
     let raw;
     try {
-      raw = await (0, import_promises11.readFile)(path6, "utf8");
+      raw = await (0, import_promises11.readFile)(path5, "utf8");
     } catch (error) {
       if (error.code === "ENOENT") {
         if (fileName === paths.canonical && paths.legacy) {
           fileName = paths.legacy;
-          path6 = (0, import_path30.join)(tasksRoot, fileName);
+          path5 = (0, import_path30.join)(tasksRoot, fileName);
           try {
-            const legacyStat = await (0, import_promises11.lstat)(path6);
+            const legacyStat = await (0, import_promises11.lstat)(path5);
             if (legacyStat.isSymbolicLink() || !legacyStat.isFile()) {
-              throw invalidState(path6, "unreadable");
+              throw invalidState(path5, "unreadable");
             }
-            raw = await (0, import_promises11.readFile)(path6, "utf8");
+            raw = await (0, import_promises11.readFile)(path5, "utf8");
           } catch (legacyError) {
             if (legacyError.code === "ENOENT") continue;
             if (legacyError instanceof Error && legacyError.message.startsWith("invalid_persisted_state")) {
               throw legacyError;
             }
-            throw invalidState(path6, "unreadable");
+            throw invalidState(path5, "unreadable");
           }
         } else {
           continue;
         }
       } else {
-        throw invalidState(path6, "unreadable");
+        throw invalidState(path5, "unreadable");
       }
     }
     let parsed;
@@ -14200,13 +14197,13 @@ async function listTasks(teamName, cwd, deps) {
     } catch {
       throw invalidState((0, import_path30.join)(tasksRoot, fileName), "json");
     }
-    if (!deps.isTeamTask(parsed)) throw invalidState(path6, "schema");
+    if (!deps.isTeamTask(parsed)) throw invalidState(path5, "schema");
     const task = deps.normalizeTask(parsed);
-    if (task.id !== id) throw invalidState(path6, "schema");
+    if (task.id !== id) throw invalidState(path5, "schema");
     try {
       taskDependencyIds(task);
     } catch {
-      throw invalidState(path6, "schema");
+      throw invalidState(path5, "schema");
     }
     tasks.push(task);
   }
@@ -14361,17 +14358,17 @@ function parseCheckpoint(value) {
   }
   return checkpoint;
 }
-function checkpointSequenceFromPath(path6) {
-  const match = /^(\d+)\.json$/.exec((0, import_node_path6.basename)(path6));
+function checkpointSequenceFromPath(path5) {
+  const match = /^(\d+)\.json$/.exec((0, import_node_path6.basename)(path5));
   if (!match) return null;
   const sequence = Number(match[1]);
   return Number.isSafeInteger(sequence) && sequence > 0 ? sequence : null;
 }
-async function readCheckpoint(path6) {
-  const filenameSequence = checkpointSequenceFromPath(path6);
+async function readCheckpoint(path5) {
+  const filenameSequence = checkpointSequenceFromPath(path5);
   if (filenameSequence === null) return null;
   try {
-    const checkpoint = parseCheckpoint(JSON.parse(await (0, import_promises12.readFile)(path6, "utf8")));
+    const checkpoint = parseCheckpoint(JSON.parse(await (0, import_promises12.readFile)(path5, "utf8")));
     return checkpoint?.sequence === filenameSequence ? checkpoint : null;
   } catch {
     return null;
@@ -14389,7 +14386,7 @@ async function selectTaskRecoveryCheckpoint(teamName, task, cwd) {
   }
   const paths = names.filter((name) => /^\d+\.json$/.test(name)).map((name) => `${root}/${name}`);
   if (paths.length === 0) return { ok: false, error: "missing" };
-  const parsed = await Promise.all(paths.map(async (path6) => ({ path: path6, checkpoint: await readCheckpoint(path6) })));
+  const parsed = await Promise.all(paths.map(async (path5) => ({ path: path5, checkpoint: await readCheckpoint(path5) })));
   if (parsed.some(({ checkpoint }) => !checkpoint)) return { ok: false, error: "malformed" };
   const valid = parsed;
   const matching = valid.filter(({ checkpoint }) => checkpoint.team_name === teamName && checkpoint.task_id === task.id && checkpoint.worker_name === task.owner && checkpoint.task_version === task.version && checkpoint.claim_token === task.claim?.token);
@@ -14401,9 +14398,9 @@ async function selectTaskRecoveryCheckpoint(teamName, task, cwd) {
   if (otherHighest.length > 0) return { ok: false, error: "ambiguous" };
   return { ok: true, checkpoint: selected[0].checkpoint, path: selected[0].path };
 }
-async function readTaskRecoveryCheckpoint(path6) {
-  const checkpoint = await readCheckpoint(path6);
-  return checkpoint ? { ok: true, checkpoint, path: path6 } : { ok: false, error: (0, import_node_fs5.existsSync)(path6) ? "malformed" : "missing" };
+async function readTaskRecoveryCheckpoint(path5) {
+  const checkpoint = await readCheckpoint(path5);
+  return checkpoint ? { ok: true, checkpoint, path: path5 } : { ok: false, error: (0, import_node_fs5.existsSync)(path5) ? "malformed" : "missing" };
 }
 var import_node_crypto6, import_node_fs5, import_promises12, import_node_path6, MAX_TASK_RECOVERY_CHECKPOINT_BYTES;
 var init_task_recovery_checkpoint = __esm({
@@ -14441,30 +14438,30 @@ function taskFileCandidates(teamName, taskId, cwd) {
   const legacy = legacyTaskFilePath(teamName, taskId, cwd);
   return canonical === legacy ? [canonical] : [canonical, legacy];
 }
-async function writeAtomic2(path6, data) {
-  const tmp = `${path6}.${process.pid}.${(0, import_node_crypto7.randomUUID)()}.tmp`;
-  await (0, import_promises13.mkdir)((0, import_node_path7.dirname)(path6), { recursive: true });
+async function writeAtomic2(path5, data) {
+  const tmp = `${path5}.${process.pid}.${(0, import_node_crypto7.randomUUID)()}.tmp`;
+  await (0, import_promises13.mkdir)((0, import_node_path7.dirname)(path5), { recursive: true });
   try {
     await (0, import_promises13.writeFile)(tmp, data, "utf8");
     const { rename: rename8 } = await import("node:fs/promises");
-    await rename8(tmp, path6);
+    await rename8(tmp, path5);
   } finally {
     await (0, import_promises13.rm)(tmp, { force: true }).catch(() => void 0);
   }
 }
-async function readJsonSafe2(path6) {
+async function readJsonSafe2(path5) {
   try {
-    if (!(0, import_node_fs6.existsSync)(path6)) return null;
-    const raw = await (0, import_promises13.readFile)(path6, "utf8");
+    if (!(0, import_node_fs6.existsSync)(path5)) return null;
+    const raw = await (0, import_promises13.readFile)(path5, "utf8");
     return JSON.parse(raw);
   } catch {
     return null;
   }
 }
-async function readPersistedJson(path6) {
+async function readPersistedJson(path5) {
   let raw;
   try {
-    raw = await (0, import_promises13.readFile)(path6, "utf8");
+    raw = await (0, import_promises13.readFile)(path5, "utf8");
   } catch (error) {
     return error.code === "ENOENT" ? { kind: "missing" } : { kind: "invalid", cause: "unreadable", error };
   }
@@ -14474,20 +14471,20 @@ async function readPersistedJson(path6) {
     return { kind: "invalid", cause: "json", error };
   }
 }
-async function readTaskPersistedJson(path6) {
+async function readTaskPersistedJson(path5) {
   let fileStat;
   try {
-    fileStat = await (0, import_promises13.lstat)(path6);
+    fileStat = await (0, import_promises13.lstat)(path5);
   } catch (error) {
     return error.code === "ENOENT" ? { kind: "missing" } : { kind: "invalid", cause: "unreadable", error };
   }
   if (fileStat.isSymbolicLink() || !fileStat.isFile()) {
     return { kind: "invalid", cause: "unreadable" };
   }
-  return readPersistedJson(path6);
+  return readPersistedJson(path5);
 }
-function persistedStateError(path6, cause) {
-  return new Error(`invalid_persisted_state:${cause}:${path6}`);
+function persistedStateError(path5, cause) {
+  return new Error(`invalid_persisted_state:${cause}:${path5}`);
 }
 function normalizeTask(task) {
   const normalized = { ...task, version: task.version ?? 1 };
@@ -14684,10 +14681,10 @@ function recoveryTransitionDeps(teamName, cwd, launchAttemptId) {
     writeAtomic: writeAtomic2,
     ...launchAttemptId ? { launchAttemptId } : {},
     readRecoverySidecar: async (tn, recoveryId, tid, c) => {
-      const path6 = absPath(c, TeamPaths.taskRecoverySidecar(tn, recoveryId, tid));
-      if (!(0, import_node_fs6.existsSync)(path6)) return null;
+      const path5 = absPath(c, TeamPaths.taskRecoverySidecar(tn, recoveryId, tid));
+      if (!(0, import_node_fs6.existsSync)(path5)) return null;
       try {
-        return JSON.parse(await (0, import_promises13.readFile)(path6, "utf8"));
+        return JSON.parse(await (0, import_promises13.readFile)(path5, "utf8"));
       } catch {
         return "malformed";
       }
@@ -14945,15 +14942,15 @@ var init_mcp_comm = __esm({
 });
 
 // src/lib/worktree-cleanup-safety.ts
-function realpathOrResolve(path6) {
+function realpathOrResolve(path5) {
   try {
-    return (0, import_node_fs7.realpathSync)(path6);
+    return (0, import_node_fs7.realpathSync)(path5);
   } catch {
-    return (0, import_node_path8.resolve)(path6);
+    return (0, import_node_path8.resolve)(path5);
   }
 }
-function assertSafeBoundary(path6, label) {
-  const trimmed = path6.trim();
+function assertSafeBoundary(path5, label) {
+  const trimmed = path5.trim();
   if (trimmed.length === 0) {
     throw new Error(`${label}_empty`);
   }
@@ -15060,11 +15057,11 @@ function assertCleanLeaderWorktree(repoRoot) {
     throw error;
   }
 }
-function canonicalPathForComparison(path6) {
+function canonicalPathForComparison(path5) {
   try {
-    return (0, import_node_fs8.realpathSync)(path6);
+    return (0, import_node_fs8.realpathSync)(path5);
   } catch {
-    return (0, import_node_path9.resolve)(path6);
+    return (0, import_node_path9.resolve)(path5);
   }
 }
 function getRegisteredWorktreeBranch(repoRoot, wtPath) {
@@ -16148,8 +16145,8 @@ ${message}`, "utf-8");
 }
 function extendLeaderBootstrapPrompt(teamName, cwd) {
   const safe = sanitizeName(teamName);
-  const path6 = cwd ? (0, import_path31.join)(teamStateRoot(cwd, safe), "leader", "inbox.md") : `.omg/state/team/${safe}/leader/inbox.md`;
-  return `Runtime notifications appear at ${path6} \u2014 check this file periodically and after long-running operations.`;
+  const path5 = cwd ? (0, import_path31.join)(teamStateRoot(cwd, safe), "leader", "inbox.md") : `.omg/state/team/${safe}/leader/inbox.md`;
+  return `Runtime notifications appear at ${path5} \u2014 check this file periodically and after long-running operations.`;
 }
 var import_promises14, import_fs28, import_path31, LEADER_INBOX_HEADER;
 var init_leader_inbox = __esm({
@@ -16172,8 +16169,8 @@ Check this file periodically and after long-running operations.
 });
 
 // src/team/conflict-mailbox.ts
-function sanitizeConflictPath(path6) {
-  return path6.replace(/[`\r\n]/g, "?");
+function sanitizeConflictPath(path5) {
+  return path5.replace(/[`\r\n]/g, "?");
 }
 function formatMergeConflictForLeader(args) {
   const { workerName, workerBranch, leaderBranch, conflictingFiles, mergeBaseSha, observedAt } = args;
@@ -16450,14 +16447,14 @@ function assertRuntimeV2Gate() {
   }
 }
 async function appendEvent(repoRoot, teamName, event) {
-  const path6 = orchestratorEventLogPath(repoRoot, teamName);
-  await (0, import_promises16.mkdir)((0, import_node_path11.dirname)(path6), { recursive: true });
+  const path5 = orchestratorEventLogPath(repoRoot, teamName);
+  await (0, import_promises16.mkdir)((0, import_node_path11.dirname)(path5), { recursive: true });
   const full = {
     ts: (/* @__PURE__ */ new Date()).toISOString(),
     team: teamName,
     ...event
   };
-  await (0, import_promises16.appendFile)(path6, `${JSON.stringify(full)}
+  await (0, import_promises16.appendFile)(path5, `${JSON.stringify(full)}
 `, "utf-8");
 }
 function createMutex() {
@@ -16561,8 +16558,8 @@ async function startMergeOrchestrator(config) {
   let persisted = { lastShas: {} };
   if ((0, import_node_fs10.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync30 } = await import("node:fs");
-      persisted = JSON.parse(readFileSync30(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync24 } = await import("node:fs");
+      persisted = JSON.parse(readFileSync24(persistedPath, "utf-8"));
     } catch {
       persisted = { lastShas: {} };
     }
@@ -16944,8 +16941,8 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
               return false;
             }
           })(),
-          new Promise((resolve19) => {
-            const t = setTimeout(() => resolve19(false), remaining);
+          new Promise((resolve17) => {
+            const t = setTimeout(() => resolve17(false), remaining);
             if (typeof t.unref === "function") t.unref();
           })
         ]);
@@ -17007,8 +17004,8 @@ async function recoverFromRestart(config) {
   let persistedShasLoaded = 0;
   if ((0, import_node_fs10.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync30 } = await import("node:fs");
-      const persisted = JSON.parse(readFileSync30(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync24 } = await import("node:fs");
+      const persisted = JSON.parse(readFileSync24(persistedPath, "utf-8"));
       persistedShasLoaded = Object.keys(persisted.lastShas ?? {}).length;
     } catch {
       persistedShasLoaded = 0;
@@ -17253,10 +17250,10 @@ function readStartedRecord(attempt) {
   }
 }
 function writeTerminationComplete(attempt, pid, startIdentity) {
-  const path6 = `${attempt.startedPath}.termination-complete`;
-  if ((0, import_node_fs11.existsSync)(path6)) return;
+  const path5 = `${attempt.startedPath}.termination-complete`;
+  if ((0, import_node_fs11.existsSync)(path5)) return;
   try {
-    (0, import_node_fs11.writeFileSync)(path6, JSON.stringify({
+    (0, import_node_fs11.writeFileSync)(path5, JSON.stringify({
       schema_version: attempt.schema_version,
       attempt_id: attempt.attempt_id,
       nonce: attempt.nonce,
@@ -17423,21 +17420,21 @@ var init_recovery_saga = __esm({
 });
 
 // src/team/worker-activation-gate.ts
-async function writeAtomic3(path6, value) {
-  await (0, import_promises18.mkdir)((0, import_node_path13.dirname)(path6), { recursive: true });
-  const temporary = `${path6}.tmp.${process.pid}.${Date.now()}`;
+async function writeAtomic3(path5, value) {
+  await (0, import_promises18.mkdir)((0, import_node_path13.dirname)(path5), { recursive: true });
+  const temporary = `${path5}.tmp.${process.pid}.${Date.now()}`;
   await (0, import_promises18.writeFile)(temporary, JSON.stringify(value), "utf8");
-  await (0, import_promises18.rename)(temporary, path6);
+  await (0, import_promises18.rename)(temporary, path5);
 }
-async function waitForRecoveryGateRecord(path6, expected, timeoutMs, pollIntervalMs = 100) {
+async function waitForRecoveryGateRecord(path5, expected, timeoutMs, pollIntervalMs = 100) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const value = JSON.parse(await (0, import_promises18.readFile)(path6, "utf8"));
+      const value = JSON.parse(await (0, import_promises18.readFile)(path5, "utf8"));
       if (value.recovery_id === expected.recovery_id && value.worker_name === expected.worker_name && value.replacement_generation === expected.replacement_generation && value.pane_attempt_id === expected.pane_attempt_id && value.launch_attempt_id === expected.launch_attempt_id && value.launch_nonce === expected.launch_nonce) return true;
     } catch {
     }
-    await new Promise((resolve19) => setTimeout(resolve19, pollIntervalMs));
+    await new Promise((resolve17) => setTimeout(resolve17, pollIntervalMs));
   }
   return false;
 }
@@ -17499,7 +17496,7 @@ async function runWorkerActivationGate(gate) {
     let supervisorTimer;
     let terminationResult = null;
     let finishCompletion;
-    const completion = new Promise((resolve19) => {
+    const completion = new Promise((resolve17) => {
       const finish = async (result, terminal) => {
         if (settled) return;
         settled = true;
@@ -17515,7 +17512,7 @@ async function runWorkerActivationGate(gate) {
         } catch {
         }
         await invocation.cleanup().catch(() => void 0);
-        resolve19(result);
+        resolve17(result);
       };
       finishCompletion = finish;
       child.once("exit", async (exitCode, signal) => {
@@ -17546,11 +17543,11 @@ async function runWorkerActivationGate(gate) {
           force: true
         });
         const terminated = await terminationResult === "terminated";
-        const completed2 = await new Promise((resolve19) => {
-          const timer = setTimeout(() => resolve19(false), 2e3);
+        const completed2 = await new Promise((resolve17) => {
+          const timer = setTimeout(() => resolve17(false), 2e3);
           void completion.then((result) => {
             clearTimeout(timer);
-            resolve19(result.outcome !== "provider_cleanup_unverified");
+            resolve17(result.outcome !== "provider_cleanup_unverified");
           });
         });
         return terminated && completed2;
@@ -17567,15 +17564,15 @@ async function runWorkerActivationGate(gate) {
         }
       } catch {
       }
-      const completed = await new Promise((resolve19) => {
-        const timer = setTimeout(() => resolve19(false), 2e3);
+      const completed = await new Promise((resolve17) => {
+        const timer = setTimeout(() => resolve17(false), 2e3);
         void completion.then(() => {
           clearTimeout(timer);
-          resolve19(true);
+          resolve17(true);
         });
         if (settled) {
           clearTimeout(timer);
-          resolve19(true);
+          resolve17(true);
         }
       });
       return completed;
@@ -17591,9 +17588,9 @@ async function runWorkerActivationGate(gate) {
         for (const signal of cleanupSignals) process.removeListener(signal, onGateSignal);
       });
     }
-    const spawned = await new Promise((resolve19) => {
-      child.once("spawn", () => resolve19(true));
-      child.once("error", () => resolve19(false));
+    const spawned = await new Promise((resolve17) => {
+      child.once("spawn", () => resolve17(true));
+      child.once("error", () => resolve17(false));
     });
     if (!spawned) {
       const failed = await completion;
@@ -17619,7 +17616,7 @@ async function runWorkerActivationGate(gate) {
           return { outcome: "provider_cleanup_unverified" };
         }
       }
-      await new Promise((resolve19) => setTimeout(resolve19, 150));
+      await new Promise((resolve17) => setTimeout(resolve17, 150));
       if (settled) return await completion;
       const reboundIdentity = getProcessStartIdentitySync(providerPid);
       if (!reboundIdentity || reboundIdentity !== providerStartIdentity || !isProcessAlive(providerPid)) {
@@ -17808,3177 +17805,8 @@ var init_process_utils2 = __esm({
   }
 });
 
-// node_modules/commander/lib/error.js
-var require_error = __commonJS({
-  "node_modules/commander/lib/error.js"(exports2) {
-    var CommanderError2 = class extends Error {
-      /**
-       * Constructs the CommanderError class
-       * @param {number} exitCode suggested exit code which could be used with process.exit
-       * @param {string} code an id string representing the error
-       * @param {string} message human-readable description of the error
-       */
-      constructor(exitCode, code, message) {
-        super(message);
-        Error.captureStackTrace(this, this.constructor);
-        this.name = this.constructor.name;
-        this.code = code;
-        this.exitCode = exitCode;
-        this.nestedError = void 0;
-      }
-    };
-    var InvalidArgumentError2 = class extends CommanderError2 {
-      /**
-       * Constructs the InvalidArgumentError class
-       * @param {string} [message] explanation of why argument is invalid
-       */
-      constructor(message) {
-        super(1, "commander.invalidArgument", message);
-        Error.captureStackTrace(this, this.constructor);
-        this.name = this.constructor.name;
-      }
-    };
-    exports2.CommanderError = CommanderError2;
-    exports2.InvalidArgumentError = InvalidArgumentError2;
-  }
-});
-
-// node_modules/commander/lib/argument.js
-var require_argument = __commonJS({
-  "node_modules/commander/lib/argument.js"(exports2) {
-    var { InvalidArgumentError: InvalidArgumentError2 } = require_error();
-    var Argument2 = class {
-      /**
-       * Initialize a new command argument with the given name and description.
-       * The default is that the argument is required, and you can explicitly
-       * indicate this with <> around the name. Put [] around the name for an optional argument.
-       *
-       * @param {string} name
-       * @param {string} [description]
-       */
-      constructor(name, description) {
-        this.description = description || "";
-        this.variadic = false;
-        this.parseArg = void 0;
-        this.defaultValue = void 0;
-        this.defaultValueDescription = void 0;
-        this.argChoices = void 0;
-        switch (name[0]) {
-          case "<":
-            this.required = true;
-            this._name = name.slice(1, -1);
-            break;
-          case "[":
-            this.required = false;
-            this._name = name.slice(1, -1);
-            break;
-          default:
-            this.required = true;
-            this._name = name;
-            break;
-        }
-        if (this._name.length > 3 && this._name.slice(-3) === "...") {
-          this.variadic = true;
-          this._name = this._name.slice(0, -3);
-        }
-      }
-      /**
-       * Return argument name.
-       *
-       * @return {string}
-       */
-      name() {
-        return this._name;
-      }
-      /**
-       * @package
-       */
-      _concatValue(value, previous) {
-        if (previous === this.defaultValue || !Array.isArray(previous)) {
-          return [value];
-        }
-        return previous.concat(value);
-      }
-      /**
-       * Set the default value, and optionally supply the description to be displayed in the help.
-       *
-       * @param {*} value
-       * @param {string} [description]
-       * @return {Argument}
-       */
-      default(value, description) {
-        this.defaultValue = value;
-        this.defaultValueDescription = description;
-        return this;
-      }
-      /**
-       * Set the custom handler for processing CLI command arguments into argument values.
-       *
-       * @param {Function} [fn]
-       * @return {Argument}
-       */
-      argParser(fn) {
-        this.parseArg = fn;
-        return this;
-      }
-      /**
-       * Only allow argument value to be one of choices.
-       *
-       * @param {string[]} values
-       * @return {Argument}
-       */
-      choices(values) {
-        this.argChoices = values.slice();
-        this.parseArg = (arg, previous) => {
-          if (!this.argChoices.includes(arg)) {
-            throw new InvalidArgumentError2(
-              `Allowed choices are ${this.argChoices.join(", ")}.`
-            );
-          }
-          if (this.variadic) {
-            return this._concatValue(arg, previous);
-          }
-          return arg;
-        };
-        return this;
-      }
-      /**
-       * Make argument required.
-       *
-       * @returns {Argument}
-       */
-      argRequired() {
-        this.required = true;
-        return this;
-      }
-      /**
-       * Make argument optional.
-       *
-       * @returns {Argument}
-       */
-      argOptional() {
-        this.required = false;
-        return this;
-      }
-    };
-    function humanReadableArgName(arg) {
-      const nameOutput = arg.name() + (arg.variadic === true ? "..." : "");
-      return arg.required ? "<" + nameOutput + ">" : "[" + nameOutput + "]";
-    }
-    exports2.Argument = Argument2;
-    exports2.humanReadableArgName = humanReadableArgName;
-  }
-});
-
-// node_modules/commander/lib/help.js
-var require_help = __commonJS({
-  "node_modules/commander/lib/help.js"(exports2) {
-    var { humanReadableArgName } = require_argument();
-    var Help2 = class {
-      constructor() {
-        this.helpWidth = void 0;
-        this.sortSubcommands = false;
-        this.sortOptions = false;
-        this.showGlobalOptions = false;
-      }
-      /**
-       * Get an array of the visible subcommands. Includes a placeholder for the implicit help command, if there is one.
-       *
-       * @param {Command} cmd
-       * @returns {Command[]}
-       */
-      visibleCommands(cmd) {
-        const visibleCommands = cmd.commands.filter((cmd2) => !cmd2._hidden);
-        const helpCommand = cmd._getHelpCommand();
-        if (helpCommand && !helpCommand._hidden) {
-          visibleCommands.push(helpCommand);
-        }
-        if (this.sortSubcommands) {
-          visibleCommands.sort((a, b) => {
-            return a.name().localeCompare(b.name());
-          });
-        }
-        return visibleCommands;
-      }
-      /**
-       * Compare options for sort.
-       *
-       * @param {Option} a
-       * @param {Option} b
-       * @returns {number}
-       */
-      compareOptions(a, b) {
-        const getSortKey = (option) => {
-          return option.short ? option.short.replace(/^-/, "") : option.long.replace(/^--/, "");
-        };
-        return getSortKey(a).localeCompare(getSortKey(b));
-      }
-      /**
-       * Get an array of the visible options. Includes a placeholder for the implicit help option, if there is one.
-       *
-       * @param {Command} cmd
-       * @returns {Option[]}
-       */
-      visibleOptions(cmd) {
-        const visibleOptions = cmd.options.filter((option) => !option.hidden);
-        const helpOption = cmd._getHelpOption();
-        if (helpOption && !helpOption.hidden) {
-          const removeShort = helpOption.short && cmd._findOption(helpOption.short);
-          const removeLong = helpOption.long && cmd._findOption(helpOption.long);
-          if (!removeShort && !removeLong) {
-            visibleOptions.push(helpOption);
-          } else if (helpOption.long && !removeLong) {
-            visibleOptions.push(
-              cmd.createOption(helpOption.long, helpOption.description)
-            );
-          } else if (helpOption.short && !removeShort) {
-            visibleOptions.push(
-              cmd.createOption(helpOption.short, helpOption.description)
-            );
-          }
-        }
-        if (this.sortOptions) {
-          visibleOptions.sort(this.compareOptions);
-        }
-        return visibleOptions;
-      }
-      /**
-       * Get an array of the visible global options. (Not including help.)
-       *
-       * @param {Command} cmd
-       * @returns {Option[]}
-       */
-      visibleGlobalOptions(cmd) {
-        if (!this.showGlobalOptions) return [];
-        const globalOptions = [];
-        for (let ancestorCmd = cmd.parent; ancestorCmd; ancestorCmd = ancestorCmd.parent) {
-          const visibleOptions = ancestorCmd.options.filter(
-            (option) => !option.hidden
-          );
-          globalOptions.push(...visibleOptions);
-        }
-        if (this.sortOptions) {
-          globalOptions.sort(this.compareOptions);
-        }
-        return globalOptions;
-      }
-      /**
-       * Get an array of the arguments if any have a description.
-       *
-       * @param {Command} cmd
-       * @returns {Argument[]}
-       */
-      visibleArguments(cmd) {
-        if (cmd._argsDescription) {
-          cmd.registeredArguments.forEach((argument) => {
-            argument.description = argument.description || cmd._argsDescription[argument.name()] || "";
-          });
-        }
-        if (cmd.registeredArguments.find((argument) => argument.description)) {
-          return cmd.registeredArguments;
-        }
-        return [];
-      }
-      /**
-       * Get the command term to show in the list of subcommands.
-       *
-       * @param {Command} cmd
-       * @returns {string}
-       */
-      subcommandTerm(cmd) {
-        const args = cmd.registeredArguments.map((arg) => humanReadableArgName(arg)).join(" ");
-        return cmd._name + (cmd._aliases[0] ? "|" + cmd._aliases[0] : "") + (cmd.options.length ? " [options]" : "") + // simplistic check for non-help option
-        (args ? " " + args : "");
-      }
-      /**
-       * Get the option term to show in the list of options.
-       *
-       * @param {Option} option
-       * @returns {string}
-       */
-      optionTerm(option) {
-        return option.flags;
-      }
-      /**
-       * Get the argument term to show in the list of arguments.
-       *
-       * @param {Argument} argument
-       * @returns {string}
-       */
-      argumentTerm(argument) {
-        return argument.name();
-      }
-      /**
-       * Get the longest command term length.
-       *
-       * @param {Command} cmd
-       * @param {Help} helper
-       * @returns {number}
-       */
-      longestSubcommandTermLength(cmd, helper) {
-        return helper.visibleCommands(cmd).reduce((max, command) => {
-          return Math.max(max, helper.subcommandTerm(command).length);
-        }, 0);
-      }
-      /**
-       * Get the longest option term length.
-       *
-       * @param {Command} cmd
-       * @param {Help} helper
-       * @returns {number}
-       */
-      longestOptionTermLength(cmd, helper) {
-        return helper.visibleOptions(cmd).reduce((max, option) => {
-          return Math.max(max, helper.optionTerm(option).length);
-        }, 0);
-      }
-      /**
-       * Get the longest global option term length.
-       *
-       * @param {Command} cmd
-       * @param {Help} helper
-       * @returns {number}
-       */
-      longestGlobalOptionTermLength(cmd, helper) {
-        return helper.visibleGlobalOptions(cmd).reduce((max, option) => {
-          return Math.max(max, helper.optionTerm(option).length);
-        }, 0);
-      }
-      /**
-       * Get the longest argument term length.
-       *
-       * @param {Command} cmd
-       * @param {Help} helper
-       * @returns {number}
-       */
-      longestArgumentTermLength(cmd, helper) {
-        return helper.visibleArguments(cmd).reduce((max, argument) => {
-          return Math.max(max, helper.argumentTerm(argument).length);
-        }, 0);
-      }
-      /**
-       * Get the command usage to be displayed at the top of the built-in help.
-       *
-       * @param {Command} cmd
-       * @returns {string}
-       */
-      commandUsage(cmd) {
-        let cmdName = cmd._name;
-        if (cmd._aliases[0]) {
-          cmdName = cmdName + "|" + cmd._aliases[0];
-        }
-        let ancestorCmdNames = "";
-        for (let ancestorCmd = cmd.parent; ancestorCmd; ancestorCmd = ancestorCmd.parent) {
-          ancestorCmdNames = ancestorCmd.name() + " " + ancestorCmdNames;
-        }
-        return ancestorCmdNames + cmdName + " " + cmd.usage();
-      }
-      /**
-       * Get the description for the command.
-       *
-       * @param {Command} cmd
-       * @returns {string}
-       */
-      commandDescription(cmd) {
-        return cmd.description();
-      }
-      /**
-       * Get the subcommand summary to show in the list of subcommands.
-       * (Fallback to description for backwards compatibility.)
-       *
-       * @param {Command} cmd
-       * @returns {string}
-       */
-      subcommandDescription(cmd) {
-        return cmd.summary() || cmd.description();
-      }
-      /**
-       * Get the option description to show in the list of options.
-       *
-       * @param {Option} option
-       * @return {string}
-       */
-      optionDescription(option) {
-        const extraInfo = [];
-        if (option.argChoices) {
-          extraInfo.push(
-            // use stringify to match the display of the default value
-            `choices: ${option.argChoices.map((choice) => JSON.stringify(choice)).join(", ")}`
-          );
-        }
-        if (option.defaultValue !== void 0) {
-          const showDefault = option.required || option.optional || option.isBoolean() && typeof option.defaultValue === "boolean";
-          if (showDefault) {
-            extraInfo.push(
-              `default: ${option.defaultValueDescription || JSON.stringify(option.defaultValue)}`
-            );
-          }
-        }
-        if (option.presetArg !== void 0 && option.optional) {
-          extraInfo.push(`preset: ${JSON.stringify(option.presetArg)}`);
-        }
-        if (option.envVar !== void 0) {
-          extraInfo.push(`env: ${option.envVar}`);
-        }
-        if (extraInfo.length > 0) {
-          return `${option.description} (${extraInfo.join(", ")})`;
-        }
-        return option.description;
-      }
-      /**
-       * Get the argument description to show in the list of arguments.
-       *
-       * @param {Argument} argument
-       * @return {string}
-       */
-      argumentDescription(argument) {
-        const extraInfo = [];
-        if (argument.argChoices) {
-          extraInfo.push(
-            // use stringify to match the display of the default value
-            `choices: ${argument.argChoices.map((choice) => JSON.stringify(choice)).join(", ")}`
-          );
-        }
-        if (argument.defaultValue !== void 0) {
-          extraInfo.push(
-            `default: ${argument.defaultValueDescription || JSON.stringify(argument.defaultValue)}`
-          );
-        }
-        if (extraInfo.length > 0) {
-          const extraDescripton = `(${extraInfo.join(", ")})`;
-          if (argument.description) {
-            return `${argument.description} ${extraDescripton}`;
-          }
-          return extraDescripton;
-        }
-        return argument.description;
-      }
-      /**
-       * Generate the built-in help text.
-       *
-       * @param {Command} cmd
-       * @param {Help} helper
-       * @returns {string}
-       */
-      formatHelp(cmd, helper) {
-        const termWidth = helper.padWidth(cmd, helper);
-        const helpWidth = helper.helpWidth || 80;
-        const itemIndentWidth = 2;
-        const itemSeparatorWidth = 2;
-        function formatItem(term, description) {
-          if (description) {
-            const fullText = `${term.padEnd(termWidth + itemSeparatorWidth)}${description}`;
-            return helper.wrap(
-              fullText,
-              helpWidth - itemIndentWidth,
-              termWidth + itemSeparatorWidth
-            );
-          }
-          return term;
-        }
-        function formatList(textArray) {
-          return textArray.join("\n").replace(/^/gm, " ".repeat(itemIndentWidth));
-        }
-        let output = [`Usage: ${helper.commandUsage(cmd)}`, ""];
-        const commandDescription = helper.commandDescription(cmd);
-        if (commandDescription.length > 0) {
-          output = output.concat([
-            helper.wrap(commandDescription, helpWidth, 0),
-            ""
-          ]);
-        }
-        const argumentList = helper.visibleArguments(cmd).map((argument) => {
-          return formatItem(
-            helper.argumentTerm(argument),
-            helper.argumentDescription(argument)
-          );
-        });
-        if (argumentList.length > 0) {
-          output = output.concat(["Arguments:", formatList(argumentList), ""]);
-        }
-        const optionList = helper.visibleOptions(cmd).map((option) => {
-          return formatItem(
-            helper.optionTerm(option),
-            helper.optionDescription(option)
-          );
-        });
-        if (optionList.length > 0) {
-          output = output.concat(["Options:", formatList(optionList), ""]);
-        }
-        if (this.showGlobalOptions) {
-          const globalOptionList = helper.visibleGlobalOptions(cmd).map((option) => {
-            return formatItem(
-              helper.optionTerm(option),
-              helper.optionDescription(option)
-            );
-          });
-          if (globalOptionList.length > 0) {
-            output = output.concat([
-              "Global Options:",
-              formatList(globalOptionList),
-              ""
-            ]);
-          }
-        }
-        const commandList = helper.visibleCommands(cmd).map((cmd2) => {
-          return formatItem(
-            helper.subcommandTerm(cmd2),
-            helper.subcommandDescription(cmd2)
-          );
-        });
-        if (commandList.length > 0) {
-          output = output.concat(["Commands:", formatList(commandList), ""]);
-        }
-        return output.join("\n");
-      }
-      /**
-       * Calculate the pad width from the maximum term length.
-       *
-       * @param {Command} cmd
-       * @param {Help} helper
-       * @returns {number}
-       */
-      padWidth(cmd, helper) {
-        return Math.max(
-          helper.longestOptionTermLength(cmd, helper),
-          helper.longestGlobalOptionTermLength(cmd, helper),
-          helper.longestSubcommandTermLength(cmd, helper),
-          helper.longestArgumentTermLength(cmd, helper)
-        );
-      }
-      /**
-       * Wrap the given string to width characters per line, with lines after the first indented.
-       * Do not wrap if insufficient room for wrapping (minColumnWidth), or string is manually formatted.
-       *
-       * @param {string} str
-       * @param {number} width
-       * @param {number} indent
-       * @param {number} [minColumnWidth=40]
-       * @return {string}
-       *
-       */
-      wrap(str, width, indent, minColumnWidth = 40) {
-        const indents = " \\f\\t\\v\xA0\u1680\u2000-\u200A\u202F\u205F\u3000\uFEFF";
-        const manualIndent = new RegExp(`[\\n][${indents}]+`);
-        if (str.match(manualIndent)) return str;
-        const columnWidth = width - indent;
-        if (columnWidth < minColumnWidth) return str;
-        const leadingStr = str.slice(0, indent);
-        const columnText = str.slice(indent).replace("\r\n", "\n");
-        const indentString = " ".repeat(indent);
-        const zeroWidthSpace = "\u200B";
-        const breaks = `\\s${zeroWidthSpace}`;
-        const regex = new RegExp(
-          `
-|.{1,${columnWidth - 1}}([${breaks}]|$)|[^${breaks}]+?([${breaks}]|$)`,
-          "g"
-        );
-        const lines = columnText.match(regex) || [];
-        return leadingStr + lines.map((line, i) => {
-          if (line === "\n") return "";
-          return (i > 0 ? indentString : "") + line.trimEnd();
-        }).join("\n");
-      }
-    };
-    exports2.Help = Help2;
-  }
-});
-
-// node_modules/commander/lib/option.js
-var require_option = __commonJS({
-  "node_modules/commander/lib/option.js"(exports2) {
-    var { InvalidArgumentError: InvalidArgumentError2 } = require_error();
-    var Option2 = class {
-      /**
-       * Initialize a new `Option` with the given `flags` and `description`.
-       *
-       * @param {string} flags
-       * @param {string} [description]
-       */
-      constructor(flags, description) {
-        this.flags = flags;
-        this.description = description || "";
-        this.required = flags.includes("<");
-        this.optional = flags.includes("[");
-        this.variadic = /\w\.\.\.[>\]]$/.test(flags);
-        this.mandatory = false;
-        const optionFlags = splitOptionFlags(flags);
-        this.short = optionFlags.shortFlag;
-        this.long = optionFlags.longFlag;
-        this.negate = false;
-        if (this.long) {
-          this.negate = this.long.startsWith("--no-");
-        }
-        this.defaultValue = void 0;
-        this.defaultValueDescription = void 0;
-        this.presetArg = void 0;
-        this.envVar = void 0;
-        this.parseArg = void 0;
-        this.hidden = false;
-        this.argChoices = void 0;
-        this.conflictsWith = [];
-        this.implied = void 0;
-      }
-      /**
-       * Set the default value, and optionally supply the description to be displayed in the help.
-       *
-       * @param {*} value
-       * @param {string} [description]
-       * @return {Option}
-       */
-      default(value, description) {
-        this.defaultValue = value;
-        this.defaultValueDescription = description;
-        return this;
-      }
-      /**
-       * Preset to use when option used without option-argument, especially optional but also boolean and negated.
-       * The custom processing (parseArg) is called.
-       *
-       * @example
-       * new Option('--color').default('GREYSCALE').preset('RGB');
-       * new Option('--donate [amount]').preset('20').argParser(parseFloat);
-       *
-       * @param {*} arg
-       * @return {Option}
-       */
-      preset(arg) {
-        this.presetArg = arg;
-        return this;
-      }
-      /**
-       * Add option name(s) that conflict with this option.
-       * An error will be displayed if conflicting options are found during parsing.
-       *
-       * @example
-       * new Option('--rgb').conflicts('cmyk');
-       * new Option('--js').conflicts(['ts', 'jsx']);
-       *
-       * @param {(string | string[])} names
-       * @return {Option}
-       */
-      conflicts(names) {
-        this.conflictsWith = this.conflictsWith.concat(names);
-        return this;
-      }
-      /**
-       * Specify implied option values for when this option is set and the implied options are not.
-       *
-       * The custom processing (parseArg) is not called on the implied values.
-       *
-       * @example
-       * program
-       *   .addOption(new Option('--log', 'write logging information to file'))
-       *   .addOption(new Option('--trace', 'log extra details').implies({ log: 'trace.txt' }));
-       *
-       * @param {object} impliedOptionValues
-       * @return {Option}
-       */
-      implies(impliedOptionValues) {
-        let newImplied = impliedOptionValues;
-        if (typeof impliedOptionValues === "string") {
-          newImplied = { [impliedOptionValues]: true };
-        }
-        this.implied = Object.assign(this.implied || {}, newImplied);
-        return this;
-      }
-      /**
-       * Set environment variable to check for option value.
-       *
-       * An environment variable is only used if when processed the current option value is
-       * undefined, or the source of the current value is 'default' or 'config' or 'env'.
-       *
-       * @param {string} name
-       * @return {Option}
-       */
-      env(name) {
-        this.envVar = name;
-        return this;
-      }
-      /**
-       * Set the custom handler for processing CLI option arguments into option values.
-       *
-       * @param {Function} [fn]
-       * @return {Option}
-       */
-      argParser(fn) {
-        this.parseArg = fn;
-        return this;
-      }
-      /**
-       * Whether the option is mandatory and must have a value after parsing.
-       *
-       * @param {boolean} [mandatory=true]
-       * @return {Option}
-       */
-      makeOptionMandatory(mandatory = true) {
-        this.mandatory = !!mandatory;
-        return this;
-      }
-      /**
-       * Hide option in help.
-       *
-       * @param {boolean} [hide=true]
-       * @return {Option}
-       */
-      hideHelp(hide = true) {
-        this.hidden = !!hide;
-        return this;
-      }
-      /**
-       * @package
-       */
-      _concatValue(value, previous) {
-        if (previous === this.defaultValue || !Array.isArray(previous)) {
-          return [value];
-        }
-        return previous.concat(value);
-      }
-      /**
-       * Only allow option value to be one of choices.
-       *
-       * @param {string[]} values
-       * @return {Option}
-       */
-      choices(values) {
-        this.argChoices = values.slice();
-        this.parseArg = (arg, previous) => {
-          if (!this.argChoices.includes(arg)) {
-            throw new InvalidArgumentError2(
-              `Allowed choices are ${this.argChoices.join(", ")}.`
-            );
-          }
-          if (this.variadic) {
-            return this._concatValue(arg, previous);
-          }
-          return arg;
-        };
-        return this;
-      }
-      /**
-       * Return option name.
-       *
-       * @return {string}
-       */
-      name() {
-        if (this.long) {
-          return this.long.replace(/^--/, "");
-        }
-        return this.short.replace(/^-/, "");
-      }
-      /**
-       * Return option name, in a camelcase format that can be used
-       * as a object attribute key.
-       *
-       * @return {string}
-       */
-      attributeName() {
-        return camelcase(this.name().replace(/^no-/, ""));
-      }
-      /**
-       * Check if `arg` matches the short or long flag.
-       *
-       * @param {string} arg
-       * @return {boolean}
-       * @package
-       */
-      is(arg) {
-        return this.short === arg || this.long === arg;
-      }
-      /**
-       * Return whether a boolean option.
-       *
-       * Options are one of boolean, negated, required argument, or optional argument.
-       *
-       * @return {boolean}
-       * @package
-       */
-      isBoolean() {
-        return !this.required && !this.optional && !this.negate;
-      }
-    };
-    var DualOptions = class {
-      /**
-       * @param {Option[]} options
-       */
-      constructor(options) {
-        this.positiveOptions = /* @__PURE__ */ new Map();
-        this.negativeOptions = /* @__PURE__ */ new Map();
-        this.dualOptions = /* @__PURE__ */ new Set();
-        options.forEach((option) => {
-          if (option.negate) {
-            this.negativeOptions.set(option.attributeName(), option);
-          } else {
-            this.positiveOptions.set(option.attributeName(), option);
-          }
-        });
-        this.negativeOptions.forEach((value, key) => {
-          if (this.positiveOptions.has(key)) {
-            this.dualOptions.add(key);
-          }
-        });
-      }
-      /**
-       * Did the value come from the option, and not from possible matching dual option?
-       *
-       * @param {*} value
-       * @param {Option} option
-       * @returns {boolean}
-       */
-      valueFromOption(value, option) {
-        const optionKey = option.attributeName();
-        if (!this.dualOptions.has(optionKey)) return true;
-        const preset = this.negativeOptions.get(optionKey).presetArg;
-        const negativeValue = preset !== void 0 ? preset : false;
-        return option.negate === (negativeValue === value);
-      }
-    };
-    function camelcase(str) {
-      return str.split("-").reduce((str2, word) => {
-        return str2 + word[0].toUpperCase() + word.slice(1);
-      });
-    }
-    function splitOptionFlags(flags) {
-      let shortFlag;
-      let longFlag;
-      const flagParts = flags.split(/[ |,]+/);
-      if (flagParts.length > 1 && !/^[[<]/.test(flagParts[1]))
-        shortFlag = flagParts.shift();
-      longFlag = flagParts.shift();
-      if (!shortFlag && /^-[^-]$/.test(longFlag)) {
-        shortFlag = longFlag;
-        longFlag = void 0;
-      }
-      return { shortFlag, longFlag };
-    }
-    exports2.Option = Option2;
-    exports2.DualOptions = DualOptions;
-  }
-});
-
-// node_modules/commander/lib/suggestSimilar.js
-var require_suggestSimilar = __commonJS({
-  "node_modules/commander/lib/suggestSimilar.js"(exports2) {
-    var maxDistance = 3;
-    function editDistance(a, b) {
-      if (Math.abs(a.length - b.length) > maxDistance)
-        return Math.max(a.length, b.length);
-      const d = [];
-      for (let i = 0; i <= a.length; i++) {
-        d[i] = [i];
-      }
-      for (let j = 0; j <= b.length; j++) {
-        d[0][j] = j;
-      }
-      for (let j = 1; j <= b.length; j++) {
-        for (let i = 1; i <= a.length; i++) {
-          let cost = 1;
-          if (a[i - 1] === b[j - 1]) {
-            cost = 0;
-          } else {
-            cost = 1;
-          }
-          d[i][j] = Math.min(
-            d[i - 1][j] + 1,
-            // deletion
-            d[i][j - 1] + 1,
-            // insertion
-            d[i - 1][j - 1] + cost
-            // substitution
-          );
-          if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
-            d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
-          }
-        }
-      }
-      return d[a.length][b.length];
-    }
-    function suggestSimilar(word, candidates) {
-      if (!candidates || candidates.length === 0) return "";
-      candidates = Array.from(new Set(candidates));
-      const searchingOptions = word.startsWith("--");
-      if (searchingOptions) {
-        word = word.slice(2);
-        candidates = candidates.map((candidate) => candidate.slice(2));
-      }
-      let similar = [];
-      let bestDistance = maxDistance;
-      const minSimilarity = 0.4;
-      candidates.forEach((candidate) => {
-        if (candidate.length <= 1) return;
-        const distance = editDistance(word, candidate);
-        const length = Math.max(word.length, candidate.length);
-        const similarity = (length - distance) / length;
-        if (similarity > minSimilarity) {
-          if (distance < bestDistance) {
-            bestDistance = distance;
-            similar = [candidate];
-          } else if (distance === bestDistance) {
-            similar.push(candidate);
-          }
-        }
-      });
-      similar.sort((a, b) => a.localeCompare(b));
-      if (searchingOptions) {
-        similar = similar.map((candidate) => `--${candidate}`);
-      }
-      if (similar.length > 1) {
-        return `
-(Did you mean one of ${similar.join(", ")}?)`;
-      }
-      if (similar.length === 1) {
-        return `
-(Did you mean ${similar[0]}?)`;
-      }
-      return "";
-    }
-    exports2.suggestSimilar = suggestSimilar;
-  }
-});
-
-// node_modules/commander/lib/command.js
-var require_command = __commonJS({
-  "node_modules/commander/lib/command.js"(exports2) {
-    var EventEmitter = require("node:events").EventEmitter;
-    var childProcess = require("node:child_process");
-    var path6 = require("node:path");
-    var fs7 = require("node:fs");
-    var process2 = require("node:process");
-    var { Argument: Argument2, humanReadableArgName } = require_argument();
-    var { CommanderError: CommanderError2 } = require_error();
-    var { Help: Help2 } = require_help();
-    var { Option: Option2, DualOptions } = require_option();
-    var { suggestSimilar } = require_suggestSimilar();
-    var Command2 = class _Command extends EventEmitter {
-      /**
-       * Initialize a new `Command`.
-       *
-       * @param {string} [name]
-       */
-      constructor(name) {
-        super();
-        this.commands = [];
-        this.options = [];
-        this.parent = null;
-        this._allowUnknownOption = false;
-        this._allowExcessArguments = true;
-        this.registeredArguments = [];
-        this._args = this.registeredArguments;
-        this.args = [];
-        this.rawArgs = [];
-        this.processedArgs = [];
-        this._scriptPath = null;
-        this._name = name || "";
-        this._optionValues = {};
-        this._optionValueSources = {};
-        this._storeOptionsAsProperties = false;
-        this._actionHandler = null;
-        this._executableHandler = false;
-        this._executableFile = null;
-        this._executableDir = null;
-        this._defaultCommandName = null;
-        this._exitCallback = null;
-        this._aliases = [];
-        this._combineFlagAndOptionalValue = true;
-        this._description = "";
-        this._summary = "";
-        this._argsDescription = void 0;
-        this._enablePositionalOptions = false;
-        this._passThroughOptions = false;
-        this._lifeCycleHooks = {};
-        this._showHelpAfterError = false;
-        this._showSuggestionAfterError = true;
-        this._outputConfiguration = {
-          writeOut: (str) => process2.stdout.write(str),
-          writeErr: (str) => process2.stderr.write(str),
-          getOutHelpWidth: () => process2.stdout.isTTY ? process2.stdout.columns : void 0,
-          getErrHelpWidth: () => process2.stderr.isTTY ? process2.stderr.columns : void 0,
-          outputError: (str, write) => write(str)
-        };
-        this._hidden = false;
-        this._helpOption = void 0;
-        this._addImplicitHelpCommand = void 0;
-        this._helpCommand = void 0;
-        this._helpConfiguration = {};
-      }
-      /**
-       * Copy settings that are useful to have in common across root command and subcommands.
-       *
-       * (Used internally when adding a command using `.command()` so subcommands inherit parent settings.)
-       *
-       * @param {Command} sourceCommand
-       * @return {Command} `this` command for chaining
-       */
-      copyInheritedSettings(sourceCommand) {
-        this._outputConfiguration = sourceCommand._outputConfiguration;
-        this._helpOption = sourceCommand._helpOption;
-        this._helpCommand = sourceCommand._helpCommand;
-        this._helpConfiguration = sourceCommand._helpConfiguration;
-        this._exitCallback = sourceCommand._exitCallback;
-        this._storeOptionsAsProperties = sourceCommand._storeOptionsAsProperties;
-        this._combineFlagAndOptionalValue = sourceCommand._combineFlagAndOptionalValue;
-        this._allowExcessArguments = sourceCommand._allowExcessArguments;
-        this._enablePositionalOptions = sourceCommand._enablePositionalOptions;
-        this._showHelpAfterError = sourceCommand._showHelpAfterError;
-        this._showSuggestionAfterError = sourceCommand._showSuggestionAfterError;
-        return this;
-      }
-      /**
-       * @returns {Command[]}
-       * @private
-       */
-      _getCommandAndAncestors() {
-        const result = [];
-        for (let command = this; command; command = command.parent) {
-          result.push(command);
-        }
-        return result;
-      }
-      /**
-       * Define a command.
-       *
-       * There are two styles of command: pay attention to where to put the description.
-       *
-       * @example
-       * // Command implemented using action handler (description is supplied separately to `.command`)
-       * program
-       *   .command('clone <source> [destination]')
-       *   .description('clone a repository into a newly created directory')
-       *   .action((source, destination) => {
-       *     console.log('clone command called');
-       *   });
-       *
-       * // Command implemented using separate executable file (description is second parameter to `.command`)
-       * program
-       *   .command('start <service>', 'start named service')
-       *   .command('stop [service]', 'stop named service, or all if no name supplied');
-       *
-       * @param {string} nameAndArgs - command name and arguments, args are `<required>` or `[optional]` and last may also be `variadic...`
-       * @param {(object | string)} [actionOptsOrExecDesc] - configuration options (for action), or description (for executable)
-       * @param {object} [execOpts] - configuration options (for executable)
-       * @return {Command} returns new command for action handler, or `this` for executable command
-       */
-      command(nameAndArgs, actionOptsOrExecDesc, execOpts) {
-        let desc = actionOptsOrExecDesc;
-        let opts = execOpts;
-        if (typeof desc === "object" && desc !== null) {
-          opts = desc;
-          desc = null;
-        }
-        opts = opts || {};
-        const [, name, args] = nameAndArgs.match(/([^ ]+) *(.*)/);
-        const cmd = this.createCommand(name);
-        if (desc) {
-          cmd.description(desc);
-          cmd._executableHandler = true;
-        }
-        if (opts.isDefault) this._defaultCommandName = cmd._name;
-        cmd._hidden = !!(opts.noHelp || opts.hidden);
-        cmd._executableFile = opts.executableFile || null;
-        if (args) cmd.arguments(args);
-        this._registerCommand(cmd);
-        cmd.parent = this;
-        cmd.copyInheritedSettings(this);
-        if (desc) return this;
-        return cmd;
-      }
-      /**
-       * Factory routine to create a new unattached command.
-       *
-       * See .command() for creating an attached subcommand, which uses this routine to
-       * create the command. You can override createCommand to customise subcommands.
-       *
-       * @param {string} [name]
-       * @return {Command} new command
-       */
-      createCommand(name) {
-        return new _Command(name);
-      }
-      /**
-       * You can customise the help with a subclass of Help by overriding createHelp,
-       * or by overriding Help properties using configureHelp().
-       *
-       * @return {Help}
-       */
-      createHelp() {
-        return Object.assign(new Help2(), this.configureHelp());
-      }
-      /**
-       * You can customise the help by overriding Help properties using configureHelp(),
-       * or with a subclass of Help by overriding createHelp().
-       *
-       * @param {object} [configuration] - configuration options
-       * @return {(Command | object)} `this` command for chaining, or stored configuration
-       */
-      configureHelp(configuration) {
-        if (configuration === void 0) return this._helpConfiguration;
-        this._helpConfiguration = configuration;
-        return this;
-      }
-      /**
-       * The default output goes to stdout and stderr. You can customise this for special
-       * applications. You can also customise the display of errors by overriding outputError.
-       *
-       * The configuration properties are all functions:
-       *
-       *     // functions to change where being written, stdout and stderr
-       *     writeOut(str)
-       *     writeErr(str)
-       *     // matching functions to specify width for wrapping help
-       *     getOutHelpWidth()
-       *     getErrHelpWidth()
-       *     // functions based on what is being written out
-       *     outputError(str, write) // used for displaying errors, and not used for displaying help
-       *
-       * @param {object} [configuration] - configuration options
-       * @return {(Command | object)} `this` command for chaining, or stored configuration
-       */
-      configureOutput(configuration) {
-        if (configuration === void 0) return this._outputConfiguration;
-        Object.assign(this._outputConfiguration, configuration);
-        return this;
-      }
-      /**
-       * Display the help or a custom message after an error occurs.
-       *
-       * @param {(boolean|string)} [displayHelp]
-       * @return {Command} `this` command for chaining
-       */
-      showHelpAfterError(displayHelp = true) {
-        if (typeof displayHelp !== "string") displayHelp = !!displayHelp;
-        this._showHelpAfterError = displayHelp;
-        return this;
-      }
-      /**
-       * Display suggestion of similar commands for unknown commands, or options for unknown options.
-       *
-       * @param {boolean} [displaySuggestion]
-       * @return {Command} `this` command for chaining
-       */
-      showSuggestionAfterError(displaySuggestion = true) {
-        this._showSuggestionAfterError = !!displaySuggestion;
-        return this;
-      }
-      /**
-       * Add a prepared subcommand.
-       *
-       * See .command() for creating an attached subcommand which inherits settings from its parent.
-       *
-       * @param {Command} cmd - new subcommand
-       * @param {object} [opts] - configuration options
-       * @return {Command} `this` command for chaining
-       */
-      addCommand(cmd, opts) {
-        if (!cmd._name) {
-          throw new Error(`Command passed to .addCommand() must have a name
-- specify the name in Command constructor or using .name()`);
-        }
-        opts = opts || {};
-        if (opts.isDefault) this._defaultCommandName = cmd._name;
-        if (opts.noHelp || opts.hidden) cmd._hidden = true;
-        this._registerCommand(cmd);
-        cmd.parent = this;
-        cmd._checkForBrokenPassThrough();
-        return this;
-      }
-      /**
-       * Factory routine to create a new unattached argument.
-       *
-       * See .argument() for creating an attached argument, which uses this routine to
-       * create the argument. You can override createArgument to return a custom argument.
-       *
-       * @param {string} name
-       * @param {string} [description]
-       * @return {Argument} new argument
-       */
-      createArgument(name, description) {
-        return new Argument2(name, description);
-      }
-      /**
-       * Define argument syntax for command.
-       *
-       * The default is that the argument is required, and you can explicitly
-       * indicate this with <> around the name. Put [] around the name for an optional argument.
-       *
-       * @example
-       * program.argument('<input-file>');
-       * program.argument('[output-file]');
-       *
-       * @param {string} name
-       * @param {string} [description]
-       * @param {(Function|*)} [fn] - custom argument processing function
-       * @param {*} [defaultValue]
-       * @return {Command} `this` command for chaining
-       */
-      argument(name, description, fn, defaultValue) {
-        const argument = this.createArgument(name, description);
-        if (typeof fn === "function") {
-          argument.default(defaultValue).argParser(fn);
-        } else {
-          argument.default(fn);
-        }
-        this.addArgument(argument);
-        return this;
-      }
-      /**
-       * Define argument syntax for command, adding multiple at once (without descriptions).
-       *
-       * See also .argument().
-       *
-       * @example
-       * program.arguments('<cmd> [env]');
-       *
-       * @param {string} names
-       * @return {Command} `this` command for chaining
-       */
-      arguments(names) {
-        names.trim().split(/ +/).forEach((detail) => {
-          this.argument(detail);
-        });
-        return this;
-      }
-      /**
-       * Define argument syntax for command, adding a prepared argument.
-       *
-       * @param {Argument} argument
-       * @return {Command} `this` command for chaining
-       */
-      addArgument(argument) {
-        const previousArgument = this.registeredArguments.slice(-1)[0];
-        if (previousArgument && previousArgument.variadic) {
-          throw new Error(
-            `only the last argument can be variadic '${previousArgument.name()}'`
-          );
-        }
-        if (argument.required && argument.defaultValue !== void 0 && argument.parseArg === void 0) {
-          throw new Error(
-            `a default value for a required argument is never used: '${argument.name()}'`
-          );
-        }
-        this.registeredArguments.push(argument);
-        return this;
-      }
-      /**
-       * Customise or override default help command. By default a help command is automatically added if your command has subcommands.
-       *
-       * @example
-       *    program.helpCommand('help [cmd]');
-       *    program.helpCommand('help [cmd]', 'show help');
-       *    program.helpCommand(false); // suppress default help command
-       *    program.helpCommand(true); // add help command even if no subcommands
-       *
-       * @param {string|boolean} enableOrNameAndArgs - enable with custom name and/or arguments, or boolean to override whether added
-       * @param {string} [description] - custom description
-       * @return {Command} `this` command for chaining
-       */
-      helpCommand(enableOrNameAndArgs, description) {
-        if (typeof enableOrNameAndArgs === "boolean") {
-          this._addImplicitHelpCommand = enableOrNameAndArgs;
-          return this;
-        }
-        enableOrNameAndArgs = enableOrNameAndArgs ?? "help [command]";
-        const [, helpName, helpArgs] = enableOrNameAndArgs.match(/([^ ]+) *(.*)/);
-        const helpDescription = description ?? "display help for command";
-        const helpCommand = this.createCommand(helpName);
-        helpCommand.helpOption(false);
-        if (helpArgs) helpCommand.arguments(helpArgs);
-        if (helpDescription) helpCommand.description(helpDescription);
-        this._addImplicitHelpCommand = true;
-        this._helpCommand = helpCommand;
-        return this;
-      }
-      /**
-       * Add prepared custom help command.
-       *
-       * @param {(Command|string|boolean)} helpCommand - custom help command, or deprecated enableOrNameAndArgs as for `.helpCommand()`
-       * @param {string} [deprecatedDescription] - deprecated custom description used with custom name only
-       * @return {Command} `this` command for chaining
-       */
-      addHelpCommand(helpCommand, deprecatedDescription) {
-        if (typeof helpCommand !== "object") {
-          this.helpCommand(helpCommand, deprecatedDescription);
-          return this;
-        }
-        this._addImplicitHelpCommand = true;
-        this._helpCommand = helpCommand;
-        return this;
-      }
-      /**
-       * Lazy create help command.
-       *
-       * @return {(Command|null)}
-       * @package
-       */
-      _getHelpCommand() {
-        const hasImplicitHelpCommand = this._addImplicitHelpCommand ?? (this.commands.length && !this._actionHandler && !this._findCommand("help"));
-        if (hasImplicitHelpCommand) {
-          if (this._helpCommand === void 0) {
-            this.helpCommand(void 0, void 0);
-          }
-          return this._helpCommand;
-        }
-        return null;
-      }
-      /**
-       * Add hook for life cycle event.
-       *
-       * @param {string} event
-       * @param {Function} listener
-       * @return {Command} `this` command for chaining
-       */
-      hook(event, listener) {
-        const allowedValues = ["preSubcommand", "preAction", "postAction"];
-        if (!allowedValues.includes(event)) {
-          throw new Error(`Unexpected value for event passed to hook : '${event}'.
-Expecting one of '${allowedValues.join("', '")}'`);
-        }
-        if (this._lifeCycleHooks[event]) {
-          this._lifeCycleHooks[event].push(listener);
-        } else {
-          this._lifeCycleHooks[event] = [listener];
-        }
-        return this;
-      }
-      /**
-       * Register callback to use as replacement for calling process.exit.
-       *
-       * @param {Function} [fn] optional callback which will be passed a CommanderError, defaults to throwing
-       * @return {Command} `this` command for chaining
-       */
-      exitOverride(fn) {
-        if (fn) {
-          this._exitCallback = fn;
-        } else {
-          this._exitCallback = (err) => {
-            if (err.code !== "commander.executeSubCommandAsync") {
-              throw err;
-            } else {
-            }
-          };
-        }
-        return this;
-      }
-      /**
-       * Call process.exit, and _exitCallback if defined.
-       *
-       * @param {number} exitCode exit code for using with process.exit
-       * @param {string} code an id string representing the error
-       * @param {string} message human-readable description of the error
-       * @return never
-       * @private
-       */
-      _exit(exitCode, code, message) {
-        if (this._exitCallback) {
-          this._exitCallback(new CommanderError2(exitCode, code, message));
-        }
-        process2.exit(exitCode);
-      }
-      /**
-       * Register callback `fn` for the command.
-       *
-       * @example
-       * program
-       *   .command('serve')
-       *   .description('start service')
-       *   .action(function() {
-       *      // do work here
-       *   });
-       *
-       * @param {Function} fn
-       * @return {Command} `this` command for chaining
-       */
-      action(fn) {
-        const listener = (args) => {
-          const expectedArgsCount = this.registeredArguments.length;
-          const actionArgs = args.slice(0, expectedArgsCount);
-          if (this._storeOptionsAsProperties) {
-            actionArgs[expectedArgsCount] = this;
-          } else {
-            actionArgs[expectedArgsCount] = this.opts();
-          }
-          actionArgs.push(this);
-          return fn.apply(this, actionArgs);
-        };
-        this._actionHandler = listener;
-        return this;
-      }
-      /**
-       * Factory routine to create a new unattached option.
-       *
-       * See .option() for creating an attached option, which uses this routine to
-       * create the option. You can override createOption to return a custom option.
-       *
-       * @param {string} flags
-       * @param {string} [description]
-       * @return {Option} new option
-       */
-      createOption(flags, description) {
-        return new Option2(flags, description);
-      }
-      /**
-       * Wrap parseArgs to catch 'commander.invalidArgument'.
-       *
-       * @param {(Option | Argument)} target
-       * @param {string} value
-       * @param {*} previous
-       * @param {string} invalidArgumentMessage
-       * @private
-       */
-      _callParseArg(target, value, previous, invalidArgumentMessage) {
-        try {
-          return target.parseArg(value, previous);
-        } catch (err) {
-          if (err.code === "commander.invalidArgument") {
-            const message = `${invalidArgumentMessage} ${err.message}`;
-            this.error(message, { exitCode: err.exitCode, code: err.code });
-          }
-          throw err;
-        }
-      }
-      /**
-       * Check for option flag conflicts.
-       * Register option if no conflicts found, or throw on conflict.
-       *
-       * @param {Option} option
-       * @private
-       */
-      _registerOption(option) {
-        const matchingOption = option.short && this._findOption(option.short) || option.long && this._findOption(option.long);
-        if (matchingOption) {
-          const matchingFlag = option.long && this._findOption(option.long) ? option.long : option.short;
-          throw new Error(`Cannot add option '${option.flags}'${this._name && ` to command '${this._name}'`} due to conflicting flag '${matchingFlag}'
--  already used by option '${matchingOption.flags}'`);
-        }
-        this.options.push(option);
-      }
-      /**
-       * Check for command name and alias conflicts with existing commands.
-       * Register command if no conflicts found, or throw on conflict.
-       *
-       * @param {Command} command
-       * @private
-       */
-      _registerCommand(command) {
-        const knownBy = (cmd) => {
-          return [cmd.name()].concat(cmd.aliases());
-        };
-        const alreadyUsed = knownBy(command).find(
-          (name) => this._findCommand(name)
-        );
-        if (alreadyUsed) {
-          const existingCmd = knownBy(this._findCommand(alreadyUsed)).join("|");
-          const newCmd = knownBy(command).join("|");
-          throw new Error(
-            `cannot add command '${newCmd}' as already have command '${existingCmd}'`
-          );
-        }
-        this.commands.push(command);
-      }
-      /**
-       * Add an option.
-       *
-       * @param {Option} option
-       * @return {Command} `this` command for chaining
-       */
-      addOption(option) {
-        this._registerOption(option);
-        const oname = option.name();
-        const name = option.attributeName();
-        if (option.negate) {
-          const positiveLongFlag = option.long.replace(/^--no-/, "--");
-          if (!this._findOption(positiveLongFlag)) {
-            this.setOptionValueWithSource(
-              name,
-              option.defaultValue === void 0 ? true : option.defaultValue,
-              "default"
-            );
-          }
-        } else if (option.defaultValue !== void 0) {
-          this.setOptionValueWithSource(name, option.defaultValue, "default");
-        }
-        const handleOptionValue = (val, invalidValueMessage, valueSource) => {
-          if (val == null && option.presetArg !== void 0) {
-            val = option.presetArg;
-          }
-          const oldValue = this.getOptionValue(name);
-          if (val !== null && option.parseArg) {
-            val = this._callParseArg(option, val, oldValue, invalidValueMessage);
-          } else if (val !== null && option.variadic) {
-            val = option._concatValue(val, oldValue);
-          }
-          if (val == null) {
-            if (option.negate) {
-              val = false;
-            } else if (option.isBoolean() || option.optional) {
-              val = true;
-            } else {
-              val = "";
-            }
-          }
-          this.setOptionValueWithSource(name, val, valueSource);
-        };
-        this.on("option:" + oname, (val) => {
-          const invalidValueMessage = `error: option '${option.flags}' argument '${val}' is invalid.`;
-          handleOptionValue(val, invalidValueMessage, "cli");
-        });
-        if (option.envVar) {
-          this.on("optionEnv:" + oname, (val) => {
-            const invalidValueMessage = `error: option '${option.flags}' value '${val}' from env '${option.envVar}' is invalid.`;
-            handleOptionValue(val, invalidValueMessage, "env");
-          });
-        }
-        return this;
-      }
-      /**
-       * Internal implementation shared by .option() and .requiredOption()
-       *
-       * @return {Command} `this` command for chaining
-       * @private
-       */
-      _optionEx(config, flags, description, fn, defaultValue) {
-        if (typeof flags === "object" && flags instanceof Option2) {
-          throw new Error(
-            "To add an Option object use addOption() instead of option() or requiredOption()"
-          );
-        }
-        const option = this.createOption(flags, description);
-        option.makeOptionMandatory(!!config.mandatory);
-        if (typeof fn === "function") {
-          option.default(defaultValue).argParser(fn);
-        } else if (fn instanceof RegExp) {
-          const regex = fn;
-          fn = (val, def) => {
-            const m = regex.exec(val);
-            return m ? m[0] : def;
-          };
-          option.default(defaultValue).argParser(fn);
-        } else {
-          option.default(fn);
-        }
-        return this.addOption(option);
-      }
-      /**
-       * Define option with `flags`, `description`, and optional argument parsing function or `defaultValue` or both.
-       *
-       * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space. A required
-       * option-argument is indicated by `<>` and an optional option-argument by `[]`.
-       *
-       * See the README for more details, and see also addOption() and requiredOption().
-       *
-       * @example
-       * program
-       *     .option('-p, --pepper', 'add pepper')
-       *     .option('-p, --pizza-type <TYPE>', 'type of pizza') // required option-argument
-       *     .option('-c, --cheese [CHEESE]', 'add extra cheese', 'mozzarella') // optional option-argument with default
-       *     .option('-t, --tip <VALUE>', 'add tip to purchase cost', parseFloat) // custom parse function
-       *
-       * @param {string} flags
-       * @param {string} [description]
-       * @param {(Function|*)} [parseArg] - custom option processing function or default value
-       * @param {*} [defaultValue]
-       * @return {Command} `this` command for chaining
-       */
-      option(flags, description, parseArg, defaultValue) {
-        return this._optionEx({}, flags, description, parseArg, defaultValue);
-      }
-      /**
-       * Add a required option which must have a value after parsing. This usually means
-       * the option must be specified on the command line. (Otherwise the same as .option().)
-       *
-       * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space.
-       *
-       * @param {string} flags
-       * @param {string} [description]
-       * @param {(Function|*)} [parseArg] - custom option processing function or default value
-       * @param {*} [defaultValue]
-       * @return {Command} `this` command for chaining
-       */
-      requiredOption(flags, description, parseArg, defaultValue) {
-        return this._optionEx(
-          { mandatory: true },
-          flags,
-          description,
-          parseArg,
-          defaultValue
-        );
-      }
-      /**
-       * Alter parsing of short flags with optional values.
-       *
-       * @example
-       * // for `.option('-f,--flag [value]'):
-       * program.combineFlagAndOptionalValue(true);  // `-f80` is treated like `--flag=80`, this is the default behaviour
-       * program.combineFlagAndOptionalValue(false) // `-fb` is treated like `-f -b`
-       *
-       * @param {boolean} [combine] - if `true` or omitted, an optional value can be specified directly after the flag.
-       * @return {Command} `this` command for chaining
-       */
-      combineFlagAndOptionalValue(combine = true) {
-        this._combineFlagAndOptionalValue = !!combine;
-        return this;
-      }
-      /**
-       * Allow unknown options on the command line.
-       *
-       * @param {boolean} [allowUnknown] - if `true` or omitted, no error will be thrown for unknown options.
-       * @return {Command} `this` command for chaining
-       */
-      allowUnknownOption(allowUnknown = true) {
-        this._allowUnknownOption = !!allowUnknown;
-        return this;
-      }
-      /**
-       * Allow excess command-arguments on the command line. Pass false to make excess arguments an error.
-       *
-       * @param {boolean} [allowExcess] - if `true` or omitted, no error will be thrown for excess arguments.
-       * @return {Command} `this` command for chaining
-       */
-      allowExcessArguments(allowExcess = true) {
-        this._allowExcessArguments = !!allowExcess;
-        return this;
-      }
-      /**
-       * Enable positional options. Positional means global options are specified before subcommands which lets
-       * subcommands reuse the same option names, and also enables subcommands to turn on passThroughOptions.
-       * The default behaviour is non-positional and global options may appear anywhere on the command line.
-       *
-       * @param {boolean} [positional]
-       * @return {Command} `this` command for chaining
-       */
-      enablePositionalOptions(positional = true) {
-        this._enablePositionalOptions = !!positional;
-        return this;
-      }
-      /**
-       * Pass through options that come after command-arguments rather than treat them as command-options,
-       * so actual command-options come before command-arguments. Turning this on for a subcommand requires
-       * positional options to have been enabled on the program (parent commands).
-       * The default behaviour is non-positional and options may appear before or after command-arguments.
-       *
-       * @param {boolean} [passThrough] for unknown options.
-       * @return {Command} `this` command for chaining
-       */
-      passThroughOptions(passThrough = true) {
-        this._passThroughOptions = !!passThrough;
-        this._checkForBrokenPassThrough();
-        return this;
-      }
-      /**
-       * @private
-       */
-      _checkForBrokenPassThrough() {
-        if (this.parent && this._passThroughOptions && !this.parent._enablePositionalOptions) {
-          throw new Error(
-            `passThroughOptions cannot be used for '${this._name}' without turning on enablePositionalOptions for parent command(s)`
-          );
-        }
-      }
-      /**
-       * Whether to store option values as properties on command object,
-       * or store separately (specify false). In both cases the option values can be accessed using .opts().
-       *
-       * @param {boolean} [storeAsProperties=true]
-       * @return {Command} `this` command for chaining
-       */
-      storeOptionsAsProperties(storeAsProperties = true) {
-        if (this.options.length) {
-          throw new Error("call .storeOptionsAsProperties() before adding options");
-        }
-        if (Object.keys(this._optionValues).length) {
-          throw new Error(
-            "call .storeOptionsAsProperties() before setting option values"
-          );
-        }
-        this._storeOptionsAsProperties = !!storeAsProperties;
-        return this;
-      }
-      /**
-       * Retrieve option value.
-       *
-       * @param {string} key
-       * @return {object} value
-       */
-      getOptionValue(key) {
-        if (this._storeOptionsAsProperties) {
-          return this[key];
-        }
-        return this._optionValues[key];
-      }
-      /**
-       * Store option value.
-       *
-       * @param {string} key
-       * @param {object} value
-       * @return {Command} `this` command for chaining
-       */
-      setOptionValue(key, value) {
-        return this.setOptionValueWithSource(key, value, void 0);
-      }
-      /**
-       * Store option value and where the value came from.
-       *
-       * @param {string} key
-       * @param {object} value
-       * @param {string} source - expected values are default/config/env/cli/implied
-       * @return {Command} `this` command for chaining
-       */
-      setOptionValueWithSource(key, value, source) {
-        if (this._storeOptionsAsProperties) {
-          this[key] = value;
-        } else {
-          this._optionValues[key] = value;
-        }
-        this._optionValueSources[key] = source;
-        return this;
-      }
-      /**
-       * Get source of option value.
-       * Expected values are default | config | env | cli | implied
-       *
-       * @param {string} key
-       * @return {string}
-       */
-      getOptionValueSource(key) {
-        return this._optionValueSources[key];
-      }
-      /**
-       * Get source of option value. See also .optsWithGlobals().
-       * Expected values are default | config | env | cli | implied
-       *
-       * @param {string} key
-       * @return {string}
-       */
-      getOptionValueSourceWithGlobals(key) {
-        let source;
-        this._getCommandAndAncestors().forEach((cmd) => {
-          if (cmd.getOptionValueSource(key) !== void 0) {
-            source = cmd.getOptionValueSource(key);
-          }
-        });
-        return source;
-      }
-      /**
-       * Get user arguments from implied or explicit arguments.
-       * Side-effects: set _scriptPath if args included script. Used for default program name, and subcommand searches.
-       *
-       * @private
-       */
-      _prepareUserArgs(argv, parseOptions) {
-        if (argv !== void 0 && !Array.isArray(argv)) {
-          throw new Error("first parameter to parse must be array or undefined");
-        }
-        parseOptions = parseOptions || {};
-        if (argv === void 0 && parseOptions.from === void 0) {
-          if (process2.versions?.electron) {
-            parseOptions.from = "electron";
-          }
-          const execArgv = process2.execArgv ?? [];
-          if (execArgv.includes("-e") || execArgv.includes("--eval") || execArgv.includes("-p") || execArgv.includes("--print")) {
-            parseOptions.from = "eval";
-          }
-        }
-        if (argv === void 0) {
-          argv = process2.argv;
-        }
-        this.rawArgs = argv.slice();
-        let userArgs;
-        switch (parseOptions.from) {
-          case void 0:
-          case "node":
-            this._scriptPath = argv[1];
-            userArgs = argv.slice(2);
-            break;
-          case "electron":
-            if (process2.defaultApp) {
-              this._scriptPath = argv[1];
-              userArgs = argv.slice(2);
-            } else {
-              userArgs = argv.slice(1);
-            }
-            break;
-          case "user":
-            userArgs = argv.slice(0);
-            break;
-          case "eval":
-            userArgs = argv.slice(1);
-            break;
-          default:
-            throw new Error(
-              `unexpected parse option { from: '${parseOptions.from}' }`
-            );
-        }
-        if (!this._name && this._scriptPath)
-          this.nameFromFilename(this._scriptPath);
-        this._name = this._name || "program";
-        return userArgs;
-      }
-      /**
-       * Parse `argv`, setting options and invoking commands when defined.
-       *
-       * Use parseAsync instead of parse if any of your action handlers are async.
-       *
-       * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
-       *
-       * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
-       * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
-       * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
-       * - `'user'`: just user arguments
-       *
-       * @example
-       * program.parse(); // parse process.argv and auto-detect electron and special node flags
-       * program.parse(process.argv); // assume argv[0] is app and argv[1] is script
-       * program.parse(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
-       *
-       * @param {string[]} [argv] - optional, defaults to process.argv
-       * @param {object} [parseOptions] - optionally specify style of options with from: node/user/electron
-       * @param {string} [parseOptions.from] - where the args are from: 'node', 'user', 'electron'
-       * @return {Command} `this` command for chaining
-       */
-      parse(argv, parseOptions) {
-        const userArgs = this._prepareUserArgs(argv, parseOptions);
-        this._parseCommand([], userArgs);
-        return this;
-      }
-      /**
-       * Parse `argv`, setting options and invoking commands when defined.
-       *
-       * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
-       *
-       * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
-       * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
-       * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
-       * - `'user'`: just user arguments
-       *
-       * @example
-       * await program.parseAsync(); // parse process.argv and auto-detect electron and special node flags
-       * await program.parseAsync(process.argv); // assume argv[0] is app and argv[1] is script
-       * await program.parseAsync(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
-       *
-       * @param {string[]} [argv]
-       * @param {object} [parseOptions]
-       * @param {string} parseOptions.from - where the args are from: 'node', 'user', 'electron'
-       * @return {Promise}
-       */
-      async parseAsync(argv, parseOptions) {
-        const userArgs = this._prepareUserArgs(argv, parseOptions);
-        await this._parseCommand([], userArgs);
-        return this;
-      }
-      /**
-       * Execute a sub-command executable.
-       *
-       * @private
-       */
-      _executeSubCommand(subcommand, args) {
-        args = args.slice();
-        let launchWithNode = false;
-        const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
-        function findFile(baseDir, baseName) {
-          const localBin = path6.resolve(baseDir, baseName);
-          if (fs7.existsSync(localBin)) return localBin;
-          if (sourceExt.includes(path6.extname(baseName))) return void 0;
-          const foundExt = sourceExt.find(
-            (ext) => fs7.existsSync(`${localBin}${ext}`)
-          );
-          if (foundExt) return `${localBin}${foundExt}`;
-          return void 0;
-        }
-        this._checkForMissingMandatoryOptions();
-        this._checkForConflictingOptions();
-        let executableFile = subcommand._executableFile || `${this._name}-${subcommand._name}`;
-        let executableDir = this._executableDir || "";
-        if (this._scriptPath) {
-          let resolvedScriptPath;
-          try {
-            resolvedScriptPath = fs7.realpathSync(this._scriptPath);
-          } catch (err) {
-            resolvedScriptPath = this._scriptPath;
-          }
-          executableDir = path6.resolve(
-            path6.dirname(resolvedScriptPath),
-            executableDir
-          );
-        }
-        if (executableDir) {
-          let localFile = findFile(executableDir, executableFile);
-          if (!localFile && !subcommand._executableFile && this._scriptPath) {
-            const legacyName = path6.basename(
-              this._scriptPath,
-              path6.extname(this._scriptPath)
-            );
-            if (legacyName !== this._name) {
-              localFile = findFile(
-                executableDir,
-                `${legacyName}-${subcommand._name}`
-              );
-            }
-          }
-          executableFile = localFile || executableFile;
-        }
-        launchWithNode = sourceExt.includes(path6.extname(executableFile));
-        let proc;
-        if (process2.platform !== "win32") {
-          if (launchWithNode) {
-            args.unshift(executableFile);
-            args = incrementNodeInspectorPort(process2.execArgv).concat(args);
-            proc = childProcess.spawn(process2.argv[0], args, { stdio: "inherit" });
-          } else {
-            proc = childProcess.spawn(executableFile, args, { stdio: "inherit" });
-          }
-        } else {
-          args.unshift(executableFile);
-          args = incrementNodeInspectorPort(process2.execArgv).concat(args);
-          proc = childProcess.spawn(process2.execPath, args, { stdio: "inherit" });
-        }
-        if (!proc.killed) {
-          const signals = ["SIGUSR1", "SIGUSR2", "SIGTERM", "SIGINT", "SIGHUP"];
-          signals.forEach((signal) => {
-            process2.on(signal, () => {
-              if (proc.killed === false && proc.exitCode === null) {
-                proc.kill(signal);
-              }
-            });
-          });
-        }
-        const exitCallback = this._exitCallback;
-        proc.on("close", (code) => {
-          code = code ?? 1;
-          if (!exitCallback) {
-            process2.exit(code);
-          } else {
-            exitCallback(
-              new CommanderError2(
-                code,
-                "commander.executeSubCommandAsync",
-                "(close)"
-              )
-            );
-          }
-        });
-        proc.on("error", (err) => {
-          if (err.code === "ENOENT") {
-            const executableDirMessage = executableDir ? `searched for local subcommand relative to directory '${executableDir}'` : "no directory for search for local subcommand, use .executableDir() to supply a custom directory";
-            const executableMissing = `'${executableFile}' does not exist
- - if '${subcommand._name}' is not meant to be an executable command, remove description parameter from '.command()' and use '.description()' instead
- - if the default executable name is not suitable, use the executableFile option to supply a custom name or path
- - ${executableDirMessage}`;
-            throw new Error(executableMissing);
-          } else if (err.code === "EACCES") {
-            throw new Error(`'${executableFile}' not executable`);
-          }
-          if (!exitCallback) {
-            process2.exit(1);
-          } else {
-            const wrappedError = new CommanderError2(
-              1,
-              "commander.executeSubCommandAsync",
-              "(error)"
-            );
-            wrappedError.nestedError = err;
-            exitCallback(wrappedError);
-          }
-        });
-        this.runningCommand = proc;
-      }
-      /**
-       * @private
-       */
-      _dispatchSubcommand(commandName, operands, unknown) {
-        const subCommand = this._findCommand(commandName);
-        if (!subCommand) this.help({ error: true });
-        let promiseChain;
-        promiseChain = this._chainOrCallSubCommandHook(
-          promiseChain,
-          subCommand,
-          "preSubcommand"
-        );
-        promiseChain = this._chainOrCall(promiseChain, () => {
-          if (subCommand._executableHandler) {
-            this._executeSubCommand(subCommand, operands.concat(unknown));
-          } else {
-            return subCommand._parseCommand(operands, unknown);
-          }
-        });
-        return promiseChain;
-      }
-      /**
-       * Invoke help directly if possible, or dispatch if necessary.
-       * e.g. help foo
-       *
-       * @private
-       */
-      _dispatchHelpCommand(subcommandName) {
-        if (!subcommandName) {
-          this.help();
-        }
-        const subCommand = this._findCommand(subcommandName);
-        if (subCommand && !subCommand._executableHandler) {
-          subCommand.help();
-        }
-        return this._dispatchSubcommand(
-          subcommandName,
-          [],
-          [this._getHelpOption()?.long ?? this._getHelpOption()?.short ?? "--help"]
-        );
-      }
-      /**
-       * Check this.args against expected this.registeredArguments.
-       *
-       * @private
-       */
-      _checkNumberOfArguments() {
-        this.registeredArguments.forEach((arg, i) => {
-          if (arg.required && this.args[i] == null) {
-            this.missingArgument(arg.name());
-          }
-        });
-        if (this.registeredArguments.length > 0 && this.registeredArguments[this.registeredArguments.length - 1].variadic) {
-          return;
-        }
-        if (this.args.length > this.registeredArguments.length) {
-          this._excessArguments(this.args);
-        }
-      }
-      /**
-       * Process this.args using this.registeredArguments and save as this.processedArgs!
-       *
-       * @private
-       */
-      _processArguments() {
-        const myParseArg = (argument, value, previous) => {
-          let parsedValue = value;
-          if (value !== null && argument.parseArg) {
-            const invalidValueMessage = `error: command-argument value '${value}' is invalid for argument '${argument.name()}'.`;
-            parsedValue = this._callParseArg(
-              argument,
-              value,
-              previous,
-              invalidValueMessage
-            );
-          }
-          return parsedValue;
-        };
-        this._checkNumberOfArguments();
-        const processedArgs = [];
-        this.registeredArguments.forEach((declaredArg, index) => {
-          let value = declaredArg.defaultValue;
-          if (declaredArg.variadic) {
-            if (index < this.args.length) {
-              value = this.args.slice(index);
-              if (declaredArg.parseArg) {
-                value = value.reduce((processed, v) => {
-                  return myParseArg(declaredArg, v, processed);
-                }, declaredArg.defaultValue);
-              }
-            } else if (value === void 0) {
-              value = [];
-            }
-          } else if (index < this.args.length) {
-            value = this.args[index];
-            if (declaredArg.parseArg) {
-              value = myParseArg(declaredArg, value, declaredArg.defaultValue);
-            }
-          }
-          processedArgs[index] = value;
-        });
-        this.processedArgs = processedArgs;
-      }
-      /**
-       * Once we have a promise we chain, but call synchronously until then.
-       *
-       * @param {(Promise|undefined)} promise
-       * @param {Function} fn
-       * @return {(Promise|undefined)}
-       * @private
-       */
-      _chainOrCall(promise, fn) {
-        if (promise && promise.then && typeof promise.then === "function") {
-          return promise.then(() => fn());
-        }
-        return fn();
-      }
-      /**
-       *
-       * @param {(Promise|undefined)} promise
-       * @param {string} event
-       * @return {(Promise|undefined)}
-       * @private
-       */
-      _chainOrCallHooks(promise, event) {
-        let result = promise;
-        const hooks = [];
-        this._getCommandAndAncestors().reverse().filter((cmd) => cmd._lifeCycleHooks[event] !== void 0).forEach((hookedCommand) => {
-          hookedCommand._lifeCycleHooks[event].forEach((callback) => {
-            hooks.push({ hookedCommand, callback });
-          });
-        });
-        if (event === "postAction") {
-          hooks.reverse();
-        }
-        hooks.forEach((hookDetail) => {
-          result = this._chainOrCall(result, () => {
-            return hookDetail.callback(hookDetail.hookedCommand, this);
-          });
-        });
-        return result;
-      }
-      /**
-       *
-       * @param {(Promise|undefined)} promise
-       * @param {Command} subCommand
-       * @param {string} event
-       * @return {(Promise|undefined)}
-       * @private
-       */
-      _chainOrCallSubCommandHook(promise, subCommand, event) {
-        let result = promise;
-        if (this._lifeCycleHooks[event] !== void 0) {
-          this._lifeCycleHooks[event].forEach((hook) => {
-            result = this._chainOrCall(result, () => {
-              return hook(this, subCommand);
-            });
-          });
-        }
-        return result;
-      }
-      /**
-       * Process arguments in context of this command.
-       * Returns action result, in case it is a promise.
-       *
-       * @private
-       */
-      _parseCommand(operands, unknown) {
-        const parsed = this.parseOptions(unknown);
-        this._parseOptionsEnv();
-        this._parseOptionsImplied();
-        operands = operands.concat(parsed.operands);
-        unknown = parsed.unknown;
-        this.args = operands.concat(unknown);
-        if (operands && this._findCommand(operands[0])) {
-          return this._dispatchSubcommand(operands[0], operands.slice(1), unknown);
-        }
-        if (this._getHelpCommand() && operands[0] === this._getHelpCommand().name()) {
-          return this._dispatchHelpCommand(operands[1]);
-        }
-        if (this._defaultCommandName) {
-          this._outputHelpIfRequested(unknown);
-          return this._dispatchSubcommand(
-            this._defaultCommandName,
-            operands,
-            unknown
-          );
-        }
-        if (this.commands.length && this.args.length === 0 && !this._actionHandler && !this._defaultCommandName) {
-          this.help({ error: true });
-        }
-        this._outputHelpIfRequested(parsed.unknown);
-        this._checkForMissingMandatoryOptions();
-        this._checkForConflictingOptions();
-        const checkForUnknownOptions = () => {
-          if (parsed.unknown.length > 0) {
-            this.unknownOption(parsed.unknown[0]);
-          }
-        };
-        const commandEvent = `command:${this.name()}`;
-        if (this._actionHandler) {
-          checkForUnknownOptions();
-          this._processArguments();
-          let promiseChain;
-          promiseChain = this._chainOrCallHooks(promiseChain, "preAction");
-          promiseChain = this._chainOrCall(
-            promiseChain,
-            () => this._actionHandler(this.processedArgs)
-          );
-          if (this.parent) {
-            promiseChain = this._chainOrCall(promiseChain, () => {
-              this.parent.emit(commandEvent, operands, unknown);
-            });
-          }
-          promiseChain = this._chainOrCallHooks(promiseChain, "postAction");
-          return promiseChain;
-        }
-        if (this.parent && this.parent.listenerCount(commandEvent)) {
-          checkForUnknownOptions();
-          this._processArguments();
-          this.parent.emit(commandEvent, operands, unknown);
-        } else if (operands.length) {
-          if (this._findCommand("*")) {
-            return this._dispatchSubcommand("*", operands, unknown);
-          }
-          if (this.listenerCount("command:*")) {
-            this.emit("command:*", operands, unknown);
-          } else if (this.commands.length) {
-            this.unknownCommand();
-          } else {
-            checkForUnknownOptions();
-            this._processArguments();
-          }
-        } else if (this.commands.length) {
-          checkForUnknownOptions();
-          this.help({ error: true });
-        } else {
-          checkForUnknownOptions();
-          this._processArguments();
-        }
-      }
-      /**
-       * Find matching command.
-       *
-       * @private
-       * @return {Command | undefined}
-       */
-      _findCommand(name) {
-        if (!name) return void 0;
-        return this.commands.find(
-          (cmd) => cmd._name === name || cmd._aliases.includes(name)
-        );
-      }
-      /**
-       * Return an option matching `arg` if any.
-       *
-       * @param {string} arg
-       * @return {Option}
-       * @package
-       */
-      _findOption(arg) {
-        return this.options.find((option) => option.is(arg));
-      }
-      /**
-       * Display an error message if a mandatory option does not have a value.
-       * Called after checking for help flags in leaf subcommand.
-       *
-       * @private
-       */
-      _checkForMissingMandatoryOptions() {
-        this._getCommandAndAncestors().forEach((cmd) => {
-          cmd.options.forEach((anOption) => {
-            if (anOption.mandatory && cmd.getOptionValue(anOption.attributeName()) === void 0) {
-              cmd.missingMandatoryOptionValue(anOption);
-            }
-          });
-        });
-      }
-      /**
-       * Display an error message if conflicting options are used together in this.
-       *
-       * @private
-       */
-      _checkForConflictingLocalOptions() {
-        const definedNonDefaultOptions = this.options.filter((option) => {
-          const optionKey = option.attributeName();
-          if (this.getOptionValue(optionKey) === void 0) {
-            return false;
-          }
-          return this.getOptionValueSource(optionKey) !== "default";
-        });
-        const optionsWithConflicting = definedNonDefaultOptions.filter(
-          (option) => option.conflictsWith.length > 0
-        );
-        optionsWithConflicting.forEach((option) => {
-          const conflictingAndDefined = definedNonDefaultOptions.find(
-            (defined) => option.conflictsWith.includes(defined.attributeName())
-          );
-          if (conflictingAndDefined) {
-            this._conflictingOption(option, conflictingAndDefined);
-          }
-        });
-      }
-      /**
-       * Display an error message if conflicting options are used together.
-       * Called after checking for help flags in leaf subcommand.
-       *
-       * @private
-       */
-      _checkForConflictingOptions() {
-        this._getCommandAndAncestors().forEach((cmd) => {
-          cmd._checkForConflictingLocalOptions();
-        });
-      }
-      /**
-       * Parse options from `argv` removing known options,
-       * and return argv split into operands and unknown arguments.
-       *
-       * Examples:
-       *
-       *     argv => operands, unknown
-       *     --known kkk op => [op], []
-       *     op --known kkk => [op], []
-       *     sub --unknown uuu op => [sub], [--unknown uuu op]
-       *     sub -- --unknown uuu op => [sub --unknown uuu op], []
-       *
-       * @param {string[]} argv
-       * @return {{operands: string[], unknown: string[]}}
-       */
-      parseOptions(argv) {
-        const operands = [];
-        const unknown = [];
-        let dest = operands;
-        const args = argv.slice();
-        function maybeOption(arg) {
-          return arg.length > 1 && arg[0] === "-";
-        }
-        let activeVariadicOption = null;
-        while (args.length) {
-          const arg = args.shift();
-          if (arg === "--") {
-            if (dest === unknown) dest.push(arg);
-            dest.push(...args);
-            break;
-          }
-          if (activeVariadicOption && !maybeOption(arg)) {
-            this.emit(`option:${activeVariadicOption.name()}`, arg);
-            continue;
-          }
-          activeVariadicOption = null;
-          if (maybeOption(arg)) {
-            const option = this._findOption(arg);
-            if (option) {
-              if (option.required) {
-                const value = args.shift();
-                if (value === void 0) this.optionMissingArgument(option);
-                this.emit(`option:${option.name()}`, value);
-              } else if (option.optional) {
-                let value = null;
-                if (args.length > 0 && !maybeOption(args[0])) {
-                  value = args.shift();
-                }
-                this.emit(`option:${option.name()}`, value);
-              } else {
-                this.emit(`option:${option.name()}`);
-              }
-              activeVariadicOption = option.variadic ? option : null;
-              continue;
-            }
-          }
-          if (arg.length > 2 && arg[0] === "-" && arg[1] !== "-") {
-            const option = this._findOption(`-${arg[1]}`);
-            if (option) {
-              if (option.required || option.optional && this._combineFlagAndOptionalValue) {
-                this.emit(`option:${option.name()}`, arg.slice(2));
-              } else {
-                this.emit(`option:${option.name()}`);
-                args.unshift(`-${arg.slice(2)}`);
-              }
-              continue;
-            }
-          }
-          if (/^--[^=]+=/.test(arg)) {
-            const index = arg.indexOf("=");
-            const option = this._findOption(arg.slice(0, index));
-            if (option && (option.required || option.optional)) {
-              this.emit(`option:${option.name()}`, arg.slice(index + 1));
-              continue;
-            }
-          }
-          if (maybeOption(arg)) {
-            dest = unknown;
-          }
-          if ((this._enablePositionalOptions || this._passThroughOptions) && operands.length === 0 && unknown.length === 0) {
-            if (this._findCommand(arg)) {
-              operands.push(arg);
-              if (args.length > 0) unknown.push(...args);
-              break;
-            } else if (this._getHelpCommand() && arg === this._getHelpCommand().name()) {
-              operands.push(arg);
-              if (args.length > 0) operands.push(...args);
-              break;
-            } else if (this._defaultCommandName) {
-              unknown.push(arg);
-              if (args.length > 0) unknown.push(...args);
-              break;
-            }
-          }
-          if (this._passThroughOptions) {
-            dest.push(arg);
-            if (args.length > 0) dest.push(...args);
-            break;
-          }
-          dest.push(arg);
-        }
-        return { operands, unknown };
-      }
-      /**
-       * Return an object containing local option values as key-value pairs.
-       *
-       * @return {object}
-       */
-      opts() {
-        if (this._storeOptionsAsProperties) {
-          const result = {};
-          const len = this.options.length;
-          for (let i = 0; i < len; i++) {
-            const key = this.options[i].attributeName();
-            result[key] = key === this._versionOptionName ? this._version : this[key];
-          }
-          return result;
-        }
-        return this._optionValues;
-      }
-      /**
-       * Return an object containing merged local and global option values as key-value pairs.
-       *
-       * @return {object}
-       */
-      optsWithGlobals() {
-        return this._getCommandAndAncestors().reduce(
-          (combinedOptions, cmd) => Object.assign(combinedOptions, cmd.opts()),
-          {}
-        );
-      }
-      /**
-       * Display error message and exit (or call exitOverride).
-       *
-       * @param {string} message
-       * @param {object} [errorOptions]
-       * @param {string} [errorOptions.code] - an id string representing the error
-       * @param {number} [errorOptions.exitCode] - used with process.exit
-       */
-      error(message, errorOptions) {
-        this._outputConfiguration.outputError(
-          `${message}
-`,
-          this._outputConfiguration.writeErr
-        );
-        if (typeof this._showHelpAfterError === "string") {
-          this._outputConfiguration.writeErr(`${this._showHelpAfterError}
-`);
-        } else if (this._showHelpAfterError) {
-          this._outputConfiguration.writeErr("\n");
-          this.outputHelp({ error: true });
-        }
-        const config = errorOptions || {};
-        const exitCode = config.exitCode || 1;
-        const code = config.code || "commander.error";
-        this._exit(exitCode, code, message);
-      }
-      /**
-       * Apply any option related environment variables, if option does
-       * not have a value from cli or client code.
-       *
-       * @private
-       */
-      _parseOptionsEnv() {
-        this.options.forEach((option) => {
-          if (option.envVar && option.envVar in process2.env) {
-            const optionKey = option.attributeName();
-            if (this.getOptionValue(optionKey) === void 0 || ["default", "config", "env"].includes(
-              this.getOptionValueSource(optionKey)
-            )) {
-              if (option.required || option.optional) {
-                this.emit(`optionEnv:${option.name()}`, process2.env[option.envVar]);
-              } else {
-                this.emit(`optionEnv:${option.name()}`);
-              }
-            }
-          }
-        });
-      }
-      /**
-       * Apply any implied option values, if option is undefined or default value.
-       *
-       * @private
-       */
-      _parseOptionsImplied() {
-        const dualHelper = new DualOptions(this.options);
-        const hasCustomOptionValue = (optionKey) => {
-          return this.getOptionValue(optionKey) !== void 0 && !["default", "implied"].includes(this.getOptionValueSource(optionKey));
-        };
-        this.options.filter(
-          (option) => option.implied !== void 0 && hasCustomOptionValue(option.attributeName()) && dualHelper.valueFromOption(
-            this.getOptionValue(option.attributeName()),
-            option
-          )
-        ).forEach((option) => {
-          Object.keys(option.implied).filter((impliedKey) => !hasCustomOptionValue(impliedKey)).forEach((impliedKey) => {
-            this.setOptionValueWithSource(
-              impliedKey,
-              option.implied[impliedKey],
-              "implied"
-            );
-          });
-        });
-      }
-      /**
-       * Argument `name` is missing.
-       *
-       * @param {string} name
-       * @private
-       */
-      missingArgument(name) {
-        const message = `error: missing required argument '${name}'`;
-        this.error(message, { code: "commander.missingArgument" });
-      }
-      /**
-       * `Option` is missing an argument.
-       *
-       * @param {Option} option
-       * @private
-       */
-      optionMissingArgument(option) {
-        const message = `error: option '${option.flags}' argument missing`;
-        this.error(message, { code: "commander.optionMissingArgument" });
-      }
-      /**
-       * `Option` does not have a value, and is a mandatory option.
-       *
-       * @param {Option} option
-       * @private
-       */
-      missingMandatoryOptionValue(option) {
-        const message = `error: required option '${option.flags}' not specified`;
-        this.error(message, { code: "commander.missingMandatoryOptionValue" });
-      }
-      /**
-       * `Option` conflicts with another option.
-       *
-       * @param {Option} option
-       * @param {Option} conflictingOption
-       * @private
-       */
-      _conflictingOption(option, conflictingOption) {
-        const findBestOptionFromValue = (option2) => {
-          const optionKey = option2.attributeName();
-          const optionValue = this.getOptionValue(optionKey);
-          const negativeOption = this.options.find(
-            (target) => target.negate && optionKey === target.attributeName()
-          );
-          const positiveOption = this.options.find(
-            (target) => !target.negate && optionKey === target.attributeName()
-          );
-          if (negativeOption && (negativeOption.presetArg === void 0 && optionValue === false || negativeOption.presetArg !== void 0 && optionValue === negativeOption.presetArg)) {
-            return negativeOption;
-          }
-          return positiveOption || option2;
-        };
-        const getErrorMessage = (option2) => {
-          const bestOption = findBestOptionFromValue(option2);
-          const optionKey = bestOption.attributeName();
-          const source = this.getOptionValueSource(optionKey);
-          if (source === "env") {
-            return `environment variable '${bestOption.envVar}'`;
-          }
-          return `option '${bestOption.flags}'`;
-        };
-        const message = `error: ${getErrorMessage(option)} cannot be used with ${getErrorMessage(conflictingOption)}`;
-        this.error(message, { code: "commander.conflictingOption" });
-      }
-      /**
-       * Unknown option `flag`.
-       *
-       * @param {string} flag
-       * @private
-       */
-      unknownOption(flag) {
-        if (this._allowUnknownOption) return;
-        let suggestion = "";
-        if (flag.startsWith("--") && this._showSuggestionAfterError) {
-          let candidateFlags = [];
-          let command = this;
-          do {
-            const moreFlags = command.createHelp().visibleOptions(command).filter((option) => option.long).map((option) => option.long);
-            candidateFlags = candidateFlags.concat(moreFlags);
-            command = command.parent;
-          } while (command && !command._enablePositionalOptions);
-          suggestion = suggestSimilar(flag, candidateFlags);
-        }
-        const message = `error: unknown option '${flag}'${suggestion}`;
-        this.error(message, { code: "commander.unknownOption" });
-      }
-      /**
-       * Excess arguments, more than expected.
-       *
-       * @param {string[]} receivedArgs
-       * @private
-       */
-      _excessArguments(receivedArgs) {
-        if (this._allowExcessArguments) return;
-        const expected = this.registeredArguments.length;
-        const s = expected === 1 ? "" : "s";
-        const forSubcommand = this.parent ? ` for '${this.name()}'` : "";
-        const message = `error: too many arguments${forSubcommand}. Expected ${expected} argument${s} but got ${receivedArgs.length}.`;
-        this.error(message, { code: "commander.excessArguments" });
-      }
-      /**
-       * Unknown command.
-       *
-       * @private
-       */
-      unknownCommand() {
-        const unknownName = this.args[0];
-        let suggestion = "";
-        if (this._showSuggestionAfterError) {
-          const candidateNames = [];
-          this.createHelp().visibleCommands(this).forEach((command) => {
-            candidateNames.push(command.name());
-            if (command.alias()) candidateNames.push(command.alias());
-          });
-          suggestion = suggestSimilar(unknownName, candidateNames);
-        }
-        const message = `error: unknown command '${unknownName}'${suggestion}`;
-        this.error(message, { code: "commander.unknownCommand" });
-      }
-      /**
-       * Get or set the program version.
-       *
-       * This method auto-registers the "-V, --version" option which will print the version number.
-       *
-       * You can optionally supply the flags and description to override the defaults.
-       *
-       * @param {string} [str]
-       * @param {string} [flags]
-       * @param {string} [description]
-       * @return {(this | string | undefined)} `this` command for chaining, or version string if no arguments
-       */
-      version(str, flags, description) {
-        if (str === void 0) return this._version;
-        this._version = str;
-        flags = flags || "-V, --version";
-        description = description || "output the version number";
-        const versionOption = this.createOption(flags, description);
-        this._versionOptionName = versionOption.attributeName();
-        this._registerOption(versionOption);
-        this.on("option:" + versionOption.name(), () => {
-          this._outputConfiguration.writeOut(`${str}
-`);
-          this._exit(0, "commander.version", str);
-        });
-        return this;
-      }
-      /**
-       * Set the description.
-       *
-       * @param {string} [str]
-       * @param {object} [argsDescription]
-       * @return {(string|Command)}
-       */
-      description(str, argsDescription) {
-        if (str === void 0 && argsDescription === void 0)
-          return this._description;
-        this._description = str;
-        if (argsDescription) {
-          this._argsDescription = argsDescription;
-        }
-        return this;
-      }
-      /**
-       * Set the summary. Used when listed as subcommand of parent.
-       *
-       * @param {string} [str]
-       * @return {(string|Command)}
-       */
-      summary(str) {
-        if (str === void 0) return this._summary;
-        this._summary = str;
-        return this;
-      }
-      /**
-       * Set an alias for the command.
-       *
-       * You may call more than once to add multiple aliases. Only the first alias is shown in the auto-generated help.
-       *
-       * @param {string} [alias]
-       * @return {(string|Command)}
-       */
-      alias(alias) {
-        if (alias === void 0) return this._aliases[0];
-        let command = this;
-        if (this.commands.length !== 0 && this.commands[this.commands.length - 1]._executableHandler) {
-          command = this.commands[this.commands.length - 1];
-        }
-        if (alias === command._name)
-          throw new Error("Command alias can't be the same as its name");
-        const matchingCommand = this.parent?._findCommand(alias);
-        if (matchingCommand) {
-          const existingCmd = [matchingCommand.name()].concat(matchingCommand.aliases()).join("|");
-          throw new Error(
-            `cannot add alias '${alias}' to command '${this.name()}' as already have command '${existingCmd}'`
-          );
-        }
-        command._aliases.push(alias);
-        return this;
-      }
-      /**
-       * Set aliases for the command.
-       *
-       * Only the first alias is shown in the auto-generated help.
-       *
-       * @param {string[]} [aliases]
-       * @return {(string[]|Command)}
-       */
-      aliases(aliases) {
-        if (aliases === void 0) return this._aliases;
-        aliases.forEach((alias) => this.alias(alias));
-        return this;
-      }
-      /**
-       * Set / get the command usage `str`.
-       *
-       * @param {string} [str]
-       * @return {(string|Command)}
-       */
-      usage(str) {
-        if (str === void 0) {
-          if (this._usage) return this._usage;
-          const args = this.registeredArguments.map((arg) => {
-            return humanReadableArgName(arg);
-          });
-          return [].concat(
-            this.options.length || this._helpOption !== null ? "[options]" : [],
-            this.commands.length ? "[command]" : [],
-            this.registeredArguments.length ? args : []
-          ).join(" ");
-        }
-        this._usage = str;
-        return this;
-      }
-      /**
-       * Get or set the name of the command.
-       *
-       * @param {string} [str]
-       * @return {(string|Command)}
-       */
-      name(str) {
-        if (str === void 0) return this._name;
-        this._name = str;
-        return this;
-      }
-      /**
-       * Set the name of the command from script filename, such as process.argv[1],
-       * or require.main.filename, or __filename.
-       *
-       * (Used internally and public although not documented in README.)
-       *
-       * @example
-       * program.nameFromFilename(require.main.filename);
-       *
-       * @param {string} filename
-       * @return {Command}
-       */
-      nameFromFilename(filename) {
-        this._name = path6.basename(filename, path6.extname(filename));
-        return this;
-      }
-      /**
-       * Get or set the directory for searching for executable subcommands of this command.
-       *
-       * @example
-       * program.executableDir(__dirname);
-       * // or
-       * program.executableDir('subcommands');
-       *
-       * @param {string} [path]
-       * @return {(string|null|Command)}
-       */
-      executableDir(path7) {
-        if (path7 === void 0) return this._executableDir;
-        this._executableDir = path7;
-        return this;
-      }
-      /**
-       * Return program help documentation.
-       *
-       * @param {{ error: boolean }} [contextOptions] - pass {error:true} to wrap for stderr instead of stdout
-       * @return {string}
-       */
-      helpInformation(contextOptions) {
-        const helper = this.createHelp();
-        if (helper.helpWidth === void 0) {
-          helper.helpWidth = contextOptions && contextOptions.error ? this._outputConfiguration.getErrHelpWidth() : this._outputConfiguration.getOutHelpWidth();
-        }
-        return helper.formatHelp(this, helper);
-      }
-      /**
-       * @private
-       */
-      _getHelpContext(contextOptions) {
-        contextOptions = contextOptions || {};
-        const context = { error: !!contextOptions.error };
-        let write;
-        if (context.error) {
-          write = (arg) => this._outputConfiguration.writeErr(arg);
-        } else {
-          write = (arg) => this._outputConfiguration.writeOut(arg);
-        }
-        context.write = contextOptions.write || write;
-        context.command = this;
-        return context;
-      }
-      /**
-       * Output help information for this command.
-       *
-       * Outputs built-in help, and custom text added using `.addHelpText()`.
-       *
-       * @param {{ error: boolean } | Function} [contextOptions] - pass {error:true} to write to stderr instead of stdout
-       */
-      outputHelp(contextOptions) {
-        let deprecatedCallback;
-        if (typeof contextOptions === "function") {
-          deprecatedCallback = contextOptions;
-          contextOptions = void 0;
-        }
-        const context = this._getHelpContext(contextOptions);
-        this._getCommandAndAncestors().reverse().forEach((command) => command.emit("beforeAllHelp", context));
-        this.emit("beforeHelp", context);
-        let helpInformation = this.helpInformation(context);
-        if (deprecatedCallback) {
-          helpInformation = deprecatedCallback(helpInformation);
-          if (typeof helpInformation !== "string" && !Buffer.isBuffer(helpInformation)) {
-            throw new Error("outputHelp callback must return a string or a Buffer");
-          }
-        }
-        context.write(helpInformation);
-        if (this._getHelpOption()?.long) {
-          this.emit(this._getHelpOption().long);
-        }
-        this.emit("afterHelp", context);
-        this._getCommandAndAncestors().forEach(
-          (command) => command.emit("afterAllHelp", context)
-        );
-      }
-      /**
-       * You can pass in flags and a description to customise the built-in help option.
-       * Pass in false to disable the built-in help option.
-       *
-       * @example
-       * program.helpOption('-?, --help' 'show help'); // customise
-       * program.helpOption(false); // disable
-       *
-       * @param {(string | boolean)} flags
-       * @param {string} [description]
-       * @return {Command} `this` command for chaining
-       */
-      helpOption(flags, description) {
-        if (typeof flags === "boolean") {
-          if (flags) {
-            this._helpOption = this._helpOption ?? void 0;
-          } else {
-            this._helpOption = null;
-          }
-          return this;
-        }
-        flags = flags ?? "-h, --help";
-        description = description ?? "display help for command";
-        this._helpOption = this.createOption(flags, description);
-        return this;
-      }
-      /**
-       * Lazy create help option.
-       * Returns null if has been disabled with .helpOption(false).
-       *
-       * @returns {(Option | null)} the help option
-       * @package
-       */
-      _getHelpOption() {
-        if (this._helpOption === void 0) {
-          this.helpOption(void 0, void 0);
-        }
-        return this._helpOption;
-      }
-      /**
-       * Supply your own option to use for the built-in help option.
-       * This is an alternative to using helpOption() to customise the flags and description etc.
-       *
-       * @param {Option} option
-       * @return {Command} `this` command for chaining
-       */
-      addHelpOption(option) {
-        this._helpOption = option;
-        return this;
-      }
-      /**
-       * Output help information and exit.
-       *
-       * Outputs built-in help, and custom text added using `.addHelpText()`.
-       *
-       * @param {{ error: boolean }} [contextOptions] - pass {error:true} to write to stderr instead of stdout
-       */
-      help(contextOptions) {
-        this.outputHelp(contextOptions);
-        let exitCode = process2.exitCode || 0;
-        if (exitCode === 0 && contextOptions && typeof contextOptions !== "function" && contextOptions.error) {
-          exitCode = 1;
-        }
-        this._exit(exitCode, "commander.help", "(outputHelp)");
-      }
-      /**
-       * Add additional text to be displayed with the built-in help.
-       *
-       * Position is 'before' or 'after' to affect just this command,
-       * and 'beforeAll' or 'afterAll' to affect this command and all its subcommands.
-       *
-       * @param {string} position - before or after built-in help
-       * @param {(string | Function)} text - string to add, or a function returning a string
-       * @return {Command} `this` command for chaining
-       */
-      addHelpText(position, text) {
-        const allowedValues = ["beforeAll", "before", "after", "afterAll"];
-        if (!allowedValues.includes(position)) {
-          throw new Error(`Unexpected value for position to addHelpText.
-Expecting one of '${allowedValues.join("', '")}'`);
-        }
-        const helpEvent = `${position}Help`;
-        this.on(helpEvent, (context) => {
-          let helpStr;
-          if (typeof text === "function") {
-            helpStr = text({ error: context.error, command: context.command });
-          } else {
-            helpStr = text;
-          }
-          if (helpStr) {
-            context.write(`${helpStr}
-`);
-          }
-        });
-        return this;
-      }
-      /**
-       * Output help information if help flags specified
-       *
-       * @param {Array} args - array of options to search for help flags
-       * @private
-       */
-      _outputHelpIfRequested(args) {
-        const helpOption = this._getHelpOption();
-        const helpRequested = helpOption && args.find((arg) => helpOption.is(arg));
-        if (helpRequested) {
-          this.outputHelp();
-          this._exit(0, "commander.helpDisplayed", "(outputHelp)");
-        }
-      }
-    };
-    function incrementNodeInspectorPort(args) {
-      return args.map((arg) => {
-        if (!arg.startsWith("--inspect")) {
-          return arg;
-        }
-        let debugOption;
-        let debugHost = "127.0.0.1";
-        let debugPort = "9229";
-        let match;
-        if ((match = arg.match(/^(--inspect(-brk)?)$/)) !== null) {
-          debugOption = match[1];
-        } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+)$/)) !== null) {
-          debugOption = match[1];
-          if (/^\d+$/.test(match[3])) {
-            debugPort = match[3];
-          } else {
-            debugHost = match[3];
-          }
-        } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+):(\d+)$/)) !== null) {
-          debugOption = match[1];
-          debugHost = match[3];
-          debugPort = match[4];
-        }
-        if (debugOption && debugPort !== "0") {
-          return `${debugOption}=${debugHost}:${parseInt(debugPort) + 1}`;
-        }
-        return arg;
-      });
-    }
-    exports2.Command = Command2;
-  }
-});
-
-// node_modules/commander/index.js
-var require_commander = __commonJS({
-  "node_modules/commander/index.js"(exports2) {
-    var { Argument: Argument2 } = require_argument();
-    var { Command: Command2 } = require_command();
-    var { CommanderError: CommanderError2, InvalidArgumentError: InvalidArgumentError2 } = require_error();
-    var { Help: Help2 } = require_help();
-    var { Option: Option2 } = require_option();
-    exports2.program = new Command2();
-    exports2.createCommand = (name) => new Command2(name);
-    exports2.createOption = (flags, description) => new Option2(flags, description);
-    exports2.createArgument = (name, description) => new Argument2(name, description);
-    exports2.Command = Command2;
-    exports2.Option = Option2;
-    exports2.Argument = Argument2;
-    exports2.Help = Help2;
-    exports2.CommanderError = CommanderError2;
-    exports2.InvalidArgumentError = InvalidArgumentError2;
-    exports2.InvalidOptionArgumentError = InvalidArgumentError2;
-  }
-});
-
-// node_modules/commander/esm.mjs
-var import_index, program, createCommand, createArgument, createOption, CommanderError, InvalidArgumentError, InvalidOptionArgumentError, Command, Argument, Option, Help;
-var init_esm = __esm({
-  "node_modules/commander/esm.mjs"() {
-    import_index = __toESM(require_commander(), 1);
-    ({
-      program,
-      createCommand,
-      createArgument,
-      createOption,
-      CommanderError,
-      InvalidArgumentError,
-      InvalidOptionArgumentError,
-      Command: (
-        // deprecated old name
-        Command
-      ),
-      Argument,
-      Option,
-      Help
-    } = import_index.default);
-  }
-});
-
-// src/hooks/session-end/routing.ts
-var init_routing = __esm({
-  "src/hooks/session-end/routing.ts"() {
-    "use strict";
-  }
-});
-
-// src/hooks/session-end/guardrails.ts
-var import_path36, import_fs32, SERIAL_STALE_MS;
-var init_guardrails = __esm({
-  "src/hooks/session-end/guardrails.ts"() {
-    "use strict";
-    import_path36 = require("path");
-    import_fs32 = require("fs");
-    init_file_lock();
-    init_worktree_paths();
-    SERIAL_STALE_MS = 24 * 60 * 60 * 1e3;
-  }
-});
-
-// src/hooks/session-end/spawn-next.ts
-var fs2, path5, import_crypto10, import_child_process9, AFK_ALLOWED_TOOLS;
-var init_spawn_next = __esm({
-  "src/hooks/session-end/spawn-next.ts"() {
-    "use strict";
-    fs2 = __toESM(require("fs"), 1);
-    path5 = __toESM(require("path"), 1);
-    import_crypto10 = require("crypto");
-    import_child_process9 = require("child_process");
-    init_routing();
-    init_worktree_paths();
-    init_tmux_utils();
-    init_host_detection();
-    AFK_ALLOWED_TOOLS = [
-      "Bash(gh issue view:*)",
-      "Bash(gh issue comment:*)",
-      "Bash(gh issue edit:*)",
-      "Bash(gh pr view:*)",
-      "Bash(gh pr list:*)",
-      "Bash(gh label list:*)",
-      "Read",
-      "Glob",
-      "Grep",
-      "Write",
-      "Edit",
-      "WebFetch(domain:github.com)"
-    ].join(",");
-  }
-});
-
-// src/factory/watchdog.ts
-var fs3, import_path37, DEFAULT_STALL_THRESHOLD_MS;
-var init_watchdog = __esm({
-  "src/factory/watchdog.ts"() {
-    "use strict";
-    fs3 = __toESM(require("fs"), 1);
-    import_path37 = require("path");
-    init_spawn_next();
-    init_worktree_paths();
-    DEFAULT_STALL_THRESHOLD_MS = 30 * 60 * 1e3;
-  }
-});
-
-// src/factory/listener.ts
-var import_crypto11, import_http, import_fs33, import_path38, MAX_BODY_BYTES;
-var init_listener = __esm({
-  "src/factory/listener.ts"() {
-    "use strict";
-    import_crypto11 = require("crypto");
-    import_http = require("http");
-    import_fs33 = require("fs");
-    import_path38 = require("path");
-    init_routing();
-    init_guardrails();
-    init_spawn_next();
-    init_watchdog();
-    init_worktree_paths();
-    MAX_BODY_BYTES = 1024 * 1024;
-  }
-});
-
-// src/hooks/session-end/check-evidence.ts
-var fs4, import_path39;
-var init_check_evidence = __esm({
-  "src/hooks/session-end/check-evidence.ts"() {
-    "use strict";
-    fs4 = __toESM(require("fs"), 1);
-    import_path39 = require("path");
-    init_worktree_paths();
-  }
-});
-
-// src/hooks/session-end/chain-enqueuer.ts
-var fs5, import_path40;
-var init_chain_enqueuer = __esm({
-  "src/hooks/session-end/chain-enqueuer.ts"() {
-    "use strict";
-    fs5 = __toESM(require("fs"), 1);
-    import_path40 = require("path");
-    init_routing();
-    init_guardrails();
-    init_check_evidence();
-    init_spawn_next();
-    init_worktree_paths();
-  }
-});
-
-// src/factory/status.ts
-var fs6, import_path41;
-var init_status = __esm({
-  "src/factory/status.ts"() {
-    "use strict";
-    fs6 = __toESM(require("fs"), 1);
-    import_path41 = require("path");
-    init_watchdog();
-    init_chain_enqueuer();
-  }
-});
-
-// src/cli/commands/factory.ts
-var import_fs34, import_path42;
-var init_factory = __esm({
-  "src/cli/commands/factory.ts"() {
-    "use strict";
-    init_esm();
-    import_fs34 = require("fs");
-    import_path42 = require("path");
-    init_listener();
-    init_status();
-    init_worktree_paths();
-  }
-});
-
-// src/smoke/copilot-chain-scenario.ts
-var import_crypto12, import_child_process10, import_fs35, import_path43;
-var init_copilot_chain_scenario = __esm({
-  "src/smoke/copilot-chain-scenario.ts"() {
-    "use strict";
-    import_crypto12 = require("crypto");
-    import_child_process10 = require("child_process");
-    import_fs35 = require("fs");
-    import_path43 = require("path");
-    init_tmux_utils();
-    init_factory();
-    init_chain_enqueuer();
-    init_spawn_next();
-    init_copilot_session_eval();
-    init_copilot_sdk_scenarios();
-    init_process_utils2();
-  }
-});
-
 // src/smoke/copilot-sdk-driver.ts
-function resolveShimTarget(shim, read = (p) => (0, import_fs36.readFileSync)(p, "utf-8"), exists = import_fs36.existsSync) {
+function resolveShimTarget(shim, read = (p) => (0, import_fs32.readFileSync)(p, "utf-8"), exists = import_fs32.existsSync) {
   let text;
   try {
     text = read(shim);
@@ -20994,24 +17822,23 @@ function resolveShimTarget(shim, read = (p) => (0, import_fs36.readFileSync)(p, 
   for (const re of patterns) {
     const m = re.exec(text);
     if (!m) continue;
-    const target = (0, import_path44.resolve)((0, import_path44.dirname)(shim), m[1].replace(/\\/g, "/"));
+    const target = (0, import_path36.resolve)((0, import_path36.dirname)(shim), m[1].replace(/\\/g, "/"));
     if (exists(target)) return target;
   }
   return null;
 }
-var import_child_process11, import_fs36, import_module, import_path44, import_url5;
+var import_child_process9, import_fs32, import_module, import_path36, import_url5;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
-    import_child_process11 = require("child_process");
-    import_fs36 = require("fs");
+    import_child_process9 = require("child_process");
+    import_fs32 = require("fs");
     import_module = require("module");
-    import_path44 = require("path");
+    import_path36 = require("path");
     import_url5 = require("url");
     init_copilot_session_eval();
     init_copilot_sdk_scenarios();
     init_process_utils2();
-    init_copilot_chain_scenario();
   }
 });
 
@@ -21027,24 +17854,24 @@ var init_env_vars = __esm({
 // src/smoke/copilot-session-env.ts
 function resolveDefaultPluginRoot(env = process.env) {
   const fromEnv = env[OMC_PLUGIN_ROOT_ENV]?.trim();
-  if (fromEnv) return (0, import_path45.resolve)(fromEnv);
+  if (fromEnv) return (0, import_path37.resolve)(fromEnv);
   return findPluginRoot([...moduleDirs(), process.cwd()]) ?? process.cwd();
 }
 function moduleDirs() {
   const starts = [];
   if (typeof __dirname !== "undefined" && __dirname) starts.push(__dirname);
   try {
-    starts.push((0, import_path45.dirname)((0, import_url6.fileURLToPath)(importMetaUrl)));
+    starts.push((0, import_path37.dirname)((0, import_url6.fileURLToPath)(importMetaUrl)));
   } catch {
   }
   return starts;
 }
 function findPluginRoot(starts) {
   for (const start of starts) {
-    let dir = (0, import_path45.resolve)(start);
+    let dir = (0, import_path37.resolve)(start);
     for (let i = 0; i < 8; i++) {
       if (isPluginRoot(dir)) return dir;
-      const parent = (0, import_path45.dirname)(dir);
+      const parent = (0, import_path37.dirname)(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -21053,18 +17880,18 @@ function findPluginRoot(starts) {
 }
 function isPluginRoot(dir) {
   try {
-    const manifest = JSON.parse((0, import_fs37.readFileSync)((0, import_path45.join)(dir, "plugin.json"), "utf-8"));
-    return manifest.name === PLUGIN_NAME && (0, import_fs37.existsSync)((0, import_path45.join)(dir, "package.json"));
+    const manifest = JSON.parse((0, import_fs33.readFileSync)((0, import_path37.join)(dir, "plugin.json"), "utf-8"));
+    return manifest.name === PLUGIN_NAME && (0, import_fs33.existsSync)((0, import_path37.join)(dir, "package.json"));
   } catch {
     return false;
   }
 }
-var import_fs37, import_path45, import_url6;
+var import_fs33, import_path37, import_url6;
 var init_copilot_session_env = __esm({
   "src/smoke/copilot-session-env.ts"() {
     "use strict";
-    import_fs37 = require("fs");
-    import_path45 = require("path");
+    import_fs33 = require("fs");
+    import_path37 = require("path");
     import_url6 = require("url");
     init_env_vars();
     init_jsonc();
@@ -21550,7 +18377,7 @@ async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WOR
     if (await hasEvidence()) return true;
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) return false;
-    await new Promise((resolve19) => setTimeout(resolve19, Math.min(delayMs, remainingMs)));
+    await new Promise((resolve17) => setTimeout(resolve17, Math.min(delayMs, remainingMs)));
   }
 }
 async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS) {
@@ -22071,9 +18898,9 @@ function validateRecoveryAttemptSecret(value, input, recoveryId, replacementGene
 }
 async function recordRecoveryPaneRollbackFailure(input, recoveryId, pending, reason, liveness) {
   const recordedAt = Date.now();
-  const path6 = absPath(input.cwd, TeamPaths.recoveryPaneRollbackFailure(input.teamName, recoveryId, pending.paneAttemptId, recordedAt));
-  const candidate = `${path6}.candidate.${process.pid}.${(0, import_node_crypto10.randomUUID)()}`;
-  await (0, import_promises19.mkdir)((0, import_path46.join)(path6, ".."), { recursive: true });
+  const path5 = absPath(input.cwd, TeamPaths.recoveryPaneRollbackFailure(input.teamName, recoveryId, pending.paneAttemptId, recordedAt));
+  const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto10.randomUUID)()}`;
+  await (0, import_promises19.mkdir)((0, import_path38.join)(path5, ".."), { recursive: true });
   const handle = await (0, import_promises19.open)(candidate, "wx", 384);
   try {
     await handle.writeFile(JSON.stringify({
@@ -22093,17 +18920,17 @@ async function recordRecoveryPaneRollbackFailure(input, recoveryId, pending, rea
     await handle.close();
   }
   try {
-    await (0, import_promises19.link)(candidate, path6);
+    await (0, import_promises19.link)(candidate, path5);
   } finally {
     await (0, import_promises19.unlink)(candidate).catch(() => void 0);
   }
-  return path6;
+  return path5;
 }
 async function recordUnaddressableRecoveryPaneFailure(input, recoveryId, paneAttemptId, reason, split) {
   const recordedAt = Date.now();
-  const path6 = absPath(input.cwd, TeamPaths.recoveryPaneRollbackFailure(input.teamName, recoveryId, paneAttemptId, recordedAt));
-  const candidate = `${path6}.candidate.${process.pid}.${(0, import_node_crypto10.randomUUID)()}`;
-  await (0, import_promises19.mkdir)((0, import_path46.join)(path6, ".."), { recursive: true });
+  const path5 = absPath(input.cwd, TeamPaths.recoveryPaneRollbackFailure(input.teamName, recoveryId, paneAttemptId, recordedAt));
+  const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto10.randomUUID)()}`;
+  await (0, import_promises19.mkdir)((0, import_path38.join)(path5, ".."), { recursive: true });
   const handle = await (0, import_promises19.open)(candidate, "wx", 384);
   const boundedSplit = split ? {
     ...split,
@@ -22130,11 +18957,11 @@ async function recordUnaddressableRecoveryPaneFailure(input, recoveryId, paneAtt
     await handle.close();
   }
   try {
-    await (0, import_promises19.link)(candidate, path6);
+    await (0, import_promises19.link)(candidate, path5);
   } finally {
     await (0, import_promises19.unlink)(candidate).catch(() => void 0);
   }
-  return path6;
+  return path5;
 }
 async function cleanupRecoveryPaneAttempt(input, recoveryId, pending, reason) {
   let providerStopped = false;
@@ -22414,9 +19241,9 @@ function resolveCommittedRecoveryPaneAttempt(activeRecovery, recoveryId, replace
   return activeRecovery?.recovery_id === recoveryId && worker.recovery_id === recoveryId && worker.replacement_generation === replacementGeneration && worker.pane_id && worker.pane_attempt_id ? { paneId: worker.pane_id, paneAttemptId: worker.pane_attempt_id } : null;
 }
 async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGeneration) {
-  const path6 = absPath(input.cwd, TeamPaths.recoveryAttempt(input.teamName, recoveryId));
+  const path5 = absPath(input.cwd, TeamPaths.recoveryAttempt(input.teamName, recoveryId));
   try {
-    return validateRecoveryAttemptSecret(JSON.parse(await (0, import_promises19.readFile)(path6, "utf8")), input, recoveryId, replacementGeneration);
+    return validateRecoveryAttemptSecret(JSON.parse(await (0, import_promises19.readFile)(path5, "utf8")), input, recoveryId, replacementGeneration);
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
@@ -22429,8 +19256,8 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
     adoption_token: (0, import_node_crypto10.randomUUID)(),
     created_at: (/* @__PURE__ */ new Date()).toISOString()
   };
-  await (0, import_promises19.mkdir)((0, import_path46.join)(path6, ".."), { recursive: true });
-  const candidate = `${path6}.candidate.${process.pid}.${(0, import_node_crypto10.randomUUID)()}`;
+  await (0, import_promises19.mkdir)((0, import_path38.join)(path5, ".."), { recursive: true });
+  const candidate = `${path5}.candidate.${process.pid}.${(0, import_node_crypto10.randomUUID)()}`;
   const candidateHandle = await (0, import_promises19.open)(candidate, "wx", 384);
   try {
     await candidateHandle.writeFile(JSON.stringify(secret, null, 2), "utf8");
@@ -22439,24 +19266,24 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
     await candidateHandle.close();
   }
   try {
-    await (0, import_promises19.link)(candidate, path6);
-    return validateRecoveryAttemptSecret(JSON.parse(await (0, import_promises19.readFile)(path6, "utf8")), input, recoveryId, replacementGeneration);
+    await (0, import_promises19.link)(candidate, path5);
+    return validateRecoveryAttemptSecret(JSON.parse(await (0, import_promises19.readFile)(path5, "utf8")), input, recoveryId, replacementGeneration);
   } catch (error) {
     if (error.code !== "EEXIST") throw error;
-    return validateRecoveryAttemptSecret(JSON.parse(await (0, import_promises19.readFile)(path6, "utf8")), input, recoveryId, replacementGeneration);
+    return validateRecoveryAttemptSecret(JSON.parse(await (0, import_promises19.readFile)(path5, "utf8")), input, recoveryId, replacementGeneration);
   } finally {
     await (0, import_promises19.unlink)(candidate).catch(() => void 0);
   }
 }
 function waitForBootstrapRecoveryEvidence(delayMs, signal) {
-  return new Promise((resolve19, reject) => {
+  return new Promise((resolve17, reject) => {
     if (signal?.aborted) {
       reject(signal.reason ?? new Error("bootstrap_recovery_evidence_aborted"));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve19();
+      resolve17();
     }, delayMs);
     const onAbort = () => {
       clearTimeout(timer);
@@ -23433,7 +20260,7 @@ async function executeRecoverDeadWorkerV2Owner(input) {
           launch_nonce: pending.startupContext.attempt.nonce,
           written_at: (/* @__PURE__ */ new Date()).toISOString()
         };
-        await (0, import_promises19.mkdir)((0, import_path46.join)(pending.gate.activatePath, ".."), { recursive: true });
+        await (0, import_promises19.mkdir)((0, import_path38.join)(pending.gate.activatePath, ".."), { recursive: true });
         await (0, import_promises19.writeFile)(pending.gate.activatePath, JSON.stringify(record), "utf8");
         const adoptedReady = await waitForRecoveryGateRecord(`${pending.gate.readyPath}.adoption-ready`, record, 3e4);
         return adoptedReady && await isWorkerLaunchAttemptCurrent(pending.startupContext.attempt) ? { ok: true } : { ok: false, error: "worker_activation_failed" };
@@ -23560,7 +20387,7 @@ ${recoveryContract}` : ""}`;
         let providerLive = false;
         try {
           const launchedRecord = JSON.parse(await (0, import_promises19.readFile)(launchedPath, "utf8"));
-          providerLive = Number.isInteger(launchedRecord.provider_pid) && typeof launchedRecord.provider_start_identity === "string" && (launchedRecord.supervisor_completion_path === void 0 || typeof launchedRecord.supervisor_completion_path === "string" && launchedRecord.supervisor_completion_path.trim().length > 0 && !(0, import_fs38.existsSync)(launchedRecord.supervisor_completion_path)) && await isProcessIdentityLive(
+          providerLive = Number.isInteger(launchedRecord.provider_pid) && typeof launchedRecord.provider_start_identity === "string" && (launchedRecord.supervisor_completion_path === void 0 || typeof launchedRecord.supervisor_completion_path === "string" && launchedRecord.supervisor_completion_path.trim().length > 0 && !(0, import_fs34.existsSync)(launchedRecord.supervisor_completion_path)) && await isProcessIdentityLive(
             launchedRecord.provider_pid,
             launchedRecord.provider_start_identity,
             Date.now() + 1e3
@@ -23639,7 +20466,7 @@ async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd, cause, in
   const recordedAt = (/* @__PURE__ */ new Date()).toISOString();
   const writeFailureMarker = async (extra = {}) => {
     await (0, import_promises19.mkdir)(teamRoot, { recursive: true });
-    await (0, import_promises19.writeFile)((0, import_path46.join)(teamRoot, "startup-failure.json"), JSON.stringify({
+    await (0, import_promises19.writeFile)((0, import_path38.join)(teamRoot, "startup-failure.json"), JSON.stringify({
       reason: "startup_failed_before_config_persisted",
       error: errorMessage,
       recorded_at: recordedAt,
@@ -23670,7 +20497,7 @@ async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd, cause, in
       }
     }
     await (0, import_promises19.rm)(teamRoot, { recursive: true, force: true });
-    if ((0, import_fs38.existsSync)(teamRoot)) {
+    if ((0, import_fs34.existsSync)(teamRoot)) {
       await writeFailureMarker({ rollback_error: "startup_state_removal_unverified" });
       return false;
     }
@@ -23694,7 +20521,7 @@ async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd, cause, in
 async function writeStartedStartupRollbackEvidence(args) {
   const teamRoot = absPath(args.cwd, TeamPaths.root(args.teamName));
   await (0, import_promises19.mkdir)(teamRoot, { recursive: true });
-  await (0, import_promises19.writeFile)((0, import_path46.join)(teamRoot, "startup-failure.json"), JSON.stringify({
+  await (0, import_promises19.writeFile)((0, import_path38.join)(teamRoot, "startup-failure.json"), JSON.stringify({
     reason: args.markerReason ?? "startup_rollback_cleanup_incomplete",
     error: args.cause instanceof Error ? args.cause.message : String(args.cause),
     rollback_error: args.reason,
@@ -23878,7 +20705,7 @@ async function startTeamV2(config) {
   }
   const instance = createTeamInstanceBinding({
     teamName: sanitized,
-    cwd: (0, import_path46.resolve)(config.cwd),
+    cwd: (0, import_path38.resolve)(config.cwd),
     ...config.instanceId !== void 0 ? { instanceId: config.instanceId } : {}
   });
   const leaderCwd = instance.cwd;
@@ -24020,7 +20847,7 @@ async function startTeamV2(config) {
     try {
       const pendingConfig = buildTeamInstancePendingConfig(instance);
       const pendingConfigPath = absPath(leaderCwd, TeamPaths.config(sanitized));
-      await (0, import_promises19.mkdir)((0, import_path46.join)(pendingConfigPath, ".."), { recursive: true });
+      await (0, import_promises19.mkdir)((0, import_path38.join)(pendingConfigPath, ".."), { recursive: true });
       await (0, import_promises19.writeFile)(pendingConfigPath, JSON.stringify(pendingConfig, null, 2), "utf-8");
     } catch (error) {
       if (!await rollbackBeforeConfig(error)) throw startupCleanupIncompleteError(error);
@@ -24031,7 +20858,7 @@ async function startTeamV2(config) {
     try {
       await (0, import_promises19.mkdir)(absPath(leaderCwd, TeamPaths.tasks(sanitized)), { recursive: true });
       await (0, import_promises19.mkdir)(absPath(leaderCwd, TeamPaths.workers(sanitized)), { recursive: true });
-      await (0, import_promises19.mkdir)((0, import_path46.join)(getOmcRoot(leaderCwd), "state", "team", sanitized, "mailbox"), { recursive: true });
+      await (0, import_promises19.mkdir)((0, import_path38.join)(getOmcRoot(leaderCwd), "state", "team", sanitized, "mailbox"), { recursive: true });
       for (let i = 0; i < config.tasks.length; i++) {
         const taskId = String(i + 1);
         const task = config.tasks[i];
@@ -24521,10 +21348,10 @@ function isNonCursorVerdictBinding(value) {
   const fingerprintParts = typeof candidate.artifact_fingerprint === "string" ? candidate.artifact_fingerprint.split("-") : [];
   return candidate.schema_version === 1 && typeof candidate.artifact_fingerprint === "string" && fingerprintParts.length === 5 && /^[a-f0-9]{64}$/.test(fingerprintParts[0] ?? "") && fingerprintParts.slice(1).every((part) => part.length > 0 && Number.isFinite(Number(part))) && typeof candidate.worker_name === "string" && candidate.worker_name.length > 0 && typeof candidate.task_id === "string" && TASK_ID_SAFE_PATTERN.test(candidate.task_id) && Number.isSafeInteger(candidate.task_version) && candidate.task_version >= 1;
 }
-async function readNonCursorVerdictBinding(path6) {
+async function readNonCursorVerdictBinding(path5) {
   let raw;
   try {
-    raw = await (0, import_promises19.readFile)(path6, "utf8");
+    raw = await (0, import_promises19.readFile)(path5, "utf8");
   } catch (error) {
     return error.code === "ENOENT" ? { kind: "missing" } : { kind: "invalid" };
   }
@@ -24562,7 +21389,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
     "team.runtime-v2.processCliWorkerVerdicts teamMarkTaskCompleted failed"
   );
   const { rename: rename8 } = await import("fs/promises");
-  const { renameSync: renameSync6, readFileSync: readFileSync30, existsSync: fsExistsSync } = await import("fs");
+  const { renameSync: renameSync5, readFileSync: readFileSync24, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   const quarantineNonCursorVerdict = async (outputFile, artifactFingerprint, workerName, taskId, taskVersion, reason) => {
     const stalePath = nonCursorVerdictStalePath(outputFile, artifactFingerprint);
@@ -24635,7 +21462,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
             if (fsExistsSync(outputFile)) {
               const stalePath = `${processingOutputFile}.stale`;
               try {
-                renameSync6(processingOutputFile, stalePath);
+                renameSync5(processingOutputFile, stalePath);
               } catch {
               }
             } else {
@@ -24643,9 +21470,9 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
               return;
             }
           }
-          const raw = readFileSync30(outputFile, "utf-8");
+          const raw = readFileSync24(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
-          renameSync6(outputFile, processingOutputFile);
+          renameSync5(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
         });
       }
@@ -24807,7 +21634,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
       if (cursorReviewer && verdictFile === processingOutputFile) {
         const processedTaskPath = absPath(cwd, TeamPaths.taskFile(sanitized, payload.task_id));
         try {
-          const processedTask = JSON.parse(readFileSync30(processedTaskPath, "utf-8"));
+          const processedTask = JSON.parse(readFileSync24(processedTaskPath, "utf-8"));
           const metadata = processedTask.metadata && typeof processedTask.metadata === "object" ? processedTask.metadata : void 0;
           const processedTaskRole = typeof processedTask.role === "string" ? normalizeDelegationRole(processedTask.role) : null;
           const taskAlreadyRecorded = processedTask.owner === worker.name && (processedTask.status === "completed" || processedTask.status === "failed") && (!cursorReviewer || processedTaskRole === workerRole) && metadata?.verdict_source === "cli_worker_output_contract" && (!cursorReviewer || metadata.verdict_claim_token === payload.claim_token && metadata.verdict_task_version === payload.task_version) && (worker.launch_attempt_id === void 0 || metadata.verdict_worker_launch_attempt_id === worker.launch_attempt_id) && metadata.verdict === payload.verdict;
@@ -25336,7 +22163,7 @@ async function cleanupStaleReservations(teamName, cwd) {
         cwd,
         TeamPaths.teamInstanceReservation(workspaceHash, sanitized)
       );
-      if (!(0, import_fs38.existsSync)(reservationPath2)) return;
+      if (!(0, import_fs34.existsSync)(reservationPath2)) return;
       const contentStr = await (0, import_promises19.readFile)(reservationPath2, "utf-8");
       const reservation = JSON.parse(contentStr);
       if (!(reservation && typeof reservation === "object" && !Array.isArray(reservation) && "owner" in reservation && typeof reservation.owner === "object")) {
@@ -25578,7 +22405,7 @@ async function shutdownTeamV2(teamName, cwd, options = {}) {
   };
   if (!config) {
     const cleanupSafety = inspectTeamWorktreeCleanupSafety(sanitized, cwd);
-    if (cleanupSafety.hasEvidence || (0, import_fs38.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
+    if (cleanupSafety.hasEvidence || (0, import_fs34.existsSync)(absPath(cwd, TeamPaths.root(sanitized)))) {
       process.stderr.write("[team/runtime-v2] preserving team state because config is missing and worktree cleanup evidence remains\n");
       return { outcome: "preserved", reason: "config_missing_cleanup_evidence", workers: [] };
     }
@@ -25884,12 +22711,12 @@ Then exit your session.
     return { outcome: "cleaned" };
   });
 }
-var import_path46, import_fs38, import_promises19, import_perf_hooks, import_node_child_process8, import_node_crypto10, orchestratorByTeam, cadenceByTeam, MONITOR_SIGNAL_STALE_MS, WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS, WORKER_STARTUP_EVIDENCE_POLICIES, ENGAGED_PANE_RECHECK_TIMEOUT_ENV, MAX_ENGAGED_PANE_RECHECK_BUDGET_MS, CLAIM_ERROR_CAPTURE_MAX, CLAIM_ERROR_JSON_LINES_MAX, CLAIM_ERROR_LINE_MAX, CLAIM_ERROR_CODES, pendingRecoveryPanes, BOOTSTRAP_RECOVERY_EVIDENCE_POLL_MS, BOOTSTRAP_RECOVERY_EVIDENCE_MAX_WAIT_MS, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION;
+var import_path38, import_fs34, import_promises19, import_perf_hooks, import_node_child_process8, import_node_crypto10, orchestratorByTeam, cadenceByTeam, MONITOR_SIGNAL_STALE_MS, WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS, WORKER_STARTUP_EVIDENCE_POLICIES, ENGAGED_PANE_RECHECK_TIMEOUT_ENV, MAX_ENGAGED_PANE_RECHECK_BUDGET_MS, CLAIM_ERROR_CAPTURE_MAX, CLAIM_ERROR_JSON_LINES_MAX, CLAIM_ERROR_LINE_MAX, CLAIM_ERROR_CODES, pendingRecoveryPanes, BOOTSTRAP_RECOVERY_EVIDENCE_POLL_MS, BOOTSTRAP_RECOVERY_EVIDENCE_MAX_WAIT_MS, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION;
 var init_runtime_v2 = __esm({
   "src/team/runtime-v2.ts"() {
     "use strict";
-    import_path46 = require("path");
-    import_fs38 = require("fs");
+    import_path38 = require("path");
+    import_fs34 = require("fs");
     import_promises19 = require("fs/promises");
     import_perf_hooks = require("perf_hooks");
     init_state_paths();
@@ -26044,9 +22871,9 @@ __export(runtime_cli_exports, {
 });
 module.exports = __toCommonJS(runtime_cli_exports);
 var import_node_crypto11 = require("node:crypto");
-var import_fs39 = require("fs");
+var import_fs35 = require("fs");
 var import_promises20 = require("fs/promises");
-var import_path47 = require("path");
+var import_path39 = require("path");
 init_events();
 
 // src/team/leader-nudge-guidance.ts
@@ -26589,7 +23416,7 @@ async function waitForSentinelReadiness(options = {}) {
   }
   const deadline = startedAt + timeoutMs;
   while (Date.now() < deadline) {
-    await new Promise((resolve19) => setTimeout(resolve19, pollIntervalMs));
+    await new Promise((resolve17) => setTimeout(resolve17, pollIntervalMs));
     attempts += 1;
     latest = checkSentinelReadiness(options);
     if (latest.ready) {
@@ -26678,8 +23505,8 @@ function classifyAllDeadRecoveryEvidence(refresh, workers, hasOutstanding) {
 function areAllAuthoritativeWorkersDead(refresh, workers) {
   return classifyAllDeadRecoveryEvidence(refresh, workers, true) === "all_dead";
 }
-function validateCanonicalRecoveryIntent(teamName, cwd, pathRecoveryId, path6) {
-  const intent = parseRecoveryIntent((0, import_fs39.readFileSync)(path6, "utf8"));
+function validateCanonicalRecoveryIntent(teamName, cwd, pathRecoveryId, path5) {
+  const intent = parseRecoveryIntent((0, import_fs35.readFileSync)(path5, "utf8"));
   if (intent.team_name !== teamName || intent.recovery_id !== pathRecoveryId) throw new Error("invalid_persisted_state");
   const reservation = readRecoveryRequestReservation(cwd, intent.request_id);
   const workspaceHash = (0, import_node_crypto11.createHash)("sha256").update(cwd).digest("hex");
@@ -26700,8 +23527,8 @@ async function handleRecoverDeadWorkerV2Owner(input, execute = executeRecoverDea
   if (!normalizedInstanceId) throw new Error("invalid_persisted_state");
   const reservation = readRecoveryRequestReservation(input.cwd, input.requestId);
   if (!reservation || reservation.kind !== "reservation") throw new Error("invalid_persisted_state");
-  const path6 = absPath(input.cwd, TeamPaths.recoveryIntent(input.teamName, reservation.recovery_id));
-  const intent = validateCanonicalRecoveryIntent(input.teamName, input.cwd, reservation.recovery_id, path6);
+  const path5 = absPath(input.cwd, TeamPaths.recoveryIntent(input.teamName, reservation.recovery_id));
+  const intent = validateCanonicalRecoveryIntent(input.teamName, input.cwd, reservation.recovery_id, path5);
   if (intent.request_id !== input.requestId || intent.worker_name !== input.workerName || reservation.instance_id.toLowerCase() !== normalizedInstanceId || intent.instance_id.toLowerCase() !== normalizedInstanceId) throw new Error("invalid_persisted_state");
   if (!await assertRuntimeInstance(input.teamName, input.cwd, normalizedInstanceId)) {
     throw new Error("invalid_persisted_state");
@@ -26714,15 +23541,15 @@ async function processPendingRecoveryIntents(teamName, cwd, execute = handleReco
   const root = absPath(cwd, TeamPaths.recoveryIntents(teamName));
   let names;
   try {
-    names = (0, import_fs39.readdirSync)(root).filter((name) => name.endsWith(".json")).sort();
+    names = (0, import_fs35.readdirSync)(root).filter((name) => name.endsWith(".json")).sort();
   } catch {
     return;
   }
   for (const name of names) {
-    const path6 = (0, import_path47.join)(root, name);
+    const path5 = (0, import_path39.join)(root, name);
     try {
-      const pathRecoveryId = (0, import_path47.basename)(name, ".json");
-      const intent = validateCanonicalRecoveryIntent(teamName, cwd, pathRecoveryId, path6);
+      const pathRecoveryId = (0, import_path39.basename)(name, ".json");
+      const intent = validateCanonicalRecoveryIntent(teamName, cwd, pathRecoveryId, path5);
       if (intent.instance_id.toLowerCase() !== normalizedExpectedInstanceId) continue;
       if (!await assertRuntimeInstance(teamName, cwd, normalizedExpectedInstanceId)) continue;
       const ownerInput = {
@@ -26743,7 +23570,7 @@ async function processPendingRecoveryIntents(teamName, cwd, execute = handleReco
         const binding = runtimeInstanceBinding(teamName, cwd, normalizedExpectedInstanceId);
         await withTeamInstanceLifecycleLock(binding.cwd, binding.team_name, async () => {
           await assertTeamInstanceUnderLock(binding);
-          await (0, import_promises20.unlink)(path6).catch(() => void 0);
+          await (0, import_promises20.unlink)(path5).catch(() => void 0);
         });
       }
     } catch (error) {
@@ -26789,19 +23616,19 @@ async function updateAllDeadRecoveryGrace(teamName, cwd, evidence, nowMs = Date.
     return updateAllDeadRecoveryGraceUnderLock(teamName, cwd, evidence, nowMs);
   });
 }
-function canonicalRecoveryIntentEntryId(name, path6) {
+function canonicalRecoveryIntentEntryId(name, path5) {
   if (!name.endsWith(".json")) return null;
-  const recoveryId = (0, import_path47.basename)(name, ".json");
+  const recoveryId = (0, import_path39.basename)(name, ".json");
   if (name !== `${recoveryId}.json` || !isSafeRecoveryRequestId(recoveryId)) return null;
   try {
-    return (0, import_fs39.lstatSync)(path6).isFile() ? recoveryId : null;
+    return (0, import_fs35.lstatSync)(path5).isFile() ? recoveryId : null;
   } catch {
     return null;
   }
 }
-function hasVerifiedTerminalRepairForMalformedIntent(teamName, cwd, recoveryId, path6) {
+function hasVerifiedTerminalRepairForMalformedIntent(teamName, cwd, recoveryId, path5) {
   try {
-    const raw = JSON.parse((0, import_fs39.readFileSync)(path6, "utf8"));
+    const raw = JSON.parse((0, import_fs35.readFileSync)(path5, "utf8"));
     if (raw.team_name !== teamName || raw.recovery_id !== recoveryId || typeof raw.request_id !== "string" || !isSafeRecoveryRequestId(raw.request_id) || typeof raw.worker_name !== "string" || raw.worker_name.length === 0) return false;
     const final = readRecoveryFinalState(cwd, raw.request_id);
     return final.kind === "valid" && final.final.recovery_id === recoveryId && final.final.team_name === teamName && final.final.worker_name === raw.worker_name;
@@ -26809,9 +23636,9 @@ function hasVerifiedTerminalRepairForMalformedIntent(teamName, cwd, recoveryId, 
     return false;
   }
 }
-function malformedIntentMayPredateDeadline(path6, deadlineAt) {
+function malformedIntentMayPredateDeadline(path5, deadlineAt) {
   try {
-    const metadata = (0, import_fs39.lstatSync)(path6);
+    const metadata = (0, import_fs35.lstatSync)(path5);
     if (Number.isFinite(metadata.mtimeMs) && metadata.mtimeMs <= deadlineAt) return true;
     if (Number.isFinite(metadata.birthtimeMs) && metadata.birthtimeMs > 0) {
       return metadata.birthtimeMs <= deadlineAt;
@@ -26821,19 +23648,19 @@ function malformedIntentMayPredateDeadline(path6, deadlineAt) {
     return true;
   }
 }
-function canonicalRecoveryAdmissionEntryId(name, path6) {
+function canonicalRecoveryAdmissionEntryId(name, path5) {
   if (!name.endsWith(".pending.json")) return null;
   const requestId = name.slice(0, -".pending.json".length);
   if (name !== `${requestId}.pending.json` || !isSafeRecoveryRequestId(requestId)) return null;
   try {
-    return (0, import_fs39.lstatSync)(path6).isFile() ? requestId : null;
+    return (0, import_fs35.lstatSync)(path5).isFile() ? requestId : null;
   } catch {
     return null;
   }
 }
-function malformedAdmissionMayPredateDeadline(path6, deadlineAt) {
+function malformedAdmissionMayPredateDeadline(path5, deadlineAt) {
   try {
-    const metadata = (0, import_fs39.lstatSync)(path6);
+    const metadata = (0, import_fs35.lstatSync)(path5);
     if (!metadata.isFile()) return true;
     if (Number.isFinite(metadata.mtimeMs) && metadata.mtimeMs <= deadlineAt) return true;
     if (Number.isFinite(metadata.birthtimeMs) && metadata.birthtimeMs > 0) {
@@ -26850,22 +23677,22 @@ function hasPendingRecoveryIntentBeforeDeadline(teamName, cwd, deadlineAt, expec
   const root = absPath(cwd, TeamPaths.recoveryIntents(teamName));
   let names;
   try {
-    names = (0, import_fs39.readdirSync)(root).filter((name) => name.endsWith(".json"));
+    names = (0, import_fs35.readdirSync)(root).filter((name) => name.endsWith(".json"));
   } catch {
     return false;
   }
   for (const name of names) {
-    const path6 = (0, import_path47.join)(root, name);
-    const recoveryId = canonicalRecoveryIntentEntryId(name, path6);
+    const path5 = (0, import_path39.join)(root, name);
+    const recoveryId = canonicalRecoveryIntentEntryId(name, path5);
     if (!recoveryId) continue;
     try {
-      const intent = validateCanonicalRecoveryIntent(teamName, cwd, recoveryId, path6);
+      const intent = validateCanonicalRecoveryIntent(teamName, cwd, recoveryId, path5);
       if (intent.instance_id.toLowerCase() !== normalizedExpectedInstanceId) continue;
       const createdAt = Date.parse(intent.created_at);
       const outcome = readRecoveryOutcome(cwd, intent.request_id);
       if (createdAt <= deadlineAt && (!outcome || outcome.kind !== "final")) return true;
     } catch {
-      if (malformedIntentMayPredateDeadline(path6, deadlineAt) && !hasVerifiedTerminalRepairForMalformedIntent(teamName, cwd, recoveryId, path6)) return true;
+      if (malformedIntentMayPredateDeadline(path5, deadlineAt) && !hasVerifiedTerminalRepairForMalformedIntent(teamName, cwd, recoveryId, path5)) return true;
     }
   }
   return false;
@@ -26877,13 +23704,13 @@ function hasPendingRecoveryAdmissionBeforeDeadline(teamName, cwd, deadlineAt, ex
   const root = absPath(cwd, TeamPaths.recoveryRequestsRoot());
   let names;
   try {
-    names = (0, import_fs39.readdirSync)(root).filter((name) => name.endsWith(".pending.json"));
+    names = (0, import_fs35.readdirSync)(root).filter((name) => name.endsWith(".pending.json"));
   } catch {
     return false;
   }
   for (const name of names) {
-    const path6 = (0, import_path47.join)(root, name);
-    const requestId = canonicalRecoveryAdmissionEntryId(name, path6);
+    const path5 = (0, import_path39.join)(root, name);
+    const requestId = canonicalRecoveryAdmissionEntryId(name, path5);
     if (!requestId) continue;
     try {
       const reservation = readRecoveryRequestReservation(cwd, requestId);
@@ -26893,7 +23720,7 @@ function hasPendingRecoveryAdmissionBeforeDeadline(teamName, cwd, deadlineAt, ex
       const outcome = readRecoveryOutcome(cwd, requestId);
       if (!outcome || outcome.kind !== "final") return true;
     } catch {
-      if (malformedAdmissionMayPredateDeadline(path6, deadlineAt)) return true;
+      if (malformedAdmissionMayPredateDeadline(path5, deadlineAt)) return true;
     }
   }
   return false;
@@ -26960,7 +23787,7 @@ async function runPersistentRecoveryOwnerLoop(input, options = {}) {
   const reconcileServices = options.reconcileServices ?? reconcileCommittedTeamServices;
   const monitor = options.monitor ?? monitorTeamV2;
   const sleep4 = options.sleep ?? (async (ms) => {
-    await new Promise((resolve19) => setTimeout(resolve19, ms));
+    await new Promise((resolve17) => setTimeout(resolve17, ms));
   });
   const shutdown = options.shutdown ?? shutdownTeamV2;
   let iteration = 0;
@@ -27101,7 +23928,7 @@ async function writeResultArtifact(output, finishedAt, jobId = process.env.OMC_J
   if (!output.instanceId || !isValidTeamInstanceId(output.instanceId)) {
     throw new Error("result_artifact_instance_identity_missing");
   }
-  const resultPath = (0, import_path47.join)(omcJobsDir, `${jobId}-result.json`);
+  const resultPath = (0, import_path39.join)(omcJobsDir, `${jobId}-result.json`);
   const tmpPath = `${resultPath}.tmp`;
   await (0, import_promises20.writeFile)(
     tmpPath,
@@ -27176,7 +24003,7 @@ async function writePanesFile(jobId, instanceId, teamName, cwd, paneIds, leaderP
     if (authoritativePaneIds.some((paneId) => !paneIds.includes(paneId))) {
       throw new Error("pane_artifact_missing_runtime_pane");
     }
-    const panesPath = (0, import_path47.join)(omcJobsDir, `${jobId}-panes.json`);
+    const panesPath = (0, import_path39.join)(omcJobsDir, `${jobId}-panes.json`);
     await (0, import_promises20.writeFile)(
       panesPath + ".tmp",
       JSON.stringify({
@@ -27214,7 +24041,7 @@ function isTerseFinalSummary(summary) {
 function readTaskOutputFallback(outputsDir, teamName, taskId) {
   let entries;
   try {
-    entries = (0, import_fs39.readdirSync)(outputsDir);
+    entries = (0, import_fs35.readdirSync)(outputsDir);
   } catch {
     return null;
   }
@@ -27223,16 +24050,16 @@ function readTaskOutputFallback(outputsDir, teamName, taskId) {
   if (candidates.length === 0) return null;
   let newest = null;
   for (const name of candidates) {
-    const full = (0, import_path47.join)(outputsDir, name);
+    const full = (0, import_path39.join)(outputsDir, name);
     try {
-      const mtime = (0, import_fs39.statSync)(full).mtimeMs;
+      const mtime = (0, import_fs35.statSync)(full).mtimeMs;
       if (!newest || mtime > newest.mtime) newest = { path: full, mtime };
     } catch {
     }
   }
   if (!newest) return null;
   try {
-    const content = (0, import_fs39.readFileSync)(newest.path, "utf-8").trim();
+    const content = (0, import_fs35.readFileSync)(newest.path, "utf-8").trim();
     if (content.length === 0) return null;
     return content.length > MAX_FALLBACK_SUMMARY_CHARS ? content.slice(0, MAX_FALLBACK_SUMMARY_CHARS) + "\n... (truncated)" : content;
   } catch {
@@ -27240,14 +24067,14 @@ function readTaskOutputFallback(outputsDir, teamName, taskId) {
   }
 }
 function collectTaskResults(stateRoot) {
-  const tasksDir = (0, import_path47.join)(stateRoot, "tasks");
-  const teamName = (0, import_path47.basename)(stateRoot);
-  const outputsDir = (0, import_path47.join)(stateRoot, "..", "..", "..", "outputs");
+  const tasksDir = (0, import_path39.join)(stateRoot, "tasks");
+  const teamName = (0, import_path39.basename)(stateRoot);
+  const outputsDir = (0, import_path39.join)(stateRoot, "..", "..", "..", "outputs");
   try {
-    const files = (0, import_fs39.readdirSync)(tasksDir).filter((f) => f.endsWith(".json"));
+    const files = (0, import_fs35.readdirSync)(tasksDir).filter((f) => f.endsWith(".json"));
     return files.map((f) => {
       try {
-        const raw = (0, import_fs39.readFileSync)((0, import_path47.join)(tasksDir, f), "utf-8");
+        const raw = (0, import_fs35.readFileSync)((0, import_path39.join)(tasksDir, f), "utf-8");
         const task = JSON.parse(raw);
         const taskId = task.id ?? f.replace(".json", "");
         let summary = task.result ?? task.summary ?? "";
@@ -27282,8 +24109,8 @@ function createRuntimeStartupShutdownBarrier() {
   let settled = false;
   let requested = false;
   let resolveCompletion;
-  const completion = new Promise((resolve19) => {
-    resolveCompletion = resolve19;
+  const completion = new Promise((resolve17) => {
+    resolveCompletion = resolve17;
   });
   return {
     requestShutdown: () => {
@@ -27591,7 +24418,7 @@ async function main() {
     if (snap.allTasksTerminal) {
       const hasFailures = snap.tasks.failed > 0;
       if (!hasFailures) {
-        const sentinelLogPath = (0, import_path47.join)(cwd, "sentinel_stop.jsonl");
+        const sentinelLogPath = (0, import_path39.join)(cwd, "sentinel_stop.jsonl");
         const gateResult = await waitForSentinelReadiness({
           workspace: cwd,
           logPath: sentinelLogPath,

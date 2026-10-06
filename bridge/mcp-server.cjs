@@ -30246,6 +30246,543 @@ var init_copilot_sdk_scenarios = __esm({
   }
 });
 
+// src/smoke/copilot-sdk-driver.ts
+function isSdkModule(mod) {
+  const m = mod;
+  return !!m && typeof m.CopilotClient === "function" && typeof m.RuntimeConnection?.forStdio === "function";
+}
+function readPkg(dir) {
+  try {
+    return JSON.parse((0, import_fs46.readFileSync)((0, import_path58.join)(dir, "package.json"), "utf-8"));
+  } catch {
+    return null;
+  }
+}
+function versionAbove(file) {
+  let dir = (0, import_path58.dirname)(file);
+  for (let i = 0; i < 6; i++) {
+    const pkg = readPkg(dir);
+    if (pkg?.name === SDK_PACKAGE) return pkg.version ?? null;
+    const parent = (0, import_path58.dirname)(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+function nodeResolvedVersion() {
+  const bases = [];
+  try {
+    bases.push(importMetaUrl);
+  } catch {
+  }
+  if (typeof __filename !== "undefined") bases.push(__filename);
+  for (const base of bases) {
+    try {
+      return versionAbove((0, import_module3.createRequire)(base).resolve(SDK_PACKAGE));
+    } catch {
+    }
+  }
+  return null;
+}
+function globalModuleRoots(env, platform = process.platform) {
+  return platform === "win32" && env.APPDATA ? [(0, import_path58.join)(env.APPDATA, "npm", "node_modules")] : [];
+}
+function satisfiesSdkRange(version2) {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(version2 ?? "").trim());
+  const min = SDK_MIN_VERSION.split(".").map(Number);
+  if (!m) return false;
+  const [major, minor, patch] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (major !== min[0]) return false;
+  return minor > min[1] || minor === min[1] && patch >= min[2];
+}
+function insideDir(dir, file) {
+  const real = (p) => {
+    try {
+      return import_fs46.realpathSync.native(p);
+    } catch {
+      return (0, import_path58.resolve)(p);
+    }
+  };
+  const rel = (0, import_path58.relative)(real(dir), real((0, import_path58.resolve)(dir, file)));
+  return rel !== "" && !rel.startsWith("..") && !(0, import_path58.isAbsolute)(rel);
+}
+function exportPath(target, condition) {
+  if (typeof target === "string") return target;
+  const cond = target?.[condition];
+  if (typeof cond === "string") return cond;
+  return typeof cond?.default === "string" ? cond.default : void 0;
+}
+function npmRootG(env, spawnSync8) {
+  const res = process.platform === "win32" ? spawnSync8("npm root -g", { env, encoding: "utf8", timeout: 15e3, windowsHide: true, shell: true }) : spawnSync8("npm", ["root", "-g"], { env, encoding: "utf8", timeout: 15e3 });
+  const out = String(res.stdout ?? "").trim();
+  return res.status === 0 && out ? out : null;
+}
+async function importFromDir(dir) {
+  const pkg = readPkg(dir);
+  if (pkg?.name !== SDK_PACKAGE || !satisfiesSdkRange(pkg.version)) return null;
+  const exp = pkg.exports && typeof pkg.exports === "object" ? pkg.exports["."] : pkg.exports;
+  const esmEntry = exportPath(exp, "import") ?? pkg.main ?? "dist/index.js";
+  const cjsEntry = exportPath(exp, "require") ?? pkg.main ?? "index.js";
+  if (!insideDir(dir, esmEntry) || !insideDir(dir, cjsEntry)) return null;
+  let mod;
+  try {
+    mod = await import((0, import_url7.pathToFileURL)((0, import_path58.resolve)(dir, esmEntry)).href);
+  } catch {
+    mod = (0, import_module3.createRequire)((0, import_path58.join)(dir, "package.json"))((0, import_path58.resolve)(dir, cjsEntry));
+  }
+  return isSdkModule(mod) ? { module: mod, version: pkg.version ?? null, from: dir } : null;
+}
+function resolveShimTarget(shim, read = (p) => (0, import_fs46.readFileSync)(p, "utf-8"), exists = import_fs46.existsSync) {
+  let text;
+  try {
+    text = read(shim);
+  } catch {
+    return null;
+  }
+  const patterns = [
+    /"%~?dp0%\\?([^"%*]+?\.(?:js|exe))"/i,
+    // cmd-shim: "%dp0%\node_modules\...\loader.js"
+    /\$basedir[\\/]([^"$*]+?\.(?:js|exe))"/i
+    // ps1 shim: "$basedir/node_modules/.../loader.js"
+  ];
+  for (const re of patterns) {
+    const m = re.exec(text);
+    if (!m) continue;
+    const target = (0, import_path58.resolve)((0, import_path58.dirname)(shim), m[1].replace(/\\/g, "/"));
+    if (exists(target)) return target;
+  }
+  return null;
+}
+async function loadCopilotSdk(env = process.env, spawnSync8 = import_child_process17.spawnSync) {
+  const spec = SDK_PACKAGE;
+  try {
+    const mod = await import(spec);
+    if (isSdkModule(mod)) return { module: mod, version: nodeResolvedVersion(), from: "node resolution" };
+  } catch {
+  }
+  const tried = /* @__PURE__ */ new Set();
+  const tryRoot = async (root) => {
+    if (!root || tried.has(root)) return null;
+    tried.add(root);
+    const dir = (0, import_path58.join)(root, ...SDK_PACKAGE.split("/"));
+    if (!(0, import_fs46.existsSync)((0, import_path58.join)(dir, "package.json"))) return null;
+    try {
+      return await importFromDir(dir);
+    } catch {
+      return null;
+    }
+  };
+  for (const root of globalModuleRoots(env)) {
+    const hit = await tryRoot(root);
+    if (hit) return hit;
+  }
+  return tryRoot(npmRootG(env, spawnSync8));
+}
+function withTimeout(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject2) => {
+      timer = setTimeout(() => reject2(new TimeoutError(`${label} timed out after ${ms} ms`)), ms);
+    })
+  ]).finally(() => clearTimeout(timer));
+}
+function errText(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+async function rpc(fn, label) {
+  try {
+    return { ok: true, value: await withTimeout(fn(), RPC_TIMEOUT_MS, label) };
+  } catch (err) {
+    return { ok: false, error: errText(err) };
+  }
+}
+function readAllLogs(logDir) {
+  let files;
+  try {
+    files = (0, import_fs46.readdirSync)(logDir).filter((f) => f.endsWith(".log"));
+  } catch {
+    return null;
+  }
+  if (files.length === 0) return null;
+  return files.map((f) => {
+    try {
+      return (0, import_fs46.readFileSync)((0, import_path58.join)(logDir, f), "utf-8");
+    } catch {
+      return "";
+    }
+  }).join("\n");
+}
+function runtimePid(client) {
+  const pid = client.cliProcess?.pid;
+  return typeof pid === "number" && pid > 0 ? pid : void 0;
+}
+function pidAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === "EPERM";
+  }
+}
+function prepareSdkProject(spawnSync8, projectDir, remoteDir, env) {
+  const git = (args, cwd) => spawnSync8("git", args, { cwd, env, encoding: "utf8", timeout: 3e4, windowsHide: true });
+  (0, import_fs46.mkdirSync)(projectDir, { recursive: true });
+  (0, import_fs46.writeFileSync)((0, import_path58.join)(projectDir, "hello.txt"), "omg smoke fixture\n");
+  const steps = [
+    [["-c", "init.defaultBranch=main", "init", "-q"], projectDir],
+    [["checkout", "-q", "-B", "main"], projectDir],
+    [["add", "hello.txt"], projectDir],
+    [["-c", "user.name=omg-smoke", "-c", "user.email=omg-smoke@example.invalid", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "init"], projectDir],
+    [["init", "-q", "--bare", remoteDir], (0, import_path58.dirname)(remoteDir)],
+    [["remote", "add", "origin", remoteDir], projectDir]
+  ];
+  for (const [args, cwd] of steps) {
+    const res = git(args, cwd);
+    if (res.status !== 0) return `git ${args.join(" ")}: ${excerpt(`${res.stderr ?? ""}${res.error?.message ?? ""}`, 200) || `exit ${res.status}`}`;
+  }
+  return null;
+}
+function remoteRefs(spawnSync8, remoteDir, env) {
+  const res = spawnSync8("git", ["--git-dir", remoteDir, "for-each-ref"], { env, encoding: "utf8", timeout: 3e4, windowsHide: true });
+  return res.status === 0 ? String(res.stdout ?? "") : null;
+}
+function runtimeCreditCap(maxCredits) {
+  return Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(maxCredits));
+}
+async function runSdkTier(input) {
+  const events = {};
+  let loaded2;
+  try {
+    loaded2 = await input.loadSdk();
+  } catch {
+    loaded2 = null;
+  }
+  if (!loaded2) {
+    return { checks: failedTier2Checks(input.scenarios, SDK_MISSING_DETAIL), events, skipped: SDK_MISSING_DETAIL };
+  }
+  const checks = [{
+    id: "sdk.available",
+    ok: true,
+    detail: `${SDK_PACKAGE}@${loaded2.version ?? "?"} (${loaded2.from})`
+  }];
+  let bin = input.bin;
+  if ((input.platform ?? process.platform) === "win32" && /\.(cmd|bat|ps1)$/i.test(bin)) {
+    const target = resolveShimTarget(bin);
+    if (!target) {
+      checks.push(...failedTier2Checks(input.scenarios, `${bin} is a shell shim whose .js/.exe target could not be resolved; pass --copilot-bin <copilot.exe or the package's .js entry>`, "after-available"));
+      return { checks, events };
+    }
+    bin = target;
+  }
+  const projectError = prepareSdkProject(input.spawnSync, input.projectDir, input.remoteDir, input.env);
+  const { CopilotClient, RuntimeConnection } = loaded2.module;
+  const client = new CopilotClient({
+    // Debug level for the runtime (hook stderr is only logged there) via args,
+    // not the client's logLevel, which would also echo SDK timing lines to our stderr.
+    connection: RuntimeConnection.forStdio({
+      path: bin,
+      args: ["--log-level", "debug", "--max-ai-credits", String(runtimeCreditCap(input.maxCredits))],
+      env: input.env
+    }),
+    baseDirectory: input.home,
+    workingDirectory: input.projectDir
+  });
+  const logDir = (0, import_path58.join)(input.home, "logs");
+  const sdkInfo = { version: loaded2.version, runtimeVersion: null, protocolVersion: null, model: "auto" };
+  const total = { premiumRequests: 0, credits: 0 };
+  const entries = [];
+  const isAlive = input.isAlive ?? pidAlive;
+  const killTree = input.killTree ?? ((pid2) => killProcessTree(pid2, input.spawnSync));
+  let pid;
+  let wedged = false;
+  try {
+    try {
+      await withTimeout(client.start(), START_TIMEOUT_MS, "client.start()");
+    } catch (err) {
+      checks.push(...failedTier2Checks(input.scenarios, `runtime did not start (${bin}): ${excerpt(errText(err), 200)}`, "after-available"));
+      return { checks, sdk: sdkInfo, events };
+    }
+    pid = runtimePid(client);
+    const status = await rpc(() => client.getStatus(), "getStatus()");
+    if (status.ok) {
+      sdkInfo.runtimeVersion = typeof status.value.version === "string" ? status.value.version : null;
+      sdkInfo.protocolVersion = typeof status.value.protocolVersion === "number" ? status.value.protocolVersion : null;
+    }
+    const models = await rpc(() => client.listModels(), "listModels()");
+    const choice = chooseModel(models.ok ? models.value.map((m) => String(m.id)) : [], input.model);
+    sdkInfo.model = choice.label;
+    const modelLabel = `${choice.label} (${choice.note})`;
+    checks.push(evaluateSdkRuntime(status, input.binVersion, modelLabel));
+    checks.push(...await staticChecks(client, input));
+    let stopReason;
+    for (const name of [...input.scenarios.filter((s) => s !== "chain"), ...input.scenarios.filter((s) => s === "chain")]) {
+      if (projectError) {
+        entries.push({ name, skip: `sandbox project setup failed: ${projectError}` });
+        continue;
+      }
+      if (stopReason) {
+        entries.push({ name, skip: stopReason });
+        continue;
+      }
+      const path15 = (0, import_path58.join)(input.home, `events-${name}.jsonl`);
+      events[name] = path15;
+      if (entries.length > 0) await new Promise((resolve25) => setTimeout(resolve25, 2));
+      const start = Date.now();
+      const { wedged: stuck, ...run } = name === "chain" ? await input.runChain({
+        bin,
+        root: input.root,
+        env: input.env,
+        projectDir: input.projectDir,
+        home: input.home,
+        timeoutMs: input.timeoutMs,
+        maxCredits: input.maxCredits,
+        budget: input.maxCredits - total.credits,
+        eventsPath: path15,
+        spawnSync: input.spawnSync
+      }) : await runScenario(client, input, name, choice.model, modelLabel, path15, input.maxCredits - total.credits);
+      entries.push({ name, run, start });
+      const cost = run.chain ? chainCost(run.chain) : scenarioCost(run.events);
+      total.premiumRequests += cost.premiumRequests;
+      total.credits += cost.credits;
+      if (run.capped || total.credits > input.maxCredits) stopReason = CREDIT_CAP_SKIP_DETAIL;
+      if (stuck) {
+        wedged = true;
+        stopReason ??= RUNTIME_WEDGED_DETAIL;
+      }
+    }
+  } finally {
+    pid ??= runtimePid(client);
+    if (wedged && pid && isAlive(pid)) killTree(pid);
+    let stopped = false;
+    try {
+      await withTimeout(client.stop(), STOP_TIMEOUT_MS, "client.stop()");
+      stopped = true;
+    } catch {
+    }
+    if (!stopped) {
+      if (pid && isAlive(pid)) killTree(pid);
+      try {
+        await withTimeout(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS, "client.forceStop()");
+      } catch {
+      }
+    }
+    if (pid && isAlive(pid)) killTree(pid);
+  }
+  const logText = readAllLogs(logDir);
+  const ran = entries.filter((e) => "run" in e);
+  const slices = logText === null ? [] : sliceLogByTime(logText, ran.map((e) => e.start));
+  for (const entry of entries) {
+    if ("skip" in entry) {
+      checks.push(...skippedScenarioChecks(entry.name, entry.skip));
+      continue;
+    }
+    const logSlice = logText === null ? null : slices[ran.indexOf(entry)];
+    checks.push(...evaluateScenario({ ...entry.run, logText: logSlice }).checks);
+  }
+  return { checks, sdk: sdkInfo, cost: total, events };
+}
+async function staticChecks(client, input) {
+  let session;
+  const failAll = (detail) => ["sdk.plugins", "sdk.skills", "sdk.agents", "sdk.mcp", "sdk.tools_excluded"].map((id) => ({ id, ok: false, detail }));
+  try {
+    try {
+      session = await withTimeout(client.createSession({
+        onPermissionRequest: () => reject("omg smoke: static checks grant nothing"),
+        pluginDirectories: [input.root],
+        workingDirectory: input.projectDir,
+        disabledMcpServers: ["github-mcp-server"],
+        excludedTools: [hostSmokeToolName(input.mcpServer)]
+      }), RPC_TIMEOUT_MS, "createSession()");
+    } catch (err) {
+      return failAll(`static session not created: ${excerpt(errText(err), 200)}`);
+    }
+    const s = session;
+    let mcp = await rpc(() => s.rpc.mcp.list(), "mcp.list");
+    const deadline = Date.now() + MCP_CONNECT_WAIT_MS;
+    const status = () => mcp.ok ? mcp.value.servers?.find((x) => x.name === input.mcpServer)?.status : void 0;
+    while (mcp.ok && status() !== "connected" && status() !== "failed" && Date.now() < deadline) {
+      await sleep4(500);
+      mcp = await rpc(() => s.rpc.mcp.list(), "mcp.list");
+    }
+    const [plugins, skills, agents, tools, toolMeta] = [
+      await rpc(() => s.rpc.plugins.list(), "plugins.list"),
+      await rpc(() => s.rpc.skills.list(), "skills.list"),
+      await rpc(() => s.rpc.agent.list(), "agent.list"),
+      await rpc(() => s.rpc.mcp.listTools({ serverName: input.mcpServer }), "mcp.listTools"),
+      await rpc(() => currentToolMetadata(s), "tools.getCurrentMetadata")
+    ];
+    let expected;
+    try {
+      expected = await input.loadExpectedToolCount();
+    } catch (err) {
+      expected = errText(err);
+    }
+    return [
+      evaluateSdkPlugins(plugins, input.packageVersion),
+      evaluateSdkSkills(skills, input.root, input.skillDirs),
+      evaluateSdkAgents(agents, input.agentFiles),
+      evaluateSdkMcp(mcp, tools, input.mcpServer, expected),
+      evaluateSdkToolsExcluded(toolMeta, input.mcpServer)
+    ];
+  } finally {
+    if (session) await closeSession(client, session, input.keepHome);
+  }
+}
+async function currentToolMetadata(session) {
+  const tools = session.rpc.tools;
+  if (!tools?.getCurrentMetadata) throw new Error("session.rpc.tools.getCurrentMetadata is not available in this SDK");
+  let meta = await tools.getCurrentMetadata();
+  const list = meta?.tools;
+  if ((!Array.isArray(list) || list.length === 0) && tools.initializeAndValidate) {
+    await tools.initializeAndValidate();
+    meta = await tools.getCurrentMetadata();
+  }
+  return meta;
+}
+async function closeSession(client, session, keepHome) {
+  try {
+    await withTimeout(session.disconnect(), RPC_TIMEOUT_MS, "disconnect()");
+  } catch {
+  }
+  if (!keepHome) {
+    try {
+      await withTimeout(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS, "deleteSession()");
+    } catch {
+    }
+  }
+}
+async function runScenario(client, input, name, model, modelLabel, eventsPath, budget) {
+  const spec = SCENARIOS[name];
+  const permitCtx = { projectDir: input.projectDir, pluginRoot: input.root, ...input.platform ? { platform: input.platform } : {} };
+  const recorded = [];
+  let sent = false;
+  let onIdle = () => {
+  };
+  let onShutdown = () => {
+  };
+  let onCap = () => {
+  };
+  const idle = new Promise((r) => {
+    onIdle = r;
+  });
+  const shutdown = new Promise((r) => {
+    onShutdown = r;
+  });
+  const capHit = new Promise((r) => {
+    onCap = r;
+  });
+  let session;
+  let idleSeen = false;
+  let timedOut = false;
+  let capped = false;
+  let wedged = false;
+  let spent = 0;
+  let error2;
+  try {
+    session = await withTimeout(client.createSession({
+      onPermissionRequest: (req) => spec.permit(req, permitCtx) ? { kind: "approve-once" } : reject(`omg smoke ${name}: ${req.kind ?? "request"} not permitted`),
+      onEvent: (event) => {
+        recorded.push(event);
+        if (event.type === "session.idle" && sent) onIdle();
+        if (event.type === "session.shutdown") onShutdown();
+        spent += usageCredits(event);
+        if (!capped && spent > budget) {
+          capped = true;
+          onCap();
+        }
+      },
+      pluginDirectories: [input.root],
+      workingDirectory: input.projectDir,
+      disabledMcpServers: ["github-mcp-server"],
+      excludedTools: scenarioExcludedTools(name, input.mcpServer),
+      ...model ? { model } : {}
+    }), RPC_TIMEOUT_MS, "createSession()");
+    sent = true;
+    await withTimeout(session.send({ prompt: spec.prompt }), RPC_TIMEOUT_MS, "send()");
+    const winner = await Promise.race([
+      idle.then(() => "idle"),
+      capHit.then(() => "cap"),
+      sleep4(input.timeoutMs).then(() => "timeout")
+    ]);
+    if (winner === "idle") {
+      idleSeen = true;
+    } else {
+      if (winner === "timeout") timedOut = true;
+      const s = session;
+      try {
+        await withTimeout(s.abort(), RPC_TIMEOUT_MS, "abort()");
+      } catch {
+      }
+      const settled = await Promise.race([idle.then(() => true), sleep4(ABORT_GRACE_MS).then(() => false)]);
+      wedged = !settled;
+    }
+  } catch (err) {
+    error2 = errText(err);
+  } finally {
+    if (session) {
+      try {
+        await withTimeout(session.disconnect(), RPC_TIMEOUT_MS, "disconnect()");
+      } catch {
+      }
+      await Promise.race([shutdown, sleep4(SHUTDOWN_GRACE_MS)]);
+      if (!input.keepHome) {
+        try {
+          await withTimeout(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS, "deleteSession()");
+        } catch {
+        }
+      }
+    }
+    try {
+      (0, import_fs46.writeFileSync)(eventsPath, recorded.map((e) => JSON.stringify(e)).join("\n") + (recorded.length ? "\n" : ""));
+    } catch {
+    }
+  }
+  return {
+    name,
+    events: recorded,
+    idle: idleSeen,
+    timedOut,
+    timeoutMs: input.timeoutMs,
+    ...error2 ? { error: error2 } : {},
+    ...name === "guardrail" ? { remoteRefs: remoteRefs(input.spawnSync, input.remoteDir, input.env) } : {},
+    model: modelLabel,
+    maxCredits: input.maxCredits,
+    budget,
+    capped,
+    wedged
+  };
+}
+var import_child_process17, import_fs46, import_module3, import_path58, import_url7, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep4, reject, RUNTIME_WEDGED_DETAIL;
+var init_copilot_sdk_driver = __esm({
+  "src/smoke/copilot-sdk-driver.ts"() {
+    "use strict";
+    import_child_process17 = require("child_process");
+    import_fs46 = require("fs");
+    import_module3 = require("module");
+    import_path58 = require("path");
+    import_url7 = require("url");
+    init_copilot_session_eval();
+    init_copilot_sdk_scenarios();
+    init_process_utils2();
+    SDK_MIN_VERSION = "1.0.16";
+    DEFAULT_SCENARIO_TIMEOUT_MS = 12e4;
+    START_TIMEOUT_MS = 6e4;
+    RPC_TIMEOUT_MS = 3e4;
+    MCP_CONNECT_WAIT_MS = 2e4;
+    ABORT_GRACE_MS = 1e4;
+    SHUTDOWN_GRACE_MS = 2e3;
+    STOP_TIMEOUT_MS = 15e3;
+    TimeoutError = class extends Error {
+    };
+    sleep4 = (ms) => new Promise((r) => {
+      setTimeout(r, ms);
+    });
+    reject = (feedback) => ({ kind: "reject", feedback });
+    RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
+  }
+});
+
 // node_modules/commander/lib/error.js
 var require_error = __commonJS({
   "node_modules/commander/lib/error.js"(exports2) {
@@ -33295,12 +33832,12 @@ var init_routing = __esm({
 });
 
 // src/hooks/session-end/guardrails.ts
-var import_path58, import_fs46, SERIAL_STALE_MS;
+var import_path59, import_fs47, SERIAL_STALE_MS;
 var init_guardrails = __esm({
   "src/hooks/session-end/guardrails.ts"() {
     "use strict";
-    import_path58 = require("path");
-    import_fs46 = require("fs");
+    import_path59 = require("path");
+    import_fs47 = require("fs");
     init_file_lock();
     init_worktree_paths();
     SERIAL_STALE_MS = 24 * 60 * 60 * 1e3;
@@ -33362,14 +33899,14 @@ function writeChainLinkLedger(factoryDir, linkId, host, seed) {
   }, null, 2), "utf8");
   return ledgerPath2;
 }
-var fs8, path14, import_crypto12, import_child_process17, CHAIN_LINK_ENV, LINK_ENV_DROPPED, AFK_ALLOWED_TOOLS, COPILOT_AFK_SPAWN_FLAGS;
+var fs8, path14, import_crypto12, import_child_process18, CHAIN_LINK_ENV, LINK_ENV_DROPPED, AFK_ALLOWED_TOOLS, COPILOT_AFK_SPAWN_FLAGS;
 var init_spawn_next = __esm({
   "src/hooks/session-end/spawn-next.ts"() {
     "use strict";
     fs8 = __toESM(require("fs"), 1);
     path14 = __toESM(require("path"), 1);
     import_crypto12 = require("crypto");
-    import_child_process17 = require("child_process");
+    import_child_process18 = require("child_process");
     init_routing();
     init_worktree_paths();
     init_tmux_utils();
@@ -33412,12 +33949,12 @@ var init_spawn_next = __esm({
 });
 
 // src/factory/watchdog.ts
-var fs9, import_path59, DEFAULT_STALL_THRESHOLD_MS;
+var fs9, import_path60, DEFAULT_STALL_THRESHOLD_MS;
 var init_watchdog = __esm({
   "src/factory/watchdog.ts"() {
     "use strict";
     fs9 = __toESM(require("fs"), 1);
-    import_path59 = require("path");
+    import_path60 = require("path");
     init_spawn_next();
     init_worktree_paths();
     DEFAULT_STALL_THRESHOLD_MS = 30 * 60 * 1e3;
@@ -33425,14 +33962,14 @@ var init_watchdog = __esm({
 });
 
 // src/factory/listener.ts
-var import_crypto13, import_http, import_fs47, import_path60, INTAKE_ROUTE_TABLE, MAX_BODY_BYTES;
+var import_crypto13, import_http, import_fs48, import_path61, INTAKE_ROUTE_TABLE, MAX_BODY_BYTES;
 var init_listener = __esm({
   "src/factory/listener.ts"() {
     "use strict";
     import_crypto13 = require("crypto");
     import_http = require("http");
-    import_fs47 = require("fs");
-    import_path60 = require("path");
+    import_fs48 = require("fs");
+    import_path61 = require("path");
     init_routing();
     init_guardrails();
     init_spawn_next();
@@ -33444,34 +33981,34 @@ var init_listener = __esm({
 });
 
 // src/hooks/session-end/check-evidence.ts
-var fs10, import_path61;
+var fs10, import_path62;
 var init_check_evidence = __esm({
   "src/hooks/session-end/check-evidence.ts"() {
     "use strict";
     fs10 = __toESM(require("fs"), 1);
-    import_path61 = require("path");
+    import_path62 = require("path");
     init_worktree_paths();
   }
 });
 
 // src/hooks/session-end/chain-enqueuer.ts
 function factoryStateDir(directory) {
-  return (0, import_path62.join)(getOmcRoot(directory), "state", "factory");
+  return (0, import_path63.join)(getOmcRoot(directory), "state", "factory");
 }
 function readProjectRoutes(directory) {
   try {
-    const parsed = JSON.parse(fs11.readFileSync((0, import_path62.join)(getOmcRoot(directory), "factory-routes.json"), "utf8"));
+    const parsed = JSON.parse(fs11.readFileSync((0, import_path63.join)(getOmcRoot(directory), "factory-routes.json"), "utf8"));
     return normalizeRouteTable(parsed);
   } catch {
     return null;
   }
 }
-var fs11, import_path62;
+var fs11, import_path63;
 var init_chain_enqueuer = __esm({
   "src/hooks/session-end/chain-enqueuer.ts"() {
     "use strict";
     fs11 = __toESM(require("fs"), 1);
-    import_path62 = require("path");
+    import_path63 = require("path");
     init_routing();
     init_guardrails();
     init_check_evidence();
@@ -33481,12 +34018,12 @@ var init_chain_enqueuer = __esm({
 });
 
 // src/factory/status.ts
-var fs12, import_path63;
+var fs12, import_path64;
 var init_status = __esm({
   "src/factory/status.ts"() {
     "use strict";
     fs12 = __toESM(require("fs"), 1);
-    import_path63 = require("path");
+    import_path64 = require("path");
     init_watchdog();
     init_chain_enqueuer();
   }
@@ -33505,13 +34042,13 @@ function buildRouteTableFull() {
 }
 function validateFactoryPrerequisites(cwd) {
   const missing = [];
-  if (!(0, import_fs48.existsSync)((0, import_path64.join)(getOmcRoot(cwd), "state"))) missing.push(".omg/state/");
-  if (!(0, import_fs48.existsSync)((0, import_path64.join)(cwd, "docs", "design"))) missing.push("docs/design/");
+  if (!(0, import_fs49.existsSync)((0, import_path65.join)(getOmcRoot(cwd), "state"))) missing.push(".omg/state/");
+  if (!(0, import_fs49.existsSync)((0, import_path65.join)(cwd, "docs", "design"))) missing.push("docs/design/");
   return { ok: missing.length === 0, missing };
 }
 function runFactoryInit(options = {}) {
-  const cwd = (0, import_path64.resolve)(options.cwd ?? process.cwd());
-  const routesPath = (0, import_path64.join)(getOmcRoot(cwd), "factory-routes.json");
+  const cwd = (0, import_path65.resolve)(options.cwd ?? process.cwd());
+  const routesPath = (0, import_path65.join)(getOmcRoot(cwd), "factory-routes.json");
   const prerequisites = validateFactoryPrerequisites(cwd);
   if (!prerequisites.ok) {
     return {
@@ -33519,7 +34056,7 @@ function runFactoryInit(options = {}) {
       message: `factory init refused: missing prerequisites (${prerequisites.missing.join(", ")}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the shipyard layout needs docs/design/. Point --cwd at the project root.`
     };
   }
-  if ((0, import_fs48.existsSync)(routesPath) && !options.force) {
+  if ((0, import_fs49.existsSync)(routesPath) && !options.force) {
     return {
       exitCode: 1,
       message: `factory init refused: ${routesPath} already exists and the project route table is never overwritten. Read it first, then pass --force to replace it.`
@@ -33527,8 +34064,8 @@ function runFactoryInit(options = {}) {
   }
   const table = options.narrow === false ? buildRouteTableFull() : buildRouteTableNarrow();
   try {
-    (0, import_fs48.mkdirSync)((0, import_path64.join)(routesPath, ".."), { recursive: true });
-    (0, import_fs48.writeFileSync)(routesPath, `${JSON.stringify(table, null, 2)}
+    (0, import_fs49.mkdirSync)((0, import_path65.join)(routesPath, ".."), { recursive: true });
+    (0, import_fs49.writeFileSync)(routesPath, `${JSON.stringify(table, null, 2)}
 `, "utf8");
   } catch (error2) {
     return { exitCode: 1, message: `factory init failed: cannot write ${routesPath}: ${error2.message}` };
@@ -33540,13 +34077,13 @@ function runFactoryInit(options = {}) {
     message: `factory init wrote ${routesPath} (${mode}): ${routes}. The SessionEnd chain enqueuer reads this file as the single source of truth \u2014 a missing route halts the chain, and skill "stop" marks a terminal stage.`
   };
 }
-var import_fs48, import_path64;
+var import_fs49, import_path65;
 var init_factory = __esm({
   "src/cli/commands/factory.ts"() {
     "use strict";
     init_esm();
-    import_fs48 = require("fs");
-    import_path64 = require("path");
+    import_fs49 = require("fs");
+    import_path65 = require("path");
     init_listener();
     init_status();
     init_worktree_paths();
@@ -33556,8 +34093,8 @@ var init_factory = __esm({
 // src/smoke/copilot-chain-scenario.ts
 function prepareChainProject(projectDir) {
   try {
-    (0, import_fs49.mkdirSync)((0, import_path65.join)(projectDir, ".omg", "state"), { recursive: true });
-    (0, import_fs49.mkdirSync)((0, import_path65.join)(projectDir, "docs", "design"), { recursive: true });
+    (0, import_fs50.mkdirSync)((0, import_path66.join)(projectDir, ".omg", "state"), { recursive: true });
+    (0, import_fs50.mkdirSync)((0, import_path66.join)(projectDir, "docs", "design"), { recursive: true });
   } catch (err) {
     return `factory layout: ${err.message}`;
   }
@@ -33569,11 +34106,11 @@ function prepareChainProject(projectDir) {
     "failed:*": { stage: "halt", skill: "stop" }
   };
   try {
-    (0, import_fs49.writeFileSync)((0, import_path65.join)(projectDir, ".omg", "factory-routes.json"), `${JSON.stringify(routes, null, 2)}
+    (0, import_fs50.writeFileSync)((0, import_path66.join)(projectDir, ".omg", "factory-routes.json"), `${JSON.stringify(routes, null, 2)}
 `);
-    const skillDir = (0, import_path65.join)(projectDir, ".github", "skills", CHAIN_SKILL);
-    (0, import_fs49.mkdirSync)(skillDir, { recursive: true });
-    (0, import_fs49.writeFileSync)((0, import_path65.join)(skillDir, "SKILL.md"), [
+    const skillDir = (0, import_path66.join)(projectDir, ".github", "skills", CHAIN_SKILL);
+    (0, import_fs50.mkdirSync)(skillDir, { recursive: true });
+    (0, import_fs50.writeFileSync)((0, import_path66.join)(skillDir, "SKILL.md"), [
       "---",
       `name: ${CHAIN_SKILL}`,
       "description: Acknowledge an oh-my-copilot factory chain smoke link. Use when invoked as /chain-ack.",
@@ -33592,12 +34129,12 @@ function pathKey(env) {
 }
 function chainLinkSmokeEnv(base, bin, root, linkId) {
   const key = pathKey(base);
-  const withPath = { ...base, [key]: [(0, import_path65.dirname)(bin), base[key]].filter(Boolean).join(import_path65.delimiter), OMC_PLUGIN_ROOT: root };
+  const withPath = { ...base, [key]: [(0, import_path66.dirname)(bin), base[key]].filter(Boolean).join(import_path66.delimiter), OMC_PLUGIN_ROOT: root };
   return chainLinkEnv(withPath, "copilot", linkId);
 }
 function readJson(path15) {
   try {
-    return JSON.parse((0, import_fs49.readFileSync)(path15, "utf8"));
+    return JSON.parse((0, import_fs50.readFileSync)(path15, "utf8"));
   } catch {
     return null;
   }
@@ -33606,27 +34143,27 @@ function collectChainEvidence(projectDir, home, firstLink) {
   const factoryDir = factoryStateDir(projectDir);
   let entries = [];
   try {
-    entries = (0, import_fs49.readdirSync)(factoryDir);
+    entries = (0, import_fs50.readdirSync)(factoryDir);
   } catch {
   }
   const ledgers = [];
   for (const entry of entries) {
     const match = /^chain-([0-9a-f-]{36})\.json$/i.exec(entry);
     if (!match) continue;
-    const value = readJson((0, import_path65.join)(factoryDir, entry));
+    const value = readJson((0, import_path66.join)(factoryDir, entry));
     if (value && typeof value === "object" && !Array.isArray(value)) ledgers.push({ ...value, file: match[1] });
   }
   ledgers.sort((a, b) => a.file === firstLink ? -1 : b.file === firstLink ? 1 : String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")));
   let decisions = [];
   try {
-    decisions = parseJsonl((0, import_fs49.readFileSync)((0, import_path65.join)(factoryDir, "chain-decisions.jsonl"), "utf8")).events;
+    decisions = parseJsonl((0, import_fs50.readFileSync)((0, import_path66.join)(factoryDir, "chain-decisions.jsonl"), "utf8")).events;
   } catch {
   }
-  const stopped = readJson((0, import_path65.join)(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`));
+  const stopped = readJson((0, import_path66.join)(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`));
   const sessions = ledgers.map((l) => l.hostSessionId).filter((id) => typeof id === "string" && /^[\w-]{1,64}$/.test(id)).map((hostSessionId) => {
     let events = null;
     try {
-      events = parseJsonl((0, import_fs49.readFileSync)((0, import_path65.join)(home, "session-state", hostSessionId, "events.jsonl"), "utf8")).events;
+      events = parseJsonl((0, import_fs50.readFileSync)((0, import_path66.join)(home, "session-state", hostSessionId, "events.jsonl"), "utf8")).events;
     } catch {
     }
     return { hostSessionId, events };
@@ -33637,33 +34174,33 @@ function openLinks(projectDir) {
   const factoryDir = factoryStateDir(projectDir);
   let entries = [];
   try {
-    entries = (0, import_fs49.readdirSync)(factoryDir);
+    entries = (0, import_fs50.readdirSync)(factoryDir);
   } catch {
     return [];
   }
-  return entries.map((e) => /^chain-([0-9a-f-]{36})\.json$/i.exec(e)?.[1]).filter((id) => !!id).filter((id) => !readJson((0, import_path65.join)(factoryDir, `chain-${id}.json`))?.closedAt);
+  return entries.map((e) => /^chain-([0-9a-f-]{36})\.json$/i.exec(e)?.[1]).filter((id) => !!id).filter((id) => !readJson((0, import_path66.join)(factoryDir, `chain-${id}.json`))?.closedAt);
 }
 function chainSettled(projectDir, firstLink) {
   const factoryDir = factoryStateDir(projectDir);
-  if (!(0, import_fs49.existsSync)((0, import_path65.join)(factoryDir, `chain-${firstLink}.json`)) || openLinks(projectDir).length > 0) return false;
-  const ledgers = (0, import_fs49.readdirSync)(factoryDir).filter((e) => /^chain-[0-9a-f-]{36}\.json$/i.test(e)).map((e) => ({ id: e.slice("chain-".length, -".json".length), ledger: readJson((0, import_path65.join)(factoryDir, e)) }));
+  if (!(0, import_fs50.existsSync)((0, import_path66.join)(factoryDir, `chain-${firstLink}.json`)) || openLinks(projectDir).length > 0) return false;
+  const ledgers = (0, import_fs50.readdirSync)(factoryDir).filter((e) => /^chain-[0-9a-f-]{36}\.json$/i.test(e)).map((e) => ({ id: e.slice("chain-".length, -".json".length), ledger: readJson((0, import_path66.join)(factoryDir, e)) }));
   return ledgers.every(({ id, ledger }) => ledger?.decision !== "enqueued" || ledgers.some((l) => l.ledger?.parentLink === id));
 }
 function stopTimedOutChain(projectDir, open3) {
   const factoryDir = factoryStateDir(projectDir);
   const now = (/* @__PURE__ */ new Date()).toISOString();
   for (const id of open3) {
-    const ledger = readJson((0, import_path65.join)(factoryDir, `chain-${id}.json`));
+    const ledger = readJson((0, import_path66.join)(factoryDir, `chain-${id}.json`));
     if (!ledger || typeof ledger !== "object") continue;
     try {
-      (0, import_fs49.writeFileSync)((0, import_path65.join)(factoryDir, `chain-${id}.json`), JSON.stringify({ ...ledger, closedAt: now, decision: "smoke-timeout" }, null, 2));
+      (0, import_fs50.writeFileSync)((0, import_path66.join)(factoryDir, `chain-${id}.json`), JSON.stringify({ ...ledger, closedAt: now, decision: "smoke-timeout" }, null, 2));
     } catch {
     }
   }
-  const marker = (0, import_path65.join)(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`);
-  if ((0, import_fs49.existsSync)(marker)) return;
+  const marker = (0, import_path66.join)(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`);
+  if ((0, import_fs50.existsSync)(marker)) return;
   try {
-    (0, import_fs49.writeFileSync)(marker, JSON.stringify({ intentId: CHAIN_INTENT_ID, reason: "smoke-timeout", stoppedAt: now }, null, 2));
+    (0, import_fs50.writeFileSync)(marker, JSON.stringify({ intentId: CHAIN_INTENT_ID, reason: "smoke-timeout", stoppedAt: now }, null, 2));
   } catch {
   }
 }
@@ -33688,7 +34225,7 @@ async function runChainScenario(input) {
   });
   const env = chainLinkSmokeEnv(input.env, input.bin, input.root, firstLink);
   const plan = buildHostBinarySpawn(input.bin, [...COPILOT_AFK_SPAWN_FLAGS, ...copilotPluginDirArgs(env, input.projectDir)]);
-  const link1 = await runAsync(input.spawn ?? import_child_process18.spawn, input.spawnSync, plan.command, plan.args, {
+  const link1 = await runAsync(input.spawn ?? import_child_process19.spawn, input.spawnSync, plan.command, plan.args, {
     cwd: input.projectDir,
     env,
     input: `${SCENARIOS.chain.prompt}
@@ -33703,14 +34240,14 @@ async function runChainScenario(input) {
       timedOut = true;
       break;
     }
-    await sleep4(input.pollMs ?? 1e3);
+    await sleep5(input.pollMs ?? 1e3);
   }
   const stillOpen = timedOut ? openLinks(input.projectDir) : [];
   if (timedOut) stopTimedOutChain(input.projectDir, stillOpen);
   const chain = collectChainEvidence(input.projectDir, input.home, firstLink);
   const events = chain.sessions.flatMap((s) => s.events ?? []);
   try {
-    (0, import_fs49.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
+    (0, import_fs50.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
   } catch {
   }
   const linkError = link1.error ?? (link1.code !== 0 && !link1.timedOut ? `link 1 exited ${String(link1.code)}: ${excerpt(link1.stderr, 200)}` : void 0) ?? (stillOpen.length ? `timed out with open link(s) ${stillOpen.join(", ")}; their ledgers were closed (smoke-timeout) so they cannot enqueue, but a running link was not killed` : void 0);
@@ -33723,14 +34260,14 @@ async function runChainScenario(input) {
     chain
   };
 }
-var import_crypto14, import_child_process18, import_fs49, import_path65, CHAIN_ACK_TOKEN, sleep4;
+var import_crypto14, import_child_process19, import_fs50, import_path66, CHAIN_ACK_TOKEN, sleep5;
 var init_copilot_chain_scenario = __esm({
   "src/smoke/copilot-chain-scenario.ts"() {
     "use strict";
     import_crypto14 = require("crypto");
-    import_child_process18 = require("child_process");
-    import_fs49 = require("fs");
-    import_path65 = require("path");
+    import_child_process19 = require("child_process");
+    import_fs50 = require("fs");
+    import_path66 = require("path");
     init_tmux_utils();
     init_factory();
     init_chain_enqueuer();
@@ -33739,547 +34276,9 @@ var init_copilot_chain_scenario = __esm({
     init_copilot_sdk_scenarios();
     init_process_utils2();
     CHAIN_ACK_TOKEN = "CHAIN_ACK";
-    sleep4 = (ms) => new Promise((r) => {
-      setTimeout(r, ms);
-    });
-  }
-});
-
-// src/smoke/copilot-sdk-driver.ts
-function isSdkModule(mod) {
-  const m = mod;
-  return !!m && typeof m.CopilotClient === "function" && typeof m.RuntimeConnection?.forStdio === "function";
-}
-function readPkg(dir) {
-  try {
-    return JSON.parse((0, import_fs50.readFileSync)((0, import_path66.join)(dir, "package.json"), "utf-8"));
-  } catch {
-    return null;
-  }
-}
-function versionAbove(file) {
-  let dir = (0, import_path66.dirname)(file);
-  for (let i = 0; i < 6; i++) {
-    const pkg = readPkg(dir);
-    if (pkg?.name === SDK_PACKAGE) return pkg.version ?? null;
-    const parent = (0, import_path66.dirname)(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-function nodeResolvedVersion() {
-  const bases = [];
-  try {
-    bases.push(importMetaUrl);
-  } catch {
-  }
-  if (typeof __filename !== "undefined") bases.push(__filename);
-  for (const base of bases) {
-    try {
-      return versionAbove((0, import_module3.createRequire)(base).resolve(SDK_PACKAGE));
-    } catch {
-    }
-  }
-  return null;
-}
-function globalModuleRoots(env, platform = process.platform) {
-  return platform === "win32" && env.APPDATA ? [(0, import_path66.join)(env.APPDATA, "npm", "node_modules")] : [];
-}
-function satisfiesSdkRange(version2) {
-  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(version2 ?? "").trim());
-  const min = SDK_MIN_VERSION.split(".").map(Number);
-  if (!m) return false;
-  const [major, minor, patch] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  if (major !== min[0]) return false;
-  return minor > min[1] || minor === min[1] && patch >= min[2];
-}
-function insideDir(dir, file) {
-  const real = (p) => {
-    try {
-      return import_fs50.realpathSync.native(p);
-    } catch {
-      return (0, import_path66.resolve)(p);
-    }
-  };
-  const rel = (0, import_path66.relative)(real(dir), real((0, import_path66.resolve)(dir, file)));
-  return rel !== "" && !rel.startsWith("..") && !(0, import_path66.isAbsolute)(rel);
-}
-function exportPath(target, condition) {
-  if (typeof target === "string") return target;
-  const cond = target?.[condition];
-  if (typeof cond === "string") return cond;
-  return typeof cond?.default === "string" ? cond.default : void 0;
-}
-function npmRootG(env, spawnSync8) {
-  const res = process.platform === "win32" ? spawnSync8("npm root -g", { env, encoding: "utf8", timeout: 15e3, windowsHide: true, shell: true }) : spawnSync8("npm", ["root", "-g"], { env, encoding: "utf8", timeout: 15e3 });
-  const out = String(res.stdout ?? "").trim();
-  return res.status === 0 && out ? out : null;
-}
-async function importFromDir(dir) {
-  const pkg = readPkg(dir);
-  if (pkg?.name !== SDK_PACKAGE || !satisfiesSdkRange(pkg.version)) return null;
-  const exp = pkg.exports && typeof pkg.exports === "object" ? pkg.exports["."] : pkg.exports;
-  const esmEntry = exportPath(exp, "import") ?? pkg.main ?? "dist/index.js";
-  const cjsEntry = exportPath(exp, "require") ?? pkg.main ?? "index.js";
-  if (!insideDir(dir, esmEntry) || !insideDir(dir, cjsEntry)) return null;
-  let mod;
-  try {
-    mod = await import((0, import_url7.pathToFileURL)((0, import_path66.resolve)(dir, esmEntry)).href);
-  } catch {
-    mod = (0, import_module3.createRequire)((0, import_path66.join)(dir, "package.json"))((0, import_path66.resolve)(dir, cjsEntry));
-  }
-  return isSdkModule(mod) ? { module: mod, version: pkg.version ?? null, from: dir } : null;
-}
-function resolveShimTarget(shim, read = (p) => (0, import_fs50.readFileSync)(p, "utf-8"), exists = import_fs50.existsSync) {
-  let text;
-  try {
-    text = read(shim);
-  } catch {
-    return null;
-  }
-  const patterns = [
-    /"%~?dp0%\\?([^"%*]+?\.(?:js|exe))"/i,
-    // cmd-shim: "%dp0%\node_modules\...\loader.js"
-    /\$basedir[\\/]([^"$*]+?\.(?:js|exe))"/i
-    // ps1 shim: "$basedir/node_modules/.../loader.js"
-  ];
-  for (const re of patterns) {
-    const m = re.exec(text);
-    if (!m) continue;
-    const target = (0, import_path66.resolve)((0, import_path66.dirname)(shim), m[1].replace(/\\/g, "/"));
-    if (exists(target)) return target;
-  }
-  return null;
-}
-async function loadCopilotSdk(env = process.env, spawnSync8 = import_child_process19.spawnSync) {
-  const spec = SDK_PACKAGE;
-  try {
-    const mod = await import(spec);
-    if (isSdkModule(mod)) return { module: mod, version: nodeResolvedVersion(), from: "node resolution" };
-  } catch {
-  }
-  const tried = /* @__PURE__ */ new Set();
-  const tryRoot = async (root) => {
-    if (!root || tried.has(root)) return null;
-    tried.add(root);
-    const dir = (0, import_path66.join)(root, ...SDK_PACKAGE.split("/"));
-    if (!(0, import_fs50.existsSync)((0, import_path66.join)(dir, "package.json"))) return null;
-    try {
-      return await importFromDir(dir);
-    } catch {
-      return null;
-    }
-  };
-  for (const root of globalModuleRoots(env)) {
-    const hit = await tryRoot(root);
-    if (hit) return hit;
-  }
-  return tryRoot(npmRootG(env, spawnSync8));
-}
-function withTimeout(promise, ms, label) {
-  let timer;
-  return Promise.race([
-    promise,
-    new Promise((_, reject2) => {
-      timer = setTimeout(() => reject2(new TimeoutError(`${label} timed out after ${ms} ms`)), ms);
-    })
-  ]).finally(() => clearTimeout(timer));
-}
-function errText(err) {
-  return err instanceof Error ? err.message : String(err);
-}
-async function rpc(fn, label) {
-  try {
-    return { ok: true, value: await withTimeout(fn(), RPC_TIMEOUT_MS, label) };
-  } catch (err) {
-    return { ok: false, error: errText(err) };
-  }
-}
-function readAllLogs(logDir) {
-  let files;
-  try {
-    files = (0, import_fs50.readdirSync)(logDir).filter((f) => f.endsWith(".log"));
-  } catch {
-    return null;
-  }
-  if (files.length === 0) return null;
-  return files.map((f) => {
-    try {
-      return (0, import_fs50.readFileSync)((0, import_path66.join)(logDir, f), "utf-8");
-    } catch {
-      return "";
-    }
-  }).join("\n");
-}
-function runtimePid(client) {
-  const pid = client.cliProcess?.pid;
-  return typeof pid === "number" && pid > 0 ? pid : void 0;
-}
-function pidAlive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err.code === "EPERM";
-  }
-}
-function prepareSdkProject(spawnSync8, projectDir, remoteDir, env) {
-  const git = (args, cwd) => spawnSync8("git", args, { cwd, env, encoding: "utf8", timeout: 3e4, windowsHide: true });
-  (0, import_fs50.mkdirSync)(projectDir, { recursive: true });
-  (0, import_fs50.writeFileSync)((0, import_path66.join)(projectDir, "hello.txt"), "omg smoke fixture\n");
-  const steps = [
-    [["-c", "init.defaultBranch=main", "init", "-q"], projectDir],
-    [["checkout", "-q", "-B", "main"], projectDir],
-    [["add", "hello.txt"], projectDir],
-    [["-c", "user.name=omg-smoke", "-c", "user.email=omg-smoke@example.invalid", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "init"], projectDir],
-    [["init", "-q", "--bare", remoteDir], (0, import_path66.dirname)(remoteDir)],
-    [["remote", "add", "origin", remoteDir], projectDir]
-  ];
-  for (const [args, cwd] of steps) {
-    const res = git(args, cwd);
-    if (res.status !== 0) return `git ${args.join(" ")}: ${excerpt(`${res.stderr ?? ""}${res.error?.message ?? ""}`, 200) || `exit ${res.status}`}`;
-  }
-  return null;
-}
-function remoteRefs(spawnSync8, remoteDir, env) {
-  const res = spawnSync8("git", ["--git-dir", remoteDir, "for-each-ref"], { env, encoding: "utf8", timeout: 3e4, windowsHide: true });
-  return res.status === 0 ? String(res.stdout ?? "") : null;
-}
-function runtimeCreditCap(maxCredits) {
-  return Math.max(RUNTIME_MIN_MAX_CREDITS, Math.ceil(maxCredits));
-}
-async function runSdkTier(input) {
-  const events = {};
-  let loaded2;
-  try {
-    loaded2 = await input.loadSdk();
-  } catch {
-    loaded2 = null;
-  }
-  if (!loaded2) {
-    return { checks: failedTier2Checks(input.scenarios, SDK_MISSING_DETAIL), events, skipped: SDK_MISSING_DETAIL };
-  }
-  const checks = [{
-    id: "sdk.available",
-    ok: true,
-    detail: `${SDK_PACKAGE}@${loaded2.version ?? "?"} (${loaded2.from})`
-  }];
-  let bin = input.bin;
-  if ((input.platform ?? process.platform) === "win32" && /\.(cmd|bat|ps1)$/i.test(bin)) {
-    const target = resolveShimTarget(bin);
-    if (!target) {
-      checks.push(...failedTier2Checks(input.scenarios, `${bin} is a shell shim whose .js/.exe target could not be resolved; pass --copilot-bin <copilot.exe or the package's .js entry>`, "after-available"));
-      return { checks, events };
-    }
-    bin = target;
-  }
-  const projectError = prepareSdkProject(input.spawnSync, input.projectDir, input.remoteDir, input.env);
-  const { CopilotClient, RuntimeConnection } = loaded2.module;
-  const client = new CopilotClient({
-    // Debug level for the runtime (hook stderr is only logged there) via args,
-    // not the client's logLevel, which would also echo SDK timing lines to our stderr.
-    connection: RuntimeConnection.forStdio({
-      path: bin,
-      args: ["--log-level", "debug", "--max-ai-credits", String(runtimeCreditCap(input.maxCredits))],
-      env: input.env
-    }),
-    baseDirectory: input.home,
-    workingDirectory: input.projectDir
-  });
-  const logDir = (0, import_path66.join)(input.home, "logs");
-  const sdkInfo = { version: loaded2.version, runtimeVersion: null, protocolVersion: null, model: "auto" };
-  const total = { premiumRequests: 0, credits: 0 };
-  const entries = [];
-  const isAlive = input.isAlive ?? pidAlive;
-  const killTree = input.killTree ?? ((pid2) => killProcessTree(pid2, input.spawnSync));
-  let pid;
-  let wedged = false;
-  try {
-    try {
-      await withTimeout(client.start(), START_TIMEOUT_MS, "client.start()");
-    } catch (err) {
-      checks.push(...failedTier2Checks(input.scenarios, `runtime did not start (${bin}): ${excerpt(errText(err), 200)}`, "after-available"));
-      return { checks, sdk: sdkInfo, events };
-    }
-    pid = runtimePid(client);
-    const status = await rpc(() => client.getStatus(), "getStatus()");
-    if (status.ok) {
-      sdkInfo.runtimeVersion = typeof status.value.version === "string" ? status.value.version : null;
-      sdkInfo.protocolVersion = typeof status.value.protocolVersion === "number" ? status.value.protocolVersion : null;
-    }
-    const models = await rpc(() => client.listModels(), "listModels()");
-    const choice = chooseModel(models.ok ? models.value.map((m) => String(m.id)) : [], input.model);
-    sdkInfo.model = choice.label;
-    const modelLabel = `${choice.label} (${choice.note})`;
-    checks.push(evaluateSdkRuntime(status, input.binVersion, modelLabel));
-    checks.push(...await staticChecks(client, input));
-    let stopReason;
-    for (const name of [...input.scenarios.filter((s) => s !== "chain"), ...input.scenarios.filter((s) => s === "chain")]) {
-      if (projectError) {
-        entries.push({ name, skip: `sandbox project setup failed: ${projectError}` });
-        continue;
-      }
-      if (stopReason) {
-        entries.push({ name, skip: stopReason });
-        continue;
-      }
-      const path15 = (0, import_path66.join)(input.home, `events-${name}.jsonl`);
-      events[name] = path15;
-      if (entries.length > 0) await new Promise((resolve25) => setTimeout(resolve25, 2));
-      const start = Date.now();
-      const { wedged: stuck, ...run } = name === "chain" ? await (input.runChain ?? runChainScenario)({
-        bin,
-        root: input.root,
-        env: input.env,
-        projectDir: input.projectDir,
-        home: input.home,
-        timeoutMs: input.timeoutMs,
-        maxCredits: input.maxCredits,
-        budget: input.maxCredits - total.credits,
-        eventsPath: path15,
-        spawnSync: input.spawnSync
-      }) : await runScenario(client, input, name, choice.model, modelLabel, path15, input.maxCredits - total.credits);
-      entries.push({ name, run, start });
-      const cost = run.chain ? chainCost(run.chain) : scenarioCost(run.events);
-      total.premiumRequests += cost.premiumRequests;
-      total.credits += cost.credits;
-      if (run.capped || total.credits > input.maxCredits) stopReason = CREDIT_CAP_SKIP_DETAIL;
-      if (stuck) {
-        wedged = true;
-        stopReason ??= RUNTIME_WEDGED_DETAIL;
-      }
-    }
-  } finally {
-    pid ??= runtimePid(client);
-    if (wedged && pid && isAlive(pid)) killTree(pid);
-    let stopped = false;
-    try {
-      await withTimeout(client.stop(), STOP_TIMEOUT_MS, "client.stop()");
-      stopped = true;
-    } catch {
-    }
-    if (!stopped) {
-      if (pid && isAlive(pid)) killTree(pid);
-      try {
-        await withTimeout(client.forceStop?.() ?? Promise.resolve(), STOP_TIMEOUT_MS, "client.forceStop()");
-      } catch {
-      }
-    }
-    if (pid && isAlive(pid)) killTree(pid);
-  }
-  const logText = readAllLogs(logDir);
-  const ran = entries.filter((e) => "run" in e);
-  const slices = logText === null ? [] : sliceLogByTime(logText, ran.map((e) => e.start));
-  for (const entry of entries) {
-    if ("skip" in entry) {
-      checks.push(...skippedScenarioChecks(entry.name, entry.skip));
-      continue;
-    }
-    const logSlice = logText === null ? null : slices[ran.indexOf(entry)];
-    checks.push(...evaluateScenario({ ...entry.run, logText: logSlice }).checks);
-  }
-  return { checks, sdk: sdkInfo, cost: total, events };
-}
-async function staticChecks(client, input) {
-  let session;
-  const failAll = (detail) => ["sdk.plugins", "sdk.skills", "sdk.agents", "sdk.mcp", "sdk.tools_excluded"].map((id) => ({ id, ok: false, detail }));
-  try {
-    try {
-      session = await withTimeout(client.createSession({
-        onPermissionRequest: () => reject("omg smoke: static checks grant nothing"),
-        pluginDirectories: [input.root],
-        workingDirectory: input.projectDir,
-        disabledMcpServers: ["github-mcp-server"],
-        excludedTools: [hostSmokeToolName(input.mcpServer)]
-      }), RPC_TIMEOUT_MS, "createSession()");
-    } catch (err) {
-      return failAll(`static session not created: ${excerpt(errText(err), 200)}`);
-    }
-    const s = session;
-    let mcp = await rpc(() => s.rpc.mcp.list(), "mcp.list");
-    const deadline = Date.now() + MCP_CONNECT_WAIT_MS;
-    const status = () => mcp.ok ? mcp.value.servers?.find((x) => x.name === input.mcpServer)?.status : void 0;
-    while (mcp.ok && status() !== "connected" && status() !== "failed" && Date.now() < deadline) {
-      await sleep5(500);
-      mcp = await rpc(() => s.rpc.mcp.list(), "mcp.list");
-    }
-    const [plugins, skills, agents, tools, toolMeta] = [
-      await rpc(() => s.rpc.plugins.list(), "plugins.list"),
-      await rpc(() => s.rpc.skills.list(), "skills.list"),
-      await rpc(() => s.rpc.agent.list(), "agent.list"),
-      await rpc(() => s.rpc.mcp.listTools({ serverName: input.mcpServer }), "mcp.listTools"),
-      await rpc(() => currentToolMetadata(s), "tools.getCurrentMetadata")
-    ];
-    let expected;
-    try {
-      expected = await input.loadExpectedToolCount();
-    } catch (err) {
-      expected = errText(err);
-    }
-    return [
-      evaluateSdkPlugins(plugins, input.packageVersion),
-      evaluateSdkSkills(skills, input.root, input.skillDirs),
-      evaluateSdkAgents(agents, input.agentFiles),
-      evaluateSdkMcp(mcp, tools, input.mcpServer, expected),
-      evaluateSdkToolsExcluded(toolMeta, input.mcpServer)
-    ];
-  } finally {
-    if (session) await closeSession(client, session, input.keepHome);
-  }
-}
-async function currentToolMetadata(session) {
-  const tools = session.rpc.tools;
-  if (!tools?.getCurrentMetadata) throw new Error("session.rpc.tools.getCurrentMetadata is not available in this SDK");
-  let meta = await tools.getCurrentMetadata();
-  const list = meta?.tools;
-  if ((!Array.isArray(list) || list.length === 0) && tools.initializeAndValidate) {
-    await tools.initializeAndValidate();
-    meta = await tools.getCurrentMetadata();
-  }
-  return meta;
-}
-async function closeSession(client, session, keepHome) {
-  try {
-    await withTimeout(session.disconnect(), RPC_TIMEOUT_MS, "disconnect()");
-  } catch {
-  }
-  if (!keepHome) {
-    try {
-      await withTimeout(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS, "deleteSession()");
-    } catch {
-    }
-  }
-}
-async function runScenario(client, input, name, model, modelLabel, eventsPath, budget) {
-  const spec = SCENARIOS[name];
-  const permitCtx = { projectDir: input.projectDir, pluginRoot: input.root, ...input.platform ? { platform: input.platform } : {} };
-  const recorded = [];
-  let sent = false;
-  let onIdle = () => {
-  };
-  let onShutdown = () => {
-  };
-  let onCap = () => {
-  };
-  const idle = new Promise((r) => {
-    onIdle = r;
-  });
-  const shutdown = new Promise((r) => {
-    onShutdown = r;
-  });
-  const capHit = new Promise((r) => {
-    onCap = r;
-  });
-  let session;
-  let idleSeen = false;
-  let timedOut = false;
-  let capped = false;
-  let wedged = false;
-  let spent = 0;
-  let error2;
-  try {
-    session = await withTimeout(client.createSession({
-      onPermissionRequest: (req) => spec.permit(req, permitCtx) ? { kind: "approve-once" } : reject(`omg smoke ${name}: ${req.kind ?? "request"} not permitted`),
-      onEvent: (event) => {
-        recorded.push(event);
-        if (event.type === "session.idle" && sent) onIdle();
-        if (event.type === "session.shutdown") onShutdown();
-        spent += usageCredits(event);
-        if (!capped && spent > budget) {
-          capped = true;
-          onCap();
-        }
-      },
-      pluginDirectories: [input.root],
-      workingDirectory: input.projectDir,
-      disabledMcpServers: ["github-mcp-server"],
-      excludedTools: scenarioExcludedTools(name, input.mcpServer),
-      ...model ? { model } : {}
-    }), RPC_TIMEOUT_MS, "createSession()");
-    sent = true;
-    await withTimeout(session.send({ prompt: spec.prompt }), RPC_TIMEOUT_MS, "send()");
-    const winner = await Promise.race([
-      idle.then(() => "idle"),
-      capHit.then(() => "cap"),
-      sleep5(input.timeoutMs).then(() => "timeout")
-    ]);
-    if (winner === "idle") {
-      idleSeen = true;
-    } else {
-      if (winner === "timeout") timedOut = true;
-      const s = session;
-      try {
-        await withTimeout(s.abort(), RPC_TIMEOUT_MS, "abort()");
-      } catch {
-      }
-      const settled = await Promise.race([idle.then(() => true), sleep5(ABORT_GRACE_MS).then(() => false)]);
-      wedged = !settled;
-    }
-  } catch (err) {
-    error2 = errText(err);
-  } finally {
-    if (session) {
-      try {
-        await withTimeout(session.disconnect(), RPC_TIMEOUT_MS, "disconnect()");
-      } catch {
-      }
-      await Promise.race([shutdown, sleep5(SHUTDOWN_GRACE_MS)]);
-      if (!input.keepHome) {
-        try {
-          await withTimeout(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS, "deleteSession()");
-        } catch {
-        }
-      }
-    }
-    try {
-      (0, import_fs50.writeFileSync)(eventsPath, recorded.map((e) => JSON.stringify(e)).join("\n") + (recorded.length ? "\n" : ""));
-    } catch {
-    }
-  }
-  return {
-    name,
-    events: recorded,
-    idle: idleSeen,
-    timedOut,
-    timeoutMs: input.timeoutMs,
-    ...error2 ? { error: error2 } : {},
-    ...name === "guardrail" ? { remoteRefs: remoteRefs(input.spawnSync, input.remoteDir, input.env) } : {},
-    model: modelLabel,
-    maxCredits: input.maxCredits,
-    budget,
-    capped,
-    wedged
-  };
-}
-var import_child_process19, import_fs50, import_module3, import_path66, import_url7, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep5, reject, RUNTIME_WEDGED_DETAIL;
-var init_copilot_sdk_driver = __esm({
-  "src/smoke/copilot-sdk-driver.ts"() {
-    "use strict";
-    import_child_process19 = require("child_process");
-    import_fs50 = require("fs");
-    import_module3 = require("module");
-    import_path66 = require("path");
-    import_url7 = require("url");
-    init_copilot_session_eval();
-    init_copilot_sdk_scenarios();
-    init_process_utils2();
-    init_copilot_chain_scenario();
-    SDK_MIN_VERSION = "1.0.16";
-    DEFAULT_SCENARIO_TIMEOUT_MS = 12e4;
-    START_TIMEOUT_MS = 6e4;
-    RPC_TIMEOUT_MS = 3e4;
-    MCP_CONNECT_WAIT_MS = 2e4;
-    ABORT_GRACE_MS = 1e4;
-    SHUTDOWN_GRACE_MS = 2e3;
-    STOP_TIMEOUT_MS = 15e3;
-    TimeoutError = class extends Error {
-    };
     sleep5 = (ms) => new Promise((r) => {
       setTimeout(r, ms);
     });
-    reject = (feedback) => ({ kind: "reject", feedback });
-    RUNTIME_WEDGED_DETAIL = "skipped: runtime unresponsive after a scenario timeout";
   }
 });
 
@@ -34962,7 +34961,8 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     spawnSync: ctx.spawnSyncFn,
     skillDirs: countDirsWith((0, import_path68.join)(ctx.root, "skills"), "SKILL.md"),
     agentFiles,
-    mcpServer: mcpServerNames(ctx.root)[0] ?? "t"
+    mcpServer: mcpServerNames(ctx.root)[0] ?? "t",
+    runChain: runChainScenario
   });
   if (Object.keys(result.events).length) artifacts.events = result.events;
   const logs = readDebugLogs((0, import_path68.join)(home, "logs"));
@@ -34984,6 +34984,7 @@ var init_copilot_smoke = __esm({
     init_copilot_session_eval();
     init_process_utils2();
     init_copilot_sdk_driver();
+    init_copilot_chain_scenario();
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
     init_copilot_session_env();

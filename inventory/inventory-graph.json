@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "0273fc97b5b6efa05228b2d2506c7396ac5c7231",
-    "sourceSha256": "dd39f17d395567a0ff4c6bd9edba368813d3aeabf0309a1de27d6a240eb2083e",
+    "head": "6c671e8430f4cd40da26b82ef804b12a68f8174d",
+    "sourceSha256": "b84bd033a7cb1d3fe15135792831857c99c6f7a30bbadf6a16789f1eae8b9e28",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "0273fc97b5b6efa05228b2d2506c7396ac5c7231",
-  "sourceSha256": "dd39f17d395567a0ff4c6bd9edba368813d3aeabf0309a1de27d6a240eb2083e",
+  "head": "6c671e8430f4cd40da26b82ef804b12a68f8174d",
+  "sourceSha256": "b84bd033a7cb1d3fe15135792831857c99c6f7a30bbadf6a16789f1eae8b9e28",
   "counts": {
     "public": {
       "skills": 61,
@@ -79860,7 +79860,7 @@
       {
         "from": "src/smoke/copilot-sdk-driver.ts",
         "to": "src/smoke/copilot-chain-scenario.ts",
-        "kind": "imports"
+        "kind": "type-imports"
       },
       {
         "from": "src/smoke/copilot-sdk-driver.ts",
@@ -79996,6 +79996,11 @@
         "from": "src/smoke/copilot-smoke.ts",
         "to": "src/smoke/copilot-binary.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-smoke.ts",
+        "to": "src/smoke/copilot-chain-scenario.ts",
+        "kind": "imports"
       },
       {
         "from": "src/smoke/copilot-smoke.ts",
@@ -91655,11 +91660,11 @@
     ],
     "stats": {
       "nodeCount": 8091,
-      "edgeCount": 8760,
+      "edgeCount": 8761,
       "importEdgeCount": 7239,
       "registerEdgeCount": 82
     }
   },
   "inventorySha256": "5f97e94a5148b89f3f4a584d82262fe2e1693679756121ecef888699855d2ebe",
-  "manifestSha256": "ff6aed1d4d5cd859cf72ddb0c3ffa169cf7349c2218b1fa64dabd6b75ff60f9a"
+  "manifestSha256": "ee8fe9994724f91f883af5bc1ff4e8637fb964050cd0036043d65fd43f1ef27d"
 }

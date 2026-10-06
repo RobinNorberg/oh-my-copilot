@@ -26,7 +26,6 @@ import { pathToFileURL } from 'url';
 import { excerpt } from './copilot-session-eval.js';
 import { chainCost, chooseModel, CREDIT_CAP_SKIP_DETAIL, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, hostSmokeToolName, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioCost, scenarioExcludedTools, SDK_MISSING_DETAIL, SDK_PACKAGE, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
 import { killProcessTree } from './process-utils.js';
-import { runChainScenario } from './copilot-chain-scenario.js';
 // ---------------------------------------------------------------------------
 // Loading
 // ---------------------------------------------------------------------------
@@ -388,7 +387,7 @@ export async function runSdkTier(input) {
             const start = Date.now();
             // `chain` drives real `copilot -p` factory links, not an SDK session.
             const { wedged: stuck, ...run } = name === 'chain'
-                ? await (input.runChain ?? runChainScenario)({
+                ? await input.runChain({
                     bin,
                     root: input.root,
                     env: input.env,
