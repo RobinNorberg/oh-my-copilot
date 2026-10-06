@@ -303,6 +303,7 @@ export async function scaleUpOwned(
     }
     let config = revisioned.config;
     let configRevision = revisioned.stateRevision;
+    if (isSdkTarget(config.tmux_session)) return { ok: false, error: 'scaling_unsupported_transport:sdk' };
     if (!config.instance_id) return { ok: false, error: 'team_instance_authority_missing' };
     let originalInstanceId = config.instance_id;
     if (config.active_recovery || config.active_scale_down) return { ok: false, error: 'team_mutation_busy' };
@@ -1108,6 +1109,7 @@ export async function scaleDownOwned(
     if (!loadedConfig) {
       return { ok: false, error: `Team ${sanitized} not found` };
     }
+    if (isSdkTarget(loadedConfig.tmux_session)) return { ok: false, error: 'scaling_unsupported_transport:sdk' };
     if (!loadedConfig.instance_id) return { ok: false, error: 'team_instance_authority_missing' };
     let originalInstanceId = loadedConfig.instance_id;
     if (loadedConfig.active_recovery || scaleUpFenceBlocks(loadedConfig)) return { ok: false, error: 'team_mutation_busy' };
@@ -1616,7 +1618,6 @@ export async function scaleUp(
   cwd: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ScaleUpResult | ScaleError> {
-  if (await isSdkTeam(teamName, cwd)) return { ok: false, error: 'scaling_unsupported_transport:sdk' };
   return scaleUpOwned(teamName, count, agentType, tasks, cwd, env);
 }
 
@@ -1627,16 +1628,10 @@ export async function scaleDown(
   options: ScaleDownOptions = {},
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ScaleDownResult | ScaleError> {
-  if (await isSdkTeam(teamName, cwd)) return { ok: false, error: 'scaling_unsupported_transport:sdk' };
   return scaleDownOwned(teamName, cwd, options, env);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-async function isSdkTeam(teamName: string, cwd: string): Promise<boolean> {
-  const current = await readRevisionedTeamConfig(teamName, cwd).catch(() => null);
-  return isSdkTarget(current?.config.tmux_session);
-}
 
 function resolveWorkerReadyTimeoutMs(env: NodeJS.ProcessEnv): number {
   const raw = env.OMC_TEAM_READY_TIMEOUT_MS;
