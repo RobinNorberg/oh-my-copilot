@@ -112,6 +112,11 @@ run plus a retag cycle. Work through pre-flight completely BEFORE tagging.
    confirm with `git ls-remote --tags origin vX.Y.Z` after.
 4. Watch the run: `gh run list --workflow=ci.yml`, then `gh run watch <id>`.
    Background watchers cap at 10 minutes; the release job alone takes ~9.
+   The tag run also starts the `Copilot smoke (tier 2)` job in parallel: SDK
+   static checks plus the default scenarios (smoke, guardrail; ~2 premium
+   requests billed to the `COPILOT_GITHUB_TOKEN` owner). The release job does
+   NOT wait for it, so check its result before announcing; its report is the
+   `copilot-smoke-<run id>-<attempt>` artifact (`reports/scenarios.json`).
 
 ## Known flaky tests (rerun once before diagnosing)
 
@@ -130,6 +135,8 @@ workflow path, so the provenance attestation is unaffected.
   X.Y.Z, bins are oh-my-copilot/omg/omg-cli.
 - `npm view oh-my-copilot@X.Y.Z dist.attestations` → SLSA provenance present.
 - `gh release view vX.Y.Z` → published, not draft, targets main.
+- The tag run's `Copilot smoke (tier 2)` job is green and did not skip (a
+  skip shows the notice `Copilot smoke skipped`).
 
 ## Failure → cause map from v5.0.0 (fastest diagnosis path)
 
@@ -141,6 +148,9 @@ workflow path, so the provenance attestation is unaffected.
 | `npm error 404 … PUT` | token auth rejected (expired/revoked token era; now OIDC) |
 | `npm error code EOTP` | token subject to 2FA — use trusted publishing, not tokens |
 | `omg smoke copilot` fails `copilot.plugin_list`: plugin list returns `[]` | Bad `--plugin-dir` or manifest path; Copilot only warns on a bad dir. The manifest must be at `plugin.json`, `.github/plugin/plugin.json`, or `.claude-plugin/plugin.json` under the root |
+| `Copilot smoke skipped` notice; smoke job green in seconds | Secret `COPILOT_GITHUB_TOKEN` missing or not passed (fork PR, Dependabot). Add it under repo Settings > Secrets and variables > Actions: a fine-grained PAT with the "Copilot Requests" permission from a Copilot-entitled user (docs/DEVELOPERS.md "Tier 2 in CI"). Then re-run the job |
+| smoke `sdk.agents` / `sdk.runtime` fail with auth or "not available" errors in CI | Token expired, lacks "Copilot Requests", or its owner lost Copilot access. Regenerate it and update the secret |
+| `token-shaped string in the smoke artifacts` | The leak scan hit: the CLI or a hook wrote a token into the smoke home. Artifacts were deleted, nothing uploaded. Find the writer from the listed file names before re-running; rotate the token if it appeared in a log |
 | inventory-graph `sourceSha256 must match` | a commit landed after the last baseline regeneration |
 | `coordinator source digest mismatch` | docs/CLAUDE.md edited without rebuilding bridge in the same commit |
 | `reachable generated runtime module is missing` | new/deleted source without a full dist rebuild force-added |
