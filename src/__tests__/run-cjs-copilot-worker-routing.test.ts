@@ -16,6 +16,7 @@ const RUN_CJS_PATH = join(REPO_ROOT, 'scripts', 'run.cjs');
 const NODE = process.execPath;
 const runCjs = createRequire(__filename)(RUN_CJS_PATH) as {
   COPILOT_WORKER_HOOKS: Set<string>;
+  COPILOT_WORKER_MIN_TIMEOUT_MS: number;
   TRUSTED_WORKER_HOOKS: Map<string, unknown>;
   resolveCopilotWorkerTarget: (
     resolution: { targetPath: string; trustedPluginRoot: string },
@@ -23,6 +24,25 @@ const runCjs = createRequire(__filename)(RUN_CJS_PATH) as {
     env: Record<string, string>,
   ) => { event: string; timeoutMs: number } | null;
 };
+
+/**
+ * A tiny --require preload that reports, via fd 3, whether it ever loaded
+ * inside a Worker thread, without touching stdout/stderr. It is passed on
+ * the *outer* `node` invocation, so it always loads once in the main thread
+ * regardless of which path run.cjs takes; a Worker thread inherits execArgv
+ * (and so --require) from its creator, so it loads a second time inside the
+ * Worker only when run.cjs actually spawned one. Writing only on the
+ * non-main-thread load keeps the signal unambiguous: a 'worker' write means
+ * a Worker ran, and no write at all means the child path ran.
+ */
+function writeRuntimeMarker(dir: string): string {
+  const markerPath = join(dir, 'runtime-marker.cjs');
+  writeFileSync(markerPath, `
+const { isMainThread } = require('node:worker_threads');
+if (!isMainThread) { try { require('fs').writeSync(3, 'worker'); } catch {} }
+`);
+  return markerPath;
+}
 
 const PROBE = `
 import { isMainThread } from 'node:worker_threads';
@@ -71,10 +91,13 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
     writeFileSync(join(root, 'hooks', 'hooks.json'), JSON.stringify({
       hooks: {
         Stop: [{ hooks: [
-          { type: 'command', command: command('budget-guard.mjs'), timeout: 3 },
-          { type: 'command', command: command('not-audited.mjs'), timeout: 3 },
+          // Above COPILOT_WORKER_MIN_TIMEOUT_MS: these fixtures exercise the
+          // Worker path itself, not the <=3s child-path carve-out (covered
+          // against the real manifest below).
+          { type: 'command', command: command('budget-guard.mjs'), timeout: 5 },
+          { type: 'command', command: command('not-audited.mjs'), timeout: 5 },
         ] }],
-        SubagentStart: [{ hooks: [{ type: 'command', command: `${command('subagent-tracker.mjs')} start`, timeout: 3 }] }],
+        SubagentStart: [{ hooks: [{ type: 'command', command: `${command('subagent-tracker.mjs')} start`, timeout: 5 }] }],
       },
     }));
     return root;
@@ -163,35 +186,42 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
     expect([...runCjs.COPILOT_WORKER_HOOKS].sort()).toEqual([...generic].sort());
   });
 
-  it('every shipped generic entry resolves to the Worker path under its own event', () => {
+  it('every shipped generic entry resolves to the Worker path under its own event, except the <=3s-budget ones that stay on the child path', () => {
     const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'copilot', 'hooks.json'), 'utf8')) as {
-      hooks: Record<string, Array<{ args: string[]; env: Record<string, string> }>>;
+      hooks: Record<string, Array<{ args: string[]; env: Record<string, string>; timeoutSec: number }>>;
     };
     const root = realpathSync(REPO_ROOT);
-    let routed = 0;
+    let checked = 0;
     for (const entries of Object.values(manifest.hooks)) {
       for (const entry of entries) {
         const script = basename(entry.args[3]);
         if (!runCjs.COPILOT_WORKER_HOOKS.has(script)) continue;
         const resolution = { targetPath: realpathSync(join(root, 'scripts', script)), trustedPluginRoot: root };
         const hook = runCjs.resolveCopilotWorkerTarget(resolution, entry.args.slice(4), entry.env);
-        expect(hook, `${script} ${entry.env.OMC_HOOK_EVENT}`).toMatchObject({ event: entry.env.OMC_HOOK_EVENT });
+        const label = `${script} ${entry.env.OMC_HOOK_EVENT} (timeoutSec=${entry.timeoutSec})`;
+        if (entry.timeoutSec * 1000 <= runCjs.COPILOT_WORKER_MIN_TIMEOUT_MS) {
+          // A Worker cannot preempt a blocked sync call; a tight manifest
+          // budget stays on the supervised child path instead.
+          expect(hook, label).toBeNull();
+        } else {
+          expect(hook, label).toMatchObject({ event: entry.env.OMC_HOOK_EVENT });
+        }
         expect(runCjs.resolveCopilotWorkerTarget(resolution, entry.args.slice(4), {})).toBeNull();
-        routed++;
+        checked++;
       }
     }
-    expect(routed).toBe(runCjs.COPILOT_WORKER_HOOKS.size + 1); // subagent-tracker start + stop
+    expect(checked).toBe(runCjs.COPILOT_WORKER_HOOKS.size + 1); // subagent-tracker start + stop
   });
 
   // Every generic shipped hook, once through each path with the same fixture
   // payload in fresh identical projects: exit code, normalised stdout, and the
   // set of files written must match.
-  it('every shipped generic hook gives identical output through the Worker and the child path', () => {
+  it('on an idle project, every hook\'s stdout/stderr and written files match the child path, and the worker run actually used the Worker path where expected', () => {
     const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'copilot', 'hooks.json'), 'utf8')) as {
-      hooks: Record<string, Array<{ args: string[]; env: Record<string, string> }>>;
+      hooks: Record<string, Array<{ args: string[]; env: Record<string, string>; timeoutSec: number }>>;
     };
     const sessionId = '11111111-2222-4333-8444-555555555555';
-    const runAll = (tag: string, extra: Record<string, string>) => {
+    const runAll = (tag: string, extra: Record<string, string>, markerPath: string) => {
       const base = tempDir(`omc-copilot-worker-equiv-${tag}-`);
       const project = join(base, 'p');
       const home = join(base, 'h');
@@ -203,7 +233,8 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
         .split(project).join('<P>').split(project.replace(/\\/g, '\\\\')).join('<P>')
         .split(home).join('<H>').split(home.replace(/\\/g, '\\\\')).join('<H>')
         .replace(/\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z/g, '<TS>');
-      const results: Array<{ name: string; status: number | null; stdout: string }> = [];
+      const results: Array<{ name: string; status: number | null; stdout: string; stderr: string }> = [];
+      const runtimeByName: Record<string, { actualWorker: boolean; expectedWorker: boolean }> = {};
       for (const [event, entries] of Object.entries(manifest.hooks)) {
         for (const entry of entries) {
           const args = entry.args.map((arg) => arg.replaceAll('${CLAUDE_PLUGIN_ROOT}', REPO_ROOT)).slice(2);
@@ -216,7 +247,9 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
           if (/Subagent/.test(event)) Object.assign(payload, { agent_id: 'a1', agent_type: 'executor' });
           if (/Stop/.test(event)) payload.stop_hook_active = false;
           if (event === 'PreCompact') payload.trigger = 'auto';
-          const result = spawnSync(NODE, args, {
+          // fd 3 carries the --require marker's worker/child report so it
+          // never touches the stdout/stderr the hook itself produces.
+          const result = spawnSync(NODE, ['--require', markerPath, ...args], {
             cwd: project,
             env: hostEnv({
               HOME: home, USERPROFILE: home, COPILOT_HOME: home, CLAUDE_CONFIG_DIR: home, CLAUDE_PLUGIN_ROOT: REPO_ROOT,
@@ -224,10 +257,24 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
             }),
             input: JSON.stringify(payload),
             encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
             timeout: 30_000,
             windowsHide: true,
           });
-          results.push({ name: `${event} ${args.slice(1).map((arg) => basename(arg)).join(' ')}`, status: result.status, stdout: normalise(result.stdout || '') });
+          const name = `${event} ${args.slice(1).map((arg) => basename(arg)).join(' ')}`;
+          results.push({
+            name,
+            status: result.status,
+            stdout: normalise(result.stdout || ''),
+            stderr: normalise(result.stderr || ''),
+          });
+          const stayedOnChildPath = entry.timeoutSec * 1000 <= runCjs.COPILOT_WORKER_MIN_TIMEOUT_MS;
+          const expectedWorker = extra.OMC_COPILOT_HOOK_WORKER !== '0' && !stayedOnChildPath;
+          // `encoding: 'utf8'` above decodes every stdio slot in `output`,
+          // including fd 3, to a string rather than a Buffer.
+          const marker = result.output?.[3];
+          const actualWorker = typeof marker === 'string' && marker.trim() === 'worker';
+          runtimeByName[name] = { actualWorker, expectedWorker };
         }
       }
       const files: string[] = [];
@@ -241,13 +288,24 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
         }
       };
       walk(base);
-      return { results, files: files.sort() };
+      return { results, files: files.sort(), runtimeByName };
     };
 
-    const child = runAll('child', { OMC_COPILOT_HOOK_WORKER: '0' });
-    const worker = runAll('worker', {});
+    const markerPath = writeRuntimeMarker(tempDir('omc-copilot-worker-marker-'));
+    const child = runAll('child', { OMC_COPILOT_HOOK_WORKER: '0' }, markerPath);
+    const worker = runAll('worker', {}, markerPath);
     expect(worker.results.length).toBe(runCjs.COPILOT_WORKER_HOOKS.size + 1); // subagent-tracker start + stop
     expect(worker.results).toEqual(child.results);
     expect(worker.files).toEqual(child.files);
+    // Every child-path run actually ran in a plain child process (no Worker
+    // spawned at all), and every worker-path run actually used a Worker
+    // thread exactly where resolveCopilotWorkerTarget says it should (and
+    // correctly fell through to the child path for the <=3s budgets).
+    for (const [name, { actualWorker }] of Object.entries(child.runtimeByName)) {
+      expect(actualWorker, `child path, ${name}`).toBe(false);
+    }
+    for (const [name, { actualWorker, expectedWorker }] of Object.entries(worker.runtimeByName)) {
+      expect(actualWorker, `worker run, ${name}`).toBe(expectedWorker);
+    }
   }, 120_000);
 });

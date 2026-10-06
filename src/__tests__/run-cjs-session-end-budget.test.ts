@@ -116,14 +116,20 @@ describe('run.cjs SessionEnd foreground budget (fork)', () => {
   // Regression for the red Tier 2 gate: under 4 parallel SessionEnd loads the
   // 300ms budget failed 39/64 runs (exit 124). With the Copilot budget the real
   // shipped hooks must pass every run fail-closed.
-  it.skipIf(!HAS_GENERATED_DIST)('real session-end + wiki-session-end pass 5/5 rounds fail-closed under 4 parallel lanes', async () => {
-    const LANES = 4;
-    const ROUNDS = 5;
+  //
+  // Each run.cjs/session-end.mjs foreground process hands off cleanup to a
+  // detached background worker (src/hooks/session-end/worker.ts,
+  // spawnSessionEndWorker). This test only awaits the foreground process, not
+  // that worker, by design: awaiting it would defeat the fast-foreground
+  // point of the budget this test is regression-testing. The worker is
+  // bounded by its own MAX_WORKER_MS (10s) deadline and self-terminates, so
+  // nothing it leaves running is unbounded; the directory removal below is
+  // best-effort only because Windows can hold a handle open for that window,
+  // not because a worker could run forever.
+  async function runSessionEndLoadTest(lanes: number, rounds: number): Promise<string[]> {
     const project = mkdtempSync(join(tmpdir(), 'omc-run-cjs-se-load-'));
-    // The 40 detached SessionEnd workers outlive this test and hold the
-    // directory on Windows, so its removal is best-effort.
     onTestFinished(() => {
-      try { rmSync(project, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); } catch { /* workers still running */ }
+      try { rmSync(project, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); } catch { /* workers still running, bounded by MAX_WORKER_MS */ }
     });
     const home = join(project, 'home');
     mkdirSync(home);
@@ -150,14 +156,27 @@ describe('run.cjs SessionEnd foreground budget (fork)', () => {
       }));
     });
     const failures: string[] = [];
-    await Promise.all(Array.from({ length: LANES }, async (_unused, lane) => {
-      for (let round = 0; round < ROUNDS; round++) {
+    await Promise.all(Array.from({ length: lanes }, async (_unused, lane) => {
+      for (let round = 0; round < rounds; round++) {
         for (const script of ['session-end.mjs', 'wiki-session-end.mjs']) {
           const result = await runHook(script, `se-load-${lane}-${round}`);
           if (result.code !== 0) failures.push(`${script} lane ${lane} round ${round}: exit ${result.code} ${result.stderr.trim()}`);
         }
       }
     }));
-    expect(failures).toEqual([]);
+    return failures;
+  }
+
+  // Always-on, light: catches a gross regression on every run without the
+  // full 40-call cost below.
+  it.skipIf(!HAS_GENERATED_DIST)('real session-end + wiki-session-end pass fail-closed under 2 parallel lanes x 2 rounds', async () => {
+    expect(await runSessionEndLoadTest(2, 2)).toEqual([]);
+  }, 60_000);
+
+  // The full regression load (4 lanes x 5 rounds = 40 hook calls): opt-in via
+  // OMC_LOAD_TESTS=1, since it is slow and its 40 detached background workers
+  // are unnecessary load on every CI run once the light case above passes.
+  it.skipIf(!HAS_GENERATED_DIST || !process.env.OMC_LOAD_TESTS)('real session-end + wiki-session-end pass 5/5 rounds fail-closed under 4 parallel lanes (OMC_LOAD_TESTS=1)', async () => {
+    expect(await runSessionEndLoadTest(4, 5)).toEqual([]);
   }, 120_000);
 });

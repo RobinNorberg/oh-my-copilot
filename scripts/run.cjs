@@ -980,6 +980,19 @@ function gitGuardrailsPreCheck() {
 // inherit stdio. process.exit ends only the Worker and its code propagates.
 // Add a new upstream hook only after the same audit; the routing test pins
 // this set to the generic entries of copilot/hooks.json.
+//
+// A Worker cannot preempt a hook blocked inside a synchronous call: several
+// of these scripts (context-guard-stop.mjs, workflow-drift-guard.mjs,
+// code-simplifier.mjs, and the shared resolveToWorktreeRoot git probes) make
+// sync spawnSync git calls with their own ~2s timeouts, and `worker.terminate()`
+// only tears the Worker down once that sync call returns; it does not reap
+// any async grandchildren either. The supervised child path's `taskkill /T`
+// can still kill a blocked sync call and its children, so
+// resolveCopilotWorkerTarget below keeps any entry whose own manifest budget
+// is <= COPILOT_WORKER_MIN_TIMEOUT_MS on that child path instead of the
+// Worker, trading its ~90ms Worker saving for a host timeout that cannot be
+// overshot by a hung sync call. See docs/HOOKS.md "Worker routing".
+const COPILOT_WORKER_MIN_TIMEOUT_MS = 3000;
 const COPILOT_WORKER_HOOKS = new Set([
   'session-start.mjs',
   'project-memory-session.mjs',
@@ -1019,7 +1032,12 @@ function resolveCopilotWorkerTarget(resolution, extraArgs, env = process.env) {
     if (!isContainedBy(normalizedComparisonPath(trustedRoot), canonicalTarget)) return null;
     if (canonicalTarget !== normalizedComparisonPath(join(trustedRoot, 'scripts', scriptName))) return null;
     const manifestHook = resolveHookTimeoutMsFromRoot(trustedRoot, resolution.targetPath, extraArgs);
-    return manifestHook?.event === hookEvent ? manifestHook : null;
+    if (manifestHook?.event !== hookEvent) return null;
+    // See COPILOT_WORKER_MIN_TIMEOUT_MS above: a tight manifest budget stays
+    // on the supervised child path, where a blocked sync call cannot overshoot
+    // the host timeout.
+    if (manifestHook.timeoutMs <= COPILOT_WORKER_MIN_TIMEOUT_MS) return null;
+    return manifestHook;
   } catch {
     return null;
   }
@@ -1212,5 +1230,6 @@ module.exports = {
   resolveSessionEndBudgetMs,
   resolveCopilotWorkerTarget,
   COPILOT_WORKER_HOOKS,
+  COPILOT_WORKER_MIN_TIMEOUT_MS,
   TRUSTED_WORKER_HOOKS,
 };

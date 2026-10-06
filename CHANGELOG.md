@@ -48,7 +48,9 @@ All notable changes to oh-my-copilot will be documented in this file.
   load Copilot recorded failed SessionEnd hooks (exit 124 with
   `OMC_HOOK_FAIL_CLOSED=1`) and dropped the cleanup. Copilot waits up to 30 s
   for SessionEnd, so the budget is now 1500 ms when `OMC_HOOK_EVENT=SessionEnd`.
-  Claude Code keeps 300 ms. `OMC_SESSION_END_BUDGET_MS` overrides both. With 4
+  1500 ms is a chosen value (about 5x the idle foreground cost), not one
+  derived from a load model. Claude Code keeps 300 ms.
+  `OMC_SESSION_END_BUDGET_MS` overrides both. With 4
   parallel lanes of 8 SessionEnd pairs, 0/64 runs fail (before: 56-63/64).
   `session-end.mjs` also loads the factory chain enqueuer only when a chain
   ledger or `OMC_CHAIN_LINK` exists, which cuts its idle median from 300 ms
@@ -56,11 +58,23 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **Copilot runs generic hooks in a Worker:** under Copilot (`OMC_HOOK_EVENT`
   set), `scripts/run.cjs` runs the 18 audited generic hook scripts in a Worker
   thread instead of the Windows `--generic-child-supervisor` chain of three
-  Node processes. Timeout, `OMC_SESSION_OWNER_PID`, extra arguments, stdin,
-  exit code and fail-closed 124 are unchanged, and every hook's output matches
-  the child path. Each hook is about 90 ms faster on Windows: Stop 1331 to
-  893 ms, SessionStart 1919 to 1471 ms (local bench). Claude Code keeps the
-  child path. `OMC_COPILOT_HOOK_WORKER=0` turns the routing off.
+  Node processes (two on Linux/macOS, which have no supervisor hop). Timeout,
+  `OMC_SESSION_OWNER_PID`, extra arguments, stdin, exit code and fail-closed
+  124 are unchanged, and on an idle project, every hook's stdout/stderr and
+  written files match the child path. A
+  Worker-routed hook is about 90 ms faster on Windows and about 50 ms faster
+  on Linux/macOS. A Worker cannot preempt a hook blocked in a synchronous
+  call, so entries whose own manifest timeout is 3 s or tighter
+  (`post-tool-directory-context-injector.mjs`, `post-tool-use-failure.mjs`,
+  `subagent-tracker.mjs start`, `wiki-pre-compact.mjs`,
+  `workflow-drift-guard.mjs`) stay on the supervised child path instead,
+  where `taskkill /T` can still reap a blocked sync `git` call; several of
+  the audited scripts make such calls with their own ~2 s timeouts. Local
+  bench, sum of medians: Stop 1331 to 976 ms, SessionStart 1919 to 1482 ms,
+  PreCompact 994 to 805 ms; PostToolUse and PostToolUseFailure keep their
+  child-path cost (789 ms, 188 ms) because their only audited entries have a
+  3 s budget. Claude Code keeps the child path.
+  `OMC_COPILOT_HOOK_WORKER=0` turns the routing off.
 
 # oh-my-copilot v5.7.0
 

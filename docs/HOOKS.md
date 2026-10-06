@@ -109,18 +109,21 @@ Copilot runs the hooks for one event sequentially, one `node` process each. A Po
 - Its script is in the `COPILOT_WORKER_HOOKS` list in `scripts/run.cjs`.
 - Its path is exactly `<trusted plugin root>/scripts/<name>`.
 - Its `hooks/hooks.json` entry, with the same extra arguments, belongs to the `OMC_HOOK_EVENT` event.
+- Its own manifest timeout is above `COPILOT_WORKER_MIN_TIMEOUT_MS` (3000 ms). A Worker cannot interrupt a hook blocked in a synchronous call: `worker.terminate()` only tears the Worker down once that call returns, and it does not reap any async grandchildren either. Several audited scripts (`context-guard-stop.mjs`, `workflow-drift-guard.mjs`, `code-simplifier.mjs`, and the shared `resolveToWorktreeRoot` git probes) make sync `spawnSync` git calls with their own ~2 s timeouts. The supervised child path's `taskkill /T` can still kill a blocked sync call and its children, so entries with a 3 s or tighter budget (`post-tool-directory-context-injector.mjs`, `post-tool-use-failure.mjs`, `subagent-tracker.mjs start`, `wiki-pre-compact.mjs`, `workflow-drift-guard.mjs`) stay on that child path instead of the Worker, even though they are in `COPILOT_WORKER_HOOKS`.
 
-Everything else keeps the child path. The Worker gets the same timeout, `OMC_SESSION_OWNER_PID`, extra arguments (`subagent-tracker.mjs start`), stdin, exit code and fail-closed 124 as the child path. Stdout is forwarded before stderr. Each hook saves about 90 ms on Windows:
+Everything else keeps the child path. The Worker gets the same timeout, `OMC_SESSION_OWNER_PID`, extra arguments (`subagent-tracker.mjs start`), stdin, exit code and fail-closed 124 as the child path. Stdout is forwarded before stderr. Each hook that still routes to a Worker saves about 90 ms on Windows; the five ≤3 s entries above trade that saving for a host timeout a hung sync call cannot overshoot:
 
 | Event (local bench, sum of medians) | Child path | Worker |
 |---|---|---|
-| SessionStart | 1919 ms | 1471 ms |
-| Stop | 1331 ms | 893 ms |
-| PreCompact | 994 ms | 718 ms |
-| PostToolUse | 789 ms | 699 ms |
-| PermissionRequest | 189 ms | 94 ms |
+| SessionStart | 1919 ms | 1482 ms |
+| Stop | 1331 ms | 976 ms |
+| PreCompact | 994 ms | 805 ms |
+| PostToolUse | 789 ms | 789 ms |
+| PermissionRequest | 189 ms | 93 ms |
 
-`OMC_COPILOT_HOOK_WORKER=0` turns the routing off. Before a new upstream hook joins the list, check that it does not call `process.chdir`, install signal handlers, branch on `isMainThread`, or start children that inherit stdio. `src/__tests__/run-cjs-copilot-worker-routing.test.ts` fails when the generic entries of `copilot/hooks.json` and the list differ. It also runs every listed hook through both paths and compares the output.
+PostToolUse shows no saving: its one audited generic entry (`post-tool-directory-context-injector.mjs`) has a 3 s budget, so it now stays on the child path. `PostToolUseFailure` (`post-tool-use-failure.mjs`, 3 s) is the same: 188 ms either way.
+
+`OMC_COPILOT_HOOK_WORKER=0` turns the routing off. Before a new upstream hook joins the list, check that it does not call `process.chdir`, install signal handlers, branch on `isMainThread`, or start children that inherit stdio. `src/__tests__/run-cjs-copilot-worker-routing.test.ts` fails when the generic entries of `copilot/hooks.json` and the list differ. It also runs every listed hook through both paths and compares stdout, stderr and the files each one wrote, and asserts the Worker-routed entries actually ran in a Worker.
 
 ## Hook Categories
 
