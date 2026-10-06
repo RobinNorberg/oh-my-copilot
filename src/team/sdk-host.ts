@@ -26,7 +26,7 @@ import { dirname, join } from 'node:path';
 import { atomicWriteJson } from '../lib/atomic-write.js';
 import type { CopilotEvent } from '../smoke/copilot-session-eval.js';
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
-import { buildSessionEnv, loginIdentity } from '../smoke/copilot-smoke.js';
+import { buildSessionEnv, loginIdentity } from '../smoke/copilot-session-env.js';
 import {
   runtimePid,
   type LoadedSdk,

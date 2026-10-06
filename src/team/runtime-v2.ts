@@ -204,7 +204,7 @@ import {
 } from './sdk-transport.js';
 import { toCopilotModelId } from './model-contract.js';
 import { resolveShimTarget } from '../smoke/copilot-sdk-driver.js';
-import { resolveDefaultPluginRoot } from '../smoke/copilot-smoke.js';
+import { resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { isProcessIdentityLive } from '../platform/process-utils.js';
 import {
