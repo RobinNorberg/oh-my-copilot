@@ -46,6 +46,31 @@ describe('detectStalledLinks', () => {
     expect(stalls[0].stalledForMs).toBeGreaterThanOrEqual(DEFAULT_STALL_THRESHOLD_MS);
   });
 
+  it('treats a Copilot first link like a Claude one: stalled while open, advanced once enqueued by its link id', () => {
+    const dir = tempDir();
+    const factoryDir = join(dir, '.omg', 'state', 'factory');
+    const link = randomUUID();
+    const ageMs = DEFAULT_STALL_THRESHOLD_MS + 60_000;
+    writeLedger(factoryDir, link, { intentId: 'acme-widget-12', stage: 'intent', chainLink: link, host: 'copilot' }, ageMs);
+    expect(detectStalledLinks(factoryDir, { now: NOW })).toEqual([expect.objectContaining({ session: link, stage: 'intent' })]);
+
+    // The enqueuer records Copilot links by chain-link id (never the host session id).
+    writeFileSync(join(factoryDir, 'chain-decisions.jsonl'), `${JSON.stringify({ decision: 'enqueued', sessionId: link, hostSessionId: randomUUID() })}\n`, 'utf8');
+    expect(detectStalledLinks(factoryDir, { now: NOW })).toEqual([]);
+  });
+
+  it('does not report a closed ledger, whatever decision closed it', () => {
+    const dir = tempDir();
+    const factoryDir = join(dir, '.omg', 'state', 'factory');
+    writeLedger(factoryDir, randomUUID(), {
+      intentId: 'acme-widget-12',
+      stage: 'intent',
+      closedAt: '2026-09-28T11:00:00.000Z',
+      decision: 'chain-terminal',
+    }, DEFAULT_STALL_THRESHOLD_MS + 60_000);
+    expect(detectStalledLinks(factoryDir, { now: NOW })).toEqual([]);
+  });
+
   it('does not report ledgers that carry a routeTable', () => {
     const dir = tempDir();
     const factoryDir = join(dir, '.omg', 'state', 'factory');

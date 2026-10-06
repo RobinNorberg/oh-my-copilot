@@ -334,7 +334,7 @@ describe('listener server', () => {
       expect(spawned[0].args).toContain('--permission-mode');
       expect(spawned[0].args).toContain('--allowedTools');
       expect(spawned[0].args.join(' ')).toContain('Bash(gh issue comment:*)');
-      expect(spawned[0].ctx).toEqual({ cwd: cfg.cwd });
+      expect(spawned[0].ctx).toEqual({ cwd: cfg.cwd, chainLink: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/) });
     } finally {
       stopListener(server, cfg.cwd);
     }

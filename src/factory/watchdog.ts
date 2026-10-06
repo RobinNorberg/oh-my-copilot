@@ -78,7 +78,7 @@ export function detectStalledLinks(factoryDir: string, opts: DetectStalledOption
     const match = LEDGER_FILE_PATTERN.exec(entry.name);
     if (!match) continue;
     const session = match[1];
-    let ledger: { intentId?: unknown; stage?: unknown; routeTable?: unknown; tracker?: SpawnNextTracker };
+    let ledger: { intentId?: unknown; stage?: unknown; routeTable?: unknown; tracker?: SpawnNextTracker; closedAt?: unknown };
     try {
       const parsed: unknown = JSON.parse(fs.readFileSync(join(factoryDir, entry.name), 'utf8'));
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
@@ -87,6 +87,9 @@ export function detectStalledLinks(factoryDir: string, opts: DetectStalledOption
       continue;
     }
     if (ledger.routeTable) continue;
+    // A closed ledger was consumed by its link's SessionEnd (any decision,
+    // terminal or not); `advanced` keys by the chain-link id on both hosts.
+    if (ledger.closedAt) continue;
     if (advanced.has(session)) continue;
     let stalledForMs: number;
     try {

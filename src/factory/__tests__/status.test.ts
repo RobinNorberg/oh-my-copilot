@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { readChainStatus } from '../status.js';
 import { factoryStateDir } from '../../hooks/session-end/chain-enqueuer.js';
+import { renderChainStatus } from '../../cli/commands/factory.js';
 
 const tempRoots: string[] = [];
 
@@ -80,6 +81,51 @@ describe('readChainStatus', () => {
 
     expect(status.stalled).toHaveLength(1);
     expect(status.stalled[0]).toMatchObject({ intentId: 'intent-stalled', stage: 'launch', session });
+  });
+
+  it('shows a multi-link Copilot chain in spawn order with each link closeout', () => {
+    const dir = tempDir();
+    const factoryDir = factoryStateDir(dir);
+    mkdirSync(factoryDir, { recursive: true });
+    const link1 = '11111111-1111-4111-8111-111111111111';
+    const link2 = '22222222-2222-4222-8222-222222222222';
+    writeDecisions(dir, [
+      { decision: 'enqueued', intentId: 'intent-c', sessionId: link1, hostSessionId: 'host-1', at: '2026-10-06T01:00:00.000Z' },
+      { decision: 'chain-loop-capped', intentId: 'intent-c', sessionId: link2, hostSessionId: 'host-2', at: '2026-10-06T01:02:00.000Z' },
+    ]);
+    // Written out of order: status sorts by createdAt.
+    writeFileSync(join(factoryDir, `chain-${link2}.json`), JSON.stringify({
+      intentId: 'intent-c', stage: 'link-2', chainLink: link2, host: 'copilot', parentLink: link1, createdAt: '2026-10-06T01:00:30.000Z',
+      closedAt: '2026-10-06T01:02:00.000Z', hostSessionId: 'host-2', outcome: 'success', decision: 'chain-loop-capped', routeTable: {},
+    }), 'utf8');
+    writeFileSync(join(factoryDir, `chain-${link1}.json`), JSON.stringify({
+      intentId: 'intent-c', stage: 'link-1', chainLink: link1, host: 'copilot', createdAt: '2026-10-06T00:59:00.000Z',
+      closedAt: '2026-10-06T01:00:00.000Z', hostSessionId: 'host-1', outcome: 'success', decision: 'enqueued',
+    }), 'utf8');
+
+    const status = readChainStatus(dir);
+
+    expect(status.activeLedgers).toBe(0);
+    expect(status.stalled).toEqual([]);
+    expect(status.intents).toHaveLength(1);
+    expect(status.intents[0].links).toEqual([
+      expect.objectContaining({ chainLink: link1, stage: 'link-1', host: 'copilot', hostSessionId: 'host-1', decision: 'enqueued' }),
+      expect.objectContaining({ chainLink: link2, stage: 'link-2', parentLink: link1, hostSessionId: 'host-2', decision: 'chain-loop-capped' }),
+    ]);
+    const text = renderChainStatus(status);
+    expect(text).toContain(`环 1 link-1 [copilot] link=${link1} 已结束 success→enqueued session=host-1`);
+    expect(text).toContain(`环 2 link-2 [copilot] link=${link2} 已结束 success→chain-loop-capped session=host-2`);
+  });
+
+  it('counts only open ledgers as active and shows them running', () => {
+    const dir = tempDir();
+    const factoryDir = factoryStateDir(dir);
+    mkdirSync(factoryDir, { recursive: true });
+    const open = '33333333-3333-4333-8333-333333333333';
+    writeFileSync(join(factoryDir, `chain-${open}.json`), JSON.stringify({ intentId: 'intent-d', stage: 'spec', host: 'copilot' }), 'utf8');
+    const status = readChainStatus(dir);
+    expect(status.activeLedgers).toBe(1);
+    expect(renderChainStatus(status)).toContain(`环 1 spec [copilot] link=${open} 运行中`);
   });
 
   it('lists the project route table keys as the single authority', () => {
