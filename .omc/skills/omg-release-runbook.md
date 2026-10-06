@@ -98,7 +98,12 @@ run plus a retag cycle. Work through pre-flight completely BEFORE tagging.
 ## Ship sequence
 
 1. Push the working branch → PR → `dev` → `gh pr merge --admin` (rulesets
-   require PRs; direct pushes to dev/main are rejected).
+   require PRs; direct pushes to dev/main are rejected). **Merge only when
+   every check except the two artifact gates is SUCCESS/SKIPPED** — poll with
+   `gh pr checks N --json name,state` and assert, don't watch `Test` alone
+   (the AST-grep path gate was merged past twice on 2026-10-06). **Never
+   force-push** (Robin's rule): if `dev` moved, `git merge origin/dev`,
+   regenerate the inventory as a new commit, plain push.
    The `No Committed Build Artifacts` and `generated-artifact-authorization`
    checks go RED by design on dist/bridge deltas — they are advisory
    owner-confirmation gates (the authorization trust root still points at
