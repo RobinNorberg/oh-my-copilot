@@ -123,3 +123,26 @@ These were verified against Copilot CLI 1.0.91.
 - **An isolated `COPILOT_HOME` needs a token.** A fresh home has no stored login, so pass a token through the environment for any model call.
 - **Trusted folders are camelCase.** Write `trustedFolders` in `$COPILOT_HOME/config.json` so `-p` runs in the temp project without a trust prompt.
 - **No `installed_plugins.json`.** Installed plugins live under `~/.copilot/installed-plugins/`.
+
+## Copilot hooks: per-event dispatcher
+
+Copilot starts one `node` process per entry of `copilot/hooks.json`. The generator (`scripts/copilot/build-hooks.mjs`) therefore emits one entry per `(event, matcher)` group of `hooks/hooks.json`, and that entry runs `scripts/copilot/dispatch.cjs`:
+
+```text
+node --require <root>/scripts/lib/copilot-hook-adapter.cjs <root>/scripts/copilot/dispatch.cjs \
+     <Event> <script> [args]... [-- <script> [args]...]...
+```
+
+The dispatcher reads stdin once and runs the group's hooks in order through `runResolvedHook()` in `scripts/run.cjs`. That is the same routing as a direct `run.cjs <script>` call, with the same manifest timeout per hook: a Worker for the audited hooks, and the supervised child for entries with a budget of 3 s or less. It applies the adapter's `transform()` to each hook's own stdout and exit code, then merges:
+
+- **Context.** `additionalContext` and `systemMessage` are joined with `\n` in hook order, at top level and inside `hookSpecificOutput`.
+- **PreToolUse.** Any `deny` wins, with the first deny reason.
+- **Stop and SubagentStop.** The first `decision: "block"` wins with its reason, and later hooks still run. `continue: false` from any hook still beats a block, as in the adapter.
+- **Everything else.** `continue: false` wins with its `stopReason`. `suppressOutput: true` survives only when every output sets it. Any other key keeps the first hook's value. Non-JSON stdout next to JSON output is dropped with an `[omg-hook]` stderr line. A group with one non-empty output passes it through byte for byte.
+- **Exit code.** Under `OMC_HOOK_FAIL_CLOSED=1` it is `124` if any hook timed out, else the highest per-hook code. Otherwise `transform()` has already mapped every failure to `0` with one `[omg-hook]` line per hook, except PermissionRequest exit `2`, which is kept.
+
+`hooks/hooks.json` is untouched, and Claude Code never runs the dispatcher.
+
+**Kill switch.** `OMC_COPILOT_HOOK_DISPATCH=0` makes the dispatcher run each hook as its own `node --require <adapter> run.cjs <script>` process, one after another, which is the pre-dispatcher path, and merge their outputs with the same rules. Set it in the environment Copilot runs in to compare both paths live without regenerating `copilot/hooks.json`. `OMC_DEBUG_HOOKS=1` prints one `[omg-hook] <Event> dispatch: <script> <ms>ms exit <code>` stderr line per hook.
+
+**Tests.** `src/__tests__/copilot-hook-dispatch.test.ts` pins the argv round trip, the merge rules per event, the exit-code precedence, the kill switch, and stdout parity with the per-hook path for the real Stop and SessionStart hooks. Latency numbers are in [HOOKS.md](./HOOKS.md#per-event-dispatcher).
