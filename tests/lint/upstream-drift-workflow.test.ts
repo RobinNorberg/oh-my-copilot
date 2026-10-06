@@ -100,12 +100,19 @@ describe("upstream drift workflow", () => {
     expect(issue.run).toContain('gh issue create --title "$title" --body-file "$RUNNER_TEMP/body.md" --label "$LABEL"');
   });
 
-  it("never force-pushes and refuses to reuse an existing branch", () => {
+  it("never force-pushes; an existing branch is reused for the PR without a push", () => {
     const pushes = job.split("\n").filter((l) => /git push/.test(l)).map((l) => l.trim());
     expect(pushes).toEqual(['git push -u origin "$BRANCH"']);
     expect(wf).not.toMatch(/--force|push -f|\+refs\/|--force-with-lease/);
     const pr = step("Open the draft port PR");
-    expect(pr.run).toMatch(/if git ls-remote --exit-code --heads origin "\$BRANCH" > \/dev\/null; then\n[^\n]*\n\s*exit 1\n\s*fi\n\s*git push/);
+    expect(pr.run).toMatch(/if git ls-remote --exit-code --heads origin "\$BRANCH" > \/dev\/null; then\n(?:\s*#[^\n]*\n)?\s*echo [^\n]*\n\s*else\n\s*git push -u origin "\$BRANCH"\n\s*fi\n\s*url=\$\(gh pr create/);
+  });
+
+  it("does not let a closed PR block a head, and keeps PRs someone pushed to", () => {
+    expect(step("Find bot items for this upstream head").run).toContain('select(.state != "CLOSED" and (.body | contains($m)))');
+    const close = step("Close superseded bot items");
+    expect(close.run).toContain(`if [ "$(gh pr view "$n" --json commits --jq '.commits | length')" != "1" ]; then`);
+    expect(close.run).toContain('if [ "$DRIFT" != "true" ]; then marker="${HEAD_MARKER_PREFIX}none -->"; fi');
   });
 
   it("dedupes by the head marker the script writes, and closes only older bot items after success", () => {

@@ -14,7 +14,11 @@
 # so CI does not run on a bot PR. The optional repo secret
 # UPSTREAM_DRIFT_TOKEN (fine-grained PAT on this repo: Contents, Pull requests,
 # Issues read/write) is used when set so CI runs; without it the bot falls back
-# to GITHUB_TOKEN and prints the caveat. Upstream workflow files are never
+# to GITHUB_TOKEN and prints the caveat; that path also needs the repo setting
+# "Allow GitHub Actions to create and approve pull requests". GitHub runs
+# `schedule` only from the default branch (main), so the daily run starts once
+# this file reaches main; until then use workflow_dispatch on dev.
+# Upstream workflow files are never
 # applied (a GITHUB_TOKEN push cannot change them); the report lists them.
 name: Upstream Drift
 
@@ -95,9 +99,9 @@ jobs:
           HEAD_SHA: ${{ steps.check.outputs.head }}
         run: |
           marker="${HEAD_MARKER_PREFIX}${HEAD_SHA} -->"
-          gh pr list --label "$LABEL" --state all --limit 100 --json number,body > "$RUNNER_TEMP/prs.json"
+          gh pr list --label "$LABEL" --state all --limit 100 --json number,state,body > "$RUNNER_TEMP/prs.json"
           gh issue list --label "$LABEL" --state all --limit 100 --json number,state,body > "$RUNNER_TEMP/issues.json"
-          pr=$(jq -r --arg m "$marker" '[.[] | select(.body | contains($m))][0].number // empty' "$RUNNER_TEMP/prs.json")
+          pr=$(jq -r --arg m "$marker" '[.[] | select(.state != "CLOSED" and (.body | contains($m)))][0].number // empty' "$RUNNER_TEMP/prs.json")
           open_issue=$(jq -r --arg m "$marker" '[.[] | select(.state == "OPEN" and (.body | contains($m)))][0].number // empty' "$RUNNER_TEMP/issues.json")
           closed_issue=$(jq -r --arg m "$marker" '[.[] | select(.state == "CLOSED" and (.body | contains($m)))][0].number // empty' "$RUNNER_TEMP/issues.json")
           skip=false
@@ -152,10 +156,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -q -m "$title" -m "Applied by scripts/port/upstream-drift.mjs (upstream $HEAD_SHA). Still to do by hand: package.json delta, generators, build, inventory, tests."
           if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
-            echo "::error title=Upstream drift::branch $BRANCH already exists on origin without a bot PR; not pushing (never force-push). Open the PR by hand or delete the branch."
-            exit 1
+            # An earlier run pushed but could not open the PR: reuse its branch, never force-push.
+            echo "::notice title=Upstream drift::branch $BRANCH already exists on origin; opening the PR from it without pushing."
+          else
+            git push -u origin "$BRANCH"
           fi
-          git push -u origin "$BRANCH"
           url=$(gh pr create --draft --base dev --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md" --label "$LABEL")
           echo "Opened $url"
           if [ -n "$ISSUE" ]; then
@@ -178,12 +183,21 @@ jobs:
       - name: Close superseded bot items
         if: steps.check.outcome == 'success'
         env:
+          DRIFT: ${{ steps.check.outputs.drift }}
           HEAD_SHA: ${{ steps.check.outputs.head }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          # With drift, keep the item for the current head; without drift, dev
+          # already has upstream's head, so every open bot item is done.
           marker="${HEAD_MARKER_PREFIX}${HEAD_SHA} -->"
+          if [ "$DRIFT" != "true" ]; then marker="${HEAD_MARKER_PREFIX}none -->"; fi
           stale='[.[] | select((.body | contains($p)) and ((.body | contains($m)) | not)) | .number] | .[]'
           for n in $(gh pr list --label "$LABEL" --state open --limit 100 --json number,body | jq -r --arg p "$HEAD_MARKER_PREFIX" --arg m "$marker" "$stale"); do
+            # The bot pushes exactly one commit; more means someone is working on it.
+            if [ "$(gh pr view "$n" --json commits --jq '.commits | length')" != "1" ]; then
+              echo "::notice title=Upstream drift::PR #$n has commits beyond the bot's; leaving it open."
+              continue
+            fi
             gh pr close "$n" --comment "Superseded: upstream dev is now at $HEAD_SHA ($RUN_URL)."
           done
           for n in $(gh issue list --label "$LABEL" --state open --limit 100 --json number,body | jq -r --arg p "$HEAD_MARKER_PREFIX" --arg m "$marker" "$stale"); do

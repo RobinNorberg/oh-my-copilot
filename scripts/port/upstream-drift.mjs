@@ -15,9 +15,9 @@
  * (conflicts unmerged); it never commits.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const MARKER_PATH = '.github/upstream-port.json';
@@ -185,16 +185,21 @@ function addedLines(oldText, newText, scratch) {
   return added;
 }
 
+function isRegularFile(abs) {
+  try { return lstatSync(abs).isFile(); } catch { return false; }
+}
+
 /** Rename only the lines the port introduced, so fork-retained upstream text stays. */
 function renameTouched(git, cwd, paths, scratch) {
   const renamed = [];
   for (const path of paths) {
     if (under(path, RENAME_SKIP_PATHS)) continue;
     const abs = join(cwd, path);
-    if (!existsSync(abs)) continue;
+    if (!isRegularFile(abs)) continue; // symlinks, gitlinks
     const buf = readFileSync(abs);
     if (buf.includes(0)) continue; // binary
     const text = buf.toString('utf8');
+    if (!buf.equals(Buffer.from(text, 'utf8'))) continue; // not UTF-8: rewriting would re-encode it
     const old = git.blob('HEAD', path) ? String(git.run(['cat-file', 'blob', `HEAD:${path}`]).stdout) : '';
     const added = addedLines(old, text, scratch);
     if (added.size === 0) continue;
@@ -236,7 +241,8 @@ export function applyRange(cwd, opts) {
     const paths = applied.map((f) => f.path);
     const pathspec = paths.join(' ').length > 24000 ? [] : ['--', ...paths];
     const patch = paths.length
-      ? String(git.run(['diff', '--binary', '--no-renames', '--full-index', range.base, range.head, ...pathspec]).stdout)
+      ? String(git.run(['-c', 'diff.noprefix=false', '-c', 'diff.mnemonicPrefix=false', 'diff', '--binary', '--no-renames', '--full-index',
+        '--no-ext-diff', '--no-textconv', '--no-color', range.base, range.head, ...pathspec]).stdout)
       : '';
     const sections = splitPatch(patch);
     const keep = [];
@@ -271,6 +277,9 @@ export function applyRange(cwd, opts) {
       if (c.kind === 'UD') {
         setUnmerged(git, c.path, [[1, modeOf(git, range.base, c.path), git.blob(range.base, c.path)], [2, modeOf(git, 'HEAD', c.path), c.ours]]);
       } else if (c.kind === 'DU') {
+        // Like a merge: leave upstream's version in the worktree for the reviewer.
+        mkdirSync(dirname(join(cwd, c.path)), { recursive: true });
+        writeFileSync(join(cwd, c.path), git.run(['cat-file', 'blob', git.blob(range.head, c.path)], { encoding: 'buffer' }).stdout);
         setUnmerged(git, c.path, [[1, modeOf(git, range.base, c.path), git.blob(range.base, c.path)], [3, modeOf(git, range.head, c.path), git.blob(range.head, c.path)]]);
       } else {
         const theirs = git.blob(range.head, c.path);
@@ -325,7 +334,7 @@ export function buildReport(cwd, opts = {}) {
   for (const path of [...scanned].sort()) {
     if (!under(path, LEAK_DIRS)) continue;
     const abs = join(cwd, path);
-    if (!existsSync(abs)) continue;
+    if (!isRegularFile(abs)) continue;
     const buf = readFileSync(abs);
     if (buf.includes(0)) continue;
     const before = git.blob('HEAD', path) ? new Set(leakLines(String(git.run(['cat-file', 'blob', `HEAD:${path}`]).stdout))) : new Set();
@@ -353,6 +362,9 @@ const short = (sha) => sha.slice(0, 9);
 // GitHub caps issue/PR bodies at 65536 characters.
 const MAX_ROWS = 150;
 const MAX_BODY = 60000;
+
+/** Upstream text in a code span: `#123` would link fork issues and `@user` would ping people. */
+const codeSpan = (text) => `\`${text.replace(/`/g, "'")}\``;
 
 function capped(rows, render) {
   const shown = rows.slice(0, MAX_ROWS).map(render);
@@ -383,7 +395,7 @@ export function renderMarkdown(report) {
   if (!report.clean) {
     out.push('### Conflicts', '', capped(report.conflicts, (c) => `- \`${c.status}\` ${c.path}`), '');
   }
-  out.push('### Commits', '', capped(report.commits, (c) => `- ${short(c.sha)} ${c.subject}`), '');
+  out.push('### Commits', '', capped(report.commits, (c) => `- ${short(c.sha)} ${codeSpan(c.subject)}`), '');
   out.push('### Files', '', applied.length ? capped(applied, (f) => `- \`${f.status}\` ${f.path}`) : '- none', '');
   if (other.length) {
     out.push('### Not applied', '', capped(other, (f) => `- \`${f.status}\` ${f.path} (${f.action})`), '');
@@ -391,7 +403,7 @@ export function renderMarkdown(report) {
   out.push('### package.json delta', '');
   out.push(report.package_json_delta ? ['```diff', report.package_json_delta.slice(0, 10000), '```'].join('\n') : 'none');
   out.push('', '### Leak scan (`oh-my-claudecode` in src/ agents/ skills/ hooks/)', '');
-  out.push(report.leaks.length ? capped(report.leaks, (l) => `- ${l.path}:${l.line} \`${l.text.slice(0, 160).replace(/`/g, "'")}\``) : 'clean');
+  out.push(report.leaks.length ? capped(report.leaks, (l) => `- ${l.path}:${l.line} ${codeSpan(l.text.slice(0, 160))}`) : 'clean');
   const body = `${out.join('\n')}\n`;
   return body.length > MAX_BODY ? `${body.slice(0, MAX_BODY)}\n\n_(truncated; run \`--report\` locally for the full list)_\n` : body;
 }

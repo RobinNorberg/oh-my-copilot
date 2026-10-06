@@ -253,6 +253,7 @@ describe("upstream-drift --apply, conflicting range", () => {
 
   it("keeps the fork side of a file deleted upstream, writes markers, still renames and stages clean files", () => {
     expect(read(pair.fork, "src/old.ts")).toBe("export const old = 'fork-owned';\n");
+    expect(read(pair.fork, "src/dropped-by-fork.ts")).toBe("export const d = 2;\n");
     expect(read(pair.fork, "src/b.ts")).toMatch(/<<<<<<< [\s\S]*'fork'[\s\S]*=======[\s\S]*'upstream'[\s\S]*>>>>>>> /);
     expect(read(pair.fork, "src/both.ts")).toMatch(/<<<<<<< HEAD\nexport const both = 'fork';\n=======\nexport const both = 'oh-my-copilot';\n>>>>>>> /);
     expect(read(pair.fork, "src/ok.ts")).toBe("export const ok = 'oh-my-copilot';\n");
@@ -267,6 +268,8 @@ describe("upstream-drift --apply, conflicting range", () => {
     expect(mod.prTitle(report)).toBe(`port: upstream ${pair.base.slice(0, 9)}..${pair.head.slice(0, 9)} (bot)`);
     expect(report.titles).toEqual({ pr: mod.prTitle(report), issue: mod.issueTitle(report) });
     expect(mod.renderMarkdown(report)).toContain("### Conflicts\n\n- `UU` src/b.ts");
+    const linked = mod.renderMarkdown({ ...report, commits: [{ sha: "c".repeat(40), subject: "Merge pull request #4253 from @someone/`x`" }] });
+    expect(linked).toContain("- ccccccccc `Merge pull request #4253 from @someone/'x'`");
   });
 });
 
