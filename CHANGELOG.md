@@ -11,8 +11,10 @@ All notable changes to oh-my-copilot will be documented in this file.
   instead of one per hook. Each entry runs `scripts/copilot/dispatch.cjs`,
   which reads stdin once, runs the group's hooks in order with the same
   `run.cjs` routing and per-hook timeouts, and merges the adapted outputs:
-  context joined in hook order, any PreToolUse deny wins, the first Stop
-  block wins, PermissionRequest exit 2 is kept, and under
+  context joined in hook order, any PreToolUse deny wins, a Stop block from
+  any hook survives (reasons joined in hook order, and it beats another
+  hook's `continue: false`), a throwing hook fails alone, a timed-out hook
+  contributes no stdout, PermissionRequest exit 2 is kept, and under
   `OMC_HOOK_FAIL_CLOSED=1` a timeout (124) beats every other exit code.
   Locally on Windows, Stop drops from 1358 to 1011 ms and SessionStart from
   2403 to 2036 ms. `OMC_COPILOT_HOOK_DISPATCH=0` runs one process per hook

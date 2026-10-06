@@ -24,10 +24,13 @@
  *   - additionalContext and systemMessage: joined with "\n" in hook order
  *     (top level and hookSpecificOutput alike).
  *   - PreToolUse: any `deny` wins, and the first deny reason is kept.
- *   - decision:'block' (Stop/SubagentStop): the first block and its reason win;
- *     later hooks still run. continue:false + block still means "allow the
- *     stop" (adapter rule), now across hooks.
- *   - continue:false: the first one wins, with its stopReason.
+ *   - decision:'block' (Stop/SubagentStop): a block from any hook survives, and
+ *     every hook still runs. Several blocks join their reasons with "\n\n" in
+ *     hook order. A block beats another hook's continue:false: the merged
+ *     output drops continue:false and its stopReason, with an `[omg-hook]`
+ *     note. (The adapter's rule that continue:false + block in ONE hook's
+ *     output allows the stop applies per hook, before this merge.)
+ *   - continue:false without any block: the first one wins, with its stopReason.
  *   - suppressOutput:true only when every object output says so.
  *   - any other key: the first hook that set it wins.
  *   - non-JSON stdout next to JSON output is dropped with an `[omg-hook]` note,
@@ -41,7 +44,14 @@
  * Kill switch: OMC_COPILOT_HOOK_DISPATCH=0 runs each hook the old way, as its
  * own `node --require adapter run.cjs <script>` process, one after another,
  * and merges their already-adapted outputs with the same rules. No
- * regeneration is needed to compare the two paths live.
+ * regeneration is needed to compare the two paths live. Each process gets its
+ * manifest timeout + 2s, capped at what is left of the group's summed
+ * timeouts (the entry's timeoutSec); past that its process tree is killed.
+ *
+ * Isolation: a hook whose run throws or rejects counts as that hook's failure
+ * (an `[omg-hook]` line; exit 1 under OMC_HOOK_FAIL_CLOSED=1, else 0), and the
+ * other hooks' outputs are kept. A hook that times out contributes no stdout
+ * on either runner path, even JSON it printed before it hung.
  *
  * Claude Code never runs this file (hooks/hooks.json is untouched).
  */
@@ -130,6 +140,12 @@ function firstDeny(objects) {
   return null;
 }
 
+/** Every non-empty block reason in hook order, or the first block's reason when none is. */
+function joinBlockReasons(blocks) {
+  const reasons = blocks.map(object => object.reason).filter(nonEmptyString);
+  return reasons.length ? reasons.join('\n\n') : blocks[0].reason;
+}
+
 /**
  * Merge objects key by key in first-seen order (see the header for the rules).
  * `nested` is true for hookSpecificOutput, which carries no continue/block.
@@ -141,8 +157,12 @@ function mergeObjects(event, objects, nested) {
     for (const key of Object.keys(object)) if (!order.includes(key)) order.push(key);
   }
   const deny = event === 'PreToolUse' ? firstDeny(objects) : null;
-  const stop = nested ? null : objects.find(object => object.continue === false);
-  const block = nested ? null : objects.find(object => object.decision === 'block');
+  const blocks = nested ? [] : objects.filter(object => object.decision === 'block');
+  const block = blocks.length ? { reason: joinBlockReasons(blocks) } : null;
+  // A Stop/SubagentStop block wins over another hook's continue:false.
+  const blockWins = Boolean(block) && STOP_EVENTS.has(event);
+  const stop = nested || blockWins ? null : objects.find(object => object.continue === false);
+  const overridden = blockWins && objects.some(object => object.continue === false);
   for (const key of order) {
     const holders = objects.filter(object => Object.prototype.hasOwnProperty.call(object, key));
     const first = holders[0][key];
@@ -158,6 +178,11 @@ function mergeObjects(event, objects, nested) {
       merged[key] = false;
     } else if (key === 'stopReason' && stop) {
       merged[key] = stop.stopReason;
+    } else if (key === 'continue' && overridden) {
+      const kept = holders.find(object => object.continue !== false);
+      if (kept) merged[key] = kept.continue;
+    } else if (key === 'stopReason' && overridden) {
+      // Dropped with the overridden continue:false.
     } else if (key === 'decision' && block) {
       merged[key] = 'block';
     } else if (key === 'reason' && block) {
@@ -202,29 +227,36 @@ function mergeHookResults(event, results) {
   }
   if (objects.length === 1) return finish(objects[0].result.stdout);
 
-  let merged = mergeObjects(event, objects.map(entry => entry.value), false);
-  if (STOP_EVENTS.has(event) && merged.continue === false && merged.decision === 'block') {
-    const reason = nonEmptyString(merged.stopReason) ? merged.stopReason : (nonEmptyString(merged.reason) ? merged.reason : '');
-    notes.push(`[omg-hook] ${event}: continue:false overrides decision:block; allowing stop${reason ? `: ${reason}` : ''}`);
-    merged = {};
+  const values = objects.map(entry => entry.value);
+  if (STOP_EVENTS.has(event) && values.some(value => value.decision === 'block')) {
+    for (const { result, value } of objects) {
+      if (value.continue !== false) continue;
+      const reason = nonEmptyString(value.stopReason) ? `: ${value.stopReason}` : '';
+      notes.push(`[omg-hook] ${event}: decision:block overrides continue:false of ${path.basename(result.script || 'hook')}${reason}`);
+    }
   }
-  return finish(`${JSON.stringify(merged)}\n`);
+  return finish(`${JSON.stringify(mergeObjects(event, values, false))}\n`);
 }
 
 function failClosedEnabled(env = process.env) {
   return env.OMC_HOOK_FAIL_CLOSED === '1';
 }
 
-/** Collects every chunk written to it. */
+/** Collects every chunk written to it until discard() is called. */
 function createCollector() {
-  const chunks = [];
+  let chunks = [];
+  let discarded = false;
   const stream = new Writable({
     write(chunk, _encoding, callback) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      if (!discarded) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       callback();
     },
   });
   stream.text = () => Buffer.concat(chunks).toString('utf8');
+  stream.discard = () => {
+    discarded = true;
+    chunks = [];
+  };
   return stream;
 }
 
@@ -272,7 +304,7 @@ async function runHookInProcess(event, hook, input) {
   const stderr = createStderrTee();
   const resolution = runCjs.resolveTarget(hook.script);
   const status = resolution
-    ? await runCjs.runResolvedHook(resolution, hook.args, { input, stdout, stderr })
+    ? await runCjs.runResolvedHook(resolution, hook.args, { input, stdout, stderr, onTimeout: stdout.discard })
     : 0;
   let adapted;
   try {
@@ -295,16 +327,45 @@ async function runHookInProcess(event, hook, input) {
   return { script: hook.script, stdout: adapted.stdout, exitCode: adapted.exitCode, ms: Date.now() - started };
 }
 
-/** Kill-switch path: the old per-hook process, `node --require adapter run.cjs <script> [args]`. */
-function runHookAsProcess(event, hook, input) {
-  const started = Date.now();
-  const { resolveHookTimeoutMs, MAX_DECLARED_GENERIC_TIMEOUT_MS } = require(RUN_CJS);
-  let manifestTimeoutMs = MAX_DECLARED_GENERIC_TIMEOUT_MS;
+/** The hook's hooks/hooks.json timeout in ms, or null when the manifest has none. */
+function manifestTimeoutMsOf(hook) {
   try {
-    manifestTimeoutMs = resolveHookTimeoutMs(hook.script, hook.args)?.timeoutMs || manifestTimeoutMs;
+    return require(RUN_CJS).resolveHookTimeoutMs(hook.script, hook.args)?.timeoutMs || null;
   } catch {
-    // Unknown script: keep the generic maximum.
+    return null;
   }
+}
+
+/**
+ * The group's host budget in ms: build-hooks.mjs sets the entry's timeoutSec
+ * to the sum of its hooks' manifest timeouts. null when none declares one
+ * (the entry then has no timeoutSec).
+ */
+function groupBudgetMs(hooks) {
+  const known = hooks.map(manifestTimeoutMsOf).filter(ms => ms !== null);
+  return known.length ? known.reduce((sum, ms) => sum + ms, 0) : null;
+}
+
+/**
+ * Kill-switch outer timer: the manifest timeout plus a grace, capped at what
+ * is left of the group budget so it never outlasts the entry's timeoutSec.
+ */
+function legacyOuterTimeoutMs(manifestTimeoutMs, groupRemainingMs) {
+  const allowance = manifestTimeoutMs + LEGACY_OUTER_GRACE_MS;
+  return groupRemainingMs === null || groupRemainingMs === undefined
+    ? allowance
+    : Math.max(1, Math.min(allowance, groupRemainingMs));
+}
+
+/**
+ * Kill-switch path: the old per-hook process, `node --require adapter run.cjs <script> [args]`.
+ * `groupDeadline` (epoch ms or null) caps the outer timer; see legacyOuterTimeoutMs.
+ */
+function runHookAsProcess(event, hook, input, groupDeadline = null) {
+  const started = Date.now();
+  const { MAX_DECLARED_GENERIC_TIMEOUT_MS, reapTree, captureProcessStartIdentity } = require(RUN_CJS);
+  const manifestTimeoutMs = manifestTimeoutMsOf(hook) || MAX_DECLARED_GENERIC_TIMEOUT_MS;
+  const outerTimeoutMs = legacyOuterTimeoutMs(manifestTimeoutMs, groupDeadline === null ? null : groupDeadline - started);
   return new Promise(resolve => {
     const stdout = [];
     let settled = false;
@@ -317,11 +378,19 @@ function runHookAsProcess(event, hook, input) {
       clearTimeout(exitTimer);
       resolve({ script: hook.script, stdout: Buffer.concat(stdout).toString('utf8'), exitCode, ms: Date.now() - started });
     };
+    let childIdentity = null;
     const outerTimer = setTimeout(() => {
-      writeAllSync(2, `[omg-hook] ${event}: ${path.basename(hook.script)} exceeded ${manifestTimeoutMs}ms in the per-hook process; abandoning it\n`);
-      try { child.kill(); } catch { /* already gone */ }
+      writeAllSync(2, `[omg-hook] ${event}: ${path.basename(hook.script)} exceeded ${outerTimeoutMs}ms in the per-hook process; killing its process tree\n`);
+      // The same identity-safe tree kill run.cjs uses for its supervised child.
+      if (child) {
+        reapTree(child, childIdentity);
+        for (const stream of [child.stdin, child.stdout, child.stderr]) {
+          try { stream.destroy(); } catch { /* already closed */ }
+        }
+        try { child.unref(); } catch { /* handle already released */ }
+      }
       finish(failClosedEnabled() ? TIMEOUT_STATUS : 0);
-    }, manifestTimeoutMs + LEGACY_OUTER_GRACE_MS);
+    }, outerTimeoutMs);
     try {
       child = spawn(process.execPath, ['--require', ADAPTER, RUN_CJS, hook.script, ...hook.args], {
         env: {
@@ -332,7 +401,10 @@ function runHookAsProcess(event, hook, input) {
         },
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
+        // POSIX: its own process group, so the timeout can kill the whole tree.
+        detached: process.platform !== 'win32',
       });
+      childIdentity = child.pid ? captureProcessStartIdentity(child.pid) : null;
     } catch (error) {
       writeAllSync(2, `[omg-hook] ${event}: cannot start ${path.basename(hook.script)}: ${error.message}\n`);
       finish(0);
@@ -371,8 +443,20 @@ async function dispatch(event, hooks, input) {
   const legacy = process.env.OMC_COPILOT_HOOK_DISPATCH === '0';
   const debug = Boolean(process.env.OMC_DEBUG_HOOKS);
   const results = [];
+  const budgetMs = legacy ? groupBudgetMs(hooks) : null;
+  const groupDeadline = budgetMs === null ? null : Date.now() + budgetMs;
   for (const hook of hooks) {
-    const result = legacy ? await runHookAsProcess(event, hook, input) : await runHookInProcess(event, hook, input);
+    const started = Date.now();
+    let result;
+    try {
+      result = legacy ? await runHookAsProcess(event, hook, input, groupDeadline) : await runHookInProcess(event, hook, input);
+    } catch (error) {
+      // One hook's throw or rejection is that hook's failure; the others keep their output.
+      const failClosed = failClosedEnabled();
+      const message = error && error.message ? error.message : String(error);
+      writeAllSync(2, `[omg-hook] ${event}: ${path.basename(hook.script)} failed: ${message}; failing ${failClosed ? 'closed' : 'open'}\n`);
+      result = { script: hook.script, stdout: '', exitCode: failClosed ? 1 : 0, ms: Date.now() - started };
+    }
     if (debug) {
       writeAllSync(2, `[omg-hook] ${event} dispatch${legacy ? ' (per-hook processes)' : ''}: ${path.basename(hook.script)} ${result.ms}ms exit ${result.exitCode}\n`);
     }
@@ -412,5 +496,7 @@ module.exports = {
   encodeDispatchArgv,
   mergeExitCodes,
   mergeHookResults,
+  legacyOuterTimeoutMs,
+  groupBudgetMs,
   dispatch,
 };

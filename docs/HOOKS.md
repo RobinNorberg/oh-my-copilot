@@ -138,14 +138,16 @@ PostToolUse shows no saving: its one audited generic entry (`post-tool-directory
 |---|---|
 | `additionalContext`, `systemMessage` | Joined with `\n` in hook order, top level and in `hookSpecificOutput`. |
 | PreToolUse `permissionDecision` | Any `deny` wins, with the first deny reason. |
-| `decision: "block"` (Stop, SubagentStop) | The first block wins with its reason. Later hooks still run. `continue: false` from any hook still beats it and yields `{}`, as in the adapter. |
-| `continue: false` | Wins, with its `stopReason`. |
+| `decision: "block"` (Stop, SubagentStop) | A block from any hook survives, and every hook still runs. Several blocks join their reasons with a blank line (`\n\n`) in hook order. A block beats another hook's `continue: false`: the merged output drops `continue: false` and its `stopReason`, with an `[omg-hook]` stderr line. The adapter rule above (`continue: false` + block yields `{}`) applies only inside one hook's own output. |
+| `continue: false` | Without any block, the first one wins with its `stopReason`. |
+| a hook that throws or rejects | Counts as that hook's failure: an `[omg-hook]` stderr line, exit `1` under `OMC_HOOK_FAIL_CLOSED=1`, else `0`. The other hooks' outputs are kept. |
+| a hook that times out | Contributes no stdout on either runner path, even JSON it printed before it hung. |
 | `suppressOutput: true` | Kept only when every output sets it. |
 | any other key | The first hook's value. |
 | non-JSON stdout next to JSON | Dropped, with an `[omg-hook]` stderr line. |
 | exit code | `124` if any hook timed out under `OMC_HOOK_FAIL_CLOSED=1`, else the highest per-hook code. Without fail-closed only PermissionRequest exit `2` survives `transform()`. |
 
-A group with one non-empty output passes it through byte for byte. `OMC_COPILOT_HOOK_DISPATCH=0` runs each hook as its own `node --require <adapter> run.cjs <script>` process instead and merges the same way. These merge rules are our contract. How Copilot itself combined several entries' outputs was never observed.
+A group with one non-empty output passes it through byte for byte. `OMC_COPILOT_HOOK_DISPATCH=0` runs each hook as its own `node --require <adapter> run.cjs <script>` process instead and merges the same way. Each such process gets its manifest timeout plus 2 s, capped at what is left of the group's summed timeouts (the entry's `timeoutSec`), and past that its process tree is killed. These merge rules are our contract. How Copilot itself combined several entries' outputs was never observed.
 
 Interleaved local bench on Windows (old per-hook entries summed vs one dispatcher entry, median of 9, temp git repo, isolated home):
 

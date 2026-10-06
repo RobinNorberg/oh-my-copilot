@@ -874,6 +874,9 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook, options
       terminal = true;
       detachHandlers();
       reapOnce();
+      // Fork (dispatcher): stdout already streamed into a supplied sink is
+      // dropped, as runWorker drops a timed-out Worker's buffered output.
+      if (typeof options.onTimeout === 'function') options.onTimeout();
       void writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink).finally(() => {
         sink.abandonOutputs();
         detachProtocolStdio(child);
@@ -1173,8 +1176,10 @@ if (require.main === module) {
 /**
  * Route one resolved hook to its runner and resolve to its exit status.
  * Fork: shared by the CLI entry above and scripts/copilot/dispatch.cjs.
- * `io` ({ input, stdout, stderr }) is passed only by the dispatcher; the CLI
- * entry passes none and keeps process stdin/stdout/stderr.
+ * `io` ({ input, stdout, stderr, onTimeout }) is passed only by the dispatcher;
+ * the CLI entry passes none and keeps process stdin/stdout/stderr. The
+ * supervised child path calls `onTimeout()` when the hook times out, so the
+ * caller can drop stdout the child streamed before it hung.
  */
 function runResolvedHook(resolution, extraArgs, io = {}) {
   const workerManifestHook = resolveWorkerTarget(resolution, extraArgs);
@@ -1245,4 +1250,6 @@ module.exports = {
   TRUSTED_WORKER_HOOKS,
   resolveTarget,
   runResolvedHook,
+  captureProcessStartIdentity,
+  reapTree,
 };

@@ -27,6 +27,13 @@ const dispatcher = createRequire(import.meta.url)(DISPATCH) as {
   encodeDispatchArgv(event: string, hooks: Array<{ script: string; args?: string[] }>): string[];
   mergeExitCodes(codes: number[]): number;
   mergeHookResults(event: string, results: HookResult[]): Merged;
+  legacyOuterTimeoutMs(manifestTimeoutMs: number, groupRemainingMs: number | null): number;
+  groupBudgetMs(hooks: Array<{ script: string; args: string[] }>): number | null;
+  dispatch(event: string, hooks: Array<{ script: string; args: string[] }>, input: Buffer): Promise<Merged>;
+};
+type RunCjs = {
+  resolveTarget(script: string): { targetPath: string } | null;
+  runResolvedHook(resolution: { targetPath: string }, args: string[], io: { stdout: NodeJS.WritableStream }): Promise<number>;
 };
 
 const tempDirs: string[] = [];
@@ -170,23 +177,50 @@ describe('dispatch merge rules', () => {
     expect(allowed.permissionDecision).toBe('allow');
   });
 
-  it.each(['Stop', 'SubagentStop'])('%s: the first decision:block wins with its reason', (event) => {
-    const merged = dispatcher.mergeHookResults(event, [
-      hook('a.mjs', { continue: true, suppressOutput: true }),
-      hook('b.mjs', { decision: 'block', reason: 'keep going' }),
-      hook('c.mjs', { decision: 'block', reason: 'later reason' }),
-      hook('d.mjs', { continue: true }),
-    ]);
-    expect(JSON.parse(merged.stdout)).toEqual({ continue: true, decision: 'block', reason: 'keep going' });
-  });
-
-  it('Stop: continue:false from one hook and decision:block from another still allows the stop', () => {
-    const merged = dispatcher.mergeHookResults('Stop', [
-      hook('a.mjs', { decision: 'block', reason: 'keep going' }),
-      hook('b.mjs', { continue: false, stopReason: 'context full' }),
-    ]);
-    expect(merged.stdout).toBe('{}\n');
-    expect(merged.stderr).toContain('continue:false overrides decision:block; allowing stop: context full');
+  describe.each(['Stop', 'SubagentStop'])('%s block merge', (event) => {
+    it.each([
+      {
+        label: 'block + another hook\'s continue:false -> block with its reason',
+        outputs: [{ decision: 'block', reason: 'ralph' }, { continue: false, stopReason: 'context full' }],
+        expected: { decision: 'block', reason: 'ralph' },
+        note: 'decision:block overrides continue:false of h1.mjs: context full',
+      },
+      {
+        label: 'continue:false first, block later -> block still wins',
+        outputs: [{ continue: false, stopReason: 'context full' }, { continue: true }, { decision: 'block', reason: 'ralph' }],
+        expected: { continue: true, decision: 'block', reason: 'ralph' },
+        note: 'decision:block overrides continue:false of h0.mjs: context full',
+      },
+      {
+        label: 'block A + block B -> block with both reasons in hook order',
+        outputs: [
+          { continue: true, suppressOutput: true },
+          { decision: 'block', reason: 'first reason' },
+          { decision: 'block', reason: 'second reason' },
+          { continue: true },
+        ],
+        expected: { continue: true, decision: 'block', reason: 'first reason\n\nsecond reason' },
+        note: null,
+      },
+      {
+        label: 'block without a reason next to a block with one -> the non-empty reason',
+        outputs: [{ decision: 'block' }, { decision: 'block', reason: 'only reason' }],
+        expected: { decision: 'block', reason: 'only reason' },
+        note: null,
+      },
+      {
+        label: 'continue:false alone -> unchanged, first stopReason',
+        outputs: [{ continue: true }, { continue: false, stopReason: 'halt' }, { continue: false, stopReason: 'later' }],
+        expected: { continue: false, stopReason: 'halt' },
+        note: null,
+      },
+    ])('$label', ({ outputs, expected, note }) => {
+      const merged = dispatcher.mergeHookResults(event, outputs.map((value, index) => hook(`h${index}.mjs`, value)));
+      expect(JSON.parse(merged.stdout)).toEqual(expected);
+      expect(merged.exitCode).toBe(0);
+      if (note) expect(merged.stderr).toContain(`[omg-hook] ${event}: ${note}`);
+      else expect(merged.stderr).toBe('');
+    });
   });
 
   it('continue:false wins with its own stopReason on other events', () => {
@@ -284,7 +318,8 @@ describe('dispatch.cjs end to end (probe plugin)', () => {
       },
     });
     expect(result.status, result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual({ continue: true, decision: 'block', reason: 'from stderr' });
+    // Both blocks survive, reasons in hook order.
+    expect(JSON.parse(result.stdout)).toEqual({ continue: true, decision: 'block', reason: 'from stderr\n\nsecond block' });
     expect(result.traces.map(t => t.name)).toEqual(STOP_SCRIPTS.map(([script]) => script));
     expect(result.traces.every(t => t.marker === 'stdin-ok' && t.event === 'Stop')).toBe(true);
     // Worker hooks share the dispatcher process; the <=3s hook ran as a supervised child.
@@ -341,6 +376,20 @@ describe('dispatch.cjs end to end (probe plugin)', () => {
     expect(open.stderr).toContain('exiting fail-open');
   }, 60_000);
 
+  it('drops JSON a supervised-child hook printed before it hung past its timeout (Worker parity)', () => {
+    const root = probePlugin();
+    const result = runDispatch(root, 'Stop', STOP_SCRIPTS, {
+      hooks: {
+        'not-audited.mjs': { stdout: { decision: 'block', reason: 'printed before the hang' }, hang: true },
+        'persistent-mode.mjs': { stdout: { continue: true } },
+      },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toMatch(/\[run\.cjs\] Hook not-audited\.mjs timed out after \d+ms; exiting fail-open/);
+    expect(result.stdout).toBe(json({ continue: true }));
+    expect(result.traces.map(t => t.name)).toEqual(STOP_SCRIPTS.map(([script]) => script));
+  }, 60_000);
+
   it('PreToolUse: a deny from the adapter-shaped exit 2 reaches the host as a deny', () => {
     const root = probePlugin();
     const result = runDispatch(root, 'PreToolUse', [['pre-tool-enforcer.mjs']], {
@@ -389,12 +438,86 @@ describe('dispatch.cjs end to end (probe plugin)', () => {
     for (const trace of [...dispatched.traces, ...perHook.traces]) expect(trace.owner, trace.name).toBe(String(process.pid));
     expect(perHook.status, perHook.stderr).toBe(dispatched.status);
     expect(perHook.stdout).toBe(dispatched.stdout);
-    expect(JSON.parse(perHook.stdout)).toMatchObject({ decision: 'block', reason: 'first block', additionalContext: 'a' });
+    expect(JSON.parse(perHook.stdout)).toMatchObject({ decision: 'block', reason: 'first block\n\nsecond block', additionalContext: 'a' });
     expect(perHook.traces.map(t => t.name)).toEqual(STOP_SCRIPTS.map(([script]) => script));
     expect(new Set(perHook.traces.map(t => t.pid)).size).toBe(STOP_SCRIPTS.length);
     expect(perHook.traces.every(t => t.marker === 'stdin-ok')).toBe(true);
     expect(new Set(dispatched.traces.map(t => t.pid)).size).toBeLessThan(STOP_SCRIPTS.length);
   }, 60_000);
+});
+
+describe('dispatch per-hook isolation', () => {
+  /**
+   * run.cjs is the same CommonJS module instance dispatch.cjs requires, so
+   * patching its exports reaches the in-process runner. b.mjs throws while its
+   * target resolves (as an unreadable target would); c.mjs rejects inside the
+   * runner; a.mjs and d.mjs print context.
+   */
+  async function dispatchWithFailures(failClosed: boolean) {
+    const runCjs = createRequire(import.meta.url)(RUN_CJS) as RunCjs;
+    const dir = tempDir('omg-dispatch-isolation-');
+    const hooks = ['a.mjs', 'b.mjs', 'c.mjs', 'd.mjs'].map((name) => {
+      writeFileSync(join(dir, name), '');
+      return { script: join(dir, name), args: [] as string[] };
+    });
+    const { resolveTarget, runResolvedHook } = runCjs;
+    const previous = process.env.OMC_HOOK_FAIL_CLOSED;
+    runCjs.resolveTarget = (script) => {
+      if (basename(script) === 'b.mjs') throw new Error('EACCES: unreadable target');
+      return { targetPath: script };
+    };
+    runCjs.runResolvedHook = (resolution, _args, io) => {
+      const name = basename(resolution.targetPath);
+      if (name === 'c.mjs') return Promise.reject(new Error('runner rejected'));
+      io.stdout.write(JSON.stringify({ continue: true, systemMessage: `from ${name}` }));
+      return Promise.resolve(0);
+    };
+    if (failClosed) process.env.OMC_HOOK_FAIL_CLOSED = '1';
+    else delete process.env.OMC_HOOK_FAIL_CLOSED;
+    try {
+      return await dispatcher.dispatch('PreCompact', hooks, Buffer.from('{}'));
+    } finally {
+      runCjs.resolveTarget = resolveTarget;
+      runCjs.runResolvedHook = runResolvedHook;
+      if (previous === undefined) delete process.env.OMC_HOOK_FAIL_CLOSED;
+      else process.env.OMC_HOOK_FAIL_CLOSED = previous;
+    }
+  }
+
+  it.each([
+    [false, 0],
+    [true, 1],
+  ])('failClosed=%s: throwing and rejecting hooks fail alone (exit %i), the others keep their output', async (failClosed, exitCode) => {
+    const merged = await dispatchWithFailures(failClosed);
+    expect(JSON.parse(merged.stdout)).toEqual({ continue: true, systemMessage: 'from a.mjs\nfrom d.mjs' });
+    expect(merged.exitCode).toBe(exitCode);
+  });
+});
+
+describe('kill-switch outer timer cap', () => {
+  it.each([
+    // [manifest ms, group ms left, outer timer ms]
+    [5000, null, 7000],
+    [5000, 60_000, 7000],
+    [5000, 5000, 5000],
+    [1000, 1000, 1000],
+    [60_000, 16_000, 16_000],
+    [5000, 0, 1],
+    [5000, -250, 1],
+  ])('manifest %i ms, group left %s ms -> %i ms', (manifestMs, remainingMs, expected) => {
+    expect(dispatcher.legacyOuterTimeoutMs(manifestMs, remainingMs)).toBe(expected);
+  });
+
+  it('the group budget is the sum of the manifest timeouts (the entry timeoutSec)', () => {
+    const root = probePlugin();
+    const hooks = STOP_SCRIPTS.map(([script]) => ({ script: join(root, 'scripts', script), args: [] }));
+    expect(dispatcher.groupBudgetMs(hooks)).toBe(16_000);
+    // A single-hook group: the outer timer never outlasts that hook's own timeoutSec.
+    const single = dispatcher.groupBudgetMs([hooks[1]]);
+    expect(single).toBe(1000);
+    expect(dispatcher.legacyOuterTimeoutMs(1000, single)).toBe(1000);
+    expect(dispatcher.groupBudgetMs([{ script: join(root, 'scripts', 'unknown.mjs'), args: [] }])).toBeNull();
+  });
 });
 
 /**
@@ -425,18 +548,38 @@ describe('stdout parity with the per-hook path (real hooks)', () => {
       .split(cwd).join('<P>').split(cwd.replace(/\\/g, '\\\\')).join('<P>')
       .split(home).join('<H>').split(home.replace(/\\/g, '\\\\')).join('<H>')
       .replace(/\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z/g, '<TS>');
+    // Run-specific values: timestamps, pids, and durations.
+    const VOLATILE_KEY = /pid|time|date|_at$|At$|^ts$|duration|elapsed|_ms$|Ms$|started|updated|created|last/i;
+    const scrub = (value: unknown, key = ''): unknown => {
+      if (Array.isArray(value)) return value.map(item => scrub(item));
+      if (value && typeof value === 'object') {
+        return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, scrub(v, k)]));
+      }
+      if (VOLATILE_KEY.test(key) && (typeof value === 'number' || typeof value === 'string')) return '<V>';
+      return typeof value === 'string' ? normalise(value) : value;
+    };
+    const content = (path: string) => {
+      const text = readFileSync(path, 'utf8');
+      const lines = path.endsWith('.jsonl') ? text.split('\n').filter(Boolean) : [text];
+      try {
+        return lines.map(line => JSON.stringify(scrub(JSON.parse(line)))).join('\n');
+      } catch {
+        return normalise(text).replace(/\b\d{10,13}\b/g, '<N>');
+      }
+    };
+    /** Sorted `path` -> scrubbed content of every file under the project and home. */
     const files = () => {
-      const out: string[] = [];
+      const out: Record<string, string> = {};
       const walk = (dir: string) => {
         for (const entry of readdirSync(dir, { withFileTypes: true })) {
           const path = join(dir, entry.name);
           if (entry.isDirectory()) { if (entry.name !== '.git') walk(path); } else {
-            out.push(relative(base, path).replace(/\\/g, '/').replace(/\d{4}-\d\d-\d\dT[\d-]+Z/g, '<TS>'));
+            out[relative(base, path).replace(/\\/g, '/').replace(/\d{4}-\d\d-\d\dT[\d-]+Z/g, '<TS>')] = content(path);
           }
         }
       };
       walk(base);
-      return out.sort();
+      return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)));
     };
     return { cwd, home, env, normalise, files };
   }
@@ -482,7 +625,8 @@ describe('stdout parity with the per-hook path (real hooks)', () => {
     expect(killSwitch.status, killSwitch.stderr).toBe(expected.exitCode);
     expect(killSwitch.stdout).toBe(dispatched.stdout);
     expect(dispatched.stderr).not.toMatch(/timed out|\[omg-hook\]/);
-    // The same state files appear either way.
+    // The same state files, with the same contents once run-specific values are scrubbed.
+    expect(Object.keys(dispatched.files).length).toBeGreaterThan(0);
     expect(dispatched.files).toEqual(killSwitch.files);
     expect(dispatched.files).toEqual(old.files());
   }, 120_000);

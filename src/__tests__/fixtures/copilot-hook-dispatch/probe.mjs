@@ -25,12 +25,13 @@ process.stdin.on('end', () => {
     })}\n`);
   }
   if (spec.stderr) process.stderr.write(spec.stderr);
-  if (spec.hang) {
-    setTimeout(() => {}, 60_000);
-    return;
-  }
   if (spec.stdout !== undefined) {
     process.stdout.write(typeof spec.stdout === 'string' ? spec.stdout : JSON.stringify(spec.stdout));
+  }
+  if (spec.hang) {
+    // Prints its stdout (if any) first, then hangs past its timeout.
+    setTimeout(() => {}, 60_000);
+    return;
   }
   process.exitCode = spec.exitCode ?? 0;
 });
