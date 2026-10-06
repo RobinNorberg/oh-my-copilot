@@ -18,7 +18,7 @@ import { type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 export { buildSessionEnv, isStrippedEnvKey, LOGIN_SHADOWING_TOKENS, loginIdentity, resolveDefaultPluginRoot, resolvePackageRoot, SESSION_SET_ENV, SMOKE_SET_ENV, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, type SessionEnvOptions, } from './copilot-session-env.js';
 export type { SmokeCheck } from './copilot-session-eval.js';
 export type { Scenario } from './copilot-sdk-scenarios.js';
-export { ALL_SCENARIOS, DEFAULT_SCENARIOS } from './copilot-sdk-scenarios.js';
+export { ALL_SCENARIOS, DEFAULT_SCENARIOS, KNOWN_SCENARIOS, OPT_IN_SCENARIOS } from './copilot-sdk-scenarios.js';
 export type SmokeTier = 0 | 1 | 2;
 export interface SmokeOptions {
     /** Default: OMC_PLUGIN_ROOT, else the package root of the running omg. */

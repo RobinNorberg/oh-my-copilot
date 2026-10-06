@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [Unreleased: Factory Chains on Copilot](#unreleased-factory-chains-on-copilot)
 - [Unreleased: Team Instance Ownership](#unreleased-team-instance-ownership)
 - [Unreleased: Cancellation Scope](#unreleased-cancellation-scope)
 - [v5.6.2 → v5.7.0: Smoke Harness](#v562--v570-smoke-harness)
@@ -22,6 +23,47 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [v2.x → v3.0: Package Rename & Auto-Activation](#v2x--v30-package-rename--auto-activation)
 - [v3.0 → v3.1: Notepad Wisdom & Enhanced Features](#v30--v31-notepad-wisdom--enhanced-features)
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
+
+---
+
+## Unreleased: Factory Chains on Copilot
+
+Software-factory chains now run past their first link on Copilot CLI. Before,
+a Copilot link got a random session id (Copilot has no `--session-id`), its
+SessionEnd found no ledger, and the chain stopped silently after one link.
+Nothing to configure:
+
+- The spawner (factory listener or SessionEnd worker) sets
+  `OMC_CHAIN_LINK=<link id>` on each Copilot link. SessionEnd resolves the
+  link as `OMC_CHAIN_LINK`, then the host session id, and trusts the variable
+  only when it names a `host: "copilot"` ledger bound to the ending session
+  by that link's SessionStart, so a nested session cannot end its parent's
+  link. A duplicate SessionEnd gets the same chain back. Claude links keep
+  `--session-id`.
+- Copilot's SessionEnd reason `complete` now counts as success, so route keys
+  such as `success:*` match a finished Copilot link.
+- Link ledgers record `chainLink`, `host`, `createdAt` and `parentLink`, and
+  each link's SessionEnd closes its ledger once (`closedAt`, `hostSessionId`,
+  `outcome`, `decision`). The watchdog skips a closed ledger only when it
+  advanced the chain or left a stop marker, and `omg factory status` lists
+  each chain's links.
+- A ledger's `maxStageVisits` now applies to the whole chain, not just the
+  first link; values above 99 clamp to 99 (before, they fell back to 2 on
+  later links).
+- Under a dev plugin root (`omg --plugin-dir`), Copilot links get
+  `--plugin-dir` too, and the SessionEnd worker forwards `OMC_PLUGIN_ROOT`,
+  unless the root overlaps the link's working directory.
+- `omg smoke copilot --tier 2 --scenario chain` runs a real two-link chain
+  (about 2 premium requests). It is opt-in and not part of `all`.
+
+Copilot fires `sessionEnd` after every turn, so a link that a Stop hook
+continues into a second turn hands off after its first turn; the closed
+ledger prevents a second hand-off. Ledgers written by an older version have
+no `host` field: a Copilot link
+spawned before the upgrade still ends its chain after one link. Guardrails
+(serial lock, daily cap), `COPILOT_ALLOW_ALL=false` and the AFK permission
+profile are unchanged. See
+[Factory chains on Copilot](./REFERENCE.md#factory-chains-on-copilot).
 
 ---
 
@@ -311,9 +353,10 @@ it there.
 
 ### Known limitations
 
-- **Copilot factory chains stop after one link.** Copilot CLI has no
-  `--session-id`, so the next link cannot be pinned; `omg factory status` and
-  the watchdog report the stalled chain.
+- **Copilot factory chains stop after one link** (fixed after v5.7.0, see
+  [Factory Chains on Copilot](#unreleased-factory-chains-on-copilot)).
+  Copilot CLI has no `--session-id`, so the next link cannot be pinned;
+  `omg factory status` and the watchdog report the stalled chain.
 - **git-guardrails under Copilot on Windows is not live-verified.** The hook
   is projected and unit-tested, but its PreToolUse payload has not been
   exercised in a live Copilot session on Windows. Plant a violation (for

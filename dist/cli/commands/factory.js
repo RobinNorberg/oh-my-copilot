@@ -22,7 +22,7 @@ import { join, resolve } from 'path';
 import { INTAKE_ROUTE_TABLE, startListener, stopListener } from '../../factory/listener.js';
 import { readChainStatus } from '../../factory/status.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
-function renderChainStatus(status) {
+export function renderChainStatus(status) {
     const lines = [];
     lines.push(`链状态 ${status.directory}`);
     lines.push(`路由表（.omg/factory-routes.json，单一权威）: ${status.routeKeys.length} 键${status.routeKeys.length > 0 ? ` — ${status.routeKeys.join(', ')}` : ''}`);
@@ -34,6 +34,13 @@ function renderChainStatus(status) {
         const last = intent.lastDecision ? `${intent.lastDecision} @ ${intent.lastDecisionAt ?? '?'}` : '无';
         const stopped = intent.stopped ? `  停链[${intent.stopped.reason}]` : '';
         lines.push(`  ${intent.intentId}  决策 ${intent.decisionCount}  末次 ${last}${stopped}`);
+        intent.links.forEach((link, index) => {
+            const host = link.host ? ` [${link.host}]` : '';
+            const ended = link.closedAt
+                ? `已结束 ${link.outcome ?? '?'}→${link.decision ?? '?'}${link.hostSessionId && link.hostSessionId !== link.chainLink ? ` session=${link.hostSessionId}` : ''}`
+                : '运行中';
+            lines.push(`    环 ${index + 1} ${link.stage}${host} link=${link.chainLink} ${ended}`);
+        });
     }
     lines.push(`停滞环（阈值 30min 未推进）: ${status.stalled.length}`);
     for (const stall of status.stalled) {

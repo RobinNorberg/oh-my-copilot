@@ -1,0 +1,533 @@
+{
+ "firstLink": "b2d67071-7571-4ba0-ab6f-3da4eba1a832",
+ "ledgers": [
+  {
+   "intentId": "omg-smoke-chain",
+   "stage": "link-1",
+   "maxStageVisits": 1,
+   "chainLink": "b2d67071-7571-4ba0-ab6f-3da4eba1a832",
+   "host": "copilot",
+   "createdAt": "2026-10-06T01:10:23.043Z",
+   "hostSessionId": "66c7ed79-96f2-4b3f-a2f4-290874ee376b",
+   "endReason": "complete",
+   "outcome": "success",
+   "decision": "enqueued",
+   "closedAt": "2026-10-06T01:10:36.779Z",
+   "file": "b2d67071-7571-4ba0-ab6f-3da4eba1a832"
+  },
+  {
+   "intentId": "omg-smoke-chain",
+   "stage": "link-2",
+   "routeTable": {
+    "success:intake": {
+     "stage": "intent",
+     "skill": "intent"
+    },
+    "success:*": {
+     "stage": "link-2",
+     "skill": "chain-ack"
+    },
+    "failed:*": {
+     "stage": "halt",
+     "skill": "stop"
+    }
+   },
+   "visits": {
+    "link-2": 1
+   },
+   "maxStageVisits": 1,
+   "parentLink": "b2d67071-7571-4ba0-ab6f-3da4eba1a832",
+   "chainLink": "93ff0293-f375-4420-b967-88cec85311b3",
+   "host": "copilot",
+   "createdAt": "2026-10-06T01:11:13.575Z",
+   "hostSessionId": "8e2ef39a-2300-4887-a235-096f2974500f",
+   "endReason": "complete",
+   "outcome": "success",
+   "decision": "chain-loop-capped",
+   "closedAt": "2026-10-06T01:11:27.578Z",
+   "file": "93ff0293-f375-4420-b967-88cec85311b3"
+  }
+ ],
+ "decisions": [
+  {
+   "decision": "enqueued",
+   "sessionId": "b2d67071-7571-4ba0-ab6f-3da4eba1a832",
+   "hostSessionId": "66c7ed79-96f2-4b3f-a2f4-290874ee376b",
+   "host": "copilot",
+   "outcome": "success",
+   "reason": "complete",
+   "intentId": "omg-smoke-chain",
+   "stage": "link-2",
+   "skill": "chain-ack",
+   "at": "2026-10-06T01:10:36.772Z"
+  },
+  {
+   "decision": "chain-loop-capped",
+   "sessionId": "93ff0293-f375-4420-b967-88cec85311b3",
+   "hostSessionId": "8e2ef39a-2300-4887-a235-096f2974500f",
+   "host": "copilot",
+   "outcome": "success",
+   "reason": "complete",
+   "intentId": "omg-smoke-chain",
+   "stage": "link-2",
+   "visits": 1,
+   "cap": 1,
+   "at": "2026-10-06T01:11:27.557Z"
+  }
+ ],
+ "stopped": {
+  "intentId": "omg-smoke-chain",
+  "reason": "loop-capped:link-2",
+  "stoppedAt": "2026-10-06T01:11:27.571Z"
+ },
+ "sessions": [
+  {
+   "hostSessionId": "66c7ed79-96f2-4b3f-a2f4-290874ee376b",
+   "events": [
+    {
+     "type": "session.start",
+     "data": {
+      "sessionId": "66c7ed79-96f2-4b3f-a2f4-290874ee376b",
+      "version": 1,
+      "producer": "copilot-agent",
+      "copilotVersion": "1.0.91",
+      "startTime": "2026-10-06T01:10:25.044Z",
+      "contextTier": null,
+      "context": {
+       "cwd": "<HOME>\\AppData\\Local\\Temp\\omg-smoke-sdk-5NUQsQ\\project",
+       "gitRoot": "<HOME>\\AppData\\Local\\Temp\\omg-smoke-sdk-5NUQsQ\\project",
+       "branch": "main",
+       "headCommit": "4419a5476cabaef79b12cc23f9f309734a273888"
+      },
+      "alreadyInUse": false,
+      "remoteSteerable": false
+     },
+     "id": "89304f4a-e725-4fa9-9164-a421059ca021",
+     "timestamp": "2026-10-06T01:10:25.068Z",
+     "parentId": null
+    },
+    {
+     "type": "user.message",
+     "data": {
+      "content": "Reply with exactly: SMOKE_OK. Do not use tools.\n",
+      "transformedContent": "<current_datetime>2026-10-06T03:10:28.710+02:00</current_datetime>\n\nReply with exactly: SMOKE_OK. Do not use tools.",
+      "messageId": "e025415e-d50f-4b79-b064-f4521b5ecbba",
+      "supportedNativeDocumentMimeTypes": [],
+      "delivery": "idle",
+      "interactionId": "1e47c38b-8392-402e-9f18-d6229c93601d",
+      "turnId": "0",
+      "parentAgentTaskId": "18ff8e04-5487-4315-bede-bebbafdfe797"
+     },
+     "id": "949005c7-ab70-4d46-8758-97d563e56933",
+     "timestamp": "2026-10-06T01:10:28.710Z",
+     "parentId": "b45ac022-04ed-499b-b10b-9ebce6b8b499"
+    },
+    {
+     "type": "assistant.message",
+     "data": {
+      "messageId": "1324b1bf-46bc-48f3-be63-37641c0cd08b",
+      "originatingMessageId": "e025415e-d50f-4b79-b064-f4521b5ecbba",
+      "model": "mai-code-1.1-flash",
+      "content": "SMOKE_OK.",
+      "toolRequests": [],
+      "interactionId": "1e47c38b-8392-402e-9f18-d6229c93601d",
+      "turnId": "0",
+      "phase": "final_answer",
+      "rte": true,
+      "apiCallId": "<redacted>",
+      "serverTools": {
+       "provider": "openai-responses"
+      }
+     },
+     "id": "76c9ded2-5fb6-4db2-a026-35d017d99c23",
+     "timestamp": "2026-10-06T01:10:35.099Z",
+     "parentId": "fe44bf3b-d7c6-4519-a214-bffdd2be6ba5"
+    },
+    {
+     "type": "hook.start",
+     "data": {
+      "hookInvocationId": "20b6ee9c-7907-486f-9104-da7eded46238",
+      "hookType": "sessionEnd",
+      "input": {
+       "reason": "complete",
+       "sessionId": "66c7ed79-96f2-4b3f-a2f4-290874ee376b",
+       "timestamp": 1791249036454,
+       "cwd": "<HOME>\\AppData\\Local\\Temp\\omg-smoke-sdk-5NUQsQ\\project"
+      }
+     },
+     "id": "2cea09e8-3f01-4225-9ce0-6e3647d3294c",
+     "timestamp": "2026-10-06T01:10:36.454Z",
+     "parentId": "53ec439f-41d2-404f-b585-1b2322e4e527"
+    },
+    {
+     "type": "hook.end",
+     "data": {
+      "hookInvocationId": "20b6ee9c-7907-486f-9104-da7eded46238",
+      "hookType": "sessionEnd",
+      "success": false,
+      "error": {
+       "message": "Error: Hook command failed with code 124\nStderr: [run.cjs] Hook session-end.mjs timed out after 300ms; exiting fail-closed (124).\n",
+       "source": "oh-my-copilot"
+      }
+     },
+     "id": "be40a38d-3abc-4983-9407-87c352576048",
+     "timestamp": "2026-10-06T01:10:37.159Z",
+     "parentId": "2cea09e8-3f01-4225-9ce0-6e3647d3294c"
+    },
+    {
+     "type": "session.shutdown",
+     "data": {
+      "shutdownType": "routine",
+      "totalPremiumRequests": 1,
+      "totalNanoAiu": 435120000,
+      "tokenDetails": {
+       "input": {
+        "tokenCount": 21580
+       },
+       "cache_read": {
+        "tokenCount": 1280
+       },
+       "cache_write": {
+        "tokenCount": 0
+       },
+       "output": {
+        "tokenCount": 8
+       }
+      },
+      "totalApiDurationMs": 3605,
+      "sessionStartTime": 1791249025044,
+      "eventsFileSizeBytes": 90556,
+      "codeChanges": {
+       "linesAdded": 0,
+       "linesRemoved": 0,
+       "filesModified": []
+      },
+      "modelMetrics": {
+       "mai-code-1.1-flash": {
+        "requests": {
+         "count": 1,
+         "cost": 1
+        },
+        "usage": {
+         "inputTokens": 22860,
+         "outputTokens": 8,
+         "cacheReadTokens": 1280,
+         "cacheWriteTokens": 0,
+         "reasoningTokens": 0
+        },
+        "totalNanoAiu": 435120000,
+        "tokenDetails": {
+         "input": {
+          "tokenCount": 21580
+         },
+         "cache_read": {
+          "tokenCount": 1280
+         },
+         "cache_write": {
+          "tokenCount": 0
+         },
+         "output": {
+          "tokenCount": 8
+         }
+        }
+       }
+      },
+      "agentMetrics": {
+       "main": {
+        "totalApiDurationMs": 3605,
+        "totalNanoAiu": 435120000,
+        "modelMetrics": {
+         "mai-code-1.1-flash": {
+          "requests": {
+           "count": 1,
+           "cost": 1
+          },
+          "usage": {
+           "inputTokens": 22860,
+           "outputTokens": 8,
+           "cacheReadTokens": 1280,
+           "cacheWriteTokens": 0,
+           "reasoningTokens": 0
+          },
+          "totalNanoAiu": 435120000,
+          "tokenDetails": {
+           "input": {
+            "tokenCount": 21580
+           },
+           "cache_read": {
+            "tokenCount": 1280
+           },
+           "cache_write": {
+            "tokenCount": 0
+           },
+           "output": {
+            "tokenCount": 8
+           }
+          }
+         }
+        }
+       }
+      },
+      "currentModel": "mai-code-1.1-flash",
+      "currentTokens": 26251,
+      "systemTokens": 8449,
+      "conversationTokens": 86,
+      "toolDefinitionsTokens": 17713
+     },
+     "id": "e49c4e8d-4828-42ac-a6d2-cd0f6546e5e0",
+     "timestamp": "2026-10-06T01:10:37.201Z",
+     "parentId": "394e2d40-1ad4-4edb-8f90-cec62e87b917"
+    }
+   ]
+  },
+  {
+   "hostSessionId": "8e2ef39a-2300-4887-a235-096f2974500f",
+   "events": [
+    {
+     "type": "session.start",
+     "data": {
+      "sessionId": "8e2ef39a-2300-4887-a235-096f2974500f",
+      "version": 1,
+      "producer": "copilot-agent",
+      "copilotVersion": "1.0.91",
+      "startTime": "2026-10-06T01:11:15.612Z",
+      "contextTier": null,
+      "context": {
+       "cwd": "<HOME>\\AppData\\Local\\Temp\\omg-smoke-sdk-5NUQsQ\\project",
+       "gitRoot": "<HOME>\\AppData\\Local\\Temp\\omg-smoke-sdk-5NUQsQ\\project",
+       "branch": "main",
+       "headCommit": "4419a5476cabaef79b12cc23f9f309734a273888"
+      },
+      "alreadyInUse": false,
+      "remoteSteerable": false
+     },
+     "id": "997b3db2-c2e7-44a5-a414-630115e48eb8",
+     "timestamp": "2026-10-06T01:11:15.637Z",
+     "parentId": null
+    },
+    {
+     "type": "user.message",
+     "data": {
+      "content": "/chain-ack 继续 link-2 环；交接上下文：b2d67071-7571-4ba0-ab6f-3da4eba1a832-link-2.json",
+      "transformedContent": "<current_datetime>2026-10-06T03:11:19.296+02:00</current_datetime>\n\n/chain-ack 继续 link-2 环；交接上下文：b2d67071-7571-4ba0-ab6f-3da4eba1a832-link-2.json",
+      "messageId": "c4c146e4-64a7-46a1-87a6-3b0b8105bb86",
+      "supportedNativeDocumentMimeTypes": [],
+      "delivery": "idle",
+      "interactionId": "521adb9c-ca8d-4cfd-bf7c-be34d632538e",
+      "turnId": "0",
+      "parentAgentTaskId": "fb05682d-2916-4aed-a3e6-7768b4380da0",
+      "responsesReasoning": {
+       "model": "gpt-6-luna",
+       "initialEffort": "medium",
+       "effort": "medium"
+      }
+     },
+     "id": "6f44a127-4d2e-49b5-bc24-8ba78f9e72ce",
+     "timestamp": "2026-10-06T01:11:19.296Z",
+     "parentId": "185a5ff3-bea6-4887-9997-5bc79fe23f0d"
+    },
+    {
+     "type": "assistant.message",
+     "data": {
+      "messageId": "3c44993a-9115-45e5-bc03-7e72626a840f",
+      "originatingMessageId": "c4c146e4-64a7-46a1-87a6-3b0b8105bb86",
+      "model": "gpt-6-luna",
+      "content": "",
+      "toolRequests": [
+       {
+        "toolCallId": "call_2nINzbRTRQGchIwL21p260CY",
+        "name": "skill",
+        "arguments": {
+         "skill": "chain-ack"
+        },
+        "type": "function",
+        "intentionSummary": "chain-ack"
+       }
+      ],
+      "interactionId": "521adb9c-ca8d-4cfd-bf7c-be34d632538e",
+      "turnId": "0",
+      "rte": true,
+      "apiCallId": "<redacted>",
+      "serverTools": {
+       "provider": "openai-responses"
+      }
+     },
+     "id": "42e37857-979b-446c-b3ef-5cd9b462e587",
+     "timestamp": "2026-10-06T01:11:23.656Z",
+     "parentId": "b3a2fba0-3daf-4177-8cd2-e9cc48ac6e31"
+    },
+    {
+     "type": "skill.invoked",
+     "data": {
+      "name": "chain-ack",
+      "path": "<HOME>\\AppData\\Local\\Temp\\omg-smoke-sdk-5NUQsQ\\project\\.github\\skills\\chain-ack\\SKILL.md",
+      "content": "Reply with exactly: CHAIN_ACK. Do not use tools and do not open the handoff file.\n",
+      "allowedTools": [],
+      "source": "project",
+      "pluginName": null,
+      "pluginVersion": null,
+      "description": "Acknowledge an oh-my-copilot factory chain smoke link. Use when invoked as /chain-ack.",
+      "trigger": "agent-invoked",
+      "model": "gpt-6-luna",
+      "invokedAtTurn": 3
+     },
+     "id": "83cf1a55-60bd-4f98-9809-445747b8c6e1",
+     "timestamp": "2026-10-06T01:11:24.644Z",
+     "parentId": "fd0837bf-7146-49b6-aae1-0099acef76a2"
+    },
+    {
+     "type": "assistant.message",
+     "data": {
+      "messageId": "7b8ce2ae-ea84-4f4c-aba5-e4d585a9fcf9",
+      "originatingMessageId": "c4c146e4-64a7-46a1-87a6-3b0b8105bb86",
+      "model": "gpt-6-luna",
+      "content": "CHAIN_ACK",
+      "toolRequests": [],
+      "interactionId": "521adb9c-ca8d-4cfd-bf7c-be34d632538e",
+      "turnId": "1",
+      "phase": "final_answer",
+      "rte": true,
+      "apiCallId": "<redacted>",
+      "serverTools": {
+       "provider": "openai-responses"
+      }
+     },
+     "id": "710360d0-5c59-440a-8ef2-319213622266",
+     "timestamp": "2026-10-06T01:11:25.892Z",
+     "parentId": "77269242-a668-417f-a626-5ef0e65ab47c"
+    },
+    {
+     "type": "hook.start",
+     "data": {
+      "hookInvocationId": "f9978753-7903-44b8-bea4-9e286924503e",
+      "hookType": "sessionEnd",
+      "input": {
+       "reason": "complete",
+       "sessionId": "8e2ef39a-2300-4887-a235-096f2974500f",
+       "timestamp": 1791249087257,
+       "cwd": "<HOME>\\AppData\\Local\\Temp\\omg-smoke-sdk-5NUQsQ\\project"
+      }
+     },
+     "id": "33eeacc4-1bbb-49ff-8382-91b45050145f",
+     "timestamp": "2026-10-06T01:11:27.257Z",
+     "parentId": "0c673929-fa2e-4aa5-ab4d-8876e37bb22d"
+    },
+    {
+     "type": "hook.end",
+     "data": {
+      "hookInvocationId": "f9978753-7903-44b8-bea4-9e286924503e",
+      "hookType": "sessionEnd",
+      "success": true
+     },
+     "id": "1d65e49c-5b1b-47a7-b26f-2a4427d9231b",
+     "timestamp": "2026-10-06T01:11:27.919Z",
+     "parentId": "33eeacc4-1bbb-49ff-8382-91b45050145f"
+    },
+    {
+     "type": "session.shutdown",
+     "data": {
+      "shutdownType": "routine",
+      "totalPremiumRequests": 1,
+      "totalNanoAiu": 325658500,
+      "tokenDetails": {
+       "input": {
+        "tokenCount": 6
+       },
+       "cache_read": {
+        "tokenCount": 23911
+       },
+       "cache_write": {
+        "tokenCount": 24035
+       },
+       "output": {
+        "tokenCount": 25
+       }
+      },
+      "totalApiDurationMs": 2863,
+      "sessionStartTime": 1791249075612,
+      "eventsFileSizeBytes": 107846,
+      "codeChanges": {
+       "linesAdded": 0,
+       "linesRemoved": 0,
+       "filesModified": []
+      },
+      "modelMetrics": {
+       "gpt-6-luna": {
+        "requests": {
+         "count": 2,
+         "cost": 1
+        },
+        "usage": {
+         "inputTokens": 47952,
+         "outputTokens": 25,
+         "cacheReadTokens": 23911,
+         "cacheWriteTokens": 24035,
+         "reasoningTokens": 0
+        },
+        "totalNanoAiu": 325658500,
+        "tokenDetails": {
+         "input": {
+          "tokenCount": 6
+         },
+         "cache_read": {
+          "tokenCount": 23911
+         },
+         "cache_write": {
+          "tokenCount": 24035
+         },
+         "output": {
+          "tokenCount": 25
+         }
+        }
+       }
+      },
+      "agentMetrics": {
+       "main": {
+        "totalApiDurationMs": 2863,
+        "totalNanoAiu": 325658500,
+        "modelMetrics": {
+         "gpt-6-luna": {
+          "requests": {
+           "count": 2,
+           "cost": 1
+          },
+          "usage": {
+           "inputTokens": 47952,
+           "outputTokens": 25,
+           "cacheReadTokens": 23911,
+           "cacheWriteTokens": 24035,
+           "reasoningTokens": 0
+          },
+          "totalNanoAiu": 325658500,
+          "tokenDetails": {
+           "input": {
+            "tokenCount": 6
+           },
+           "cache_read": {
+            "tokenCount": 23911
+           },
+           "cache_write": {
+            "tokenCount": 24035
+           },
+           "output": {
+            "tokenCount": 25
+           }
+          }
+         }
+        }
+       }
+      },
+      "currentModel": "gpt-6-luna",
+      "currentTokens": 27176,
+      "systemTokens": 9492,
+      "conversationTokens": 263,
+      "toolDefinitionsTokens": 17418
+     },
+     "id": "d62fb7d9-7e4b-4c6a-b61c-5d4336f87975",
+     "timestamp": "2026-10-06T01:11:27.948Z",
+     "parentId": "3e8067b5-6849-4a73-8e97-50c40be94989"
+    }
+   ]
+  }
+ ]
+}

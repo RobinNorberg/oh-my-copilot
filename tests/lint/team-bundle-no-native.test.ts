@@ -89,6 +89,18 @@ describe('team bundle stays free of native modules', () => {
     expect(native.map((p) => `${packages.get(p)} -> ${p}`)).toEqual([]);
   });
 
+  // bridge/team.js is an ESM bundle: commander (CJS, `require('node:events')`)
+  // throws "Dynamic require … is not supported" at import. The chain smoke
+  // scenario reaches the factory CLI (commander), so it must stay out.
+  for (const root of ['src/mcp/team-server.ts', 'src/team/runtime-v2.ts', 'src/team/sdk-host.ts']) {
+    it(`${root} reaches neither the chain smoke scenario, src/factory/**, src/cli/commands/** nor commander`, () => {
+      const { files, packages } = reachable(root);
+      const bad = [...files.keys()].filter((f) => f === 'src/smoke/copilot-chain-scenario.ts' || f.startsWith('src/factory/') || f.startsWith('src/cli/commands/'));
+      expect(bad.map((f) => chain(files, f))).toEqual([]);
+      expect(packages.has('commander') ? `${packages.get('commander')} -> commander` : null).toBeNull();
+    });
+  }
+
   it('the walker sees literal dynamic imports (the tool registry reaches @ast-grep)', () => {
     const { packages } = reachable('src/mcp/tool-registry.ts');
     expect([...packages.keys()].some((p) => p.startsWith('@ast-grep'))).toBe(true);

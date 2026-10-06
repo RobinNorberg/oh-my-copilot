@@ -96,7 +96,7 @@ describe('processCheckFailureEvent', () => {
         expect(args.slice(4)).toEqual(AFK_SPAWN_FLAGS);
         const allowedIdx = args.indexOf('--allowedTools');
         expect(args[allowedIdx + 1]).toBe(AFK_ALLOWED_TOOLS);
-        expect(spawned[0].ctx).toEqual({ cwd: cfg.cwd });
+        expect(spawned[0].ctx).toEqual({ cwd: cfg.cwd, chainLink: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/) });
     });
     it('builds the diagnose prompt for the failing repo and branch', () => {
         const spawned = [];
@@ -173,7 +173,7 @@ describe('check-run listener route', () => {
             expect((await res.json()).detail).toBe('spawned diagnose session (diagnose)');
             expect(spawned).toHaveLength(1);
             expect(spawned[0].args.slice(4)).toEqual(AFK_SPAWN_FLAGS);
-            expect(spawned[0].ctx).toEqual({ cwd: cfg.cwd });
+            expect(spawned[0].ctx).toEqual({ cwd: cfg.cwd, chainLink: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/) });
         }
         finally {
             stopListener(server, cfg.cwd);

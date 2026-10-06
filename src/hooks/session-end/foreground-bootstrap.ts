@@ -1,5 +1,5 @@
 import { prepareCoreManifest } from './cleanup-manifest.js';
-import { planChainEnqueue, recordChainDecision } from './chain-enqueuer.js';
+import { planChainEnqueue, recordChainHandoffFailure } from './chain-enqueuer.js';
 import { resolveToWorktreeRoot, validateSessionId } from '../../lib/worktree-paths.js';
 
 export interface SessionEndBootstrapInput { session_id: string; transcript_path: string; cwd: string; permission_mode: string; hook_event_name: 'SessionEnd'; reason: 'clear' | 'logout' | 'prompt_input_exit' | 'other'; }
@@ -28,24 +28,16 @@ export async function publishSessionEndBootstrap(input: SessionEndBootstrapInput
     // The enqueuer already recorded 'enqueued'; without a manifest (another
     // writer holds the lease) nothing will ever execute that chain. Record the
     // stall so the audit trail names it instead of showing a phantom enqueue.
-    if (chain) {
-      recordChainDecision(directory, {
-        decision: 'manifest-unavailable',
-        sessionId: input.session_id,
-        intentId: chain.intentId,
-      });
-    }
+    // Keyed by the chain-link id (chain.sessionId), which differs from the host
+    // session id on Copilot; the closed ledger is corrected to match.
+    if (chain) recordChainHandoffFailure(directory, chain, 'manifest-unavailable');
     return { continue: true };
   }
   const { spawnSessionEndWorker } = await import('./worker.js');
   // A failed worker spawn is equally silent: the chain payload is durable but
   // no executor will pick it up. Name it in the same trail.
   if (!spawnSessionEndWorker({ directory, sessionId: input.session_id }) && chain) {
-    recordChainDecision(directory, {
-      decision: 'worker-spawn-failed',
-      sessionId: input.session_id,
-      intentId: chain.intentId,
-    });
+    recordChainHandoffFailure(directory, chain, 'worker-spawn-failed');
   }
   return { continue: true };
 }

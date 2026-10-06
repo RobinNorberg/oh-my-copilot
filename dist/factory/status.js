@@ -13,7 +13,7 @@ function intentSummary(map, intentId) {
     const existing = map.get(intentId);
     if (existing)
         return existing;
-    const created = { intentId, decisionCount: 0, counts: {} };
+    const created = { intentId, decisionCount: 0, counts: {}, links: [] };
     map.set(intentId, created);
     return created;
 }
@@ -70,18 +70,59 @@ function readStopMarkers(factoryDir, intents) {
         };
     }
 }
+const optionalString = (value) => (typeof value === 'string' && value ? value : undefined);
+/**
+ * Group link ledgers into their intents, in spawn order (createdAt, then file
+ * mtime for ledgers that predate it). Returns the count of open ledgers.
+ */
+function readLinkLedgers(factoryDir, intents) {
+    let entries;
+    try {
+        entries = fs.readdirSync(factoryDir);
+    }
+    catch {
+        return 0;
+    }
+    let open = 0;
+    const sortKeys = new Map();
+    for (const entry of entries) {
+        const match = /^chain-([0-9a-f-]+)\.json$/i.exec(entry);
+        if (!match)
+            continue;
+        let ledger;
+        let mtime = '';
+        try {
+            const parsed = JSON.parse(fs.readFileSync(join(factoryDir, entry), 'utf8'));
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+                continue;
+            ledger = parsed;
+            mtime = fs.statSync(join(factoryDir, entry)).mtime.toISOString();
+        }
+        catch {
+            continue;
+        }
+        const link = { chainLink: match[1], stage: optionalString(ledger.stage) ?? 'unknown' };
+        for (const key of ['host', 'parentLink', 'createdAt', 'closedAt', 'hostSessionId', 'outcome', 'decision']) {
+            const value = optionalString(ledger[key]);
+            if (value !== undefined)
+                link[key] = value;
+        }
+        if (!link.closedAt)
+            open += 1;
+        sortKeys.set(link, link.createdAt ?? mtime);
+        intentSummary(intents, optionalString(ledger.intentId) ?? `chain-${match[1]}`).links.push(link);
+    }
+    for (const intent of intents.values()) {
+        intent.links.sort((a, b) => (sortKeys.get(a) ?? '').localeCompare(sortKeys.get(b) ?? ''));
+    }
+    return open;
+}
 export function readChainStatus(directory, now) {
     const factoryDir = factoryStateDir(directory);
     const intents = new Map();
     readDecisions(factoryDir, intents);
     readStopMarkers(factoryDir, intents);
-    let activeLedgers = 0;
-    try {
-        activeLedgers = fs.readdirSync(factoryDir).filter((entry) => /^chain-[0-9a-f-]+\.json$/i.test(entry)).length;
-    }
-    catch {
-        // no factory dir yet
-    }
+    const activeLedgers = readLinkLedgers(factoryDir, intents);
     return {
         directory,
         routeKeys: Object.keys(readProjectRoutes(directory) ?? {}),

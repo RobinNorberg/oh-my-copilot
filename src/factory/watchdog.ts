@@ -38,6 +38,15 @@ export interface DetectStalledOptions {
   now?: Date;
 }
 
+/** Closeout decisions that advanced the chain or left a stop marker (chain-enqueuer writeHaltMarker). */
+const HANDLED_DECISIONS = new Set(['enqueued', 'chain-terminal', 'chain-loop-capped', 'human-gate']);
+
+function closedAsHandled(decision: unknown, outcome: unknown): boolean {
+  if (typeof decision !== 'string') return false;
+  // no-route halts with a stop marker only on a failed outcome.
+  return HANDLED_DECISIONS.has(decision) || (decision === 'no-route' && outcome === 'failed');
+}
+
 /** Session ids the enqueuer already advanced ('enqueued' decision records). */
 function enqueuedSessions(factoryDir: string): Set<string> {
   const advanced = new Set<string>();
@@ -78,7 +87,7 @@ export function detectStalledLinks(factoryDir: string, opts: DetectStalledOption
     const match = LEDGER_FILE_PATTERN.exec(entry.name);
     if (!match) continue;
     const session = match[1];
-    let ledger: { intentId?: unknown; stage?: unknown; routeTable?: unknown; tracker?: SpawnNextTracker };
+    let ledger: { intentId?: unknown; stage?: unknown; routeTable?: unknown; tracker?: SpawnNextTracker; closedAt?: unknown; decision?: unknown; outcome?: unknown };
     try {
       const parsed: unknown = JSON.parse(fs.readFileSync(join(factoryDir, entry.name), 'utf8'));
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
@@ -87,6 +96,11 @@ export function detectStalledLinks(factoryDir: string, opts: DetectStalledOption
       continue;
     }
     if (ledger.routeTable) continue;
+    // A closed ledger is skipped only when its SessionEnd advanced the chain
+    // or left a stop marker. Links dropped by the serial guardrail, an invalid
+    // ledger, a throw, or a failed hand-off stay flagged, as before closeouts
+    // existed; `advanced` keys by the chain-link id on both hosts.
+    if (ledger.closedAt && closedAsHandled(ledger.decision, ledger.outcome)) continue;
     if (advanced.has(session)) continue;
     let stalledForMs: number;
     try {

@@ -37,7 +37,8 @@ import {
 } from './copilot-session-eval.js';
 import { hasExited, killProcessTree, runAsync, useProcessGroup, type SpawnFn, type SpawnSyncFn } from './process-utils.js';
 import { DEFAULT_SCENARIO_TIMEOUT_MS, loadCopilotSdk, runSdkTier, type LoadSdkFn } from './copilot-sdk-driver.js';
-import { ALL_SCENARIOS, DEFAULT_SCENARIOS, failedTier2Checks, RUNTIME_MIN_MAX_CREDITS, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
+import { runChainScenario } from './copilot-chain-scenario.js';
+import { DEFAULT_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, RUNTIME_MIN_MAX_CREDITS, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from './copilot-session-env.js';
 
 export {
@@ -56,7 +57,7 @@ export {
 
 export type { SmokeCheck } from './copilot-session-eval.js';
 export type { Scenario } from './copilot-sdk-scenarios.js';
-export { ALL_SCENARIOS, DEFAULT_SCENARIOS } from './copilot-sdk-scenarios.js';
+export { ALL_SCENARIOS, DEFAULT_SCENARIOS, KNOWN_SCENARIOS, OPT_IN_SCENARIOS } from './copilot-sdk-scenarios.js';
 
 export type SmokeTier = 0 | 1 | 2;
 
@@ -630,8 +631,8 @@ export async function runCopilotSmoke(input: Partial<SmokeOptions> = {}): Promis
   const opts: SmokeOptions = { ...input, pluginRoot: root, tier };
 
   if (opts.prompt !== undefined && /\0/.test(opts.prompt)) throw new Error('smoke prompt must not contain NUL');
-  const unknown = (opts.scenarios ?? []).filter((s) => !ALL_SCENARIOS.includes(s));
-  if (unknown.length) throw new Error(`unknown smoke scenario(s): ${unknown.join(', ')} (known: ${ALL_SCENARIOS.join(', ')})`);
+  const unknown = (opts.scenarios ?? []).filter((s) => !KNOWN_SCENARIOS.includes(s));
+  if (unknown.length) throw new Error(`unknown smoke scenario(s): ${unknown.join(', ')} (known: ${KNOWN_SCENARIOS.join(', ')})`);
 
   const refusal = liveRunRefusal(tier, opts.scenarios, deps);
   if (refusal) {
@@ -808,6 +809,7 @@ async function runTier2(
     skillDirs: countDirsWith(join(ctx.root, 'skills'), 'SKILL.md'),
     agentFiles,
     mcpServer: mcpServerNames(ctx.root)[0] ?? 't',
+    runChain: runChainScenario,
   });
   if (Object.keys(result.events).length) artifacts.events = result.events;
   const logs = readDebugLogs(join(home, 'logs'));

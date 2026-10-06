@@ -319,6 +319,12 @@ describe('SessionEnd durable worker', () => {
         vi.stubEnv('COPILOT_ALLOW_ALL', 'true');
         expect(workerEnvironment()).toHaveProperty('COPILOT_GITHUB_TOKEN', 'copilot-token');
         expect(workerEnvironment()).not.toHaveProperty('COPILOT_ALLOW_ALL');
+        // A dev plugin root reaches the spawned Copilot link; the ended link's
+        // identity never does (the chain rides the manifest payload instead).
+        vi.stubEnv('OMC_PLUGIN_ROOT', '/opt/omg');
+        vi.stubEnv('OMC_CHAIN_LINK', '6f1c2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b');
+        expect(workerEnvironment()).toHaveProperty('OMC_PLUGIN_ROOT', '/opt/omg');
+        expect(workerEnvironment()).not.toHaveProperty('OMC_CHAIN_LINK');
         // On POSIX, APPDATA/LOCALAPPDATA should not be forwarded
         if (process.platform !== 'win32') {
             expect(workerEnvironment()).not.toHaveProperty('APPDATA');

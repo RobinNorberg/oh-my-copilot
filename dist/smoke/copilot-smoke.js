@@ -21,10 +21,11 @@ import { parseCopilotVersion, resolveCopilotBinary } from './copilot-binary.js';
 import { EVIDENCE_MAX, evaluateAdapterErrors, evaluateEventsLog, evaluateHooks, evaluateMcpLoaded, evaluatePluginsLoaded, evaluateSessionExit, evaluateStateWritten, evaluateSubagent, excerpt, parseJsonl, REQUIRED_HOOK_TYPES, TOOL_HOOK_TYPES, } from './copilot-session-eval.js';
 import { hasExited, killProcessTree, runAsync, useProcessGroup } from './process-utils.js';
 import { DEFAULT_SCENARIO_TIMEOUT_MS, loadCopilotSdk, runSdkTier } from './copilot-sdk-driver.js';
-import { ALL_SCENARIOS, DEFAULT_SCENARIOS, failedTier2Checks, RUNTIME_MIN_MAX_CREDITS } from './copilot-sdk-scenarios.js';
+import { runChainScenario } from './copilot-chain-scenario.js';
+import { DEFAULT_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, RUNTIME_MIN_MAX_CREDITS } from './copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from './copilot-session-env.js';
 export { buildSessionEnv, isStrippedEnvKey, LOGIN_SHADOWING_TOKENS, loginIdentity, resolveDefaultPluginRoot, resolvePackageRoot, SESSION_SET_ENV, SMOKE_SET_ENV, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, } from './copilot-session-env.js';
-export { ALL_SCENARIOS, DEFAULT_SCENARIOS } from './copilot-sdk-scenarios.js';
+export { ALL_SCENARIOS, DEFAULT_SCENARIOS, KNOWN_SCENARIOS, OPT_IN_SCENARIOS } from './copilot-sdk-scenarios.js';
 /**
  * No default model id: on Copilot CLI 1.0.91 every explicit `--model` tried
  * (gpt-5-mini, gpt-6-luna, claude-sonnet-5) failed with `Model "<id>" from
@@ -513,9 +514,9 @@ export async function runCopilotSmoke(input = {}) {
     const opts = { ...input, pluginRoot: root, tier };
     if (opts.prompt !== undefined && /\0/.test(opts.prompt))
         throw new Error('smoke prompt must not contain NUL');
-    const unknown = (opts.scenarios ?? []).filter((s) => !ALL_SCENARIOS.includes(s));
+    const unknown = (opts.scenarios ?? []).filter((s) => !KNOWN_SCENARIOS.includes(s));
     if (unknown.length)
-        throw new Error(`unknown smoke scenario(s): ${unknown.join(', ')} (known: ${ALL_SCENARIOS.join(', ')})`);
+        throw new Error(`unknown smoke scenario(s): ${unknown.join(', ')} (known: ${KNOWN_SCENARIOS.join(', ')})`);
     const refusal = liveRunRefusal(tier, opts.scenarios, deps);
     if (refusal) {
         return {
@@ -673,6 +674,7 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
         skillDirs: countDirsWith(join(ctx.root, 'skills'), 'SKILL.md'),
         agentFiles,
         mcpServer: mcpServerNames(ctx.root)[0] ?? 't',
+        runChain: runChainScenario,
     });
     if (Object.keys(result.events).length)
         artifacts.events = result.events;

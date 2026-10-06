@@ -1071,6 +1071,19 @@ async function main() {
       return;
     }
     const sessionId = data.session_id || data.sessionId || '';
+    // Factory chain link (Copilot): bind OMC_CHAIN_LINK to this host session
+    // first, so a nested session that inherits the variable cannot end the
+    // link (bindChainLink in src/hooks/session-end/chain-enqueuer.ts). A failed
+    // bind makes this link's SessionEnd reject the claim; the watchdog flags it.
+    if (process.env.OMC_CHAIN_LINK && sessionId) {
+      try {
+        const [{ bindChainLink }, { resolveToWorktreeRoot }] = await Promise.all([
+          import(pathToFileURL(join(__dirname, '..', 'dist', 'hooks', 'session-end', 'chain-enqueuer.js')).href),
+          import(pathToFileURL(join(__dirname, '..', 'dist', 'lib', 'worktree-paths.js')).href),
+        ]);
+        bindChainLink(resolveToWorktreeRoot(directory), sessionId);
+      } catch { /* dist unavailable: the link stays unbound */ }
+    }
     const omcRoot = await resolveOmcStateRoot(directory);
     let messages = [];
     const userMessages = [];

@@ -5,8 +5,16 @@
  * event streams through the same functions the live driver uses.
  */
 import { type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
-export type Scenario = 'smoke' | 'guardrail' | 'skill' | 'delegate';
+export type Scenario = 'smoke' | 'guardrail' | 'skill' | 'delegate' | 'chain';
+/** What `--scenario all` runs: the SDK-session scenarios (one premium request each). */
 export declare const ALL_SCENARIOS: readonly Scenario[];
+/**
+ * Named explicitly only, never in `all` or the default: `chain` spawns two
+ * real headless `copilot -p` factory links (about 2 premium requests) outside
+ * the SDK runtime's credit cap.
+ */
+export declare const OPT_IN_SCENARIOS: readonly Scenario[];
+export declare const KNOWN_SCENARIOS: readonly Scenario[];
 /** About 2 premium requests (one per scenario). */
 export declare const DEFAULT_SCENARIOS: readonly Scenario[];
 export declare const PLUGIN_NAME = "oh-my-copilot";
@@ -52,6 +60,37 @@ export declare function permitGuardrailPush(req: PermissionRequestLike, ctx: Per
 /** Reads only; when the request carries a path it must be under the plugin root or the sandbox project. */
 export declare function permitScopedRead(req: PermissionRequestLike, ctx: PermitContext): boolean;
 export declare const SCENARIOS: Record<Scenario, ScenarioSpec>;
+/** Intent id of the smoke chain; its stop marker is `chain-<id>.stopped.json`. */
+export declare const CHAIN_INTENT_ID = "omg-smoke-chain";
+/** Project skill link 2 is routed to (`/chain-ack ...`); it replies with one token. */
+export declare const CHAIN_SKILL = "chain-ack";
+export declare const CHAIN_LINK1_STAGE = "link-1";
+export declare const CHAIN_LINK2_STAGE = "link-2";
+/** Two links, one user prompt each. */
+export declare const CHAIN_MAX_PREMIUM_REQUESTS = 2;
+/** One link ledger as found on disk (`chain-<file>.json`). */
+export interface ChainLedgerRecord {
+    file: string;
+    [key: string]: unknown;
+}
+/** What the chain left behind, read after it stopped (or timed out). */
+export interface ChainEvidence {
+    /** Link id of the first link (pre-written by the scenario). */
+    firstLink: string;
+    ledgers: ChainLedgerRecord[];
+    decisions: Array<Record<string, unknown>>;
+    stopped: {
+        reason?: unknown;
+    } | null;
+    /** Each closed link's host session and its persisted events (null: no events.jsonl). */
+    sessions: Array<{
+        hostSessionId: string;
+        events: CopilotEvent[] | null;
+    }>;
+}
+export declare function chainCost(chain: ChainEvidence): ScenarioCost & {
+    source: string;
+};
 /** The session's excludedTools for a scenario: its built-ins plus our host_smoke tool. */
 export declare function scenarioExcludedTools(name: Scenario, mcpServer: string): string[];
 /** Check ids a scenario yields, in report order (stable; Lane B's docs list them). */
@@ -116,6 +155,8 @@ export interface ScenarioRun {
     budget?: number;
     /** The driver aborted the turn because `assistant.usage` credits passed {@link budget}. */
     capped?: boolean;
+    /** chain: the ledgers, decisions and link sessions the chain left behind. */
+    chain?: ChainEvidence;
 }
 export interface ScenarioCost {
     premiumRequests: number;

@@ -26,13 +26,19 @@ export interface SpawnNextChain {
   tracker?: SpawnNextTracker;
   /** Per-stage link counts carried forward so the enqueuer can cap route loops. */
   visits?: Record<string, number>;
+  /** Stage-visit cap carried forward from the first ledger (default 2 when absent). */
+  maxStageVisits?: number;
 }
 
 export interface SpawnNextPlan {
   directive: { stage: string; skill: string };
   handoffPath: string;
   spawnArgv: string[];
-  /** Pre-generated id of the next link, passed via --session-id so its SessionEnd finds the ledger. */
+  /**
+   * Pre-generated id of the next link (its chain-link id). A Claude link gets
+   * it as `--session-id`; a Copilot link, which cannot pin a session id, gets
+   * it as {@link CHAIN_LINK_ENV}. Either way its SessionEnd finds the ledger.
+   */
   nextSessionId: string;
   trackerCommands: string[][];
 }
@@ -42,6 +48,90 @@ export type SpawnFn = (command: string, args: string[], ctx?: SpawnContext) => {
 /** Factory links spawn headless (AFK): their cwd must match the ledger's state root and their permission profile must be narrow. */
 export interface SpawnContext {
   cwd?: string;
+  /** Chain-link id handed to a Copilot link as {@link CHAIN_LINK_ENV}. */
+  chainLink?: string;
+}
+
+/**
+ * Env var that carries a factory chain link's identity into a Copilot link.
+ * Copilot CLI has no `--session-id`, so the spawner pre-generates the link id,
+ * writes `chain-<id>.json`, and sets this var on the child; the SessionEnd hook
+ * inherits it from the Copilot process and resolves the ledger by it (see
+ * resolveChainLink in chain-enqueuer.ts, which only trusts an open Copilot
+ * ledger). The detached SessionEnd worker never forwards it: the chain
+ * identity rides the durable manifest payload, and each spawned link gets its
+ * own fresh value here.
+ */
+export const CHAIN_LINK_ENV = 'OMC_CHAIN_LINK';
+
+/** Inherited vars that name ANOTHER session and must never reach a new chain link. */
+const LINK_ENV_DROPPED = [CHAIN_LINK_ENV, 'COPILOT_AGENT_SESSION_ID'] as const;
+
+/**
+ * Env for a spawned host link (`claude` or `copilot`): the caller's env minus
+ * any inherited chain identity, plus this link's own {@link CHAIN_LINK_ENV}
+ * (Copilot only; Claude pins `--session-id`). A launcher-level
+ * COPILOT_ALLOW_ALL would override the AFK allowlist of every copilot link, so
+ * a copilot child always gets the documented off value.
+ */
+export function chainLinkEnv(base: NodeJS.ProcessEnv, command: string, chainLink?: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...base };
+  // Case-folded on win32, where `copilot_allow_all` would otherwise survive
+  // next to the forced COPILOT_ALLOW_ALL below.
+  const dropped: readonly string[] = command === 'copilot' ? [...LINK_ENV_DROPPED, 'COPILOT_ALLOW_ALL'] : LINK_ENV_DROPPED;
+  for (const key of Object.keys(env)) {
+    if (dropped.includes(process.platform === 'win32' ? key.toUpperCase() : key)) delete env[key];
+  }
+  if (command === 'copilot') {
+    env.COPILOT_ALLOW_ALL = 'false';
+    if (chainLink !== undefined) {
+      validateSessionId(chainLink);
+      env[CHAIN_LINK_ENV] = chainLink;
+    }
+  }
+  return env;
+}
+
+/**
+ * `--plugin-dir <root>` for a Copilot link when this process runs a dev plugin
+ * root (`omg --plugin-dir`, which sets OMC_PLUGIN_ROOT): an installed plugin
+ * loads by itself, but a --plugin-dir one does not reach a spawned link, whose
+ * hooks (and therefore its SessionEnd chain hand-off) would never fire. Only an
+ * absolute path to an existing directory is passed; anything else is dropped.
+ *
+ * Dropped as well when the root and the link's working directory overlap: an
+ * AFK link may write files under its cwd (`--allow-tool=write`), and a link
+ * that rewrote the plugin's hooks or scripts would run that code in its own
+ * SessionEnd and in every later link, outside the AFK allowlist. A chain over
+ * the plugin's own repo therefore needs the plugin installed, not a dev root.
+ * On win32 a root containing `%` is dropped: cmd.exe argv quoting refuses it,
+ * and every link launched through a .cmd shim would fail.
+ */
+export function copilotPluginDirArgs(env: NodeJS.ProcessEnv = process.env, linkCwd: string = process.cwd()): string[] {
+  const root = env.OMC_PLUGIN_ROOT?.trim();
+  if (!root || !path.isAbsolute(root)) return [];
+  if (process.platform === 'win32' && root.includes('%')) return [];
+  if (pathsOverlap(root, linkCwd)) return [];
+  try {
+    return fs.statSync(root).isDirectory() ? ['--plugin-dir', root] : [];
+  } catch {
+    return [];
+  }
+}
+
+/** True when one path equals or contains the other (realpath, case-folded on win32). */
+function pathsOverlap(a: string, b: string): boolean {
+  const key = (p: string) => {
+    let out = path.resolve(p);
+    try { out = fs.realpathSync.native(out); } catch { /* missing: keep resolved */ }
+    return process.platform === 'win32' ? out.toLowerCase() : out;
+  };
+  const [ka, kb] = [key(a), key(b)];
+  const inside = (child: string, parent: string) => {
+    const rel = path.relative(parent, child);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  };
+  return inside(ka, kb) || inside(kb, ka);
 }
 
 /**
@@ -135,13 +225,17 @@ export function factoryLinkCommand(): string {
  *
  * On a Copilot host the profile is COPILOT_AFK_SPAWN_FLAGS plus one
  * `--allow-tool=shell(<command>)` per extra command. Copilot cannot pin a
- * session id at launch, so `sessionId` is not passed to it.
+ * session id at launch, so `sessionId` is not passed to it: the spawner hands
+ * it over as CHAIN_LINK_ENV. A dev plugin root adds `--plugin-dir`
+ * (copilotPluginDirArgs).
  */
 export function factoryLinkArgv(
   prompt: string,
   sessionId: string,
   verifyCommands: readonly string[] = [],
   fixedBashCommands: readonly string[] = [],
+  /** The link's working directory (spawn cwd), for the --plugin-dir overlap check. */
+  linkCwd: string = process.cwd(),
 ): string[] {
   const isValid = (command: string) => command.length <= MAX_VERIFY_COMMAND_LENGTH && VERIFY_COMMAND_PATTERN.test(command);
   if (getHostCliType() === 'copilot') {
@@ -150,7 +244,7 @@ export function factoryLinkArgv(
       ...fixedBashCommands.filter(isCopilotValid),
       ...verifyCommands.filter(isCopilotValid).slice(0, MAX_VERIFY_COMMANDS),
     ].map((command) => `--allow-tool=shell(${command})`);
-    return ['-p', prompt, ...COPILOT_AFK_SPAWN_FLAGS, ...extra];
+    return ['-p', prompt, ...COPILOT_AFK_SPAWN_FLAGS, ...extra, ...copilotPluginDirArgs(process.env, linkCwd)];
   }
   if (verifyCommands.length === 0 && fixedBashCommands.length === 0) {
     return ['-p', prompt, '--session-id', sessionId, ...AFK_SPAWN_FLAGS];
@@ -195,13 +289,69 @@ export function validateChainFields(chain: SpawnNextChain): void {
       }
     }
   }
+  if (chain.maxStageVisits !== undefined && !isStageVisitCap(chain.maxStageVisits)) {
+    throw new Error(`invalid maxStageVisits: ${String(chain.maxStageVisits)}`);
+  }
+}
+
+/** A carried stage-visit cap: an integer 1..99. */
+export function isStageVisitCap(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 99;
+}
+
+/**
+ * A ledger's stage-visit cap: a positive integer, clamped to 99 (the visits
+ * counter's ceiling), so a large declared cap stays effectively unlimited
+ * instead of falling back to the default 2. Undefined when not set or invalid.
+ */
+export function stageVisitCap(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? Math.min(value, 99) : undefined;
+}
+
+/** Host that runs a factory link; recorded in its ledger (`host`). */
+export type ChainLinkHost = 'claude' | 'copilot';
+
+/** Fields of a freshly written (open) link ledger. */
+export interface ChainLinkLedgerSeed {
+  intentId: string;
+  stage: string;
+  routeTable?: RouteTable;
+  tracker?: SpawnNextTracker;
+  visits?: Record<string, number>;
+  maxStageVisits?: number;
+  /** Link id of the link whose SessionEnd spawned this one (absent for a first link). */
+  parentLink?: string;
+}
+
+/** Host of a link spawned with `command`: the Copilot binary or Claude. */
+export function chainLinkHost(command: string): ChainLinkHost {
+  return command === 'copilot' ? 'copilot' : 'claude';
+}
+
+/**
+ * Write the open ledger `chain-<linkId>.json` for a link about to spawn. It
+ * records the link's identity (`chainLink`, `host`, `createdAt`): a Copilot
+ * link's SessionEnd only trusts CHAIN_LINK_ENV when this ledger exists, names
+ * host copilot, and has no `closedAt` yet. Returns the ledger path.
+ */
+export function writeChainLinkLedger(factoryDir: string, linkId: string, host: ChainLinkHost, seed: ChainLinkLedgerSeed): string {
+  validateSessionId(linkId);
+  const ledgerPath = path.join(factoryDir, `chain-${linkId}.json`);
+  fs.mkdirSync(factoryDir, { recursive: true });
+  fs.writeFileSync(ledgerPath, JSON.stringify({
+    ...seed,
+    chainLink: linkId,
+    host,
+    createdAt: new Date().toISOString(),
+  }, null, 2), 'utf8');
+  return ledgerPath;
 }
 
 export function spawnNextAlertComment(chain: SpawnNextChain): string {
   return `链已停住：会话结束状态 ${chain.outcome}:${chain.reason} 触发下一环启动失败，需人工修复（v1 无自动重试）。`;
 }
 
-export function planSpawnNext(chain: SpawnNextChain, omcRoot: string): SpawnNextPlan | null {
+export function planSpawnNext(chain: SpawnNextChain, omcRoot: string, linkCwd: string = process.cwd()): SpawnNextPlan | null {
   validateChainFields(chain);
   const directive = decideNextStage(chain.outcome, chain.reason, chain.routeTable);
   if (!directive) return null;
@@ -216,7 +366,7 @@ export function planSpawnNext(chain: SpawnNextChain, omcRoot: string): SpawnNext
   return {
     directive,
     handoffPath,
-    spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`/${directive.skill} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId, directive.verify)],
+    spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`/${directive.skill} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId, directive.verify, [], linkCwd)],
     nextSessionId,
     trackerCommands,
   };
@@ -225,7 +375,7 @@ export function planSpawnNext(chain: SpawnNextChain, omcRoot: string): SpawnNext
 /** IO orchestration only: the routing decision comes from the T1 pure function via planSpawnNext. */
 export function executeSpawnNext(chain: SpawnNextChain, directory: string, spawnFn: SpawnFn = defaultSpawnFn): void {
   const omcRoot = getOmcRoot(directory);
-  const plan = planSpawnNext(chain, omcRoot);
+  const plan = planSpawnNext(chain, omcRoot, directory);
   if (!plan) return;
   fs.mkdirSync(path.dirname(plan.handoffPath), { recursive: true });
   fs.writeFileSync(plan.handoffPath, JSON.stringify({
@@ -239,15 +389,16 @@ export function executeSpawnNext(chain: SpawnNextChain, directory: string, spawn
   try {
     // The next link's ledger must exist before it ends its session, so the
     // SessionEnd enqueuer finds it; written under the same failure alerts.
-    fs.mkdirSync(factoryDir, { recursive: true });
-    fs.writeFileSync(ledgerPath, JSON.stringify({
+    writeChainLinkLedger(factoryDir, plan.nextSessionId, chainLinkHost(plan.spawnArgv[0]), {
       intentId: chain.intentId ?? `chain-${chain.sessionId}`,
       stage: plan.directive.stage,
       routeTable: chain.routeTable,
       tracker: chain.tracker,
       visits: { ...(chain.visits ?? {}), [plan.directive.stage]: (chain.visits?.[plan.directive.stage] ?? 0) + 1 },
-    }, null, 2), 'utf8');
-    spawnFn(plan.spawnArgv[0], plan.spawnArgv.slice(1), { cwd: directory });
+      ...(chain.maxStageVisits !== undefined ? { maxStageVisits: chain.maxStageVisits } : {}),
+      parentLink: chain.sessionId,
+    });
+    spawnFn(plan.spawnArgv[0], plan.spawnArgv.slice(1), { cwd: directory, chainLink: plan.nextSessionId });
   } catch (error) {
     // Don't leave a dead ledger pointing at a session that never started.
     try { fs.unlinkSync(ledgerPath); } catch { /* never written */ }
@@ -295,9 +446,9 @@ export function defaultSpawnFn(command: string, args: string[], ctx?: SpawnConte
     process.platform === 'win32'
       ? { windowsHide: true, cwd: ctx?.cwd }
       : { detached: true, windowsHide: true, cwd: ctx?.cwd };
-  // A launcher-level COPILOT_ALLOW_ALL would override the AFK allowlist of
-  // every copilot link, so the child always gets the documented off value.
-  if (command === 'copilot') baseOpts.env = { ...process.env, COPILOT_ALLOW_ALL: 'false' };
+  // Host links get chainLinkEnv: COPILOT_ALLOW_ALL forced off, no inherited
+  // chain identity, and (copilot) this link's own OMC_CHAIN_LINK.
+  if (command === 'copilot' || command === 'claude') baseOpts.env = chainLinkEnv(process.env, command, ctx?.chainLink);
   if (process.platform === 'win32' && (command === 'claude' || command === 'copilot' || command === 'gh')) {
     // Free text never rides argv: the -p prompt goes to stdin (claude keeps
     // `-p`; copilot reads a piped prompt without it, verified on 1.0.91) and a

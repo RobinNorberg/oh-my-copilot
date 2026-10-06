@@ -20,6 +20,14 @@ export const DEFAULT_STALL_THRESHOLD_MS = 30 * 60 * 1000;
 export const HARBOR_NEED_INFO_LABEL = 'harbor:need-info';
 /** Ledgers are only ever named after a spawned uuid session id. */
 const LEDGER_FILE_PATTERN = /^chain-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.json$/i;
+/** Closeout decisions that advanced the chain or left a stop marker (chain-enqueuer writeHaltMarker). */
+const HANDLED_DECISIONS = new Set(['enqueued', 'chain-terminal', 'chain-loop-capped', 'human-gate']);
+function closedAsHandled(decision, outcome) {
+    if (typeof decision !== 'string')
+        return false;
+    // no-route halts with a stop marker only on a failed outcome.
+    return HANDLED_DECISIONS.has(decision) || (decision === 'no-route' && outcome === 'failed');
+}
 /** Session ids the enqueuer already advanced ('enqueued' decision records). */
 function enqueuedSessions(factoryDir) {
     const advanced = new Set();
@@ -77,6 +85,12 @@ export function detectStalledLinks(factoryDir, opts = {}) {
             continue;
         }
         if (ledger.routeTable)
+            continue;
+        // A closed ledger is skipped only when its SessionEnd advanced the chain
+        // or left a stop marker. Links dropped by the serial guardrail, an invalid
+        // ledger, a throw, or a failed hand-off stay flagged, as before closeouts
+        // existed; `advanced` keys by the chain-link id on both hosts.
+        if (ledger.closedAt && closedAsHandled(ledger.decision, ledger.outcome))
             continue;
         if (advanced.has(session))
             continue;
