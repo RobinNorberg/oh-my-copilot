@@ -21525,6 +21525,7 @@ async function cleanupStaleReservations(teamName, cwd) {
       if (!(owner && typeof owner === "object" && !Array.isArray(owner) && "pid" in owner && "process_started_at" in owner)) {
         return;
       }
+      if (reservation.phase === "active") return;
       const ownerRecord = owner;
       if (isProcessIdentityDead(ownerRecord)) {
         await (0, import_promises19.unlink)(reservationPath2);
