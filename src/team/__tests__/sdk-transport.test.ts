@@ -1,3 +1,4 @@
+import { spawn, type ChildProcess } from 'child_process';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -16,22 +17,25 @@ import { buildSdkExcludedTools, decideSdkPermission, type SdkPolicyContext } fro
 import { prependPath, readDoorbell, runSdkHost, type SdkHostDeps } from '../sdk-host.js';
 import {
   isSdkTarget,
+  launchSdkHost,
   readSdkSession,
   ringDoorbell,
   sdkPaneId,
   sdkWorkerFiles,
   stopSdkHost,
   type SdkHostSpec,
+  type SdkLaunchInput,
 } from '../sdk-transport.js';
 import {
   awaitWorkerLaunchAcknowledgement,
+  loadWorkerLaunchAttempt,
   observeWorkerLaunchProvider,
   prepareWorkerLaunchAttempt,
   retireAndCleanupCurrentWorkerLaunchAttempt,
   type WorkerLaunchAttempt,
 } from '../worker-launch-ack.js';
 import { teamStateRoot } from '../state-paths.js';
-import { getProcessStartIdentitySync } from '../../platform/process-utils.js';
+import { getProcessStartIdentitySync, isProcessAlive } from '../../platform/process-utils.js';
 
 let TEAM = 'sdk-team';
 const WORKER = 'worker-1';
@@ -490,7 +494,7 @@ describe('sdk host', () => {
     expect(await host).toBe('team_gone');
   });
 
-  it('a revoked launch never starts the runtime', async () => {
+  it('a revoked launch never starts the runtime, and publishes its exit so a stop returns at once', async () => {
     const attempt = await newAttempt();
     const { loaded, rec } = fakeSdk();
     const host = runSdkHost(specFor(attempt), deps(loaded));
@@ -498,6 +502,172 @@ describe('sdk host', () => {
     writeFileSync(attempt.decisionPath, JSON.stringify({ ...attempt, kind: 'worker_launch_decision', decision: 'revoked', reason: 'test', written_at: new Date().toISOString() }));
     expect(await host).toBe('decision_revoked');
     expect(rec.ops).toEqual([]);
+
+    // No provider_started, but a terminal record and a failed session file.
+    expect(existsSync(attempt.startedPath)).toBe(false);
+    expect(JSON.parse(readFileSync(`${attempt.startedPath}.terminal`, 'utf8')))
+      .toMatchObject({ kind: 'worker_launch_provider_terminal', outcome: 'exit', cleanup_verified: true, pid: 4242 });
+    expect(readSdkSession(stateRoot, WORKER)).toMatchObject({ state: 'failed', last_error: 'launch decision revoked' });
+    const t0 = Date.now();
+    expect(await stopSdkHost(attempt, stateRoot, { timeoutMs: 30_000, pollMs: 10 })).toBe(true);
+    expect(Date.now() - t0).toBeLessThan(2_000);
+  });
+
+  it('caps at exactly max_credits (>=), not only past it', async () => {
+    const attempt = await newAttempt();
+    const { loaded, rec } = fakeSdk({ credits: 5 });
+    const host = await hostWithLeader(attempt, deps(loaded), async () => {
+      await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
+      ringDoorbell(stateRoot, WORKER, { kind: 'prompt', text: 'a' });
+      await until(() => rec.prompts.length === 1 && readSdkSession(stateRoot, WORKER)?.state === 'idle');
+      ringDoorbell(stateRoot, WORKER, { kind: 'prompt', text: 'b' }); // 5 + 5 = 10 = the cap
+      await until(() => readSdkSession(stateRoot, WORKER)?.state === 'capped');
+      ringDoorbell(stateRoot, WORKER, { kind: 'prompt', text: 'c' });
+      await new Promise((r) => setTimeout(r, 80));
+      ringDoorbell(stateRoot, WORKER, { kind: 'stop' });
+    });
+    expect(await host).toBe('stopped');
+    expect(rec.prompts).toEqual(['a', 'b']);
+    expect(readSdkSession(stateRoot, WORKER)?.last_error).toMatch(/credit cap 10 reached \(10\.00\)/);
+  });
+
+  it('retries a session write that fails on win32 rename contention', async () => {
+    const attempt = await newAttempt();
+    const { loaded } = fakeSdk();
+    const { atomicWriteJson } = await import('../../lib/atomic-write.js');
+    const logs: string[] = [];
+    let failures = 0;
+    const writeSessionJson = async (path: string, value: unknown) => {
+      // The first three writes lose the rename race, as with a reader holding the file.
+      if (failures < 3) {
+        failures += 1;
+        throw Object.assign(new Error(`EPERM: operation not permitted, rename '${path}.tmp' -> '${path}'`), { code: 'EPERM' });
+      }
+      await atomicWriteJson(path, value);
+    };
+    const host = await hostWithLeader(attempt, deps(loaded, { writeSessionJson, log: (l) => logs.push(l) }), async () => {
+      await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
+      ringDoorbell(stateRoot, WORKER, { kind: 'stop' });
+    });
+    expect(await host).toBe('stopped');
+    expect(failures).toBe(3);
+    expect(logs.filter((l) => l.startsWith('session write failed: EPERM'))).toHaveLength(3);
+    // The dropped writes were retried: the file reached its final state.
+    expect(readSdkSession(stateRoot, WORKER)).toMatchObject({ state: 'closed', session_id: 's1' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Leader side: launch and stop. Provider pids are throwaway child processes,
+// never this vitest worker: a stop that escalates kills what the record names.
+// ---------------------------------------------------------------------------
+
+const children: ChildProcess[] = [];
+
+async function dummyProcess(): Promise<{ pid: number; identity: string }> {
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true });
+  children.push(child);
+  const pid = child.pid!;
+  let identity: string | null = null;
+  await until(() => (identity = getProcessStartIdentitySync(pid)) !== null);
+  return { pid, identity: identity! };
+}
+
+afterEach(() => {
+  for (const child of children.splice(0)) {
+    try { child.kill('SIGKILL'); } catch { /* already gone */ }
+  }
+});
+
+function launchInput(over: Partial<SdkLaunchInput> = {}): SdkLaunchInput {
+  return {
+    leaderCwd: cwd,
+    teamName: TEAM,
+    workerName: WORKER,
+    instanceId: randomUUID(),
+    workerCwd: worktree,
+    stateRoot,
+    workerEnv: {},
+    copilotBin: 'C:/fake/copilot.exe',
+    pluginRoot,
+    userConfigDir: join(cwd, 'no-user-config'),
+    maxCredits: 10,
+    denyTools: [],
+    denyUrls: [],
+    ackTimeoutMs: 1_500,
+    ...over,
+  };
+}
+
+function specAt(specPath: string): SdkHostSpec {
+  return JSON.parse(readFileSync(specPath, 'utf8')) as SdkHostSpec;
+}
+
+async function attemptFor(spec: SdkHostSpec): Promise<WorkerLaunchAttempt> {
+  const attempt = await loadWorkerLaunchAttempt({
+    cwd: spec.leader_cwd, teamName: spec.team_name, workerName: spec.worker_name, instanceId: spec.instance_id,
+    paneId: spec.pane_id, provider: 'copilot', attemptId: spec.attempt_id, runtimeCliPath: spec.runtime_cli_path,
+  });
+  return attempt!;
+}
+
+describe('launchSdkHost', () => {
+  it('truncates the doorbell so a new host never replays an earlier attempt', async () => {
+    const { doorbell } = sdkWorkerFiles(stateRoot, WORKER);
+    ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
+    const host = await dummyProcess();
+    let sizeAtSpawn = -1;
+    const result = await launchSdkHost(launchInput({
+      spawnHost: () => { sizeAtSpawn = readFileSync(doorbell).length; return host.pid; },
+      ackTimeoutMs: 50,
+    }));
+    expect(result.ok).toBe(false);
+    expect(sizeAtSpawn).toBe(0);
+  });
+
+  it('kills the host it spawned when no ack arrives', async () => {
+    const host = await dummyProcess();
+    const result = await launchSdkHost(launchInput({ spawnHost: () => host.pid, ackTimeoutMs: 300 }));
+    expect(result).toMatchObject({ ok: false, hostPid: host.pid });
+    expect(!result.ok && result.reason).toMatch(/^sdk_host_ack_/);
+    await until(() => !isProcessAlive(host.pid));
+  });
+
+  it('kills an acked host that never publishes provider_started', async () => {
+    const host = await dummyProcess();
+    const result = await launchSdkHost(launchInput({
+      spawnHost: (_cli, specPath) => {
+        // Ack like a host, then go silent.
+        void attemptFor(specAt(specPath)).then((a) => writeFileSync(a.ackPath, JSON.stringify({
+          schema_version: a.schema_version, attempt_id: a.attempt_id, nonce: a.nonce, instance_id: a.instance_id,
+          team_name: a.team_name, worker_name: a.worker_name, pane_id: a.pane_id, provider: a.provider,
+          created_at: a.created_at, kind: 'worker_launch_ack', written_at: new Date().toISOString(),
+        })));
+        return host.pid;
+      },
+    }));
+    expect(result).toMatchObject({ ok: false, reason: 'sdk_host_provider_not_started', hostPid: host.pid });
+    await until(() => !isProcessAlive(host.pid));
+  });
+
+  it('stops waiting as soon as the host reports a failure before provider_started', async () => {
+    const host = await dummyProcess();
+    const { loaded, rec } = fakeSdk();
+    let run: Promise<unknown> | undefined;
+    const t0 = Date.now();
+    const result = await launchSdkHost(launchInput({
+      ackTimeoutMs: 20_000,
+      spawnHost: (_cli, specPath) => {
+        // A real host whose start identity cannot be read fails right after the accept.
+        run = runSdkHost(specAt(specPath), deps(loaded, { startIdentity: () => null }));
+        return host.pid;
+      },
+    }));
+    expect(await run).toBe('start_failed');
+    expect(result).toMatchObject({ ok: false, reason: 'sdk_host_failed_before_start:host process start identity unavailable' });
+    expect(Date.now() - t0).toBeLessThan(10_000);
+    expect(rec.ops).toEqual([]);
+    await until(() => !isProcessAlive(host.pid));
   });
 });
 
@@ -505,9 +675,10 @@ describe('stopSdkHost', () => {
   it('rings stop and returns once the host reports its provider dead', async () => {
     const attempt = await newAttempt();
     const { loaded, rec } = fakeSdk();
+    const provider = await dummyProcess();
     let stopped: Promise<boolean> | undefined;
-    // The provider record must name a live process: use this test process and its real start identity.
-    const live = deps(loaded, { pid: process.pid, startIdentity: (pid) => getProcessStartIdentitySync(pid) });
+    // The provider record must name a live process with its real start identity.
+    const live = deps(loaded, { pid: provider.pid, startIdentity: (pid) => getProcessStartIdentitySync(pid) });
     const host = await hostWithLeader(attempt, live, async () => {
       await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
       stopped = stopSdkHost(attempt, stateRoot, { timeoutMs: 5_000, pollMs: 10 });
@@ -515,5 +686,62 @@ describe('stopSdkHost', () => {
     expect(await host).toBe('stopped');
     expect(await stopped).toBe(true);
     expect(rec.ops).toContain('stop');
+    expect(isProcessAlive(provider.pid)).toBe(true); // graceful: nothing was killed
   }, 60_000);
+
+  it('escalates to an identity-checked kill of the host and its runtime, then publishes termination-complete', async () => {
+    const attempt = await newAttempt();
+    const hostProc = await dummyProcess();
+    const runtimeProc = await dummyProcess();
+    const { loaded } = fakeSdk({ pid: runtimeProc.pid });
+    // pollMs far above the stop budget: the host does not answer the stop doorbell in time.
+    const hung = deps(loaded, {
+      pid: hostProc.pid,
+      startIdentity: (pid) => getProcessStartIdentitySync(pid),
+      isAlive: (pid) => isProcessAlive(pid),
+      killTree: () => {},
+      pollMs: 4_000,
+    });
+    let stopped = false;
+    const host = await hostWithLeader(attempt, hung, async () => {
+      await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
+      expect(readSdkSession(stateRoot, WORKER)).toMatchObject({ runtime_pid: runtimeProc.pid, runtime_start_identity: runtimeProc.identity });
+      stopped = await stopSdkHost(attempt, stateRoot, { timeoutMs: 300, pollMs: 20 });
+    });
+    expect(stopped).toBe(true);
+    await until(() => !isProcessAlive(hostProc.pid) && !isProcessAlive(runtimeProc.pid));
+    expect(JSON.parse(readFileSync(`${attempt.startedPath}.termination-complete`, 'utf8')))
+      .toMatchObject({ kind: 'worker_launch_termination_complete', cleanup_verified: true, pid: hostProc.pid, process_start_identity: hostProc.identity });
+    await host;
+  }, 60_000);
+
+  it('never signals a recorded pid whose start identity no longer matches', async () => {
+    const attempt = await newAttempt();
+    const bystander = await dummyProcess();
+    // A started record and a session naming a live pid with a stale identity (a recycled pid).
+    writeFileSync(attempt.startedPath, JSON.stringify({
+      schema_version: attempt.schema_version, attempt_id: attempt.attempt_id, nonce: attempt.nonce,
+      instance_id: attempt.instance_id, team_name: attempt.team_name, worker_name: attempt.worker_name,
+      pane_id: attempt.pane_id, provider: attempt.provider, created_at: attempt.created_at,
+      kind: 'worker_launch_provider_started', pid: bystander.pid, process_start_identity: 'ticks:1',
+      written_at: new Date().toISOString(),
+    }));
+    writeFileSync(sdkWorkerFiles(stateRoot, WORKER).session, JSON.stringify({
+      schema_version: 1, attempt_id: attempt.attempt_id, worker_name: WORKER, state: 'busy',
+      runtime_pid: bystander.pid, runtime_start_identity: 'ticks:2',
+    }));
+    expect(await stopSdkHost(attempt, stateRoot, { timeoutMs: 100, pollMs: 20 })).toBe(true);
+    expect(isProcessAlive(bystander.pid)).toBe(true);
+  });
+
+  it('reports cleanup unverified while a runtime without a recorded identity is still alive', async () => {
+    const attempt = await newAttempt();
+    const orphan = await dummyProcess();
+    writeFileSync(sdkWorkerFiles(stateRoot, WORKER).session, JSON.stringify({
+      schema_version: 1, attempt_id: attempt.attempt_id, worker_name: WORKER, state: 'busy', runtime_pid: orphan.pid,
+    }));
+    expect(await stopSdkHost(attempt, stateRoot, { timeoutMs: 50, pollMs: 50 })).toBe(false);
+    expect(isProcessAlive(orphan.pid)).toBe(true); // unverifiable pids are reported, not killed
+  }, 20_000);
 });
+

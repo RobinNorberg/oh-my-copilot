@@ -57,6 +57,8 @@ export interface SdkHostDeps {
   /** Source env for the runtime (the host's own env). */
   env: NodeJS.ProcessEnv;
   log?: (line: string) => void;
+  /** Session-file writer (test seam for win32 rename contention); defaults to atomicWriteJson. */
+  writeSessionJson?: (path: string, value: unknown) => Promise<void>;
 }
 
 export type SdkHostOutcome =
@@ -213,6 +215,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
     attempt_id: spec.attempt_id,
     host_pid: deps.pid,
     runtime_pid: null,
+    runtime_start_identity: null,
     session_id: null,
     model: spec.model ?? null,
     state: 'starting',
@@ -230,12 +233,13 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
     timeline: { host_started_at: new Date().toISOString() },
   };
   let dirty = true;
+  const writeSessionJson = deps.writeSessionJson ?? atomicWriteJson;
   const flush = async (force = false) => {
     if (!dirty && !force) return;
     dirty = false;
     session.updated_at = new Date().toISOString();
     try {
-      await atomicWriteJson(files.session, session);
+      await writeSessionJson(files.session, session);
     } catch (err) {
       // win32: the rename fails (EPERM/EBUSY) while a reader holds the file; retry on the next tick.
       dirty = true;
@@ -249,27 +253,12 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
 
   // 1. Launch protocol: ack, leader decision, provider_started (this host).
   const identity = identityOf(attempt);
-  if (!await writeExclusive(attempt.ackPath, { ...identity, kind: 'worker_launch_ack', written_at: new Date().toISOString() })) {
-    return 'ack_conflict';
-  }
-  mark('ack_at');
-  const decision = await waitForDecision(attempt, DECISION_TIMEOUT_MS);
-  if (decision !== 'accepted') return decision === 'revoked' ? 'decision_revoked' : 'decision_timeout';
-  mark('accepted_at');
   const startIdentity = deps.startIdentity(deps.pid);
-  if (!startIdentity) return 'start_failed';
   const groupFields = deps.platform === 'win32' ? {} : { process_group_id: deps.pid };
-  await writeExclusive(attempt.startedPath, {
-    ...identity,
-    kind: 'worker_launch_provider_started',
-    pid: deps.pid,
-    process_start_identity: startIdentity,
-    written_at: new Date().toISOString(),
-    ...groupFields,
-  });
-  await flush(true);
-
   const writeTerminal = async (cleanupVerified: boolean) => {
+    // Without a start identity no terminal record is valid evidence; the
+    // leader's stop then falls back to the session file and the host pid.
+    if (!startIdentity) return;
     const record = {
       ...identity,
       kind: 'worker_launch_provider_terminal',
@@ -299,10 +288,35 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
     session.state = 'failed';
     session.last_error = error;
     mark('closed_at');
-    await flush(true);
+    // Terminal first: a leader that sees the `failed` session file may retire
+    // the attempt at once, and retirement needs the terminal record.
     await writeTerminal(true);
+    await flush(true);
     return outcome;
   };
+
+  if (!await writeExclusive(attempt.ackPath, { ...identity, kind: 'worker_launch_ack', written_at: new Date().toISOString() })) {
+    // Another host owns this attempt: its session file and records are not ours to write.
+    return 'ack_conflict';
+  }
+  mark('ack_at');
+  const decision = await waitForDecision(attempt, DECISION_TIMEOUT_MS);
+  // A host that fails before provider_started still publishes its exit (session
+  // file + a terminal record), so a leader stop does not wait out its timeout.
+  if (decision !== 'accepted') {
+    return fail(decision === 'revoked' ? 'decision_revoked' : 'decision_timeout', `launch decision ${decision}`);
+  }
+  mark('accepted_at');
+  if (!startIdentity) return fail('start_failed', 'host process start identity unavailable');
+  await writeExclusive(attempt.startedPath, {
+    ...identity,
+    kind: 'worker_launch_provider_started',
+    pid: deps.pid,
+    process_start_identity: startIdentity,
+    written_at: new Date().toISOString(),
+    ...groupFields,
+  });
+  await flush(true);
 
   // 2. SDK client + session.
   let loaded: LoadedSdk | null = null;
@@ -370,7 +384,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
       case 'assistant.usage': {
         session.usage.credits += usageCredits(event);
         if (data.initiator === 'user') session.usage.premium_requests += 1;
-        if (!capped && session.usage.credits > spec.max_credits) {
+        if (!capped && session.usage.credits >= spec.max_credits) {
           capped = true;
           session.last_error = `credit cap ${spec.max_credits} reached (${session.usage.credits.toFixed(2)})`;
           void sessionRef?.abort().catch(() => undefined);
@@ -419,6 +433,8 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
   try {
     await withTimeout(client.start(), START_TIMEOUT_MS, 'client.start()');
     session.runtime_pid = runtimePid(client) ?? null;
+    // The leader's last-resort kill checks this identity, never a bare pid.
+    session.runtime_start_identity = session.runtime_pid ? deps.startIdentity(session.runtime_pid) : null;
     mark('client_started_at');
     sessionRef = await withTimeout(client.createSession({
       onPermissionRequest,

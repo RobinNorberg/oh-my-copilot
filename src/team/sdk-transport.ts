@@ -20,7 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { killProcessTree, isProcessAlive } from '../platform/process-utils.js';
+import { killProcessTree, isProcessAlive, isProcessIdentityLive } from '../platform/process-utils.js';
 import { resolveRuntimeCliPath } from './runtime-owner-client.js';
 import {
   awaitWorkerLaunchAcknowledgement,
@@ -106,6 +106,8 @@ export interface SdkSessionFile {
   attempt_id: string;
   host_pid: number;
   runtime_pid: number | null;
+  /** Strict start identity of `runtime_pid`; absent in files written before it existed. */
+  runtime_start_identity?: string | null;
   session_id: string | null;
   model: string | null;
   state: SdkSessionState;
@@ -244,7 +246,9 @@ export async function launchSdkHost(input: SdkLaunchInput): Promise<SdkLaunchRes
     user_config_dir: input.userConfigDir,
   };
   writeFileSync(files.spec, `${JSON.stringify(spec, null, 2)}\n`);
-  if (!existsSync(files.doorbell)) writeFileSync(files.doorbell, '');
+  // A new host reads the doorbell from offset 0: start it empty so a previous
+  // attempt's prompts, stop or shutdown entries are never replayed into it.
+  writeFileSync(files.doorbell, '');
   const hostPid = (input.spawnHost ?? spawnDetachedHost)(cliPath, files.spec, files.log, input.workerCwd);
   const kill = async () => { if (hostPid && isProcessAlive(hostPid)) await killProcessTree(hostPid, 'SIGKILL').catch(() => undefined); };
   const timeoutMs = input.ackTimeoutMs ?? 30_000;
@@ -253,11 +257,46 @@ export async function launchSdkHost(input: SdkLaunchInput): Promise<SdkLaunchRes
     await kill();
     return { ok: false, attempt, reason: `sdk_host_ack_${ack.reason}`, ...(hostPid ? { hostPid } : {}) };
   }
-  if (!await awaitWorkerLaunchProviderStarted(attempt, { timeoutMs })) {
-    await kill();
-    return { ok: false, attempt, reason: 'sdk_host_provider_not_started', ...(hostPid ? { hostPid } : {}) };
+  const startDeadline = Date.now() + timeoutMs;
+  for (;;) {
+    const sliceMs = Math.max(1, Math.min(1_000, startDeadline - Date.now()));
+    if (await awaitWorkerLaunchProviderStarted(attempt, { timeoutMs: sliceMs })) break;
+    // A host that failed before provider_started says so in its session file: stop waiting.
+    if (failedBeforeProviderStarted(attempt, input.stateRoot)) {
+      await kill();
+      const error = readSdkSession(input.stateRoot, input.workerName)?.last_error ?? 'unknown';
+      return { ok: false, attempt, reason: `sdk_host_failed_before_start:${error}`, ...(hostPid ? { hostPid } : {}) };
+    }
+    if (Date.now() >= startDeadline) {
+      await kill();
+      return { ok: false, attempt, reason: 'sdk_host_provider_not_started', ...(hostPid ? { hostPid } : {}) };
+    }
   }
   return { ok: true, attempt, hostPid, paneId };
+}
+
+/** Floor for a shutdown's host stop budget: lets a host already mid-teardown finish. */
+export const SDK_HOST_STOP_FLOOR_MS = 5_000;
+
+type ProcessTarget = { pid: number; identity: string | null };
+
+/** Gone = dead, or the pid now names a different process (identity mismatch). */
+async function isTargetGone(target: ProcessTarget): Promise<boolean> {
+  if (!target.identity) return !isProcessAlive(target.pid);
+  const liveness = await isProcessIdentityLive(target.pid, target.identity);
+  return liveness === 'dead' || liveness === 'mismatch';
+}
+
+/**
+ * True when the host failed before publishing provider_started (sdk-host.ts
+ * writes its terminal record, then the `failed` session file). It never
+ * started a runtime, so there is nothing left to stop; the shared observer
+ * reads such an attempt as `unknown` and would make a stop wait out its budget.
+ */
+function failedBeforeProviderStarted(attempt: WorkerLaunchAttempt, stateRoot: string): boolean {
+  if (existsSync(attempt.startedPath)) return false;
+  const session = readSdkSession(stateRoot, attempt.worker_name);
+  return session?.attempt_id === attempt.attempt_id && session.state === 'failed';
 }
 
 /**
@@ -271,27 +310,41 @@ export async function stopSdkHost(
   opts: { timeoutMs?: number; kind?: 'stop' | 'shutdown'; pollMs?: number } = {},
 ): Promise<boolean> {
   const pollMs = opts.pollMs ?? 250;
-  if (await observeWorkerLaunchProvider(attempt) === 'dead') return true;
+  const exited = async () => failedBeforeProviderStarted(attempt, stateRoot) || await observeWorkerLaunchProvider(attempt) === 'dead';
+  if (await exited()) return true;
   ringDoorbell(stateRoot, attempt.worker_name, { kind: opts.kind ?? 'stop', from: 'leader-fixed' });
   const deadline = Date.now() + (opts.timeoutMs ?? 45_000);
   while (Date.now() < deadline) {
-    if (await observeWorkerLaunchProvider(attempt) === 'dead') return true;
+    if (await exited()) return true;
     await new Promise((r) => setTimeout(r, pollMs));
   }
+  // Last resort: kill only processes whose recorded start identity still
+  // matches (a recycled pid is never signalled): the host, and the runtime it
+  // spawned, which outlives a host that died without tearing it down.
   const started = readStartedRecord(attempt);
-  const pid = started?.pid ?? null;
-  if (pid && isProcessAlive(pid)) await killProcessTree(pid, 'SIGKILL').catch(() => undefined);
+  const session = readSdkSession(stateRoot, attempt.worker_name);
+  const targets: ProcessTarget[] = [];
+  if (started) targets.push({ pid: started.pid, identity: started.process_start_identity });
+  if (session?.attempt_id === attempt.attempt_id && session.runtime_pid && session.runtime_pid > 0) {
+    targets.push({ pid: session.runtime_pid, identity: session.runtime_start_identity ?? null });
+  }
+  for (const target of targets) {
+    if (target.identity && await isProcessIdentityLive(target.pid, target.identity) === 'live') {
+      await killProcessTree(target.pid, 'SIGKILL').catch(() => undefined);
+    }
+  }
   const killDeadline = Date.now() + 5_000;
-  while (Date.now() < killDeadline) {
-    if (!pid || !isProcessAlive(pid)) {
+  for (;;) {
+    if ((await Promise.all(targets.map(isTargetGone))).every(Boolean)) {
       // The host died without its own terminal record: publish the
-      // termination proof the shared retire path accepts (pid + identity).
-      if (pid && started) writeTerminationComplete(attempt, pid, started.process_start_identity);
+      // termination proof the shared retire path accepts (pid + identity),
+      // and only once its runtime is gone too.
+      if (started) writeTerminationComplete(attempt, started.pid, started.process_start_identity);
       return true;
     }
+    if (Date.now() >= killDeadline) return false;
     await new Promise((r) => setTimeout(r, pollMs));
   }
-  return false;
 }
 
 function readStartedRecord(attempt: WorkerLaunchAttempt): { pid: number; process_start_identity: string } | null {
