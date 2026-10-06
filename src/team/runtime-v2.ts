@@ -6156,8 +6156,8 @@ export async function monitorTeamV2(
 // ---------------------------------------------------------------------------
 
 /**
- * Best-effort cleanup of stale team reservations owned by dead processes.
- * Acquires the lifecycle lock to ensure race-safe removal.
+ * Best-effort cleanup of stale (pending) team reservations owned by dead
+ * processes. Acquires the lifecycle lock to ensure race-safe removal.
  * This allows new teams to be created even if a previous team's reservation
  * file was left behind due to process death during startup.
  */
@@ -6203,10 +6203,10 @@ export async function cleanupStaleReservations(
         return; // Malformed owner, leave alone
       }
 
-      // An active reservation is the running team's instance authority; its
-      // owner is the `team start` CLI, which exits once the team is up. A dead
-      // owner only makes a starting (never activated) reservation stale.
-      if ((reservation as Record<string, unknown>).phase === 'active') return;
+      // Only a pending reservation can be stale. An active reservation is the
+      // running team's instance authority: its owner is the `team start` CLI,
+      // which exits once the team is up, and shutdown itself releases it.
+      if ((reservation as Record<string, unknown>).phase !== 'pending') return;
 
       // Check if the process is dead
       const ownerRecord = owner as Pick<OwnerEpochRecord, 'pid' | 'process_started_at'>;

@@ -994,8 +994,8 @@ export async function processSessionEnd(input: SessionEndInput): Promise<HookOut
   });
 }
 
-/** Wiki producer lives in a lean module so its hook skips this graph; re-exported for existing callers. */
-export { processWikiSessionEnd } from './wiki-foreground-bootstrap.js';
+/** Wiki producer has no foreground lock or write; it only seals a durable capture/no-op intent. */
+export { publishWikiSessionEndBootstrap as processWikiSessionEnd } from './wiki-foreground-bootstrap.js';
 
 export async function handleSessionEnd(input: SessionEndInput): Promise<HookOutput> {
   return processSessionEnd(input);

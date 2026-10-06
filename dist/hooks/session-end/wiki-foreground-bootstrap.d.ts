@@ -9,9 +9,11 @@ export interface WikiSessionEndBootstrapResult {
  * Wiki SessionEnd producer: no foreground lock or wiki write, it only seals a
  * durable capture/no-op intent and hands off to the existing worker.
  *
- * Kept out of `index.ts` so `scripts/wiki-session-end.mjs` does not load the
- * full SessionEnd module graph (~100ms) inside run.cjs's 300ms foreground
- * budget — the same split `foreground-bootstrap.ts` makes for `session-end.mjs`.
+ * Lives outside `index.ts` for the same reason as `foreground-bootstrap.ts`:
+ * `scripts/wiki-session-end.mjs` runs inside run.cjs's fixed 300ms SessionEnd
+ * foreground budget, and importing the full SessionEnd module graph there
+ * timed the hook out before the intent was sealed.
  */
-export declare function processWikiSessionEnd(input: WikiSessionEndBootstrapInput): Promise<WikiSessionEndBootstrapResult>;
+export declare function publishWikiSessionEndBootstrap(input: WikiSessionEndBootstrapInput): Promise<WikiSessionEndBootstrapResult>;
+export default publishWikiSessionEndBootstrap;
 //# sourceMappingURL=wiki-foreground-bootstrap.d.ts.map

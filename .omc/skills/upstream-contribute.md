@@ -39,8 +39,13 @@ maintainer's repo stays free of fork names and host abstractions.
 5. **Pollution scan** on the branch diff — must be empty:
    `git diff upstream/dev..HEAD -- . ':!inventory' | grep -E '^\+' | grep -iE 'oh-my-copilot|\bomg\b|\.omg\b|copilot|COPILOT_|psmux|getHostCliType|host-detection|host-signal|RobinNorberg|oh-my-claude-sisyphus'`
    plus a check that every new import exists upstream.
-6. **Rebase onto current `upstream/dev` right before posting** (it moves daily),
-   regenerate the inventory again, rerun the branch's tests, `push --force-with-lease origin`.
+6. **Bring the branch up to date right before posting — by MERGE, never by
+   rebase + force-push** (`upstream/dev` moves daily): `git fetch upstream dev &&
+   git merge upstream/dev` (resolve the inventory conflict by taking theirs),
+   regenerate the inventory as a new commit on top, rerun the branch's tests,
+   plain `git push origin <branch>`. The maintainer merges with merge commits
+   himself, so a merge commit in the PR is fine; a rewritten branch is not.
+   Robin's standing rule (2026-10-06): no force pushes, anywhere.
 7. **Draft texts** (`issue.md` with `# title` line 1; `pr.md` with `Fix #<ISSUE>: …`
    placeholder) in the style of #4146/#4201: Summary → Reproduction → Environment
    (`upstream dev @ <full sha>`, Node, OS) → Code path with full-sha permalinks →
@@ -64,6 +69,23 @@ maintainer's repo stays free of fork names and host abstractions.
   graph himself after each merge — conflicts there are expected, not a defect).
 
 ## Pitfalls
+- **Maintainers push to our PR branches.** After a PR is posted, never
+  `reset`/`rebase`/force-push the branch without first running
+  `git fetch origin <branch> && git log --format='%h %an %s' upstream/dev..origin/<branch>`
+  and checking every commit is ours. On #4246 the maintainer's fix-up
+  (8 commits) was mistaken for a lane's churn and squashed away; it had to
+  be restored from the dangling sha and apologised for. If the maintainer
+  has touched the branch: build on his head, add commits on top (a merge of
+  `dev` is fine — he does that himself), never rewrite.
+- **No `dist/` or `bridge/` changes in an upstream PR — ever.** Upstream's
+  `No Committed Build Artifacts` and `Authorize generated artifacts from base
+  trust root` checks fail on any tracked `dist` diff (PR #4246 first push:
+  13 dist files, both gates red); the maintainer rebuilds at release. A hook
+  script that needs new code must therefore import only dist modules that
+  ALREADY ship (compose from `dist/lib/*`, `dist/hooks/*` as #4246 does) —
+  a new `dist/<module>.js` cannot be shipped by a PR, and the hook would
+  break on `dev` until the next rebuild. Before pushing:
+  `git diff --name-only upstream/dev..HEAD -- dist bridge` must be empty.
 - `gh pr create` prints usage (and creates nothing) when args are shell-joined.
 - Upstream tests may hardcode `linux:` identities; verify on Windows, fix test-only.
 - The maintainer may fix an issue himself before a PR exists (#4146/#4147/#4230)

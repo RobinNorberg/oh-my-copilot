@@ -2,6 +2,84 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.8.1
+
+## [5.8.1] - 2026-10-06
+
+Fork **v5.8.1** is a patch release: it ports upstream oh-my-claudecode `dev`
+bcaceb136..ef9a44f0e, moving parity from upstream 5.6.2 (upstream's own
+version did not change in this range). There are no breaking changes and
+nothing to migrate. The fork stays ahead of upstream at v5.8.1 vs upstream's
+5.6.2.
+
+### Ported from upstream oh-my-claudecode dev (bcaceb136..ef9a44f0e)
+
+- **HUD cache wrapper gets a minimum refresh age and a POSIX-sh fast path
+  (#4237).** `scripts/lib/hud-cache-wrapper.sh` skips the lock-and-refresh
+  step after printing a cached statusline when the cache is younger than
+  `OMC_HUD_MIN_REFRESH_SECONDS` (default 15; `0` restores render-every-call).
+  A new fast path at the top of the wrapper reads stdin with the shell's
+  `read` builtin, pulls the session id out of compact JSON by parameter
+  expansion, and rejects ids with unsafe characters, so a fresh, non-empty
+  cache can be printed and the script can exit before the normal
+  mkdir/sweep/stdin-save path runs at all. Non-compact JSON, a missing id, or
+  an unsafe id falls through to the stock path unchanged.
+- **HUD renders todos from `TaskCreate`/`TaskUpdate`, tracked by task id
+  (#4242/#4243).** The HUD transcript reader now follows the `TaskCreate` and
+  `TaskUpdate` tools, not only `TodoWrite`: `TaskCreate` adds a pending todo
+  (held until its tool result supplies the task id), and `TaskUpdate`
+  addresses that todo by id to change its status or subject or delete it.
+  `TodoWrite` keeps replacing the full list; `TaskCreate`/`TaskUpdate` apply
+  on top of it. A follow-up fix corrected the first cut, which matched
+  `TaskUpdate` by subject instead of id, so a bare `{taskId, status}` update
+  (the issue's own repro) was a no-op.
+- **HUD shows the Claude Code effort level (#4249).** A new `effort` HUD
+  element reads the effort level from statusline stdin and renders
+  `effort:<level>`, colored cool to warm by intensity (dim low, cyan medium,
+  yellow high, magenta xhigh, bold magenta max) and never red, since the HUD
+  reserves red for critical state.
+- **Autopilot state no longer arms from a sanitized pasted-echo prompt
+  (#4250/#4251).** `keyword-detector.mjs` detecting a mode keyword (ralph,
+  autopilot, ultragoal, ralplan) inside pasted system-echo content used to
+  arm that mode's state even though the prompt sanitizes entirely to the
+  pasted-echo sentinel. The detector now skips arming any of those states
+  for a prompt that sanitizes to the sentinel, and the sentinel string is
+  shared with `persistent-mode.mjs`/`.cjs` and the TypeScript enforcement
+  path (`src/hooks/autopilot/enforcement.ts`) as defense in depth, so an
+  orphaned state is recognized and cleared wherever it is checked.
+- **Detached `new-session -F` format kept unescaped (#4252/#4253).** An
+  earlier change updated the detached tmux `new-session -F` format string but
+  left both call sites allowlisting the old string, so the new format got
+  tmux's `#`-escaping and was printed literally, and
+  `parseTmuxCreationRecord()` failed every detached team start outside tmux.
+  The format is now defined once and reused for both the `-F` argument and
+  the allowlists.
+- **Ralph's `hardMaxIterations` is enforced in the Stop hook scripts
+  (#4256/#4257).** The hard iteration cap was previously hardened only in the
+  TypeScript enforcement path; the Stop hook scripts that actually run it
+  (`scripts/persistent-mode.mjs`, and now `templates/hooks/persistent-mode.mjs`,
+  which previously had no hard max at all) now mirror
+  `src/lib/security-config.ts`: the cap is checked before continuing or
+  extending an iteration (not only once `max_iterations` was reached), strict
+  mode clamps it to at most 200 instead of letting config raise or disable
+  it, and the config is read from the XDG/APPDATA directory with the same
+  JSONC parsing `keyword-detector.mjs` uses, instead of a hardcoded
+  `~/.config` path and a comment regex that broke on URLs.
+- Upstream's own release during this range: **v5.6.2**, folded into the
+  ported range above.
+
+### Fork
+
+- The fork's own `wiki-session-end` SessionEnd-budget fix (merged upstream as
+  #4246) now returns in its canonical upstream form: the hook script imports
+  only the lean dist modules upstream already ships
+  (`worktree-paths`, `wiki/session-hooks`, `session-end/cleanup-manifest`,
+  and, after sealing, `session-end/worker`), replacing this fork's earlier
+  variant of the same fix.
+- The fork's own team-shutdown reservation fix (merged upstream as #4247) is
+  already in the fork since v5.8.0 (#218); it is now also upstream in
+  canonical form, so no fork change was needed here.
+
 # oh-my-copilot v5.8.0
 
 ## [5.8.0] - 2026-10-06
