@@ -461,4 +461,45 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     await expect(readFile(join(teamRoot, 'events.jsonl'), 'utf8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
   });
+
+  it.each([
+    ['capped', true],
+    ['busy', false],
+  ] as const)('an sdk worker whose session is %s is flagged for reassignment: %s', async (state, flagged) => {
+    cwd = await mkdtemp(join(tmpdir(), `omc-runtime-v2-monitor-sdk-${state}-`));
+    isolateFixtureRoot(cwd);
+    await writeConfigAndTask('in_progress');
+    const teamRoot = teamStateRoot(cwd, 'demo-team');
+    const config = JSON.parse(await readFile(join(teamRoot, 'config.json'), 'utf8')) as Record<string, unknown> & {
+      workers: Array<Record<string, unknown>>;
+    };
+    config.tmux_session = 'sdk:demo-team';
+    delete config.tmux_server_identity;
+    config.leader_pane_id = '';
+    config.workers[0] = { ...config.workers[0], pane_id: 'sdk:worker-1', worker_cli: 'copilot' };
+    await writeFile(join(teamRoot, 'config.json'), JSON.stringify(config), 'utf8');
+    await writeFile(join(teamRoot, 'workers', 'worker-1', 'sdk-session.json'), JSON.stringify({
+      schema_version: 1, team_name: 'demo-team', worker_name: 'worker-1', attempt_id: 'a1', host_pid: 1,
+      runtime_pid: null, session_id: 's1', model: null, state, turns: 2, queued: 1, delivered: [],
+      last_event_type: 'session.idle', last_event_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      usage: { credits: 10.5, premium_requests: 2, shutdown_premium_requests: null, shutdown_credits: null },
+      hooks: { session_end_runs: 0, failed: 0 }, aborts: 1, permissions: [],
+      last_error: state === 'capped' ? 'credit cap 10 reached (10.50)' : null, timeline: {},
+    }), 'utf8');
+
+    const { monitorTeamV2 } = await import('../runtime-v2.js');
+    const snapshot = await monitorTeamV2('demo-team', cwd);
+
+    expect(snapshot?.workers[0]?.sdk?.state).toBe(state);
+    expect(snapshot?.deadWorkers).toEqual([]);
+    if (flagged) {
+      expect(snapshot?.nonReportingWorkers).toEqual(['worker-1']);
+      expect(snapshot?.recommendations).toContain(
+        'Reassign task-1 from worker-1: sdk credit cap reached (credit cap 10 reached (10.50)); the worker takes no more prompts',
+      );
+    } else {
+      expect(snapshot?.nonReportingWorkers).toEqual([]);
+      expect(snapshot?.recommendations.some((r) => r.includes('credit cap'))).toBe(false);
+    }
+  });
 });

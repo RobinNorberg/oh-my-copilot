@@ -199,7 +199,7 @@ import {
   withWorkerLaunchAttemptFence,
 } from './worker-launch-ack.js';
 import {
-  isSdkTarget, launchSdkHost, readSdkSession, ringDoorbell, sdkPaneId, sdkTeamTarget, stopSdkHost,
+  isSdkTarget, launchSdkHost, readSdkSession, ringDoorbell, sdkPaneId, sdkTeamTarget, stopSdkHost, SDK_HOST_STOP_FLOOR_MS,
   type SdkSessionFile,
 } from './sdk-transport.js';
 import { toCopilotModelId } from './model-contract.js';
@@ -1512,7 +1512,7 @@ async function readUnresolvedStartupLaunch(
   }
 }
 
-interface SdkTeamSettings {
+export interface SdkTeamSettings {
   maxCreditsPerWorker: number;
   model?: string;
   startupEvidenceMs: number;
@@ -1520,15 +1520,21 @@ interface SdkTeamSettings {
   denyUrls: string[];
 }
 
-function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings {
+export function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings {
   const sdk = pluginCfg.team?.sdk ?? {};
   const envNumber = (key: string): number | undefined => {
     const n = Number(process.env[key]);
     return Number.isFinite(n) && n > 0 ? n : undefined;
   };
+  // The runtime floors `--max-ai-credits` at its own minimum; the host enforces
+  // this value itself, so a non-positive or non-numeric cap is a config error.
+  const configCap = sdk.maxCreditsPerWorker as unknown;
+  if (configCap !== undefined && !(typeof configCap === 'number' && Number.isFinite(configCap) && configCap > 0)) {
+    throw new Error(`invalid_team_sdk_config:maxCreditsPerWorker must be a positive number (got ${JSON.stringify(configCap)})`);
+  }
   const model = process.env.OMC_TEAM_SDK_MODEL?.trim() || sdk.model?.trim();
   return {
-    maxCreditsPerWorker: envNumber('OMC_TEAM_SDK_MAX_CREDITS') ?? sdk.maxCreditsPerWorker ?? 10,
+    maxCreditsPerWorker: envNumber('OMC_TEAM_SDK_MAX_CREDITS') ?? (configCap as number | undefined) ?? 10,
     ...(model ? { model } : {}),
     startupEvidenceMs: envNumber('OMC_TEAM_SDK_STARTUP_EVIDENCE_MS') ?? sdk.startupEvidenceMs ?? 180_000,
     denyTools: pluginCfg.permissions?.workerDenyTools ?? [],
@@ -4330,6 +4336,17 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
   if (sdkMode && [...effectiveAgentTypes].some((agentType) => agentType !== 'copilot')) {
     throw new Error(`sdk_transport_requires_copilot_workers:${[...effectiveAgentTypes].join(',')}`);
   }
+  if (sdkMode) {
+    // Reviewer-style roles publish a verdict file the leader consumes only
+    // after the provider exits (or, for cursor, on file appearance). An SDK
+    // host never exits between turns, so its verdict would never be read.
+    const contractRoles = [...new Set([...startupAssignments.values()]
+      .flatMap((a) => (a.role && shouldInjectContract(a.role, a.agentType) ? [a.role] : [])))];
+    if (contractRoles.length > 0) {
+      throw new Error(`sdk_transport_unsupported:contract_roles:${contractRoles.join(',')} `
+        + `(${[...CONTRACT_ROLES].join('/')} workers emit verdict files the sdk transport does not process; use --transport pane for them)`);
+    }
+  }
   for (const agentType of effectiveAgentTypes) {
     try {
       resolvedBinaryPaths[agentType] = resolvePreflightBinaryPath(agentType).path;
@@ -4467,7 +4484,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     throw error;
   }
   const permissionLines = sdkSettings
-    ? [`[omg team] copilot sdk workers (x${preparedLaunches.size}): no allow-all; host permission policy (writes: worktree + team state; shell: all but team control/smoke/tmux/git push); deny: ${[...sdkSettings.denyTools, ...sdkSettings.denyUrls.map((u) => `url(${u})`)].join(', ') || '(none)'}; credit cap ${sdkSettings.maxCreditsPerWorker}/worker`]
+    ? [`[omg team] copilot sdk workers (x${preparedLaunches.size}): no allow-all; host permission policy (writes: worktree + team state; shell: denylist, not a sandbox: all but team control/smoke/tmux/git push; no sub-agent tools); deny: ${[...sdkSettings.denyTools, ...sdkSettings.denyUrls.map((u) => `url(${u})`)].join(', ') || '(none)'}; credit cap ${sdkSettings.maxCreditsPerWorker}/worker`]
     : formatWorkerPermissionLines(preparedLaunches.values());
   for (const line of permissionLines) {
     process.stderr.write(`${line}\n`);
@@ -5954,8 +5971,11 @@ export async function monitorTeamV2(
       }
     }
 
+    // A capped SDK session is alive but takes no more prompts: idle-equivalent
+    // for stall detection, and its outstanding work must move elsewhere.
+    const sdkCapped = Boolean(sdkSession && providerLiveness !== 'dead' && sdkSession.state === 'capped');
     const paneSuggestsIdle = sdkSession
-      ? alive && sdkSession.state === 'idle' && sdkSession.queued === 0
+      ? alive && ((sdkSession.state === 'idle' && sdkSession.queued === 0) || sdkCapped)
       : alive && paneLooksReady(paneCapture) && !paneHasActiveTask(paneCapture);
     const statusFresh = isFreshTimestamp(status.updated_at);
     const heartbeatFresh = isFreshTimestamp(heartbeat?.last_turn_at);
@@ -5965,7 +5985,9 @@ export async function monitorTeamV2(
       : [];
 
     let stallReason: string | null = null;
-    if (paneSuggestsIdle && missingDependencyIds.length > 0) {
+    if (sdkCapped) {
+      stallReason = 'sdk_credit_cap';
+    } else if (paneSuggestsIdle && missingDependencyIds.length > 0) {
       stallReason = 'missing_dependency';
     } else if (paneSuggestsIdle && expectedTaskId !== '' && !hasWorkStartEvidence) {
       stallReason = 'no_work_start_evidence';
@@ -5977,7 +5999,15 @@ export async function monitorTeamV2(
 
     if (stallReason) {
       nonReportingWorkers.push(w.name);
-      if (stallReason === 'missing_dependency') {
+      if (stallReason === 'sdk_credit_cap') {
+        const cappedTasks = inProgressByOwner.get(w.name) ?? [];
+        for (const t of cappedTasks) {
+          recommendations.push(`Reassign task-${t.id} from ${w.name}: sdk credit cap reached (${sdkSession?.last_error ?? 'capped'}); the worker takes no more prompts`);
+        }
+        if (cappedTasks.length === 0) {
+          recommendations.push(`${w.name} reached its sdk credit cap and takes no more prompts; do not assign it new work`);
+        }
+      } else if (stallReason === 'missing_dependency') {
         recommendations.push(
           `Investigate ${w.name}: task-${outstandingTask?.id ?? expectedTaskId} is blocked by missing task ids [${missingDependencyIds.join(', ')}]; pane is idle at prompt`,
         );
@@ -6545,6 +6575,33 @@ export async function shutdownTeamV2(
   const providerCleanupFailures: string[] = [];
   const paneCleanupAlive: string[] = [];
   const paneCleanupUnknown: string[] = [];
+  // SDK hosts stop in parallel within the caller's budget (session-end passes
+  // 0): each already got the shutdown doorbell above, so the floor only lets a
+  // host that is mid-teardown finish before the identity-checked kill.
+  const sdkStopTimeoutMs = Math.max(timeoutMs, SDK_HOST_STOP_FLOOR_MS);
+  const sdkStops = new Map<string, Promise<boolean>>();
+  for (const worker of config.workers) {
+    if (!isSdkTarget(worker.pane_id) || !worker.launch_attempt_id || !config.tmux_session) continue;
+    const provider = worker.launch_descriptor?.provider ?? worker.worker_cli;
+    if (!provider) continue;
+    const attemptId = worker.launch_attempt_id;
+    const paneId = worker.pane_id!;
+    sdkStops.set(worker.name, (async () => {
+      const sdkAttempt = await loadWorkerLaunchAttempt({
+        cwd,
+        teamName: sanitized,
+        instanceId: shutdownInstance.instance_id,
+        workerName: worker.name,
+        paneId,
+        provider,
+        attemptId,
+        runtimeCliPath: resolveRuntimeCliPath(),
+      });
+      if (!sdkAttempt) return false;
+      if (!await stopSdkHost(sdkAttempt, teamStateRoot(cwd, sanitized), { timeoutMs: sdkStopTimeoutMs })) return false;
+      return retireAndCleanupCurrentWorkerLaunchAttempt(sdkAttempt, 'team_shutdown', async () => true);
+    })().catch(() => false));
+  }
   for (const worker of config.workers) {
     if (!worker.pane_id) {
       providerCleanupFailures.push(worker.name);
@@ -6563,21 +6620,7 @@ export async function shutdownTeamV2(
       continue;
     }
     if (isSdkTarget(worker.pane_id)) {
-      const sdkAttempt = await loadWorkerLaunchAttempt({
-        cwd,
-        teamName: sanitized,
-        instanceId: shutdownInstance.instance_id,
-        workerName: worker.name,
-        paneId: worker.pane_id,
-        provider,
-        attemptId: worker.launch_attempt_id,
-        runtimeCliPath: resolveRuntimeCliPath(),
-      });
-      const stopped = sdkAttempt ? await stopSdkHost(sdkAttempt, teamStateRoot(cwd, sanitized)) : false;
-      if (!sdkAttempt || !stopped
-        || !await retireAndCleanupCurrentWorkerLaunchAttempt(sdkAttempt, 'team_shutdown', async () => true)) {
-        providerCleanupFailures.push(worker.name);
-      }
+      if (!await (sdkStops.get(worker.name) ?? Promise.resolve(false))) providerCleanupFailures.push(worker.name);
       continue;
     }
     const initialOwnership = configuredPaneOwnership(config, worker);
