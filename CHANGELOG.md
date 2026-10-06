@@ -2,6 +2,31 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## Unreleased
+
+### Fork: Copilot host adaptations
+
+- **Factory chains run past their first link on Copilot:** Copilot CLI has no
+  `--session-id`, so a factory chain used to stop silently after one link.
+  The spawner now sets `OMC_CHAIN_LINK=<link id>` on each Copilot link, and
+  SessionEnd resolves the link as `OMC_CHAIN_LINK`, then the host session id.
+  The variable is trusted only when it names an open `host: "copilot"`
+  ledger, so it cannot inject a chain or replay a finished link; the
+  SessionEnd worker never forwards it. Copilot's SessionEnd reason
+  `complete` counts as success. Ledgers record `chainLink`, `host`,
+  `createdAt` and `parentLink` and are closed once by their link's SessionEnd
+  (`closedAt`, `hostSessionId`, `outcome`, `decision`); the watchdog skips
+  closed ledgers, and `omg factory status` lists each chain's links. A
+  ledger's `maxStageVisits` now carries to later links. Under a dev plugin
+  root, Copilot links get `--plugin-dir` and the SessionEnd worker forwards
+  `OMC_PLUGIN_ROOT`. Guardrails, `COPILOT_ALLOW_ALL=false` and the AFK
+  profile are unchanged. Verified live with a two-link chain on Copilot CLI
+  1.0.91 (2 premium requests).
+- **`omg smoke copilot --scenario chain`:** an opt-in tier 2 scenario that
+  runs that two-link chain against real `copilot -p` links and asserts the
+  link identity, the hand-off, the closeout and the cost from the ledgers
+  and both sessions' events. It is not part of `all` or the default set.
+
 # oh-my-copilot v5.7.0
 
 ## [5.7.0] - 2026-10-05
