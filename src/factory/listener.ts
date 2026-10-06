@@ -195,7 +195,7 @@ function spawnChainLink(req: ChainLinkRequest): EventResult {
   }
 
   const nextSessionId = randomUUID();
-  const args = factoryLinkArgv(req.prompt, nextSessionId);
+  const args = factoryLinkArgv(req.prompt, nextSessionId, [], [], req.config.cwd);
   const command = factoryLinkCommand();
   // chainLink: a Copilot link cannot take --session-id, so it gets the link id as OMC_CHAIN_LINK.
   const spawnCtx = { cwd: req.config.cwd, chainLink: nextSessionId };

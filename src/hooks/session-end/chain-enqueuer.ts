@@ -17,7 +17,7 @@ import { join } from 'path';
 import { decideNextStage, gradeGate, normalizeRouteTable, type ChainOutcome, type GateFacts, type GateName, type RouteTable } from './routing.js';
 import { acquireChainSlot, releaseChainSlot, INTENT_ID_PATTERN } from './guardrails.js';
 import { verifyCheckEvidence } from './check-evidence.js';
-import { CHAIN_LINK_ENV, isStageVisitCap, validateChainFields, LABEL_PATTERN, type ChainLinkHost, type SpawnNextChain, type SpawnNextTracker } from './spawn-next.js';
+import { CHAIN_LINK_ENV, stageVisitCap, validateChainFields, LABEL_PATTERN, type ChainLinkHost, type SpawnNextChain, type SpawnNextTracker } from './spawn-next.js';
 import { getOmcRoot, validateSessionId } from '../../lib/worktree-paths.js';
 
 export interface ChainLedger {
@@ -46,6 +46,11 @@ export interface ChainLedger {
   outcome?: ChainOutcome;
   /** The enqueuer decision that closed the link (enqueued, chain-terminal, no-route, ...). */
   decision?: string;
+  /** The chain this link enqueued; replayed to a duplicate SessionEnd of the same host session. */
+  enqueuedChain?: SpawnNextChain;
+  /** Copilot: the host session that claimed the link at its SessionStart (bindChainLink). */
+  boundSessionId?: string;
+  boundAt?: string;
 }
 
 /**
@@ -75,9 +80,12 @@ export interface ChainLinkResolution {
  * The ending session's chain-link identity: CHAIN_LINK_ENV when it names a
  * trusted ledger, else the host session id (the Claude path, unchanged).
  *
- * The env var is only trusted when `chain-<id>.json` exists, parses, and
- * records `host: "copilot"` and `chainLink: <id>`, and the ending session is
- * not a Claude one. A closed ledger resolves, and planChainEnqueue records the
+ * The env var is only trusted when `chain-<id>.json` exists, parses, records
+ * `host: "copilot"` and `chainLink: <id>`, and is bound to this host session:
+ * the link's own SessionStart binds it (bindChainLink), so a nested session
+ * that inherited the var (a verify command's `copilot -p`, an MCP child, a
+ * team worker) cannot end the parent's link. A Claude SessionEnd never
+ * claims it. A closed ledger resolves, and planChainEnqueue records the
  * replay as `already-closed`. The ledger file, written by the spawner, is the
  * trust anchor, so setting the env var alone can neither inject a chain nor
  * replay a consumed link.
@@ -86,24 +94,109 @@ export function resolveChainLink(directory: string, hostSessionId: string, env: 
   const claimed = env[CHAIN_LINK_ENV]?.trim();
   if (!claimed) return { linkId: hostSessionId, source: 'session' };
   const reject = (rejected: string): ChainLinkResolution => ({ linkId: hostSessionId, source: 'session', rejected });
-  try {
-    validateSessionId(claimed);
-  } catch {
-    return reject('invalid id');
-  }
-  // A Claude session nested inside a Copilot link inherits the var; only a
-  // Copilot SessionEnd may claim a Copilot link (Claude hooks carry this marker).
-  if (env.CLAUDE_CODE_ENTRYPOINT) return reject('not a copilot session');
-  const ledger = readChainLedger(directory, claimed);
-  if (!ledger) return reject('no ledger');
-  if (ledger.host !== 'copilot') return reject(`ledger host ${String(ledger.host ?? 'unset')}`);
-  if (ledger.chainLink !== claimed) return reject('ledger chainLink mismatch');
+  const check = checkCopilotLink(directory, claimed, env);
+  if (typeof check === 'string') return reject(check);
+  const bound = check.ledger.boundSessionId ?? readBindFile(directory, claimed);
+  if (!bound) return reject('ledger not bound (no SessionStart claimed it)');
+  if (bound !== hostSessionId) return reject('ledger bound to another session');
   // A closed ledger still resolves: planChainEnqueue then records the replay
-  // as `already-closed` and enqueues nothing.
+  // as `already-closed`.
   return { linkId: claimed, source: 'env' };
 }
 
-type ChainLedgerCloseout = Pick<ChainLedger, 'hostSessionId' | 'endReason' | 'outcome' | 'decision'>;
+/** Shared trust checks for an OMC_CHAIN_LINK claim: the ledger or a rejection reason. */
+function checkCopilotLink(directory: string, claimed: string, env: NodeJS.ProcessEnv): { ledger: ChainLedger } | string {
+  try {
+    validateSessionId(claimed);
+  } catch {
+    return 'invalid id';
+  }
+  // A Claude session nested inside a Copilot link inherits the var; only a
+  // Copilot session may claim a Copilot link (Claude hooks carry this marker).
+  if (env.CLAUDE_CODE_ENTRYPOINT) return 'not a copilot session';
+  const ledger = readChainLedger(directory, claimed);
+  if (!ledger) return 'no ledger';
+  if (ledger.host !== 'copilot') return `ledger host ${String(ledger.host ?? 'unset')}`;
+  if (ledger.chainLink !== claimed) return 'ledger chainLink mismatch';
+  return { ledger };
+}
+
+function bindFilePath(directory: string, linkId: string): string {
+  return join(factoryStateDir(directory), `chain-${linkId}.json.bind`);
+}
+
+function readBindFile(directory: string, linkId: string): string | undefined {
+  try {
+    const value = fs.readFileSync(bindFilePath(directory, linkId), 'utf8').trim();
+    return value || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * SessionStart side of the chain-link identity (Copilot): the first session
+ * that starts with OMC_CHAIN_LINK naming an open Copilot ledger binds the link
+ * to its host session id. The bind is an exclusive create, so of two sessions
+ * holding the same inherited value only the first (the link itself; a nested
+ * session starts during the link's turn, after its SessionStart) wins.
+ * Returns what happened, for the audit trail; never throws.
+ */
+export function bindChainLink(directory: string, hostSessionId: string, env: NodeJS.ProcessEnv = process.env): string {
+  try {
+    const claimed = env[CHAIN_LINK_ENV]?.trim();
+    if (!claimed) return 'no-link';
+    try {
+      validateSessionId(hostSessionId);
+    } catch {
+      return 'invalid session id';
+    }
+    const check = checkCopilotLink(directory, claimed, env);
+    if (typeof check === 'string') return check;
+    if (check.ledger.closedAt) return 'ledger already closed';
+    const existing = check.ledger.boundSessionId ?? readBindFile(directory, claimed);
+    if (existing) return existing === hostSessionId ? 'bound' : 'bound to another session';
+    try {
+      fs.writeFileSync(bindFilePath(directory, claimed), hostSessionId, { encoding: 'utf8', flag: 'wx' });
+    } catch {
+      return readBindFile(directory, claimed) === hostSessionId ? 'bound' : 'bound to another session';
+    }
+    const ledgerPath = join(factoryStateDir(directory), `chain-${claimed}.json`);
+    writeLedgerAtomic(ledgerPath, { ...check.ledger, boundSessionId: hostSessionId, boundAt: new Date().toISOString() });
+    recordChainDecision(directory, { decision: 'link-bound', sessionId: claimed, hostSessionId, intentId: check.ledger.intentId });
+    return 'bound';
+  } catch {
+    return 'bind failed';
+  }
+}
+
+type ChainLedgerCloseout = Pick<ChainLedger, 'hostSessionId' | 'endReason' | 'outcome' | 'decision' | 'enqueuedChain'>;
+
+/** Exclusive per-link decision claim: one SessionEnd decides, a concurrent duplicate waits for its closeout. */
+function claimLinkDecision(path: string): boolean {
+  try {
+    fs.closeSync(fs.openSync(path, 'wx'));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+let sleepCell: Int32Array | null = null;
+function sleepSync(ms: number): void {
+  sleepCell ??= new Int32Array(new SharedArrayBuffer(4));
+  Atomics.wait(sleepCell, 0, 0, ms);
+}
+
+/** Poll the ledger for a concurrent SessionEnd's closeout (bounded: the foreground budget is short). */
+function waitForCloseout(directory: string, linkId: string, timeoutMs: number): ChainLedger | null {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const ledger = readChainLedger(directory, linkId);
+    if (ledger?.closedAt || Date.now() >= deadline) return ledger;
+    sleepSync(10);
+  }
+}
 
 /** Atomic JSON write (temp file + rename): status and the watchdog never read a torn ledger. */
 function writeLedgerAtomic(path: string, value: unknown): void {
@@ -138,12 +231,19 @@ function closeChainLedger(directory: string, linkId: string, ledger: ChainLedger
  * closed ledger, which would otherwise claim `enqueued` for a chain nothing
  * will run.
  */
-export function recordChainHandoffFailure(directory: string, chain: Pick<SpawnNextChain, 'sessionId' | 'intentId'>, decision: 'manifest-unavailable' | 'worker-spawn-failed'): void {
-  recordChainDecision(directory, { decision, sessionId: chain.sessionId, intentId: chain.intentId });
+export function recordChainHandoffFailure(
+  directory: string,
+  chain: Pick<SpawnNextChain, 'sessionId' | 'intentId'>,
+  decision: 'manifest-unavailable' | 'worker-spawn-failed' | 'enqueued-failed',
+  extra: Record<string, unknown> = {},
+): void {
+  recordChainDecision(directory, { decision, sessionId: chain.sessionId, intentId: chain.intentId, ...extra });
   const ledger = readChainLedger(directory, chain.sessionId);
   if (!ledger?.closedAt) return;
   try {
-    writeLedgerAtomic(join(factoryStateDir(directory), `chain-${chain.sessionId}.json`), { ...ledger, decision });
+    // Drop the replayable chain too: a duplicate SessionEnd must not resurrect a failed hand-off.
+    const { enqueuedChain: _dropped, ...rest } = ledger;
+    writeLedgerAtomic(join(factoryStateDir(directory), `chain-${chain.sessionId}.json`), { ...rest, decision });
   } catch {
     // best-effort; the decision trail names the failure
   }
@@ -252,24 +352,61 @@ export function planChainEnqueue(directory: string, hostSessionId: string, reaso
       lastDecision = decision;
       recordDecision(directory, { decision, ...identity, outcome, reason, intentId, ...extra });
     };
-    // A link is consumed once: a second SessionEnd for the same ledger (e.g.
-    // both the plugin and the settings.json forwarder registered) is a no-op.
-    if (ledger.closedAt) {
-      record('already-closed', { closedAt: ledger.closedAt });
-      return null;
+    // A link is decided once. A duplicate SessionEnd (plugin hook and
+    // settings.json forwarder both registered, or the plugin loaded twice)
+    // either waits for the deciding one's closeout or finds it, and gets the
+    // same chain back: whichever hook's manifest wins still carries the chain.
+    const claimPath = join(factoryStateDir(directory), `chain-${sessionId}.json.claim`);
+    let current: ChainLedger = ledger;
+    if (!ledger.closedAt && !claimLinkDecision(claimPath)) {
+      current = waitForCloseout(directory, sessionId, 200) ?? ledger;
+      if (!current.closedAt) {
+        record('duplicate-session-end');
+        return null;
+      }
     }
+    if (current.closedAt) return replayCloseout(current, hostSessionId, record);
+    let enqueued: SpawnNextChain | null = null;
     try {
-      return decideChainLink(directory, ledger, { sessionId, intentId, outcome, reason, record });
+      enqueued = decideChainLink(directory, current, { sessionId, intentId, outcome, reason, record });
+      return enqueued;
     } catch (error) {
       record('enqueue-error', { error: error instanceof Error ? error.message : String(error) });
       return null;
     } finally {
-      closeChainLedger(directory, sessionId, ledger, { hostSessionId, endReason: reason, outcome, decision: lastDecision });
+      closeChainLedger(directory, sessionId, current, {
+        hostSessionId,
+        endReason: reason,
+        outcome,
+        decision: lastDecision ?? 'enqueue-error',
+        ...(enqueued ? { enqueuedChain: enqueued } : {}),
+      });
+      try { fs.unlinkSync(claimPath); } catch { /* never claimed */ }
     }
   } catch {
     // Session end must never fail because of chain bookkeeping.
     return null;
   }
+}
+
+/**
+ * A SessionEnd for an already-closed link: the same host session gets the
+ * chain it enqueued back (idempotent closeout, so a duplicate hook cannot
+ * drop the chain from the manifest); anything else is a no-op.
+ */
+function replayCloseout(ledger: ChainLedger, hostSessionId: string, record: ChainLinkContext['record']): SpawnNextChain | null {
+  const chain = ledger.enqueuedChain;
+  if (ledger.decision === 'enqueued' && ledger.hostSessionId === hostSessionId && chain && typeof chain === 'object') {
+    try {
+      validateChainFields(chain);
+      record('already-closed', { closedAt: ledger.closedAt, replayed: 'enqueued' });
+      return chain;
+    } catch {
+      // fall through: a malformed stored chain is never replayed
+    }
+  }
+  record('already-closed', { closedAt: ledger.closedAt });
+  return null;
 }
 
 interface ChainLinkContext {
@@ -321,7 +458,7 @@ function decideChainLink(directory: string, ledger: ChainLedger, ctx: ChainLinkC
   // Loop cap: this route already visited the next stage too many times
   // (e.g. failed:clear routing back to spec). Halt instead of burning slots.
   const visits = ledger.visits ?? {};
-  const cap = isStageVisitCap(ledger.maxStageVisits) ? ledger.maxStageVisits : 2;
+  const cap = stageVisitCap(ledger.maxStageVisits) ?? 2;
   if ((visits[directive.stage] ?? 0) >= cap) {
     record('chain-loop-capped', { stage: directive.stage, visits: visits[directive.stage], cap });
     writeHaltMarker(directory, intentId, `loop-capped:${directive.stage}`);
@@ -361,7 +498,7 @@ function decideChainLink(directory: string, ledger: ChainLedger, ctx: ChainLinkC
       tracker: ledger.tracker,
       visits,
       // The cap is per chain, not per link: carry it so a later link keeps it.
-      ...(isStageVisitCap(ledger.maxStageVisits) ? { maxStageVisits: ledger.maxStageVisits } : {}),
+      ...(stageVisitCap(ledger.maxStageVisits) !== undefined ? { maxStageVisits: stageVisitCap(ledger.maxStageVisits) } : {}),
     };
     validateChainFields(chain);
     // ponytail: the serial window closes here, before the worker actually

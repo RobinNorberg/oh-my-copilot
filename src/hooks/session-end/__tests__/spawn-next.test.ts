@@ -303,6 +303,19 @@ describe('Copilot host factory links', () => {
       expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: 'relative/dir' })).toEqual([]);
       expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: path.join(root, 'missing') })).toEqual([]);
       expect(copilotPluginDirArgs({})).toEqual([]);
+      // A link that may write its cwd must not be handed a plugin root it can rewrite.
+      expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: root }, root)).toEqual([]);
+      expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: root }, path.join(root, 'sub'))).toEqual([]);
+      expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: path.join(root, 'x') }, root)).toEqual([]);
+      expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: root }, os.tmpdir())).toEqual([]); // tmpdir contains root
+      const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'link-cwd-'));
+      try {
+        expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: root }, elsewhere)).toEqual(['--plugin-dir', root]);
+        expect(factoryLinkArgv('/x', 's', [], [], elsewhere).slice(-2)).toEqual(['--plugin-dir', root]);
+        expect(factoryLinkArgv('/x', 's', [], [], root)).not.toContain('--plugin-dir');
+      } finally {
+        fs.rmSync(elsewhere, { recursive: true, force: true });
+      }
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -618,6 +631,11 @@ describe('chain-link identity in the spawned link env', () => {
     Object.defineProperty(process, 'platform', { value: 'linux' });
     defaultSpawnFn('claude', ['-p', 'task', '--session-id', LINK], { chainLink: LINK });
     expect(spawnedEnv()?.[CHAIN_LINK_ENV]).toBeUndefined();
+  });
+
+  it('drops a plugin root containing % on win32 (cmd.exe argv quoting refuses it)', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: path.resolve('/opt/50%off/omg') }, path.resolve('/work'))).toEqual([]);
   });
 
   it('drops a case-variant copilot_allow_all on win32 so only the forced value remains', () => {

@@ -59,16 +59,40 @@ describe('detectStalledLinks', () => {
     expect(detectStalledLinks(factoryDir, { now: NOW })).toEqual([]);
   });
 
-  it('does not report a closed ledger, whatever decision closed it', () => {
+  it.each([
+    ['chain-terminal', 'success'],
+    ['chain-loop-capped', 'success'],
+    ['human-gate', 'success'],
+    ['no-route', 'failed'],
+  ])('does not report a closed ledger whose %s closeout left a stop marker', (decision, outcome) => {
     const dir = tempDir();
     const factoryDir = join(dir, '.omg', 'state', 'factory');
     writeLedger(factoryDir, randomUUID(), {
-      intentId: 'acme-widget-12',
-      stage: 'intent',
-      closedAt: '2026-09-28T11:00:00.000Z',
-      decision: 'chain-terminal',
+      intentId: 'acme-widget-12', stage: 'intent', closedAt: '2026-09-28T11:00:00.000Z', decision, outcome,
     }, DEFAULT_STALL_THRESHOLD_MS + 60_000);
     expect(detectStalledLinks(factoryDir, { now: NOW })).toEqual([]);
+  });
+
+  // Pins the pre-closeout (dev) behaviour: a first link dropped without
+  // advancing the chain or leaving a stop marker is still flagged.
+  it.each([
+    ['guardrail', 'success'],
+    ['invalid-ledger', 'success'],
+    ['enqueue-error', 'success'],
+    ['no-route', 'success'],
+    ['worker-spawn-failed', 'success'],
+    [undefined, 'success'],
+  ])('still reports a closed ledger dropped by %s, exactly as before closeouts', (decision, outcome) => {
+    const dir = tempDir();
+    const factoryDir = join(dir, '.omg', 'state', 'factory');
+    const session = randomUUID();
+    writeLedger(factoryDir, session, {
+      intentId: 'acme-widget-12', stage: 'intent', closedAt: '2026-09-28T11:00:00.000Z', outcome, ...(decision ? { decision } : {}),
+    }, DEFAULT_STALL_THRESHOLD_MS + 60_000);
+    const open = randomUUID();
+    writeLedger(factoryDir, open, { intentId: 'acme-widget-12', stage: 'intent' }, DEFAULT_STALL_THRESHOLD_MS + 60_000);
+    const stalls = detectStalledLinks(factoryDir, { now: NOW }).map((s) => s.session).sort();
+    expect(stalls).toEqual([session, open].sort());
   });
 
   it('does not report ledgers that carry a routeTable', () => {

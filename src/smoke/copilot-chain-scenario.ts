@@ -162,15 +162,19 @@ function openLinks(projectDir: string): string[] {
 }
 
 /**
- * The chain stopped: a stop marker with every ledger closed (the enqueuer
- * writes the marker just before it closes the ending link's ledger), or link 1
- * closed without enqueuing a next link.
+ * The chain stopped: every ledger is closed (the enqueuer writes a stop marker
+ * just before it closes the ending link's ledger, so the marker alone is not
+ * enough) and no closed link still owes a next link, i.e. every `enqueued`
+ * link has a child ledger. A link closed with a failure decision
+ * (enqueued-failed, worker-spawn-failed, guardrail, ...) settles the chain.
  */
 function chainSettled(projectDir: string, firstLink: string): boolean {
   const factoryDir = factoryStateDir(projectDir);
-  if (existsSync(join(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`))) return openLinks(projectDir).length === 0;
-  const link1 = readJson(join(factoryDir, `chain-${firstLink}.json`)) as { closedAt?: unknown; decision?: unknown } | null;
-  return !!link1?.closedAt && link1.decision !== 'enqueued';
+  if (!existsSync(join(factoryDir, `chain-${firstLink}.json`)) || openLinks(projectDir).length > 0) return false;
+  const ledgers = readdirSync(factoryDir)
+    .filter((e) => /^chain-[0-9a-f-]{36}\.json$/i.test(e))
+    .map((e) => ({ id: e.slice('chain-'.length, -'.json'.length), ledger: readJson(join(factoryDir, e)) as { decision?: unknown; parentLink?: unknown } | null }));
+  return ledgers.every(({ id, ledger }) => ledger?.decision !== 'enqueued' || ledgers.some((l) => l.ledger?.parentLink === id));
 }
 
 /**
@@ -222,7 +226,7 @@ export async function runChainScenario(input: ChainScenarioInput): Promise<Omit<
   const env = chainLinkSmokeEnv(input.env, input.bin, input.root, firstLink);
   // The factory link argv minus `-p <prompt>`: the prompt rides stdin, as
   // defaultSpawnFn sends it on win32 (copilot reads a piped prompt).
-  const plan = buildHostBinarySpawn(input.bin, [...COPILOT_AFK_SPAWN_FLAGS, ...copilotPluginDirArgs(env)]);
+  const plan = buildHostBinarySpawn(input.bin, [...COPILOT_AFK_SPAWN_FLAGS, ...copilotPluginDirArgs(env, input.projectDir)]);
   const link1 = await runAsync(input.spawn ?? nodeSpawn, input.spawnSync, plan.command, plan.args, {
     cwd: input.projectDir,
     env,

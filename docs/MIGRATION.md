@@ -36,18 +36,23 @@ Nothing to configure:
 - The spawner (factory listener or SessionEnd worker) sets
   `OMC_CHAIN_LINK=<link id>` on each Copilot link. SessionEnd resolves the
   link as `OMC_CHAIN_LINK`, then the host session id, and trusts the variable
-  only when it names a `host: "copilot"` ledger; a finished link is a no-op.
-  Claude links keep `--session-id`.
+  only when it names a `host: "copilot"` ledger bound to the ending session
+  by that link's SessionStart, so a nested session cannot end its parent's
+  link. A duplicate SessionEnd gets the same chain back. Claude links keep
+  `--session-id`.
 - Copilot's SessionEnd reason `complete` now counts as success, so route keys
   such as `success:*` match a finished Copilot link.
 - Link ledgers record `chainLink`, `host`, `createdAt` and `parentLink`, and
   each link's SessionEnd closes its ledger once (`closedAt`, `hostSessionId`,
-  `outcome`, `decision`). A replayed SessionEnd is a no-op. The watchdog
-  skips closed ledgers, and `omg factory status` lists each chain's links.
+  `outcome`, `decision`). The watchdog skips a closed ledger only when it
+  advanced the chain or left a stop marker, and `omg factory status` lists
+  each chain's links.
 - A ledger's `maxStageVisits` now applies to the whole chain, not just the
-  first link.
+  first link; values above 99 clamp to 99 (before, they fell back to 2 on
+  later links).
 - Under a dev plugin root (`omg --plugin-dir`), Copilot links get
-  `--plugin-dir` too, and the SessionEnd worker forwards `OMC_PLUGIN_ROOT`.
+  `--plugin-dir` too, and the SessionEnd worker forwards `OMC_PLUGIN_ROOT`,
+  unless the root overlaps the link's working directory.
 - `omg smoke copilot --tier 2 --scenario chain` runs a real two-link chain
   (about 2 premium requests). It is opt-in and not part of `all`.
 

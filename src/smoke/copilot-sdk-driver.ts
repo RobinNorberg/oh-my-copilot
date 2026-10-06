@@ -483,7 +483,8 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
     checks.push(...await staticChecks(client, input));
 
     let stopReason: string | undefined;
-    for (const name of input.scenarios) {
+    // chain rewrites the shared sandbox (route table, a project skill): run it last.
+    for (const name of [...input.scenarios.filter((s) => s !== 'chain'), ...input.scenarios.filter((s) => s === 'chain')]) {
       if (projectError) { entries.push({ name, skip: `sandbox project setup failed: ${projectError}` }); continue; }
       if (stopReason) { entries.push({ name, skip: stopReason }); continue; }
       const path = join(input.home, `events-${name}.jsonl`);

@@ -98,15 +98,40 @@ export function chainLinkEnv(base: NodeJS.ProcessEnv, command: string, chainLink
  * loads by itself, but a --plugin-dir one does not reach a spawned link, whose
  * hooks (and therefore its SessionEnd chain hand-off) would never fire. Only an
  * absolute path to an existing directory is passed; anything else is dropped.
+ *
+ * Dropped as well when the root and the link's working directory overlap: an
+ * AFK link may write files under its cwd (`--allow-tool=write`), and a link
+ * that rewrote the plugin's hooks or scripts would run that code in its own
+ * SessionEnd and in every later link, outside the AFK allowlist. A chain over
+ * the plugin's own repo therefore needs the plugin installed, not a dev root.
+ * On win32 a root containing `%` is dropped: cmd.exe argv quoting refuses it,
+ * and every link launched through a .cmd shim would fail.
  */
-export function copilotPluginDirArgs(env: NodeJS.ProcessEnv = process.env): string[] {
+export function copilotPluginDirArgs(env: NodeJS.ProcessEnv = process.env, linkCwd: string = process.cwd()): string[] {
   const root = env.OMC_PLUGIN_ROOT?.trim();
   if (!root || !path.isAbsolute(root)) return [];
+  if (process.platform === 'win32' && root.includes('%')) return [];
+  if (pathsOverlap(root, linkCwd)) return [];
   try {
     return fs.statSync(root).isDirectory() ? ['--plugin-dir', root] : [];
   } catch {
     return [];
   }
+}
+
+/** True when one path equals or contains the other (realpath, case-folded on win32). */
+function pathsOverlap(a: string, b: string): boolean {
+  const key = (p: string) => {
+    let out = path.resolve(p);
+    try { out = fs.realpathSync.native(out); } catch { /* missing: keep resolved */ }
+    return process.platform === 'win32' ? out.toLowerCase() : out;
+  };
+  const [ka, kb] = [key(a), key(b)];
+  const inside = (child: string, parent: string) => {
+    const rel = path.relative(parent, child);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  };
+  return inside(ka, kb) || inside(kb, ka);
 }
 
 /**
@@ -209,6 +234,8 @@ export function factoryLinkArgv(
   sessionId: string,
   verifyCommands: readonly string[] = [],
   fixedBashCommands: readonly string[] = [],
+  /** The link's working directory (spawn cwd), for the --plugin-dir overlap check. */
+  linkCwd: string = process.cwd(),
 ): string[] {
   const isValid = (command: string) => command.length <= MAX_VERIFY_COMMAND_LENGTH && VERIFY_COMMAND_PATTERN.test(command);
   if (getHostCliType() === 'copilot') {
@@ -217,7 +244,7 @@ export function factoryLinkArgv(
       ...fixedBashCommands.filter(isCopilotValid),
       ...verifyCommands.filter(isCopilotValid).slice(0, MAX_VERIFY_COMMANDS),
     ].map((command) => `--allow-tool=shell(${command})`);
-    return ['-p', prompt, ...COPILOT_AFK_SPAWN_FLAGS, ...extra, ...copilotPluginDirArgs()];
+    return ['-p', prompt, ...COPILOT_AFK_SPAWN_FLAGS, ...extra, ...copilotPluginDirArgs(process.env, linkCwd)];
   }
   if (verifyCommands.length === 0 && fixedBashCommands.length === 0) {
     return ['-p', prompt, '--session-id', sessionId, ...AFK_SPAWN_FLAGS];
@@ -267,9 +294,18 @@ export function validateChainFields(chain: SpawnNextChain): void {
   }
 }
 
-/** A ledger's stage-visit cap: an integer 1..99. */
+/** A carried stage-visit cap: an integer 1..99. */
 export function isStageVisitCap(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 99;
+}
+
+/**
+ * A ledger's stage-visit cap: a positive integer, clamped to 99 (the visits
+ * counter's ceiling), so a large declared cap stays effectively unlimited
+ * instead of falling back to the default 2. Undefined when not set or invalid.
+ */
+export function stageVisitCap(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? Math.min(value, 99) : undefined;
 }
 
 /** Host that runs a factory link; recorded in its ledger (`host`). */
@@ -315,7 +351,7 @@ export function spawnNextAlertComment(chain: SpawnNextChain): string {
   return `链已停住：会话结束状态 ${chain.outcome}:${chain.reason} 触发下一环启动失败，需人工修复（v1 无自动重试）。`;
 }
 
-export function planSpawnNext(chain: SpawnNextChain, omcRoot: string): SpawnNextPlan | null {
+export function planSpawnNext(chain: SpawnNextChain, omcRoot: string, linkCwd: string = process.cwd()): SpawnNextPlan | null {
   validateChainFields(chain);
   const directive = decideNextStage(chain.outcome, chain.reason, chain.routeTable);
   if (!directive) return null;
@@ -330,7 +366,7 @@ export function planSpawnNext(chain: SpawnNextChain, omcRoot: string): SpawnNext
   return {
     directive,
     handoffPath,
-    spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`/${directive.skill} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId, directive.verify)],
+    spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`/${directive.skill} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId, directive.verify, [], linkCwd)],
     nextSessionId,
     trackerCommands,
   };
@@ -339,7 +375,7 @@ export function planSpawnNext(chain: SpawnNextChain, omcRoot: string): SpawnNext
 /** IO orchestration only: the routing decision comes from the T1 pure function via planSpawnNext. */
 export function executeSpawnNext(chain: SpawnNextChain, directory: string, spawnFn: SpawnFn = defaultSpawnFn): void {
   const omcRoot = getOmcRoot(directory);
-  const plan = planSpawnNext(chain, omcRoot);
+  const plan = planSpawnNext(chain, omcRoot, directory);
   if (!plan) return;
   fs.mkdirSync(path.dirname(plan.handoffPath), { recursive: true });
   fs.writeFileSync(plan.handoffPath, JSON.stringify({

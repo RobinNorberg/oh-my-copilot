@@ -73,11 +73,11 @@ export async function executeSessionEndAction(name: SessionEndActionName, payloa
     try {
       executeSpawnNext(chain, payload.directory);
     } catch (error) {
-      const { recordChainDecision } = await import('./chain-enqueuer.js');
-      recordChainDecision(payload.directory, {
-        decision: 'enqueued-failed',
-        sessionId: payload.sessionId,
-        intentId: (chain as { intentId?: string }).intentId,
+      // Keyed by the chain-link id (chain.sessionId) and corrects the closed
+      // ledger, which would otherwise still claim `enqueued`.
+      const { recordChainHandoffFailure } = await import('./chain-enqueuer.js');
+      recordChainHandoffFailure(payload.directory, chain, 'enqueued-failed', {
+        hostSessionId: payload.sessionId,
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;

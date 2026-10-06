@@ -10,15 +10,19 @@ All notable changes to oh-my-copilot will be documented in this file.
   `--session-id`, so a factory chain used to stop silently after one link.
   The spawner now sets `OMC_CHAIN_LINK=<link id>` on each Copilot link, and
   SessionEnd resolves the link as `OMC_CHAIN_LINK`, then the host session id.
-  The variable is trusted only when it names a `host: "copilot"` ledger and
-  a finished link is a no-op, so it cannot inject a chain or replay a link;
-  the SessionEnd worker never forwards it. Copilot's SessionEnd reason
+  The variable is trusted only when it names a `host: "copilot"` ledger
+  that the link's SessionStart bound to the ending session, so neither the
+  variable alone nor a nested session inheriting it can inject or end a
+  link; the SessionEnd worker never forwards it. A duplicate SessionEnd gets
+  the same chain back. Copilot's SessionEnd reason
   `complete` counts as success. Ledgers record `chainLink`, `host`,
   `createdAt` and `parentLink` and are closed once by their link's SessionEnd
   (`closedAt`, `hostSessionId`, `outcome`, `decision`); the watchdog skips
-  closed ledgers, and `omg factory status` lists each chain's links. A
-  ledger's `maxStageVisits` now carries to later links. Under a dev plugin
-  root, Copilot links get `--plugin-dir` and the SessionEnd worker forwards
+  a closed ledger only when it advanced the chain or left a stop marker, and
+  `omg factory status` lists each chain's links. A ledger's
+  `maxStageVisits` now carries to later links (above 99 clamps to 99). Under
+  a dev plugin root that does not overlap the link's working directory,
+  Copilot links get `--plugin-dir` and the SessionEnd worker forwards
   `OMC_PLUGIN_ROOT`. Guardrails, `COPILOT_ALLOW_ALL=false` and the AFK
   profile are unchanged. Verified live with a two-link chain on Copilot CLI
   1.0.91 (2 premium requests).
