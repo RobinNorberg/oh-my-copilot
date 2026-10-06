@@ -112,7 +112,7 @@ describe("project config path (.copilot/omg.jsonc)", () => {
           legacyPath: legacy,
           canonicalPath: join(project, ".copilot", "omg.jsonc"),
           canonicalExists: false,
-          renameCommand: 'mv ".copilot/omc.jsonc" ".copilot/omg.jsonc"',
+          renameCommand: ['mv ".copilot/omc.jsonc" ".copilot/omg.jsonc"'],
         },
       ]);
     });
@@ -120,7 +120,10 @@ describe("project config path (.copilot/omg.jsonc)", () => {
     it("creates .copilot first when moving the upstream .claude/omc.jsonc", () => {
       writeConfig(project, ".claude", "omc.jsonc", {});
       const [only] = findLegacyProjectConfigs(project);
-      expect(only.renameCommand).toBe('mkdir -p ".copilot" && mv ".claude/omc.jsonc" ".copilot/omg.jsonc"');
+      expect(only.renameCommand).toEqual([
+        'mkdir ".copilot"',
+        'mv ".claude/omc.jsonc" ".copilot/omg.jsonc"',
+      ]);
     });
 
     it("reports a legacy file next to the canonical one as ignored, without a rename", () => {
@@ -136,7 +139,7 @@ describe("project config path (.copilot/omg.jsonc)", () => {
       writeConfig(project, ".claude", "omc.jsonc", {});
       const found = findLegacyProjectConfigs(project);
       expect(found.map((entry) => entry.renameCommand)).toEqual([
-        'mv ".copilot/omc.jsonc" ".copilot/omg.jsonc"',
+        ['mv ".copilot/omc.jsonc" ".copilot/omg.jsonc"'],
         null,
       ]);
     });

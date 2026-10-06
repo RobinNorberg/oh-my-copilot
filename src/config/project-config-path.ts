@@ -46,8 +46,12 @@ export interface LegacyProjectConfig {
   canonicalPath: string;
   /** True when the canonical file also exists, so the legacy file is not read by the loader. */
   canonicalExists: boolean;
-  /** Command that renames the legacy file, or null when the canonical file already exists. */
-  renameCommand: string | null;
+  /**
+   * Commands that rename the legacy file, run in order, or null when the
+   * canonical file already exists. Two entries when the canonical directory
+   * must be created first; one entry otherwise.
+   */
+  renameCommand: string[] | null;
 }
 
 function quote(path: string): string {
@@ -70,13 +74,16 @@ export function findLegacyProjectConfigs(directory: string = process.cwd()): Leg
   for (const legacyDir of legacyDirs) {
     const legacyPath = join(directory, legacyDir, LEGACY_PROJECT_CONFIG_FILE);
     if (!existsSync(legacyPath)) continue;
-    let renameCommand: string | null = null;
+    let renameCommand: string[] | null = null;
     if (!renameClaimed) {
-      // Forward slashes run unchanged in POSIX shells and PowerShell.
       const from = quote(`${legacyDir}/${LEGACY_PROJECT_CONFIG_FILE}`);
       const to = quote(`${PROJECT_CONFIG_DIR}/${PROJECT_CONFIG_FILE}`);
-      const mkdir = existsSync(canonicalDir) ? "" : `mkdir -p ${quote(PROJECT_CONFIG_DIR)} && `;
-      renameCommand = `${mkdir}mv ${from} ${to}`;
+      const mv = `mv ${from} ${to}`;
+      // Emitted as separate commands: PowerShell 5.1 has no `&&`, and
+      // `mkdir -p` is a POSIX-only flag, so each step runs on its own line.
+      renameCommand = existsSync(canonicalDir)
+        ? [mv]
+        : [`mkdir ${quote(PROJECT_CONFIG_DIR)}`, mv];
       renameClaimed = true;
     }
     found.push({ legacyPath, canonicalPath, canonicalExists, renameCommand });

@@ -859,16 +859,26 @@ export function formatReport(report: ConflictReport, json: boolean): string {
   if (report.legacyProjectConfigs.length > 0) {
     lines.push(colors.bold('📝 Project Config Name'));
     lines.push('');
+    // When no canonical file exists yet, one legacy file (the highest-
+    // precedence match) carries the rename command; any other legacy file
+    // is "ignored" relative to that pending rename, not relative to a
+    // canonical file that doesn't exist yet.
+    const pendingRename = report.legacyProjectConfigs.find((entry) => entry.renameCommand);
     for (const legacy of report.legacyProjectConfigs) {
       const shown = relative(process.cwd(), legacy.legacyPath) || legacy.legacyPath;
       const canonical = relative(process.cwd(), legacy.canonicalPath) || legacy.canonicalPath;
       if (legacy.renameCommand) {
         lines.push(`  ${colors.yellow('⚠')} Legacy project config name: ${shown}`);
         lines.push(`    ${colors.gray(`The canonical name is ${canonical}. Rename it from the project root:`)}`);
-        lines.push(`      ${legacy.renameCommand}`);
+        for (const command of legacy.renameCommand) {
+          lines.push(`      ${command}`);
+        }
       } else {
+        const mergeTarget = legacy.canonicalExists
+          ? canonical
+          : `${canonical} (after renaming ${relative(process.cwd(), pendingRename!.legacyPath)} to it)`;
         lines.push(`  ${colors.yellow('⚠')} Legacy project config ignored: ${shown}`);
-        lines.push(`    ${colors.gray(`A higher-precedence config is read instead. Merge any settings you still need into ${canonical}, then delete ${shown}.`)}`);
+        lines.push(`    ${colors.gray(`A higher-precedence config is read instead. Merge any settings you still need into ${mergeTarget}, then delete ${shown}.`)}`);
       }
     }
     lines.push('');

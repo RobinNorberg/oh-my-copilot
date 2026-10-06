@@ -58,8 +58,21 @@ describe('doctor: legacy-named project config', () => {
     mkdirSync(join(project, '.claude'), { recursive: true });
     writeFileSync(join(project, '.claude', 'omc.jsonc'), '{}');
     const parsed = JSON.parse(formatReport(runConflictCheck(), true));
-    expect(parsed.legacyProjectConfigs[0].renameCommand).toBe(
-      'mkdir -p ".copilot" && mv ".claude/omc.jsonc" ".copilot/omg.jsonc"',
-    );
+    expect(parsed.legacyProjectConfigs[0].renameCommand).toEqual([
+      'mkdir ".copilot"',
+      'mv ".claude/omc.jsonc" ".copilot/omg.jsonc"',
+    ]);
+  });
+
+  it('points the ignored lower-precedence legacy file at the pending rename when no canonical file exists yet', () => {
+    mkdirSync(join(project, '.copilot'), { recursive: true });
+    writeFileSync(join(project, '.copilot', 'omc.jsonc'), '{}');
+    mkdirSync(join(project, '.claude'), { recursive: true });
+    writeFileSync(join(project, '.claude', 'omc.jsonc'), '{}');
+    const text = formatReport(runConflictCheck(), false);
+    expect(text).toContain('Legacy project config name');
+    expect(text).toContain('Legacy project config ignored');
+    expect(text).toContain('after renaming');
+    expect(text).toMatch(/after renaming .*omc\.jsonc to it/);
   });
 });
