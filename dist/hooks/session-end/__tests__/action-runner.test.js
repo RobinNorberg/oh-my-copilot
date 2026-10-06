@@ -107,6 +107,8 @@ describe('SessionEnd action runner', () => {
         vi.stubEnv('OMC_HOOK_BRIDGE', '/tmp/bridge.js');
         vi.stubEnv('COPILOT_GITHUB_TOKEN', 'copilot-token');
         vi.stubEnv('COPILOT_ALLOW_ALL', 'true');
+        vi.stubEnv('OMC_PLUGIN_ROOT', '/opt/omg');
+        vi.stubEnv('OMC_CHAIN_LINK', '6f1c2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b');
         // The spawn-next action launches claude chain links from its runner; the
         // passthrough must reach it or every link exits "Not logged in".
         const spawnNextContext = context(directory, 'foreground-cleanup');
@@ -118,9 +120,12 @@ describe('SessionEnd action runner', () => {
             ANTHROPIC_BASE_URL: 'https://example.invalid',
             OMC_HOOK_BRIDGE: '/tmp/bridge.js',
             COPILOT_GITHUB_TOKEN: 'copilot-token',
+            OMC_PLUGIN_ROOT: '/opt/omg',
         });
         // A permission switch is not auth: it must never ride the COPILOT_* passthrough.
         expect(environment).not.toHaveProperty('COPILOT_ALLOW_ALL');
+        // The ended link's identity stays behind; spawn-next sets the next link's own.
+        expect(environment).not.toHaveProperty('OMC_CHAIN_LINK');
         if (process.platform === 'win32') {
             expect(environment).toHaveProperty('APPDATA', process.env.APPDATA);
             expect(environment).toHaveProperty('LOCALAPPDATA', process.env.LOCALAPPDATA);

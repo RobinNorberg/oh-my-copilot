@@ -63,6 +63,11 @@ function workerInstructionStateRoot(cwd, teamName) {
 import { currentProcessStartIdentity, isProcessIdentityDead, publishOwnerEpoch, readLatestOwnerEpoch, requireOwnerFence, requireOwnerProcessIdentity } from './team-owner-epoch.js';
 import { waitForRecoveryGateRecord } from './worker-activation-gate.js';
 import { isWorkerLaunchAttemptCurrent, isWorkerLaunchAttemptAccepted, loadCurrentWorkerLaunchAttempt, loadWorkerLaunchAttempt, observeWorkerLaunchProvider, retireAndCleanupCurrentWorkerLaunchAttempt, withWorkerLaunchAttemptFence, } from './worker-launch-ack.js';
+import { isSdkTarget, launchSdkHost, readSdkSession, ringDoorbell, sdkPaneId, sdkTeamTarget, stopSdkHost, SDK_HOST_STOP_FLOOR_MS, } from './sdk-transport.js';
+import { toCopilotModelId } from './model-contract.js';
+import { resolveShimTarget } from '../smoke/copilot-sdk-driver.js';
+import { resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { isProcessIdentityLive } from '../platform/process-utils.js';
 import { activateTeamInstanceUnderLock, assertTeamInstanceUnderLock, buildTeamInstancePendingConfig, createTeamInstanceBinding, disposeTeamInstanceUnderLock, releaseFailedStartupReservationUnderLock, reserveTeamInstanceUnderLock, retryTeamInstanceDisposal, TeamInstanceError, withTeamInstanceLifecycleLock, } from './team-instance.js';
 let runtimeOwnerRecoveryClient;
@@ -88,6 +93,10 @@ export async function recoverDeadWorkerV2(teamName, cwd, { workerName, requestId
     if (!cwd || !WORKER_NAME_SAFE_PATTERN.test(workerName) || !isSafeRecoveryRequestId(requestId) || !Number.isSafeInteger(timeoutMs) || timeoutMs < 180_000 || timeoutMs > 300_000) {
         return { outcome: 'failed', committed: false, error: 'invalid_input', requestId, recoveryId: '', teamName, workerName,
             updatedAt: new Date().toISOString(), message: 'cwd, workerName, and requestId are required; timeoutMs must be an integer from 180000 through 300000.' };
+    }
+    if (isSdkTarget((await readTeamConfig(teamName, cwd).catch(() => null))?.tmux_session)) {
+        return { outcome: 'failed', committed: false, error: 'invalid_input', requestId, recoveryId: '', teamName, workerName,
+            updatedAt: new Date().toISOString(), message: 'recovery_unsupported_transport: sdk workers are not recovered; shut the team down and start it again.' };
     }
     let instanceId = expectedInstanceId;
     try {
@@ -461,6 +470,25 @@ export function resolveTaskAssignment(task, resolvedRouting, roleRoutingConfig, 
         role: canonical,
     };
 }
+/**
+ * Whether a resolved task role was EXPLICITLY assigned — directly on the
+ * task (`task.role`) or via `team.roleRouting[role]` config — as opposed to
+ * merely INFERRED from task text by `routeTaskToRole` inside
+ * {@link resolveTaskAssignment}. Mirrors that function's own
+ * `hasExplicitRole`/`hasConfigForRole` resolution order so the two never
+ * diverge.
+ *
+ * Used by the sdk-transport contract-role guard: an explicitly assigned
+ * reviewer-style role is rejected outright (the sdk transport cannot process
+ * its verdict file), while a merely inferred one has its role dropped so the
+ * worker runs as a plain executor-style worker instead of failing team
+ * startup over text the user never opted into.
+ */
+export function isExplicitTaskRoleAssignment(task, roleRoutingConfig, role) {
+    const hasExplicitRole = typeof task.role === 'string' && task.role.length > 0;
+    const hasConfigForRole = !!getRoleRoutingSpec(roleRoutingConfig, role);
+    return hasExplicitRole || hasConfigForRole;
+}
 function sanitizeTeamName(name) {
     const sanitized = name.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
     if (!sanitized)
@@ -476,14 +504,14 @@ function resolvePreflightBinaryPath(agentType) {
 // Helper: retain the original pane ownership binding
 // ---------------------------------------------------------------------------
 function tmuxServerIdentityForTarget(providerTarget, identity) {
-    if (providerTarget.startsWith('cmux:'))
+    if (providerTarget.startsWith('cmux:') || isSdkTarget(providerTarget))
         return undefined;
     if (!isValidTmuxServerIdentity(identity))
         return undefined;
     return identity;
 }
 function requireTmuxServerIdentity(providerTarget, identity) {
-    if (providerTarget.startsWith('cmux:'))
+    if (providerTarget.startsWith('cmux:') || isSdkTarget(providerTarget))
         return undefined;
     if (!isValidTmuxServerIdentity(identity))
         throw new Error('tmux_server_identity_missing');
@@ -493,6 +521,9 @@ function configuredPaneOwnership(config, worker) {
     const paneId = worker.pane_id;
     const providerTarget = config.tmux_session;
     if (!paneId || !providerTarget)
+        return null;
+    // SDK workers have no pane; their liveness is the host's provider record.
+    if (isSdkTarget(paneId) || isSdkTarget(providerTarget))
         return null;
     const provider = paneId.startsWith('%') ? 'tmux' : 'cmux';
     const identity = provider === 'tmux'
@@ -1008,6 +1039,143 @@ async function readUnresolvedStartupLaunch(opts, paneId) {
     catch {
         return null;
     }
+}
+export function resolveSdkTeamSettings(pluginCfg) {
+    const sdk = pluginCfg.team?.sdk ?? {};
+    const envNumber = (key) => {
+        const n = Number(process.env[key]);
+        return Number.isFinite(n) && n > 0 ? n : undefined;
+    };
+    // The runtime floors `--max-ai-credits` at its own minimum; the host enforces
+    // this value itself, so a non-positive or non-numeric cap is a config error.
+    const configCap = sdk.maxCreditsPerWorker;
+    if (configCap !== undefined && !(typeof configCap === 'number' && Number.isFinite(configCap) && configCap > 0)) {
+        throw new Error(`invalid_team_sdk_config:maxCreditsPerWorker must be a positive number (got ${JSON.stringify(configCap)})`);
+    }
+    const model = process.env.OMC_TEAM_SDK_MODEL?.trim() || sdk.model?.trim();
+    return {
+        maxCreditsPerWorker: envNumber('OMC_TEAM_SDK_MAX_CREDITS') ?? configCap ?? 10,
+        ...(model ? { model } : {}),
+        startupEvidenceMs: envNumber('OMC_TEAM_SDK_STARTUP_EVIDENCE_MS') ?? sdk.startupEvidenceMs ?? 180_000,
+        denyTools: pluginCfg.permissions?.workerDenyTools ?? [],
+        denyUrls: pluginCfg.permissions?.workerDenyUrls ?? [],
+    };
+}
+/**
+ * SDK counterpart of {@link spawnV2Worker}: no pane. The inbox, trigger text,
+ * startup evidence gate (task claim bound to the launch attempt) and output
+ * contract are the pane path's; only the provider launch (a detached
+ * `omg team sdk-host`) and the delivery (the doorbell) differ.
+ */
+async function spawnSdkV2Worker(opts, sdk) {
+    const injectContract = shouldInjectContract(opts.role ?? null, opts.agentType);
+    const outputFile = injectContract && opts.role
+        ? cliWorkerOutputFilePath(teamStateRoot(opts.cwd, opts.teamName), opts.workerName, {
+            taskId: opts.taskId,
+            assignmentId: opts.verdictAssignmentId,
+        })
+        : undefined;
+    const cliOutputContract = injectContract && opts.role && outputFile
+        ? renderCliWorkerOutputContract(opts.role, outputFile)
+        : undefined;
+    const instruction = buildV2TaskInstruction(opts.teamName, opts.workerName, opts.task, opts.taskId, opts.agentType, cliOutputContract);
+    const stateRoot = teamStateRoot(opts.cwd, opts.teamName);
+    const startupBaseline = await captureWorkerStartupBaseline(opts.teamName, opts.workerName, opts.taskId, opts.cwd);
+    const binary = opts.launchDescriptor.binary;
+    const copilotBin = /\.(cmd|bat|ps1)$/i.test(binary) ? resolveShimTarget(binary) : binary;
+    if (!copilotBin) {
+        return { paneId: null, startupAssigned: false, startupFailureReason: `sdk_copilot_shim_unresolved:${binary}` };
+    }
+    const descriptorModel = opts.launchDescriptor.model ? toCopilotModelId(opts.launchDescriptor.model) : undefined;
+    const model = sdk.model ?? descriptorModel;
+    const workerCwd = opts.workerCwd ?? opts.cwd;
+    const launch = await launchSdkHost({
+        leaderCwd: opts.cwd,
+        teamName: opts.teamName,
+        workerName: opts.workerName,
+        instanceId: opts.instanceId,
+        workerCwd,
+        stateRoot,
+        workerEnv: {
+            ...getModelWorkerEnv(opts.teamName, opts.workerName, opts.agentType, process.env, opts.role),
+            OMC_TEAM_STATE_ROOT: stateRoot,
+            OMC_TEAM_LEADER_CWD: opts.cwd,
+            ...(opts.worktreePath ? { OMC_TEAM_WORKTREE_PATH: opts.worktreePath } : {}),
+            OMC_TEAM_WORKER_CWD: workerCwd,
+        },
+        copilotBin,
+        pluginRoot: resolveDefaultPluginRoot(),
+        userConfigDir: getCopilotConfigDir(),
+        ...(model ? { model } : {}),
+        maxCredits: sdk.maxCreditsPerWorker,
+        denyTools: sdk.denyTools,
+        denyUrls: sdk.denyUrls,
+    });
+    const paneId = sdkPaneId(opts.workerName);
+    if (!launch.ok) {
+        return {
+            paneId: launch.attempt ? paneId : null,
+            startupAssigned: false,
+            startupFailureReason: launch.reason,
+            ...(launch.attempt ? { launchAttemptId: launch.attempt.attempt_id } : {}),
+        };
+    }
+    const attempt = launch.attempt;
+    const triggerMessage = `${generateTriggerMessage(opts.teamName, opts.workerName, workerInstructionStateRoot(opts.cwd, opts.teamName))} ` +
+        `[launch:${attempt.attempt_id.slice(0, 12)}]`;
+    const fenced = await withWorkerLaunchAttemptFence(attempt, () => queueInboxInstruction({
+        teamName: opts.teamName,
+        workerName: opts.workerName,
+        workerIndex: opts.workerIndex + 1,
+        paneId,
+        inbox: instruction,
+        triggerMessage,
+        cwd: opts.cwd,
+        transportPreference: 'prompt_stdin',
+        fallbackAllowed: false,
+        inboxCorrelationKey: `startup:${opts.workerName}:${opts.taskId}:${attempt.attempt_id}`,
+        notify: async (_target, message) => {
+            ringDoorbell(stateRoot, opts.workerName, { kind: 'prompt', text: message, from: 'leader-fixed' });
+            const settled = await waitForStartupEvidenceBudget(async () => {
+                if (await hasCurrentWorkerStartupEvidence(opts.teamName, opts.workerName, opts.taskId, opts.cwd, startupBaseline, attempt.attempt_id))
+                    return true;
+                // A host that failed or died cannot produce evidence; stop waiting.
+                const session = readSdkSession(stateRoot, opts.workerName);
+                if (session?.state === 'failed' || session?.state === 'closed')
+                    throw new Error(`sdk_host_${session.state}:${session.last_error ?? ''}`);
+                return false;
+            }, sdk.startupEvidenceMs, 500).catch(() => false);
+            return settled
+                ? { ok: true, transport: 'prompt_stdin', reason: 'sdk_worker_startup_confirmed' }
+                : { ok: false, transport: 'prompt_stdin', reason: 'copilot_sdk_startup_evidence_missing' };
+        },
+        deps: { writeWorkerInbox },
+    }));
+    const outcome = fenced.ok ? fenced.value : { ok: false, reason: 'worker_launch_attempt_superseded' };
+    if (!outcome.ok) {
+        const session = readSdkSession(stateRoot, opts.workerName);
+        const claimError = session?.last_error ? redactBoundedDiagnostic(session.last_error, 240) : undefined;
+        const stopped = await stopSdkHost(attempt, stateRoot, { timeoutMs: 30_000 });
+        const cleaned = stopped && await retireAndCleanupCurrentWorkerLaunchAttempt(attempt, 'startup_dispatch_failed', async () => true).catch(() => false);
+        if (!cleaned) {
+            const error = new Error(`worker_startup_cleanup_unverified:${opts.workerName}:${paneId}`);
+            error.unresolvedLaunch = { name: opts.workerName, paneId, launchAttemptId: attempt.attempt_id, provider: 'copilot' };
+            throw error;
+        }
+        return {
+            paneId,
+            startupAssigned: false,
+            startupFailureReason: outcome.reason,
+            ...(claimError ? { claimError } : {}),
+            launchAttemptId: attempt.attempt_id,
+        };
+    }
+    return {
+        paneId,
+        startupAssigned: true,
+        launchAttemptId: attempt.attempt_id,
+        ...(outputFile ? { outputFile } : {}),
+    };
 }
 /**
  * Spawn a single v2 worker in a tmux pane.
@@ -3142,7 +3310,13 @@ async function rollbackStartedNativeWorktreeStartup(args) {
                 await writeStartedStartupRollbackEvidence({ ...args, reason: 'launch_attempt_identity_unverified', worker: worker.name });
                 throw new Error(`worker_cleanup_incomplete:${worker.name}:launch_attempt_identity_unverified`);
             }
+            if (isSdkTarget(worker.paneId) && !await stopSdkHost(attempt, teamStateRoot(args.cwd, args.teamName), { timeoutMs: 30_000 })) {
+                await writeStartedStartupRollbackEvidence({ ...args, reason: 'sdk_host_stop_unverified', worker: worker.name });
+                throw new Error(`worker_cleanup_incomplete:${worker.name}:sdk_host_stop_unverified`);
+            }
             const cleaned = await retireAndCleanupCurrentWorkerLaunchAttempt(attempt, 'startup_rollback', async () => {
+                if (isSdkTarget(worker.paneId))
+                    return true;
                 const ownership = {
                     provider: worker.paneId.startsWith('%') ? 'tmux' : 'cmux',
                     providerTarget: args.sessionName,
@@ -3167,7 +3341,8 @@ async function rollbackStartedNativeWorktreeStartup(args) {
                 throw new Error(`worker_cleanup_incomplete:${worker.name}:provider_cleanup_unverified`);
             }
         }
-        if (sessionCleanupRequired && !(args.workerPaneIds.length === 0 && args.sessionMode === 'split-pane' && (args.launchedWorkers?.length ?? 0) > 0)) {
+        if (sessionCleanupRequired && !isSdkTarget(args.sessionName)
+            && !(args.workerPaneIds.length === 0 && args.sessionMode === 'split-pane' && (args.launchedWorkers?.length ?? 0) > 0)) {
             const sessionCleaned = await killTeamSession(args.sessionName, args.workerPaneIds, args.leaderPaneId ?? undefined, {
                 sessionMode: args.sessionMode,
                 ...(args.tmuxServerIdentity ? { tmuxServerIdentity: args.tmuxServerIdentity } : {}),
@@ -3309,6 +3484,13 @@ export async function startTeamV2(config) {
     // do NOT change routing — user must recreate the team to pick up changes.
     const pluginCfg = config.pluginConfig ?? loadConfig();
     const resolvedRouting = buildResolvedRoutingSnapshot(pluginCfg);
+    const transport = config.transport ?? pluginCfg.team?.transport ?? 'pane';
+    if (transport !== 'pane' && transport !== 'sdk')
+        throw new Error(`invalid_team_transport:${String(transport)}`);
+    const sdkMode = transport === 'sdk';
+    const sdkSettings = sdkMode ? resolveSdkTeamSettings(pluginCfg) : null;
+    if (sdkMode && config.autoMerge)
+        throw new Error('sdk_transport_unsupported:auto_merge');
     let worktreeMode = normalizeTeamWorktreeMode(process.env.OMC_TEAM_WORKTREE_MODE ?? pluginCfg.team?.ops?.worktreeMode);
     // Auto-merge gate (M5 + M3 hardening). Forces worktreeMode='named' so each
     // worker has a real branch the orchestrator can merge from.
@@ -3387,17 +3569,52 @@ export async function startTeamV2(config) {
         const workerName = workerNames[i];
         const taskIndex = startupByWorker.get(workerName);
         const fallbackAgent = (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude');
-        const resolvedAssignment = taskIndex === undefined
+        const roleRoutingConfig = pluginCfg.team?.roleRouting;
+        const task = taskIndex === undefined ? undefined : config.tasks[taskIndex];
+        const resolvedAssignment = task === undefined
             ? { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: undefined }
-            : resolveTaskAssignment(config.tasks[taskIndex], resolvedRouting, pluginCfg.team?.roleRouting, fallbackAgent);
+            : resolveTaskAssignment(task, resolvedRouting, roleRoutingConfig, fallbackAgent);
+        let role = resolvedAssignment.role ?? undefined;
+        // Under the sdk transport, a contract role (critic/code-reviewer/
+        // security-reviewer/test-engineer) that was only INFERRED from task text
+        // — not explicitly assigned via task.role or team.roleRouting config —
+        // carries no user intent to honor by failing the whole team start. Drop
+        // the role instead: the worker launches as a plain executor-style
+        // worker (no verdict contract, no role-specific prompt override). An
+        // explicitly assigned contract role is still rejected below.
+        if (sdkMode && role && shouldInjectContract(role, resolvedAssignment.agentType)
+            && task && !isExplicitTaskRoleAssignment(task, roleRoutingConfig, role)) {
+            process.stderr.write(`[omg team] sdk transport: inferred role "${role}" for worker ${workerName} `
+                + `would require a verdict contract the sdk transport cannot process; running as a plain executor `
+                + `instead (an explicitly assigned contract role is still rejected)\n`);
+            role = undefined;
+        }
         const assignment = {
             agentType: resolvedAssignment.agentType,
             model: resolvedAssignment.model || resolveDefaultModel(resolvedAssignment.agentType),
             reasoningEffort: resolvedAssignment.reasoningEffort,
-            ...(resolvedAssignment.role ? { role: resolvedAssignment.role } : {}),
+            ...(role ? { role } : {}),
         };
         startupAssignments.set(workerName, assignment);
         effectiveAgentTypes.add(assignment.agentType);
+    }
+    if (sdkMode && [...effectiveAgentTypes].some((agentType) => agentType !== 'copilot')) {
+        throw new Error(`sdk_transport_requires_copilot_workers:${[...effectiveAgentTypes].join(',')}`);
+    }
+    if (sdkMode) {
+        // Reviewer-style roles publish a verdict file the leader consumes only
+        // after the provider exits (or, for cursor, on file appearance). An SDK
+        // host never exits between turns, so its verdict would never be read.
+        // Only an EXPLICITLY assigned contract role reaches this check — an
+        // inferred one was already dropped above.
+        const contractRoles = [...new Set([...startupAssignments.values()]
+                .flatMap((a) => (a.role && shouldInjectContract(a.role, a.agentType) ? [a.role] : [])))];
+        if (contractRoles.length > 0) {
+            throw new Error(`sdk_transport_unsupported:contract_roles:${contractRoles.join(',')} `
+                + `(${[...CONTRACT_ROLES].join('/')} workers emit verdict files the sdk transport does not process; `
+                + `use --transport pane for an explicitly assigned reviewer-style role, or stop assigning it `
+                + `explicitly to let it run as a plain executor)`);
+        }
     }
     for (const agentType of effectiveAgentTypes) {
         try {
@@ -3540,7 +3757,10 @@ export async function startTeamV2(config) {
                 throw startupCleanupIncompleteError(error);
             throw error;
         }
-        for (const line of formatWorkerPermissionLines(preparedLaunches.values())) {
+        const permissionLines = sdkSettings
+            ? [`[omg team] copilot sdk workers (x${preparedLaunches.size}): no allow-all; host permission policy (writes: worktree + team state; shell: denylist, not a sandbox: all but team control/smoke/tmux/git push; no sub-agent tools); deny: ${[...sdkSettings.denyTools, ...sdkSettings.denyUrls.map((u) => `url(${u})`)].join(', ') || '(none)'}; credit cap ${sdkSettings.maxCreditsPerWorker}/worker`]
+            : formatWorkerPermissionLines(preparedLaunches.values());
+        for (const line of permissionLines) {
             process.stderr.write(`${line}\n`);
         }
         // Set up worker state dirs and overlays (with v2 CLI API instructions)
@@ -3578,9 +3798,12 @@ export async function startTeamV2(config) {
         // Create tmux session (leader only — workers spawned below)
         let session;
         try {
-            session = await createTeamSession(sanitized, 0, leaderCwd, {
-                newWindow: Boolean(config.newWindow),
-            });
+            // SDK workers need no multiplexer: the team target only names the transport.
+            session = sdkMode
+                ? { sessionName: sdkTeamTarget(sanitized), leaderPaneId: '', workerPaneIds: [], sessionMode: 'split-pane' }
+                : await createTeamSession(sanitized, 0, leaderCwd, {
+                    newWindow: Boolean(config.newWindow),
+                });
         }
         catch (error) {
             if (!await rollbackBeforeConfig(error))
@@ -3603,6 +3826,7 @@ export async function startTeamV2(config) {
                     ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude'),
                 worker_cli: preparedLaunches.get(wName).descriptor.provider,
                 launch_descriptor: preparedLaunches.get(wName).descriptor,
+                ...(sdkMode ? { transport: 'sdk' } : {}),
                 assigned_tasks: [],
                 working_dir: worktree?.path ?? leaderCwd,
                 team_state_root: teamStateRoot(leaderCwd, sanitized),
@@ -3743,7 +3967,7 @@ export async function startTeamV2(config) {
                 const workerInfo = workersInfo[workerIndex];
                 if (!workerInfo)
                     continue;
-                const workerLaunch = await spawnV2Worker({
+                const spawnOptions = {
                     sessionName,
                     ...(session.tmuxServerIdentity ? { tmuxServerIdentity: session.tmuxServerIdentity } : {}),
                     leaderPaneId,
@@ -3762,7 +3986,10 @@ export async function startTeamV2(config) {
                     autoMerge: Boolean(config.autoMerge),
                     ...(prepared.role ? { role: prepared.role } : {}),
                     ...(prepared.verdictAssignmentId ? { verdictAssignmentId: prepared.verdictAssignmentId } : {}),
-                });
+                };
+                const workerLaunch = sdkSettings
+                    ? await spawnSdkV2Worker(spawnOptions, sdkSettings)
+                    : await spawnV2Worker(spawnOptions);
                 if (workerLaunch.paneId) {
                     if (workerLaunch.startupAssigned)
                         workerPaneIds.push(workerLaunch.paneId);
@@ -4157,9 +4384,12 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
         if (!outputFile)
             continue;
         const paneOwnership = configuredPaneOwnership(config, worker);
-        const liveness = paneOwnership
-            ? await getOwnedWorkerLiveness(paneOwnership)
-            : 'unknown';
+        // SDK workers: the post-exit contract keys on the host's provider record.
+        const liveness = isSdkTarget(worker.pane_id)
+            ? await getWorkerProviderLiveness(sanitized, cwd, config.instance_id, worker)
+            : paneOwnership
+                ? await getOwnedWorkerLiveness(paneOwnership)
+                : 'unknown';
         const workerRole = normalizeDelegationRole(worker.role);
         const cursorReviewer = worker.worker_cli === 'cursor'
             && CONTRACT_ROLES.has(workerRole);
@@ -4789,19 +5019,28 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
     const recommendations = [];
     const workerScanStartMs = performance.now();
     const workerSignals = await Promise.all(config.workers.map(async (worker) => {
+        const providerLiveness = await getWorkerProviderLiveness(sanitized, cwd, config.instance_id, worker);
+        if (isSdkTarget(worker.pane_id)) {
+            // No pane: liveness is the host's provider record, idleness its session file.
+            const sdkSession = readSdkSession(teamStateRoot(cwd, sanitized), worker.name);
+            const [status, heartbeat] = await Promise.all([
+                readWorkerStatus(sanitized, worker.name, cwd),
+                readWorkerHeartbeat(sanitized, worker.name, cwd),
+            ]);
+            return { worker, alive: providerLiveness === 'alive', liveness: providerLiveness, providerLiveness, status, heartbeat, paneCapture: '', sdkSession };
+        }
         const ownership = configuredPaneOwnership(config, worker);
         const liveness = ownership ? await getOwnedWorkerLiveness(ownership) : 'unknown';
-        const providerLiveness = await getWorkerProviderLiveness(sanitized, cwd, config.instance_id, worker);
         const paneAlive = liveness === 'alive';
         const [status, heartbeat, paneCapture] = await Promise.all([
             readWorkerStatus(sanitized, worker.name, cwd),
             readWorkerHeartbeat(sanitized, worker.name, cwd),
             paneAlive && ownership ? captureOwnedTeamPane(ownership) : Promise.resolve(''),
         ]);
-        return { worker, alive: paneAlive, liveness, providerLiveness, status, heartbeat, paneCapture };
+        return { worker, alive: paneAlive, liveness, providerLiveness, status, heartbeat, paneCapture, sdkSession: null };
     }));
     const workerScanMs = performance.now() - workerScanStartMs;
-    for (const { worker: w, alive, liveness, providerLiveness, status, heartbeat, paneCapture } of workerSignals) {
+    for (const { worker: w, alive, liveness, providerLiveness, status, heartbeat, paneCapture, sdkSession } of workerSignals) {
         const currentTask = status.current_task_id ? taskById.get(status.current_task_id) ?? null : null;
         const outstandingTask = currentTask ?? findOutstandingWorkerTask(w, taskById, inProgressByOwner);
         const expectedTaskId = status.current_task_id ?? outstandingTask?.id ?? w.assigned_tasks[0] ?? '';
@@ -4833,6 +5072,18 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
             worktree_created: w.worktree_created,
             team_state_root: w.team_state_root,
             turnsWithoutProgress,
+            ...(sdkSession ? { sdk: {
+                    state: sdkSession.state,
+                    turns: sdkSession.turns,
+                    queued: sdkSession.queued,
+                    last_event_type: sdkSession.last_event_type,
+                    last_event_at: sdkSession.last_event_at,
+                    last_error: sdkSession.last_error,
+                    session_id: sdkSession.session_id,
+                    model: sdkSession.model,
+                    credits: sdkSession.usage.credits,
+                    premium_requests: sdkSession.usage.shutdown_premium_requests ?? sdkSession.usage.premium_requests,
+                } } : {}),
         });
         if (providerLiveness === 'dead') {
             deadWorkers.push(w.name);
@@ -4841,7 +5092,12 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
                 recommendations.push(`Reassign task-${t.id} from dead ${w.name}`);
             }
         }
-        const paneSuggestsIdle = alive && paneLooksReady(paneCapture) && !paneHasActiveTask(paneCapture);
+        // A capped SDK session is alive but takes no more prompts: idle-equivalent
+        // for stall detection, and its outstanding work must move elsewhere.
+        const sdkCapped = Boolean(sdkSession && providerLiveness !== 'dead' && sdkSession.state === 'capped');
+        const paneSuggestsIdle = sdkSession
+            ? alive && ((sdkSession.state === 'idle' && sdkSession.queued === 0) || sdkCapped)
+            : alive && paneLooksReady(paneCapture) && !paneHasActiveTask(paneCapture);
         const statusFresh = isFreshTimestamp(status.updated_at);
         const heartbeatFresh = isFreshTimestamp(heartbeat?.last_turn_at);
         const hasWorkStartEvidence = expectedTaskId !== '' && hasWorkerStatusProgress(status, expectedTaskId);
@@ -4849,7 +5105,10 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
             ? getMissingDependencyIds(outstandingTask, taskById)
             : [];
         let stallReason = null;
-        if (paneSuggestsIdle && missingDependencyIds.length > 0) {
+        if (sdkCapped) {
+            stallReason = 'sdk_credit_cap';
+        }
+        else if (paneSuggestsIdle && missingDependencyIds.length > 0) {
             stallReason = 'missing_dependency';
         }
         else if (paneSuggestsIdle && expectedTaskId !== '' && !hasWorkStartEvidence) {
@@ -4863,7 +5122,16 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
         }
         if (stallReason) {
             nonReportingWorkers.push(w.name);
-            if (stallReason === 'missing_dependency') {
+            if (stallReason === 'sdk_credit_cap') {
+                const cappedTasks = inProgressByOwner.get(w.name) ?? [];
+                for (const t of cappedTasks) {
+                    recommendations.push(`Reassign task-${t.id} from ${w.name}: sdk credit cap reached (${sdkSession?.last_error ?? 'capped'}); the worker takes no more prompts`);
+                }
+                if (cappedTasks.length === 0) {
+                    recommendations.push(`${w.name} reached its sdk credit cap and takes no more prompts; do not assign it new work`);
+                }
+            }
+            else if (stallReason === 'missing_dependency') {
                 recommendations.push(`Investigate ${w.name}: task-${outstandingTask?.id ?? expectedTaskId} is blocked by missing task ids [${missingDependencyIds.join(', ')}]; pane is idle at prompt`);
             }
             else if (stallReason === 'no_work_start_evidence') {
@@ -4980,6 +5248,11 @@ export async function cleanupStaleReservations(teamName, cwd) {
                 'process_started_at' in owner)) {
                 return; // Malformed owner, leave alone
             }
+            // An active reservation is the running team's instance authority; its
+            // owner is the `team start` CLI, which exits once the team is up. A dead
+            // owner only makes a starting (never activated) reservation stale.
+            if (reservation.phase === 'active')
+                return;
             // Check if the process is dead
             const ownerRecord = owner;
             if (isProcessIdentityDead(ownerRecord)) {
@@ -5140,6 +5413,7 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
         await assertTeamInstanceUnderLock(boundInstance);
         if (!current.config.tmux_session
             || (!current.config.tmux_session.startsWith('cmux:')
+                && !isSdkTarget(current.config.tmux_session)
                 && !isValidTmuxServerIdentity(current.config.tmux_server_identity))) {
             throw new Error('tmux_server_identity_missing');
         }
@@ -5329,6 +5603,9 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
             const shutdownAckPath = `${shutdownRoot}/workers/${w.name}/shutdown-ack.json`;
             const shutdownInbox = `# Shutdown Request\n\nAll tasks are complete. Please wrap up and respond with a shutdown acknowledgement.\n\nWrite your ack to: ${shutdownAckPath}\nFormat: {"status":"accept","reason":"ok","updated_at":"<iso>"}\n\nThen exit your session.\n`;
             await writeWorkerInbox(sanitized, w.name, shutdownInbox, cwd);
+            // An SDK host acks for its worker and tears its session down: no model turn is spent on shutdown.
+            if (isSdkTarget(w.pane_id))
+                ringDoorbell(teamStateRoot(cwd, sanitized), w.name, { kind: 'shutdown', from: 'leader-fixed' });
         }
         catch (err) {
             process.stderr.write(`[team/runtime-v2] shutdown request failed for ${w.name}: ${err}\n`);
@@ -5376,6 +5653,37 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
     const providerCleanupFailures = [];
     const paneCleanupAlive = [];
     const paneCleanupUnknown = [];
+    // SDK hosts stop in parallel within the caller's budget (session-end passes
+    // 0): each already got the shutdown doorbell above, so the floor only lets a
+    // host that is mid-teardown finish before the identity-checked kill.
+    const sdkStopTimeoutMs = Math.max(timeoutMs, SDK_HOST_STOP_FLOOR_MS);
+    const sdkStops = new Map();
+    for (const worker of config.workers) {
+        if (!isSdkTarget(worker.pane_id) || !worker.launch_attempt_id || !config.tmux_session)
+            continue;
+        const provider = worker.launch_descriptor?.provider ?? worker.worker_cli;
+        if (!provider)
+            continue;
+        const attemptId = worker.launch_attempt_id;
+        const paneId = worker.pane_id;
+        sdkStops.set(worker.name, (async () => {
+            const sdkAttempt = await loadWorkerLaunchAttempt({
+                cwd,
+                teamName: sanitized,
+                instanceId: shutdownInstance.instance_id,
+                workerName: worker.name,
+                paneId,
+                provider,
+                attemptId,
+                runtimeCliPath: resolveRuntimeCliPath(),
+            });
+            if (!sdkAttempt)
+                return false;
+            if (!await stopSdkHost(sdkAttempt, teamStateRoot(cwd, sanitized), { timeoutMs: sdkStopTimeoutMs }))
+                return false;
+            return retireAndCleanupCurrentWorkerLaunchAttempt(sdkAttempt, 'team_shutdown', async () => true);
+        })().catch(() => false));
+    }
     for (const worker of config.workers) {
         if (!worker.pane_id) {
             providerCleanupFailures.push(worker.name);
@@ -5391,6 +5699,11 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
         const provider = worker.launch_descriptor?.provider ?? worker.worker_cli;
         if (!provider || !config.tmux_session) {
             providerCleanupFailures.push(worker.name);
+            continue;
+        }
+        if (isSdkTarget(worker.pane_id)) {
+            if (!await (sdkStops.get(worker.name) ?? Promise.resolve(false)))
+                providerCleanupFailures.push(worker.name);
             continue;
         }
         const initialOwnership = configuredPaneOwnership(config, worker);
@@ -5475,9 +5788,10 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
     try {
         const { killTeamSession: killOwnedTeamSession, } = await import('./tmux-session.js');
         const ownsWindow = config.tmux_window_owned === true;
-        const workerPaneIds = recordedWorkerPaneIds;
+        // SDK workers were stopped and retired above; there is no session or pane to close.
+        const workerPaneIds = recordedWorkerPaneIds.filter((paneId) => !isSdkTarget(paneId));
         const splitPaneMode = Boolean(config.tmux_session && !ownsWindow && config.tmux_session.includes(':'));
-        if (!splitPaneMode && config.tmux_session) {
+        if (!splitPaneMode && config.tmux_session && !isSdkTarget(config.tmux_session)) {
             if (!config.leader_pane_id) {
                 if (!await rollbackShutdownForRetry())
                     await finalizeAutoMerge();
@@ -5636,7 +5950,7 @@ export async function resumeTeamV2(teamName, cwd) {
         return null;
     // Verify tmux session is alive
     const sessionName = config.tmux_session || `omc-team-${sanitized}`;
-    if (sessionName.startsWith('cmux:')) {
+    if (sessionName.startsWith('cmux:') || isSdkTarget(sessionName)) {
         return {
             teamName: sanitized,
             sanitizedName: sanitized,

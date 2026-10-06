@@ -8,6 +8,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 - [Unreleased: Team Instance Ownership](#unreleased-team-instance-ownership)
 - [Unreleased: Cancellation Scope](#unreleased-cancellation-scope)
+- [v5.7.0 → v5.8.0: SDK Team Transport](#v570--v580-sdk-team-transport)
 - [v5.6.2 → v5.7.0: Smoke Harness](#v562--v570-smoke-harness)
 - [v5.6.1 → v5.6.2: Postinstall Hook](#v561--v562-postinstall-hook)
 - [v5.5.0 → v5.6.1: Fork Upgrade Guide](#v550--v561-fork-upgrade-guide)
@@ -120,6 +121,124 @@ locations and descendants of system temp/OS roots are never used as roots.
   foreign repositories and failed Git probes are rejected visibly.
 - Session-scoped state remains owned by its `session_id`. No time-based cleanup
   or cancellation was added.
+
+---
+
+## v5.7.0 → v5.8.0: SDK Team Transport
+
+Fork **v5.8.0** adds an experimental headless SDK transport for `omg team`,
+factory chains on Copilot, faster Copilot hooks and a Copilot smoke job in CI.
+There is nothing to migrate: no config, command or skill is renamed or
+removed, and every default is unchanged. The team transport stays `pane`, the
+SessionEnd budget under Claude Code stays 300 ms, and the CI smoke job skips
+without its secret.
+
+- Update with `npm install -g oh-my-copilot@5.8.0` or
+  `copilot plugin update oh-my-copilot@omc`.
+
+### Adopting `--transport sdk`
+
+The transport is experimental and opt-in. It needs `copilot` on PATH and the
+optional SDK, installed the same way as for smoke tier 2:
+
+```bash
+npm i -g @github/copilot-sdk --omit=optional --ignore-scripts
+omg team 2:copilot --transport sdk "<task>"
+```
+
+To opt in for every team, set it in `.copilot/omg.jsonc`:
+
+```jsonc
+{
+  "team": {
+    "transport": "sdk",
+    "sdk": { "maxCreditsPerWorker": 10 }
+  }
+}
+```
+
+- **`team.sdk.maxCreditsPerWorker`** caps each worker (default 10, a
+  positive number; env `OMC_TEAM_SDK_MAX_CREDITS`). At the cap the host aborts
+  the turn, takes no more prompts, and `omg team status` shows the worker as
+  `capped`.
+- **Permissions are a policy, not a sandbox.** There is no allow-all. The
+  host allows writes only in the worker's worktree and the team state root,
+  and MCP calls only to the plugin server. The shell check is a denylist: it
+  blocks team control other than `team api`, `omg smoke`, `tmux`/`psmux`,
+  `git push`, and the `shell(<prefix>)` entries of `workerDenyTools`, but a
+  command built indirectly, such as a script file or an alias, is not caught.
+- **Excluded tools.** `task`, `run_dynamic_workflow`,
+  `dynamic_workflows_manage`, `write_agent`, `read_agent`, `list_agents`,
+  `search_code_subagent` and the plugin's `host_smoke` are removed from each
+  worker session.
+- **Rejected at start:** `--auto-merge`, non-copilot workers, scaling, and an
+  explicitly assigned reviewer-contract role (`critic`, `code-reviewer`,
+  `security-reviewer`, `test-engineer`). Keep those teams on `pane`.
+
+Details are in
+[Headless SDK workers](./REFERENCE.md#headless-sdk-workers---transport-sdk-experimental).
+
+### Factory chains on Copilot
+
+Software-factory chains now run past their first link on Copilot CLI. Before,
+a Copilot link got a random session id (Copilot has no `--session-id`), its
+SessionEnd found no ledger, and the chain stopped silently after one link.
+Nothing to configure:
+
+- The spawner (factory listener or SessionEnd worker) sets
+  `OMC_CHAIN_LINK=<link id>` on each Copilot link. SessionEnd resolves the
+  link as `OMC_CHAIN_LINK`, then the host session id, and trusts the variable
+  only when it names a `host: "copilot"` ledger bound to the ending session
+  by that link's SessionStart, so a nested session cannot end its parent's
+  link. A duplicate SessionEnd gets the same chain back. Claude links keep
+  `--session-id`.
+- Copilot's SessionEnd reason `complete` now counts as success, so route keys
+  such as `success:*` match a finished Copilot link.
+- Link ledgers record `chainLink`, `host`, `createdAt` and `parentLink`, and
+  each link's SessionEnd closes its ledger once (`closedAt`, `hostSessionId`,
+  `outcome`, `decision`). The watchdog skips a closed ledger only when it
+  advanced the chain or left a stop marker, and `omg factory status` lists
+  each chain's links.
+- A ledger's `maxStageVisits` now applies to the whole chain, not just the
+  first link; values above 99 clamp to 99 (before, they fell back to 2 on
+  later links).
+- Under a dev plugin root (`omg --plugin-dir`), Copilot links get
+  `--plugin-dir` too, and the SessionEnd worker forwards `OMC_PLUGIN_ROOT`,
+  unless the root overlaps the link's working directory.
+- `omg smoke copilot --tier 2 --scenario chain` runs a real two-link chain
+  (about 2 premium requests). It is opt-in and not part of `all`.
+
+Copilot fires `sessionEnd` after every turn, so a link that a Stop hook
+continues into a second turn hands off after its first turn; the closed
+ledger prevents a second hand-off. Ledgers written by an older version have
+no `host` field: a Copilot link
+spawned before the upgrade still ends its chain after one link. Guardrails
+(serial lock, daily cap), `COPILOT_ALLOW_ALL=false` and the AFK permission
+profile are unchanged. See
+[Factory chains on Copilot](./REFERENCE.md#factory-chains-on-copilot).
+
+### Hook environment knobs
+
+Under Copilot the SessionEnd foreground budget is now 1500 ms and the audited
+generic hooks run in a Worker thread. Claude Code is unchanged. Two variables
+tune this:
+
+| Variable | Effect |
+| --- | --- |
+| `OMC_SESSION_END_BUDGET_MS` | Overrides the SessionEnd foreground budget on both hosts, an integer from 1 to 60000. Default 1500 under Copilot, 300 under Claude Code. |
+| `OMC_COPILOT_HOOK_WORKER=0` | Turns off Worker routing under Copilot, so every generic hook takes the child path again. |
+
+See [SessionEnd](./HOOKS.md#sessionend) in the hooks reference.
+
+### CI secret for the Copilot smoke job
+
+The new `smoke` job in `.github/workflows/ci.yml` needs the repository secret
+`COPILOT_GITHUB_TOKEN`, a fine-grained personal access token of a user with
+an active Copilot subscription and the "Copilot Requests" account
+permission. Without it the job passes with a skip notice. With it, PRs and
+branch pushes run the free static checks, and pushed `v*` tags also run the
+default scenarios, about 2 premium requests billed to that user. Setup is in
+[DEVELOPERS.md](DEVELOPERS.md#tier-2-in-ci).
 
 ---
 
@@ -311,9 +430,10 @@ it there.
 
 ### Known limitations
 
-- **Copilot factory chains stop after one link.** Copilot CLI has no
-  `--session-id`, so the next link cannot be pinned; `omg factory status` and
-  the watchdog report the stalled chain.
+- **Copilot factory chains stop after one link** (fixed in v5.8.0, see
+  [Factory chains on Copilot](#factory-chains-on-copilot)).
+  Copilot CLI has no `--session-id`, so the next link cannot be pinned;
+  `omg factory status` and the watchdog report the stalled chain.
 - **git-guardrails under Copilot on Windows is not live-verified.** The hook
   is projected and unit-tested, but its PreToolUse payload has not been
   exercised in a live Copilot session on Windows. Plant a violation (for

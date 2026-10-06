@@ -667,6 +667,19 @@ describe('scaleUp duplicate worker guard', () => {
         expect(tmuxUtilsMocks.tmuxSpawn.mock.calls.some(([args]) => args[0] === 'split-window')).toBe(false);
         expect(teamOpsMocks.teamWriteWorkerIdentity).not.toHaveBeenCalled();
     });
+    it('refuses sdk-transport teams from the config read under the scaling lock, before any fence or extra read', async () => {
+        config = makeConfig({ tmux_session: 'sdk:demo-team' });
+        const env = { OMC_TEAM_SCALING_ENABLED: '1' };
+        const up = await scaleUp('demo-team', 1, 'claude', [{ subject: 'demo', description: 'demo task' }], cwd, env);
+        const down = await scaleDown('demo-team', cwd, { workerNames: ['worker-1'], force: true }, env);
+        expect(up).toEqual({ ok: false, error: 'scaling_unsupported_transport:sdk' });
+        expect(down).toEqual({ ok: false, error: 'scaling_unsupported_transport:sdk' });
+        expect(monitorMocks.withScalingLock).toHaveBeenCalledTimes(2);
+        expect(monitorMocks.readRevisionedTeamConfig).not.toHaveBeenCalled();
+        expect(monitorMocks.saveTeamConfigAtRevision).not.toHaveBeenCalled();
+        expect(tmuxUtilsMocks.tmuxSpawn.mock.calls.some(([args]) => args[0] === 'split-window')).toBe(false);
+        expect(tmuxSessionMocks.killOwnedWorkerPane).not.toHaveBeenCalled();
+    });
     it('allows legacy session-only tmux_session configs while still validating the session before split-window', async () => {
         config = makeConfig({
             worker_count: 0,

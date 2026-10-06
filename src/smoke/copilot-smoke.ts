@@ -15,12 +15,9 @@ import { spawn, spawnSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join, resolve, sep } from 'path';
-import { fileURLToPath } from 'url';
+import { join, resolve, sep } from 'path';
 import { buildHostBinarySpawn } from '../cli/tmux-utils.js';
-import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
-import { parseJsonc } from '../utils/jsonc.js';
 import { parseCopilotVersion, resolveCopilotBinary, type BinaryResolverDeps } from './copilot-binary.js';
 import {
   EVIDENCE_MAX,
@@ -40,11 +37,27 @@ import {
 } from './copilot-session-eval.js';
 import { hasExited, killProcessTree, runAsync, useProcessGroup, type SpawnFn, type SpawnSyncFn } from './process-utils.js';
 import { DEFAULT_SCENARIO_TIMEOUT_MS, loadCopilotSdk, runSdkTier, type LoadSdkFn } from './copilot-sdk-driver.js';
-import { ALL_SCENARIOS, DEFAULT_SCENARIOS, failedTier2Checks, RUNTIME_MIN_MAX_CREDITS, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
+import { runChainScenario } from './copilot-chain-scenario.js';
+import { DEFAULT_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, RUNTIME_MIN_MAX_CREDITS, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
+import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from './copilot-session-env.js';
+
+export {
+  buildSessionEnv,
+  isStrippedEnvKey,
+  LOGIN_SHADOWING_TOKENS,
+  loginIdentity,
+  resolveDefaultPluginRoot,
+  resolvePackageRoot,
+  SESSION_SET_ENV,
+  SMOKE_SET_ENV,
+  STRIPPED_ENV_EXACT,
+  STRIPPED_ENV_PREFIXES,
+  type SessionEnvOptions,
+} from './copilot-session-env.js';
 
 export type { SmokeCheck } from './copilot-session-eval.js';
 export type { Scenario } from './copilot-sdk-scenarios.js';
-export { ALL_SCENARIOS, DEFAULT_SCENARIOS } from './copilot-sdk-scenarios.js';
+export { ALL_SCENARIOS, DEFAULT_SCENARIOS, KNOWN_SCENARIOS, OPT_IN_SCENARIOS } from './copilot-sdk-scenarios.js';
 
 export type SmokeTier = 0 | 1 | 2;
 
@@ -176,53 +189,6 @@ export function sessionSandboxFlags(delegate: boolean): string[] {
   ];
 }
 
-/**
- * Env policy for every copilot child the smoke spawns (the caller's env minus
- * what could redirect, disable, or re-host our hooks; precedent:
- * scripts/verify-graph-contained-fs.mjs).
- *
- * Stripped:
- * - every `OMC_*` var and `DISABLE_OMC` (state dir, plugin root, skip/disable
- *   switches, debug toggles), then only {@link SMOKE_SET_ENV} is re-added;
- * - Claude Code host markers: `CLAUDECODE`, `CLAUDE_SESSION_ID`,
- *   `CLAUDE_PLUGIN_ROOT`, and every `CLAUDE_CODE_*` (incl. CLAUDE_CODE_ENTRYPOINT);
- * - `NODE_OPTIONS` (preloads would run inside our node hooks);
- * - `COPILOT_HOME`, `COPILOT_OFFLINE`, `COPILOT_MODEL` (only `--model` picks the
- *   model), every `COPILOT_PROVIDER_*` (BYO provider routing);
- * - tier 1 with a copied login identity: `GH_TOKEN`, `GITHUB_TOKEN` (see
- *   {@link buildSessionEnv}).
- * Kept: everything else, notably PATH/PATHEXT/SystemRoot/HOME/USERPROFILE/
- * APPDATA/LOCALAPPDATA/TEMP (hooks spawn node and resolve home dirs),
- * `COPILOT_GITHUB_TOKEN`, and the remaining `COPILOT_*` (e.g. COPILOT_CLI_PATH).
- */
-export const STRIPPED_ENV_EXACT = [
-  'DISABLE_OMC',
-  'CLAUDECODE',
-  'CLAUDE_SESSION_ID',
-  'CLAUDE_PLUGIN_ROOT',
-  'NODE_OPTIONS',
-  'COPILOT_HOME',
-  'COPILOT_OFFLINE',
-  'COPILOT_MODEL',
-] as const;
-export const STRIPPED_ENV_PREFIXES = ['OMC_', 'CLAUDE_CODE_', 'COPILOT_PROVIDER_'] as const;
-/** Generic GitHub tokens dropped from the tier 1 session when a stored login was copied. */
-export const LOGIN_SHADOWING_TOKENS = ['GH_TOKEN', 'GITHUB_TOKEN'] as const;
-/** Set on every copilot child (on top of COPILOT_HOME). */
-export const SMOKE_SET_ENV = {
-  COPILOT_ALLOW_ALL: 'false',
-  COPILOT_AUTO_UPDATE: 'false',
-  NO_COLOR: '1',
-} as const;
-/** Set on the tier 1 session only: a failing hook must surface as hook.end success:false. */
-export const SESSION_SET_ENV = { OMC_HOOK_FAIL_CLOSED: '1' } as const;
-
-export function isStrippedEnvKey(key: string): boolean {
-  const upper = process.platform === 'win32' ? key.toUpperCase() : key;
-  return (STRIPPED_ENV_EXACT as readonly string[]).includes(upper)
-    || STRIPPED_ENV_PREFIXES.some((p) => upper.startsWith(p));
-}
-
 const TIER0_COPILOT_IDS = ['copilot.binary', 'copilot.plugin_list', 'copilot.skill_list'] as const;
 
 function tier1Ids(delegate: boolean): string[] {
@@ -237,50 +203,6 @@ function tier1Ids(delegate: boolean): string[] {
     'state.written',
     ...(delegate ? ['subagent.selected'] : []),
   ];
-}
-
-/** Walk up from this module to the directory holding the oh-my-copilot plugin.json. */
-export function resolveDefaultPluginRoot(env: NodeJS.ProcessEnv = process.env): string {
-  const fromEnv = env[OMC_PLUGIN_ROOT_ENV]?.trim();
-  if (fromEnv) return resolve(fromEnv);
-  return findPluginRoot([...moduleDirs(), process.cwd()]) ?? process.cwd();
-}
-
-/**
- * The oh-my-copilot package root that contains the running module (no env,
- * no cwd fallback), or null when this code is not running from a plugin tree.
- */
-export function resolvePackageRoot(): string | null {
-  return findPluginRoot(moduleDirs());
-}
-
-function moduleDirs(): string[] {
-  const starts: string[] = [];
-  if (typeof __dirname !== 'undefined' && __dirname) starts.push(__dirname);
-  try { starts.push(dirname(fileURLToPath(import.meta.url))); } catch { /* CJS bundle */ }
-  return starts;
-}
-
-function findPluginRoot(starts: string[]): string | null {
-  for (const start of starts) {
-    let dir = resolve(start);
-    for (let i = 0; i < 8; i++) {
-      if (isPluginRoot(dir)) return dir;
-      const parent = dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-  }
-  return null;
-}
-
-function isPluginRoot(dir: string): boolean {
-  try {
-    const manifest = JSON.parse(readFileSync(join(dir, 'plugin.json'), 'utf-8')) as { name?: unknown };
-    return manifest.name === PLUGIN_NAME && existsSync(join(dir, 'package.json'));
-  } catch {
-    return false;
-  }
 }
 
 function readJson(path: string): Record<string, unknown> | null {
@@ -541,52 +463,6 @@ async function checkMcpListTools(ctx: Ctx): Promise<SmokeCheck> {
 // Tier 1
 // ---------------------------------------------------------------------------
 
-export interface SessionEnvOptions {
-  /** Tier 1 session (adds {@link SESSION_SET_ENV}); false for the tier 0 list commands. */
-  session?: boolean;
-  /** A stored login was copied into the home: drop {@link LOGIN_SHADOWING_TOKENS}. */
-  hasLogin?: boolean;
-}
-
-/** Apply the env policy documented at {@link STRIPPED_ENV_EXACT}. */
-export function buildSessionEnv(base: NodeJS.ProcessEnv, home: string, opts: SessionEnvOptions = {}): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(base)) {
-    if (isStrippedEnvKey(key)) continue;
-    if (opts.hasLogin && (LOGIN_SHADOWING_TOKENS as readonly string[]).includes(key.toUpperCase())) continue;
-    env[key] = value;
-  }
-  env.COPILOT_HOME = home;
-  Object.assign(env, SMOKE_SET_ENV);
-  if (opts.session) Object.assign(env, SESSION_SET_ENV);
-  return env;
-}
-
-/**
- * Copy only the login identity (`loggedInUsers`, `lastLoggedInUser`) from the
- * user's real config. The token stays in the OS credential store; without
- * these keys an empty COPILOT_HOME falls back to `gh auth token`, whose OAuth
- * app is not entitled to Copilot models ("Model ... is not available").
- *
- * Token precedence (`copilot help environment`, 1.0.91): COPILOT_GITHUB_TOKEN,
- * GH_TOKEN, GITHUB_TOKEN each take precedence over stored credentials. So when
- * a login was copied, the session drops GH_TOKEN/GITHUB_TOKEN (typically gh or
- * Actions tokens, which would shadow the entitled login) and keeps
- * COPILOT_GITHUB_TOKEN (an explicit Copilot opt-in). Without a stored login
- * (CI) all three pass through, since a token is then the only credential.
- */
-export function loginIdentity(userConfigDir: string): Record<string, unknown> {
-  try {
-    const parsed = parseJsonc(readFileSync(join(userConfigDir, 'config.json'), 'utf-8')) as Record<string, unknown> | null;
-    if (!parsed || typeof parsed !== 'object') return {};
-    const out: Record<string, unknown> = {};
-    for (const key of ['loggedInUsers', 'lastLoggedInUser']) if (parsed[key] !== undefined) out[key] = parsed[key];
-    return out;
-  } catch {
-    return {};
-  }
-}
-
 function initProject(ctx: Ctx, projectDir: string, env: NodeJS.ProcessEnv): void {
   const res = ctx.spawnSyncFn('git', ['init', '-q'], { cwd: projectDir, env, encoding: 'utf8', timeout: 30_000, windowsHide: true });
   if (res.status !== 0 || !existsSync(join(projectDir, '.git'))) mkdirSync(join(projectDir, '.git'), { recursive: true });
@@ -755,8 +631,8 @@ export async function runCopilotSmoke(input: Partial<SmokeOptions> = {}): Promis
   const opts: SmokeOptions = { ...input, pluginRoot: root, tier };
 
   if (opts.prompt !== undefined && /\0/.test(opts.prompt)) throw new Error('smoke prompt must not contain NUL');
-  const unknown = (opts.scenarios ?? []).filter((s) => !ALL_SCENARIOS.includes(s));
-  if (unknown.length) throw new Error(`unknown smoke scenario(s): ${unknown.join(', ')} (known: ${ALL_SCENARIOS.join(', ')})`);
+  const unknown = (opts.scenarios ?? []).filter((s) => !KNOWN_SCENARIOS.includes(s));
+  if (unknown.length) throw new Error(`unknown smoke scenario(s): ${unknown.join(', ')} (known: ${KNOWN_SCENARIOS.join(', ')})`);
 
   const refusal = liveRunRefusal(tier, opts.scenarios, deps);
   if (refusal) {
@@ -816,7 +692,9 @@ async function runChecks(
   if (!resolution.bin) {
     skipped = opts.copilotBin
       ? `copilot binary not found: ${opts.copilotBin}`
-      : 'copilot binary not found on PATH, COPILOT_CLI_PATH, or the WinGet package dir';
+      : (deps.platform ?? process.platform) === 'win32'
+        ? 'copilot binary not found on PATH, COPILOT_CLI_PATH, or the WinGet package dir'
+        : 'copilot binary not found on PATH or COPILOT_CLI_PATH (npm i -g @github/copilot)';
     checks.push({ id: 'copilot.binary', ok: false, detail: skipped });
     for (const id of TIER0_COPILOT_IDS.slice(1)) checks.push({ id, ok: false, detail: 'skipped' });
   } else {
@@ -933,6 +811,7 @@ async function runTier2(
     skillDirs: countDirsWith(join(ctx.root, 'skills'), 'SKILL.md'),
     agentFiles,
     mcpServer: mcpServerNames(ctx.root)[0] ?? 't',
+    runChain: runChainScenario,
   });
   if (Object.keys(result.events).length) artifacts.events = result.events;
   const logs = readDebugLogs(join(home, 'logs'));

@@ -25,6 +25,7 @@ import { withScalingLock, migrateTeamConfigRevision, readRevisionedTeamConfig, s
 import { adoptWorkerPaneOwnership, sanitizeName, getOwnedWorkerLiveness, killOwnedWorkerPane, spawnOwnedWorkerInPane, splitTeamWorkerPaneWithEvidence, workerPaneBelongsToOwnedProviderTarget, waitForPaneReady, } from './tmux-session.js';
 import { TeamPaths, absPath, canonicalTeamCwd, canonicalTeamStatePath, teamStateRoot as resolveTeamStateRoot, } from './state-paths.js';
 import { writeWorkerOverlay } from './worker-bootstrap.js';
+import { isSdkTarget } from './sdk-transport.js';
 import { ensureWorkerWorktree, installWorktreeRootAgents, prepareWorkerWorktreeForRemoval, removeWorkerWorktree, restoreWorktreeRootAgents, } from './git-worktree.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { currentProcessStartIdentity, isProcessIdentityDead } from './team-owner-epoch.js';
@@ -189,6 +190,8 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
         }
         let config = revisioned.config;
         let configRevision = revisioned.stateRevision;
+        if (isSdkTarget(config.tmux_session))
+            return { ok: false, error: 'scaling_unsupported_transport:sdk' };
         if (!config.instance_id)
             return { ok: false, error: 'team_instance_authority_missing' };
         let originalInstanceId = config.instance_id;
@@ -987,6 +990,8 @@ export async function scaleDownOwned(teamName, cwd, options = {}, env = process.
         if (!loadedConfig) {
             return { ok: false, error: `Team ${sanitized} not found` };
         }
+        if (isSdkTarget(loadedConfig.tmux_session))
+            return { ok: false, error: 'scaling_unsupported_transport:sdk' };
         if (!loadedConfig.instance_id)
             return { ok: false, error: 'team_instance_authority_missing' };
         let originalInstanceId = loadedConfig.instance_id;

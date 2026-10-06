@@ -270,6 +270,29 @@ function resolveTrustedSessionEndTarget(resolution, extraArgs) {
   }
 }
 
+// Fork (oh-my-copilot): SessionEnd foreground budget per host. Claude Code
+// kills SessionEnd hooks at exit, so upstream caps the foreground at 300ms.
+// Copilot (OMC_HOOK_EVENT=SessionEnd from copilot/hooks.json) fires SessionEnd
+// per turn and waits up to timeoutSec, so 300ms only drops the work under load.
+// 1500ms is chosen (~5x the idle foreground cost), not derived.
+// OMC_SESSION_END_BUDGET_MS overrides both hosts (integer 1..60000); the
+// manifest-derived timeout still caps the result at the call site.
+const SESSION_END_BUDGET_MS = 300;
+const COPILOT_SESSION_END_BUDGET_MS = 1500;
+function resolveSessionEndBudgetMs(env = process.env) {
+  // Test-only widening (upstream contract) wins, and only under NODE_ENV=test.
+  const requestedTestTimeout = env.NODE_ENV === 'test'
+    ? Number(env.OMC_SESSION_END_TEST_FOREGROUND_TIMEOUT_MS)
+    : NaN;
+  if (Number.isFinite(requestedTestTimeout) && requestedTestTimeout > 0) return requestedTestTimeout;
+  const override = String(env.OMC_SESSION_END_BUDGET_MS ?? '').trim();
+  if (/^\d+$/.test(override)) {
+    const value = Number(override);
+    if (value >= 1 && value <= MAX_DECLARED_GENERIC_TIMEOUT_MS) return value;
+  }
+  return env.OMC_HOOK_EVENT === 'SessionEnd' ? COPILOT_SESSION_END_BUDGET_MS : SESSION_END_BUDGET_MS;
+}
+
 
 // oh-my-copilot fail-closed contract (fork-only): with OMC_HOOK_FAIL_CLOSED=1
 // a hook timeout exits 124 so the host records a failed hook. Unset keeps the
@@ -949,7 +972,80 @@ function gitGuardrailsPreCheck() {
   return null;
 }
 
-async function runWorker(targetPath, manifestHook, timeoutMs) {
+// Fork (oh-my-copilot): generic hooks that run in a Worker under Copilot
+// (OMC_HOOK_EVENT set by copilot/hooks.json). On win32 the generic child path
+// costs run.cjs -> --generic-child-supervisor -> hook = 3 Node processes
+// (~170 ms for a no-op hook); a Worker costs ~25 ms. Each script was audited:
+// no process.chdir, signal handlers, isMainThread gating, or children that
+// inherit stdio. process.exit ends only the Worker and its code propagates.
+// Add a new upstream hook only after the same audit; the routing test pins
+// this set to the generic entries of copilot/hooks.json.
+//
+// A Worker cannot preempt a hook blocked inside a synchronous call: several
+// of these scripts (context-guard-stop.mjs, workflow-drift-guard.mjs,
+// code-simplifier.mjs, and the shared resolveToWorktreeRoot git probes) make
+// sync spawnSync git calls with their own ~2s timeouts, and `worker.terminate()`
+// only tears the Worker down once that sync call returns; it does not reap
+// any async grandchildren either. The supervised child path's `taskkill /T`
+// can still kill a blocked sync call and its children, so
+// resolveCopilotWorkerTarget below keeps any entry whose own manifest budget
+// is <= COPILOT_WORKER_MIN_TIMEOUT_MS on that child path instead of the
+// Worker, trading its ~90ms Worker saving for a host timeout that cannot be
+// overshot by a hung sync call. See docs/HOOKS.md "Worker routing".
+const COPILOT_WORKER_MIN_TIMEOUT_MS = 3000;
+const COPILOT_WORKER_HOOKS = new Set([
+  'session-start.mjs',
+  'project-memory-session.mjs',
+  'wiki-session-start.mjs',
+  'stale-run-reporter.mjs',
+  'runs-reconciler.mjs',
+  'permission-handler.mjs',
+  'post-tool-directory-context-injector.mjs',
+  'post-tool-use-failure.mjs',
+  'subagent-tracker.mjs',
+  'verify-deliverables.mjs',
+  'pre-compact.mjs',
+  'project-memory-precompact.mjs',
+  'wiki-pre-compact.mjs',
+  'context-guard-stop.mjs',
+  'workflow-drift-guard.mjs',
+  'persistent-mode.mjs',
+  'budget-guard.mjs',
+  'code-simplifier.mjs',
+]);
+
+/**
+ * Fork: the manifest hook when this generic hook may run in a Worker under
+ * Copilot, else null (generic child path). Requires OMC_HOOK_EVENT, the
+ * OMC_COPILOT_HOOK_WORKER=0 kill switch unset, an audited script at the exact
+ * canonical trusted-root path, and a manifest entry (with these extra args)
+ * whose event is OMC_HOOK_EVENT. Claude Code never sets OMC_HOOK_EVENT.
+ */
+function resolveCopilotWorkerTarget(resolution, extraArgs, env = process.env) {
+  const hookEvent = env.OMC_HOOK_EVENT;
+  const trustedRoot = resolution.trustedPluginRoot;
+  if (!hookEvent || env.OMC_COPILOT_HOOK_WORKER === '0' || !trustedRoot) return null;
+  try {
+    const scriptName = basename(resolution.targetPath);
+    if (!COPILOT_WORKER_HOOKS.has(scriptName)) return null;
+    const canonicalTarget = normalizedComparisonPath(resolution.targetPath);
+    if (!isContainedBy(normalizedComparisonPath(trustedRoot), canonicalTarget)) return null;
+    if (canonicalTarget !== normalizedComparisonPath(join(trustedRoot, 'scripts', scriptName))) return null;
+    const manifestHook = resolveHookTimeoutMsFromRoot(trustedRoot, resolution.targetPath, extraArgs);
+    if (manifestHook?.event !== hookEvent) return null;
+    // See COPILOT_WORKER_MIN_TIMEOUT_MS above: a tight manifest budget stays
+    // on the supervised child path, where a blocked sync call cannot overshoot
+    // the host timeout.
+    if (manifestHook.timeoutMs <= COPILOT_WORKER_MIN_TIMEOUT_MS) return null;
+    return manifestHook;
+  } catch {
+    return null;
+  }
+}
+
+// options (fork): { argv, env } for the Copilot generic Worker path; the
+// trusted and SessionEnd Worker callers pass none and keep upstream behaviour.
+async function runWorker(targetPath, manifestHook, timeoutMs, options = {}) {
   let worker;
   let terminal = false;
   let timer;
@@ -1015,7 +1111,9 @@ async function runWorker(targetPath, manifestHook, timeoutMs) {
           stdin: true,
           stdout: true,
           stderr: true,
-          env: process.env,
+          env: options.env || process.env,
+          // Appended after [worker eval] → argv[1] is the hook path, argv[2..] the extra args.
+          ...(options.argv && options.argv.length ? { argv: options.argv } : {}),
           workerData: { omcWorkerTarget: pathToFileURL(targetPath).href },
         });
         if (process.stdin.readableEnded) worker.stdin.end();
@@ -1069,24 +1167,34 @@ if (require.main === module) {
       } else {
         const sessionEndManifestHook = resolveTrustedSessionEndTarget(resolution, extraArgs);
         if (sessionEndManifestHook) {
-          // The shipped foreground budget stays 300ms unconditionally; only the
-          // test harness may widen it, and only under NODE_ENV=test.
-          const requestedTestTimeout = process.env.NODE_ENV === 'test'
-            ? Number(process.env.OMC_SESSION_END_TEST_FOREGROUND_TIMEOUT_MS)
-            : NaN;
-          const budgetMs = Number.isFinite(requestedTestTimeout) && requestedTestTimeout > 0
-            ? requestedTestTimeout
-            : 300;
+          // Fork: 300ms on Claude Code, 1500ms under Copilot; see resolveSessionEndBudgetMs.
+          const budgetMs = resolveSessionEndBudgetMs();
           const timeoutMs = Math.min(resolveGenericTimeoutMs(sessionEndManifestHook), budgetMs);
           runWorker(resolution.targetPath, sessionEndManifestHook, timeoutMs).then(status => {
             process.exitCode = status;
           });
         } else {
-          const manifestHook = resolveHookTimeoutMs(resolution.targetPath, extraArgs);
-          const timeoutMs = resolveGenericTimeoutMs(manifestHook);
-          runGenericChild(resolution.targetPath, extraArgs, timeoutMs, manifestHook).then(status => {
-            process.exitCode = status;
-          });
+          const copilotWorkerHook = resolveCopilotWorkerTarget(resolution, extraArgs);
+          if (copilotWorkerHook) {
+            // Fork: Copilot generic hooks in a Worker, same timeout and owner-pid
+            // env as runGenericChild; see COPILOT_WORKER_HOOKS.
+            const timeoutMs = resolveGenericTimeoutMs(copilotWorkerHook);
+            runWorker(resolution.targetPath, copilotWorkerHook, timeoutMs, {
+              argv: extraArgs,
+              env: {
+                ...process.env,
+                OMC_SESSION_OWNER_PID: process.env.OMC_SESSION_OWNER_PID || String(process.ppid),
+              },
+            }).then(status => {
+              process.exitCode = status;
+            });
+          } else {
+            const manifestHook = resolveHookTimeoutMs(resolution.targetPath, extraArgs);
+            const timeoutMs = resolveGenericTimeoutMs(manifestHook);
+            runGenericChild(resolution.targetPath, extraArgs, timeoutMs, manifestHook).then(status => {
+              process.exitCode = status;
+            });
+          }
         }
       }
     }
@@ -1119,4 +1227,9 @@ module.exports = {
   NESTED_INNER_FLOOR_MS,
   MAX_DECLARED_GENERIC_TIMEOUT_MS,
   resolveTrustedSessionEndTarget,
+  resolveSessionEndBudgetMs,
+  resolveCopilotWorkerTarget,
+  COPILOT_WORKER_HOOKS,
+  COPILOT_WORKER_MIN_TIMEOUT_MS,
+  TRUSTED_WORKER_HOOKS,
 };

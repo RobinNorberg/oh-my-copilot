@@ -1,107 +1,152 @@
-# oh-my-copilot v5.7.0
+# oh-my-copilot v5.8.0
 
-A minor release that adds a headless smoke harness for the GitHub Copilot CLI,
-fixes two hook behaviours, and brings the fork to parity with upstream
-oh-my-claudecode `dev` through bcaceb136 (486b85bbb..bcaceb136). Upstream is
-still at version 5.6.1. There are **no breaking changes** and nothing to
-migrate: the new `@github/copilot-sdk` peer dependency is optional and
-`OMC_HOOK_FAIL_CLOSED` is opt-in.
+A minor release that adds an experimental headless SDK transport for
+`omg team`, lets factory chains run past their first link on Copilot, cuts
+Copilot hook latency, and runs the headless Copilot smoke in CI. There are
+**no breaking changes** and nothing to migrate: the team transport stays
+`pane`, the SessionEnd budget under Claude Code stays 300 ms, and the CI smoke
+job skips without its secret. There is no upstream port in this release;
+parity stays at upstream oh-my-claudecode `dev` bcaceb136.
 
-Install with `npm install -g oh-my-copilot@5.7.0`, or from the plugin
+Install with `npm install -g oh-my-copilot@5.8.0`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
-
-For tier 2 of the smoke harness, also install the optional SDK:
-
-```bash
-npm i -g @github/copilot-sdk --omit=optional --ignore-scripts
-```
 
 ## What's in
 
-### Headless smoke harness: `omg smoke copilot` and `host_smoke`
+| Change | Measured |
+| --- | --- |
+| Headless SDK team transport (experimental) | 1 premium request per worker for one task; about 3.5 s from host spawn to an idle SDK session |
+| Factory chains on Copilot | A live two-link chain on Copilot CLI 1.0.91 ran end to end for 2 premium requests |
+| Copilot hook latency | SessionEnd under 4 parallel lanes: 0 of 64 runs failed, down from 56 to 63; Stop hooks 1331 ms to 976 ms |
+| Copilot smoke in CI | 0 premium requests on PRs and branch pushes; about 2 per pushed tag |
 
-`omg smoke copilot` loads a plugin root into the real Copilot CLI inside a
-throwaway `COPILOT_HOME` and reports one line per check. The same check is
-exposed as the MCP tool `host_smoke`; the standalone MCP server now has 56
-tools.
+### Headless SDK team transport (experimental)
 
-| Tier | Command | What it checks | Cost |
-| --- | --- | --- | --- |
-| 0 | `omg smoke copilot --tier 0` | Manifest and version, generated hooks and agents, `plugin list` / `skill list`, MCP tool count | Free, no model call |
-| 1 | `omg smoke copilot --tier 1` | One live session: session events, hooks fired (fail-closed), plugin and MCP load, `.omg/` state writes | 1 premium request |
-| 2 static | `omg smoke copilot --sdk-static` | The runtime's plugin, skill, agent and MCP lists via `@github/copilot-sdk`; `host_smoke` hidden from the model | Free, no model call |
-| 2 | `omg smoke copilot --tier 2` | Scenarios `smoke` and `guardrail` (default); add `skill` and `delegate` with `--scenario all` | About 1 premium request per scenario, about 2 by default |
-
-`--max-credits` (default and minimum 30) caps a run; at tier 2 a scenario
-that passes the cap is aborted and the rest are skipped.
-
-**From Claude Code.** Register the build and ask Claude Code to call
-`host_smoke` with `{ "tier": 0 }`:
+`omg team --transport sdk` runs each copilot worker as a detached
+`omg team sdk-host` process that owns one `@github/copilot-sdk` session. There
+is no pane and no tmux or psmux. Workers report through the unchanged
+`omg team api`, and `omg team status` shows each worker's state, turns,
+credits and premium requests.
 
 ```bash
-claude mcp add omg-dev -- node <path-to-oh-my-copilot>/dist/mcp/standalone-server.js
+npm i -g @github/copilot-sdk --omit=optional --ignore-scripts
+omg team 2:copilot --transport sdk "fix the failing tests"
 ```
 
-The tool smokes only its own package root unless `OMC_SMOKE_ALLOW_ANY_ROOT=1`
-is set on the server. It refuses tier 1 and tier 2 with scenarios unless
-`OMC_SMOKE_ALLOW_LIVE=1` is set, because those are billed sessions.
-`{ "tier": 2, "scenarios": [] }` runs the free SDK static checks.
-`OMC_DISABLE_TOOLS=smoke` hides the tool. `npm run test:live` runs the smoke
-from vitest; billed tiers run only with `OMC_LIVE_SMOKE=1` or `2`.
+- **Requirements.** `copilot` on PATH and `@github/copilot-sdk` installed
+  globally. Without the SDK each worker fails with the install hint.
+- **Cost.** In the live runs each worker spent 1 premium request on its task.
+  `team.sdk.maxCreditsPerWorker` (default 10) caps each worker; at the cap the
+  host aborts the turn and the worker shows as `capped`.
+- **Permissions.** No allow-all. The host answers every permission request:
+  writes only in the worker's worktree and the team state root, MCP only to
+  the plugin server. The shell policy is a denylist, not a sandbox. Sub-agent
+  tools and `host_smoke` are removed from the session.
+- **Experimental.** `pane` stays the default. Set `team.transport: "sdk"` in
+  `.copilot/omg.jsonc` only to opt in for every team.
+
+### Factory chains on Copilot
+
+Copilot CLI has no `--session-id`, so a factory chain used to stop silently
+after its first link. The spawner now sets `OMC_CHAIN_LINK=<link id>` on each
+Copilot link, and the link's own SessionStart binds it to its host session,
+so a nested session that inherits the variable cannot end its parent's link.
+Ledgers record each link's host, parent and closeout, and `omg factory status`
+lists every chain's links. `omg smoke copilot --tier 2 --scenario chain` runs
+a real two-link chain as an opt-in check.
+
+### Copilot hook latency
+
+- **SessionEnd budget 1500 ms under Copilot.** Copilot fires SessionEnd after
+  every turn and waits up to 30 s, so the 300 ms budget dropped the cleanup
+  under ordinary load. 1500 ms is a chosen value, about 5x the idle foreground
+  cost, not a measured limit. Claude Code keeps 300 ms.
+- **Generic hooks run in a Worker under Copilot.** Under Copilot,
+  `scripts/run.cjs` runs 18 audited hooks in a Worker thread instead of a chain
+  of Node processes. A Worker-routed hook is about 90 ms faster on Windows.
+  Hooks whose own timeout is 3 s or less stay on the supervised child path,
+  because a Worker cannot interrupt a blocked synchronous call.
+
+| Event (local bench, sum of medians) | Before | After |
+| --- | --- | --- |
+| SessionStart | 1919 ms | 1482 ms |
+| Stop | 1331 ms | 976 ms |
+| PreCompact | 994 ms | 805 ms |
+
+### Copilot smoke in CI
+
+A new `smoke` job runs `omg smoke copilot --tier 2 --sdk-static` on
+ubuntu-latest after every build, with no model call. Pushed `v*` tags also
+run the default scenarios, about 2 premium requests. The job needs the
+repository secret `COPILOT_GITHUB_TOKEN`, a fine-grained token of a Copilot
+user with the "Copilot Requests" permission. Without it the job passes with
+the notice `Copilot smoke skipped`, as on fork PRs. Setup is in
+[`docs/DEVELOPERS.md`](docs/DEVELOPERS.md#tier-2-in-ci).
 
 ### Fixes
 
-- **Hook timeouts can fail closed.** With `OMC_HOOK_FAIL_CLOSED=1`,
-  `scripts/run.cjs` exits `124` when a hook times out instead of `0`.
-- **Wiki capture fits the SessionEnd budget.** `wiki-session-end.mjs` loads a
-  lean bootstrap instead of the full SessionEnd module graph, so it finishes
-  within the 300 ms SessionEnd budget.
-
-### Upstream parity
-
-- **Fork fixes merged upstream (#4231 to #4234).** `intake run --headless`,
-  platform-derived dead-owner identity in the team shutdown tests, the
-  state-lock owner-reclaim repro script, and BigInt file identity with an
-  owner-record recheck before quarantine. They return in upstream's canonical
-  form.
-- **Team env passthrough off the command line (#4236).**
-  `OMC_TEAM_WORKER_ENV_PASSTHROUGH` values, often credentials, are written to
-  a private `0600` file that the worker pane sources and removes, instead of
-  appearing in argv and tmux `pane_start_command`.
+- **`omg team shutdown` works from a fresh shell.** It no longer reclaims the
+  active instance reservation once the `team start` CLI has exited, which
+  failed every such shutdown with `team_instance_reservation_missing`.
+- **`--json` is honoured** by `doctor conflicts`, `wait status`,
+  `wait detect`, `teleport list`, `teleport remove` and `team status`.
+  `team status --json` prints one JSON document.
+- **`omg smoke copilot --json` keeps stdout pure** even when stdout and stderr
+  are merged.
+- **The chain smoke scenario builds its state paths through the state root**,
+  so it honours a relocated `.omg/`.
 
 ## Behaviour changes
 
-- **Fail-closed hook timeouts apply only with `OMC_HOOK_FAIL_CLOSED=1`.**
-  Without the variable a timed-out hook still fails open with exit `0`.
-- **Wiki capture now runs reliably under Copilot.** Session wiki entries that
-  were previously cut off by the SessionEnd budget are now written.
+None by default. These environment variables tune the new behaviour:
+
+| Variable | Effect |
+| --- | --- |
+| `OMC_SESSION_END_BUDGET_MS` | Overrides the SessionEnd foreground budget on both hosts, 1 to 60000 ms. |
+| `OMC_COPILOT_HOOK_WORKER=0` | Turns off Worker routing of generic hooks under Copilot. |
+| `OMC_TEAM_SDK_MAX_CREDITS` | Overrides `team.sdk.maxCreditsPerWorker` for the sdk transport. |
+| `OMC_SMOKE_ALLOW_LIVE=1` | Lets the `host_smoke` MCP tool run billed tiers, as in v5.7.0. |
+| `OMC_LIVE_SMOKE` | Lets `npm run test:live` run billed smoke tiers, as in v5.7.0. |
 
 See [`CHANGELOG.md`](CHANGELOG.md) for details and the
-[migration note](docs/MIGRATION.md#v562--v570-smoke-harness).
+[migration note](docs/MIGRATION.md#v570--v580-sdk-team-transport).
 
 ## Known limitations
 
-- `session-end.mjs` measures about 295 ms against the 300 ms SessionEnd
-  budget, so it has little headroom on slow machines.
-- In a non-git directory both SessionEnd hooks exceed 300 ms.
-- Copilot cannot pin a session id, so a factory chain stops after its first
-  link and the watchdog reports it.
-- `roleRouting` `reasoningEffort` is ignored for Copilot workers.
+- **SDK transport startup is serial.** Each worker launch waits for the
+  previous worker's claim, so a two-worker start took about 73 s.
+- **SDK teams bypass the one-team-per-leader guard.** The guard probes tmux
+  sessions, so it does not see an sdk team.
+- **SDK teams have no HUD or leader notifications.** Worker messages to the
+  leader land only in the mailbox.
+- **SDK transport rejects explicit reviewer-contract roles** (`critic`,
+  `code-reviewer`, `security-reviewer`, `test-engineer`), `--auto-merge`,
+  non-copilot workers and scaling.
+- **Copilot fires `sessionEnd` after every turn.** A factory link that a Stop
+  hook continues into a second turn hands off after its first turn.
+- **The hook gain is smaller on Linux and macOS.** They have no supervisor
+  hop, so a Worker-routed hook saves about 50 ms instead of about 90 ms.
+- **`omg wait detect --json` is not pure JSON.** It prints a scanning line
+  before the JSON, and without tmux it exits early with plain text.
 
 ## Requirements
 
-- GitHub Copilot CLI 1.0.88 or later (1.0.91 verified for stdin prompts and
-  the smoke harness); Claude Code remains supported.
-- `node` on PATH, as in v5.6.2.
-- Smoke tier 2: `@github/copilot-sdk` installed next to `omg` (SDK 1.0.16
-  verified).
+- GitHub Copilot CLI 1.0.88 or later (1.0.91 verified for the SDK transport,
+  factory chains and the smoke harness); Claude Code remains supported.
+- `node` on PATH, as in v5.7.0.
+- SDK transport and smoke tier 2: `@github/copilot-sdk` installed next to
+  `omg` (SDK 1.0.16 verified).
 - Factory and intake: the host binary on PATH and `gh` authenticated for the
   repository.
 
-## Upstream credits
+## Upstream parity
 
-Ported work originates from
-[Yeachan-Heo/oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode)
-`dev` 486b85bbb..bcaceb136 (#4231, #4232, #4233, #4234, #4236); see
-`CHANGELOG.md` for the breakdown. Thank you to Yeachan Heo for reviewing and
-merging this fork's fixes #4231 to #4234 upstream, and for #4236.
+The fork stays at upstream oh-my-claudecode `dev` through bcaceb136. This
+fork's fixes #4231 to #4234 are merged upstream and already carried in their
+canonical form since v5.7.0.
+
+## Thanks
+
+Thank you to Yeachan Heo for
+[oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode), and for
+reviewing and merging this fork's fixes upstream.

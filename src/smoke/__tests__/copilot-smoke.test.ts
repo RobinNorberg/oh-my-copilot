@@ -238,7 +238,7 @@ describe('runCopilotSmoke tier 0 (mocked spawn)', () => {
     const report = await runCopilotSmoke({
       pluginRoot: root, tier: 1, env: {}, deps: deps({ resolveExecutable: () => undefined, platform: 'linux' }),
     });
-    expect(report.skipped).toMatch(/not found/);
+    expect(report.skipped).toBe('copilot binary not found on PATH or COPILOT_CLI_PATH (npm i -g @github/copilot)');
     expect(report.copilot.bin).toBeNull();
     expect(report.checks.find((c) => c.id === 'plugin.manifest')?.ok).toBe(true);
     expect(report.checks.find((c) => c.id === 'copilot.plugin_list')).toMatchObject({ ok: false, detail: 'skipped' });

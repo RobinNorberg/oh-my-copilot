@@ -172,6 +172,7 @@ function input(loaded, over = {}, gitCalls = []) {
         skillDirs: ['alpha', 'plan'],
         agentFiles: ['architect.md'],
         mcpServer: 't',
+        runChain: async () => { throw new Error('chain runner not stubbed'); },
         ...over,
     };
 }
@@ -249,6 +250,25 @@ describe('runSdkTier (fake SDK)', () => {
         expect(c['scn.skill.invoked'].ok).toBe(false);
         expect(c['scn.delegate.selected'].ok).toBe(false);
         expect(c['scn.delegate.completed'].ok).toBe(false);
+    });
+    it('runs chain through the chain runner, never an SDK scenario session, and totals both links', async () => {
+        const { loaded, rec } = fakeSdk();
+        const evidence = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'tier2-chain-evidence.json'), 'utf-8'));
+        const calls = [];
+        const result = await runSdkTier(input(loaded, {
+            scenarios: ['chain'],
+            runChain: async (args) => {
+                calls.push(args);
+                return { name: 'chain', events: [], idle: true, timedOut: false, timeoutMs: args.timeoutMs, model: 'm', maxCredits: args.maxCredits, budget: args.budget, capped: false, wedged: false, chain: evidence };
+            },
+        }));
+        expect(calls).toHaveLength(1);
+        expect(calls[0]).toMatchObject({ projectDir: expect.any(String), home: expect.any(String), eventsPath: expect.stringMatching(/events-chain\.jsonl$/) });
+        expect(rec.sessions).toHaveLength(1); // the static-check session only
+        const c = byId(result.checks);
+        for (const id of ['link1', 'spawned', 'inherited', 'closed', 'premium'])
+            expect(c[`scn.chain.${id}`].ok).toBe(true);
+        expect(result.cost.premiumRequests).toBe(2);
     });
     it('a pushed ref on the bare remote fails no_push', async () => {
         const { loaded } = fakeSdk();
@@ -494,6 +514,16 @@ describe('runCopilotSmoke tier 2', () => {
         const config = fake.configAtStart;
         expect(config).toMatchObject({ loggedInUsers: [{ login: 'me' }] });
         expect(config.trustedFolders[0]).toMatch(/omg-smoke-sdk-.*project$/);
+    });
+    it('CI shape: no stored login, the token env reaches the runtime and config.json carries no identity', async () => {
+        const fake = fakeSdkFor();
+        const deps = { ...smokeDeps(async () => fake.loaded), userConfigDir: join(root, 'no-login') };
+        const env = { COPILOT_GITHUB_TOKEN: 'ci-token', GH_TOKEN: 'gh', GITHUB_TOKEN: 'gha' };
+        const report = await runCopilotSmoke({ pluginRoot: root, tier: 2, scenarios: [], env, deps });
+        expect(report.checks.filter((c) => !c.ok)).toEqual([]);
+        expect(fake.rec.connection.env).toMatchObject(env);
+        expect(fake.configAtStart).not.toHaveProperty('loggedInUsers');
+        expect(fake.configAtStart).not.toHaveProperty('lastLoggedInUser');
     });
     it('keepHome keeps the event captures', async () => {
         const fake = fakeSdkFor();

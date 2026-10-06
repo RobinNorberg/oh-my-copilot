@@ -1022,8 +1022,13 @@ waitCmd
   .command('status')
   .description('Show detailed rate limit and daemon status')
   .option('--json', 'Output as JSON')
-  .action(async (options) => {
-    await waitStatusCommand(options);
+  .action(async (_options, command) => {
+    // `wait` declares its own --json (for the bare `omg wait --json` status
+    // shortcut), and Commander resolves a flag typed after `status` against
+    // that parent option before this subcommand sees it. optsWithGlobals()
+    // walks the command chain and picks up whichever level Commander
+    // actually attributed the flag to (same workaround as `doctor conflicts`).
+    await waitStatusCommand({ json: command.optsWithGlobals().json ?? false });
   });
 
 waitCmd
@@ -1055,9 +1060,11 @@ waitCmd
   .description('Scan for blocked Claude Code sessions in tmux')
   .option('--json', 'Output as JSON')
   .option('-l, --lines <number>', 'Number of pane lines to analyze', '15')
-  .action(async (options) => {
+  .action(async (options, command) => {
+    // `wait` declares its own --json; see the `status` subcommand above for why
+    // this subcommand must read it via optsWithGlobals() instead of `options.json`.
     await waitDetectCommand({
-      json: options.json,
+      json: command.optsWithGlobals().json ?? false,
       lines: parseInt(options.lines),
     });
   });
@@ -1124,8 +1131,13 @@ teleportCmd
   .command('list')
   .description('List existing worktrees in ~/Workspace/omc-worktrees/')
   .option('--json', 'Output as JSON')
-  .action(async (options) => {
-    await teleportListCommand(options);
+  .action(async (_options, command) => {
+    // `teleport` declares its own --json (for `omg teleport <ref> --json`), and
+    // Commander resolves a flag typed after `list` against that parent option
+    // before this subcommand sees it. optsWithGlobals() walks the command chain
+    // and picks up whichever level Commander actually attributed the flag to
+    // (same workaround as `doctor conflicts`).
+    await teleportListCommand({ json: command.optsWithGlobals().json ?? false });
   });
 
 teleportCmd
@@ -1134,8 +1146,9 @@ teleportCmd
   .description('Remove a worktree')
   .option('-f, --force', 'Force removal even with uncommitted changes')
   .option('--json', 'Output as JSON')
-  .action(async (path: string, options) => {
-    const exitCode = await teleportRemoveCommand(path, options);
+  .action(async (path: string, options, command) => {
+    // See `list` above: --json must come from optsWithGlobals(), not `options.json`.
+    const exitCode = await teleportRemoveCommand(path, { ...options, json: command.optsWithGlobals().json ?? false });
     if (exitCode !== 0) process.exit(exitCode);
   });
 
@@ -1281,9 +1294,15 @@ Examples:
   $ omg doctor conflicts                        Check for configuration issues
   $ omg doctor conflicts --json                 Output results as JSON
   $ omg doctor conflicts --plugin-dir /tmp/foo  Check against a specific plugin dir`)
-  .action(async (options) => {
-    applyPluginDirOption(options.pluginDir);
-    const exitCode = await doctorConflictsCommand(options);
+  .action(async (_options, command) => {
+    // `doctor` declares --json/--plugin-dir itself (for the `doctor --team-routing --json`
+    // flag-form), and Commander resolves a same-named flag typed after `conflicts` against
+    // that parent option before this subcommand ever sees it — the local `options` param is
+    // left empty. optsWithGlobals() walks the command chain and picks up whichever level
+    // Commander actually attributed the flag to; team-routing uses the same workaround below.
+    const opts = command.optsWithGlobals();
+    applyPluginDirOption(opts.pluginDir);
+    const exitCode = await doctorConflictsCommand({ json: opts.json ?? false });
     process.exit(exitCode);
   });
 
@@ -1304,7 +1323,7 @@ smokeCmd
   .option('--timeout <ms>', 'Tiers 1-2: tier 1 session timeout (default 180000), tier 2 per-scenario timeout (default 120000, then abort); tier 0 per-subprocess timeout (default 60000); the MCP check is fixed at 10 s')
   .option('--keep-home', 'Keep the throwaway COPILOT_HOME and project dir for debugging')
   .option('--delegate', 'Tier 1: ask for a delegation to oh-my-copilot:architect and check subagent.selected')
-  .option('--scenario <list|all>', 'Tier 2 scenarios, comma-separated: smoke, guardrail, skill, delegate, or all (default: smoke,guardrail)')
+  .option('--scenario <list|all>', 'Tier 2 scenarios, comma-separated: smoke, guardrail, skill, delegate, or all (default: smoke,guardrail); chain (opt-in, never in all) runs a real two-link factory chain')
   .option('--sdk-static', 'Tier 2 with no scenarios: SDK static checks only, zero model calls')
   .option('--json', 'Print the full SmokeReport as JSON (always, also for option errors)')
   .addHelpText('after', `
@@ -1321,7 +1340,9 @@ Examples:
   $ omg smoke copilot --tier 1 --keep-home --json
   $ omg smoke copilot --sdk-static              Tier 2 SDK static checks (no model call)
   $ omg smoke copilot --tier 2                  Default scenarios smoke,guardrail (~2 premium requests, 1 per scenario)
-  $ omg smoke copilot --tier 2 --scenario all   All four scenarios`)
+  $ omg smoke copilot --tier 2 --scenario all   All four SDK scenarios
+  $ omg smoke copilot --tier 2 --scenario chain Two-link factory chain via OMC_CHAIN_LINK (~2 premium requests,
+                                                real copilot -p links outside the --max-credits cap)`)
   .action(async (options) => {
     const exitCode = await smokeCopilotCommand(options);
     process.exit(exitCode);

@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.7.0, the plugin ships 20 agents, 61 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
+For v5.8.0, the plugin ships 20 agents, 61 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
 
 ---
 
@@ -139,6 +139,7 @@ If both configurations exist, **project-scoped takes precedence** over global:
 | `OMC_FREE_MEMORY_THRESHOLD` | `256` | Free memory threshold in MB. Gate blocks operations when free memory falls below this. Set to negative value to disable. |
 | `OMC_MAX_SIBLING_SESSIONS` | `8` | Maximum concurrent OMC sessions before gating expensive operations. Set to negative value to disable. |
 | `OMC_HOST_LOAD_GATE_DISABLED` | _(unset)_ | Set to any value to disable the host load gate entirely. |
+| `OMC_CHAIN_LINK` | _(set by the spawner)_ | Internal. The chain-link id of a Copilot factory link, set on the spawned `copilot` process by the factory listener or the SessionEnd worker. Do not set it yourself: SessionEnd only trusts it when it names a `host: "copilot"` ledger, and a finished link is a no-op. See [Factory chains on Copilot](#factory-chains-on-copilot). |
 
 #### Host Load Gate
 
@@ -609,11 +610,21 @@ omg ask claude --agent-prompt executor --prompt "create an implementation plan"
 ```bash
 omg team 2:codex "review auth flow"
 omg team status review-auth-flow
+omg team status review-auth-flow --json
+omg team status --json             # auto-resolves the team name when exactly one team is active
 omg team shutdown review-auth-flow --force
 omg team api claim-task --input '{"team_name":"auth-review","task_id":"1","worker":"worker-1"}' --json
 ```
 
 Supported entrypoints: direct start (`omg team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
+
+`team status [team-name] --json` prints the same status data as the human-readable
+report (team/instance id, phase, workspace/worktree mode, worker list with worktree
+metadata, SDK worker fields — provider liveness, state, turns, credits, premium
+requests — task counts, and leader guidance) as a single JSON document instead of
+text, with `ok: false` when no team state is found. `--json` can appear before or
+after the team name and is never mistaken for one; when the team name is omitted
+and exactly one team is active, it is resolved automatically.
 
 Startup reserves the team name for an immutable instance. Shutdown and job cleanup
 require matching instance and worker-launch evidence; `--force` skips graceful
@@ -676,6 +687,16 @@ Worker panes run unattended, so each provider launches with its own auto-approve
 
 - `disableExternalLLM` / `OMC_SECURITY=strict` allows only the current host CLI's workers. See [SECURITY.md](../SECURITY.md).
 
+#### Headless SDK workers (`--transport sdk`, experimental)
+
+`omg team 2:copilot --transport sdk "<task>"` (or `team.transport: "sdk"`) runs each copilot worker as a detached `omg team sdk-host` process that owns one `@github/copilot-sdk` session, with no pane and no multiplexer. It needs `@github/copilot-sdk` installed (`npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`).
+
+- **No allow-all.** The host answers every permission request. Writes are allowed only inside the worker's worktree and the team state root. Reads also allow the plugin root. MCP calls are allowed only to the plugin server.
+- **The shell policy is a denylist, not a sandbox.** It rejects team control other than `team api`, `omg smoke`, `tmux`/`psmux` and `git push`, plus `shell(<prefix>)` entries of `workerDenyTools`, including quoted spellings such as `"omg" team shutdown`. A command built indirectly (a script file, an alias, `Invoke-Expression`, an encoded command) is not caught. Treat the write-path check, the credit cap and the per-worker `COPILOT_HOME` as the boundaries.
+- **Sub-agent tools are removed**: `task`, `run_dynamic_workflow`, `dynamic_workflows_manage`, `write_agent`, `read_agent`, `list_agents`, `search_code_subagent` and the plugin's `host_smoke`.
+- **Credit cap.** `team.sdk.maxCreditsPerWorker` (default 10, must be a positive number; env `OMC_TEAM_SDK_MAX_CREDITS`) is enforced by the host: at the cap it aborts the turn and takes no more prompts, and `omg team status` shows the worker as `capped` with a reassign recommendation.
+- **Unsupported under sdk:** `--auto-merge`, non-copilot workers, scaling, dead-worker recovery, and an **explicitly** assigned reviewer role with a verdict contract (`critic`, `code-reviewer`, `security-reviewer`, `test-engineer` — set directly via a task's `role` or via `team.roleRouting`); startup rejects them. A contract role merely *inferred* from task text (with no explicit assignment) is not rejected: the role is dropped and the worker runs as a plain executor instead, since an SDK host never exits between turns and so could never have its verdict file read anyway.
+
 ### `omg session search`
 
 ```bash
@@ -732,6 +753,28 @@ omg lookout scan --strict   # exit 1 when review is recommended (for scripts)
 - `--json` emits the full report; exit codes: `0` for every successful non-strict scan and for strict scans without a review-recommended verdict, `1` for `--strict` with a review-recommended verdict, `2` for a usage/scan error
 - High-risk verdicts pair with approval gates and checkpoints: `omg graph run --approval-mode remote --checkpoint`, `omg checkpoint create`
 
+### `omg factory`
+
+`omg factory init` seeds the project route table `.omg/factory-routes.json`, `omg factory listen` runs the HMAC-verified tracker intake daemon, and `omg factory status [--json]` is the read-only chain audit. A chain is a series of headless AFK links: when a link's session ends, the SessionEnd hook routes its `outcome:reason` through the route table and the detached SessionEnd worker spawns the next link. Guardrails apply per link: one active link per intent (serial lock) and a daily cap of 10 (`OMC_DAILY_CHAIN_LIMIT`).
+
+#### Factory chains on Copilot
+
+Each link has a chain-link id and a ledger `.omg/state/factory/chain-<id>.json`, written by whoever spawns the link (the listener for the first link, the SessionEnd worker for later ones). The SessionEnd hook must find that ledger, so the link id has to reach the ending session:
+
+- **Claude Code** pins it with `--session-id <id>`; the host session id is the link id.
+- **Copilot CLI** has no `--session-id`, so the spawner sets `OMC_CHAIN_LINK=<id>` on the `copilot` process. Copilot passes its env to hook processes, and SessionEnd resolves the link as `OMC_CHAIN_LINK` first, then the host session id.
+
+The link's own SessionStart binds the link to its host session: the first session that starts with `OMC_CHAIN_LINK` naming an open Copilot ledger records itself as `boundSessionId` (an exclusive `chain-<id>.json.bind` file). `OMC_CHAIN_LINK` is trusted at SessionEnd only when `chain-<id>.json` exists, records `host: "copilot"` and `chainLink: <id>`, is bound to the ending host session, and the ending session is not a Claude session (`CLAUDE_CODE_ENTRYPOINT` unset). A nested session that inherited the variable (a verify command's `copilot -p`, an MCP child, a team worker) therefore cannot end its parent's link. Otherwise SessionEnd falls back to the host session id and records `chain-link-rejected` in `chain-decisions.jsonl`. A link is decided once: a duplicate SessionEnd of the same host session gets the chain it enqueued back (`already-closed`, `replayed: enqueued`), so whichever hook's manifest wins still carries the chain, and the one job per host session spawns it once. A concurrent duplicate waits briefly for the deciding hook (`chain-<id>.json.claim`), then records `duplicate-session-end`. So setting the variable alone can neither inject a chain nor replay a finished link. If the hand-off fails after the decision, the ledger's `decision` is corrected to `manifest-unavailable`, `worker-spawn-failed`, or `enqueued-failed`, and the stored chain is dropped so it is never replayed. The detached SessionEnd worker never forwards `OMC_CHAIN_LINK`: the chain identity rides the durable manifest payload, and every spawned link gets its own value. `COPILOT_ALLOW_ALL` stays forced to `false` on every link, and the AFK permission profile is unchanged.
+
+| Ledger field | Meaning |
+|---|---|
+| `chainLink`, `host`, `createdAt`, `parentLink` | Written at spawn: the link id, `copilot` or `claude`, and the link that spawned it. |
+| `boundSessionId`, `boundAt` | Copilot only: the host session that started the link. |
+| `closedAt`, `hostSessionId`, `endReason`, `outcome`, `decision`, `enqueuedChain` | Written once by the link's SessionEnd. The watchdog skips a closed ledger only when its decision advanced the chain or left a stop marker (`enqueued`, `chain-terminal`, `chain-loop-capped`, `human-gate`, `no-route` on failure); a link dropped by a guardrail, an invalid ledger, or an error is still flagged. |
+| `maxStageVisits` | Stage-visit cap, carried from the first ledger to every later link (default 2, values above 99 clamp to 99). |
+
+Copilot's SessionEnd reason for a finished `-p` link is `complete` (CLI 1.0.91), which counts as `success` alongside Claude's `other`, `prompt_input_exit`, and `logout`; route keys such as `success:*` match both hosts. When OMC runs from a dev plugin root (`omg --plugin-dir`, which sets `OMC_PLUGIN_ROOT`), Copilot links also get `--plugin-dir <root>`, and the SessionEnd worker forwards `OMC_PLUGIN_ROOT`, so every link loads the same plugin. The root is dropped when it overlaps the link's working directory, because an AFK link may write there and could rewrite the plugin's hooks; a chain over the plugin's own repo needs the plugin installed. On Windows a root containing `%` is dropped as well. Limitation: Copilot fires `sessionEnd` after every turn, also in `-p` mode, so a link that a Stop hook keeps going into a second turn hands off after its first turn. The closed ledger stops later turns from enqueuing again, but the next link may start while this one still runs. A single-prompt link is not affected. `omg factory status` lists each intent's links in spawn order with host, link id, and closeout, for example `环 2 link-2 [copilot] link=<id> 已结束 success→chain-loop-capped session=<host session>`.
+
 ### `omg smoke copilot`
 
 Headless smoke check of a plugin root against the real GitHub Copilot CLI, in a throwaway `COPILOT_HOME`. Use it on a local build before opening a PR or tagging a release.
@@ -744,6 +787,7 @@ omg smoke copilot --tier 1 --keep-home --delegate --model <id> --max-credits 30 
 omg smoke copilot --sdk-static        # tier 2 SDK static checks only, no model call
 omg smoke copilot --tier 2            # tier 2 default scenarios smoke,guardrail (~2 premium requests, 1 per scenario)
 omg smoke copilot --tier 2 --scenario skill,delegate   # or --scenario all
+omg smoke copilot --tier 2 --scenario chain            # opt-in: a real two-link factory chain (~2 premium requests)
 ```
 
 - **Tier 0** checks: `plugin.manifest`, `plugin.hooks`, `copilot.binary`, `copilot.plugin_list`, `copilot.skill_list`, `copilot.agents`, `mcp.list_tools`. `mcp.list_tools` spawns `dist/mcp/standalone-server.js`, so run `npm run build` first.
@@ -757,6 +801,9 @@ omg smoke copilot --tier 2 --scenario skill,delegate   # or --scenario all
 | `guardrail` (default) | `git push --force` with `OMC_GIT_GUARDRAILS=1` against a bare remote | `scn.guardrail.denied`, `scn.guardrail.no_push`, `scn.guardrail.hooks` |
 | `skill` | `/oh-my-copilot:plan` | `scn.skill.invoked` |
 | `delegate` | a hand-off to `oh-my-copilot:architect` | `scn.delegate.selected`, `scn.delegate.hooks`, `scn.delegate.completed` |
+| `chain` (opt-in, never in `all`) | two real `copilot -p` factory links: link 1 replies with one token, link 2 runs the project skill `/chain-ack` | `scn.chain.link1`, `scn.chain.spawned`, `scn.chain.inherited`, `scn.chain.closed`, `scn.chain.premium` |
+
+- **`chain` scenario.** It does not use an SDK session. It seeds the sandbox with `omg factory init` plus a `success:*` route to stage `link-2`, pre-writes link 1's ledger, and spawns link 1 like a factory link (AFK profile, `--plugin-dir`, `OMC_CHAIN_LINK`). The chain then runs itself through the SessionEnd hook and worker, and stops at the stage-visit cap after link 2. The checks read the ledgers, decisions, stop marker, and both link sessions' `events.jsonl`: link 1 was resolved by `OMC_CHAIN_LINK`, link 2 was spawned and ended under its own inherited identity, the chain closed out (`loop-capped:link-2`, no open ledger), and both links together cost at most 2 premium requests. The links run on the CLI's default model without `--max-ai-credits`, because a factory link's argv carries no credit cap, so `--max-credits` does not bound them. `--timeout` applies to link 1 and again to the wait for link 2.
 
 - **Tier 2 report** adds `sdk` (SDK version, runtime version, protocol version), `cost` (premium requests and credits summed over scenarios), and `artifacts.events` with one events JSONL path per scenario. Human output groups the `sdk.*` checks and each scenario's `scn.<name>.*` checks under a heading.
 - **Model:** `--model` is optional. Copilot auto-selects when it is omitted (1.0.91 picked `mai-code-1.1-flash`); explicit ids may be rejected as unavailable.
@@ -1478,6 +1525,12 @@ From a shell, `omg doctor conflicts` checks for configuration conflicts. Among i
 
 - **Legacy `COPILOT_CONFIG_DIR`**: warns when it is set. OMC reads only `COPILOT_HOME`, Copilot CLI's own variable; rename it.
 - **`node` on PATH**: every hook runs `node`, and under Copilot a PreToolUse hook that cannot start denies the tool call, so a missing `node` blocks every tool.
+
+`omg doctor conflicts --json` prints the full conflict report (every check above, plus
+`hasConflicts`) as a single JSON document on stdout instead of the coloured human
+report; the human report is unchanged when `--json` is omitted. `--json` and
+`--plugin-dir` work both on `omg doctor` (flag form, e.g. `omg doctor --team-routing
+--json`) and on `omg doctor conflicts`/`omg doctor team-routing` directly.
 
 ### Configure HUD Statusline
 

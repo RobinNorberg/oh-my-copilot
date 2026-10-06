@@ -2,6 +2,161 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.8.0
+
+## [5.8.0] - 2026-10-06
+
+Fork **v5.8.0** (from v5.7.0) is a minor release: it adds an experimental
+headless SDK transport for `omg team`, lets factory chains run past their
+first link on Copilot, cuts Copilot hook latency, and runs the headless
+Copilot smoke in CI. There is no upstream port in this release; parity stays
+at upstream oh-my-claudecode `dev` bcaceb136. No breaking changes, and the
+defaults are unchanged: the team transport stays `pane`, the SessionEnd budget
+under Claude Code stays 300 ms, and the CI smoke job skips without its
+secret. The skill count stays 61. See the
+[v5.7.0 → v5.8.0 note](docs/MIGRATION.md#v570--v580-sdk-team-transport).
+
+### Experimental: headless SDK team transport
+
+- **`omg team --transport sdk` (#219):** `omg team 2:copilot --transport sdk
+  "<task>"`, or `team.transport: "sdk"`, runs each copilot worker as a
+  detached `omg team sdk-host` process that owns one `@github/copilot-sdk`
+  session, with no pane and no tmux or psmux. Workers report through the
+  unchanged `omg team api`, and `omg team status` shows each worker's
+  provider state, turns, credits and premium requests. The transport needs
+  `copilot` on PATH and `@github/copilot-sdk` installed
+  (`npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`); without
+  the SDK each worker fails with that install hint. The default stays `pane`.
+- **Permission model:** no allow-all. The host answers every permission
+  request: writes only inside the worker's worktree and the team state root,
+  reads also in the plugin root, MCP calls only to the plugin server. The
+  shell policy is a denylist, not a sandbox: it rejects team control other
+  than `team api`, `omg smoke`, `tmux`/`psmux`, `git push` (also as a
+  subcommand and through quoting) and the `shell(<prefix>)` entries of
+  `workerDenyTools`. Sub-agent tools (`task`, `run_dynamic_workflow`,
+  `dynamic_workflows_manage`, `write_agent`, `read_agent`, `list_agents`,
+  `search_code_subagent`) and the plugin's `host_smoke` are removed from the
+  session. Each worker gets its own `COPILOT_HOME`. The start banner states
+  this policy instead of the pane allow-all lines.
+- **Credit cap:** `team.sdk.maxCreditsPerWorker` (default 10, a positive
+  number; env `OMC_TEAM_SDK_MAX_CREDITS`). At the cap the host aborts the
+  turn and takes no more prompts; `omg team status` shows the worker as
+  `capped` with a reassign recommendation.
+- **Rejected at start under sdk:** `--auto-merge`, non-copilot workers,
+  scaling, and an explicitly assigned reviewer role with a verdict contract
+  (`critic`, `code-reviewer`, `security-reviewer`, `test-engineer`, via a
+  task's `role` or `team.roleRouting`). A contract role only inferred from
+  the task text is dropped and the worker runs as a plain executor. Dead
+  workers are not recovered.
+- **Shutdown** stops all sdk hosts in parallel and kills only processes whose
+  identity matches the recorded host. The sdk host stays off the MCP tool
+  registry, so the team bundle carries no native modules.
+- **Measured:** two live runs on Copilot CLI 1.0.91 with SDK 1.0.16, two
+  workers with one task each: 1 premium request per worker, about 3.5 s from
+  host spawn to an idle SDK session, `omg team` returned after 72.8 s and
+  73.9 s because workers launch one after another, and `omg team shutdown`
+  took 8.8 s.
+
+### Factory chains on Copilot
+
+- **Factory chains run past their first link on Copilot (#220):** Copilot CLI has no
+  `--session-id`, so a factory chain used to stop silently after one link.
+  The spawner now sets `OMC_CHAIN_LINK=<link id>` on each Copilot link, and
+  SessionEnd resolves the link as `OMC_CHAIN_LINK`, then the host session id.
+  The variable is trusted only when it names a `host: "copilot"` ledger
+  that the link's SessionStart bound to the ending session, so neither the
+  variable alone nor a nested session inheriting it can inject or end a
+  link; the SessionEnd worker never forwards it. A duplicate SessionEnd gets
+  the same chain back. Copilot's SessionEnd reason
+  `complete` counts as success. Ledgers record `chainLink`, `host`,
+  `createdAt` and `parentLink` and are closed once by their link's SessionEnd
+  (`closedAt`, `hostSessionId`, `outcome`, `decision`); the watchdog skips
+  a closed ledger only when it advanced the chain or left a stop marker, and
+  `omg factory status` lists each chain's links. A ledger's
+  `maxStageVisits` now carries to later links (above 99 clamps to 99). Under
+  a dev plugin root that does not overlap the link's working directory,
+  Copilot links get `--plugin-dir` and the SessionEnd worker forwards
+  `OMC_PLUGIN_ROOT`. Guardrails, `COPILOT_ALLOW_ALL=false` and the AFK
+  profile are unchanged. Verified live with a two-link chain on Copilot CLI
+  1.0.91 (2 premium requests).
+- **`omg smoke copilot --scenario chain`:** an opt-in tier 2 scenario that
+  runs that two-link chain against real `copilot -p` links and asserts the
+  link identity, the hand-off, the closeout and the cost from the ledgers
+  and both sessions' events. It is not part of `all` or the default set.
+
+### Copilot hook latency
+
+- **Copilot SessionEnd foreground budget is 1500 ms (#224):** `scripts/run.cjs` gave
+  `session-end.mjs` and `wiki-session-end.mjs` 300 ms on both hosts, so under
+  load Copilot recorded failed SessionEnd hooks (exit 124 with
+  `OMC_HOOK_FAIL_CLOSED=1`) and dropped the cleanup. Copilot waits up to 30 s
+  for SessionEnd, so the budget is now 1500 ms when `OMC_HOOK_EVENT=SessionEnd`.
+  1500 ms is a chosen value (about 5x the idle foreground cost), not one
+  derived from a load model. Claude Code keeps 300 ms.
+  `OMC_SESSION_END_BUDGET_MS` overrides both. With 4
+  parallel lanes of 8 SessionEnd pairs, 0/64 runs fail (before: 56-63/64).
+  `session-end.mjs` also loads the factory chain enqueuer only when a chain
+  ledger or `OMC_CHAIN_LINK` exists, which cuts its idle median from 300 ms
+  to about 260 ms.
+- **Copilot runs generic hooks in a Worker (#224):** under Copilot (`OMC_HOOK_EVENT`
+  set), `scripts/run.cjs` runs the 18 audited generic hook scripts in a Worker
+  thread instead of the Windows `--generic-child-supervisor` chain of three
+  Node processes (two on Linux/macOS, which have no supervisor hop). Timeout,
+  `OMC_SESSION_OWNER_PID`, extra arguments, stdin, exit code and fail-closed
+  124 are unchanged, and on an idle project, every hook's stdout/stderr and
+  written files match the child path. A
+  Worker-routed hook is about 90 ms faster on Windows and about 50 ms faster
+  on Linux/macOS. A Worker cannot preempt a hook blocked in a synchronous
+  call, so entries whose own manifest timeout is 3 s or tighter
+  (`post-tool-directory-context-injector.mjs`, `post-tool-use-failure.mjs`,
+  `subagent-tracker.mjs start`, `wiki-pre-compact.mjs`,
+  `workflow-drift-guard.mjs`) stay on the supervised child path instead,
+  where `taskkill /T` can still reap a blocked sync `git` call; several of
+  the audited scripts make such calls with their own ~2 s timeouts. Local
+  bench, sum of medians: Stop 1331 to 976 ms, SessionStart 1919 to 1482 ms,
+  PreCompact 994 to 805 ms; PostToolUse and PostToolUseFailure keep their
+  child-path cost (789 ms, 188 ms) because their only audited entries have a
+  3 s budget. Claude Code keeps the child path.
+  `OMC_COPILOT_HOOK_WORKER=0` turns the routing off.
+
+### CI: Copilot smoke job
+
+- **Headless Copilot smoke in CI (#222):** a new `smoke` job in
+  `.github/workflows/ci.yml` installs the Copilot CLI (`npm i -g
+  @github/copilot`) and `@github/copilot-sdk` on ubuntu-latest and runs
+  `omg smoke copilot --tier 2 --sdk-static` after every build, with zero
+  model calls. Pushed `v*` tags also run the default scenarios (`smoke`,
+  `guardrail`, about 2 premium requests). It authenticates with the
+  repository secret `COPILOT_GITHUB_TOKEN` and passes with a skip notice when
+  the secret is absent, as on fork PRs. Reports and the kept homes are
+  uploaded only after a scan for token-shaped strings and the exact token
+  passes. Pinned by `tests/lint/copilot-smoke-ci-workflow.test.ts`; setup in
+  [docs/DEVELOPERS.md](docs/DEVELOPERS.md#tier-2-in-ci).
+- **Smoke on Linux:** the missing-binary message no longer names the WinGet
+  directory off Windows; it points at `npm i -g @github/copilot`.
+
+### Fixes
+
+- **`omg team shutdown` from a fresh shell (#218):** shutdown no longer
+  reclaims the active instance reservation just because its owner, the
+  `team start` CLI, has exited. Before, every shutdown from a new shell
+  failed with `team_instance_reservation_missing`. Only a pending, never
+  activated reservation with a dead owner is stale. This affected pane teams
+  as well.
+- **`--json` honoured (#221):** `doctor conflicts`, `wait status`,
+  `wait detect`, `teleport list` and `teleport remove` read `--json` through
+  `optsWithGlobals()`, so the parent command's flag no longer swallows it.
+  `team status` no longer treats a literal `--json` as the team name,
+  resolves the running team when exactly one exists and no name is given,
+  and with `--json` prints one JSON document with an `ok` field, including
+  the sdk worker fields.
+- **`omg smoke copilot --json` stdout stays pure (#217):** the Windows
+  no-tmux banner is skipped whenever `--json` is in argv, so even a caller
+  that merges stdout and stderr gets only the JSON report.
+- **Chain scenario path gate (#223):** `--scenario chain` builds its sandbox
+  state paths through `getOmcRoot`, so it passes the multirepo path gate and
+  honours a relocated state root.
+
 # oh-my-copilot v5.7.0
 
 ## [5.7.0] - 2026-10-05

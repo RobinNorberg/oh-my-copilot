@@ -14,7 +14,12 @@ export function workerEnvironment() {
     // APPDATA/LOCALAPPDATA are required for gh keyring-free auth lookup on Windows
     // (hosts.yml lives in %AppData%\GitHub CLI); without them every
     // worker-spawned session sees gh as unauthenticated.
-    const keys = ['PATH', 'HOME', 'USERPROFILE', ...(process.platform === 'win32' ? ['APPDATA', 'LOCALAPPDATA'] : []), 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'COMSPEC', 'LANG', 'LC_ALL', 'NODE_ENV', 'COPILOT_HOME', 'OMC_STATE_DIR', 'OMC_HOOK_CONFIG', 'OMC_CONFIG_PATH', 'OMC_NOTIFY', 'OMC_NOTIFY_PROFILE', 'OMC_TELEGRAM', 'OMC_DISCORD', 'OMC_SLACK', 'OMC_WEBHOOK', 'OMC_DISCORD_MENTION', 'OMC_DISCORD_NOTIFIER_BOT_TOKEN', 'OMC_DISCORD_NOTIFIER_CHANNEL', 'OMC_DISCORD_WEBHOOK_URL', 'OMC_TELEGRAM_BOT_TOKEN', 'OMC_TELEGRAM_NOTIFIER_BOT_TOKEN', 'OMC_TELEGRAM_CHAT_ID', 'OMC_TELEGRAM_NOTIFIER_CHAT_ID', 'OMC_TELEGRAM_NOTIFIER_UID', 'OMC_SLACK_WEBHOOK_URL', 'OMC_SLACK_MENTION', 'OMC_SLACK_BOT_TOKEN', 'OMC_SLACK_APP_TOKEN', 'OMC_SLACK_BOT_CHANNEL', 'OMC_MICROSOFT_TEAMS_WEBHOOK_URL', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', 'OMC_HOOK_BRIDGE', ...(process.env.NODE_ENV === 'test' ? ['OMC_SESSION_END_TEST_PRODUCER_GRACE_MS'] : [])];
+    // OMC_PLUGIN_ROOT: a dev (`omg --plugin-dir`) plugin root, so a spawned
+    // Copilot chain link loads the same plugin (copilotPluginDirArgs).
+    // OMC_CHAIN_LINK is deliberately NOT forwarded: it names the link that just
+    // ended; the chain identity rides the manifest payload and every spawned
+    // link gets its own value (chainLinkEnv in spawn-next.ts).
+    const keys = ['PATH', 'HOME', 'USERPROFILE', ...(process.platform === 'win32' ? ['APPDATA', 'LOCALAPPDATA'] : []), 'TMPDIR', 'TEMP', 'TMP', 'SystemRoot', 'COMSPEC', 'LANG', 'LC_ALL', 'NODE_ENV', 'COPILOT_HOME', 'OMC_PLUGIN_ROOT', 'OMC_STATE_DIR', 'OMC_HOOK_CONFIG', 'OMC_CONFIG_PATH', 'OMC_NOTIFY', 'OMC_NOTIFY_PROFILE', 'OMC_TELEGRAM', 'OMC_DISCORD', 'OMC_SLACK', 'OMC_WEBHOOK', 'OMC_DISCORD_MENTION', 'OMC_DISCORD_NOTIFIER_BOT_TOKEN', 'OMC_DISCORD_NOTIFIER_CHANNEL', 'OMC_DISCORD_WEBHOOK_URL', 'OMC_TELEGRAM_BOT_TOKEN', 'OMC_TELEGRAM_NOTIFIER_BOT_TOKEN', 'OMC_TELEGRAM_CHAT_ID', 'OMC_TELEGRAM_NOTIFIER_CHAT_ID', 'OMC_TELEGRAM_NOTIFIER_UID', 'OMC_SLACK_WEBHOOK_URL', 'OMC_SLACK_MENTION', 'OMC_SLACK_BOT_TOKEN', 'OMC_SLACK_APP_TOKEN', 'OMC_SLACK_BOT_CHANNEL', 'OMC_MICROSOFT_TEAMS_WEBHOOK_URL', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE', 'OMC_HOOK_BRIDGE', ...(process.env.NODE_ENV === 'test' ? ['OMC_SESSION_END_TEST_PRODUCER_GRACE_MS'] : [])];
     // ANTHROPIC_* (Claude host) and COPILOT_* / GH_TOKEN / GITHUB_TOKEN / GH_HOST
     // (Copilot host) carry model provider auth/routing; without them
     // worker-spawned sessions exit "Not logged in" immediately.
@@ -90,11 +95,11 @@ export async function executeSessionEndAction(name, payload, deadlineAt, authori
             executeSpawnNext(chain, payload.directory);
         }
         catch (error) {
-            const { recordChainDecision } = await import('./chain-enqueuer.js');
-            recordChainDecision(payload.directory, {
-                decision: 'enqueued-failed',
-                sessionId: payload.sessionId,
-                intentId: chain.intentId,
+            // Keyed by the chain-link id (chain.sessionId) and corrects the closed
+            // ledger, which would otherwise still claim `enqueued`.
+            const { recordChainHandoffFailure } = await import('./chain-enqueuer.js');
+            recordChainHandoffFailure(payload.directory, chain, 'enqueued-failed', {
+                hostSessionId: payload.sessionId,
                 error: error instanceof Error ? error.message : String(error),
             });
             throw error;

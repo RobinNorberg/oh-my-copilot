@@ -24,7 +24,7 @@ const VALID_TEAM_CLI_AGENT_TYPES = new Set(['claude', 'copilot', 'codex', 'gemin
 // Resolved at use time (not module load) so tests can stub CLAUDE_CODE_ENTRYPOINT.
 const defaultTeamCliAgentType = () => getHostCliType();
 const TEAM_HELP = `
-Usage: omg team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decompose] "<task description>"
+Usage: omg team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decompose] [--transport pane|sdk] "<task description>"
        omg team [N:agent-type[:role]] --task "<task description>"
        omg team status <team-name>
        omg team shutdown <team-name> [--force]
@@ -330,6 +330,7 @@ export function parseTeamArgs(tokens, defaultAgentType = defaultTeamCliAgentType
     let newWindow = false;
     let autoMerge = process.env.OMC_TEAMS_AUTO_MERGE === '1';
     let noDecompose = false;
+    let transport;
     let taskFromFlag;
     const normalizedDefaultAgentType = VALID_TEAM_CLI_AGENT_TYPES.has(defaultAgentType)
         ? defaultAgentType
@@ -349,6 +350,12 @@ export function parseTeamArgs(tokens, defaultAgentType = defaultTeamCliAgentType
         }
         else if (arg === '--no-decompose' || arg === '--fixed-workers' || arg === '--preformed-plan') {
             noDecompose = true;
+        }
+        else if (arg === '--transport' || arg.startsWith('--transport=')) {
+            const value = arg.includes('=') ? arg.slice('--transport='.length) : args[++index];
+            if (value !== 'pane' && value !== 'sdk')
+                throw new Error('Usage: --transport pane|sdk');
+            transport = value;
         }
         else if (arg === '--task') {
             if (taskFromFlag !== undefined || args[index + 1] === undefined) {
@@ -446,7 +453,7 @@ export function parseTeamArgs(tokens, defaultAgentType = defaultTeamCliAgentType
         throw new Error('Usage: omg team [N:agent-type[:role]] "<task description>" (or use --task "<task description>")');
     }
     const teamName = slugifyTask(task);
-    return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow, autoMerge, explicitWorkerSpec, noDecompose };
+    return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow, autoMerge, explicitWorkerSpec, noDecompose, ...(transport ? { transport } : {}) };
 }
 export function buildStartupTasks(parsed) {
     return Array.from({ length: parsed.workerCount }, (_, index) => {
@@ -667,6 +674,7 @@ async function handleTeamStart(parsed, cwd) {
         workerRoles: parsed.workerSpecs.map((spec) => spec.role ?? spec.agentType),
         ...rolePromptOptions,
         ...(parsed.autoMerge ? { autoMerge: true } : {}),
+        ...(parsed.transport ? { transport: parsed.transport } : {}),
     });
     const uniqueTypes = [...new Set(parsed.agentTypes)].join(',');
     const startupFailures = runtime.startupFailures ?? [];
@@ -776,7 +784,26 @@ async function withStartupCleanupGuidance(teamName, cwd, run) {
 // ---------------------------------------------------------------------------
 // Team status
 // ---------------------------------------------------------------------------
-async function handleTeamStatus(teamName, cwd) {
+/**
+ * `omg team status` without an explicit name: resolve to the single active
+ * team when unambiguous, so `omg team status --json` works without forcing
+ * the caller to also look up the team name first. Returns undefined (and
+ * the caller falls back to the usage error) when zero or multiple teams
+ * are active, since there is no unambiguous default to pick.
+ */
+async function resolveImplicitTeamName(cwd) {
+    const { findActiveTeamsV2 } = await import('../../team/runtime-v2.js');
+    const activeTeams = await findActiveTeamsV2(cwd);
+    return activeTeams.length === 1 ? activeTeams[0] : undefined;
+}
+function printNoTeamState(teamName, json) {
+    if (json) {
+        console.log(JSON.stringify({ ok: false, team: teamName, error: `No team state found for ${teamName}` }));
+        return;
+    }
+    console.log(`No team state found for ${teamName}`);
+}
+async function handleTeamStatus(teamName, cwd, json) {
     const { isRuntimeV2Enabled } = await import('../../team/runtime-v2.js');
     if (isRuntimeV2Enabled()) {
         const { monitorTeamV2 } = await import('../../team/runtime-v2.js');
@@ -784,7 +811,7 @@ async function handleTeamStatus(teamName, cwd) {
         const { readTeamEventsByType } = await import('../../team/events.js');
         const snapshot = await monitorTeamV2(teamName, cwd);
         if (!snapshot) {
-            console.log(`No team state found for ${teamName}`);
+            printNoTeamState(teamName, json);
             return;
         }
         const leaderGuidance = deriveTeamLeaderGuidance({
@@ -805,11 +832,71 @@ async function handleTeamStatus(teamName, cwd) {
         const latestLeaderNudge = (await readTeamEventsByType(teamName, 'team_leader_nudge', cwd)).at(-1);
         const { readTeamConfig } = await import('../../team/monitor.js');
         const config = await readTeamConfig(teamName, cwd);
+        if (json) {
+            console.log(JSON.stringify({
+                ok: true,
+                team: snapshot.teamName,
+                instance_id: config?.instance_id ?? null,
+                phase: snapshot.phase,
+                workspace_mode: config?.workspace_mode ?? 'single',
+                worktree_mode: config?.worktree_mode ?? 'disabled',
+                team_state_root: config?.team_state_root ?? null,
+                workers: {
+                    total: snapshot.workers.length,
+                    list: (config?.workers ?? []).map((worker) => ({
+                        name: worker.name,
+                        working_dir: worker.working_dir ?? null,
+                        worktree_repo_root: worker.worktree_repo_root ?? null,
+                        worktree_path: worker.worktree_path ?? null,
+                        worktree_branch: worker.worktree_branch ?? null,
+                        worktree_detached: worker.worktree_detached ?? false,
+                        worktree_created: worker.worktree_created ?? false,
+                    })),
+                    sdk: snapshot.workers.filter((worker) => worker.sdk).map((worker) => ({
+                        name: worker.name,
+                        provider: worker.providerLiveness,
+                        state: worker.sdk.state,
+                        turns: worker.sdk.turns,
+                        queued: worker.sdk.queued,
+                        premium_requests: worker.sdk.premium_requests,
+                        credits: worker.sdk.credits,
+                        model: worker.sdk.model ?? null,
+                        last_event_type: worker.sdk.last_event_type ?? null,
+                        last_event_at: worker.sdk.last_event_at ?? null,
+                        last_error: worker.sdk.last_error ?? null,
+                    })),
+                },
+                tasks: {
+                    total: snapshot.tasks.total,
+                    pending: snapshot.tasks.pending,
+                    blocked: snapshot.tasks.blocked,
+                    in_progress: snapshot.tasks.in_progress,
+                    completed: snapshot.tasks.completed,
+                    failed: snapshot.tasks.failed,
+                },
+                leader_next_action: leaderGuidance.nextAction,
+                leader_guidance: leaderGuidance.message,
+                latest_leader_nudge: latestLeaderNudge
+                    ? {
+                        action: latestLeaderNudge.next_action ?? null,
+                        at: latestLeaderNudge.created_at,
+                        reason: latestLeaderNudge.reason ?? null,
+                    }
+                    : null,
+            }));
+            return;
+        }
         console.log(`team=${snapshot.teamName} instance_id=${config?.instance_id ?? 'n/a'} phase=${snapshot.phase}`);
         console.log(`workspace_mode=${config?.workspace_mode ?? 'single'} worktree_mode=${config?.worktree_mode ?? 'disabled'} team_state_root=${config?.team_state_root ?? 'n/a'}`);
         console.log(`workers: total=${snapshot.workers.length}`);
         for (const worker of config?.workers ?? []) {
             console.log(`worker=${worker.name} working_dir=${worker.working_dir ?? 'n/a'} worktree_repo_root=${worker.worktree_repo_root ?? 'n/a'} worktree_path=${worker.worktree_path ?? 'n/a'} worktree_branch=${worker.worktree_branch ?? 'n/a'} worktree_detached=${String(worker.worktree_detached ?? false)} worktree_created=${String(worker.worktree_created ?? false)}`);
+        }
+        for (const worker of snapshot.workers) {
+            if (!worker.sdk)
+                continue;
+            const sdk = worker.sdk;
+            console.log(`sdk_worker=${worker.name} provider=${worker.providerLiveness} state=${sdk.state} turns=${sdk.turns} queued=${sdk.queued} premium_requests=${sdk.premium_requests} credits=${sdk.credits.toFixed(2)} model=${sdk.model ?? 'auto'} last_event=${sdk.last_event_type ?? 'n/a'}@${sdk.last_event_at ?? 'n/a'}${sdk.last_error ? ` last_error=${JSON.stringify(sdk.last_error)}` : ''}`);
         }
         console.log(`tasks: total=${snapshot.tasks.total} pending=${snapshot.tasks.pending} blocked=${snapshot.tasks.blocked} in_progress=${snapshot.tasks.in_progress} completed=${snapshot.tasks.completed} failed=${snapshot.tasks.failed}`);
         console.log(`leader_next_action=${leaderGuidance.nextAction}`);
@@ -823,7 +910,21 @@ async function handleTeamStatus(teamName, cwd) {
     const { monitorTeam } = await import('../../team/runtime.js');
     const snapshot = await monitorTeam(teamName, cwd, []);
     if (!snapshot) {
-        console.log(`No team state found for ${teamName}`);
+        printNoTeamState(teamName, json);
+        return;
+    }
+    if (json) {
+        console.log(JSON.stringify({
+            ok: true,
+            team: snapshot.teamName,
+            phase: snapshot.phase,
+            tasks: {
+                pending: snapshot.taskCounts.pending,
+                in_progress: snapshot.taskCounts.inProgress,
+                completed: snapshot.taskCounts.completed,
+                failed: snapshot.taskCounts.failed,
+            },
+        }));
         return;
     }
     console.log(`team=${snapshot.teamName} phase=${snapshot.phase}`);
@@ -955,6 +1056,15 @@ export async function teamCommand(args) {
         console.log(TEAM_HELP.trim());
         return;
     }
+    // omg team sdk-host --spec <file>: internal, the detached per-worker host of --transport sdk.
+    if (subcommand === 'sdk-host') {
+        const specPath = args[args.indexOf('--spec') + 1];
+        if (!args.includes('--spec') || !specPath)
+            throw new Error('Usage: omg team sdk-host --spec <sdk-host-spec.json>');
+        const { runSdkHostMain } = await import('../../team/sdk-host.js');
+        await runSdkHostMain(specPath);
+        return;
+    }
     // omg team api <operation> ...
     if (subcommand === 'api') {
         await handleTeamApi(args.slice(1), cwd);
@@ -970,13 +1080,17 @@ export async function teamCommand(args) {
         process.exitCode = 1;
         return;
     }
-    // omg team status <team-name>
+    // omg team status [team-name] [--json]
     if (subcommand === 'status') {
-        const name = args[1];
-        if (!name)
-            throw new Error('Usage: omg team status <team-name>');
+        const rest = args.slice(1);
+        const json = rest.includes('--json');
+        const name = rest.find((arg) => !arg.startsWith('--'));
+        const resolvedName = name ?? await resolveImplicitTeamName(cwd);
+        if (!resolvedName) {
+            throw new Error('Usage: omg team status <team-name> [--json]');
+        }
         // Fork (psmux): actionable message for an unverified startup.
-        await withStartupCleanupGuidance(name, cwd, () => handleTeamStatus(name, cwd));
+        await withStartupCleanupGuidance(resolvedName, cwd, () => handleTeamStatus(resolvedName, cwd, json));
         return;
     }
     // omg team shutdown <team-name> [--force]
