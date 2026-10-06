@@ -1529,8 +1529,25 @@ function loadJsoncConfig(path) {
 }
 
 /**
+ * Project config file to read: canonical `.copilot/omg.jsonc`, then the
+ * legacy fork name `.copilot/omc.jsonc`, then the upstream `.claude/omc.jsonc`
+ * this hook read before the rename. Mirrors
+ * src/config/project-config-path.ts:resolveProjectConfigPath.
+ * @param {string} directory project working directory
+ * @returns {string} first existing candidate, else the canonical path
+ */
+function resolveProjectConfigFile(directory) {
+  const candidates = [
+    join(directory, '.copilot', 'omg.jsonc'),
+    join(directory, '.copilot', 'omc.jsonc'),
+    join(directory, '.claude', 'omc.jsonc'),
+  ];
+  return candidates.find((path) => existsSync(path)) ?? candidates[0];
+}
+
+/**
  * Skills the user opted out of via `keywordDetector.disabled` in the OMC
- * config: project `.claude/omc.jsonc` first, then user
+ * config: project `.copilot/omg.jsonc` first, then user
  * `~/.config/claude-omc/config.jsonc`, the same JSONC surface
  * src/config/loader.ts reads. Empty when unset, so default behavior is
  * unchanged. `cancel` is never disableable: it is the emergency stop.
@@ -1539,7 +1556,7 @@ function loadJsoncConfig(path) {
  */
 function loadDisabledKeywords(directory) {
   const configPaths = [
-    join(directory || process.cwd(), '.claude', 'omc.jsonc'),
+    resolveProjectConfigFile(directory || process.cwd()),
     join(getOmcUserConfigDir(), 'claude-omc', 'config.jsonc'),
   ];
   for (const configPath of configPaths) {

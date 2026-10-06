@@ -182,8 +182,12 @@ function getHardMaxIterations() {
  * config file with a security section wins.
  */
 function readSecurityConfigValue(key) {
+  // Mirrors src/config/project-config-path.ts:resolveProjectConfigPath:
+  // canonical .copilot/omg.jsonc wins, legacy .copilot/omc.jsonc is the fallback.
+  const canonicalProject = join(process.cwd(), ".copilot", "omg.jsonc");
+  const legacyProject = join(process.cwd(), ".copilot", "omc.jsonc");
   const paths = [
-    join(process.cwd(), ".copilot", "omc.jsonc"),
+    existsSync(canonicalProject) ? canonicalProject : legacyProject,
     join(getOmcUserConfigDir(), "claude-omc", "config.jsonc"),
   ];
   for (const p of paths) {
