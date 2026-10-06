@@ -28,12 +28,29 @@ export const EXCLUDED_PATHS = [
 ];
 /** Upstream release markers: dropped, nothing in the fork reads them. */
 export const DROPPED_PATHS = ['.github/RELEASE_SIGNOFF'];
-/** Upstream CI is not ported by policy, and a GITHUB_TOKEN push cannot touch workflow files. */
-export const SKIPPED_PATHS = ['.github/workflows'];
+/**
+ * Upstream CI is not ported by policy, and a GITHUB_TOKEN push cannot touch
+ * workflow files; the composite actions they use go with them.
+ */
+export const SKIPPED_PATHS = ['.github/workflows', '.github/actions'];
 /** Directories whose new `oh-my-claudecode` mentions count as leaks. */
 export const LEAK_DIRS = ['src', 'agents', 'skills', 'hooks'];
-/** Fork-maintainer docs: they talk about upstream by name on purpose. */
-export const RENAME_SKIP_PATHS = ['.omc'];
+/**
+ * Applied verbatim, never renamed:
+ * - `.omc`: fork-maintainer docs talk about upstream by name on purpose.
+ * - the legacy CLAUDE.md corpus and its fixture: content-addressed (each entry's
+ *   openingLine/finalLine sit next to rawSha256/dataBase64 of the original
+ *   bytes), so a rename breaks the hashes (fork commit feb17aa97 reverted that).
+ * - `receipts`: upstream provenance records; they name upstream as it was.
+ */
+export const RENAME_SKIP_PATHS = [
+  '.omc',
+  'src/installer/legacy-claude-md-corpus.ts',
+  'src/installer/__tests__/fixtures/legacy-guides.json',
+  'receipts',
+];
+/** Symlinks and gitlinks: their "content" is a link target or a commit id. */
+const LINK_MODES = new Set(['120000', '160000']);
 /** DO-NOT-RENAME: protected before the rules run, restored after. */
 export const PROTECTED = [
   /Yeachan-Heo\/oh-my-claudecode/gi, // upstream issue/PR links stay pointed at upstream
@@ -126,22 +143,33 @@ function listCommits(git, base, head) {
 
 /** Every path the range touches, classified by what the port does with it. */
 export function classifyRange(git, base, head) {
-  const raw = git.out(['diff', '--name-status', '--no-renames', '-z', base, head]);
-  const parts = raw ? raw.split('\0').filter((p, i, a) => !(i === a.length - 1 && p === '')) : [];
-  const files = [];
-  for (let i = 0; i + 1 < parts.length; i += 2) {
-    const status = parts[i][0];
-    const path = parts[i + 1];
+  return rangeEntries(git, base, head).map(({ status, path }) => {
     let action = 'apply';
     if (under(path, EXCLUDED_PATHS)) action = 'excluded';
     else if (under(path, DROPPED_PATHS)) action = 'dropped';
     else if (under(path, SKIPPED_PATHS)) action = 'skipped';
-    files.push({ status, path, action });
-  }
-  return files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    return { status, path, action };
+  });
 }
 
-/** Split a `git diff --no-renames` patch into per-path sections. */
+/** `git diff --raw` entries for the range: status, path and upstream's new mode. */
+function rangeEntries(git, base, head) {
+  const raw = git.out(['diff', '--raw', '--no-renames', '--no-abbrev', '-z', base, head]);
+  const parts = raw ? raw.split('\0').filter((p, i, a) => !(i === a.length - 1 && p === '')) : [];
+  const entries = [];
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    // ":<old mode> <new mode> <old sha> <new sha> <status>"
+    const [, newMode, , , status] = parts[i].slice(1).split(' ');
+    entries.push({ status: status[0], path: parts[i + 1], mode: newMode });
+  }
+  return entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
+/**
+ * Split a `git diff --no-renames` patch into per-path sections. The patch is a
+ * latin1 string (one char per byte) so non-UTF-8 content survives the round
+ * trip; keys are decoded back to UTF-8 paths.
+ */
 function splitPatch(patch) {
   const sections = new Map();
   const starts = [...patch.matchAll(/^diff --git /gm)].map((m) => m.index);
@@ -151,7 +179,7 @@ function splitPatch(patch) {
     const body = header.slice('diff --git '.length);
     if (body.startsWith('"')) throw new Error(`unsupported quoted path in patch: ${header}`);
     const len = (body.length - 5) / 2; // "a/P b/P"
-    sections.set(body.slice(2, 2 + len), text);
+    sections.set(Buffer.from(body.slice(2, 2 + len), 'latin1').toString('utf8'), text);
   });
   return sections;
 }
@@ -195,7 +223,7 @@ function renameTouched(git, cwd, paths, scratch) {
   for (const path of paths) {
     if (under(path, RENAME_SKIP_PATHS)) continue;
     const abs = join(cwd, path);
-    if (!isRegularFile(abs)) continue; // symlinks, gitlinks
+    if (!isRegularFile(abs)) continue; // symlinks, gitlinks (lstat), in case the mode check missed one
     const buf = readFileSync(abs);
     if (buf.includes(0)) continue; // binary
     const text = buf.toString('utf8');
@@ -241,8 +269,8 @@ export function applyRange(cwd, opts) {
     const paths = applied.map((f) => f.path);
     const pathspec = paths.join(' ').length > 24000 ? [] : ['--', ...paths];
     const patch = paths.length
-      ? String(git.run(['-c', 'diff.noprefix=false', '-c', 'diff.mnemonicPrefix=false', 'diff', '--binary', '--no-renames', '--full-index',
-        '--no-ext-diff', '--no-textconv', '--no-color', range.base, range.head, ...pathspec]).stdout)
+      ? git.run(['-c', 'diff.noprefix=false', '-c', 'diff.mnemonicPrefix=false', '-c', 'diff.srcPrefix=a/', '-c', 'diff.dstPrefix=b/', 'diff', '--binary', '--no-renames', '--full-index',
+        '--no-ext-diff', '--no-textconv', '--no-color', range.base, range.head, ...pathspec], { encoding: 'buffer' }).stdout.toString('latin1')
       : '';
     const sections = splitPatch(patch);
     const keep = [];
@@ -267,7 +295,7 @@ export function applyRange(cwd, opts) {
     }
     if (keep.length) {
       const patchFile = join(scratch, 'range.patch');
-      writeFileSync(patchFile, keep.join(''));
+      writeFileSync(patchFile, keep.join(''), 'latin1');
       const res = git.run(['apply', '--3way', '--whitespace=nowarn', patchFile], { allowFail: true });
       if (res.status !== 0 && conflicts(git).length === 0) {
         throw new Error(`git apply --3way failed without leaving conflicts:\n${String(res.stderr).trim()}`);
@@ -292,7 +320,9 @@ export function applyRange(cwd, opts) {
         setUnmerged(git, c.path, [[2, modeOf(git, 'HEAD', c.path), c.ours], [3, modeOf(git, range.head, c.path), theirs]]);
       }
     }
-    const touched = applied.filter((f) => f.status !== 'D').map((f) => f.path);
+    // Upstream's mode decides: with core.symlinks=false a symlink checks out as a plain file.
+    const links = new Set(rangeEntries(git, range.base, range.head).filter((e) => LINK_MODES.has(e.mode)).map((e) => e.path));
+    const touched = applied.filter((f) => f.status !== 'D' && !links.has(f.path)).map((f) => f.path);
     const renamed = renameTouched(git, cwd, touched, scratch);
     const unmerged = new Set(conflicts(git).map((c) => c.path));
     const stage = renamed.map((r) => r.path).filter((p) => !unmerged.has(p));

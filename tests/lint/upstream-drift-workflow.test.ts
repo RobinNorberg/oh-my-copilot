@@ -105,14 +105,41 @@ describe("upstream drift workflow", () => {
     expect(pushes).toEqual(['git push -u origin "$BRANCH"']);
     expect(wf).not.toMatch(/--force|push -f|\+refs\/|--force-with-lease/);
     const pr = step("Open the draft port PR");
-    expect(pr.run).toMatch(/if git ls-remote --exit-code --heads origin "\$BRANCH" > \/dev\/null; then\n(?:\s*#[^\n]*\n)?\s*echo [^\n]*\n\s*else\n\s*git push -u origin "\$BRANCH"\n\s*fi\n\s*url=\$\(gh pr create/);
+    expect(pr.run).toMatch(/if git ls-remote --exit-code --heads origin "\$BRANCH" > \/dev\/null; then\n[\s\S]*?\n\s*else\n\s*git push -u origin "\$BRANCH"\n\s*fi\n\s*url=\$\(gh pr create/);
   });
 
-  it("does not let a closed PR block a head, and keeps PRs someone pushed to", () => {
-    expect(step("Find bot items for this upstream head").run).toContain('select(.state != "CLOSED" and (.body | contains($m)))');
+  it("says which commit a reused branch carries, since the body comes from this run's apply", () => {
+    const pr = step("Open the draft port PR");
+    const reuse = pr.run.slice(pr.run.indexOf("if git ls-remote"), pr.run.indexOf("git push -u origin"));
+    expect(reuse).toContain('git fetch --no-tags origin "$BRANCH"');
+    expect(reuse).toContain("pushed=$(git rev-parse FETCH_HEAD)");
+    expect(reuse).toContain("if git diff --quiet HEAD FETCH_HEAD; then");
+    expect(reuse).toContain(`printf '\\n> This PR reuses branch \`%s\` from an earlier run. It contains commit \`%s\`: %s\\n' "$BRANCH" "$pushed" "$note" >> "$RUNNER_TEMP/body.md"`);
+    expect(pr.run.indexOf("This PR reuses branch")).toBeLessThan(pr.run.indexOf("gh pr create"));
+  });
+
+  it("blocks a head whose PR a maintainer closed, but not one the bot closed as superseded", () => {
+    expect(job).toContain("      SUPERSEDED: 'upstream-drift: superseded by '\n");
+    const existing = step("Find bot items for this upstream head");
+    expect(existing.run).toContain('gh pr list --label "$LABEL" --state all --limit 100 --json number,state,body,comments');
+    expect(existing.run).toContain('select(.state != "CLOSED" and (.body | contains($m)))');
+    expect(existing.run).toContain('select(.state == "CLOSED" and (.body | contains($m)) and (any(.comments[]; .body | startswith($s)) | not))');
+    expect(existing.run).toMatch(/elif \[ -n "\$closed_pr" \]; then\n\s*echo "::notice[^\n]*closed by a maintainer[^\n]*"\n\s*skip=true/);
+    const close = step("Close superseded bot items");
+    expect(close.run).toContain('comment="${SUPERSEDED}${by} ($RUN_URL)."');
+    expect(close.run).toContain('gh pr close "$n" --comment "$comment"');
+    expect(close.run).toContain('gh issue close "$n" --comment "$comment"');
+    expect(close.run.match(/--comment/g)).toHaveLength(2);
+  });
+
+  it("keeps PRs someone pushed to and items labelled keep, and closes all once dev caught up", () => {
+    expect(job).toContain("      KEEP_LABEL: keep\n");
     const close = step("Close superseded bot items");
     expect(close.run).toContain(`if [ "$(gh pr view "$n" --json commits --jq '.commits | length')" != "1" ]; then`);
-    expect(close.run).toContain('if [ "$DRIFT" != "true" ]; then marker="${HEAD_MARKER_PREFIX}none -->"; fi');
+    expect(close.run).toContain('if [ "$DRIFT" != "true" ]; then marker="${HEAD_MARKER_PREFIX}none -->";');
+    expect(close.run).toContain("and (any(.labels[]; .name == $k) | not)");
+    expect(close.run).toContain('gh pr list --label "$LABEL" --state open --limit 100 --json number,body,labels | jq -r --arg p "$HEAD_MARKER_PREFIX" --arg m "$marker" --arg k "$KEEP_LABEL" "$stale"');
+    expect(close.run).toContain('gh issue list --label "$LABEL" --state open --limit 100 --json number,body,labels | jq -r --arg p "$HEAD_MARKER_PREFIX" --arg m "$marker" --arg k "$KEEP_LABEL" "$stale"');
   });
 
   it("dedupes by the head marker the script writes, and closes only older bot items after success", () => {
@@ -127,9 +154,7 @@ describe("upstream drift workflow", () => {
     expect(existing.run).toContain('gh pr list --label "$LABEL" --state all');
     const close = step("Close superseded bot items");
     expect(close.if).toBe("steps.check.outcome == 'success'");
-    expect(close.run).toContain("select((.body | contains($p)) and ((.body | contains($m)) | not))");
-    expect(close.run).toContain('gh pr close "$n" --comment');
-    expect(close.run).toContain('gh issue close "$n" --comment');
+    expect(close.run).toContain("select((.body | contains($p)) and ((.body | contains($m)) | not) and ");
     expect(close.raw).not.toMatch(/always\(\)/);
     const order = ["check", "Find bot items for this upstream head", "Apply the upstream range", "Open the draft port PR", "Open or update the conflict issue", "Close superseded bot items"]
       .map((n) => steps.findIndex((s) => s.name === n || s.id === n));

@@ -7,8 +7,9 @@
 # humans/agents (.omc/skills/port-and-release-cycle.md).
 #
 # One open bot PR/issue per upstream head: the head sha is a marker in the
-# body. A newer head closes the older item with a comment and gets a new
-# branch; no branch is ever force-pushed.
+# body. A newer head closes the older item with a `upstream-drift: superseded
+# by` comment and gets a new branch; no branch is ever force-pushed. A PR or
+# issue a maintainer closed blocks its head; a `keep` label pins an item open.
 #
 # Token: pushes and PRs made with GITHUB_TOKEN do not trigger other workflows,
 # so CI does not run on a bot PR. The optional repo secret
@@ -45,7 +46,9 @@ jobs:
       HAS_DRIFT_TOKEN: ${{ secrets.UPSTREAM_DRIFT_TOKEN != '' }}
       UPSTREAM_URL: https://github.com/Yeachan-Heo/oh-my-claudecode.git
       LABEL: upstream-port
+      KEEP_LABEL: keep
       HEAD_MARKER_PREFIX: '<!-- upstream-drift-head: '
+      SUPERSEDED: 'upstream-drift: superseded by '
     steps:
       - name: Report the token source
         run: |
@@ -99,14 +102,19 @@ jobs:
           HEAD_SHA: ${{ steps.check.outputs.head }}
         run: |
           marker="${HEAD_MARKER_PREFIX}${HEAD_SHA} -->"
-          gh pr list --label "$LABEL" --state all --limit 100 --json number,state,body > "$RUNNER_TEMP/prs.json"
+          gh pr list --label "$LABEL" --state all --limit 100 --json number,state,body,comments > "$RUNNER_TEMP/prs.json"
           gh issue list --label "$LABEL" --state all --limit 100 --json number,state,body > "$RUNNER_TEMP/issues.json"
           pr=$(jq -r --arg m "$marker" '[.[] | select(.state != "CLOSED" and (.body | contains($m)))][0].number // empty' "$RUNNER_TEMP/prs.json")
+          # A closed PR blocks its head unless the bot closed it as superseded.
+          closed_pr=$(jq -r --arg m "$marker" --arg s "$SUPERSEDED" '[.[] | select(.state == "CLOSED" and (.body | contains($m)) and (any(.comments[]; .body | startswith($s)) | not))][0].number // empty' "$RUNNER_TEMP/prs.json")
           open_issue=$(jq -r --arg m "$marker" '[.[] | select(.state == "OPEN" and (.body | contains($m)))][0].number // empty' "$RUNNER_TEMP/issues.json")
           closed_issue=$(jq -r --arg m "$marker" '[.[] | select(.state == "CLOSED" and (.body | contains($m)))][0].number // empty' "$RUNNER_TEMP/issues.json")
           skip=false
           if [ -n "$pr" ]; then
             echo "::notice title=Upstream drift::PR #$pr already tracks upstream $HEAD_SHA; nothing to do."
+            skip=true
+          elif [ -n "$closed_pr" ]; then
+            echo "::notice title=Upstream drift::PR #$closed_pr for upstream $HEAD_SHA was closed by a maintainer; not re-creating."
             skip=true
           elif [ -n "$closed_issue" ] && [ -z "$open_issue" ]; then
             echo "::notice title=Upstream drift::issue #$closed_issue for upstream $HEAD_SHA was closed by a maintainer; not reopening."
@@ -158,6 +166,15 @@ jobs:
           if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
             # An earlier run pushed but could not open the PR: reuse its branch, never force-push.
             echo "::notice title=Upstream drift::branch $BRANCH already exists on origin; opening the PR from it without pushing."
+            # The PR carries the earlier run's commit; say which one the body describes.
+            git fetch --no-tags origin "$BRANCH"
+            pushed=$(git rev-parse FETCH_HEAD)
+            if git diff --quiet HEAD FETCH_HEAD; then
+              note="its tree matches this run's apply, so the report above describes it."
+            else
+              note="its tree differs from this run's apply on dev $(git rev-parse HEAD~1), so the report above describes this run, not the PR. Rerun \`--report\` on the branch before merging."
+            fi
+            printf '\n> This PR reuses branch `%s` from an earlier run. It contains commit `%s`: %s\n' "$BRANCH" "$pushed" "$note" >> "$RUNNER_TEMP/body.md"
           else
             git push -u origin "$BRANCH"
           fi
@@ -190,16 +207,20 @@ jobs:
           # With drift, keep the item for the current head; without drift, dev
           # already has upstream's head, so every open bot item is done.
           marker="${HEAD_MARKER_PREFIX}${HEAD_SHA} -->"
-          if [ "$DRIFT" != "true" ]; then marker="${HEAD_MARKER_PREFIX}none -->"; fi
-          stale='[.[] | select((.body | contains($p)) and ((.body | contains($m)) | not)) | .number] | .[]'
-          for n in $(gh pr list --label "$LABEL" --state open --limit 100 --json number,body | jq -r --arg p "$HEAD_MARKER_PREFIX" --arg m "$marker" "$stale"); do
+          by="upstream $HEAD_SHA"
+          if [ "$DRIFT" != "true" ]; then marker="${HEAD_MARKER_PREFIX}none -->"; by="dev, which already has upstream $HEAD_SHA"; fi
+          # The comment starts with $SUPERSEDED so a later run can tell a bot close from a maintainer's.
+          comment="${SUPERSEDED}${by} ($RUN_URL)."
+          # A `keep` label pins an item: the bot never closes it.
+          stale='[.[] | select((.body | contains($p)) and ((.body | contains($m)) | not) and (any(.labels[]; .name == $k) | not)) | .number] | .[]'
+          for n in $(gh pr list --label "$LABEL" --state open --limit 100 --json number,body,labels | jq -r --arg p "$HEAD_MARKER_PREFIX" --arg m "$marker" --arg k "$KEEP_LABEL" "$stale"); do
             # The bot pushes exactly one commit; more means someone is working on it.
             if [ "$(gh pr view "$n" --json commits --jq '.commits | length')" != "1" ]; then
               echo "::notice title=Upstream drift::PR #$n has commits beyond the bot's; leaving it open."
               continue
             fi
-            gh pr close "$n" --comment "Superseded: upstream dev is now at $HEAD_SHA ($RUN_URL)."
+            gh pr close "$n" --comment "$comment"
           done
-          for n in $(gh issue list --label "$LABEL" --state open --limit 100 --json number,body | jq -r --arg p "$HEAD_MARKER_PREFIX" --arg m "$marker" "$stale"); do
-            gh issue close "$n" --comment "Superseded: upstream dev is now at $HEAD_SHA ($RUN_URL)."
+          for n in $(gh issue list --label "$LABEL" --state open --limit 100 --json number,body,labels | jq -r --arg p "$HEAD_MARKER_PREFIX" --arg m "$marker" --arg k "$KEEP_LABEL" "$stale"); do
+            gh issue close "$n" --comment "$comment"
           done

@@ -19,7 +19,9 @@ function git(cwd: string, ...args: string[]): string {
   return res.stdout.trim();
 }
 
-function write(repo: string, files: Record<string, string | null>): void {
+type Files = Record<string, string | Buffer | null>;
+
+function write(repo: string, files: Files): void {
   for (const [path, content] of Object.entries(files)) {
     const abs = join(repo, path);
     if (content === null) { rmSync(abs); continue; }
@@ -28,9 +30,10 @@ function write(repo: string, files: Record<string, string | null>): void {
   }
 }
 
-function commit(repo: string, message: string, files: Record<string, string | null>): string {
+function commit(repo: string, message: string, files: Files, stage?: (repo: string) => void): string {
   write(repo, files);
   git(repo, "add", "-A");
+  stage?.(repo);
   git(repo, "commit", "-q", "-m", message);
   return git(repo, "rev-parse", "HEAD");
 }
@@ -50,8 +53,9 @@ interface Pair { upstream: string; fork: string; base: string; head: string }
  */
 function makePair(
   baseFiles: Record<string, string>,
-  forkChange: Record<string, string | null>,
-  change: Record<string, string | null>,
+  forkChange: Files,
+  change: Files,
+  stageUpstream?: (repo: string) => void,
 ): Pair {
   const root = mkdtempSync(join(tmpdir(), "drift-fixture-"));
   roots.push(root);
@@ -67,7 +71,7 @@ function makePair(
     ...forkChange,
     ".github/upstream-port.json": `${JSON.stringify({ upstream_sha: base, upstream_branch: "dev", ported_at: "2026-10-06", fork_version: "5.8.1" }, null, 2)}\n`,
   });
-  const head = commit(upstream, "upstream: next", change);
+  const head = commit(upstream, "upstream: next", change, stageUpstream);
   git(fork, "fetch", "-q", "upstream");
   return { upstream, fork, base, head };
 }
@@ -139,6 +143,7 @@ describe("upstream-drift --apply, clean range", () => {
       "package.json": '{\n  "name": "oh-my-claudecode",\n  "version": "1.1.0",\n  "files": ["dist", "new"]\n}\n',
       ".github/RELEASE_SIGNOFF": "signed\n",
       ".github/workflows/ci.yml": "name: ci\n",
+      ".github/actions/setup/action.yml": "name: setup\n",
       "assets/logo.bin": "\u0000\u0001\u0003",
     },
   );
@@ -173,6 +178,7 @@ describe("upstream-drift --apply, clean range", () => {
     expect(read(pair.fork, "package.json")).toContain('"version": "5.8.1"');
     expect(existsSync(join(pair.fork, ".github/RELEASE_SIGNOFF"))).toBe(false);
     expect(existsSync(join(pair.fork, ".github/workflows/ci.yml"))).toBe(false);
+    expect(existsSync(join(pair.fork, ".github/actions/setup/action.yml"))).toBe(false);
     expect(JSON.parse(read(pair.fork, ".github/upstream-port.json"))).toEqual({
       upstream_sha: pair.head, upstream_branch: "dev", ported_at: "2026-10-07", fork_version: "unreleased",
     });
@@ -185,6 +191,7 @@ describe("upstream-drift --apply, clean range", () => {
     expect(report.commits.map((c: { subject: string }) => c.subject)).toEqual(["upstream: next"]);
     expect(report.files).toEqual([
       { status: "A", path: ".github/RELEASE_SIGNOFF", action: "dropped" },
+      { status: "A", path: ".github/actions/setup/action.yml", action: "skipped" },
       { status: "A", path: ".github/workflows/ci.yml", action: "skipped" },
       { status: "M", path: "CHANGELOG.md", action: "excluded" },
       { status: "M", path: "assets/logo.bin", action: "apply" },
@@ -270,6 +277,53 @@ describe("upstream-drift --apply, conflicting range", () => {
     expect(mod.renderMarkdown(report)).toContain("### Conflicts\n\n- `UU` src/b.ts");
     const linked = mod.renderMarkdown({ ...report, commits: [{ sha: "c".repeat(40), subject: "Merge pull request #4253 from @someone/`x`" }] });
     expect(linked).toContain("- ccccccccc `Merge pull request #4253 from @someone/'x'`");
+  });
+});
+
+describe("upstream-drift --apply, entries the rename pass must not touch", () => {
+  const CORPUS = "src/installer/legacy-claude-md-corpus.ts";
+  const FIXTURE = "src/installer/__tests__/fixtures/legacy-guides.json";
+  const RECEIPT = "receipts/issue-1/receipt.json";
+  const LINK_TARGET = "../oh-my-claudecode/.omc/state";
+  const verbatim: Record<string, string | Buffer> = {
+    [CORPUS]: "export const corpus = [{ openingLine: '# oh-my-claudecode - Intelligent Multi-Agent Orchestration', rawSha256: 'abc' }];\n",
+    [FIXTURE]: '{ "finalLine": "<!-- OMC:END --> oh-my-claudecode .omc/state", "dataBase64": "AAA=" }\n',
+    [RECEIPT]: '{ "repo": "oh-my-claudecode", "state": ".omc/state" }\n',
+    // Latin-1, not UTF-8: decoding and re-encoding would change the bytes.
+    "src/latin1.txt": Buffer.concat([Buffer.from("caf"), Buffer.from([0xe9]), Buffer.from(" oh-my-claudecode .omc/x\n")]),
+  };
+  let gitlinkSha = "";
+  const pair = makePair({ "src/keep.ts": "export const k = 1;\n" }, {}, { ...verbatim, "src/naïve.ts": "export const n = 'oh-my-claudecode';\n" }, (repo) => {
+    const target = join(repo, "..", "link-target.txt");
+    writeFileSync(target, LINK_TARGET);
+    const blob = git(repo, "hash-object", "-w", target);
+    gitlinkSha = git(repo, "rev-parse", "HEAD");
+    git(repo, "update-index", "--add", "--cacheinfo", `120000,${blob},src/link`);
+    git(repo, "update-index", "--add", "--cacheinfo", `160000,${gitlinkSha},vendor/sub`);
+  });
+  const result = drift(pair.fork, "--apply", "--date", "2026-10-07");
+
+  it("applies the content-addressed corpus, its fixture and receipts byte-identical", () => {
+    expect(result.status, result.stderr).toBe(0);
+    for (const path of [CORPUS, FIXTURE, RECEIPT]) {
+      expect(readFileSync(join(pair.fork, path)), path).toEqual(Buffer.from(verbatim[path] as string));
+    }
+  });
+
+  it("leaves a non-UTF-8 file byte-identical and still renames a file with a non-ASCII path", () => {
+    expect(readFileSync(join(pair.fork, "src/latin1.txt"))).toEqual(verbatim["src/latin1.txt"]);
+    expect(read(pair.fork, "src/naïve.ts")).toBe("export const n = 'oh-my-copilot';\n");
+  });
+
+  it("skips symlinks and gitlinks", () => {
+    expect(git(pair.fork, "ls-files", "-s", "--", "src/link", "vendor/sub").split("\n").map((l) => l.split(/\s/)[0])).toEqual(["120000", "160000"]);
+    expect(git(pair.fork, "cat-file", "-p", ":src/link")).toBe(LINK_TARGET);
+    expect(git(pair.fork, "rev-parse", ":vendor/sub")).toBe(gitlinkSha);
+    if (existsSync(join(pair.fork, "src/link"))) {
+      // core.symlinks=false (Windows) checks the link out as a plain file holding the target.
+      expect(git(pair.fork, "diff", "--name-only", "--", "src/link")).toBe("");
+    }
+    expect(result.stdout).not.toMatch(/renamed .* in (src\/link|vendor\/sub)/);
   });
 });
 

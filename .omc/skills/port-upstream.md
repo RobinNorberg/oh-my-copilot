@@ -115,6 +115,8 @@ Apply these substitutions when porting upstream code:
 - `platform.claude.com`, `claudeAiOauth` (Anthropic API refs)
 - `CLAUDE_PLUGIN_ROOT` (Claude Code platform env var)
 - `.claude/settings.local.json` (Claude Code config path)
+- `src/installer/legacy-claude-md-corpus.ts` and `src/installer/__tests__/fixtures/legacy-guides.json`: content-addressed (`openingLine`/`finalLine` sit next to `rawSha256`/`dataBase64` of the original bytes); renaming breaks the hashes (fork commit feb17aa97 reverted that)
+- `receipts/`: upstream provenance records, keep them as upstream wrote them
 
 ## Fork Features to Preserve
 
