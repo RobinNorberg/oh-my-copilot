@@ -29,6 +29,7 @@ import { buildHostBinarySpawn } from '../cli/tmux-utils.js';
 import { runFactoryInit } from '../cli/commands/factory.js';
 import { factoryStateDir, readProjectRoutes } from '../hooks/session-end/chain-enqueuer.js';
 import { chainLinkEnv, COPILOT_AFK_SPAWN_FLAGS, copilotPluginDirArgs, writeChainLinkLedger } from '../hooks/session-end/spawn-next.js';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 import { excerpt, parseJsonl, type CopilotEvent } from './copilot-session-eval.js';
 import {
   CHAIN_INTENT_ID,
@@ -69,7 +70,7 @@ export interface ChainScenarioInput {
 /** Factory layout + widened route table + the chain-ack project skill. Returns an error or null. */
 export function prepareChainProject(projectDir: string): string | null {
   try {
-    mkdirSync(join(projectDir, '.omg', 'state'), { recursive: true });
+    mkdirSync(join(getOmcRoot(projectDir), 'state'), { recursive: true });
     mkdirSync(join(projectDir, 'docs', 'design'), { recursive: true });
   } catch (err) {
     return `factory layout: ${(err as Error).message}`;
@@ -82,7 +83,7 @@ export function prepareChainProject(projectDir: string): string | null {
     'failed:*': { stage: 'halt', skill: 'stop' },
   };
   try {
-    writeFileSync(join(projectDir, '.omg', 'factory-routes.json'), `${JSON.stringify(routes, null, 2)}\n`);
+    writeFileSync(join(getOmcRoot(projectDir), 'factory-routes.json'), `${JSON.stringify(routes, null, 2)}\n`);
     const skillDir = join(projectDir, '.github', 'skills', CHAIN_SKILL);
     mkdirSync(skillDir, { recursive: true });
     writeFileSync(join(skillDir, 'SKILL.md'), [
