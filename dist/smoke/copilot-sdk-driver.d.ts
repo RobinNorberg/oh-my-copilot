@@ -21,6 +21,7 @@
 import { type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
 import { type PermissionRequestLike, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 import { type SpawnSyncFn } from './process-utils.js';
+import { runChainScenario } from './copilot-chain-scenario.js';
 export type PermissionResult = {
     kind: 'approve-once';
 } | {
@@ -165,6 +166,8 @@ export interface SdkTierInput {
     platform?: NodeJS.Platform;
     isAlive?: (pid: number) => boolean;
     killTree?: (pid: number) => void;
+    /** Test seam: the `chain` scenario runner (default {@link runChainScenario}, real `copilot -p` links). */
+    runChain?: typeof runChainScenario;
 }
 export interface SdkTierResult {
     checks: SmokeCheck[];

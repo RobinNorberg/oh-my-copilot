@@ -9,7 +9,7 @@ import { resolveToWorktreeRoot, getOmcRoot, validateSessionId, isValidTranscript
 import { SESSION_END_MODE_STATE_FILES, SESSION_METRICS_MODE_FILES } from '../../lib/mode-names.js';
 import { canClearStateForSession, clearModeStateFile, clearStateFileLockedIf, readModeStateWithMeta } from '../../lib/mode-state-io.js';
 import { completeForegroundCleanup, completeForegroundCleanupAndSealCore, prepareCoreManifest, readSessionEndJob } from './cleanup-manifest.js';
-import { planChainEnqueue } from './chain-enqueuer.js';
+import { planChainEnqueue, recordChainHandoffFailure } from './chain-enqueuer.js';
 import { spawnSessionEndWorker } from './worker.js';
 import { getSessionEndStalePrdWarning } from '../ralph/stale-prd.js';
 import { isValidTeamInstanceId, isValidLeaderSessionId } from '../../team/types.js';
@@ -834,8 +834,11 @@ export async function processSessionEnd(input) {
         const payload = buildDurableSessionEndPayload(directory, input, metrics);
         const chain = planChainEnqueue(directory, input.session_id, input.reason);
         const manifest = prepareCoreManifest(directory, input.session_id, chain ? { ...payload, chain } : payload);
-        if (!manifest)
+        if (!manifest) {
+            if (chain)
+                recordChainHandoffFailure(directory, chain, 'manifest-unavailable');
             return { continue: true };
+        }
         exportSessionSummary(directory, metrics);
         // The manifest already carries the enqueued chain, so the worker must be
         // launched even when inline cleanup or core sealing fails — the worker's
@@ -852,7 +855,9 @@ export async function processSessionEnd(input) {
             }
             catch { /* another writer holds the lease; it continues */ }
         }
-        spawnSessionEndWorker({ directory, sessionId: input.session_id });
+        if (!spawnSessionEndWorker({ directory, sessionId: input.session_id }) && chain) {
+            recordChainHandoffFailure(directory, chain, 'worker-spawn-failed');
+        }
         return { continue: true };
     });
 }

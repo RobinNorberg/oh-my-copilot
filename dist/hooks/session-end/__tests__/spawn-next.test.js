@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-import { AFK_ALLOWED_TOOLS, AFK_SPAWN_FLAGS, COPILOT_AFK_SPAWN_FLAGS, defaultSpawnFn, executeSpawnNext, factoryLinkArgv, isCopilotVerifyCommandAllowed, planSpawnNext, spawnNextAlertComment } from '../spawn-next.js';
+import { AFK_ALLOWED_TOOLS, AFK_SPAWN_FLAGS, CHAIN_LINK_ENV, chainLinkEnv, COPILOT_AFK_SPAWN_FLAGS, copilotPluginDirArgs, defaultSpawnFn, executeSpawnNext, factoryLinkArgv, isCopilotVerifyCommandAllowed, planSpawnNext, spawnNextAlertComment } from '../spawn-next.js';
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal();
     return { ...actual, spawn: vi.fn(() => ({ unref() { }, stdin: null })) };
@@ -134,14 +134,19 @@ describe('executeSpawnNext', () => {
             const ledgerFiles = fs.readdirSync(factoryDir).filter((f) => f.startsWith('chain-') && f.endsWith('.json'));
             expect(ledgerFiles).toHaveLength(1);
             const ledger = JSON.parse(fs.readFileSync(path.join(factoryDir, ledgerFiles[0]), 'utf8'));
+            const linkId = ledgerFiles[0].slice('chain-'.length, -'.json'.length);
             expect(ledger.intentId).toBe('chain-sess-1');
             expect(ledger.stage).toBe('launch');
             expect(ledger.routeTable).toEqual(chain.routeTable);
+            // Link identity: named after the pre-generated id, parent = the ended link.
+            expect(ledger).toMatchObject({ chainLink: linkId, host: 'claude', parentLink: 'sess-1' });
+            expect(ledger.closedAt).toBeUndefined();
             const claudeCall = calls.find(([command]) => command === 'claude');
             expect(claudeCall).toBeDefined();
             expect(claudeCall?.[1]).toContain('--session-id');
+            expect(claudeCall?.[1][claudeCall[1].indexOf('--session-id') + 1]).toBe(linkId);
             const claudeIdx = calls.findIndex(([command]) => command === 'claude');
-            expect(ctxs[claudeIdx]).toEqual({ cwd: directory });
+            expect(ctxs[claudeIdx]).toEqual({ cwd: directory, chainLink: linkId });
             expect(calls.filter(([command]) => command === 'gh')).toHaveLength(2);
         }
         finally {
@@ -244,6 +249,58 @@ describe('factoryLinkArgv', () => {
 describe('Copilot host factory links', () => {
     beforeEach(() => {
         vi.stubEnv('COPILOT_CLI', '1');
+        vi.stubEnv('OMC_PLUGIN_ROOT', '');
+    });
+    it('writes a copilot link ledger and hands the link id to the spawn as chainLink', () => {
+        const { spawnFn, calls, ctxs } = spawnRecording();
+        const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'spawn-next-'));
+        execFileSync('git', ['init', '--quiet'], { cwd: directory, stdio: 'ignore' });
+        try {
+            executeSpawnNext({ ...chain, tracker: undefined, maxStageVisits: 1, visits: { launch: 0 } }, directory, spawnFn);
+            const factoryDir = path.join(directory, '.omg', 'state', 'factory');
+            const [ledgerFile] = fs.readdirSync(factoryDir).filter((f) => /^chain-[0-9a-f-]{36}\.json$/.test(f));
+            const linkId = ledgerFile.slice('chain-'.length, -'.json'.length);
+            const ledger = JSON.parse(fs.readFileSync(path.join(factoryDir, ledgerFile), 'utf8'));
+            expect(ledger).toMatchObject({ chainLink: linkId, host: 'copilot', parentLink: 'sess-1', maxStageVisits: 1, visits: { launch: 1 } });
+            expect(typeof ledger.createdAt).toBe('string');
+            expect(calls[0][0]).toBe('copilot');
+            expect(calls[0][1]).not.toContain(linkId);
+            expect(ctxs[0]).toEqual({ cwd: directory, chainLink: linkId });
+        }
+        finally {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+    it('rejects a chain whose maxStageVisits is not an integer 1..99', () => {
+        expect(() => planSpawnNext({ ...chain, maxStageVisits: 0 }, '/omc-root')).toThrow(/invalid maxStageVisits/);
+        expect(() => planSpawnNext({ ...chain, maxStageVisits: 1.5 }, '/omc-root')).toThrow(/invalid maxStageVisits/);
+    });
+    it('adds --plugin-dir for an existing absolute OMC_PLUGIN_ROOT and drops anything else', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-root-'));
+        try {
+            vi.stubEnv('OMC_PLUGIN_ROOT', root);
+            expect(factoryLinkArgv('/x', 's').slice(-2)).toEqual(['--plugin-dir', root]);
+            expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: 'relative/dir' })).toEqual([]);
+            expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: path.join(root, 'missing') })).toEqual([]);
+            expect(copilotPluginDirArgs({})).toEqual([]);
+            // A link that may write its cwd must not be handed a plugin root it can rewrite.
+            expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: root }, root)).toEqual([]);
+            expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: root }, path.join(root, 'sub'))).toEqual([]);
+            expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: path.join(root, 'x') }, root)).toEqual([]);
+            expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: root }, os.tmpdir())).toEqual([]); // tmpdir contains root
+            const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'link-cwd-'));
+            try {
+                expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: root }, elsewhere)).toEqual(['--plugin-dir', root]);
+                expect(factoryLinkArgv('/x', 's', [], [], elsewhere).slice(-2)).toEqual(['--plugin-dir', root]);
+                expect(factoryLinkArgv('/x', 's', [], [], root)).not.toContain('--plugin-dir');
+            }
+            finally {
+                fs.rmSync(elsewhere, { recursive: true, force: true });
+            }
+        }
+        finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
     });
     it('plans a copilot link with the Copilot AFK profile and no --session-id', () => {
         const plan = planSpawnNext(chain, '/omc-root');
@@ -491,11 +548,55 @@ describe('COPILOT_ALLOW_ALL is forced off for copilot children', () => {
         const opts = vi.mocked(childProcess.spawn).mock.calls[0][2];
         expect(opts.env?.COPILOT_ALLOW_ALL).toBe('false');
     });
-    it('leaves non-copilot children on the inherited env', () => {
+    it('leaves non-host children on the inherited env', () => {
         Object.defineProperty(process, 'platform', { value: 'linux' });
         defaultSpawnFn('gh', ['issue', 'view', '1']);
         const opts = vi.mocked(childProcess.spawn).mock.calls[0][2];
         expect(opts.env).toBeUndefined();
+    });
+});
+describe('chain-link identity in the spawned link env', () => {
+    const originalPlatform = process.platform;
+    const LINK = '0b9d1f8e-2c4a-4e7b-9a51-3f6d2e8c7b10';
+    afterEach(() => {
+        Object.defineProperty(process, 'platform', { value: originalPlatform });
+        vi.mocked(childProcess.spawn).mockClear();
+    });
+    const spawnedEnv = () => vi.mocked(childProcess.spawn).mock.calls[0][2].env;
+    it('gives a copilot link its own OMC_CHAIN_LINK and drops the inherited identity', () => {
+        vi.stubEnv(CHAIN_LINK_ENV, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+        vi.stubEnv('COPILOT_AGENT_SESSION_ID', 'parent-session');
+        Object.defineProperty(process, 'platform', { value: 'linux' });
+        defaultSpawnFn('copilot', ['-p', 'task'], { cwd: '/repo', chainLink: LINK });
+        expect(spawnedEnv()?.[CHAIN_LINK_ENV]).toBe(LINK);
+        expect(spawnedEnv()?.COPILOT_AGENT_SESSION_ID).toBeUndefined();
+        expect(spawnedEnv()?.COPILOT_ALLOW_ALL).toBe('false');
+    });
+    it('never lets a copilot link inherit OMC_CHAIN_LINK when no chainLink is given', () => {
+        vi.stubEnv(CHAIN_LINK_ENV, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+        Object.defineProperty(process, 'platform', { value: 'linux' });
+        defaultSpawnFn('copilot', ['-p', 'task']);
+        expect(spawnedEnv()?.[CHAIN_LINK_ENV]).toBeUndefined();
+    });
+    it('keeps a claude link on --session-id: no OMC_CHAIN_LINK in its env', () => {
+        vi.stubEnv(CHAIN_LINK_ENV, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+        Object.defineProperty(process, 'platform', { value: 'linux' });
+        defaultSpawnFn('claude', ['-p', 'task', '--session-id', LINK], { chainLink: LINK });
+        expect(spawnedEnv()?.[CHAIN_LINK_ENV]).toBeUndefined();
+    });
+    it('drops a plugin root containing % on win32 (cmd.exe argv quoting refuses it)', () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        expect(copilotPluginDirArgs({ OMC_PLUGIN_ROOT: path.resolve('/opt/50%off/omg') }, path.resolve('/work'))).toEqual([]);
+    });
+    it('drops a case-variant copilot_allow_all on win32 so only the forced value remains', () => {
+        Object.defineProperty(process, 'platform', { value: 'win32' });
+        const env = chainLinkEnv({ copilot_allow_all: 'true', Omc_Chain_Link: 'x' }, 'copilot', LINK);
+        expect(Object.keys(env).filter((k) => k.toUpperCase() === 'COPILOT_ALLOW_ALL')).toEqual(['COPILOT_ALLOW_ALL']);
+        expect(env.COPILOT_ALLOW_ALL).toBe('false');
+        expect(Object.keys(env).filter((k) => k.toUpperCase() === CHAIN_LINK_ENV)).toEqual([CHAIN_LINK_ENV]);
+    });
+    it('refuses a chainLink that is not a valid session id', () => {
+        expect(() => chainLinkEnv({}, 'copilot', '../evil')).toThrow(/Invalid session ID/);
     });
 });
 //# sourceMappingURL=spawn-next.test.js.map

@@ -460,8 +460,8 @@ var init_parseUtil = __esm({
     init_errors();
     init_en();
     makeIssue = (params) => {
-      const { data, path: path14, errorMaps, issueData } = params;
-      const fullPath = [...path14, ...issueData.path || []];
+      const { data, path: path15, errorMaps, issueData } = params;
+      const fullPath = [...path15, ...issueData.path || []];
       const fullIssue = {
         ...issueData,
         path: fullPath
@@ -769,11 +769,11 @@ var init_types = __esm({
     init_parseUtil();
     init_util();
     ParseInputLazyPath = class {
-      constructor(parent, value, path14, key) {
+      constructor(parent, value, path15, key) {
         this._cachedPath = [];
         this.parent = parent;
         this.data = value;
-        this._path = path14;
+        this._path = path15;
         this._key = key;
       }
       get path() {
@@ -7097,7 +7097,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve23.call(this, root, ref);
+      let _sch = resolve25.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -7124,7 +7124,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve23(root, ref) {
+    function resolve25(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -7342,8 +7342,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path14) {
-      let input = path14;
+    function removeDotSegments(path15) {
+      let input = path15;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -7595,8 +7595,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path14, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path14 && path14 !== "/" ? path14 : void 0;
+        const [path15, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path15 && path15 !== "/" ? path15 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -7755,55 +7755,55 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve23(baseURI, relativeURI, options) {
+    function resolve25(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse9(baseURI, schemelessOptions), parse9(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative17, options, skipNormalization) {
+    function resolveComponent(base, relative18, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse9(serialize(base, options), options);
-        relative17 = parse9(serialize(relative17, options), options);
+        relative18 = parse9(serialize(relative18, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative17.scheme) {
-        target.scheme = relative17.scheme;
-        target.userinfo = relative17.userinfo;
-        target.host = relative17.host;
-        target.port = relative17.port;
-        target.path = removeDotSegments(relative17.path || "");
-        target.query = relative17.query;
+      if (!options.tolerant && relative18.scheme) {
+        target.scheme = relative18.scheme;
+        target.userinfo = relative18.userinfo;
+        target.host = relative18.host;
+        target.port = relative18.port;
+        target.path = removeDotSegments(relative18.path || "");
+        target.query = relative18.query;
       } else {
-        if (relative17.userinfo !== void 0 || relative17.host !== void 0 || relative17.port !== void 0) {
-          target.userinfo = relative17.userinfo;
-          target.host = relative17.host;
-          target.port = relative17.port;
-          target.path = removeDotSegments(relative17.path || "");
-          target.query = relative17.query;
+        if (relative18.userinfo !== void 0 || relative18.host !== void 0 || relative18.port !== void 0) {
+          target.userinfo = relative18.userinfo;
+          target.host = relative18.host;
+          target.port = relative18.port;
+          target.path = removeDotSegments(relative18.path || "");
+          target.query = relative18.query;
         } else {
-          if (!relative17.path) {
+          if (!relative18.path) {
             target.path = base.path;
-            if (relative17.query !== void 0) {
-              target.query = relative17.query;
+            if (relative18.query !== void 0) {
+              target.query = relative18.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative17.path[0] === "/") {
-              target.path = removeDotSegments(relative17.path);
+            if (relative18.path[0] === "/") {
+              target.path = removeDotSegments(relative18.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative17.path;
+                target.path = "/" + relative18.path;
               } else if (!base.path) {
-                target.path = relative17.path;
+                target.path = relative18.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative17.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative18.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative17.query;
+            target.query = relative18.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -7811,7 +7811,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative17.fragment;
+      target.fragment = relative18.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -8013,7 +8013,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize8,
-      resolve: resolve23,
+      resolve: resolve25,
       resolveComponent,
       equal,
       serialize,
@@ -10989,12 +10989,12 @@ var require_dist = __commonJS({
         throw new Error(`Unknown format "${name}"`);
       return f;
     };
-    function addFormats(ajv, list, fs8, exportName) {
+    function addFormats(ajv, list, fs13, exportName) {
       var _a;
       var _b;
       (_a = (_b = ajv.opts.code).formats) !== null && _a !== void 0 ? _a : _b.formats = (0, codegen_1._)`require("ajv-formats/dist/formats").${exportName}`;
       for (const f of list)
-        ajv.addFormat(f, fs8[f]);
+        ajv.addFormat(f, fs13[f]);
     }
     module2.exports = exports2 = formatsPlugin;
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -12381,7 +12381,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve23) => setTimeout(resolve23, ms));
+  return new Promise((resolve25) => setTimeout(resolve25, ms));
 }
 var import_child_process3, fs3, fsPromises2, path5, import_url, import_child_process4, import_util6, execFileAsync2, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
@@ -13051,7 +13051,7 @@ var init_client = __esm({
 Install with: ${this.serverConfig.installHint}`
           );
         }
-        return new Promise((resolve23, reject2) => {
+        return new Promise((resolve25, reject2) => {
           const command = this.devContainerContext ? "docker" : this.serverConfig.command;
           const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
           this.process = (0, import_child_process6.spawn)(command, args, {
@@ -13099,7 +13099,7 @@ Install with: ${this.serverConfig.installHint}`
               return;
             }
             this.initialized = true;
-            resolve23();
+            resolve25();
           }).catch((error2) => {
             if (this.process === child && this.connectionGeneration === connectionGeneration) {
               this.forceKill();
@@ -13358,13 +13358,13 @@ ${content}`;
         const message = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-        return new Promise((resolve23, reject2) => {
+        return new Promise((resolve25, reject2) => {
           const timeoutHandle = setTimeout(() => {
             this.pendingRequests.delete(id);
             reject2(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
           }, effectiveTimeout);
           this.pendingRequests.set(id, {
-            resolve: resolve23,
+            resolve: resolve25,
             reject: reject2,
             timeout: timeoutHandle
           });
@@ -13544,7 +13544,7 @@ ${content}`;
         });
         this.assertCurrentConnection(child, connectionGeneration);
         this.openDocuments.add(hostUri);
-        await new Promise((resolve23) => setTimeout(resolve23, 100));
+        await new Promise((resolve25) => setTimeout(resolve25, 100));
         this.assertCurrentConnection(child, connectionGeneration);
         this.throwIfTerminal();
       }
@@ -13776,7 +13776,7 @@ ${content}`;
         if (this.diagnostics.has(key)) {
           return Promise.resolve();
         }
-        return new Promise((resolve23, reject2) => {
+        return new Promise((resolve25, reject2) => {
           let resolved = false;
           const removeWaiter = (waiter2) => {
             const waiters = this.diagnosticWaiters.get(key);
@@ -13795,7 +13795,7 @@ ${content}`;
               if (error2) {
                 reject2(error2);
               } else {
-                resolve23();
+                resolve25();
               }
             }
           };
@@ -13803,7 +13803,7 @@ ${content}`;
             if (!resolved) {
               resolved = true;
               removeWaiter(waiter);
-              resolve23();
+              resolve25();
             }
           }, timeoutMs);
           const existing = this.diagnosticWaiters.get(key) || [];
@@ -14267,11 +14267,11 @@ function formatRange(range) {
 function formatLocation(location) {
   const uri = location.uri || location.targetUri;
   if (!uri) return "Unknown location";
-  const path14 = uriToPath(uri);
+  const path15 = uriToPath(uri);
   const locationRange = location.range || location.targetRange || location.targetSelectionRange;
-  if (!locationRange) return path14;
+  if (!locationRange) return path15;
   const range = formatRange(locationRange);
-  return `${path14}:${range}`;
+  return `${path15}:${range}`;
 }
 function formatHover(hover) {
   if (!hover) return "No hover information available";
@@ -14357,8 +14357,8 @@ function formatWorkspaceEdit(edit) {
   const lines = [];
   if (edit.changes) {
     for (const [uri, changes] of Object.entries(edit.changes)) {
-      const path14 = uriToPath(uri);
-      lines.push(`File: ${path14}`);
+      const path15 = uriToPath(uri);
+      lines.push(`File: ${path15}`);
       for (const change of changes) {
         const range = formatRange(change.range);
         const preview = change.newText.length > 50 ? change.newText.slice(0, 50) + "..." : change.newText;
@@ -14368,8 +14368,8 @@ function formatWorkspaceEdit(edit) {
   }
   if (edit.documentChanges) {
     for (const docChange of edit.documentChanges) {
-      const path14 = uriToPath(docChange.textDocument.uri);
-      lines.push(`File: ${path14}`);
+      const path15 = uriToPath(docChange.textDocument.uri);
+      lines.push(`File: ${path15}`);
       for (const change of docChange.edits) {
         const range = formatRange(change.range);
         const preview = change.newText.length > 50 ? change.newText.slice(0, 50) + "..." : change.newText;
@@ -15300,11 +15300,11 @@ function isSensitiveStateLocation(dir) {
   }
   const home = (() => {
     try {
-      const path14 = (0, import_path14.resolve)((0, import_os3.homedir)());
+      const path15 = (0, import_path14.resolve)((0, import_os3.homedir)());
       try {
-        return (0, import_fs14.realpathSync)(path14);
+        return (0, import_fs14.realpathSync)(path15);
       } catch {
-        return path14;
+        return path15;
       }
     } catch {
       return null;
@@ -15368,11 +15368,11 @@ function gitErrorStderr(error2) {
   }
   return typeof err.message === "string" ? err.message : "";
 }
-function isGitCommandPath(path14) {
-  if (typeof path14 !== "string" || path14.length === 0) {
+function isGitCommandPath(path15) {
+  if (typeof path15 !== "string" || path15.length === 0) {
     return false;
   }
-  const base = (0, import_path14.basename)(path14);
+  const base = (0, import_path14.basename)(path15);
   return base === "git" || base === "git.exe" || base === "git.cmd" || base === "git.bat";
 }
 function isConfirmedGitExecutableNotFound(error2) {
@@ -15468,8 +15468,8 @@ function findGitMetadataDir(start) {
     current = parent;
   }
 }
-function expandPathForCompare(path14) {
-  const normalized = (0, import_path14.resolve)(path14);
+function expandPathForCompare(path15) {
+  const normalized = (0, import_path14.resolve)(path15);
   try {
     return import_fs14.realpathSync.native(normalized);
   } catch {
@@ -15480,9 +15480,9 @@ function expandPathForCompare(path14) {
     }
   }
 }
-function canonicalizeExistingPath(path14) {
+function canonicalizeExistingPath(path15) {
   try {
-    return (0, import_fs14.realpathSync)((0, import_path14.resolve)(path14));
+    return (0, import_fs14.realpathSync)((0, import_path14.resolve)(path15));
   } catch {
     return null;
   }
@@ -15577,11 +15577,11 @@ function probeGitTopLevel(cwd) {
   }
   return result;
 }
-function gitMetadataFileSignature(path14) {
+function gitMetadataFileSignature(path15) {
   try {
-    const metadata = (0, import_fs14.statSync)(path14);
+    const metadata = (0, import_fs14.statSync)(path15);
     return [
-      path14,
+      path15,
       metadata.dev,
       metadata.ino,
       metadata.mode,
@@ -15590,14 +15590,14 @@ function gitMetadataFileSignature(path14) {
       metadata.ctimeMs
     ].join(":");
   } catch {
-    return `${path14}:missing`;
+    return `${path15}:missing`;
   }
 }
-function readGitMarker(path14) {
+function readGitMarker(path15) {
   let descriptor;
   try {
-    if (!(0, import_fs14.lstatSync)(path14).isFile()) return null;
-    descriptor = (0, import_fs14.openSync)(path14, "r");
+    if (!(0, import_fs14.lstatSync)(path15).isFile()) return null;
+    descriptor = (0, import_fs14.openSync)(path15, "r");
     const buffer = Buffer.alloc(MAX_GIT_MARKER_BYTES);
     const bytesRead = (0, import_fs14.readSync)(descriptor, buffer, 0, buffer.length, 0);
     return buffer.toString("utf8", 0, bytesRead);
@@ -16663,12 +16663,12 @@ Note: Patterns must be valid AST nodes for the language.`,
         const {
           pattern,
           language,
-          path: path14 = ".",
+          path: path15 = ".",
           context = 2,
           maxResults = 20
         } = args;
         try {
-          const validatedPath = validateToolPath(path14);
+          const validatedPath = validateToolPath(path15);
           const sg = await getSgModule();
           if (!sg) {
             return {
@@ -16688,7 +16688,7 @@ Error: ${sgLoadError}`
               content: [
                 {
                   type: "text",
-                  text: `No ${language} files found in ${path14}`
+                  text: `No ${language} files found in ${path15}`
                 }
               ]
             };
@@ -16729,7 +16729,7 @@ Error: ${sgLoadError}`
                   type: "text",
                   text: `No matches found for pattern: ${pattern}
 
-Searched ${files.length} ${language} file(s) in ${path14}
+Searched ${files.length} ${language} file(s) in ${path15}
 
 Tip: Ensure the pattern is a valid AST node. For example:
 - Use "function $NAME" not just "$NAME"
@@ -16789,9 +16789,9 @@ IMPORTANT: dryRun=true (default) only previews changes. Set dryRun=false to appl
         dryRun: external_exports.boolean().optional().describe("Preview only, don't apply changes (default: true)")
       },
       handler: async (args) => {
-        const { pattern, replacement, language, path: path14 = ".", dryRun = true } = args;
+        const { pattern, replacement, language, path: path15 = ".", dryRun = true } = args;
         try {
-          const validatedPath = validateToolPath(path14);
+          const validatedPath = validateToolPath(path15);
           const sg = await getSgModule();
           if (!sg) {
             return {
@@ -16811,7 +16811,7 @@ Error: ${sgLoadError}`
               content: [
                 {
                   type: "text",
-                  text: `No ${language} files found in ${path14}`
+                  text: `No ${language} files found in ${path15}`
                 }
               ]
             };
@@ -16881,7 +16881,7 @@ Error: ${sgLoadError}`
                   type: "text",
                   text: `No matches found for pattern: ${pattern}
 
-Searched ${files.length} ${language} file(s) in ${path14}`
+Searched ${files.length} ${language} file(s) in ${path15}`
                 }
               ]
             };
@@ -17060,7 +17060,7 @@ async function canBreakLock(lockInfo) {
   return !alive;
 }
 function sleep2(ms) {
-  return new Promise((resolve23) => setTimeout(resolve23, ms));
+  return new Promise((resolve25) => setTimeout(resolve25, ms));
 }
 var fs4, fsSync2, path6, os2, crypto3, import_child_process9, import_util7, execFileAsync3, STALE_LOCK_AGE_MS, DEFAULT_ACQUIRE_TIMEOUT_MS, LOCK_RETRY_INTERVAL_MS, REMOTE_LOCK_STALE_AGE_MS, LockTimeoutError, LockError, SessionLock;
 var init_session_lock = __esm({
@@ -17252,7 +17252,7 @@ var init_session_lock = __esm({
 
 // src/tools/python-repl/socket-client.ts
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve23, reject2) => {
+  return new Promise((resolve25, reject2) => {
     const id = (0, import_crypto3.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -17342,7 +17342,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
           }
           if (!settled) {
             settled = true;
-            resolve23(response.result);
+            resolve25(response.result);
           }
         } catch (e) {
           if (!settled) {
@@ -17985,22 +17985,22 @@ function appendRunLedger(omcRoot, entry) {
   try {
     const dir = (0, import_path16.join)(omcRoot, "state", "runs");
     (0, import_fs16.mkdirSync)(dir, { recursive: true });
-    const path14 = ledgerPath(omcRoot);
-    rotateIfNeeded(path14);
-    (0, import_fs16.appendFileSync)(path14, `${JSON.stringify(entry)}
+    const path15 = ledgerPath(omcRoot);
+    rotateIfNeeded(path15);
+    (0, import_fs16.appendFileSync)(path15, `${JSON.stringify(entry)}
 `, "utf8");
   } catch {
   }
 }
-function rotateIfNeeded(path14) {
+function rotateIfNeeded(path15) {
   try {
-    const stat = (0, import_fs16.statSync)(path14);
+    const stat = (0, import_fs16.statSync)(path15);
     if (!stat.isFile()) return;
-    const lines = (0, import_fs16.readFileSync)(path14, "utf8").split("\n").filter((line) => line.trim().length > 0);
+    const lines = (0, import_fs16.readFileSync)(path15, "utf8").split("\n").filter((line) => line.trim().length > 0);
     if (lines.length < LEDGER_TAIL_LINES) return;
-    (0, import_fs16.appendFileSync)(`${path14}.1`, `${lines.join("\n")}
+    (0, import_fs16.appendFileSync)(`${path15}.1`, `${lines.join("\n")}
 `, "utf8");
-    (0, import_fs16.writeFileSync)(path14, "", "utf8");
+    (0, import_fs16.writeFileSync)(path15, "", "utf8");
   } catch {
   }
 }
@@ -18137,9 +18137,9 @@ function writeAllSync2(fd, content, label) {
   }
   if ((0, import_fs17.fstatSync)(fd).size !== bytes.length) throw new Error(`${label} size verification failed`);
 }
-function readLockOwner(path14) {
+function readLockOwner(path15) {
   try {
-    const value = JSON.parse((0, import_fs17.readFileSync)(path14, "utf8"));
+    const value = JSON.parse((0, import_fs17.readFileSync)(path15, "utf8"));
     const pid = value.pid;
     if (value.version !== 1 || !Number.isSafeInteger(pid) || pid <= 0 || typeof value.processStart !== "string" || !/^\S+$/.test(value.processStart) || typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== "string" || !/^[0-9a-f-]{36}$/i.test(value.nonce)) return null;
     return value;
@@ -18150,24 +18150,24 @@ function readLockOwner(path14) {
 function sameOwner(left, right) {
   return left !== null && left.pid === right.pid && left.processStart === right.processStart && left.nonce === right.nonce;
 }
-function lockArtifactIdentity(path14) {
+function lockArtifactIdentity(path15) {
   try {
-    const stats = (0, import_fs17.statSync)(path14, { bigint: true });
+    const stats = (0, import_fs17.statSync)(path15, { bigint: true });
     return stats.isFile() ? { dev: stats.dev, ino: stats.ino } : null;
   } catch {
     return null;
   }
 }
-function reclaimDeadLockOwner(path14, observedOwner, observedIdentity) {
-  const quarantinePath = `${path14}.reclaim.${process.pid}.${(0, import_crypto4.randomUUID)()}`;
-  const before = lockArtifactIdentity(path14);
-  const currentOwner = readLockOwner(path14);
-  const after = lockArtifactIdentity(path14);
+function reclaimDeadLockOwner(path15, observedOwner, observedIdentity) {
+  const quarantinePath = `${path15}.reclaim.${process.pid}.${(0, import_crypto4.randomUUID)()}`;
+  const before = lockArtifactIdentity(path15);
+  const currentOwner = readLockOwner(path15);
+  const after = lockArtifactIdentity(path15);
   if (currentOwner === "absent" || currentOwner === null || !sameOwner(currentOwner, observedOwner) || before === null || after === null || !sameFileIdentity(before, observedIdentity) || !sameFileIdentity(after, observedIdentity)) {
     return "changed";
   }
   try {
-    (0, import_fs17.renameSync)(path14, quarantinePath);
+    (0, import_fs17.renameSync)(path15, quarantinePath);
   } catch (error2) {
     return error2.code === "ENOENT" ? "changed" : "failed";
   }
@@ -18186,7 +18186,7 @@ function reclaimDeadLockOwner(path14, observedOwner, observedIdentity) {
   } catch {
   }
   try {
-    (0, import_fs17.linkSync)(quarantinePath, path14);
+    (0, import_fs17.linkSync)(quarantinePath, path15);
     try {
       (0, import_fs17.unlinkSync)(quarantinePath);
     } catch {
@@ -18202,8 +18202,8 @@ function ownerLive(owner) {
   if (current === null) return null;
   return current === "absent" ? false : current === owner.processStart;
 }
-function publishLockOwner(path14, owner) {
-  const tempPath = `${path14}.${owner.pid}.${owner.nonce}.tmp`;
+function publishLockOwner(path15, owner) {
+  const tempPath = `${path15}.${owner.pid}.${owner.nonce}.tmp`;
   let fd;
   try {
     fd = (0, import_fs17.openSync)(tempPath, "wx", 384);
@@ -18211,7 +18211,7 @@ function publishLockOwner(path14, owner) {
     (0, import_fs17.fsyncSync)(fd);
     (0, import_fs17.closeSync)(fd);
     fd = void 0;
-    (0, import_fs17.linkSync)(tempPath, path14);
+    (0, import_fs17.linkSync)(tempPath, path15);
     try {
       (0, import_fs17.unlinkSync)(tempPath);
     } catch (error2) {
@@ -18267,13 +18267,13 @@ function openMutationDb(lockPath) {
     return null;
   }
 }
-function acquireFileLockAt(path14, attempts) {
+function acquireFileLockAt(path15, attempts) {
   lastMutationLockFailureDetail = null;
   const key = (() => {
     try {
-      return (0, import_path17.resolve)((0, import_fs17.realpathSync)((0, import_path17.dirname)(path14)), (0, import_path17.basename)(path14));
+      return (0, import_path17.resolve)((0, import_fs17.realpathSync)((0, import_path17.dirname)(path15)), (0, import_path17.basename)(path15));
     } catch {
-      return (0, import_path17.resolve)(path14);
+      return (0, import_path17.resolve)(path15);
     }
   })();
   const processStart = ownProcessStartIdentity();
@@ -18290,7 +18290,7 @@ function acquireFileLockAt(path14, attempts) {
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
       nonce: (0, import_crypto4.randomUUID)()
     };
-    const tempPath = `${path14}.${owner.pid}.${owner.nonce}.tmp`;
+    const tempPath = `${path15}.${owner.pid}.${owner.nonce}.tmp`;
     let fd;
     try {
       fd = (0, import_fs17.openSync)(tempPath, "wx", 384);
@@ -18298,14 +18298,14 @@ function acquireFileLockAt(path14, attempts) {
       (0, import_fs17.fsyncSync)(fd);
       (0, import_fs17.closeSync)(fd);
       fd = void 0;
-      (0, import_fs17.linkSync)(tempPath, path14);
+      (0, import_fs17.linkSync)(tempPath, path15);
       try {
         (0, import_fs17.unlinkSync)(tempPath);
       } catch (error2) {
         const code = error2.code;
         if (code !== "EPERM" && code !== "EBUSY") throw error2;
       }
-      const lock = { backend: "file", key, path: path14, owner, depth: 1 };
+      const lock = { backend: "file", key, path: path15, owner, depth: 1 };
       localLocks.set(key, lock);
       lastMutationLockFailure = null;
       lastMutationLockFailureDetail = null;
@@ -18325,19 +18325,19 @@ function acquireFileLockAt(path14, attempts) {
         lastMutationLockFailure = "unverifiable";
         return null;
       }
-      const observedIdentity = lockArtifactIdentity(path14);
+      const observedIdentity = lockArtifactIdentity(path15);
       if (observedIdentity === null) {
-        if (readLockOwner(path14) === "absent") continue;
+        if (readLockOwner(path15) === "absent") continue;
         lastMutationLockFailure = "unverifiable";
         return null;
       }
-      const existing = readLockOwner(path14);
+      const existing = readLockOwner(path15);
       if (existing === "absent") continue;
       if (!existing) {
         lastMutationLockFailure = "unverifiable";
         return null;
       }
-      const recheck = lockArtifactIdentity(path14);
+      const recheck = lockArtifactIdentity(path15);
       if (!recheck || !sameFileIdentity(recheck, observedIdentity)) continue;
       const live = verifiedLiveOwner !== null && sameOwner(existing, verifiedLiveOwner) ? true : ownerLive(existing);
       if (live === null) {
@@ -18353,7 +18353,7 @@ function acquireFileLockAt(path14, attempts) {
         }
         return null;
       }
-      const reclaimed = reclaimDeadLockOwner(path14, existing, observedIdentity);
+      const reclaimed = reclaimDeadLockOwner(path15, existing, observedIdentity);
       if (reclaimed === "failed") {
         lastMutationLockFailure = "unverifiable";
         return null;
@@ -18373,14 +18373,14 @@ function cachedOwnerLive(owner, verified, slot, probe) {
   else if (live === false) verified.dead.push(owner);
   return live;
 }
-function acquireLockAt(path14, attempts = 50, verified = { row: null, artifact: null, dead: [] }) {
+function acquireLockAt(path15, attempts = 50, verified = { row: null, artifact: null, dead: [] }) {
   lastMutationLockFailureDetail = null;
-  (0, import_fs17.mkdirSync)((0, import_path17.dirname)(path14), { recursive: true });
+  (0, import_fs17.mkdirSync)((0, import_path17.dirname)(path15), { recursive: true });
   const key = (() => {
     try {
-      return (0, import_path17.resolve)((0, import_fs17.realpathSync)((0, import_path17.dirname)(path14)), (0, import_path17.basename)(path14));
+      return (0, import_path17.resolve)((0, import_fs17.realpathSync)((0, import_path17.dirname)(path15)), (0, import_path17.basename)(path15));
     } catch {
-      return (0, import_path17.resolve)(path14);
+      return (0, import_path17.resolve)(path15);
     }
   })();
   const held = localLocks.get(key);
@@ -18388,17 +18388,17 @@ function acquireLockAt(path14, attempts = 50, verified = { row: null, artifact: 
     held.depth += 1;
     return held;
   }
-  const db = openMutationDb(path14);
+  const db = openMutationDb(path15);
   if (!db) {
     if (sqliteBindingLoadError) {
-      return acquireFileLockAt(path14, attempts);
+      return acquireFileLockAt(path15, attempts);
     }
     if (attempts <= 1) {
       lastMutationLockFailure = "unverifiable";
       return null;
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    return acquireLockAt(path14, attempts - 1, verified);
+    return acquireLockAt(path15, attempts - 1, verified);
   }
   const processStart = ownProcessStartIdentity();
   if (!processStart) {
@@ -18406,13 +18406,13 @@ function acquireLockAt(path14, attempts = 50, verified = { row: null, artifact: 
       db.close();
     } catch {
     }
-    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt processStart-null ${path14}`);
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt processStart-null ${path15}`);
     if (attempts <= 1) {
       lastMutationLockFailure = "unverifiable";
       return null;
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    return acquireLockAt(path14, attempts - 1, verified);
+    return acquireLockAt(path15, attempts - 1, verified);
   }
   const owner = { version: 1, pid: process.pid, processStart, createdAt: (/* @__PURE__ */ new Date()).toISOString(), nonce: (0, import_crypto4.randomUUID)() };
   const selectRow = () => db.prepare("SELECT version, pid, process_start, created_at, nonce FROM state_mutation_locks WHERE lock_key = ?").get(key);
@@ -18421,7 +18421,7 @@ function acquireLockAt(path14, attempts = 50, verified = { row: null, artifact: 
     const preRow = ownerFromRow(selectRow());
     if (preRow) preLive = cachedOwnerLive(preRow, verified, "row", true);
     if (preLive === false) {
-      const preArtifact = readLockOwner(path14);
+      const preArtifact = readLockOwner(path15);
       if (preArtifact && preArtifact !== "absent") preLive = cachedOwnerLive(preArtifact, verified, "artifact", true);
     }
   } catch {
@@ -18437,7 +18437,7 @@ function acquireLockAt(path14, attempts = 50, verified = { row: null, artifact: 
       return null;
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    return acquireLockAt(path14, attempts - 1, verified);
+    return acquireLockAt(path15, attempts - 1, verified);
   }
   try {
     db.exec("BEGIN IMMEDIATE");
@@ -18448,39 +18448,39 @@ function acquireLockAt(path14, attempts = 50, verified = { row: null, artifact: 
         db.exec("ROLLBACK");
         db.close();
         lastMutationLockFailure = "unverifiable";
-        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt row-invalid ${path14}`);
+        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt row-invalid ${path15}`);
         return null;
       }
       const live = cachedOwnerLive(row, verified, "row", false);
       if (live !== false) {
         db.exec("ROLLBACK");
         db.close();
-        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt row-live=${live} ${path14}`);
+        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt row-live=${live} ${path15}`);
         if (attempts <= 1) {
           lastMutationLockFailure = "contention";
           return null;
         }
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-        return acquireLockAt(path14, attempts - 1, verified);
+        return acquireLockAt(path15, attempts - 1, verified);
       }
       db.prepare("DELETE FROM state_mutation_locks WHERE lock_key = ?").run(key);
     }
-    const artifact = readLockOwner(path14);
+    const artifact = readLockOwner(path15);
     if (artifact !== "absent") {
       if (!artifact) {
         db.exec("ROLLBACK");
         db.close();
         lastMutationLockFailure = "unverifiable";
-        console.error(`[omc-lock] state_mutation_lock_unverifiable: ${path14}`);
+        console.error(`[omc-lock] state_mutation_lock_unverifiable: ${path15}`);
         return null;
       }
-      const observedIdentity = lockArtifactIdentity(path14);
+      const observedIdentity = lockArtifactIdentity(path15);
       if (observedIdentity === null) {
         db.exec("ROLLBACK");
         db.close();
-        if (readLockOwner(path14) === "absent" && attempts > 1) {
+        if (readLockOwner(path15) === "absent" && attempts > 1) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-          return acquireLockAt(path14, attempts - 1, verified);
+          return acquireLockAt(path15, attempts - 1, verified);
         }
         lastMutationLockFailure = "unverifiable";
         return null;
@@ -18489,41 +18489,41 @@ function acquireLockAt(path14, attempts = 50, verified = { row: null, artifact: 
       if (live !== false) {
         db.exec("ROLLBACK");
         db.close();
-        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt artifact-live=${live} ${path14}`);
+        if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt artifact-live=${live} ${path15}`);
         if (attempts <= 1) {
           lastMutationLockFailure = "contention";
           return null;
         }
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-        return acquireLockAt(path14, attempts - 1, verified);
+        return acquireLockAt(path15, attempts - 1, verified);
       }
-      const reclaimed = reclaimDeadLockOwner(path14, artifact, observedIdentity);
+      const reclaimed = reclaimDeadLockOwner(path15, artifact, observedIdentity);
       if (reclaimed !== "removed") {
         db.exec("ROLLBACK");
         db.close();
         if (reclaimed === "changed" && attempts > 1) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-          return acquireLockAt(path14, attempts - 1, verified);
+          return acquireLockAt(path15, attempts - 1, verified);
         }
         lastMutationLockFailure = reclaimed === "changed" ? "contention" : "unverifiable";
         return null;
       }
     }
     db.prepare("INSERT INTO state_mutation_locks (lock_key, version, pid, process_start, created_at, nonce) VALUES (?, 1, ?, ?, ?, ?)").run(key, owner.pid, owner.processStart, owner.createdAt, owner.nonce);
-    if (!publishLockOwner(path14, owner)) {
+    if (!publishLockOwner(path15, owner)) {
       abandonedOwnNonces.add(owner.nonce);
       db.exec("ROLLBACK");
       db.close();
-      if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt publish-failed ${path14}`);
+      if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt publish-failed ${path15}`);
       if (attempts <= 1) {
         lastMutationLockFailure = "contention";
         return null;
       }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-      return acquireLockAt(path14, attempts - 1, verified);
+      return acquireLockAt(path15, attempts - 1, verified);
     }
     db.exec("COMMIT");
-    const lock = { backend: "sqlite", db, key, path: path14, owner, depth: 1 };
+    const lock = { backend: "sqlite", db, key, path: path15, owner, depth: 1 };
     localLocks.set(key, lock);
     lastMutationLockFailure = null;
     lastMutationLockFailureDetail = null;
@@ -18539,10 +18539,10 @@ function acquireLockAt(path14, attempts = 50, verified = { row: null, artifact: 
     } catch {
     }
     const code = error2?.code;
-    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt caught-error ${path14} code=${code} msg=${error2?.message}`);
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireLockAt caught-error ${path15} code=${code} msg=${error2?.message}`);
     if ((code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") && attempts > 1) {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-      return acquireLockAt(path14, attempts - 1, verified);
+      return acquireLockAt(path15, attempts - 1, verified);
     }
     lastMutationLockFailure = code === "SQLITE_BUSY" || code === "SQLITE_LOCKED" ? "contention" : "unverifiable";
     return null;
@@ -18820,15 +18820,15 @@ function isEmergencyOwnerLive(owner) {
   const current = processStartIdentity(owner.pid);
   return current === null || current !== "absent" && current === owner.processStart;
 }
-function journalIsOwned(path14, transactionId, owner) {
-  const current = readEmergencyJournal(path14);
+function journalIsOwned(path15, transactionId, owner) {
+  const current = readEmergencyJournal(path15);
   return current !== null && current.transactionId === transactionId && sameEmergencyOwner(current.owner, owner);
 }
-function writeEmergencyJournal(path14, journal, requireOwnership = true) {
+function writeEmergencyJournal(path15, journal, requireOwnership = true) {
   try {
-    if (requireOwnership && !journalIsOwned(path14, journal.transactionId, journal.owner)) return false;
-    atomicWriteJsonSync(path14, journal);
-    return !requireOwnership || journalIsOwned(path14, journal.transactionId, journal.owner);
+    if (requireOwnership && !journalIsOwned(path15, journal.transactionId, journal.owner)) return false;
+    atomicWriteJsonSync(path15, journal);
+    return !requireOwnership || journalIsOwned(path15, journal.transactionId, journal.owner);
   } catch {
     return false;
   }
@@ -18839,17 +18839,17 @@ function encodeProcessStartForFilename(processStart) {
 function decodeProcessStartFromFilename(encoded) {
   return encoded.replace(/_c_/g, ":");
 }
-function emergencyPublicationTempPath(path14) {
+function emergencyPublicationTempPath(path15) {
   const processStart = ownProcessStartIdentity();
   if (!processStart) return null;
-  return `${path14}.${process.pid}.${encodeProcessStartForFilename(processStart)}.${(0, import_crypto4.randomUUID)()}.tmp`;
+  return `${path15}.${process.pid}.${encodeProcessStartForFilename(processStart)}.${(0, import_crypto4.randomUUID)()}.tmp`;
 }
-function publishEmergencyFileExclusive(path14, content) {
-  const tempPath = emergencyPublicationTempPath(path14);
+function publishEmergencyFileExclusive(path15, content) {
+  const tempPath = emergencyPublicationTempPath(path15);
   let fd;
   try {
     if (!tempPath) return false;
-    (0, import_fs17.mkdirSync)((0, import_path17.dirname)(path14), { recursive: true });
+    (0, import_fs17.mkdirSync)((0, import_path17.dirname)(path15), { recursive: true });
     fd = (0, import_fs17.openSync)(tempPath, "wx", 384);
     const bytes = Buffer.from(content);
     let offset = 0;
@@ -18862,11 +18862,11 @@ function publishEmergencyFileExclusive(path14, content) {
     if ((0, import_fs17.statSync)(tempPath).size !== bytes.length) throw new Error("emergency publication truncated");
     (0, import_fs17.closeSync)(fd);
     fd = void 0;
-    (0, import_fs17.linkSync)(tempPath, path14);
+    (0, import_fs17.linkSync)(tempPath, path15);
     (0, import_fs17.unlinkSync)(tempPath);
     return true;
   } catch (error2) {
-    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] publishEmergencyFileExclusive failed path=${path14} tempPath=${tempPath} pathExists=${(0, import_fs17.existsSync)(path14)} err=${error2?.code} ${error2?.message}`);
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] publishEmergencyFileExclusive failed path=${path15} tempPath=${tempPath} pathExists=${(0, import_fs17.existsSync)(path15)} err=${error2?.code} ${error2?.message}`);
     return false;
   } finally {
     if (fd !== void 0) {
@@ -18884,46 +18884,46 @@ function publishEmergencyFileExclusive(path14, content) {
     }
   }
 }
-function acquireRecoveryClaim(path14, attempts = 50) {
+function acquireRecoveryClaim(path15, attempts = 50) {
   const processStart = ownProcessStartIdentity();
   if (!processStart) {
-    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim processStart-null ${path14}`);
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim processStart-null ${path15}`);
     if (attempts <= 1) return null;
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    return acquireRecoveryClaim(path14, attempts - 1);
+    return acquireRecoveryClaim(path15, attempts - 1);
   }
-  const lock = acquireLockAt(`${path14}.recovery.guard`, attempts);
+  const lock = acquireLockAt(`${path15}.recovery.guard`, attempts);
   if (!lock) {
-    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim guard-lock-null ${path14}`);
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim guard-lock-null ${path15}`);
     return null;
   }
-  const existing = readRecoveryClaim(path14);
+  const existing = readRecoveryClaim(path15);
   if (existing) {
     const live = ownerLive(existing);
     if (live === null || live) {
       releaseMutationLock(lock);
-      if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim existing-live=${live} ${path14}`);
+      if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim existing-live=${live} ${path15}`);
       return null;
     }
     try {
-      (0, import_fs17.unlinkSync)(path14);
+      (0, import_fs17.unlinkSync)(path15);
     } catch (error2) {
       releaseMutationLock(lock);
-      if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim existing-unlink-failed ${path14} ${error2.code}`);
+      if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim existing-unlink-failed ${path15} ${error2.code}`);
       return null;
     }
   }
   const owner = { version: 1, pid: process.pid, processStart, createdAt: (/* @__PURE__ */ new Date()).toISOString(), nonce: (0, import_crypto4.randomUUID)() };
-  if (!publishEmergencyFileExclusive(path14, JSON.stringify(owner))) {
+  if (!publishEmergencyFileExclusive(path15, JSON.stringify(owner))) {
     releaseMutationLock(lock);
-    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim publish-failed ${path14}`);
+    if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] acquireRecoveryClaim publish-failed ${path15}`);
     return null;
   }
   return owner;
 }
-function readRecoveryClaim(path14) {
+function readRecoveryClaim(path15) {
   try {
-    const owner = JSON.parse((0, import_fs17.readFileSync)(path14, "utf8"));
+    const owner = JSON.parse((0, import_fs17.readFileSync)(path15, "utf8"));
     return owner.version === 1 && Number.isSafeInteger(owner.pid) && owner.pid > 0 && typeof owner.processStart === "string" && typeof owner.createdAt === "string" && typeof owner.nonce === "string" ? owner : null;
   } catch {
     return null;
@@ -18932,8 +18932,8 @@ function readRecoveryClaim(path14) {
 function sameRecoveryClaim(left, right) {
   return left.pid === right.pid && left.processStart === right.processStart && left.nonce === right.nonce;
 }
-function releaseRecoveryClaim(path14, owner) {
-  const guardPath = `${path14}.recovery.guard`;
+function releaseRecoveryClaim(path15, owner) {
+  const guardPath = `${path15}.recovery.guard`;
   const key = (() => {
     try {
       return (0, import_path17.resolve)((0, import_fs17.realpathSync)((0, import_path17.dirname)(guardPath)), (0, import_path17.basename)(guardPath));
@@ -18944,16 +18944,16 @@ function releaseRecoveryClaim(path14, owner) {
   const lock = localLocks.get(key);
   if (!lock) return;
   try {
-    const current = readRecoveryClaim(path14);
+    const current = readRecoveryClaim(path15);
     if (current && sameRecoveryClaim(current, owner)) {
       for (let attempt = 0; attempt < 10; attempt += 1) {
         try {
-          (0, import_fs17.unlinkSync)(path14);
+          (0, import_fs17.unlinkSync)(path15);
           break;
         } catch (error2) {
           if (error2.code === "ENOENT") break;
           if (attempt === 9) {
-            if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] releaseRecoveryClaim unlink-failed-after-retries ${path14} ${error2.code}`);
+            if (process.env.OMC_LOCK_DEBUG) console.error(`[lock-debug] releaseRecoveryClaim unlink-failed-after-retries ${path15} ${error2.code}`);
             break;
           }
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
@@ -18964,12 +18964,12 @@ function releaseRecoveryClaim(path14, owner) {
   }
   releaseMutationLock(lock);
 }
-function createEmergencyJournal(path14, journal) {
-  return publishEmergencyFileExclusive(path14, JSON.stringify(journal));
+function createEmergencyJournal(path15, journal) {
+  return publishEmergencyFileExclusive(path15, JSON.stringify(journal));
 }
-function readEmergencyJournal(path14) {
+function readEmergencyJournal(path15) {
   try {
-    const journal = JSON.parse((0, import_fs17.readFileSync)(path14, "utf8"));
+    const journal = JSON.parse((0, import_fs17.readFileSync)(path15, "utf8"));
     if (journal.version !== 1 || typeof journal.transactionId !== "string" || !/^[0-9a-f-]{36}$/i.test(journal.transactionId) || !journal.owner || !Number.isInteger(journal.owner.pid) || journal.owner.pid <= 0 || typeof journal.owner.processStart !== "string" || typeof journal.owner.nonce !== "string" || !/^[0-9a-f-]{36}$/i.test(journal.owner.nonce) || journal.sessionOwner !== void 0 && typeof journal.sessionOwner !== "string" || journal.originalDigest !== void 0 && (typeof journal.originalDigest !== "string" || !/^[0-9a-f]{64}$/i.test(journal.originalDigest)) || journal.intendedDigest !== void 0 && (typeof journal.intendedDigest !== "string" || !/^[0-9a-f]{64}$/i.test(journal.intendedDigest)) || journal.intent !== void 0 && journal.intent !== "clear" && journal.intent !== "publish" || typeof journal.quarantinePath !== "string" || journal.phase !== "preparing" && journal.phase !== "prepared" && journal.phase !== "quarantined" && journal.phase !== "published") return null;
     const complete = typeof journal.originalDigest === "string" && (journal.intent === "clear" || journal.intent === "publish" && typeof journal.intendedDigest === "string");
     return journal.phase === "preparing" || complete ? journal : null;
@@ -18977,37 +18977,37 @@ function readEmergencyJournal(path14) {
     return null;
   }
 }
-function fileIdentity(path14) {
+function fileIdentity(path15) {
   try {
-    const stat = (0, import_fs17.statSync)(path14, { bigint: true });
+    const stat = (0, import_fs17.statSync)(path15, { bigint: true });
     return { dev: stat.dev, ino: stat.ino };
   } catch {
     return null;
   }
 }
-function sameStateFileGeneration(path14, expected) {
+function sameStateFileGeneration(path15, expected) {
   try {
-    const identity = fileIdentity(path14);
+    const identity = fileIdentity(path15);
     if (!identity || !sameFileIdentity(identity, expected)) return false;
-    return stateDigest((0, import_fs17.readFileSync)(path14, "utf8")) === expected.digest;
+    return stateDigest((0, import_fs17.readFileSync)(path15, "utf8")) === expected.digest;
   } catch {
     return false;
   }
 }
-function replaceGenerationForTest(path14) {
-  if (process.env.NODE_ENV !== "test" || process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_PATH !== path14 || !process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_BASE64) return;
+function replaceGenerationForTest(path15) {
+  if (process.env.NODE_ENV !== "test" || process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_PATH !== path15 || !process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_BASE64) return;
   try {
     const replacement = JSON.parse(
       Buffer.from(process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_BASE64, "base64").toString("utf8")
     );
-    atomicWriteJsonSync(path14, replacement);
+    atomicWriteJsonSync(path15, replacement);
   } finally {
     delete process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_PATH;
     delete process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_BASE64;
   }
 }
-function sameFile(path14, expected) {
-  const actual = fileIdentity(path14);
+function sameFile(path15, expected) {
+  const actual = fileIdentity(path15);
   return actual !== null && sameFileIdentity(actual, expected);
 }
 function reconcileEmergencyPublicationTemps(filePath, authorizeState) {
@@ -19023,28 +19023,28 @@ function reconcileEmergencyPublicationTemps(filePath, authorizeState) {
   for (const name of names) {
     const match = pattern.exec(name);
     if (!match) continue;
-    const path14 = (0, import_path17.join)(directory, name);
+    const path15 = (0, import_path17.join)(directory, name);
     const matchedProcessStart = decodeProcessStartFromFilename(match[3]);
     const currentStart = processStartIdentity(Number(match[2]));
     if (currentStart === null || currentStart === matchedProcessStart) return false;
-    const generation = fileIdentity(path14);
+    const generation = fileIdentity(path15);
     try {
       if (!generation) return false;
-      const raw = (0, import_fs17.readFileSync)(path14, "utf8");
+      const raw = (0, import_fs17.readFileSync)(path15, "utf8");
       if (authorizeState) {
         if (match[1] === "journal.json") {
-          const journal = readEmergencyJournal(path14);
+          const journal = readEmergencyJournal(path15);
           if (!journal || !recoveryGenerationsAuthorized(filePath, journal, authorizeState)) return false;
         } else if (match[1].startsWith("quarantine.")) {
           const state = JSON.parse(raw);
           if (!state || typeof state !== "object" || Array.isArray(state) || !authorizeState(state)) return false;
         } else {
-          const claim = readRecoveryClaim(path14);
+          const claim = readRecoveryClaim(path15);
           if (!claim || claim.pid !== Number(match[2]) || claim.processStart !== matchedProcessStart || claim.nonce !== match[4]) return false;
         }
       }
-      if (!sameFile(path14, generation) || stateDigest((0, import_fs17.readFileSync)(path14, "utf8")) !== stateDigest(raw)) return false;
-      (0, import_fs17.unlinkSync)(path14);
+      if (!sameFile(path15, generation) || stateDigest((0, import_fs17.readFileSync)(path15, "utf8")) !== stateDigest(raw)) return false;
+      (0, import_fs17.unlinkSync)(path15);
     } catch {
       return false;
     }
@@ -19091,12 +19091,12 @@ function recoveryGenerationsAuthorized(filePath, journal, authorizeState) {
     ...journal ? [journal.quarantinePath, `${journal.quarantinePath}.payload`] : []
   ];
   let authenticatedJournalGeneration = journal === null;
-  for (const path14 of paths) {
-    if (!(0, import_fs17.existsSync)(path14)) continue;
+  for (const path15 of paths) {
+    if (!(0, import_fs17.existsSync)(path15)) continue;
     let raw;
     let state;
     try {
-      raw = (0, import_fs17.readFileSync)(path14, "utf8");
+      raw = (0, import_fs17.readFileSync)(path15, "utf8");
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
       state = parsed;
@@ -19245,9 +19245,9 @@ function recoverDeadEmergencyStateFile(filePath, authorizeState) {
   const owned = () => journalIsOwned(journalPath, journal.transactionId, journal.owner);
   if (!owned()) return false;
   const payloadPath = `${journal.quarantinePath}.payload`;
-  const digest = (path14) => {
+  const digest = (path15) => {
     try {
-      return stateDigest((0, import_fs17.readFileSync)(path14, "utf8"));
+      return stateDigest((0, import_fs17.readFileSync)(path15, "utf8"));
     } catch {
       return null;
     }
@@ -19461,11 +19461,11 @@ function resolveFile(mode, directory, sessionId) {
   }
   return resolveStatePath(mode, baseDir);
 }
-function discoverStateFile(path14, extra = {}) {
+function discoverStateFile(path15, extra = {}) {
   try {
-    const state = JSON.parse((0, import_fs17.readFileSync)(path14, "utf-8"));
+    const state = JSON.parse((0, import_fs17.readFileSync)(path15, "utf-8"));
     return {
-      path: path14,
+      path: path15,
       snapshot: JSON.stringify(state),
       state,
       ownerSessionId: getStateSessionOwner(state),
@@ -19476,9 +19476,9 @@ function discoverStateFile(path14, extra = {}) {
     return null;
   }
 }
-function hasAuthenticatedCompletionEvidence(path14, sessionId) {
+function hasAuthenticatedCompletionEvidence(path15, sessionId) {
   try {
-    const evidence = JSON.parse((0, import_fs17.readFileSync)(path14, "utf-8"));
+    const evidence = JSON.parse((0, import_fs17.readFileSync)(path15, "utf-8"));
     return evidence.session_id === sessionId && typeof evidence.ended_at === "string" && evidence.ended_at.trim().length > 0 && Number.isFinite(Date.parse(evidence.ended_at));
   } catch {
     return false;
@@ -20818,7 +20818,7 @@ function modeStateRecordsRun(filePath) {
 }
 function listArtifactFiles(directory, sessionId) {
   const root = getOmcRoot(directory);
-  const dirCandidates = ["plans", "artifacts", "logs", "specs", "interviews"].map((segment) => (0, import_path29.join)(root, segment)).filter((path14) => (0, import_fs27.existsSync)(path14));
+  const dirCandidates = ["plans", "artifacts", "logs", "specs", "interviews"].map((segment) => (0, import_path29.join)(root, segment)).filter((path15) => (0, import_fs27.existsSync)(path15));
   const found = [];
   const seen = /* @__PURE__ */ new Set();
   const pushRelative = (full) => {
@@ -20926,8 +20926,8 @@ function parseMergeReadinessSourceMode(promptText) {
   return {};
 }
 function hasModeStateArtifact(evidence) {
-  return evidence.sourceArtifacts.some((path14) => {
-    const name = path14.slice(path14.lastIndexOf("/") + 1);
+  return evidence.sourceArtifacts.some((path15) => {
+    const name = path15.slice(path15.lastIndexOf("/") + 1);
     return EVIDENCE_MODE_STATE_FILES.has(name);
   });
 }
@@ -21421,9 +21421,9 @@ var init_team_owner_epoch = __esm({
 });
 
 // src/team/process-identity-lock.ts
-function readLock(path14) {
+function readLock(path15) {
   try {
-    const record2 = JSON.parse((0, import_node_fs2.readFileSync)(path14, "utf8"));
+    const record2 = JSON.parse((0, import_node_fs2.readFileSync)(path15, "utf8"));
     return record2.schema_version === 1 && Number.isSafeInteger(record2.pid) && record2.pid > 0 && isValidProcessStartIdentity(record2.process_started_at) && typeof record2.nonce === "string" && record2.nonce.length > 0 ? record2 : null;
   } catch {
     return null;
@@ -21457,7 +21457,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve23) => setTimeout(resolve23, 25));
+        await new Promise((resolve25) => setTimeout(resolve25, 25));
         continue;
       }
       try {
@@ -21478,7 +21478,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve23) => setTimeout(resolve23, 25));
+        await new Promise((resolve25) => setTimeout(resolve25, 25));
       }
     }
     return await fn();
@@ -21968,9 +21968,9 @@ function isConvergedCandidateActiveForSession(statePath, sessionId) {
   }
   return canClearStateForSession(raw, sessionId);
 }
-function emergencyRecoveryOptionsForProject(mode, path14, root) {
-  if (mode !== "autopilot" || !isSharedHomeAutopilotCandidate(path14, root)) return void 0;
-  return { authorizeState: (state) => isStateCandidateForProject(mode, path14, state, root) };
+function emergencyRecoveryOptionsForProject(mode, path15, root) {
+  if (mode !== "autopilot" || !isSharedHomeAutopilotCandidate(path15, root)) return void 0;
+  return { authorizeState: (state) => isStateCandidateForProject(mode, path15, state, root) };
 }
 function clearDiscoveredStateCandidate(candidate, predicate, recoveryOptions, teamState = false) {
   const sessionPathMatch = candidate.path.replaceAll("\\", "/").match(/\/state\/sessions\/([^/]+)\/[^/]+$/);
@@ -22016,11 +22016,11 @@ function clearAutopilotMarkerCandidate(candidate, root) {
 }
 function discoverStatePaths(paths, mode) {
   const discovered = [];
-  for (const path14 of paths) {
-    const state = readJsonRecord(path14);
+  for (const path15 of paths) {
+    const state = readJsonRecord(path15);
     if (!state || mode === "team" && !isJsonRecord(state)) continue;
     discovered.push({
-      path: path14,
+      path: path15,
       state,
       snapshot: JSON.stringify(state),
       ownerSessionId: getStateSessionOwner(state),
@@ -22125,9 +22125,9 @@ function getLegacyStateFileCandidates(mode, root) {
   if (mode === "autopilot" && probeGitTopLevel(root).status === "ok") candidates.push((0, import_path32.join)((0, import_os4.homedir)(), ".omg", "state", "autopilot-state.json"));
   return [...new Set(candidates)];
 }
-function isSharedHomeAutopilotCandidate(path14, root) {
+function isSharedHomeAutopilotCandidate(path15, root) {
   const sharedHomeStateRoot = (0, import_path32.resolve)((0, import_os4.homedir)(), ".omg", "state");
-  const candidatePath = (0, import_path32.resolve)(path14);
+  const candidatePath = (0, import_path32.resolve)(path15);
   const canonicalStateRoot = (0, import_path32.resolve)(getOmcRoot(root), "state");
   const isDescendant = (ancestor, descendant) => {
     const fromAncestor = (0, import_path32.relative)(ancestor, descendant);
@@ -22135,18 +22135,18 @@ function isSharedHomeAutopilotCandidate(path14, root) {
   };
   return !isDescendant(canonicalStateRoot, candidatePath) && isDescendant(sharedHomeStateRoot, candidatePath);
 }
-function isStateCandidateForProject(mode, path14, state, root) {
-  if (mode !== "autopilot" || !isSharedHomeAutopilotCandidate(path14, root)) return true;
+function isStateCandidateForProject(mode, path15, state, root) {
+  if (mode !== "autopilot" || !isSharedHomeAutopilotCandidate(path15, root)) return true;
   return typeof state.project_path === "string" && (0, import_path32.resolve)(state.project_path) === (0, import_path32.resolve)(root);
 }
-function isAutopilotRecoveryCandidateForProject(path14, root) {
-  if (!isSharedHomeAutopilotCandidate(path14, root)) return true;
-  const primary = readJsonRecord(path14);
-  if (primary) return isStateCandidateForProject("autopilot", path14, primary, root);
-  const artifactPrefix = `${(0, import_path32.basename)(path14)}.emergency-quarantine.`;
+function isAutopilotRecoveryCandidateForProject(path15, root) {
+  if (!isSharedHomeAutopilotCandidate(path15, root)) return true;
+  const primary = readJsonRecord(path15);
+  if (primary) return isStateCandidateForProject("autopilot", path15, primary, root);
+  const artifactPrefix = `${(0, import_path32.basename)(path15)}.emergency-quarantine.`;
   let artifacts;
   try {
-    artifacts = (0, import_fs29.readdirSync)((0, import_path32.dirname)(path14)).filter(
+    artifacts = (0, import_fs29.readdirSync)((0, import_path32.dirname)(path15)).filter(
       (name) => name.startsWith(artifactPrefix) && (name.endsWith(".payload") || /^[0-9a-f-]{36}$/i.test(name.slice(artifactPrefix.length)))
     );
   } catch {
@@ -22154,8 +22154,8 @@ function isAutopilotRecoveryCandidateForProject(path14, root) {
   }
   if (artifacts.length === 0) return false;
   return artifacts.every((name) => {
-    const state = readJsonRecord((0, import_path32.join)((0, import_path32.dirname)(path14), name));
-    return state !== null && isStateCandidateForProject("autopilot", path14, state, root);
+    const state = readJsonRecord((0, import_path32.join)((0, import_path32.dirname)(path15), name));
+    return state !== null && isStateCandidateForProject("autopilot", path15, state, root);
   });
 }
 function getWorkingDirectoryLocalOmcRoot(root) {
@@ -22264,9 +22264,9 @@ function getModeRuntimeArtifactPaths(mode, root, sessionIds, includeLegacy = tru
 }
 function captureTeamRuntimeArtifacts(root) {
   const captured = /* @__PURE__ */ new Map();
-  for (const path14 of getModeRuntimeArtifactPaths("team", root)) try {
-    const stat = (0, import_fs29.lstatSync)(path14);
-    if (stat.isFile()) captured.set(path14, { bytes: (0, import_fs29.readFileSync)(path14), identity: `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}` });
+  for (const path15 of getModeRuntimeArtifactPaths("team", root)) try {
+    const stat = (0, import_fs29.lstatSync)(path15);
+    if (stat.isFile()) captured.set(path15, { bytes: (0, import_fs29.readFileSync)(path15), identity: `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}` });
   } catch {
   }
   return captured;
@@ -22412,10 +22412,10 @@ function discoverAllRootSessionStateCandidates(mode, root) {
   return discoverStatePaths(getAllRootSessionStatePaths(mode, root), mode);
 }
 function findUnresolvedTeamStatePaths(paths) {
-  return [...new Set(paths)].filter((path14) => {
-    if (!(0, import_fs29.existsSync)(path14)) return false;
-    if (readJsonRecordStrict(path14) !== null) return false;
-    return (0, import_fs29.existsSync)(path14);
+  return [...new Set(paths)].filter((path15) => {
+    if (!(0, import_fs29.existsSync)(path15)) return false;
+    if (readJsonRecordStrict(path15) !== null) return false;
+    return (0, import_fs29.existsSync)(path15);
   });
 }
 function recoverAutopilotEmergencyTransactions(root, sessionId) {
@@ -22442,34 +22442,34 @@ function recoverAutopilotEmergencyTransactions(root, sessionId) {
     for (const omcRoot of getConvergedOmcRoots(root)) {
       directSessionPaths.add((0, import_path32.join)(omcRoot, "state", "sessions", sessionId, getStateFileName("autopilot")));
     }
-    for (const path14 of directSessionPaths) broadPaths.add(path14);
+    for (const path15 of directSessionPaths) broadPaths.add(path15);
   }
-  for (const path14 of broadPaths) {
-    let recoveryOptions = emergencyRecoveryOptionsForProject("autopilot", path14, root);
-    if (!isAutopilotRecoveryCandidateForProject(path14, root)) continue;
-    if (!directSessionPaths.has(path14)) {
-      const visibleOwner = getStateSessionOwner(readJsonRecord(path14) ?? {});
-      const journal = readJsonRecord(`${path14}.emergency-journal.json`);
+  for (const path15 of broadPaths) {
+    let recoveryOptions = emergencyRecoveryOptionsForProject("autopilot", path15, root);
+    if (!isAutopilotRecoveryCandidateForProject(path15, root)) continue;
+    if (!directSessionPaths.has(path15)) {
+      const visibleOwner = getStateSessionOwner(readJsonRecord(path15) ?? {});
+      const journal = readJsonRecord(`${path15}.emergency-journal.json`);
       const journalOwner = typeof journal?.sessionOwner === "string" ? journal.sessionOwner : void 0;
-      const pathSessionId = path14.replaceAll("\\", "/").match(/\/state\/sessions\/([^/]+)\/[^/]+$/)?.[1];
+      const pathSessionId = path15.replaceAll("\\", "/").match(/\/state\/sessions\/([^/]+)\/[^/]+$/)?.[1];
       const ownerSessionId = sessionId ?? visibleOwner ?? journalOwner;
       if (sessionId && visibleOwner !== sessionId && journalOwner !== sessionId) continue;
       if (ownerSessionId && ownerSessionId !== pathSessionId) {
         recoveryOptions = {
-          authorizeState: (state) => isStateCandidateForProject("autopilot", path14, state, root) && getStateSessionOwner(state) === ownerSessionId
+          authorizeState: (state) => isStateCandidateForProject("autopilot", path15, state, root) && getStateSessionOwner(state) === ownerSessionId
         };
       }
     }
-    if (!recoverEmergencyStateFile(path14, recoveryOptions)) throw new Error(`workflow_emergency_recovery_failed: ${path14}`);
-    if (recoveryOptions && !isAutopilotRecoveryCandidateForProject(path14, root)) continue;
-    const artifactPrefix = `${(0, import_path32.basename)(path14)}.emergency-`;
+    if (!recoverEmergencyStateFile(path15, recoveryOptions)) throw new Error(`workflow_emergency_recovery_failed: ${path15}`);
+    if (recoveryOptions && !isAutopilotRecoveryCandidateForProject(path15, root)) continue;
+    const artifactPrefix = `${(0, import_path32.basename)(path15)}.emergency-`;
     let artifacts;
     try {
-      artifacts = (0, import_fs29.readdirSync)((0, import_path32.dirname)(path14)).filter((name) => name.startsWith(artifactPrefix) && !name.endsWith(".recovery.guard"));
+      artifacts = (0, import_fs29.readdirSync)((0, import_path32.dirname)(path15)).filter((name) => name.startsWith(artifactPrefix) && !name.endsWith(".recovery.guard"));
     } catch {
       artifacts = [];
     }
-    if (artifacts.length > 0) throw new Error(`workflow_emergency_recovery_failed: ${path14}`);
+    if (artifacts.length > 0) throw new Error(`workflow_emergency_recovery_failed: ${path15}`);
   }
 }
 var import_crypto10, import_fs29, import_os4, import_path32, MAX_MIGRATION_FILE_BYTES, EXECUTION_MODES, RETIRED_STATE_MODES, STATE_TOOL_MODES, STATE_WRITE_MODES, EXTRA_STATE_ONLY_MODES, CANCEL_SIGNAL_TTL_MS, TEAM_RUNTIME_PRESERVATION_NOTE, OWNER_SESSION_FALLBACK_MODES, CONVERGED_STATE_PATH_MODES, RETIRED_WORKFLOW_MODES, NAMED_WORKFLOW_MARKERS, stateReadTool, stateWriteTool, stateClearTool, stateListActiveTool, stateGetStatusTool, stateMigrateNonGitTool, stateTools;
@@ -23192,7 +23192,7 @@ ${JSON.stringify(writtenState, null, 2)}
           }
           const runtimeCleanup = mode === "team" ? { cleared: 0, hadFailure: false } : clearModeRuntimeArtifacts(mode, root);
           let clearedCount = 0;
-          const errors = broadUnresolvedTeamStatePaths.map((path14) => `unresolved Team state: ${path14}`);
+          const errors = broadUnresolvedTeamStatePaths.map((path15) => `unresolved Team state: ${path15}`);
           if (MODE_CONFIGS[mode]) {
             const primaryLegacyStatePath = getStatePath(mode, root);
             const primaryCandidate = broadLegacyCandidates.find((candidate) => candidate.path === primaryLegacyStatePath);
@@ -23660,11 +23660,11 @@ No active sessions for this mode.`);
           }
           const sourceState = (0, import_path32.join)(sourceOmc, "state");
           const sourceSessions = (0, import_path32.join)(sourceState, "sessions");
-          for (const path14 of [sourceOmc, sourceState, sourceSessions]) {
-            if (!(0, import_fs29.existsSync)(path14)) {
+          for (const path15 of [sourceOmc, sourceState, sourceSessions]) {
+            if (!(0, import_fs29.existsSync)(path15)) {
               return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
             }
-            if ((0, import_fs29.lstatSync)(path14).isSymbolicLink()) throw new Error("state_migrate_non_git refuses symlinked legacy state paths");
+            if ((0, import_fs29.lstatSync)(path15).isSymbolicLink()) throw new Error("state_migrate_non_git refuses symlinked legacy state paths");
           }
           if (!(0, import_fs29.existsSync)(sourceDir)) {
             return { content: [{ type: "text", text: JSON.stringify(report, null, 2) }] };
@@ -23672,7 +23672,7 @@ No active sessions for this mode.`);
           const destinationState = (0, import_path32.join)(canonicalOmc, "state");
           const destinationSessions = (0, import_path32.join)(destinationState, "sessions");
           const migrationRoots = [canonicalOmc, destinationState, destinationSessions, destinationDir];
-          if ((0, import_fs29.lstatSync)(sourceDir).isSymbolicLink() || migrationRoots.some((path14) => (0, import_fs29.existsSync)(path14) && (0, import_fs29.lstatSync)(path14).isSymbolicLink())) {
+          if ((0, import_fs29.lstatSync)(sourceDir).isSymbolicLink() || migrationRoots.some((path15) => (0, import_fs29.existsSync)(path15) && (0, import_fs29.lstatSync)(path15).isSymbolicLink())) {
             throw new Error("state_migrate_non_git refuses symlinked migration roots");
           }
           ensureMigrationDirectoryTree(canonicalOmc, destinationDir);
@@ -23983,7 +23983,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve23) => setTimeout(resolve23, ms));
+  return new Promise((resolve25) => setTimeout(resolve25, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -25027,7 +25027,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve23) {
+function mergeByKey(base, incoming, keyFn, resolve25) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -25036,7 +25036,7 @@ function mergeByKey(base, incoming, keyFn, resolve23) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve23(existing, item));
+      seen.set(key, resolve25(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -25841,7 +25841,7 @@ async function collectMatchesFromFile(target, options) {
   const fileMtime = (0, import_fs34.existsSync)(target.filePath) ? (0, import_fs34.statSync)(target.filePath).mtimeMs : 0;
   if (target.sourceType === "omc-session-summary" && target.filePath.endsWith(".json")) {
     try {
-      const payload = JSON.parse(await import("fs/promises").then((fs8) => fs8.readFile(target.filePath, "utf-8")));
+      const payload = JSON.parse(await import("fs/promises").then((fs13) => fs13.readFile(target.filePath, "utf-8")));
       const entry = buildSearchableEntry(payload, target.sourceType);
       if (!entry) return;
       if (options.sessionId && entry.sessionId !== options.sessionId) return;
@@ -26954,14 +26954,14 @@ function loadManifest(manifestPath) {
 function computeDiff(previous, current) {
   const entries = /* @__PURE__ */ new Map();
   if (previous === null) {
-    for (const path14 of Object.keys(current)) {
-      entries.set(path14, { path: path14, status: "added", reason: "first run (no manifest)" });
+    for (const path15 of Object.keys(current)) {
+      entries.set(path15, { path: path15, status: "added", reason: "first run (no manifest)" });
     }
   } else {
-    for (const [path14, entry] of Object.entries(current)) {
-      const prev = previous[path14];
+    for (const [path15, entry] of Object.entries(current)) {
+      const prev = previous[path15];
       if (!prev) {
-        entries.set(path14, { path: path14, status: "added", reason: "new directory" });
+        entries.set(path15, { path: path15, status: "added", reason: "new directory" });
       } else {
         const prevFiles = [...prev.files].sort();
         const currFiles = [...entry.files].sort();
@@ -26973,15 +26973,15 @@ function computeDiff(previous, current) {
           const parts = [];
           if (added.length > 0) parts.push(`files added: ${added.join(", ")}`);
           if (removed.length > 0) parts.push(`files removed: ${removed.join(", ")}`);
-          entries.set(path14, { path: path14, status: "modified", reason: parts.join("; ") });
+          entries.set(path15, { path: path15, status: "modified", reason: parts.join("; ") });
         } else {
-          entries.set(path14, { path: path14, status: "unchanged" });
+          entries.set(path15, { path: path15, status: "unchanged" });
         }
       }
     }
-    for (const path14 of Object.keys(previous)) {
-      if (!(path14 in current)) {
-        entries.set(path14, { path: path14, status: "deleted", reason: "directory no longer exists" });
+    for (const path15 of Object.keys(previous)) {
+      if (!(path15 in current)) {
+        entries.set(path15, { path: path15, status: "deleted", reason: "directory no longer exists" });
       }
     }
   }
@@ -29378,15 +29378,15 @@ var init_tmux_utils = __esm({
 // src/smoke/copilot-binary.ts
 function resolveCopilotBinary(override, env, deps = {}) {
   const exists = deps.existsSync ?? import_fs43.existsSync;
-  const resolve23 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
+  const resolve25 = deps.resolveExecutable ?? ((name) => resolveExecutable(name));
   const list = deps.readdirSync ?? ((p) => (0, import_fs43.readdirSync)(p));
   const platform = deps.platform ?? process.platform;
   if (override) {
     if (exists(override)) return { bin: override, source: "override" };
-    const found = resolve23(override);
+    const found = resolve25(override);
     return found ? { bin: found, source: "override" } : { bin: null, source: null };
   }
-  const onPath = resolve23("copilot");
+  const onPath = resolve25("copilot");
   if (onPath) return { bin: onPath, source: "path" };
   const envPath = env.COPILOT_CLI_PATH?.trim();
   if (envPath && exists(envPath)) return { bin: envPath, source: "COPILOT_CLI_PATH" };
@@ -29709,7 +29709,7 @@ function hasExited(child) {
 function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
   const started = Date.now();
   const maxOutput = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
-  return new Promise((resolve23) => {
+  return new Promise((resolve25) => {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -29718,7 +29718,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve23({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
+      resolve25({ ...result, stdout, stderr, timedOut, durationMs: Date.now() - started });
     };
     let child;
     try {
@@ -29731,7 +29731,7 @@ function runAsync(spawnFn, spawnSyncFn, command, args, opts) {
         detached: useProcessGroup()
       });
     } catch (err) {
-      resolve23({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
+      resolve25({ code: null, signal: null, stdout, stderr, timedOut, error: err.message, durationMs: Date.now() - started });
       return;
     }
     const timer = setTimeout(() => {
@@ -29798,6 +29798,70 @@ function permitScopedRead(req, ctx) {
   const platform = ctx.platform ?? process.platform;
   return isUnder(req.path, ctx.pluginRoot, platform) || isUnder(req.path, ctx.projectDir, platform);
 }
+function chainCost(chain) {
+  let premiumRequests = 0;
+  let credits = 0;
+  for (const s of chain.sessions) {
+    const c = scenarioCost(s.events ?? []);
+    premiumRequests += c.premiumRequests;
+    credits += c.credits;
+  }
+  const found = chain.sessions.filter((s) => s.events !== null).length;
+  return { premiumRequests, credits, source: `${found}/${chain.sessions.length} link session(s) events.jsonl` };
+}
+function evaluateChain(run) {
+  const chain = run.chain;
+  if (!chain) return scenarioCheckIds("chain").slice(0, 5).map((id) => ({ id, ok: false, detail: "no chain evidence collected" }));
+  const link1 = chain.ledgers.find((l) => l.file === chain.firstLink);
+  const children = chain.ledgers.filter((l) => ledgerStr(l, "parentLink") === chain.firstLink);
+  const link2 = children[0];
+  const link1Host = ledgerStr(link1, "hostSessionId");
+  const link2Id = link2?.file ?? "";
+  const link2Host = ledgerStr(link2, "hostSessionId");
+  const decisionFor = (linkId) => chain.decisions.filter((d) => d.sessionId === linkId && d.decision !== "chain-link-rejected").at(-1);
+  const rejected = chain.decisions.filter((d) => d.decision === "chain-link-rejected");
+  const open3 = chain.ledgers.filter((l) => !ledgerStr(l, "closedAt"));
+  const cost = chainCost(chain);
+  const stopReason = str2(chain.stopped?.reason);
+  const ledgerEvidence = excerpt(JSON.stringify({ ledgers: chain.ledgers, decisions: chain.decisions, stopped: chain.stopped }));
+  const link1Ok = !!link1 && !!link1Host && link1Host !== chain.firstLink && ledgerStr(link1, "decision") === "enqueued";
+  const spawnedOk = children.length === 1 && ledgerStr(link2, "host") === "copilot" && ledgerStr(link2, "stage") === CHAIN_LINK2_STAGE;
+  const inheritedOk = spawnedOk && !!link2Host && link2Host !== link2Id && link2Host !== link1Host && str2(decisionFor(link2Id)?.hostSessionId) === link2Host && rejected.length === 0;
+  const closedOk = chain.ledgers.length === 2 && open3.length === 0 && stopReason === `loop-capped:${CHAIN_LINK2_STAGE}`;
+  const sessionsFound = chain.sessions.length === 2 && chain.sessions.every((s) => s.events !== null);
+  const premiumOk = sessionsFound && cost.premiumRequests <= CHAIN_MAX_PREMIUM_REQUESTS;
+  return [
+    {
+      id: "scn.chain.link1",
+      ok: link1Ok,
+      detail: link1Ok ? `link 1 ${chain.firstLink} closed by host session ${link1Host} via OMC_CHAIN_LINK, decision enqueued` : !link1 ? "link 1 ledger missing" : !link1Host ? "link 1 ledger never closed (its SessionEnd did not resolve OMC_CHAIN_LINK)" : `link 1 closed with decision ${ledgerStr(link1, "decision") || "?"} by ${link1Host}`,
+      ...link1Ok ? {} : { evidence: ledgerEvidence }
+    },
+    {
+      id: "scn.chain.spawned",
+      ok: spawnedOk,
+      detail: spawnedOk ? `link 2 ${link2Id} spawned by link 1's SessionEnd worker (host copilot, stage ${CHAIN_LINK2_STAGE})` : `${children.length} ledger(s) with parentLink ${chain.firstLink}`,
+      ...spawnedOk ? {} : { evidence: ledgerEvidence }
+    },
+    {
+      id: "scn.chain.inherited",
+      ok: inheritedOk,
+      detail: inheritedOk ? `link 2 ended as chain link ${link2Id} (host session ${link2Host}); no rejected OMC_CHAIN_LINK` : `link 2 host session ${link2Host || "none"}${rejected.length ? `; ${rejected.length} chain-link-rejected decision(s)` : ""}`,
+      ...inheritedOk ? {} : { evidence: ledgerEvidence }
+    },
+    {
+      id: "scn.chain.closed",
+      ok: closedOk,
+      detail: closedOk ? `chain closed out: 2 links, 0 open ledgers, stop marker ${stopReason}` : `${chain.ledgers.length} link(s), ${open3.length} open, stop marker ${stopReason || "none"}`,
+      ...closedOk ? {} : { evidence: ledgerEvidence }
+    },
+    {
+      id: "scn.chain.premium",
+      ok: premiumOk,
+      detail: `${cost.premiumRequests} premium request(s) over ${cost.source} (max ${CHAIN_MAX_PREMIUM_REQUESTS})`
+    }
+  ];
+}
 function scenarioExcludedTools(name, mcpServer) {
   return [hostSmokeToolName(mcpServer), ...SCENARIOS[name].excludedTools];
 }
@@ -29806,7 +29870,8 @@ function scenarioCheckIds(name) {
     smoke: ["reply", "hooks", "no_tools"],
     guardrail: ["denied", "no_push", "hooks"],
     skill: ["invoked"],
-    delegate: ["selected", "hooks", "completed"]
+    delegate: ["selected", "hooks", "completed"],
+    chain: ["link1", "spawned", "inherited", "closed", "premium"]
   };
   return [...own[name], "exit", "adapter_errors", "cost"].map((s) => `scn.${name}.${s}`);
 }
@@ -30095,9 +30160,10 @@ function evaluateScenario(run) {
     smoke: evaluateSmoke,
     guardrail: evaluateGuardrail,
     skill: evaluateSkill,
-    delegate: evaluateDelegate
+    delegate: evaluateDelegate,
+    chain: evaluateChain
   }[run.name](run);
-  const cost = scenarioCost(run.events);
+  const cost = run.name === "chain" && run.chain ? chainCost(run.chain) : scenarioCost(run.events);
   return { checks: [...own, ...evaluateCommon(run, cost)], cost: { premiumRequests: cost.premiumRequests, credits: cost.credits } };
 }
 function chooseModel(listed, requested) {
@@ -30107,7 +30173,7 @@ function chooseModel(listed, requested) {
   if (cheap) return { model: cheap, label: cheap, note: `cheapest-looking of ${ids.length} listed` };
   return { label: "auto", note: `models.list offers ${ids.join(", ") || "nothing"}; no cheap explicit model, runtime auto-routes` };
 }
-var import_fs45, import_path57, ALL_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, SCENARIOS, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, NANO, GUARDRAIL_MARKER, CHEAP_MODEL;
+var import_fs45, import_path57, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, SCENARIOS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_PREMIUM_REQUESTS, ledgerStr, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, NANO, GUARDRAIL_MARKER, CHEAP_MODEL;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
@@ -30115,6 +30181,8 @@ var init_copilot_sdk_scenarios = __esm({
     import_path57 = require("path");
     init_copilot_session_eval();
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
+    OPT_IN_SCENARIOS = ["chain"];
+    KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     DEFAULT_SCENARIOS = ["smoke", "guardrail"];
     PLUGIN_NAME2 = "oh-my-copilot";
     DELEGATE_AGENT = "oh-my-copilot:architect";
@@ -30153,14 +30221,3527 @@ var init_copilot_sdk_scenarios = __esm({
         prompt: `Delegate a one-line summary of this directory to the ${DELEGATE_AGENT} agent and return its answer.`,
         excludedTools: [...NO_SHELL_OR_WRITE_TOOLS],
         permit: permitScopedRead
+      },
+      // Not an SDK session: the prompt is link 1's, spawned as a real `copilot -p`
+      // factory link (copilot-chain-scenario.ts) under the AFK profile.
+      chain: {
+        name: "chain",
+        prompt: "Reply with exactly: CHAIN_LINK_1. Do not use tools.",
+        excludedTools: [],
+        permit: denyAll
       }
     };
+    CHAIN_INTENT_ID = "omg-smoke-chain";
+    CHAIN_SKILL = "chain-ack";
+    CHAIN_LINK1_STAGE = "link-1";
+    CHAIN_LINK2_STAGE = "link-2";
+    CHAIN_MAX_PREMIUM_REQUESTS = 2;
+    ledgerStr = (ledger, key) => str2(ledger?.[key]);
     SDK_STATIC_IDS = ["sdk.available", "sdk.runtime", "sdk.plugins", "sdk.skills", "sdk.agents", "sdk.mcp", "sdk.tools_excluded"];
     RUNTIME_MIN_MAX_CREDITS = 30;
     CREDIT_CAP_SKIP_DETAIL = "skipped: credit cap reached";
     NANO = 1e9;
     GUARDRAIL_MARKER = "Git guardrail";
     CHEAP_MODEL = /(mini|flash|haiku|nano|lite|luna)/i;
+  }
+});
+
+// node_modules/commander/lib/error.js
+var require_error = __commonJS({
+  "node_modules/commander/lib/error.js"(exports2) {
+    var CommanderError2 = class extends Error {
+      /**
+       * Constructs the CommanderError class
+       * @param {number} exitCode suggested exit code which could be used with process.exit
+       * @param {string} code an id string representing the error
+       * @param {string} message human-readable description of the error
+       */
+      constructor(exitCode, code, message) {
+        super(message);
+        Error.captureStackTrace(this, this.constructor);
+        this.name = this.constructor.name;
+        this.code = code;
+        this.exitCode = exitCode;
+        this.nestedError = void 0;
+      }
+    };
+    var InvalidArgumentError2 = class extends CommanderError2 {
+      /**
+       * Constructs the InvalidArgumentError class
+       * @param {string} [message] explanation of why argument is invalid
+       */
+      constructor(message) {
+        super(1, "commander.invalidArgument", message);
+        Error.captureStackTrace(this, this.constructor);
+        this.name = this.constructor.name;
+      }
+    };
+    exports2.CommanderError = CommanderError2;
+    exports2.InvalidArgumentError = InvalidArgumentError2;
+  }
+});
+
+// node_modules/commander/lib/argument.js
+var require_argument = __commonJS({
+  "node_modules/commander/lib/argument.js"(exports2) {
+    var { InvalidArgumentError: InvalidArgumentError2 } = require_error();
+    var Argument2 = class {
+      /**
+       * Initialize a new command argument with the given name and description.
+       * The default is that the argument is required, and you can explicitly
+       * indicate this with <> around the name. Put [] around the name for an optional argument.
+       *
+       * @param {string} name
+       * @param {string} [description]
+       */
+      constructor(name, description) {
+        this.description = description || "";
+        this.variadic = false;
+        this.parseArg = void 0;
+        this.defaultValue = void 0;
+        this.defaultValueDescription = void 0;
+        this.argChoices = void 0;
+        switch (name[0]) {
+          case "<":
+            this.required = true;
+            this._name = name.slice(1, -1);
+            break;
+          case "[":
+            this.required = false;
+            this._name = name.slice(1, -1);
+            break;
+          default:
+            this.required = true;
+            this._name = name;
+            break;
+        }
+        if (this._name.length > 3 && this._name.slice(-3) === "...") {
+          this.variadic = true;
+          this._name = this._name.slice(0, -3);
+        }
+      }
+      /**
+       * Return argument name.
+       *
+       * @return {string}
+       */
+      name() {
+        return this._name;
+      }
+      /**
+       * @package
+       */
+      _concatValue(value, previous) {
+        if (previous === this.defaultValue || !Array.isArray(previous)) {
+          return [value];
+        }
+        return previous.concat(value);
+      }
+      /**
+       * Set the default value, and optionally supply the description to be displayed in the help.
+       *
+       * @param {*} value
+       * @param {string} [description]
+       * @return {Argument}
+       */
+      default(value, description) {
+        this.defaultValue = value;
+        this.defaultValueDescription = description;
+        return this;
+      }
+      /**
+       * Set the custom handler for processing CLI command arguments into argument values.
+       *
+       * @param {Function} [fn]
+       * @return {Argument}
+       */
+      argParser(fn) {
+        this.parseArg = fn;
+        return this;
+      }
+      /**
+       * Only allow argument value to be one of choices.
+       *
+       * @param {string[]} values
+       * @return {Argument}
+       */
+      choices(values) {
+        this.argChoices = values.slice();
+        this.parseArg = (arg, previous) => {
+          if (!this.argChoices.includes(arg)) {
+            throw new InvalidArgumentError2(
+              `Allowed choices are ${this.argChoices.join(", ")}.`
+            );
+          }
+          if (this.variadic) {
+            return this._concatValue(arg, previous);
+          }
+          return arg;
+        };
+        return this;
+      }
+      /**
+       * Make argument required.
+       *
+       * @returns {Argument}
+       */
+      argRequired() {
+        this.required = true;
+        return this;
+      }
+      /**
+       * Make argument optional.
+       *
+       * @returns {Argument}
+       */
+      argOptional() {
+        this.required = false;
+        return this;
+      }
+    };
+    function humanReadableArgName(arg) {
+      const nameOutput = arg.name() + (arg.variadic === true ? "..." : "");
+      return arg.required ? "<" + nameOutput + ">" : "[" + nameOutput + "]";
+    }
+    exports2.Argument = Argument2;
+    exports2.humanReadableArgName = humanReadableArgName;
+  }
+});
+
+// node_modules/commander/lib/help.js
+var require_help = __commonJS({
+  "node_modules/commander/lib/help.js"(exports2) {
+    var { humanReadableArgName } = require_argument();
+    var Help2 = class {
+      constructor() {
+        this.helpWidth = void 0;
+        this.sortSubcommands = false;
+        this.sortOptions = false;
+        this.showGlobalOptions = false;
+      }
+      /**
+       * Get an array of the visible subcommands. Includes a placeholder for the implicit help command, if there is one.
+       *
+       * @param {Command} cmd
+       * @returns {Command[]}
+       */
+      visibleCommands(cmd) {
+        const visibleCommands = cmd.commands.filter((cmd2) => !cmd2._hidden);
+        const helpCommand = cmd._getHelpCommand();
+        if (helpCommand && !helpCommand._hidden) {
+          visibleCommands.push(helpCommand);
+        }
+        if (this.sortSubcommands) {
+          visibleCommands.sort((a, b) => {
+            return a.name().localeCompare(b.name());
+          });
+        }
+        return visibleCommands;
+      }
+      /**
+       * Compare options for sort.
+       *
+       * @param {Option} a
+       * @param {Option} b
+       * @returns {number}
+       */
+      compareOptions(a, b) {
+        const getSortKey = (option) => {
+          return option.short ? option.short.replace(/^-/, "") : option.long.replace(/^--/, "");
+        };
+        return getSortKey(a).localeCompare(getSortKey(b));
+      }
+      /**
+       * Get an array of the visible options. Includes a placeholder for the implicit help option, if there is one.
+       *
+       * @param {Command} cmd
+       * @returns {Option[]}
+       */
+      visibleOptions(cmd) {
+        const visibleOptions = cmd.options.filter((option) => !option.hidden);
+        const helpOption = cmd._getHelpOption();
+        if (helpOption && !helpOption.hidden) {
+          const removeShort = helpOption.short && cmd._findOption(helpOption.short);
+          const removeLong = helpOption.long && cmd._findOption(helpOption.long);
+          if (!removeShort && !removeLong) {
+            visibleOptions.push(helpOption);
+          } else if (helpOption.long && !removeLong) {
+            visibleOptions.push(
+              cmd.createOption(helpOption.long, helpOption.description)
+            );
+          } else if (helpOption.short && !removeShort) {
+            visibleOptions.push(
+              cmd.createOption(helpOption.short, helpOption.description)
+            );
+          }
+        }
+        if (this.sortOptions) {
+          visibleOptions.sort(this.compareOptions);
+        }
+        return visibleOptions;
+      }
+      /**
+       * Get an array of the visible global options. (Not including help.)
+       *
+       * @param {Command} cmd
+       * @returns {Option[]}
+       */
+      visibleGlobalOptions(cmd) {
+        if (!this.showGlobalOptions) return [];
+        const globalOptions = [];
+        for (let ancestorCmd = cmd.parent; ancestorCmd; ancestorCmd = ancestorCmd.parent) {
+          const visibleOptions = ancestorCmd.options.filter(
+            (option) => !option.hidden
+          );
+          globalOptions.push(...visibleOptions);
+        }
+        if (this.sortOptions) {
+          globalOptions.sort(this.compareOptions);
+        }
+        return globalOptions;
+      }
+      /**
+       * Get an array of the arguments if any have a description.
+       *
+       * @param {Command} cmd
+       * @returns {Argument[]}
+       */
+      visibleArguments(cmd) {
+        if (cmd._argsDescription) {
+          cmd.registeredArguments.forEach((argument) => {
+            argument.description = argument.description || cmd._argsDescription[argument.name()] || "";
+          });
+        }
+        if (cmd.registeredArguments.find((argument) => argument.description)) {
+          return cmd.registeredArguments;
+        }
+        return [];
+      }
+      /**
+       * Get the command term to show in the list of subcommands.
+       *
+       * @param {Command} cmd
+       * @returns {string}
+       */
+      subcommandTerm(cmd) {
+        const args = cmd.registeredArguments.map((arg) => humanReadableArgName(arg)).join(" ");
+        return cmd._name + (cmd._aliases[0] ? "|" + cmd._aliases[0] : "") + (cmd.options.length ? " [options]" : "") + // simplistic check for non-help option
+        (args ? " " + args : "");
+      }
+      /**
+       * Get the option term to show in the list of options.
+       *
+       * @param {Option} option
+       * @returns {string}
+       */
+      optionTerm(option) {
+        return option.flags;
+      }
+      /**
+       * Get the argument term to show in the list of arguments.
+       *
+       * @param {Argument} argument
+       * @returns {string}
+       */
+      argumentTerm(argument) {
+        return argument.name();
+      }
+      /**
+       * Get the longest command term length.
+       *
+       * @param {Command} cmd
+       * @param {Help} helper
+       * @returns {number}
+       */
+      longestSubcommandTermLength(cmd, helper) {
+        return helper.visibleCommands(cmd).reduce((max, command) => {
+          return Math.max(max, helper.subcommandTerm(command).length);
+        }, 0);
+      }
+      /**
+       * Get the longest option term length.
+       *
+       * @param {Command} cmd
+       * @param {Help} helper
+       * @returns {number}
+       */
+      longestOptionTermLength(cmd, helper) {
+        return helper.visibleOptions(cmd).reduce((max, option) => {
+          return Math.max(max, helper.optionTerm(option).length);
+        }, 0);
+      }
+      /**
+       * Get the longest global option term length.
+       *
+       * @param {Command} cmd
+       * @param {Help} helper
+       * @returns {number}
+       */
+      longestGlobalOptionTermLength(cmd, helper) {
+        return helper.visibleGlobalOptions(cmd).reduce((max, option) => {
+          return Math.max(max, helper.optionTerm(option).length);
+        }, 0);
+      }
+      /**
+       * Get the longest argument term length.
+       *
+       * @param {Command} cmd
+       * @param {Help} helper
+       * @returns {number}
+       */
+      longestArgumentTermLength(cmd, helper) {
+        return helper.visibleArguments(cmd).reduce((max, argument) => {
+          return Math.max(max, helper.argumentTerm(argument).length);
+        }, 0);
+      }
+      /**
+       * Get the command usage to be displayed at the top of the built-in help.
+       *
+       * @param {Command} cmd
+       * @returns {string}
+       */
+      commandUsage(cmd) {
+        let cmdName = cmd._name;
+        if (cmd._aliases[0]) {
+          cmdName = cmdName + "|" + cmd._aliases[0];
+        }
+        let ancestorCmdNames = "";
+        for (let ancestorCmd = cmd.parent; ancestorCmd; ancestorCmd = ancestorCmd.parent) {
+          ancestorCmdNames = ancestorCmd.name() + " " + ancestorCmdNames;
+        }
+        return ancestorCmdNames + cmdName + " " + cmd.usage();
+      }
+      /**
+       * Get the description for the command.
+       *
+       * @param {Command} cmd
+       * @returns {string}
+       */
+      commandDescription(cmd) {
+        return cmd.description();
+      }
+      /**
+       * Get the subcommand summary to show in the list of subcommands.
+       * (Fallback to description for backwards compatibility.)
+       *
+       * @param {Command} cmd
+       * @returns {string}
+       */
+      subcommandDescription(cmd) {
+        return cmd.summary() || cmd.description();
+      }
+      /**
+       * Get the option description to show in the list of options.
+       *
+       * @param {Option} option
+       * @return {string}
+       */
+      optionDescription(option) {
+        const extraInfo = [];
+        if (option.argChoices) {
+          extraInfo.push(
+            // use stringify to match the display of the default value
+            `choices: ${option.argChoices.map((choice) => JSON.stringify(choice)).join(", ")}`
+          );
+        }
+        if (option.defaultValue !== void 0) {
+          const showDefault = option.required || option.optional || option.isBoolean() && typeof option.defaultValue === "boolean";
+          if (showDefault) {
+            extraInfo.push(
+              `default: ${option.defaultValueDescription || JSON.stringify(option.defaultValue)}`
+            );
+          }
+        }
+        if (option.presetArg !== void 0 && option.optional) {
+          extraInfo.push(`preset: ${JSON.stringify(option.presetArg)}`);
+        }
+        if (option.envVar !== void 0) {
+          extraInfo.push(`env: ${option.envVar}`);
+        }
+        if (extraInfo.length > 0) {
+          return `${option.description} (${extraInfo.join(", ")})`;
+        }
+        return option.description;
+      }
+      /**
+       * Get the argument description to show in the list of arguments.
+       *
+       * @param {Argument} argument
+       * @return {string}
+       */
+      argumentDescription(argument) {
+        const extraInfo = [];
+        if (argument.argChoices) {
+          extraInfo.push(
+            // use stringify to match the display of the default value
+            `choices: ${argument.argChoices.map((choice) => JSON.stringify(choice)).join(", ")}`
+          );
+        }
+        if (argument.defaultValue !== void 0) {
+          extraInfo.push(
+            `default: ${argument.defaultValueDescription || JSON.stringify(argument.defaultValue)}`
+          );
+        }
+        if (extraInfo.length > 0) {
+          const extraDescripton = `(${extraInfo.join(", ")})`;
+          if (argument.description) {
+            return `${argument.description} ${extraDescripton}`;
+          }
+          return extraDescripton;
+        }
+        return argument.description;
+      }
+      /**
+       * Generate the built-in help text.
+       *
+       * @param {Command} cmd
+       * @param {Help} helper
+       * @returns {string}
+       */
+      formatHelp(cmd, helper) {
+        const termWidth = helper.padWidth(cmd, helper);
+        const helpWidth = helper.helpWidth || 80;
+        const itemIndentWidth = 2;
+        const itemSeparatorWidth = 2;
+        function formatItem(term, description) {
+          if (description) {
+            const fullText = `${term.padEnd(termWidth + itemSeparatorWidth)}${description}`;
+            return helper.wrap(
+              fullText,
+              helpWidth - itemIndentWidth,
+              termWidth + itemSeparatorWidth
+            );
+          }
+          return term;
+        }
+        function formatList(textArray) {
+          return textArray.join("\n").replace(/^/gm, " ".repeat(itemIndentWidth));
+        }
+        let output = [`Usage: ${helper.commandUsage(cmd)}`, ""];
+        const commandDescription = helper.commandDescription(cmd);
+        if (commandDescription.length > 0) {
+          output = output.concat([
+            helper.wrap(commandDescription, helpWidth, 0),
+            ""
+          ]);
+        }
+        const argumentList = helper.visibleArguments(cmd).map((argument) => {
+          return formatItem(
+            helper.argumentTerm(argument),
+            helper.argumentDescription(argument)
+          );
+        });
+        if (argumentList.length > 0) {
+          output = output.concat(["Arguments:", formatList(argumentList), ""]);
+        }
+        const optionList = helper.visibleOptions(cmd).map((option) => {
+          return formatItem(
+            helper.optionTerm(option),
+            helper.optionDescription(option)
+          );
+        });
+        if (optionList.length > 0) {
+          output = output.concat(["Options:", formatList(optionList), ""]);
+        }
+        if (this.showGlobalOptions) {
+          const globalOptionList = helper.visibleGlobalOptions(cmd).map((option) => {
+            return formatItem(
+              helper.optionTerm(option),
+              helper.optionDescription(option)
+            );
+          });
+          if (globalOptionList.length > 0) {
+            output = output.concat([
+              "Global Options:",
+              formatList(globalOptionList),
+              ""
+            ]);
+          }
+        }
+        const commandList = helper.visibleCommands(cmd).map((cmd2) => {
+          return formatItem(
+            helper.subcommandTerm(cmd2),
+            helper.subcommandDescription(cmd2)
+          );
+        });
+        if (commandList.length > 0) {
+          output = output.concat(["Commands:", formatList(commandList), ""]);
+        }
+        return output.join("\n");
+      }
+      /**
+       * Calculate the pad width from the maximum term length.
+       *
+       * @param {Command} cmd
+       * @param {Help} helper
+       * @returns {number}
+       */
+      padWidth(cmd, helper) {
+        return Math.max(
+          helper.longestOptionTermLength(cmd, helper),
+          helper.longestGlobalOptionTermLength(cmd, helper),
+          helper.longestSubcommandTermLength(cmd, helper),
+          helper.longestArgumentTermLength(cmd, helper)
+        );
+      }
+      /**
+       * Wrap the given string to width characters per line, with lines after the first indented.
+       * Do not wrap if insufficient room for wrapping (minColumnWidth), or string is manually formatted.
+       *
+       * @param {string} str
+       * @param {number} width
+       * @param {number} indent
+       * @param {number} [minColumnWidth=40]
+       * @return {string}
+       *
+       */
+      wrap(str3, width, indent, minColumnWidth = 40) {
+        const indents = " \\f\\t\\v\xA0\u1680\u2000-\u200A\u202F\u205F\u3000\uFEFF";
+        const manualIndent = new RegExp(`[\\n][${indents}]+`);
+        if (str3.match(manualIndent)) return str3;
+        const columnWidth = width - indent;
+        if (columnWidth < minColumnWidth) return str3;
+        const leadingStr = str3.slice(0, indent);
+        const columnText = str3.slice(indent).replace("\r\n", "\n");
+        const indentString = " ".repeat(indent);
+        const zeroWidthSpace = "\u200B";
+        const breaks = `\\s${zeroWidthSpace}`;
+        const regex = new RegExp(
+          `
+|.{1,${columnWidth - 1}}([${breaks}]|$)|[^${breaks}]+?([${breaks}]|$)`,
+          "g"
+        );
+        const lines = columnText.match(regex) || [];
+        return leadingStr + lines.map((line, i) => {
+          if (line === "\n") return "";
+          return (i > 0 ? indentString : "") + line.trimEnd();
+        }).join("\n");
+      }
+    };
+    exports2.Help = Help2;
+  }
+});
+
+// node_modules/commander/lib/option.js
+var require_option = __commonJS({
+  "node_modules/commander/lib/option.js"(exports2) {
+    var { InvalidArgumentError: InvalidArgumentError2 } = require_error();
+    var Option2 = class {
+      /**
+       * Initialize a new `Option` with the given `flags` and `description`.
+       *
+       * @param {string} flags
+       * @param {string} [description]
+       */
+      constructor(flags, description) {
+        this.flags = flags;
+        this.description = description || "";
+        this.required = flags.includes("<");
+        this.optional = flags.includes("[");
+        this.variadic = /\w\.\.\.[>\]]$/.test(flags);
+        this.mandatory = false;
+        const optionFlags = splitOptionFlags(flags);
+        this.short = optionFlags.shortFlag;
+        this.long = optionFlags.longFlag;
+        this.negate = false;
+        if (this.long) {
+          this.negate = this.long.startsWith("--no-");
+        }
+        this.defaultValue = void 0;
+        this.defaultValueDescription = void 0;
+        this.presetArg = void 0;
+        this.envVar = void 0;
+        this.parseArg = void 0;
+        this.hidden = false;
+        this.argChoices = void 0;
+        this.conflictsWith = [];
+        this.implied = void 0;
+      }
+      /**
+       * Set the default value, and optionally supply the description to be displayed in the help.
+       *
+       * @param {*} value
+       * @param {string} [description]
+       * @return {Option}
+       */
+      default(value, description) {
+        this.defaultValue = value;
+        this.defaultValueDescription = description;
+        return this;
+      }
+      /**
+       * Preset to use when option used without option-argument, especially optional but also boolean and negated.
+       * The custom processing (parseArg) is called.
+       *
+       * @example
+       * new Option('--color').default('GREYSCALE').preset('RGB');
+       * new Option('--donate [amount]').preset('20').argParser(parseFloat);
+       *
+       * @param {*} arg
+       * @return {Option}
+       */
+      preset(arg) {
+        this.presetArg = arg;
+        return this;
+      }
+      /**
+       * Add option name(s) that conflict with this option.
+       * An error will be displayed if conflicting options are found during parsing.
+       *
+       * @example
+       * new Option('--rgb').conflicts('cmyk');
+       * new Option('--js').conflicts(['ts', 'jsx']);
+       *
+       * @param {(string | string[])} names
+       * @return {Option}
+       */
+      conflicts(names) {
+        this.conflictsWith = this.conflictsWith.concat(names);
+        return this;
+      }
+      /**
+       * Specify implied option values for when this option is set and the implied options are not.
+       *
+       * The custom processing (parseArg) is not called on the implied values.
+       *
+       * @example
+       * program
+       *   .addOption(new Option('--log', 'write logging information to file'))
+       *   .addOption(new Option('--trace', 'log extra details').implies({ log: 'trace.txt' }));
+       *
+       * @param {object} impliedOptionValues
+       * @return {Option}
+       */
+      implies(impliedOptionValues) {
+        let newImplied = impliedOptionValues;
+        if (typeof impliedOptionValues === "string") {
+          newImplied = { [impliedOptionValues]: true };
+        }
+        this.implied = Object.assign(this.implied || {}, newImplied);
+        return this;
+      }
+      /**
+       * Set environment variable to check for option value.
+       *
+       * An environment variable is only used if when processed the current option value is
+       * undefined, or the source of the current value is 'default' or 'config' or 'env'.
+       *
+       * @param {string} name
+       * @return {Option}
+       */
+      env(name) {
+        this.envVar = name;
+        return this;
+      }
+      /**
+       * Set the custom handler for processing CLI option arguments into option values.
+       *
+       * @param {Function} [fn]
+       * @return {Option}
+       */
+      argParser(fn) {
+        this.parseArg = fn;
+        return this;
+      }
+      /**
+       * Whether the option is mandatory and must have a value after parsing.
+       *
+       * @param {boolean} [mandatory=true]
+       * @return {Option}
+       */
+      makeOptionMandatory(mandatory = true) {
+        this.mandatory = !!mandatory;
+        return this;
+      }
+      /**
+       * Hide option in help.
+       *
+       * @param {boolean} [hide=true]
+       * @return {Option}
+       */
+      hideHelp(hide = true) {
+        this.hidden = !!hide;
+        return this;
+      }
+      /**
+       * @package
+       */
+      _concatValue(value, previous) {
+        if (previous === this.defaultValue || !Array.isArray(previous)) {
+          return [value];
+        }
+        return previous.concat(value);
+      }
+      /**
+       * Only allow option value to be one of choices.
+       *
+       * @param {string[]} values
+       * @return {Option}
+       */
+      choices(values) {
+        this.argChoices = values.slice();
+        this.parseArg = (arg, previous) => {
+          if (!this.argChoices.includes(arg)) {
+            throw new InvalidArgumentError2(
+              `Allowed choices are ${this.argChoices.join(", ")}.`
+            );
+          }
+          if (this.variadic) {
+            return this._concatValue(arg, previous);
+          }
+          return arg;
+        };
+        return this;
+      }
+      /**
+       * Return option name.
+       *
+       * @return {string}
+       */
+      name() {
+        if (this.long) {
+          return this.long.replace(/^--/, "");
+        }
+        return this.short.replace(/^-/, "");
+      }
+      /**
+       * Return option name, in a camelcase format that can be used
+       * as a object attribute key.
+       *
+       * @return {string}
+       */
+      attributeName() {
+        return camelcase(this.name().replace(/^no-/, ""));
+      }
+      /**
+       * Check if `arg` matches the short or long flag.
+       *
+       * @param {string} arg
+       * @return {boolean}
+       * @package
+       */
+      is(arg) {
+        return this.short === arg || this.long === arg;
+      }
+      /**
+       * Return whether a boolean option.
+       *
+       * Options are one of boolean, negated, required argument, or optional argument.
+       *
+       * @return {boolean}
+       * @package
+       */
+      isBoolean() {
+        return !this.required && !this.optional && !this.negate;
+      }
+    };
+    var DualOptions = class {
+      /**
+       * @param {Option[]} options
+       */
+      constructor(options) {
+        this.positiveOptions = /* @__PURE__ */ new Map();
+        this.negativeOptions = /* @__PURE__ */ new Map();
+        this.dualOptions = /* @__PURE__ */ new Set();
+        options.forEach((option) => {
+          if (option.negate) {
+            this.negativeOptions.set(option.attributeName(), option);
+          } else {
+            this.positiveOptions.set(option.attributeName(), option);
+          }
+        });
+        this.negativeOptions.forEach((value, key) => {
+          if (this.positiveOptions.has(key)) {
+            this.dualOptions.add(key);
+          }
+        });
+      }
+      /**
+       * Did the value come from the option, and not from possible matching dual option?
+       *
+       * @param {*} value
+       * @param {Option} option
+       * @returns {boolean}
+       */
+      valueFromOption(value, option) {
+        const optionKey = option.attributeName();
+        if (!this.dualOptions.has(optionKey)) return true;
+        const preset = this.negativeOptions.get(optionKey).presetArg;
+        const negativeValue = preset !== void 0 ? preset : false;
+        return option.negate === (negativeValue === value);
+      }
+    };
+    function camelcase(str3) {
+      return str3.split("-").reduce((str4, word) => {
+        return str4 + word[0].toUpperCase() + word.slice(1);
+      });
+    }
+    function splitOptionFlags(flags) {
+      let shortFlag;
+      let longFlag;
+      const flagParts = flags.split(/[ |,]+/);
+      if (flagParts.length > 1 && !/^[[<]/.test(flagParts[1]))
+        shortFlag = flagParts.shift();
+      longFlag = flagParts.shift();
+      if (!shortFlag && /^-[^-]$/.test(longFlag)) {
+        shortFlag = longFlag;
+        longFlag = void 0;
+      }
+      return { shortFlag, longFlag };
+    }
+    exports2.Option = Option2;
+    exports2.DualOptions = DualOptions;
+  }
+});
+
+// node_modules/commander/lib/suggestSimilar.js
+var require_suggestSimilar = __commonJS({
+  "node_modules/commander/lib/suggestSimilar.js"(exports2) {
+    var maxDistance = 3;
+    function editDistance(a, b) {
+      if (Math.abs(a.length - b.length) > maxDistance)
+        return Math.max(a.length, b.length);
+      const d = [];
+      for (let i = 0; i <= a.length; i++) {
+        d[i] = [i];
+      }
+      for (let j = 0; j <= b.length; j++) {
+        d[0][j] = j;
+      }
+      for (let j = 1; j <= b.length; j++) {
+        for (let i = 1; i <= a.length; i++) {
+          let cost = 1;
+          if (a[i - 1] === b[j - 1]) {
+            cost = 0;
+          } else {
+            cost = 1;
+          }
+          d[i][j] = Math.min(
+            d[i - 1][j] + 1,
+            // deletion
+            d[i][j - 1] + 1,
+            // insertion
+            d[i - 1][j - 1] + cost
+            // substitution
+          );
+          if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+            d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+          }
+        }
+      }
+      return d[a.length][b.length];
+    }
+    function suggestSimilar(word, candidates) {
+      if (!candidates || candidates.length === 0) return "";
+      candidates = Array.from(new Set(candidates));
+      const searchingOptions = word.startsWith("--");
+      if (searchingOptions) {
+        word = word.slice(2);
+        candidates = candidates.map((candidate) => candidate.slice(2));
+      }
+      let similar = [];
+      let bestDistance = maxDistance;
+      const minSimilarity = 0.4;
+      candidates.forEach((candidate) => {
+        if (candidate.length <= 1) return;
+        const distance = editDistance(word, candidate);
+        const length = Math.max(word.length, candidate.length);
+        const similarity = (length - distance) / length;
+        if (similarity > minSimilarity) {
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            similar = [candidate];
+          } else if (distance === bestDistance) {
+            similar.push(candidate);
+          }
+        }
+      });
+      similar.sort((a, b) => a.localeCompare(b));
+      if (searchingOptions) {
+        similar = similar.map((candidate) => `--${candidate}`);
+      }
+      if (similar.length > 1) {
+        return `
+(Did you mean one of ${similar.join(", ")}?)`;
+      }
+      if (similar.length === 1) {
+        return `
+(Did you mean ${similar[0]}?)`;
+      }
+      return "";
+    }
+    exports2.suggestSimilar = suggestSimilar;
+  }
+});
+
+// node_modules/commander/lib/command.js
+var require_command = __commonJS({
+  "node_modules/commander/lib/command.js"(exports2) {
+    var EventEmitter = require("node:events").EventEmitter;
+    var childProcess = require("node:child_process");
+    var path15 = require("node:path");
+    var fs13 = require("node:fs");
+    var process3 = require("node:process");
+    var { Argument: Argument2, humanReadableArgName } = require_argument();
+    var { CommanderError: CommanderError2 } = require_error();
+    var { Help: Help2 } = require_help();
+    var { Option: Option2, DualOptions } = require_option();
+    var { suggestSimilar } = require_suggestSimilar();
+    var Command2 = class _Command extends EventEmitter {
+      /**
+       * Initialize a new `Command`.
+       *
+       * @param {string} [name]
+       */
+      constructor(name) {
+        super();
+        this.commands = [];
+        this.options = [];
+        this.parent = null;
+        this._allowUnknownOption = false;
+        this._allowExcessArguments = true;
+        this.registeredArguments = [];
+        this._args = this.registeredArguments;
+        this.args = [];
+        this.rawArgs = [];
+        this.processedArgs = [];
+        this._scriptPath = null;
+        this._name = name || "";
+        this._optionValues = {};
+        this._optionValueSources = {};
+        this._storeOptionsAsProperties = false;
+        this._actionHandler = null;
+        this._executableHandler = false;
+        this._executableFile = null;
+        this._executableDir = null;
+        this._defaultCommandName = null;
+        this._exitCallback = null;
+        this._aliases = [];
+        this._combineFlagAndOptionalValue = true;
+        this._description = "";
+        this._summary = "";
+        this._argsDescription = void 0;
+        this._enablePositionalOptions = false;
+        this._passThroughOptions = false;
+        this._lifeCycleHooks = {};
+        this._showHelpAfterError = false;
+        this._showSuggestionAfterError = true;
+        this._outputConfiguration = {
+          writeOut: (str3) => process3.stdout.write(str3),
+          writeErr: (str3) => process3.stderr.write(str3),
+          getOutHelpWidth: () => process3.stdout.isTTY ? process3.stdout.columns : void 0,
+          getErrHelpWidth: () => process3.stderr.isTTY ? process3.stderr.columns : void 0,
+          outputError: (str3, write) => write(str3)
+        };
+        this._hidden = false;
+        this._helpOption = void 0;
+        this._addImplicitHelpCommand = void 0;
+        this._helpCommand = void 0;
+        this._helpConfiguration = {};
+      }
+      /**
+       * Copy settings that are useful to have in common across root command and subcommands.
+       *
+       * (Used internally when adding a command using `.command()` so subcommands inherit parent settings.)
+       *
+       * @param {Command} sourceCommand
+       * @return {Command} `this` command for chaining
+       */
+      copyInheritedSettings(sourceCommand) {
+        this._outputConfiguration = sourceCommand._outputConfiguration;
+        this._helpOption = sourceCommand._helpOption;
+        this._helpCommand = sourceCommand._helpCommand;
+        this._helpConfiguration = sourceCommand._helpConfiguration;
+        this._exitCallback = sourceCommand._exitCallback;
+        this._storeOptionsAsProperties = sourceCommand._storeOptionsAsProperties;
+        this._combineFlagAndOptionalValue = sourceCommand._combineFlagAndOptionalValue;
+        this._allowExcessArguments = sourceCommand._allowExcessArguments;
+        this._enablePositionalOptions = sourceCommand._enablePositionalOptions;
+        this._showHelpAfterError = sourceCommand._showHelpAfterError;
+        this._showSuggestionAfterError = sourceCommand._showSuggestionAfterError;
+        return this;
+      }
+      /**
+       * @returns {Command[]}
+       * @private
+       */
+      _getCommandAndAncestors() {
+        const result = [];
+        for (let command = this; command; command = command.parent) {
+          result.push(command);
+        }
+        return result;
+      }
+      /**
+       * Define a command.
+       *
+       * There are two styles of command: pay attention to where to put the description.
+       *
+       * @example
+       * // Command implemented using action handler (description is supplied separately to `.command`)
+       * program
+       *   .command('clone <source> [destination]')
+       *   .description('clone a repository into a newly created directory')
+       *   .action((source, destination) => {
+       *     console.log('clone command called');
+       *   });
+       *
+       * // Command implemented using separate executable file (description is second parameter to `.command`)
+       * program
+       *   .command('start <service>', 'start named service')
+       *   .command('stop [service]', 'stop named service, or all if no name supplied');
+       *
+       * @param {string} nameAndArgs - command name and arguments, args are `<required>` or `[optional]` and last may also be `variadic...`
+       * @param {(object | string)} [actionOptsOrExecDesc] - configuration options (for action), or description (for executable)
+       * @param {object} [execOpts] - configuration options (for executable)
+       * @return {Command} returns new command for action handler, or `this` for executable command
+       */
+      command(nameAndArgs, actionOptsOrExecDesc, execOpts) {
+        let desc = actionOptsOrExecDesc;
+        let opts = execOpts;
+        if (typeof desc === "object" && desc !== null) {
+          opts = desc;
+          desc = null;
+        }
+        opts = opts || {};
+        const [, name, args] = nameAndArgs.match(/([^ ]+) *(.*)/);
+        const cmd = this.createCommand(name);
+        if (desc) {
+          cmd.description(desc);
+          cmd._executableHandler = true;
+        }
+        if (opts.isDefault) this._defaultCommandName = cmd._name;
+        cmd._hidden = !!(opts.noHelp || opts.hidden);
+        cmd._executableFile = opts.executableFile || null;
+        if (args) cmd.arguments(args);
+        this._registerCommand(cmd);
+        cmd.parent = this;
+        cmd.copyInheritedSettings(this);
+        if (desc) return this;
+        return cmd;
+      }
+      /**
+       * Factory routine to create a new unattached command.
+       *
+       * See .command() for creating an attached subcommand, which uses this routine to
+       * create the command. You can override createCommand to customise subcommands.
+       *
+       * @param {string} [name]
+       * @return {Command} new command
+       */
+      createCommand(name) {
+        return new _Command(name);
+      }
+      /**
+       * You can customise the help with a subclass of Help by overriding createHelp,
+       * or by overriding Help properties using configureHelp().
+       *
+       * @return {Help}
+       */
+      createHelp() {
+        return Object.assign(new Help2(), this.configureHelp());
+      }
+      /**
+       * You can customise the help by overriding Help properties using configureHelp(),
+       * or with a subclass of Help by overriding createHelp().
+       *
+       * @param {object} [configuration] - configuration options
+       * @return {(Command | object)} `this` command for chaining, or stored configuration
+       */
+      configureHelp(configuration) {
+        if (configuration === void 0) return this._helpConfiguration;
+        this._helpConfiguration = configuration;
+        return this;
+      }
+      /**
+       * The default output goes to stdout and stderr. You can customise this for special
+       * applications. You can also customise the display of errors by overriding outputError.
+       *
+       * The configuration properties are all functions:
+       *
+       *     // functions to change where being written, stdout and stderr
+       *     writeOut(str)
+       *     writeErr(str)
+       *     // matching functions to specify width for wrapping help
+       *     getOutHelpWidth()
+       *     getErrHelpWidth()
+       *     // functions based on what is being written out
+       *     outputError(str, write) // used for displaying errors, and not used for displaying help
+       *
+       * @param {object} [configuration] - configuration options
+       * @return {(Command | object)} `this` command for chaining, or stored configuration
+       */
+      configureOutput(configuration) {
+        if (configuration === void 0) return this._outputConfiguration;
+        Object.assign(this._outputConfiguration, configuration);
+        return this;
+      }
+      /**
+       * Display the help or a custom message after an error occurs.
+       *
+       * @param {(boolean|string)} [displayHelp]
+       * @return {Command} `this` command for chaining
+       */
+      showHelpAfterError(displayHelp = true) {
+        if (typeof displayHelp !== "string") displayHelp = !!displayHelp;
+        this._showHelpAfterError = displayHelp;
+        return this;
+      }
+      /**
+       * Display suggestion of similar commands for unknown commands, or options for unknown options.
+       *
+       * @param {boolean} [displaySuggestion]
+       * @return {Command} `this` command for chaining
+       */
+      showSuggestionAfterError(displaySuggestion = true) {
+        this._showSuggestionAfterError = !!displaySuggestion;
+        return this;
+      }
+      /**
+       * Add a prepared subcommand.
+       *
+       * See .command() for creating an attached subcommand which inherits settings from its parent.
+       *
+       * @param {Command} cmd - new subcommand
+       * @param {object} [opts] - configuration options
+       * @return {Command} `this` command for chaining
+       */
+      addCommand(cmd, opts) {
+        if (!cmd._name) {
+          throw new Error(`Command passed to .addCommand() must have a name
+- specify the name in Command constructor or using .name()`);
+        }
+        opts = opts || {};
+        if (opts.isDefault) this._defaultCommandName = cmd._name;
+        if (opts.noHelp || opts.hidden) cmd._hidden = true;
+        this._registerCommand(cmd);
+        cmd.parent = this;
+        cmd._checkForBrokenPassThrough();
+        return this;
+      }
+      /**
+       * Factory routine to create a new unattached argument.
+       *
+       * See .argument() for creating an attached argument, which uses this routine to
+       * create the argument. You can override createArgument to return a custom argument.
+       *
+       * @param {string} name
+       * @param {string} [description]
+       * @return {Argument} new argument
+       */
+      createArgument(name, description) {
+        return new Argument2(name, description);
+      }
+      /**
+       * Define argument syntax for command.
+       *
+       * The default is that the argument is required, and you can explicitly
+       * indicate this with <> around the name. Put [] around the name for an optional argument.
+       *
+       * @example
+       * program.argument('<input-file>');
+       * program.argument('[output-file]');
+       *
+       * @param {string} name
+       * @param {string} [description]
+       * @param {(Function|*)} [fn] - custom argument processing function
+       * @param {*} [defaultValue]
+       * @return {Command} `this` command for chaining
+       */
+      argument(name, description, fn, defaultValue) {
+        const argument = this.createArgument(name, description);
+        if (typeof fn === "function") {
+          argument.default(defaultValue).argParser(fn);
+        } else {
+          argument.default(fn);
+        }
+        this.addArgument(argument);
+        return this;
+      }
+      /**
+       * Define argument syntax for command, adding multiple at once (without descriptions).
+       *
+       * See also .argument().
+       *
+       * @example
+       * program.arguments('<cmd> [env]');
+       *
+       * @param {string} names
+       * @return {Command} `this` command for chaining
+       */
+      arguments(names) {
+        names.trim().split(/ +/).forEach((detail) => {
+          this.argument(detail);
+        });
+        return this;
+      }
+      /**
+       * Define argument syntax for command, adding a prepared argument.
+       *
+       * @param {Argument} argument
+       * @return {Command} `this` command for chaining
+       */
+      addArgument(argument) {
+        const previousArgument = this.registeredArguments.slice(-1)[0];
+        if (previousArgument && previousArgument.variadic) {
+          throw new Error(
+            `only the last argument can be variadic '${previousArgument.name()}'`
+          );
+        }
+        if (argument.required && argument.defaultValue !== void 0 && argument.parseArg === void 0) {
+          throw new Error(
+            `a default value for a required argument is never used: '${argument.name()}'`
+          );
+        }
+        this.registeredArguments.push(argument);
+        return this;
+      }
+      /**
+       * Customise or override default help command. By default a help command is automatically added if your command has subcommands.
+       *
+       * @example
+       *    program.helpCommand('help [cmd]');
+       *    program.helpCommand('help [cmd]', 'show help');
+       *    program.helpCommand(false); // suppress default help command
+       *    program.helpCommand(true); // add help command even if no subcommands
+       *
+       * @param {string|boolean} enableOrNameAndArgs - enable with custom name and/or arguments, or boolean to override whether added
+       * @param {string} [description] - custom description
+       * @return {Command} `this` command for chaining
+       */
+      helpCommand(enableOrNameAndArgs, description) {
+        if (typeof enableOrNameAndArgs === "boolean") {
+          this._addImplicitHelpCommand = enableOrNameAndArgs;
+          return this;
+        }
+        enableOrNameAndArgs = enableOrNameAndArgs ?? "help [command]";
+        const [, helpName, helpArgs] = enableOrNameAndArgs.match(/([^ ]+) *(.*)/);
+        const helpDescription = description ?? "display help for command";
+        const helpCommand = this.createCommand(helpName);
+        helpCommand.helpOption(false);
+        if (helpArgs) helpCommand.arguments(helpArgs);
+        if (helpDescription) helpCommand.description(helpDescription);
+        this._addImplicitHelpCommand = true;
+        this._helpCommand = helpCommand;
+        return this;
+      }
+      /**
+       * Add prepared custom help command.
+       *
+       * @param {(Command|string|boolean)} helpCommand - custom help command, or deprecated enableOrNameAndArgs as for `.helpCommand()`
+       * @param {string} [deprecatedDescription] - deprecated custom description used with custom name only
+       * @return {Command} `this` command for chaining
+       */
+      addHelpCommand(helpCommand, deprecatedDescription) {
+        if (typeof helpCommand !== "object") {
+          this.helpCommand(helpCommand, deprecatedDescription);
+          return this;
+        }
+        this._addImplicitHelpCommand = true;
+        this._helpCommand = helpCommand;
+        return this;
+      }
+      /**
+       * Lazy create help command.
+       *
+       * @return {(Command|null)}
+       * @package
+       */
+      _getHelpCommand() {
+        const hasImplicitHelpCommand = this._addImplicitHelpCommand ?? (this.commands.length && !this._actionHandler && !this._findCommand("help"));
+        if (hasImplicitHelpCommand) {
+          if (this._helpCommand === void 0) {
+            this.helpCommand(void 0, void 0);
+          }
+          return this._helpCommand;
+        }
+        return null;
+      }
+      /**
+       * Add hook for life cycle event.
+       *
+       * @param {string} event
+       * @param {Function} listener
+       * @return {Command} `this` command for chaining
+       */
+      hook(event, listener) {
+        const allowedValues = ["preSubcommand", "preAction", "postAction"];
+        if (!allowedValues.includes(event)) {
+          throw new Error(`Unexpected value for event passed to hook : '${event}'.
+Expecting one of '${allowedValues.join("', '")}'`);
+        }
+        if (this._lifeCycleHooks[event]) {
+          this._lifeCycleHooks[event].push(listener);
+        } else {
+          this._lifeCycleHooks[event] = [listener];
+        }
+        return this;
+      }
+      /**
+       * Register callback to use as replacement for calling process.exit.
+       *
+       * @param {Function} [fn] optional callback which will be passed a CommanderError, defaults to throwing
+       * @return {Command} `this` command for chaining
+       */
+      exitOverride(fn) {
+        if (fn) {
+          this._exitCallback = fn;
+        } else {
+          this._exitCallback = (err) => {
+            if (err.code !== "commander.executeSubCommandAsync") {
+              throw err;
+            } else {
+            }
+          };
+        }
+        return this;
+      }
+      /**
+       * Call process.exit, and _exitCallback if defined.
+       *
+       * @param {number} exitCode exit code for using with process.exit
+       * @param {string} code an id string representing the error
+       * @param {string} message human-readable description of the error
+       * @return never
+       * @private
+       */
+      _exit(exitCode, code, message) {
+        if (this._exitCallback) {
+          this._exitCallback(new CommanderError2(exitCode, code, message));
+        }
+        process3.exit(exitCode);
+      }
+      /**
+       * Register callback `fn` for the command.
+       *
+       * @example
+       * program
+       *   .command('serve')
+       *   .description('start service')
+       *   .action(function() {
+       *      // do work here
+       *   });
+       *
+       * @param {Function} fn
+       * @return {Command} `this` command for chaining
+       */
+      action(fn) {
+        const listener = (args) => {
+          const expectedArgsCount = this.registeredArguments.length;
+          const actionArgs = args.slice(0, expectedArgsCount);
+          if (this._storeOptionsAsProperties) {
+            actionArgs[expectedArgsCount] = this;
+          } else {
+            actionArgs[expectedArgsCount] = this.opts();
+          }
+          actionArgs.push(this);
+          return fn.apply(this, actionArgs);
+        };
+        this._actionHandler = listener;
+        return this;
+      }
+      /**
+       * Factory routine to create a new unattached option.
+       *
+       * See .option() for creating an attached option, which uses this routine to
+       * create the option. You can override createOption to return a custom option.
+       *
+       * @param {string} flags
+       * @param {string} [description]
+       * @return {Option} new option
+       */
+      createOption(flags, description) {
+        return new Option2(flags, description);
+      }
+      /**
+       * Wrap parseArgs to catch 'commander.invalidArgument'.
+       *
+       * @param {(Option | Argument)} target
+       * @param {string} value
+       * @param {*} previous
+       * @param {string} invalidArgumentMessage
+       * @private
+       */
+      _callParseArg(target, value, previous, invalidArgumentMessage) {
+        try {
+          return target.parseArg(value, previous);
+        } catch (err) {
+          if (err.code === "commander.invalidArgument") {
+            const message = `${invalidArgumentMessage} ${err.message}`;
+            this.error(message, { exitCode: err.exitCode, code: err.code });
+          }
+          throw err;
+        }
+      }
+      /**
+       * Check for option flag conflicts.
+       * Register option if no conflicts found, or throw on conflict.
+       *
+       * @param {Option} option
+       * @private
+       */
+      _registerOption(option) {
+        const matchingOption = option.short && this._findOption(option.short) || option.long && this._findOption(option.long);
+        if (matchingOption) {
+          const matchingFlag = option.long && this._findOption(option.long) ? option.long : option.short;
+          throw new Error(`Cannot add option '${option.flags}'${this._name && ` to command '${this._name}'`} due to conflicting flag '${matchingFlag}'
+-  already used by option '${matchingOption.flags}'`);
+        }
+        this.options.push(option);
+      }
+      /**
+       * Check for command name and alias conflicts with existing commands.
+       * Register command if no conflicts found, or throw on conflict.
+       *
+       * @param {Command} command
+       * @private
+       */
+      _registerCommand(command) {
+        const knownBy = (cmd) => {
+          return [cmd.name()].concat(cmd.aliases());
+        };
+        const alreadyUsed = knownBy(command).find(
+          (name) => this._findCommand(name)
+        );
+        if (alreadyUsed) {
+          const existingCmd = knownBy(this._findCommand(alreadyUsed)).join("|");
+          const newCmd = knownBy(command).join("|");
+          throw new Error(
+            `cannot add command '${newCmd}' as already have command '${existingCmd}'`
+          );
+        }
+        this.commands.push(command);
+      }
+      /**
+       * Add an option.
+       *
+       * @param {Option} option
+       * @return {Command} `this` command for chaining
+       */
+      addOption(option) {
+        this._registerOption(option);
+        const oname = option.name();
+        const name = option.attributeName();
+        if (option.negate) {
+          const positiveLongFlag = option.long.replace(/^--no-/, "--");
+          if (!this._findOption(positiveLongFlag)) {
+            this.setOptionValueWithSource(
+              name,
+              option.defaultValue === void 0 ? true : option.defaultValue,
+              "default"
+            );
+          }
+        } else if (option.defaultValue !== void 0) {
+          this.setOptionValueWithSource(name, option.defaultValue, "default");
+        }
+        const handleOptionValue = (val, invalidValueMessage, valueSource) => {
+          if (val == null && option.presetArg !== void 0) {
+            val = option.presetArg;
+          }
+          const oldValue = this.getOptionValue(name);
+          if (val !== null && option.parseArg) {
+            val = this._callParseArg(option, val, oldValue, invalidValueMessage);
+          } else if (val !== null && option.variadic) {
+            val = option._concatValue(val, oldValue);
+          }
+          if (val == null) {
+            if (option.negate) {
+              val = false;
+            } else if (option.isBoolean() || option.optional) {
+              val = true;
+            } else {
+              val = "";
+            }
+          }
+          this.setOptionValueWithSource(name, val, valueSource);
+        };
+        this.on("option:" + oname, (val) => {
+          const invalidValueMessage = `error: option '${option.flags}' argument '${val}' is invalid.`;
+          handleOptionValue(val, invalidValueMessage, "cli");
+        });
+        if (option.envVar) {
+          this.on("optionEnv:" + oname, (val) => {
+            const invalidValueMessage = `error: option '${option.flags}' value '${val}' from env '${option.envVar}' is invalid.`;
+            handleOptionValue(val, invalidValueMessage, "env");
+          });
+        }
+        return this;
+      }
+      /**
+       * Internal implementation shared by .option() and .requiredOption()
+       *
+       * @return {Command} `this` command for chaining
+       * @private
+       */
+      _optionEx(config2, flags, description, fn, defaultValue) {
+        if (typeof flags === "object" && flags instanceof Option2) {
+          throw new Error(
+            "To add an Option object use addOption() instead of option() or requiredOption()"
+          );
+        }
+        const option = this.createOption(flags, description);
+        option.makeOptionMandatory(!!config2.mandatory);
+        if (typeof fn === "function") {
+          option.default(defaultValue).argParser(fn);
+        } else if (fn instanceof RegExp) {
+          const regex = fn;
+          fn = (val, def) => {
+            const m = regex.exec(val);
+            return m ? m[0] : def;
+          };
+          option.default(defaultValue).argParser(fn);
+        } else {
+          option.default(fn);
+        }
+        return this.addOption(option);
+      }
+      /**
+       * Define option with `flags`, `description`, and optional argument parsing function or `defaultValue` or both.
+       *
+       * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space. A required
+       * option-argument is indicated by `<>` and an optional option-argument by `[]`.
+       *
+       * See the README for more details, and see also addOption() and requiredOption().
+       *
+       * @example
+       * program
+       *     .option('-p, --pepper', 'add pepper')
+       *     .option('-p, --pizza-type <TYPE>', 'type of pizza') // required option-argument
+       *     .option('-c, --cheese [CHEESE]', 'add extra cheese', 'mozzarella') // optional option-argument with default
+       *     .option('-t, --tip <VALUE>', 'add tip to purchase cost', parseFloat) // custom parse function
+       *
+       * @param {string} flags
+       * @param {string} [description]
+       * @param {(Function|*)} [parseArg] - custom option processing function or default value
+       * @param {*} [defaultValue]
+       * @return {Command} `this` command for chaining
+       */
+      option(flags, description, parseArg, defaultValue) {
+        return this._optionEx({}, flags, description, parseArg, defaultValue);
+      }
+      /**
+       * Add a required option which must have a value after parsing. This usually means
+       * the option must be specified on the command line. (Otherwise the same as .option().)
+       *
+       * The `flags` string contains the short and/or long flags, separated by comma, a pipe or space.
+       *
+       * @param {string} flags
+       * @param {string} [description]
+       * @param {(Function|*)} [parseArg] - custom option processing function or default value
+       * @param {*} [defaultValue]
+       * @return {Command} `this` command for chaining
+       */
+      requiredOption(flags, description, parseArg, defaultValue) {
+        return this._optionEx(
+          { mandatory: true },
+          flags,
+          description,
+          parseArg,
+          defaultValue
+        );
+      }
+      /**
+       * Alter parsing of short flags with optional values.
+       *
+       * @example
+       * // for `.option('-f,--flag [value]'):
+       * program.combineFlagAndOptionalValue(true);  // `-f80` is treated like `--flag=80`, this is the default behaviour
+       * program.combineFlagAndOptionalValue(false) // `-fb` is treated like `-f -b`
+       *
+       * @param {boolean} [combine] - if `true` or omitted, an optional value can be specified directly after the flag.
+       * @return {Command} `this` command for chaining
+       */
+      combineFlagAndOptionalValue(combine = true) {
+        this._combineFlagAndOptionalValue = !!combine;
+        return this;
+      }
+      /**
+       * Allow unknown options on the command line.
+       *
+       * @param {boolean} [allowUnknown] - if `true` or omitted, no error will be thrown for unknown options.
+       * @return {Command} `this` command for chaining
+       */
+      allowUnknownOption(allowUnknown = true) {
+        this._allowUnknownOption = !!allowUnknown;
+        return this;
+      }
+      /**
+       * Allow excess command-arguments on the command line. Pass false to make excess arguments an error.
+       *
+       * @param {boolean} [allowExcess] - if `true` or omitted, no error will be thrown for excess arguments.
+       * @return {Command} `this` command for chaining
+       */
+      allowExcessArguments(allowExcess = true) {
+        this._allowExcessArguments = !!allowExcess;
+        return this;
+      }
+      /**
+       * Enable positional options. Positional means global options are specified before subcommands which lets
+       * subcommands reuse the same option names, and also enables subcommands to turn on passThroughOptions.
+       * The default behaviour is non-positional and global options may appear anywhere on the command line.
+       *
+       * @param {boolean} [positional]
+       * @return {Command} `this` command for chaining
+       */
+      enablePositionalOptions(positional = true) {
+        this._enablePositionalOptions = !!positional;
+        return this;
+      }
+      /**
+       * Pass through options that come after command-arguments rather than treat them as command-options,
+       * so actual command-options come before command-arguments. Turning this on for a subcommand requires
+       * positional options to have been enabled on the program (parent commands).
+       * The default behaviour is non-positional and options may appear before or after command-arguments.
+       *
+       * @param {boolean} [passThrough] for unknown options.
+       * @return {Command} `this` command for chaining
+       */
+      passThroughOptions(passThrough = true) {
+        this._passThroughOptions = !!passThrough;
+        this._checkForBrokenPassThrough();
+        return this;
+      }
+      /**
+       * @private
+       */
+      _checkForBrokenPassThrough() {
+        if (this.parent && this._passThroughOptions && !this.parent._enablePositionalOptions) {
+          throw new Error(
+            `passThroughOptions cannot be used for '${this._name}' without turning on enablePositionalOptions for parent command(s)`
+          );
+        }
+      }
+      /**
+       * Whether to store option values as properties on command object,
+       * or store separately (specify false). In both cases the option values can be accessed using .opts().
+       *
+       * @param {boolean} [storeAsProperties=true]
+       * @return {Command} `this` command for chaining
+       */
+      storeOptionsAsProperties(storeAsProperties = true) {
+        if (this.options.length) {
+          throw new Error("call .storeOptionsAsProperties() before adding options");
+        }
+        if (Object.keys(this._optionValues).length) {
+          throw new Error(
+            "call .storeOptionsAsProperties() before setting option values"
+          );
+        }
+        this._storeOptionsAsProperties = !!storeAsProperties;
+        return this;
+      }
+      /**
+       * Retrieve option value.
+       *
+       * @param {string} key
+       * @return {object} value
+       */
+      getOptionValue(key) {
+        if (this._storeOptionsAsProperties) {
+          return this[key];
+        }
+        return this._optionValues[key];
+      }
+      /**
+       * Store option value.
+       *
+       * @param {string} key
+       * @param {object} value
+       * @return {Command} `this` command for chaining
+       */
+      setOptionValue(key, value) {
+        return this.setOptionValueWithSource(key, value, void 0);
+      }
+      /**
+       * Store option value and where the value came from.
+       *
+       * @param {string} key
+       * @param {object} value
+       * @param {string} source - expected values are default/config/env/cli/implied
+       * @return {Command} `this` command for chaining
+       */
+      setOptionValueWithSource(key, value, source) {
+        if (this._storeOptionsAsProperties) {
+          this[key] = value;
+        } else {
+          this._optionValues[key] = value;
+        }
+        this._optionValueSources[key] = source;
+        return this;
+      }
+      /**
+       * Get source of option value.
+       * Expected values are default | config | env | cli | implied
+       *
+       * @param {string} key
+       * @return {string}
+       */
+      getOptionValueSource(key) {
+        return this._optionValueSources[key];
+      }
+      /**
+       * Get source of option value. See also .optsWithGlobals().
+       * Expected values are default | config | env | cli | implied
+       *
+       * @param {string} key
+       * @return {string}
+       */
+      getOptionValueSourceWithGlobals(key) {
+        let source;
+        this._getCommandAndAncestors().forEach((cmd) => {
+          if (cmd.getOptionValueSource(key) !== void 0) {
+            source = cmd.getOptionValueSource(key);
+          }
+        });
+        return source;
+      }
+      /**
+       * Get user arguments from implied or explicit arguments.
+       * Side-effects: set _scriptPath if args included script. Used for default program name, and subcommand searches.
+       *
+       * @private
+       */
+      _prepareUserArgs(argv, parseOptions) {
+        if (argv !== void 0 && !Array.isArray(argv)) {
+          throw new Error("first parameter to parse must be array or undefined");
+        }
+        parseOptions = parseOptions || {};
+        if (argv === void 0 && parseOptions.from === void 0) {
+          if (process3.versions?.electron) {
+            parseOptions.from = "electron";
+          }
+          const execArgv = process3.execArgv ?? [];
+          if (execArgv.includes("-e") || execArgv.includes("--eval") || execArgv.includes("-p") || execArgv.includes("--print")) {
+            parseOptions.from = "eval";
+          }
+        }
+        if (argv === void 0) {
+          argv = process3.argv;
+        }
+        this.rawArgs = argv.slice();
+        let userArgs;
+        switch (parseOptions.from) {
+          case void 0:
+          case "node":
+            this._scriptPath = argv[1];
+            userArgs = argv.slice(2);
+            break;
+          case "electron":
+            if (process3.defaultApp) {
+              this._scriptPath = argv[1];
+              userArgs = argv.slice(2);
+            } else {
+              userArgs = argv.slice(1);
+            }
+            break;
+          case "user":
+            userArgs = argv.slice(0);
+            break;
+          case "eval":
+            userArgs = argv.slice(1);
+            break;
+          default:
+            throw new Error(
+              `unexpected parse option { from: '${parseOptions.from}' }`
+            );
+        }
+        if (!this._name && this._scriptPath)
+          this.nameFromFilename(this._scriptPath);
+        this._name = this._name || "program";
+        return userArgs;
+      }
+      /**
+       * Parse `argv`, setting options and invoking commands when defined.
+       *
+       * Use parseAsync instead of parse if any of your action handlers are async.
+       *
+       * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
+       *
+       * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
+       * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
+       * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
+       * - `'user'`: just user arguments
+       *
+       * @example
+       * program.parse(); // parse process.argv and auto-detect electron and special node flags
+       * program.parse(process.argv); // assume argv[0] is app and argv[1] is script
+       * program.parse(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
+       *
+       * @param {string[]} [argv] - optional, defaults to process.argv
+       * @param {object} [parseOptions] - optionally specify style of options with from: node/user/electron
+       * @param {string} [parseOptions.from] - where the args are from: 'node', 'user', 'electron'
+       * @return {Command} `this` command for chaining
+       */
+      parse(argv, parseOptions) {
+        const userArgs = this._prepareUserArgs(argv, parseOptions);
+        this._parseCommand([], userArgs);
+        return this;
+      }
+      /**
+       * Parse `argv`, setting options and invoking commands when defined.
+       *
+       * Call with no parameters to parse `process.argv`. Detects Electron and special node options like `node --eval`. Easy mode!
+       *
+       * Or call with an array of strings to parse, and optionally where the user arguments start by specifying where the arguments are `from`:
+       * - `'node'`: default, `argv[0]` is the application and `argv[1]` is the script being run, with user arguments after that
+       * - `'electron'`: `argv[0]` is the application and `argv[1]` varies depending on whether the electron application is packaged
+       * - `'user'`: just user arguments
+       *
+       * @example
+       * await program.parseAsync(); // parse process.argv and auto-detect electron and special node flags
+       * await program.parseAsync(process.argv); // assume argv[0] is app and argv[1] is script
+       * await program.parseAsync(my-args, { from: 'user' }); // just user supplied arguments, nothing special about argv[0]
+       *
+       * @param {string[]} [argv]
+       * @param {object} [parseOptions]
+       * @param {string} parseOptions.from - where the args are from: 'node', 'user', 'electron'
+       * @return {Promise}
+       */
+      async parseAsync(argv, parseOptions) {
+        const userArgs = this._prepareUserArgs(argv, parseOptions);
+        await this._parseCommand([], userArgs);
+        return this;
+      }
+      /**
+       * Execute a sub-command executable.
+       *
+       * @private
+       */
+      _executeSubCommand(subcommand, args) {
+        args = args.slice();
+        let launchWithNode = false;
+        const sourceExt = [".js", ".ts", ".tsx", ".mjs", ".cjs"];
+        function findFile(baseDir, baseName) {
+          const localBin = path15.resolve(baseDir, baseName);
+          if (fs13.existsSync(localBin)) return localBin;
+          if (sourceExt.includes(path15.extname(baseName))) return void 0;
+          const foundExt = sourceExt.find(
+            (ext) => fs13.existsSync(`${localBin}${ext}`)
+          );
+          if (foundExt) return `${localBin}${foundExt}`;
+          return void 0;
+        }
+        this._checkForMissingMandatoryOptions();
+        this._checkForConflictingOptions();
+        let executableFile = subcommand._executableFile || `${this._name}-${subcommand._name}`;
+        let executableDir = this._executableDir || "";
+        if (this._scriptPath) {
+          let resolvedScriptPath;
+          try {
+            resolvedScriptPath = fs13.realpathSync(this._scriptPath);
+          } catch (err) {
+            resolvedScriptPath = this._scriptPath;
+          }
+          executableDir = path15.resolve(
+            path15.dirname(resolvedScriptPath),
+            executableDir
+          );
+        }
+        if (executableDir) {
+          let localFile = findFile(executableDir, executableFile);
+          if (!localFile && !subcommand._executableFile && this._scriptPath) {
+            const legacyName = path15.basename(
+              this._scriptPath,
+              path15.extname(this._scriptPath)
+            );
+            if (legacyName !== this._name) {
+              localFile = findFile(
+                executableDir,
+                `${legacyName}-${subcommand._name}`
+              );
+            }
+          }
+          executableFile = localFile || executableFile;
+        }
+        launchWithNode = sourceExt.includes(path15.extname(executableFile));
+        let proc;
+        if (process3.platform !== "win32") {
+          if (launchWithNode) {
+            args.unshift(executableFile);
+            args = incrementNodeInspectorPort(process3.execArgv).concat(args);
+            proc = childProcess.spawn(process3.argv[0], args, { stdio: "inherit" });
+          } else {
+            proc = childProcess.spawn(executableFile, args, { stdio: "inherit" });
+          }
+        } else {
+          args.unshift(executableFile);
+          args = incrementNodeInspectorPort(process3.execArgv).concat(args);
+          proc = childProcess.spawn(process3.execPath, args, { stdio: "inherit" });
+        }
+        if (!proc.killed) {
+          const signals = ["SIGUSR1", "SIGUSR2", "SIGTERM", "SIGINT", "SIGHUP"];
+          signals.forEach((signal) => {
+            process3.on(signal, () => {
+              if (proc.killed === false && proc.exitCode === null) {
+                proc.kill(signal);
+              }
+            });
+          });
+        }
+        const exitCallback = this._exitCallback;
+        proc.on("close", (code) => {
+          code = code ?? 1;
+          if (!exitCallback) {
+            process3.exit(code);
+          } else {
+            exitCallback(
+              new CommanderError2(
+                code,
+                "commander.executeSubCommandAsync",
+                "(close)"
+              )
+            );
+          }
+        });
+        proc.on("error", (err) => {
+          if (err.code === "ENOENT") {
+            const executableDirMessage = executableDir ? `searched for local subcommand relative to directory '${executableDir}'` : "no directory for search for local subcommand, use .executableDir() to supply a custom directory";
+            const executableMissing = `'${executableFile}' does not exist
+ - if '${subcommand._name}' is not meant to be an executable command, remove description parameter from '.command()' and use '.description()' instead
+ - if the default executable name is not suitable, use the executableFile option to supply a custom name or path
+ - ${executableDirMessage}`;
+            throw new Error(executableMissing);
+          } else if (err.code === "EACCES") {
+            throw new Error(`'${executableFile}' not executable`);
+          }
+          if (!exitCallback) {
+            process3.exit(1);
+          } else {
+            const wrappedError = new CommanderError2(
+              1,
+              "commander.executeSubCommandAsync",
+              "(error)"
+            );
+            wrappedError.nestedError = err;
+            exitCallback(wrappedError);
+          }
+        });
+        this.runningCommand = proc;
+      }
+      /**
+       * @private
+       */
+      _dispatchSubcommand(commandName, operands, unknown2) {
+        const subCommand = this._findCommand(commandName);
+        if (!subCommand) this.help({ error: true });
+        let promiseChain;
+        promiseChain = this._chainOrCallSubCommandHook(
+          promiseChain,
+          subCommand,
+          "preSubcommand"
+        );
+        promiseChain = this._chainOrCall(promiseChain, () => {
+          if (subCommand._executableHandler) {
+            this._executeSubCommand(subCommand, operands.concat(unknown2));
+          } else {
+            return subCommand._parseCommand(operands, unknown2);
+          }
+        });
+        return promiseChain;
+      }
+      /**
+       * Invoke help directly if possible, or dispatch if necessary.
+       * e.g. help foo
+       *
+       * @private
+       */
+      _dispatchHelpCommand(subcommandName) {
+        if (!subcommandName) {
+          this.help();
+        }
+        const subCommand = this._findCommand(subcommandName);
+        if (subCommand && !subCommand._executableHandler) {
+          subCommand.help();
+        }
+        return this._dispatchSubcommand(
+          subcommandName,
+          [],
+          [this._getHelpOption()?.long ?? this._getHelpOption()?.short ?? "--help"]
+        );
+      }
+      /**
+       * Check this.args against expected this.registeredArguments.
+       *
+       * @private
+       */
+      _checkNumberOfArguments() {
+        this.registeredArguments.forEach((arg, i) => {
+          if (arg.required && this.args[i] == null) {
+            this.missingArgument(arg.name());
+          }
+        });
+        if (this.registeredArguments.length > 0 && this.registeredArguments[this.registeredArguments.length - 1].variadic) {
+          return;
+        }
+        if (this.args.length > this.registeredArguments.length) {
+          this._excessArguments(this.args);
+        }
+      }
+      /**
+       * Process this.args using this.registeredArguments and save as this.processedArgs!
+       *
+       * @private
+       */
+      _processArguments() {
+        const myParseArg = (argument, value, previous) => {
+          let parsedValue = value;
+          if (value !== null && argument.parseArg) {
+            const invalidValueMessage = `error: command-argument value '${value}' is invalid for argument '${argument.name()}'.`;
+            parsedValue = this._callParseArg(
+              argument,
+              value,
+              previous,
+              invalidValueMessage
+            );
+          }
+          return parsedValue;
+        };
+        this._checkNumberOfArguments();
+        const processedArgs = [];
+        this.registeredArguments.forEach((declaredArg, index) => {
+          let value = declaredArg.defaultValue;
+          if (declaredArg.variadic) {
+            if (index < this.args.length) {
+              value = this.args.slice(index);
+              if (declaredArg.parseArg) {
+                value = value.reduce((processed, v) => {
+                  return myParseArg(declaredArg, v, processed);
+                }, declaredArg.defaultValue);
+              }
+            } else if (value === void 0) {
+              value = [];
+            }
+          } else if (index < this.args.length) {
+            value = this.args[index];
+            if (declaredArg.parseArg) {
+              value = myParseArg(declaredArg, value, declaredArg.defaultValue);
+            }
+          }
+          processedArgs[index] = value;
+        });
+        this.processedArgs = processedArgs;
+      }
+      /**
+       * Once we have a promise we chain, but call synchronously until then.
+       *
+       * @param {(Promise|undefined)} promise
+       * @param {Function} fn
+       * @return {(Promise|undefined)}
+       * @private
+       */
+      _chainOrCall(promise, fn) {
+        if (promise && promise.then && typeof promise.then === "function") {
+          return promise.then(() => fn());
+        }
+        return fn();
+      }
+      /**
+       *
+       * @param {(Promise|undefined)} promise
+       * @param {string} event
+       * @return {(Promise|undefined)}
+       * @private
+       */
+      _chainOrCallHooks(promise, event) {
+        let result = promise;
+        const hooks = [];
+        this._getCommandAndAncestors().reverse().filter((cmd) => cmd._lifeCycleHooks[event] !== void 0).forEach((hookedCommand) => {
+          hookedCommand._lifeCycleHooks[event].forEach((callback) => {
+            hooks.push({ hookedCommand, callback });
+          });
+        });
+        if (event === "postAction") {
+          hooks.reverse();
+        }
+        hooks.forEach((hookDetail) => {
+          result = this._chainOrCall(result, () => {
+            return hookDetail.callback(hookDetail.hookedCommand, this);
+          });
+        });
+        return result;
+      }
+      /**
+       *
+       * @param {(Promise|undefined)} promise
+       * @param {Command} subCommand
+       * @param {string} event
+       * @return {(Promise|undefined)}
+       * @private
+       */
+      _chainOrCallSubCommandHook(promise, subCommand, event) {
+        let result = promise;
+        if (this._lifeCycleHooks[event] !== void 0) {
+          this._lifeCycleHooks[event].forEach((hook) => {
+            result = this._chainOrCall(result, () => {
+              return hook(this, subCommand);
+            });
+          });
+        }
+        return result;
+      }
+      /**
+       * Process arguments in context of this command.
+       * Returns action result, in case it is a promise.
+       *
+       * @private
+       */
+      _parseCommand(operands, unknown2) {
+        const parsed = this.parseOptions(unknown2);
+        this._parseOptionsEnv();
+        this._parseOptionsImplied();
+        operands = operands.concat(parsed.operands);
+        unknown2 = parsed.unknown;
+        this.args = operands.concat(unknown2);
+        if (operands && this._findCommand(operands[0])) {
+          return this._dispatchSubcommand(operands[0], operands.slice(1), unknown2);
+        }
+        if (this._getHelpCommand() && operands[0] === this._getHelpCommand().name()) {
+          return this._dispatchHelpCommand(operands[1]);
+        }
+        if (this._defaultCommandName) {
+          this._outputHelpIfRequested(unknown2);
+          return this._dispatchSubcommand(
+            this._defaultCommandName,
+            operands,
+            unknown2
+          );
+        }
+        if (this.commands.length && this.args.length === 0 && !this._actionHandler && !this._defaultCommandName) {
+          this.help({ error: true });
+        }
+        this._outputHelpIfRequested(parsed.unknown);
+        this._checkForMissingMandatoryOptions();
+        this._checkForConflictingOptions();
+        const checkForUnknownOptions = () => {
+          if (parsed.unknown.length > 0) {
+            this.unknownOption(parsed.unknown[0]);
+          }
+        };
+        const commandEvent = `command:${this.name()}`;
+        if (this._actionHandler) {
+          checkForUnknownOptions();
+          this._processArguments();
+          let promiseChain;
+          promiseChain = this._chainOrCallHooks(promiseChain, "preAction");
+          promiseChain = this._chainOrCall(
+            promiseChain,
+            () => this._actionHandler(this.processedArgs)
+          );
+          if (this.parent) {
+            promiseChain = this._chainOrCall(promiseChain, () => {
+              this.parent.emit(commandEvent, operands, unknown2);
+            });
+          }
+          promiseChain = this._chainOrCallHooks(promiseChain, "postAction");
+          return promiseChain;
+        }
+        if (this.parent && this.parent.listenerCount(commandEvent)) {
+          checkForUnknownOptions();
+          this._processArguments();
+          this.parent.emit(commandEvent, operands, unknown2);
+        } else if (operands.length) {
+          if (this._findCommand("*")) {
+            return this._dispatchSubcommand("*", operands, unknown2);
+          }
+          if (this.listenerCount("command:*")) {
+            this.emit("command:*", operands, unknown2);
+          } else if (this.commands.length) {
+            this.unknownCommand();
+          } else {
+            checkForUnknownOptions();
+            this._processArguments();
+          }
+        } else if (this.commands.length) {
+          checkForUnknownOptions();
+          this.help({ error: true });
+        } else {
+          checkForUnknownOptions();
+          this._processArguments();
+        }
+      }
+      /**
+       * Find matching command.
+       *
+       * @private
+       * @return {Command | undefined}
+       */
+      _findCommand(name) {
+        if (!name) return void 0;
+        return this.commands.find(
+          (cmd) => cmd._name === name || cmd._aliases.includes(name)
+        );
+      }
+      /**
+       * Return an option matching `arg` if any.
+       *
+       * @param {string} arg
+       * @return {Option}
+       * @package
+       */
+      _findOption(arg) {
+        return this.options.find((option) => option.is(arg));
+      }
+      /**
+       * Display an error message if a mandatory option does not have a value.
+       * Called after checking for help flags in leaf subcommand.
+       *
+       * @private
+       */
+      _checkForMissingMandatoryOptions() {
+        this._getCommandAndAncestors().forEach((cmd) => {
+          cmd.options.forEach((anOption) => {
+            if (anOption.mandatory && cmd.getOptionValue(anOption.attributeName()) === void 0) {
+              cmd.missingMandatoryOptionValue(anOption);
+            }
+          });
+        });
+      }
+      /**
+       * Display an error message if conflicting options are used together in this.
+       *
+       * @private
+       */
+      _checkForConflictingLocalOptions() {
+        const definedNonDefaultOptions = this.options.filter((option) => {
+          const optionKey = option.attributeName();
+          if (this.getOptionValue(optionKey) === void 0) {
+            return false;
+          }
+          return this.getOptionValueSource(optionKey) !== "default";
+        });
+        const optionsWithConflicting = definedNonDefaultOptions.filter(
+          (option) => option.conflictsWith.length > 0
+        );
+        optionsWithConflicting.forEach((option) => {
+          const conflictingAndDefined = definedNonDefaultOptions.find(
+            (defined) => option.conflictsWith.includes(defined.attributeName())
+          );
+          if (conflictingAndDefined) {
+            this._conflictingOption(option, conflictingAndDefined);
+          }
+        });
+      }
+      /**
+       * Display an error message if conflicting options are used together.
+       * Called after checking for help flags in leaf subcommand.
+       *
+       * @private
+       */
+      _checkForConflictingOptions() {
+        this._getCommandAndAncestors().forEach((cmd) => {
+          cmd._checkForConflictingLocalOptions();
+        });
+      }
+      /**
+       * Parse options from `argv` removing known options,
+       * and return argv split into operands and unknown arguments.
+       *
+       * Examples:
+       *
+       *     argv => operands, unknown
+       *     --known kkk op => [op], []
+       *     op --known kkk => [op], []
+       *     sub --unknown uuu op => [sub], [--unknown uuu op]
+       *     sub -- --unknown uuu op => [sub --unknown uuu op], []
+       *
+       * @param {string[]} argv
+       * @return {{operands: string[], unknown: string[]}}
+       */
+      parseOptions(argv) {
+        const operands = [];
+        const unknown2 = [];
+        let dest = operands;
+        const args = argv.slice();
+        function maybeOption(arg) {
+          return arg.length > 1 && arg[0] === "-";
+        }
+        let activeVariadicOption = null;
+        while (args.length) {
+          const arg = args.shift();
+          if (arg === "--") {
+            if (dest === unknown2) dest.push(arg);
+            dest.push(...args);
+            break;
+          }
+          if (activeVariadicOption && !maybeOption(arg)) {
+            this.emit(`option:${activeVariadicOption.name()}`, arg);
+            continue;
+          }
+          activeVariadicOption = null;
+          if (maybeOption(arg)) {
+            const option = this._findOption(arg);
+            if (option) {
+              if (option.required) {
+                const value = args.shift();
+                if (value === void 0) this.optionMissingArgument(option);
+                this.emit(`option:${option.name()}`, value);
+              } else if (option.optional) {
+                let value = null;
+                if (args.length > 0 && !maybeOption(args[0])) {
+                  value = args.shift();
+                }
+                this.emit(`option:${option.name()}`, value);
+              } else {
+                this.emit(`option:${option.name()}`);
+              }
+              activeVariadicOption = option.variadic ? option : null;
+              continue;
+            }
+          }
+          if (arg.length > 2 && arg[0] === "-" && arg[1] !== "-") {
+            const option = this._findOption(`-${arg[1]}`);
+            if (option) {
+              if (option.required || option.optional && this._combineFlagAndOptionalValue) {
+                this.emit(`option:${option.name()}`, arg.slice(2));
+              } else {
+                this.emit(`option:${option.name()}`);
+                args.unshift(`-${arg.slice(2)}`);
+              }
+              continue;
+            }
+          }
+          if (/^--[^=]+=/.test(arg)) {
+            const index = arg.indexOf("=");
+            const option = this._findOption(arg.slice(0, index));
+            if (option && (option.required || option.optional)) {
+              this.emit(`option:${option.name()}`, arg.slice(index + 1));
+              continue;
+            }
+          }
+          if (maybeOption(arg)) {
+            dest = unknown2;
+          }
+          if ((this._enablePositionalOptions || this._passThroughOptions) && operands.length === 0 && unknown2.length === 0) {
+            if (this._findCommand(arg)) {
+              operands.push(arg);
+              if (args.length > 0) unknown2.push(...args);
+              break;
+            } else if (this._getHelpCommand() && arg === this._getHelpCommand().name()) {
+              operands.push(arg);
+              if (args.length > 0) operands.push(...args);
+              break;
+            } else if (this._defaultCommandName) {
+              unknown2.push(arg);
+              if (args.length > 0) unknown2.push(...args);
+              break;
+            }
+          }
+          if (this._passThroughOptions) {
+            dest.push(arg);
+            if (args.length > 0) dest.push(...args);
+            break;
+          }
+          dest.push(arg);
+        }
+        return { operands, unknown: unknown2 };
+      }
+      /**
+       * Return an object containing local option values as key-value pairs.
+       *
+       * @return {object}
+       */
+      opts() {
+        if (this._storeOptionsAsProperties) {
+          const result = {};
+          const len = this.options.length;
+          for (let i = 0; i < len; i++) {
+            const key = this.options[i].attributeName();
+            result[key] = key === this._versionOptionName ? this._version : this[key];
+          }
+          return result;
+        }
+        return this._optionValues;
+      }
+      /**
+       * Return an object containing merged local and global option values as key-value pairs.
+       *
+       * @return {object}
+       */
+      optsWithGlobals() {
+        return this._getCommandAndAncestors().reduce(
+          (combinedOptions, cmd) => Object.assign(combinedOptions, cmd.opts()),
+          {}
+        );
+      }
+      /**
+       * Display error message and exit (or call exitOverride).
+       *
+       * @param {string} message
+       * @param {object} [errorOptions]
+       * @param {string} [errorOptions.code] - an id string representing the error
+       * @param {number} [errorOptions.exitCode] - used with process.exit
+       */
+      error(message, errorOptions) {
+        this._outputConfiguration.outputError(
+          `${message}
+`,
+          this._outputConfiguration.writeErr
+        );
+        if (typeof this._showHelpAfterError === "string") {
+          this._outputConfiguration.writeErr(`${this._showHelpAfterError}
+`);
+        } else if (this._showHelpAfterError) {
+          this._outputConfiguration.writeErr("\n");
+          this.outputHelp({ error: true });
+        }
+        const config2 = errorOptions || {};
+        const exitCode = config2.exitCode || 1;
+        const code = config2.code || "commander.error";
+        this._exit(exitCode, code, message);
+      }
+      /**
+       * Apply any option related environment variables, if option does
+       * not have a value from cli or client code.
+       *
+       * @private
+       */
+      _parseOptionsEnv() {
+        this.options.forEach((option) => {
+          if (option.envVar && option.envVar in process3.env) {
+            const optionKey = option.attributeName();
+            if (this.getOptionValue(optionKey) === void 0 || ["default", "config", "env"].includes(
+              this.getOptionValueSource(optionKey)
+            )) {
+              if (option.required || option.optional) {
+                this.emit(`optionEnv:${option.name()}`, process3.env[option.envVar]);
+              } else {
+                this.emit(`optionEnv:${option.name()}`);
+              }
+            }
+          }
+        });
+      }
+      /**
+       * Apply any implied option values, if option is undefined or default value.
+       *
+       * @private
+       */
+      _parseOptionsImplied() {
+        const dualHelper = new DualOptions(this.options);
+        const hasCustomOptionValue = (optionKey) => {
+          return this.getOptionValue(optionKey) !== void 0 && !["default", "implied"].includes(this.getOptionValueSource(optionKey));
+        };
+        this.options.filter(
+          (option) => option.implied !== void 0 && hasCustomOptionValue(option.attributeName()) && dualHelper.valueFromOption(
+            this.getOptionValue(option.attributeName()),
+            option
+          )
+        ).forEach((option) => {
+          Object.keys(option.implied).filter((impliedKey) => !hasCustomOptionValue(impliedKey)).forEach((impliedKey) => {
+            this.setOptionValueWithSource(
+              impliedKey,
+              option.implied[impliedKey],
+              "implied"
+            );
+          });
+        });
+      }
+      /**
+       * Argument `name` is missing.
+       *
+       * @param {string} name
+       * @private
+       */
+      missingArgument(name) {
+        const message = `error: missing required argument '${name}'`;
+        this.error(message, { code: "commander.missingArgument" });
+      }
+      /**
+       * `Option` is missing an argument.
+       *
+       * @param {Option} option
+       * @private
+       */
+      optionMissingArgument(option) {
+        const message = `error: option '${option.flags}' argument missing`;
+        this.error(message, { code: "commander.optionMissingArgument" });
+      }
+      /**
+       * `Option` does not have a value, and is a mandatory option.
+       *
+       * @param {Option} option
+       * @private
+       */
+      missingMandatoryOptionValue(option) {
+        const message = `error: required option '${option.flags}' not specified`;
+        this.error(message, { code: "commander.missingMandatoryOptionValue" });
+      }
+      /**
+       * `Option` conflicts with another option.
+       *
+       * @param {Option} option
+       * @param {Option} conflictingOption
+       * @private
+       */
+      _conflictingOption(option, conflictingOption) {
+        const findBestOptionFromValue = (option2) => {
+          const optionKey = option2.attributeName();
+          const optionValue = this.getOptionValue(optionKey);
+          const negativeOption = this.options.find(
+            (target) => target.negate && optionKey === target.attributeName()
+          );
+          const positiveOption = this.options.find(
+            (target) => !target.negate && optionKey === target.attributeName()
+          );
+          if (negativeOption && (negativeOption.presetArg === void 0 && optionValue === false || negativeOption.presetArg !== void 0 && optionValue === negativeOption.presetArg)) {
+            return negativeOption;
+          }
+          return positiveOption || option2;
+        };
+        const getErrorMessage = (option2) => {
+          const bestOption = findBestOptionFromValue(option2);
+          const optionKey = bestOption.attributeName();
+          const source = this.getOptionValueSource(optionKey);
+          if (source === "env") {
+            return `environment variable '${bestOption.envVar}'`;
+          }
+          return `option '${bestOption.flags}'`;
+        };
+        const message = `error: ${getErrorMessage(option)} cannot be used with ${getErrorMessage(conflictingOption)}`;
+        this.error(message, { code: "commander.conflictingOption" });
+      }
+      /**
+       * Unknown option `flag`.
+       *
+       * @param {string} flag
+       * @private
+       */
+      unknownOption(flag) {
+        if (this._allowUnknownOption) return;
+        let suggestion = "";
+        if (flag.startsWith("--") && this._showSuggestionAfterError) {
+          let candidateFlags = [];
+          let command = this;
+          do {
+            const moreFlags = command.createHelp().visibleOptions(command).filter((option) => option.long).map((option) => option.long);
+            candidateFlags = candidateFlags.concat(moreFlags);
+            command = command.parent;
+          } while (command && !command._enablePositionalOptions);
+          suggestion = suggestSimilar(flag, candidateFlags);
+        }
+        const message = `error: unknown option '${flag}'${suggestion}`;
+        this.error(message, { code: "commander.unknownOption" });
+      }
+      /**
+       * Excess arguments, more than expected.
+       *
+       * @param {string[]} receivedArgs
+       * @private
+       */
+      _excessArguments(receivedArgs) {
+        if (this._allowExcessArguments) return;
+        const expected = this.registeredArguments.length;
+        const s = expected === 1 ? "" : "s";
+        const forSubcommand = this.parent ? ` for '${this.name()}'` : "";
+        const message = `error: too many arguments${forSubcommand}. Expected ${expected} argument${s} but got ${receivedArgs.length}.`;
+        this.error(message, { code: "commander.excessArguments" });
+      }
+      /**
+       * Unknown command.
+       *
+       * @private
+       */
+      unknownCommand() {
+        const unknownName = this.args[0];
+        let suggestion = "";
+        if (this._showSuggestionAfterError) {
+          const candidateNames = [];
+          this.createHelp().visibleCommands(this).forEach((command) => {
+            candidateNames.push(command.name());
+            if (command.alias()) candidateNames.push(command.alias());
+          });
+          suggestion = suggestSimilar(unknownName, candidateNames);
+        }
+        const message = `error: unknown command '${unknownName}'${suggestion}`;
+        this.error(message, { code: "commander.unknownCommand" });
+      }
+      /**
+       * Get or set the program version.
+       *
+       * This method auto-registers the "-V, --version" option which will print the version number.
+       *
+       * You can optionally supply the flags and description to override the defaults.
+       *
+       * @param {string} [str]
+       * @param {string} [flags]
+       * @param {string} [description]
+       * @return {(this | string | undefined)} `this` command for chaining, or version string if no arguments
+       */
+      version(str3, flags, description) {
+        if (str3 === void 0) return this._version;
+        this._version = str3;
+        flags = flags || "-V, --version";
+        description = description || "output the version number";
+        const versionOption = this.createOption(flags, description);
+        this._versionOptionName = versionOption.attributeName();
+        this._registerOption(versionOption);
+        this.on("option:" + versionOption.name(), () => {
+          this._outputConfiguration.writeOut(`${str3}
+`);
+          this._exit(0, "commander.version", str3);
+        });
+        return this;
+      }
+      /**
+       * Set the description.
+       *
+       * @param {string} [str]
+       * @param {object} [argsDescription]
+       * @return {(string|Command)}
+       */
+      description(str3, argsDescription) {
+        if (str3 === void 0 && argsDescription === void 0)
+          return this._description;
+        this._description = str3;
+        if (argsDescription) {
+          this._argsDescription = argsDescription;
+        }
+        return this;
+      }
+      /**
+       * Set the summary. Used when listed as subcommand of parent.
+       *
+       * @param {string} [str]
+       * @return {(string|Command)}
+       */
+      summary(str3) {
+        if (str3 === void 0) return this._summary;
+        this._summary = str3;
+        return this;
+      }
+      /**
+       * Set an alias for the command.
+       *
+       * You may call more than once to add multiple aliases. Only the first alias is shown in the auto-generated help.
+       *
+       * @param {string} [alias]
+       * @return {(string|Command)}
+       */
+      alias(alias) {
+        if (alias === void 0) return this._aliases[0];
+        let command = this;
+        if (this.commands.length !== 0 && this.commands[this.commands.length - 1]._executableHandler) {
+          command = this.commands[this.commands.length - 1];
+        }
+        if (alias === command._name)
+          throw new Error("Command alias can't be the same as its name");
+        const matchingCommand = this.parent?._findCommand(alias);
+        if (matchingCommand) {
+          const existingCmd = [matchingCommand.name()].concat(matchingCommand.aliases()).join("|");
+          throw new Error(
+            `cannot add alias '${alias}' to command '${this.name()}' as already have command '${existingCmd}'`
+          );
+        }
+        command._aliases.push(alias);
+        return this;
+      }
+      /**
+       * Set aliases for the command.
+       *
+       * Only the first alias is shown in the auto-generated help.
+       *
+       * @param {string[]} [aliases]
+       * @return {(string[]|Command)}
+       */
+      aliases(aliases) {
+        if (aliases === void 0) return this._aliases;
+        aliases.forEach((alias) => this.alias(alias));
+        return this;
+      }
+      /**
+       * Set / get the command usage `str`.
+       *
+       * @param {string} [str]
+       * @return {(string|Command)}
+       */
+      usage(str3) {
+        if (str3 === void 0) {
+          if (this._usage) return this._usage;
+          const args = this.registeredArguments.map((arg) => {
+            return humanReadableArgName(arg);
+          });
+          return [].concat(
+            this.options.length || this._helpOption !== null ? "[options]" : [],
+            this.commands.length ? "[command]" : [],
+            this.registeredArguments.length ? args : []
+          ).join(" ");
+        }
+        this._usage = str3;
+        return this;
+      }
+      /**
+       * Get or set the name of the command.
+       *
+       * @param {string} [str]
+       * @return {(string|Command)}
+       */
+      name(str3) {
+        if (str3 === void 0) return this._name;
+        this._name = str3;
+        return this;
+      }
+      /**
+       * Set the name of the command from script filename, such as process.argv[1],
+       * or require.main.filename, or __filename.
+       *
+       * (Used internally and public although not documented in README.)
+       *
+       * @example
+       * program.nameFromFilename(require.main.filename);
+       *
+       * @param {string} filename
+       * @return {Command}
+       */
+      nameFromFilename(filename) {
+        this._name = path15.basename(filename, path15.extname(filename));
+        return this;
+      }
+      /**
+       * Get or set the directory for searching for executable subcommands of this command.
+       *
+       * @example
+       * program.executableDir(__dirname);
+       * // or
+       * program.executableDir('subcommands');
+       *
+       * @param {string} [path]
+       * @return {(string|null|Command)}
+       */
+      executableDir(path16) {
+        if (path16 === void 0) return this._executableDir;
+        this._executableDir = path16;
+        return this;
+      }
+      /**
+       * Return program help documentation.
+       *
+       * @param {{ error: boolean }} [contextOptions] - pass {error:true} to wrap for stderr instead of stdout
+       * @return {string}
+       */
+      helpInformation(contextOptions) {
+        const helper = this.createHelp();
+        if (helper.helpWidth === void 0) {
+          helper.helpWidth = contextOptions && contextOptions.error ? this._outputConfiguration.getErrHelpWidth() : this._outputConfiguration.getOutHelpWidth();
+        }
+        return helper.formatHelp(this, helper);
+      }
+      /**
+       * @private
+       */
+      _getHelpContext(contextOptions) {
+        contextOptions = contextOptions || {};
+        const context = { error: !!contextOptions.error };
+        let write;
+        if (context.error) {
+          write = (arg) => this._outputConfiguration.writeErr(arg);
+        } else {
+          write = (arg) => this._outputConfiguration.writeOut(arg);
+        }
+        context.write = contextOptions.write || write;
+        context.command = this;
+        return context;
+      }
+      /**
+       * Output help information for this command.
+       *
+       * Outputs built-in help, and custom text added using `.addHelpText()`.
+       *
+       * @param {{ error: boolean } | Function} [contextOptions] - pass {error:true} to write to stderr instead of stdout
+       */
+      outputHelp(contextOptions) {
+        let deprecatedCallback;
+        if (typeof contextOptions === "function") {
+          deprecatedCallback = contextOptions;
+          contextOptions = void 0;
+        }
+        const context = this._getHelpContext(contextOptions);
+        this._getCommandAndAncestors().reverse().forEach((command) => command.emit("beforeAllHelp", context));
+        this.emit("beforeHelp", context);
+        let helpInformation = this.helpInformation(context);
+        if (deprecatedCallback) {
+          helpInformation = deprecatedCallback(helpInformation);
+          if (typeof helpInformation !== "string" && !Buffer.isBuffer(helpInformation)) {
+            throw new Error("outputHelp callback must return a string or a Buffer");
+          }
+        }
+        context.write(helpInformation);
+        if (this._getHelpOption()?.long) {
+          this.emit(this._getHelpOption().long);
+        }
+        this.emit("afterHelp", context);
+        this._getCommandAndAncestors().forEach(
+          (command) => command.emit("afterAllHelp", context)
+        );
+      }
+      /**
+       * You can pass in flags and a description to customise the built-in help option.
+       * Pass in false to disable the built-in help option.
+       *
+       * @example
+       * program.helpOption('-?, --help' 'show help'); // customise
+       * program.helpOption(false); // disable
+       *
+       * @param {(string | boolean)} flags
+       * @param {string} [description]
+       * @return {Command} `this` command for chaining
+       */
+      helpOption(flags, description) {
+        if (typeof flags === "boolean") {
+          if (flags) {
+            this._helpOption = this._helpOption ?? void 0;
+          } else {
+            this._helpOption = null;
+          }
+          return this;
+        }
+        flags = flags ?? "-h, --help";
+        description = description ?? "display help for command";
+        this._helpOption = this.createOption(flags, description);
+        return this;
+      }
+      /**
+       * Lazy create help option.
+       * Returns null if has been disabled with .helpOption(false).
+       *
+       * @returns {(Option | null)} the help option
+       * @package
+       */
+      _getHelpOption() {
+        if (this._helpOption === void 0) {
+          this.helpOption(void 0, void 0);
+        }
+        return this._helpOption;
+      }
+      /**
+       * Supply your own option to use for the built-in help option.
+       * This is an alternative to using helpOption() to customise the flags and description etc.
+       *
+       * @param {Option} option
+       * @return {Command} `this` command for chaining
+       */
+      addHelpOption(option) {
+        this._helpOption = option;
+        return this;
+      }
+      /**
+       * Output help information and exit.
+       *
+       * Outputs built-in help, and custom text added using `.addHelpText()`.
+       *
+       * @param {{ error: boolean }} [contextOptions] - pass {error:true} to write to stderr instead of stdout
+       */
+      help(contextOptions) {
+        this.outputHelp(contextOptions);
+        let exitCode = process3.exitCode || 0;
+        if (exitCode === 0 && contextOptions && typeof contextOptions !== "function" && contextOptions.error) {
+          exitCode = 1;
+        }
+        this._exit(exitCode, "commander.help", "(outputHelp)");
+      }
+      /**
+       * Add additional text to be displayed with the built-in help.
+       *
+       * Position is 'before' or 'after' to affect just this command,
+       * and 'beforeAll' or 'afterAll' to affect this command and all its subcommands.
+       *
+       * @param {string} position - before or after built-in help
+       * @param {(string | Function)} text - string to add, or a function returning a string
+       * @return {Command} `this` command for chaining
+       */
+      addHelpText(position, text) {
+        const allowedValues = ["beforeAll", "before", "after", "afterAll"];
+        if (!allowedValues.includes(position)) {
+          throw new Error(`Unexpected value for position to addHelpText.
+Expecting one of '${allowedValues.join("', '")}'`);
+        }
+        const helpEvent = `${position}Help`;
+        this.on(helpEvent, (context) => {
+          let helpStr;
+          if (typeof text === "function") {
+            helpStr = text({ error: context.error, command: context.command });
+          } else {
+            helpStr = text;
+          }
+          if (helpStr) {
+            context.write(`${helpStr}
+`);
+          }
+        });
+        return this;
+      }
+      /**
+       * Output help information if help flags specified
+       *
+       * @param {Array} args - array of options to search for help flags
+       * @private
+       */
+      _outputHelpIfRequested(args) {
+        const helpOption = this._getHelpOption();
+        const helpRequested = helpOption && args.find((arg) => helpOption.is(arg));
+        if (helpRequested) {
+          this.outputHelp();
+          this._exit(0, "commander.helpDisplayed", "(outputHelp)");
+        }
+      }
+    };
+    function incrementNodeInspectorPort(args) {
+      return args.map((arg) => {
+        if (!arg.startsWith("--inspect")) {
+          return arg;
+        }
+        let debugOption;
+        let debugHost = "127.0.0.1";
+        let debugPort = "9229";
+        let match;
+        if ((match = arg.match(/^(--inspect(-brk)?)$/)) !== null) {
+          debugOption = match[1];
+        } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+)$/)) !== null) {
+          debugOption = match[1];
+          if (/^\d+$/.test(match[3])) {
+            debugPort = match[3];
+          } else {
+            debugHost = match[3];
+          }
+        } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+):(\d+)$/)) !== null) {
+          debugOption = match[1];
+          debugHost = match[3];
+          debugPort = match[4];
+        }
+        if (debugOption && debugPort !== "0") {
+          return `${debugOption}=${debugHost}:${parseInt(debugPort) + 1}`;
+        }
+        return arg;
+      });
+    }
+    exports2.Command = Command2;
+  }
+});
+
+// node_modules/commander/index.js
+var require_commander = __commonJS({
+  "node_modules/commander/index.js"(exports2) {
+    var { Argument: Argument2 } = require_argument();
+    var { Command: Command2 } = require_command();
+    var { CommanderError: CommanderError2, InvalidArgumentError: InvalidArgumentError2 } = require_error();
+    var { Help: Help2 } = require_help();
+    var { Option: Option2 } = require_option();
+    exports2.program = new Command2();
+    exports2.createCommand = (name) => new Command2(name);
+    exports2.createOption = (flags, description) => new Option2(flags, description);
+    exports2.createArgument = (name, description) => new Argument2(name, description);
+    exports2.Command = Command2;
+    exports2.Option = Option2;
+    exports2.Argument = Argument2;
+    exports2.Help = Help2;
+    exports2.CommanderError = CommanderError2;
+    exports2.InvalidArgumentError = InvalidArgumentError2;
+    exports2.InvalidOptionArgumentError = InvalidArgumentError2;
+  }
+});
+
+// node_modules/commander/esm.mjs
+var import_index2, program, createCommand, createArgument, createOption, CommanderError, InvalidArgumentError, InvalidOptionArgumentError, Command, Argument, Option, Help;
+var init_esm = __esm({
+  "node_modules/commander/esm.mjs"() {
+    import_index2 = __toESM(require_commander(), 1);
+    ({
+      program,
+      createCommand,
+      createArgument,
+      createOption,
+      CommanderError,
+      InvalidArgumentError,
+      InvalidOptionArgumentError,
+      Command: (
+        // deprecated old name
+        Command
+      ),
+      Argument,
+      Option,
+      Help
+    } = import_index2.default);
+  }
+});
+
+// src/hooks/session-end/routing.ts
+function normalizeVerifyCommands(value) {
+  if (!Array.isArray(value)) return void 0;
+  const commands = value.filter((entry) => typeof entry === "string" && entry.length <= MAX_VERIFY_COMMAND_LENGTH && VERIFY_COMMAND_PATTERN.test(entry)).slice(0, MAX_VERIFY_COMMANDS);
+  return commands.length > 0 ? commands : void 0;
+}
+function normalizeRouteTable(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const entries = Object.entries(input);
+  if (entries.length === 0) return {};
+  const directives = {};
+  for (const [key, value] of entries) {
+    if (!key.includes(":")) continue;
+    if (!value || typeof value !== "object") continue;
+    const { stage, skill, verify } = value;
+    if (typeof stage !== "string" || typeof skill !== "string") continue;
+    const verifyCommands = normalizeVerifyCommands(verify);
+    directives[key] = verifyCommands ? { stage, skill, verify: verifyCommands } : { stage, skill };
+  }
+  return Object.keys(directives).length > 0 ? directives : null;
+}
+var VERIFY_COMMAND_PATTERN, MAX_VERIFY_COMMANDS, MAX_VERIFY_COMMAND_LENGTH;
+var init_routing = __esm({
+  "src/hooks/session-end/routing.ts"() {
+    "use strict";
+    VERIFY_COMMAND_PATTERN = /^[A-Za-z][A-Za-z0-9 _.:/=%@-]*$/;
+    MAX_VERIFY_COMMANDS = 10;
+    MAX_VERIFY_COMMAND_LENGTH = 120;
+  }
+});
+
+// src/hooks/session-end/guardrails.ts
+var import_path58, import_fs46, SERIAL_STALE_MS;
+var init_guardrails = __esm({
+  "src/hooks/session-end/guardrails.ts"() {
+    "use strict";
+    import_path58 = require("path");
+    import_fs46 = require("fs");
+    init_file_lock();
+    init_worktree_paths();
+    SERIAL_STALE_MS = 24 * 60 * 60 * 1e3;
+  }
+});
+
+// src/hooks/session-end/spawn-next.ts
+function chainLinkEnv(base, command, chainLink) {
+  const env = { ...base };
+  const dropped = command === "copilot" ? [...LINK_ENV_DROPPED, "COPILOT_ALLOW_ALL"] : LINK_ENV_DROPPED;
+  for (const key of Object.keys(env)) {
+    if (dropped.includes(process.platform === "win32" ? key.toUpperCase() : key)) delete env[key];
+  }
+  if (command === "copilot") {
+    env.COPILOT_ALLOW_ALL = "false";
+    if (chainLink !== void 0) {
+      validateSessionId(chainLink);
+      env[CHAIN_LINK_ENV] = chainLink;
+    }
+  }
+  return env;
+}
+function copilotPluginDirArgs(env = process.env, linkCwd = process.cwd()) {
+  const root = env.OMC_PLUGIN_ROOT?.trim();
+  if (!root || !path14.isAbsolute(root)) return [];
+  if (process.platform === "win32" && root.includes("%")) return [];
+  if (pathsOverlap(root, linkCwd)) return [];
+  try {
+    return fs8.statSync(root).isDirectory() ? ["--plugin-dir", root] : [];
+  } catch {
+    return [];
+  }
+}
+function pathsOverlap(a, b) {
+  const key = (p) => {
+    let out = path14.resolve(p);
+    try {
+      out = fs8.realpathSync.native(out);
+    } catch {
+    }
+    return process.platform === "win32" ? out.toLowerCase() : out;
+  };
+  const [ka, kb] = [key(a), key(b)];
+  const inside = (child, parent) => {
+    const rel = path14.relative(parent, child);
+    return rel === "" || !rel.startsWith("..") && !path14.isAbsolute(rel);
+  };
+  return inside(ka, kb) || inside(kb, ka);
+}
+function writeChainLinkLedger(factoryDir, linkId, host, seed) {
+  validateSessionId(linkId);
+  const ledgerPath2 = path14.join(factoryDir, `chain-${linkId}.json`);
+  fs8.mkdirSync(factoryDir, { recursive: true });
+  fs8.writeFileSync(ledgerPath2, JSON.stringify({
+    ...seed,
+    chainLink: linkId,
+    host,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  }, null, 2), "utf8");
+  return ledgerPath2;
+}
+var fs8, path14, import_crypto12, import_child_process17, CHAIN_LINK_ENV, LINK_ENV_DROPPED, AFK_ALLOWED_TOOLS, COPILOT_AFK_SPAWN_FLAGS;
+var init_spawn_next = __esm({
+  "src/hooks/session-end/spawn-next.ts"() {
+    "use strict";
+    fs8 = __toESM(require("fs"), 1);
+    path14 = __toESM(require("path"), 1);
+    import_crypto12 = require("crypto");
+    import_child_process17 = require("child_process");
+    init_routing();
+    init_worktree_paths();
+    init_tmux_utils();
+    init_host_detection();
+    CHAIN_LINK_ENV = "OMC_CHAIN_LINK";
+    LINK_ENV_DROPPED = [CHAIN_LINK_ENV, "COPILOT_AGENT_SESSION_ID"];
+    AFK_ALLOWED_TOOLS = [
+      "Bash(gh issue view:*)",
+      "Bash(gh issue comment:*)",
+      "Bash(gh issue edit:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh label list:*)",
+      "Read",
+      "Glob",
+      "Grep",
+      "Write",
+      "Edit",
+      "WebFetch(domain:github.com)"
+    ].join(",");
+    COPILOT_AFK_SPAWN_FLAGS = [
+      "--no-ask-user",
+      "--allow-tool=shell(gh issue view)",
+      "--allow-tool=shell(gh issue comment)",
+      "--allow-tool=shell(gh issue edit)",
+      "--allow-tool=shell(gh pr view)",
+      "--allow-tool=shell(gh pr list)",
+      "--allow-tool=shell(gh label list)",
+      "--allow-tool=write",
+      "--allow-url=github.com",
+      // Deny beats allow (even --allow-all-tools). A relative write(path) matches
+      // by trailing path components, so these cover the names in any directory:
+      // no git plumbing edits, and no package.json rewrite that would turn an
+      // allowed `npm test`/`npm run x` verify rule into arbitrary shell.
+      "--deny-tool=write(.git)",
+      "--deny-tool=write(package.json)",
+      "--deny-tool=shell(git push)"
+    ];
+  }
+});
+
+// src/factory/watchdog.ts
+var fs9, import_path59, DEFAULT_STALL_THRESHOLD_MS;
+var init_watchdog = __esm({
+  "src/factory/watchdog.ts"() {
+    "use strict";
+    fs9 = __toESM(require("fs"), 1);
+    import_path59 = require("path");
+    init_spawn_next();
+    init_worktree_paths();
+    DEFAULT_STALL_THRESHOLD_MS = 30 * 60 * 1e3;
+  }
+});
+
+// src/factory/listener.ts
+var import_crypto13, import_http, import_fs47, import_path60, INTAKE_ROUTE_TABLE, MAX_BODY_BYTES;
+var init_listener = __esm({
+  "src/factory/listener.ts"() {
+    "use strict";
+    import_crypto13 = require("crypto");
+    import_http = require("http");
+    import_fs47 = require("fs");
+    import_path60 = require("path");
+    init_routing();
+    init_guardrails();
+    init_spawn_next();
+    init_watchdog();
+    init_worktree_paths();
+    INTAKE_ROUTE_TABLE = { "success:intake": { stage: "intent", skill: "intent" } };
+    MAX_BODY_BYTES = 1024 * 1024;
+  }
+});
+
+// src/hooks/session-end/check-evidence.ts
+var fs10, import_path61;
+var init_check_evidence = __esm({
+  "src/hooks/session-end/check-evidence.ts"() {
+    "use strict";
+    fs10 = __toESM(require("fs"), 1);
+    import_path61 = require("path");
+    init_worktree_paths();
+  }
+});
+
+// src/hooks/session-end/chain-enqueuer.ts
+function factoryStateDir(directory) {
+  return (0, import_path62.join)(getOmcRoot(directory), "state", "factory");
+}
+function readProjectRoutes(directory) {
+  try {
+    const parsed = JSON.parse(fs11.readFileSync((0, import_path62.join)(getOmcRoot(directory), "factory-routes.json"), "utf8"));
+    return normalizeRouteTable(parsed);
+  } catch {
+    return null;
+  }
+}
+var fs11, import_path62;
+var init_chain_enqueuer = __esm({
+  "src/hooks/session-end/chain-enqueuer.ts"() {
+    "use strict";
+    fs11 = __toESM(require("fs"), 1);
+    import_path62 = require("path");
+    init_routing();
+    init_guardrails();
+    init_check_evidence();
+    init_spawn_next();
+    init_worktree_paths();
+  }
+});
+
+// src/factory/status.ts
+var fs12, import_path63;
+var init_status = __esm({
+  "src/factory/status.ts"() {
+    "use strict";
+    fs12 = __toESM(require("fs"), 1);
+    import_path63 = require("path");
+    init_watchdog();
+    init_chain_enqueuer();
+  }
+});
+
+// src/cli/commands/factory.ts
+function buildRouteTableNarrow() {
+  return { ...INTAKE_ROUTE_TABLE };
+}
+function buildRouteTableFull() {
+  return {
+    "success:intake": { stage: "intent", skill: "intent" },
+    "success:intent": { stage: "launch", skill: "launch" },
+    "success:launch": { stage: "diagnose", skill: "diagnose" }
+  };
+}
+function validateFactoryPrerequisites(cwd) {
+  const missing = [];
+  if (!(0, import_fs48.existsSync)((0, import_path64.join)(getOmcRoot(cwd), "state"))) missing.push(".omg/state/");
+  if (!(0, import_fs48.existsSync)((0, import_path64.join)(cwd, "docs", "design"))) missing.push("docs/design/");
+  return { ok: missing.length === 0, missing };
+}
+function runFactoryInit(options = {}) {
+  const cwd = (0, import_path64.resolve)(options.cwd ?? process.cwd());
+  const routesPath = (0, import_path64.join)(getOmcRoot(cwd), "factory-routes.json");
+  const prerequisites = validateFactoryPrerequisites(cwd);
+  if (!prerequisites.ok) {
+    return {
+      exitCode: 1,
+      message: `factory init refused: missing prerequisites (${prerequisites.missing.join(", ")}). Harbor needs .omg/state/ (run an OMC session or omg setup first); the shipyard layout needs docs/design/. Point --cwd at the project root.`
+    };
+  }
+  if ((0, import_fs48.existsSync)(routesPath) && !options.force) {
+    return {
+      exitCode: 1,
+      message: `factory init refused: ${routesPath} already exists and the project route table is never overwritten. Read it first, then pass --force to replace it.`
+    };
+  }
+  const table = options.narrow === false ? buildRouteTableFull() : buildRouteTableNarrow();
+  try {
+    (0, import_fs48.mkdirSync)((0, import_path64.join)(routesPath, ".."), { recursive: true });
+    (0, import_fs48.writeFileSync)(routesPath, `${JSON.stringify(table, null, 2)}
+`, "utf8");
+  } catch (error2) {
+    return { exitCode: 1, message: `factory init failed: cannot write ${routesPath}: ${error2.message}` };
+  }
+  const mode = options.narrow === false ? "full-pipeline widening template" : "narrow starter table";
+  const routes = Object.entries(table).map(([key, directive]) => `${key} -> ${directive.stage}/${directive.skill}`).join("; ");
+  return {
+    exitCode: 0,
+    message: `factory init wrote ${routesPath} (${mode}): ${routes}. The SessionEnd chain enqueuer reads this file as the single source of truth \u2014 a missing route halts the chain, and skill "stop" marks a terminal stage.`
+  };
+}
+var import_fs48, import_path64;
+var init_factory = __esm({
+  "src/cli/commands/factory.ts"() {
+    "use strict";
+    init_esm();
+    import_fs48 = require("fs");
+    import_path64 = require("path");
+    init_listener();
+    init_status();
+    init_worktree_paths();
+  }
+});
+
+// src/smoke/copilot-chain-scenario.ts
+function prepareChainProject(projectDir) {
+  try {
+    (0, import_fs49.mkdirSync)((0, import_path65.join)(projectDir, ".omg", "state"), { recursive: true });
+    (0, import_fs49.mkdirSync)((0, import_path65.join)(projectDir, "docs", "design"), { recursive: true });
+  } catch (err) {
+    return `factory layout: ${err.message}`;
+  }
+  const init = runFactoryInit({ cwd: projectDir, force: true });
+  if (init.exitCode !== 0) return init.message;
+  const routes = {
+    ...readProjectRoutes(projectDir) ?? {},
+    "success:*": { stage: CHAIN_LINK2_STAGE, skill: CHAIN_SKILL },
+    "failed:*": { stage: "halt", skill: "stop" }
+  };
+  try {
+    (0, import_fs49.writeFileSync)((0, import_path65.join)(projectDir, ".omg", "factory-routes.json"), `${JSON.stringify(routes, null, 2)}
+`);
+    const skillDir = (0, import_path65.join)(projectDir, ".github", "skills", CHAIN_SKILL);
+    (0, import_fs49.mkdirSync)(skillDir, { recursive: true });
+    (0, import_fs49.writeFileSync)((0, import_path65.join)(skillDir, "SKILL.md"), [
+      "---",
+      `name: ${CHAIN_SKILL}`,
+      "description: Acknowledge an oh-my-copilot factory chain smoke link. Use when invoked as /chain-ack.",
+      "---",
+      "",
+      `Reply with exactly: ${CHAIN_ACK_TOKEN}. Do not use tools and do not open the handoff file.`,
+      ""
+    ].join("\n"));
+  } catch (err) {
+    return `route table / skill: ${err.message}`;
+  }
+  return null;
+}
+function pathKey(env) {
+  return Object.keys(env).find((k) => k.toUpperCase() === "PATH") ?? "PATH";
+}
+function chainLinkSmokeEnv(base, bin, root, linkId) {
+  const key = pathKey(base);
+  const withPath = { ...base, [key]: [(0, import_path65.dirname)(bin), base[key]].filter(Boolean).join(import_path65.delimiter), OMC_PLUGIN_ROOT: root };
+  return chainLinkEnv(withPath, "copilot", linkId);
+}
+function readJson(path15) {
+  try {
+    return JSON.parse((0, import_fs49.readFileSync)(path15, "utf8"));
+  } catch {
+    return null;
+  }
+}
+function collectChainEvidence(projectDir, home, firstLink) {
+  const factoryDir = factoryStateDir(projectDir);
+  let entries = [];
+  try {
+    entries = (0, import_fs49.readdirSync)(factoryDir);
+  } catch {
+  }
+  const ledgers = [];
+  for (const entry of entries) {
+    const match = /^chain-([0-9a-f-]{36})\.json$/i.exec(entry);
+    if (!match) continue;
+    const value = readJson((0, import_path65.join)(factoryDir, entry));
+    if (value && typeof value === "object" && !Array.isArray(value)) ledgers.push({ ...value, file: match[1] });
+  }
+  ledgers.sort((a, b) => a.file === firstLink ? -1 : b.file === firstLink ? 1 : String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")));
+  let decisions = [];
+  try {
+    decisions = parseJsonl((0, import_fs49.readFileSync)((0, import_path65.join)(factoryDir, "chain-decisions.jsonl"), "utf8")).events;
+  } catch {
+  }
+  const stopped = readJson((0, import_path65.join)(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`));
+  const sessions = ledgers.map((l) => l.hostSessionId).filter((id) => typeof id === "string" && /^[\w-]{1,64}$/.test(id)).map((hostSessionId) => {
+    let events = null;
+    try {
+      events = parseJsonl((0, import_fs49.readFileSync)((0, import_path65.join)(home, "session-state", hostSessionId, "events.jsonl"), "utf8")).events;
+    } catch {
+    }
+    return { hostSessionId, events };
+  });
+  return { firstLink, ledgers, decisions, stopped, sessions };
+}
+function openLinks(projectDir) {
+  const factoryDir = factoryStateDir(projectDir);
+  let entries = [];
+  try {
+    entries = (0, import_fs49.readdirSync)(factoryDir);
+  } catch {
+    return [];
+  }
+  return entries.map((e) => /^chain-([0-9a-f-]{36})\.json$/i.exec(e)?.[1]).filter((id) => !!id).filter((id) => !readJson((0, import_path65.join)(factoryDir, `chain-${id}.json`))?.closedAt);
+}
+function chainSettled(projectDir, firstLink) {
+  const factoryDir = factoryStateDir(projectDir);
+  if (!(0, import_fs49.existsSync)((0, import_path65.join)(factoryDir, `chain-${firstLink}.json`)) || openLinks(projectDir).length > 0) return false;
+  const ledgers = (0, import_fs49.readdirSync)(factoryDir).filter((e) => /^chain-[0-9a-f-]{36}\.json$/i.test(e)).map((e) => ({ id: e.slice("chain-".length, -".json".length), ledger: readJson((0, import_path65.join)(factoryDir, e)) }));
+  return ledgers.every(({ id, ledger }) => ledger?.decision !== "enqueued" || ledgers.some((l) => l.ledger?.parentLink === id));
+}
+function stopTimedOutChain(projectDir, open3) {
+  const factoryDir = factoryStateDir(projectDir);
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  for (const id of open3) {
+    const ledger = readJson((0, import_path65.join)(factoryDir, `chain-${id}.json`));
+    if (!ledger || typeof ledger !== "object") continue;
+    try {
+      (0, import_fs49.writeFileSync)((0, import_path65.join)(factoryDir, `chain-${id}.json`), JSON.stringify({ ...ledger, closedAt: now, decision: "smoke-timeout" }, null, 2));
+    } catch {
+    }
+  }
+  const marker = (0, import_path65.join)(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`);
+  if ((0, import_fs49.existsSync)(marker)) return;
+  try {
+    (0, import_fs49.writeFileSync)(marker, JSON.stringify({ intentId: CHAIN_INTENT_ID, reason: "smoke-timeout", stoppedAt: now }, null, 2));
+  } catch {
+  }
+}
+async function runChainScenario(input) {
+  const base = {
+    name: "chain",
+    timeoutMs: input.timeoutMs,
+    model: "link default (copilot -p, no --model)",
+    maxCredits: input.maxCredits,
+    budget: input.budget,
+    capped: false,
+    wedged: false
+  };
+  const prepError = prepareChainProject(input.projectDir);
+  if (prepError) return { ...base, events: [], idle: false, timedOut: false, error: `chain setup: ${prepError}` };
+  const firstLink = (input.randomUUID ?? import_crypto14.randomUUID)();
+  writeChainLinkLedger(factoryStateDir(input.projectDir), firstLink, "copilot", {
+    intentId: CHAIN_INTENT_ID,
+    stage: CHAIN_LINK1_STAGE,
+    // Link 2 (stage link-2, visit 1) then hits the cap: exactly two links.
+    maxStageVisits: 1
+  });
+  const env = chainLinkSmokeEnv(input.env, input.bin, input.root, firstLink);
+  const plan = buildHostBinarySpawn(input.bin, [...COPILOT_AFK_SPAWN_FLAGS, ...copilotPluginDirArgs(env, input.projectDir)]);
+  const link1 = await runAsync(input.spawn ?? import_child_process18.spawn, input.spawnSync, plan.command, plan.args, {
+    cwd: input.projectDir,
+    env,
+    input: `${SCENARIOS.chain.prompt}
+`,
+    timeoutMs: input.timeoutMs,
+    windowsVerbatimArguments: plan.windowsVerbatimArguments
+  });
+  let timedOut = link1.timedOut;
+  const deadline = Date.now() + input.timeoutMs;
+  while (!timedOut && !chainSettled(input.projectDir, firstLink)) {
+    if (Date.now() >= deadline) {
+      timedOut = true;
+      break;
+    }
+    await sleep4(input.pollMs ?? 1e3);
+  }
+  const stillOpen = timedOut ? openLinks(input.projectDir) : [];
+  if (timedOut) stopTimedOutChain(input.projectDir, stillOpen);
+  const chain = collectChainEvidence(input.projectDir, input.home, firstLink);
+  const events = chain.sessions.flatMap((s) => s.events ?? []);
+  try {
+    (0, import_fs49.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
+  } catch {
+  }
+  const linkError = link1.error ?? (link1.code !== 0 && !link1.timedOut ? `link 1 exited ${String(link1.code)}: ${excerpt(link1.stderr, 200)}` : void 0) ?? (stillOpen.length ? `timed out with open link(s) ${stillOpen.join(", ")}; their ledgers were closed (smoke-timeout) so they cannot enqueue, but a running link was not killed` : void 0);
+  return {
+    ...base,
+    events,
+    idle: !timedOut && !linkError,
+    timedOut,
+    ...linkError ? { error: linkError } : {},
+    chain
+  };
+}
+var import_crypto14, import_child_process18, import_fs49, import_path65, CHAIN_ACK_TOKEN, sleep4;
+var init_copilot_chain_scenario = __esm({
+  "src/smoke/copilot-chain-scenario.ts"() {
+    "use strict";
+    import_crypto14 = require("crypto");
+    import_child_process18 = require("child_process");
+    import_fs49 = require("fs");
+    import_path65 = require("path");
+    init_tmux_utils();
+    init_factory();
+    init_chain_enqueuer();
+    init_spawn_next();
+    init_copilot_session_eval();
+    init_copilot_sdk_scenarios();
+    init_process_utils2();
+    CHAIN_ACK_TOKEN = "CHAIN_ACK";
+    sleep4 = (ms) => new Promise((r) => {
+      setTimeout(r, ms);
+    });
   }
 });
 
@@ -30171,17 +33752,17 @@ function isSdkModule(mod) {
 }
 function readPkg(dir) {
   try {
-    return JSON.parse((0, import_fs46.readFileSync)((0, import_path58.join)(dir, "package.json"), "utf-8"));
+    return JSON.parse((0, import_fs50.readFileSync)((0, import_path66.join)(dir, "package.json"), "utf-8"));
   } catch {
     return null;
   }
 }
 function versionAbove(file) {
-  let dir = (0, import_path58.dirname)(file);
+  let dir = (0, import_path66.dirname)(file);
   for (let i = 0; i < 6; i++) {
     const pkg = readPkg(dir);
     if (pkg?.name === SDK_PACKAGE) return pkg.version ?? null;
-    const parent = (0, import_path58.dirname)(dir);
+    const parent = (0, import_path66.dirname)(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -30203,7 +33784,7 @@ function nodeResolvedVersion() {
   return null;
 }
 function globalModuleRoots(env, platform = process.platform) {
-  return platform === "win32" && env.APPDATA ? [(0, import_path58.join)(env.APPDATA, "npm", "node_modules")] : [];
+  return platform === "win32" && env.APPDATA ? [(0, import_path66.join)(env.APPDATA, "npm", "node_modules")] : [];
 }
 function satisfiesSdkRange(version2) {
   const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(version2 ?? "").trim());
@@ -30216,13 +33797,13 @@ function satisfiesSdkRange(version2) {
 function insideDir(dir, file) {
   const real = (p) => {
     try {
-      return import_fs46.realpathSync.native(p);
+      return import_fs50.realpathSync.native(p);
     } catch {
-      return (0, import_path58.resolve)(p);
+      return (0, import_path66.resolve)(p);
     }
   };
-  const rel = (0, import_path58.relative)(real(dir), real((0, import_path58.resolve)(dir, file)));
-  return rel !== "" && !rel.startsWith("..") && !(0, import_path58.isAbsolute)(rel);
+  const rel = (0, import_path66.relative)(real(dir), real((0, import_path66.resolve)(dir, file)));
+  return rel !== "" && !rel.startsWith("..") && !(0, import_path66.isAbsolute)(rel);
 }
 function exportPath(target, condition) {
   if (typeof target === "string") return target;
@@ -30244,13 +33825,13 @@ async function importFromDir(dir) {
   if (!insideDir(dir, esmEntry) || !insideDir(dir, cjsEntry)) return null;
   let mod;
   try {
-    mod = await import((0, import_url7.pathToFileURL)((0, import_path58.resolve)(dir, esmEntry)).href);
+    mod = await import((0, import_url7.pathToFileURL)((0, import_path66.resolve)(dir, esmEntry)).href);
   } catch {
-    mod = (0, import_module3.createRequire)((0, import_path58.join)(dir, "package.json"))((0, import_path58.resolve)(dir, cjsEntry));
+    mod = (0, import_module3.createRequire)((0, import_path66.join)(dir, "package.json"))((0, import_path66.resolve)(dir, cjsEntry));
   }
   return isSdkModule(mod) ? { module: mod, version: pkg.version ?? null, from: dir } : null;
 }
-function resolveShimTarget(shim, read = (p) => (0, import_fs46.readFileSync)(p, "utf-8"), exists = import_fs46.existsSync) {
+function resolveShimTarget(shim, read = (p) => (0, import_fs50.readFileSync)(p, "utf-8"), exists = import_fs50.existsSync) {
   let text;
   try {
     text = read(shim);
@@ -30266,12 +33847,12 @@ function resolveShimTarget(shim, read = (p) => (0, import_fs46.readFileSync)(p, 
   for (const re of patterns) {
     const m = re.exec(text);
     if (!m) continue;
-    const target = (0, import_path58.resolve)((0, import_path58.dirname)(shim), m[1].replace(/\\/g, "/"));
+    const target = (0, import_path66.resolve)((0, import_path66.dirname)(shim), m[1].replace(/\\/g, "/"));
     if (exists(target)) return target;
   }
   return null;
 }
-async function loadCopilotSdk(env = process.env, spawnSync8 = import_child_process17.spawnSync) {
+async function loadCopilotSdk(env = process.env, spawnSync8 = import_child_process19.spawnSync) {
   const spec = SDK_PACKAGE;
   try {
     const mod = await import(spec);
@@ -30282,8 +33863,8 @@ async function loadCopilotSdk(env = process.env, spawnSync8 = import_child_proce
   const tryRoot = async (root) => {
     if (!root || tried.has(root)) return null;
     tried.add(root);
-    const dir = (0, import_path58.join)(root, ...SDK_PACKAGE.split("/"));
-    if (!(0, import_fs46.existsSync)((0, import_path58.join)(dir, "package.json"))) return null;
+    const dir = (0, import_path66.join)(root, ...SDK_PACKAGE.split("/"));
+    if (!(0, import_fs50.existsSync)((0, import_path66.join)(dir, "package.json"))) return null;
     try {
       return await importFromDir(dir);
     } catch {
@@ -30318,14 +33899,14 @@ async function rpc(fn, label) {
 function readAllLogs(logDir) {
   let files;
   try {
-    files = (0, import_fs46.readdirSync)(logDir).filter((f) => f.endsWith(".log"));
+    files = (0, import_fs50.readdirSync)(logDir).filter((f) => f.endsWith(".log"));
   } catch {
     return null;
   }
   if (files.length === 0) return null;
   return files.map((f) => {
     try {
-      return (0, import_fs46.readFileSync)((0, import_path58.join)(logDir, f), "utf-8");
+      return (0, import_fs50.readFileSync)((0, import_path66.join)(logDir, f), "utf-8");
     } catch {
       return "";
     }
@@ -30345,14 +33926,14 @@ function pidAlive(pid) {
 }
 function prepareSdkProject(spawnSync8, projectDir, remoteDir, env) {
   const git = (args, cwd) => spawnSync8("git", args, { cwd, env, encoding: "utf8", timeout: 3e4, windowsHide: true });
-  (0, import_fs46.mkdirSync)(projectDir, { recursive: true });
-  (0, import_fs46.writeFileSync)((0, import_path58.join)(projectDir, "hello.txt"), "omg smoke fixture\n");
+  (0, import_fs50.mkdirSync)(projectDir, { recursive: true });
+  (0, import_fs50.writeFileSync)((0, import_path66.join)(projectDir, "hello.txt"), "omg smoke fixture\n");
   const steps = [
     [["-c", "init.defaultBranch=main", "init", "-q"], projectDir],
     [["checkout", "-q", "-B", "main"], projectDir],
     [["add", "hello.txt"], projectDir],
     [["-c", "user.name=omg-smoke", "-c", "user.email=omg-smoke@example.invalid", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "init"], projectDir],
-    [["init", "-q", "--bare", remoteDir], (0, import_path58.dirname)(remoteDir)],
+    [["init", "-q", "--bare", remoteDir], (0, import_path66.dirname)(remoteDir)],
     [["remote", "add", "origin", remoteDir], projectDir]
   ];
   for (const [args, cwd] of steps) {
@@ -30406,7 +33987,7 @@ async function runSdkTier(input) {
     baseDirectory: input.home,
     workingDirectory: input.projectDir
   });
-  const logDir = (0, import_path58.join)(input.home, "logs");
+  const logDir = (0, import_path66.join)(input.home, "logs");
   const sdkInfo = { version: loaded2.version, runtimeVersion: null, protocolVersion: null, model: "auto" };
   const total = { premiumRequests: 0, credits: 0 };
   const entries = [];
@@ -30434,7 +34015,7 @@ async function runSdkTier(input) {
     checks.push(evaluateSdkRuntime(status, input.binVersion, modelLabel));
     checks.push(...await staticChecks(client, input));
     let stopReason;
-    for (const name of input.scenarios) {
+    for (const name of [...input.scenarios.filter((s) => s !== "chain"), ...input.scenarios.filter((s) => s === "chain")]) {
       if (projectError) {
         entries.push({ name, skip: `sandbox project setup failed: ${projectError}` });
         continue;
@@ -30443,13 +34024,24 @@ async function runSdkTier(input) {
         entries.push({ name, skip: stopReason });
         continue;
       }
-      const path14 = (0, import_path58.join)(input.home, `events-${name}.jsonl`);
-      events[name] = path14;
-      if (entries.length > 0) await new Promise((resolve23) => setTimeout(resolve23, 2));
+      const path15 = (0, import_path66.join)(input.home, `events-${name}.jsonl`);
+      events[name] = path15;
+      if (entries.length > 0) await new Promise((resolve25) => setTimeout(resolve25, 2));
       const start = Date.now();
-      const { wedged: stuck, ...run } = await runScenario(client, input, name, choice.model, modelLabel, path14, input.maxCredits - total.credits);
+      const { wedged: stuck, ...run } = name === "chain" ? await (input.runChain ?? runChainScenario)({
+        bin,
+        root: input.root,
+        env: input.env,
+        projectDir: input.projectDir,
+        home: input.home,
+        timeoutMs: input.timeoutMs,
+        maxCredits: input.maxCredits,
+        budget: input.maxCredits - total.credits,
+        eventsPath: path15,
+        spawnSync: input.spawnSync
+      }) : await runScenario(client, input, name, choice.model, modelLabel, path15, input.maxCredits - total.credits);
       entries.push({ name, run, start });
-      const cost = scenarioCost(run.events);
+      const cost = run.chain ? chainCost(run.chain) : scenarioCost(run.events);
       total.premiumRequests += cost.premiumRequests;
       total.credits += cost.credits;
       if (run.capped || total.credits > input.maxCredits) stopReason = CREDIT_CAP_SKIP_DETAIL;
@@ -30509,7 +34101,7 @@ async function staticChecks(client, input) {
     const deadline = Date.now() + MCP_CONNECT_WAIT_MS;
     const status = () => mcp.ok ? mcp.value.servers?.find((x) => x.name === input.mcpServer)?.status : void 0;
     while (mcp.ok && status() !== "connected" && status() !== "failed" && Date.now() < deadline) {
-      await sleep4(500);
+      await sleep5(500);
       mcp = await rpc(() => s.rpc.mcp.list(), "mcp.list");
     }
     const [plugins, skills, agents, tools, toolMeta] = [
@@ -30610,7 +34202,7 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
     const winner = await Promise.race([
       idle.then(() => "idle"),
       capHit.then(() => "cap"),
-      sleep4(input.timeoutMs).then(() => "timeout")
+      sleep5(input.timeoutMs).then(() => "timeout")
     ]);
     if (winner === "idle") {
       idleSeen = true;
@@ -30621,7 +34213,7 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
         await withTimeout(s.abort(), RPC_TIMEOUT_MS, "abort()");
       } catch {
       }
-      const settled = await Promise.race([idle.then(() => true), sleep4(ABORT_GRACE_MS).then(() => false)]);
+      const settled = await Promise.race([idle.then(() => true), sleep5(ABORT_GRACE_MS).then(() => false)]);
       wedged = !settled;
     }
   } catch (err) {
@@ -30632,7 +34224,7 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
         await withTimeout(session.disconnect(), RPC_TIMEOUT_MS, "disconnect()");
       } catch {
       }
-      await Promise.race([shutdown, sleep4(SHUTDOWN_GRACE_MS)]);
+      await Promise.race([shutdown, sleep5(SHUTDOWN_GRACE_MS)]);
       if (!input.keepHome) {
         try {
           await withTimeout(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS, "deleteSession()");
@@ -30641,7 +34233,7 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
       }
     }
     try {
-      (0, import_fs46.writeFileSync)(eventsPath, recorded.map((e) => JSON.stringify(e)).join("\n") + (recorded.length ? "\n" : ""));
+      (0, import_fs50.writeFileSync)(eventsPath, recorded.map((e) => JSON.stringify(e)).join("\n") + (recorded.length ? "\n" : ""));
     } catch {
     }
   }
@@ -30660,18 +34252,19 @@ async function runScenario(client, input, name, model, modelLabel, eventsPath, b
     wedged
   };
 }
-var import_child_process17, import_fs46, import_module3, import_path58, import_url7, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep4, reject, RUNTIME_WEDGED_DETAIL;
+var import_child_process19, import_fs50, import_module3, import_path66, import_url7, SDK_MIN_VERSION, DEFAULT_SCENARIO_TIMEOUT_MS, START_TIMEOUT_MS, RPC_TIMEOUT_MS, MCP_CONNECT_WAIT_MS, ABORT_GRACE_MS, SHUTDOWN_GRACE_MS, STOP_TIMEOUT_MS, TimeoutError, sleep5, reject, RUNTIME_WEDGED_DETAIL;
 var init_copilot_sdk_driver = __esm({
   "src/smoke/copilot-sdk-driver.ts"() {
     "use strict";
-    import_child_process17 = require("child_process");
-    import_fs46 = require("fs");
+    import_child_process19 = require("child_process");
+    import_fs50 = require("fs");
     import_module3 = require("module");
-    import_path58 = require("path");
+    import_path66 = require("path");
     import_url7 = require("url");
     init_copilot_session_eval();
     init_copilot_sdk_scenarios();
     init_process_utils2();
+    init_copilot_chain_scenario();
     SDK_MIN_VERSION = "1.0.16";
     DEFAULT_SCENARIO_TIMEOUT_MS = 12e4;
     START_TIMEOUT_MS = 6e4;
@@ -30682,7 +34275,7 @@ var init_copilot_sdk_driver = __esm({
     STOP_TIMEOUT_MS = 15e3;
     TimeoutError = class extends Error {
     };
-    sleep4 = (ms) => new Promise((r) => {
+    sleep5 = (ms) => new Promise((r) => {
       setTimeout(r, ms);
     });
     reject = (feedback) => ({ kind: "reject", feedback });
@@ -30706,7 +34299,7 @@ function isStrippedEnvKey(key) {
 }
 function resolveDefaultPluginRoot(env = process.env) {
   const fromEnv = env[OMC_PLUGIN_ROOT_ENV]?.trim();
-  if (fromEnv) return (0, import_path59.resolve)(fromEnv);
+  if (fromEnv) return (0, import_path67.resolve)(fromEnv);
   return findPluginRoot([...moduleDirs(), process.cwd()]) ?? process.cwd();
 }
 function resolvePackageRoot() {
@@ -30716,17 +34309,17 @@ function moduleDirs() {
   const starts = [];
   if (typeof __dirname !== "undefined" && __dirname) starts.push(__dirname);
   try {
-    starts.push((0, import_path59.dirname)((0, import_url8.fileURLToPath)(importMetaUrl)));
+    starts.push((0, import_path67.dirname)((0, import_url8.fileURLToPath)(importMetaUrl)));
   } catch {
   }
   return starts;
 }
 function findPluginRoot(starts) {
   for (const start of starts) {
-    let dir = (0, import_path59.resolve)(start);
+    let dir = (0, import_path67.resolve)(start);
     for (let i = 0; i < 8; i++) {
       if (isPluginRoot(dir)) return dir;
-      const parent = (0, import_path59.dirname)(dir);
+      const parent = (0, import_path67.dirname)(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -30735,8 +34328,8 @@ function findPluginRoot(starts) {
 }
 function isPluginRoot(dir) {
   try {
-    const manifest = JSON.parse((0, import_fs47.readFileSync)((0, import_path59.join)(dir, "plugin.json"), "utf-8"));
-    return manifest.name === PLUGIN_NAME2 && (0, import_fs47.existsSync)((0, import_path59.join)(dir, "package.json"));
+    const manifest = JSON.parse((0, import_fs51.readFileSync)((0, import_path67.join)(dir, "plugin.json"), "utf-8"));
+    return manifest.name === PLUGIN_NAME2 && (0, import_fs51.existsSync)((0, import_path67.join)(dir, "package.json"));
   } catch {
     return false;
   }
@@ -30755,7 +34348,7 @@ function buildSessionEnv(base, home, opts = {}) {
 }
 function loginIdentity(userConfigDir) {
   try {
-    const parsed = parseJsonc((0, import_fs47.readFileSync)((0, import_path59.join)(userConfigDir, "config.json"), "utf-8"));
+    const parsed = parseJsonc((0, import_fs51.readFileSync)((0, import_path67.join)(userConfigDir, "config.json"), "utf-8"));
     if (!parsed || typeof parsed !== "object") return {};
     const out = {};
     for (const key of ["loggedInUsers", "lastLoggedInUser"]) if (parsed[key] !== void 0) out[key] = parsed[key];
@@ -30764,12 +34357,12 @@ function loginIdentity(userConfigDir) {
     return {};
   }
 }
-var import_fs47, import_path59, import_url8, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV;
+var import_fs51, import_path67, import_url8, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV;
 var init_copilot_session_env = __esm({
   "src/smoke/copilot-session-env.ts"() {
     "use strict";
-    import_fs47 = require("fs");
-    import_path59 = require("path");
+    import_fs51 = require("fs");
+    import_path67 = require("path");
     import_url8 = require("url");
     init_env_vars();
     init_jsonc();
@@ -30807,10 +34400,12 @@ __export(copilot_smoke_exports, {
   DEFAULT_TIER1_TIMEOUT_MS: () => DEFAULT_TIER1_TIMEOUT_MS,
   DELEGATE_AGENT: () => DELEGATE_AGENT2,
   DELEGATE_SMOKE_PROMPT: () => DELEGATE_SMOKE_PROMPT,
+  KNOWN_SCENARIOS: () => KNOWN_SCENARIOS,
   LIVE_RUN_REFUSED_DETAIL: () => LIVE_RUN_REFUSED_DETAIL,
   LOGIN_SHADOWING_TOKENS: () => LOGIN_SHADOWING_TOKENS,
   MCP_LIST_TIMEOUT_MS: () => MCP_LIST_TIMEOUT_MS,
   MIN_MAX_CREDITS: () => MIN_MAX_CREDITS,
+  OPT_IN_SCENARIOS: () => OPT_IN_SCENARIOS,
   PLUGIN_NAME: () => PLUGIN_NAME3,
   SESSION_SET_ENV: () => SESSION_SET_ENV,
   SMOKE_SET_ENV: () => SMOKE_SET_ENV,
@@ -30848,23 +34443,23 @@ function tier1Ids(delegate) {
     ...delegate ? ["subagent.selected"] : []
   ];
 }
-function readJson(path14) {
+function readJson2(path15) {
   try {
-    return JSON.parse((0, import_fs48.readFileSync)(path14, "utf-8"));
+    return JSON.parse((0, import_fs52.readFileSync)(path15, "utf-8"));
   } catch {
     return null;
   }
 }
 function countDirsWith(dir, file) {
   try {
-    return (0, import_fs48.readdirSync)(dir).filter((name) => (0, import_fs48.existsSync)((0, import_path60.join)(dir, name, file))).sort();
+    return (0, import_fs52.readdirSync)(dir).filter((name) => (0, import_fs52.existsSync)((0, import_path68.join)(dir, name, file))).sort();
   } catch {
     return [];
   }
 }
 function countFiles(dir, ext) {
   try {
-    return (0, import_fs48.readdirSync)(dir).filter((name) => name.endsWith(ext)).length;
+    return (0, import_fs52.readdirSync)(dir).filter((name) => name.endsWith(ext)).length;
   } catch {
     return -1;
   }
@@ -30881,18 +34476,18 @@ function extractJsonArray(text) {
   }
 }
 function makeTempDir(prefix) {
-  return (0, import_fs48.mkdtempSync)((0, import_path60.join)((0, import_os8.tmpdir)(), prefix));
+  return (0, import_fs52.mkdtempSync)((0, import_path68.join)((0, import_os8.tmpdir)(), prefix));
 }
-function removeDir(path14) {
-  if (!path14) return;
+function removeDir(path15) {
+  if (!path15) return;
   try {
-    (0, import_fs48.rmSync)(path14, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+    (0, import_fs52.rmSync)(path15, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
   } catch {
   }
 }
 function checkManifest(root) {
-  const manifest = readJson((0, import_path60.join)(root, "plugin.json"));
-  const pkg = readJson((0, import_path60.join)(root, "package.json"));
+  const manifest = readJson2((0, import_path68.join)(root, "plugin.json"));
+  const pkg = readJson2((0, import_path68.join)(root, "package.json"));
   const pluginVersion = typeof manifest?.version === "string" ? manifest.version : null;
   const packageVersion = typeof pkg?.version === "string" ? pkg.version : null;
   const problems = [];
@@ -30938,8 +34533,8 @@ function checkGeneratedHooks(ctx) {
   };
 }
 function checkAgents(root) {
-  const source = countFiles((0, import_path60.join)(root, "agents"), ".md");
-  const generated = countFiles((0, import_path60.join)(root, "copilot", "agents"), ".md");
+  const source = countFiles((0, import_path68.join)(root, "agents"), ".md");
+  const generated = countFiles((0, import_path68.join)(root, "copilot", "agents"), ".md");
   const ok = source > 0 && source === generated;
   return {
     id: "copilot.agents",
@@ -30976,22 +34571,22 @@ function checkPluginList(ctx, bin, env, cwd, packageVersion) {
   };
 }
 function normalizePath(p) {
-  let out = (0, import_path60.resolve)(p);
+  let out = (0, import_path68.resolve)(p);
   try {
-    out = import_fs48.realpathSync.native(out);
+    out = import_fs52.realpathSync.native(out);
   } catch {
   }
   return process.platform === "win32" ? out.toLowerCase() : out;
 }
 function checkSkillList(ctx, bin, env, cwd) {
-  const expected = countDirsWith((0, import_path60.join)(ctx.root, "skills"), "SKILL.md");
+  const expected = countDirsWith((0, import_path68.join)(ctx.root, "skills"), "SKILL.md");
   const res = runCopilotSync(ctx, bin, ["--plugin-dir", ctx.root, "--no-auto-update", "skill", "list", "--json"], env, cwd);
   const stdout = String(res.stdout ?? "");
   const list = extractJsonArray(stdout);
   if (res.status !== 0 || !list) {
     return { id: "copilot.skill_list", ok: false, detail: `skill list exit ${res.status}${list ? "" : ", no JSON array"}`, evidence: excerpt(`${stdout}${res.stderr ?? ""}`) };
   }
-  const skillsDir = normalizePath((0, import_path60.join)(ctx.root, "skills")) + import_path60.sep;
+  const skillsDir = normalizePath((0, import_path68.join)(ctx.root, "skills")) + import_path68.sep;
   const pluginSkills = list.filter((s) => s.source === "plugin");
   const fromSkillsDir = new Set(pluginSkills.filter((s) => typeof s.path === "string" && normalizePath(s.path).startsWith(skillsDir)).map((s) => normalizePath(s.path).slice(skillsDir.length).split(/[\\/]/)[0]));
   const missing = expected.filter((d) => !fromSkillsDir.has(process.platform === "win32" ? d.toLowerCase() : d));
@@ -31009,8 +34604,8 @@ async function defaultExpectedToolCount() {
 }
 async function checkMcpListTools(ctx) {
   const id = "mcp.list_tools";
-  const server2 = (0, import_path60.join)(ctx.root, "dist", "mcp", "standalone-server.js");
-  if (!(0, import_fs48.existsSync)(server2)) return { id, ok: false, detail: `${server2} missing; run npm run build` };
+  const server2 = (0, import_path68.join)(ctx.root, "dist", "mcp", "standalone-server.js");
+  if (!(0, import_fs52.existsSync)(server2)) return { id, ok: false, detail: `${server2} missing; run npm run build` };
   let expected;
   try {
     expected = await (ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount)();
@@ -31100,11 +34695,11 @@ async function checkMcpListTools(ctx) {
 }
 function initProject(ctx, projectDir, env) {
   const res = ctx.spawnSyncFn("git", ["init", "-q"], { cwd: projectDir, env, encoding: "utf8", timeout: 3e4, windowsHide: true });
-  if (res.status !== 0 || !(0, import_fs48.existsSync)((0, import_path60.join)(projectDir, ".git"))) (0, import_fs48.mkdirSync)((0, import_path60.join)(projectDir, ".git"), { recursive: true });
+  if (res.status !== 0 || !(0, import_fs52.existsSync)((0, import_path68.join)(projectDir, ".git"))) (0, import_fs52.mkdirSync)((0, import_path68.join)(projectDir, ".git"), { recursive: true });
 }
-function readText(path14) {
+function readText(path15) {
   try {
-    return (0, import_fs48.readFileSync)(path14, "utf-8");
+    return (0, import_fs52.readFileSync)(path15, "utf-8");
   } catch {
     return null;
   }
@@ -31112,33 +34707,33 @@ function readText(path14) {
 function readDebugLogs(logDir) {
   let files;
   try {
-    files = (0, import_fs48.readdirSync)(logDir).filter((f) => f.endsWith(".log")).map((f) => (0, import_path60.join)(logDir, f));
+    files = (0, import_fs52.readdirSync)(logDir).filter((f) => f.endsWith(".log")).map((f) => (0, import_path68.join)(logDir, f));
   } catch {
     return { text: null };
   }
   if (files.length === 0) return { text: null };
-  files.sort((a, b) => (0, import_fs48.statSync)(a).mtimeMs - (0, import_fs48.statSync)(b).mtimeMs);
+  files.sort((a, b) => (0, import_fs52.statSync)(a).mtimeMs - (0, import_fs52.statSync)(b).mtimeMs);
   return { text: files.map((f) => readText(f) ?? "").join("\n"), path: files[files.length - 1] };
 }
 function mcpServerNames(root) {
-  const mcp = readJson((0, import_path60.join)(root, ".mcp.json"));
+  const mcp = readJson2((0, import_path68.join)(root, ".mcp.json"));
   const servers = mcp?.mcpServers;
   return servers && typeof servers === "object" ? Object.keys(servers) : [];
 }
 async function runTier1(ctx, bin, opts, cleanup, artifacts) {
   const parent = makeTempDir("omg-smoke-");
   cleanup.push(parent);
-  const home = (0, import_path60.join)(parent, "home");
+  const home = (0, import_path68.join)(parent, "home");
   artifacts.copilotHome = home;
-  const projectDir = (0, import_path60.join)(parent, "project");
-  (0, import_fs48.mkdirSync)(home);
-  (0, import_fs48.mkdirSync)(projectDir);
-  const logDir = (0, import_path60.join)(home, "logs");
-  const sessionId = (ctx.deps.randomUUID ?? import_crypto12.randomUUID)();
+  const projectDir = (0, import_path68.join)(parent, "project");
+  (0, import_fs52.mkdirSync)(home);
+  (0, import_fs52.mkdirSync)(projectDir);
+  const logDir = (0, import_path68.join)(home, "logs");
+  const sessionId = (ctx.deps.randomUUID ?? import_crypto15.randomUUID)();
   const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
   const env = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   const config2 = { ...identity, trustedFolders: [projectDir] };
-  (0, import_fs48.writeFileSync)((0, import_path60.join)(home, "config.json"), `${JSON.stringify(config2, null, 2)}
+  (0, import_fs52.writeFileSync)((0, import_path68.join)(home, "config.json"), `${JSON.stringify(config2, null, 2)}
 `);
   initProject(ctx, projectDir, env);
   const prompt = opts.prompt ?? (opts.delegate ? DELEGATE_SMOKE_PROMPT : DEFAULT_SMOKE_PROMPT);
@@ -31170,12 +34765,12 @@ async function runTier1(ctx, bin, opts, cleanup, artifacts) {
     timeoutMs,
     windowsVerbatimArguments: plan.windowsVerbatimArguments
   });
-  const stdoutPath = (0, import_path60.join)(home, "smoke-stdout.jsonl");
+  const stdoutPath = (0, import_path68.join)(home, "smoke-stdout.jsonl");
   try {
-    (0, import_fs48.writeFileSync)(stdoutPath, run.stdout);
+    (0, import_fs52.writeFileSync)(stdoutPath, run.stdout);
   } catch {
   }
-  const eventsPath = (0, import_path60.join)(home, "session-state", sessionId, "events.jsonl");
+  const eventsPath = (0, import_path68.join)(home, "session-state", sessionId, "events.jsonl");
   const logs = readDebugLogs(logDir);
   Object.assign(artifacts, { eventsLog: eventsPath, debugLog: logs.path, stdout: stdoutPath });
   return evaluateTier1({
@@ -31227,11 +34822,11 @@ async function runCopilotSmoke(input = {}) {
   const env = input.env ?? process.env;
   const deps = input.deps ?? {};
   const tier = input.tier === 1 || input.tier === 2 ? input.tier : 0;
-  const root = (0, import_path60.resolve)(input.pluginRoot ?? resolveDefaultPluginRoot(env));
+  const root = (0, import_path68.resolve)(input.pluginRoot ?? resolveDefaultPluginRoot(env));
   const opts = { ...input, pluginRoot: root, tier };
   if (opts.prompt !== void 0 && /\0/.test(opts.prompt)) throw new Error("smoke prompt must not contain NUL");
-  const unknown2 = (opts.scenarios ?? []).filter((s) => !ALL_SCENARIOS.includes(s));
-  if (unknown2.length) throw new Error(`unknown smoke scenario(s): ${unknown2.join(", ")} (known: ${ALL_SCENARIOS.join(", ")})`);
+  const unknown2 = (opts.scenarios ?? []).filter((s) => !KNOWN_SCENARIOS.includes(s));
+  if (unknown2.length) throw new Error(`unknown smoke scenario(s): ${unknown2.join(", ")} (known: ${KNOWN_SCENARIOS.join(", ")})`);
   const refusal = liveRunRefusal(tier, opts.scenarios, deps);
   if (refusal) {
     return {
@@ -31249,8 +34844,8 @@ async function runCopilotSmoke(input = {}) {
   const ctx = {
     root,
     env: { ...env },
-    spawnFn: deps.spawn ?? import_child_process18.spawn,
-    spawnSyncFn: deps.spawnSync ?? import_child_process18.spawnSync,
+    spawnFn: deps.spawn ?? import_child_process20.spawn,
+    spawnSyncFn: deps.spawnSync ?? import_child_process20.spawnSync,
     deps,
     timeoutMs: tier === 0 ? opts.timeoutMs ?? DEFAULT_TIER0_TIMEOUT_MS : DEFAULT_TIER0_TIMEOUT_MS
   };
@@ -31334,18 +34929,18 @@ async function runChecks(ctx, opts, started, checks, artifacts, cleanup) {
 async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, cleanup, artifacts) {
   const parent = makeTempDir("omg-smoke-sdk-");
   cleanup.push(parent);
-  const home = (0, import_path60.join)(parent, "home");
-  const projectDir = (0, import_path60.join)(parent, "project");
-  (0, import_fs48.mkdirSync)(home);
+  const home = (0, import_path68.join)(parent, "home");
+  const projectDir = (0, import_path68.join)(parent, "project");
+  (0, import_fs52.mkdirSync)(home);
   artifacts.copilotHome = home;
   const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
   const env = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   env.OMC_GIT_GUARDRAILS = "1";
-  (0, import_fs48.writeFileSync)((0, import_path60.join)(home, "config.json"), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}
+  (0, import_fs52.writeFileSync)((0, import_path68.join)(home, "config.json"), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}
 `);
   let agentFiles = [];
   try {
-    agentFiles = (0, import_fs48.readdirSync)((0, import_path60.join)(ctx.root, "agents")).filter((f) => f.endsWith(".md")).sort();
+    agentFiles = (0, import_fs52.readdirSync)((0, import_path68.join)(ctx.root, "agents")).filter((f) => f.endsWith(".md")).sort();
   } catch {
   }
   const result = await runSdkTier({
@@ -31355,7 +34950,7 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     packageVersion,
     home,
     projectDir,
-    remoteDir: (0, import_path60.join)(parent, "remote.git"),
+    remoteDir: (0, import_path68.join)(parent, "remote.git"),
     env,
     scenarios,
     model: opts.model,
@@ -31365,24 +34960,24 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(ctx.env, ctx.spawnSyncFn)),
     loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
     spawnSync: ctx.spawnSyncFn,
-    skillDirs: countDirsWith((0, import_path60.join)(ctx.root, "skills"), "SKILL.md"),
+    skillDirs: countDirsWith((0, import_path68.join)(ctx.root, "skills"), "SKILL.md"),
     agentFiles,
     mcpServer: mcpServerNames(ctx.root)[0] ?? "t"
   });
   if (Object.keys(result.events).length) artifacts.events = result.events;
-  const logs = readDebugLogs((0, import_path60.join)(home, "logs"));
+  const logs = readDebugLogs((0, import_path68.join)(home, "logs"));
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process18, import_crypto12, import_fs48, import_os8, import_path60, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL;
+var import_child_process20, import_crypto15, import_fs52, import_os8, import_path68, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
-    import_child_process18 = require("child_process");
-    import_crypto12 = require("crypto");
-    import_fs48 = require("fs");
+    import_child_process20 = require("child_process");
+    import_crypto15 = require("crypto");
+    import_fs52 = require("fs");
     import_os8 = require("os");
-    import_path60 = require("path");
+    import_path68 = require("path");
     init_tmux_utils();
     init_config_dir();
     init_copilot_binary();
@@ -31411,9 +35006,9 @@ var init_copilot_smoke = __esm({
 
 // src/tools/host-smoke-tool.ts
 function canonical(p) {
-  let out = (0, import_path61.resolve)(p);
+  let out = (0, import_path69.resolve)(p);
   try {
-    out = import_fs49.realpathSync.native(out);
+    out = import_fs53.realpathSync.native(out);
   } catch {
   }
   return process.platform === "win32" ? out.toLowerCase() : out;
@@ -31421,12 +35016,12 @@ function canonical(p) {
 function errorResult(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
-var import_fs49, import_path61, SMOKE_ALLOW_LIVE_ENV, SMOKE_ALLOW_ANY_ROOT_ENV, SCENARIO_NAMES, hostSmokeSchema, hostSmokeTool;
+var import_fs53, import_path69, SMOKE_ALLOW_LIVE_ENV, SMOKE_ALLOW_ANY_ROOT_ENV, SCENARIO_NAMES, hostSmokeSchema, hostSmokeTool;
 var init_host_smoke_tool = __esm({
   "src/tools/host-smoke-tool.ts"() {
     "use strict";
-    import_fs49 = require("fs");
-    import_path61 = require("path");
+    import_fs53 = require("fs");
+    import_path69 = require("path");
     init_zod();
     init_names();
     SMOKE_ALLOW_LIVE_ENV = "OMC_SMOKE_ALLOW_LIVE";
@@ -31498,18 +35093,18 @@ var init_host_smoke_tool = __esm({
 });
 
 // src/hooks/learner/constants.ts
-var import_path62, import_os9, USER_SKILLS_DIR, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, PROJECT_AGENT_SKILLS_SUBDIR, MAX_RECURSION_DEPTH, SKILL_EXTENSION, DEBUG_ENABLED;
+var import_path70, import_os9, USER_SKILLS_DIR, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, PROJECT_AGENT_SKILLS_SUBDIR, MAX_RECURSION_DEPTH, SKILL_EXTENSION, DEBUG_ENABLED;
 var init_constants3 = __esm({
   "src/hooks/learner/constants.ts"() {
     "use strict";
-    import_path62 = require("path");
+    import_path70 = require("path");
     import_os9 = require("os");
     init_config_dir();
     init_worktree_paths();
-    USER_SKILLS_DIR = (0, import_path62.join)(getCopilotConfigDir(), "skills", "omc-learned");
-    GLOBAL_SKILLS_DIR = (0, import_path62.join)((0, import_os9.homedir)(), ".omg", "skills");
+    USER_SKILLS_DIR = (0, import_path70.join)(getCopilotConfigDir(), "skills", "omc-learned");
+    GLOBAL_SKILLS_DIR = (0, import_path70.join)((0, import_os9.homedir)(), ".omg", "skills");
     PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
-    PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path62.join)(".agents", "skills");
+    PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path70.join)(".agents", "skills");
     MAX_RECURSION_DEPTH = 10;
     SKILL_EXTENSION = ".md";
     DEBUG_ENABLED = process.env.OMC_DEBUG === "1";
@@ -31518,12 +35113,12 @@ var init_constants3 = __esm({
 
 // src/hooks/learner/finder.ts
 function findSkillFilesRecursive(dir, results, depth = 0) {
-  if (!(0, import_fs50.existsSync)(dir)) return;
+  if (!(0, import_fs54.existsSync)(dir)) return;
   if (depth > MAX_RECURSION_DEPTH) return;
   try {
-    const entries = (0, import_fs50.readdirSync)(dir, { withFileTypes: true });
+    const entries = (0, import_fs54.readdirSync)(dir, { withFileTypes: true });
     for (const entry of entries) {
-      const fullPath = (0, import_path63.join)(dir, entry.name);
+      const fullPath = (0, import_path71.join)(dir, entry.name);
       if (entry.isDirectory()) {
         findSkillFilesRecursive(fullPath, results, depth + 1);
       } else if (entry.isFile() && entry.name.endsWith(SKILL_EXTENSION)) {
@@ -31538,15 +35133,15 @@ function findSkillFilesRecursive(dir, results, depth = 0) {
 }
 function safeRealpathSync(filePath) {
   try {
-    return (0, import_fs50.realpathSync)(filePath);
+    return (0, import_fs54.realpathSync)(filePath);
   } catch {
     return filePath;
   }
 }
 function isWithinBoundary(realPath, boundary) {
-  const normalizedReal = (0, import_path63.normalize)(realPath);
-  const normalizedBoundary = (0, import_path63.normalize)(safeRealpathSync(boundary));
-  return normalizedReal === normalizedBoundary || normalizedReal.startsWith(normalizedBoundary + import_path63.sep);
+  const normalizedReal = (0, import_path71.normalize)(realPath);
+  const normalizedBoundary = (0, import_path71.normalize)(safeRealpathSync(boundary));
+  return normalizedReal === normalizedBoundary || normalizedReal.startsWith(normalizedBoundary + import_path71.sep);
 }
 function findSkillFiles(projectRoot, options) {
   const candidates = [];
@@ -31554,8 +35149,8 @@ function findSkillFiles(projectRoot, options) {
   const scope = options?.scope ?? "all";
   if (projectRoot && (scope === "project" || scope === "all")) {
     const projectSkillDirs = [
-      (0, import_path63.join)(projectRoot, PROJECT_SKILLS_SUBDIR),
-      (0, import_path63.join)(projectRoot, PROJECT_AGENT_SKILLS_SUBDIR)
+      (0, import_path71.join)(projectRoot, PROJECT_SKILLS_SUBDIR),
+      (0, import_path71.join)(projectRoot, PROJECT_AGENT_SKILLS_SUBDIR)
     ];
     for (const projectSkillsDir of projectSkillDirs) {
       const projectFiles = [];
@@ -31605,12 +35200,12 @@ function findSkillFiles(projectRoot, options) {
   }
   return candidates;
 }
-var import_fs50, import_path63;
+var import_fs54, import_path71;
 var init_finder2 = __esm({
   "src/hooks/learner/finder.ts"() {
     "use strict";
-    import_fs50 = require("fs");
-    import_path63 = require("path");
+    import_fs54 = require("fs");
+    import_path71 = require("path");
     init_constants3();
   }
 });
@@ -31771,14 +35366,14 @@ var init_parser = __esm({
 
 // src/hooks/learner/loader.ts
 function createContentHash(content) {
-  return (0, import_crypto13.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+  return (0, import_crypto16.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
 function loadAllSkills(projectRoot) {
   const candidates = findSkillFiles(projectRoot);
   const seenIds = /* @__PURE__ */ new Map();
   for (const candidate of candidates) {
     try {
-      const rawContent = (0, import_fs51.readFileSync)(candidate.path, "utf-8");
+      const rawContent = (0, import_fs55.readFileSync)(candidate.path, "utf-8");
       const { metadata, content, valid, errors } = parseSkillFile(rawContent);
       if (!valid) {
         if (DEBUG_ENABLED) {
@@ -31787,7 +35382,7 @@ function loadAllSkills(projectRoot) {
         continue;
       }
       const skillId = metadata.id;
-      const relativePath = (0, import_path64.normalize)((0, import_path64.relative)(candidate.sourceDir, candidate.path));
+      const relativePath = (0, import_path72.normalize)((0, import_path72.relative)(candidate.sourceDir, candidate.path));
       const skill = {
         path: candidate.path,
         relativePath,
@@ -31809,13 +35404,13 @@ function loadAllSkills(projectRoot) {
   }
   return Array.from(seenIds.values()).sort((a, b) => b.priority - a.priority);
 }
-var import_fs51, import_crypto13, import_path64;
+var import_fs55, import_crypto16, import_path72;
 var init_loader2 = __esm({
   "src/hooks/learner/loader.ts"() {
     "use strict";
-    import_fs51 = require("fs");
-    import_crypto13 = require("crypto");
-    import_path64 = require("path");
+    import_fs55 = require("fs");
+    import_crypto16 = require("crypto");
+    import_path72 = require("path");
     init_finder2();
     init_parser();
     init_constants3();
@@ -31824,13 +35419,13 @@ var init_loader2 = __esm({
 
 // src/tools/skills-tools.ts
 function validateProjectRoot(input) {
-  const normalized = (0, import_path65.normalize)((0, import_path65.resolve)(input));
+  const normalized = (0, import_path73.normalize)((0, import_path73.resolve)(input));
   if (input.includes("..")) {
     throw new Error("Invalid project root: path traversal not allowed");
   }
   const isWithinAllowed = ALLOWED_BOUNDARIES.some((boundary) => {
-    const normalizedBoundary = (0, import_path65.normalize)(boundary);
-    return normalized === normalizedBoundary || normalized.startsWith(normalizedBoundary + import_path65.sep);
+    const normalizedBoundary = (0, import_path73.normalize)(boundary);
+    return normalized === normalizedBoundary || normalized.startsWith(normalizedBoundary + import_path73.sep);
   });
   if (!isWithinAllowed) {
     throw new Error("Invalid project root: path is outside allowed directories");
@@ -31856,12 +35451,12 @@ function formatSkillOutput(skills) {
   }
   return lines.join("\n");
 }
-var import_path65, import_os10, ALLOWED_BOUNDARIES, loadLocalSchema, loadGlobalSchema, listSkillsSchema, loadLocalTool, loadGlobalTool, listSkillsTool, skillsTools;
+var import_path73, import_os10, ALLOWED_BOUNDARIES, loadLocalSchema, loadGlobalSchema, listSkillsSchema, loadLocalTool, loadGlobalTool, listSkillsTool, skillsTools;
 var init_skills_tools = __esm({
   "src/tools/skills-tools.ts"() {
     "use strict";
     init_zod();
-    import_path65 = require("path");
+    import_path73 = require("path");
     import_os10 = require("os");
     init_config_dir();
     init_loader2();
@@ -32324,10 +35919,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path14) {
-  if (!path14)
+function getElementAtPath(obj, path15) {
+  if (!path15)
     return obj;
-  return path14.reduce((acc, key) => acc?.[key], obj);
+  return path15.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -32647,11 +36242,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path14, issues) {
+function prefixIssues(path15, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path14);
+    iss.path.unshift(path15);
     return iss;
   });
 }
@@ -37950,7 +41545,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve23) => setTimeout(resolve23, pollInterval));
+        await new Promise((resolve25) => setTimeout(resolve25, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -37967,7 +41562,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve23, reject2) => {
+    return new Promise((resolve25, reject2) => {
       const earlyReject = (error2) => {
         reject2(error2);
       };
@@ -38045,7 +41640,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject2(parseResult.error);
           } else {
-            resolve23(parseResult.data);
+            resolve25(parseResult.data);
           }
         } catch (error2) {
           reject2(error2);
@@ -38306,12 +41901,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve23, reject2) => {
+    return new Promise((resolve25, reject2) => {
       if (signal.aborted) {
         reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve23, interval);
+      const timeoutId = setTimeout(resolve25, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject2(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -39040,12 +42635,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve23) => {
+    return new Promise((resolve25) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve23();
+        resolve25();
       } else {
-        this._stdout.once("drain", resolve23);
+        this._stdout.once("drain", resolve25);
       }
     });
   }

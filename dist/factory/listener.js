@@ -14,7 +14,7 @@ import { appendFileSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { decideNextStage } from '../hooks/session-end/routing.js';
 import { acquireChainSlot, releaseChainSlot } from '../hooks/session-end/guardrails.js';
-import { defaultSpawnFn, factoryLinkArgv, factoryLinkCommand } from '../hooks/session-end/spawn-next.js';
+import { chainLinkHost, defaultSpawnFn, factoryLinkArgv, factoryLinkCommand, writeChainLinkLedger } from '../hooks/session-end/spawn-next.js';
 import { DEFAULT_STALL_THRESHOLD_MS, detectStalledLinks, flagStall } from './watchdog.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 export const INTAKE_LABEL = 'intake';
@@ -130,25 +130,24 @@ function spawnChainLink(req) {
         return { status: 204, kind: 'discarded', detail: `guardrail ${slot.reason}: ${slot.detail}` };
     }
     const nextSessionId = randomUUID();
-    const args = factoryLinkArgv(req.prompt, nextSessionId);
-    const spawnCtx = { cwd: req.config.cwd };
+    const args = factoryLinkArgv(req.prompt, nextSessionId, [], [], req.config.cwd);
+    const command = factoryLinkCommand();
+    // chainLink: a Copilot link cannot take --session-id, so it gets the link id as OMC_CHAIN_LINK.
+    const spawnCtx = { cwd: req.config.cwd, chainLink: nextSessionId };
     try {
         // Pre-write the first chain ledger so the spawned session's SessionEnd
         // finds it (route table falls back to the project's factory-routes.json).
         // Best-effort: a ledger write failure must not block spawning the link.
         try {
-            const factoryDir = join(getOmcRoot(req.config.cwd), 'state', 'factory');
-            mkdirSync(factoryDir, { recursive: true });
-            writeFileSync(join(factoryDir, `chain-${nextSessionId}.json`), JSON.stringify({
+            writeChainLinkLedger(join(getOmcRoot(req.config.cwd), 'state', 'factory'), nextSessionId, chainLinkHost(command), {
                 intentId: req.intentId,
                 stage: req.directive.stage,
                 ...(req.tracker ? { tracker: req.tracker } : {}),
-            }, null, 2), 'utf8');
+            });
         }
         catch (error) {
             req.audit({ kind: 'discarded', reason: 'ledger write failed', detail: error instanceof Error ? error.message : String(error), session: nextSessionId });
         }
-        const command = factoryLinkCommand();
         if (req.deps.spawner)
             req.deps.spawner(command, args, spawnCtx);
         else

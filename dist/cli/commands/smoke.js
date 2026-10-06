@@ -8,7 +8,7 @@
  */
 import { resolve } from 'path';
 import { colors } from '../utils/formatting.js';
-import { ALL_SCENARIOS, MIN_MAX_CREDITS, runCopilotSmoke, } from '../../smoke/copilot-smoke.js';
+import { ALL_SCENARIOS, KNOWN_SCENARIOS, MIN_MAX_CREDITS, runCopilotSmoke, } from '../../smoke/copilot-smoke.js';
 import { SDK_MISSING_DETAIL } from '../../smoke/copilot-sdk-scenarios.js';
 function parsePositiveInt(value, flag) {
     if (value === undefined)
@@ -18,7 +18,7 @@ function parsePositiveInt(value, flag) {
         throw new Error(`${flag} must be a positive integer, got ${JSON.stringify(value)}`);
     return n;
 }
-/** Parse `--scenario a,b` / `all` into a deduplicated, validated list. */
+/** Parse `--scenario a,b` / `all` into a deduplicated, validated list; `all` never includes the opt-in `chain`. */
 export function parseScenarios(raw) {
     const names = raw.split(',').map((s) => s.trim()).filter(Boolean);
     if (names.length === 0)
@@ -27,8 +27,8 @@ export function parseScenarios(raw) {
     for (const name of names) {
         const expanded = name === 'all' ? ALL_SCENARIOS : [name];
         for (const n of expanded) {
-            if (!ALL_SCENARIOS.includes(n)) {
-                throw new Error(`--scenario: unknown scenario ${JSON.stringify(n)} (expected ${ALL_SCENARIOS.join(', ')} or all)`);
+            if (!KNOWN_SCENARIOS.includes(n)) {
+                throw new Error(`--scenario: unknown scenario ${JSON.stringify(n)} (expected ${KNOWN_SCENARIOS.join(', ')} or all)`);
             }
             if (!out.includes(n))
                 out.push(n);

@@ -24,8 +24,9 @@ import { createRequire } from 'module';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { excerpt } from './copilot-session-eval.js';
-import { chooseModel, CREDIT_CAP_SKIP_DETAIL, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, hostSmokeToolName, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioCost, scenarioExcludedTools, SDK_MISSING_DETAIL, SDK_PACKAGE, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
+import { chainCost, chooseModel, CREDIT_CAP_SKIP_DETAIL, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, hostSmokeToolName, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioCost, scenarioExcludedTools, SDK_MISSING_DETAIL, SDK_PACKAGE, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
 import { killProcessTree } from './process-utils.js';
+import { runChainScenario } from './copilot-chain-scenario.js';
 // ---------------------------------------------------------------------------
 // Loading
 // ---------------------------------------------------------------------------
@@ -366,7 +367,8 @@ export async function runSdkTier(input) {
         checks.push(evaluateSdkRuntime(status, input.binVersion, modelLabel));
         checks.push(...await staticChecks(client, input));
         let stopReason;
-        for (const name of input.scenarios) {
+        // chain rewrites the shared sandbox (route table, a project skill): run it last.
+        for (const name of [...input.scenarios.filter((s) => s !== 'chain'), ...input.scenarios.filter((s) => s === 'chain')]) {
             if (projectError) {
                 entries.push({ name, skip: `sandbox project setup failed: ${projectError}` });
                 continue;
@@ -384,9 +386,23 @@ export async function runSdkTier(input) {
             if (entries.length > 0)
                 await new Promise((resolve) => setTimeout(resolve, 2));
             const start = Date.now();
-            const { wedged: stuck, ...run } = await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
+            // `chain` drives real `copilot -p` factory links, not an SDK session.
+            const { wedged: stuck, ...run } = name === 'chain'
+                ? await (input.runChain ?? runChainScenario)({
+                    bin,
+                    root: input.root,
+                    env: input.env,
+                    projectDir: input.projectDir,
+                    home: input.home,
+                    timeoutMs: input.timeoutMs,
+                    maxCredits: input.maxCredits,
+                    budget: input.maxCredits - total.credits,
+                    eventsPath: path,
+                    spawnSync: input.spawnSync,
+                })
+                : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
             entries.push({ name, run, start });
-            const cost = scenarioCost(run.events);
+            const cost = run.chain ? chainCost(run.chain) : scenarioCost(run.events);
             total.premiumRequests += cost.premiumRequests;
             total.credits += cost.credits;
             if (run.capped || total.credits > input.maxCredits)

@@ -16,7 +16,9 @@
  * supervision reads it) plus a GET /status endpoint on the listening port.
  */
 import { Command } from 'commander';
+import { type ChainStatus } from '../../factory/status.js';
 import { type RouteTable } from '../../hooks/session-end/routing.js';
+export declare function renderChainStatus(status: ChainStatus): string;
 export declare function factoryCommand(): Command;
 /**
  * Narrow starter route table: exactly the listener's INTAKE_ROUTE_TABLE — the

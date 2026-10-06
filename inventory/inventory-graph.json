@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "439154e6e54e36c0f8f4d0342e18ede2f5ecaa6e",
-    "sourceSha256": "614ac1785304a96f899eede9262a05dcea21f2d27ea0086b133ebdee56c21813",
+    "head": "0273fc97b5b6efa05228b2d2506c7396ac5c7231",
+    "sourceSha256": "dd39f17d395567a0ff4c6bd9edba368813d3aeabf0309a1de27d6a240eb2083e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "439154e6e54e36c0f8f4d0342e18ede2f5ecaa6e",
-  "sourceSha256": "614ac1785304a96f899eede9262a05dcea21f2d27ea0086b133ebdee56c21813",
+  "head": "0273fc97b5b6efa05228b2d2506c7396ac5c7231",
+  "sourceSha256": "dd39f17d395567a0ff4c6bd9edba368813d3aeabf0309a1de27d6a240eb2083e",
   "counts": {
     "public": {
       "skills": 61,
@@ -23,25 +23,25 @@
       "total": 110
     },
     "internal": {
-      "hookFiles": 347,
+      "hookFiles": 348,
       "featureFiles": 84,
       "toolFiles": 62,
       "libFiles": 47,
       "templateHooks": 23,
-      "srcFiles": 1516,
-      "total": 1539
+      "srcFiles": 1520,
+      "total": 1543
     },
     "generated": {
-      "distFiles": 5855,
+      "distFiles": 5867,
       "bridgeFiles": 9,
-      "total": 5864
+      "total": 5876
     },
     "prompt": {
       "promptLikeFiles": 61
     },
     "skills": 61,
     "commands": 21,
-    "hookFiles": 347,
+    "hookFiles": 348,
     "workflows": 8,
     "agentDefinitions": 18,
     "promptLikeFiles": 61
@@ -423,6 +423,7 @@
       "src/hooks/session-end/__tests__/action-runner.test.ts",
       "src/hooks/session-end/__tests__/callbacks.test.ts",
       "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+      "src/hooks/session-end/__tests__/chain-link-env-passthrough.test.ts",
       "src/hooks/session-end/__tests__/check-evidence.test.ts",
       "src/hooks/session-end/__tests__/cleanup-manifest.test.ts",
       "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
@@ -4182,6 +4183,10 @@
       "dist/hooks/session-end/__tests__/chain-enqueuer.test.d.ts.map",
       "dist/hooks/session-end/__tests__/chain-enqueuer.test.js",
       "dist/hooks/session-end/__tests__/chain-enqueuer.test.js.map",
+      "dist/hooks/session-end/__tests__/chain-link-env-passthrough.test.d.ts",
+      "dist/hooks/session-end/__tests__/chain-link-env-passthrough.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/chain-link-env-passthrough.test.js",
+      "dist/hooks/session-end/__tests__/chain-link-env-passthrough.test.js.map",
       "dist/hooks/session-end/__tests__/check-evidence.test.d.ts",
       "dist/hooks/session-end/__tests__/check-evidence.test.d.ts.map",
       "dist/hooks/session-end/__tests__/check-evidence.test.js",
@@ -5496,6 +5501,10 @@
       "dist/skills/__tests__/skill-config-dir.test.d.ts.map",
       "dist/skills/__tests__/skill-config-dir.test.js",
       "dist/skills/__tests__/skill-config-dir.test.js.map",
+      "dist/smoke/__tests__/copilot-chain-scenario.test.d.ts",
+      "dist/smoke/__tests__/copilot-chain-scenario.test.d.ts.map",
+      "dist/smoke/__tests__/copilot-chain-scenario.test.js",
+      "dist/smoke/__tests__/copilot-chain-scenario.test.js.map",
       "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts",
       "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts.map",
       "dist/smoke/__tests__/copilot-sdk-driver.test.js",
@@ -5516,6 +5525,10 @@
       "dist/smoke/copilot-binary.d.ts.map",
       "dist/smoke/copilot-binary.js",
       "dist/smoke/copilot-binary.js.map",
+      "dist/smoke/copilot-chain-scenario.d.ts",
+      "dist/smoke/copilot-chain-scenario.d.ts.map",
+      "dist/smoke/copilot-chain-scenario.js",
+      "dist/smoke/copilot-chain-scenario.js.map",
       "dist/smoke/copilot-sdk-driver.d.ts",
       "dist/smoke/copilot-sdk-driver.d.ts.map",
       "dist/smoke/copilot-sdk-driver.js",
@@ -7062,6 +7075,7 @@
       "src/hooks/session-end/__tests__/action-runner.test.ts",
       "src/hooks/session-end/__tests__/callbacks.test.ts",
       "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+      "src/hooks/session-end/__tests__/chain-link-env-passthrough.test.ts",
       "src/hooks/session-end/__tests__/check-evidence.test.ts",
       "src/hooks/session-end/__tests__/cleanup-manifest.test.ts",
       "src/hooks/session-end/__tests__/duplicate-notifications.test.ts",
@@ -24647,6 +24661,26 @@
         "path": "dist/hooks/session-end/__tests__/chain-enqueuer.test.js.map"
       },
       {
+        "id": "dist/hooks/session-end/__tests__/chain-link-env-passthrough.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/chain-link-env-passthrough.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/chain-link-env-passthrough.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/chain-link-env-passthrough.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/chain-link-env-passthrough.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/chain-link-env-passthrough.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/chain-link-env-passthrough.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/chain-link-env-passthrough.test.js.map"
+      },
+      {
         "id": "dist/hooks/session-end/__tests__/check-evidence.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/__tests__/check-evidence.test.d.ts"
@@ -31217,6 +31251,26 @@
         "path": "dist/skills/__tests__/skill-config-dir.test.js.map"
       },
       {
+        "id": "dist/smoke/__tests__/copilot-chain-scenario.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-chain-scenario.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-chain-scenario.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-chain-scenario.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-chain-scenario.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-chain-scenario.test.js"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-chain-scenario.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-chain-scenario.test.js.map"
+      },
+      {
         "id": "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/smoke/__tests__/copilot-sdk-driver.test.d.ts"
@@ -31315,6 +31369,26 @@
         "id": "dist/smoke/copilot-binary.js.map",
         "kind": "generated-dist",
         "path": "dist/smoke/copilot-binary.js.map"
+      },
+      {
+        "id": "dist/smoke/copilot-chain-scenario.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-chain-scenario.d.ts"
+      },
+      {
+        "id": "dist/smoke/copilot-chain-scenario.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-chain-scenario.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/copilot-chain-scenario.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-chain-scenario.js"
+      },
+      {
+        "id": "dist/smoke/copilot-chain-scenario.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-chain-scenario.js.map"
       },
       {
         "id": "dist/smoke/copilot-sdk-driver.d.ts",
@@ -43932,6 +44006,11 @@
         "path": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts"
       },
       {
+        "id": "src/hooks/session-end/__tests__/chain-link-env-passthrough.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/chain-link-env-passthrough.test.ts"
+      },
+      {
         "id": "src/hooks/session-end/__tests__/check-evidence.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/check-evidence.test.ts"
@@ -45637,6 +45716,11 @@
         "path": "src/skills/__tests__/skill-config-dir.test.ts"
       },
       {
+        "id": "src/smoke/__tests__/copilot-chain-scenario.test.ts",
+        "kind": "src",
+        "path": "src/smoke/__tests__/copilot-chain-scenario.test.ts"
+      },
+      {
         "id": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
         "kind": "src",
         "path": "src/smoke/__tests__/copilot-sdk-driver.test.ts"
@@ -45687,6 +45771,11 @@
         "path": "src/smoke/__tests__/fixtures/tier1-stdout.jsonl"
       },
       {
+        "id": "src/smoke/__tests__/fixtures/tier2-chain-evidence.json",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-chain-evidence.json"
+      },
+      {
         "id": "src/smoke/__tests__/fixtures/tier2-delegate-events.jsonl",
         "kind": "src",
         "path": "src/smoke/__tests__/fixtures/tier2-delegate-events.jsonl"
@@ -45715,6 +45804,11 @@
         "id": "src/smoke/copilot-binary.ts",
         "kind": "src",
         "path": "src/smoke/copilot-binary.ts"
+      },
+      {
+        "id": "src/smoke/copilot-chain-scenario.ts",
+        "kind": "src",
+        "path": "src/smoke/copilot-chain-scenario.ts"
       },
       {
         "id": "src/smoke/copilot-sdk-driver.ts",
@@ -61735,6 +61829,11 @@
       },
       {
         "from": "src/factory/__tests__/status.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/factory/__tests__/status.test.ts",
         "to": "src/factory/status.ts",
         "kind": "imports"
       },
@@ -71214,6 +71313,41 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/session-end/__tests__/chain-enqueuer.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-link-env-passthrough.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-link-env-passthrough.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-link-env-passthrough.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-link-env-passthrough.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-link-env-passthrough.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/chain-link-env-passthrough.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/__tests__/check-evidence.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -79349,6 +79483,66 @@
         "kind": "imports"
       },
       {
+        "from": "src/smoke/__tests__/copilot-chain-scenario.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-chain-scenario.test.ts",
+        "to": "external:events",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-chain-scenario.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-chain-scenario.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-chain-scenario.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-chain-scenario.test.ts",
+        "to": "external:stream",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-chain-scenario.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-chain-scenario.test.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-chain-scenario.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-chain-scenario.test.ts",
+        "to": "src/smoke/copilot-chain-scenario.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-chain-scenario.test.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-chain-scenario.test.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
         "to": "external:events",
         "kind": "imports"
@@ -79569,6 +79763,76 @@
         "kind": "imports"
       },
       {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "src/cli/tmux-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "src/hooks/session-end/chain-enqueuer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-chain-scenario.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/smoke/copilot-sdk-driver.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -79591,6 +79855,11 @@
       {
         "from": "src/smoke/copilot-sdk-driver.ts",
         "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "src/smoke/copilot-chain-scenario.ts",
         "kind": "imports"
       },
       {
@@ -91385,12 +91654,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8075,
-      "edgeCount": 8725,
-      "importEdgeCount": 7208,
+      "nodeCount": 8091,
+      "edgeCount": 8760,
+      "importEdgeCount": 7239,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "944839616883cb41d3e81b86c095821b38626e8dfab7c6f64a5a65746a2f5404",
-  "manifestSha256": "c8d4b8df0e1a23dd81145f4a8a68e774c5006f24654587f3ce58b68d7ec2983c"
+  "inventorySha256": "5f97e94a5148b89f3f4a584d82262fe2e1693679756121ecef888699855d2ebe",
+  "manifestSha256": "ff6aed1d4d5cd859cf72ddb0c3ffa169cf7349c2218b1fa64dabd6b75ff60f9a"
 }
