@@ -4,7 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { parseJsonl, type CopilotEvent } from '../copilot-session-eval.js';
 import {
   adapterErrorLines,
+  ALL_SCENARIOS,
+  chainCost,
   chooseModel,
+  DEFAULT_SCENARIOS,
+  KNOWN_SCENARIOS,
+  type ChainEvidence,
   CREDIT_CAP_SKIP_DETAIL,
   evaluateScenario,
   evaluateSdkAgents,
@@ -372,5 +377,62 @@ describe('chooseModel', () => {
   it('picks a cheap explicit model, and an explicit request wins', () => {
     expect(chooseModel(['auto', 'claude-opus-5-5', 'gpt-5-mini']).model).toBe('gpt-5-mini');
     expect(chooseModel(['auto'], 'claude-sonnet-5')).toMatchObject({ model: 'claude-sonnet-5', note: expect.stringMatching(/not in models.list/) });
+  });
+});
+
+describe('chain scenario (live capture, Copilot CLI 1.0.91, 2026-10-06)', () => {
+  /** Redacted ledgers, decisions, stop marker and both link sessions' key events. */
+  const evidence = JSON.parse(readFileSync(join(FIXTURES, 'tier2-chain-evidence.json'), 'utf-8')) as ChainEvidence;
+  /** The debug-log line link 1's SessionEnd left: the 300 ms foreground budget, fail-closed under the smoke. */
+  const TIMEOUT_LINE = 'Stderr: [run.cjs] Hook session-end.mjs timed out after 300ms; exiting fail-closed (124).';
+  const chainRun = (over: Partial<ScenarioRun> = {}): ScenarioRun => ({
+    name: 'chain',
+    events: evidence.sessions.flatMap((s) => s.events ?? []),
+    idle: true,
+    timedOut: false,
+    timeoutMs: 240_000,
+    logText: '',
+    model: 'link default',
+    maxCredits: 30,
+    chain: evidence,
+    ...over,
+  });
+
+  it('is opt-in: never in all or the default set', () => {
+    expect(ALL_SCENARIOS).not.toContain('chain');
+    expect(DEFAULT_SCENARIOS).not.toContain('chain');
+    expect(KNOWN_SCENARIOS).toContain('chain');
+  });
+
+  it('passes the chain checks on the captured two-link run and sums both links into 2 premium requests', () => {
+    const { checks, cost } = evaluateScenario(chainRun());
+    const c = byId(checks);
+    for (const id of ['link1', 'spawned', 'inherited', 'closed', 'premium', 'exit', 'adapter_errors', 'cost']) {
+      expect(c[`scn.chain.${id}`]?.ok, `scn.chain.${id}: ${c[`scn.chain.${id}`]?.detail}`).toBe(true);
+    }
+    expect(c['scn.chain.link1'].detail).toContain('66c7ed79-96f2-4b3f-a2f4-290874ee376b');
+    expect(c['scn.chain.closed'].detail).toContain('loop-capped:link-2');
+    expect(cost.premiumRequests).toBe(2);
+    expect(chainCost(evidence)).toMatchObject({ premiumRequests: 2, source: '2/2 link session(s) events.jsonl' });
+  });
+
+  it('flags the captured SessionEnd foreground timeout as an adapter error', () => {
+    const c = byId(evaluateScenario(chainRun({ logText: `2026-10-06T01:10:37.159Z [ERROR] [rust:hooks] Hook from "oh-my-copilot" execution failed\n${TIMEOUT_LINE}` })).checks);
+    expect(c['scn.chain.adapter_errors']).toMatchObject({ ok: false, detail: expect.stringContaining('session-end.mjs') });
+  });
+
+  it('fails inherited when a link SessionEnd rejected OMC_CHAIN_LINK, and closed when a ledger stayed open', () => {
+    const rejected = { ...evidence, decisions: [...evidence.decisions, { decision: 'chain-link-rejected', sessionId: 'x', error: 'no ledger' }] };
+    expect(byId(evaluateScenario(chainRun({ chain: rejected })).checks)['scn.chain.inherited'].ok).toBe(false);
+    const open = { ...evidence, ledgers: evidence.ledgers.map((l, i) => (i === 1 ? { ...l, closedAt: undefined, hostSessionId: undefined } : l)) };
+    const c = byId(evaluateScenario(chainRun({ chain: open })).checks);
+    expect(c['scn.chain.closed'].ok).toBe(false);
+    expect(c['scn.chain.inherited'].ok).toBe(false);
+  });
+
+  it('reports every check id when no evidence was collected', () => {
+    const { checks } = evaluateScenario(chainRun({ chain: undefined, idle: false, error: 'chain setup: boom' }));
+    expect(checks.map((c) => c.id)).toEqual(scenarioCheckIds('chain'));
+    expect(checks.filter((c) => c.ok).map((c) => c.id)).toEqual(['scn.chain.adapter_errors', 'scn.chain.cost']);
   });
 });

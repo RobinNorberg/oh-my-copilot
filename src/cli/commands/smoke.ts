@@ -11,6 +11,7 @@ import { resolve } from 'path';
 import { colors } from '../utils/formatting.js';
 import {
   ALL_SCENARIOS,
+  KNOWN_SCENARIOS,
   MIN_MAX_CREDITS,
   runCopilotSmoke,
   type Scenario,
@@ -42,7 +43,7 @@ function parsePositiveInt(value: string | undefined, flag: string): number | und
   return n;
 }
 
-/** Parse `--scenario a,b` / `all` into a deduplicated, validated list. */
+/** Parse `--scenario a,b` / `all` into a deduplicated, validated list; `all` never includes the opt-in `chain`. */
 export function parseScenarios(raw: string): Scenario[] {
   const names = raw.split(',').map((s) => s.trim()).filter(Boolean);
   if (names.length === 0) throw new Error('--scenario needs at least one name (or `all`)');
@@ -50,8 +51,8 @@ export function parseScenarios(raw: string): Scenario[] {
   for (const name of names) {
     const expanded: readonly string[] = name === 'all' ? ALL_SCENARIOS : [name];
     for (const n of expanded) {
-      if (!(ALL_SCENARIOS as readonly string[]).includes(n)) {
-        throw new Error(`--scenario: unknown scenario ${JSON.stringify(n)} (expected ${ALL_SCENARIOS.join(', ')} or all)`);
+      if (!(KNOWN_SCENARIOS as readonly string[]).includes(n)) {
+        throw new Error(`--scenario: unknown scenario ${JSON.stringify(n)} (expected ${KNOWN_SCENARIOS.join(', ')} or all)`);
       }
       if (!out.includes(n as Scenario)) out.push(n as Scenario);
     }

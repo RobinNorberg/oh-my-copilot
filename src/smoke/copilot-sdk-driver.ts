@@ -26,6 +26,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { excerpt, type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
 import {
+  chainCost,
   chooseModel,
   CREDIT_CAP_SKIP_DETAIL,
   evaluateScenario,
@@ -53,6 +54,7 @@ import {
   type ScenarioRun,
 } from './copilot-sdk-scenarios.js';
 import { killProcessTree, type SpawnSyncFn } from './process-utils.js';
+import { runChainScenario } from './copilot-chain-scenario.js';
 
 // ---------------------------------------------------------------------------
 // The slice of the SDK surface the driver uses (SDK 1.0.16, protocol 3)
@@ -385,6 +387,8 @@ export interface SdkTierInput {
   platform?: NodeJS.Platform;
   isAlive?: (pid: number) => boolean;
   killTree?: (pid: number) => void;
+  /** Test seam: the `chain` scenario runner (default {@link runChainScenario}, real `copilot -p` links). */
+  runChain?: typeof runChainScenario;
 }
 
 export interface SdkTierResult {
@@ -490,9 +494,23 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
       // millisecond. Negligible against real runs, which take seconds.
       if (entries.length > 0) await new Promise<void>((resolve) => setTimeout(resolve, 2));
       const start = Date.now();
-      const { wedged: stuck, ...run } = await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
+      // `chain` drives real `copilot -p` factory links, not an SDK session.
+      const { wedged: stuck, ...run } = name === 'chain'
+        ? await (input.runChain ?? runChainScenario)({
+          bin,
+          root: input.root,
+          env: input.env,
+          projectDir: input.projectDir,
+          home: input.home,
+          timeoutMs: input.timeoutMs,
+          maxCredits: input.maxCredits,
+          budget: input.maxCredits - total.credits,
+          eventsPath: path,
+          spawnSync: input.spawnSync,
+        })
+        : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
       entries.push({ name, run, start });
-      const cost = scenarioCost(run.events);
+      const cost = run.chain ? chainCost(run.chain) : scenarioCost(run.events);
       total.premiumRequests += cost.premiumRequests;
       total.credits += cost.credits;
       if (run.capped || total.credits > input.maxCredits) stopReason = CREDIT_CAP_SKIP_DETAIL;

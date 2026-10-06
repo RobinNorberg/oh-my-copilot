@@ -35,6 +35,13 @@ describe('omg smoke copilot — tier 2 options', () => {
     expect(() => toSmokeOptions({ tier: '2', delegate: true })).toThrow(/--scenario delegate/);
   });
 
+  it('accepts the opt-in chain scenario only by name, never through all or the default', () => {
+    expect(parseScenarios('chain')).toEqual(['chain']);
+    expect(parseScenarios('all')).not.toContain('chain');
+    expect(parseScenarios('smoke,chain')).toEqual(['smoke', 'chain']);
+    expect(toSmokeOptions({ tier: '2' })).not.toHaveProperty('scenarios');
+  });
+
   it('parses scenario lists: all, dedupe, unknown, empty', () => {
     expect(parseScenarios('skill,all,skill')).toEqual(['skill', 'smoke', 'guardrail', 'delegate']);
     expect(() => parseScenarios('smoke,nope')).toThrow(/unknown scenario "nope"/);

@@ -19,7 +19,7 @@ import {
   type SdkSessionLike,
   type SdkTierInput,
 } from '../copilot-sdk-driver.js';
-import { CREDIT_CAP_SKIP_DETAIL, SCENARIOS, scenarioCheckIds, scenarioExcludedTools, SDK_MISSING_DETAIL, type Scenario } from '../copilot-sdk-scenarios.js';
+import { CREDIT_CAP_SKIP_DETAIL, SCENARIOS, scenarioCheckIds, scenarioExcludedTools, SDK_MISSING_DETAIL, type ChainEvidence, type Scenario } from '../copilot-sdk-scenarios.js';
 import { LIVE_RUN_REFUSED_DETAIL, liveRunRefusal, runCopilotSmoke, type SmokeDeps } from '../copilot-smoke.js';
 import { smokeExitCode } from '../../cli/commands/smoke.js';
 import type { SpawnFn, SpawnSyncFn } from '../process-utils.js';
@@ -299,6 +299,25 @@ describe('runSdkTier (fake SDK)', () => {
     expect(c['scn.skill.invoked'].ok).toBe(false);
     expect(c['scn.delegate.selected'].ok).toBe(false);
     expect(c['scn.delegate.completed'].ok).toBe(false);
+  });
+
+  it('runs chain through the chain runner, never an SDK scenario session, and totals both links', async () => {
+    const { loaded, rec } = fakeSdk();
+    const evidence = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'tier2-chain-evidence.json'), 'utf-8')) as ChainEvidence;
+    const calls: Array<Parameters<NonNullable<SdkTierInput['runChain']>>[0]> = [];
+    const result = await runSdkTier(input(loaded, {
+      scenarios: ['chain'],
+      runChain: async (args) => {
+        calls.push(args);
+        return { name: 'chain', events: [], idle: true, timedOut: false, timeoutMs: args.timeoutMs, model: 'm', maxCredits: args.maxCredits, budget: args.budget, capped: false, wedged: false, chain: evidence };
+      },
+    }));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ projectDir: expect.any(String), home: expect.any(String), eventsPath: expect.stringMatching(/events-chain\.jsonl$/) });
+    expect(rec.sessions).toHaveLength(1); // the static-check session only
+    const c = byId(result.checks);
+    for (const id of ['link1', 'spawned', 'inherited', 'closed', 'premium']) expect(c[`scn.chain.${id}`].ok).toBe(true);
+    expect(result.cost!.premiumRequests).toBe(2);
   });
 
   it('a pushed ref on the bare remote fails no_push', async () => {

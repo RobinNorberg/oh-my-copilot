@@ -1,0 +1,214 @@
+/**
+ * Tier 2 `chain` scenario of `omg smoke copilot` (opt-in): a real two-link
+ * factory chain on Copilot CLI, outside the SDK runtime.
+ *
+ * 1. The sandbox project gets the factory layout, `omg factory init`'s route
+ *    table widened by `success:*` -> link-2 (skill {@link CHAIN_SKILL}) and
+ *    `failed:*` -> stop, and a project skill that replies with one token.
+ * 2. Link 1's ledger is pre-written exactly as the listener does it (host
+ *    copilot, stage link-1, maxStageVisits 1), and link 1 is spawned like a
+ *    factory link: the Copilot AFK profile, `--plugin-dir` for the plugin
+ *    under test, the prompt on stdin, and OMC_CHAIN_LINK set by chainLinkEnv.
+ * 3. From there the chain runs itself: link 1's SessionEnd resolves its ledger
+ *    by OMC_CHAIN_LINK and enqueues; the detached worker spawns link 2 with
+ *    its own OMC_CHAIN_LINK; link 2's SessionEnd hits the visit cap and stops
+ *    the chain (`loop-capped:link-2`).
+ * 4. The ledgers, decisions, stop marker, and both link sessions'
+ *    events.jsonl are collected for evaluateScenario.
+ *
+ * Cost: one user prompt per link, so about 2 premium requests. The links run
+ * on the CLI's default model without `--max-ai-credits` (a factory link's argv
+ * carries no credit cap), so the run's --max-credits does not bound them.
+ */
+
+import { randomUUID } from 'crypto';
+import { spawn as nodeSpawn } from 'child_process';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { delimiter, dirname, join } from 'path';
+import { buildHostBinarySpawn } from '../cli/tmux-utils.js';
+import { runFactoryInit } from '../cli/commands/factory.js';
+import { factoryStateDir, readProjectRoutes } from '../hooks/session-end/chain-enqueuer.js';
+import { chainLinkEnv, COPILOT_AFK_SPAWN_FLAGS, copilotPluginDirArgs, writeChainLinkLedger } from '../hooks/session-end/spawn-next.js';
+import { excerpt, parseJsonl, type CopilotEvent } from './copilot-session-eval.js';
+import {
+  CHAIN_INTENT_ID,
+  CHAIN_LINK1_STAGE,
+  CHAIN_LINK2_STAGE,
+  CHAIN_SKILL,
+  SCENARIOS,
+  type ChainEvidence,
+  type ChainLedgerRecord,
+  type ScenarioRun,
+} from './copilot-sdk-scenarios.js';
+import { runAsync, type SpawnFn, type SpawnSyncFn } from './process-utils.js';
+
+export const CHAIN_ACK_TOKEN = 'CHAIN_ACK';
+
+export interface ChainScenarioInput {
+  /** The installed copilot binary (.exe or the .js a shim launches). */
+  bin: string;
+  /** Plugin under test: passed as --plugin-dir and OMC_PLUGIN_ROOT. */
+  root: string;
+  /** Tier 2 session env (isolated COPILOT_HOME, login identity, OMC_HOOK_FAIL_CLOSED). */
+  env: NodeJS.ProcessEnv;
+  /** Sandbox git repo (trusted in the home's config.json). */
+  projectDir: string;
+  home: string;
+  /** Per link: link 1's process timeout, then the wait for link 2 to close the chain. */
+  timeoutMs: number;
+  maxCredits: number;
+  budget: number;
+  eventsPath: string;
+  spawnSync: SpawnSyncFn;
+  /** Test seams. */
+  spawn?: SpawnFn;
+  pollMs?: number;
+  randomUUID?: () => string;
+}
+
+/** Factory layout + widened route table + the chain-ack project skill. Returns an error or null. */
+export function prepareChainProject(projectDir: string): string | null {
+  try {
+    mkdirSync(join(projectDir, '.omg', 'state'), { recursive: true });
+    mkdirSync(join(projectDir, 'docs', 'design'), { recursive: true });
+  } catch (err) {
+    return `factory layout: ${(err as Error).message}`;
+  }
+  const init = runFactoryInit({ cwd: projectDir, force: true });
+  if (init.exitCode !== 0) return init.message;
+  const routes = {
+    ...(readProjectRoutes(projectDir) ?? {}),
+    'success:*': { stage: CHAIN_LINK2_STAGE, skill: CHAIN_SKILL },
+    'failed:*': { stage: 'halt', skill: 'stop' },
+  };
+  try {
+    writeFileSync(join(projectDir, '.omg', 'factory-routes.json'), `${JSON.stringify(routes, null, 2)}\n`);
+    const skillDir = join(projectDir, '.github', 'skills', CHAIN_SKILL);
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), [
+      '---',
+      `name: ${CHAIN_SKILL}`,
+      'description: Acknowledge an oh-my-copilot factory chain smoke link. Use when invoked as /chain-ack.',
+      '---',
+      '',
+      `Reply with exactly: ${CHAIN_ACK_TOKEN}. Do not use tools and do not open the handoff file.`,
+      '',
+    ].join('\n'));
+  } catch (err) {
+    return `route table / skill: ${(err as Error).message}`;
+  }
+  return null;
+}
+
+function pathKey(env: NodeJS.ProcessEnv): string {
+  return Object.keys(env).find((k) => k.toUpperCase() === 'PATH') ?? 'PATH';
+}
+
+/**
+ * Env for link 1 (and, through the hook and worker allowlists, every later
+ * link): the plugin under test as OMC_PLUGIN_ROOT, the copilot binary's dir
+ * first on PATH (the worker spawns link 2 as plain `copilot`), and this link's
+ * OMC_CHAIN_LINK via chainLinkEnv.
+ */
+export function chainLinkSmokeEnv(base: NodeJS.ProcessEnv, bin: string, root: string, linkId: string): NodeJS.ProcessEnv {
+  const key = pathKey(base);
+  const withPath = { ...base, [key]: [dirname(bin), base[key]].filter(Boolean).join(delimiter), OMC_PLUGIN_ROOT: root };
+  return chainLinkEnv(withPath, 'copilot', linkId);
+}
+
+function readJson(path: string): unknown {
+  try { return JSON.parse(readFileSync(path, 'utf8')) as unknown; } catch { return null; }
+}
+
+/** Everything the chain left in `.omg/state/factory`, plus each closed link's session events. */
+export function collectChainEvidence(projectDir: string, home: string, firstLink: string): ChainEvidence {
+  const factoryDir = factoryStateDir(projectDir);
+  let entries: string[] = [];
+  try { entries = readdirSync(factoryDir); } catch { /* chain never started */ }
+  const ledgers: ChainLedgerRecord[] = [];
+  for (const entry of entries) {
+    const match = /^chain-([0-9a-f-]{36})\.json$/i.exec(entry);
+    if (!match) continue;
+    const value = readJson(join(factoryDir, entry));
+    if (value && typeof value === 'object' && !Array.isArray(value)) ledgers.push({ ...(value as Record<string, unknown>), file: match[1] });
+  }
+  // Spawn order: link 1 first, then by createdAt.
+  ledgers.sort((a, b) => (a.file === firstLink ? -1 : b.file === firstLink ? 1 : String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? ''))));
+  let decisions: Array<Record<string, unknown>> = [];
+  try {
+    decisions = parseJsonl(readFileSync(join(factoryDir, 'chain-decisions.jsonl'), 'utf8')).events as unknown as Array<Record<string, unknown>>;
+  } catch { /* no decisions */ }
+  const stopped = readJson(join(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`)) as { reason?: unknown } | null;
+  const sessions = ledgers
+    .map((l) => l.hostSessionId)
+    .filter((id): id is string => typeof id === 'string' && /^[\w-]{1,64}$/.test(id))
+    .map((hostSessionId) => {
+      let events: CopilotEvent[] | null = null;
+      try { events = parseJsonl(readFileSync(join(home, 'session-state', hostSessionId, 'events.jsonl'), 'utf8')).events; } catch { /* not persisted */ }
+      return { hostSessionId, events };
+    });
+  return { firstLink, ledgers, decisions, stopped, sessions };
+}
+
+/** The chain stopped: a stop marker, or link 1 closed without enqueuing a next link. */
+function chainSettled(projectDir: string, firstLink: string): boolean {
+  const factoryDir = factoryStateDir(projectDir);
+  if (existsSync(join(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`))) return true;
+  const link1 = readJson(join(factoryDir, `chain-${firstLink}.json`)) as { closedAt?: unknown; decision?: unknown } | null;
+  return !!link1?.closedAt && link1.decision !== 'enqueued';
+}
+
+const sleep = (ms: number) => new Promise<void>((r) => { setTimeout(r, ms); });
+
+export async function runChainScenario(input: ChainScenarioInput): Promise<Omit<ScenarioRun, 'logText'> & { wedged: boolean }> {
+  const base = {
+    name: 'chain' as const,
+    timeoutMs: input.timeoutMs,
+    model: 'link default (copilot -p, no --model)',
+    maxCredits: input.maxCredits,
+    budget: input.budget,
+    capped: false,
+    wedged: false,
+  };
+  const prepError = prepareChainProject(input.projectDir);
+  if (prepError) return { ...base, events: [], idle: false, timedOut: false, error: `chain setup: ${prepError}` };
+
+  const firstLink = (input.randomUUID ?? randomUUID)();
+  writeChainLinkLedger(factoryStateDir(input.projectDir), firstLink, 'copilot', {
+    intentId: CHAIN_INTENT_ID,
+    stage: CHAIN_LINK1_STAGE,
+    // Link 2 (stage link-2, visit 1) then hits the cap: exactly two links.
+    maxStageVisits: 1,
+  });
+  const env = chainLinkSmokeEnv(input.env, input.bin, input.root, firstLink);
+  // The factory link argv minus `-p <prompt>`: the prompt rides stdin, as
+  // defaultSpawnFn sends it on win32 (copilot reads a piped prompt).
+  const plan = buildHostBinarySpawn(input.bin, [...COPILOT_AFK_SPAWN_FLAGS, ...copilotPluginDirArgs(env)]);
+  const link1 = await runAsync(input.spawn ?? nodeSpawn, input.spawnSync, plan.command, plan.args, {
+    cwd: input.projectDir,
+    env,
+    input: `${SCENARIOS.chain.prompt}\n`,
+    timeoutMs: input.timeoutMs,
+    windowsVerbatimArguments: plan.windowsVerbatimArguments,
+  });
+
+  // Link 2 is a detached grandchild of link 1's SessionEnd worker: wait on the ledgers.
+  let timedOut = link1.timedOut;
+  const deadline = Date.now() + input.timeoutMs;
+  while (!timedOut && !chainSettled(input.projectDir, firstLink)) {
+    if (Date.now() >= deadline) { timedOut = true; break; }
+    await sleep(input.pollMs ?? 1_000);
+  }
+  const chain = collectChainEvidence(input.projectDir, input.home, firstLink);
+  const events = chain.sessions.flatMap((s) => s.events ?? []);
+  try { writeFileSync(input.eventsPath, events.map((e) => JSON.stringify(e)).join('\n') + (events.length ? '\n' : '')); } catch { /* best effort */ }
+  const linkError = link1.error ?? (link1.code !== 0 && !link1.timedOut ? `link 1 exited ${String(link1.code)}: ${excerpt(link1.stderr, 200)}` : undefined);
+  return {
+    ...base,
+    events,
+    idle: !timedOut && !linkError,
+    timedOut,
+    ...(linkError ? { error: linkError } : {}),
+    chain,
+  };
+}
