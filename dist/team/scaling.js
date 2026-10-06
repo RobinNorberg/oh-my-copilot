@@ -190,6 +190,8 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
         }
         let config = revisioned.config;
         let configRevision = revisioned.stateRevision;
+        if (isSdkTarget(config.tmux_session))
+            return { ok: false, error: 'scaling_unsupported_transport:sdk' };
         if (!config.instance_id)
             return { ok: false, error: 'team_instance_authority_missing' };
         let originalInstanceId = config.instance_id;
@@ -988,6 +990,8 @@ export async function scaleDownOwned(teamName, cwd, options = {}, env = process.
         if (!loadedConfig) {
             return { ok: false, error: `Team ${sanitized} not found` };
         }
+        if (isSdkTarget(loadedConfig.tmux_session))
+            return { ok: false, error: 'scaling_unsupported_transport:sdk' };
         if (!loadedConfig.instance_id)
             return { ok: false, error: 'team_instance_authority_missing' };
         let originalInstanceId = loadedConfig.instance_id;
@@ -1492,21 +1496,13 @@ export async function scaleDownOwned(teamName, cwd, options = {}, env = process.
 }
 /** Public scale facade; the owned algorithm applies the recovery exclusion under its existing lock. */
 export async function scaleUp(teamName, count, agentType, tasks, cwd, env = process.env) {
-    if (await isSdkTeam(teamName, cwd))
-        return { ok: false, error: 'scaling_unsupported_transport:sdk' };
     return scaleUpOwned(teamName, count, agentType, tasks, cwd, env);
 }
 /** Public scale-down facade; force and drain behavior are delegated unchanged. */
 export async function scaleDown(teamName, cwd, options = {}, env = process.env) {
-    if (await isSdkTeam(teamName, cwd))
-        return { ok: false, error: 'scaling_unsupported_transport:sdk' };
     return scaleDownOwned(teamName, cwd, options, env);
 }
 // ── Helpers ───────────────────────────────────────────────────────────────────
-async function isSdkTeam(teamName, cwd) {
-    const current = await readRevisionedTeamConfig(teamName, cwd).catch(() => null);
-    return isSdkTarget(current?.config.tmux_session);
-}
 function resolveWorkerReadyTimeoutMs(env) {
     const raw = env.OMC_TEAM_READY_TIMEOUT_MS;
     const parsed = Number.parseInt(String(raw ?? ''), 10);
