@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "2b4a1afd2847dc2c50cfaa2e43ebb9466dfceefc",
-    "sourceSha256": "fc239695e24583fc08512a7441add4aac3fa1a81c5ba9935015c4cb3e63e4c1f",
+    "head": "07a239d12c05a6fa6d3184722da71bf28663d36c",
+    "sourceSha256": "6528ffa093f6e68b5f58f23dac64cfe203d88f2c8771bc4ab37b533b8dca2f75",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "2b4a1afd2847dc2c50cfaa2e43ebb9466dfceefc",
-  "sourceSha256": "fc239695e24583fc08512a7441add4aac3fa1a81c5ba9935015c4cb3e63e4c1f",
+  "head": "07a239d12c05a6fa6d3184722da71bf28663d36c",
+  "sourceSha256": "6528ffa093f6e68b5f58f23dac64cfe203d88f2c8771bc4ab37b533b8dca2f75",
   "counts": {
     "public": {
       "skills": 61,
       "commands": 21,
-      "workflows": 8,
+      "workflows": 9,
       "agents": 20,
-      "total": 110
+      "total": 111
     },
     "internal": {
       "hookFiles": 350,
@@ -42,7 +42,7 @@
     "skills": 61,
     "commands": 21,
     "hookFiles": 350,
-    "workflows": 8,
+    "workflows": 9,
     "agentDefinitions": 18,
     "promptLikeFiles": 61
   },
@@ -163,7 +163,8 @@
       ".github/workflows/pr-check.yml",
       ".github/workflows/release.yml",
       ".github/workflows/stale.yml",
-      ".github/workflows/upgrade-test.yml"
+      ".github/workflows/upgrade-test.yml",
+      ".github/workflows/upstream-drift.yml"
     ]
   },
   "internal": {
@@ -884,6 +885,7 @@
       "scripts/persistent-mode.mjs",
       "scripts/plugin-setup.mjs",
       "scripts/plugin-shipping-surface.mjs",
+      "scripts/port/upstream-drift.mjs",
       "scripts/post-tool-directory-context-injector.mjs",
       "scripts/post-tool-rules-injector.mjs",
       "scripts/post-tool-use-failure.mjs",
@@ -7225,7 +7227,8 @@
       ".github/workflows/pr-check.yml",
       ".github/workflows/release.yml",
       ".github/workflows/stale.yml",
-      ".github/workflows/upgrade-test.yml"
+      ".github/workflows/upgrade-test.yml",
+      ".github/workflows/upstream-drift.yml"
     ],
     "promptSources": [
       ".clawhip/state/prompt-submit.json",
@@ -7499,6 +7502,11 @@
         "path": ".github/release-notes.md"
       },
       {
+        "id": ".github/upstream-port.json",
+        "kind": "other",
+        "path": ".github/upstream-port.json"
+      },
+      {
         "id": ".github/workflows/auto-label.yml",
         "kind": "workflow",
         "path": ".github/workflows/auto-label.yml"
@@ -7537,6 +7545,11 @@
         "id": ".github/workflows/upgrade-test.yml",
         "kind": "workflow",
         "path": ".github/workflows/upgrade-test.yml"
+      },
+      {
+        "id": ".github/workflows/upstream-drift.yml",
+        "kind": "workflow",
+        "path": ".github/workflows/upstream-drift.yml"
       },
       {
         "id": ".gitignore",
@@ -39254,6 +39267,11 @@
         "path": "scripts/plugin-shipping-surface.mjs"
       },
       {
+        "id": "scripts/port/upstream-drift.mjs",
+        "kind": "script",
+        "path": "scripts/port/upstream-drift.mjs"
+      },
+      {
         "id": "scripts/post-tool-directory-context-injector.mjs",
         "kind": "script",
         "path": "scripts/post-tool-directory-context-injector.mjs"
@@ -48129,6 +48147,11 @@
         "path": "tests/lint/team-resume-contract.test.ts"
       },
       {
+        "id": "tests/lint/upstream-drift-workflow.test.ts",
+        "kind": "other",
+        "path": "tests/lint/upstream-drift-workflow.test.ts"
+      },
+      {
         "id": "tests/lint/windows-hide-hooks.test.ts",
         "kind": "other",
         "path": "tests/lint/windows-hide-hooks.test.ts"
@@ -48142,6 +48165,11 @@
         "id": "tests/perf/subagent-lock.bench.ts",
         "kind": "other",
         "path": "tests/perf/subagent-lock.bench.ts"
+      },
+      {
+        "id": "tests/port/upstream-drift.test.ts",
+        "kind": "other",
+        "path": "tests/port/upstream-drift.test.ts"
       },
       {
         "id": "tests/shipyard-audit.test.ts",
@@ -49923,6 +49951,31 @@
       {
         "from": "scripts/plugin-shipping-surface.mjs",
         "to": "external:typescript",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/port/upstream-drift.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/port/upstream-drift.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/port/upstream-drift.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/port/upstream-drift.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/port/upstream-drift.mjs",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -92171,6 +92224,26 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/upstream-drift-workflow.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/upstream-drift-workflow.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/upstream-drift-workflow.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/upstream-drift-workflow.test.ts",
+        "to": "scripts/port/upstream-drift.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/windows-hide-hooks.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -92251,6 +92324,36 @@
         "kind": "imports"
       },
       {
+        "from": "tests/port/upstream-drift.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/port/upstream-drift.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/port/upstream-drift.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/port/upstream-drift.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/port/upstream-drift.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/port/upstream-drift.test.ts",
+        "to": "scripts/port/upstream-drift.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "tests/shipyard-audit.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -92302,12 +92405,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8148,
-      "edgeCount": 8823,
-      "importEdgeCount": 7299,
+      "nodeCount": 8153,
+      "edgeCount": 8838,
+      "importEdgeCount": 7314,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "3d773b154a39d0d54a4d5bf0ca7e1791db3e40b7170409a4faefd00da60a243c",
-  "manifestSha256": "dd7948fa128b8c299caac77589ddf73af1f5f5483b9809384380353282d9f6c1"
+  "inventorySha256": "49d56d4e5c743d6935f94b7bffaf734d50209808ccaf67374ca3f6bd961dcc12",
+  "manifestSha256": "a0356197006472162b363fdd81c20998adbef43b7b83a5ca9b39bc236cf8cdf7"
 }
