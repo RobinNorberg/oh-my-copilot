@@ -88,6 +88,8 @@ The adapter fails **open** on a hook's internal error. Copilot treats a PreToolU
 | `OMC_HOOK_EVENT` | Set by `copilot/hooks.json`; activates the adapter. |
 | `OMC_HOOK_FAIL_CLOSED=1` | Keep the hook's original non-zero exit code (fail closed). The hook runner `scripts/run.cjs` also exits `124` when a hook times out, instead of the default fail-open `0`, and its stderr line says `exiting fail-closed (124)`. |
 | `OMC_HOOK_STRICT=1` | A hook target that is missing or not a file exits 1 instead of 0 plus a stderr line. |
+| `OMC_COPILOT_HOOK_WORKER=0` | Run every generic hook as a child process under Copilot, as under Claude Code (see [Latency](#latency)). |
+| `OMC_SESSION_END_BUDGET_MS` | Foreground budget of each SessionEnd hook (`session-end.mjs`, `wiki-session-end.mjs`) in `scripts/run.cjs`, on both hosts. An integer from 1 to 60000; any other value is ignored. The default is 1500 under Copilot and 300 under Claude Code (see [SessionEnd](#sessionend)). |
 | `OMC_DEBUG_HOOKS` | Log adapter decisions, such as a dropped `updatedInput`, to stderr. |
 
 ### Not projected
@@ -100,7 +102,28 @@ Every generated entry runs `node`. When a PreToolUse hook cannot start at all, f
 
 ### Latency
 
-Copilot runs the hooks for one event sequentially, one `node` process each. A PostToolUse or Stop event with several hooks therefore costs several node start-ups. A per-event dispatcher that runs all scripts for an event in one process is a planned follow-up, to be measured first.
+Copilot runs the hooks for one event sequentially, one `node` process each. A PostToolUse or Stop event with several hooks therefore costs several node start-ups. A per-event dispatcher that runs all scripts for an event in one process is a planned follow-up.
+
+**Worker routing.** Under Claude Code, `scripts/run.cjs` runs most hooks as a child process. On Windows that is a chain of three Node processes: `run.cjs`, a `--generic-child-supervisor`, and the hook. A no-op hook costs about 170 ms that way. Under Copilot (`OMC_HOOK_EVENT` set), `run.cjs` runs the audited generic hooks in a Worker thread inside its own process instead, like the upstream trusted Worker hooks. A hook runs in a Worker only when all of these hold:
+
+- Its script is in the `COPILOT_WORKER_HOOKS` list in `scripts/run.cjs`.
+- Its path is exactly `<trusted plugin root>/scripts/<name>`.
+- Its `hooks/hooks.json` entry, with the same extra arguments, belongs to the `OMC_HOOK_EVENT` event.
+- Its own manifest timeout is above `COPILOT_WORKER_MIN_TIMEOUT_MS` (3000 ms). A Worker cannot interrupt a hook blocked in a synchronous call: `worker.terminate()` only tears the Worker down once that call returns, and it does not reap any async grandchildren either. Several audited scripts (`context-guard-stop.mjs`, `workflow-drift-guard.mjs`, `code-simplifier.mjs`, and the shared `resolveToWorktreeRoot` git probes) make sync `spawnSync` git calls with their own ~2 s timeouts. The supervised child path's `taskkill /T` can still kill a blocked sync call and its children, so entries with a 3 s or tighter budget (`post-tool-directory-context-injector.mjs`, `post-tool-use-failure.mjs`, `subagent-tracker.mjs start`, `wiki-pre-compact.mjs`, `workflow-drift-guard.mjs`) stay on that child path instead of the Worker, even though they are in `COPILOT_WORKER_HOOKS`.
+
+Everything else keeps the child path. The Worker gets the same timeout, `OMC_SESSION_OWNER_PID`, extra arguments (`subagent-tracker.mjs start`), stdin, exit code and fail-closed 124 as the child path. Stdout is forwarded before stderr. Each hook that still routes to a Worker saves about 90 ms on Windows; the five ≤3 s entries above trade that saving for a host timeout a hung sync call cannot overshoot:
+
+| Event (local bench, sum of medians) | Child path | Worker |
+|---|---|---|
+| SessionStart | 1919 ms | 1482 ms |
+| Stop | 1331 ms | 976 ms |
+| PreCompact | 994 ms | 805 ms |
+| PostToolUse | 789 ms | 789 ms |
+| PermissionRequest | 189 ms | 93 ms |
+
+PostToolUse shows no saving: its one audited generic entry (`post-tool-directory-context-injector.mjs`) has a 3 s budget, so it now stays on the child path. `PostToolUseFailure` (`post-tool-use-failure.mjs`, 3 s) is the same: 188 ms either way.
+
+`OMC_COPILOT_HOOK_WORKER=0` turns the routing off. Before a new upstream hook joins the list, check that it does not call `process.chdir`, install signal handlers, branch on `isMainThread`, or start children that inherit stdio. `src/__tests__/run-cjs-copilot-worker-routing.test.ts` fails when the generic entries of `copilot/hooks.json` and the list differ. It also runs every listed hook through both paths and compares stdout, stderr and the files each one wrote, and asserts the Worker-routed entries actually ran in a Worker.
 
 ## Hook Categories
 
@@ -281,6 +304,15 @@ Fires when a session ends.
 | `session-end.mjs` | Saves session summary, sends callback notifications | 30s |
 
 Saves agent activity, token usage, and other session data to `.omg/sessions/`. If configured, sends completion notifications via Discord, Telegram, or Slack.
+
+**Foreground budget.** `scripts/run.cjs` runs `session-end.mjs` and `wiki-session-end.mjs` in a Worker with a short foreground budget. The hook publishes a durable cleanup intent and hands the work to a detached worker. Past the budget the runner exits 0, or 124 under `OMC_HOOK_FAIL_CLOSED=1`, and the foreground work is dropped.
+
+| Host | Budget | Why |
+|---|---|---|
+| Claude Code | 300 ms (upstream) | Claude Code kills SessionEnd hooks when it exits. |
+| Copilot (`OMC_HOOK_EVENT=SessionEnd`) | 1500 ms | Copilot fires SessionEnd after every turn and waits up to `timeoutSec` (30 s). At 300 ms, ordinary load (parallel sessions, a cold disk) dropped the cleanup and failed the hook. |
+
+The budget counts Worker boot, stdin, imports and the git root probe. 1500 ms is a chosen value, about 5x the idle foreground cost, not a measured limit. `OMC_SESSION_END_BUDGET_MS` overrides it on both hosts. The manifest timeout still caps it. `session-end.mjs` imports the factory chain enqueuer only when the session has a chain ledger or an `OMC_CHAIN_LINK` claim.
 
 ---
 

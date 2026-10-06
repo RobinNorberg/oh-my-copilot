@@ -18,10 +18,15 @@ vi.mock('../cleanup-manifest.js', async () => {
   const actual = await vi.importActual<typeof import('../cleanup-manifest.js')>('../cleanup-manifest.js');
   return { ...actual, prepareCoreManifest: vi.fn(actual.prepareCoreManifest) };
 });
+vi.mock('../chain-enqueuer.js', async () => {
+  const actual = await vi.importActual<typeof import('../chain-enqueuer.js')>('../chain-enqueuer.js');
+  return { ...actual, planChainEnqueue: vi.fn(actual.planChainEnqueue) };
+});
 
 import { publishSessionEndBootstrap } from '../foreground-bootstrap.js';
 import { prepareCoreManifest, readSessionEndJob } from '../cleanup-manifest.js';
-import { factoryStateDir } from '../chain-enqueuer.js';
+import { factoryStateDir, planChainEnqueue } from '../chain-enqueuer.js';
+import { CHAIN_LINK_ENV } from '../spawn-next.js';
 import { spawnSessionEndWorker } from '../worker.js';
 
 const tempRoots: string[] = [];
@@ -138,5 +143,29 @@ describe('publishSessionEndBootstrap chain wiring (plugin session-end path)', ()
 
     // No ledger means no chain; a null manifest or failed worker costs nothing.
     expect(chainDecisions(dir)).toEqual([]);
+  });
+
+  it('skips the chain enqueuer when there is neither a ledger nor a chain-link claim', async () => {
+    const dir = tempDir();
+    vi.stubEnv(CHAIN_LINK_ENV, '');
+    try {
+      await publishSessionEndBootstrap(bootstrapInput(dir, 'sess-f'));
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(planChainEnqueue).not.toHaveBeenCalled();
+    expect(readSessionEndJob(dir, 'sess-f')).not.toBeNull();
+  });
+
+  it('still plans (and records the rejection) when only an unbound chain-link claim exists', async () => {
+    const dir = tempDir();
+    vi.stubEnv(CHAIN_LINK_ENV, 'link-g');
+    try {
+      await publishSessionEndBootstrap(bootstrapInput(dir, 'sess-g'));
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    expect(planChainEnqueue).toHaveBeenCalledTimes(1);
+    expect(chainDecisions(dir).map((record) => record.decision)).toEqual(['chain-link-rejected']);
   });
 });

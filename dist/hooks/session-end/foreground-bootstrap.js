@@ -1,6 +1,20 @@
+import { existsSync } from 'fs';
+import { join } from 'path';
 import { prepareCoreManifest } from './cleanup-manifest.js';
-import { planChainEnqueue, recordChainHandoffFailure } from './chain-enqueuer.js';
-import { resolveToWorktreeRoot, validateSessionId } from '../../lib/worktree-paths.js';
+import { getOmcRoot, resolveToWorktreeRoot, validateSessionId } from '../../lib/worktree-paths.js';
+// Mirrors spawn-next.ts CHAIN_LINK_ENV; importing it would load that graph eagerly.
+const CHAIN_LINK_ENV = 'OMC_CHAIN_LINK';
+/**
+ * Fork: planChainEnqueue returns null without a link claim and without
+ * `<omc>/state/factory/chain-<session>.json` (resolveChainLink + readChainLedger).
+ * Checking that first skips importing chain-enqueuer's module graph (~45 ms of
+ * the SessionEnd foreground budget) on the common no-chain session end.
+ */
+function mayHaveChain(directory, sessionId) {
+    if (process.env[CHAIN_LINK_ENV]?.trim())
+        return true;
+    return existsSync(join(getOmcRoot(directory), 'state', 'factory', `chain-${sessionId}.json`));
+}
 /**
  * Publish the durable core cleanup intent (without sealing it) and hand off
  * to the existing worker. Core stays `prepared`, not `sealed`: sealing is
@@ -15,7 +29,8 @@ export async function publishSessionEndBootstrap(input) {
     // Plugin installs route SessionEnd here (hooks/hooks.json → scripts/session-end.mjs),
     // so the chain enqueue must happen on this path — the standalone settings.json
     // forwarder (processSessionEnd) is not registered when plugin hooks are enabled.
-    const chain = planChainEnqueue(directory, input.session_id, input.reason);
+    const enqueuer = mayHaveChain(directory, input.session_id) ? await import('./chain-enqueuer.js') : null;
+    const chain = enqueuer ? enqueuer.planChainEnqueue(directory, input.session_id, input.reason) : null;
     const payload = chain
         ? { transcriptPath: input.transcript_path, cwd: input.cwd, reason: input.reason, input, initialTeamNames: [], chain }
         : { transcriptPath: input.transcript_path, cwd: input.cwd, reason: input.reason, input, initialTeamNames: [] };
@@ -26,15 +41,15 @@ export async function publishSessionEndBootstrap(input) {
         // stall so the audit trail names it instead of showing a phantom enqueue.
         // Keyed by the chain-link id (chain.sessionId), which differs from the host
         // session id on Copilot; the closed ledger is corrected to match.
-        if (chain)
-            recordChainHandoffFailure(directory, chain, 'manifest-unavailable');
+        if (chain && enqueuer)
+            enqueuer.recordChainHandoffFailure(directory, chain, 'manifest-unavailable');
         return { continue: true };
     }
     const { spawnSessionEndWorker } = await import('./worker.js');
     // A failed worker spawn is equally silent: the chain payload is durable but
     // no executor will pick it up. Name it in the same trail.
-    if (!spawnSessionEndWorker({ directory, sessionId: input.session_id }) && chain) {
-        recordChainHandoffFailure(directory, chain, 'worker-spawn-failed');
+    if (!spawnSessionEndWorker({ directory, sessionId: input.session_id }) && chain && enqueuer) {
+        enqueuer.recordChainHandoffFailure(directory, chain, 'worker-spawn-failed');
     }
     return { continue: true };
 }
