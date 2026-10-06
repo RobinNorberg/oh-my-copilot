@@ -34093,7 +34093,7 @@ var init_factory = __esm({
 // src/smoke/copilot-chain-scenario.ts
 function prepareChainProject(projectDir) {
   try {
-    (0, import_fs50.mkdirSync)((0, import_path66.join)(projectDir, ".omg", "state"), { recursive: true });
+    (0, import_fs50.mkdirSync)((0, import_path66.join)(getOmcRoot(projectDir), "state"), { recursive: true });
     (0, import_fs50.mkdirSync)((0, import_path66.join)(projectDir, "docs", "design"), { recursive: true });
   } catch (err) {
     return `factory layout: ${err.message}`;
@@ -34106,7 +34106,7 @@ function prepareChainProject(projectDir) {
     "failed:*": { stage: "halt", skill: "stop" }
   };
   try {
-    (0, import_fs50.writeFileSync)((0, import_path66.join)(projectDir, ".omg", "factory-routes.json"), `${JSON.stringify(routes, null, 2)}
+    (0, import_fs50.writeFileSync)((0, import_path66.join)(getOmcRoot(projectDir), "factory-routes.json"), `${JSON.stringify(routes, null, 2)}
 `);
     const skillDir = (0, import_path66.join)(projectDir, ".github", "skills", CHAIN_SKILL);
     (0, import_fs50.mkdirSync)(skillDir, { recursive: true });
@@ -34272,6 +34272,7 @@ var init_copilot_chain_scenario = __esm({
     init_factory();
     init_chain_enqueuer();
     init_spawn_next();
+    init_worktree_paths();
     init_copilot_session_eval();
     init_copilot_sdk_scenarios();
     init_process_utils2();
