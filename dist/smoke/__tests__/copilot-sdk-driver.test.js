@@ -515,6 +515,16 @@ describe('runCopilotSmoke tier 2', () => {
         expect(config).toMatchObject({ loggedInUsers: [{ login: 'me' }] });
         expect(config.trustedFolders[0]).toMatch(/omg-smoke-sdk-.*project$/);
     });
+    it('CI shape: no stored login, the token env reaches the runtime and config.json carries no identity', async () => {
+        const fake = fakeSdkFor();
+        const deps = { ...smokeDeps(async () => fake.loaded), userConfigDir: join(root, 'no-login') };
+        const env = { COPILOT_GITHUB_TOKEN: 'ci-token', GH_TOKEN: 'gh', GITHUB_TOKEN: 'gha' };
+        const report = await runCopilotSmoke({ pluginRoot: root, tier: 2, scenarios: [], env, deps });
+        expect(report.checks.filter((c) => !c.ok)).toEqual([]);
+        expect(fake.rec.connection.env).toMatchObject(env);
+        expect(fake.configAtStart).not.toHaveProperty('loggedInUsers');
+        expect(fake.configAtStart).not.toHaveProperty('lastLoggedInUser');
+    });
     it('keepHome keeps the event captures', async () => {
         const fake = fakeSdkFor();
         const report = await runCopilotSmoke({ pluginRoot: root, tier: 2, scenarios: ['smoke'], env: {}, keepHome: true, deps: smokeDeps(async () => fake.loaded) });

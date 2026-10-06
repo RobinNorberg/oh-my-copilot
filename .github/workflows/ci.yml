@@ -451,6 +451,139 @@ jobs:
           fi
           
           echo "✅ npm pack + install test passed!"
+
+  # Headless smoke against the real Copilot CLI on Linux (docs/DEVELOPERS.md
+  # "Tier 2 in CI"). Every run: tier 2 SDK static checks, zero model calls.
+  # v* tags add the default scenarios (smoke, guardrail: ~2 premium requests).
+  # Needs the COPILOT_GITHUB_TOKEN secret; without it (fork PRs, Dependabot,
+  # secret not configured) the job passes with a skip notice. Tags skip the
+  # build job, so the condition admits a skipped build on tags only. The
+  # release job does not depend on this job.
+  smoke:
+    name: Copilot smoke (tier 2)
+    needs: [build]
+    if: ${{ !cancelled() && (needs.build.result == 'success' || (github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v'))) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # `npm i -g @github/copilot` is the CLI's documented npm install; its
+      # loader runs the native @github/copilot-linux-x64 binary.
+      SMOKE_CLI_DIST_TAG: latest
+      SMOKE_SDK_RANGE: '^1.0.16'
+    steps:
+      - name: Check for the Copilot token
+        id: gate
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        run: |
+          if [ -n "$COPILOT_GITHUB_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Copilot smoke skipped::secret COPILOT_GITHUB_TOKEN is not available to this run (fork PR, Dependabot, or not configured). See docs/DEVELOPERS.md, Tier 2 in CI."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.gate.outputs.enabled == 'true'
+        run: npm ci
+
+      - name: Build
+        if: steps.gate.outputs.enabled == 'true'
+        run: npm run build
+
+      - name: Install Copilot CLI and SDK
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          # The SDK is an optional peer: global install, no bundled runtime
+          # (--omit=optional), no koffi build (--ignore-scripts). The smoke
+          # finds it via `npm root -g` and drives the installed CLI instead.
+          npm install --global --no-audit --no-fund --omit=optional --ignore-scripts "@github/copilot-sdk@$SMOKE_SDK_RANGE"
+          npm install --global --no-audit --no-fund "@github/copilot@$SMOKE_CLI_DIST_TAG"
+          command -v copilot
+          copilot --version
+
+      - name: Prepare isolated smoke dirs
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          # Empty user COPILOT_HOME: no stored login, so the token env is the
+          # only credential. TMPDIR keeps every --keep-home dir under one root.
+          SMOKE_ROOT="$RUNNER_TEMP/copilot-smoke"
+          mkdir -p "$SMOKE_ROOT/user-home" "$SMOKE_ROOT/tmp" "$SMOKE_ROOT/reports"
+          printf 'SMOKE_ROOT=%s\n' "$SMOKE_ROOT" >> "$GITHUB_ENV"
+          printf 'COPILOT_HOME=%s\n' "$SMOKE_ROOT/user-home" >> "$GITHUB_ENV"
+          printf 'TMPDIR=%s\n' "$SMOKE_ROOT/tmp" >> "$GITHUB_ENV"
+
+      - name: Tier 2 static checks (no model call)
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        run: |
+          set +e
+          node bridge/cli.cjs smoke copilot --tier 2 --sdk-static --keep-home --json > "$SMOKE_ROOT/reports/static.json" 2> "$SMOKE_ROOT/reports/static.stderr.txt"
+          status=$?
+          set -e
+          jq -r '.checks[] | "\(if .ok then "ok  " else "FAIL" end) \(.id): \(.detail)"' "$SMOKE_ROOT/reports/static.json" || cat "$SMOKE_ROOT/reports/static.json"
+          echo "omg smoke copilot --sdk-static exit $status"
+          exit "$status"
+
+      - name: Tier 2 default scenarios (tags only, ~2 premium requests)
+        if: steps.gate.outputs.enabled == 'true' && github.event_name == 'push' && github.ref_type == 'tag'
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          # Explicit opt-in marker for billed scenarios; only the vitest guard reads it.
+          OMC_LIVE_SMOKE: '2'
+        run: |
+          set +e
+          node bridge/cli.cjs smoke copilot --tier 2 --keep-home --json > "$SMOKE_ROOT/reports/scenarios.json" 2> "$SMOKE_ROOT/reports/scenarios.stderr.txt"
+          status=$?
+          set -e
+          jq -r '.checks[] | "\(if .ok then "ok  " else "FAIL" end) \(.id): \(.detail)"' "$SMOKE_ROOT/reports/scenarios.json" || cat "$SMOKE_ROOT/reports/scenarios.json"
+          jq -r '"cost: \(.cost.premiumRequests // "?") premium request(s), \(.cost.credits // "?") credit(s)"' "$SMOKE_ROOT/reports/scenarios.json" || true
+          echo "omg smoke copilot --tier 2 exit $status"
+          exit "$status"
+
+      - name: Check smoke artifacts for token leaks
+        id: leak-check
+        if: always() && steps.gate.outputs.enabled == 'true'
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        run: |
+          # Fail closed and delete the dir: nothing token-shaped may be uploaded.
+          # No -I: binary files (session-store.db) are scanned too.
+          SMOKE_ROOT="${SMOKE_ROOT:-$RUNNER_TEMP/copilot-smoke}"
+          [ -d "$SMOKE_ROOT" ] || exit 0
+          leaked=0
+          if grep -rlE 'gh[opsur]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' "$SMOKE_ROOT"; then leaked=1; fi
+          if printf '%s\n' "$COPILOT_GITHUB_TOKEN" | grep -rlF -f - "$SMOKE_ROOT"; then leaked=1; fi
+          if [ "$leaked" -ne 0 ]; then
+            rm -rf "$SMOKE_ROOT"
+            echo "::error::token-shaped string in the smoke artifacts (files above); artifacts deleted, not uploaded"
+            exit 1
+          fi
+          echo "no token-shaped strings under $SMOKE_ROOT"
+
+      - name: Upload smoke report and artifacts
+        if: always() && steps.gate.outputs.enabled == 'true' && steps.leak-check.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: copilot-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/copilot-smoke/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+
   release:
     name: Create GitHub Release
     if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')

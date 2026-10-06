@@ -692,7 +692,9 @@ async function runChecks(
   if (!resolution.bin) {
     skipped = opts.copilotBin
       ? `copilot binary not found: ${opts.copilotBin}`
-      : 'copilot binary not found on PATH, COPILOT_CLI_PATH, or the WinGet package dir';
+      : (deps.platform ?? process.platform) === 'win32'
+        ? 'copilot binary not found on PATH, COPILOT_CLI_PATH, or the WinGet package dir'
+        : 'copilot binary not found on PATH or COPILOT_CLI_PATH (npm i -g @github/copilot)';
     checks.push({ id: 'copilot.binary', ok: false, detail: skipped });
     for (const id of TIER0_COPILOT_IDS.slice(1)) checks.push({ id, ok: false, detail: 'skipped' });
   } else {

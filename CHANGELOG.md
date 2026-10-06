@@ -30,6 +30,19 @@ All notable changes to oh-my-copilot will be documented in this file.
   runs that two-link chain against real `copilot -p` links and asserts the
   link identity, the hand-off, the closeout and the cost from the ledgers
   and both sessions' events. It is not part of `all` or the default set.
+- **Headless Copilot smoke in CI:** a new `smoke` job in
+  `.github/workflows/ci.yml` installs the Copilot CLI (`npm i -g
+  @github/copilot`) and `@github/copilot-sdk` on ubuntu-latest and runs
+  `omg smoke copilot --tier 2 --sdk-static` after every build, with zero
+  model calls. Pushed `v*` tags also run the default scenarios (`smoke`,
+  `guardrail`, about 2 premium requests). It authenticates with the
+  repository secret `COPILOT_GITHUB_TOKEN` and passes with a skip notice when
+  the secret is absent, as on fork PRs. Reports and the kept homes are
+  uploaded only after a scan for token-shaped strings and the exact token
+  passes. Pinned by `tests/lint/copilot-smoke-ci-workflow.test.ts`; setup in
+  [docs/DEVELOPERS.md](docs/DEVELOPERS.md#tier-2-in-ci).
+- **Smoke on Linux:** the missing-binary message no longer names the WinGet
+  directory off Windows; it points at `npm i -g @github/copilot`.
 
 # oh-my-copilot v5.7.0
 

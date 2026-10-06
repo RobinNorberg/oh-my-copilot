@@ -110210,7 +110210,7 @@ async function runChecks(ctx, opts, started, checks, artifacts, cleanup) {
   const resolution = resolveCopilotBinary(opts.copilotBin, env2, deps);
   let version3 = null;
   if (!resolution.bin) {
-    skipped = opts.copilotBin ? `copilot binary not found: ${opts.copilotBin}` : "copilot binary not found on PATH, COPILOT_CLI_PATH, or the WinGet package dir";
+    skipped = opts.copilotBin ? `copilot binary not found: ${opts.copilotBin}` : (deps.platform ?? process.platform) === "win32" ? "copilot binary not found on PATH, COPILOT_CLI_PATH, or the WinGet package dir" : "copilot binary not found on PATH or COPILOT_CLI_PATH (npm i -g @github/copilot)";
     checks.push({ id: "copilot.binary", ok: false, detail: skipped });
     for (const id of TIER0_COPILOT_IDS.slice(1)) checks.push({ id, ok: false, detail: "skipped" });
   } else {
