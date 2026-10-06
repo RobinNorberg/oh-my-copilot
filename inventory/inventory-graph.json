@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "d75d942c4e3b4b2b45f04ca40f5a6dfb59e1d22a",
-    "sourceSha256": "c7bacc654fcd20f4949bdd16a65fd9f3f04195383a8f5459ea604a30f8e6c17d",
+    "head": "88d8691cf05e71f19428980273240979a54544bc",
+    "sourceSha256": "1823de013726166b0ed0ce4913eaa273abaf8da8e348f515d6b26f27b2c8b521",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "d75d942c4e3b4b2b45f04ca40f5a6dfb59e1d22a",
-  "sourceSha256": "c7bacc654fcd20f4949bdd16a65fd9f3f04195383a8f5459ea604a30f8e6c17d",
+  "head": "88d8691cf05e71f19428980273240979a54544bc",
+  "sourceSha256": "1823de013726166b0ed0ce4913eaa273abaf8da8e348f515d6b26f27b2c8b521",
   "counts": {
     "public": {
       "skills": 61,
@@ -23,25 +23,25 @@
       "total": 110
     },
     "internal": {
-      "hookFiles": 348,
+      "hookFiles": 350,
       "featureFiles": 84,
       "toolFiles": 62,
       "libFiles": 47,
       "templateHooks": 23,
-      "srcFiles": 1525,
-      "total": 1548
+      "srcFiles": 1531,
+      "total": 1554
     },
     "generated": {
-      "distFiles": 5887,
+      "distFiles": 5911,
       "bridgeFiles": 9,
-      "total": 5896
+      "total": 5920
     },
     "prompt": {
       "promptLikeFiles": 61
     },
     "skills": 61,
     "commands": 21,
-    "hookFiles": 348,
+    "hookFiles": 350,
     "workflows": 8,
     "agentDefinitions": 18,
     "promptLikeFiles": 61
@@ -332,6 +332,7 @@
       "src/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.ts",
       "src/hooks/persistent-mode/__tests__/oversize-tool-result-redirect.test.ts",
       "src/hooks/persistent-mode/__tests__/prompt-truncation.test.ts",
+      "src/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.ts",
       "src/hooks/persistent-mode/__tests__/ralph-hard-max.test.ts",
       "src/hooks/persistent-mode/__tests__/ralph-max-iteration.test.ts",
       "src/hooks/persistent-mode/__tests__/ralph-session-mismatch.test.ts",
@@ -440,6 +441,7 @@
       "src/hooks/session-end/__tests__/spawn-next.test.ts",
       "src/hooks/session-end/__tests__/subdirectory-cwd.test.ts",
       "src/hooks/session-end/__tests__/team-cleanup.test.ts",
+      "src/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.ts",
       "src/hooks/session-end/__tests__/worker.test.ts",
       "src/hooks/session-end/action-runner.ts",
       "src/hooks/session-end/action-watchdog.ts",
@@ -1214,6 +1216,10 @@
       "dist/__tests__/hud-build-guidance.test.d.ts.map",
       "dist/__tests__/hud-build-guidance.test.js",
       "dist/__tests__/hud-build-guidance.test.js.map",
+      "dist/__tests__/hud-cache-wrapper-4237.test.d.ts",
+      "dist/__tests__/hud-cache-wrapper-4237.test.d.ts.map",
+      "dist/__tests__/hud-cache-wrapper-4237.test.js",
+      "dist/__tests__/hud-cache-wrapper-4237.test.js.map",
       "dist/__tests__/hud-cache-wrapper.test.d.ts",
       "dist/__tests__/hud-cache-wrapper.test.d.ts.map",
       "dist/__tests__/hud-cache-wrapper.test.js",
@@ -1274,6 +1280,10 @@
       "dist/__tests__/hud/defaults.test.d.ts.map",
       "dist/__tests__/hud/defaults.test.js",
       "dist/__tests__/hud/defaults.test.js.map",
+      "dist/__tests__/hud/effort.test.d.ts",
+      "dist/__tests__/hud/effort.test.d.ts.map",
+      "dist/__tests__/hud/effort.test.js",
+      "dist/__tests__/hud/effort.test.js.map",
       "dist/__tests__/hud/extra-usage.test.d.ts",
       "dist/__tests__/hud/extra-usage.test.d.ts.map",
       "dist/__tests__/hud/extra-usage.test.js",
@@ -1382,6 +1392,10 @@
       "dist/__tests__/hud/transcript-agent-lifecycle.test.d.ts.map",
       "dist/__tests__/hud/transcript-agent-lifecycle.test.js",
       "dist/__tests__/hud/transcript-agent-lifecycle.test.js.map",
+      "dist/__tests__/hud/transcript-task-tools.test.d.ts",
+      "dist/__tests__/hud/transcript-task-tools.test.d.ts.map",
+      "dist/__tests__/hud/transcript-task-tools.test.js",
+      "dist/__tests__/hud/transcript-task-tools.test.js.map",
       "dist/__tests__/hud/update-hint.test.d.ts",
       "dist/__tests__/hud/update-hint.test.d.ts.map",
       "dist/__tests__/hud/update-hint.test.js",
@@ -3839,6 +3853,10 @@
       "dist/hooks/persistent-mode/__tests__/prompt-truncation.test.d.ts.map",
       "dist/hooks/persistent-mode/__tests__/prompt-truncation.test.js",
       "dist/hooks/persistent-mode/__tests__/prompt-truncation.test.js.map",
+      "dist/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.d.ts",
+      "dist/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.d.ts.map",
+      "dist/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.js",
+      "dist/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.js.map",
       "dist/hooks/persistent-mode/__tests__/ralph-hard-max.test.d.ts",
       "dist/hooks/persistent-mode/__tests__/ralph-hard-max.test.d.ts.map",
       "dist/hooks/persistent-mode/__tests__/ralph-hard-max.test.js",
@@ -4271,6 +4289,10 @@
       "dist/hooks/session-end/__tests__/team-cleanup.test.d.ts.map",
       "dist/hooks/session-end/__tests__/team-cleanup.test.js",
       "dist/hooks/session-end/__tests__/team-cleanup.test.js.map",
+      "dist/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.d.ts",
+      "dist/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.d.ts.map",
+      "dist/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.js",
+      "dist/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.js.map",
       "dist/hooks/session-end/__tests__/worker.test.d.ts",
       "dist/hooks/session-end/__tests__/worker.test.d.ts.map",
       "dist/hooks/session-end/__tests__/worker.test.js",
@@ -4648,6 +4670,10 @@
       "dist/hud/elements/cwd.d.ts.map",
       "dist/hud/elements/cwd.js",
       "dist/hud/elements/cwd.js.map",
+      "dist/hud/elements/effort.d.ts",
+      "dist/hud/elements/effort.d.ts.map",
+      "dist/hud/elements/effort.js",
+      "dist/hud/elements/effort.js.map",
       "dist/hud/elements/enterprise-cost.d.ts",
       "dist/hud/elements/enterprise-cost.d.ts.map",
       "dist/hud/elements/enterprise-cost.js",
@@ -7004,6 +7030,7 @@
       "src/hooks/persistent-mode/__tests__/jev-loop-continuation-shadow.test.ts",
       "src/hooks/persistent-mode/__tests__/oversize-tool-result-redirect.test.ts",
       "src/hooks/persistent-mode/__tests__/prompt-truncation.test.ts",
+      "src/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.ts",
       "src/hooks/persistent-mode/__tests__/ralph-hard-max.test.ts",
       "src/hooks/persistent-mode/__tests__/ralph-max-iteration.test.ts",
       "src/hooks/persistent-mode/__tests__/ralph-session-mismatch.test.ts",
@@ -7112,6 +7139,7 @@
       "src/hooks/session-end/__tests__/spawn-next.test.ts",
       "src/hooks/session-end/__tests__/subdirectory-cwd.test.ts",
       "src/hooks/session-end/__tests__/team-cleanup.test.ts",
+      "src/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.ts",
       "src/hooks/session-end/__tests__/worker.test.ts",
       "src/hooks/session-end/action-runner.ts",
       "src/hooks/session-end/action-watchdog.ts",
@@ -9836,6 +9864,26 @@
         "path": "dist/__tests__/hud-build-guidance.test.js.map"
       },
       {
+        "id": "dist/__tests__/hud-cache-wrapper-4237.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud-cache-wrapper-4237.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud-cache-wrapper-4237.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud-cache-wrapper-4237.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud-cache-wrapper-4237.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud-cache-wrapper-4237.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud-cache-wrapper-4237.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud-cache-wrapper-4237.test.js.map"
+      },
+      {
         "id": "dist/__tests__/hud-cache-wrapper.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud-cache-wrapper.test.d.ts"
@@ -10134,6 +10182,26 @@
         "id": "dist/__tests__/hud/defaults.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud/defaults.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hud/effort.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/effort.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/effort.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/effort.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/effort.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/effort.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/effort.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/effort.test.js.map"
       },
       {
         "id": "dist/__tests__/hud/extra-usage.test.d.ts",
@@ -10674,6 +10742,26 @@
         "id": "dist/__tests__/hud/transcript-agent-lifecycle.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud/transcript-agent-lifecycle.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hud/transcript-task-tools.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/transcript-task-tools.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/transcript-task-tools.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/transcript-task-tools.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/transcript-task-tools.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/transcript-task-tools.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/transcript-task-tools.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/transcript-task-tools.test.js.map"
       },
       {
         "id": "dist/__tests__/hud/update-hint.test.d.ts",
@@ -22961,6 +23049,26 @@
         "path": "dist/hooks/persistent-mode/__tests__/prompt-truncation.test.js.map"
       },
       {
+        "id": "dist/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.js"
+      },
+      {
+        "id": "dist/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.js.map"
+      },
+      {
         "id": "dist/hooks/persistent-mode/__tests__/ralph-hard-max.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/persistent-mode/__tests__/ralph-hard-max.test.d.ts"
@@ -25121,6 +25229,26 @@
         "path": "dist/hooks/session-end/__tests__/team-cleanup.test.js.map"
       },
       {
+        "id": "dist/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.js"
+      },
+      {
+        "id": "dist/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.js.map"
+      },
+      {
         "id": "dist/hooks/session-end/__tests__/worker.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/session-end/__tests__/worker.test.d.ts"
@@ -27004,6 +27132,26 @@
         "id": "dist/hud/elements/cwd.js.map",
         "kind": "generated-dist",
         "path": "dist/hud/elements/cwd.js.map"
+      },
+      {
+        "id": "dist/hud/elements/effort.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/effort.d.ts"
+      },
+      {
+        "id": "dist/hud/elements/effort.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/effort.d.ts.map"
+      },
+      {
+        "id": "dist/hud/elements/effort.js",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/effort.js"
+      },
+      {
+        "id": "dist/hud/elements/effort.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/effort.js.map"
       },
       {
         "id": "dist/hud/elements/enterprise-cost.d.ts",
@@ -40331,6 +40479,11 @@
         "path": "src/__tests__/hud-build-guidance.test.ts"
       },
       {
+        "id": "src/__tests__/hud-cache-wrapper-4237.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud-cache-wrapper-4237.test.ts"
+      },
+      {
         "id": "src/__tests__/hud-cache-wrapper.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud-cache-wrapper.test.ts"
@@ -40404,6 +40557,11 @@
         "id": "src/__tests__/hud/defaults.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/defaults.test.ts"
+      },
+      {
+        "id": "src/__tests__/hud/effort.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/effort.test.ts"
       },
       {
         "id": "src/__tests__/hud/extra-usage.test.ts",
@@ -40539,6 +40697,11 @@
         "id": "src/__tests__/hud/transcript-agent-lifecycle.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/transcript-agent-lifecycle.test.ts"
+      },
+      {
+        "id": "src/__tests__/hud/transcript-task-tools.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/transcript-task-tools.test.ts"
       },
       {
         "id": "src/__tests__/hud/update-hint.test.ts",
@@ -43696,6 +43859,11 @@
         "path": "src/hooks/persistent-mode/__tests__/prompt-truncation.test.ts"
       },
       {
+        "id": "src/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.ts"
+      },
+      {
         "id": "src/hooks/persistent-mode/__tests__/ralph-hard-max.test.ts",
         "kind": "hook",
         "path": "src/hooks/persistent-mode/__tests__/ralph-hard-max.test.ts"
@@ -44236,6 +44404,11 @@
         "path": "src/hooks/session-end/__tests__/team-cleanup.test.ts"
       },
       {
+        "id": "src/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.ts"
+      },
+      {
         "id": "src/hooks/session-end/__tests__/worker.test.ts",
         "kind": "hook",
         "path": "src/hooks/session-end/__tests__/worker.test.ts"
@@ -44709,6 +44882,11 @@
         "id": "src/hud/elements/cwd.ts",
         "kind": "src",
         "path": "src/hud/elements/cwd.ts"
+      },
+      {
+        "id": "src/hud/elements/effort.ts",
+        "kind": "src",
+        "path": "src/hud/elements/effort.ts"
       },
       {
         "id": "src/hud/elements/enterprise-cost.ts",
@@ -50754,7 +50932,22 @@
       },
       {
         "from": "scripts/wiki-session-end.mjs",
-        "to": "dist/hooks/session-end/wiki-foreground-bootstrap.js",
+        "to": "dist/hooks/session-end/cleanup-manifest.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/wiki-session-end.mjs",
+        "to": "dist/hooks/session-end/worker.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/wiki-session-end.mjs",
+        "to": "dist/hooks/wiki/session-hooks.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/wiki-session-end.mjs",
+        "to": "dist/lib/worktree-paths.js",
         "kind": "imports"
       },
       {
@@ -52778,6 +52971,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/hud-cache-wrapper-4237.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud-cache-wrapper-4237.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud-cache-wrapper-4237.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud-cache-wrapper-4237.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud-cache-wrapper-4237.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/hud-cache-wrapper.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -53100,6 +53318,26 @@
       {
         "from": "src/__tests__/hud/defaults.test.ts",
         "to": "src/hud/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/effort.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/effort.test.ts",
+        "to": "src/hud/colors.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/effort.test.ts",
+        "to": "src/hud/elements/effort.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/effort.test.ts",
+        "to": "src/hud/stdin.ts",
         "kind": "imports"
       },
       {
@@ -53709,6 +53947,36 @@
       },
       {
         "from": "src/__tests__/hud/transcript-agent-lifecycle.test.ts",
+        "to": "src/hud/transcript.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/transcript-task-tools.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/transcript-task-tools.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/transcript-task-tools.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/transcript-task-tools.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/transcript-task-tools.test.ts",
+        "to": "src/hud/elements/todos.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/transcript-task-tools.test.ts",
         "to": "src/hud/transcript.ts",
         "kind": "imports"
       },
@@ -54375,6 +54643,11 @@
       {
         "from": "src/__tests__/keyword-detector-echo-guard.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/keyword-detector-echo-guard.test.ts",
+        "to": "src/hooks/autopilot/enforcement.ts",
         "kind": "imports"
       },
       {
@@ -69143,6 +69416,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/__tests__/ralph-hard-max-script.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/persistent-mode/__tests__/ralph-hard-max.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -69780,6 +70078,11 @@
       {
         "from": "src/hooks/persistent-mode/stop-hook-blocking.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/persistent-mode/stop-hook-blocking.test.ts",
+        "to": "src/hooks/autopilot/enforcement.ts",
         "kind": "imports"
       },
       {
@@ -72113,6 +72416,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.ts",
+        "to": "src/hooks/session-end/cleanup-manifest.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.ts",
+        "to": "src/hooks/session-end/wiki-foreground-bootstrap.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/wiki-foreground-bootstrap.test.ts",
+        "to": "src/hooks/session-end/worker.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/session-end/__tests__/worker.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -74288,6 +74631,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hud/elements/effort.ts",
+        "to": "src/hud/colors.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hud/elements/enterprise-cost.ts",
         "to": "src/hud/colors.ts",
         "kind": "imports"
@@ -74375,6 +74723,11 @@
       {
         "from": "src/hud/elements/index.ts",
         "to": "src/hud/elements/cwd.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/hud/elements/index.ts",
+        "to": "src/hud/elements/effort.ts",
         "kind": "exports"
       },
       {
@@ -74880,6 +75233,11 @@
       {
         "from": "src/hud/render.ts",
         "to": "src/hud/elements/cwd.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/render.ts",
+        "to": "src/hud/elements/effort.ts",
         "kind": "imports"
       },
       {
@@ -91939,12 +92297,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8117,
-      "edgeCount": 8787,
-      "importEdgeCount": 7264,
+      "nodeCount": 8147,
+      "edgeCount": 8823,
+      "importEdgeCount": 7299,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "6f65e0477ee742372468b9124e0d26fb4ad019d80c205f1d133127e0b2da4856",
-  "manifestSha256": "ddf72c38cdfcac81291bf11d842e04cd2e44e59406cde2f9621b8ffadd3dfe1d"
+  "inventorySha256": "0f9230118cb0da025b222d43b18c985cc551be995ed5450216e8ac17d599d14e",
+  "manifestSha256": "e50f9d1ecae00921da5cfe828702090ff3c9e98134fff160c937a385b76e217e"
 }

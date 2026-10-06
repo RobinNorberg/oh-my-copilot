@@ -75,6 +75,30 @@ const PERMISSION_THRESHOLD_MS = 3000; // 3 seconds
 const pendingPermissionMap = new Map<string, PendingPermission>();
 
 /**
+ * Per-parse Task-tool state (#4242). TaskCreate/TaskUpdate are incremental,
+ * unlike TodoWrite's full-list replace, so items are indexed by task id.
+ * Keyed by the parse's `latestTodos` array so state never leaks across parses.
+ */
+interface TaskToolState {
+  /** TaskCreate tool_use id -> item awaiting its "Task #<id> created" result */
+  pendingCreates: Map<string, TodoItem>;
+  /** task id -> item currently in latestTodos */
+  byId: Map<string, TodoItem>;
+}
+const taskToolStates = new WeakMap<TodoItem[], TaskToolState>();
+
+function getTaskToolState(latestTodos: TodoItem[]): TaskToolState {
+  let state = taskToolStates.get(latestTodos);
+  if (!state) {
+    state = { pendingCreates: new Map(), byId: new Map() };
+    taskToolStates.set(latestTodos, state);
+  }
+  return state;
+}
+
+const TASK_STATUSES = new Set<TodoItem["status"]>(["pending", "in_progress", "completed"]);
+
+/**
  * Content block types that indicate extended thinking mode.
  */
 const THINKING_PART_TYPES = ["thinking", "reasoning"] as const;
@@ -369,6 +393,25 @@ function readTailLines(
 type BackgroundAgentMap = Map<string, string>;
 
 /**
+ * Extract task ID from TaskCreate tool_result.
+ * Looks for patterns like "Task #123 created" in the result content.
+ */
+function extractTaskIdFromTaskCreateResult(
+  content: string | Array<{ type?: string; text?: string }>,
+): string | null {
+  let text = "";
+  if (typeof content === "string") {
+    text = content;
+  } else if (Array.isArray(content)) {
+    text = content
+      .map((b) => (typeof b?.text === "string" ? b.text : ""))
+      .join("\n");
+  }
+  const match = /Task #([^\s:]+) created/.exec(text);
+  return match ? match[1] : null;
+}
+
+/**
  * Extract background agent ID from "Async agent launched" message
  */
 function extractBackgroundAgentId(
@@ -628,8 +671,9 @@ function processEntry(
       } else if (block.name === "TodoWrite" || block.name === "proxy_TodoWrite") {
         const input = block.input as TodoWriteInput | undefined;
         if (input?.todos && Array.isArray(input.todos)) {
-          // Replace latest todos with new ones
+          // Replace latest todos with new ones; Task tools apply on top
           latestTodos.length = 0;
+          taskToolStates.get(latestTodos)?.byId.clear();
           latestTodos.push(
             ...input.todos.map((t) => ({
               content: t.content,
@@ -637,6 +681,34 @@ function processEntry(
               activeForm: t.activeForm,
             })),
           );
+        }
+      } else if (block.name === "TaskCreate" || block.name === "proxy_TaskCreate") {
+        const input = block.input as TaskCreateInput | undefined;
+        if (block.id && typeof input?.subject === "string" && input.subject) {
+          // The task id only appears in the paired tool_result.
+          getTaskToolState(latestTodos).pendingCreates.set(block.id, {
+            content: input.subject,
+            status: "pending",
+            ...(input.activeForm ? { activeForm: input.activeForm } : {}),
+          });
+        }
+      } else if (block.name === "TaskUpdate" || block.name === "proxy_TaskUpdate") {
+        const input = block.input as TaskUpdateInput | undefined;
+        const taskId = input?.taskId == null ? "" : String(input.taskId);
+        const state = getTaskToolState(latestTodos);
+        const item = taskId ? state.byId.get(taskId) : undefined;
+        if (input && item) {
+          if (input.status === "deleted") {
+            const idx = latestTodos.indexOf(item);
+            if (idx >= 0) latestTodos.splice(idx, 1);
+            state.byId.delete(taskId);
+          } else {
+            if (input.status && TASK_STATUSES.has(input.status as TodoItem["status"])) {
+              item.status = input.status as TodoItem["status"];
+            }
+            if (typeof input.subject === "string" && input.subject) item.content = input.subject;
+            if (typeof input.activeForm === "string" && input.activeForm) item.activeForm = input.activeForm;
+          }
         }
       } else if (block.name === "Skill" || block.name === "proxy_Skill") {
         result.skillCallCount++;
@@ -665,7 +737,7 @@ function processEntry(
       }
     }
 
-    // Track tool_result to mark agents as completed
+    // Track tool_result to mark agents as completed and finalize TaskCreate operations
     if (block.type === "tool_result" && block.tool_use_id) {
       // Clear from pending permissions when tool_result arrives
       pendingPermissionMap.delete(block.tool_use_id);
@@ -679,6 +751,23 @@ function processEntry(
             (typeof block.content === "string" &&
               block.content.toLowerCase().includes("error"));
           trackedTool.status = isError ? "failure" : "success";
+        }
+      }
+
+      // Finalize TaskCreate once its result names the task id (#4242)
+      const taskState = taskToolStates.get(latestTodos);
+      const pendingTask = taskState?.pendingCreates.get(block.tool_use_id);
+      if (taskState && pendingTask) {
+        taskState.pendingCreates.delete(block.tool_use_id);
+        const taskId = block.is_error || !block.content
+          ? null
+          : extractTaskIdFromTaskCreateResult(block.content);
+        if (taskId) {
+          const previous = taskState.byId.get(taskId);
+          const prevIdx = previous ? latestTodos.indexOf(previous) : -1;
+          if (prevIdx >= 0) latestTodos.splice(prevIdx, 1);
+          taskState.byId.set(taskId, pendingTask);
+          latestTodos.push(pendingTask);
         }
       }
 
@@ -812,6 +901,20 @@ interface TodoWriteInput {
 interface SkillInput {
   skill: string;
   args?: string;
+}
+
+interface TaskCreateInput {
+  subject?: string;
+  description?: string;
+  activeForm?: string;
+}
+
+interface TaskUpdateInput {
+  taskId?: string | number;
+  status?: string;
+  subject?: string;
+  description?: string;
+  activeForm?: string;
 }
 
 
