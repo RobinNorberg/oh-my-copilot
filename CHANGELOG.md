@@ -53,6 +53,14 @@ All notable changes to oh-my-copilot will be documented in this file.
   `session-end.mjs` also loads the factory chain enqueuer only when a chain
   ledger or `OMC_CHAIN_LINK` exists, which cuts its idle median from 300 ms
   to about 260 ms.
+- **Copilot runs generic hooks in a Worker:** under Copilot (`OMC_HOOK_EVENT`
+  set), `scripts/run.cjs` runs the 18 audited generic hook scripts in a Worker
+  thread instead of the Windows `--generic-child-supervisor` chain of three
+  Node processes. Timeout, `OMC_SESSION_OWNER_PID`, extra arguments, stdin,
+  exit code and fail-closed 124 are unchanged, and every hook's output matches
+  the child path. Each hook is about 90 ms faster on Windows: Stop 1331 to
+  893 ms, SessionStart 1919 to 1471 ms (local bench). Claude Code keeps the
+  child path. `OMC_COPILOT_HOOK_WORKER=0` turns the routing off.
 
 # oh-my-copilot v5.7.0
 

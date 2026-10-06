@@ -88,6 +88,7 @@ The adapter fails **open** on a hook's internal error. Copilot treats a PreToolU
 | `OMC_HOOK_EVENT` | Set by `copilot/hooks.json`; activates the adapter. |
 | `OMC_HOOK_FAIL_CLOSED=1` | Keep the hook's original non-zero exit code (fail closed). The hook runner `scripts/run.cjs` also exits `124` when a hook times out, instead of the default fail-open `0`, and its stderr line says `exiting fail-closed (124)`. |
 | `OMC_HOOK_STRICT=1` | A hook target that is missing or not a file exits 1 instead of 0 plus a stderr line. |
+| `OMC_COPILOT_HOOK_WORKER=0` | Run every generic hook as a child process under Copilot, as under Claude Code (see [Latency](#latency)). |
 | `OMC_SESSION_END_BUDGET_MS` | Foreground budget of each SessionEnd hook (`session-end.mjs`, `wiki-session-end.mjs`) in `scripts/run.cjs`, on both hosts. An integer from 1 to 60000; any other value is ignored. The default is 1500 under Copilot and 300 under Claude Code (see [SessionEnd](#sessionend)). |
 | `OMC_DEBUG_HOOKS` | Log adapter decisions, such as a dropped `updatedInput`, to stderr. |
 
@@ -101,7 +102,25 @@ Every generated entry runs `node`. When a PreToolUse hook cannot start at all, f
 
 ### Latency
 
-Copilot runs the hooks for one event sequentially, one `node` process each. A PostToolUse or Stop event with several hooks therefore costs several node start-ups. A per-event dispatcher that runs all scripts for an event in one process is a planned follow-up, to be measured first.
+Copilot runs the hooks for one event sequentially, one `node` process each. A PostToolUse or Stop event with several hooks therefore costs several node start-ups. A per-event dispatcher that runs all scripts for an event in one process is a planned follow-up.
+
+**Worker routing.** Under Claude Code, `scripts/run.cjs` runs most hooks as a child process. On Windows that is a chain of three Node processes: `run.cjs`, a `--generic-child-supervisor`, and the hook. A no-op hook costs about 170 ms that way. Under Copilot (`OMC_HOOK_EVENT` set), `run.cjs` runs the audited generic hooks in a Worker thread inside its own process instead, like the upstream trusted Worker hooks. A hook runs in a Worker only when all of these hold:
+
+- Its script is in the `COPILOT_WORKER_HOOKS` list in `scripts/run.cjs`.
+- Its path is exactly `<trusted plugin root>/scripts/<name>`.
+- Its `hooks/hooks.json` entry, with the same extra arguments, belongs to the `OMC_HOOK_EVENT` event.
+
+Everything else keeps the child path. The Worker gets the same timeout, `OMC_SESSION_OWNER_PID`, extra arguments (`subagent-tracker.mjs start`), stdin, exit code and fail-closed 124 as the child path. Stdout is forwarded before stderr. Each hook saves about 90 ms on Windows:
+
+| Event (local bench, sum of medians) | Child path | Worker |
+|---|---|---|
+| SessionStart | 1919 ms | 1471 ms |
+| Stop | 1331 ms | 893 ms |
+| PreCompact | 994 ms | 718 ms |
+| PostToolUse | 789 ms | 699 ms |
+| PermissionRequest | 189 ms | 94 ms |
+
+`OMC_COPILOT_HOOK_WORKER=0` turns the routing off. Before a new upstream hook joins the list, check that it does not call `process.chdir`, install signal handlers, branch on `isMainThread`, or start children that inherit stdio. `src/__tests__/run-cjs-copilot-worker-routing.test.ts` fails when the generic entries of `copilot/hooks.json` and the list differ. It also runs every listed hook through both paths and compares the output.
 
 ## Hook Categories
 
