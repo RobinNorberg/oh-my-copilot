@@ -610,11 +610,21 @@ omg ask claude --agent-prompt executor --prompt "create an implementation plan"
 ```bash
 omg team 2:codex "review auth flow"
 omg team status review-auth-flow
+omg team status review-auth-flow --json
+omg team status --json             # auto-resolves the team name when exactly one team is active
 omg team shutdown review-auth-flow --force
 omg team api claim-task --input '{"team_name":"auth-review","task_id":"1","worker":"worker-1"}' --json
 ```
 
 Supported entrypoints: direct start (`omg team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
+
+`team status [team-name] --json` prints the same status data as the human-readable
+report (team/instance id, phase, workspace/worktree mode, worker list with worktree
+metadata, SDK worker fields — provider liveness, state, turns, credits, premium
+requests — task counts, and leader guidance) as a single JSON document instead of
+text, with `ok: false` when no team state is found. `--json` can appear before or
+after the team name and is never mistaken for one; when the team name is omitted
+and exactly one team is active, it is resolved automatically.
 
 Startup reserves the team name for an immutable instance. Shutdown and job cleanup
 require matching instance and worker-launch evidence; `--force` skips graceful
@@ -1515,6 +1525,12 @@ From a shell, `omg doctor conflicts` checks for configuration conflicts. Among i
 
 - **Legacy `COPILOT_CONFIG_DIR`**: warns when it is set. OMC reads only `COPILOT_HOME`, Copilot CLI's own variable; rename it.
 - **`node` on PATH**: every hook runs `node`, and under Copilot a PreToolUse hook that cannot start denies the tool call, so a missing `node` blocks every tool.
+
+`omg doctor conflicts --json` prints the full conflict report (every check above, plus
+`hasConflicts`) as a single JSON document on stdout instead of the coloured human
+report; the human report is unchanged when `--json` is omitted. `--json` and
+`--plugin-dir` work both on `omg doctor` (flag form, e.g. `omg doctor --team-routing
+--json`) and on `omg doctor conflicts`/`omg doctor team-routing` directly.
 
 ### Configure HUD Statusline
 
