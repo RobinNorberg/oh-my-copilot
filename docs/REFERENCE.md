@@ -676,6 +676,16 @@ Worker panes run unattended, so each provider launches with its own auto-approve
 
 - `disableExternalLLM` / `OMC_SECURITY=strict` allows only the current host CLI's workers. See [SECURITY.md](../SECURITY.md).
 
+#### Headless SDK workers (`--transport sdk`, experimental)
+
+`omg team 2:copilot --transport sdk "<task>"` (or `team.transport: "sdk"`) runs each copilot worker as a detached `omg team sdk-host` process that owns one `@github/copilot-sdk` session, with no pane and no multiplexer. It needs `@github/copilot-sdk` installed (`npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`).
+
+- **No allow-all.** The host answers every permission request. Writes are allowed only inside the worker's worktree and the team state root. Reads also allow the plugin root. MCP calls are allowed only to the plugin server.
+- **The shell policy is a denylist, not a sandbox.** It rejects team control other than `team api`, `omg smoke`, `tmux`/`psmux` and `git push`, plus `shell(<prefix>)` entries of `workerDenyTools`, including quoted spellings such as `"omg" team shutdown`. A command built indirectly (a script file, an alias, `Invoke-Expression`, an encoded command) is not caught. Treat the write-path check, the credit cap and the per-worker `COPILOT_HOME` as the boundaries.
+- **Sub-agent tools are removed**: `task`, `run_dynamic_workflow`, `dynamic_workflows_manage`, `write_agent`, `read_agent`, `list_agents` and the plugin's `host_smoke`.
+- **Credit cap.** `team.sdk.maxCreditsPerWorker` (default 10, must be a positive number; env `OMC_TEAM_SDK_MAX_CREDITS`) is enforced by the host: at the cap it aborts the turn and takes no more prompts, and `omg team status` shows the worker as `capped` with a reassign recommendation.
+- **Unsupported under sdk:** `--auto-merge`, non-copilot workers, scaling, dead-worker recovery, and reviewer roles with a verdict contract (`critic`, `code-reviewer`, `security-reviewer`, `test-engineer`); startup rejects them.
+
 ### `omg session search`
 
 ```bash

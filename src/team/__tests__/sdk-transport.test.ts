@@ -101,10 +101,46 @@ describe('sdk permission policy', () => {
     expect(decideSdkPermission(req(), ctx()).approve).toBe(approve);
   });
 
+  // Review cases: quoted tokens, doubled whitespace, variable indirection, and
+  // the false positives of a loose `git ... push` match. The policy is a
+  // denylist, not a sandbox (see SDK_SHELL_DENY_PATTERNS); these are the
+  // spellings it is expected to catch or to leave alone.
+  const shellCases: Array<[string, boolean]> = [
+    ['"omg" team shutdown x', false],
+    ["omg 'team' shutdown", false],
+    ['node bridge/cli.cjs "team" start', false],
+    ['"git" push', false],
+    ['$g="git"; & $g push', false],
+    ['g=git; $g push origin', false],
+    ['"tmux" kill-server', false],
+    ['"omg" smoke', false],
+    ['git -C ../wt push', false],
+    ['git --no-pager push', false],
+    ['cmd /c "git push"', false],
+    ['git add . && git push', false],
+    ['"rm" -rf /', false], // workerDenyTools shell(rm -rf) after quote stripping
+    ['git commit -m "push the thing"', true],
+    ['git commit -m push', true],
+    ['git log --grep push', true],
+    ['omg team  api claim-task --json', true],
+    ['omg  team api read-task --json', true],
+    ['echo pushd', true],
+  ];
+  it.each(shellCases)('shell %s -> approve=%s', (command, approve) => {
+    expect(decideSdkPermission({ kind: 'shell', fullCommandText: command }, ctx()).approve).toBe(approve);
+  });
+
   it('excludes the recursion fence and maps workerDenyTools to SDK tool names', () => {
     expect(buildSdkExcludedTools('t', ['shell(rm -rf)', 'web_fetch', 't(state_clear)', 'write']).sort())
-      .toEqual(['create', 'edit', 't-host_smoke', 't-state_clear', 'task', 'web_fetch'].sort());
+      .toEqual(['create', 'edit', 't-host_smoke', 't-state_clear', 'task', 'web_fetch',
+        'run_dynamic_workflow', 'dynamic_workflows_manage', 'write_agent', 'read_agent', 'list_agents'].sort());
     expect(buildSdkExcludedTools('t', ['shell'])).toEqual(expect.arrayContaining(['shell', 'powershell']));
+  });
+
+  it('removes every sub-agent / workflow tool even with an empty deny list', () => {
+    expect(buildSdkExcludedTools('t')).toEqual(expect.arrayContaining([
+      'task', 'run_dynamic_workflow', 'dynamic_workflows_manage', 'write_agent', 'read_agent', 'list_agents', 't-host_smoke',
+    ]));
   });
 });
 

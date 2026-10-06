@@ -51,14 +51,30 @@ export interface SdkPermissionDecision {
  * - `omg smoke` (would spend credits from inside a worker);
  * - the multiplexers (the pane transport's control plane);
  * - `git push` (workers commit in their worktree; the leader integrates).
+ *
+ * This is a denylist over the command text, not a sandbox: it stops the
+ * direct and quoted spellings a model actually writes, but a worker that
+ * builds the command indirectly (an alias, a script file, `Invoke-Expression`,
+ * an encoded command) is not stopped by it. The real boundaries are the
+ * write-path check, the credit cap and the per-worker COPILOT_HOME.
+ * Patterns run on {@link normalizeShellCommand}'s output.
  */
 export const SDK_SHELL_DENY_PATTERNS: ReadonlyArray<{ re: RegExp; reason: string }> = [
-  { re: /\b(?:omg|omc|oh-my-copilot|oh-my-claudecode)(?:\.cmd|\.ps1)?\s+team\s+(?!api\b)/i, reason: 'team control outside `team api`' },
-  { re: /\bcli\.cjs["']?\s+team\s+(?!api\b)/i, reason: 'team control outside `team api`' },
+  // `\s+(?!\s|api\b)`: doubled whitespace must not let `team  api` backtrack into a deny.
+  { re: /\b(?:omg|omc|oh-my-copilot|oh-my-claudecode)(?:\.cmd|\.ps1)?\s+team\s+(?!\s|api\b)/i, reason: 'team control outside `team api`' },
+  { re: /\bcli\.cjs["']?\s+team\s+(?!\s|api\b)/i, reason: 'team control outside `team api`' },
   { re: /\b(?:omg|omc|oh-my-copilot)(?:\.cmd|\.ps1)?\s+smoke\b/i, reason: '`omg smoke` from a worker' },
-  { re: /(?:^|[\s;&|(])(?:tmux|psmux)(?:\.exe)?\b/i, reason: 'multiplexer control' },
-  { re: /\bgit(?:\.exe)?\s[^|;&\n]*?\bpush\b/i, reason: '`git push` from a worker' },
+  { re: /(?:^|[\s;&|("'])(?:tmux|psmux)(?:\.exe)?\b/i, reason: 'multiplexer control' },
+  // `push` as git's subcommand: only global options (`-C <dir>`, `-c <k=v>`, `--flag[=v]`) may sit between.
+  { re: /(?:^|[\s;&|("'/\\])git(?:\.exe)?(?:\s+(?:-C\s+\S+|-c\s+\S+|--?[A-Za-z][\w-]*(?:=\S+)?))*\s+push\b/i, reason: '`git push` from a worker' },
+  // `$g="git"; & $g push` / `g=git; $g push`: git named, then pushed through a variable.
+  { re: /\bgit\b[\s\S]*\$\{?\w+\}?\s+push\b/i, reason: '`git push` from a worker' },
 ];
+
+/** Strip quotes around single tokens (`"omg" 'team'` -> `omg team`) so quoting cannot dodge a pattern. */
+export function normalizeShellCommand(command: string): string {
+  return command.replace(/(["'])([^"'\s]+)\1/g, '$2');
+}
 
 function canon(p: string, platform: NodeJS.Platform): string {
   let out = resolve(p);
@@ -128,12 +144,13 @@ export function decideSdkPermission(req: SdkPermissionRequest, ctx: SdkPolicyCon
     case 'shell': {
       const command = String(req.fullCommandText ?? '');
       if (!command.trim()) return { approve: false, reason: 'shell without command text' };
+      const normalized = normalizeShellCommand(command);
       for (const { re, reason } of SDK_SHELL_DENY_PATTERNS) {
-        if (re.test(command)) return { approve: false, reason };
+        if (re.test(normalized)) return { approve: false, reason };
       }
-      const trimmed = command.trim();
+      const spellings = [command.trim(), normalized.trim()];
       for (const prefix of shellDenyPrefixes(ctx.denyTools)) {
-        if (trimmed === prefix || trimmed.startsWith(`${prefix} `)) {
+        if (spellings.some((s) => s === prefix || s.startsWith(`${prefix} `))) {
           return { approve: false, reason: `permissions.workerDenyTools shell(${prefix})` };
         }
       }
@@ -161,13 +178,27 @@ const KIND_TOOLS: Record<string, string[]> = {
 };
 
 /**
+ * Built-in tools that start or drive other agents. A worker is one agent on
+ * one credit cap; these would fan out work (and spend) outside the team's
+ * task and claim protocol.
+ */
+export const SDK_AGENT_FANOUT_TOOLS: readonly string[] = [
+  'task',
+  'run_dynamic_workflow',
+  'dynamic_workflows_manage',
+  'write_agent',
+  'read_agent',
+  'list_agents',
+];
+
+/**
  * `excludedTools` for an SDK worker session: the recursion fence (the
- * `<server>-host_smoke` tool, the `task` subagent tool) plus each bare
+ * `<server>-host_smoke` tool and {@link SDK_AGENT_FANOUT_TOOLS}) plus each bare
  * `workerDenyTools` name; `<server>(<tool>)` becomes `<server>-<tool>`, the
  * SDK's MCP tool name. `shell(<prefix>)` entries stay with the handler.
  */
 export function buildSdkExcludedTools(mcpServer: string, denyTools: readonly string[] = []): string[] {
-  const out = new Set<string>([`${mcpServer}-host_smoke`, 'task']);
+  const out = new Set<string>([`${mcpServer}-host_smoke`, ...SDK_AGENT_FANOUT_TOOLS]);
   for (const raw of denyTools) {
     const entry = raw.trim();
     if (!entry) continue;
