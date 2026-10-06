@@ -65,7 +65,11 @@ when their report is processed.
    dist.attestations` + `gh release view vX` → download the tag run's
    `copilot-smoke-*` artifact and read `reports/{static,scenarios}.json`.
 6. **Close out:** memory (`omc-upstream-porting`: what shipped, numbers,
-   follow-ups), `ListAgents` empty, report.
+   follow-ups), `ListAgents` empty, report. The port commit updates
+   `.github/upstream-port.json`: `upstream_sha` = the ported upstream head,
+   `ported_at`, `fork_version` = X. The upstream drift bot
+   (`.github/workflows/upstream-drift.yml`) uses that sha as its next base,
+   so a stale marker makes it re-propose ported commits.
 
 ## Triage rules for the full suite
 - Compare by TITLE against the last good baseline log; the verbose reporter

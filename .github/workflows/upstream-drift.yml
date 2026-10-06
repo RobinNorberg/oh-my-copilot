@@ -1,0 +1,191 @@
+# Upstream drift bot (docs/DEVELOPERS.md, "Upstream drift bot").
+# Daily, and on demand: when upstream `dev` has moved past the `upstream_sha`
+# in .github/upstream-port.json, apply the range with
+# scripts/port/upstream-drift.mjs (the runbook's exclusions and rename map) and
+# open a draft port PR to `dev` when it applies cleanly, or an issue listing
+# the conflicts when it does not. Conflict resolution and release stay with
+# humans/agents (.omc/skills/port-and-release-cycle.md).
+#
+# One open bot PR/issue per upstream head: the head sha is a marker in the
+# body. A newer head closes the older item with a comment and gets a new
+# branch; no branch is ever force-pushed.
+#
+# Token: pushes and PRs made with GITHUB_TOKEN do not trigger other workflows,
+# so CI does not run on a bot PR. The optional repo secret
+# UPSTREAM_DRIFT_TOKEN (fine-grained PAT on this repo: Contents, Pull requests,
+# Issues read/write) is used when set so CI runs; without it the bot falls back
+# to GITHUB_TOKEN and prints the caveat. Upstream workflow files are never
+# applied (a GITHUB_TOKEN push cannot change them); the report lists them.
+name: Upstream Drift
+
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: upstream-drift
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.UPSTREAM_DRIFT_TOKEN || github.token }}
+      HAS_DRIFT_TOKEN: ${{ secrets.UPSTREAM_DRIFT_TOKEN != '' }}
+      UPSTREAM_URL: https://github.com/Yeachan-Heo/oh-my-claudecode.git
+      LABEL: upstream-port
+      HEAD_MARKER_PREFIX: '<!-- upstream-drift-head: '
+    steps:
+      - name: Report the token source
+        run: |
+          if [ "$HAS_DRIFT_TOKEN" = "true" ]; then
+            echo "Using UPSTREAM_DRIFT_TOKEN: CI runs on bot PRs."
+          else
+            echo "::warning title=Upstream drift::UPSTREAM_DRIFT_TOKEN is not set; using GITHUB_TOKEN, so CI does not run on bot PRs until someone closes and reopens the PR or pushes to it."
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_DRIFT_TOKEN || github.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch upstream dev
+        run: |
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch --no-tags upstream dev
+
+      - name: Check for new upstream commits
+        id: check
+        run: |
+          set +e
+          node scripts/port/upstream-drift.mjs --check --json > "$RUNNER_TEMP/check.json"
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/check.json"
+          case "$status" in
+            0) drift=false ;;
+            1) drift=true ;;
+            *) exit "$status" ;;
+          esac
+          head_sha=$(jq -r .head "$RUNNER_TEMP/check.json")
+          {
+            echo "drift=$drift"
+            echo "base=$(jq -r .base "$RUNNER_TEMP/check.json")"
+            echo "head=$head_sha"
+            echo "short=${head_sha:0:9}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Find bot items for this upstream head
+        id: existing
+        if: steps.check.outputs.drift == 'true'
+        env:
+          HEAD_SHA: ${{ steps.check.outputs.head }}
+        run: |
+          marker="${HEAD_MARKER_PREFIX}${HEAD_SHA} -->"
+          gh pr list --label "$LABEL" --state all --limit 100 --json number,body > "$RUNNER_TEMP/prs.json"
+          gh issue list --label "$LABEL" --state all --limit 100 --json number,state,body > "$RUNNER_TEMP/issues.json"
+          pr=$(jq -r --arg m "$marker" '[.[] | select(.body | contains($m))][0].number // empty' "$RUNNER_TEMP/prs.json")
+          open_issue=$(jq -r --arg m "$marker" '[.[] | select(.state == "OPEN" and (.body | contains($m)))][0].number // empty' "$RUNNER_TEMP/issues.json")
+          closed_issue=$(jq -r --arg m "$marker" '[.[] | select(.state == "CLOSED" and (.body | contains($m)))][0].number // empty' "$RUNNER_TEMP/issues.json")
+          skip=false
+          if [ -n "$pr" ]; then
+            echo "::notice title=Upstream drift::PR #$pr already tracks upstream $HEAD_SHA; nothing to do."
+            skip=true
+          elif [ -n "$closed_issue" ] && [ -z "$open_issue" ]; then
+            echo "::notice title=Upstream drift::issue #$closed_issue for upstream $HEAD_SHA was closed by a maintainer; not reopening."
+            skip=true
+          fi
+          { echo "skip=$skip"; echo "issue=$open_issue"; } >> "$GITHUB_OUTPUT"
+
+      - name: Apply the upstream range
+        id: apply
+        if: steps.check.outputs.drift == 'true' && steps.existing.outputs.skip != 'true'
+        env:
+          BASE_SHA: ${{ steps.check.outputs.base }}
+          HEAD_SHA: ${{ steps.check.outputs.head }}
+          BRANCH: port/bot-${{ steps.check.outputs.short }}
+        run: |
+          git switch -c "$BRANCH"
+          set +e
+          node scripts/port/upstream-drift.mjs --apply --base "$BASE_SHA" --head "$HEAD_SHA"
+          status=$?
+          set -e
+          case "$status" in
+            0) clean=true ;;
+            1) clean=false ;;
+            *) exit "$status" ;;
+          esac
+          node scripts/port/upstream-drift.mjs --report --base "$BASE_SHA" --head "$HEAD_SHA" > "$RUNNER_TEMP/report.json"
+          node scripts/port/upstream-drift.mjs --report --base "$BASE_SHA" --head "$HEAD_SHA" --markdown > "$RUNNER_TEMP/body.md"
+          if [ "$HAS_DRIFT_TOKEN" != "true" ]; then
+            printf '\n> Opened with `GITHUB_TOKEN`: CI did not run. Close and reopen this PR (or push to it) to start CI, or set the `UPSTREAM_DRIFT_TOKEN` secret.\n' >> "$RUNNER_TEMP/body.md"
+          fi
+          echo "clean=$clean" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure the upstream-port label
+        if: steps.apply.outcome == 'success'
+        run: |
+          gh label create "$LABEL" --color 0e8a16 --description "Upstream drift bot: port PRs and conflict issues" 2>/dev/null || true
+
+      - name: Open the draft port PR
+        if: steps.apply.outcome == 'success' && steps.apply.outputs.clean == 'true'
+        env:
+          BRANCH: port/bot-${{ steps.check.outputs.short }}
+          HEAD_SHA: ${{ steps.check.outputs.head }}
+          ISSUE: ${{ steps.existing.outputs.issue }}
+        run: |
+          title=$(jq -r .titles.pr "$RUNNER_TEMP/report.json")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "$title" -m "Applied by scripts/port/upstream-drift.mjs (upstream $HEAD_SHA). Still to do by hand: package.json delta, generators, build, inventory, tests."
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
+            echo "::error title=Upstream drift::branch $BRANCH already exists on origin without a bot PR; not pushing (never force-push). Open the PR by hand or delete the branch."
+            exit 1
+          fi
+          git push -u origin "$BRANCH"
+          url=$(gh pr create --draft --base dev --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md" --label "$LABEL")
+          echo "Opened $url"
+          if [ -n "$ISSUE" ]; then
+            gh issue close "$ISSUE" --comment "Upstream $HEAD_SHA now applies cleanly against dev: $url"
+          fi
+
+      - name: Open or update the conflict issue
+        if: steps.apply.outcome == 'success' && steps.apply.outputs.clean == 'false'
+        env:
+          ISSUE: ${{ steps.existing.outputs.issue }}
+        run: |
+          title=$(jq -r .titles.issue "$RUNNER_TEMP/report.json")
+          if [ -n "$ISSUE" ]; then
+            gh issue edit "$ISSUE" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+            echo "Updated issue #$ISSUE"
+          else
+            gh issue create --title "$title" --body-file "$RUNNER_TEMP/body.md" --label "$LABEL"
+          fi
+
+      - name: Close superseded bot items
+        if: steps.check.outcome == 'success'
+        env:
+          HEAD_SHA: ${{ steps.check.outputs.head }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          marker="${HEAD_MARKER_PREFIX}${HEAD_SHA} -->"
+          stale='[.[] | select((.body | contains($p)) and ((.body | contains($m)) | not)) | .number] | .[]'
+          for n in $(gh pr list --label "$LABEL" --state open --limit 100 --json number,body | jq -r --arg p "$HEAD_MARKER_PREFIX" --arg m "$marker" "$stale"); do
+            gh pr close "$n" --comment "Superseded: upstream dev is now at $HEAD_SHA ($RUN_URL)."
+          done
+          for n in $(gh issue list --label "$LABEL" --state open --limit 100 --json number,body | jq -r --arg p "$HEAD_MARKER_PREFIX" --arg m "$marker" "$stale"); do
+            gh issue close "$n" --comment "Superseded: upstream dev is now at $HEAD_SHA ($RUN_URL)."
+          done
