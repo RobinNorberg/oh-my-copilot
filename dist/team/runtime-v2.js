@@ -4980,6 +4980,11 @@ export async function cleanupStaleReservations(teamName, cwd) {
                 'process_started_at' in owner)) {
                 return; // Malformed owner, leave alone
             }
+            // An active reservation is the running team's instance authority; its
+            // owner is the `team start` CLI, which exits once the team is up. A dead
+            // owner only makes a starting (never activated) reservation stale.
+            if (reservation.phase === 'active')
+                return;
             // Check if the process is dead
             const ownerRecord = owner;
             if (isProcessIdentityDead(ownerRecord)) {
