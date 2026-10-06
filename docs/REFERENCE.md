@@ -139,7 +139,7 @@ If both configurations exist, **project-scoped takes precedence** over global:
 | `OMC_FREE_MEMORY_THRESHOLD` | `256` | Free memory threshold in MB. Gate blocks operations when free memory falls below this. Set to negative value to disable. |
 | `OMC_MAX_SIBLING_SESSIONS` | `8` | Maximum concurrent OMC sessions before gating expensive operations. Set to negative value to disable. |
 | `OMC_HOST_LOAD_GATE_DISABLED` | _(unset)_ | Set to any value to disable the host load gate entirely. |
-| `OMC_CHAIN_LINK` | _(set by the spawner)_ | Internal. The chain-link id of a Copilot factory link, set on the spawned `copilot` process by the factory listener or the SessionEnd worker. Do not set it yourself: SessionEnd only trusts it when it names an open `host: "copilot"` ledger. See [Factory chains on Copilot](#factory-chains-on-copilot). |
+| `OMC_CHAIN_LINK` | _(set by the spawner)_ | Internal. The chain-link id of a Copilot factory link, set on the spawned `copilot` process by the factory listener or the SessionEnd worker. Do not set it yourself: SessionEnd only trusts it when it names a `host: "copilot"` ledger, and a finished link is a no-op. See [Factory chains on Copilot](#factory-chains-on-copilot). |
 
 #### Host Load Gate
 
@@ -754,7 +754,7 @@ Each link has a chain-link id and a ledger `.omg/state/factory/chain-<id>.json`,
 - **Claude Code** pins it with `--session-id <id>`; the host session id is the link id.
 - **Copilot CLI** has no `--session-id`, so the spawner sets `OMC_CHAIN_LINK=<id>` on the `copilot` process. Copilot passes its env to hook processes, and SessionEnd resolves the link as `OMC_CHAIN_LINK` first, then the host session id.
 
-`OMC_CHAIN_LINK` is trusted only when `chain-<id>.json` exists, records `host: "copilot"` and `chainLink: <id>`, and has no `closedAt`. Otherwise SessionEnd falls back to the host session id and records `chain-link-rejected` in `chain-decisions.jsonl`, so setting the variable alone can neither inject a chain nor replay a finished link. The detached SessionEnd worker never forwards `OMC_CHAIN_LINK`: the chain identity rides the durable manifest payload, and every spawned link gets its own value. `COPILOT_ALLOW_ALL` stays forced to `false` on every link, and the AFK permission profile is unchanged.
+`OMC_CHAIN_LINK` is trusted only when `chain-<id>.json` exists and records `host: "copilot"` and `chainLink: <id>`, and the ending session is not a Claude session (`CLAUDE_CODE_ENTRYPOINT` unset). Otherwise SessionEnd falls back to the host session id and records `chain-link-rejected` in `chain-decisions.jsonl`. A ledger that already has `closedAt` resolves but enqueues nothing (`already-closed`). So setting the variable alone can neither inject a chain nor replay a finished link. If the hand-off to the worker fails after the decision, the ledger's `decision` is corrected to `manifest-unavailable` or `worker-spawn-failed`. The detached SessionEnd worker never forwards `OMC_CHAIN_LINK`: the chain identity rides the durable manifest payload, and every spawned link gets its own value. `COPILOT_ALLOW_ALL` stays forced to `false` on every link, and the AFK permission profile is unchanged.
 
 | Ledger field | Meaning |
 |---|---|
@@ -762,7 +762,7 @@ Each link has a chain-link id and a ledger `.omg/state/factory/chain-<id>.json`,
 | `closedAt`, `hostSessionId`, `endReason`, `outcome`, `decision` | Written once by the link's SessionEnd. A closed ledger is never enqueued again and is never reported as stalled. |
 | `maxStageVisits` | Stage-visit cap, carried from the first ledger to every later link (default 2). |
 
-Copilot's SessionEnd reason for a finished `-p` link is `complete` (CLI 1.0.91), which counts as `success` alongside Claude's `other`, `prompt_input_exit`, and `logout`; route keys such as `success:*` match both hosts. When OMC runs from a dev plugin root (`omg --plugin-dir`, which sets `OMC_PLUGIN_ROOT`), Copilot links also get `--plugin-dir <root>`, and the SessionEnd worker forwards `OMC_PLUGIN_ROOT`, so every link loads the same plugin. `omg factory status` lists each intent's links in spawn order with host, link id, and closeout, for example `环 2 link-2 [copilot] link=<id> 已结束 success→chain-loop-capped session=<host session>`.
+Copilot's SessionEnd reason for a finished `-p` link is `complete` (CLI 1.0.91), which counts as `success` alongside Claude's `other`, `prompt_input_exit`, and `logout`; route keys such as `success:*` match both hosts. When OMC runs from a dev plugin root (`omg --plugin-dir`, which sets `OMC_PLUGIN_ROOT`), Copilot links also get `--plugin-dir <root>`, and the SessionEnd worker forwards `OMC_PLUGIN_ROOT`, so every link loads the same plugin. Limitation: Copilot fires `sessionEnd` after every turn, also in `-p` mode, so a link that a Stop hook keeps going into a second turn hands off after its first turn. The closed ledger stops later turns from enqueuing again, but the next link may start while this one still runs. A single-prompt link is not affected. `omg factory status` lists each intent's links in spawn order with host, link id, and closeout, for example `环 2 link-2 [copilot] link=<id> 已结束 success→chain-loop-capped session=<host session>`.
 
 ### `omg smoke copilot`
 

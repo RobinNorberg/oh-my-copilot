@@ -76,8 +76,11 @@ const LINK_ENV_DROPPED = [CHAIN_LINK_ENV, 'COPILOT_AGENT_SESSION_ID'] as const;
  */
 export function chainLinkEnv(base: NodeJS.ProcessEnv, command: string, chainLink?: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...base };
+  // Case-folded on win32, where `copilot_allow_all` would otherwise survive
+  // next to the forced COPILOT_ALLOW_ALL below.
+  const dropped: readonly string[] = command === 'copilot' ? [...LINK_ENV_DROPPED, 'COPILOT_ALLOW_ALL'] : LINK_ENV_DROPPED;
   for (const key of Object.keys(env)) {
-    if ((LINK_ENV_DROPPED as readonly string[]).includes(process.platform === 'win32' ? key.toUpperCase() : key)) delete env[key];
+    if (dropped.includes(process.platform === 'win32' ? key.toUpperCase() : key)) delete env[key];
   }
   if (command === 'copilot') {
     env.COPILOT_ALLOW_ALL = 'false';

@@ -150,12 +150,51 @@ export function collectChainEvidence(projectDir: string, home: string, firstLink
   return { firstLink, ledgers, decisions, stopped, sessions };
 }
 
-/** The chain stopped: a stop marker, or link 1 closed without enqueuing a next link. */
+/** Ids of link ledgers no SessionEnd has closed yet. */
+function openLinks(projectDir: string): string[] {
+  const factoryDir = factoryStateDir(projectDir);
+  let entries: string[] = [];
+  try { entries = readdirSync(factoryDir); } catch { return []; }
+  return entries
+    .map((e) => /^chain-([0-9a-f-]{36})\.json$/i.exec(e)?.[1])
+    .filter((id): id is string => !!id)
+    .filter((id) => !(readJson(join(factoryDir, `chain-${id}.json`)) as { closedAt?: unknown } | null)?.closedAt);
+}
+
+/**
+ * The chain stopped: a stop marker with every ledger closed (the enqueuer
+ * writes the marker just before it closes the ending link's ledger), or link 1
+ * closed without enqueuing a next link.
+ */
 function chainSettled(projectDir: string, firstLink: string): boolean {
   const factoryDir = factoryStateDir(projectDir);
-  if (existsSync(join(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`))) return true;
+  if (existsSync(join(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`))) return openLinks(projectDir).length === 0;
   const link1 = readJson(join(factoryDir, `chain-${firstLink}.json`)) as { closedAt?: unknown; decision?: unknown } | null;
   return !!link1?.closedAt && link1.decision !== 'enqueued';
+}
+
+/**
+ * Timed out: close every open ledger (decision `smoke-timeout`) so a link
+ * still running cannot enqueue another one when it ends (its SessionEnd then
+ * records `already-closed`), and leave a stop marker for `omg factory status`.
+ * A running link is not killed: it is a detached grandchild of the SessionEnd
+ * worker with no pid on record.
+ */
+function stopTimedOutChain(projectDir: string, open: string[]): void {
+  const factoryDir = factoryStateDir(projectDir);
+  const now = new Date().toISOString();
+  for (const id of open) {
+    const ledger = readJson(join(factoryDir, `chain-${id}.json`));
+    if (!ledger || typeof ledger !== 'object') continue;
+    try {
+      writeFileSync(join(factoryDir, `chain-${id}.json`), JSON.stringify({ ...ledger, closedAt: now, decision: 'smoke-timeout' }, null, 2));
+    } catch { /* best effort */ }
+  }
+  const marker = join(factoryDir, `chain-${CHAIN_INTENT_ID}.stopped.json`);
+  if (existsSync(marker)) return;
+  try {
+    writeFileSync(marker, JSON.stringify({ intentId: CHAIN_INTENT_ID, reason: 'smoke-timeout', stoppedAt: now }, null, 2));
+  } catch { /* best effort */ }
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => { setTimeout(r, ms); });
@@ -199,10 +238,14 @@ export async function runChainScenario(input: ChainScenarioInput): Promise<Omit<
     if (Date.now() >= deadline) { timedOut = true; break; }
     await sleep(input.pollMs ?? 1_000);
   }
+  const stillOpen = timedOut ? openLinks(input.projectDir) : [];
+  if (timedOut) stopTimedOutChain(input.projectDir, stillOpen);
   const chain = collectChainEvidence(input.projectDir, input.home, firstLink);
   const events = chain.sessions.flatMap((s) => s.events ?? []);
   try { writeFileSync(input.eventsPath, events.map((e) => JSON.stringify(e)).join('\n') + (events.length ? '\n' : '')); } catch { /* best effort */ }
-  const linkError = link1.error ?? (link1.code !== 0 && !link1.timedOut ? `link 1 exited ${String(link1.code)}: ${excerpt(link1.stderr, 200)}` : undefined);
+  const linkError = link1.error
+    ?? (link1.code !== 0 && !link1.timedOut ? `link 1 exited ${String(link1.code)}: ${excerpt(link1.stderr, 200)}` : undefined)
+    ?? (stillOpen.length ? `timed out with open link(s) ${stillOpen.join(', ')}; their ledgers were closed (smoke-timeout) so they cannot enqueue, but a running link was not killed` : undefined);
   return {
     ...base,
     events,

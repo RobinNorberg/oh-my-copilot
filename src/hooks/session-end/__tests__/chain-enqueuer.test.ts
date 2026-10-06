@@ -7,6 +7,7 @@ import {
   planChainEnqueue,
   readChainLedger,
   readProjectRoutes,
+  recordChainHandoffFailure,
   resolveChainLink,
   sessionEndOutcome,
   factoryStateDir,
@@ -352,7 +353,6 @@ describe('chain-link identity (OMC_CHAIN_LINK)', () => {
 
   it.each([
     ['a nonexistent ledger', undefined, 'no ledger'],
-    ['a closed ledger', { closedAt: '2026-10-06T00:00:00.000Z' }, 'ledger already closed'],
     ['a claude ledger', { host: 'claude' }, 'ledger host claude'],
     ['a ledger without host', { host: undefined }, 'ledger host unset'],
     ['a ledger naming another link', { chainLink: HOST }, 'ledger chainLink mismatch'],
@@ -365,6 +365,28 @@ describe('chain-link identity (OMC_CHAIN_LINK)', () => {
   it('ignores a traversal or malformed OMC_CHAIN_LINK', () => {
     const dir = tempDir();
     expect(resolveChainLink(dir, HOST, env('../evil'))).toMatchObject({ linkId: HOST, rejected: 'invalid id' });
+  });
+
+  it('ignores OMC_CHAIN_LINK inherited by a Claude session nested in a Copilot link', () => {
+    const dir = tempDir();
+    writeLedger(dir, LINK, copilotLedger());
+    expect(resolveChainLink(dir, HOST, { ...env(LINK), CLAUDE_CODE_ENTRYPOINT: 'cli' })).toEqual({ linkId: HOST, source: 'session', rejected: 'not a copilot session' });
+  });
+
+  it('resolves a closed ledger so its replay is recorded as already-closed', () => {
+    const dir = tempDir();
+    writeLedger(dir, LINK, copilotLedger({ closedAt: '2026-10-06T00:00:00.000Z' }));
+    expect(resolveChainLink(dir, HOST, env(LINK))).toEqual({ linkId: LINK, source: 'env' });
+  });
+
+  it('corrects a closed ledger when the enqueued chain could not be handed to the worker', () => {
+    const dir = tempDir();
+    writeLedger(dir, LINK, copilotLedger());
+    writeProjectRoutes(dir, { 'success:*': { stage: 'launch', skill: 'launch' } });
+    const chain = planChainEnqueue(dir, HOST, 'complete', env(LINK))!;
+    recordChainHandoffFailure(dir, chain, 'worker-spawn-failed');
+    expect(readChainLedger(dir, LINK)).toMatchObject({ decision: 'worker-spawn-failed', closedAt: expect.any(String) });
+    expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'worker-spawn-failed', sessionId: LINK, intentId: 'intent-c' });
   });
 
   it('enqueues a Copilot link by its chain-link id and closes the ledger with the host session', () => {
@@ -391,7 +413,8 @@ describe('chain-link identity (OMC_CHAIN_LINK)', () => {
     writeProjectRoutes(dir, { 'success:*': { stage: 'launch', skill: 'launch' } });
     expect(planChainEnqueue(dir, HOST, 'complete', env(LINK))).not.toBeNull();
     expect(planChainEnqueue(dir, HOST, 'complete', env(LINK))).toBeNull();
-    expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'chain-link-rejected', sessionId: HOST, chainLink: LINK, error: 'ledger already closed' });
+    expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'already-closed', sessionId: LINK, hostSessionId: HOST });
+    expect(readDecisions(dir).filter((d) => d.decision === 'chain-link-rejected')).toEqual([]);
   });
 
   it('does not let OMC_CHAIN_LINK inject a chain: no trusted ledger, no enqueue', () => {

@@ -134,6 +134,21 @@ describe('runChainScenario', () => {
     expect(failed).toEqual(['scn.chain.link1', 'scn.chain.spawned', 'scn.chain.inherited', 'scn.chain.closed', 'scn.chain.premium']);
   });
 
+  it('on timeout closes the open link ledgers so they cannot enqueue, and reports them', async () => {
+    const { project, home } = sandbox();
+    // Link 1 exits but its SessionEnd never closes the ledger.
+    const silent = ((_c: string, _a: string[]) => {
+      const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), stdin: new PassThrough(), pid: 1, exitCode: null as number | null, signalCode: null });
+      child.stdin.on('finish', () => { child.exitCode = 0; setImmediate(() => child.emit('close', 0, null)); });
+      return child;
+    }) as unknown as SpawnFn;
+    const run = await runChainScenario({ ...baseInput(project, home, silent), timeoutMs: 50 });
+    expect(run).toMatchObject({ timedOut: true, idle: false, error: expect.stringContaining(LINK1) });
+    const ledger = JSON.parse(readFileSync(join(factoryStateDir(project), `chain-${LINK1}.json`), 'utf8')) as Record<string, unknown>;
+    expect(ledger).toMatchObject({ decision: 'smoke-timeout', closedAt: expect.any(String) });
+    expect(run.chain?.stopped).toMatchObject({ reason: 'smoke-timeout' });
+  });
+
   it('reports the evidence it collected from a factory dir', () => {
     const { project, home } = sandbox();
     mkdirSync(factoryStateDir(project), { recursive: true });

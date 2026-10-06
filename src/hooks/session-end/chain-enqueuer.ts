@@ -65,7 +65,7 @@ export function sessionEndOutcome(reason: string): ChainOutcome {
 export interface ChainLinkResolution {
   /** Id the ledger, decisions, and check evidence are keyed by. */
   linkId: string;
-  /** `env`: CHAIN_LINK_ENV named a trusted open Copilot ledger; `session`: the host session id. */
+  /** `env`: CHAIN_LINK_ENV named a trusted Copilot ledger; `session`: the host session id. */
   source: 'env' | 'session';
   /** Why a present CHAIN_LINK_ENV was not trusted. */
   rejected?: string;
@@ -75,10 +75,12 @@ export interface ChainLinkResolution {
  * The ending session's chain-link identity: CHAIN_LINK_ENV when it names a
  * trusted ledger, else the host session id (the Claude path, unchanged).
  *
- * The env var is only trusted when `chain-<id>.json` exists, parses, records
- * `host: "copilot"` and `chainLink: <id>`, and is still open (no `closedAt`):
- * the ledger file, written by the spawner, is the trust anchor, so setting the
- * env var alone can neither inject a chain nor replay a consumed link.
+ * The env var is only trusted when `chain-<id>.json` exists, parses, and
+ * records `host: "copilot"` and `chainLink: <id>`, and the ending session is
+ * not a Claude one. A closed ledger resolves, and planChainEnqueue records the
+ * replay as `already-closed`. The ledger file, written by the spawner, is the
+ * trust anchor, so setting the env var alone can neither inject a chain nor
+ * replay a consumed link.
  */
 export function resolveChainLink(directory: string, hostSessionId: string, env: NodeJS.ProcessEnv = process.env): ChainLinkResolution {
   const claimed = env[CHAIN_LINK_ENV]?.trim();
@@ -89,27 +91,61 @@ export function resolveChainLink(directory: string, hostSessionId: string, env: 
   } catch {
     return reject('invalid id');
   }
+  // A Claude session nested inside a Copilot link inherits the var; only a
+  // Copilot SessionEnd may claim a Copilot link (Claude hooks carry this marker).
+  if (env.CLAUDE_CODE_ENTRYPOINT) return reject('not a copilot session');
   const ledger = readChainLedger(directory, claimed);
   if (!ledger) return reject('no ledger');
   if (ledger.host !== 'copilot') return reject(`ledger host ${String(ledger.host ?? 'unset')}`);
   if (ledger.chainLink !== claimed) return reject('ledger chainLink mismatch');
-  if (ledger.closedAt) return reject('ledger already closed');
+  // A closed ledger still resolves: planChainEnqueue then records the replay
+  // as `already-closed` and enqueues nothing.
   return { linkId: claimed, source: 'env' };
+}
+
+type ChainLedgerCloseout = Pick<ChainLedger, 'hostSessionId' | 'endReason' | 'outcome' | 'decision'>;
+
+/** Atomic JSON write (temp file + rename): status and the watchdog never read a torn ledger. */
+function writeLedgerAtomic(path: string, value: unknown): void {
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(value, null, 2), 'utf8');
+  try {
+    fs.renameSync(tmp, path);
+  } catch (error) {
+    try { fs.unlinkSync(tmp); } catch { /* already gone */ }
+    throw error;
+  }
 }
 
 /**
  * Consume a link ledger: record who ended it and how. A closed ledger is never
  * enqueued again (a duplicate SessionEnd is a no-op) and is not a stalled link.
  */
-function closeChainLedger(directory: string, linkId: string, ledger: ChainLedger, closeout: Pick<ChainLedger, 'hostSessionId' | 'endReason' | 'outcome' | 'decision'>): void {
+function closeChainLedger(directory: string, linkId: string, ledger: ChainLedger, closeout: ChainLedgerCloseout): void {
   try {
-    fs.writeFileSync(
+    writeLedgerAtomic(
       join(factoryStateDir(directory), `chain-${linkId}.json`),
-      JSON.stringify({ ...ledger, ...closeout, closedAt: new Date().toISOString() }, null, 2),
-      'utf8',
+      { ...ledger, ...closeout, closedAt: new Date().toISOString() },
     );
   } catch {
     // best-effort closeout; the decision trail still names the outcome
+  }
+}
+
+/**
+ * The caller could not hand an enqueued chain to the worker (no manifest, or
+ * the worker did not spawn): record that against the link and correct the
+ * closed ledger, which would otherwise claim `enqueued` for a chain nothing
+ * will run.
+ */
+export function recordChainHandoffFailure(directory: string, chain: Pick<SpawnNextChain, 'sessionId' | 'intentId'>, decision: 'manifest-unavailable' | 'worker-spawn-failed'): void {
+  recordChainDecision(directory, { decision, sessionId: chain.sessionId, intentId: chain.intentId });
+  const ledger = readChainLedger(directory, chain.sessionId);
+  if (!ledger?.closedAt) return;
+  try {
+    writeLedgerAtomic(join(factoryStateDir(directory), `chain-${chain.sessionId}.json`), { ...ledger, decision });
+  } catch {
+    // best-effort; the decision trail names the failure
   }
 }
 
@@ -224,6 +260,9 @@ export function planChainEnqueue(directory: string, hostSessionId: string, reaso
     }
     try {
       return decideChainLink(directory, ledger, { sessionId, intentId, outcome, reason, record });
+    } catch (error) {
+      record('enqueue-error', { error: error instanceof Error ? error.message : String(error) });
+      return null;
     } finally {
       closeChainLedger(directory, sessionId, ledger, { hostSessionId, endReason: reason, outcome, decision: lastDecision });
     }

@@ -620,6 +620,14 @@ describe('chain-link identity in the spawned link env', () => {
     expect(spawnedEnv()?.[CHAIN_LINK_ENV]).toBeUndefined();
   });
 
+  it('drops a case-variant copilot_allow_all on win32 so only the forced value remains', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    const env = chainLinkEnv({ copilot_allow_all: 'true', Omc_Chain_Link: 'x' }, 'copilot', LINK);
+    expect(Object.keys(env).filter((k) => k.toUpperCase() === 'COPILOT_ALLOW_ALL')).toEqual(['COPILOT_ALLOW_ALL']);
+    expect(env.COPILOT_ALLOW_ALL).toBe('false');
+    expect(Object.keys(env).filter((k) => k.toUpperCase() === CHAIN_LINK_ENV)).toEqual([CHAIN_LINK_ENV]);
+  });
+
   it('refuses a chainLink that is not a valid session id', () => {
     expect(() => chainLinkEnv({}, 'copilot', '../evil')).toThrow(/Invalid session ID/);
   });

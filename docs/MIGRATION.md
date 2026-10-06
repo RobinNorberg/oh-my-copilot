@@ -36,8 +36,8 @@ Nothing to configure:
 - The spawner (factory listener or SessionEnd worker) sets
   `OMC_CHAIN_LINK=<link id>` on each Copilot link. SessionEnd resolves the
   link as `OMC_CHAIN_LINK`, then the host session id, and trusts the variable
-  only when it names an open `host: "copilot"` ledger. Claude links keep
-  `--session-id`.
+  only when it names a `host: "copilot"` ledger; a finished link is a no-op.
+  Claude links keep `--session-id`.
 - Copilot's SessionEnd reason `complete` now counts as success, so route keys
   such as `success:*` match a finished Copilot link.
 - Link ledgers record `chainLink`, `host`, `createdAt` and `parentLink`, and
@@ -51,7 +51,10 @@ Nothing to configure:
 - `omg smoke copilot --tier 2 --scenario chain` runs a real two-link chain
   (about 2 premium requests). It is opt-in and not part of `all`.
 
-Ledgers written by an older version have no `host` field: a Copilot link
+Copilot fires `sessionEnd` after every turn, so a link that a Stop hook
+continues into a second turn hands off after its first turn; the closed
+ledger prevents a second hand-off. Ledgers written by an older version have
+no `host` field: a Copilot link
 spawned before the upgrade still ends its chain after one link. Guardrails
 (serial lock, daily cap), `COPILOT_ALLOW_ALL=false` and the AFK permission
 profile are unchanged. See

@@ -10,9 +10,9 @@ All notable changes to oh-my-copilot will be documented in this file.
   `--session-id`, so a factory chain used to stop silently after one link.
   The spawner now sets `OMC_CHAIN_LINK=<link id>` on each Copilot link, and
   SessionEnd resolves the link as `OMC_CHAIN_LINK`, then the host session id.
-  The variable is trusted only when it names an open `host: "copilot"`
-  ledger, so it cannot inject a chain or replay a finished link; the
-  SessionEnd worker never forwards it. Copilot's SessionEnd reason
+  The variable is trusted only when it names a `host: "copilot"` ledger and
+  a finished link is a no-op, so it cannot inject a chain or replay a link;
+  the SessionEnd worker never forwards it. Copilot's SessionEnd reason
   `complete` counts as success. Ledgers record `chainLink`, `host`,
   `createdAt` and `parentLink` and are closed once by their link's SessionEnd
   (`closedAt`, `hostSessionId`, `outcome`, `decision`); the watchdog skips
