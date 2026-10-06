@@ -922,8 +922,13 @@ waitCmd
     .command('status')
     .description('Show detailed rate limit and daemon status')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
-    await waitStatusCommand(options);
+    .action(async (_options, command) => {
+    // `wait` declares its own --json (for the bare `omg wait --json` status
+    // shortcut), and Commander resolves a flag typed after `status` against
+    // that parent option before this subcommand sees it. optsWithGlobals()
+    // walks the command chain and picks up whichever level Commander
+    // actually attributed the flag to (same workaround as `doctor conflicts`).
+    await waitStatusCommand({ json: command.optsWithGlobals().json ?? false });
 });
 waitCmd
     .command('daemon <action>')
@@ -953,9 +958,11 @@ waitCmd
     .description('Scan for blocked Claude Code sessions in tmux')
     .option('--json', 'Output as JSON')
     .option('-l, --lines <number>', 'Number of pane lines to analyze', '15')
-    .action(async (options) => {
+    .action(async (options, command) => {
+    // `wait` declares its own --json; see the `status` subcommand above for why
+    // this subcommand must read it via optsWithGlobals() instead of `options.json`.
     await waitDetectCommand({
-        json: options.json,
+        json: command.optsWithGlobals().json ?? false,
         lines: parseInt(options.lines),
     });
 });
@@ -1018,8 +1025,13 @@ teleportCmd
     .command('list')
     .description('List existing worktrees in ~/Workspace/omc-worktrees/')
     .option('--json', 'Output as JSON')
-    .action(async (options) => {
-    await teleportListCommand(options);
+    .action(async (_options, command) => {
+    // `teleport` declares its own --json (for `omg teleport <ref> --json`), and
+    // Commander resolves a flag typed after `list` against that parent option
+    // before this subcommand sees it. optsWithGlobals() walks the command chain
+    // and picks up whichever level Commander actually attributed the flag to
+    // (same workaround as `doctor conflicts`).
+    await teleportListCommand({ json: command.optsWithGlobals().json ?? false });
 });
 teleportCmd
     .command('remove <path>')
@@ -1027,8 +1039,9 @@ teleportCmd
     .description('Remove a worktree')
     .option('-f, --force', 'Force removal even with uncommitted changes')
     .option('--json', 'Output as JSON')
-    .action(async (path, options) => {
-    const exitCode = await teleportRemoveCommand(path, options);
+    .action(async (path, options, command) => {
+    // See `list` above: --json must come from optsWithGlobals(), not `options.json`.
+    const exitCode = await teleportRemoveCommand(path, { ...options, json: command.optsWithGlobals().json ?? false });
     if (exitCode !== 0)
         process.exit(exitCode);
 });
@@ -1165,9 +1178,15 @@ Examples:
   $ omg doctor conflicts                        Check for configuration issues
   $ omg doctor conflicts --json                 Output results as JSON
   $ omg doctor conflicts --plugin-dir /tmp/foo  Check against a specific plugin dir`)
-    .action(async (options) => {
-    applyPluginDirOption(options.pluginDir);
-    const exitCode = await doctorConflictsCommand(options);
+    .action(async (_options, command) => {
+    // `doctor` declares --json/--plugin-dir itself (for the `doctor --team-routing --json`
+    // flag-form), and Commander resolves a same-named flag typed after `conflicts` against
+    // that parent option before this subcommand ever sees it — the local `options` param is
+    // left empty. optsWithGlobals() walks the command chain and picks up whichever level
+    // Commander actually attributed the flag to; team-routing uses the same workaround below.
+    const opts = command.optsWithGlobals();
+    applyPluginDirOption(opts.pluginDir);
+    const exitCode = await doctorConflictsCommand({ json: opts.json ?? false });
     process.exit(exitCode);
 });
 /**
