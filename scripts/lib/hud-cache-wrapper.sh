@@ -8,6 +8,37 @@
 # shell read + cat of the last rendered line. A single background Node refresh
 # updates the session-scoped cache for the next frame.
 
+# Fast path: read stdin and check cache before expensive file/lock operations.
+fp_in=
+fp_min=${OMC_HUD_MIN_REFRESH_SECONDS:-15}
+if [ "$fp_min" -gt 0 ] 2>/dev/null; then
+  fp_nl='
+'
+  while IFS= read -r fp_l; do fp_in=$fp_in$fp_l$fp_nl; done
+  fp_in=$fp_in$fp_l
+  fp_id=
+  case $fp_in in
+    *\"session_id\":\"*)
+      fp_id=${fp_in##*\"session_id\":\"}
+      fp_id=${fp_id%%\"*}
+      case $fp_id in *[!A-Za-z0-9_.-]*) fp_id= ;; esac ;;
+  esac
+  if [ -n "$fp_id" ]; then
+    case $0 in */*) fp_dir=${0%/*} ;; *) fp_dir=. ;; esac
+    fp_out=${OMC_HUD_CACHE_DIR:-${COPILOT_HOME:-$fp_dir/..}/hud/cache}/statusline.$fp_id.txt
+    if [ -s "$fp_out" ]; then
+      fp_mt=$(stat -c %Y "$fp_out" 2>/dev/null || stat -f %m "$fp_out" 2>/dev/null)
+      fp_now=$(date +%s 2>/dev/null)
+      if [ "${fp_mt:-0}" -gt 0 ] 2>/dev/null && [ "${fp_now:-0}" -gt 0 ] 2>/dev/null \
+        && [ $((fp_now - fp_mt)) -lt "$fp_min" ]; then
+        if { while IFS= read -r fp_l; do printf '%s\n' "$fp_l"; done; printf '%s' "$fp_l"; } < "$fp_out"; then
+          exit 0
+        fi
+      fi
+    fi
+  fi
+fi
+
 case "$0" in
   */*) SCRIPT_DIR=${0%/*} ;;
   *) SCRIPT_DIR=. ;;
@@ -239,7 +270,11 @@ run_global_cleanup
 
 # Capture Claude's current statusLine stdin first so rendered output can be
 # scoped per session/worktree instead of leaking across concurrent sessions.
-cat > "$INPUT_TMP" 2>/dev/null || :
+if [ -n "$fp_in" ]; then
+  printf '%s' "$fp_in" > "$INPUT_TMP" 2>/dev/null || :
+else
+  cat > "$INPUT_TMP" 2>/dev/null || :
+fi
 
 extract_json_string() {
   key=$1
@@ -335,6 +370,16 @@ refresh_cache() {
 # Hot path: return immediately from the last successful render for this session.
 if [ -s "$OUTPUT_FILE" ]; then
   cat "$OUTPUT_FILE" 2>/dev/null || printf '[OMC] Starting...\n'
+
+  # Skip refresh if cache is younger than the minimum refresh age.
+  min_age=${OMC_HUD_MIN_REFRESH_SECONDS:-15}
+  now=$(date +%s 2>/dev/null || printf '0')
+  out_mtime=$(file_mtime "$OUTPUT_FILE")
+  if [ "$min_age" -gt 0 ] 2>/dev/null && [ "$now" -gt 0 ] && [ -n "$out_mtime" ] \
+    && [ $((now - out_mtime)) -lt "$min_age" ]; then
+    exit 0
+  fi
+
   if try_acquire_lock; then
     if [ "${OMC_HUD_SYNC_REFRESH:-0}" = "1" ]; then
       refresh_cache
