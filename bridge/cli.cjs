@@ -131772,7 +131772,19 @@ async function withStartupCleanupGuidance(teamName, cwd2, run) {
     process.exitCode = 1;
   }
 }
-async function handleTeamStatus(teamName, cwd2) {
+async function resolveImplicitTeamName(cwd2) {
+  const { findActiveTeamsV2: findActiveTeamsV22 } = await Promise.resolve().then(() => (init_runtime_v2(), runtime_v2_exports));
+  const activeTeams = await findActiveTeamsV22(cwd2);
+  return activeTeams.length === 1 ? activeTeams[0] : void 0;
+}
+function printNoTeamState(teamName, json) {
+  if (json) {
+    console.log(JSON.stringify({ ok: false, team: teamName, error: `No team state found for ${teamName}` }));
+    return;
+  }
+  console.log(`No team state found for ${teamName}`);
+}
+async function handleTeamStatus(teamName, cwd2, json) {
   const { isRuntimeV2Enabled: isRuntimeV2Enabled2 } = await Promise.resolve().then(() => (init_runtime_v2(), runtime_v2_exports));
   if (isRuntimeV2Enabled2()) {
     const { monitorTeamV2: monitorTeamV22 } = await Promise.resolve().then(() => (init_runtime_v2(), runtime_v2_exports));
@@ -131780,7 +131792,7 @@ async function handleTeamStatus(teamName, cwd2) {
     const { readTeamEventsByType: readTeamEventsByType2 } = await Promise.resolve().then(() => (init_events(), events_exports));
     const snapshot2 = await monitorTeamV22(teamName, cwd2);
     if (!snapshot2) {
-      console.log(`No team state found for ${teamName}`);
+      printNoTeamState(teamName, json);
       return;
     }
     const leaderGuidance = deriveTeamLeaderGuidance2({
@@ -131801,6 +131813,58 @@ async function handleTeamStatus(teamName, cwd2) {
     const latestLeaderNudge = (await readTeamEventsByType2(teamName, "team_leader_nudge", cwd2)).at(-1);
     const { readTeamConfig: readTeamConfig2 } = await Promise.resolve().then(() => (init_monitor(), monitor_exports));
     const config2 = await readTeamConfig2(teamName, cwd2);
+    if (json) {
+      console.log(JSON.stringify({
+        ok: true,
+        team: snapshot2.teamName,
+        instance_id: config2?.instance_id ?? null,
+        phase: snapshot2.phase,
+        workspace_mode: config2?.workspace_mode ?? "single",
+        worktree_mode: config2?.worktree_mode ?? "disabled",
+        team_state_root: config2?.team_state_root ?? null,
+        workers: {
+          total: snapshot2.workers.length,
+          list: (config2?.workers ?? []).map((worker) => ({
+            name: worker.name,
+            working_dir: worker.working_dir ?? null,
+            worktree_repo_root: worker.worktree_repo_root ?? null,
+            worktree_path: worker.worktree_path ?? null,
+            worktree_branch: worker.worktree_branch ?? null,
+            worktree_detached: worker.worktree_detached ?? false,
+            worktree_created: worker.worktree_created ?? false
+          })),
+          sdk: snapshot2.workers.filter((worker) => worker.sdk).map((worker) => ({
+            name: worker.name,
+            provider: worker.providerLiveness,
+            state: worker.sdk.state,
+            turns: worker.sdk.turns,
+            queued: worker.sdk.queued,
+            premium_requests: worker.sdk.premium_requests,
+            credits: worker.sdk.credits,
+            model: worker.sdk.model ?? null,
+            last_event_type: worker.sdk.last_event_type ?? null,
+            last_event_at: worker.sdk.last_event_at ?? null,
+            last_error: worker.sdk.last_error ?? null
+          }))
+        },
+        tasks: {
+          total: snapshot2.tasks.total,
+          pending: snapshot2.tasks.pending,
+          blocked: snapshot2.tasks.blocked,
+          in_progress: snapshot2.tasks.in_progress,
+          completed: snapshot2.tasks.completed,
+          failed: snapshot2.tasks.failed
+        },
+        leader_next_action: leaderGuidance.nextAction,
+        leader_guidance: leaderGuidance.message,
+        latest_leader_nudge: latestLeaderNudge ? {
+          action: latestLeaderNudge.next_action ?? null,
+          at: latestLeaderNudge.created_at,
+          reason: latestLeaderNudge.reason ?? null
+        } : null
+      }));
+      return;
+    }
     console.log(`team=${snapshot2.teamName} instance_id=${config2?.instance_id ?? "n/a"} phase=${snapshot2.phase}`);
     console.log(`workspace_mode=${config2?.workspace_mode ?? "single"} worktree_mode=${config2?.worktree_mode ?? "disabled"} team_state_root=${config2?.team_state_root ?? "n/a"}`);
     console.log(`workers: total=${snapshot2.workers.length}`);
@@ -131825,7 +131889,21 @@ async function handleTeamStatus(teamName, cwd2) {
   const { monitorTeam: monitorTeam2 } = await Promise.resolve().then(() => (init_runtime2(), runtime_exports));
   const snapshot = await monitorTeam2(teamName, cwd2, []);
   if (!snapshot) {
-    console.log(`No team state found for ${teamName}`);
+    printNoTeamState(teamName, json);
+    return;
+  }
+  if (json) {
+    console.log(JSON.stringify({
+      ok: true,
+      team: snapshot.teamName,
+      phase: snapshot.phase,
+      tasks: {
+        pending: snapshot.taskCounts.pending,
+        in_progress: snapshot.taskCounts.inProgress,
+        completed: snapshot.taskCounts.completed,
+        failed: snapshot.taskCounts.failed
+      }
+    }));
     return;
   }
   console.log(`team=${snapshot.teamName} phase=${snapshot.phase}`);
@@ -131951,9 +132029,14 @@ async function teamCommand(args) {
     return;
   }
   if (subcommand === "status") {
-    const name = args[1];
-    if (!name) throw new Error("Usage: omg team status <team-name>");
-    await withStartupCleanupGuidance(name, cwd2, () => handleTeamStatus(name, cwd2));
+    const rest = args.slice(1);
+    const json = rest.includes("--json");
+    const name = rest.find((arg) => !arg.startsWith("--"));
+    const resolvedName = name ?? await resolveImplicitTeamName(cwd2);
+    if (!resolvedName) {
+      throw new Error("Usage: omg team status <team-name> [--json]");
+    }
+    await withStartupCleanupGuidance(resolvedName, cwd2, () => handleTeamStatus(resolvedName, cwd2, json));
     return;
   }
   if (subcommand === "shutdown") {
@@ -138278,8 +138361,8 @@ Examples:
   $ omg wait detect              Scan for blocked tmux sessions`).action(async (options) => {
   await waitCommand(options);
 });
-waitCmd.command("status").description("Show detailed rate limit and daemon status").option("--json", "Output as JSON").action(async (options) => {
-  await waitStatusCommand(options);
+waitCmd.command("status").description("Show detailed rate limit and daemon status").option("--json", "Output as JSON").action(async (_options, command) => {
+  await waitStatusCommand({ json: command.optsWithGlobals().json ?? false });
 });
 waitCmd.command("daemon <action>").description("Start or stop the auto-resume daemon").option("-v, --verbose", "Enable verbose logging").option("-f, --foreground", "Run in foreground (blocking)").option("-i, --interval <seconds>", "Poll interval in seconds", "60").addHelpText("after", `
 Examples:
@@ -138297,9 +138380,9 @@ Examples:
     interval: parseInt(options.interval)
   });
 });
-waitCmd.command("detect").description("Scan for blocked Claude Code sessions in tmux").option("--json", "Output as JSON").option("-l, --lines <number>", "Number of pane lines to analyze", "15").action(async (options) => {
+waitCmd.command("detect").description("Scan for blocked Claude Code sessions in tmux").option("--json", "Output as JSON").option("-l, --lines <number>", "Number of pane lines to analyze", "15").action(async (options, command) => {
   await waitDetectCommand({
-    json: options.json,
+    json: command.optsWithGlobals().json ?? false,
     lines: parseInt(options.lines)
   });
 });
@@ -138341,11 +138424,11 @@ Note:
     json: options.json
   });
 });
-teleportCmd.command("list").description("List existing worktrees in ~/Workspace/omc-worktrees/").option("--json", "Output as JSON").action(async (options) => {
-  await teleportListCommand(options);
+teleportCmd.command("list").description("List existing worktrees in ~/Workspace/omc-worktrees/").option("--json", "Output as JSON").action(async (_options, command) => {
+  await teleportListCommand({ json: command.optsWithGlobals().json ?? false });
 });
-teleportCmd.command("remove <path>").alias("rm").description("Remove a worktree").option("-f, --force", "Force removal even with uncommitted changes").option("--json", "Output as JSON").action(async (path28, options) => {
-  const exitCode = await teleportRemoveCommand(path28, options);
+teleportCmd.command("remove <path>").alias("rm").description("Remove a worktree").option("-f, --force", "Force removal even with uncommitted changes").option("--json", "Output as JSON").action(async (path28, options, command) => {
+  const exitCode = await teleportRemoveCommand(path28, { ...options, json: command.optsWithGlobals().json ?? false });
   if (exitCode !== 0) process.exit(exitCode);
 });
 var sessionCmd = program2.command("session").alias("sessions").description("Inspect prior local session history").addHelpText("after", `
@@ -138415,9 +138498,10 @@ doctorCmd.command("conflicts").description("Check for plugin coexistence issues 
 Examples:
   $ omg doctor conflicts                        Check for configuration issues
   $ omg doctor conflicts --json                 Output results as JSON
-  $ omg doctor conflicts --plugin-dir /tmp/foo  Check against a specific plugin dir`).action(async (options) => {
-  applyPluginDirOption(options.pluginDir);
-  const exitCode = await doctorConflictsCommand(options);
+  $ omg doctor conflicts --plugin-dir /tmp/foo  Check against a specific plugin dir`).action(async (_options, command) => {
+  const opts = command.optsWithGlobals();
+  applyPluginDirOption(opts.pluginDir);
+  const exitCode = await doctorConflictsCommand({ json: opts.json ?? false });
   process.exit(exitCode);
 });
 var smokeCmd = program2.command("smoke").description("Smoke-test the plugin inside a real host CLI");

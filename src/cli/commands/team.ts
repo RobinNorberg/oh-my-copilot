@@ -920,7 +920,28 @@ async function withStartupCleanupGuidance(teamName: string, cwd: string, run: ()
 // Team status
 // ---------------------------------------------------------------------------
 
-async function handleTeamStatus(teamName: string, cwd: string): Promise<void> {
+/**
+ * `omg team status` without an explicit name: resolve to the single active
+ * team when unambiguous, so `omg team status --json` works without forcing
+ * the caller to also look up the team name first. Returns undefined (and
+ * the caller falls back to the usage error) when zero or multiple teams
+ * are active, since there is no unambiguous default to pick.
+ */
+async function resolveImplicitTeamName(cwd: string): Promise<string | undefined> {
+  const { findActiveTeamsV2 } = await import('../../team/runtime-v2.js');
+  const activeTeams = await findActiveTeamsV2(cwd);
+  return activeTeams.length === 1 ? activeTeams[0] : undefined;
+}
+
+function printNoTeamState(teamName: string, json: boolean): void {
+  if (json) {
+    console.log(JSON.stringify({ ok: false, team: teamName, error: `No team state found for ${teamName}` }));
+    return;
+  }
+  console.log(`No team state found for ${teamName}`);
+}
+
+async function handleTeamStatus(teamName: string, cwd: string, json: boolean): Promise<void> {
   const { isRuntimeV2Enabled } = await import('../../team/runtime-v2.js');
   if (isRuntimeV2Enabled()) {
     const { monitorTeamV2 } = await import('../../team/runtime-v2.js');
@@ -928,7 +949,7 @@ async function handleTeamStatus(teamName: string, cwd: string): Promise<void> {
     const { readTeamEventsByType } = await import('../../team/events.js');
     const snapshot = await monitorTeamV2(teamName, cwd);
     if (!snapshot) {
-      console.log(`No team state found for ${teamName}`);
+      printNoTeamState(teamName, json);
       return;
     }
     const leaderGuidance = deriveTeamLeaderGuidance({
@@ -949,6 +970,62 @@ async function handleTeamStatus(teamName: string, cwd: string): Promise<void> {
     const latestLeaderNudge = (await readTeamEventsByType(teamName, 'team_leader_nudge', cwd)).at(-1);
     const { readTeamConfig } = await import('../../team/monitor.js');
     const config = await readTeamConfig(teamName, cwd);
+
+    if (json) {
+      console.log(JSON.stringify({
+        ok: true,
+        team: snapshot.teamName,
+        instance_id: config?.instance_id ?? null,
+        phase: snapshot.phase,
+        workspace_mode: config?.workspace_mode ?? 'single',
+        worktree_mode: config?.worktree_mode ?? 'disabled',
+        team_state_root: config?.team_state_root ?? null,
+        workers: {
+          total: snapshot.workers.length,
+          list: (config?.workers ?? []).map((worker) => ({
+            name: worker.name,
+            working_dir: worker.working_dir ?? null,
+            worktree_repo_root: worker.worktree_repo_root ?? null,
+            worktree_path: worker.worktree_path ?? null,
+            worktree_branch: worker.worktree_branch ?? null,
+            worktree_detached: worker.worktree_detached ?? false,
+            worktree_created: worker.worktree_created ?? false,
+          })),
+          sdk: snapshot.workers.filter((worker) => worker.sdk).map((worker) => ({
+            name: worker.name,
+            provider: worker.providerLiveness,
+            state: worker.sdk!.state,
+            turns: worker.sdk!.turns,
+            queued: worker.sdk!.queued,
+            premium_requests: worker.sdk!.premium_requests,
+            credits: worker.sdk!.credits,
+            model: worker.sdk!.model ?? null,
+            last_event_type: worker.sdk!.last_event_type ?? null,
+            last_event_at: worker.sdk!.last_event_at ?? null,
+            last_error: worker.sdk!.last_error ?? null,
+          })),
+        },
+        tasks: {
+          total: snapshot.tasks.total,
+          pending: snapshot.tasks.pending,
+          blocked: snapshot.tasks.blocked,
+          in_progress: snapshot.tasks.in_progress,
+          completed: snapshot.tasks.completed,
+          failed: snapshot.tasks.failed,
+        },
+        leader_next_action: leaderGuidance.nextAction,
+        leader_guidance: leaderGuidance.message,
+        latest_leader_nudge: latestLeaderNudge
+          ? {
+            action: latestLeaderNudge.next_action ?? null,
+            at: latestLeaderNudge.created_at,
+            reason: latestLeaderNudge.reason ?? null,
+          }
+          : null,
+      }));
+      return;
+    }
+
     console.log(`team=${snapshot.teamName} instance_id=${config?.instance_id ?? 'n/a'} phase=${snapshot.phase}`);
     console.log(`workspace_mode=${config?.workspace_mode ?? 'single'} worktree_mode=${config?.worktree_mode ?? 'disabled'} team_state_root=${config?.team_state_root ?? 'n/a'}`);
     console.log(`workers: total=${snapshot.workers.length}`);
@@ -975,7 +1052,21 @@ async function handleTeamStatus(teamName: string, cwd: string): Promise<void> {
   const { monitorTeam } = await import('../../team/runtime.js');
   const snapshot = await monitorTeam(teamName, cwd, []);
   if (!snapshot) {
-    console.log(`No team state found for ${teamName}`);
+    printNoTeamState(teamName, json);
+    return;
+  }
+  if (json) {
+    console.log(JSON.stringify({
+      ok: true,
+      team: snapshot.teamName,
+      phase: snapshot.phase,
+      tasks: {
+        pending: snapshot.taskCounts.pending,
+        in_progress: snapshot.taskCounts.inProgress,
+        completed: snapshot.taskCounts.completed,
+        failed: snapshot.taskCounts.failed,
+      },
+    }));
     return;
   }
   console.log(`team=${snapshot.teamName} phase=${snapshot.phase}`);
@@ -1149,12 +1240,17 @@ export async function teamCommand(args: string[]): Promise<void> {
     return;
   }
 
-  // omg team status <team-name>
+  // omg team status [team-name] [--json]
   if (subcommand === 'status') {
-    const name = args[1];
-    if (!name) throw new Error('Usage: omg team status <team-name>');
+    const rest = args.slice(1);
+    const json = rest.includes('--json');
+    const name = rest.find((arg) => !arg.startsWith('--'));
+    const resolvedName = name ?? await resolveImplicitTeamName(cwd);
+    if (!resolvedName) {
+      throw new Error('Usage: omg team status <team-name> [--json]');
+    }
     // Fork (psmux): actionable message for an unverified startup.
-    await withStartupCleanupGuidance(name, cwd, () => handleTeamStatus(name, cwd));
+    await withStartupCleanupGuidance(resolvedName, cwd, () => handleTeamStatus(resolvedName, cwd, json));
     return;
   }
 

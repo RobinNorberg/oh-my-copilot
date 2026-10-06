@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "6c671e8430f4cd40da26b82ef804b12a68f8174d",
-    "sourceSha256": "b84bd033a7cb1d3fe15135792831857c99c6f7a30bbadf6a16789f1eae8b9e28",
+    "head": "2485ec22497ae3cee2e24d80cba1c75f5ddf0f59",
+    "sourceSha256": "6dfdd0cd3f86928b8807095173e9ab5bfc6f989f22022cc8dc14197174f26ee1",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "6c671e8430f4cd40da26b82ef804b12a68f8174d",
-  "sourceSha256": "b84bd033a7cb1d3fe15135792831857c99c6f7a30bbadf6a16789f1eae8b9e28",
+  "head": "2485ec22497ae3cee2e24d80cba1c75f5ddf0f59",
+  "sourceSha256": "6dfdd0cd3f86928b8807095173e9ab5bfc6f989f22022cc8dc14197174f26ee1",
   "counts": {
     "public": {
       "skills": 61,
@@ -28,13 +28,13 @@
       "toolFiles": 62,
       "libFiles": 47,
       "templateHooks": 23,
-      "srcFiles": 1520,
-      "total": 1543
+      "srcFiles": 1523,
+      "total": 1546
     },
     "generated": {
-      "distFiles": 5867,
+      "distFiles": 5879,
       "bridgeFiles": 9,
-      "total": 5876
+      "total": 5888
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -2318,6 +2318,10 @@
       "dist/cli/__tests__/cli-boot.test.d.ts.map",
       "dist/cli/__tests__/cli-boot.test.js",
       "dist/cli/__tests__/cli-boot.test.js.map",
+      "dist/cli/__tests__/doctor-conflicts-json.test.d.ts",
+      "dist/cli/__tests__/doctor-conflicts-json.test.d.ts.map",
+      "dist/cli/__tests__/doctor-conflicts-json.test.js",
+      "dist/cli/__tests__/doctor-conflicts-json.test.js.map",
       "dist/cli/__tests__/doctor-plugin-dir.test.d.ts",
       "dist/cli/__tests__/doctor-plugin-dir.test.d.ts.map",
       "dist/cli/__tests__/doctor-plugin-dir.test.js",
@@ -2406,6 +2410,10 @@
       "dist/cli/__tests__/tmux-utils.test.d.ts.map",
       "dist/cli/__tests__/tmux-utils.test.js",
       "dist/cli/__tests__/tmux-utils.test.js.map",
+      "dist/cli/__tests__/wait-teleport-json.test.d.ts",
+      "dist/cli/__tests__/wait-teleport-json.test.d.ts.map",
+      "dist/cli/__tests__/wait-teleport-json.test.js",
+      "dist/cli/__tests__/wait-teleport-json.test.js.map",
       "dist/cli/ask.d.ts",
       "dist/cli/ask.d.ts.map",
       "dist/cli/ask.js",
@@ -2462,6 +2470,10 @@
       "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts.map",
       "dist/cli/commands/__tests__/team-role-shorthand.test.js",
       "dist/cli/commands/__tests__/team-role-shorthand.test.js.map",
+      "dist/cli/commands/__tests__/team-status-json.test.d.ts",
+      "dist/cli/commands/__tests__/team-status-json.test.d.ts.map",
+      "dist/cli/commands/__tests__/team-status-json.test.js",
+      "dist/cli/commands/__tests__/team-status-json.test.js.map",
       "dist/cli/commands/__tests__/team.test.d.ts",
       "dist/cli/commands/__tests__/team.test.d.ts.map",
       "dist/cli/commands/__tests__/team.test.js",
@@ -15336,6 +15348,26 @@
         "path": "dist/cli/__tests__/cli-boot.test.js.map"
       },
       {
+        "id": "dist/cli/__tests__/doctor-conflicts-json.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/doctor-conflicts-json.test.d.ts"
+      },
+      {
+        "id": "dist/cli/__tests__/doctor-conflicts-json.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/doctor-conflicts-json.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/__tests__/doctor-conflicts-json.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/doctor-conflicts-json.test.js"
+      },
+      {
+        "id": "dist/cli/__tests__/doctor-conflicts-json.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/doctor-conflicts-json.test.js.map"
+      },
+      {
         "id": "dist/cli/__tests__/doctor-plugin-dir.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/__tests__/doctor-plugin-dir.test.d.ts"
@@ -15776,6 +15808,26 @@
         "path": "dist/cli/__tests__/tmux-utils.test.js.map"
       },
       {
+        "id": "dist/cli/__tests__/wait-teleport-json.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/wait-teleport-json.test.d.ts"
+      },
+      {
+        "id": "dist/cli/__tests__/wait-teleport-json.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/wait-teleport-json.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/__tests__/wait-teleport-json.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/wait-teleport-json.test.js"
+      },
+      {
+        "id": "dist/cli/__tests__/wait-teleport-json.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/wait-teleport-json.test.js.map"
+      },
+      {
         "id": "dist/cli/ask.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/ask.d.ts"
@@ -16054,6 +16106,26 @@
         "id": "dist/cli/commands/__tests__/team-role-shorthand.test.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/team-role-shorthand.test.js.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-status-json.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-status-json.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-status-json.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-status-json.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-status-json.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-status-json.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-status-json.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-status-json.test.js.map"
       },
       {
         "id": "dist/cli/commands/__tests__/team.test.d.ts",
@@ -41631,6 +41703,11 @@
         "path": "src/cli/__tests__/cli-boot.test.ts"
       },
       {
+        "id": "src/cli/__tests__/doctor-conflicts-json.test.ts",
+        "kind": "src",
+        "path": "src/cli/__tests__/doctor-conflicts-json.test.ts"
+      },
+      {
         "id": "src/cli/__tests__/doctor-plugin-dir.test.ts",
         "kind": "src",
         "path": "src/cli/__tests__/doctor-plugin-dir.test.ts"
@@ -41741,6 +41818,11 @@
         "path": "src/cli/__tests__/tmux-utils.test.ts"
       },
       {
+        "id": "src/cli/__tests__/wait-teleport-json.test.ts",
+        "kind": "src",
+        "path": "src/cli/__tests__/wait-teleport-json.test.ts"
+      },
+      {
         "id": "src/cli/ask.ts",
         "kind": "src",
         "path": "src/cli/ask.ts"
@@ -41809,6 +41891,11 @@
         "id": "src/cli/commands/__tests__/team-role-shorthand.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/team-role-shorthand.test.ts"
+      },
+      {
+        "id": "src/cli/commands/__tests__/team-status-json.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/team-status-json.test.ts"
       },
       {
         "id": "src/cli/commands/__tests__/team.test.ts",
@@ -59263,6 +59350,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/__tests__/doctor-conflicts-json.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/doctor-conflicts-json.test.ts",
+        "to": "src/cli/index.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/__tests__/doctor-plugin-dir.test.ts",
         "to": "external:path",
         "kind": "imports"
@@ -59803,6 +59900,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/__tests__/wait-teleport-json.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/wait-teleport-json.test.ts",
+        "to": "src/cli/index.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/ask.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -60184,6 +60291,16 @@
       },
       {
         "from": "src/cli/commands/__tests__/team-role-shorthand.test.ts",
+        "to": "src/cli/commands/team.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-status-json.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-status-json.test.ts",
         "to": "src/cli/commands/team.ts",
         "kind": "imports"
       },
@@ -91659,12 +91776,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8091,
-      "edgeCount": 8761,
-      "importEdgeCount": 7239,
+      "nodeCount": 8106,
+      "edgeCount": 8767,
+      "importEdgeCount": 7245,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "5f97e94a5148b89f3f4a584d82262fe2e1693679756121ecef888699855d2ebe",
-  "manifestSha256": "ee8fe9994724f91f883af5bc1ff4e8637fb964050cd0036043d65fd43f1ef27d"
+  "inventorySha256": "737b67052b7b44509bbd0ce3e6f4a307e6d1bf4953dacccd46a76720f5debc19",
+  "manifestSha256": "b243de79cbb9ab978a29c71b2dd8e4bb79e67c2b394182901b75ba4086664901"
 }
