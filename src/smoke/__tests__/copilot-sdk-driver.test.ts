@@ -215,6 +215,7 @@ function input(loaded: LoadedSdk | null, over: Partial<SdkTierInput> = {}, gitCa
     skillDirs: ['alpha', 'plan'],
     agentFiles: ['architect.md'],
     mcpServer: 't',
+    runChain: async () => { throw new Error('chain runner not stubbed'); },
     ...over,
   };
 }

@@ -37,6 +37,7 @@ import {
 } from './copilot-session-eval.js';
 import { hasExited, killProcessTree, runAsync, useProcessGroup, type SpawnFn, type SpawnSyncFn } from './process-utils.js';
 import { DEFAULT_SCENARIO_TIMEOUT_MS, loadCopilotSdk, runSdkTier, type LoadSdkFn } from './copilot-sdk-driver.js';
+import { runChainScenario } from './copilot-chain-scenario.js';
 import { DEFAULT_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, RUNTIME_MIN_MAX_CREDITS, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from './copilot-session-env.js';
 
@@ -808,6 +809,7 @@ async function runTier2(
     skillDirs: countDirsWith(join(ctx.root, 'skills'), 'SKILL.md'),
     agentFiles,
     mcpServer: mcpServerNames(ctx.root)[0] ?? 't',
+    runChain: runChainScenario,
   });
   if (Object.keys(result.events).length) artifacts.events = result.events;
   const logs = readDebugLogs(join(home, 'logs'));

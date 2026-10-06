@@ -54,7 +54,10 @@ import {
   type ScenarioRun,
 } from './copilot-sdk-scenarios.js';
 import { killProcessTree, type SpawnSyncFn } from './process-utils.js';
-import { runChainScenario } from './copilot-chain-scenario.js';
+// Type-only: the team bundle reaches this driver (runtime-v2, sdk-host), and the
+// chain scenario pulls in the factory CLI (commander). The smoke entry injects
+// the runner as `runChain`.
+import type { runChainScenario } from './copilot-chain-scenario.js';
 
 // ---------------------------------------------------------------------------
 // The slice of the SDK surface the driver uses (SDK 1.0.16, protocol 3)
@@ -387,8 +390,8 @@ export interface SdkTierInput {
   platform?: NodeJS.Platform;
   isAlive?: (pid: number) => boolean;
   killTree?: (pid: number) => void;
-  /** Test seam: the `chain` scenario runner (default {@link runChainScenario}, real `copilot -p` links). */
-  runChain?: typeof runChainScenario;
+  /** The `chain` scenario runner ({@link runChainScenario}, real `copilot -p` links), injected by the smoke entry. */
+  runChain: typeof runChainScenario;
 }
 
 export interface SdkTierResult {
@@ -497,7 +500,7 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
       const start = Date.now();
       // `chain` drives real `copilot -p` factory links, not an SDK session.
       const { wedged: stuck, ...run } = name === 'chain'
-        ? await (input.runChain ?? runChainScenario)({
+        ? await input.runChain({
           bin,
           root: input.root,
           env: input.env,

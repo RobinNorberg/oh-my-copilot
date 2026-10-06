@@ -84,11 +84,19 @@ describe('prepareChainProject', () => {
 
 describe('chainLinkSmokeEnv', () => {
   it('puts the copilot dir first on PATH, the plugin root in OMC_PLUGIN_ROOT and the link id in OMC_CHAIN_LINK', () => {
-    const bin = join('C:', 'tools', 'copilot', 'copilot.exe');
-    const env = chainLinkSmokeEnv({ PATH: 'existing', COPILOT_ALLOW_ALL: 'true', COPILOT_AGENT_SESSION_ID: 'parent' }, bin, '/plugin', LINK1);
-    expect(env.PATH?.split(delimiter)).toEqual([join('C:', 'tools', 'copilot'), 'existing']);
+    const dir = join(tmpdir(), 'tools', 'copilot');
+    const env = chainLinkSmokeEnv({ PATH: 'existing', COPILOT_ALLOW_ALL: 'true', COPILOT_AGENT_SESSION_ID: 'parent' }, join(dir, 'copilot.exe'), '/plugin', LINK1);
+    expect(env.PATH).toBe(`${dir}${delimiter}existing`);
+    expect(env.PATH?.split(delimiter)).toEqual([dir, 'existing']);
     expect(env).toMatchObject({ OMC_PLUGIN_ROOT: '/plugin', [CHAIN_LINK_ENV]: LINK1, COPILOT_ALLOW_ALL: 'false' });
     expect(env.COPILOT_AGENT_SESSION_ID).toBeUndefined();
+  });
+
+  it('keeps the existing PATH key casing and adds no delimiter when PATH is unset', () => {
+    const dir = join(tmpdir(), 'tools', 'copilot');
+    const bin = join(dir, 'copilot.exe');
+    expect(chainLinkSmokeEnv({ Path: 'existing' }, bin, '/plugin', LINK1)).toMatchObject({ Path: `${dir}${delimiter}existing` });
+    expect(chainLinkSmokeEnv({}, bin, '/plugin', LINK1).PATH).toBe(dir);
   });
 });
 
