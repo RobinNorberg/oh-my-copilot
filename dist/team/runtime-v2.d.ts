@@ -24,6 +24,7 @@ import { type CliWorkerOutputPayload } from './cli-worker-contract.js';
 import { type RecoveryDurableOutcome } from './recovery-request-store.js';
 import { type RecoverDeadWorkerOwnerInput } from './runtime-owner-client.js';
 import type { RecoverDeadWorkerV2Result } from './types.js';
+import { type SdkSessionFile } from './sdk-transport.js';
 export interface RecoverDeadWorkerV2Options {
     workerName: string;
     requestId?: string;
@@ -89,6 +90,11 @@ export interface TeamSnapshotV2 {
         worktree_created?: boolean;
         team_state_root?: string;
         turnsWithoutProgress: number;
+        /** SDK transport only: the host's session file, in place of a pane capture. */
+        sdk?: Pick<SdkSessionFile, 'state' | 'turns' | 'queued' | 'last_event_type' | 'last_event_at' | 'last_error' | 'session_id' | 'model'> & {
+            credits: number;
+            premium_requests: number;
+        };
     }>;
     tasks: {
         total: number;
@@ -154,6 +160,23 @@ export declare function resolveTaskAssignment(task: {
     reasoningEffort?: string;
     role: CanonicalTeamRole | null;
 };
+/**
+ * Whether a resolved task role was EXPLICITLY assigned — directly on the
+ * task (`task.role`) or via `team.roleRouting[role]` config — as opposed to
+ * merely INFERRED from task text by `routeTaskToRole` inside
+ * {@link resolveTaskAssignment}. Mirrors that function's own
+ * `hasExplicitRole`/`hasConfigForRole` resolution order so the two never
+ * diverge.
+ *
+ * Used by the sdk-transport contract-role guard: an explicitly assigned
+ * reviewer-style role is rejected outright (the sdk transport cannot process
+ * its verdict file), while a merely inferred one has its role dropped so the
+ * worker runs as a plain executor-style worker instead of failing team
+ * startup over text the user never opted into.
+ */
+export declare function isExplicitTaskRoleAssignment(task: {
+    role?: string;
+}, roleRoutingConfig: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> | undefined, role: CanonicalTeamRole): boolean;
 export interface StartTeamV2Config {
     teamName: string;
     /** Caller-supplied identity (CLI/MCP); direct callers may omit it. */
@@ -191,6 +214,8 @@ export interface StartTeamV2Config {
      * branch. See merge-orchestrator.ts.
      */
     autoMerge?: boolean;
+    /** Worker transport; overrides `team.transport`. Default `pane`. */
+    transport?: 'pane' | 'sdk';
 }
 export interface WorkerStartupEvidencePolicy {
     initialBudgetMs: number;
@@ -223,6 +248,14 @@ export declare function settleStartupEvidence(policy: WorkerStartupEvidencePolic
 /** Last owned-pane line that reports a claim-task failure. Pane text is not startup evidence. */
 export declare function claimErrorLineFromPane(captured: string): string | undefined;
 export declare function promptModeRecoveryRequiresProgressEvidence(promptMode: boolean, continuationCount: number): boolean;
+export interface SdkTeamSettings {
+    maxCreditsPerWorker: number;
+    model?: string;
+    startupEvidenceMs: number;
+    denyTools: string[];
+    denyUrls: string[];
+}
+export declare function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings;
 interface RecoveryOwnerFinalizationDeps {
     readRevisionedConfig: (teamName: string, cwd: string) => Promise<{
         config: TeamConfig;

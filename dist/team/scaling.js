@@ -25,6 +25,7 @@ import { withScalingLock, migrateTeamConfigRevision, readRevisionedTeamConfig, s
 import { adoptWorkerPaneOwnership, sanitizeName, getOwnedWorkerLiveness, killOwnedWorkerPane, spawnOwnedWorkerInPane, splitTeamWorkerPaneWithEvidence, workerPaneBelongsToOwnedProviderTarget, waitForPaneReady, } from './tmux-session.js';
 import { TeamPaths, absPath, canonicalTeamCwd, canonicalTeamStatePath, teamStateRoot as resolveTeamStateRoot, } from './state-paths.js';
 import { writeWorkerOverlay } from './worker-bootstrap.js';
+import { isSdkTarget } from './sdk-transport.js';
 import { ensureWorkerWorktree, installWorktreeRootAgents, prepareWorkerWorktreeForRemoval, removeWorkerWorktree, restoreWorktreeRootAgents, } from './git-worktree.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { currentProcessStartIdentity, isProcessIdentityDead } from './team-owner-epoch.js';
@@ -1491,13 +1492,21 @@ export async function scaleDownOwned(teamName, cwd, options = {}, env = process.
 }
 /** Public scale facade; the owned algorithm applies the recovery exclusion under its existing lock. */
 export async function scaleUp(teamName, count, agentType, tasks, cwd, env = process.env) {
+    if (await isSdkTeam(teamName, cwd))
+        return { ok: false, error: 'scaling_unsupported_transport:sdk' };
     return scaleUpOwned(teamName, count, agentType, tasks, cwd, env);
 }
 /** Public scale-down facade; force and drain behavior are delegated unchanged. */
 export async function scaleDown(teamName, cwd, options = {}, env = process.env) {
+    if (await isSdkTeam(teamName, cwd))
+        return { ok: false, error: 'scaling_unsupported_transport:sdk' };
     return scaleDownOwned(teamName, cwd, options, env);
 }
 // ── Helpers ───────────────────────────────────────────────────────────────────
+async function isSdkTeam(teamName, cwd) {
+    const current = await readRevisionedTeamConfig(teamName, cwd).catch(() => null);
+    return isSdkTarget(current?.config.tmux_session);
+}
 function resolveWorkerReadyTimeoutMs(env) {
     const raw = env.OMC_TEAM_READY_TIMEOUT_MS;
     const parsed = Number.parseInt(String(raw ?? ''), 10);
