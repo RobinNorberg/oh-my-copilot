@@ -9,11 +9,15 @@
  * instead: no shell, each path is exactly one argv element.
  *
  * Rules:
+ *   - One entry per (event, matcher) group runs scripts/copilot/dispatch.cjs,
+ *     which runs the group's hooks in order in one process and merges their
+ *     outputs (argv: <Event> <script> [args]... [-- <script> [args]...]...).
  *   - PascalCase event keys are kept (payloads stay snake_case, matchers work).
- *   - Group matchers are copied onto each entry, except "*" and empty.
+ *   - The group matcher is copied onto its entry, except "*" and empty.
  *   - SessionStart groups with a non-"*" matcher (init, maintenance) are dropped:
  *     Copilot ignores SessionStart matchers, so they would run every session.
- *   - `async` is dropped; `timeout` becomes `timeoutSec`.
+ *   - `async` is dropped; `timeoutSec` is the sum of the group's `timeout`s
+ *     (the dispatcher runs them one after another, each with its own timeout).
  *   - `env.OMC_HOOK_EVENT` names the event for the output adapter preload.
  *   - Any command or hook field outside the known upstream form throws, so an
  *     upstream change breaks the build instead of shipping a silent no-op.
@@ -35,7 +39,9 @@ const OUT_PATH = join(REPO_ROOT, 'copilot', 'hooks.json');
 
 export const PLUGIN_ROOT_TOKEN = '${CLAUDE_PLUGIN_ROOT}';
 export const ADAPTER_ARG = `${PLUGIN_ROOT_TOKEN}/scripts/lib/copilot-hook-adapter.cjs`;
-export const RUNNER_ARG = `${PLUGIN_ROOT_TOKEN}/scripts/run.cjs`;
+export const DISPATCH_ARG = `${PLUGIN_ROOT_TOKEN}/scripts/copilot/dispatch.cjs`;
+// Must match HOOK_SEPARATOR in scripts/copilot/dispatch.cjs.
+export const HOOK_SEPARATOR = '--';
 const COMMAND_PATTERN = /^node "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/run\.cjs "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/(\S+)((?: \S+)*)$/;
 const KNOWN_HOOK_FIELDS = new Set(['type', 'command', 'timeout', 'async']);
 const KNOWN_GROUP_FIELDS = new Set(['matcher', 'hooks']);
@@ -55,6 +61,9 @@ export function buildCopilotHooks(source, { preload = true } = {}) {
       if (!Array.isArray(group?.hooks)) throw new Error(`hooks/hooks.json ${event}: group has no hooks array`);
       const matcher = typeof group.matcher === 'string' && group.matcher !== '*' ? group.matcher : '';
       if (event === 'SessionStart' && matcher) continue;
+      const segments = [];
+      let timeoutSec = 0;
+      let hasTimeout = false;
       for (const hook of group.hooks) {
         for (const key of Object.keys(hook ?? {})) {
           if (!KNOWN_HOOK_FIELDS.has(key)) throw new Error(`hooks/hooks.json ${event}: unknown hook field "${key}"`);
@@ -64,19 +73,30 @@ export function buildCopilotHooks(source, { preload = true } = {}) {
           : null;
         if (!match) throw new Error(`hooks/hooks.json ${event}: unsupported hook command form: ${JSON.stringify(hook)}`);
         const [, script, extra] = match;
-        const entry = { type: 'command' };
-        if (matcher) entry.matcher = matcher;
-        entry.exec = 'node';
-        entry.args = [
-          ...(preload ? ['--require', ADAPTER_ARG] : []),
-          RUNNER_ARG,
-          `${PLUGIN_ROOT_TOKEN}/scripts/${script}`,
-          ...extra.split(' ').filter(Boolean),
-        ];
-        entry.env = { OMC_HOOK_EVENT: event };
-        if (hook.timeout !== undefined) entry.timeoutSec = hook.timeout;
-        entries.push(entry);
+        const extraArgs = extra.split(' ').filter(Boolean);
+        if (extraArgs.includes(HOOK_SEPARATOR)) {
+          throw new Error(`hooks/hooks.json ${event}: hook arg "${HOOK_SEPARATOR}" cannot be dispatched: ${hook.command}`);
+        }
+        if (segments.length > 0) segments.push(HOOK_SEPARATOR);
+        segments.push(`${PLUGIN_ROOT_TOKEN}/scripts/${script}`, ...extraArgs);
+        if (hook.timeout !== undefined) {
+          timeoutSec += hook.timeout;
+          hasTimeout = true;
+        }
       }
+      if (segments.length === 0) continue;
+      const entry = { type: 'command' };
+      if (matcher) entry.matcher = matcher;
+      entry.exec = 'node';
+      entry.args = [
+        ...(preload ? ['--require', ADAPTER_ARG] : []),
+        DISPATCH_ARG,
+        event,
+        ...segments,
+      ];
+      entry.env = { OMC_HOOK_EVENT: event };
+      if (hasTimeout) entry.timeoutSec = timeoutSec;
+      entries.push(entry);
     }
     if (entries.length > 0) hooks[event] = entries;
   }
