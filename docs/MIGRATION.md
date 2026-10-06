@@ -8,6 +8,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 - [Unreleased: Team Instance Ownership](#unreleased-team-instance-ownership)
 - [Unreleased: Cancellation Scope](#unreleased-cancellation-scope)
+- [v5.8.0 → v5.8.1: Ralph Hard Max in the Stop Hook](#v580--v581-ralph-hard-max-in-the-stop-hook)
 - [v5.7.0 → v5.8.0: SDK Team Transport](#v570--v580-sdk-team-transport)
 - [v5.6.2 → v5.7.0: Smoke Harness](#v562--v570-smoke-harness)
 - [v5.6.1 → v5.6.2: Postinstall Hook](#v561--v562-postinstall-hook)
@@ -121,6 +122,25 @@ locations and descendants of system temp/OS roots are never used as roots.
   foreign repositories and failed Git probes are rejected visibly.
 - Session-scoped state remains owned by its `session_id`. No time-based cleanup
   or cancellation was added.
+
+---
+
+## v5.8.0 → v5.8.1: Ralph Hard Max in the Stop Hook
+
+Fork **v5.8.1** is a patch release porting upstream oh-my-claudecode `dev`
+bcaceb136..ef9a44f0e. There is nothing to migrate: no config, command or
+skill is renamed or removed.
+
+- **Ralph's `hardMaxIterations` is now enforced by the Stop hook scripts**
+  (`scripts/persistent-mode.mjs` and `templates/hooks/persistent-mode.mjs`),
+  not only by the TypeScript enforcement path. If a ralph run previously
+  continued past the configured hard max because the Stop hook script did
+  not check it, it now stops at the cap. Strict mode also now clamps the cap
+  to at most 200 instead of letting config raise or disable it. No action is
+  needed unless a workflow relied on exceeding `hardMaxIterations`.
+- **The HUD shows the Claude Code effort level** (`effort:<level>`) when
+  statusline stdin reports one. This is additive and does not change any
+  existing HUD element.
 
 ---
 
