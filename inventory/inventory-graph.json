@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "6a70fa09abedd2009e8c15912c298b7d8137bb57",
-    "sourceSha256": "b43414566653dec8b17b8f45b45d8edfd069a4945af2f614082eb49f1c7fddda",
+    "head": "6be725d4b1ab1f91c76413000e9c70315f04eca6",
+    "sourceSha256": "c479f6399fed149d8ef84ae6ea0d776967888f8bf3f7f5e886f1f2999da5da1e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "6a70fa09abedd2009e8c15912c298b7d8137bb57",
-  "sourceSha256": "b43414566653dec8b17b8f45b45d8edfd069a4945af2f614082eb49f1c7fddda",
+  "head": "6be725d4b1ab1f91c76413000e9c70315f04eca6",
+  "sourceSha256": "c479f6399fed149d8ef84ae6ea0d776967888f8bf3f7f5e886f1f2999da5da1e",
   "counts": {
     "public": {
       "skills": 61,
@@ -28,13 +28,13 @@
       "toolFiles": 62,
       "libFiles": 47,
       "templateHooks": 23,
-      "srcFiles": 1523,
-      "total": 1546
+      "srcFiles": 1525,
+      "total": 1548
     },
     "generated": {
-      "distFiles": 5879,
+      "distFiles": 5887,
       "bridgeFiles": 9,
-      "total": 5888
+      "total": 5896
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -1826,6 +1826,10 @@
       "dist/__tests__/routing-force-inherit.test.d.ts.map",
       "dist/__tests__/routing-force-inherit.test.js",
       "dist/__tests__/routing-force-inherit.test.js.map",
+      "dist/__tests__/run-cjs-copilot-worker-routing.test.d.ts",
+      "dist/__tests__/run-cjs-copilot-worker-routing.test.d.ts.map",
+      "dist/__tests__/run-cjs-copilot-worker-routing.test.js",
+      "dist/__tests__/run-cjs-copilot-worker-routing.test.js.map",
       "dist/__tests__/run-cjs-fail-closed-timeout.test.d.ts",
       "dist/__tests__/run-cjs-fail-closed-timeout.test.d.ts.map",
       "dist/__tests__/run-cjs-fail-closed-timeout.test.js",
@@ -1838,6 +1842,10 @@
       "dist/__tests__/run-cjs-graceful-fallback.test.d.ts.map",
       "dist/__tests__/run-cjs-graceful-fallback.test.js",
       "dist/__tests__/run-cjs-graceful-fallback.test.js.map",
+      "dist/__tests__/run-cjs-session-end-budget.test.d.ts",
+      "dist/__tests__/run-cjs-session-end-budget.test.d.ts.map",
+      "dist/__tests__/run-cjs-session-end-budget.test.js",
+      "dist/__tests__/run-cjs-session-end-budget.test.js.map",
       "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts",
       "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts.map",
       "dist/__tests__/run-cjs-windows-stdio-contract.test.js",
@@ -12888,6 +12896,26 @@
         "path": "dist/__tests__/routing-force-inherit.test.js.map"
       },
       {
+        "id": "dist/__tests__/run-cjs-copilot-worker-routing.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-copilot-worker-routing.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-copilot-worker-routing.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-copilot-worker-routing.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-copilot-worker-routing.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-copilot-worker-routing.test.js"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-copilot-worker-routing.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-copilot-worker-routing.test.js.map"
+      },
+      {
         "id": "dist/__tests__/run-cjs-fail-closed-timeout.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/run-cjs-fail-closed-timeout.test.d.ts"
@@ -12946,6 +12974,26 @@
         "id": "dist/__tests__/run-cjs-graceful-fallback.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/run-cjs-graceful-fallback.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-session-end-budget.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-session-end-budget.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-session-end-budget.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-session-end-budget.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-session-end-budget.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-session-end-budget.test.js"
+      },
+      {
+        "id": "dist/__tests__/run-cjs-session-end-budget.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/run-cjs-session-end-budget.test.js.map"
       },
       {
         "id": "dist/__tests__/run-cjs-windows-stdio-contract.test.d.ts",
@@ -41073,6 +41121,11 @@
         "path": "src/__tests__/routing-force-inherit.test.ts"
       },
       {
+        "id": "src/__tests__/run-cjs-copilot-worker-routing.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/run-cjs-copilot-worker-routing.test.ts"
+      },
+      {
         "id": "src/__tests__/run-cjs-fail-closed-timeout.test.ts",
         "kind": "src",
         "path": "src/__tests__/run-cjs-fail-closed-timeout.test.ts"
@@ -41086,6 +41139,11 @@
         "id": "src/__tests__/run-cjs-graceful-fallback.test.ts",
         "kind": "src",
         "path": "src/__tests__/run-cjs-graceful-fallback.test.ts"
+      },
+      {
+        "id": "src/__tests__/run-cjs-session-end-budget.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/run-cjs-session-end-budget.test.ts"
       },
       {
         "id": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
@@ -56440,6 +56498,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/run-cjs-copilot-worker-routing.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-copilot-worker-routing.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-copilot-worker-routing.test.ts",
+        "to": "external:module",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-copilot-worker-routing.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-copilot-worker-routing.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-copilot-worker-routing.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/run-cjs-fail-closed-timeout.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -56522,6 +56610,36 @@
       {
         "from": "src/__tests__/run-cjs-graceful-fallback.test.ts",
         "to": "scripts/run.cjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-session-end-budget.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-session-end-budget.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-session-end-budget.test.ts",
+        "to": "external:module",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-session-end-budget.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-session-end-budget.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-session-end-budget.test.ts",
+        "to": "external:vitest",
         "kind": "imports"
       },
       {
@@ -71616,6 +71734,11 @@
       },
       {
         "from": "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/__tests__/foreground-bootstrap.test.ts",
         "to": "src/hooks/session-end/worker.ts",
         "kind": "imports"
       },
@@ -72221,6 +72344,16 @@
       },
       {
         "from": "src/hooks/session-end/foreground-bootstrap.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/foreground-bootstrap.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/foreground-bootstrap.ts",
         "to": "src/hooks/session-end/chain-enqueuer.ts",
         "kind": "imports"
       },
@@ -72228,6 +72361,11 @@
         "from": "src/hooks/session-end/foreground-bootstrap.ts",
         "to": "src/hooks/session-end/cleanup-manifest.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/hooks/session-end/foreground-bootstrap.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/session-end/foreground-bootstrap.ts",
@@ -91801,12 +91939,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8107,
-      "edgeCount": 8771,
-      "importEdgeCount": 7249,
+      "nodeCount": 8117,
+      "edgeCount": 8787,
+      "importEdgeCount": 7264,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "359aa14dbdcb8323aefdd506e980072bffb85b2c8f2a19248bad9418b1c9df8c",
-  "manifestSha256": "c7d983f5ffa6caff94f7ec7a63b033ec0bf5d292c5587fe4fb4ac69eb81a3659"
+  "inventorySha256": "6f65e0477ee742372468b9124e0d26fb4ad019d80c205f1d133127e0b2da4856",
+  "manifestSha256": "f6b4e153eb2a82861dbee0ba45cde2088d135c253da88a1fa77d1569f260ece9"
 }
