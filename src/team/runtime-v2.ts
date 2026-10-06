@@ -746,6 +746,33 @@ export function resolveTaskAssignment(
   };
 }
 
+/**
+ * Whether a resolved task role was EXPLICITLY assigned — directly on the
+ * task (`task.role`) or via `team.roleRouting[role]` config — as opposed to
+ * merely INFERRED from task text by `routeTaskToRole` inside
+ * {@link resolveTaskAssignment}. Mirrors that function's own
+ * `hasExplicitRole`/`hasConfigForRole` resolution order so the two never
+ * diverge.
+ *
+ * Used by the sdk-transport contract-role guard: an explicitly assigned
+ * reviewer-style role is rejected outright (the sdk transport cannot process
+ * its verdict file), while a merely inferred one has its role dropped so the
+ * worker runs as a plain executor-style worker instead of failing team
+ * startup over text the user never opted into.
+ */
+export function isExplicitTaskRoleAssignment(
+  task: { role?: string },
+  roleRoutingConfig: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> | undefined,
+  role: CanonicalTeamRole,
+): boolean {
+  const hasExplicitRole = typeof task.role === 'string' && task.role.length > 0;
+  const hasConfigForRole = !!getRoleRoutingSpec(
+    roleRoutingConfig as Record<string, TeamRoleAssignmentSpec | undefined> | undefined,
+    role,
+  );
+  return hasExplicitRole || hasConfigForRole;
+}
+
 function sanitizeTeamName(name: string): string {
   const sanitized = name.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
   if (!sanitized) throw new Error(`Invalid team name: "${name}" produces empty slug after sanitization`);
@@ -4319,16 +4346,31 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     const workerName = workerNames[i]!;
     const taskIndex = startupByWorker.get(workerName);
     const fallbackAgent = (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude') as CliAgentType;
-    const resolvedAssignment = taskIndex === undefined
+    const roleRoutingConfig = pluginCfg.team?.roleRouting as Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> | undefined;
+    const task = taskIndex === undefined ? undefined : config.tasks[taskIndex]!;
+    const resolvedAssignment = task === undefined
       ? { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: undefined }
-      : resolveTaskAssignment(config.tasks[taskIndex]!, resolvedRouting,
-        pluginCfg.team?.roleRouting as Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> | undefined,
-        fallbackAgent);
+      : resolveTaskAssignment(task, resolvedRouting, roleRoutingConfig, fallbackAgent);
+    let role = resolvedAssignment.role ?? undefined;
+    // Under the sdk transport, a contract role (critic/code-reviewer/
+    // security-reviewer/test-engineer) that was only INFERRED from task text
+    // — not explicitly assigned via task.role or team.roleRouting config —
+    // carries no user intent to honor by failing the whole team start. Drop
+    // the role instead: the worker launches as a plain executor-style
+    // worker (no verdict contract, no role-specific prompt override). An
+    // explicitly assigned contract role is still rejected below.
+    if (sdkMode && role && shouldInjectContract(role, resolvedAssignment.agentType)
+      && task && !isExplicitTaskRoleAssignment(task, roleRoutingConfig, role)) {
+      process.stderr.write(`[omg team] sdk transport: inferred role "${role}" for worker ${workerName} `
+        + `would require a verdict contract the sdk transport cannot process; running as a plain executor `
+        + `instead (an explicitly assigned contract role is still rejected)\n`);
+      role = undefined;
+    }
     const assignment: StartupAssignment = {
       agentType: resolvedAssignment.agentType,
       model: resolvedAssignment.model || resolveDefaultModel(resolvedAssignment.agentType),
       reasoningEffort: resolvedAssignment.reasoningEffort,
-      ...(resolvedAssignment.role ? { role: resolvedAssignment.role } : {}),
+      ...(role ? { role } : {}),
     };
     startupAssignments.set(workerName, assignment);
     effectiveAgentTypes.add(assignment.agentType);
@@ -4340,11 +4382,15 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     // Reviewer-style roles publish a verdict file the leader consumes only
     // after the provider exits (or, for cursor, on file appearance). An SDK
     // host never exits between turns, so its verdict would never be read.
+    // Only an EXPLICITLY assigned contract role reaches this check — an
+    // inferred one was already dropped above.
     const contractRoles = [...new Set([...startupAssignments.values()]
       .flatMap((a) => (a.role && shouldInjectContract(a.role, a.agentType) ? [a.role] : [])))];
     if (contractRoles.length > 0) {
       throw new Error(`sdk_transport_unsupported:contract_roles:${contractRoles.join(',')} `
-        + `(${[...CONTRACT_ROLES].join('/')} workers emit verdict files the sdk transport does not process; use --transport pane for them)`);
+        + `(${[...CONTRACT_ROLES].join('/')} workers emit verdict files the sdk transport does not process; `
+        + `use --transport pane for an explicitly assigned reviewer-style role, or stop assigning it `
+        + `explicitly to let it run as a plain executor)`);
     }
   }
   for (const agentType of effectiveAgentTypes) {

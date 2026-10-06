@@ -189,6 +189,7 @@ export const SDK_AGENT_FANOUT_TOOLS: readonly string[] = [
   'write_agent',
   'read_agent',
   'list_agents',
+  'search_code_subagent',
 ];
 
 /**
