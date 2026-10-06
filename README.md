@@ -28,6 +28,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 <br/>This work is based on [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) by Yeachan Heo, but with a Copilot CLI focus.
 
+> **v5.8.0** adds an experimental headless team transport (`omg team --transport sdk`), factory chains and faster hooks on Copilot, and a Copilot smoke job in CI ([migration note](docs/MIGRATION.md#v570--v580-sdk-team-transport)).
 > **v5.7.0** adds `omg smoke copilot` and the `host_smoke` MCP tool, a headless smoke check against the real Copilot CLI ([migration note](docs/MIGRATION.md#v562--v570-smoke-harness)).
 > **v5.6.1** brings the software factory, headless intake and `omg ralph afk` to Copilot under a scoped AFK permission profile ([upgrade guide](docs/MIGRATION.md#v550--v561-fork-upgrade-guide)).
 > **v5.5.0** makes the fork a native GitHub Copilot CLI plugin (hooks, agents,
