@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [Unreleased: SDK Team Transport by Default](#unreleased-sdk-team-transport-by-default)
 - [Unreleased: Team Instance Ownership](#unreleased-team-instance-ownership)
 - [Unreleased: Cancellation Scope](#unreleased-cancellation-scope)
 - [v5.8.0 → v5.8.1: Ralph Hard Max in the Stop Hook](#v580--v581-ralph-hard-max-in-the-stop-hook)
@@ -24,6 +25,23 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [v2.x → v3.0: Package Rename & Auto-Activation](#v2x--v30-package-rename--auto-activation)
 - [v3.0 → v3.1: Notepad Wisdom & Enhanced Features](#v30--v31-notepad-wisdom--enhanced-features)
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
+
+---
+
+## Unreleased: SDK Team Transport by Default
+
+Under the Copilot CLI host, `omg team` without `--transport` now starts headless sdk workers instead of tmux/psmux panes. Under Claude Code nothing changes.
+
+- **What decides it.** `--transport sdk|pane|auto` wins, then `team.transport` in the project config, then `auto`. `auto` means `sdk` under Copilot CLI and `pane` under Claude Code. `tmux` and `psmux` are accepted as aliases of `pane`.
+- **Automatic fallback.** `auto` uses panes, with a note on stderr, for a team the sdk transport cannot run: `--auto-merge`, a non-copilot worker, an explicitly assigned reviewer-contract role, or `@github/copilot-sdk` not installed.
+- **To keep panes**, pass `--transport pane` or set it in the project config:
+
+  ```jsonc
+  { "team": { "transport": "pane" } }
+  ```
+
+- **Launch concurrency.** SDK hosts start in parallel, 4 at a time by default (`team.sdk.launchConcurrency`, env `OMC_TEAM_SDK_LAUNCH_CONCURRENCY`; 1 restores serial launch).
+- **Worker worktrees.** Team shutdown no longer preserves a worker worktree whose only untracked files are its own `.omg/` runtime state, such as the SessionEnd job records a copilot worker leaves. Any other untracked or modified file still preserves the worktree.
 
 ---
 

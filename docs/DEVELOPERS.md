@@ -62,6 +62,7 @@ omg smoke copilot --sdk-static                # free: SDK static checks, no mode
 omg smoke copilot --tier 2                    # smoke + guardrail, about 2 premium requests (1 per scenario)
 omg smoke copilot --tier 2 --scenario all     # adds skill + delegate
 omg smoke copilot --tier 2 --scenario chain   # opt-in: real two-link factory chain, about 2 premium requests
+omg smoke copilot --tier 2 --scenario team    # opt-in: real 2-worker sdk team, about 2 premium requests
 ```
 
 **Install.** The SDK is an optional peer dependency, so `npm i -g oh-my-copilot` never installs it. Install it next to `omg` with the command above. `--ignore-scripts` is required on Windows with `--omit=optional`, because koffi's install script otherwise falls back to a source build that needs CMake. Without the SDK every `sdk.*` check fails with that install hint and the run exits `2`.
@@ -75,6 +76,14 @@ npm i --no-save --omit=optional --ignore-scripts @github/copilot-sdk
 **Installed-exe policy.** Tier 2 always connects the SDK to the installed `copilot` binary, resolved exactly as for tier 0 and 1. It never uses the SDK's bundled runtime, because the installed CLI is what users run and plugin loading differs between the two. `sdk.runtime` checks that the runtime reports the tier 0 binary version and protocol 3 or later.
 
 **Scenarios.** `smoke` and `guardrail` are the default; `--scenario` takes a comma-separated list or `all`. Each scenario runs in its own session in a temp git repo with an isolated `COPILOT_HOME`, a per-scenario timeout, and its full event stream kept as `artifacts.events.<name>`. `scn.<name>.cost` reports premium requests and credits. `chain` is the exception: it is opt-in (never in `all`), uses no SDK session, and spawns two real `copilot -p` factory links that hand off through `OMC_CHAIN_LINK` and the SessionEnd worker (see [REFERENCE.md](./REFERENCE.md#factory-chains-on-copilot)). Its links run without `--max-ai-credits`, so `--max-credits` does not bound them, and a link-2 process still running after the timeout is not killed.
+
+**The `team` scenario.** Also opt-in and outside `all`. It runs the plugin's own `bridge/cli.cjs` as child processes, so it proves the default transport end to end:
+
+1. `omg team 2:copilot --json "<two numbered tasks>"` in the sandbox repo with no `--transport`, `COPILOT_CLI=1` and detached worker worktrees. Each sdk host is capped at half of the run's remaining credits.
+2. `omg team status --json` is polled until both tasks settle. Then `omg team api list-tasks` and each worker worktree's commits are read.
+3. `omg team shutdown`, while each worker's `sdk-session.json` is polled for the final `session.shutdown` totals.
+
+Its checks: `scn.team.started` (exit 0, transport `sdk`, the host launch time), `completed` (both tasks completed, one per worker), `committed` (each owner committed its task's file in its own worktree), `status` (2 sdk workers alive with host pid and session id, tasks 2/2), `shutdown` (exit 0 without `--force`, no host or runtime pid left, instance reservation released, team state gone), `duration` (start to closeout within 300 s or `--timeout`, whichever is larger), and `premium` (1 to 2 premium requests). Worker runtime logs are copied into the smoke home before shutdown, so `scn.team.adapter_errors` covers them. `team` runs after the SDK scenarios and before `chain`. Set `OMC_TEAM_SDK_LAUNCH_CONCURRENCY=1` in the smoke's environment to measure the serial launch path.
 
 **Credit cap.** `--max-credits` (default and minimum 30) caps the whole tier 2 run. The runtime gets `--max-ai-credits` with the same value; the headless runtime accepts and validates the flag (CLI 1.0.91), but whether it enforces it on SDK sessions is unverified. The smoke therefore enforces the cap itself: it sums `assistant.usage` credits per scenario, aborts the scenario that passes what is left (`scn.<name>.exit` and `.cost` fail), and reports the remaining scenarios as `skipped: credit cap reached`.
 

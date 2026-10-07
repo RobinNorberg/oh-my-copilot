@@ -2,6 +2,51 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Changed: SDK team transport is the default under Copilot CLI
+
+- **`omg team` defaults to `--transport auto`.** Under the Copilot CLI host
+  (the existing host detection) that starts headless sdk workers; under Claude
+  Code it stays `pane`. `auto` falls back to panes, with a note on stderr, for
+  `--auto-merge`, non-copilot workers, an explicitly assigned
+  reviewer-contract role, or a missing `@github/copilot-sdk`. `--transport`
+  accepts `sdk`, `pane`, `auto` and the aliases `tmux`/`psmux`; `team.transport`
+  in the project config overrides the default. See the
+  [migration note](docs/MIGRATION.md#unreleased-sdk-team-transport-by-default).
+- **Parallel sdk worker launch.** Hosts start concurrently
+  (`team.sdk.launchConcurrency`, default 4; env
+  `OMC_TEAM_SDK_LAUNCH_CONCURRENCY`). In a live 2-worker run the host launch
+  took 75.3 s serial and 24.0 to 51.8 s parallel. Each launch still waits for its
+  own worker's claim, so a model turn dominates and varies.
+- **`omg team status --json`** adds `transport` and, per sdk worker,
+  `host_pid`, `runtime_pid`, `session_id`, `attempt_id`, `updated_at`,
+  `task_state`, `current_task_id` and `premium_requests_final`. A session file
+  from an earlier launch attempt is ignored. The human `sdk_worker=` line adds
+  the host pid and session id.
+- **`one_team_per_leader_session` sees sdk teams.** It probed only
+  `tmux has-session`, so an sdk team never counted. A team is now live while any
+  of its sdk hosts is.
+
+### Fixed
+
+- **Team shutdown preserved every worktree a copilot worker ran in.** The
+  worker's SessionEnd hook keeps job records under the worktree's own `.omg/`,
+  which the clean check counted as dirty. `omg team shutdown` then exited 1 and
+  kept the instance reservation and the team state. Untracked
+  OMC runtime state no longer counts, and it is removed with the worktree. A
+  half-finished forced removal on Windows, where an action runner still holds the
+  directory, retries for up to 15 s and then leaves only that runtime state behind
+  with a warning. Any other untracked or modified file still preserves the
+  worktree.
+
+### Added
+
+- **`omg smoke copilot --tier 2 --scenario team`** (opt-in, never in `all`):
+  a real 2-worker `omg team` on the default transport, from start to a clean
+  shutdown, in about 2 premium requests. Checks `scn.team.started`,
+  `completed`, `committed`, `status`, `shutdown`, `duration` and `premium`.
+
 # oh-my-copilot v5.8.1
 
 ## [5.8.1] - 2026-10-06
