@@ -13,7 +13,9 @@
  *    `scn.team.adapter_errors` see them.
  * 4. `omg team shutdown`, while each worker's `sdk-session.json` is polled for
  *    the final `session.shutdown` totals. Then: no host or runtime pid left,
- *    the instance reservation released, the team state gone.
+ *    the instance reservation released, the team state gone, and each
+ *    worker's committed HEAD either merged into the leader HEAD or kept in a
+ *    worktree `omg team status --json` lists under `preserved_worktrees`.
  *
  * Everything runs as child processes of `node <root>/bridge/cli.cjs`, so this
  * module imports no team code; the smoke entry injects it like `chain`.
@@ -112,6 +114,12 @@ function readJson(path: string): Record<string, unknown> | null {
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
+}
+
+/** A path for comparison: forward slashes, case-folded on win32. */
+function samePathKey(p: string): string {
+  const slashed = p.replace(/\\/g, '/').replace(/\/+$/, '');
+  return process.platform === 'win32' ? slashed.toLowerCase() : slashed;
 }
 
 function num(v: unknown): number {
@@ -260,10 +268,11 @@ export async function runTeamScenario(input: TeamScenarioInput): Promise<Omit<Sc
   for (const worker of workerList(evidence.status)) {
     const name = str(worker.name);
     const worktree = str(worker.worktree_path) || null;
-    if (!worktree || !leaderHead) { evidence.commits.push({ worker: name, worktree, subjects: [], files: [] }); continue; }
+    if (!worktree || !leaderHead) { evidence.commits.push({ worker: name, worktree, subjects: [], files: [], head: null, survived: null }); continue; }
     const subjects = String(git(['log', '--format=%s', `${leaderHead}..HEAD`], worktree).stdout ?? '').split(/\r?\n/).filter(Boolean);
     const files = String(git(['diff', '--name-only', `${leaderHead}..HEAD`], worktree).stdout ?? '').split(/\r?\n/).filter(Boolean);
-    evidence.commits.push({ worker: name, worktree, subjects, files });
+    const head = String(git(['rev-parse', 'HEAD'], worktree).stdout ?? '').trim() || null;
+    evidence.commits.push({ worker: name, worktree, subjects, files, head, survived: null });
   }
 
   // The team state is disposed at shutdown: copy events and runtime logs out first.
@@ -297,6 +306,22 @@ export async function runTeamScenario(input: TeamScenarioInput): Promise<Omit<Sc
   evidence.orphans = pids.filter(isAlive);
   evidence.reservationsLeft = leftoverReservations(input.projectDir, teamName);
   evidence.stateLeft = existsSync(stateDir);
+  // Worker commits must outlive the shutdown: merged into the leader HEAD, or
+  // kept in a worktree that `omg team status --json` lists as preserved.
+  if (evidence.commits.some((c) => c.subjects.length > 0)) {
+    const after = lastJsonObject((await omg(['team', 'status', teamName, '--json'], 60_000)).stdout);
+    const preserved = Array.isArray(after?.preserved_worktrees)
+      ? (after!.preserved_worktrees as Array<Record<string, unknown>>).map((p) => samePathKey(str(p.path)))
+      : [];
+    const leaderAfter = String(git(['rev-parse', 'HEAD'], input.projectDir).stdout ?? '').trim();
+    for (const c of evidence.commits) {
+      if (c.subjects.length === 0 || !c.head || !c.worktree) continue;
+      const merged = !!leaderAfter && git(['merge-base', '--is-ancestor', c.head, leaderAfter], input.projectDir).status === 0;
+      const kept = preserved.includes(samePathKey(c.worktree))
+        && String(git(['rev-parse', 'HEAD'], c.worktree).stdout ?? '').trim() === c.head;
+      c.survived = merged ? 'merged' : kept ? 'preserved' : 'lost';
+    }
+  }
   evidence.durationMs = now() - started;
   evidence.cost = teamCost(usage, eventsByWorker);
 

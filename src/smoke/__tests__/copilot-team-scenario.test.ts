@@ -47,11 +47,12 @@ function session(worker: keyof typeof HOSTS, final: boolean) {
   });
 }
 
-interface FakeOpts { settle?: boolean; startOk?: boolean; cleanShutdown?: boolean }
+interface FakeOpts { settle?: boolean; startOk?: boolean; cleanShutdown?: boolean; preserved?: Array<'worker-1' | 'worker-2'> }
 
 /** Stands in for `node bridge/cli.cjs ...`: answers start/status/api/shutdown the way the real CLI does. */
 function fakeOmg(box: ReturnType<typeof sandbox>, calls: string[][], envs: NodeJS.ProcessEnv[], opts: FakeOpts = {}): SpawnFn {
   const alive = new Set<number>([...Object.values(HOSTS), ...Object.values(RUNTIMES)]);
+  let shutDown = false;
   const fake = ((_command: string, args: string[], spawnOpts: { env?: NodeJS.ProcessEnv }) => {
     const cliArgs = args.slice(1);
     calls.push(cliArgs);
@@ -75,6 +76,10 @@ function fakeOmg(box: ReturnType<typeof sandbox>, calls: string[][], envs: NodeJ
         out = `${JSON.stringify({ teamName: TEAM, ok: true, startupFailures: [] })}\n`;
         err = '[omg team] sdk workers launched: 2 in 4321 ms (concurrency 2)\n';
       }
+    } else if (sub === 'status' && shutDown) {
+      const kept = opts.preserved ?? ['worker-1', 'worker-2'];
+      out = `${JSON.stringify({ ok: false, team: TEAM, error: `No team state found for ${TEAM}`,
+        preserved_worktrees: kept.map((name) => ({ workerName: name, path: join(box.project, 'wt', name), branch: null, commits: 1 })) })}\n`;
     } else if (sub === 'status') {
       const settled = opts.settle !== false;
       out = `${JSON.stringify({
@@ -95,6 +100,7 @@ function fakeOmg(box: ReturnType<typeof sandbox>, calls: string[][], envs: NodeJ
     } else if (sub === 'shutdown') {
       for (const worker of ['worker-1', 'worker-2'] as const) writeFileSync(join(box.stateDir, 'workers', worker, 'sdk-session.json'), session(worker, true));
       if (opts.cleanShutdown !== false) {
+        shutDown = true;
         out = `Team shutdown complete: ${TEAM}\n`;
       } else {
         code = 1;
@@ -119,11 +125,16 @@ function fakeOmg(box: ReturnType<typeof sandbox>, calls: string[][], envs: NodeJ
   return Object.assign(fake, { alive });
 }
 
-/** git: the worker that owns a task committed its file on top of the leader HEAD. */
-const fakeGit = (box: ReturnType<typeof sandbox>): SpawnSyncFn => ((_cmd: string, args: string[], o: { cwd?: string }) => {
-  const reply = (stdout: string) => ({ status: 0, stdout, stderr: '', pid: 1, output: [], signal: null });
-  if (args[0] === 'rev-parse') return reply('leaderhead\n');
+/**
+ * git: the worker that owns a task committed its file on top of the leader
+ * HEAD; `merged` workers' heads are ancestors of the leader HEAD afterwards.
+ */
+const fakeGit = (box: ReturnType<typeof sandbox>, merged: string[] = []): SpawnSyncFn => ((_cmd: string, args: string[], o: { cwd?: string }) => {
+  const reply = (stdout: string, status = 0) => ({ status, stdout, stderr: '', pid: 1, output: [], signal: null });
+  const inWorktree = o.cwd?.startsWith(join(box.project, 'wt')) ?? false;
   const worker = o.cwd === join(box.project, 'wt', 'worker-1') ? 'worker-1' : 'worker-2';
+  if (args[0] === 'rev-parse') return reply(inWorktree ? `head-${worker}\n` : 'leaderhead\n');
+  if (args[0] === 'merge-base') return reply('', merged.some((w) => args.includes(`head-${w}`)) ? 0 : 1);
   const file = worker === 'worker-2' ? 'team-alpha.txt' : 'team-beta.txt';
   if (args[0] === 'log') return reply(`smoke team ${worker === 'worker-2' ? 'alpha' : 'beta'}\n`);
   if (args[0] === 'diff') return reply(`${file}\n`);
@@ -196,7 +207,8 @@ describe('runTeamScenario', () => {
 
     expect(calls[0]).toEqual(['team', '2:copilot', '--json', SCENARIOS.team.prompt]);
     expect(calls.flat()).not.toContain('--transport');
-    expect(calls.at(-1)).toEqual(['team', 'shutdown', TEAM]);
+    expect(calls.at(-2)).toEqual(['team', 'shutdown', TEAM]);
+    expect(calls.at(-1)).toEqual(['team', 'status', TEAM, '--json']);
     expect(envs[0]).toMatchObject({ COPILOT_CLI: '1', OMC_TEAM_WORKTREE_MODE: 'detached' });
     expect(run).toMatchObject({ name: 'team', idle: true, timedOut: false, timeoutMs: TEAM_BUDGET_MS });
     expect(run.team?.start.launchMs).toBe(4321);
@@ -207,13 +219,24 @@ describe('runTeamScenario', () => {
     const { checks, cost } = evaluateScenario({ ...run, logText: '' });
     expect(checks.filter((c) => !c.ok)).toEqual([]);
     expect(cost.premiumRequests).toBe(2);
+    expect(run.team?.commits.map((c) => [c.worker, c.head, c.survived])).toEqual([
+      ['worker-1', 'head-worker-1', 'preserved'], ['worker-2', 'head-worker-2', 'preserved'],
+    ]);
+  });
+
+  it('scn.team.retained accepts a merged head and fails a worker commit that neither merged nor survived in a preserved worktree', async () => {
+    const box = sandbox();
+    const run = await runTeamScenario({ ...baseInput(box, fakeOmg(box, [], [], { preserved: [] })), spawnSync: fakeGit(box, ['worker-2']) });
+    expect(run.team?.commits.map((c) => c.survived)).toEqual(['lost', 'merged']);
+    const retained = evaluateScenario({ ...run, logText: '' }).checks.find((c) => c.id === 'scn.team.retained');
+    expect(retained).toMatchObject({ ok: false, detail: expect.stringContaining('worker-1 head-wor lost') });
   });
 
   it('forces the shutdown when the tasks never settle and fails completed/committed', async () => {
     const box = sandbox();
     const calls: string[][] = [];
     const run = await runTeamScenario({ ...baseInput(box, fakeOmg(box, calls, [], { settle: false })), now: (() => { let t = 0; return () => (t += 60_000); })() });
-    expect(calls.at(-1)).toEqual(['team', 'shutdown', TEAM, '--force']);
+    expect(calls.at(-2)).toEqual(['team', 'shutdown', TEAM, '--force']);
     expect(run).toMatchObject({ timedOut: true, idle: false, error: expect.stringContaining('--force') });
     const failed = evaluateScenario({ ...run, logText: '' }).checks.filter((c) => !c.ok).map((c) => c.id);
     expect(failed).toEqual(expect.arrayContaining(['scn.team.completed', 'scn.team.status', 'scn.team.shutdown', 'scn.team.exit']));

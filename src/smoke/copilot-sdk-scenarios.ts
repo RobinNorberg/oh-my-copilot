@@ -177,8 +177,13 @@ export interface TeamEvidence {
   status: Record<string, unknown> | null;
   /** `omg team api list-tasks` after the tasks settled. */
   tasks: Array<{ id: string; subject: string; status: string; owner: string | null }>;
-  /** Commits each worker added on top of the leader HEAD in its worktree. */
-  commits: Array<{ worker: string; worktree: string | null; subjects: string[]; files: string[] }>;
+  /**
+   * Commits each worker added on top of the leader HEAD in its worktree, its
+   * HEAD then, and how that HEAD fared at shutdown: `merged` into the leader
+   * HEAD, `preserved` (the worktree kept at that HEAD and listed in
+   * `preserved_worktrees`), `lost`, or null when there was nothing to keep.
+   */
+  commits: Array<{ worker: string; worktree: string | null; subjects: string[]; files: string[]; head?: string | null; survived?: 'merged' | 'preserved' | 'lost' | null }>;
   shutdown: { code: number | null; ms: number; stdout: string; stderr: string; forced: boolean } | null;
   /** Host and runtime pids still alive after shutdown. */
   orphans: number[];
@@ -192,7 +197,7 @@ export interface TeamEvidence {
 
 function evaluateTeam(run: ScenarioRun): SmokeCheck[] {
   const team = run.team;
-  if (!team) return scenarioCheckIds('team').slice(0, 7).map((id) => ({ id, ok: false, detail: run.error ? `no team evidence: ${excerpt(run.error, 200)}` : 'no team evidence collected' }));
+  if (!team) return scenarioCheckIds('team').slice(0, 8).map((id) => ({ id, ok: false, detail: run.error ? `no team evidence: ${excerpt(run.error, 200)}` : 'no team evidence collected' }));
   const status = team.status;
   const transport = str(status?.transport);
   const sdkWorkers = Array.isArray((status?.workers as { sdk?: unknown } | undefined)?.sdk)
@@ -211,6 +216,9 @@ function evaluateTeam(run: ScenarioRun): SmokeCheck[] {
     && num(statusTasks.total) === 2 && num(statusTasks.completed) === 2;
   const shutdownOk = !!team.shutdown && team.shutdown.code === 0 && !team.shutdown.forced
     && team.orphans.length === 0 && team.reservationsLeft.length === 0 && !team.stateLeft;
+  // Every worker commit must outlive the shutdown: merged, or kept in a preserved worktree.
+  const withWork = team.commits.filter((c) => c.subjects.length > 0);
+  const retainedOk = withWork.length > 0 && withWork.every((c) => c.survived === 'merged' || c.survived === 'preserved');
   const durationOk = team.durationMs <= team.budgetMs;
   const premiumOk = team.cost.premiumRequests > 0 && team.cost.premiumRequests <= TEAM_MAX_PREMIUM_REQUESTS;
   const launch = team.start.launchMs === null ? '' : `, sdk hosts launched in ${team.start.launchMs} ms`;
@@ -255,6 +263,13 @@ function evaluateTeam(run: ScenarioRun): SmokeCheck[] {
             + `orphans ${team.orphans.join(',') || 'none'}; reservations left ${team.reservationsLeft.length}; state ${team.stateLeft ? 'left' : 'disposed'}`,
       // The end of the output names the preserved workers and the reason; the start is banners.
       ...(shutdownOk || !team.shutdown ? {} : { evidence: excerpt(`${team.shutdown.stdout}\n${team.shutdown.stderr}`.trim().slice(-480)) }),
+    },
+    {
+      id: 'scn.team.retained',
+      ok: retainedOk,
+      detail: withWork.length === 0
+        ? 'no worker commits to check'
+        : withWork.map((c) => `${c.worker} ${(c.head ?? 'no head').slice(0, 8)} ${c.survived ?? 'unchecked'}`).join('; '),
     },
     {
       id: 'scn.team.duration',
@@ -393,7 +408,7 @@ export function scenarioCheckIds(name: Scenario): string[] {
     skill: ['invoked'],
     delegate: ['selected', 'hooks', 'completed'],
     chain: ['link1', 'spawned', 'inherited', 'closed', 'premium'],
-    team: ['started', 'completed', 'committed', 'status', 'shutdown', 'duration', 'premium'],
+    team: ['started', 'completed', 'committed', 'status', 'shutdown', 'retained', 'duration', 'premium'],
   };
   return [...own[name], 'exit', 'adapter_errors', 'cost'].map((s) => `scn.${name}.${s}`);
 }
