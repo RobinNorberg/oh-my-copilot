@@ -208,6 +208,13 @@ describe('resolveTeamTransport', () => {
     expect(sdkAvailable).not.toHaveBeenCalled();
   });
 
+  it('auto picks pane with no host signal (a plain terminal)', async () => {
+    const sdkAvailable = vi.fn(async () => true);
+    expect(await resolveTeamTransport({ ...base, host: 'unknown', sdkAvailable }))
+      .toEqual({ transport: 'pane', requested: 'auto', fallbackReason: 'host_unknown' });
+    expect(sdkAvailable).not.toHaveBeenCalled();
+  });
+
   it.each([
     [{ autoMerge: true }, 'auto_merge'],
     [{ agentTypes: ['copilot', 'codex', 'codex'] }, 'non_copilot_workers:codex'],

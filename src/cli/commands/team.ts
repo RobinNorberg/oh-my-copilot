@@ -18,7 +18,7 @@ import { inferDelegationPlanForTeamTask } from '../../team/delegation-evidence.j
 import type { CliAgentType } from '../../team/model-contract.js';
 import { isValidTeamInstanceId, type TeamTaskDelegationPlan } from '../../team/types.js';
 import { loadConfig } from '../../config/loader.js';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmuxExec } from '../tmux-utils.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -60,9 +60,11 @@ Transport:
                        Copilot workers only; no --auto-merge; explicitly assigned reviewer-style
                        roles (critic, code-reviewer, security-reviewer, test-engineer) are rejected.
   --transport pane     Workers in tmux/psmux panes (aliases: tmux, psmux).
-  --transport auto     The default. Under the Copilot CLI host: sdk, falling back to pane (with a
+  --transport auto     The default. Under the Copilot CLI host (COPILOT_CLI or
+                       COPILOT_AGENT_SESSION_ID set): sdk, falling back to pane (with a
                        note on stderr) for a team the sdk transport cannot run or when
-                       @github/copilot-sdk is not installed. Under Claude Code: pane.
+                       @github/copilot-sdk is not installed. Under Claude Code, or with no
+                       host signal (a plain terminal): pane.
   team.transport in the project config sets the default (sdk|pane|auto); the flag wins.
 
 Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omg/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
@@ -82,6 +84,9 @@ Runtime safety:
   finishing does not make it succeed, and it does not finish an implicit team.
   --force skips the task-status gate and graceful waits; it does not bypass ownership or cleanup verification.
   Unverified worker/provider cleanup preserves worktrees and team state. Errors report the outcome and reason/detail; preserved outcomes name affected workers.
+  A clean worker worktree holding commits the leader HEAD does not contain is kept (named-mode
+  branch too) and the shutdown still succeeds: stderr names each path, branch and commit count,
+  and omg team status <team> --json lists them as preserved_worktrees after the state is gone.
   Some failures also write details to stderr.
   Retained paths need later operator or janitor cleanup.
 
@@ -330,10 +335,13 @@ interface NormalizedWorkerSpecSegment {
 /**
  * A pane team is live while its multiplexer session exists. An sdk team
  * (`sdk:<team>`) names no multiplexer resource: it is live while any worker's
- * host is, per its session file (not yet closed or failed, host pid alive).
+ * host is, per its session file (not yet closed or failed) of the worker's
+ * current launch attempt, and the host's `provider-started.json` record (same
+ * pid, process start identity still matching, so a reused pid is not a host).
+ * A still `starting` session without that record falls back to the pid.
  */
 async function isTeamStateLive(
-  config: { tmux_session?: string; workers?: Array<{ name: string }> } | null,
+  config: { tmux_session?: string; workers?: Array<{ name: string; launch_attempt_id?: string }> } | null,
   teamName: string,
   cwd: string,
 ): Promise<boolean> {
@@ -341,14 +349,31 @@ async function isTeamStateLive(
   if (!target) return false;
   if (target.startsWith('sdk:')) {
     const { readSdkSession } = await import('../../team/sdk-transport.js');
-    const { teamStateRoot } = await import('../../team/state-paths.js');
-    const { isProcessAlive } = await import('../../platform/process-utils.js');
+    const { absPath, teamStateRoot, TeamPaths } = await import('../../team/state-paths.js');
+    const { isProcessAlive, isProcessIdentityLive } = await import('../../platform/process-utils.js');
     const stateRoot = teamStateRoot(cwd, teamName);
-    return (config?.workers ?? []).some((worker) => {
+    for (const worker of config?.workers ?? []) {
       const session = readSdkSession(stateRoot, worker.name);
-      return Boolean(session && session.state !== 'closed' && session.state !== 'failed'
-        && session.host_pid > 0 && isProcessAlive(session.host_pid));
-    });
+      if (!session || session.state === 'closed' || session.state === 'failed' || !(session.host_pid > 0)) continue;
+      if (worker.launch_attempt_id && session.attempt_id !== worker.launch_attempt_id) continue;
+      const started = ((): { pid?: unknown; process_start_identity?: unknown } | null => {
+        try {
+          return JSON.parse(readFileSync(absPath(cwd, TeamPaths.workerLaunchStarted(teamName, worker.name, session.attempt_id)), 'utf8')) as { pid?: unknown; process_start_identity?: unknown };
+        } catch {
+          return null; // not published yet
+        }
+      })();
+      if (!started) {
+        if (session.state === 'starting' && isProcessAlive(session.host_pid)) return true;
+        continue;
+      }
+      if (started.pid !== session.host_pid || typeof started.process_start_identity !== 'string') continue;
+      // `unknown` (the identity could not be read) counts as live: refusing a
+      // second team is the safe side.
+      const liveness = await isProcessIdentityLive(session.host_pid, started.process_start_identity);
+      if (liveness === 'live' || liveness === 'unknown') return true;
+    }
+    return false;
   }
   try {
     tmuxExec(['has-session', '-t', target], { stdio: 'ignore' });
@@ -968,12 +993,26 @@ async function resolveImplicitTeamName(cwd: string): Promise<string | undefined>
   return activeTeams.length === 1 ? activeTeams[0] : undefined;
 }
 
-function printNoTeamState(teamName: string, json: boolean): void {
+/**
+ * No team state. A shut-down team may still have left worker worktrees with
+ * unmerged commits; they are listed as `preserved_worktrees`.
+ */
+async function printNoTeamState(teamName: string, cwd: string, json: boolean): Promise<void> {
+  const { readPreservedWorktreesRecord } = await import('../../team/git-worktree.js');
+  const kept = readPreservedWorktreesRecord(cwd, teamName);
   if (json) {
-    console.log(JSON.stringify({ ok: false, team: teamName, error: `No team state found for ${teamName}` }));
+    console.log(JSON.stringify({
+      ok: false,
+      team: teamName,
+      error: `No team state found for ${teamName}`,
+      ...(kept.length > 0 ? { preserved_worktrees: kept } : {}),
+    }));
     return;
   }
   console.log(`No team state found for ${teamName}`);
+  for (const wt of kept) {
+    console.log(`preserved_worktree=${wt.path} worker=${wt.workerName} branch=${wt.branch ?? 'detached'} unmerged_commits=${wt.commits}`);
+  }
 }
 
 async function handleTeamStatus(teamName: string, cwd: string, json: boolean): Promise<void> {
@@ -984,7 +1023,7 @@ async function handleTeamStatus(teamName: string, cwd: string, json: boolean): P
     const { readTeamEventsByType } = await import('../../team/events.js');
     const snapshot = await monitorTeamV2(teamName, cwd);
     if (!snapshot) {
-      printNoTeamState(teamName, json);
+      await printNoTeamState(teamName, cwd, json);
       return;
     }
     const leaderGuidance = deriveTeamLeaderGuidance({
@@ -1096,7 +1135,7 @@ async function handleTeamStatus(teamName: string, cwd: string, json: boolean): P
   const { monitorTeam } = await import('../../team/runtime.js');
   const snapshot = await monitorTeam(teamName, cwd, []);
   if (!snapshot) {
-    printNoTeamState(teamName, json);
+    await printNoTeamState(teamName, cwd, json);
     return;
   }
   if (json) {
@@ -1158,7 +1197,13 @@ async function handleTeamShutdown(teamName: string, cwd: string, force: boolean)
       : `${shutdown.reason}:${shutdown.detail}`;
     throw new Error(`Team shutdown ${shutdown.outcome}: ${detail}`);
   }
-  console.log(`Team shutdown complete: ${teamName}`);
+  const kept = shutdown.preservedWorktrees ?? [];
+  for (const wt of kept) {
+    process.stderr.write(`[omg team] preserved worktree ${wt.path}: ${wt.commits} worker commit(s) not merged into the leader HEAD, ${wt.branch ? `branch ${wt.branch} kept` : 'detached HEAD'}. Merge or cherry-pick them, then run git worktree remove.\n`);
+  }
+  console.log(kept.length > 0
+    ? `Team shutdown complete: ${teamName} (preserved_worktrees=${kept.length}: worker commits retained, see stderr or omg team status ${teamName} --json)`
+    : `Team shutdown complete: ${teamName}`);
 }
 
 // ---------------------------------------------------------------------------

@@ -181,6 +181,95 @@ describe('git-worktree', () => {
       expect(existsSync(join(info.path, 'work.txt'))).toBe(true);
     });
 
+    it('preserves a worktree whose worker wrote a skill under .omg/skills (not runtime state)', () => {
+      const info = createWorkerWorktree(teamName, 'skill-worker', repoDir);
+      mkdirSync(join(info.path, '.omg', 'skills'), { recursive: true });
+      writeFileSync(join(info.path, '.omg', 'skills', 'new-skill.md'), '# skill\n');
+
+      expect(() => removeWorkerWorktree(teamName, 'skill-worker', repoDir)).toThrow(/worktree_dirty/);
+      expect(existsSync(join(info.path, '.omg', 'skills', 'new-skill.md'))).toBe(true);
+    });
+
+    it('removes a worktree whose only untracked file is .omg/state/session-end-jobs/x.json', () => {
+      const info = createWorkerWorktree(teamName, 'state-only-worker', repoDir);
+      mkdirSync(join(info.path, '.omg', 'state', 'session-end-jobs'), { recursive: true });
+      writeFileSync(join(info.path, '.omg', 'state', 'session-end-jobs', 'x.json'), '{}');
+
+      removeWorkerWorktree(teamName, 'state-only-worker', repoDir);
+      expect(existsSync(info.path)).toBe(false);
+    });
+
+    it('preserves a worktree with runtime state plus a skill, a plan or a notepad under .omg', () => {
+      for (const [worker, rel] of [['both-skill', ['skills', 'new-skill.md']], ['both-plan', ['plans', 'p.md']], ['both-notepad', ['notepad.md']]] as const) {
+        const info = createWorkerWorktree(teamName, worker, repoDir);
+        mkdirSync(join(info.path, '.omg', 'state', 'session-end-jobs'), { recursive: true });
+        writeFileSync(join(info.path, '.omg', 'state', 'session-end-jobs', 'x.json'), '{}');
+        mkdirSync(join(info.path, '.omg', ...rel.slice(0, -1)), { recursive: true });
+        writeFileSync(join(info.path, '.omg', ...rel), 'worker output');
+
+        expect(() => removeWorkerWorktree(teamName, worker, repoDir)).toThrow(/worktree_dirty/);
+        expect(existsSync(join(info.path, '.omg', ...rel))).toBe(true);
+      }
+    });
+
+    it('keeps a clean worktree and its branch when the worker committed work the leader does not have', () => {
+      const info = createWorkerWorktree(teamName, 'commit-worker', repoDir);
+      writeFileSync(join(info.path, 'work.txt'), 'worker output\n');
+      execFileSync('git', ['add', 'work.txt'], { cwd: info.path, stdio: 'pipe' });
+      execFileSync('git', ['commit', '-m', 'worker work'], { cwd: info.path, stdio: 'pipe' });
+
+      let thrown: (Error & { code?: string; preservedWorktree?: unknown }) | undefined;
+      try { removeWorkerWorktree(teamName, 'commit-worker', repoDir); } catch (err) { thrown = err as typeof thrown; }
+      expect(thrown?.code).toBe('worktree_unmerged_commits');
+      expect(thrown?.preservedWorktree).toEqual({ workerName: 'commit-worker', path: info.path, branch: info.branch, commits: 1 });
+      expect(existsSync(join(info.path, 'work.txt'))).toBe(true);
+      expect(execFileSync('git', ['branch', '--list', info.branch], { cwd: repoDir, encoding: 'utf-8' })).toContain(info.branch);
+    });
+
+    it('removes the worktree once its commits are merged into the leader HEAD', () => {
+      const info = createWorkerWorktree(teamName, 'merged-worker', repoDir);
+      writeFileSync(join(info.path, 'work.txt'), 'worker output\n');
+      execFileSync('git', ['add', 'work.txt'], { cwd: info.path, stdio: 'pipe' });
+      execFileSync('git', ['commit', '-m', 'worker work'], { cwd: info.path, stdio: 'pipe' });
+      execFileSync('git', ['merge', '--ff-only', info.branch], { cwd: repoDir, stdio: 'pipe' });
+
+      removeWorkerWorktree(teamName, 'merged-worker', repoDir);
+      expect(existsSync(info.path)).toBe(false);
+      expect(existsSync(join(repoDir, 'work.txt'))).toBe(true);
+    });
+
+    it('does not count leader commits made after the worktree was created as worker work', () => {
+      const info = createWorkerWorktree(teamName, 'behind-worker', repoDir);
+      writeFileSync(join(repoDir, 'leader.txt'), 'leader\n');
+      execFileSync('git', ['add', 'leader.txt'], { cwd: repoDir, stdio: 'pipe' });
+      execFileSync('git', ['commit', '-m', 'leader moves on'], { cwd: repoDir, stdio: 'pipe' });
+
+      removeWorkerWorktree(teamName, 'behind-worker', repoDir);
+      expect(existsSync(info.path)).toBe(false);
+    });
+
+    it('does not force-remove a worktree with initialized submodules even when the only untracked files are runtime state', () => {
+      const subRepo = mkdtempSync(join(tmpdir(), 'git-worktree-sub-'));
+      try {
+        execFileSync('git', ['init'], { cwd: subRepo, stdio: 'pipe' });
+        writeFileSync(join(subRepo, 'lib.txt'), 'lib\n');
+        execFileSync('git', ['add', '.'], { cwd: subRepo, stdio: 'pipe' });
+        execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'lib'], { cwd: subRepo, stdio: 'pipe' });
+        execFileSync('git', ['-c', 'protocol.file.allow=always', 'submodule', 'add', subRepo, 'sub'], { cwd: repoDir, stdio: 'pipe' });
+        execFileSync('git', ['commit', '-m', 'add submodule'], { cwd: repoDir, stdio: 'pipe' });
+
+        const info = createWorkerWorktree(teamName, 'submodule-worker', repoDir);
+        execFileSync('git', ['-c', 'protocol.file.allow=always', 'submodule', 'update', '--init'], { cwd: info.path, stdio: 'pipe' });
+        mkdirSync(join(info.path, '.omg', 'state'), { recursive: true });
+        writeFileSync(join(info.path, '.omg', 'state', 'job.json'), '{}');
+
+        expect(() => removeWorkerWorktree(teamName, 'submodule-worker', repoDir)).toThrow(/worktree_remove_failed/);
+        expect(existsSync(join(info.path, 'sub', 'lib.txt'))).toBe(true);
+      } finally {
+        rmSync(subRepo, { recursive: true, force: true });
+      }
+    });
+
     it('preserves dirty worktrees instead of force-removing them', () => {
       const info = createWorkerWorktree(teamName, 'dirty-worker', repoDir);
       writeFileSync(join(info.path, 'dirty.txt'), 'dirty');
@@ -371,6 +460,22 @@ describe('git-worktree', () => {
 
       expect(result.preserved).toHaveLength(0);
       expect(listTeamWorktrees(teamName, repoDir)).toHaveLength(0);
+    });
+
+    it('retains (not preserves) a detached worktree holding a worker commit, removing the clean ones', () => {
+      const kept = ensureWorkerWorktree(teamName, 'worker-commit', repoDir, { mode: 'detached', requireCleanLeader: false })!;
+      const clean = ensureWorkerWorktree(teamName, 'worker-clean', repoDir, { mode: 'detached', requireCleanLeader: false })!;
+      writeFileSync(join(kept.path, 'work.txt'), 'worker output\n');
+      execFileSync('git', ['add', 'work.txt'], { cwd: kept.path, stdio: 'pipe' });
+      execFileSync('git', ['commit', '-m', 'worker work'], { cwd: kept.path, stdio: 'pipe' });
+
+      const result = cleanupTeamWorktrees(teamName, repoDir);
+
+      expect(result.preserved).toEqual([]);
+      expect(result.removed).toEqual(['worker-clean']);
+      expect(result.retained).toEqual([{ workerName: 'worker-commit', path: kept.path, branch: null, commits: 1 }]);
+      expect(existsSync(join(kept.path, 'work.txt'))).toBe(true);
+      expect(existsSync(clean.path)).toBe(false);
     });
 
     it('preserves dirty worktrees during cleanup and leaves metadata for follow-up', () => {

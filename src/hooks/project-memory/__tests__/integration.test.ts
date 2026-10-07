@@ -47,6 +47,22 @@ describe("Project Memory Integration", () => {
     else process.env.USERPROFILE = previousUserProfile;
   });
 
+  describe("Team worker sessions", () => {
+    it("inject the detected context without writing project-memory.json into the worker's worktree", async () => {
+      await fs.writeFile(path.join(tempDir, "package.json"), JSON.stringify({ name: "worker-app" }));
+      const previous = process.env.OMC_TEAM_WORKER;
+      process.env.OMC_TEAM_WORKER = "team/worker-1";
+      try {
+        expect(await registerProjectMemoryContext("test-session-8", tempDir)).toBe(true);
+        expect(await loadProjectMemory(tempDir)).toBeNull();
+        await expect(fs.access(getMemoryPath(tempDir))).rejects.toThrow();
+      } finally {
+        if (previous === undefined) delete process.env.OMC_TEAM_WORKER;
+        else process.env.OMC_TEAM_WORKER = previous;
+      }
+    });
+  });
+
   describe("End-to-end SessionStart flow", () => {
     it("should detect, persist, and inject context on first session", async () => {
       const packageJson = {

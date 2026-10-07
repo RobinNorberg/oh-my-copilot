@@ -32,8 +32,9 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 Under the Copilot CLI host, `omg team` without `--transport` now starts headless sdk workers instead of tmux/psmux panes. Under Claude Code nothing changes.
 
-- **What decides it.** `--transport sdk|pane|auto` wins, then `team.transport` in the project config, then `auto`. `auto` means `sdk` under Copilot CLI and `pane` under Claude Code. `tmux` and `psmux` are accepted as aliases of `pane`.
+- **What decides it.** `--transport sdk|pane|auto` wins, then `team.transport` in the project config, then `auto`. `auto` means `sdk` under Copilot CLI (`COPILOT_CLI` or `COPILOT_AGENT_SESSION_ID` set), and `pane` under Claude Code or in a plain terminal with no host signal. `tmux` and `psmux` are accepted as aliases of `pane`.
 - **Automatic fallback.** `auto` uses panes, with a note on stderr, for a team the sdk transport cannot run: `--auto-merge`, a non-copilot worker, an explicitly assigned reviewer-contract role, or `@github/copilot-sdk` not installed.
+- **Worker commits survive shutdown.** A worker worktree with commits the leader HEAD does not contain is kept, with its branch, and `omg team shutdown` names it on stderr instead of deleting it.
 - **To keep panes**, pass `--transport pane` or set it in the project config (`.copilot/omg.jsonc`):
 
   ```jsonc

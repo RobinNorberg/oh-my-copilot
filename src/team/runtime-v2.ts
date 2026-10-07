@@ -120,6 +120,8 @@ import {
   ensureWorkerWorktree,
   installWorktreeRootAgents,
   normalizeTeamWorktreeMode,
+  writePreservedWorktreesRecord,
+  type PreservedWorktree,
   type TeamWorktreeMode,
 } from './git-worktree.js';
 import { formatOmcCliInvocation } from '../utils/omc-cli-rendering.js';
@@ -204,7 +206,7 @@ import {
 } from './sdk-transport.js';
 import { toCopilotModelId } from './model-contract.js';
 import { loadCopilotSdk, resolveShimTarget } from '../smoke/copilot-sdk-driver.js';
-import { detectHostCliType, type HostCliType } from '../utils/host-signal.js';
+import { detectHostCliSignal, type HostCliType } from '../utils/host-signal.js';
 import { resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { isProcessIdentityLive } from '../platform/process-utils.js';
@@ -662,7 +664,12 @@ export interface ShutdownOptionsV2 {
 }
 
 export type ShutdownTeamV2Result =
-  | { outcome: 'cleaned' }
+  /**
+   * `preservedWorktrees`: clean worker worktrees kept (with any named branch)
+   * because they hold commits the leader HEAD does not contain. The team is
+   * shut down; the work stays for the operator to merge or drop.
+   */
+  | { outcome: 'cleaned'; preservedWorktrees?: PreservedWorktree[] }
   | { outcome: 'preserved'; reason: 'config_missing_cleanup_evidence' | 'provider_cleanup_unverified' | 'worker_panes_alive' | 'worker_pane_liveness_unknown' | 'worker_process_reaped_pane_unconfirmed' | 'worktrees_preserved'; workers: string[] }
   | { outcome: 'failed'; reason: 'tmux_cleanup_failed' | 'worktree_cleanup_failed' | 'state_cleanup_failed'; detail: string };
 
@@ -1579,8 +1586,9 @@ export interface TeamTransportDecision {
 /**
  * Resolve the worker transport. Precedence: explicit `transport` (the
  * `--transport` flag), then `team.transport`, then the caller's default.
- * `auto` picks `sdk` under the Copilot CLI host (the existing host detection)
- * and `pane` under Claude Code; it falls back to `pane`, never fails, when the
+ * `auto` picks `sdk` only under a positively detected Copilot CLI host
+ * (`COPILOT_CLI` / `COPILOT_AGENT_SESSION_ID`), and `pane` under Claude Code or
+ * with no host signal (a plain terminal); it falls back to `pane`, never fails, when the
  * team is one the sdk transport rejects: `--auto-merge`, a non-copilot
  * worker, an explicitly assigned reviewer-contract role (its verdict file is
  * only read after the provider exits, and an sdk host never exits between
@@ -1589,7 +1597,8 @@ export interface TeamTransportDecision {
  */
 export async function resolveTeamTransport(input: {
   requested: TeamTransportSetting;
-  host: HostCliType;
+  /** The positively detected host; `unknown` (no host signal) picks `pane`. */
+  host: HostCliType | 'unknown';
   autoMerge: boolean;
   agentTypes: readonly string[];
   explicitContractRoles: readonly string[];
@@ -4469,7 +4478,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
   }
   const transportDecision = await resolveTeamTransport({
     requested: requestedTransport,
-    host: detectHostCliType(),
+    host: detectHostCliSignal() ?? 'unknown',
     autoMerge: Boolean(config.autoMerge),
     agentTypes: [...effectiveAgentTypes],
     explicitContractRoles: [...startupAssignments].flatMap(([workerName, a]) =>
@@ -7023,9 +7032,11 @@ export async function shutdownTeamV2(
     await commitStoppedFenceUnderLock();
     let worktreeCleanupFailure: string | null = null;
     let preservedWorktrees = 0;
+    let retainedWorktrees: PreservedWorktree[] = [];
     try {
       const worktreeCleanup = cleanupTeamWorktrees(sanitized, cwd);
       preservedWorktrees = worktreeCleanup.preserved.length;
+      retainedWorktrees = worktreeCleanup.retained;
     } catch (err) {
       preservedWorktrees = 1;
       worktreeCleanupFailure = err instanceof Error ? err.message : String(err);
@@ -7050,7 +7061,14 @@ export async function shutdownTeamV2(
         detail: err instanceof Error ? err.message : String(err),
       };
     }
-    return { outcome: 'cleaned' };
+    // The team state is gone; the list of kept worktrees outlives it so
+    // `omg team status <team>` can still name them.
+    try {
+      writePreservedWorktreesRecord(cwd, sanitized, retainedWorktrees);
+    } catch (err) {
+      process.stderr.write(`[team/runtime-v2] could not record preserved worktrees: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+    return retainedWorktrees.length > 0 ? { outcome: 'cleaned', preservedWorktrees: retainedWorktrees } : { outcome: 'cleaned' };
   });
 }
 

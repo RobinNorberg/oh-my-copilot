@@ -187,6 +187,34 @@ describe('omg team status --json', () => {
     const status = JSON.parse(logs[0]);
     expect(status.ok).toBe(false);
     expect(status.team).toBe('ghost-team');
+    expect(status.preserved_worktrees).toBeUndefined();
+  });
+
+  it('lists the worktrees a shut-down team kept for unmerged commits', async () => {
+    runtimeV2Mocks.monitorTeamV2.mockResolvedValue(null);
+    const { mkdtempSync, mkdirSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { writePreservedWorktreesRecord } = await import('../../../team/git-worktree.js');
+    const dir = mkdtempSync(join(tmpdir(), 'omg-status-preserved-'));
+    const previous = process.cwd();
+    try {
+      const kept = join(dir, '.omg', 'team', 'done-team', 'worktrees', 'worker-1');
+      mkdirSync(kept, { recursive: true });
+      const gone = join(dir, '.omg', 'team', 'done-team', 'worktrees', 'worker-2');
+      writePreservedWorktreesRecord(dir, 'done-team', [
+        { workerName: 'worker-1', path: kept, branch: null, commits: 2 },
+        { workerName: 'worker-2', path: gone, branch: 'omc-team/done-team/worker-2', commits: 1 },
+      ]);
+      process.chdir(dir);
+      const logs = await captureLog(() => teamCommand(['status', 'done-team', '--json']));
+      const status = JSON.parse(logs[0]);
+      expect(status).toMatchObject({ ok: false, team: 'done-team' });
+      expect(status.preserved_worktrees).toEqual([{ workerName: 'worker-1', path: kept, branch: null, commits: 2 }]);
+    } finally {
+      process.chdir(previous);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('keeps human-readable output as plain text (not JSON) without --json', async () => {

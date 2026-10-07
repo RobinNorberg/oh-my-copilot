@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { getProcessStartIdentity } from '../../../platform/process-utils.js';
 import { teamCommand, parseTeamArgs, buildStartupTasks, buildTeamLaunchTasks, resolveAvailableTeamName, resolveTeamFanoutLimit, splitTaskString, assertTeamSpawnAllowed } from '../team.js';
 
 /** Helper: capture console.log output during a callback */
@@ -283,7 +284,12 @@ describe('teamCommand api operations', () => {
     await expect(assertTeamSpawnAllowed(wd)).resolves.toBeUndefined();
   });
 
-  async function writeSdkTeam(root: string, session: { state: string; host_pid: number }): Promise<void> {
+  /**
+   * An sdk team whose worker-1 host is `host_pid`. `identity` goes into the
+   * attempt's provider-started.json (default: this process's real start
+   * identity; null: no record), `launch_attempt_id` into the worker config.
+   */
+  async function writeSdkTeam(root: string, session: { state: string; host_pid: number; identity?: string | null; launch_attempt_id?: string }): Promise<void> {
     const team = join(root, '.omg', 'state', 'team', 'sdk-team');
     await mkdir(join(team, 'workers', 'worker-1'), { recursive: true });
     await writeFile(join(team, 'config.json'), JSON.stringify({
@@ -291,11 +297,17 @@ describe('teamCommand api operations', () => {
       task: 'sdk launch',
       agent_type: 'copilot',
       worker_count: 1,
-      workers: [{ name: 'worker-1', index: 1, role: 'copilot', assigned_tasks: [], pane_id: 'sdk:worker-1' }],
+      workers: [{ name: 'worker-1', index: 1, role: 'copilot', assigned_tasks: [], pane_id: 'sdk:worker-1', launch_attempt_id: session.launch_attempt_id ?? 'a1' }],
       created_at: new Date().toISOString(),
       tmux_session: 'sdk:sdk-team',
       next_task_id: 1,
     }, null, 2));
+    const identity = session.identity === undefined ? await getProcessStartIdentity(session.host_pid) : session.identity;
+    if (identity !== null) {
+      const attemptDir = join(team, 'workers', 'worker-1', 'launch-attempts', 'a1');
+      await mkdir(attemptDir, { recursive: true });
+      await writeFile(join(attemptDir, 'provider-started.json'), JSON.stringify({ pid: session.host_pid, process_start_identity: identity }));
+    }
     await writeFile(join(team, 'workers', 'worker-1', 'sdk-session.json'), JSON.stringify({
       schema_version: 1, team_name: 'sdk-team', worker_name: 'worker-1', attempt_id: 'a1',
       host_pid: session.host_pid, runtime_pid: null, session_id: 's1', model: null, state: session.state,
@@ -312,6 +324,33 @@ describe('teamCommand api operations', () => {
     delete process.env.OMC_TEAM_WORKER;
     delete process.env.OMX_TEAM_WORKER;
     await expect(assertTeamSpawnAllowed(wd)).rejects.toThrow(/already owns active team "sdk-team"/);
+  });
+
+  it('ignores an sdk team whose host pid is alive but no longer the recorded process (pid reuse)', async () => {
+    wd = await mkdtemp(join(tmpdir(), 'omc-team-sdk-gate-'));
+    isolateFixtureHome(wd);
+    await writeSdkTeam(wd, { state: 'busy', host_pid: process.pid, identity: 'ticks:1' });
+    delete process.env.OMC_TEAM_WORKER;
+    delete process.env.OMX_TEAM_WORKER;
+    await expect(assertTeamSpawnAllowed(wd)).resolves.toBeUndefined();
+  });
+
+  it('ignores an sdk session file left by an earlier launch attempt', async () => {
+    wd = await mkdtemp(join(tmpdir(), 'omc-team-sdk-gate-'));
+    isolateFixtureHome(wd);
+    await writeSdkTeam(wd, { state: 'busy', host_pid: process.pid, launch_attempt_id: 'a2' });
+    delete process.env.OMC_TEAM_WORKER;
+    delete process.env.OMX_TEAM_WORKER;
+    await expect(assertTeamSpawnAllowed(wd)).resolves.toBeUndefined();
+  });
+
+  it('ignores a busy sdk session with no provider-started record (crashed before it published one)', async () => {
+    wd = await mkdtemp(join(tmpdir(), 'omc-team-sdk-gate-'));
+    isolateFixtureHome(wd);
+    await writeSdkTeam(wd, { state: 'busy', host_pid: process.pid, identity: null });
+    delete process.env.OMC_TEAM_WORKER;
+    delete process.env.OMX_TEAM_WORKER;
+    await expect(assertTeamSpawnAllowed(wd)).resolves.toBeUndefined();
   });
 
   it('ignores an sdk team whose hosts have closed', async () => {

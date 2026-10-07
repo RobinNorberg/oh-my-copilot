@@ -20,7 +20,7 @@ import { atomicWriteJson, ensureDirWithMode, validateResolvedPath } from './fs-u
 import { validateWorktreeRemovalTarget } from '../lib/worktree-cleanup-safety.js';
 import { sanitizeName } from './tmux-session.js';
 import { withFileLockSync } from '../lib/file-lock.js';
-import { getOmcRoot, OmcPaths } from '../lib/worktree-paths.js';
+import { getOmcRoot, OmcPaths, resolveOmcPath } from '../lib/worktree-paths.js';
 
 export type TeamWorktreeMode = 'disabled' | 'detached' | 'named';
 
@@ -34,6 +34,18 @@ export interface WorktreeInfo {
   detached?: boolean;
   created?: boolean;
   reused?: boolean;
+  /** The commit the worktree was created at; worker commits are counted on top of it. */
+  baseCommit?: string;
+}
+
+/** A clean worker worktree kept because it holds commits the leader HEAD does not contain. */
+export interface PreservedWorktree {
+  workerName: string;
+  path: string;
+  /** Named-mode branch, kept; null for a detached worktree. */
+  branch: string | null;
+  /** Worker commits not merged into the leader HEAD. */
+  commits: number;
 }
 
 export interface EnsureWorkerWorktreeOptions {
@@ -52,7 +64,10 @@ export interface EnsureWorkerWorktreeResult extends WorktreeInfo {
 
 export interface CleanupTeamWorktreesResult {
   removed: string[];
+  /** Kept because removal was unsafe or failed: blocks the team state disposal. */
   preserved: Array<{ workerName: string; path: string; reason: string }>;
+  /** Kept on purpose, with unmerged worker commits: the work outlives the team. */
+  retained: PreservedWorktree[];
 }
 
 export interface TeamWorktreeCleanupSafety {
@@ -204,32 +219,35 @@ function statusEntryPath(line: string): string {
 }
 
 /**
- * The worktree's own OMC runtime root as `git status --porcelain` names it when
- * untracked (`.omg/`), or null when the OMC root is not a top-level directory
- * of the worktree (OMC_STATE_DIR, a workspace marker above it).
+ * The worktree's own OMC runtime state directory as `git status` names the
+ * files under it (`.omg/state/`), or null when the OMC root is not a top-level
+ * directory of the worktree (OMC_STATE_DIR, a workspace marker above it).
  */
-function worktreeRuntimeStatusPath(wtPath: string): string | null {
-  const rel = relative(resolve(wtPath), resolve(getOmcRoot(wtPath))).split(sep).join('/');
-  if (!rel || rel.startsWith('..') || isAbsolute(rel) || rel.includes('/')) return null;
-  return `${rel}/`;
+function worktreeRuntimeStatePrefix(wtPath: string): string | null {
+  const root = resolve(wtPath);
+  const omcRel = relative(root, resolve(getOmcRoot(wtPath))).split(sep).join('/');
+  if (!omcRel || omcRel.startsWith('..') || isAbsolute(omcRel) || omcRel.includes('/')) return null;
+  return `${relative(root, resolveOmcPath('state', wtPath)).split(sep).join('/')}/`;
 }
 
 /**
- * Dirty unless every `git status` entry is ignored. Untracked entries under
- * the worktree's own OMC runtime root never count: a copilot worker's
+ * Dirty unless every `git status` entry is ignored. Untracked files under the
+ * worktree's own OMC runtime state directory never count: a copilot worker's
  * SessionEnd hook keeps its job records there (operational state, never worker
  * output), and treating them as dirty preserved every worktree a copilot
  * worker ran in, failing the team shutdown. `runtimeState` reports them so
- * removal can take them along.
+ * removal can take them along. Status lists every untracked file (a plain
+ * status folds a new `.omg/` into one entry), so anything else under `.omg/`
+ * (skills, plans, notepad, wiki) keeps the worktree.
  */
 function isWorktreeDirtyExcept(wtPath: string, ignoredRootPaths: string[] = []): { dirty: boolean; entries: string[]; runtimeState: boolean } {
   try {
     const ignored = new Set(ignoredRootPaths);
-    const runtimeRoot = worktreeRuntimeStatusPath(wtPath);
-    const entries = execFileSync('git', ['status', '--porcelain'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe', windowsHide: true })
+    const runtimePrefix = worktreeRuntimeStatePrefix(wtPath);
+    const entries = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe', windowsHide: true })
       .split('\n')
       .filter(line => line.trim().length > 0);
-    const isRuntime = (line: string) => runtimeRoot !== null && line.startsWith('?? ') && statusEntryPath(line).startsWith(runtimeRoot);
+    const isRuntime = (line: string) => runtimePrefix !== null && line.startsWith('?? ') && statusEntryPath(line).startsWith(runtimePrefix);
     const relevantEntries = entries.filter(line => !ignored.has(statusEntryPath(line)) && !isRuntime(line));
     return { dirty: relevantEntries.length > 0, entries: relevantEntries, runtimeState: entries.some(isRuntime) };
   } catch {
@@ -263,6 +281,81 @@ function removeRuntimeLeftover(wtPath: string, retryMs = RUNTIME_LEFTOVER_RETRY_
       }
       sleepSync(500);
     }
+  }
+}
+
+function gitOrNull(args: string[], cwd: string): string | null {
+  try {
+    return execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: 'pipe', windowsHide: true }).trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Commits at the worktree's HEAD that the leader HEAD does not contain (and,
+ * when recorded, that are newer than the worktree's base commit): worker work
+ * a removal would destroy. Null when git cannot tell.
+ */
+function countUnmergedWorkerCommits(repoRoot: string, wtPath: string, baseCommit?: string): number | null {
+  const head = gitOrNull(['rev-parse', 'HEAD'], wtPath);
+  const leader = gitOrNull(['rev-parse', 'HEAD'], repoRoot);
+  if (!head || !leader) return null;
+  const count = (excludes: string[]) => gitOrNull(['rev-list', '--count', head, ...excludes.map((ref) => `^${ref}`)], repoRoot);
+  // A base commit that no longer resolves only narrows the count; drop it.
+  const counted = (baseCommit ? count([leader, baseCommit]) : null) ?? count([leader]);
+  const n = counted === null ? NaN : Number.parseInt(counted, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Initialized submodules in a worktree (its own `modules` dir, or a populated
+ * gitlink), which a plain `git worktree remove` refuses to drop and a forced
+ * one would delete.
+ */
+function hasInitializedSubmodules(wtPath: string): boolean {
+  const modulesDir = gitOrNull(['rev-parse', '--git-path', 'modules'], wtPath);
+  if (modulesDir && existsSync(resolve(wtPath, modulesDir))) return true;
+  const staged = gitOrNull(['ls-files', '--stage'], wtPath) ?? '';
+  return staged.split('\n').some((line) => {
+    if (!line.startsWith('160000 ')) return false;
+    const tab = line.indexOf('\t');
+    return tab >= 0 && existsSync(join(wtPath, normalizeStatusPath(line.slice(tab + 1)), '.git'));
+  });
+}
+
+function unmergedCommitsError(info: PreservedWorktree): Error {
+  const error = new Error(
+    `worktree_unmerged_commits: preserving worker worktree at ${info.path} with ${info.commits} commit(s) not merged into the leader HEAD${info.branch ? ` (branch ${info.branch})` : ' (detached)'}`,
+  );
+  Object.assign(error, { code: 'worktree_unmerged_commits', preservedWorktree: info });
+  return error;
+}
+
+/** Where the worktrees a finished team kept for their unmerged commits are listed (outlives the team state). */
+export function getPreservedWorktreesRecordPath(repoRoot: string, teamName: string): string {
+  return join(getOmcRoot(repoRoot), 'state', 'team-preserved-worktrees', `${sanitizeName(teamName)}.json`);
+}
+
+/** Record (or, when empty, clear) the worktrees a team shutdown kept for their unmerged commits. */
+export function writePreservedWorktreesRecord(repoRoot: string, teamName: string, preserved: PreservedWorktree[]): void {
+  const recordPath = getPreservedWorktreesRecordPath(repoRoot, teamName);
+  if (preserved.length === 0) {
+    rmSync(recordPath, { force: true });
+    return;
+  }
+  ensureDirWithMode(join(getOmcRoot(repoRoot), 'state', 'team-preserved-worktrees'));
+  atomicWriteJson(recordPath, { team: teamName, recorded_at: new Date().toISOString(), preserved_worktrees: preserved });
+}
+
+/** The recorded preserved worktrees of a team that still exist on disk. */
+export function readPreservedWorktreesRecord(repoRoot: string, teamName: string): PreservedWorktree[] {
+  try {
+    const record = JSON.parse(readFileSync(getPreservedWorktreesRecordPath(repoRoot, teamName), 'utf-8')) as { preserved_worktrees?: unknown };
+    const list = Array.isArray(record.preserved_worktrees) ? record.preserved_worktrees as PreservedWorktree[] : [];
+    return list.filter((entry) => entry && typeof entry.path === 'string' && existsSync(entry.path));
+  } catch {
+    return [];
   }
 }
 
@@ -536,7 +629,9 @@ export function ensureWorkerWorktree(
 
   if (existsSync(wtPath)) {
     assertCompatibleExistingWorktree(repoRoot, wtPath, branch, mode);
+    const previousBase = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
     const info: EnsureWorkerWorktreeResult = {
+      ...(previousBase ? { baseCommit: previousBase } : {}),
       path: wtPath,
       branch,
       workerName,
@@ -559,8 +654,10 @@ export function ensureWorkerWorktree(
     ? ['worktree', 'add', '-b', branch, wtPath, options.baseRef ?? 'HEAD']
     : ['worktree', 'add', '--detach', wtPath, options.baseRef ?? 'HEAD'];
   execFileSync('git', args, { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+  const baseCommit = gitOrNull(['rev-parse', 'HEAD'], wtPath);
 
   const info: EnsureWorkerWorktreeResult = {
+    ...(baseCommit ? { baseCommit } : {}),
     path: wtPath,
     branch,
     workerName,
@@ -661,7 +758,11 @@ export function prepareWorkerWorktreeForRemoval(
   }
 }
 
-/** Remove a worker's worktree and branch, preserving dirty worktrees. */
+/**
+ * Remove a worker's worktree and branch, preserving dirty worktrees and
+ * worktrees holding commits the leader HEAD does not contain (thrown as
+ * `worktree_unmerged_commits`, carrying `preservedWorktree`; the branch is kept).
+ */
 export function removeWorkerWorktree(
   teamName: string,
   workerName: string,
@@ -675,17 +776,37 @@ export function removeWorkerWorktree(
     prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath);
 
     const wasRegisteredWorktree = isRegisteredWorktreePath(repoRoot, wtPath);
+    if (wasRegisteredWorktree) {
+      const baseCommit = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
+      const commits = countUnmergedWorkerCommits(repoRoot, wtPath, baseCommit);
+      if (commits === null) {
+        const error = new Error(`worktree_commit_check_failed: preserving worker worktree at ${wtPath} (cannot count its commits against the leader HEAD)`);
+        (error as Error & { code?: string }).code = 'worktree_commit_check_failed';
+        throw error;
+      }
+      if (commits > 0) {
+        const registeredBranch = getRegisteredWorktreeBranch(repoRoot, wtPath);
+        throw unmergedCommitsError({
+          workerName,
+          path: wtPath,
+          branch: registeredBranch && registeredBranch !== 'HEAD' ? registeredBranch : null,
+          commits,
+        });
+      }
+    }
     // The safety check above passed, so the only untracked files left are OMC
-    // runtime state, which git refuses to drop without --force.
+    // runtime state, which git refuses to drop without --force. A worktree with
+    // initialized submodules keeps the plain removal, which refuses it.
     const runtimeOnly = existsSync(wtPath) && isWorktreeDirtyExcept(wtPath, ['AGENTS.md']).runtimeState;
+    const force = runtimeOnly && !hasInitializedSubmodules(wtPath);
     try {
-      execFileSync('git', ['worktree', 'remove', ...(runtimeOnly ? ['--force'] : []), wtPath], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+      execFileSync('git', ['worktree', 'remove', ...(force ? ['--force'] : []), wtPath], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
     } catch (err) {
       // A forced removal can fail half way on win32 when a process (a worker's
       // SessionEnd action runner) still has its cwd in the runtime state: git
       // has then already unregistered the worktree, and what is left is a
       // plain directory for the stale-path cleanup below.
-      if (wasRegisteredWorktree && (!runtimeOnly || isRegisteredWorktreePath(repoRoot, wtPath))) {
+      if (wasRegisteredWorktree && (!force || isRegisteredWorktreePath(repoRoot, wtPath))) {
         const detail = err instanceof Error && err.message ? `: ${err.message}` : '';
         const error = new Error(`worktree_remove_failed: preserving metadata for registered worker worktree at ${wtPath}${detail}`);
         (error as Error & { code?: string }).code = 'worktree_remove_failed';
@@ -710,7 +831,7 @@ export function removeWorkerWorktree(
         expectedRoots: [join(getOmcRoot(repoRoot), 'team', sanitizeName(teamName), 'worktrees')],
         mainRepoRoots: [repoRoot],
       });
-      if (runtimeOnly) removeRuntimeLeftover(wtPath);
+      if (force) removeRuntimeLeftover(wtPath);
       else rmSync(wtPath, { recursive: true, force: true });
     }
 
@@ -752,7 +873,11 @@ export function inspectTeamWorktreeCleanupSafety(
   };
 }
 
-/** Remove all clean worktrees for a team, preserving dirty worktrees. */
+/**
+ * Remove all clean worktrees for a team. Dirty or unverifiable ones are
+ * `preserved` (a cleanup failure); clean ones holding unmerged worker commits
+ * are `retained` (kept on purpose, not a failure).
+ */
 export function cleanupTeamWorktrees(
   teamName: string,
   repoRoot: string
@@ -761,9 +886,10 @@ export function cleanupTeamWorktrees(
   const entries = safety.entries;
   const removed: string[] = [];
   const preserved: Array<{ workerName: string; path: string; reason: string }> = [...safety.blockers];
+  const retained: PreservedWorktree[] = [];
 
   if (preserved.length > 0) {
-    return { removed, preserved };
+    return { removed, preserved, retained };
   }
 
   for (const entry of entries) {
@@ -771,11 +897,16 @@ export function cleanupTeamWorktrees(
       removeWorkerWorktree(teamName, entry.workerName, repoRoot);
       removed.push(entry.workerName);
     } catch (err) {
+      const kept = (err as { preservedWorktree?: PreservedWorktree } | null)?.preservedWorktree;
+      if (kept) {
+        retained.push(kept);
+        continue;
+      }
       const reason = err instanceof Error ? err.message : String(err);
       preserved.push({ workerName: entry.workerName, path: entry.path, reason });
       process.stderr.write(`[omc] warning: preserved worktree ${entry.path}: ${reason}\n`);
     }
   }
 
-  return { removed, preserved };
+  return { removed, preserved, retained };
 }
