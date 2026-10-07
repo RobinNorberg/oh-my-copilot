@@ -34,7 +34,7 @@ Under the Copilot CLI host, `omg team` without `--transport` now starts headless
 
 - **What decides it.** `--transport sdk|pane|auto` wins, then `team.transport` in the project config, then `auto`. `auto` means `sdk` under Copilot CLI and `pane` under Claude Code. `tmux` and `psmux` are accepted as aliases of `pane`.
 - **Automatic fallback.** `auto` uses panes, with a note on stderr, for a team the sdk transport cannot run: `--auto-merge`, a non-copilot worker, an explicitly assigned reviewer-contract role, or `@github/copilot-sdk` not installed.
-- **To keep panes**, pass `--transport pane` or set it in the project config:
+- **To keep panes**, pass `--transport pane` or set it in the project config (`.copilot/omg.jsonc`):
 
   ```jsonc
   { "team": { "transport": "pane" } }
