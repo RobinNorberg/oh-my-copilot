@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, readFileSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawn } from 'child_process';
 import {
   createWorkerWorktree,
   removeWorkerWorktree,
@@ -145,6 +145,42 @@ describe('git-worktree', () => {
   });
 
   describe('removeWorkerWorktree', () => {
+    it('removes a worktree whose only untracked files are its own OMC runtime state (a copilot worker SessionEnd job)', () => {
+      const info = createWorkerWorktree(teamName, 'runtime-worker', repoDir);
+      const jobDir = join(info.path, '.omg', 'state', 'session-end-jobs', 'runs', 'r1');
+      mkdirSync(jobDir, { recursive: true });
+      writeFileSync(join(jobDir, 'arm.json'), '{}');
+
+      removeWorkerWorktree(teamName, 'runtime-worker', repoDir);
+      expect(existsSync(info.path)).toBe(false);
+    });
+
+    it('removes the worktree even while a process still has its cwd in the runtime state (busy directory on win32)', async () => {
+      const info = createWorkerWorktree(teamName, 'busy-worker', repoDir);
+      const jobDir = join(info.path, '.omg', 'state', 'session-end-jobs', 'runs', 'r1');
+      mkdirSync(jobDir, { recursive: true });
+      writeFileSync(join(jobDir, 'arm.json'), '{}');
+      const holder = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 1500)'], { cwd: jobDir, stdio: 'ignore' });
+      try {
+        await new Promise((r) => setTimeout(r, 200));
+        removeWorkerWorktree(teamName, 'busy-worker', repoDir);
+        expect(existsSync(info.path)).toBe(false);
+        expect(listTeamWorktrees(teamName, repoDir).map((w) => w.workerName)).not.toContain('busy-worker');
+      } finally {
+        holder.kill();
+      }
+    }, 30_000);
+
+    it('still preserves a worktree with OMC runtime state plus a real change', () => {
+      const info = createWorkerWorktree(teamName, 'mixed-worker', repoDir);
+      mkdirSync(join(info.path, '.omg', 'state'), { recursive: true });
+      writeFileSync(join(info.path, '.omg', 'state', 'job.json'), '{}');
+      writeFileSync(join(info.path, 'work.txt'), 'worker output');
+
+      expect(() => removeWorkerWorktree(teamName, 'mixed-worker', repoDir)).toThrow(/worktree_dirty/);
+      expect(existsSync(join(info.path, 'work.txt'))).toBe(true);
+    });
+
     it('preserves dirty worktrees instead of force-removing them', () => {
       const info = createWorkerWorktree(teamName, 'dirty-worker', repoDir);
       writeFileSync(join(info.path, 'dirty.txt'), 'dirty');

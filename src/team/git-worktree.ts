@@ -14,7 +14,7 @@
  */
 
 import { existsSync, realpathSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { atomicWriteJson, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
 import { validateWorktreeRemovalTarget } from '../lib/worktree-cleanup-safety.js';
@@ -203,16 +203,66 @@ function statusEntryPath(line: string): string {
   return normalizeStatusPath(renameIndex >= 0 ? payload.slice(renameIndex + renameSeparator.length) : payload);
 }
 
-function isWorktreeDirtyExcept(wtPath: string, ignoredRootPaths: string[] = []): { dirty: boolean; entries: string[] } {
+/**
+ * The worktree's own OMC runtime root as `git status --porcelain` names it when
+ * untracked (`.omg/`), or null when the OMC root is not a top-level directory
+ * of the worktree (OMC_STATE_DIR, a workspace marker above it).
+ */
+function worktreeRuntimeStatusPath(wtPath: string): string | null {
+  const rel = relative(resolve(wtPath), resolve(getOmcRoot(wtPath))).split(sep).join('/');
+  if (!rel || rel.startsWith('..') || isAbsolute(rel) || rel.includes('/')) return null;
+  return `${rel}/`;
+}
+
+/**
+ * Dirty unless every `git status` entry is ignored. Untracked entries under
+ * the worktree's own OMC runtime root never count: a copilot worker's
+ * SessionEnd hook keeps its job records there (operational state, never worker
+ * output), and treating them as dirty preserved every worktree a copilot
+ * worker ran in, failing the team shutdown. `runtimeState` reports them so
+ * removal can take them along.
+ */
+function isWorktreeDirtyExcept(wtPath: string, ignoredRootPaths: string[] = []): { dirty: boolean; entries: string[]; runtimeState: boolean } {
   try {
     const ignored = new Set(ignoredRootPaths);
+    const runtimeRoot = worktreeRuntimeStatusPath(wtPath);
     const entries = execFileSync('git', ['status', '--porcelain'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe', windowsHide: true })
       .split('\n')
       .filter(line => line.trim().length > 0);
-    const relevantEntries = entries.filter(line => !ignored.has(statusEntryPath(line)));
-    return { dirty: relevantEntries.length > 0, entries: relevantEntries };
+    const isRuntime = (line: string) => runtimeRoot !== null && line.startsWith('?? ') && statusEntryPath(line).startsWith(runtimeRoot);
+    const relevantEntries = entries.filter(line => !ignored.has(statusEntryPath(line)) && !isRuntime(line));
+    return { dirty: relevantEntries.length > 0, entries: relevantEntries, runtimeState: entries.some(isRuntime) };
   } catch {
-    return { dirty: true, entries: ['git_status_failed'] };
+    return { dirty: true, entries: ['git_status_failed'], runtimeState: false };
+  }
+}
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** How long a busy runtime-state leftover (win32) is retried before it is left for later cleanup. */
+const RUNTIME_LEFTOVER_RETRY_MS = 15_000;
+
+/**
+ * Delete what a half-finished forced removal left: only OMC runtime state
+ * (checked before the removal), still held by a process finishing in it.
+ * Retried while busy; past the window it stays on disk with a warning,
+ * because no worker output is in it and it must not fail the shutdown.
+ */
+function removeRuntimeLeftover(wtPath: string, retryMs = RUNTIME_LEFTOVER_RETRY_MS): void {
+  const deadline = Date.now() + retryMs;
+  for (;;) {
+    try {
+      rmSync(wtPath, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      if (Date.now() >= deadline) {
+        process.stderr.write(`[omc] warning: left OMC runtime state of a removed worker worktree at ${wtPath} (still in use): ${err instanceof Error ? err.message : String(err)}\n`);
+        return;
+      }
+      sleepSync(500);
+    }
   }
 }
 
@@ -625,10 +675,17 @@ export function removeWorkerWorktree(
     prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath);
 
     const wasRegisteredWorktree = isRegisteredWorktreePath(repoRoot, wtPath);
+    // The safety check above passed, so the only untracked files left are OMC
+    // runtime state, which git refuses to drop without --force.
+    const runtimeOnly = existsSync(wtPath) && isWorktreeDirtyExcept(wtPath, ['AGENTS.md']).runtimeState;
     try {
-      execFileSync('git', ['worktree', 'remove', wtPath], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
+      execFileSync('git', ['worktree', 'remove', ...(runtimeOnly ? ['--force'] : []), wtPath], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
     } catch (err) {
-      if (wasRegisteredWorktree) {
+      // A forced removal can fail half way on win32 when a process (a worker's
+      // SessionEnd action runner) still has its cwd in the runtime state: git
+      // has then already unregistered the worktree, and what is left is a
+      // plain directory for the stale-path cleanup below.
+      if (wasRegisteredWorktree && (!runtimeOnly || isRegisteredWorktreePath(repoRoot, wtPath))) {
         const detail = err instanceof Error && err.message ? `: ${err.message}` : '';
         const error = new Error(`worktree_remove_failed: preserving metadata for registered worker worktree at ${wtPath}${detail}`);
         (error as Error & { code?: string }).code = 'worktree_remove_failed';
@@ -653,7 +710,8 @@ export function removeWorkerWorktree(
         expectedRoots: [join(getOmcRoot(repoRoot), 'team', sanitizeName(teamName), 'worktrees')],
         mainRepoRoots: [repoRoot],
       });
-      rmSync(wtPath, { recursive: true, force: true });
+      if (runtimeOnly) removeRuntimeLeftover(wtPath);
+      else rmSync(wtPath, { recursive: true, force: true });
     }
 
     forgetMetadataUnlocked(repoRoot, teamName, workerName);
