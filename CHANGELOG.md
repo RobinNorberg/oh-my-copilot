@@ -35,6 +35,23 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 - **Upstream drift bot.** A daily workflow, `.github/workflows/upstream-drift.yml`, checks upstream oh-my-claudecode `dev` against the last ported sha. That sha is recorded in the new `.github/upstream-port.json`. When upstream has moved, the bot applies the range with `scripts/port/upstream-drift.mjs`, using the runbook's exclusions and the mechanical rename map. A clean apply opens a draft port PR to `dev`. Conflicts open an issue that lists them. Each upstream head gets one item, older ones are closed, and nothing is force-pushed. The optional `UPSTREAM_DRIFT_TOKEN` secret lets CI run on bot PRs. See docs/DEVELOPERS.md, "Upstream drift bot".
 
+### Changed
+
+- **Copilot hooks run through a per-event dispatcher.** `copilot/hooks.json`
+  now has one entry per `(event, matcher)` group of `hooks/hooks.json`
+  instead of one per hook. Each entry runs `scripts/copilot/dispatch.cjs`,
+  which reads stdin once, runs the group's hooks in order with the same
+  `run.cjs` routing and per-hook timeouts, and merges the adapted outputs:
+  context joined in hook order, any PreToolUse deny wins, a Stop block from
+  any hook survives (reasons joined in hook order, and it beats another
+  hook's `continue: false`), a throwing hook fails alone, a timed-out hook
+  contributes no stdout, PermissionRequest exit 2 is kept, and under
+  `OMC_HOOK_FAIL_CLOSED=1` a timeout (124) beats every other exit code.
+  Locally on Windows, Stop drops from 1358 to 1011 ms and SessionStart from
+  2403 to 2036 ms. `OMC_COPILOT_HOOK_DISPATCH=0` runs one process per hook
+  again without regenerating. Claude Code and `hooks/hooks.json` are
+  unchanged. See [HOOKS.md](docs/HOOKS.md#per-event-dispatcher).
+
 # oh-my-copilot v5.8.1
 
 ## [5.8.1] - 2026-10-06

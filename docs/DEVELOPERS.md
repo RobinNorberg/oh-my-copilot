@@ -158,6 +158,30 @@ Every upstream event is projected, so the generator has nothing to add. A new up
 
 **CLI and SDK differ.** The SDK's `SessionHooks` interface (`dist/types.d.ts:1372`) and its dispatch table (`dist/session.js:1630`) cover only 10 events: `preToolUse`, `preMcpToolCall`, `postToolUse`, `postToolUseFailure`, `userPromptSubmitted`, `userPromptTransformed`, `sessionStart`, `sessionEnd`, `errorOccurred` and `agentStop`. The CLI's file hooks additionally support `subagentStart`, `subagentStop`, `preCompact`, `permissionRequest` and `notification`. An SDK session handles permissions through the separate `onPermissionRequest` handler (`dist/types.d.ts:2112`), not a hook. OMC registers no SDK callback hooks; SDK sessions, such as tier 2 and SDK team workers, run the plugin's file hooks from `copilot/hooks.json`.
 
+## Copilot hooks: per-event dispatcher
+
+Copilot starts one `node` process per entry of `copilot/hooks.json`. The generator (`scripts/copilot/build-hooks.mjs`) therefore emits one entry per `(event, matcher)` group of `hooks/hooks.json`, and that entry runs `scripts/copilot/dispatch.cjs`:
+
+```text
+node --require <root>/scripts/lib/copilot-hook-adapter.cjs <root>/scripts/copilot/dispatch.cjs \
+     <Event> <script> [args]... [-- <script> [args]...]...
+```
+
+The dispatcher reads stdin once and runs the group's hooks in order through `runResolvedHook()` in `scripts/run.cjs`. That is the same routing as a direct `run.cjs <script>` call, with the same manifest timeout per hook: a Worker for the audited hooks, and the supervised child for entries with a budget of 3 s or less. It applies the adapter's `transform()` to each hook's own stdout and exit code, then merges:
+
+- **Context.** `additionalContext` and `systemMessage` are joined with `\n` in hook order, at top level and inside `hookSpecificOutput`.
+- **PreToolUse.** Any `deny` wins, with the first deny reason.
+- **Stop and SubagentStop.** A `decision: "block"` from any hook survives, and every hook still runs. Several blocks join their reasons with `\n\n` in hook order. A block beats another hook's `continue: false`, which is dropped with its `stopReason` and an `[omg-hook]` stderr line. The adapter's `continue: false` + block rule applies only inside one hook's own output.
+- **Failures.** A hook whose run throws or rejects is that hook's failure, with an `[omg-hook]` line and exit `1` under fail-closed, and the other hooks keep their output. A timed-out hook contributes no stdout on either runner path.
+- **Everything else.** Without a block, `continue: false` wins with its `stopReason`. `suppressOutput: true` survives only when every output sets it. Any other key keeps the first hook's value. Non-JSON stdout next to JSON output is dropped with an `[omg-hook]` stderr line. A group with one non-empty output passes it through byte for byte.
+- **Exit code.** Under `OMC_HOOK_FAIL_CLOSED=1` it is `124` if any hook timed out, else the highest per-hook code. Otherwise `transform()` has already mapped every failure to `0` with one `[omg-hook]` line per hook, except PermissionRequest exit `2`, which is kept.
+
+`hooks/hooks.json` is untouched, and Claude Code never runs the dispatcher.
+
+**Kill switch.** `OMC_COPILOT_HOOK_DISPATCH=0` makes the dispatcher run each hook as its own `node --require <adapter> run.cjs <script>` process, one after another, which is the pre-dispatcher path, and merge their outputs with the same rules. Each process gets its manifest timeout plus 2 s, capped at what is left of the group's summed timeouts (the entry's `timeoutSec`); past that, `reapTree()` from `run.cjs` kills its process tree. Set it in the environment Copilot runs in to compare both paths live without regenerating `copilot/hooks.json`. `OMC_DEBUG_HOOKS=1` prints one `[omg-hook] <Event> dispatch: <script> <ms>ms exit <code>` stderr line per hook.
+
+**Tests.** `src/__tests__/copilot-hook-dispatch.test.ts` pins the argv round trip, the merge rules per event, the exit-code precedence, per-hook isolation, timed-out stdout discard, the kill switch and its outer-timer cap, and parity with the per-hook path for the real Stop and SessionStart hooks: the same stdout, and the same state files with the same contents once timestamps and pids are scrubbed. Latency numbers are in [HOOKS.md](./HOOKS.md#per-event-dispatcher).
+
 ## Upstream drift bot
 
 `.github/workflows/upstream-drift.yml` notices new upstream oh-my-claudecode `dev` commits and does the mechanical first step of a port. Conflict resolution, the `package.json` delta, generators, build, inventory, tests, and release stay with a human or agent (`.omc/skills/port-and-release-cycle.md`).

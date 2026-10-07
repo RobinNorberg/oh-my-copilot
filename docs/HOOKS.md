@@ -42,30 +42,34 @@ Hook output is injected into Claude via `<system-reminder>` tags. Additional con
 
 ### Generated entries
 
-`scripts/copilot/build-hooks.mjs` derives one Copilot entry per upstream hook command:
+`scripts/copilot/build-hooks.mjs` derives one Copilot entry per upstream `(event, matcher)` group. The entry runs the [per-event dispatcher](#per-event-dispatcher), which runs every hook of the group in one process:
 
 ```json
-"Stop": [
+"SubagentStop": [
   { "type": "command",
     "exec": "node",
     "args": ["--require", "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-             "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-             "${CLAUDE_PLUGIN_ROOT}/scripts/persistent-mode.mjs"],
-    "env": { "OMC_HOOK_EVENT": "Stop" },
+             "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+             "SubagentStop",
+             "${CLAUDE_PLUGIN_ROOT}/scripts/subagent-tracker.mjs", "stop",
+             "--",
+             "${CLAUDE_PLUGIN_ROOT}/scripts/verify-deliverables.mjs"],
+    "env": { "OMC_HOOK_EVENT": "SubagentStop" },
     "timeoutSec": 10 }
 ]
 ```
 
 - `exec` + `args` runs `node` without a shell. Copilot runs `command` hooks through PowerShell on Windows, which split the upstream `node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ...` form so that node loaded the plugin directory and exited 0. Every hook was a silent no-op. With `args`, a plugin path containing spaces stays one argument, and each hook saves about 0.5 s of PowerShell startup.
-- `OMC_HOOK_EVENT` names the event for the adapter. `timeoutSec` is the upstream `timeout`. Extra script arguments (`subagent-tracker.mjs start`) are kept.
-- The upstream matcher is copied onto each entry, except `*` and empty matchers. `async` is dropped, because Copilot has no such field.
+- The dispatcher argv is the event name, then one segment per hook: the script path and its extra arguments (`subagent-tracker.mjs stop`). A literal `--` separates the segments, so a hook argument can never be `--`; the generator throws on one.
+- `OMC_HOOK_EVENT` names the event for the adapter. `timeoutSec` is the sum of the group's upstream `timeout`s, because the hooks run one after another, each with its own timeout.
+- The group matcher is copied onto its entry, except `*` and empty matchers. Copilot applies it, so PreToolUse has two entries: all tools, and `Bash` for `git-guardrails.mjs`. `async` is dropped, because Copilot has no such field.
 - The generator throws on a hook command form or field it does not recognise. An upstream change then fails the build instead of shipping a no-op.
 
 **Regenerate, never hand-edit.** Run `npm run build:copilot-hooks` (`node scripts/copilot/build-hooks.mjs --write`) after any change to `hooks/hooks.json`; `npm run build` includes it. `npm run verify:copilot-hooks` and `src/__tests__/copilot-hooks-manifest.test.ts` fail when the file drifts. The agents file set has the same rule: `npm run build:copilot-agents`.
 
 ### Output adapter
 
-The hook scripts speak the Claude Code hook contract. `scripts/lib/copilot-hook-adapter.cjs`, preloaded with `node --require`, buffers the hook's stdout and rewrites it on exit to the subset Copilot honours. It is a no-op unless `OMC_HOOK_EVENT` is set, so Claude Code is untouched. It is also a no-op inside run.cjs worker threads.
+The hook scripts speak the Claude Code hook contract. `scripts/lib/copilot-hook-adapter.cjs`, preloaded with `node --require`, buffers the hook's stdout and rewrites it on exit to the subset Copilot honours. It is a no-op unless `OMC_HOOK_EVENT` is set, so Claude Code is untouched. It is also a no-op inside run.cjs worker threads, and in the dispatcher process, which calls the same `transform()` once per hook instead.
 
 | Event | Hook output (Claude shape) | Emitted for Copilot |
 |---|---|---|
@@ -88,6 +92,7 @@ The adapter fails **open** on a hook's internal error. Copilot treats a PreToolU
 | `OMC_HOOK_EVENT` | Set by `copilot/hooks.json`; activates the adapter. |
 | `OMC_HOOK_FAIL_CLOSED=1` | Keep the hook's original non-zero exit code (fail closed). The hook runner `scripts/run.cjs` also exits `124` when a hook times out, instead of the default fail-open `0`, and its stderr line says `exiting fail-closed (124)`. |
 | `OMC_HOOK_STRICT=1` | A hook target that is missing or not a file exits 1 instead of 0 plus a stderr line. |
+| `OMC_COPILOT_HOOK_DISPATCH=0` | The dispatcher runs each hook as its own `node --require <adapter> run.cjs <script>` process, one after another, as before the dispatcher, and still merges the outputs (see [Per-event dispatcher](#per-event-dispatcher)). No regeneration needed. |
 | `OMC_COPILOT_HOOK_WORKER=0` | Run every generic hook as a child process under Copilot, as under Claude Code (see [Latency](#latency)). |
 | `OMC_SESSION_END_BUDGET_MS` | Foreground budget of each SessionEnd hook (`session-end.mjs`, `wiki-session-end.mjs`) in `scripts/run.cjs`, on both hosts. An integer from 1 to 60000; any other value is ignored. The default is 1500 under Copilot and 300 under Claude Code (see [SessionEnd](#sessionend)). |
 | `OMC_DEBUG_HOOKS` | Log adapter decisions, such as a dropped `updatedInput`, to stderr. |
@@ -102,7 +107,7 @@ Every generated entry runs `node`. When a PreToolUse hook cannot start at all, f
 
 ### Latency
 
-Copilot runs the hooks for one event sequentially, one `node` process each. A PostToolUse or Stop event with several hooks therefore costs several node start-ups. A per-event dispatcher that runs all scripts for an event in one process is a planned follow-up.
+Copilot runs one `node` process per entry. Before the [per-event dispatcher](#per-event-dispatcher) every hook was its own entry, so a Stop event with five hooks cost five node start-ups. Now each `(event, matcher)` group is one entry and one process.
 
 **Worker routing.** Under Claude Code, `scripts/run.cjs` runs most hooks as a child process. On Windows that is a chain of three Node processes: `run.cjs`, a `--generic-child-supervisor`, and the hook. A no-op hook costs about 170 ms that way. Under Copilot (`OMC_HOOK_EVENT` set), `run.cjs` runs the audited generic hooks in a Worker thread inside its own process instead, like the upstream trusted Worker hooks. A hook runs in a Worker only when all of these hold:
 
@@ -123,7 +128,40 @@ Everything else keeps the child path. The Worker gets the same timeout, `OMC_SES
 
 PostToolUse shows no saving: its one audited generic entry (`post-tool-directory-context-injector.mjs`) has a 3 s budget, so it now stays on the child path. `PostToolUseFailure` (`post-tool-use-failure.mjs`, 3 s) is the same: 188 ms either way.
 
-`OMC_COPILOT_HOOK_WORKER=0` turns the routing off. Before a new upstream hook joins the list, check that it does not call `process.chdir`, install signal handlers, branch on `isMainThread`, or start children that inherit stdio. `src/__tests__/run-cjs-copilot-worker-routing.test.ts` fails when the generic entries of `copilot/hooks.json` and the list differ. It also runs every listed hook through both paths and compares stdout, stderr and the files each one wrote, and asserts the Worker-routed entries actually ran in a Worker.
+`OMC_COPILOT_HOOK_WORKER=0` turns the routing off. Before a new upstream hook joins the list, check that it does not call `process.chdir`, install signal handlers, branch on `isMainThread`, or start children that inherit stdio. `src/__tests__/run-cjs-copilot-worker-routing.test.ts` fails when the generic hooks of `copilot/hooks.json` and the list differ. It also runs every listed hook through both paths and compares stdout, stderr and the files each one wrote, and asserts the Worker-routed entries actually ran in a Worker.
+
+### Per-event dispatcher
+
+`scripts/copilot/dispatch.cjs` runs every hook of one `(event, matcher)` group in a single process. It reads stdin once and runs the hooks in order through `runResolvedHook()` in `scripts/run.cjs`, so each hook keeps its Worker or child routing, its own manifest timeout, `OMC_SESSION_OWNER_PID` and extra arguments. The adapter's `transform()` runs once per hook, and the results are merged:
+
+| Output | Merge rule |
+|---|---|
+| `additionalContext`, `systemMessage` | Joined with `\n` in hook order, top level and in `hookSpecificOutput`. |
+| PreToolUse `permissionDecision` | Any `deny` wins, with the first deny reason. |
+| `decision: "block"` (Stop, SubagentStop) | A block from any hook survives, and every hook still runs. Several blocks join their reasons with a blank line (`\n\n`) in hook order. A block beats another hook's `continue: false`: the merged output drops `continue: false` and its `stopReason`, with an `[omg-hook]` stderr line. The adapter rule above (`continue: false` + block yields `{}`) applies only inside one hook's own output. |
+| `continue: false` | Without any block, the first one wins with its `stopReason`. |
+| a hook that throws or rejects | Counts as that hook's failure: an `[omg-hook]` stderr line, exit `1` under `OMC_HOOK_FAIL_CLOSED=1`, else `0`. The other hooks' outputs are kept. |
+| a hook that times out | Contributes no stdout on either runner path, even JSON it printed before it hung. |
+| `suppressOutput: true` | Kept only when every output sets it. |
+| any other key | The first hook's value. |
+| non-JSON stdout next to JSON | Dropped, with an `[omg-hook]` stderr line. |
+| exit code | `124` if any hook timed out under `OMC_HOOK_FAIL_CLOSED=1`, else the highest per-hook code. Without fail-closed only PermissionRequest exit `2` survives `transform()`. |
+
+A group with one non-empty output passes it through byte for byte. `OMC_COPILOT_HOOK_DISPATCH=0` runs each hook as its own `node --require <adapter> run.cjs <script>` process instead and merges the same way. Each such process gets its manifest timeout plus 2 s, capped at what is left of the group's summed timeouts (the entry's `timeoutSec`), and past that its process tree is killed. These merge rules are our contract. How Copilot itself combined several entries' outputs was never observed.
+
+Interleaved local bench on Windows (old per-hook entries summed vs one dispatcher entry, median of 9, temp git repo, isolated home):
+
+| Event (hooks) | Per-hook entries | Dispatcher | Kill switch |
+|---|---|---|---|
+| SessionStart (5) | 2403 ms | 2036 ms | 2454 ms |
+| Stop (5) | 1358 ms | 1011 ms | 1427 ms |
+| PostToolUse (4) | 939 ms | 708 ms | 954 ms |
+| PreCompact (3) | 992 ms | 881 ms | 1107 ms |
+| SubagentStop (2) | 586 ms | 525 ms | 665 ms |
+| UserPromptSubmit (2) | 492 ms | 443 ms | 543 ms |
+| SessionEnd (2) | 664 ms | 622 ms | 856 ms |
+
+Each extra hook in a group saves one Node start-up, about 50 to 90 ms. A single-hook entry (PreToolUse, PermissionRequest, PostToolUseFailure, SubagentStart) costs 2 to 18 ms more, for the extra module. The kill switch costs one more Node start-up per entry than the old per-hook entries.
 
 ## Hook Categories
 
