@@ -166,3 +166,72 @@ Every upstream event is projected, so the generator has nothing to add. A new up
 - **PascalCase aliases.** The runtime holds the literal fragments `PermissionReques`, `PostToolUseFailu` and `UserPromptSubmit` together (offset 84618512) and `PreCompact` next to the hook prompt validation strings (offset 85766538). Shorter names compile to immediates and are not greppable. On a real machine with only camelCase `preToolUse`/`postToolUse` personal hooks, the plugin's PascalCase hooks produced `hook.start` events of type `sessionStart`, `sessionEnd`, `userPromptSubmitted`, `agentStop`, `subagentStart` and `subagentStop` in `~/.copilot/session-state/*/events.jsonl`. `preCompact`, `permissionRequest` and `postToolUseFailure` were not observed firing there.
 
 **CLI and SDK differ.** The SDK's `SessionHooks` interface (`dist/types.d.ts:1372`) and its dispatch table (`dist/session.js:1630`) cover only 10 events: `preToolUse`, `preMcpToolCall`, `postToolUse`, `postToolUseFailure`, `userPromptSubmitted`, `userPromptTransformed`, `sessionStart`, `sessionEnd`, `errorOccurred` and `agentStop`. The CLI's file hooks additionally support `subagentStart`, `subagentStop`, `preCompact`, `permissionRequest` and `notification`. An SDK session handles permissions through the separate `onPermissionRequest` handler (`dist/types.d.ts:2112`), not a hook. OMC registers no SDK callback hooks; SDK sessions, such as tier 2 and SDK team workers, run the plugin's file hooks from `copilot/hooks.json`.
+
+## Copilot hooks: per-event dispatcher
+
+Copilot starts one `node` process per entry of `copilot/hooks.json`. The generator (`scripts/copilot/build-hooks.mjs`) therefore emits one entry per `(event, matcher)` group of `hooks/hooks.json`, and that entry runs `scripts/copilot/dispatch.cjs`:
+
+```text
+node --require <root>/scripts/lib/copilot-hook-adapter.cjs <root>/scripts/copilot/dispatch.cjs \
+     <Event> <script> [args]... [-- <script> [args]...]...
+```
+
+The dispatcher reads stdin once and runs the group's hooks in order through `runResolvedHook()` in `scripts/run.cjs`. That is the same routing as a direct `run.cjs <script>` call, with the same manifest timeout per hook: a Worker for the audited hooks, and the supervised child for entries with a budget of 3 s or less. It applies the adapter's `transform()` to each hook's own stdout and exit code, then merges:
+
+- **Context.** `additionalContext` and `systemMessage` are joined with `\n` in hook order, at top level and inside `hookSpecificOutput`.
+- **PreToolUse.** Any `deny` wins, with the first deny reason.
+- **Stop and SubagentStop.** A `decision: "block"` from any hook survives, and every hook still runs. Several blocks join their reasons with `\n\n` in hook order. A block beats another hook's `continue: false`, which is dropped with its `stopReason` and an `[omg-hook]` stderr line. The adapter's `continue: false` + block rule applies only inside one hook's own output.
+- **Failures.** A hook whose run throws or rejects is that hook's failure, with an `[omg-hook]` line and exit `1` under fail-closed, and the other hooks keep their output. A timed-out hook contributes no stdout on either runner path.
+- **Everything else.** Without a block, `continue: false` wins with its `stopReason`. `suppressOutput: true` survives only when every output sets it. Any other key keeps the first hook's value. Non-JSON stdout next to JSON output is dropped with an `[omg-hook]` stderr line. A group with one non-empty output passes it through byte for byte.
+- **Exit code.** Under `OMC_HOOK_FAIL_CLOSED=1` it is `124` if any hook timed out, else the highest per-hook code. Otherwise `transform()` has already mapped every failure to `0` with one `[omg-hook]` line per hook, except PermissionRequest exit `2`, which is kept.
+
+`hooks/hooks.json` is untouched, and Claude Code never runs the dispatcher.
+
+**Kill switch.** `OMC_COPILOT_HOOK_DISPATCH=0` makes the dispatcher run each hook as its own `node --require <adapter> run.cjs <script>` process, one after another, which is the pre-dispatcher path, and merge their outputs with the same rules. Each process gets its manifest timeout plus 2 s, capped at what is left of the group's summed timeouts (the entry's `timeoutSec`); past that, `reapTree()` from `run.cjs` kills its process tree. Set it in the environment Copilot runs in to compare both paths live without regenerating `copilot/hooks.json`. `OMC_DEBUG_HOOKS=1` prints one `[omg-hook] <Event> dispatch: <script> <ms>ms exit <code>` stderr line per hook.
+
+**Tests.** `src/__tests__/copilot-hook-dispatch.test.ts` pins the argv round trip, the merge rules per event, the exit-code precedence, per-hook isolation, timed-out stdout discard, the kill switch and its outer-timer cap, and parity with the per-hook path for the real Stop and SessionStart hooks: the same stdout, and the same state files with the same contents once timestamps and pids are scrubbed. Latency numbers are in [HOOKS.md](./HOOKS.md#per-event-dispatcher).
+
+## Upstream drift bot
+
+`.github/workflows/upstream-drift.yml` notices new upstream oh-my-claudecode `dev` commits and does the mechanical first step of a port. Conflict resolution, the `package.json` delta, generators, build, inventory, tests, and release stay with a human or agent (`.omc/skills/port-and-release-cycle.md`).
+
+**Schedule.** It runs daily at 05:23 UTC and on demand from the Actions tab (`workflow_dispatch`). GitHub runs `schedule` only from the default branch, `main`. The daily run therefore starts once the workflow reaches `main` with the next release. Until then, dispatch it on `dev` by hand.
+
+**What it does.** When upstream `dev` is past the recorded sha, the bot branches `port/bot-<short sha>` from `dev` and runs `scripts/port/upstream-drift.mjs --apply`. Then one of two things happens:
+
+- **Clean apply.** The bot commits `port: upstream <from>..<to> (bot)` and opens a draft PR to `dev` labelled `upstream-port`. The PR body lists the commits, files, the `package.json` delta, and the leak scan.
+- **Conflicts.** The bot opens an issue `Upstream drift: N commits since <from>, conflicts in M files` with the conflict list and the commit list, labelled `upstream-port`.
+
+**One item per upstream head.** The upstream head sha is a hidden marker in each body. A rerun for the same head updates the open issue, or turns it into a PR when the range now applies cleanly. An open or merged PR for that head means the bot does nothing. So does a PR or issue for that head that a maintainer closed; reopen it to bring it back. When a newer head arrives, the bot opens a new branch and item, then closes the older one with a comment starting `upstream-drift: superseded by`. That comment is how a later run tells a bot close from a maintainer's. A bot PR that has more than the bot's single commit stays open, because someone is working on it. Once `dev` has caught up with upstream, every open bot item is closed. The bot never force-pushes. If its branch already exists without a PR, it opens the PR from that branch without pushing, and the PR body names the commit on that branch and whether it matches this run's apply.
+
+**`keep` label.** Add the `keep` label to a bot PR or issue to pin it. The bot never closes an item with that label, even when a newer upstream head supersedes it or `dev` has caught up.
+
+**Marker file.** `.github/upstream-port.json` is the tracked record of the last ported upstream commit:
+
+```json
+{ "upstream_sha": "<full sha>", "upstream_branch": "dev", "ported_at": "YYYY-MM-DD", "fork_version": "X.Y.Z" }
+```
+
+The script reads it from `HEAD` as the default base. Every port commit updates it, whether the bot or a human made the port. The bot writes `fork_version: "unreleased"`, and the release bump sets the version that ships the port.
+
+**Token.** Pushes and PRs made with `GITHUB_TOKEN` do not trigger other workflows, so CI does not run on a bot PR. Add the optional repository secret `UPSTREAM_DRIFT_TOKEN` to fix that. It must be a fine-grained personal access token on this repository with read/write access to Contents, Pull requests, and Issues. Without it the bot uses `GITHUB_TOKEN`, prints a warning, and adds a note to the PR body. Closing and reopening the PR then starts CI. The `GITHUB_TOKEN` path also needs the setting "Allow GitHub Actions to create and approve pull requests" under Settings, Actions, General. The permissions block asks only for `contents`, `pull-requests`, and `issues` write. `tests/lint/upstream-drift-workflow.test.ts` pins the workflow shape.
+
+**What the script applies.** It follows the range diff in `.omc/skills/port-upstream.md`:
+
+- **Excluded paths.** `dist`, `bridge`, `inventory`, `package.json`, `package-lock.json`, `CHANGELOG.md`, `README.md`, `.github/release-body.md`, and `.github/generated-artifact-authorizations.json` are never applied.
+- **Dropped and skipped paths.** `.github/RELEASE_SIGNOFF` is dropped. Upstream `.github/workflows/` and `.github/actions/` changes are listed in the report but never applied, because upstream CI is not ported and a `GITHUB_TOKEN` push cannot change workflow files.
+- **Fork-diverged files.** A file deleted upstream that the fork changed is kept and reported as `UD`. An upstream change to a file the fork removed is reported as `DU`. An upstream new file that differs from the fork's copy gets conflict markers and is reported as `AA`.
+- **Rename map.** The mechanical part of the map runs only on lines the port introduced, so text the fork keeps on purpose stays. Examples are upstream issue links and the legacy corpus. DO-NOT-RENAME tokens and the per-file `CLAUDE_CONFIG_DIR` exceptions are honoured. Some paths are applied verbatim and never renamed: `.omc/`, `receipts/`, the content-addressed legacy corpus `src/installer/legacy-claude-md-corpus.ts`, and its fixture `src/installer/__tests__/fixtures/legacy-guides.json`. Symlinks, gitlinks, binary files, and non-UTF-8 files are applied byte-exact and skipped by the rename pass. The `omc` CLI prose, the `.claude/` host directory, and `OMC_CLI_BINARY` need judgement, so the script leaves them to the reviewer.
+- **Leak scan.** It lists new `oh-my-claudecode` lines in `src/`, `agents/`, `skills/`, and `hooks/`. Upstream issue links are not leaks.
+
+**By hand.** Run it in a clean clone or worktree. `--apply` refuses a tree with tracked changes, stages its result, leaves conflicts unmerged, and never commits.
+
+```bash
+git fetch --no-tags upstream dev
+node scripts/port/upstream-drift.mjs --check            # exit 0 up to date, 1 new commits
+node scripts/port/upstream-drift.mjs --apply            # exit 0 clean, 1 conflicts
+node scripts/port/upstream-drift.mjs --report           # JSON: commits, files, conflicts, leaks, package.json delta
+node scripts/port/upstream-drift.mjs --report --markdown
+```
+
+`--base <sha>` and `--head <ref>` override the marker's sha and `upstream/dev`. Exit code `2` means a usage or git error. `tests/port/upstream-drift.test.ts` covers the script against a fake upstream and fork pair.

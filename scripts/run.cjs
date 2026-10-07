@@ -410,14 +410,15 @@ function resolveGenericChildCommand(targetPath, extraArgs, platform = process.pl
     : [targetPath, ...extraArgs];
 }
 
-function resolveGenericChildStdio(platform = process.platform) {
+function resolveGenericChildStdio(platform = process.platform, stdin = 'inherit') {
   // stdin inherit: hook JSON payload from Claude Code.
   // stdout/stderr pipe: run.cjs owns the protocol handles so a descendant that
   // outlives the runner cannot keep Claude Code blocked on EOF (#3920).
   // ipc: Windows supervisor parent-death reap.
+  // Fork: stdin 'pipe' when the Copilot dispatcher supplies the payload bytes.
   return platform === 'win32'
-    ? ['inherit', 'pipe', 'pipe', 'ipc']
-    : ['inherit', 'pipe', 'pipe'];
+    ? [stdin, 'pipe', 'pipe', 'ipc']
+    : [stdin, 'pipe', 'pipe'];
 }
 
 function isClosedDestinationError(error) {
@@ -821,8 +822,9 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook, options
         finishClosedDestination();
       });
     };
+    const suppliedInput = Buffer.isBuffer(options.input) ? options.input : null;
     child = spawn(process.execPath, resolveGenericChildCommand(targetPath, extraArgs), {
-      stdio: resolveGenericChildStdio(),
+      stdio: resolveGenericChildStdio(process.platform, suppliedInput ? 'pipe' : 'inherit'),
       env: {
         ...process.env,
         OMC_SESSION_OWNER_PID: process.env.OMC_SESSION_OWNER_PID || String(process.ppid),
@@ -830,6 +832,11 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook, options
       windowsHide: true,
       detached: true,
     });
+    if (suppliedInput && child.stdin) {
+      // Fork (dispatcher): a hook that exits without reading stdin closes the pipe.
+      child.stdin.on('error', () => {});
+      child.stdin.end(suppliedInput);
+    }
     sink.attachChild(child);
     childIdentity = child.pid ? captureProcessStartIdentity(child.pid) : null;
 
@@ -867,6 +874,9 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook, options
       terminal = true;
       detachHandlers();
       reapOnce();
+      // Fork (dispatcher): stdout already streamed into a supplied sink is
+      // dropped, as runWorker drops a timed-out Worker's buffered output.
+      if (typeof options.onTimeout === 'function') options.onTimeout();
       void writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink).finally(() => {
         sink.abandonOutputs();
         detachProtocolStdio(child);
@@ -1045,6 +1055,9 @@ function resolveCopilotWorkerTarget(resolution, extraArgs, env = process.env) {
 
 // options (fork): { argv, env } for the Copilot generic Worker path; the
 // trusted and SessionEnd Worker callers pass none and keep upstream behaviour.
+// { input, stdout, stderr } (fork, scripts/copilot/dispatch.cjs only): the
+// payload bytes instead of process.stdin, and output sinks instead of the
+// process streams.
 async function runWorker(targetPath, manifestHook, timeoutMs, options = {}) {
   let worker;
   let terminal = false;
@@ -1052,23 +1065,26 @@ async function runWorker(targetPath, manifestHook, timeoutMs, options = {}) {
   let discardOutput = false;
   const stdout = [];
   const stderr = [];
-  const sink = createProtocolSink();
+  const stdoutDest = options.stdout || process.stdout;
+  const stderrDest = options.stderr || process.stderr;
+  const suppliedInput = Buffer.isBuffer(options.input) ? options.input : null;
+  const sink = createProtocolSink({ stdout: options.stdout, stderr: options.stderr });
   sink.install();
 
   const cleanupInput = () => {
     if (!worker) return;
-    process.stdin.unpipe(worker.stdin);
+    if (!suppliedInput) process.stdin.unpipe(worker.stdin);
     worker.stdin.destroy();
   };
   const waitForOutputEnd = stream => stream.readableEnded
     ? Promise.resolve()
     : new Promise(resolve => stream.once('end', resolve));
   const forwardBuffers = async (workerError) => {
-    if (stdout.length) await sink.write(process.stdout, Buffer.concat(stdout));
-    if (stderr.length) await sink.write(process.stderr, Buffer.concat(stderr));
+    if (stdout.length) await sink.write(stdoutDest, Buffer.concat(stdout));
+    if (stderr.length) await sink.write(stderrDest, Buffer.concat(stderr));
     if (workerError) {
       const diagnostic = workerError.stack || workerError.message || String(workerError);
-      await sink.write(process.stderr, Buffer.from(`${diagnostic}\n`));
+      await sink.write(stderrDest, Buffer.from(`${diagnostic}\n`));
     }
   };
   const waitForWorkerOutput = () => Promise.all([
@@ -1116,7 +1132,8 @@ async function runWorker(targetPath, manifestHook, timeoutMs, options = {}) {
           ...(options.argv && options.argv.length ? { argv: options.argv } : {}),
           workerData: { omcWorkerTarget: pathToFileURL(targetPath).href },
         });
-        if (process.stdin.readableEnded) worker.stdin.end();
+        if (suppliedInput) worker.stdin.end(suppliedInput);
+        else if (process.stdin.readableEnded) worker.stdin.end();
         else process.stdin.pipe(worker.stdin);
         worker.stdout.on('data', chunk => { if (!discardOutput) stdout.push(chunk); });
         worker.stderr.on('data', chunk => { if (!discardOutput) stderr.push(chunk); });
@@ -1149,56 +1166,55 @@ if (require.main === module) {
     if (!resolution) {
       process.exitCode = 0;
     } else {
-      const extraArgs = process.argv.slice(3);
-      const workerManifestHook = resolveWorkerTarget(resolution, extraArgs);
-      if (workerManifestHook) {
-        // Pre-check for git-guardrails: exit immediately if guard is disabled
-        if (basename(resolution.targetPath) === 'git-guardrails.mjs') {
-          const preCheckResult = gitGuardrailsPreCheck();
-          if (preCheckResult === 0) {
-            process.exitCode = 0;
-            return;
-          }
-        }
-        const workerTimeoutMs = resolveTrustedWorkerTimeoutMs(resolution.targetPath, workerManifestHook);
-        runWorker(resolution.targetPath, workerManifestHook, workerTimeoutMs).then(status => {
-          process.exitCode = status;
-        });
-      } else {
-        const sessionEndManifestHook = resolveTrustedSessionEndTarget(resolution, extraArgs);
-        if (sessionEndManifestHook) {
-          // Fork: 300ms on Claude Code, 1500ms under Copilot; see resolveSessionEndBudgetMs.
-          const budgetMs = resolveSessionEndBudgetMs();
-          const timeoutMs = Math.min(resolveGenericTimeoutMs(sessionEndManifestHook), budgetMs);
-          runWorker(resolution.targetPath, sessionEndManifestHook, timeoutMs).then(status => {
-            process.exitCode = status;
-          });
-        } else {
-          const copilotWorkerHook = resolveCopilotWorkerTarget(resolution, extraArgs);
-          if (copilotWorkerHook) {
-            // Fork: Copilot generic hooks in a Worker, same timeout and owner-pid
-            // env as runGenericChild; see COPILOT_WORKER_HOOKS.
-            const timeoutMs = resolveGenericTimeoutMs(copilotWorkerHook);
-            runWorker(resolution.targetPath, copilotWorkerHook, timeoutMs, {
-              argv: extraArgs,
-              env: {
-                ...process.env,
-                OMC_SESSION_OWNER_PID: process.env.OMC_SESSION_OWNER_PID || String(process.ppid),
-              },
-            }).then(status => {
-              process.exitCode = status;
-            });
-          } else {
-            const manifestHook = resolveHookTimeoutMs(resolution.targetPath, extraArgs);
-            const timeoutMs = resolveGenericTimeoutMs(manifestHook);
-            runGenericChild(resolution.targetPath, extraArgs, timeoutMs, manifestHook).then(status => {
-              process.exitCode = status;
-            });
-          }
-        }
-      }
+      runResolvedHook(resolution, process.argv.slice(3)).then(status => {
+        process.exitCode = status;
+      });
     }
   }
+}
+
+/**
+ * Route one resolved hook to its runner and resolve to its exit status.
+ * Fork: shared by the CLI entry above and scripts/copilot/dispatch.cjs.
+ * `io` ({ input, stdout, stderr, onTimeout }) is passed only by the dispatcher;
+ * the CLI entry passes none and keeps process stdin/stdout/stderr. The
+ * supervised child path calls `onTimeout()` when the hook times out, so the
+ * caller can drop stdout the child streamed before it hung.
+ */
+function runResolvedHook(resolution, extraArgs, io = {}) {
+  const workerManifestHook = resolveWorkerTarget(resolution, extraArgs);
+  if (workerManifestHook) {
+    // Pre-check for git-guardrails: exit immediately if guard is disabled
+    if (basename(resolution.targetPath) === 'git-guardrails.mjs' && gitGuardrailsPreCheck() === 0) {
+      return Promise.resolve(0);
+    }
+    const workerTimeoutMs = resolveTrustedWorkerTimeoutMs(resolution.targetPath, workerManifestHook);
+    return runWorker(resolution.targetPath, workerManifestHook, workerTimeoutMs, io);
+  }
+  const sessionEndManifestHook = resolveTrustedSessionEndTarget(resolution, extraArgs);
+  if (sessionEndManifestHook) {
+    // Fork: 300ms on Claude Code, 1500ms under Copilot; see resolveSessionEndBudgetMs.
+    const budgetMs = resolveSessionEndBudgetMs();
+    const timeoutMs = Math.min(resolveGenericTimeoutMs(sessionEndManifestHook), budgetMs);
+    return runWorker(resolution.targetPath, sessionEndManifestHook, timeoutMs, io);
+  }
+  const copilotWorkerHook = resolveCopilotWorkerTarget(resolution, extraArgs);
+  if (copilotWorkerHook) {
+    // Fork: Copilot generic hooks in a Worker, same timeout and owner-pid
+    // env as runGenericChild; see COPILOT_WORKER_HOOKS.
+    const timeoutMs = resolveGenericTimeoutMs(copilotWorkerHook);
+    return runWorker(resolution.targetPath, copilotWorkerHook, timeoutMs, {
+      ...io,
+      argv: extraArgs,
+      env: {
+        ...process.env,
+        OMC_SESSION_OWNER_PID: process.env.OMC_SESSION_OWNER_PID || String(process.ppid),
+      },
+    });
+  }
+  const manifestHook = resolveHookTimeoutMs(resolution.targetPath, extraArgs);
+  const timeoutMs = resolveGenericTimeoutMs(manifestHook);
+  return runGenericChild(resolution.targetPath, extraArgs, timeoutMs, manifestHook, io);
 }
 
 module.exports = {
@@ -1232,4 +1248,8 @@ module.exports = {
   COPILOT_WORKER_HOOKS,
   COPILOT_WORKER_MIN_TIMEOUT_MS,
   TRUSTED_WORKER_HOOKS,
+  resolveTarget,
+  runResolvedHook,
+  captureProcessStartIdentity,
+  reapTree,
 };

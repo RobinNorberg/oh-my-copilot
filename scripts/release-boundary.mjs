@@ -39,10 +39,11 @@ const REQUIRED_ENTRYPOINTS = Object.freeze([
   'bridge/mcp-server.cjs',
   'bridge/runtime-cli.cjs',
   'bridge/team.js',
-  // Copilot CLI plugin surface: root manifest, hooks, agents, hook adapter.
+  // Copilot CLI plugin surface: root manifest, hooks, agents, hook dispatcher and adapter.
   'plugin.json',
   'copilot/hooks.json',
   'copilot/agents/executor.md',
+  'scripts/copilot/dispatch.cjs',
   'scripts/lib/copilot-hook-adapter.cjs',
 ]);
 
