@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "c94a9d9a147755a42d227bdd9b52e6964f88b9b3",
-    "sourceSha256": "8c635bdce1dbb5a31a040d72d75ce62e92f423804d3f325241b8226ff0322649",
+    "head": "e102aca7830c7bde219a92a345aa4892c7dd321d",
+    "sourceSha256": "20826c972f58bf66f9372dd8c10dcce6f85822e2d41bc7e3ada65cabbd6d690f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "c94a9d9a147755a42d227bdd9b52e6964f88b9b3",
-  "sourceSha256": "8c635bdce1dbb5a31a040d72d75ce62e92f423804d3f325241b8226ff0322649",
+  "head": "e102aca7830c7bde219a92a345aa4892c7dd321d",
+  "sourceSha256": "20826c972f58bf66f9372dd8c10dcce6f85822e2d41bc7e3ada65cabbd6d690f",
   "counts": {
     "public": {
       "skills": 61,
@@ -53006,6 +53006,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/host-detection.test.ts",
+        "to": "src/utils/host-signal.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/hud-agents.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -60812,12 +60817,32 @@
       },
       {
         "from": "src/cli/commands/__tests__/team-status-json.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-status-json.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-status-json.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-status-json.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
       {
         "from": "src/cli/commands/__tests__/team-status-json.test.ts",
         "to": "src/cli/commands/team.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-status-json.test.ts",
+        "to": "src/team/git-worktree.ts",
         "kind": "imports"
       },
       {
@@ -60848,6 +60873,11 @@
       {
         "from": "src/cli/commands/__tests__/team.test.ts",
         "to": "src/cli/commands/team.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team.test.ts",
+        "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
       {
@@ -61363,6 +61393,11 @@
       {
         "from": "src/cli/commands/team.ts",
         "to": "src/team/events.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
+        "to": "src/team/git-worktree.ts",
         "kind": "imports"
       },
       {
@@ -92613,11 +92648,11 @@
     ],
     "stats": {
       "nodeCount": 8155,
-      "edgeCount": 8878,
-      "importEdgeCount": 7347,
+      "edgeCount": 8885,
+      "importEdgeCount": 7354,
       "registerEdgeCount": 82
     }
   },
   "inventorySha256": "90e662956c3d016796020b8c9053ddfeaff965f6dc49481700f22df0e6e04ba1",
-  "manifestSha256": "da56cd5ae17c0ed83764e6712f626768b9fa1b0143f296e46ff830f7e36690d8"
+  "manifestSha256": "a3069ebc8bf1cf5d274003a10769654f6e918a9af802beeceddd6bfaa2293724"
 }
