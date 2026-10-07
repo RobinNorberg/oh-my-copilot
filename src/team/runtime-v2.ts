@@ -203,7 +203,8 @@ import {
   type SdkSessionFile,
 } from './sdk-transport.js';
 import { toCopilotModelId } from './model-contract.js';
-import { resolveShimTarget } from '../smoke/copilot-sdk-driver.js';
+import { loadCopilotSdk, resolveShimTarget } from '../smoke/copilot-sdk-driver.js';
+import { detectHostCliType, type HostCliType } from '../utils/host-signal.js';
 import { resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { isProcessIdentityLive } from '../platform/process-utils.js';
@@ -1014,8 +1015,15 @@ export interface StartTeamV2Config {
    * branch. See merge-orchestrator.ts.
    */
   autoMerge?: boolean;
-  /** Worker transport; overrides `team.transport`. Default `pane`. */
-  transport?: 'pane' | 'sdk';
+  /** Worker transport; overrides `team.transport`. See {@link resolveTeamTransport}. */
+  transport?: TeamTransportSetting;
+  /**
+   * Used when neither `transport` nor `team.transport` is set. `omg team`
+   * passes `auto`; programmatic callers keep the historical `pane`.
+   */
+  defaultTransport?: TeamTransportSetting;
+  /** Test seam: whether `@github/copilot-sdk` resolves (only asked for `auto`). */
+  sdkAvailable?: () => Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1556,6 +1564,48 @@ export interface SdkTeamSettings {
 }
 
 export const DEFAULT_SDK_LAUNCH_CONCURRENCY = 4;
+
+/** `pane` = tmux/psmux panes; `sdk` = headless copilot-sdk hosts; `auto` = by host, see {@link resolveTeamTransport}. */
+export type TeamTransportSetting = 'pane' | 'sdk' | 'auto';
+
+export interface TeamTransportDecision {
+  transport: 'pane' | 'sdk';
+  /** The setting that produced it, after precedence (flag > `team.transport` > default). */
+  requested: TeamTransportSetting;
+  /** Set when `auto` chose `pane`: why the sdk transport could not take this team. */
+  fallbackReason?: string;
+}
+
+/**
+ * Resolve the worker transport. Precedence: explicit `transport` (the
+ * `--transport` flag), then `team.transport`, then the caller's default.
+ * `auto` picks `sdk` under the Copilot CLI host (the existing host detection)
+ * and `pane` under Claude Code; it falls back to `pane`, never fails, when the
+ * team is one the sdk transport rejects: `--auto-merge`, a non-copilot
+ * worker, an explicitly assigned reviewer-contract role (its verdict file is
+ * only read after the provider exits, and an sdk host never exits between
+ * turns), or `@github/copilot-sdk` not installed. An explicit `sdk` keeps
+ * failing loudly on those.
+ */
+export async function resolveTeamTransport(input: {
+  requested: TeamTransportSetting;
+  host: HostCliType;
+  autoMerge: boolean;
+  agentTypes: readonly string[];
+  explicitContractRoles: readonly string[];
+  sdkAvailable: () => Promise<boolean>;
+}): Promise<TeamTransportDecision> {
+  const { requested } = input;
+  if (requested !== 'auto') return { transport: requested, requested };
+  if (input.host !== 'copilot') return { transport: 'pane', requested, fallbackReason: `host_${input.host}` };
+  const pane = (fallbackReason: string): TeamTransportDecision => ({ transport: 'pane', requested, fallbackReason });
+  if (input.autoMerge) return pane('auto_merge');
+  const foreign = [...new Set(input.agentTypes.filter((agentType) => agentType !== 'copilot'))];
+  if (foreign.length > 0) return pane(`non_copilot_workers:${foreign.join(',')}`);
+  if (input.explicitContractRoles.length > 0) return pane(`contract_roles:${[...new Set(input.explicitContractRoles)].join(',')}`);
+  if (!await input.sdkAvailable().catch(() => false)) return pane('copilot_sdk_not_installed');
+  return { transport: 'sdk', requested };
+}
 
 /**
  * Run startup launches with at most `concurrency` in flight. `record` sees
@@ -4302,11 +4352,11 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
   // do NOT change routing — user must recreate the team to pick up changes.
   const pluginCfg: PluginConfig = config.pluginConfig ?? loadConfig();
   const resolvedRouting = buildResolvedRoutingSnapshot(pluginCfg);
-  const transport = config.transport ?? pluginCfg.team?.transport ?? 'pane';
-  if (transport !== 'pane' && transport !== 'sdk') throw new Error(`invalid_team_transport:${String(transport)}`);
-  const sdkMode = transport === 'sdk';
-  const sdkSettings = sdkMode ? resolveSdkTeamSettings(pluginCfg) : null;
-  if (sdkMode && config.autoMerge) throw new Error('sdk_transport_unsupported:auto_merge');
+  const requestedTransport = config.transport ?? pluginCfg.team?.transport ?? config.defaultTransport ?? 'pane';
+  if (requestedTransport !== 'pane' && requestedTransport !== 'sdk' && requestedTransport !== 'auto') {
+    throw new Error(`invalid_team_transport:${String(requestedTransport)}`);
+  }
+  if (requestedTransport === 'sdk' && config.autoMerge) throw new Error('sdk_transport_unsupported:auto_merge');
   let worktreeMode: TeamWorktreeMode = normalizeTeamWorktreeMode(
     process.env.OMC_TEAM_WORKTREE_MODE ?? pluginCfg.team?.ops?.worktreeMode,
   );
@@ -4392,6 +4442,8 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
   };
   const startupAssignments = new Map<string, StartupAssignment>();
   const effectiveAgentTypes = new Set<CliAgentType>();
+  // Contract roles only INFERRED from task text, per worker: the sdk transport drops them below.
+  const inferredContractRoles = new Map<string, CanonicalTeamRole>();
   for (let i = 0; i < workerNames.length; i++) {
     const workerName = workerNames[i]!;
     const taskIndex = startupByWorker.get(workerName);
@@ -4401,20 +4453,10 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     const resolvedAssignment = task === undefined
       ? { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: undefined }
       : resolveTaskAssignment(task, resolvedRouting, roleRoutingConfig, fallbackAgent);
-    let role = resolvedAssignment.role ?? undefined;
-    // Under the sdk transport, a contract role (critic/code-reviewer/
-    // security-reviewer/test-engineer) that was only INFERRED from task text
-    // — not explicitly assigned via task.role or team.roleRouting config —
-    // carries no user intent to honor by failing the whole team start. Drop
-    // the role instead: the worker launches as a plain executor-style
-    // worker (no verdict contract, no role-specific prompt override). An
-    // explicitly assigned contract role is still rejected below.
-    if (sdkMode && role && shouldInjectContract(role, resolvedAssignment.agentType)
+    const role = resolvedAssignment.role ?? undefined;
+    if (role && shouldInjectContract(role, resolvedAssignment.agentType)
       && task && !isExplicitTaskRoleAssignment(task, roleRoutingConfig, role)) {
-      process.stderr.write(`[omg team] sdk transport: inferred role "${role}" for worker ${workerName} `
-        + `would require a verdict contract the sdk transport cannot process; running as a plain executor `
-        + `instead (an explicitly assigned contract role is still rejected)\n`);
-      role = undefined;
+      inferredContractRoles.set(workerName, role);
     }
     const assignment: StartupAssignment = {
       agentType: resolvedAssignment.agentType,
@@ -4424,6 +4466,35 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     };
     startupAssignments.set(workerName, assignment);
     effectiveAgentTypes.add(assignment.agentType);
+  }
+  const transportDecision = await resolveTeamTransport({
+    requested: requestedTransport,
+    host: detectHostCliType(),
+    autoMerge: Boolean(config.autoMerge),
+    agentTypes: [...effectiveAgentTypes],
+    explicitContractRoles: [...startupAssignments].flatMap(([workerName, a]) =>
+      a.role && shouldInjectContract(a.role, a.agentType) && !inferredContractRoles.has(workerName) ? [a.role] : []),
+    sdkAvailable: config.sdkAvailable ?? (async () => (await loadCopilotSdk()) !== null),
+  });
+  if (transportDecision.requested === 'auto' && transportDecision.fallbackReason && !transportDecision.fallbackReason.startsWith('host_')) {
+    process.stderr.write(`[omg team] transport auto: using pane workers, not sdk (${transportDecision.fallbackReason})\n`);
+  }
+  const sdkMode = transportDecision.transport === 'sdk';
+  const sdkSettings = sdkMode ? resolveSdkTeamSettings(pluginCfg) : null;
+  if (sdkMode) {
+    // Under the sdk transport, a contract role (critic/code-reviewer/
+    // security-reviewer/test-engineer) that was only INFERRED from task text
+    // — not explicitly assigned via task.role or team.roleRouting config —
+    // carries no user intent to honor by failing the whole team start. Drop
+    // the role instead: the worker launches as a plain executor-style
+    // worker (no verdict contract, no role-specific prompt override). An
+    // explicitly assigned contract role is still rejected below.
+    for (const [workerName, role] of inferredContractRoles) {
+      process.stderr.write(`[omg team] sdk transport: inferred role "${role}" for worker ${workerName} `
+        + `would require a verdict contract the sdk transport cannot process; running as a plain executor `
+        + `instead (an explicitly assigned contract role is still rejected)\n`);
+      delete startupAssignments.get(workerName)!.role;
+    }
   }
   if (sdkMode && [...effectiveAgentTypes].some((agentType) => agentType !== 'copilot')) {
     throw new Error(`sdk_transport_requires_copilot_workers:${[...effectiveAgentTypes].join(',')}`);

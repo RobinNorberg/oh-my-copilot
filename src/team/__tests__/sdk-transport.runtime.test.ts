@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CanonicalTeamRole, PluginConfig, TeamRoleAssignmentSpec } from '../../shared/types.js';
 import {
-  DEFAULT_SDK_LAUNCH_CONCURRENCY, isExplicitTaskRoleAssignment, resolveSdkTeamSettings,
+  DEFAULT_SDK_LAUNCH_CONCURRENCY, isExplicitTaskRoleAssignment, resolveSdkTeamSettings, resolveTeamTransport,
   runBoundedLaunches, startTeamV2,
 } from '../runtime-v2.js';
 
@@ -176,6 +176,119 @@ describe('startTeamV2 --transport sdk guards', () => {
     } finally {
       stderrSpy.mockRestore();
     }
+  });
+});
+
+describe('resolveTeamTransport', () => {
+  const base = {
+    requested: 'auto' as const,
+    host: 'copilot' as const,
+    autoMerge: false,
+    agentTypes: ['copilot'],
+    explicitContractRoles: [] as string[],
+    sdkAvailable: async () => true,
+  };
+
+  it('passes an explicit transport through untouched', async () => {
+    const sdkAvailable = vi.fn(async () => false);
+    expect(await resolveTeamTransport({ ...base, requested: 'sdk', agentTypes: ['codex'], sdkAvailable }))
+      .toEqual({ transport: 'sdk', requested: 'sdk' });
+    expect(await resolveTeamTransport({ ...base, requested: 'pane' })).toEqual({ transport: 'pane', requested: 'pane' });
+    expect(sdkAvailable).not.toHaveBeenCalled();
+  });
+
+  it('auto picks sdk under the Copilot host', async () => {
+    expect(await resolveTeamTransport(base)).toEqual({ transport: 'sdk', requested: 'auto' });
+  });
+
+  it('auto picks pane under Claude Code without probing the sdk', async () => {
+    const sdkAvailable = vi.fn(async () => true);
+    expect(await resolveTeamTransport({ ...base, host: 'claude', sdkAvailable }))
+      .toEqual({ transport: 'pane', requested: 'auto', fallbackReason: 'host_claude' });
+    expect(sdkAvailable).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ autoMerge: true }, 'auto_merge'],
+    [{ agentTypes: ['copilot', 'codex', 'codex'] }, 'non_copilot_workers:codex'],
+    [{ explicitContractRoles: ['critic', 'critic'] }, 'contract_roles:critic'],
+    [{ sdkAvailable: async () => false }, 'copilot_sdk_not_installed'],
+    [{ sdkAvailable: async () => { throw new Error('boom'); } }, 'copilot_sdk_not_installed'],
+  ])('auto falls back to pane for %j', async (over, reason) => {
+    expect(await resolveTeamTransport({ ...base, ...over })).toEqual({ transport: 'pane', requested: 'auto', fallbackReason: reason });
+  });
+});
+
+describe('startTeamV2 transport auto', () => {
+  let cwd: string | undefined;
+  const saved = { PATH: process.env.PATH, Path: process.env.Path, COPILOT_CLI: process.env.COPILOT_CLI };
+  afterEach(() => {
+    if (cwd) rmSync(cwd, { recursive: true, force: true });
+    cwd = undefined;
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  // An empty PATH makes the binary preflight fail before any side effect, so
+  // these tests observe only the transport decision.
+  const startWithoutBinaries = async (overrides: Partial<Parameters<typeof startTeamV2>[0]>) => {
+    cwd = mkdtempSync(join(tmpdir(), 'sdk-team-auto-'));
+    process.env.COPILOT_CLI = '1';
+    process.env.PATH = cwd;
+    if (process.env.Path !== undefined) process.env.Path = cwd;
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const error = await startTeamV2({
+        teamName: 'sdk-auto',
+        workerCount: 1,
+        agentTypes: ['copilot'],
+        tasks: [{ subject: 'Critique the plan', description: 'critique', role: 'critic' }],
+        cwd,
+        defaultTransport: 'auto',
+        pluginConfig: {} as PluginConfig,
+        ...overrides,
+      }).catch((e: unknown) => e);
+      return { error: error as Error, stderr: stderrSpy.mock.calls.map((args) => String(args[0])).join('') };
+    } finally {
+      stderrSpy.mockRestore();
+    }
+  };
+
+  it('falls back to pane instead of rejecting an explicit reviewer role', async () => {
+    const { error, stderr } = await startWithoutBinaries({ sdkAvailable: async () => true });
+    expect(error.message).toMatch(/^cli_binary_preflight_failed:/);
+    expect(stderr).toMatch(/transport auto: using pane workers, not sdk \(contract_roles:critic\)/);
+    expect(existsSync(join(cwd!, '.omg', 'state', 'team', 'sdk-auto'))).toBe(false);
+  });
+
+  it('chooses sdk for a plain copilot team and applies the sdk role rules', async () => {
+    const sdkAvailable = vi.fn(async () => true);
+    const { stderr } = await startWithoutBinaries({
+      sdkAvailable,
+      tasks: [{ subject: 'fix the failing tests', description: 'fix the failing tests' }],
+    });
+    expect(sdkAvailable).toHaveBeenCalledTimes(1);
+    expect(stderr).not.toMatch(/transport auto: using pane/);
+    expect(stderr).toMatch(/sdk transport: inferred role "test-engineer" for worker worker-1/);
+  });
+
+  it('lets team.transport override the default', async () => {
+    const sdkAvailable = vi.fn(async () => true);
+    const { stderr } = await startWithoutBinaries({
+      sdkAvailable,
+      pluginConfig: { team: { transport: 'pane' } } as PluginConfig,
+      tasks: [{ subject: 'fix the failing tests', description: 'fix the failing tests' }],
+    });
+    expect(sdkAvailable).not.toHaveBeenCalled();
+    expect(stderr).not.toMatch(/sdk transport: inferred role/);
+  });
+
+  it('keeps the historical pane default for programmatic callers', async () => {
+    const sdkAvailable = vi.fn(async () => true);
+    await startWithoutBinaries({ sdkAvailable, defaultTransport: undefined });
+    expect(sdkAvailable).not.toHaveBeenCalled();
   });
 });
 

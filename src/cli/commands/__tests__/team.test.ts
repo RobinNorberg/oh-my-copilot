@@ -283,6 +283,46 @@ describe('teamCommand api operations', () => {
     await expect(assertTeamSpawnAllowed(wd)).resolves.toBeUndefined();
   });
 
+  async function writeSdkTeam(root: string, session: { state: string; host_pid: number }): Promise<void> {
+    const team = join(root, '.omg', 'state', 'team', 'sdk-team');
+    await mkdir(join(team, 'workers', 'worker-1'), { recursive: true });
+    await writeFile(join(team, 'config.json'), JSON.stringify({
+      name: 'sdk-team',
+      task: 'sdk launch',
+      agent_type: 'copilot',
+      worker_count: 1,
+      workers: [{ name: 'worker-1', index: 1, role: 'copilot', assigned_tasks: [], pane_id: 'sdk:worker-1' }],
+      created_at: new Date().toISOString(),
+      tmux_session: 'sdk:sdk-team',
+      next_task_id: 1,
+    }, null, 2));
+    await writeFile(join(team, 'workers', 'worker-1', 'sdk-session.json'), JSON.stringify({
+      schema_version: 1, team_name: 'sdk-team', worker_name: 'worker-1', attempt_id: 'a1',
+      host_pid: session.host_pid, runtime_pid: null, session_id: 's1', model: null, state: session.state,
+      turns: 1, queued: 0, delivered: [], last_event_type: null, last_event_at: null, updated_at: new Date().toISOString(),
+      usage: { credits: 0, premium_requests: 0, shutdown_premium_requests: null, shutdown_credits: null },
+      hooks: { session_end_runs: 0, failed: 0 }, aborts: 0, permissions: [], last_error: null, timeline: {},
+    }));
+  }
+
+  it('enforces one_team_per_leader_session for an sdk team whose host is alive', async () => {
+    wd = await mkdtemp(join(tmpdir(), 'omc-team-sdk-gate-'));
+    isolateFixtureHome(wd);
+    await writeSdkTeam(wd, { state: 'busy', host_pid: process.pid });
+    delete process.env.OMC_TEAM_WORKER;
+    delete process.env.OMX_TEAM_WORKER;
+    await expect(assertTeamSpawnAllowed(wd)).rejects.toThrow(/already owns active team "sdk-team"/);
+  });
+
+  it('ignores an sdk team whose hosts have closed', async () => {
+    wd = await mkdtemp(join(tmpdir(), 'omc-team-sdk-gate-'));
+    isolateFixtureHome(wd);
+    await writeSdkTeam(wd, { state: 'closed', host_pid: process.pid });
+    delete process.env.OMC_TEAM_WORKER;
+    delete process.env.OMX_TEAM_WORKER;
+    await expect(assertTeamSpawnAllowed(wd)).resolves.toBeUndefined();
+  });
+
   it('allows nested team spawn only when parent governance enables it', async () => {
     wd = await mkdtemp(join(tmpdir(), 'omc-team-governance-'));
     isolateFixtureHome(wd);
@@ -331,6 +371,26 @@ describe('teamCommand api operations', () => {
     } finally {
       process.env.OMC_TEAM_WORKER = previousWorker;
     }
+  });
+});
+
+describe('parseTeamArgs --transport', () => {
+  it.each([
+    [['--transport', 'sdk'], 'sdk'],
+    [['--transport=pane'], 'pane'],
+    [['--transport', 'tmux'], 'pane'],
+    [['--transport', 'psmux'], 'pane'],
+    [['--transport', 'auto'], 'auto'],
+  ])('parses %j as %s', (flag, expected) => {
+    expect(parseTeamArgs(['2:copilot', ...flag, 'do work']).transport).toBe(expected);
+  });
+
+  it('leaves the transport unset without the flag (the start path then defaults to auto)', () => {
+    expect(parseTeamArgs(['2:copilot', 'do work']).transport).toBeUndefined();
+  });
+
+  it('rejects an unknown transport', () => {
+    expect(() => parseTeamArgs(['--transport', 'ssh', 'do work'])).toThrow(/Usage: --transport sdk\|pane\|tmux\|psmux\|auto/);
   });
 });
 

@@ -33,7 +33,7 @@ const VALID_TEAM_CLI_AGENT_TYPES = new Set(['claude', 'copilot', 'codex', 'gemin
 const defaultTeamCliAgentType = (): CliAgentType => getHostCliType();
 
 const TEAM_HELP = `
-Usage: omg team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decompose] [--transport pane|sdk] "<task description>"
+Usage: omg team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decompose] [--transport sdk|pane|auto] "<task description>"
        omg team [N:agent-type[:role]] --task "<task description>"
        omg team status <team-name>
        omg team shutdown <team-name> [--force]
@@ -55,6 +55,16 @@ Examples:
 
 Without a worker spec, quote a multi-word positional task as one shell argument. Use --task for single-word tasks.
 
+Transport:
+  --transport sdk      Headless workers: one detached copilot-sdk host per worker, no multiplexer.
+                       Copilot workers only; no --auto-merge; explicitly assigned reviewer-style
+                       roles (critic, code-reviewer, security-reviewer, test-engineer) are rejected.
+  --transport pane     Workers in tmux/psmux panes (aliases: tmux, psmux).
+  --transport auto     The default. Under the Copilot CLI host: sdk, falling back to pane (with a
+                       note on stderr) for a team the sdk transport cannot run or when
+                       @github/copilot-sdk is not installed. Under Claude Code: pane.
+  team.transport in the project config sets the default (sdk|pane|auto); the flag wins.
+
 Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omg/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
 
 Auto-merge (v2-only):
@@ -68,7 +78,7 @@ Auto-merge (v2-only):
 Runtime safety:
   Instance-bound team startup and shutdown require runtime v2. Setting
   OMC_RUNTIME_V2=0|false|no|off is rejected before any native effects.
-  This command reports only the tmux runtime-v2 outcome. An implicit team
+  This command reports only the runtime-v2 outcome. An implicit team
   finishing does not make it succeed, and it does not finish an implicit team.
   --force skips the task-status gate and graceful waits; it does not bypass ownership or cleanup verification.
   Unverified worker/provider cleanup preserves worktrees and team state. Errors report the outcome and reason/detail; preserved outcomes name affected workers.
@@ -307,8 +317,8 @@ export interface ParsedTeamArgs {
   autoMerge: boolean;
   explicitWorkerSpec: boolean;
   noDecompose: boolean;
-  /** Worker transport override (`--transport pane|sdk`). */
-  transport?: 'pane' | 'sdk';
+  /** Worker transport override (`--transport`; `tmux`/`psmux` parse as `pane`). */
+  transport?: 'pane' | 'sdk' | 'auto';
 }
 
 interface NormalizedWorkerSpecSegment {
@@ -317,9 +327,29 @@ interface NormalizedWorkerSpecSegment {
   role?: string;
 }
 
-function isTeamStateLive(config: { tmux_session?: string } | null): boolean {
+/**
+ * A pane team is live while its multiplexer session exists. An sdk team
+ * (`sdk:<team>`) names no multiplexer resource: it is live while any worker's
+ * host is, per its session file (not yet closed or failed, host pid alive).
+ */
+async function isTeamStateLive(
+  config: { tmux_session?: string; workers?: Array<{ name: string }> } | null,
+  teamName: string,
+  cwd: string,
+): Promise<boolean> {
   const target = typeof config?.tmux_session === 'string' ? config.tmux_session.trim() : '';
   if (!target) return false;
+  if (target.startsWith('sdk:')) {
+    const { readSdkSession } = await import('../../team/sdk-transport.js');
+    const { teamStateRoot } = await import('../../team/state-paths.js');
+    const { isProcessAlive } = await import('../../platform/process-utils.js');
+    const stateRoot = teamStateRoot(cwd, teamName);
+    return (config?.workers ?? []).some((worker) => {
+      const session = readSdkSession(stateRoot, worker.name);
+      return Boolean(session && session.state !== 'closed' && session.state !== 'failed'
+        && session.host_pid > 0 && isProcessAlive(session.host_pid));
+    });
+  }
   try {
     tmuxExec(['has-session', '-t', target], { stdio: 'ignore' });
     return true;
@@ -361,7 +391,7 @@ export async function assertTeamSpawnAllowed(cwd: string, env: NodeJS.ProcessEnv
   const activeTeams = await findActiveTeamsV2(cwd);
   for (const activeTeam of activeTeams) {
     const config = await teamReadConfig(activeTeam, cwd);
-    if (!isTeamStateLive(config)) continue;
+    if (!await isTeamStateLive(config, activeTeam, cwd)) continue;
     const manifest = await teamReadManifest(activeTeam, cwd);
     const governance = normalizeTeamGovernance(manifest?.governance, manifest?.policy);
     if (governance.one_team_per_leader_session ?? DEFAULT_TEAM_GOVERNANCE.one_team_per_leader_session) {
@@ -415,7 +445,7 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = defau
   let newWindow = false;
   let autoMerge: boolean = process.env.OMC_TEAMS_AUTO_MERGE === '1';
   let noDecompose = false;
-  let transport: 'pane' | 'sdk' | undefined;
+  let transport: 'pane' | 'sdk' | 'auto' | undefined;
   let taskFromFlag: string | undefined;
   const normalizedDefaultAgentType = VALID_TEAM_CLI_AGENT_TYPES.has(defaultAgentType as CliAgentType)
     ? defaultAgentType
@@ -435,8 +465,12 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = defau
       noDecompose = true;
     } else if (arg === '--transport' || arg.startsWith('--transport=')) {
       const value = arg.includes('=') ? arg.slice('--transport='.length) : args[++index];
-      if (value !== 'pane' && value !== 'sdk') throw new Error('Usage: --transport pane|sdk');
-      transport = value;
+      // tmux and psmux name the multiplexer behind the pane transport.
+      const normalized = value === 'tmux' || value === 'psmux' ? 'pane' : value;
+      if (normalized !== 'pane' && normalized !== 'sdk' && normalized !== 'auto') {
+        throw new Error('Usage: --transport sdk|pane|tmux|psmux|auto');
+      }
+      transport = normalized;
     } else if (arg === '--task') {
       if (taskFromFlag !== undefined || args[index + 1] === undefined) {
         throw new Error('Usage: omg team [N:agent-type[:role]] --task "<task description>"');
@@ -809,6 +843,7 @@ async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<voi
     ...rolePromptOptions,
     ...(parsed.autoMerge ? { autoMerge: true } : {}),
     ...(parsed.transport ? { transport: parsed.transport } : {}),
+    defaultTransport: 'auto',
   });
 
   const uniqueTypes = [...new Set(parsed.agentTypes)].join(',');
