@@ -29,7 +29,7 @@ This enables:
 
 ### Config File
 
-Granular overrides via `.claude/omc.jsonc` (project) or `~/.config/claude-omc/config.jsonc` (user):
+Granular overrides via `.copilot/omg.jsonc` (project) or `~/.config/claude-omc/config.jsonc` (user):
 
 ```jsonc
 {
@@ -93,7 +93,7 @@ export OMC_SECURITY=strict
 ```
 
 ```jsonc
-// .claude/omc.jsonc
+// .copilot/omg.jsonc
 {
   "security": {
     "restrictToolPaths": true,

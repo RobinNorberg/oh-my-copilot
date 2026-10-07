@@ -22,11 +22,19 @@ function getConfigDir() {
   return process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
 }
 
-// Mirrors src/config/loader.ts:getConfigPaths
+// Mirrors src/config/loader.ts:getConfigPaths. Project: canonical
+// .copilot/omg.jsonc, then legacy .copilot/omc.jsonc, then the upstream
+// .claude/omc.jsonc this hook read before the rename.
 function getConfigPaths(cwd) {
+  const dir = cwd || process.cwd();
+  const projectCandidates = [
+    join(dir, '.copilot', 'omg.jsonc'),
+    join(dir, '.copilot', 'omc.jsonc'),
+    join(dir, '.claude', 'omc.jsonc'),
+  ];
   return {
     user: join(getConfigDir(), 'claude-omc', 'config.jsonc'),
-    project: join(cwd || process.cwd(), '.claude', 'omc.jsonc'),
+    project: projectCandidates.find((path) => existsSync(path)) ?? projectCandidates[0],
   };
 }
 

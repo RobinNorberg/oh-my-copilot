@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "f8e5ab575ac12f520847e1e2f0c38729eeecdca2",
-    "sourceSha256": "e8d4c56258cdd829bce046fa32507c6f058a19c8a831f26b7fffe2d622ca1531",
+    "head": "3cc6e1c904e7475baee62e3a7825313bbafa2240",
+    "sourceSha256": "92b8c4d4ded4ef912471ea87fd44e7042c7b6d2d18055ce5a11dd05afce9ec7b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "f8e5ab575ac12f520847e1e2f0c38729eeecdca2",
-  "sourceSha256": "e8d4c56258cdd829bce046fa32507c6f058a19c8a831f26b7fffe2d622ca1531",
+  "head": "3cc6e1c904e7475baee62e3a7825313bbafa2240",
+  "sourceSha256": "92b8c4d4ded4ef912471ea87fd44e7042c7b6d2d18055ce5a11dd05afce9ec7b",
   "counts": {
     "public": {
       "skills": 61,
       "commands": 21,
-      "workflows": 8,
+      "workflows": 9,
       "agents": 20,
-      "total": 110
+      "total": 111
     },
     "internal": {
       "hookFiles": 350,
@@ -28,8 +28,8 @@
       "toolFiles": 62,
       "libFiles": 47,
       "templateHooks": 23,
-      "srcFiles": 1533,
-      "total": 1556
+      "srcFiles": 1536,
+      "total": 1559
     },
     "generated": {
       "distFiles": 5911,
@@ -42,7 +42,7 @@
     "skills": 61,
     "commands": 21,
     "hookFiles": 350,
-    "workflows": 8,
+    "workflows": 9,
     "agentDefinitions": 18,
     "promptLikeFiles": 61
   },
@@ -163,7 +163,8 @@
       ".github/workflows/pr-check.yml",
       ".github/workflows/release.yml",
       ".github/workflows/stale.yml",
-      ".github/workflows/upgrade-test.yml"
+      ".github/workflows/upgrade-test.yml",
+      ".github/workflows/upstream-drift.yml"
     ]
   },
   "internal": {
@@ -831,7 +832,6 @@
       "scripts/context-safety.mjs",
       "scripts/copilot/build-agents.mjs",
       "scripts/copilot/build-hooks.mjs",
-      "scripts/copilot/dispatch.cjs",
       "scripts/demo-team.mjs",
       "scripts/dev/repro-state-lock.mjs",
       "scripts/eval-autoresearch-json.mjs",
@@ -885,6 +885,7 @@
       "scripts/persistent-mode.mjs",
       "scripts/plugin-setup.mjs",
       "scripts/plugin-shipping-surface.mjs",
+      "scripts/port/upstream-drift.mjs",
       "scripts/post-tool-directory-context-injector.mjs",
       "scripts/post-tool-rules-injector.mjs",
       "scripts/post-tool-use-failure.mjs",
@@ -7226,7 +7227,8 @@
       ".github/workflows/pr-check.yml",
       ".github/workflows/release.yml",
       ".github/workflows/stale.yml",
-      ".github/workflows/upgrade-test.yml"
+      ".github/workflows/upgrade-test.yml",
+      ".github/workflows/upstream-drift.yml"
     ],
     "promptSources": [
       ".clawhip/state/prompt-submit.json",
@@ -7500,6 +7502,11 @@
         "path": ".github/release-notes.md"
       },
       {
+        "id": ".github/upstream-port.json",
+        "kind": "other",
+        "path": ".github/upstream-port.json"
+      },
+      {
         "id": ".github/workflows/auto-label.yml",
         "kind": "workflow",
         "path": ".github/workflows/auto-label.yml"
@@ -7538,6 +7545,11 @@
         "id": ".github/workflows/upgrade-test.yml",
         "kind": "workflow",
         "path": ".github/workflows/upgrade-test.yml"
+      },
+      {
+        "id": ".github/workflows/upstream-drift.yml",
+        "kind": "workflow",
+        "path": ".github/workflows/upstream-drift.yml"
       },
       {
         "id": ".gitignore",
@@ -7593,6 +7605,11 @@
         "id": ".omc/skills/omg-release-runbook.md",
         "kind": "other",
         "path": ".omc/skills/omg-release-runbook.md"
+      },
+      {
+        "id": ".omc/skills/port-and-release-cycle.md",
+        "kind": "other",
+        "path": ".omc/skills/port-and-release-cycle.md"
       },
       {
         "id": ".omc/skills/port-upstream.md",
@@ -38985,11 +39002,6 @@
         "path": "scripts/copilot/build-hooks.mjs"
       },
       {
-        "id": "scripts/copilot/dispatch.cjs",
-        "kind": "script",
-        "path": "scripts/copilot/dispatch.cjs"
-      },
-      {
         "id": "scripts/demo-team.mjs",
         "kind": "script",
         "path": "scripts/demo-team.mjs"
@@ -39253,6 +39265,11 @@
         "id": "scripts/plugin-shipping-surface.mjs",
         "kind": "script",
         "path": "scripts/plugin-shipping-surface.mjs"
+      },
+      {
+        "id": "scripts/port/upstream-drift.mjs",
+        "kind": "script",
+        "path": "scripts/port/upstream-drift.mjs"
       },
       {
         "id": "scripts/post-tool-directory-context-injector.mjs",
@@ -40105,6 +40122,11 @@
         "path": "src/__tests__/agent-boundary-guidance.test.ts"
       },
       {
+        "id": "src/__tests__/agent-model-config.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/agent-model-config.test.ts"
+      },
+      {
         "id": "src/__tests__/agent-registry.test.ts",
         "kind": "src",
         "path": "src/__tests__/agent-registry.test.ts"
@@ -40285,11 +40307,6 @@
         "path": "src/__tests__/copilot-hook-adapter.test.ts"
       },
       {
-        "id": "src/__tests__/copilot-hook-dispatch.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/copilot-hook-dispatch.test.ts"
-      },
-      {
         "id": "src/__tests__/copilot-hooks-manifest.test.ts",
         "kind": "src",
         "path": "src/__tests__/copilot-hooks-manifest.test.ts"
@@ -40345,6 +40362,11 @@
         "path": "src/__tests__/doctor-legacy-config-dir.test.ts"
       },
       {
+        "id": "src/__tests__/doctor-legacy-project-config.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/doctor-legacy-project-config.test.ts"
+      },
+      {
         "id": "src/__tests__/doctor-node-on-path.test.ts",
         "kind": "src",
         "path": "src/__tests__/doctor-node-on-path.test.ts"
@@ -40378,11 +40400,6 @@
         "id": "src/__tests__/fixtures/copilot-hook-adapter/worker.mjs",
         "kind": "src",
         "path": "src/__tests__/fixtures/copilot-hook-adapter/worker.mjs"
-      },
-      {
-        "id": "src/__tests__/fixtures/copilot-hook-dispatch/probe.mjs",
-        "kind": "src",
-        "path": "src/__tests__/fixtures/copilot-hook-dispatch/probe.mjs"
       },
       {
         "id": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs",
@@ -41665,6 +41682,11 @@
         "path": "src/__tests__/workflow-profile-activation-script.test.ts"
       },
       {
+        "id": "src/__tests__/workflow-profile-runtime.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/workflow-profile-runtime.test.ts"
+      },
+      {
         "id": "src/__tests__/worktree-metadata-locking.test.ts",
         "kind": "src",
         "path": "src/__tests__/worktree-metadata-locking.test.ts"
@@ -42305,6 +42327,11 @@
         "path": "src/config/__tests__/plan-output.test.ts"
       },
       {
+        "id": "src/config/__tests__/project-config-path.test.ts",
+        "kind": "src",
+        "path": "src/config/__tests__/project-config-path.test.ts"
+      },
+      {
         "id": "src/config/__tests__/test-helpers.ts",
         "kind": "src",
         "path": "src/config/__tests__/test-helpers.ts"
@@ -42338,6 +42365,11 @@
         "id": "src/config/plan-output.ts",
         "kind": "src",
         "path": "src/config/plan-output.ts"
+      },
+      {
+        "id": "src/config/project-config-path.ts",
+        "kind": "src",
+        "path": "src/config/project-config-path.ts"
       },
       {
         "id": "src/constants/index.ts",
@@ -48140,6 +48172,11 @@
         "path": "tests/lint/team-resume-contract.test.ts"
       },
       {
+        "id": "tests/lint/upstream-drift-workflow.test.ts",
+        "kind": "other",
+        "path": "tests/lint/upstream-drift-workflow.test.ts"
+      },
+      {
         "id": "tests/lint/windows-hide-hooks.test.ts",
         "kind": "other",
         "path": "tests/lint/windows-hide-hooks.test.ts"
@@ -48153,6 +48190,11 @@
         "id": "tests/perf/subagent-lock.bench.ts",
         "kind": "other",
         "path": "tests/perf/subagent-lock.bench.ts"
+      },
+      {
+        "id": "tests/port/upstream-drift.test.ts",
+        "kind": "other",
+        "path": "tests/port/upstream-drift.test.ts"
       },
       {
         "id": "tests/shipyard-audit.test.ts",
@@ -49029,31 +49071,6 @@
       {
         "from": "scripts/copilot/build-hooks.mjs",
         "to": "external:node:url",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/copilot/dispatch.cjs",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/copilot/dispatch.cjs",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/copilot/dispatch.cjs",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/copilot/dispatch.cjs",
-        "to": "external:stream",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/copilot/dispatch.cjs",
-        "to": "scripts/lib/copilot-hook-adapter.cjs",
         "kind": "imports"
       },
       {
@@ -49959,6 +49976,31 @@
       {
         "from": "scripts/plugin-shipping-surface.mjs",
         "to": "external:typescript",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/port/upstream-drift.mjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/port/upstream-drift.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/port/upstream-drift.mjs",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/port/upstream-drift.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/port/upstream-drift.mjs",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -51397,6 +51439,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/agent-model-config.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/agent-model-config.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/agent-model-config.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/agent-model-config.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/agent-model-config.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/agent-registry.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -52247,41 +52314,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/__tests__/copilot-hook-dispatch.test.ts",
-        "to": "external:node:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/copilot-hook-dispatch.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/copilot-hook-dispatch.test.ts",
-        "to": "external:node:module",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/copilot-hook-dispatch.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/copilot-hook-dispatch.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/copilot-hook-dispatch.test.ts",
-        "to": "external:node:url",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/copilot-hook-dispatch.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
         "from": "src/__tests__/copilot-hooks-manifest.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -52289,11 +52321,6 @@
       {
         "from": "src/__tests__/copilot-hooks-manifest.test.ts",
         "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/copilot-hooks-manifest.test.ts",
-        "to": "external:node:module",
         "kind": "imports"
       },
       {
@@ -52547,6 +52574,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/doctor-legacy-project-config.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-legacy-project-config.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-legacy-project-config.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-legacy-project-config.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-legacy-project-config.test.ts",
+        "to": "src/cli/commands/doctor-conflicts.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/doctor-node-on-path.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -52648,21 +52700,6 @@
       },
       {
         "from": "src/__tests__/fixtures/copilot-hook-adapter/worker.mjs",
-        "to": "external:node:worker_threads",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/fixtures/copilot-hook-dispatch/probe.mjs",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/fixtures/copilot-hook-dispatch/probe.mjs",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/fixtures/copilot-hook-dispatch/probe.mjs",
         "to": "external:node:worker_threads",
         "kind": "imports"
       },
@@ -58732,6 +58769,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/workflow-profile-runtime.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/workflow-profile-runtime.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/workflow-profile-runtime.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/workflow-profile-runtime.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/workflow-profile-runtime.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/workflow-profile-runtime.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/worktree-metadata-locking.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -60973,6 +61040,16 @@
       },
       {
         "from": "src/cli/commands/doctor-conflicts.ts",
+        "to": "src/config/project-config-path.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/doctor-conflicts.ts",
+        "to": "src/config/project-config-path.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/doctor-conflicts.ts",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "imports"
       },
@@ -62137,6 +62214,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/config/__tests__/project-config-path.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/config/__tests__/project-config-path.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/config/__tests__/project-config-path.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/config/__tests__/project-config-path.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/config/__tests__/project-config-path.test.ts",
+        "to": "src/config/loader.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/config/__tests__/project-config-path.test.ts",
+        "to": "src/config/project-config-path.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/config/__tests__/project-config-path.test.ts",
+        "to": "src/lib/security-config.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/config/ado-config.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -62169,6 +62281,11 @@
       {
         "from": "src/config/loader.ts",
         "to": "src/config/models.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/config/loader.ts",
+        "to": "src/config/project-config-path.ts",
         "kind": "imports"
       },
       {
@@ -62220,6 +62337,16 @@
         "from": "src/config/plan-output.ts",
         "to": "src/shared/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/config/project-config-path.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/config/project-config-path.ts",
+        "to": "external:path",
+        "kind": "imports"
       },
       {
         "from": "src/constants/index.ts",
@@ -77638,6 +77765,11 @@
       },
       {
         "from": "src/lib/security-config.ts",
+        "to": "src/config/project-config-path.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/security-config.ts",
         "to": "src/utils/jsonc.ts",
         "kind": "imports"
       },
@@ -92262,6 +92394,26 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/upstream-drift-workflow.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/upstream-drift-workflow.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/upstream-drift-workflow.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/upstream-drift-workflow.test.ts",
+        "to": "scripts/port/upstream-drift.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/windows-hide-hooks.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -92342,6 +92494,36 @@
         "kind": "imports"
       },
       {
+        "from": "tests/port/upstream-drift.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/port/upstream-drift.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/port/upstream-drift.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/port/upstream-drift.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/port/upstream-drift.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/port/upstream-drift.test.ts",
+        "to": "scripts/port/upstream-drift.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "tests/shipyard-audit.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -92393,12 +92575,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8150,
-      "edgeCount": 8839,
-      "importEdgeCount": 7315,
+      "nodeCount": 8158,
+      "edgeCount": 8867,
+      "importEdgeCount": 7342,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "d7015acf5068111c181d718525b3a3f00d9b91c2c748a0ea6b58ac76dbf3e809",
-  "manifestSha256": "bc45b0b3ee9db8c2867df81c1176b41337f3367abf7536385909f2ad0171de49"
+  "inventorySha256": "6eeae8ee3392f7916b3832b98350350fafd9b6ffa7309e73b16ac7ab8f0d6f57",
+  "manifestSha256": "ddf7a48a6d6eab3aa4f380b7ae382d3bc45736c9b797fe8f6288f6723b757e51"
 }

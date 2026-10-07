@@ -313,7 +313,7 @@ OMC Ultrawork = "특수부대 작전 반"
     expect(JSON.stringify(pluginRalphProblem)).toContain('[MAGIC KEYWORD: RALPH]');
   });
 
-  it('honors keywordDetector.disabled from .claude/omc.jsonc in both packaged artifacts', () => {
+  it('honors keywordDetector.disabled from .copilot/omg.jsonc in both packaged artifacts', () => {
     const templatePath = join(packageRoot, 'templates', 'hooks', 'keyword-detector.mjs');
     const pluginPath = join(packageRoot, 'scripts', 'keyword-detector.mjs');
 
@@ -333,10 +333,10 @@ OMC Ultrawork = "특수부대 작전 반"
       ) as Record<string, unknown>;
 
     try {
-      mkdirSync(join(disabledDir, '.claude'), { recursive: true });
+      mkdirSync(join(disabledDir, '.copilot'), { recursive: true });
       // Canonical JSONC shape from the #3421 review: comment + trailing commas.
       writeFileSync(
-        join(disabledDir, '.claude', 'omc.jsonc'),
+        join(disabledDir, '.copilot', 'omg.jsonc'),
         '{\n  // disable tdd auto-routing\n  "keywordDetector": { "disabled": ["tdd",], },\n}',
       );
 

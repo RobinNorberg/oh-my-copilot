@@ -35,7 +35,7 @@ Then configure OMC:
 
 Use one of:
 
-- `.claude/omc.jsonc`
+- `.copilot/omg.jsonc`
 - `~/.config/claude-omc/config.jsonc`
 
 ## Contract Notes
