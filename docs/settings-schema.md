@@ -2,7 +2,7 @@
 
 This page documents OMC-owned configuration keys in the standard OMC config files:
 
-- Project: `.claude/omc.jsonc`
+- Project: `.copilot/omg.jsonc`
 - User: `~/.config/claude-omc/config.jsonc`
 
 Project config overrides user config.
@@ -49,7 +49,7 @@ such as `ralph`, `autopilot`, `ralplan`, `deep-interview`, `ai-slop-cleaner`,
 `tdd`, `code-review`, `security-review`, `ultrathink`, `deepsearch`, and
 `analyze`. List the routed skill names to suppress here.
 
-Read from the OMC config surface above, project `.claude/omc.jsonc` first, then
+Read from the OMC config surface above, project `.copilot/omg.jsonc` first, then
 user `~/.config/claude-omc/config.jsonc` (project takes precedence).
 
 ```jsonc

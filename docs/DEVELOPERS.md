@@ -124,6 +124,40 @@ These were verified against Copilot CLI 1.0.91.
 - **Trusted folders are camelCase.** Write `trustedFolders` in `$COPILOT_HOME/config.json` so `-p` runs in the temp project without a trust prompt.
 - **No `installed_plugins.json`.** Installed plugins live under `~/.copilot/installed-plugins/`.
 
+## Copilot CLI hook events
+
+`copilot/hooks.json` keeps the upstream PascalCase event names. Copilot CLI accepts PascalCase names alongside its own camelCase names (changelog 1.0.6) and sends PascalCase hooks Claude-style snake_case payloads (changelog 1.0.21). The table below was audited against Copilot CLI 1.0.91 and `@github/copilot-sdk` 1.0.16.
+
+| Copilot event | Name in `copilot/hooks.json` | Fork hook scripts | Upstream Claude hook | Status |
+|---|---|---|---|---|
+| `sessionStart` | `SessionStart` | session-start, project-memory-session, wiki-session-start, stale-run-reporter, runs-reconciler | `SessionStart` | mapped; the `init` and `maintenance` matcher groups are [not projected](./HOOKS.md#not-projected) |
+| `sessionEnd` | `SessionEnd` | session-end, wiki-session-end | `SessionEnd` | mapped |
+| `userPromptSubmitted` | `UserPromptSubmit` | keyword-detector, skill-injector | `UserPromptSubmit` | mapped |
+| `preToolUse` | `PreToolUse` | pre-tool-enforcer, git-guardrails (`Bash`) | `PreToolUse` | mapped |
+| `permissionRequest` | `PermissionRequest` | permission-handler (`Bash`) | `PermissionRequest` | mapped |
+| `postToolUse` | `PostToolUse` | post-tool-verifier, project-memory-posttool, post-tool-rules-injector, post-tool-directory-context-injector | `PostToolUse` | mapped |
+| `postToolUseFailure` | `PostToolUseFailure` | post-tool-use-failure | `PostToolUseFailure` | mapped |
+| `subagentStart` | `SubagentStart` | subagent-tracker start | `SubagentStart` | mapped |
+| `subagentStop` | `SubagentStop` | subagent-tracker stop, verify-deliverables | `SubagentStop` | mapped |
+| `preCompact` | `PreCompact` | pre-compact, project-memory-precompact, wiki-pre-compact | `PreCompact` | mapped |
+| `agentStop` | `Stop` | context-guard-stop, workflow-drift-guard, persistent-mode, budget-guard, code-simplifier | `Stop` | mapped |
+| `notification` | none | none | none in upstream `hooks/hooks.json` (Claude Code has `Notification`, upstream registers no hook for it) | unmapped, no upstream hook |
+| `errorOccurred` | none | none | none | unmapped, no equivalent |
+| `preMcpToolCall` | none | none | none (`PreToolUse` already sees MCP tools) | unmapped, no equivalent |
+| `userPromptTransformed` | none | none | none | unmapped, no equivalent |
+| `postResult` | not file-configurable | none | none | unmapped, no equivalent; SDK protocol enum only |
+| `prePRDescription` | not file-configurable | none | none | unmapped, no equivalent; SDK protocol enum only |
+
+Every upstream event is projected, so the generator has nothing to add. A new upstream event fails `build-hooks.mjs` only when its command form is unknown; check this table whenever upstream adds an event to `hooks/hooks.json`.
+
+**Evidence.** All paths are inside the CLI package, `%LOCALAPPDATA%\copilot\pkg\win32-x64\1.0.91\` on Windows.
+
+- **File-configurable events.** The native runtime `prebuilds/win32-x64/runtime.node` embeds the settings schema with one `hooks.<event>` entry for each of the 15 events from `sessionStart` to `notification` (byte offsets 84058812 to 84060097). `postResult` and `prePRDescription` have no entry.
+- **Protocol enum.** `schemas/api.schema.json:24048` defines `HookType` with all 17 events and says discovery emits the file-configurable subset. The SDK's `dist/generated/rpc.d.ts:1627` has the same 17-member union.
+- **PascalCase aliases.** The runtime holds the literal fragments `PermissionReques`, `PostToolUseFailu` and `UserPromptSubmit` together (offset 84618512) and `PreCompact` next to the hook prompt validation strings (offset 85766538). Shorter names compile to immediates and are not greppable. On a real machine with only camelCase `preToolUse`/`postToolUse` personal hooks, the plugin's PascalCase hooks produced `hook.start` events of type `sessionStart`, `sessionEnd`, `userPromptSubmitted`, `agentStop`, `subagentStart` and `subagentStop` in `~/.copilot/session-state/*/events.jsonl`. `preCompact`, `permissionRequest` and `postToolUseFailure` were not observed firing there.
+
+**CLI and SDK differ.** The SDK's `SessionHooks` interface (`dist/types.d.ts:1372`) and its dispatch table (`dist/session.js:1630`) cover only 10 events: `preToolUse`, `preMcpToolCall`, `postToolUse`, `postToolUseFailure`, `userPromptSubmitted`, `userPromptTransformed`, `sessionStart`, `sessionEnd`, `errorOccurred` and `agentStop`. The CLI's file hooks additionally support `subagentStart`, `subagentStop`, `preCompact`, `permissionRequest` and `notification`. An SDK session handles permissions through the separate `onPermissionRequest` handler (`dist/types.d.ts:2112`), not a hook. OMC registers no SDK callback hooks; SDK sessions, such as tier 2 and SDK team workers, run the plugin's file hooks from `copilot/hooks.json`.
+
 ## Upstream drift bot
 
 `.github/workflows/upstream-drift.yml` notices new upstream oh-my-claudecode `dev` commits and does the mechanical first step of a port. Conflict resolution, the `package.json` delta, generators, build, inventory, tests, and release stay with a human or agent (`.omc/skills/port-and-release-cycle.md`).

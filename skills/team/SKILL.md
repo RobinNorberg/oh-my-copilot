@@ -881,7 +881,7 @@ When `OMC_TEAM_SCALING_ENABLED=1` is set, the team supports mid-session scaling:
 
 ## Configuration
 
-Optional settings live in `.claude/omc.jsonc` (project) or `~/.config/claude-omc/config.jsonc` (user). Project values override user values; `OMC_TEAM_ROLE_OVERRIDES` (env JSON) supersedes both.
+Optional settings live in `.copilot/omg.jsonc` (project) or `~/.config/claude-omc/config.jsonc` (user). Project values override user values; `OMC_TEAM_ROLE_OVERRIDES` (env JSON) supersedes both.
 
 ```jsonc
 {
@@ -916,7 +916,7 @@ Declare which provider (`claude`, `codex`, `gemini`, `antigravity`, `grok`, `cur
 ### Example — user target mapping
 
 ```jsonc
-// .claude/omc.jsonc
+// .copilot/omg.jsonc
 {
   "team": {
     "roleRouting": {
@@ -966,7 +966,7 @@ User-friendly aliases normalize via `normalizeDelegationRole()` — e.g. `review
 OMC_TEAM_ROLE_OVERRIDES='{"critic":{"provider":"codex"},"code-reviewer":{"provider":"gemini"}}'
 ```
 
-Precedence: `OMC_TEAM_ROLE_OVERRIDES` > `.claude/omc.jsonc` (project) > `~/.config/claude-omc/config.jsonc` (user) > built-in defaults. Invalid JSON logs a warning and is ignored — env overrides are best-effort and never abort the run.
+Precedence: `OMC_TEAM_ROLE_OVERRIDES` > `.copilot/omg.jsonc` (project) > `~/.config/claude-omc/config.jsonc` (user) > built-in defaults. Invalid JSON logs a warning and is ignored — env overrides are best-effort and never abort the run.
 
 ### Missing CLI preflight
 

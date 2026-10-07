@@ -1301,11 +1301,11 @@ diff --git a/a b/b
 describe('keyword-detector.mjs keywordDetector.disabled opt-out', () => {
   function makeCwdWithDisabled(disabled: string[]) {
     const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-disabled-'));
-    mkdirSync(join(cwd, '.claude'), { recursive: true });
+    mkdirSync(join(cwd, '.copilot'), { recursive: true });
     // Canonical JSONC shape: a comment and trailing commas, which parseJsonc supports.
     const list = disabled.map((name) => `"${name}",`).join(' ');
     writeFileSync(
-      join(cwd, '.claude', 'omc.jsonc'),
+      join(cwd, '.copilot', 'omg.jsonc'),
       `{\n  // keyword-detector opt-out\n  "keywordDetector": { "disabled": [${list}] },\n}`,
     );
     return cwd;
@@ -1343,6 +1343,27 @@ describe('keyword-detector.mjs keywordDetector.disabled opt-out', () => {
     const context = output.hookSpecificOutput?.additionalContext ?? '';
 
     expect(context).toContain('[MAGIC KEYWORD: CANCEL]');
+  });
+
+  it.each([
+    ['.copilot', 'omc.jsonc'],
+    ['.claude', 'omc.jsonc'],
+  ])('still reads a legacy %s/%s when the canonical file is absent', (dir, file) => {
+    const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-legacy-'));
+    mkdirSync(join(cwd, dir), { recursive: true });
+    writeFileSync(join(cwd, dir, file), '{ "keywordDetector": { "disabled": ["wiki"] } }');
+    const context = runKeywordDetector('wiki this auth finding', cwd).hookSpecificOutput?.additionalContext ?? '';
+
+    expect(context).not.toContain('[MAGIC KEYWORD: WIKI]');
+  });
+
+  it('prefers the canonical .copilot/omg.jsonc over a legacy file', () => {
+    // Canonical config enables everything; the legacy file would disable wiki.
+    const cwd = makeCwdWithDisabled([]);
+    writeFileSync(join(cwd, '.copilot', 'omc.jsonc'), '{ "keywordDetector": { "disabled": ["wiki"] } }');
+    const context = runKeywordDetector('wiki this auth finding', cwd).hookSpecificOutput?.additionalContext ?? '';
+
+    expect(context).toContain('[MAGIC KEYWORD: WIKI]');
   });
 });
 
