@@ -1543,8 +1543,45 @@ export interface SdkTeamSettings {
   maxCreditsPerWorker: number;
   model?: string;
   startupEvidenceMs: number;
+  /** Hosts launched at once; each launch waits on its own worker's claim. */
+  launchConcurrency: number;
   denyTools: string[];
   denyUrls: string[];
+}
+
+export const DEFAULT_SDK_LAUNCH_CONCURRENCY = 4;
+
+/**
+ * Run startup launches with at most `concurrency` in flight. `record` sees
+ * every successful outcome in job order: immediately after each launch when
+ * serial (a pane split lays out against the panes recorded before it), else
+ * once all launches settle. The first thrown launch stops new launches;
+ * in-flight ones finish and are recorded so a rollback can see them.
+ */
+export async function runBoundedLaunches<J, R>(
+  jobs: readonly J[],
+  concurrency: number,
+  launch: (job: J) => Promise<R>,
+  record: (outcome: R) => void,
+): Promise<{ errors: unknown[] }> {
+  const width = Math.max(1, Math.min(Math.floor(concurrency) || 1, jobs.length));
+  const outcomes: Array<{ value: R } | undefined> = [];
+  const errors: unknown[] = [];
+  let next = 0;
+  await Promise.all(Array.from({ length: width }, async () => {
+    while (errors.length === 0 && next < jobs.length) {
+      const index = next++;
+      try {
+        const value = await launch(jobs[index]!);
+        if (width === 1) record(value);
+        else outcomes[index] = { value };
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+  }));
+  for (const outcome of outcomes) if (outcome) record(outcome.value);
+  return { errors };
 }
 
 export function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings {
@@ -1559,8 +1596,15 @@ export function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings
   if (configCap !== undefined && !(typeof configCap === 'number' && Number.isFinite(configCap) && configCap > 0)) {
     throw new Error(`invalid_team_sdk_config:maxCreditsPerWorker must be a positive number (got ${JSON.stringify(configCap)})`);
   }
+  const configConcurrency = sdk.launchConcurrency as unknown;
+  if (configConcurrency !== undefined && !(Number.isInteger(configConcurrency) && (configConcurrency as number) > 0)) {
+    throw new Error(`invalid_team_sdk_config:launchConcurrency must be a positive integer (got ${JSON.stringify(configConcurrency)})`);
+  }
+  const envConcurrency = envNumber('OMC_TEAM_SDK_LAUNCH_CONCURRENCY');
   const model = process.env.OMC_TEAM_SDK_MODEL?.trim() || sdk.model?.trim();
   return {
+    launchConcurrency: (envConcurrency !== undefined ? Math.max(1, Math.floor(envConcurrency)) : undefined)
+      ?? (configConcurrency as number | undefined) ?? DEFAULT_SDK_LAUNCH_CONCURRENCY,
     maxCreditsPerWorker: envNumber('OMC_TEAM_SDK_MAX_CREDITS') ?? (configCap as number | undefined) ?? 10,
     ...(model ? { model } : {}),
     startupEvidenceMs: envNumber('OMC_TEAM_SDK_STARTUP_EVIDENCE_MS') ?? sdk.startupEvidenceMs ?? 180_000,
@@ -4722,84 +4766,115 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
 
   const launchedWorkers: Array<{ name: string; paneId: string; launchAttemptId?: string; provider: string }> = [];
   const startupFailures: TeamStartupFailure[] = [];
+  // Launches that threw (cleanup unverified) while sibling sdk launches ran.
+  const unresolvedLaunches: NonNullable<StartupLaunchError['unresolvedLaunch']>[] = [];
   try {
     // Reuse the same first-per-worker selection used by assignment and
     // preflight; no second dedupe policy may diverge from startupByWorker.
-    for (const [wName, taskIndex] of startupByWorker) {
-    const workerIndex = Number.parseInt(wName.replace('worker-', ''), 10) - 1;
-    const taskId = String(taskIndex + 1);
-    const task = config.tasks[taskIndex];
-    if (!task || workerIndex < 0) continue;
-
-    const prepared = preparedLaunches.get(wName);
-    if (!prepared) continue;
-    const workerInfo = workersInfo[workerIndex];
-    if (!workerInfo) continue;
-    const spawnOptions: SpawnV2WorkerOptions = {
-      sessionName,
-      ...(session.tmuxServerIdentity ? { tmuxServerIdentity: session.tmuxServerIdentity } : {}),
-      leaderPaneId,
-      existingWorkerPaneIds: workerPaneIds,
-      teamName: sanitized,
-      instanceId: instance.instance_id,
-      workerName: wName,
-      workerIndex,
-      agentType: prepared.agentType,
-      launchDescriptor: prepared.descriptor,
-      task,
-      taskId,
-      cwd: leaderCwd,
-      workerCwd: workerInfo.working_dir ?? leaderCwd,
-      worktreePath: workerInfo.worktree_path,
-      autoMerge: Boolean(config.autoMerge),
-      ...(prepared.role ? { role: prepared.role } : {}),
-      ...(prepared.verdictAssignmentId ? { verdictAssignmentId: prepared.verdictAssignmentId } : {}),
+    type StartupLaunchJob = {
+      wName: string; workerIndex: number; taskId: string; task: (typeof config.tasks)[number];
+      prepared: NonNullable<ReturnType<typeof preparedLaunches.get>>; workerInfo: WorkerInfo;
     };
-    const workerLaunch = sdkSettings
-      ? await spawnSdkV2Worker(spawnOptions, sdkSettings)
-      : await spawnV2Worker(spawnOptions);
-
-    if (workerLaunch.paneId) {
-      if (workerLaunch.startupAssigned) workerPaneIds.push(workerLaunch.paneId);
-      launchedWorkers.push({
-        name: wName, paneId: workerLaunch.paneId,
-        ...(workerLaunch.launchAttemptId ? { launchAttemptId: workerLaunch.launchAttemptId } : {}),
-        provider: prepared.agentType,
-      });
-      {
-        workerInfo.pane_id = workerLaunch.paneId;
-        workerInfo.assigned_tasks = workerLaunch.startupAssigned ? [taskId] : [];
-        workerInfo.worker_cli = prepared.agentType;
-        if (workerLaunch.launchAttemptId) {
-          workerInfo.launch_attempt_id = workerLaunch.launchAttemptId;
-        }
-        if (workerLaunch.outputFile) {
-          workerInfo.output_file = workerLaunch.outputFile;
+    const launchJobs: StartupLaunchJob[] = [];
+    for (const [wName, taskIndex] of startupByWorker) {
+      const workerIndex = Number.parseInt(wName.replace('worker-', ''), 10) - 1;
+      const task = config.tasks[taskIndex];
+      if (!task || workerIndex < 0) continue;
+      const prepared = preparedLaunches.get(wName);
+      if (!prepared) continue;
+      const workerInfo = workersInfo[workerIndex];
+      if (!workerInfo) continue;
+      launchJobs.push({ wName, workerIndex, taskId: String(taskIndex + 1), task, prepared, workerInfo });
+    }
+    const launchOne = async ({ wName, workerIndex, taskId, task, prepared, workerInfo }: StartupLaunchJob) => {
+      const spawnOptions: SpawnV2WorkerOptions = {
+        sessionName,
+        ...(session.tmuxServerIdentity ? { tmuxServerIdentity: session.tmuxServerIdentity } : {}),
+        leaderPaneId,
+        existingWorkerPaneIds: workerPaneIds,
+        teamName: sanitized,
+        instanceId: instance.instance_id,
+        workerName: wName,
+        workerIndex,
+        agentType: prepared.agentType,
+        launchDescriptor: prepared.descriptor,
+        task,
+        taskId,
+        cwd: leaderCwd,
+        workerCwd: workerInfo.working_dir ?? leaderCwd,
+        worktreePath: workerInfo.worktree_path,
+        autoMerge: Boolean(config.autoMerge),
+        ...(prepared.role ? { role: prepared.role } : {}),
+        ...(prepared.verdictAssignmentId ? { verdictAssignmentId: prepared.verdictAssignmentId } : {}),
+      };
+      const workerLaunch = sdkSettings
+        ? await spawnSdkV2Worker(spawnOptions, sdkSettings)
+        : await spawnV2Worker(spawnOptions);
+      return { wName, taskId, prepared, workerInfo, workerLaunch };
+    };
+    const recordLaunch = ({ wName, taskId, prepared, workerInfo, workerLaunch }: Awaited<ReturnType<typeof launchOne>>) => {
+      if (workerLaunch.paneId) {
+        if (workerLaunch.startupAssigned) workerPaneIds.push(workerLaunch.paneId);
+        launchedWorkers.push({
+          name: wName, paneId: workerLaunch.paneId,
+          ...(workerLaunch.launchAttemptId ? { launchAttemptId: workerLaunch.launchAttemptId } : {}),
+          provider: prepared.agentType,
+        });
+        {
+          workerInfo.pane_id = workerLaunch.paneId;
+          workerInfo.assigned_tasks = workerLaunch.startupAssigned ? [taskId] : [];
+          workerInfo.worker_cli = prepared.agentType;
+          if (workerLaunch.launchAttemptId) {
+            workerInfo.launch_attempt_id = workerLaunch.launchAttemptId;
+          }
+          if (workerLaunch.outputFile) {
+            workerInfo.output_file = workerLaunch.outputFile;
+          }
         }
       }
-    }
 
-    if (workerLaunch.startupFailureReason) {
-      startupFailures.push({
-        worker: wName,
-        reason: workerLaunch.startupFailureReason,
-        ...(workerLaunch.claimError ? { claimError: workerLaunch.claimError } : {}),
-      });
-      const logEventFailure = createSwallowedErrorLogger(
-        'team.runtime-v2.startTeamV2 appendTeamEvent failed',
-      );
-      appendTeamEvent(sanitized, {
-        type: 'team_leader_nudge',
-        worker: 'leader-fixed',
-        reason: `startup_manual_intervention_required:${wName}:${workerLaunch.startupFailureReason}`,
-      }, leaderCwd).catch(logEventFailure);
+      if (workerLaunch.startupFailureReason) {
+        startupFailures.push({
+          worker: wName,
+          reason: workerLaunch.startupFailureReason,
+          ...(workerLaunch.claimError ? { claimError: workerLaunch.claimError } : {}),
+        });
+        const logEventFailure = createSwallowedErrorLogger(
+          'team.runtime-v2.startTeamV2 appendTeamEvent failed',
+        );
+        appendTeamEvent(sanitized, {
+          type: 'team_leader_nudge',
+          worker: 'leader-fixed',
+          reason: `startup_manual_intervention_required:${wName}:${workerLaunch.startupFailureReason}`,
+        }, leaderCwd).catch(logEventFailure);
+      }
+    };
+    // Pane workers launch one at a time: each split lays out against the panes
+    // before it (existingWorkerPaneIds). SDK hosts share no multiplexer, and
+    // each launch waits only on its own worker's claim, so up to
+    // launchConcurrency run at once; a launch failure is that worker's
+    // startup failure. A launch that throws (its cleanup is unverified)
+    // stops new launches; in-flight ones finish so the rollback sees them.
+    const concurrency = sdkSettings ? sdkSettings.launchConcurrency : 1;
+    const launchStartedAt = Date.now();
+    const { errors: launchErrors } = await runBoundedLaunches(launchJobs, concurrency, launchOne, recordLaunch);
+    if (sdkSettings && launchJobs.length > 0) {
+      process.stderr.write(`[omg team] sdk workers launched: ${launchJobs.length} in ${Date.now() - launchStartedAt} ms (concurrency ${Math.min(concurrency, launchJobs.length)})\n`);
     }
-  }
+    if (launchErrors.length > 0) {
+      for (const launchError of launchErrors.slice(1)) {
+        const unresolved = launchError && typeof launchError === 'object' && 'unresolvedLaunch' in launchError
+          ? (launchError as StartupLaunchError).unresolvedLaunch : undefined;
+        if (unresolved) unresolvedLaunches.push(unresolved);
+      }
+      throw launchErrors[0];
+    }
   } catch (error) {
-    const unresolvedLaunch = error && typeof error === 'object' && 'unresolvedLaunch' in error
+    const firstUnresolved = error && typeof error === 'object' && 'unresolvedLaunch' in error
       ? (error as StartupLaunchError).unresolvedLaunch
       : undefined;
-    if (unresolvedLaunch && !launchedWorkers.some(candidate =>
+    for (const unresolvedLaunch of [...(firstUnresolved ? [firstUnresolved] : []), ...unresolvedLaunches]) {
+    if (!launchedWorkers.some(candidate =>
       candidate.launchAttemptId === unresolvedLaunch.launchAttemptId)) {
       launchedWorkers.push(unresolvedLaunch);
       const workerInfo = workersInfo.find(candidate => candidate.name === unresolvedLaunch.name);
@@ -4817,6 +4892,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
           // the unresolved launch in `launchedWorkers`.
         }
       }
+    }
     }
     await rollbackAfterConfig({
       teamName: sanitized,

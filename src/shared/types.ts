@@ -553,6 +553,8 @@ export interface TeamConfigBlock {
     model?: string;
     /** Startup evidence (task claim) budget per worker in ms. Default 180000. */
     startupEvidenceMs?: number;
+    /** How many sdk hosts `omg team` starts at once. Default 4; 1 restores serial launch. */
+    launchConcurrency?: number;
   };
   roleRouting?: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> & {
     orchestrator?: OrchestratorSpec;

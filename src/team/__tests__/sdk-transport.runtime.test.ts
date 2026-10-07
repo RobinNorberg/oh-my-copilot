@@ -4,7 +4,95 @@ import { join } from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CanonicalTeamRole, PluginConfig, TeamRoleAssignmentSpec } from '../../shared/types.js';
-import { isExplicitTaskRoleAssignment, resolveSdkTeamSettings, startTeamV2 } from '../runtime-v2.js';
+import {
+  DEFAULT_SDK_LAUNCH_CONCURRENCY, isExplicitTaskRoleAssignment, resolveSdkTeamSettings,
+  runBoundedLaunches, startTeamV2,
+} from '../runtime-v2.js';
+
+describe('runBoundedLaunches', () => {
+  const deferred = () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((r) => { resolve = r; });
+    return { promise, resolve };
+  };
+
+  it('keeps at most `concurrency` launches in flight and records in job order', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const gates = [deferred(), deferred(), deferred()];
+    const recorded: number[] = [];
+    const run = runBoundedLaunches([0, 1, 2], 2, async (job) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await gates[job]!.promise;
+      inFlight--;
+      return job;
+    }, (outcome) => recorded.push(outcome));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(inFlight).toBe(2);
+    gates[1]!.resolve(); // job 1 finishes first; job 2 takes its slot
+    await new Promise((r) => setTimeout(r, 5));
+    expect(inFlight).toBe(2);
+    gates[2]!.resolve();
+    gates[0]!.resolve();
+    expect((await run).errors).toEqual([]);
+    expect(peak).toBe(2);
+    expect(recorded).toEqual([0, 1, 2]);
+  });
+
+  it('serial mode records each outcome before the next launch starts', async () => {
+    const order: string[] = [];
+    await runBoundedLaunches(['a', 'b'], 1, async (job) => { order.push(`launch:${job}`); return job; },
+      (outcome) => order.push(`record:${outcome}`));
+    expect(order).toEqual(['launch:a', 'record:a', 'launch:b', 'record:b']);
+  });
+
+  it('stops new launches after a throw but lets in-flight ones finish and be recorded', async () => {
+    const started: number[] = [];
+    const recorded: number[] = [];
+    const slow = deferred();
+    const run = runBoundedLaunches([0, 1, 2, 3], 2, async (job) => {
+      started.push(job);
+      if (job === 0) throw new Error('cleanup_unverified');
+      await slow.promise;
+      return job;
+    }, (outcome) => recorded.push(outcome));
+    await new Promise((r) => setTimeout(r, 5));
+    slow.resolve();
+    const { errors } = await run;
+    expect(errors.map((e) => (e as Error).message)).toEqual(['cleanup_unverified']);
+    expect(started).toEqual([0, 1]);
+    expect(recorded).toEqual([1]);
+  });
+
+  it('treats a non-positive width as serial', async () => {
+    const recorded: number[] = [];
+    await runBoundedLaunches([1, 2], 0, async (job) => job, (o) => recorded.push(o));
+    expect(recorded).toEqual([1, 2]);
+  });
+});
+
+describe('team.sdk.launchConcurrency', () => {
+  const previous = process.env.OMC_TEAM_SDK_LAUNCH_CONCURRENCY;
+  afterEach(() => {
+    if (previous === undefined) delete process.env.OMC_TEAM_SDK_LAUNCH_CONCURRENCY;
+    else process.env.OMC_TEAM_SDK_LAUNCH_CONCURRENCY = previous;
+  });
+  const withConcurrency = (value: unknown): PluginConfig => ({ team: { sdk: { launchConcurrency: value as number } } } as PluginConfig);
+
+  it('defaults, honours the config, and lets the env override it', () => {
+    delete process.env.OMC_TEAM_SDK_LAUNCH_CONCURRENCY;
+    expect(resolveSdkTeamSettings({} as PluginConfig).launchConcurrency).toBe(DEFAULT_SDK_LAUNCH_CONCURRENCY);
+    expect(resolveSdkTeamSettings(withConcurrency(1)).launchConcurrency).toBe(1);
+    process.env.OMC_TEAM_SDK_LAUNCH_CONCURRENCY = '3';
+    expect(resolveSdkTeamSettings(withConcurrency(1)).launchConcurrency).toBe(3);
+  });
+
+  it.each([[0], [-2], [1.5], ['2']])('rejects launchConcurrency=%s as a config error', (value) => {
+    delete process.env.OMC_TEAM_SDK_LAUNCH_CONCURRENCY;
+    expect(() => resolveSdkTeamSettings(withConcurrency(value))).toThrow(/^invalid_team_sdk_config:launchConcurrency/);
+  });
+});
 
 describe('team.sdk settings', () => {
   const previous = process.env.OMC_TEAM_SDK_MAX_CREDITS;
