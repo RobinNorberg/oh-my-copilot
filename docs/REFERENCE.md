@@ -370,7 +370,7 @@ OMC also supports a narrow company-context contract on top of the existing MCP s
 
 Configure it in the standard OMC config files:
 
-- Project: `.claude/omc.jsonc`
+- Project: `.copilot/omg.jsonc`
 - User: `~/.config/claude-omc/config.jsonc`
 
 ```jsonc

@@ -201,7 +201,7 @@ function writeEmergencyJournal(statePath: string, original: Buffer, intent: 'cle
 function createFixture(cwd: string = mkdtempSync(join(tmpdir(), 'omc-workflow-activation-'))) {
   const configHome = join(cwd, 'config');
   mkdirSync(join(cwd, 'home'), { recursive: true });
-  mkdirSync(join(cwd, '.claude'), { recursive: true });
+  mkdirSync(join(cwd, '.copilot'), { recursive: true });
   mkdirSync(join(configHome, 'claude-omc'), { recursive: true });
   mkdirSync(join(cwd, 'claude-config', 'projects'), { recursive: true });
   writeFileSync(join(cwd, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl'), '');
@@ -211,7 +211,7 @@ function createFixture(cwd: string = mkdtempSync(join(tmpdir(), 'omc-workflow-ac
       "release-flow": { "version": 1, "stages": ["ralplan", "execution", "ralph"] }
     } }
   }`);
-  writeFileSync(join(cwd, '.claude', 'omc.jsonc'), `{
+  writeFileSync(join(cwd, '.copilot', 'omg.jsonc'), `{
     "autopilot": { "workflows": {
       "release-flow": { "version": 1, "stages": ["ralplan", "execution"] }
     } }
@@ -328,9 +328,9 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
   it.each(HOOKS)('ignores profile config above the git root and falls back to the user profile through %s', (script) => {
     const { cwd, configHome, nested, parent } = createNestedGitFixture();
     try {
-      rmSync(join(cwd, '.claude', 'omc.jsonc'));
-      mkdirSync(join(parent, '.claude'), { recursive: true });
-      writeFileSync(join(parent, '.claude', 'omc.jsonc'), '{ "autopilot": { "workflows": { "release-flow": { "version": 1, "stages": ["ralplan", "execution", "qa"] } } } }');
+      rmSync(join(cwd, '.copilot', 'omg.jsonc'));
+      mkdirSync(join(parent, '.copilot'), { recursive: true });
+      writeFileSync(join(parent, '.copilot', 'omg.jsonc'), '{ "autopilot": { "workflows": { "release-flow": { "version": 1, "stages": ["ralplan", "execution", "qa"] } } } }');
       runHook(script, '/autopilot --workflow release-flow ship the release', nested, configHome);
       expect(JSON.parse(stateBytes(nested)!.toString())).toMatchObject({ workflow: { workflowName: 'release-flow', stages: ['ralplan', 'execution', 'ralph'] } });
     } finally {
@@ -343,8 +343,8 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     const cwd = join(parent, 'project');
     const { configHome } = createFixture(cwd);
     try {
-      mkdirSync(join(parent, '.claude'), { recursive: true });
-      writeFileSync(join(parent, '.claude', 'omc.jsonc'), '{ "autopilot": { "workflows": { "release-flow": { "version": 1, "stages": ["ralplan", "execution", "qa"] } } } }');
+      mkdirSync(join(parent, '.copilot'), { recursive: true });
+      writeFileSync(join(parent, '.copilot', 'omg.jsonc'), '{ "autopilot": { "workflows": { "release-flow": { "version": 1, "stages": ["ralplan", "execution", "qa"] } } } }');
       runHook(script, '/autopilot --workflow release-flow ship the release', cwd, configHome);
       expect(JSON.parse(stateBytes(cwd)!.toString())).toMatchObject({ workflow: { workflowName: 'release-flow', stages: ['ralplan', 'execution'] } });
     } finally {
@@ -357,9 +357,9 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     const cwd = join(parent, 'project');
     const { configHome } = createFixture(cwd);
     try {
-      rmSync(join(cwd, '.claude'), { recursive: true, force: true });
-      mkdirSync(join(parent, '.claude'), { recursive: true });
-      writeFileSync(join(parent, '.claude', 'omc.jsonc'), '{ "autopilot": { "workflows": { "release-flow": { "version": 1, "stages": ["ralplan", "execution", "qa"] } } } }');
+      rmSync(join(cwd, '.copilot'), { recursive: true, force: true });
+      mkdirSync(join(parent, '.copilot'), { recursive: true });
+      writeFileSync(join(parent, '.copilot', 'omg.jsonc'), '{ "autopilot": { "workflows": { "release-flow": { "version": 1, "stages": ["ralplan", "execution", "qa"] } } } }');
       runHook(script, '/autopilot --workflow release-flow ship the release', cwd, configHome);
       expect(JSON.parse(stateBytes(cwd)!.toString())).toMatchObject({ workflow: { workflowName: 'release-flow', stages: ['ralplan', 'execution', 'ralph'] } });
     } finally {
@@ -376,8 +376,8 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     try {
       writeFileSync(join(workspace, '.omc-workspace'), '{}');
       mkdirSync(nested, { recursive: true });
-      mkdirSync(join(parent, '.claude'), { recursive: true });
-      writeFileSync(join(parent, '.claude', 'omc.jsonc'), '{ "autopilot": { "workflows": { "release-flow": { "version": 1, "stages": ["ralplan", "execution", "qa"] } } } }');
+      mkdirSync(join(parent, '.copilot'), { recursive: true });
+      writeFileSync(join(parent, '.copilot', 'omg.jsonc'), '{ "autopilot": { "workflows": { "release-flow": { "version": 1, "stages": ["ralplan", "execution", "qa"] } } } }');
       runHook(script, '/autopilot --workflow release-flow ship the release', nested, configHome, transcriptPath, { COPILOT_HOME: join(workspace, 'claude-config') });
       expect(JSON.parse(stateBytes(nested)!.toString())).toMatchObject({ workflow: { workflowName: 'release-flow', stages: ['ralplan', 'execution'] } });
     } finally {
@@ -474,7 +474,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
       const paused = JSON.parse(readFileSync(statePath, 'utf8'));
       paused.active = false;
       writeFileSync(statePath, JSON.stringify(paused, null, 2));
-      writeFileSync(join(cwd, '.claude', 'omc.jsonc'), '{ invalid later config');
+      writeFileSync(join(cwd, '.copilot', 'omg.jsonc'), '{ invalid later config');
       const output = runHook(script, '/autopilot --workflow release-flow ignored replacement task', cwd, configHome);
       const resumed = JSON.parse(readFileSync(statePath, 'utf8'));
       expect(output.hookSpecificOutput?.additionalContext).toContain('## PIPELINE STAGE: RALPLAN');
@@ -890,8 +890,8 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     const nested = join(cwd, 'packages', 'feature');
     const transcriptPath = join(cwd, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl');
     try {
-      mkdirSync(join(nested, '.claude'), { recursive: true });
-      writeFileSync(join(nested, '.claude', 'omc.jsonc'), JSON.stringify({ autopilot: { workflows: { 'root-only': { version: 1, stages: ['ralplan', 'execution'] } } } }));
+      mkdirSync(join(nested, '.copilot'), { recursive: true });
+      writeFileSync(join(nested, '.copilot', 'omg.jsonc'), JSON.stringify({ autopilot: { workflows: { 'root-only': { version: 1, stages: ['ralplan', 'execution'] } } } }));
       const output = runHook(script, '/autopilot --workflow root-only ship it', nested, configHome, transcriptPath, { COPILOT_HOME: join(cwd, 'claude-config') });
       expect(output.hookSpecificOutput?.additionalContext).toContain('## PIPELINE STAGE: RALPLAN (Consensus Planning)');
     } finally {
@@ -974,7 +974,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
   ])('rejects a %s in plugin and template profile validation', (_name, stages) => {
     const { cwd, configHome } = createFixture();
     try {
-      writeFileSync(join(cwd, '.claude', 'omc.jsonc'), JSON.stringify({ autopilot: { workflows: { 'release-flow': { version: 1, stages } } } }));
+      writeFileSync(join(cwd, '.copilot', 'omg.jsonc'), JSON.stringify({ autopilot: { workflows: { 'release-flow': { version: 1, stages } } } }));
       for (const script of HOOKS) {
         const output = runHook(script, '/autopilot --workflow release-flow ship it', cwd, configHome);
         expect(output.hookSpecificOutput?.additionalContext).toContain('[AUTOPILOT WORKFLOW ERROR]');
