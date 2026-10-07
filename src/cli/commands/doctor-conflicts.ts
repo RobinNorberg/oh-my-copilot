@@ -5,7 +5,7 @@
 
 import { spawnSync } from 'child_process';
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'fs';
-import { basename, dirname, join } from 'path';
+import { basename, dirname, join, relative } from 'path';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { isOmcHook } from '../../installer/index.js';
 import { analyzeLegacyClaudeMd, decodeClaudeMdUtf8 } from '../../installer/claude-md-analysis.js';
@@ -14,6 +14,7 @@ import { getSkillsDir, listBuiltinSkillNames } from '../../features/builtin-skil
 import { inspectUnifiedMcpRegistrySync } from '../../installer/mcp-registry.js';
 import { findWorkspaceRoot, WORKSPACE_MARKER } from '../../lib/worktree-paths.js';
 import { getHostCliType } from '../../utils/host-detection.js';
+import { findLegacyProjectConfigs, type LegacyProjectConfig } from '../../config/project-config-path.js';
 
 function hasActiveOmcPluginForDiagnostics(): boolean {
   if (process.env.CLAUDE_PLUGIN_ROOT?.trim()) return true;
@@ -59,6 +60,8 @@ export interface ConflictReport {
   mcpRegistrySync: ReturnType<typeof inspectUnifiedMcpRegistrySync>;
   workspaceMarker: WorkspaceMarkerStatus;
   nodeOnPath: boolean;
+  /** Legacy-named project config files (`.copilot/omc.jsonc`, `.claude/omc.jsonc`). WARN only. */
+  legacyProjectConfigs: LegacyProjectConfig[];
   hasConflicts: boolean;
 }
 
@@ -680,6 +683,7 @@ export function runConflictCheck(): ConflictReport {
   const mcpRegistrySync = inspectUnifiedMcpRegistrySync();
   const workspaceMarker = checkWorkspaceMarker();
   const nodeOnPath = checkNodeOnPath();
+  const legacyProjectConfigs = findLegacyProjectConfigs(process.cwd());
 
   // Determine if there are actual conflicts
   const hasConflicts =
@@ -698,6 +702,7 @@ export function runConflictCheck(): ConflictReport {
     // Note: Missing OMC markers is informational (normal for fresh install), not a conflict
     // Note: workspaceMarker.precedenceConflict is a WARN, not a hard conflict
     // Note: envFlags.legacyConfigDirEnv (retired COPILOT_CONFIG_DIR) is a WARN, not a hard conflict
+    // Note: legacyProjectConfigs (legacy-named project config) is a WARN, not a hard conflict
 
   return {
     hookConflicts,
@@ -709,6 +714,7 @@ export function runConflictCheck(): ConflictReport {
     mcpRegistrySync,
     workspaceMarker,
     nodeOnPath,
+    legacyProjectConfigs,
     hasConflicts
   };
 }
@@ -845,6 +851,35 @@ export function formatReport(report: ConflictReport, json: boolean): string {
     lines.push(`  ${colors.yellow('⚠')} Unknown fields in .omc-config.json:`);
     for (const field of report.configIssues.unknownFields) {
       lines.push(`    - ${field}`);
+    }
+    lines.push('');
+  }
+
+  // Legacy-named project config (never renamed automatically)
+  if (report.legacyProjectConfigs.length > 0) {
+    lines.push(colors.bold('📝 Project Config Name'));
+    lines.push('');
+    // When no canonical file exists yet, one legacy file (the highest-
+    // precedence match) carries the rename command; any other legacy file
+    // is "ignored" relative to that pending rename, not relative to a
+    // canonical file that doesn't exist yet.
+    const pendingRename = report.legacyProjectConfigs.find((entry) => entry.renameCommand);
+    for (const legacy of report.legacyProjectConfigs) {
+      const shown = relative(process.cwd(), legacy.legacyPath) || legacy.legacyPath;
+      const canonical = relative(process.cwd(), legacy.canonicalPath) || legacy.canonicalPath;
+      if (legacy.renameCommand) {
+        lines.push(`  ${colors.yellow('⚠')} Legacy project config name: ${shown}`);
+        lines.push(`    ${colors.gray(`The canonical name is ${canonical}. Rename it from the project root:`)}`);
+        for (const command of legacy.renameCommand) {
+          lines.push(`      ${command}`);
+        }
+      } else {
+        const mergeTarget = legacy.canonicalExists
+          ? canonical
+          : `${canonical} (after renaming ${relative(process.cwd(), pendingRename!.legacyPath)} to it)`;
+        lines.push(`  ${colors.yellow('⚠')} Legacy project config ignored: ${shown}`);
+        lines.push(`    ${colors.gray(`A higher-precedence config is read instead. Merge any settings you still need into ${mergeTarget}, then delete ${shown}.`)}`);
+      }
     }
     lines.push('');
   }

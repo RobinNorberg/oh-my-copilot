@@ -265,7 +265,7 @@ OMC supports two levels of configuration files.
 | Scope | File path | Purpose |
 |-------|-----------|---------|
 | User (global) | `~/.config/claude-omc/config.jsonc` | Applied to all projects |
-| Project | `.claude/omc.jsonc` | Applied to current project only |
+| Project | `.copilot/omg.jsonc` | Applied to current project only |
 
 > ⚠️ **Warning:** The configuration file format is JSONC (JSON with comments support). It is not a TypeScript config file (`omc.config.ts`).
 
@@ -275,7 +275,7 @@ When settings exist from multiple sources, they are merged in the following orde
 
 ```
 Defaults → User config (~/.config/claude-omc/config.jsonc)
-         → Project config (.claude/omc.jsonc)
+         → Project config (.copilot/omg.jsonc)
          → Environment variables
 ```
 

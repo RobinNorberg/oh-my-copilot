@@ -2,6 +2,35 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Project config is `.copilot/omg.jsonc` everywhere.** The security config
+  reader, the Stop hook (`persistent-mode.mjs`), the keyword detector's
+  `keywordDetector.disabled` opt-out, per-agent model overrides in the
+  PreToolUse hook, and `autopilot --workflow` profiles each read a different
+  file before (`.copilot/omc.jsonc` or the upstream `.claude/omc.jsonc`). All
+  of them now read `.copilot/omg.jsonc` first. `.copilot/omc.jsonc` is read
+  as a fallback when the canonical file is absent, and hooks that read
+  `.claude/omc.jsonc` before still fall back to it. Docs, skills and error
+  messages name the canonical file only.
+- **`omg doctor conflicts` reports a legacy-named project config.** It prints
+  the exact rename command for `.copilot/omc.jsonc` or `.claude/omc.jsonc`,
+  or says the file is ignored when `.copilot/omg.jsonc` also exists. It never
+  renames the file and does not count it as a conflict.
+
+### Documentation
+
+- **Copilot CLI hook event audit.** `docs/DEVELOPERS.md` lists every hook
+  event Copilot CLI 1.0.91 supports, with evidence from its own package, and
+  how each maps to the generated `copilot/hooks.json`. All 11 upstream hook
+  events are already projected. The Copilot-only events (`notification`,
+  `errorOccurred`, `preMcpToolCall`, `userPromptTransformed`, and the
+  protocol-only `postResult` and `prePRDescription`) have no upstream hook to
+  map.
+  The SDK's callback hooks cover only 10 of the CLI's 15 file hook events.
+
 # oh-my-copilot v5.8.1
 
 ## [5.8.1] - 2026-10-06

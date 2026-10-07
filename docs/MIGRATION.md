@@ -722,6 +722,10 @@ skills, plugins, rules, tasks, and worktrees.
   mkdir -p .copilot
   mv .claude/omc.jsonc .copilot/omg.jsonc
   ```
+  Some earlier fork builds read `.copilot/omc.jsonc` instead. That name is
+  still read as a fallback when `.copilot/omg.jsonc` is absent, and
+  `omg doctor conflicts` prints the rename command for any legacy-named
+  project config it finds. Nothing renames the file for you.
 - Context files are the one exception with a built-in fallback: the plugin
   now *prefers* `copilot-instructions.md` and `.copilot/AGENTS.md`, but it
   still falls back to `.claude/CLAUDE.md` / `.claude/AGENTS.md` when running
