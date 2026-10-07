@@ -31,6 +31,10 @@ All notable changes to oh-my-copilot will be documented in this file.
   map.
   The SDK's callback hooks cover only 10 of the CLI's 15 file hook events.
 
+### Added
+
+- **Upstream drift bot.** A daily workflow, `.github/workflows/upstream-drift.yml`, checks upstream oh-my-claudecode `dev` against the last ported sha. That sha is recorded in the new `.github/upstream-port.json`. When upstream has moved, the bot applies the range with `scripts/port/upstream-drift.mjs`, using the runbook's exclusions and the mechanical rename map. A clean apply opens a draft port PR to `dev`. Conflicts open an issue that lists them. Each upstream head gets one item, older ones are closed, and nothing is force-pushed. The optional `UPSTREAM_DRIFT_TOKEN` secret lets CI run on bot PRs. See docs/DEVELOPERS.md, "Upstream drift bot".
+
 # oh-my-copilot v5.8.1
 
 ## [5.8.1] - 2026-10-06
