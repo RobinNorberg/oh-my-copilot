@@ -977,6 +977,7 @@ async function handleTeamStatus(teamName: string, cwd: string, json: boolean): P
         team: snapshot.teamName,
         instance_id: config?.instance_id ?? null,
         phase: snapshot.phase,
+        transport: config?.tmux_session?.startsWith('sdk:') ? 'sdk' : 'pane',
         workspace_mode: config?.workspace_mode ?? 'single',
         worktree_mode: config?.worktree_mode ?? 'disabled',
         team_state_root: config?.team_state_root ?? null,
@@ -998,8 +999,16 @@ async function handleTeamStatus(teamName: string, cwd: string, json: boolean): P
             turns: worker.sdk!.turns,
             queued: worker.sdk!.queued,
             premium_requests: worker.sdk!.premium_requests,
+            premium_requests_final: worker.sdk!.premium_requests_final,
             credits: worker.sdk!.credits,
             model: worker.sdk!.model ?? null,
+            host_pid: worker.sdk!.host_pid,
+            runtime_pid: worker.sdk!.runtime_pid ?? null,
+            session_id: worker.sdk!.session_id ?? null,
+            attempt_id: worker.sdk!.attempt_id,
+            updated_at: worker.sdk!.updated_at,
+            task_state: worker.status.state,
+            current_task_id: worker.status.current_task_id ?? null,
             last_event_type: worker.sdk!.last_event_type ?? null,
             last_event_at: worker.sdk!.last_event_at ?? null,
             last_error: worker.sdk!.last_error ?? null,
@@ -1035,7 +1044,7 @@ async function handleTeamStatus(teamName: string, cwd: string, json: boolean): P
     for (const worker of snapshot.workers) {
       if (!worker.sdk) continue;
       const sdk = worker.sdk;
-      console.log(`sdk_worker=${worker.name} provider=${worker.providerLiveness} state=${sdk.state} turns=${sdk.turns} queued=${sdk.queued} premium_requests=${sdk.premium_requests} credits=${sdk.credits.toFixed(2)} model=${sdk.model ?? 'auto'} last_event=${sdk.last_event_type ?? 'n/a'}@${sdk.last_event_at ?? 'n/a'}${sdk.last_error ? ` last_error=${JSON.stringify(sdk.last_error)}` : ''}`);
+      console.log(`sdk_worker=${worker.name} provider=${worker.providerLiveness} host_pid=${sdk.host_pid} session=${sdk.session_id ?? 'n/a'} state=${sdk.state} turns=${sdk.turns} queued=${sdk.queued} premium_requests=${sdk.premium_requests} credits=${sdk.credits.toFixed(2)} model=${sdk.model ?? 'auto'} last_event=${sdk.last_event_type ?? 'n/a'}@${sdk.last_event_at ?? 'n/a'}${sdk.last_error ? ` last_error=${JSON.stringify(sdk.last_error)}` : ''}`);
     }
     console.log(`tasks: total=${snapshot.tasks.total} pending=${snapshot.tasks.pending} blocked=${snapshot.tasks.blocked} in_progress=${snapshot.tasks.in_progress} completed=${snapshot.tasks.completed} failed=${snapshot.tasks.failed}`);
     console.log(`leader_next_action=${leaderGuidance.nextAction}`);

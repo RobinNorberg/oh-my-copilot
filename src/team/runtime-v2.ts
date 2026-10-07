@@ -618,8 +618,14 @@ export interface TeamSnapshotV2 {
     team_state_root?: string;
     turnsWithoutProgress: number;
     /** SDK transport only: the host's session file, in place of a pane capture. */
-    sdk?: Pick<SdkSessionFile, 'state' | 'turns' | 'queued' | 'last_event_type' | 'last_event_at' | 'last_error' | 'session_id' | 'model'>
-      & { credits: number; premium_requests: number };
+    sdk?: Pick<SdkSessionFile, 'state' | 'turns' | 'queued' | 'last_event_type' | 'last_event_at' | 'last_error' | 'session_id' | 'model'
+      | 'host_pid' | 'runtime_pid' | 'attempt_id' | 'updated_at'>
+      & {
+        credits: number;
+        premium_requests: number;
+        /** True once the runtime's `session.shutdown` totals replaced the running sum. */
+        premium_requests_final: boolean;
+      };
   }>;
   tasks: {
     total: number;
@@ -6017,7 +6023,10 @@ export async function monitorTeamV2(
       const providerLiveness = await getWorkerProviderLiveness(sanitized, cwd, config.instance_id, worker);
       if (isSdkTarget(worker.pane_id)) {
         // No pane: liveness is the host's provider record, idleness its session file.
-        const sdkSession = readSdkSession(teamStateRoot(cwd, sanitized), worker.name);
+        // A session file left by an earlier launch attempt describes a host that is gone.
+        const sessionFile = readSdkSession(teamStateRoot(cwd, sanitized), worker.name);
+        const sdkSession = sessionFile && (!worker.launch_attempt_id || sessionFile.attempt_id === worker.launch_attempt_id)
+          ? sessionFile : null;
         const [status, heartbeat] = await Promise.all([
           readWorkerStatus(sanitized, worker.name, cwd),
           readWorkerHeartbeat(sanitized, worker.name, cwd),
@@ -6080,8 +6089,13 @@ export async function monitorTeamV2(
         last_error: sdkSession.last_error,
         session_id: sdkSession.session_id,
         model: sdkSession.model,
-        credits: sdkSession.usage.credits,
+        host_pid: sdkSession.host_pid,
+        runtime_pid: sdkSession.runtime_pid,
+        attempt_id: sdkSession.attempt_id,
+        updated_at: sdkSession.updated_at,
+        credits: sdkSession.usage.shutdown_credits ?? sdkSession.usage.credits,
         premium_requests: sdkSession.usage.shutdown_premium_requests ?? sdkSession.usage.premium_requests,
+        premium_requests_final: sdkSession.usage.shutdown_premium_requests != null,
       } } : {}),
     });
 
