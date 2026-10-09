@@ -6,6 +6,14 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Fixed
 
+- **Upstream port `ef9a44f0e..a720eabd0` (6 commits).** `omg ask antigravity`
+  now runs on Windows (the advisor spawns `agy`
+  without a shell so the prompt reaches it as one argv value), and antigravity team workers are no longer refused on Windows (upstream #4258).
+  Session cwds in a repo subdirectory on Windows resolve to the right worktree
+  (#4254). cmux teams verify pane ownership through the tmux-compat layer and
+  match surfaces by ref or UUID, and `--force` shutdown no longer stalls on
+  workers without a verifiable pane (#4261). Plugin cache cleanup keeps
+  symlinked versions and ignores orphaned `*.tmp~*` directories (#4263).
 - **Project config is `.copilot/omg.jsonc` everywhere.** The security config
   reader, the Stop hook (`persistent-mode.mjs`), the keyword detector's
   `keywordDetector.disabled` opt-out, per-agent model overrides in the

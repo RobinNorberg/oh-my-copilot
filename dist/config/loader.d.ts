@@ -3,7 +3,7 @@
  *
  * Handles loading and merging configuration from multiple sources:
  * - User config: ~/.config/claude-omc/config.jsonc
- * - Project config: .copilot/omg.jsonc
+ * - Project config: .copilot/omg.jsonc (falls back to legacy .copilot/omc.jsonc)
  * - Environment variables
  */
 import type { PluginConfig } from "../shared/types.js";

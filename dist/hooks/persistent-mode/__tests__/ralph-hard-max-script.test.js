@@ -41,6 +41,15 @@ function runStopHook(hookPath, scenario) {
         mkdirSync(join(xdg, 'claude-omc'), { recursive: true });
         writeFileSync(join(xdg, 'claude-omc', 'config.jsonc'), scenario.userConfig);
     }
+    if (scenario.projectCanonicalConfig !== undefined || scenario.projectLegacyConfig !== undefined) {
+        mkdirSync(join(repo, '.copilot'), { recursive: true });
+        if (scenario.projectCanonicalConfig !== undefined) {
+            writeFileSync(join(repo, '.copilot', 'omg.jsonc'), scenario.projectCanonicalConfig);
+        }
+        if (scenario.projectLegacyConfig !== undefined) {
+            writeFileSync(join(repo, '.copilot', 'omc.jsonc'), scenario.projectLegacyConfig);
+        }
+    }
     const now = new Date().toISOString();
     const statePath = join(stateDir, 'ralph-state.json');
     writeFileSync(statePath, JSON.stringify({
@@ -122,6 +131,17 @@ describe.each([
                 '  "security": { "hardMaxIterations": 50 },',
                 '}',
             ].join('\n'),
+        });
+        expect(output.reason).toContain('HARD LIMIT');
+        expect(output.reason).toContain('(50)');
+        expect(state.active).toBe(false);
+    });
+    it('prefers the canonical .copilot/omg.jsonc over a legacy .copilot/omc.jsonc for the project security section', () => {
+        const { output, state } = runStopHook(hookPath(), {
+            iteration: 50,
+            maxIterations: 60,
+            projectCanonicalConfig: JSON.stringify({ security: { hardMaxIterations: 50 } }),
+            projectLegacyConfig: JSON.stringify({ security: { hardMaxIterations: 9999 } }),
         });
         expect(output.reason).toContain('HARD LIMIT');
         expect(output.reason).toContain('(50)');
