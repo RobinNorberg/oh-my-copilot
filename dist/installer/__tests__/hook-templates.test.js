@@ -265,7 +265,7 @@ OMC Ultrawork = "특수부대 작전 반"
         expect(JSON.stringify(templateRalphProblem)).toContain('[MAGIC KEYWORD: RALPH]');
         expect(JSON.stringify(pluginRalphProblem)).toContain('[MAGIC KEYWORD: RALPH]');
     });
-    it('honors keywordDetector.disabled from .claude/omc.jsonc in both packaged artifacts', () => {
+    it('honors keywordDetector.disabled from .copilot/omg.jsonc in both packaged artifacts', () => {
         const templatePath = join(packageRoot, 'templates', 'hooks', 'keyword-detector.mjs');
         const pluginPath = join(packageRoot, 'scripts', 'keyword-detector.mjs');
         // Isolate from any real user config at ~/.config/claude-omc/config.jsonc.
@@ -279,9 +279,9 @@ OMC Ultrawork = "특수부대 작전 반"
             encoding: 'utf-8',
         }));
         try {
-            mkdirSync(join(disabledDir, '.claude'), { recursive: true });
+            mkdirSync(join(disabledDir, '.copilot'), { recursive: true });
             // Canonical JSONC shape from the #3421 review: comment + trailing commas.
-            writeFileSync(join(disabledDir, '.claude', 'omc.jsonc'), '{\n  // disable tdd auto-routing\n  "keywordDetector": { "disabled": ["tdd",], },\n}');
+            writeFileSync(join(disabledDir, '.copilot', 'omg.jsonc'), '{\n  // disable tdd auto-routing\n  "keywordDetector": { "disabled": ["tdd",], },\n}');
             for (const scriptPath of [templatePath, pluginPath]) {
                 // Opt-out is honored: the shipped hook does not route the disabled keyword.
                 expect(runInDir(scriptPath, 'tdd implement password validation', disabledDir)).toEqual({
