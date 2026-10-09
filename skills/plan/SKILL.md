@@ -78,8 +78,8 @@ Jumping into code without understanding requirements leads to rework, scope cree
 
 **Provider overrides (supported when the provider CLI is installed):**
 
-- `--architect codex` — replace the Claude Architect pass with `omg ask codex --agent-prompt architect "..."` for implementation-heavy architecture review
-- `--critic codex` — replace the Claude Critic pass with `omg ask codex --agent-prompt critic "..."` for an external review pass before execution
+- `--architect codex` — replace the Claude Architect pass with `omc ask codex --agent-prompt architect "..."` for implementation-heavy architecture review
+- `--critic codex` — replace the Claude Critic pass with `omc ask codex --agent-prompt critic "..."` for an external review pass before execution
 - If the requested provider is unavailable, briefly note that and continue with the default Claude Architect/Critic step for that stage
 
 **State lifecycle**: The persistent-mode stop hook uses `ralplan-state.json` to enforce continuation during the consensus loop. The skill **MUST** manage this state:
