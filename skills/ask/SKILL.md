@@ -1,6 +1,6 @@
 ---
 name: ask
-description: Process-first advisor routing for Claude, Codex, Gemini, Antigravity, Grok, or Cursor via `omc ask`, with artifact capture and no raw CLI assembly
+description: Process-first advisor routing for Claude, Codex, Gemini, Antigravity, Grok, or Cursor via `omg ask`, with artifact capture and no raw CLI assembly
 ---
 
 # Ask
@@ -28,10 +28,10 @@ Examples:
 **Required execution path — always use this command:**
 
 ```bash
-omc ask {{ARGUMENTS}}
+omg ask {{ARGUMENTS}}
 ```
 
-**Do NOT manually construct raw provider CLI commands.** Never run `codex`, `claude`, `gemini`, `agy`, `grok`, or `cursor-agent` directly to fulfill this skill. The `omc ask` wrapper handles correct flag selection, artifact persistence, and provider-version compatibility automatically. Manually assembling provider CLI flags will produce incorrect or outdated invocations.
+**Do NOT manually construct raw provider CLI commands.** Never run `codex`, `claude`, `gemini`, `agy`, `grok`, or `cursor-agent` directly to fulfill this skill. The `omg ask` wrapper handles correct flag selection, artifact persistence, and provider-version compatibility automatically. Manually assembling provider CLI flags will produce incorrect or outdated invocations.
 
 ## Requirements
 
@@ -50,12 +50,12 @@ cursor-agent --version
 - **Antigravity CLI install** (Google's successor to the Gemini CLI): install the `agy`
   binary per the [official Antigravity instructions](https://antigravity.google) (inspect
   any installer before running it). Verify: `agy --version`
-  > **Platform note:** `omc ask antigravity` is supported on macOS/Linux. On Windows it is guarded with a clear error, because `agy --print` takes the prompt as an argv value (it cannot read stdin) and has known upstream Windows `-p` limitations; use `omc ask gemini` on Windows.
+  > **Platform note:** `omg ask antigravity` runs on macOS, Linux and Windows. On Windows the advisor spawns `agy` without a shell so the prompt reaches it as a single argv value (`agy` cannot read the prompt from stdin); a run that hangs or exits with no output is reported as a failure (google-antigravity/antigravity-cli#76).
 - **Gemini CLI** remains supported for enterprise/API-key use cases.
 
 ## Artifacts
 
-`omc ask` writes artifacts to:
+`omg ask` writes artifacts to:
 
 ```text
 .omg/artifacts/ask/<provider>-<slug>-<timestamp>.md

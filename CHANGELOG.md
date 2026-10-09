@@ -7,8 +7,8 @@ All notable changes to oh-my-copilot will be documented in this file.
 ### Fixed
 
 - **Upstream port `ef9a44f0e..a720eabd0` (6 commits).** `omg ask antigravity`
-  and antigravity team workers now run on Windows: the advisor spawns `agy`
-  without a shell so the prompt reaches it as one argv value (upstream #4258).
+  now runs on Windows (the advisor spawns `agy`
+  without a shell so the prompt reaches it as one argv value), and antigravity team workers are no longer refused on Windows (upstream #4258).
   Session cwds in a repo subdirectory on Windows resolve to the right worktree
   (#4254). cmux teams verify pane ownership through the tmux-compat layer and
   match surfaces by ref or UUID, and `--force` shutdown no longer stalls on
