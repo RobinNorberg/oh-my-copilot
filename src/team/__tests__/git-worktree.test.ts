@@ -14,6 +14,7 @@ import {
   prepareWorkerWorktreeForRemoval,
   writePreservedWorktreesRecord,
   readPreservedWorktreesRecord,
+  deleteWorkerBranchAt,
 } from '../git-worktree.js';
 
 /**
@@ -376,6 +377,126 @@ describe('git-worktree', () => {
       expect(toPosixPath(worktreeList)).toContain(toPosixPath(info.path));
 
       execFileSync('git', ['worktree', 'unlock', info.path], { cwd: repoDir, stdio: 'pipe' });
+    });
+
+    it('keeps the named branch and the worktree when the worker moved HEAD off a branch holding a commit', () => {
+      for (const [worker, moveOff] of [
+        ['moved-detached', ['switch', '--detach']],
+        ['moved-other', ['switch', '-c', 'other-branch']],
+      ] as const) {
+        const info = createWorkerWorktree(teamName, worker, repoDir);
+        const base = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: info.path, encoding: 'utf-8' }).trim();
+        writeFileSync(join(info.path, 'work.txt'), 'worker output\n');
+        execFileSync('git', ['add', 'work.txt'], { cwd: info.path, stdio: 'pipe' });
+        execFileSync('git', ['commit', '-m', 'worker work'], { cwd: info.path, stdio: 'pipe' });
+        execFileSync('git', [...moveOff, base], { cwd: info.path, stdio: 'pipe' });
+
+        let thrown: (Error & { code?: string; preservedWorktree?: unknown }) | undefined;
+        try { removeWorkerWorktree(teamName, worker, repoDir); } catch (err) { thrown = err as typeof thrown; }
+        expect(thrown?.code).toBe('worktree_unmerged_commits');
+        expect(thrown?.preservedWorktree).toEqual({ workerName: worker, path: info.path, branch: info.branch, commits: 1 });
+        expect(existsSync(info.path)).toBe(true);
+        expect(execFileSync('git', ['branch', '--list', info.branch], { cwd: repoDir, encoding: 'utf-8' })).toContain(info.branch);
+      }
+    });
+
+    it('keeps the branch of a registered worktree whose directory was deleted when it holds unmerged commits', () => {
+      const info = createWorkerWorktree(teamName, 'deleted-dir-worker', repoDir);
+      writeFileSync(join(info.path, 'work.txt'), 'worker output\n');
+      execFileSync('git', ['add', 'work.txt'], { cwd: info.path, stdio: 'pipe' });
+      execFileSync('git', ['commit', '-m', 'worker work'], { cwd: info.path, stdio: 'pipe' });
+      rmSync(info.path, { recursive: true, force: true });
+
+      let thrown: (Error & { code?: string; preservedWorktree?: unknown }) | undefined;
+      try { removeWorkerWorktree(teamName, 'deleted-dir-worker', repoDir); } catch (err) { thrown = err as typeof thrown; }
+      expect(thrown?.code).toBe('worktree_unmerged_commits');
+      expect(thrown?.preservedWorktree).toEqual({ workerName: 'deleted-dir-worker', path: info.path, branch: info.branch, commits: 1 });
+      expect(execFileSync('git', ['branch', '--list', info.branch], { cwd: repoDir, encoding: 'utf-8' })).toContain(info.branch);
+    });
+
+    it('keeps the record of a deleted detached worktree whose recorded HEAD holds unmerged commits', () => {
+      const info = ensureWorkerWorktree(teamName, 'deleted-detached-worker', repoDir, { mode: 'detached', requireCleanLeader: false })!;
+      writeFileSync(join(info.path, 'work.txt'), 'worker output\n');
+      execFileSync('git', ['add', 'work.txt'], { cwd: info.path, stdio: 'pipe' });
+      execFileSync('git', ['commit', '-m', 'worker work'], { cwd: info.path, stdio: 'pipe' });
+      const workerHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: info.path, encoding: 'utf-8' }).trim();
+      rmSync(info.path, { recursive: true, force: true });
+
+      let thrown: (Error & { code?: string; preservedWorktree?: unknown }) | undefined;
+      try { removeWorkerWorktree(teamName, 'deleted-detached-worker', repoDir); } catch (err) { thrown = err as typeof thrown; }
+      expect(thrown?.code).toBe('worktree_unmerged_commits');
+      expect(thrown?.preservedWorktree).toEqual({ workerName: 'deleted-detached-worker', path: info.path, branch: null, commits: 1 });
+      expect(execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: repoDir, encoding: 'utf-8' })).toContain(`HEAD ${workerHead}`);
+    });
+
+    it('deletes the branch of a registered worktree whose directory was deleted when it holds no unmerged commits', () => {
+      const info = createWorkerWorktree(teamName, 'deleted-dir-clean', repoDir);
+      rmSync(info.path, { recursive: true, force: true });
+
+      removeWorkerWorktree(teamName, 'deleted-dir-clean', repoDir);
+      expect(execFileSync('git', ['branch', '--list', info.branch], { cwd: repoDir, encoding: 'utf-8' }).trim()).toBe('');
+      expect(toPosixPath(execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: repoDir, encoding: 'utf-8' }))).not.toContain('deleted-dir-clean');
+      expect(listTeamWorktrees(teamName, repoDir).map((w) => w.workerName)).not.toContain('deleted-dir-clean');
+    });
+
+    it('deletes a worker branch only while it still points at the checked commit', () => {
+      const branch = 'omc-team/test-wt/ref-moved';
+      const checked = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf-8' }).trim();
+      execFileSync('git', ['branch', branch, checked], { cwd: repoDir, stdio: 'pipe' });
+      const tree = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { cwd: repoDir, encoding: 'utf-8' }).trim();
+      const moved = execFileSync('git', ['commit-tree', tree, '-p', checked, '-m', 'moved'], { cwd: repoDir, encoding: 'utf-8' }).trim();
+      execFileSync('git', ['update-ref', `refs/heads/${branch}`, moved], { cwd: repoDir, stdio: 'pipe' });
+
+      expect(() => deleteWorkerBranchAt(repoDir, branch, checked)).toThrow(/worktree_branch_delete_failed/);
+      expect(execFileSync('git', ['rev-parse', `refs/heads/${branch}`], { cwd: repoDir, encoding: 'utf-8' }).trim()).toBe(moved);
+
+      deleteWorkerBranchAt(repoDir, branch, moved);
+      expect(execFileSync('git', ['branch', '--list', branch], { cwd: repoDir, encoding: 'utf-8' }).trim()).toBe('');
+    });
+
+    it('never deletes a worker branch that a worktree has checked out', () => {
+      const leaderBranch = execFileSync('git', ['branch', '--show-current'], { cwd: repoDir, encoding: 'utf-8' }).trim();
+      const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf-8' }).trim();
+
+      expect(() => deleteWorkerBranchAt(repoDir, leaderBranch, head)).toThrow(/worktree_branch_delete_failed/);
+      expect(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoDir, encoding: 'utf-8' }).trim()).toBe(head);
+    });
+
+    it('keeps a worker branch git cannot resolve to a commit instead of treating it as missing', () => {
+      const tree = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { cwd: repoDir, encoding: 'utf-8' }).trim();
+      const refDir = join(repoDir, '.git', 'refs', 'heads', 'omc-team', teamName);
+      mkdirSync(refDir, { recursive: true });
+      writeFileSync(join(refDir, 'unreadable-worker'), `${tree}\n`);
+
+      let thrown: (Error & { code?: string }) | undefined;
+      try { removeWorkerWorktree(teamName, 'unreadable-worker', repoDir); } catch (err) { thrown = err as typeof thrown; }
+      expect(thrown?.code).toBe('worktree_commit_check_failed');
+      expect(readFileSync(join(refDir, 'unreadable-worker'), 'utf-8').trim()).toBe(tree);
+    });
+
+    // ` -> ` cannot appear in a win32 file name.
+    it.skipIf(process.platform === 'win32')('treats an untracked file whose name contains " -> " as its own path', () => {
+      const info = createWorkerWorktree(teamName, 'arrow-worker', repoDir);
+      installWorktreeRootAgents(teamName, 'arrow-worker', repoDir, info.path, 'managed overlay\n');
+      mkdirSync(join(info.path, '.omg', 'state'), { recursive: true });
+      writeFileSync(join(info.path, '.omg', 'state', 'job.json'), '{}');
+      writeFileSync(join(info.path, 'notes -> AGENTS.md'), 'worker output');
+
+      expect(() => removeWorkerWorktree(teamName, 'arrow-worker', repoDir)).toThrow(/worktree_dirty/);
+      expect(existsSync(join(info.path, 'notes -> AGENTS.md'))).toBe(true);
+    });
+
+    it.skipIf(process.platform !== 'win32')('recognizes a registered worktree when the repo root is spelled in another case (win32)', () => {
+      const info = ensureWorkerWorktree(teamName, 'case-worker', repoDir, { mode: 'detached', requireCleanLeader: false })!;
+      writeFileSync(join(info.path, 'work.txt'), 'worker output\n');
+      execFileSync('git', ['add', 'work.txt'], { cwd: info.path, stdio: 'pipe' });
+      execFileSync('git', ['commit', '-m', 'worker work'], { cwd: info.path, stdio: 'pipe' });
+      const otherCase = repoDir === repoDir.toUpperCase() ? repoDir.toLowerCase() : repoDir.toUpperCase();
+
+      let thrown: (Error & { code?: string }) | undefined;
+      try { removeWorkerWorktree(teamName, 'case-worker', otherCase); } catch (err) { thrown = err as typeof thrown; }
+      expect(thrown?.code).toBe('worktree_unmerged_commits');
+      expect(existsSync(join(info.path, 'work.txt'))).toBe(true);
     });
 
     it('does not throw for non-existent worktree', () => {
