@@ -2,7 +2,17 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
-## [Unreleased]
+# oh-my-copilot v5.9.0
+
+## [5.9.0] - 2026-10-10
+
+Fork **v5.9.0** (from v5.8.1) is a minor release: `omg team` starts headless
+SDK workers by default under the Copilot CLI host, Copilot hooks run through a
+per-event dispatcher, the project config is `.copilot/omg.jsonc` everywhere, a
+daily upstream drift bot proposes ports, and upstream oh-my-claudecode `dev` is
+ported through a720eabd0 (ef9a44f0e..a720eabd0, 6 commits). Under Claude Code
+the team transport stays `pane`. To keep panes under Copilot CLI, see the
+[v5.8.1 → v5.9.0 note](docs/MIGRATION.md#v581--v590-sdk-team-transport-by-default).
 
 ### Changed: SDK team transport is the default under Copilot CLI
 
@@ -13,7 +23,7 @@ All notable changes to oh-my-copilot will be documented in this file.
   reviewer-contract role, or a missing `@github/copilot-sdk`. `--transport`
   accepts `sdk`, `pane`, `auto` and the aliases `tmux`/`psmux`; `team.transport`
   in the project config overrides the default. See the
-  [migration note](docs/MIGRATION.md#unreleased-sdk-team-transport-by-default).
+  [migration note](docs/MIGRATION.md#v581--v590-sdk-team-transport-by-default).
 - **Parallel sdk worker launch.** Hosts start concurrently
   (`team.sdk.launchConcurrency`, default 4; env
   `OMC_TEAM_SDK_LAUNCH_CONCURRENCY`). In a live 2-worker run the host launch
@@ -28,7 +38,26 @@ All notable changes to oh-my-copilot will be documented in this file.
   `tmux has-session`, so an sdk team never counted. A team is now live while any
   of its sdk hosts is.
 
+### Changed: per-event Copilot hook dispatcher
+
+- **Copilot hooks run through a per-event dispatcher.** `copilot/hooks.json`
+  now has one entry per `(event, matcher)` group of `hooks/hooks.json`
+  instead of one per hook. Each entry runs `scripts/copilot/dispatch.cjs`,
+  which reads stdin once, runs the group's hooks in order with the same
+  `run.cjs` routing and per-hook timeouts, and merges the adapted outputs:
+  context joined in hook order, any PreToolUse deny wins, a Stop block from
+  any hook survives (reasons joined in hook order, and it beats another
+  hook's `continue: false`), a throwing hook fails alone, a timed-out hook
+  contributes no stdout, PermissionRequest exit 2 is kept, and under
+  `OMC_HOOK_FAIL_CLOSED=1` a timeout (124) beats every other exit code.
+  Locally on Windows, Stop drops from 1358 to 1011 ms and SessionStart from
+  2403 to 2036 ms. `OMC_COPILOT_HOOK_DISPATCH=0` runs one process per hook
+  again without regenerating. Claude Code and `hooks/hooks.json` are
+  unchanged. See [HOOKS.md](docs/HOOKS.md#per-event-dispatcher).
+
 ### Added
+
+- **Upstream drift bot.** A daily workflow, `.github/workflows/upstream-drift.yml`, checks upstream oh-my-claudecode `dev` against the last ported sha. That sha is recorded in the new `.github/upstream-port.json`. When upstream has moved, the bot applies the range with `scripts/port/upstream-drift.mjs`, using the runbook's exclusions and the mechanical rename map. A clean apply opens a draft port PR to `dev`. Conflicts open an issue that lists them. Each upstream head gets one item, older ones are closed, and nothing is force-pushed. The optional `UPSTREAM_DRIFT_TOKEN` secret lets CI run on bot PRs. See docs/DEVELOPERS.md, "Upstream drift bot".
 
 - **`omg smoke copilot --tier 2 --scenario team`** (opt-in, never in `all`):
   a real 2-worker `omg team` on the default transport, from start to a clean
@@ -78,27 +107,6 @@ All notable changes to oh-my-copilot will be documented in this file.
   protocol-only `postResult` and `prePRDescription`) have no upstream hook to
   map.
   The SDK's callback hooks cover only 10 of the CLI's 15 file hook events.
-
-### Added
-
-- **Upstream drift bot.** A daily workflow, `.github/workflows/upstream-drift.yml`, checks upstream oh-my-claudecode `dev` against the last ported sha. That sha is recorded in the new `.github/upstream-port.json`. When upstream has moved, the bot applies the range with `scripts/port/upstream-drift.mjs`, using the runbook's exclusions and the mechanical rename map. A clean apply opens a draft port PR to `dev`. Conflicts open an issue that lists them. Each upstream head gets one item, older ones are closed, and nothing is force-pushed. The optional `UPSTREAM_DRIFT_TOKEN` secret lets CI run on bot PRs. See docs/DEVELOPERS.md, "Upstream drift bot".
-
-### Changed
-
-- **Copilot hooks run through a per-event dispatcher.** `copilot/hooks.json`
-  now has one entry per `(event, matcher)` group of `hooks/hooks.json`
-  instead of one per hook. Each entry runs `scripts/copilot/dispatch.cjs`,
-  which reads stdin once, runs the group's hooks in order with the same
-  `run.cjs` routing and per-hook timeouts, and merges the adapted outputs:
-  context joined in hook order, any PreToolUse deny wins, a Stop block from
-  any hook survives (reasons joined in hook order, and it beats another
-  hook's `continue: false`), a throwing hook fails alone, a timed-out hook
-  contributes no stdout, PermissionRequest exit 2 is kept, and under
-  `OMC_HOOK_FAIL_CLOSED=1` a timeout (124) beats every other exit code.
-  Locally on Windows, Stop drops from 1358 to 1011 ms and SessionStart from
-  2403 to 2036 ms. `OMC_COPILOT_HOOK_DISPATCH=0` runs one process per hook
-  again without regenerating. Claude Code and `hooks/hooks.json` are
-  unchanged. See [HOOKS.md](docs/HOOKS.md#per-event-dispatcher).
 
 # oh-my-copilot v5.8.1
 

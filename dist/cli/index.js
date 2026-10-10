@@ -1205,7 +1205,7 @@ smokeCmd
     .option('--timeout <ms>', 'Tiers 1-2: tier 1 session timeout (default 180000), tier 2 per-scenario timeout (default 120000, then abort); tier 0 per-subprocess timeout (default 60000); the MCP check is fixed at 10 s')
     .option('--keep-home', 'Keep the throwaway COPILOT_HOME and project dir for debugging')
     .option('--delegate', 'Tier 1: ask for a delegation to oh-my-copilot:architect and check subagent.selected')
-    .option('--scenario <list|all>', 'Tier 2 scenarios, comma-separated: smoke, guardrail, skill, delegate, or all (default: smoke,guardrail); chain (opt-in, never in all) runs a real two-link factory chain')
+    .option('--scenario <list|all>', 'Tier 2 scenarios, comma-separated: smoke, guardrail, skill, delegate, or all (default: smoke,guardrail); chain and team (opt-in, never in all) run a real two-link factory chain and a real 2-worker sdk team')
     .option('--sdk-static', 'Tier 2 with no scenarios: SDK static checks only, zero model calls')
     .option('--json', 'Print the full SmokeReport as JSON (always, also for option errors)')
     .addHelpText('after', `
@@ -1224,7 +1224,9 @@ Examples:
   $ omg smoke copilot --tier 2                  Default scenarios smoke,guardrail (~2 premium requests, 1 per scenario)
   $ omg smoke copilot --tier 2 --scenario all   All four SDK scenarios
   $ omg smoke copilot --tier 2 --scenario chain Two-link factory chain via OMC_CHAIN_LINK (~2 premium requests,
-                                                real copilot -p links outside the --max-credits cap)`)
+                                                real copilot -p links outside the --max-credits cap)
+  $ omg smoke copilot --tier 2 --scenario team  2-worker omg team on the default sdk transport, start to clean
+                                                shutdown (~2 premium requests, 1 per worker)`)
     .action(async (options) => {
     const exitCode = await smokeCopilotCommand(options);
     process.exit(exitCode);

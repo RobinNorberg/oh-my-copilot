@@ -3650,49 +3650,49 @@ var require_fast_uri = __commonJS({
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative11, options, skipNormalization) {
+    function resolveComponent(base, relative12, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse6(serialize(base, options), options);
-        relative11 = parse6(serialize(relative11, options), options);
+        relative12 = parse6(serialize(relative12, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative11.scheme) {
-        target.scheme = relative11.scheme;
-        target.userinfo = relative11.userinfo;
-        target.host = relative11.host;
-        target.port = relative11.port;
-        target.path = removeDotSegments(relative11.path || "");
-        target.query = relative11.query;
+      if (!options.tolerant && relative12.scheme) {
+        target.scheme = relative12.scheme;
+        target.userinfo = relative12.userinfo;
+        target.host = relative12.host;
+        target.port = relative12.port;
+        target.path = removeDotSegments(relative12.path || "");
+        target.query = relative12.query;
       } else {
-        if (relative11.userinfo !== void 0 || relative11.host !== void 0 || relative11.port !== void 0) {
-          target.userinfo = relative11.userinfo;
-          target.host = relative11.host;
-          target.port = relative11.port;
-          target.path = removeDotSegments(relative11.path || "");
-          target.query = relative11.query;
+        if (relative12.userinfo !== void 0 || relative12.host !== void 0 || relative12.port !== void 0) {
+          target.userinfo = relative12.userinfo;
+          target.host = relative12.host;
+          target.port = relative12.port;
+          target.path = removeDotSegments(relative12.path || "");
+          target.query = relative12.query;
         } else {
-          if (!relative11.path) {
+          if (!relative12.path) {
             target.path = base.path;
-            if (relative11.query !== void 0) {
-              target.query = relative11.query;
+            if (relative12.query !== void 0) {
+              target.query = relative12.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative11.path[0] === "/") {
-              target.path = removeDotSegments(relative11.path);
+            if (relative12.path[0] === "/") {
+              target.path = removeDotSegments(relative12.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative11.path;
+                target.path = "/" + relative12.path;
               } else if (!base.path) {
-                target.path = relative11.path;
+                target.path = relative12.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative11.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative12.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative11.query;
+            target.query = relative12.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -3700,7 +3700,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative11.fragment;
+      target.fragment = relative12.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -7619,6 +7619,14 @@ function getWorktreeRoot(cwd) {
   worktreeCacheMap.set(effectiveCwd, createStateRootCacheEntry(effectiveCwd, root));
   return root;
 }
+function validatePath(inputPath) {
+  if (inputPath.includes("..")) {
+    throw new Error(`Invalid path: path traversal not allowed (${inputPath})`);
+  }
+  if (inputPath.startsWith("~") || (0, import_path2.isAbsolute)(inputPath)) {
+    throw new Error(`Invalid path: absolute paths not allowed (${inputPath})`);
+  }
+}
 function discoverCentralizedDirFromSettings() {
   const candidates = [];
   try {
@@ -7779,6 +7787,16 @@ function getOmcRoot(worktreeRoot) {
   } catch {
   }
   return (0, import_path2.join)(root, OmcPaths.ROOT);
+}
+function resolveOmcPath(relativePath, worktreeRoot) {
+  validatePath(relativePath);
+  const omcDir = getOmcRoot(worktreeRoot);
+  const fullPath = (0, import_path2.normalize)((0, import_path2.resolve)(omcDir, relativePath));
+  const relativeToOmc = (0, import_path2.relative)(omcDir, fullPath);
+  if (relativeToOmc.startsWith("..") || relativeToOmc.startsWith(import_path2.sep + "..")) {
+    throw new Error(`Path escapes omc boundary: ${relativePath}`);
+  }
+  return fullPath;
 }
 function callerVisibleTrustedRootLabel(trustedRoot) {
   const label = (0, import_path2.basename)(trustedRoot);
@@ -17302,19 +17320,46 @@ function git(repoRoot, args, cwd = repoRoot) {
   return (0, import_node_child_process2.execFileSync)("git", args, { cwd, encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
 }
 function canonicalPathForComparison(path5) {
-  try {
-    return (0, import_node_fs6.realpathSync)(path5);
-  } catch {
-    return (0, import_node_path7.resolve)(path5);
+  let existing = (0, import_node_path7.resolve)(path5);
+  const missingTail = [];
+  let canonical;
+  for (; ; ) {
+    try {
+      canonical = (0, import_node_path7.join)(import_node_fs6.realpathSync.native(existing), ...missingTail);
+      break;
+    } catch {
+      const parent = (0, import_node_path7.dirname)(existing);
+      if (parent === existing) {
+        canonical = (0, import_node_path7.resolve)(path5);
+        break;
+      }
+      missingTail.unshift((0, import_node_path7.basename)(existing));
+      existing = parent;
+    }
   }
+  return process.platform === "win32" ? canonical.toLowerCase() : canonical;
+}
+function findRegisteredWorktree(repoRoot, wtPath) {
+  const output = git(repoRoot, ["worktree", "list", "--porcelain"]);
+  const resolvedWtPath = canonicalPathForComparison(wtPath);
+  let entry = null;
+  for (const line of output.split("\n")) {
+    if (line.startsWith("worktree ")) {
+      if (entry) return entry;
+      if (canonicalPathForComparison(line.slice("worktree ".length).trim()) === resolvedWtPath) entry = { head: null, branch: null };
+      continue;
+    }
+    if (!entry) continue;
+    if (line.startsWith("HEAD ")) entry.head = line.slice("HEAD ".length).trim();
+    if (line.startsWith("branch ")) entry.branch = line.slice("branch ".length).trim().replace(/^refs\/heads\//, "");
+  }
+  return entry;
 }
 function isRegisteredWorktreePath(repoRoot, wtPath) {
   try {
-    const output = git(repoRoot, ["worktree", "list", "--porcelain"]);
-    const resolvedWtPath = canonicalPathForComparison(wtPath);
-    return output.split("\n").some((line) => line.startsWith("worktree ") && canonicalPathForComparison(line.slice("worktree ".length).trim()) === resolvedWtPath);
+    return findRegisteredWorktree(repoRoot, wtPath) !== null;
   } catch {
-    return false;
+    return true;
   }
 }
 function normalizeStatusPath(rawPath) {
@@ -17331,18 +17376,141 @@ function normalizeStatusPath(rawPath) {
 function statusEntryPath(line) {
   const payload = line.slice(3);
   const renameSeparator = " -> ";
-  const renameIndex = payload.indexOf(renameSeparator);
+  const renameIndex = /[RC]/.test(line.slice(0, 2)) ? payload.indexOf(renameSeparator) : -1;
   return normalizeStatusPath(renameIndex >= 0 ? payload.slice(renameIndex + renameSeparator.length) : payload);
+}
+function worktreeRuntimeStatePrefixes(wtPath) {
+  const root = (0, import_node_path7.resolve)(wtPath);
+  const omcRel = (0, import_node_path7.relative)(root, (0, import_node_path7.resolve)(getOmcRoot(wtPath))).split(import_node_path7.sep).join("/");
+  if (!omcRel || omcRel.startsWith("..") || (0, import_node_path7.isAbsolute)(omcRel) || omcRel.includes("/")) return [];
+  return WORKTREE_RUNTIME_STATE_DIRS.map(([dir, rest]) => [`${(0, import_node_path7.relative)(root, resolveOmcPath(dir, wtPath)).split(import_node_path7.sep).join("/")}/`, rest]);
 }
 function isWorktreeDirtyExcept(wtPath, ignoredRootPaths = []) {
   try {
     const ignored = new Set(ignoredRootPaths);
-    const entries = (0, import_node_child_process2.execFileSync)("git", ["status", "--porcelain"], { cwd: wtPath, encoding: "utf-8", stdio: "pipe", windowsHide: true }).split("\n").filter((line) => line.trim().length > 0);
-    const relevantEntries = entries.filter((line) => !ignored.has(statusEntryPath(line)));
-    return { dirty: relevantEntries.length > 0, entries: relevantEntries };
+    const runtimePrefixes = worktreeRuntimeStatePrefixes(wtPath);
+    const entries = (0, import_node_child_process2.execFileSync)("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: wtPath, encoding: "utf-8", stdio: "pipe", windowsHide: true }).split("\n").filter((line) => line.trim().length > 0);
+    const isRuntime = (line) => line.startsWith("?? ") && runtimePrefixes.some(([prefix, rest]) => {
+      const path5 = statusEntryPath(line);
+      return path5.startsWith(prefix) && rest.test(path5.slice(prefix.length));
+    });
+    const relevantEntries = entries.filter((line) => !ignored.has(statusEntryPath(line)) && !isRuntime(line));
+    return { dirty: relevantEntries.length > 0, entries: relevantEntries, runtimeState: entries.some(isRuntime) };
   } catch {
-    return { dirty: true, entries: ["git_status_failed"] };
+    return { dirty: true, entries: ["git_status_failed"], runtimeState: false };
   }
+}
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+function removeRuntimeLeftover(wtPath, retryMs = RUNTIME_LEFTOVER_RETRY_MS) {
+  const deadline = Date.now() + retryMs;
+  for (; ; ) {
+    try {
+      (0, import_node_fs6.rmSync)(wtPath, { recursive: true, force: true });
+      return;
+    } catch (err) {
+      if (Date.now() >= deadline) {
+        process.stderr.write(`[omc] warning: left OMC runtime state of a removed worker worktree at ${wtPath} (still in use): ${err instanceof Error ? err.message : String(err)}
+`);
+        return;
+      }
+      sleepSync(500);
+    }
+  }
+}
+function gitOrNull(args, cwd) {
+  try {
+    return (0, import_node_child_process2.execFileSync)("git", args, { cwd, encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
+  } catch {
+    return null;
+  }
+}
+function countUnmergedWorkerCommits(repoRoot, wtPath, baseCommit) {
+  return countUnmergedCommits(repoRoot, gitOrNull(["rev-parse", "HEAD"], wtPath), baseCommit);
+}
+function commitCheckFailedError(message) {
+  const error2 = new Error(`worktree_commit_check_failed: ${message}`);
+  error2.code = "worktree_commit_check_failed";
+  return error2;
+}
+function branchRefStored(repoRoot, branch) {
+  const commonDir = gitOrNull(["rev-parse", "--git-common-dir"], repoRoot);
+  if (!commonDir) throw commitCheckFailedError(`keeping worker branch ${branch} (cannot locate the git directory)`);
+  const gitDir = (0, import_node_path7.resolve)(repoRoot, commonDir);
+  if ((0, import_node_fs6.existsSync)((0, import_node_path7.join)(gitDir, "refs", "heads", ...branch.split("/")))) return true;
+  try {
+    return (0, import_node_fs6.readFileSync)((0, import_node_path7.join)(gitDir, "packed-refs"), "utf-8").split("\n").some((line) => line.trimEnd().endsWith(` refs/heads/${branch}`));
+  } catch (err) {
+    if (err.code === "ENOENT") return false;
+    throw commitCheckFailedError(`keeping worker branch ${branch} (cannot read packed-refs)`);
+  }
+}
+function resolveBranchCommit(repoRoot, branch) {
+  try {
+    (0, import_node_child_process2.execFileSync)("git", ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: repoRoot, stdio: "pipe", windowsHide: true });
+  } catch (err) {
+    if (err?.status === 1 && !branchRefStored(repoRoot, branch)) return null;
+    throw commitCheckFailedError(`keeping worker branch ${branch} (cannot read it)`);
+  }
+  const commit = gitOrNull(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`], repoRoot);
+  if (!commit) throw commitCheckFailedError(`keeping worker branch ${branch} (it does not resolve to a commit)`);
+  return commit;
+}
+function deleteWorkerBranchAt(repoRoot, branch, commit) {
+  const ref = `refs/heads/${branch}`;
+  try {
+    const checkedOut = git(repoRoot, ["worktree", "list", "--porcelain"]).split("\n").some((line) => line.trim() === `branch ${ref}`);
+    if (checkedOut) {
+      process.stderr.write(`[omc] warning: kept merged worker branch ${branch} (checked out in a worktree)
+`);
+      return;
+    }
+    git(repoRoot, ["update-ref", "-d", ref, commit]);
+  } catch (err) {
+    const detail = err instanceof Error && err.message ? `: ${err.message}` : "";
+    const error2 = new Error(`worktree_branch_delete_failed: keeping worker branch ${branch} (it moved after the commit check or is in use)${detail}`);
+    error2.code = "worktree_branch_delete_failed";
+    throw error2;
+  }
+}
+function countUnmergedCommits(repoRoot, head, baseCommit) {
+  const leader = gitOrNull(["rev-parse", "HEAD"], repoRoot);
+  if (!head || !leader) return null;
+  const count = (excludes) => gitOrNull(["rev-list", "--count", head, ...excludes.map((ref) => `^${ref}`)], repoRoot);
+  const counted = (baseCommit ? count([leader, baseCommit]) : null) ?? count([leader]);
+  const n = counted === null ? NaN : Number.parseInt(counted, 10);
+  return Number.isFinite(n) ? n : null;
+}
+function hasInitializedSubmodules(wtPath) {
+  const modulesDir = gitOrNull(["rev-parse", "--git-path", "modules"], wtPath);
+  if (modulesDir && (0, import_node_fs6.existsSync)((0, import_node_path7.resolve)(wtPath, modulesDir))) return true;
+  const staged = gitOrNull(["ls-files", "--stage"], wtPath) ?? "";
+  return staged.split("\n").some((line) => {
+    if (!line.startsWith("160000 ")) return false;
+    const tab = line.indexOf("	");
+    return tab >= 0 && (0, import_node_fs6.existsSync)((0, import_node_path7.join)(wtPath, normalizeStatusPath(line.slice(tab + 1)), ".git"));
+  });
+}
+function unmergedCommitsError(info) {
+  const what = (0, import_node_fs6.existsSync)(info.path) ? `worker worktree at ${info.path}` : `worker branch of the removed worktree ${info.path}`;
+  const error2 = new Error(
+    `worktree_unmerged_commits: preserving ${what} with ${info.commits} commit(s) not merged into the leader HEAD${info.branch ? ` (branch ${info.branch})` : " (detached)"}`
+  );
+  Object.assign(error2, { code: "worktree_unmerged_commits", preservedWorktree: info });
+  return error2;
+}
+function getPreservedWorktreesRecordPath(repoRoot, teamName) {
+  return (0, import_node_path7.join)(getOmcRoot(repoRoot), "state", "team-preserved-worktrees", `${sanitizeName(teamName)}.json`);
+}
+function writePreservedWorktreesRecord(repoRoot, teamName, preserved) {
+  const recordPath = getPreservedWorktreesRecordPath(repoRoot, teamName);
+  if (preserved.length === 0) {
+    (0, import_node_fs6.rmSync)(recordPath, { force: true });
+    return;
+  }
+  ensureDirWithMode((0, import_node_path7.join)(getOmcRoot(repoRoot), "state", "team-preserved-worktrees"));
+  atomicWriteJson2(recordPath, { team: teamName, recorded_at: (/* @__PURE__ */ new Date()).toISOString(), preserved_worktrees: preserved });
 }
 function getMetadataPath(repoRoot, teamName) {
   return (0, import_node_path7.join)(getOmcRoot(repoRoot), "state", "team", sanitizeName(teamName), "worktrees.json");
@@ -17503,11 +17671,39 @@ function removeWorkerWorktree(teamName, workerName, repoRoot) {
   const metaLockPath = `${getMetadataPath(repoRoot, teamName)}.lock`;
   withFileLockSync(metaLockPath, () => {
     prepareWorkerWorktreeForRemoval(teamName, workerName, repoRoot, wtPath);
-    const wasRegisteredWorktree = isRegisteredWorktreePath(repoRoot, wtPath);
+    const baseCommit = readMetadata(repoRoot, teamName).find((entry) => entry.workerName === workerName)?.baseCommit;
+    let registered;
     try {
-      (0, import_node_child_process2.execFileSync)("git", ["worktree", "remove", wtPath], { cwd: repoRoot, stdio: "pipe", windowsHide: true });
+      registered = findRegisteredWorktree(repoRoot, wtPath);
+    } catch {
+      throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (cannot list git worktrees)`);
+    }
+    const wasRegisteredWorktree = registered !== null;
+    if (registered && (0, import_node_fs6.existsSync)(wtPath)) {
+      const toplevel = gitOrNull(["rev-parse", "--show-toplevel"], wtPath);
+      if (!toplevel || canonicalPathForComparison(toplevel) !== canonicalPathForComparison(wtPath)) {
+        throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (git does not resolve it to its own worktree)`);
+      }
+      const commits = countUnmergedWorkerCommits(repoRoot, wtPath, baseCommit);
+      if (commits === null) throw commitCheckFailedError(`preserving worker worktree at ${wtPath} (cannot count its commits against the leader HEAD)`);
+      if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch: registered.branch, commits });
+    } else if (registered) {
+      const commits = countUnmergedCommits(repoRoot, registered.head, baseCommit);
+      if (commits === null) throw commitCheckFailedError(`keeping the record of worker worktree ${wtPath} (cannot count its commits against the leader HEAD)`);
+      if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch: registered.branch, commits });
+    }
+    const branchHead = resolveBranchCommit(repoRoot, branch);
+    if (branchHead) {
+      const commits = countUnmergedCommits(repoRoot, branchHead, baseCommit);
+      if (commits === null) throw commitCheckFailedError(`keeping worker branch ${branch} (cannot count its commits against the leader HEAD)`);
+      if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch, commits });
+    }
+    const runtimeOnly = (0, import_node_fs6.existsSync)(wtPath) && isWorktreeDirtyExcept(wtPath, ["AGENTS.md"]).runtimeState;
+    const force = runtimeOnly && !hasInitializedSubmodules(wtPath);
+    try {
+      (0, import_node_child_process2.execFileSync)("git", ["worktree", "remove", ...force ? ["--force"] : [], wtPath], { cwd: repoRoot, stdio: "pipe", windowsHide: true });
     } catch (err) {
-      if (wasRegisteredWorktree) {
+      if (wasRegisteredWorktree && (!force || isRegisteredWorktreePath(repoRoot, wtPath))) {
         const detail = err instanceof Error && err.message ? `: ${err.message}` : "";
         const error2 = new Error(`worktree_remove_failed: preserving metadata for registered worker worktree at ${wtPath}${detail}`);
         error2.code = "worktree_remove_failed";
@@ -17518,17 +17714,15 @@ function removeWorkerWorktree(teamName, workerName, repoRoot) {
       (0, import_node_child_process2.execFileSync)("git", ["worktree", "prune"], { cwd: repoRoot, stdio: "pipe", windowsHide: true });
     } catch {
     }
-    try {
-      (0, import_node_child_process2.execFileSync)("git", ["branch", "-D", branch], { cwd: repoRoot, stdio: "pipe", windowsHide: true });
-    } catch {
-    }
+    if (branchHead) deleteWorkerBranchAt(repoRoot, branch, branchHead);
     if ((0, import_node_fs6.existsSync)(wtPath) && !isRegisteredWorktreePath(repoRoot, wtPath)) {
       validateWorktreeRemovalTarget({
         candidatePath: wtPath,
         expectedRoots: [(0, import_node_path7.join)(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees")],
         mainRepoRoots: [repoRoot]
       });
-      (0, import_node_fs6.rmSync)(wtPath, { recursive: true, force: true });
+      if (force) removeRuntimeLeftover(wtPath);
+      else (0, import_node_fs6.rmSync)(wtPath, { recursive: true, force: true });
     }
     forgetMetadataUnlocked(repoRoot, teamName, workerName);
   });
@@ -17559,23 +17753,29 @@ function cleanupTeamWorktrees(teamName, repoRoot) {
   const entries = safety.entries;
   const removed = [];
   const preserved = [...safety.blockers];
+  const retained = [];
   if (preserved.length > 0) {
-    return { removed, preserved };
+    return { removed, preserved, retained };
   }
   for (const entry of entries) {
     try {
       removeWorkerWorktree(teamName, entry.workerName, repoRoot);
       removed.push(entry.workerName);
     } catch (err) {
+      const kept = err?.preservedWorktree;
+      if (kept) {
+        retained.push(kept);
+        continue;
+      }
       const reason = err instanceof Error ? err.message : String(err);
       preserved.push({ workerName: entry.workerName, path: entry.path, reason });
       process.stderr.write(`[omc] warning: preserved worktree ${entry.path}: ${reason}
 `);
     }
   }
-  return { removed, preserved };
+  return { removed, preserved, retained };
 }
-var import_node_fs6, import_node_path7, import_node_child_process2, UNTRACKED_OMC_STATE;
+var import_node_fs6, import_node_path7, import_node_child_process2, UNTRACKED_OMC_STATE, WORKTREE_RUNTIME_STATE_DIRS, RUNTIME_LEFTOVER_RETRY_MS;
 var init_git_worktree = __esm({
   "src/team/git-worktree.ts"() {
     "use strict";
@@ -17590,6 +17790,8 @@ var init_git_worktree = __esm({
     UNTRACKED_OMC_STATE = new RegExp(
       `^\\?\\? ${OmcPaths.ROOT.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:/|$)`
     );
+    WORKTREE_RUNTIME_STATE_DIRS = [["state", /^/], ["sessions", /^[^/]+\.json$/]];
+    RUNTIME_LEFTOVER_RETRY_MS = 15e3;
   }
 });
 
@@ -17957,7 +18159,7 @@ var init_copilot_sdk_scenarios = __esm({
     import_path35 = require("path");
     init_copilot_session_eval();
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
-    OPT_IN_SCENARIOS = ["chain"];
+    OPT_IN_SCENARIOS = ["chain", "team"];
     KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     DELEGATE_AGENT = "oh-my-copilot:architect";
     SDK_PACKAGE = "@github/copilot-sdk";
@@ -18000,6 +18202,18 @@ var init_copilot_sdk_scenarios = __esm({
       chain: {
         name: "chain",
         prompt: "Reply with exactly: CHAIN_LINK_1. Do not use tools.",
+        excludedTools: [],
+        permit: denyAll
+      },
+      // Not an SDK session of the driver: the prompt is the `omg team` task, a
+      // numbered list that decomposes into one task per worker
+      // (copilot-team-scenario.ts). The sdk hosts apply their own policy.
+      team: {
+        name: "team",
+        prompt: [
+          "1. Create the file team-alpha.txt containing exactly the line alpha in your working directory, then commit only that file with git (message: smoke team alpha). Do nothing else.",
+          "2. Create the file team-beta.txt containing exactly the line beta in your working directory, then commit only that file with git (message: smoke team beta). Do nothing else."
+        ].join("\n"),
         excludedTools: [],
         permit: denyAll
       }
@@ -18622,9 +18836,11 @@ Then exit your session.
     await commitStoppedFenceUnderLock();
     let worktreeCleanupFailure = null;
     let preservedWorktrees = 0;
+    let retainedWorktrees = [];
     try {
       const worktreeCleanup = cleanupTeamWorktrees(sanitized, cwd);
       preservedWorktrees = worktreeCleanup.preserved.length;
+      retainedWorktrees = worktreeCleanup.retained;
     } catch (err) {
       preservedWorktrees = 1;
       worktreeCleanupFailure = err instanceof Error ? err.message : String(err);
@@ -18651,7 +18867,13 @@ Then exit your session.
         detail: err instanceof Error ? err.message : String(err)
       };
     }
-    return { outcome: "cleaned" };
+    try {
+      writePreservedWorktreesRecord(cwd, sanitized, retainedWorktrees);
+    } catch (err) {
+      process.stderr.write(`[team/runtime-v2] could not record preserved worktrees: ${err instanceof Error ? err.message : String(err)}
+`);
+    }
+    return retainedWorktrees.length > 0 ? { outcome: "cleaned", preservedWorktrees: retainedWorktrees } : { outcome: "cleaned" };
   });
 }
 var import_path38, import_fs33, import_promises15, import_node_crypto7, orchestratorByTeam, cadenceByTeam, TEAM_INSTANCE_FINAL_DISPOSAL_AUTHORIZATION;
@@ -18704,6 +18926,7 @@ var init_runtime_v2 = __esm({
     init_sdk_transport();
     init_model_contract();
     init_copilot_sdk_driver();
+    init_host_signal();
     init_copilot_session_env();
     init_config_dir();
     init_process_utils();

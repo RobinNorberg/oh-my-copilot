@@ -461,8 +461,14 @@ export interface TeamOpsConfig {
 /** `team` config block in PluginConfig. */
 export interface TeamConfigBlock {
     ops?: TeamOpsConfig;
-    /** Worker transport: `pane` (tmux/psmux, default) or `sdk` (headless copilot-sdk sessions; copilot workers only). */
-    transport?: 'pane' | 'sdk';
+    /**
+     * Worker transport for `omg team` when `--transport` is not given:
+     * `pane` (tmux/psmux), `sdk` (headless copilot-sdk sessions; copilot
+     * workers only) or `auto` (the default: `sdk` under the Copilot CLI host,
+     * falling back to `pane` for teams the sdk transport cannot run; `pane`
+     * under Claude Code).
+     */
+    transport?: 'pane' | 'sdk' | 'auto';
     /** `transport: "sdk"` tuning. */
     sdk?: {
         /** Per-worker credit cap; the runtime gets `--max-ai-credits max(30, cap)`. Default 10. */
@@ -471,6 +477,8 @@ export interface TeamConfigBlock {
         model?: string;
         /** Startup evidence (task claim) budget per worker in ms. Default 180000. */
         startupEvidenceMs?: number;
+        /** How many sdk hosts `omg team` starts at once. Default 4; 1 restores serial launch. */
+        launchConcurrency?: number;
     };
     roleRouting?: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> & {
         orchestrator?: OrchestratorSpec;

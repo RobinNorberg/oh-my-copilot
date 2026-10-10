@@ -5,13 +5,14 @@
  * event streams through the same functions the live driver uses.
  */
 import { type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
-export type Scenario = 'smoke' | 'guardrail' | 'skill' | 'delegate' | 'chain';
+export type Scenario = 'smoke' | 'guardrail' | 'skill' | 'delegate' | 'chain' | 'team';
 /** What `--scenario all` runs: the SDK-session scenarios (one premium request each). */
 export declare const ALL_SCENARIOS: readonly Scenario[];
 /**
  * Named explicitly only, never in `all` or the default: `chain` spawns two
  * real headless `copilot -p` factory links (about 2 premium requests) outside
- * the SDK runtime's credit cap.
+ * the SDK runtime's credit cap; `team` starts a real 2-worker `omg team` with
+ * sdk workers (about 2 premium requests, one per worker).
  */
 export declare const OPT_IN_SCENARIOS: readonly Scenario[];
 export declare const KNOWN_SCENARIOS: readonly Scenario[];
@@ -60,6 +61,63 @@ export declare function permitGuardrailPush(req: PermissionRequestLike, ctx: Per
 /** Reads only; when the request carries a path it must be under the plugin root or the sandbox project. */
 export declare function permitScopedRead(req: PermissionRequestLike, ctx: PermitContext): boolean;
 export declare const SCENARIOS: Record<Scenario, ScenarioSpec>;
+/** The file each task commits; a task's subject names its file. */
+export declare const TEAM_FILES: readonly string[];
+/** One user prompt per worker. */
+export declare const TEAM_MAX_PREMIUM_REQUESTS = 2;
+/** Wall-clock budget for start → both tasks completed → clean shutdown. */
+export declare const TEAM_BUDGET_MS = 300000;
+/** What the team run left behind, gathered by the runner before and during shutdown. */
+export interface TeamEvidence {
+    teamName: string | null;
+    start: {
+        code: number | null;
+        ok: boolean | null;
+        ms: number;
+        launchMs: number | null;
+        stderr: string;
+    };
+    /** The last `omg team status --json` before shutdown (null: none parsed). */
+    status: Record<string, unknown> | null;
+    /** `omg team api list-tasks` after the tasks settled. */
+    tasks: Array<{
+        id: string;
+        subject: string;
+        status: string;
+        owner: string | null;
+    }>;
+    /**
+     * Commits each worker added on top of the leader HEAD in its worktree, its
+     * HEAD then, and how that HEAD fared at shutdown: `merged` into the leader
+     * HEAD, `preserved` (the worktree kept at that HEAD and listed in
+     * `preserved_worktrees`), `lost`, or null when there was nothing to keep.
+     */
+    commits: Array<{
+        worker: string;
+        worktree: string | null;
+        subjects: string[];
+        files: string[];
+        head?: string | null;
+        survived?: 'merged' | 'preserved' | 'lost' | null;
+    }>;
+    shutdown: {
+        code: number | null;
+        ms: number;
+        stdout: string;
+        stderr: string;
+        forced: boolean;
+    } | null;
+    /** Host and runtime pids still alive after shutdown. */
+    orphans: number[];
+    /** Instance reservations left for the team after shutdown. */
+    reservationsLeft: string[];
+    stateLeft: boolean;
+    durationMs: number;
+    budgetMs: number;
+    cost: ScenarioCost & {
+        source: string;
+    };
+}
 /** Intent id of the smoke chain; its stop marker is `chain-<id>.stopped.json`. */
 export declare const CHAIN_INTENT_ID = "omg-smoke-chain";
 /** Project skill link 2 is routed to (`/chain-ack ...`); it replies with one token. */
@@ -157,7 +215,13 @@ export interface ScenarioRun {
     capped?: boolean;
     /** chain: the ledgers, decisions and link sessions the chain left behind. */
     chain?: ChainEvidence;
+    /** team: start, status, tasks, commits and shutdown evidence of the 2-worker sdk team. */
+    team?: TeamEvidence;
 }
+/** What one scenario run cost: chain and team span several sessions with their own totals. */
+export declare function runCost(run: Pick<ScenarioRun, 'events' | 'chain' | 'team'>): ScenarioCost & {
+    source: string;
+};
 export interface ScenarioCost {
     premiumRequests: number;
     credits: number;

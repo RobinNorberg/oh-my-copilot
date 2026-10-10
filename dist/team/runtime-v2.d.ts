@@ -19,12 +19,14 @@ import type { TeamConfig, TeamManifestV2, TeamInstanceId, TeamTask, TeamTaskDele
 import type { TeamPhase } from './phase-controller.js';
 import type { CliAgentType } from './model-contract.js';
 import { type StartupPaneActivity, type StartupInboxResubmitOutcome, type WorkerPaneLiveness } from './tmux-session.js';
+import { type PreservedWorktree } from './git-worktree.js';
 import type { CanonicalTeamRole, PluginConfig, RoleAssignment, TeamRoleAssignmentSpec } from '../shared/types.js';
 import { type CliWorkerOutputPayload } from './cli-worker-contract.js';
 import { type RecoveryDurableOutcome } from './recovery-request-store.js';
 import { type RecoverDeadWorkerOwnerInput } from './runtime-owner-client.js';
 import type { RecoverDeadWorkerV2Result } from './types.js';
 import { type SdkSessionFile } from './sdk-transport.js';
+import { type HostCliType } from '../utils/host-signal.js';
 export interface RecoverDeadWorkerV2Options {
     workerName: string;
     requestId?: string;
@@ -91,9 +93,11 @@ export interface TeamSnapshotV2 {
         team_state_root?: string;
         turnsWithoutProgress: number;
         /** SDK transport only: the host's session file, in place of a pane capture. */
-        sdk?: Pick<SdkSessionFile, 'state' | 'turns' | 'queued' | 'last_event_type' | 'last_event_at' | 'last_error' | 'session_id' | 'model'> & {
+        sdk?: Pick<SdkSessionFile, 'state' | 'turns' | 'queued' | 'last_event_type' | 'last_event_at' | 'last_error' | 'session_id' | 'model' | 'host_pid' | 'runtime_pid' | 'attempt_id' | 'updated_at'> & {
             credits: number;
             premium_requests: number;
+            /** True once the runtime's `session.shutdown` totals replaced the running sum. */
+            premium_requests_final: boolean;
         };
     }>;
     tasks: {
@@ -123,8 +127,15 @@ export interface ShutdownOptionsV2 {
     /** Refuse to operate on a replacement sharing the same team name. */
     instanceId?: TeamInstanceId;
 }
-export type ShutdownTeamV2Result = {
+export type ShutdownTeamV2Result = 
+/**
+ * `preservedWorktrees`: clean worker worktrees kept (with any named branch)
+ * because they hold commits the leader HEAD does not contain. The team is
+ * shut down; the work stays for the operator to merge or drop.
+ */
+{
     outcome: 'cleaned';
+    preservedWorktrees?: PreservedWorktree[];
 } | {
     outcome: 'preserved';
     reason: 'config_missing_cleanup_evidence' | 'provider_cleanup_unverified' | 'worker_panes_alive' | 'worker_pane_liveness_unknown' | 'worker_process_reaped_pane_unconfirmed' | 'worktrees_preserved';
@@ -214,8 +225,15 @@ export interface StartTeamV2Config {
      * branch. See merge-orchestrator.ts.
      */
     autoMerge?: boolean;
-    /** Worker transport; overrides `team.transport`. Default `pane`. */
-    transport?: 'pane' | 'sdk';
+    /** Worker transport; overrides `team.transport`. See {@link resolveTeamTransport}. */
+    transport?: TeamTransportSetting;
+    /**
+     * Used when neither `transport` nor `team.transport` is set. `omg team`
+     * passes `auto`; programmatic callers keep the historical `pane`.
+     */
+    defaultTransport?: TeamTransportSetting;
+    /** Test seam: whether `@github/copilot-sdk` resolves (only asked for `auto`). */
+    sdkAvailable?: () => Promise<boolean>;
 }
 export interface WorkerStartupEvidencePolicy {
     initialBudgetMs: number;
@@ -252,9 +270,52 @@ export interface SdkTeamSettings {
     maxCreditsPerWorker: number;
     model?: string;
     startupEvidenceMs: number;
+    /** Hosts launched at once; each launch waits on its own worker's claim. */
+    launchConcurrency: number;
     denyTools: string[];
     denyUrls: string[];
 }
+export declare const DEFAULT_SDK_LAUNCH_CONCURRENCY = 4;
+/** `pane` = tmux/psmux panes; `sdk` = headless copilot-sdk hosts; `auto` = by host, see {@link resolveTeamTransport}. */
+export type TeamTransportSetting = 'pane' | 'sdk' | 'auto';
+export interface TeamTransportDecision {
+    transport: 'pane' | 'sdk';
+    /** The setting that produced it, after precedence (flag > `team.transport` > default). */
+    requested: TeamTransportSetting;
+    /** Set when `auto` chose `pane`: why the sdk transport could not take this team. */
+    fallbackReason?: string;
+}
+/**
+ * Resolve the worker transport. Precedence: explicit `transport` (the
+ * `--transport` flag), then `team.transport`, then the caller's default.
+ * `auto` picks `sdk` only under a positively detected Copilot CLI host
+ * (`COPILOT_CLI` / `COPILOT_AGENT_SESSION_ID`), and `pane` under Claude Code or
+ * with no host signal (a plain terminal); it falls back to `pane`, never fails, when the
+ * team is one the sdk transport rejects: `--auto-merge`, a non-copilot
+ * worker, an explicitly assigned reviewer-contract role (its verdict file is
+ * only read after the provider exits, and an sdk host never exits between
+ * turns), or `@github/copilot-sdk` not installed. An explicit `sdk` keeps
+ * failing loudly on those.
+ */
+export declare function resolveTeamTransport(input: {
+    requested: TeamTransportSetting;
+    /** The positively detected host; `unknown` (no host signal) picks `pane`. */
+    host: HostCliType | 'unknown';
+    autoMerge: boolean;
+    agentTypes: readonly string[];
+    explicitContractRoles: readonly string[];
+    sdkAvailable: () => Promise<boolean>;
+}): Promise<TeamTransportDecision>;
+/**
+ * Run startup launches with at most `concurrency` in flight. `record` sees
+ * every successful outcome in job order: immediately after each launch when
+ * serial (a pane split lays out against the panes recorded before it), else
+ * once all launches settle. The first thrown launch stops new launches;
+ * in-flight ones finish and are recorded so a rollback can see them.
+ */
+export declare function runBoundedLaunches<J, R>(jobs: readonly J[], concurrency: number, launch: (job: J) => Promise<R>, record: (outcome: R) => void): Promise<{
+    errors: unknown[];
+}>;
 export declare function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings;
 interface RecoveryOwnerFinalizationDeps {
     readRevisionedConfig: (teamName: string, cwd: string) => Promise<{

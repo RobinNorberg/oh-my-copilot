@@ -16,4 +16,10 @@ export type HostCliType = 'claude' | 'copilot';
  * 3. Default — 'copilot' (this fork's identity).
  */
 export declare function detectHostCliType(env?: NodeJS.ProcessEnv): HostCliType;
+/**
+ * The host CLI only when its signal is present (steps 1 and 2 above); null
+ * for a plain terminal. For decisions that must not rest on the default,
+ * such as `omg team --transport auto` picking headless sdk workers.
+ */
+export declare function detectHostCliSignal(env?: NodeJS.ProcessEnv): HostCliType | null;
 //# sourceMappingURL=host-signal.d.ts.map

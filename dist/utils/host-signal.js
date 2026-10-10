@@ -15,10 +15,18 @@
  * 3. Default — 'copilot' (this fork's identity).
  */
 export function detectHostCliType(env = process.env) {
+    return detectHostCliSignal(env) ?? 'copilot';
+}
+/**
+ * The host CLI only when its signal is present (steps 1 and 2 above); null
+ * for a plain terminal. For decisions that must not rest on the default,
+ * such as `omg team --transport auto` picking headless sdk workers.
+ */
+export function detectHostCliSignal(env = process.env) {
     if (env.COPILOT_CLI || env.COPILOT_AGENT_SESSION_ID)
         return 'copilot';
     if (env.CLAUDE_CODE_ENTRYPOINT)
         return 'claude';
-    return 'copilot';
+    return null;
 }
 //# sourceMappingURL=host-signal.js.map
