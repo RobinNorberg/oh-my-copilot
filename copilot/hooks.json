@@ -9,27 +9,16 @@
         "args": [
           "--require",
           "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/keyword-detector.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "UserPromptSubmit"
-        },
-        "timeoutSec": 30
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "UserPromptSubmit",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/keyword-detector.mjs",
+          "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/skill-injector.mjs"
         ],
         "env": {
           "OMC_HOOK_EVENT": "UserPromptSubmit"
         },
-        "timeoutSec": 30
+        "timeoutSec": 60
       }
     ],
     "SessionStart": [
@@ -39,69 +28,22 @@
         "args": [
           "--require",
           "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/session-start.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "SessionStart"
-        },
-        "timeoutSec": 5
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/project-memory-session.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "SessionStart"
-        },
-        "timeoutSec": 5
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/wiki-session-start.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "SessionStart"
-        },
-        "timeoutSec": 5
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/stale-run-reporter.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "SessionStart"
-        },
-        "timeoutSec": 5
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "SessionStart",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/session-start.mjs",
+          "--",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/project-memory-session.mjs",
+          "--",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/wiki-session-start.mjs",
+          "--",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/stale-run-reporter.mjs",
+          "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/runs-reconciler.mjs"
         ],
         "env": {
           "OMC_HOOK_EVENT": "SessionStart"
         },
-        "timeoutSec": 5
+        "timeoutSec": 25
       }
     ],
     "PreToolUse": [
@@ -111,7 +53,8 @@
         "args": [
           "--require",
           "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "PreToolUse",
           "${CLAUDE_PLUGIN_ROOT}/scripts/pre-tool-enforcer.mjs"
         ],
         "env": {
@@ -126,7 +69,8 @@
         "args": [
           "--require",
           "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "PreToolUse",
           "${CLAUDE_PLUGIN_ROOT}/scripts/git-guardrails.mjs"
         ],
         "env": {
@@ -143,7 +87,8 @@
         "args": [
           "--require",
           "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "PermissionRequest",
           "${CLAUDE_PLUGIN_ROOT}/scripts/permission-handler.mjs"
         ],
         "env": {
@@ -159,55 +104,20 @@
         "args": [
           "--require",
           "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/post-tool-verifier.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "PostToolUse"
-        },
-        "timeoutSec": 5
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/project-memory-posttool.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "PostToolUse"
-        },
-        "timeoutSec": 3
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/post-tool-rules-injector.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "PostToolUse"
-        },
-        "timeoutSec": 3
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "PostToolUse",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/post-tool-verifier.mjs",
+          "--",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/project-memory-posttool.mjs",
+          "--",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/post-tool-rules-injector.mjs",
+          "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/post-tool-directory-context-injector.mjs"
         ],
         "env": {
           "OMC_HOOK_EVENT": "PostToolUse"
         },
-        "timeoutSec": 3
+        "timeoutSec": 14
       }
     ],
     "PostToolUseFailure": [
@@ -217,7 +127,8 @@
         "args": [
           "--require",
           "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "PostToolUseFailure",
           "${CLAUDE_PLUGIN_ROOT}/scripts/post-tool-use-failure.mjs"
         ],
         "env": {
@@ -233,7 +144,8 @@
         "args": [
           "--require",
           "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "SubagentStart",
           "${CLAUDE_PLUGIN_ROOT}/scripts/subagent-tracker.mjs",
           "start"
         ],
@@ -250,28 +162,17 @@
         "args": [
           "--require",
           "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "SubagentStop",
           "${CLAUDE_PLUGIN_ROOT}/scripts/subagent-tracker.mjs",
-          "stop"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "SubagentStop"
-        },
-        "timeoutSec": 5
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "stop",
+          "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/verify-deliverables.mjs"
         ],
         "env": {
           "OMC_HOOK_EVENT": "SubagentStop"
         },
-        "timeoutSec": 5
+        "timeoutSec": 10
       }
     ],
     "PreCompact": [
@@ -281,41 +182,18 @@
         "args": [
           "--require",
           "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/pre-compact.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "PreCompact"
-        },
-        "timeoutSec": 10
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/project-memory-precompact.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "PreCompact"
-        },
-        "timeoutSec": 5
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "PreCompact",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/pre-compact.mjs",
+          "--",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/project-memory-precompact.mjs",
+          "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/wiki-pre-compact.mjs"
         ],
         "env": {
           "OMC_HOOK_EVENT": "PreCompact"
         },
-        "timeoutSec": 3
+        "timeoutSec": 18
       }
     ],
     "Stop": [
@@ -325,69 +203,22 @@
         "args": [
           "--require",
           "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/context-guard-stop.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "Stop"
-        },
-        "timeoutSec": 5
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/workflow-drift-guard.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "Stop"
-        },
-        "timeoutSec": 3
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/persistent-mode.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "Stop"
-        },
-        "timeoutSec": 10
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/budget-guard.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "Stop"
-        },
-        "timeoutSec": 5
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "Stop",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/context-guard-stop.mjs",
+          "--",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/workflow-drift-guard.mjs",
+          "--",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/persistent-mode.mjs",
+          "--",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/budget-guard.mjs",
+          "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/code-simplifier.mjs"
         ],
         "env": {
           "OMC_HOOK_EVENT": "Stop"
         },
-        "timeoutSec": 5
+        "timeoutSec": 28
       }
     ],
     "SessionEnd": [
@@ -397,27 +228,16 @@
         "args": [
           "--require",
           "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/session-end.mjs"
-        ],
-        "env": {
-          "OMC_HOOK_EVENT": "SessionEnd"
-        },
-        "timeoutSec": 30
-      },
-      {
-        "type": "command",
-        "exec": "node",
-        "args": [
-          "--require",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "SessionEnd",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/session-end.mjs",
+          "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/wiki-session-end.mjs"
         ],
         "env": {
           "OMC_HOOK_EVENT": "SessionEnd"
         },
-        "timeoutSec": 30
+        "timeoutSec": 60
       }
     ]
   }

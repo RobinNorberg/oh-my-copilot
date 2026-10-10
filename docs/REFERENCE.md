@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.8.1, the plugin ships 20 agents, 61 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
+For v5.9.0, the plugin ships 20 agents, 61 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
 
 ---
 
@@ -370,7 +370,7 @@ OMC also supports a narrow company-context contract on top of the existing MCP s
 
 Configure it in the standard OMC config files:
 
-- Project: `.claude/omc.jsonc`
+- Project: `.copilot/omg.jsonc`
 - User: `~/.config/claude-omc/config.jsonc`
 
 ```jsonc
@@ -687,9 +687,29 @@ Worker panes run unattended, so each provider launches with its own auto-approve
 
 - `disableExternalLLM` / `OMC_SECURITY=strict` allows only the current host CLI's workers. See [SECURITY.md](../SECURITY.md).
 
-#### Headless SDK workers (`--transport sdk`, experimental)
+#### Headless SDK workers (`--transport sdk`, the default under Copilot CLI)
 
-`omg team 2:copilot --transport sdk "<task>"` (or `team.transport: "sdk"`) runs each copilot worker as a detached `omg team sdk-host` process that owns one `@github/copilot-sdk` session, with no pane and no multiplexer. It needs `@github/copilot-sdk` installed (`npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`).
+`omg team 2:copilot "<task>"` runs each copilot worker as a detached `omg team sdk-host` process that owns one `@github/copilot-sdk` session, with no pane and no multiplexer. It needs `@github/copilot-sdk` installed (`npm i -g @github/copilot-sdk --omit=optional --ignore-scripts`).
+
+**Choosing the transport.** `--transport` takes `sdk`, `pane` (aliases `tmux`, `psmux`) or `auto`. Without the flag, `team.transport` in the project config decides, and without that `omg team` uses `auto`:
+
+| Host signal | `auto` picks |
+|---|---|
+| Copilot CLI (`COPILOT_CLI` / `COPILOT_AGENT_SESSION_ID`) | `sdk` |
+| Claude Code (`CLAUDE_CODE_ENTRYPOINT`) | `pane` |
+| None (a plain terminal) | `pane` |
+
+`auto` picks `sdk` only when the Copilot CLI host is positively detected. Elsewhere the fork still defaults to the copilot host for routing, but a plain terminal gets panes; pass `--transport sdk` there to run headless workers.
+
+`auto` never fails a start the sdk transport would reject. It falls back to `pane` and prints the reason on stderr (`[omg team] transport auto: using pane workers, not sdk (<reason>)`) for `--auto-merge`, a non-copilot worker, an explicitly assigned reviewer-contract role, or `@github/copilot-sdk` not installed. An explicit `--transport sdk` still rejects those. Programmatic `startTeamV2` callers and the `omc team` job runner keep the `pane` default.
+
+**Launch.** SDK hosts start concurrently, up to `team.sdk.launchConcurrency` at once (default 4, a positive integer; env `OMC_TEAM_SDK_LAUNCH_CONCURRENCY`; 1 restores serial launch). Each launch still waits for its own worker's task claim. A worker whose launch fails is a startup failure of that worker only. A launch whose cleanup cannot be verified stops further launches, lets the running ones finish, and rolls the team back. The start prints `[omg team] sdk workers launched: N in X ms` on stderr.
+
+**Status.** `omg team status --json` carries `transport` (`sdk` or `pane`) and, per sdk worker in `workers.sdk`, `host_pid`, `runtime_pid`, `session_id`, `attempt_id`, `state`, `updated_at`, `last_event_type`/`last_event_at`, `turns`, `queued`, `task_state`, `current_task_id`, `credits`, `premium_requests` and `premium_requests_final` (true once the runtime's `session.shutdown` totals replaced the running sum). A session file left by an earlier launch attempt is not reported.
+
+**One team per leader session.** The `one_team_per_leader_session` guard counts an sdk team as live while any of its hosts is: its session file belongs to the worker's current launch attempt and is not `closed`/`failed`, and the host pid still has the process start identity recorded in the attempt's `provider-started.json`. A crashed host whose pid was reused does not block a new team.
+
+**Worker commits at shutdown.** Workers often commit in their worktrees, and the sdk transport has no `--auto-merge`. `omg team shutdown` keeps a clean worker worktree whose HEAD has commits the leader HEAD does not contain, along with its `omc-team/<team>/<worker>` branch in named mode. The shutdown still succeeds and disposes the team state. stderr names each kept path, branch and commit count, and `omg team status <team> --json` then answers `ok: false` with a `preserved_worktrees` list. Merge or cherry-pick the commits, then `git worktree remove` the path. Untracked files under the worktree's `.omg/state/` are runtime state and never keep a worktree; anything else untracked, including `.omg/skills/`, `.omg/plans/` or `.omg/notepad.md`, does.
 
 - **No allow-all.** The host answers every permission request. Writes are allowed only inside the worker's worktree and the team state root. Reads also allow the plugin root. MCP calls are allowed only to the plugin server.
 - **The shell policy is a denylist, not a sandbox.** It rejects team control other than `team api`, `omg smoke`, `tmux`/`psmux` and `git push`, plus `shell(<prefix>)` entries of `workerDenyTools`, including quoted spellings such as `"omg" team shutdown`. A command built indirectly (a script file, an alias, `Invoke-Expression`, an encoded command) is not caught. Treat the write-path check, the credit cap and the per-worker `COPILOT_HOME` as the boundaries.

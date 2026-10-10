@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { detectHostCliType, getHostCliType } from '../utils/host-detection.js';
+import { detectHostCliSignal } from '../utils/host-signal.js';
 
 describe('getHostCliType', () => {
   beforeEach(() => {
@@ -51,5 +52,13 @@ describe('detectHostCliType', () => {
     expect(detectHostCliType({})).toBe('copilot');
     expect(detectHostCliType({ CLAUDE_CODE_ENTRYPOINT: 'cli' })).toBe('claude');
     expect(detectHostCliType({ CLAUDE_CODE_ENTRYPOINT: 'cli', COPILOT_CLI: '1' })).toBe('copilot');
+  });
+});
+
+describe('detectHostCliSignal', () => {
+  it('names a host only when its signal is present', () => {
+    expect(detectHostCliSignal({})).toBeNull();
+    expect(detectHostCliSignal({ COPILOT_AGENT_SESSION_ID: 's' })).toBe('copilot');
+    expect(detectHostCliSignal({ CLAUDE_CODE_ENTRYPOINT: 'cli' })).toBe('claude');
   });
 });

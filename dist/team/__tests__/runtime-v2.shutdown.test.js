@@ -221,6 +221,43 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
         expect(existsSync(worktree.path)).toBe(true);
         expect(existsSync(teamRoot)).toBe(true);
     });
+    it('keeps a worktree with unmerged worker commits, still cleans up, and records it for status', async () => {
+        const teamName = 'shutdown-commit-team';
+        await reserveFixtureInstance(teamName, repoDir);
+        const teamRoot = fixtureTeamRoot(repoDir, teamName);
+        mkdirSync(teamRoot, { recursive: true });
+        writeFileSync(join(teamRoot, 'config.json'), JSON.stringify({
+            name: teamName,
+            instance_id: TEAM_INSTANCE_ID,
+            tmux_server_identity: tmuxMocks.tmuxServerIdentity,
+            task: 'demo',
+            agent_type: 'claude',
+            worker_launch_mode: 'interactive',
+            worker_count: 0,
+            max_workers: 20,
+            workers: [],
+            created_at: new Date().toISOString(),
+            tmux_session: `${teamName}:0`,
+            leader_pane_id: null,
+            hud_pane_id: null,
+            resize_hook_name: null,
+            resize_hook_target: null,
+            next_task_id: 1,
+        }, null, 2), 'utf-8');
+        const worktree = createWorkerWorktree(teamName, 'worker-commit', repoDir);
+        writeFileSync(join(worktree.path, 'work.txt'), 'worker output\n', 'utf-8');
+        execFileSync('git', ['add', 'work.txt'], { cwd: worktree.path, stdio: 'pipe' });
+        execFileSync('git', ['commit', '-m', 'worker work'], { cwd: worktree.path, stdio: 'pipe' });
+        const { shutdownTeamV2 } = await import('../runtime-v2.js');
+        const result = await shutdownTeamV2(teamName, repoDir, { timeoutMs: 0 });
+        const expected = [{ workerName: 'worker-commit', path: worktree.path, branch: worktree.branch, commits: 1 }];
+        expect(result).toEqual({ outcome: 'cleaned', preservedWorktrees: expected });
+        expect(existsSync(join(worktree.path, 'work.txt'))).toBe(true);
+        expect(execFileSync('git', ['branch', '--list', worktree.branch], { cwd: repoDir, encoding: 'utf-8' })).toContain(worktree.branch);
+        expect(existsSync(teamRoot)).toBe(false);
+        const { readPreservedWorktreesRecord } = await import('../git-worktree.js');
+        expect(readPreservedWorktreesRecord(repoDir, teamName)).toEqual(expected);
+    });
     it('keeps worktrees and team state when config is missing but clean metadata exists', async () => {
         const teamName = 'shutdown-missing-config-clean-metadata';
         const teamRoot = fixtureTeamRoot(repoDir, teamName);

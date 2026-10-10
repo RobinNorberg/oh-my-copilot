@@ -22,6 +22,7 @@ import { type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
 import { type PermissionRequestLike, type Scenario, type ScenarioCost } from './copilot-sdk-scenarios.js';
 import { type SpawnSyncFn } from './process-utils.js';
 import type { runChainScenario } from './copilot-chain-scenario.js';
+import type { runTeamScenario } from './copilot-team-scenario.js';
 export type PermissionResult = {
     kind: 'approve-once';
 } | {
@@ -168,6 +169,8 @@ export interface SdkTierInput {
     killTree?: (pid: number) => void;
     /** The `chain` scenario runner ({@link runChainScenario}, real `copilot -p` links), injected by the smoke entry. */
     runChain: typeof runChainScenario;
+    /** The `team` scenario runner ({@link runTeamScenario}, a real 2-worker sdk team), injected by the smoke entry. */
+    runTeam: typeof runTeamScenario;
 }
 export interface SdkTierResult {
     checks: SmokeCheck[];

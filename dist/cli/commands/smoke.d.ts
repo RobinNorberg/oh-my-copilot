@@ -21,7 +21,7 @@ export interface SmokeCopilotCliOptions {
     sdkStatic?: boolean;
     json?: boolean;
 }
-/** Parse `--scenario a,b` / `all` into a deduplicated, validated list; `all` never includes the opt-in `chain`. */
+/** Parse `--scenario a,b` / `all` into a deduplicated, validated list; `all` never includes the opt-in `chain` or `team`. */
 export declare function parseScenarios(raw: string): Scenario[];
 export declare function toSmokeOptions(cli: SmokeCopilotCliOptions): Partial<SmokeOptions>;
 /**

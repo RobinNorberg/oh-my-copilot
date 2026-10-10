@@ -12,9 +12,10 @@ export const ALL_SCENARIOS = ['smoke', 'guardrail', 'skill', 'delegate'];
 /**
  * Named explicitly only, never in `all` or the default: `chain` spawns two
  * real headless `copilot -p` factory links (about 2 premium requests) outside
- * the SDK runtime's credit cap.
+ * the SDK runtime's credit cap; `team` starts a real 2-worker `omg team` with
+ * sdk workers (about 2 premium requests, one per worker).
  */
-export const OPT_IN_SCENARIOS = ['chain'];
+export const OPT_IN_SCENARIOS = ['chain', 'team'];
 export const KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
 /** About 2 premium requests (one per scenario). */
 export const DEFAULT_SCENARIOS = ['smoke', 'guardrail'];
@@ -113,7 +114,118 @@ export const SCENARIOS = {
         excludedTools: [],
         permit: denyAll,
     },
+    // Not an SDK session of the driver: the prompt is the `omg team` task, a
+    // numbered list that decomposes into one task per worker
+    // (copilot-team-scenario.ts). The sdk hosts apply their own policy.
+    team: {
+        name: 'team',
+        prompt: [
+            '1. Create the file team-alpha.txt containing exactly the line alpha in your working directory, then commit only that file with git (message: smoke team alpha). Do nothing else.',
+            '2. Create the file team-beta.txt containing exactly the line beta in your working directory, then commit only that file with git (message: smoke team beta). Do nothing else.',
+        ].join('\n'),
+        excludedTools: [],
+        permit: denyAll,
+    },
 };
+// ---------------------------------------------------------------------------
+// Team scenario (a real 2-worker `omg team` on the sdk transport)
+// ---------------------------------------------------------------------------
+/** The file each task commits; a task's subject names its file. */
+export const TEAM_FILES = ['team-alpha.txt', 'team-beta.txt'];
+const TEAM_WORKERS = ['worker-1', 'worker-2'];
+/** One user prompt per worker. */
+export const TEAM_MAX_PREMIUM_REQUESTS = 2;
+/** Wall-clock budget for start → both tasks completed → clean shutdown. */
+export const TEAM_BUDGET_MS = 300_000;
+function evaluateTeam(run) {
+    const team = run.team;
+    if (!team)
+        return scenarioCheckIds('team').slice(0, 8).map((id) => ({ id, ok: false, detail: run.error ? `no team evidence: ${excerpt(run.error, 200)}` : 'no team evidence collected' }));
+    const status = team.status;
+    const transport = str(status?.transport);
+    const sdkWorkers = Array.isArray(status?.workers?.sdk)
+        ? status.workers.sdk : [];
+    const statusTasks = (status?.tasks ?? {});
+    const startedOk = team.start.code === 0 && team.start.ok === true && transport === 'sdk';
+    const owners = team.tasks.map((t) => t.owner).filter((o) => !!o).sort();
+    const completedOk = team.tasks.length === 2 && team.tasks.every((t) => t.status === 'completed')
+        && JSON.stringify(owners) === JSON.stringify(TEAM_WORKERS);
+    // Each task's file must be among the commits its owner added in its own worktree.
+    const expected = team.tasks.map((t) => ({ owner: t.owner, file: TEAM_FILES.find((f) => t.subject.includes(f)) }));
+    const commitFor = (worker) => team.commits.find((c) => c.worker === worker);
+    const committedOk = expected.length === 2 && expected.every(({ owner, file }) => !!file && !!commitFor(owner)?.files.includes(file));
+    const statusOk = status?.ok === true && transport === 'sdk' && sdkWorkers.length === 2
+        && sdkWorkers.every((w) => num(w.host_pid) > 0 && typeof w.session_id === 'string' && w.session_id !== '' && w.provider === 'alive')
+        && num(statusTasks.total) === 2 && num(statusTasks.completed) === 2;
+    const shutdownOk = !!team.shutdown && team.shutdown.code === 0 && !team.shutdown.forced
+        && team.orphans.length === 0 && team.reservationsLeft.length === 0 && !team.stateLeft;
+    // Every worker commit must outlive the shutdown: merged, or kept in a preserved worktree.
+    const withWork = team.commits.filter((c) => c.subjects.length > 0);
+    const retainedOk = withWork.length > 0 && withWork.every((c) => c.survived === 'merged' || c.survived === 'preserved');
+    const durationOk = team.durationMs <= team.budgetMs;
+    const premiumOk = team.cost.premiumRequests > 0 && team.cost.premiumRequests <= TEAM_MAX_PREMIUM_REQUESTS;
+    const launch = team.start.launchMs === null ? '' : `, sdk hosts launched in ${team.start.launchMs} ms`;
+    return [
+        {
+            id: 'scn.team.started',
+            ok: startedOk,
+            detail: startedOk
+                ? `omg team started ${team.teamName} on the sdk transport (default, no --transport) in ${team.start.ms} ms${launch}`
+                : `start exit ${String(team.start.code)}, ok ${String(team.start.ok)}, transport ${transport || 'unknown'}`,
+            ...(startedOk ? {} : { evidence: excerpt(team.start.stderr) }),
+        },
+        {
+            id: 'scn.team.completed',
+            ok: completedOk,
+            detail: completedOk
+                ? 'both tasks completed through omg team api, one per worker'
+                : `tasks: ${team.tasks.map((t) => `${t.id}:${t.status}@${t.owner ?? 'none'}`).join(', ') || 'none listed'}`,
+        },
+        {
+            id: 'scn.team.committed',
+            ok: committedOk,
+            detail: committedOk
+                ? expected.map(({ owner, file }) => `${owner} committed ${file} ("${commitFor(owner).subjects[0] ?? ''}")`).join('; ')
+                : team.commits.map((c) => `${c.worker}: ${c.files.join(',') || 'no new files'} in ${c.worktree ?? 'no worktree'}`).join('; ') || 'no worktree commits found',
+        },
+        {
+            id: 'scn.team.status',
+            ok: statusOk,
+            detail: statusOk
+                ? `status --json: transport sdk, 2 sdk workers alive with host pid + session id, tasks 2/2 completed`
+                : `status --json: ok ${String(status?.ok)}, transport ${transport || 'unknown'}, ${sdkWorkers.length} sdk worker(s), tasks ${num(statusTasks.completed)}/${num(statusTasks.total)}`,
+            ...(statusOk || !status ? {} : { evidence: excerpt(JSON.stringify(status)) }),
+        },
+        {
+            id: 'scn.team.shutdown',
+            ok: shutdownOk,
+            detail: shutdownOk
+                ? `clean shutdown in ${team.shutdown.ms} ms: no host or runtime left, reservation released, team state disposed`
+                : !team.shutdown ? 'shutdown never ran'
+                    : `shutdown exit ${String(team.shutdown.code)}${team.shutdown.forced ? ' (forced after a timeout)' : ''}; `
+                        + `orphans ${team.orphans.join(',') || 'none'}; reservations left ${team.reservationsLeft.length}; state ${team.stateLeft ? 'left' : 'disposed'}`,
+            // The end of the output names the preserved workers and the reason; the start is banners.
+            ...(shutdownOk || !team.shutdown ? {} : { evidence: excerpt(`${team.shutdown.stdout}\n${team.shutdown.stderr}`.trim().slice(-480)) }),
+        },
+        {
+            id: 'scn.team.retained',
+            ok: retainedOk,
+            detail: withWork.length === 0
+                ? 'no worker commits to check'
+                : withWork.map((c) => `${c.worker} ${(c.head ?? 'no head').slice(0, 8)} ${c.survived ?? 'unchecked'}`).join('; '),
+        },
+        {
+            id: 'scn.team.duration',
+            ok: durationOk,
+            detail: `start to closeout ${team.durationMs} ms (budget ${team.budgetMs} ms)`,
+        },
+        {
+            id: 'scn.team.premium',
+            ok: premiumOk,
+            detail: `${team.cost.premiumRequests} premium request(s) over ${team.cost.source} (max ${TEAM_MAX_PREMIUM_REQUESTS})`,
+        },
+    ];
+}
 // ---------------------------------------------------------------------------
 // Chain scenario (two real factory links)
 // ---------------------------------------------------------------------------
@@ -217,6 +329,7 @@ export function scenarioCheckIds(name) {
         skill: ['invoked'],
         delegate: ['selected', 'hooks', 'completed'],
         chain: ['link1', 'spawned', 'inherited', 'closed', 'premium'],
+        team: ['started', 'completed', 'committed', 'status', 'shutdown', 'retained', 'duration', 'premium'],
     };
     return [...own[name], 'exit', 'adapter_errors', 'cost'].map((s) => `scn.${name}.${s}`);
 }
@@ -390,6 +503,14 @@ export function sliceLogByTime(text, starts) {
             out[current].push(line);
     }
     return out.map((lines) => lines.join('\n'));
+}
+/** What one scenario run cost: chain and team span several sessions with their own totals. */
+export function runCost(run) {
+    if (run.chain)
+        return chainCost(run.chain);
+    if (run.team)
+        return run.team.cost;
+    return scenarioCost(run.events);
 }
 /** One nano-AIU is 1e-9 AI credits (the unit of `--max-ai-credits`). */
 const NANO = 1e9;
@@ -594,9 +715,9 @@ export function evaluateScenario(run) {
         skill: evaluateSkill,
         delegate: evaluateDelegate,
         chain: evaluateChain,
+        team: evaluateTeam,
     }[run.name](run);
-    // A chain spans two link sessions, each with its own session.shutdown totals.
-    const cost = run.name === 'chain' && run.chain ? chainCost(run.chain) : scenarioCost(run.events);
+    const cost = runCost(run);
     return { checks: [...own, ...evaluateCommon(run, cost)], cost: { premiumRequests: cost.premiumRequests, credits: cost.credits } };
 }
 // ---------------------------------------------------------------------------

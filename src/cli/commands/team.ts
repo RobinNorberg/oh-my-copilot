@@ -18,7 +18,7 @@ import { inferDelegationPlanForTeamTask } from '../../team/delegation-evidence.j
 import type { CliAgentType } from '../../team/model-contract.js';
 import { isValidTeamInstanceId, type TeamTaskDelegationPlan } from '../../team/types.js';
 import { loadConfig } from '../../config/loader.js';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmuxExec } from '../tmux-utils.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
@@ -33,7 +33,7 @@ const VALID_TEAM_CLI_AGENT_TYPES = new Set(['claude', 'copilot', 'codex', 'gemin
 const defaultTeamCliAgentType = (): CliAgentType => getHostCliType();
 
 const TEAM_HELP = `
-Usage: omg team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decompose] [--transport pane|sdk] "<task description>"
+Usage: omg team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decompose] [--transport sdk|pane|auto] "<task description>"
        omg team [N:agent-type[:role]] --task "<task description>"
        omg team status <team-name>
        omg team shutdown <team-name> [--force]
@@ -55,6 +55,18 @@ Examples:
 
 Without a worker spec, quote a multi-word positional task as one shell argument. Use --task for single-word tasks.
 
+Transport:
+  --transport sdk      Headless workers: one detached copilot-sdk host per worker, no multiplexer.
+                       Copilot workers only; no --auto-merge; explicitly assigned reviewer-style
+                       roles (critic, code-reviewer, security-reviewer, test-engineer) are rejected.
+  --transport pane     Workers in tmux/psmux panes (aliases: tmux, psmux).
+  --transport auto     The default. Under the Copilot CLI host (COPILOT_CLI or
+                       COPILOT_AGENT_SESSION_ID set): sdk, falling back to pane (with a
+                       note on stderr) for a team the sdk transport cannot run or when
+                       @github/copilot-sdk is not installed. Under Claude Code, or with no
+                       host signal (a plain terminal): pane.
+  team.transport in the project config sets the default (sdk|pane|auto); the flag wins.
+
 Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omg/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
 
 Auto-merge (v2-only):
@@ -68,10 +80,13 @@ Auto-merge (v2-only):
 Runtime safety:
   Instance-bound team startup and shutdown require runtime v2. Setting
   OMC_RUNTIME_V2=0|false|no|off is rejected before any native effects.
-  This command reports only the tmux runtime-v2 outcome. An implicit team
+  This command reports only the runtime-v2 outcome. An implicit team
   finishing does not make it succeed, and it does not finish an implicit team.
   --force skips the task-status gate and graceful waits; it does not bypass ownership or cleanup verification.
   Unverified worker/provider cleanup preserves worktrees and team state. Errors report the outcome and reason/detail; preserved outcomes name affected workers.
+  A clean worker worktree holding commits the leader HEAD does not contain is kept (named-mode
+  branch too) and the shutdown still succeeds: stderr names each path, branch and commit count,
+  and omg team status <team> --json lists them as preserved_worktrees after the state is gone.
   Some failures also write details to stderr.
   Retained paths need later operator or janitor cleanup.
 
@@ -307,8 +322,8 @@ export interface ParsedTeamArgs {
   autoMerge: boolean;
   explicitWorkerSpec: boolean;
   noDecompose: boolean;
-  /** Worker transport override (`--transport pane|sdk`). */
-  transport?: 'pane' | 'sdk';
+  /** Worker transport override (`--transport`; `tmux`/`psmux` parse as `pane`). */
+  transport?: 'pane' | 'sdk' | 'auto';
 }
 
 interface NormalizedWorkerSpecSegment {
@@ -317,9 +332,49 @@ interface NormalizedWorkerSpecSegment {
   role?: string;
 }
 
-function isTeamStateLive(config: { tmux_session?: string } | null): boolean {
+/**
+ * A pane team is live while its multiplexer session exists. An sdk team
+ * (`sdk:<team>`) names no multiplexer resource: it is live while any worker's
+ * host is, per its session file (not yet closed or failed) of the worker's
+ * current launch attempt, and the host's `provider-started.json` record (same
+ * pid, process start identity still matching, so a reused pid is not a host).
+ * A still `starting` session without that record falls back to the pid.
+ */
+async function isTeamStateLive(
+  config: { tmux_session?: string; workers?: Array<{ name: string; launch_attempt_id?: string }> } | null,
+  teamName: string,
+  cwd: string,
+): Promise<boolean> {
   const target = typeof config?.tmux_session === 'string' ? config.tmux_session.trim() : '';
   if (!target) return false;
+  if (target.startsWith('sdk:')) {
+    const { readSdkSession } = await import('../../team/sdk-transport.js');
+    const { absPath, teamStateRoot, TeamPaths } = await import('../../team/state-paths.js');
+    const { isProcessAlive, isProcessIdentityLive } = await import('../../platform/process-utils.js');
+    const stateRoot = teamStateRoot(cwd, teamName);
+    for (const worker of config?.workers ?? []) {
+      const session = readSdkSession(stateRoot, worker.name);
+      if (!session || session.state === 'closed' || session.state === 'failed' || !(session.host_pid > 0)) continue;
+      if (worker.launch_attempt_id && session.attempt_id !== worker.launch_attempt_id) continue;
+      const started = ((): { pid?: unknown; process_start_identity?: unknown } | null => {
+        try {
+          return JSON.parse(readFileSync(absPath(cwd, TeamPaths.workerLaunchStarted(teamName, worker.name, session.attempt_id)), 'utf8')) as { pid?: unknown; process_start_identity?: unknown };
+        } catch {
+          return null; // not published yet
+        }
+      })();
+      if (!started) {
+        if (session.state === 'starting' && isProcessAlive(session.host_pid)) return true;
+        continue;
+      }
+      if (started.pid !== session.host_pid || typeof started.process_start_identity !== 'string') continue;
+      // `unknown` (the identity could not be read) counts as live: refusing a
+      // second team is the safe side.
+      const liveness = await isProcessIdentityLive(session.host_pid, started.process_start_identity);
+      if (liveness === 'live' || liveness === 'unknown') return true;
+    }
+    return false;
+  }
   try {
     tmuxExec(['has-session', '-t', target], { stdio: 'ignore' });
     return true;
@@ -361,7 +416,7 @@ export async function assertTeamSpawnAllowed(cwd: string, env: NodeJS.ProcessEnv
   const activeTeams = await findActiveTeamsV2(cwd);
   for (const activeTeam of activeTeams) {
     const config = await teamReadConfig(activeTeam, cwd);
-    if (!isTeamStateLive(config)) continue;
+    if (!await isTeamStateLive(config, activeTeam, cwd)) continue;
     const manifest = await teamReadManifest(activeTeam, cwd);
     const governance = normalizeTeamGovernance(manifest?.governance, manifest?.policy);
     if (governance.one_team_per_leader_session ?? DEFAULT_TEAM_GOVERNANCE.one_team_per_leader_session) {
@@ -415,7 +470,7 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = defau
   let newWindow = false;
   let autoMerge: boolean = process.env.OMC_TEAMS_AUTO_MERGE === '1';
   let noDecompose = false;
-  let transport: 'pane' | 'sdk' | undefined;
+  let transport: 'pane' | 'sdk' | 'auto' | undefined;
   let taskFromFlag: string | undefined;
   const normalizedDefaultAgentType = VALID_TEAM_CLI_AGENT_TYPES.has(defaultAgentType as CliAgentType)
     ? defaultAgentType
@@ -435,8 +490,12 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = defau
       noDecompose = true;
     } else if (arg === '--transport' || arg.startsWith('--transport=')) {
       const value = arg.includes('=') ? arg.slice('--transport='.length) : args[++index];
-      if (value !== 'pane' && value !== 'sdk') throw new Error('Usage: --transport pane|sdk');
-      transport = value;
+      // tmux and psmux name the multiplexer behind the pane transport.
+      const normalized = value === 'tmux' || value === 'psmux' ? 'pane' : value;
+      if (normalized !== 'pane' && normalized !== 'sdk' && normalized !== 'auto') {
+        throw new Error('Usage: --transport sdk|pane|tmux|psmux|auto');
+      }
+      transport = normalized;
     } else if (arg === '--task') {
       if (taskFromFlag !== undefined || args[index + 1] === undefined) {
         throw new Error('Usage: omg team [N:agent-type[:role]] --task "<task description>"');
@@ -809,6 +868,7 @@ async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<voi
     ...rolePromptOptions,
     ...(parsed.autoMerge ? { autoMerge: true } : {}),
     ...(parsed.transport ? { transport: parsed.transport } : {}),
+    defaultTransport: 'auto',
   });
 
   const uniqueTypes = [...new Set(parsed.agentTypes)].join(',');
@@ -933,12 +993,26 @@ async function resolveImplicitTeamName(cwd: string): Promise<string | undefined>
   return activeTeams.length === 1 ? activeTeams[0] : undefined;
 }
 
-function printNoTeamState(teamName: string, json: boolean): void {
+/**
+ * No team state. A shut-down team may still have left worker worktrees with
+ * unmerged commits; they are listed as `preserved_worktrees`.
+ */
+async function printNoTeamState(teamName: string, cwd: string, json: boolean): Promise<void> {
+  const { readPreservedWorktreesRecord } = await import('../../team/git-worktree.js');
+  const kept = readPreservedWorktreesRecord(cwd, teamName);
   if (json) {
-    console.log(JSON.stringify({ ok: false, team: teamName, error: `No team state found for ${teamName}` }));
+    console.log(JSON.stringify({
+      ok: false,
+      team: teamName,
+      error: `No team state found for ${teamName}`,
+      ...(kept.length > 0 ? { preserved_worktrees: kept } : {}),
+    }));
     return;
   }
   console.log(`No team state found for ${teamName}`);
+  for (const wt of kept) {
+    console.log(`preserved_worktree=${wt.path} worker=${wt.workerName} branch=${wt.branch ?? 'detached'} unmerged_commits=${wt.commits}`);
+  }
 }
 
 async function handleTeamStatus(teamName: string, cwd: string, json: boolean): Promise<void> {
@@ -949,7 +1023,7 @@ async function handleTeamStatus(teamName: string, cwd: string, json: boolean): P
     const { readTeamEventsByType } = await import('../../team/events.js');
     const snapshot = await monitorTeamV2(teamName, cwd);
     if (!snapshot) {
-      printNoTeamState(teamName, json);
+      await printNoTeamState(teamName, cwd, json);
       return;
     }
     const leaderGuidance = deriveTeamLeaderGuidance({
@@ -977,6 +1051,7 @@ async function handleTeamStatus(teamName: string, cwd: string, json: boolean): P
         team: snapshot.teamName,
         instance_id: config?.instance_id ?? null,
         phase: snapshot.phase,
+        transport: config?.tmux_session?.startsWith('sdk:') ? 'sdk' : 'pane',
         workspace_mode: config?.workspace_mode ?? 'single',
         worktree_mode: config?.worktree_mode ?? 'disabled',
         team_state_root: config?.team_state_root ?? null,
@@ -998,8 +1073,16 @@ async function handleTeamStatus(teamName: string, cwd: string, json: boolean): P
             turns: worker.sdk!.turns,
             queued: worker.sdk!.queued,
             premium_requests: worker.sdk!.premium_requests,
+            premium_requests_final: worker.sdk!.premium_requests_final,
             credits: worker.sdk!.credits,
             model: worker.sdk!.model ?? null,
+            host_pid: worker.sdk!.host_pid,
+            runtime_pid: worker.sdk!.runtime_pid ?? null,
+            session_id: worker.sdk!.session_id ?? null,
+            attempt_id: worker.sdk!.attempt_id,
+            updated_at: worker.sdk!.updated_at,
+            task_state: worker.status.state,
+            current_task_id: worker.status.current_task_id ?? null,
             last_event_type: worker.sdk!.last_event_type ?? null,
             last_event_at: worker.sdk!.last_event_at ?? null,
             last_error: worker.sdk!.last_error ?? null,
@@ -1035,7 +1118,7 @@ async function handleTeamStatus(teamName: string, cwd: string, json: boolean): P
     for (const worker of snapshot.workers) {
       if (!worker.sdk) continue;
       const sdk = worker.sdk;
-      console.log(`sdk_worker=${worker.name} provider=${worker.providerLiveness} state=${sdk.state} turns=${sdk.turns} queued=${sdk.queued} premium_requests=${sdk.premium_requests} credits=${sdk.credits.toFixed(2)} model=${sdk.model ?? 'auto'} last_event=${sdk.last_event_type ?? 'n/a'}@${sdk.last_event_at ?? 'n/a'}${sdk.last_error ? ` last_error=${JSON.stringify(sdk.last_error)}` : ''}`);
+      console.log(`sdk_worker=${worker.name} provider=${worker.providerLiveness} host_pid=${sdk.host_pid} session=${sdk.session_id ?? 'n/a'} state=${sdk.state} turns=${sdk.turns} queued=${sdk.queued} premium_requests=${sdk.premium_requests} credits=${sdk.credits.toFixed(2)} model=${sdk.model ?? 'auto'} last_event=${sdk.last_event_type ?? 'n/a'}@${sdk.last_event_at ?? 'n/a'}${sdk.last_error ? ` last_error=${JSON.stringify(sdk.last_error)}` : ''}`);
     }
     console.log(`tasks: total=${snapshot.tasks.total} pending=${snapshot.tasks.pending} blocked=${snapshot.tasks.blocked} in_progress=${snapshot.tasks.in_progress} completed=${snapshot.tasks.completed} failed=${snapshot.tasks.failed}`);
     console.log(`leader_next_action=${leaderGuidance.nextAction}`);
@@ -1052,7 +1135,7 @@ async function handleTeamStatus(teamName: string, cwd: string, json: boolean): P
   const { monitorTeam } = await import('../../team/runtime.js');
   const snapshot = await monitorTeam(teamName, cwd, []);
   if (!snapshot) {
-    printNoTeamState(teamName, json);
+    await printNoTeamState(teamName, cwd, json);
     return;
   }
   if (json) {
@@ -1114,7 +1197,13 @@ async function handleTeamShutdown(teamName: string, cwd: string, force: boolean)
       : `${shutdown.reason}:${shutdown.detail}`;
     throw new Error(`Team shutdown ${shutdown.outcome}: ${detail}`);
   }
-  console.log(`Team shutdown complete: ${teamName}`);
+  const kept = shutdown.preservedWorktrees ?? [];
+  for (const wt of kept) {
+    process.stderr.write(`[omg team] preserved worktree ${wt.path}: ${wt.commits} worker commit(s) not merged into the leader HEAD, ${wt.branch ? `branch ${wt.branch} kept` : 'detached HEAD'}. Merge or cherry-pick them, then run git worktree remove.\n`);
+  }
+  console.log(kept.length > 0
+    ? `Team shutdown complete: ${teamName} (preserved_worktrees=${kept.length}: worker commits retained, see stderr or omg team status ${teamName} --json)`
+    : `Team shutdown complete: ${teamName}`);
 }
 
 // ---------------------------------------------------------------------------

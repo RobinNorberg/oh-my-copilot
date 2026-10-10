@@ -51,7 +51,7 @@ OMC skill clauses should treat the returned markdown the same way `deep-dive` tr
 
 Configure the contract in the standard OMC config surface:
 
-- Project: `.claude/omc.jsonc`
+- Project: `.copilot/omg.jsonc`
 - User: `~/.config/claude-omc/config.jsonc`
 
 Project config overrides user config.

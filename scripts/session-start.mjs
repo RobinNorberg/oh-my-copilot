@@ -366,7 +366,11 @@ async function resolveProjectMemorySummary(directory, projectMemoryModules) {
       memory.userDirectives = existing.userDirectives;
     }
 
-    await saveProjectMemory(projectRoot, memory);
+    // A team worker runs in its own worktree: a detected-environment file
+    // there reads as worker output and keeps the worktree at team shutdown.
+    if (!process.env.OMC_TEAM_WORKER && !process.env.OMX_TEAM_WORKER) {
+      await saveProjectMemory(projectRoot, memory);
+    }
   }
 
   if (!hasProjectMemoryContent(memory)) {
@@ -1307,7 +1311,16 @@ ${cleanContent}
       let versions = [];
       if (existsSync(cacheBase)) {
         versions = readdirSync(cacheBase)
-          .filter(v => /^\d+\.\d+\.\d+/.test(v))
+          .filter(v => /^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(v))
+          .filter(v => {
+            const versionPath = join(cacheBase, v);
+            try {
+              if (lstatSync(versionPath).isSymbolicLink()) return true;
+            } catch {
+              return false;
+            }
+            return readJsonFile(join(versionPath, 'package.json'))?.version === v;
+          })
           .sort(semverCompare)
           .reverse();
 

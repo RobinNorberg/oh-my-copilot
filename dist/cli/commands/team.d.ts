@@ -53,8 +53,8 @@ export interface ParsedTeamArgs {
     autoMerge: boolean;
     explicitWorkerSpec: boolean;
     noDecompose: boolean;
-    /** Worker transport override (`--transport pane|sdk`). */
-    transport?: 'pane' | 'sdk';
+    /** Worker transport override (`--transport`; `tmux`/`psmux` parse as `pane`). */
+    transport?: 'pane' | 'sdk' | 'auto';
 }
 export declare function assertTeamSpawnAllowed(cwd: string, env?: NodeJS.ProcessEnv): Promise<void>;
 /** @internal Exported for testing */

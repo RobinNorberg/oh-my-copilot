@@ -82,7 +82,8 @@ For each non-skipped commit:
 5. Verify no upstream references leaked: `grep -r "oh-my-claudecode" src/ agents/ skills/ | grep -v node_modules`
 6. Verify bridge bundles are clean: `grep -c "oh-my-claudecode" bridge/cli.cjs` (must be 0)
 7. Live check before the PR: `omg smoke copilot --tier 1`. It runs one real Copilot session with the prompt on stdin and costs one premium request. It reuses your `copilot /login` identity and drops `GH_TOKEN`/`GITHUB_TOKEN` from the session, so do not export a token for it; `--model` is optional because Copilot auto-selects. It proves the hooks fire, run without `[omg-hook]` errors, and write `.omg/` state.
-8. Create PR to dev: `gh pr create --base dev`
+8. Update `.github/upstream-port.json` in the port commit: `upstream_sha` = the full upstream sha you ported to, `ported_at` = today, `fork_version` = the release that will ship it. The drift bot and `node scripts/port/upstream-drift.mjs --check` read it as the last ported sha. `--apply` performs the range diff below with the exclusions and the mechanical rename map (docs/DEVELOPERS.md, "Upstream drift bot").
+9. Create PR to dev: `gh pr create --base dev`
 
 ## Rename Map
 
@@ -114,6 +115,8 @@ Apply these substitutions when porting upstream code:
 - `platform.claude.com`, `claudeAiOauth` (Anthropic API refs)
 - `CLAUDE_PLUGIN_ROOT` (Claude Code platform env var)
 - `.claude/settings.local.json` (Claude Code config path)
+- `src/installer/legacy-claude-md-corpus.ts` and `src/installer/__tests__/fixtures/legacy-guides.json`: content-addressed (`openingLine`/`finalLine` sit next to `rawSha256`/`dataBase64` of the original bytes); renaming breaks the hashes (fork commit feb17aa97 reverted that)
+- `receipts/`: upstream provenance records, keep them as upstream wrote them
 
 ## Fork Features to Preserve
 
@@ -220,3 +223,14 @@ When replacing files wholesale, check for these fork-specific additions:
   with "unclassified Vitest script".
 - **Smoke gates** (since v5.7.0): `omg smoke copilot --tier 2 --sdk-static` after the generators (free),
   `--tier 2` default scenarios before the PR (~2 premium requests) — replaces opening Copilot by hand.
+- **Orchestration** (since v5.8.1): the end-to-end order, the two parallel lanes and the
+  gated chain live in `.omc/skills/port-and-release-cycle.md`; this file stays the
+  contract for the range diff, rename map and fork-owned logic.
+- **Our own fixes returning (2026-10-06):** when upstream merges a fork-submitted fix in
+  the maintainer's own shape (e.g. #4246's lean shipped-module imports), take THEIRS
+  outright and delete the fork's earlier variant — do not keep two implementations.
+- **Upstream release markers** (`.github/RELEASE_SIGNOFF`) come in with their release
+  commits; drop them, nothing in the fork reads them.
+- **Config file naming** is inconsistent in the fork (`security-config.ts` and the Stop
+  hooks read `.copilot/omc.jsonc`; the naming convention says `omg.jsonc`) — resolve
+  before touching either side in a port.

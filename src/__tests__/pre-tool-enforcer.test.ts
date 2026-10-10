@@ -2351,9 +2351,9 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
   }
 
   function writeProjectConfig(jsonc: string): void {
-    const dir = join(tempDir, '.claude');
+    const dir = join(tempDir, '.copilot');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'omc.jsonc'), jsonc);
+    writeFileSync(join(dir, 'omg.jsonc'), jsonc);
   }
 
   function run(input: Record<string, unknown>, env: Record<string, string> = {}): Record<string, unknown> {

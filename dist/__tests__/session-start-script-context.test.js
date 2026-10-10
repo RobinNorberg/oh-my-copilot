@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const SCRIPT_PATH = join(__dirname, '..', '..', 'scripts', 'session-start.mjs');
@@ -130,6 +130,38 @@ describe('session-start.mjs regression #1386', () => {
         expect(context).toContain('- build=pnpm build | test=pnpm test');
         expect(context).toContain('[env] Requires LOCAL_API_BASE for smoke tests');
         expect(context).toContain('</project-memory-context>');
+    });
+    describe('detected project memory in a team worker', () => {
+        function runDetecting(teamWorker) {
+            writeFileSync(join(fakeProject, 'package.json'), JSON.stringify({
+                name: 'fixture', scripts: { build: 'tsc', test: 'vitest' }, devDependencies: { typescript: '5.0.0' },
+            }));
+            writeFileSync(join(fakeProject, 'tsconfig.json'), '{}');
+            const env = { ...process.env, HOME: fakeHome, USERPROFILE: fakeHome, OMC_NOTIFY: '0' };
+            delete env.OMC_TEAM_WORKER;
+            delete env.OMX_TEAM_WORKER;
+            if (teamWorker)
+                env.OMC_TEAM_WORKER = teamWorker;
+            const raw = execFileSync(NODE, [SCRIPT_PATH], {
+                input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'session-team-worker-memory', cwd: fakeProject }),
+                encoding: 'utf-8',
+                env,
+                timeout: 15000,
+            }).trim();
+            const output = JSON.parse(raw);
+            return output.hookSpecificOutput?.additionalContext || '';
+        }
+        it('injects the detected environment without writing .omg/project-memory.json when OMC_TEAM_WORKER is set', () => {
+            const context = runDetecting('demo-team/worker-1');
+            expect(context).toContain('<project-memory-context>');
+            expect(context).toContain('[Project Environment]');
+            expect(existsSync(join(fakeProject, '.omg', 'project-memory.json'))).toBe(false);
+        });
+        it('writes .omg/project-memory.json as before when OMC_TEAM_WORKER is unset', () => {
+            const context = runDetecting(undefined);
+            expect(context).toContain('<project-memory-context>');
+            expect(existsSync(join(fakeProject, '.omg', 'project-memory.json'))).toBe(true);
+        });
     });
     it('injects model routing override for non-standard providers before lower-priority context', () => {
         writeFileSync(join(fakeProject, 'AGENTS.md'), `# oh-my-copilot - Intelligent Multi-Agent Orchestration

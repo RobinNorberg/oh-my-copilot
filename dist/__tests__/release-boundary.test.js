@@ -100,6 +100,7 @@ function releaseTarball(gitHead = SHA, extraEntries = [], readme = '# fixture\n'
         { path: 'package/plugin.json', content: JSON.stringify(rootPlugin) },
         { path: 'package/copilot/hooks.json', content: '{"version":1,"hooks":{}}' },
         { path: 'package/copilot/agents/executor.md', content: '---\nname: executor\n---\n' },
+        { path: 'package/scripts/copilot/dispatch.cjs', content: 'module.exports = {};\n' },
         { path: 'package/scripts/lib/copilot-hook-adapter.cjs', content: 'module.exports = {};\n' },
         { path: 'package/README.md', content: readme },
         ...extraEntries,
@@ -362,6 +363,7 @@ describe('release-boundary.mjs', () => {
             'package/copilot/hooks.json',
             'package/package.json',
             'package/plugin.json',
+            'package/scripts/copilot/dispatch.cjs',
             'package/scripts/lib/copilot-hook-adapter.cjs',
         ]);
         const forbiddenPath = writeTarball(root, 'forbidden.tgz', releaseTarball(SHA, [
@@ -385,6 +387,7 @@ describe('release-boundary.mjs', () => {
             'plugin.json',
             'copilot/hooks.json',
             'copilot/agents/executor.md',
+            'scripts/copilot/dispatch.cjs',
             'scripts/lib/copilot-hook-adapter.cjs',
         ]) {
             const missingPath = writeTarball(root, 'missing-copilot-surface.tgz', releaseTarball(SHA, [], '# fixture\n', [`package/${required}`]));

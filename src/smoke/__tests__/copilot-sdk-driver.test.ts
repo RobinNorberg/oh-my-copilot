@@ -216,6 +216,7 @@ function input(loaded: LoadedSdk | null, over: Partial<SdkTierInput> = {}, gitCa
     agentFiles: ['architect.md'],
     mcpServer: 't',
     runChain: async () => { throw new Error('chain runner not stubbed'); },
+    runTeam: async () => { throw new Error('team runner not stubbed'); },
     ...over,
   };
 }
@@ -319,6 +320,35 @@ describe('runSdkTier (fake SDK)', () => {
     const c = byId(result.checks);
     for (const id of ['link1', 'spawned', 'inherited', 'closed', 'premium']) expect(c[`scn.chain.${id}`].ok).toBe(true);
     expect(result.cost!.premiumRequests).toBe(2);
+  });
+
+  it('runs team through the team runner after the SDK scenarios and before chain, and totals its workers', async () => {
+    const { loaded, rec } = fakeSdk();
+    const order: string[] = [];
+    const teamCalls: Array<Parameters<SdkTierInput['runTeam']>[0]> = [];
+    const result = await runSdkTier(input(loaded, {
+      scenarios: ['chain', 'team', 'smoke'],
+      runChain: async (args) => {
+        order.push('chain');
+        return { name: 'chain', events: [], idle: false, timedOut: false, timeoutMs: args.timeoutMs, model: 'm', maxCredits: args.maxCredits, budget: args.budget, capped: false, wedged: false, error: 'stub' };
+      },
+      runTeam: async (args) => {
+        order.push('team');
+        teamCalls.push(args);
+        return {
+          name: 'team', events: [], idle: true, timedOut: false, timeoutMs: args.timeoutMs, model: 'm', maxCredits: args.maxCredits, budget: args.budget, capped: false, wedged: false,
+          team: {
+            teamName: 't', start: { code: 0, ok: true, ms: 1, launchMs: 1, stderr: '' }, status: null, tasks: [], commits: [], shutdown: null,
+            orphans: [], reservationsLeft: [], stateLeft: false, durationMs: 1, budgetMs: 1, cost: { premiumRequests: 2, credits: 1.5, source: 'fake' },
+          },
+        };
+      },
+    }));
+    expect(order).toEqual(['team', 'chain']);
+    expect(rec.sessions).toHaveLength(2); // static checks + smoke; team and chain bring their own sessions
+    expect(teamCalls[0]).toMatchObject({ projectDir: expect.any(String), home: expect.any(String), bin: expect.any(String), eventsPath: expect.stringMatching(/events-team\.jsonl$/) });
+    expect(byId(result.checks)['scn.team.premium']).toMatchObject({ ok: true, detail: '2 premium request(s) over fake (max 2)' });
+    expect(result.cost!.premiumRequests).toBeGreaterThanOrEqual(2);
   });
 
   it('a pushed ref on the bare remote fails no_push', async () => {

@@ -18,6 +18,8 @@
  * It is a strict no-op unless OMC_HOOK_EVENT is set, this is the main thread
  * (run.cjs Workers inherit execArgv and therefore load this file too) and the
  * file was loaded through --require/-r. Claude Code never sets OMC_HOOK_EVENT.
+ * Under scripts/copilot/dispatch.cjs it is also a no-op: the dispatcher calls
+ * transform() once per hook and merges the results itself.
  *
  * Documented choices:
  *   - additionalContext hoist: an existing top-level `additionalContext` wins;
@@ -317,8 +319,15 @@ function install(event) {
   });
 }
 
+// scripts/copilot/dispatch.cjs runs several hooks in one process and calls
+// transform() per hook itself, so the process-level buffer stays out of its way.
+function isDispatcherMain() {
+  const main = process.argv[1] || '';
+  return path.basename(main) === 'dispatch.cjs' && path.basename(path.dirname(main)) === 'copilot';
+}
+
 const hookEvent = process.env.OMC_HOOK_EVENT;
-if (hookEvent && require('worker_threads').isMainThread && loadedAsPreload()) {
+if (hookEvent && require('worker_threads').isMainThread && loadedAsPreload() && !isDispatcherMain()) {
   install(hookEvent);
 }
 

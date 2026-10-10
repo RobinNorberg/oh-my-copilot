@@ -30,10 +30,10 @@ import { ABSOLUTE_MAX_WORKERS, isValidTeamInstanceId, isValidTmuxServerIdentity 
 import { validateTeamName } from './team-name.js';
 import { TASK_ID_SAFE_PATTERN, WORKER_NAME_SAFE_PATTERN } from './contracts.js';
 import { buildValidatedWorkerLaunchDescriptor, clearResolvedPathCache, validateWorkerLaunchDescriptor, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveDefaultWorkerModel, resolveExternalModelsDefaults, assertHeadlessSupported, resolveWorkerPermissionFlags, } from './model-contract.js';
-import { createTeamSession, spawnOwnedWorkerInPane, deliverStartupInbox, probeStartupPaneActivity, retryStartupInboxSubmit, proveWorkerPaneOwnership, adoptWorkerPaneOwnership, getOwnedWorkerLiveness, captureOwnedTeamPane, workerPaneBelongsToOwnedProviderTarget, observeTmuxServerIdentity, killOwnedWorkerPane, verifyTeamTargetOwnership, observeTeamSessionTargetPresence, redactBoundedDiagnostic, killTeamSession, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, splitTeamWorkerPaneWithEvidence, TeamSessionCreationError, } from './tmux-session.js';
+import { createTeamSession, spawnOwnedWorkerInPane, deliverStartupInbox, probeStartupPaneActivity, retryStartupInboxSubmit, proveWorkerPaneOwnership, adoptWorkerPaneOwnership, getOwnedWorkerLiveness, captureOwnedTeamPane, workerPaneBelongsToOwnedProviderTarget, observeTmuxServerIdentity, killOwnedWorkerPane, verifyTeamTargetOwnership, observeTeamSessionTargetPresence, redactBoundedDiagnostic, killTeamSession, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, splitTeamWorkerPaneWithEvidence, TMUX_MAILBOX_PANE_ID, TeamSessionCreationError, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, generatePromptModeStartupPrompt, renderRecoveryContinuationInstruction, renderCursorWorkerGuidance, renderWorkerExitContract, } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
-import { cleanupTeamWorktrees, inspectTeamWorktreeCleanupSafety, ensureWorkerWorktree, installWorktreeRootAgents, normalizeTeamWorktreeMode, } from './git-worktree.js';
+import { cleanupTeamWorktrees, inspectTeamWorktreeCleanupSafety, ensureWorkerWorktree, installWorktreeRootAgents, normalizeTeamWorktreeMode, writePreservedWorktreesRecord, } from './git-worktree.js';
 import { formatOmcCliInvocation } from '../utils/omc-cli-rendering.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 import { CANONICAL_TEAM_ROLES } from '../shared/types.js';
@@ -65,7 +65,8 @@ import { waitForRecoveryGateRecord } from './worker-activation-gate.js';
 import { isWorkerLaunchAttemptCurrent, isWorkerLaunchAttemptAccepted, loadCurrentWorkerLaunchAttempt, loadWorkerLaunchAttempt, observeWorkerLaunchProvider, retireAndCleanupCurrentWorkerLaunchAttempt, withWorkerLaunchAttemptFence, } from './worker-launch-ack.js';
 import { isSdkTarget, launchSdkHost, readSdkSession, ringDoorbell, sdkPaneId, sdkTeamTarget, stopSdkHost, SDK_HOST_STOP_FLOOR_MS, } from './sdk-transport.js';
 import { toCopilotModelId } from './model-contract.js';
-import { resolveShimTarget } from '../smoke/copilot-sdk-driver.js';
+import { loadCopilotSdk, resolveShimTarget } from '../smoke/copilot-sdk-driver.js';
+import { detectHostCliSignal } from '../utils/host-signal.js';
 import { resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { isProcessIdentityLive } from '../platform/process-utils.js';
@@ -1040,6 +1041,69 @@ async function readUnresolvedStartupLaunch(opts, paneId) {
         return null;
     }
 }
+export const DEFAULT_SDK_LAUNCH_CONCURRENCY = 4;
+/**
+ * Resolve the worker transport. Precedence: explicit `transport` (the
+ * `--transport` flag), then `team.transport`, then the caller's default.
+ * `auto` picks `sdk` only under a positively detected Copilot CLI host
+ * (`COPILOT_CLI` / `COPILOT_AGENT_SESSION_ID`), and `pane` under Claude Code or
+ * with no host signal (a plain terminal); it falls back to `pane`, never fails, when the
+ * team is one the sdk transport rejects: `--auto-merge`, a non-copilot
+ * worker, an explicitly assigned reviewer-contract role (its verdict file is
+ * only read after the provider exits, and an sdk host never exits between
+ * turns), or `@github/copilot-sdk` not installed. An explicit `sdk` keeps
+ * failing loudly on those.
+ */
+export async function resolveTeamTransport(input) {
+    const { requested } = input;
+    if (requested !== 'auto')
+        return { transport: requested, requested };
+    if (input.host !== 'copilot')
+        return { transport: 'pane', requested, fallbackReason: `host_${input.host}` };
+    const pane = (fallbackReason) => ({ transport: 'pane', requested, fallbackReason });
+    if (input.autoMerge)
+        return pane('auto_merge');
+    const foreign = [...new Set(input.agentTypes.filter((agentType) => agentType !== 'copilot'))];
+    if (foreign.length > 0)
+        return pane(`non_copilot_workers:${foreign.join(',')}`);
+    if (input.explicitContractRoles.length > 0)
+        return pane(`contract_roles:${[...new Set(input.explicitContractRoles)].join(',')}`);
+    if (!await input.sdkAvailable().catch(() => false))
+        return pane('copilot_sdk_not_installed');
+    return { transport: 'sdk', requested };
+}
+/**
+ * Run startup launches with at most `concurrency` in flight. `record` sees
+ * every successful outcome in job order: immediately after each launch when
+ * serial (a pane split lays out against the panes recorded before it), else
+ * once all launches settle. The first thrown launch stops new launches;
+ * in-flight ones finish and are recorded so a rollback can see them.
+ */
+export async function runBoundedLaunches(jobs, concurrency, launch, record) {
+    const width = Math.max(1, Math.min(Math.floor(concurrency) || 1, jobs.length));
+    const outcomes = [];
+    const errors = [];
+    let next = 0;
+    await Promise.all(Array.from({ length: width }, async () => {
+        while (errors.length === 0 && next < jobs.length) {
+            const index = next++;
+            try {
+                const value = await launch(jobs[index]);
+                if (width === 1)
+                    record(value);
+                else
+                    outcomes[index] = { value };
+            }
+            catch (error) {
+                errors.push(error);
+            }
+        }
+    }));
+    for (const outcome of outcomes)
+        if (outcome)
+            record(outcome.value);
+    return { errors };
+}
 export function resolveSdkTeamSettings(pluginCfg) {
     const sdk = pluginCfg.team?.sdk ?? {};
     const envNumber = (key) => {
@@ -1052,8 +1116,15 @@ export function resolveSdkTeamSettings(pluginCfg) {
     if (configCap !== undefined && !(typeof configCap === 'number' && Number.isFinite(configCap) && configCap > 0)) {
         throw new Error(`invalid_team_sdk_config:maxCreditsPerWorker must be a positive number (got ${JSON.stringify(configCap)})`);
     }
+    const configConcurrency = sdk.launchConcurrency;
+    if (configConcurrency !== undefined && !(Number.isInteger(configConcurrency) && configConcurrency > 0)) {
+        throw new Error(`invalid_team_sdk_config:launchConcurrency must be a positive integer (got ${JSON.stringify(configConcurrency)})`);
+    }
+    const envConcurrency = envNumber('OMC_TEAM_SDK_LAUNCH_CONCURRENCY');
     const model = process.env.OMC_TEAM_SDK_MODEL?.trim() || sdk.model?.trim();
     return {
+        launchConcurrency: (envConcurrency !== undefined ? Math.max(1, Math.floor(envConcurrency)) : undefined)
+            ?? configConcurrency ?? DEFAULT_SDK_LAUNCH_CONCURRENCY,
         maxCreditsPerWorker: envNumber('OMC_TEAM_SDK_MAX_CREDITS') ?? configCap ?? 10,
         ...(model ? { model } : {}),
         startupEvidenceMs: envNumber('OMC_TEAM_SDK_STARTUP_EVIDENCE_MS') ?? sdk.startupEvidenceMs ?? 180_000,
@@ -1186,7 +1257,14 @@ async function spawnV2Worker(opts) {
         ? opts.leaderPaneId
         : opts.existingWorkerPaneIds[opts.existingWorkerPaneIds.length - 1];
     const splitDirection = opts.existingWorkerPaneIds.length === 0 ? 'right' : 'down';
-    const launchProvider = opts.sessionName.startsWith('cmux:') ? 'cmux' : 'tmux';
+    // Issue #4261: Determine provider based on both session name and pane id format.
+    // cmux's tmux-compat layer sets both TMUX and CMUX_SURFACE_ID, but the pane id is tmux-format (%...).
+    // Use the same logic as verifyTeamTargetOwnership:
+    // - Only use 'cmux' provider if session starts with 'cmux:' AND pane id is cmux-format (not %...).
+    // - Otherwise use 'tmux' provider (including cmux with tmux-compat where paneId is %...).
+    const isTmuxFormatPaneId = TMUX_MAILBOX_PANE_ID.test(opts.leaderPaneId);
+    const isNativeCmuxProvider = opts.sessionName.startsWith('cmux:') && !isTmuxFormatPaneId;
+    const launchProvider = isNativeCmuxProvider ? 'cmux' : 'tmux';
     const tmuxServerIdentity = requireTmuxServerIdentity(opts.sessionName, opts.tmuxServerIdentity);
     if (!await workerPaneBelongsToOwnedProviderTarget({
         provider: launchProvider,
@@ -3484,12 +3562,11 @@ export async function startTeamV2(config) {
     // do NOT change routing — user must recreate the team to pick up changes.
     const pluginCfg = config.pluginConfig ?? loadConfig();
     const resolvedRouting = buildResolvedRoutingSnapshot(pluginCfg);
-    const transport = config.transport ?? pluginCfg.team?.transport ?? 'pane';
-    if (transport !== 'pane' && transport !== 'sdk')
-        throw new Error(`invalid_team_transport:${String(transport)}`);
-    const sdkMode = transport === 'sdk';
-    const sdkSettings = sdkMode ? resolveSdkTeamSettings(pluginCfg) : null;
-    if (sdkMode && config.autoMerge)
+    const requestedTransport = config.transport ?? pluginCfg.team?.transport ?? config.defaultTransport ?? 'pane';
+    if (requestedTransport !== 'pane' && requestedTransport !== 'sdk' && requestedTransport !== 'auto') {
+        throw new Error(`invalid_team_transport:${String(requestedTransport)}`);
+    }
+    if (requestedTransport === 'sdk' && config.autoMerge)
         throw new Error('sdk_transport_unsupported:auto_merge');
     let worktreeMode = normalizeTeamWorktreeMode(process.env.OMC_TEAM_WORKTREE_MODE ?? pluginCfg.team?.ops?.worktreeMode);
     // Auto-merge gate (M5 + M3 hardening). Forces worktreeMode='named' so each
@@ -3565,6 +3642,8 @@ export async function startTeamV2(config) {
     const missingBinaryReasons = [];
     const startupAssignments = new Map();
     const effectiveAgentTypes = new Set();
+    // Contract roles only INFERRED from task text, per worker: the sdk transport drops them below.
+    const inferredContractRoles = new Map();
     for (let i = 0; i < workerNames.length; i++) {
         const workerName = workerNames[i];
         const taskIndex = startupByWorker.get(workerName);
@@ -3574,20 +3653,10 @@ export async function startTeamV2(config) {
         const resolvedAssignment = task === undefined
             ? { agentType: fallbackAgent, model: '', reasoningEffort: undefined, role: undefined }
             : resolveTaskAssignment(task, resolvedRouting, roleRoutingConfig, fallbackAgent);
-        let role = resolvedAssignment.role ?? undefined;
-        // Under the sdk transport, a contract role (critic/code-reviewer/
-        // security-reviewer/test-engineer) that was only INFERRED from task text
-        // — not explicitly assigned via task.role or team.roleRouting config —
-        // carries no user intent to honor by failing the whole team start. Drop
-        // the role instead: the worker launches as a plain executor-style
-        // worker (no verdict contract, no role-specific prompt override). An
-        // explicitly assigned contract role is still rejected below.
-        if (sdkMode && role && shouldInjectContract(role, resolvedAssignment.agentType)
+        const role = resolvedAssignment.role ?? undefined;
+        if (role && shouldInjectContract(role, resolvedAssignment.agentType)
             && task && !isExplicitTaskRoleAssignment(task, roleRoutingConfig, role)) {
-            process.stderr.write(`[omg team] sdk transport: inferred role "${role}" for worker ${workerName} `
-                + `would require a verdict contract the sdk transport cannot process; running as a plain executor `
-                + `instead (an explicitly assigned contract role is still rejected)\n`);
-            role = undefined;
+            inferredContractRoles.set(workerName, role);
         }
         const assignment = {
             agentType: resolvedAssignment.agentType,
@@ -3597,6 +3666,34 @@ export async function startTeamV2(config) {
         };
         startupAssignments.set(workerName, assignment);
         effectiveAgentTypes.add(assignment.agentType);
+    }
+    const transportDecision = await resolveTeamTransport({
+        requested: requestedTransport,
+        host: detectHostCliSignal() ?? 'unknown',
+        autoMerge: Boolean(config.autoMerge),
+        agentTypes: [...effectiveAgentTypes],
+        explicitContractRoles: [...startupAssignments].flatMap(([workerName, a]) => a.role && shouldInjectContract(a.role, a.agentType) && !inferredContractRoles.has(workerName) ? [a.role] : []),
+        sdkAvailable: config.sdkAvailable ?? (async () => (await loadCopilotSdk()) !== null),
+    });
+    if (transportDecision.requested === 'auto' && transportDecision.fallbackReason && !transportDecision.fallbackReason.startsWith('host_')) {
+        process.stderr.write(`[omg team] transport auto: using pane workers, not sdk (${transportDecision.fallbackReason})\n`);
+    }
+    const sdkMode = transportDecision.transport === 'sdk';
+    const sdkSettings = sdkMode ? resolveSdkTeamSettings(pluginCfg) : null;
+    if (sdkMode) {
+        // Under the sdk transport, a contract role (critic/code-reviewer/
+        // security-reviewer/test-engineer) that was only INFERRED from task text
+        // — not explicitly assigned via task.role or team.roleRouting config —
+        // carries no user intent to honor by failing the whole team start. Drop
+        // the role instead: the worker launches as a plain executor-style
+        // worker (no verdict contract, no role-specific prompt override). An
+        // explicitly assigned contract role is still rejected below.
+        for (const [workerName, role] of inferredContractRoles) {
+            process.stderr.write(`[omg team] sdk transport: inferred role "${role}" for worker ${workerName} `
+                + `would require a verdict contract the sdk transport cannot process; running as a plain executor `
+                + `instead (an explicitly assigned contract role is still rejected)\n`);
+            delete startupAssignments.get(workerName).role;
+        }
     }
     if (sdkMode && [...effectiveAgentTypes].some((agentType) => agentType !== 'copilot')) {
         throw new Error(`sdk_transport_requires_copilot_workers:${[...effectiveAgentTypes].join(',')}`);
@@ -3952,12 +4049,12 @@ export async function startTeamV2(config) {
         }
         const launchedWorkers = [];
         const startupFailures = [];
+        // Launches that threw (cleanup unverified) while sibling sdk launches ran.
+        const unresolvedLaunches = [];
         try {
-            // Reuse the same first-per-worker selection used by assignment and
-            // preflight; no second dedupe policy may diverge from startupByWorker.
+            const launchJobs = [];
             for (const [wName, taskIndex] of startupByWorker) {
                 const workerIndex = Number.parseInt(wName.replace('worker-', ''), 10) - 1;
-                const taskId = String(taskIndex + 1);
                 const task = config.tasks[taskIndex];
                 if (!task || workerIndex < 0)
                     continue;
@@ -3967,6 +4064,9 @@ export async function startTeamV2(config) {
                 const workerInfo = workersInfo[workerIndex];
                 if (!workerInfo)
                     continue;
+                launchJobs.push({ wName, workerIndex, taskId: String(taskIndex + 1), task, prepared, workerInfo });
+            }
+            const launchOne = async ({ wName, workerIndex, taskId, task, prepared, workerInfo }) => {
                 const spawnOptions = {
                     sessionName,
                     ...(session.tmuxServerIdentity ? { tmuxServerIdentity: session.tmuxServerIdentity } : {}),
@@ -3990,6 +4090,9 @@ export async function startTeamV2(config) {
                 const workerLaunch = sdkSettings
                     ? await spawnSdkV2Worker(spawnOptions, sdkSettings)
                     : await spawnV2Worker(spawnOptions);
+                return { wName, taskId, prepared, workerInfo, workerLaunch };
+            };
+            const recordLaunch = ({ wName, taskId, prepared, workerInfo, workerLaunch }) => {
                 if (workerLaunch.paneId) {
                     if (workerLaunch.startupAssigned)
                         workerPaneIds.push(workerLaunch.paneId);
@@ -4023,28 +4126,51 @@ export async function startTeamV2(config) {
                         reason: `startup_manual_intervention_required:${wName}:${workerLaunch.startupFailureReason}`,
                     }, leaderCwd).catch(logEventFailure);
                 }
+            };
+            // Pane workers launch one at a time: each split lays out against the panes
+            // before it (existingWorkerPaneIds). SDK hosts share no multiplexer, and
+            // each launch waits only on its own worker's claim, so up to
+            // launchConcurrency run at once; a launch failure is that worker's
+            // startup failure. A launch that throws (its cleanup is unverified)
+            // stops new launches; in-flight ones finish so the rollback sees them.
+            const concurrency = sdkSettings ? sdkSettings.launchConcurrency : 1;
+            const launchStartedAt = Date.now();
+            const { errors: launchErrors } = await runBoundedLaunches(launchJobs, concurrency, launchOne, recordLaunch);
+            if (sdkSettings && launchJobs.length > 0) {
+                process.stderr.write(`[omg team] sdk workers launched: ${launchJobs.length} in ${Date.now() - launchStartedAt} ms (concurrency ${Math.min(concurrency, launchJobs.length)})\n`);
+            }
+            if (launchErrors.length > 0) {
+                for (const launchError of launchErrors.slice(1)) {
+                    const unresolved = launchError && typeof launchError === 'object' && 'unresolvedLaunch' in launchError
+                        ? launchError.unresolvedLaunch : undefined;
+                    if (unresolved)
+                        unresolvedLaunches.push(unresolved);
+                }
+                throw launchErrors[0];
             }
         }
         catch (error) {
-            const unresolvedLaunch = error && typeof error === 'object' && 'unresolvedLaunch' in error
+            const firstUnresolved = error && typeof error === 'object' && 'unresolvedLaunch' in error
                 ? error.unresolvedLaunch
                 : undefined;
-            if (unresolvedLaunch && !launchedWorkers.some(candidate => candidate.launchAttemptId === unresolvedLaunch.launchAttemptId)) {
-                launchedWorkers.push(unresolvedLaunch);
-                const workerInfo = workersInfo.find(candidate => candidate.name === unresolvedLaunch.name);
-                if (workerInfo) {
-                    workerInfo.pane_id = unresolvedLaunch.paneId;
-                    workerInfo.launch_attempt_id = unresolvedLaunch.launchAttemptId;
-                    workerInfo.worker_cli = unresolvedLaunch.provider;
-                    workerInfo.operational_state = 'starting';
-                    teamConfig.workers = workersInfo;
-                    try {
-                        await saveTeamConfig(teamConfig, leaderCwd, teamConfig.state_revision);
-                    }
-                    catch {
-                        // The durable launch receipt and rollback marker remain the
-                        // fallback evidence; never proceed to destructive cleanup without
-                        // the unresolved launch in `launchedWorkers`.
+            for (const unresolvedLaunch of [...(firstUnresolved ? [firstUnresolved] : []), ...unresolvedLaunches]) {
+                if (!launchedWorkers.some(candidate => candidate.launchAttemptId === unresolvedLaunch.launchAttemptId)) {
+                    launchedWorkers.push(unresolvedLaunch);
+                    const workerInfo = workersInfo.find(candidate => candidate.name === unresolvedLaunch.name);
+                    if (workerInfo) {
+                        workerInfo.pane_id = unresolvedLaunch.paneId;
+                        workerInfo.launch_attempt_id = unresolvedLaunch.launchAttemptId;
+                        workerInfo.worker_cli = unresolvedLaunch.provider;
+                        workerInfo.operational_state = 'starting';
+                        teamConfig.workers = workersInfo;
+                        try {
+                            await saveTeamConfig(teamConfig, leaderCwd, teamConfig.state_revision);
+                        }
+                        catch {
+                            // The durable launch receipt and rollback marker remain the
+                            // fallback evidence; never proceed to destructive cleanup without
+                            // the unresolved launch in `launchedWorkers`.
+                        }
                     }
                 }
             }
@@ -5022,7 +5148,10 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
         const providerLiveness = await getWorkerProviderLiveness(sanitized, cwd, config.instance_id, worker);
         if (isSdkTarget(worker.pane_id)) {
             // No pane: liveness is the host's provider record, idleness its session file.
-            const sdkSession = readSdkSession(teamStateRoot(cwd, sanitized), worker.name);
+            // A session file left by an earlier launch attempt describes a host that is gone.
+            const sessionFile = readSdkSession(teamStateRoot(cwd, sanitized), worker.name);
+            const sdkSession = sessionFile && (!worker.launch_attempt_id || sessionFile.attempt_id === worker.launch_attempt_id)
+                ? sessionFile : null;
             const [status, heartbeat] = await Promise.all([
                 readWorkerStatus(sanitized, worker.name, cwd),
                 readWorkerHeartbeat(sanitized, worker.name, cwd),
@@ -5081,8 +5210,13 @@ export async function monitorTeamV2(teamName, cwd, expectedInstanceId) {
                     last_error: sdkSession.last_error,
                     session_id: sdkSession.session_id,
                     model: sdkSession.model,
-                    credits: sdkSession.usage.credits,
+                    host_pid: sdkSession.host_pid,
+                    runtime_pid: sdkSession.runtime_pid,
+                    attempt_id: sdkSession.attempt_id,
+                    updated_at: sdkSession.updated_at,
+                    credits: sdkSession.usage.shutdown_credits ?? sdkSession.usage.credits,
                     premium_requests: sdkSession.usage.shutdown_premium_requests ?? sdkSession.usage.premium_requests,
+                    premium_requests_final: sdkSession.usage.shutdown_premium_requests != null,
                 } } : {}),
         });
         if (providerLiveness === 'dead') {
@@ -5686,7 +5820,12 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
     }
     for (const worker of config.workers) {
         if (!worker.pane_id) {
-            providerCleanupFailures.push(worker.name);
+            // Issue #4261: No pane_id recorded means this worker never got a pane.
+            // When --force is used, allow cleanup to proceed (nothing to verify).
+            // Otherwise, preserve state (pane may have been orphaned).
+            if (!options.force) {
+                providerCleanupFailures.push(worker.name);
+            }
             continue;
         }
         if (!worker.launch_attempt_id) {
@@ -5724,7 +5863,11 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
                     : {}),
             });
             if (!ownership.ok) {
-                providerCleanupFailures.push(worker.name);
+                // Issue #4261: When ownership cannot be verified (pane doesn't exist),
+                // allow --force cleanup to proceed. Otherwise preserve state.
+                if (!options.force) {
+                    providerCleanupFailures.push(worker.name);
+                }
                 continue;
             }
             paneOwnership = ownership.ownership;
@@ -5911,9 +6054,11 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
         await commitStoppedFenceUnderLock();
         let worktreeCleanupFailure = null;
         let preservedWorktrees = 0;
+        let retainedWorktrees = [];
         try {
             const worktreeCleanup = cleanupTeamWorktrees(sanitized, cwd);
             preservedWorktrees = worktreeCleanup.preserved.length;
+            retainedWorktrees = worktreeCleanup.retained;
         }
         catch (err) {
             preservedWorktrees = 1;
@@ -5937,7 +6082,15 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
                 detail: err instanceof Error ? err.message : String(err),
             };
         }
-        return { outcome: 'cleaned' };
+        // The team state is gone; the list of kept worktrees outlives it so
+        // `omg team status <team>` can still name them.
+        try {
+            writePreservedWorktreesRecord(cwd, sanitized, retainedWorktrees);
+        }
+        catch (err) {
+            process.stderr.write(`[team/runtime-v2] could not record preserved worktrees: ${err instanceof Error ? err.message : String(err)}\n`);
+        }
+        return retainedWorktrees.length > 0 ? { outcome: 'cleaned', preservedWorktrees: retainedWorktrees } : { outcome: 'cleaned' };
     });
 }
 // ---------------------------------------------------------------------------

@@ -2,6 +2,112 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.9.0
+
+## [5.9.0] - 2026-10-10
+
+Fork **v5.9.0** (from v5.8.1) is a minor release: `omg team` starts headless
+SDK workers by default under the Copilot CLI host, Copilot hooks run through a
+per-event dispatcher, the project config is `.copilot/omg.jsonc` everywhere, a
+daily upstream drift bot proposes ports, and upstream oh-my-claudecode `dev` is
+ported through a720eabd0 (ef9a44f0e..a720eabd0, 6 commits). Under Claude Code
+the team transport stays `pane`. To keep panes under Copilot CLI, see the
+[v5.8.1 → v5.9.0 note](docs/MIGRATION.md#v581--v590-sdk-team-transport-by-default).
+
+### Changed: SDK team transport is the default under Copilot CLI
+
+- **`omg team` defaults to `--transport auto`.** Under the Copilot CLI host
+  (the existing host detection) that starts headless sdk workers; under Claude
+  Code it stays `pane`. `auto` falls back to panes, with a note on stderr, for
+  `--auto-merge`, non-copilot workers, an explicitly assigned
+  reviewer-contract role, or a missing `@github/copilot-sdk`. `--transport`
+  accepts `sdk`, `pane`, `auto` and the aliases `tmux`/`psmux`; `team.transport`
+  in the project config overrides the default. See the
+  [migration note](docs/MIGRATION.md#v581--v590-sdk-team-transport-by-default).
+- **Parallel sdk worker launch.** Hosts start concurrently
+  (`team.sdk.launchConcurrency`, default 4; env
+  `OMC_TEAM_SDK_LAUNCH_CONCURRENCY`). In a live 2-worker run the host launch
+  took 75.3 s serial and 24.0 to 51.8 s parallel. Each launch still waits for its
+  own worker's claim, so a model turn dominates and varies.
+- **`omg team status --json`** adds `transport` and, per sdk worker,
+  `host_pid`, `runtime_pid`, `session_id`, `attempt_id`, `updated_at`,
+  `task_state`, `current_task_id` and `premium_requests_final`. A session file
+  from an earlier launch attempt is ignored. The human `sdk_worker=` line adds
+  the host pid and session id.
+- **`one_team_per_leader_session` sees sdk teams.** It probed only
+  `tmux has-session`, so an sdk team never counted. A team is now live while any
+  of its sdk hosts is.
+
+### Changed: per-event Copilot hook dispatcher
+
+- **Copilot hooks run through a per-event dispatcher.** `copilot/hooks.json`
+  now has one entry per `(event, matcher)` group of `hooks/hooks.json`
+  instead of one per hook. Each entry runs `scripts/copilot/dispatch.cjs`,
+  which reads stdin once, runs the group's hooks in order with the same
+  `run.cjs` routing and per-hook timeouts, and merges the adapted outputs:
+  context joined in hook order, any PreToolUse deny wins, a Stop block from
+  any hook survives (reasons joined in hook order, and it beats another
+  hook's `continue: false`), a throwing hook fails alone, a timed-out hook
+  contributes no stdout, PermissionRequest exit 2 is kept, and under
+  `OMC_HOOK_FAIL_CLOSED=1` a timeout (124) beats every other exit code.
+  Locally on Windows, Stop drops from 1358 to 1011 ms and SessionStart from
+  2403 to 2036 ms. `OMC_COPILOT_HOOK_DISPATCH=0` runs one process per hook
+  again without regenerating. Claude Code and `hooks/hooks.json` are
+  unchanged. See [HOOKS.md](docs/HOOKS.md#per-event-dispatcher).
+
+### Added
+
+- **Upstream drift bot.** A daily workflow, `.github/workflows/upstream-drift.yml`, checks upstream oh-my-claudecode `dev` against the last ported sha. That sha is recorded in the new `.github/upstream-port.json`. When upstream has moved, the bot applies the range with `scripts/port/upstream-drift.mjs`, using the runbook's exclusions and the mechanical rename map. A clean apply opens a draft port PR to `dev`. Conflicts open an issue that lists them. Each upstream head gets one item, older ones are closed, and nothing is force-pushed. The optional `UPSTREAM_DRIFT_TOKEN` secret lets CI run on bot PRs. See docs/DEVELOPERS.md, "Upstream drift bot".
+
+- **`omg smoke copilot --tier 2 --scenario team`** (opt-in, never in `all`):
+  a real 2-worker `omg team` on the default transport, from start to a clean
+  shutdown, in about 2 premium requests. Checks `scn.team.started`,
+  `completed`, `committed`, `status`, `shutdown`, `duration` and `premium`.
+
+### Fixed
+
+- **Team shutdown preserved every worktree a copilot worker ran in.** The
+  worker's SessionEnd hook keeps job records under the worktree's own `.omg/`,
+  which the clean check counted as dirty. `omg team shutdown` then exited 1 and
+  kept the instance reservation and the team state. Untracked
+  OMC runtime state no longer counts, and it is removed with the worktree. A
+  half-finished forced removal on Windows, where an action runner still holds the
+  directory, retries for up to 15 s and then leaves only that runtime state behind
+  with a warning. Any other untracked or modified file still preserves the
+  worktree.
+- **Upstream port `ef9a44f0e..a720eabd0` (6 commits).** `omg ask antigravity`
+  now runs on Windows (the advisor spawns `agy`
+  without a shell so the prompt reaches it as one argv value), and antigravity team workers are no longer refused on Windows (upstream #4258).
+  Session cwds in a repo subdirectory on Windows resolve to the right worktree
+  (#4254). cmux teams verify pane ownership through the tmux-compat layer and
+  match surfaces by ref or UUID, and `--force` shutdown no longer stalls on
+  workers without a verifiable pane (#4261). Plugin cache cleanup keeps
+  symlinked versions and ignores orphaned `*.tmp~*` directories (#4263).
+- **Project config is `.copilot/omg.jsonc` everywhere.** The security config
+  reader, the Stop hook (`persistent-mode.mjs`), the keyword detector's
+  `keywordDetector.disabled` opt-out, per-agent model overrides in the
+  PreToolUse hook, and `autopilot --workflow` profiles each read a different
+  file before (`.copilot/omc.jsonc` or the upstream `.claude/omc.jsonc`). All
+  of them now read `.copilot/omg.jsonc` first. `.copilot/omc.jsonc` is read
+  as a fallback when the canonical file is absent, and hooks that read
+  `.claude/omc.jsonc` before still fall back to it. Docs, skills and error
+  messages name the canonical file only.
+- **`omg doctor conflicts` reports a legacy-named project config.** It prints
+  the exact rename command for `.copilot/omc.jsonc` or `.claude/omc.jsonc`,
+  or says the file is ignored when `.copilot/omg.jsonc` also exists. It never
+  renames the file and does not count it as a conflict.
+
+### Documentation
+
+- **Copilot CLI hook event audit.** `docs/DEVELOPERS.md` lists every hook
+  event Copilot CLI 1.0.91 supports, with evidence from its own package, and
+  how each maps to the generated `copilot/hooks.json`. All 11 upstream hook
+  events are already projected. The Copilot-only events (`notification`,
+  `errorOccurred`, `preMcpToolCall`, `userPromptTransformed`, and the
+  protocol-only `postResult` and `prePRDescription`) have no upstream hook to
+  map.
+  The SDK's callback hooks cover only 10 of the CLI's 15 file hook events.
+
 # oh-my-copilot v5.8.1
 
 ## [5.8.1] - 2026-10-06

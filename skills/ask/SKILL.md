@@ -50,7 +50,7 @@ cursor-agent --version
 - **Antigravity CLI install** (Google's successor to the Gemini CLI): install the `agy`
   binary per the [official Antigravity instructions](https://antigravity.google) (inspect
   any installer before running it). Verify: `agy --version`
-  > **Platform note:** `omc ask antigravity` is supported on macOS/Linux. On Windows it is guarded with a clear error, because `agy --print` takes the prompt as an argv value (it cannot read stdin) and has known upstream Windows `-p` limitations; use `omc ask gemini` on Windows.
+  > **Platform note:** `omc ask antigravity` runs on macOS, Linux and Windows. On Windows the advisor spawns `agy` without a shell so the prompt reaches it as a single argv value (`agy` cannot read the prompt from stdin); a run that hangs or exits with no output is reported as a failure (google-antigravity/antigravity-cli#76).
 - **Gemini CLI** remains supported for enterprise/API-key use cases.
 
 ## Artifacts
