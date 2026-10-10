@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "c1fe2058cce99d6401abbdeb58ca36f3486d048b",
-    "sourceSha256": "9e5e069728e3250bf6e4db9842bd4b030b97f4ce31310cb5c5014f8c679ab809",
+    "head": "7d3f9daed1299536cf313eb77d5a9515c6af1553",
+    "sourceSha256": "e28306a57dd3e7b2c8a20d9eb3dd0e97f45c1fb052a9e78622a19ea9b56c8174",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "c1fe2058cce99d6401abbdeb58ca36f3486d048b",
-  "sourceSha256": "9e5e069728e3250bf6e4db9842bd4b030b97f4ce31310cb5c5014f8c679ab809",
+  "head": "7d3f9daed1299536cf313eb77d5a9515c6af1553",
+  "sourceSha256": "e28306a57dd3e7b2c8a20d9eb3dd0e97f45c1fb052a9e78622a19ea9b56c8174",
   "counts": {
     "public": {
       "skills": 61,
@@ -32,9 +32,9 @@
       "total": 1565
     },
     "generated": {
-      "distFiles": 5943,
+      "distFiles": 5951,
       "bridgeFiles": 9,
-      "total": 5952
+      "total": 5960
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -5599,6 +5599,10 @@
       "dist/smoke/__tests__/copilot-smoke.test.d.ts.map",
       "dist/smoke/__tests__/copilot-smoke.test.js",
       "dist/smoke/__tests__/copilot-smoke.test.js.map",
+      "dist/smoke/__tests__/copilot-team-scenario.test.d.ts",
+      "dist/smoke/__tests__/copilot-team-scenario.test.d.ts.map",
+      "dist/smoke/__tests__/copilot-team-scenario.test.js",
+      "dist/smoke/__tests__/copilot-team-scenario.test.js.map",
       "dist/smoke/copilot-binary.d.ts",
       "dist/smoke/copilot-binary.d.ts.map",
       "dist/smoke/copilot-binary.js",
@@ -5627,6 +5631,10 @@
       "dist/smoke/copilot-smoke.d.ts.map",
       "dist/smoke/copilot-smoke.js",
       "dist/smoke/copilot-smoke.js.map",
+      "dist/smoke/copilot-team-scenario.d.ts",
+      "dist/smoke/copilot-team-scenario.d.ts.map",
+      "dist/smoke/copilot-team-scenario.js",
+      "dist/smoke/copilot-team-scenario.js.map",
       "dist/smoke/process-utils.d.ts",
       "dist/smoke/process-utils.d.ts.map",
       "dist/smoke/process-utils.js",
@@ -31811,6 +31819,26 @@
         "path": "dist/smoke/__tests__/copilot-smoke.test.js.map"
       },
       {
+        "id": "dist/smoke/__tests__/copilot-team-scenario.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-team-scenario.test.d.ts"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-team-scenario.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-team-scenario.test.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-team-scenario.test.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-team-scenario.test.js"
+      },
+      {
+        "id": "dist/smoke/__tests__/copilot-team-scenario.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/__tests__/copilot-team-scenario.test.js.map"
+      },
+      {
         "id": "dist/smoke/copilot-binary.d.ts",
         "kind": "generated-dist",
         "path": "dist/smoke/copilot-binary.d.ts"
@@ -31949,6 +31977,26 @@
         "id": "dist/smoke/copilot-smoke.js.map",
         "kind": "generated-dist",
         "path": "dist/smoke/copilot-smoke.js.map"
+      },
+      {
+        "id": "dist/smoke/copilot-team-scenario.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-team-scenario.d.ts"
+      },
+      {
+        "id": "dist/smoke/copilot-team-scenario.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-team-scenario.d.ts.map"
+      },
+      {
+        "id": "dist/smoke/copilot-team-scenario.js",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-team-scenario.js"
+      },
+      {
+        "id": "dist/smoke/copilot-team-scenario.js.map",
+        "kind": "generated-dist",
+        "path": "dist/smoke/copilot-team-scenario.js.map"
       },
       {
         "id": "dist/smoke/process-utils.d.ts",
@@ -93104,12 +93152,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8197,
+      "nodeCount": 8205,
       "edgeCount": 8927,
       "importEdgeCount": 7394,
       "registerEdgeCount": 82
     }
   },
   "inventorySha256": "2003fd1e1bf527ef813fe46afddc6dc3450f737b817e9f148d8736cd62ccf830",
-  "manifestSha256": "ccd92dd14e0745d05c5b6d247a0cbfed27d89815613eb0c08a63342db389cd46"
+  "manifestSha256": "d94ec031232f7e5add1af0c6592c033ee97e93e638f42a41aae65c79c5a43e8a"
 }

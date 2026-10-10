@@ -6,7 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
-- [Unreleased: SDK Team Transport by Default](#unreleased-sdk-team-transport-by-default)
+- [v5.8.1 → v5.9.0: SDK Team Transport by Default](#v581--v590-sdk-team-transport-by-default)
 - [Unreleased: Team Instance Ownership](#unreleased-team-instance-ownership)
 - [Unreleased: Cancellation Scope](#unreleased-cancellation-scope)
 - [v5.8.0 → v5.8.1: Ralph Hard Max in the Stop Hook](#v580--v581-ralph-hard-max-in-the-stop-hook)
@@ -28,7 +28,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ---
 
-## Unreleased: SDK Team Transport by Default
+## v5.8.1 → v5.9.0: SDK Team Transport by Default
 
 Under the Copilot CLI host, `omg team` without `--transport` now starts headless sdk workers instead of tmux/psmux panes. Under Claude Code nothing changes.
 

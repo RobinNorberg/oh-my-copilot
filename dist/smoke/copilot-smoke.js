@@ -22,6 +22,7 @@ import { EVIDENCE_MAX, evaluateAdapterErrors, evaluateEventsLog, evaluateHooks, 
 import { hasExited, killProcessTree, runAsync, useProcessGroup } from './process-utils.js';
 import { DEFAULT_SCENARIO_TIMEOUT_MS, loadCopilotSdk, runSdkTier } from './copilot-sdk-driver.js';
 import { runChainScenario } from './copilot-chain-scenario.js';
+import { runTeamScenario } from './copilot-team-scenario.js';
 import { DEFAULT_SCENARIOS, failedTier2Checks, KNOWN_SCENARIOS, RUNTIME_MIN_MAX_CREDITS } from './copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from './copilot-session-env.js';
 export { buildSessionEnv, isStrippedEnvKey, LOGIN_SHADOWING_TOKENS, loginIdentity, resolveDefaultPluginRoot, resolvePackageRoot, SESSION_SET_ENV, SMOKE_SET_ENV, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, } from './copilot-session-env.js';
@@ -677,6 +678,7 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
         agentFiles,
         mcpServer: mcpServerNames(ctx.root)[0] ?? 't',
         runChain: runChainScenario,
+        runTeam: runTeamScenario,
     });
     if (Object.keys(result.events).length)
         artifacts.events = result.events;

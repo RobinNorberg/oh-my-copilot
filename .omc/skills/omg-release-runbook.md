@@ -130,7 +130,9 @@ run plus a retag cycle. Work through pre-flight completely BEFORE tagging.
 guardrail on shared runners), `runtime-v2.dispatch` ("requeues the selected
 task through an exact read…", 30 s timeout — hit on the v5.6.1 tag run),
 `subagent-tracker` ("persists durably under the already-held lock", 310 ms
-latency bound — hit on PR #209). One `gh run rerun <id> --failed` clears them;
+latency bound — hit on PR #209), `tests/integration/workflow-profile-lock-recovery`
+("serializes concurrent reclaimers without removing a live replacement" — hit on
+PR #231's Linux run 2026-10-07, passed on rerun). One `gh run rerun <id> --failed` clears them;
 only investigate if the SAME test fails twice. A rerun keeps the tag and
 workflow path, so the provenance attestation is unaffected.
 

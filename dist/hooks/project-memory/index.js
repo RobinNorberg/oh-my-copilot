@@ -61,7 +61,12 @@ export async function registerProjectMemoryContext(sessionId, workingDirectory) 
             const existing = memory;
             const detected = await detectProjectEnvironment(projectRoot);
             memory = existing ? applyRescanMerge(detected, existing) : detected;
-            await saveProjectMemory(projectRoot, memory);
+            // A team worker runs in its own worktree: a detected-environment file
+            // there reads as worker output and keeps the worktree at team shutdown.
+            // It still gets the context, detected in memory only.
+            if (!process.env.OMC_TEAM_WORKER && !process.env.OMX_TEAM_WORKER) {
+                await saveProjectMemory(projectRoot, memory);
+            }
         }
         const content = formatContextSummary(memory, {
             workingDirectory: path.relative(projectRoot, workingDirectory),

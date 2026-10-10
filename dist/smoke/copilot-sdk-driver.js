@@ -24,7 +24,7 @@ import { createRequire } from 'module';
 import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { excerpt } from './copilot-session-eval.js';
-import { chainCost, chooseModel, CREDIT_CAP_SKIP_DETAIL, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, hostSmokeToolName, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioCost, scenarioExcludedTools, SDK_MISSING_DETAIL, SDK_PACKAGE, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
+import { chooseModel, CREDIT_CAP_SKIP_DETAIL, evaluateScenario, evaluateSdkAgents, evaluateSdkMcp, evaluateSdkPlugins, evaluateSdkRuntime, evaluateSdkSkills, evaluateSdkToolsExcluded, failedTier2Checks, hostSmokeToolName, runCost, RUNTIME_MIN_MAX_CREDITS, SCENARIOS, scenarioExcludedTools, SDK_MISSING_DETAIL, SDK_PACKAGE, skippedScenarioChecks, sliceLogByTime, usageCredits, } from './copilot-sdk-scenarios.js';
 import { killProcessTree } from './process-utils.js';
 // ---------------------------------------------------------------------------
 // Loading
@@ -366,8 +366,11 @@ export async function runSdkTier(input) {
         checks.push(evaluateSdkRuntime(status, input.binVersion, modelLabel));
         checks.push(...await staticChecks(client, input));
         let stopReason;
-        // chain rewrites the shared sandbox (route table, a project skill): run it last.
-        for (const name of [...input.scenarios.filter((s) => s !== 'chain'), ...input.scenarios.filter((s) => s === 'chain')]) {
+        // chain rewrites the shared sandbox (route table, a project skill): run it
+        // last. team runs before it, so its worker sessions never meet that route
+        // table, and its copied worker logs fall in its own time slice.
+        const order = ['team', 'chain'];
+        for (const name of [...input.scenarios.filter((s) => !order.includes(s)), ...order.filter((s) => input.scenarios.includes(s))]) {
             if (projectError) {
                 entries.push({ name, skip: `sandbox project setup failed: ${projectError}` });
                 continue;
@@ -399,9 +402,23 @@ export async function runSdkTier(input) {
                     eventsPath: path,
                     spawnSync: input.spawnSync,
                 })
-                : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
+                // `team` drives a real `omg team` with sdk workers, not this client's session.
+                : name === 'team'
+                    ? await input.runTeam({
+                        root: input.root,
+                        bin: input.bin,
+                        env: input.env,
+                        projectDir: input.projectDir,
+                        home: input.home,
+                        timeoutMs: input.timeoutMs,
+                        maxCredits: input.maxCredits,
+                        budget: input.maxCredits - total.credits,
+                        eventsPath: path,
+                        spawnSync: input.spawnSync,
+                    })
+                    : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
             entries.push({ name, run, start });
-            const cost = run.chain ? chainCost(run.chain) : scenarioCost(run.events);
+            const cost = runCost(run);
             total.premiumRequests += cost.premiumRequests;
             total.credits += cost.credits;
             if (run.capped || total.credits > input.maxCredits)

@@ -628,6 +628,44 @@ describe('scaleUp launch config', () => {
         expect(gitWorktreeMocks.prepareWorkerWorktreeForRemoval).toHaveBeenCalledWith('demo-team', 'worker-1', resolve(cwd), join(resolve(cwd), 'reuse'));
         expect(monitorMocks.saveTeamConfig).not.toHaveBeenCalled();
     });
+    it('refuses scale-down and keeps the worker tracked when its created worktree holds unmerged commits', async () => {
+        const config = {
+            name: 'demo-team',
+            instance_id: TEAM_INSTANCE_ID,
+            tmux_server_identity: tmuxSessionMocks.tmuxServerIdentity,
+            task: 'demo',
+            agent_type: 'codex',
+            worker_launch_mode: 'interactive',
+            worker_count: 2,
+            max_workers: 20,
+            workers: [
+                { name: 'worker-1', index: 1, role: 'executor', assigned_tasks: [], pane_id: '%1', worktree_path: join(resolve(cwd), 'created'), worktree_created: true, ...launchMetadata },
+                { name: 'worker-2', index: 2, role: 'executor', assigned_tasks: [], pane_id: '%2' },
+            ],
+            created_at: new Date().toISOString(),
+            tmux_session: 'demo-session:0',
+            next_task_id: 2,
+            next_worker_index: 3,
+            leader_pane_id: '%0',
+            hud_pane_id: null,
+            resize_hook_name: null,
+            resize_hook_target: null,
+            team_state_root: teamStateRoot(cwd, 'demo-team'),
+        };
+        teamOpsMocks.teamReadConfig.mockResolvedValue(config);
+        teamOpsMocks.teamReadWorkerStatus.mockResolvedValue({ state: 'idle', updated_at: new Date().toISOString() });
+        tmuxSessionMocks.getWorkerLiveness.mockResolvedValue('dead');
+        gitWorktreeMocks.removeWorkerWorktree.mockImplementationOnce(() => {
+            throw Object.assign(new Error('worktree_unmerged_commits: preserving worker worktree with 2 commit(s) not merged into the leader HEAD'), {
+                code: 'worktree_unmerged_commits',
+                preservedWorktree: { workerName: 'worker-1', path: join(resolve(cwd), 'created'), branch: 'omc-team/demo-team/worker-1', commits: 2 },
+            });
+        });
+        const result = await scaleDown('demo-team', cwd, { workerNames: ['worker-1'], drainTimeoutMs: 0 }, { OMC_TEAM_SCALING_ENABLED: '1' });
+        expect(result).toMatchObject({ ok: false, error: expect.stringContaining('worktree_unmerged_commits') });
+        expect(gitWorktreeMocks.removeWorkerWorktree).toHaveBeenCalledWith('demo-team', 'worker-1', resolve(cwd));
+        expect(monitorMocks.saveTeamConfig).not.toHaveBeenCalled();
+    });
     it('preserves worktree and config when target pane remains alive after kill request', async () => {
         const config = {
             name: 'demo-team',

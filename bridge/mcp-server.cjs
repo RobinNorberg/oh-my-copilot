@@ -4214,7 +4214,7 @@ var require_code = __commonJS({
     }
     exports2._ = _;
     var plus = new _Code("+");
-    function str3(strs, ...args) {
+    function str4(strs, ...args) {
       const expr = [safeStringify(strs[0])];
       let i = 0;
       while (i < args.length) {
@@ -4225,7 +4225,7 @@ var require_code = __commonJS({
       optimize(expr);
       return new _Code(expr);
     }
-    exports2.str = str3;
+    exports2.str = str4;
     function addCodeArg(code, arg) {
       if (arg instanceof _Code)
         code.push(...arg._items);
@@ -4268,7 +4268,7 @@ var require_code = __commonJS({
       return;
     }
     function strConcat(c1, c2) {
-      return c2.emptyStr() ? c1 : c1.emptyStr() ? c2 : str3`${c1}${c2}`;
+      return c2.emptyStr() ? c1 : c1.emptyStr() ? c2 : str4`${c1}${c2}`;
     }
     exports2.strConcat = strConcat;
     function interpolate(x) {
@@ -5230,22 +5230,22 @@ var require_util = __commonJS({
       return (0, codegen_1._)`${topSchemaRef}${schemaPath}${(0, codegen_1.getProperty)(keyword)}`;
     }
     exports2.schemaRefOrVal = schemaRefOrVal;
-    function unescapeFragment(str3) {
-      return unescapeJsonPointer(decodeURIComponent(str3));
+    function unescapeFragment(str4) {
+      return unescapeJsonPointer(decodeURIComponent(str4));
     }
     exports2.unescapeFragment = unescapeFragment;
-    function escapeFragment(str3) {
-      return encodeURIComponent(escapeJsonPointer(str3));
+    function escapeFragment(str4) {
+      return encodeURIComponent(escapeJsonPointer(str4));
     }
     exports2.escapeFragment = escapeFragment;
-    function escapeJsonPointer(str3) {
-      if (typeof str3 == "number")
-        return `${str3}`;
-      return str3.replace(/~/g, "~0").replace(/\//g, "~1");
+    function escapeJsonPointer(str4) {
+      if (typeof str4 == "number")
+        return `${str4}`;
+      return str4.replace(/~/g, "~0").replace(/\//g, "~1");
     }
     exports2.escapeJsonPointer = escapeJsonPointer;
-    function unescapeJsonPointer(str3) {
-      return str3.replace(/~1/g, "/").replace(/~0/g, "~");
+    function unescapeJsonPointer(str4) {
+      return str4.replace(/~1/g, "/").replace(/~0/g, "~");
     }
     exports2.unescapeJsonPointer = unescapeJsonPointer;
     function eachItem(xs, f) {
@@ -6270,8 +6270,8 @@ var require_json_schema_traverse = __commonJS({
         post(schema, jsonPtr, rootSchema, parentJsonPtr, parentKeyword, parentSchema, keyIndex);
       }
     }
-    function escapeJsonPtr(str3) {
-      return str3.replace(/~/g, "~0").replace(/\//g, "~1");
+    function escapeJsonPtr(str4) {
+      return str4.replace(/~/g, "~0").replace(/\//g, "~1");
     }
   }
 });
@@ -7335,10 +7335,10 @@ var require_utils = __commonJS({
         return { host, isIPV6: false };
       }
     }
-    function findToken(str3, token) {
+    function findToken(str4, token) {
       let ind = 0;
-      for (let i = 0; i < str3.length; i++) {
-        if (str3[i] === token) ind++;
+      for (let i = 0; i < str4.length; i++) {
+        if (str4[i] === token) ind++;
       }
       return ind;
     }
@@ -8075,7 +8075,7 @@ var require_core = __commonJS({
     var util_1 = require_util();
     var $dataRefSchema = require_data();
     var uri_1 = require_uri();
-    var defaultRegExp = (str3, flags) => new RegExp(str3, flags);
+    var defaultRegExp = (str4, flags) => new RegExp(str4, flags);
     defaultRegExp.code = "new RegExp";
     var META_IGNORE_OPTIONS = ["removeAdditional", "useDefaults", "coerceTypes"];
     var EXT_SCOPE_NAMES = /* @__PURE__ */ new Set([
@@ -8870,16 +8870,16 @@ var require_ucs2length = __commonJS({
   "node_modules/ajv/dist/runtime/ucs2length.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    function ucs2length(str3) {
-      const len = str3.length;
+    function ucs2length(str4) {
+      const len = str4.length;
       let length = 0;
       let pos = 0;
       let value;
       while (pos < len) {
         length++;
-        value = str3.charCodeAt(pos++);
+        value = str4.charCodeAt(pos++);
         if (value >= 55296 && value <= 56319 && pos < len) {
-          value = str3.charCodeAt(pos);
+          value = str4.charCodeAt(pos);
           if ((value & 64512) === 56320)
             pos++;
         }
@@ -10762,8 +10762,8 @@ var require_formats = __commonJS({
     }
     var DATE = /^(\d\d\d\d)-(\d\d)-(\d\d)$/;
     var DAYS = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-    function date3(str3) {
-      const matches = DATE.exec(str3);
+    function date3(str4) {
+      const matches = DATE.exec(str4);
       if (!matches)
         return false;
       const year = +matches[1];
@@ -10782,8 +10782,8 @@ var require_formats = __commonJS({
     }
     var TIME = /^(\d\d):(\d\d):(\d\d(?:\.\d+)?)(z|([+-])(\d\d)(?::?(\d\d))?)?$/i;
     function getTime(strictTimeZone) {
-      return function time3(str3) {
-        const matches = TIME.exec(str3);
+      return function time3(str4) {
+        const matches = TIME.exec(str4);
         if (!matches)
           return false;
         const hr = +matches[1];
@@ -10829,8 +10829,8 @@ var require_formats = __commonJS({
     var DATE_TIME_SEPARATOR = /t|\s/i;
     function getDateTime(strictTimeZone) {
       const time3 = getTime(strictTimeZone);
-      return function date_time(str3) {
-        const dateTime = str3.split(DATE_TIME_SEPARATOR);
+      return function date_time(str4) {
+        const dateTime = str4.split(DATE_TIME_SEPARATOR);
         return dateTime.length === 2 && date3(dateTime[0]) && time3(dateTime[1]);
       };
     }
@@ -10855,13 +10855,13 @@ var require_formats = __commonJS({
     }
     var NOT_URI_FRAGMENT = /\/|:/;
     var URI = /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:]|%[0-9a-f]{2})*@)?(?:\[(?:(?:(?:(?:[0-9a-f]{1,4}:){6}|::(?:[0-9a-f]{1,4}:){5}|(?:[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){4}|(?:(?:[0-9a-f]{1,4}:){0,1}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){3}|(?:(?:[0-9a-f]{1,4}:){0,2}[0-9a-f]{1,4})?::(?:[0-9a-f]{1,4}:){2}|(?:(?:[0-9a-f]{1,4}:){0,3}[0-9a-f]{1,4})?::[0-9a-f]{1,4}:|(?:(?:[0-9a-f]{1,4}:){0,4}[0-9a-f]{1,4})?::)(?:[0-9a-f]{1,4}:[0-9a-f]{1,4}|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?))|(?:(?:[0-9a-f]{1,4}:){0,5}[0-9a-f]{1,4})?::[0-9a-f]{1,4}|(?:(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{1,4})?::)|[Vv][0-9a-f]+\.[a-z0-9\-._~!$&'()*+,;=:]+)\]|(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-z0-9\-._~!$&'()*+,;=]|%[0-9a-f]{2})*)(?::\d*)?(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*|\/(?:(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)?|(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})+(?:\/(?:[a-z0-9\-._~!$&'()*+,;=:@]|%[0-9a-f]{2})*)*)(?:\?(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?(?:#(?:[a-z0-9\-._~!$&'()*+,;=:@/?]|%[0-9a-f]{2})*)?$/i;
-    function uri(str3) {
-      return NOT_URI_FRAGMENT.test(str3) && URI.test(str3);
+    function uri(str4) {
+      return NOT_URI_FRAGMENT.test(str4) && URI.test(str4);
     }
     var BYTE = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/gm;
-    function byte(str3) {
+    function byte(str4) {
       BYTE.lastIndex = 0;
-      return BYTE.test(str3);
+      return BYTE.test(str4);
     }
     var MIN_INT32 = -(2 ** 31);
     var MAX_INT32 = 2 ** 31 - 1;
@@ -10875,11 +10875,11 @@ var require_formats = __commonJS({
       return true;
     }
     var Z_ANCHOR = /[^\\]\\Z/;
-    function regex(str3) {
-      if (Z_ANCHOR.test(str3))
+    function regex(str4) {
+      if (Z_ANCHOR.test(str4))
         return false;
       try {
-        new RegExp(str3);
+        new RegExp(str4);
         return true;
       } catch (e) {
         return false;
@@ -29826,6 +29826,74 @@ function permitScopedRead(req, ctx) {
   const platform = ctx.platform ?? process.platform;
   return isUnder(req.path, ctx.pluginRoot, platform) || isUnder(req.path, ctx.projectDir, platform);
 }
+function evaluateTeam(run) {
+  const team = run.team;
+  if (!team) return scenarioCheckIds("team").slice(0, 8).map((id) => ({ id, ok: false, detail: run.error ? `no team evidence: ${excerpt(run.error, 200)}` : "no team evidence collected" }));
+  const status = team.status;
+  const transport = str2(status?.transport);
+  const sdkWorkers2 = Array.isArray(status?.workers?.sdk) ? status.workers.sdk : [];
+  const statusTasks = status?.tasks ?? {};
+  const startedOk = team.start.code === 0 && team.start.ok === true && transport === "sdk";
+  const owners = team.tasks.map((t) => t.owner).filter((o) => !!o).sort();
+  const completedOk = team.tasks.length === 2 && team.tasks.every((t) => t.status === "completed") && JSON.stringify(owners) === JSON.stringify(TEAM_WORKERS);
+  const expected = team.tasks.map((t) => ({ owner: t.owner, file: TEAM_FILES.find((f) => t.subject.includes(f)) }));
+  const commitFor = (worker) => team.commits.find((c) => c.worker === worker);
+  const committedOk = expected.length === 2 && expected.every(({ owner, file }) => !!file && !!commitFor(owner)?.files.includes(file));
+  const statusOk = status?.ok === true && transport === "sdk" && sdkWorkers2.length === 2 && sdkWorkers2.every((w) => num(w.host_pid) > 0 && typeof w.session_id === "string" && w.session_id !== "" && w.provider === "alive") && num(statusTasks.total) === 2 && num(statusTasks.completed) === 2;
+  const shutdownOk = !!team.shutdown && team.shutdown.code === 0 && !team.shutdown.forced && team.orphans.length === 0 && team.reservationsLeft.length === 0 && !team.stateLeft;
+  const withWork = team.commits.filter((c) => c.subjects.length > 0);
+  const retainedOk = withWork.length > 0 && withWork.every((c) => c.survived === "merged" || c.survived === "preserved");
+  const durationOk = team.durationMs <= team.budgetMs;
+  const premiumOk = team.cost.premiumRequests > 0 && team.cost.premiumRequests <= TEAM_MAX_PREMIUM_REQUESTS;
+  const launch = team.start.launchMs === null ? "" : `, sdk hosts launched in ${team.start.launchMs} ms`;
+  return [
+    {
+      id: "scn.team.started",
+      ok: startedOk,
+      detail: startedOk ? `omg team started ${team.teamName} on the sdk transport (default, no --transport) in ${team.start.ms} ms${launch}` : `start exit ${String(team.start.code)}, ok ${String(team.start.ok)}, transport ${transport || "unknown"}`,
+      ...startedOk ? {} : { evidence: excerpt(team.start.stderr) }
+    },
+    {
+      id: "scn.team.completed",
+      ok: completedOk,
+      detail: completedOk ? "both tasks completed through omg team api, one per worker" : `tasks: ${team.tasks.map((t) => `${t.id}:${t.status}@${t.owner ?? "none"}`).join(", ") || "none listed"}`
+    },
+    {
+      id: "scn.team.committed",
+      ok: committedOk,
+      detail: committedOk ? expected.map(({ owner, file }) => `${owner} committed ${file} ("${commitFor(owner).subjects[0] ?? ""}")`).join("; ") : team.commits.map((c) => `${c.worker}: ${c.files.join(",") || "no new files"} in ${c.worktree ?? "no worktree"}`).join("; ") || "no worktree commits found"
+    },
+    {
+      id: "scn.team.status",
+      ok: statusOk,
+      detail: statusOk ? `status --json: transport sdk, 2 sdk workers alive with host pid + session id, tasks 2/2 completed` : `status --json: ok ${String(status?.ok)}, transport ${transport || "unknown"}, ${sdkWorkers2.length} sdk worker(s), tasks ${num(statusTasks.completed)}/${num(statusTasks.total)}`,
+      ...statusOk || !status ? {} : { evidence: excerpt(JSON.stringify(status)) }
+    },
+    {
+      id: "scn.team.shutdown",
+      ok: shutdownOk,
+      detail: shutdownOk ? `clean shutdown in ${team.shutdown.ms} ms: no host or runtime left, reservation released, team state disposed` : !team.shutdown ? "shutdown never ran" : `shutdown exit ${String(team.shutdown.code)}${team.shutdown.forced ? " (forced after a timeout)" : ""}; orphans ${team.orphans.join(",") || "none"}; reservations left ${team.reservationsLeft.length}; state ${team.stateLeft ? "left" : "disposed"}`,
+      // The end of the output names the preserved workers and the reason; the start is banners.
+      ...shutdownOk || !team.shutdown ? {} : { evidence: excerpt(`${team.shutdown.stdout}
+${team.shutdown.stderr}`.trim().slice(-480)) }
+    },
+    {
+      id: "scn.team.retained",
+      ok: retainedOk,
+      detail: withWork.length === 0 ? "no worker commits to check" : withWork.map((c) => `${c.worker} ${(c.head ?? "no head").slice(0, 8)} ${c.survived ?? "unchecked"}`).join("; ")
+    },
+    {
+      id: "scn.team.duration",
+      ok: durationOk,
+      detail: `start to closeout ${team.durationMs} ms (budget ${team.budgetMs} ms)`
+    },
+    {
+      id: "scn.team.premium",
+      ok: premiumOk,
+      detail: `${team.cost.premiumRequests} premium request(s) over ${team.cost.source} (max ${TEAM_MAX_PREMIUM_REQUESTS})`
+    }
+  ];
+}
 function chainCost(chain) {
   let premiumRequests = 0;
   let credits = 0;
@@ -29899,7 +29967,8 @@ function scenarioCheckIds(name) {
     guardrail: ["denied", "no_push", "hooks"],
     skill: ["invoked"],
     delegate: ["selected", "hooks", "completed"],
-    chain: ["link1", "spawned", "inherited", "closed", "premium"]
+    chain: ["link1", "spawned", "inherited", "closed", "premium"],
+    team: ["started", "completed", "committed", "status", "shutdown", "retained", "duration", "premium"]
   };
   return [...own[name], "exit", "adapter_errors", "cost"].map((s) => `scn.${name}.${s}`);
 }
@@ -30032,6 +30101,11 @@ function sliceLogByTime(text, starts) {
     if (current >= 0 && line) out[current].push(line);
   }
   return out.map((lines) => lines.join("\n"));
+}
+function runCost(run) {
+  if (run.chain) return chainCost(run.chain);
+  if (run.team) return run.team.cost;
+  return scenarioCost(run.events);
 }
 function num(v) {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
@@ -30189,9 +30263,10 @@ function evaluateScenario(run) {
     guardrail: evaluateGuardrail,
     skill: evaluateSkill,
     delegate: evaluateDelegate,
-    chain: evaluateChain
+    chain: evaluateChain,
+    team: evaluateTeam
   }[run.name](run);
-  const cost = run.name === "chain" && run.chain ? chainCost(run.chain) : scenarioCost(run.events);
+  const cost = runCost(run);
   return { checks: [...own, ...evaluateCommon(run, cost)], cost: { premiumRequests: cost.premiumRequests, credits: cost.credits } };
 }
 function chooseModel(listed, requested) {
@@ -30201,7 +30276,7 @@ function chooseModel(listed, requested) {
   if (cheap) return { model: cheap, label: cheap, note: `cheapest-looking of ${ids.length} listed` };
   return { label: "auto", note: `models.list offers ${ids.join(", ") || "nothing"}; no cheap explicit model, runtime auto-routes` };
 }
-var import_fs46, import_path58, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, SCENARIOS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_PREMIUM_REQUESTS, ledgerStr, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, NANO, GUARDRAIL_MARKER, CHEAP_MODEL;
+var import_fs46, import_path58, ALL_SCENARIOS, OPT_IN_SCENARIOS, KNOWN_SCENARIOS, DEFAULT_SCENARIOS, PLUGIN_NAME2, DELEGATE_AGENT, MIN_PROTOCOL_VERSION, SDK_PACKAGE, SDK_MISSING_DETAIL, NO_SHELL_OR_WRITE_TOOLS, NO_WRITE_TOOLS, denyAll, GUARDRAIL_COMMAND, SCENARIOS, TEAM_FILES, TEAM_WORKERS, TEAM_MAX_PREMIUM_REQUESTS, TEAM_BUDGET_MS, CHAIN_INTENT_ID, CHAIN_SKILL, CHAIN_LINK1_STAGE, CHAIN_LINK2_STAGE, CHAIN_MAX_PREMIUM_REQUESTS, ledgerStr, SDK_STATIC_IDS, RUNTIME_MIN_MAX_CREDITS, CREDIT_CAP_SKIP_DETAIL, NANO, GUARDRAIL_MARKER, CHEAP_MODEL;
 var init_copilot_sdk_scenarios = __esm({
   "src/smoke/copilot-sdk-scenarios.ts"() {
     "use strict";
@@ -30209,7 +30284,7 @@ var init_copilot_sdk_scenarios = __esm({
     import_path58 = require("path");
     init_copilot_session_eval();
     ALL_SCENARIOS = ["smoke", "guardrail", "skill", "delegate"];
-    OPT_IN_SCENARIOS = ["chain"];
+    OPT_IN_SCENARIOS = ["chain", "team"];
     KNOWN_SCENARIOS = [...ALL_SCENARIOS, ...OPT_IN_SCENARIOS];
     DEFAULT_SCENARIOS = ["smoke", "guardrail"];
     PLUGIN_NAME2 = "oh-my-copilot";
@@ -30257,8 +30332,24 @@ var init_copilot_sdk_scenarios = __esm({
         prompt: "Reply with exactly: CHAIN_LINK_1. Do not use tools.",
         excludedTools: [],
         permit: denyAll
+      },
+      // Not an SDK session of the driver: the prompt is the `omg team` task, a
+      // numbered list that decomposes into one task per worker
+      // (copilot-team-scenario.ts). The sdk hosts apply their own policy.
+      team: {
+        name: "team",
+        prompt: [
+          "1. Create the file team-alpha.txt containing exactly the line alpha in your working directory, then commit only that file with git (message: smoke team alpha). Do nothing else.",
+          "2. Create the file team-beta.txt containing exactly the line beta in your working directory, then commit only that file with git (message: smoke team beta). Do nothing else."
+        ].join("\n"),
+        excludedTools: [],
+        permit: denyAll
       }
     };
+    TEAM_FILES = ["team-alpha.txt", "team-beta.txt"];
+    TEAM_WORKERS = ["worker-1", "worker-2"];
+    TEAM_MAX_PREMIUM_REQUESTS = 2;
+    TEAM_BUDGET_MS = 3e5;
     CHAIN_INTENT_ID = "omg-smoke-chain";
     CHAIN_SKILL = "chain-ack";
     CHAIN_LINK1_STAGE = "link-1";
@@ -30544,7 +30635,8 @@ async function runSdkTier(input) {
     checks.push(evaluateSdkRuntime(status, input.binVersion, modelLabel));
     checks.push(...await staticChecks(client, input));
     let stopReason;
-    for (const name of [...input.scenarios.filter((s) => s !== "chain"), ...input.scenarios.filter((s) => s === "chain")]) {
+    const order = ["team", "chain"];
+    for (const name of [...input.scenarios.filter((s) => !order.includes(s)), ...order.filter((s) => input.scenarios.includes(s))]) {
       if (projectError) {
         entries.push({ name, skip: `sandbox project setup failed: ${projectError}` });
         continue;
@@ -30568,9 +30660,20 @@ async function runSdkTier(input) {
         budget: input.maxCredits - total.credits,
         eventsPath: path15,
         spawnSync: input.spawnSync
+      }) : name === "team" ? await input.runTeam({
+        root: input.root,
+        bin: input.bin,
+        env: input.env,
+        projectDir: input.projectDir,
+        home: input.home,
+        timeoutMs: input.timeoutMs,
+        maxCredits: input.maxCredits,
+        budget: input.maxCredits - total.credits,
+        eventsPath: path15,
+        spawnSync: input.spawnSync
       }) : await runScenario(client, input, name, choice.model, modelLabel, path15, input.maxCredits - total.credits);
       entries.push({ name, run, start });
-      const cost = run.chain ? chainCost(run.chain) : scenarioCost(run.events);
+      const cost = runCost(run);
       total.premiumRequests += cost.premiumRequests;
       total.credits += cost.credits;
       if (run.capped || total.credits > input.maxCredits) stopReason = CREDIT_CAP_SKIP_DETAIL;
@@ -31360,14 +31463,14 @@ var require_help = __commonJS({
        * @return {string}
        *
        */
-      wrap(str3, width, indent, minColumnWidth = 40) {
+      wrap(str4, width, indent, minColumnWidth = 40) {
         const indents = " \\f\\t\\v\xA0\u1680\u2000-\u200A\u202F\u205F\u3000\uFEFF";
         const manualIndent = new RegExp(`[\\n][${indents}]+`);
-        if (str3.match(manualIndent)) return str3;
+        if (str4.match(manualIndent)) return str4;
         const columnWidth = width - indent;
-        if (columnWidth < minColumnWidth) return str3;
-        const leadingStr = str3.slice(0, indent);
-        const columnText = str3.slice(indent).replace("\r\n", "\n");
+        if (columnWidth < minColumnWidth) return str4;
+        const leadingStr = str4.slice(0, indent);
+        const columnText = str4.slice(indent).replace("\r\n", "\n");
         const indentString = " ".repeat(indent);
         const zeroWidthSpace = "\u200B";
         const breaks = `\\s${zeroWidthSpace}`;
@@ -31636,9 +31739,9 @@ var require_option = __commonJS({
         return option.negate === (negativeValue === value);
       }
     };
-    function camelcase(str3) {
-      return str3.split("-").reduce((str4, word) => {
-        return str4 + word[0].toUpperCase() + word.slice(1);
+    function camelcase(str4) {
+      return str4.split("-").reduce((str5, word) => {
+        return str5 + word[0].toUpperCase() + word.slice(1);
       });
     }
     function splitOptionFlags(flags) {
@@ -31792,11 +31895,11 @@ var require_command = __commonJS({
         this._showHelpAfterError = false;
         this._showSuggestionAfterError = true;
         this._outputConfiguration = {
-          writeOut: (str3) => process3.stdout.write(str3),
-          writeErr: (str3) => process3.stderr.write(str3),
+          writeOut: (str4) => process3.stdout.write(str4),
+          writeErr: (str4) => process3.stderr.write(str4),
           getOutHelpWidth: () => process3.stdout.isTTY ? process3.stdout.columns : void 0,
           getErrHelpWidth: () => process3.stderr.isTTY ? process3.stderr.columns : void 0,
-          outputError: (str3, write) => write(str3)
+          outputError: (str4, write) => write(str4)
         };
         this._hidden = false;
         this._helpOption = void 0;
@@ -33432,18 +33535,18 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [description]
        * @return {(this | string | undefined)} `this` command for chaining, or version string if no arguments
        */
-      version(str3, flags, description) {
-        if (str3 === void 0) return this._version;
-        this._version = str3;
+      version(str4, flags, description) {
+        if (str4 === void 0) return this._version;
+        this._version = str4;
         flags = flags || "-V, --version";
         description = description || "output the version number";
         const versionOption = this.createOption(flags, description);
         this._versionOptionName = versionOption.attributeName();
         this._registerOption(versionOption);
         this.on("option:" + versionOption.name(), () => {
-          this._outputConfiguration.writeOut(`${str3}
+          this._outputConfiguration.writeOut(`${str4}
 `);
-          this._exit(0, "commander.version", str3);
+          this._exit(0, "commander.version", str4);
         });
         return this;
       }
@@ -33454,10 +33557,10 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {object} [argsDescription]
        * @return {(string|Command)}
        */
-      description(str3, argsDescription) {
-        if (str3 === void 0 && argsDescription === void 0)
+      description(str4, argsDescription) {
+        if (str4 === void 0 && argsDescription === void 0)
           return this._description;
-        this._description = str3;
+        this._description = str4;
         if (argsDescription) {
           this._argsDescription = argsDescription;
         }
@@ -33469,9 +33572,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      summary(str3) {
-        if (str3 === void 0) return this._summary;
-        this._summary = str3;
+      summary(str4) {
+        if (str4 === void 0) return this._summary;
+        this._summary = str4;
         return this;
       }
       /**
@@ -33519,8 +33622,8 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      usage(str3) {
-        if (str3 === void 0) {
+      usage(str4) {
+        if (str4 === void 0) {
           if (this._usage) return this._usage;
           const args = this.registeredArguments.map((arg) => {
             return humanReadableArgName(arg);
@@ -33531,7 +33634,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
             this.registeredArguments.length ? args : []
           ).join(" ");
         }
-        this._usage = str3;
+        this._usage = str4;
         return this;
       }
       /**
@@ -33540,9 +33643,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
        * @param {string} [str]
        * @return {(string|Command)}
        */
-      name(str3) {
-        if (str3 === void 0) return this._name;
-        this._name = str3;
+      name(str4) {
+        if (str4 === void 0) return this._name;
+        this._name = str4;
         return this;
       }
       /**
@@ -34311,6 +34414,286 @@ var init_copilot_chain_scenario = __esm({
   }
 });
 
+// src/smoke/copilot-team-scenario.ts
+function pidAlive2(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === "EPERM";
+  }
+}
+function pathKey2(env) {
+  return Object.keys(env).find((k) => k.toUpperCase() === "PATH") ?? "PATH";
+}
+function teamLeaderEnv(base, bin, budget) {
+  const key = pathKey2(base);
+  const env = {
+    ...base,
+    [key]: [(0, import_path68.dirname)(bin), base[key]].filter(Boolean).join(import_path68.delimiter),
+    COPILOT_CLI: "1",
+    OMC_RUNTIME_V2: "1",
+    OMC_TEAM_WORKTREE_MODE: "detached",
+    OMC_TEAM_SDK_MAX_CREDITS: String(Math.max(1, Math.floor(budget / 2)))
+  };
+  if (process.env.OMC_TEAM_SDK_LAUNCH_CONCURRENCY) env.OMC_TEAM_SDK_LAUNCH_CONCURRENCY = process.env.OMC_TEAM_SDK_LAUNCH_CONCURRENCY;
+  delete env.OMC_TEAM_WORKER;
+  delete env.OMX_TEAM_WORKER;
+  delete env.CLAUDE_CODE_ENTRYPOINT;
+  return env;
+}
+function lastJsonObject(stdout) {
+  const lines = stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).reverse();
+  for (const line of lines) {
+    if (!line.startsWith("{")) continue;
+    try {
+      const value = JSON.parse(line);
+      if (value && typeof value === "object" && !Array.isArray(value)) return value;
+    } catch {
+    }
+  }
+  return null;
+}
+function readJson2(path15) {
+  try {
+    const value = JSON.parse((0, import_fs52.readFileSync)(path15, "utf8"));
+    return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+function str3(v) {
+  return typeof v === "string" ? v : "";
+}
+function samePathKey2(p) {
+  const slashed = p.replace(/\\/g, "/").replace(/\/+$/, "");
+  return process.platform === "win32" ? slashed.toLowerCase() : slashed;
+}
+function num2(v) {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+function parseLaunchMs(stderr) {
+  const m = /sdk workers launched: \d+ in (\d+) ms/.exec(stderr);
+  return m ? Number(m[1]) : null;
+}
+function parseApiTasks(reply) {
+  const data = reply?.data ?? reply;
+  const tasks = Array.isArray(data?.tasks) ? data.tasks : [];
+  return tasks.map((t) => ({
+    id: str3(t.id) || String(t.id ?? ""),
+    subject: str3(t.subject),
+    status: str3(t.status),
+    owner: str3(t.owner) || null
+  }));
+}
+function sdkWorkers(status) {
+  const sdk = status?.workers?.sdk;
+  return Array.isArray(sdk) ? sdk : [];
+}
+function workerList(status) {
+  const list = status?.workers?.list;
+  return Array.isArray(list) ? list : [];
+}
+function tasksSettled(status) {
+  const t = status?.tasks ?? {};
+  const total = num2(t.total);
+  return total > 0 && num2(t.completed) + num2(t.failed) === total;
+}
+function leftoverReservations(projectDir, teamName) {
+  const base = (0, import_path68.join)(getOmcRoot(projectDir), "state", "team-recovery", "team-instances");
+  let hashes = [];
+  try {
+    hashes = (0, import_fs52.readdirSync)(base);
+  } catch {
+    return [];
+  }
+  return hashes.map((h) => (0, import_path68.join)(base, h, teamName, "reservation.json")).filter((p) => (0, import_fs52.existsSync)(p));
+}
+function sessionUsage(stateRoot, worker) {
+  const session = readJson2((0, import_path68.join)(stateRoot, "workers", worker, "sdk-session.json"));
+  const usage = session?.usage;
+  if (!usage) return null;
+  const finalPremium = usage.shutdown_premium_requests;
+  return {
+    premium: typeof finalPremium === "number" ? finalPremium : num2(usage.premium_requests),
+    credits: typeof usage.shutdown_credits === "number" ? usage.shutdown_credits : num2(usage.credits),
+    final: typeof finalPremium === "number"
+  };
+}
+function teamCost(usage, eventsByWorker) {
+  let premiumRequests = 0;
+  let credits = 0;
+  const sources = [];
+  for (const worker of /* @__PURE__ */ new Set([...usage.keys(), ...eventsByWorker.keys()])) {
+    const u = usage.get(worker);
+    if (u) {
+      premiumRequests += u.premium;
+      credits += u.credits;
+      sources.push(`${worker} ${u.final ? "session.shutdown" : "running sum"}`);
+    } else {
+      const c = scenarioCost(eventsByWorker.get(worker) ?? []);
+      premiumRequests += c.premiumRequests;
+      credits += c.credits;
+      sources.push(`${worker} ${c.source}`);
+    }
+  }
+  return { premiumRequests, credits, source: sources.join(", ") || "no worker usage found" };
+}
+async function runTeamScenario(input) {
+  const now = input.now ?? Date.now;
+  const isAlive = input.isAlive ?? pidAlive2;
+  const pollMs = input.pollMs ?? 5e3;
+  const budgetMs = Math.max(input.timeoutMs, TEAM_BUDGET_MS);
+  const started = now();
+  const deadline = started + budgetMs;
+  const env = teamLeaderEnv(input.env, input.bin, input.budget);
+  const cli = (0, import_path68.join)(input.root, "bridge", "cli.cjs");
+  const spawnFn = input.spawn ?? import_child_process20.spawn;
+  const omg = (args, timeoutMs) => runAsync(spawnFn, input.spawnSync, process.execPath, [cli, ...args], { cwd: input.projectDir, env, timeoutMs });
+  const base = {
+    name: "team",
+    timeoutMs: budgetMs,
+    model: "sdk workers (team.sdk.model, else runtime auto)",
+    maxCredits: input.maxCredits,
+    budget: input.budget,
+    capped: false,
+    wedged: false
+  };
+  const start = await omg(["team", "2:copilot", "--json", SCENARIOS.team.prompt], budgetMs);
+  const startJson = lastJsonObject(start.stdout);
+  const teamName = str3(startJson?.teamName) || null;
+  const evidence = {
+    teamName,
+    start: { code: start.code, ok: typeof startJson?.ok === "boolean" ? startJson.ok : null, ms: start.durationMs, launchMs: parseLaunchMs(start.stderr), stderr: excerpt(start.stderr, 2e3) },
+    status: null,
+    tasks: [],
+    commits: [],
+    shutdown: null,
+    orphans: [],
+    reservationsLeft: [],
+    stateLeft: false,
+    durationMs: 0,
+    budgetMs,
+    cost: { premiumRequests: 0, credits: 0, source: "no worker usage found" }
+  };
+  if (!teamName) {
+    evidence.durationMs = now() - started;
+    return { ...base, events: [], idle: false, timedOut: start.timedOut, error: `omg team start: ${start.error ?? `exit ${String(start.code)}`}: ${excerpt(start.stderr, 300)}`, team: evidence };
+  }
+  let timedOut = false;
+  for (; ; ) {
+    const status = lastJsonObject((await omg(["team", "status", teamName, "--json"], 6e4)).stdout);
+    if (status) evidence.status = status;
+    if (tasksSettled(status)) break;
+    if (now() + pollMs >= deadline) {
+      timedOut = true;
+      break;
+    }
+    await sleep6(pollMs);
+  }
+  const stateRoot = str3(evidence.status?.team_state_root);
+  const stateDir = stateRoot && (0, import_path68.isAbsolute)(stateRoot) ? stateRoot : (0, import_path68.join)(getOmcRoot(input.projectDir), "state", "team", teamName);
+  const workers = sdkWorkers(evidence.status).map((w) => str3(w.name)).filter(Boolean);
+  evidence.tasks = parseApiTasks(lastJsonObject((await omg(["team", "api", "list-tasks", "--input", JSON.stringify({ team_name: teamName }), "--json"], 6e4)).stdout));
+  const git = (args, cwd) => input.spawnSync("git", args, { cwd, encoding: "utf8", timeout: 3e4, windowsHide: true });
+  const leaderHead = String(git(["rev-parse", "HEAD"], input.projectDir).stdout ?? "").trim();
+  for (const worker of workerList(evidence.status)) {
+    const name = str3(worker.name);
+    const worktree = str3(worker.worktree_path) || null;
+    if (!worktree || !leaderHead) {
+      evidence.commits.push({ worker: name, worktree, subjects: [], files: [], head: null, survived: null });
+      continue;
+    }
+    const subjects = String(git(["log", "--format=%s", `${leaderHead}..HEAD`], worktree).stdout ?? "").split(/\r?\n/).filter(Boolean);
+    const files = String(git(["diff", "--name-only", `${leaderHead}..HEAD`], worktree).stdout ?? "").split(/\r?\n/).filter(Boolean);
+    const head = String(git(["rev-parse", "HEAD"], worktree).stdout ?? "").trim() || null;
+    evidence.commits.push({ worker: name, worktree, subjects, files, head, survived: null });
+  }
+  const eventsByWorker = /* @__PURE__ */ new Map();
+  const logDir = (0, import_path68.join)(input.home, "logs");
+  for (const worker of workers) {
+    try {
+      eventsByWorker.set(worker, parseJsonl((0, import_fs52.readFileSync)((0, import_path68.join)(stateDir, "workers", worker, "sdk-events.jsonl"), "utf8")).events);
+    } catch {
+    }
+    const workerLogs = (0, import_path68.join)(stateDir, "workers", worker, "copilot-home", "logs");
+    try {
+      (0, import_fs52.mkdirSync)(logDir, { recursive: true });
+      for (const f of (0, import_fs52.readdirSync)(workerLogs).filter((n) => n.endsWith(".log"))) (0, import_fs52.copyFileSync)((0, import_path68.join)(workerLogs, f), (0, import_path68.join)(logDir, `team-${worker}-${f}`));
+    } catch {
+    }
+  }
+  const pids = sdkWorkers(evidence.status).flatMap((w) => [num2(w.host_pid), num2(w.runtime_pid)]).filter((p) => p > 0);
+  const usage = /* @__PURE__ */ new Map();
+  const readUsage = () => {
+    for (const worker of workers) {
+      const u = sessionUsage(stateDir, worker);
+      if (u) usage.set(worker, u);
+    }
+  };
+  readUsage();
+  const forced = timedOut || !tasksSettled(evidence.status);
+  const shutdownStarted = now();
+  let shutdownDone = false;
+  const shutdownRun = omg(["team", "shutdown", teamName, ...forced ? ["--force"] : []], 12e4).finally(() => {
+    shutdownDone = true;
+  });
+  while (!shutdownDone) {
+    readUsage();
+    await sleep6(250);
+  }
+  const shutdown = await shutdownRun;
+  evidence.shutdown = { code: shutdown.code, ms: now() - shutdownStarted, stdout: excerpt(shutdown.stdout.slice(-1e3), 1e3), stderr: excerpt(shutdown.stderr.slice(-1500), 1500), forced };
+  const reapDeadline = now() + 1e4;
+  while (pids.some(isAlive) && now() < reapDeadline) await sleep6(250);
+  evidence.orphans = pids.filter(isAlive);
+  evidence.reservationsLeft = leftoverReservations(input.projectDir, teamName);
+  evidence.stateLeft = (0, import_fs52.existsSync)(stateDir);
+  if (evidence.commits.some((c) => c.subjects.length > 0)) {
+    const after = lastJsonObject((await omg(["team", "status", teamName, "--json"], 6e4)).stdout);
+    const preserved = Array.isArray(after?.preserved_worktrees) ? after.preserved_worktrees.map((p) => samePathKey2(str3(p.path))) : [];
+    const leaderAfter = String(git(["rev-parse", "HEAD"], input.projectDir).stdout ?? "").trim();
+    for (const c of evidence.commits) {
+      if (c.subjects.length === 0 || !c.head || !c.worktree) continue;
+      const merged = !!leaderAfter && git(["merge-base", "--is-ancestor", c.head, leaderAfter], input.projectDir).status === 0;
+      const kept = preserved.includes(samePathKey2(c.worktree)) && String(git(["rev-parse", "HEAD"], c.worktree).stdout ?? "").trim() === c.head;
+      c.survived = merged ? "merged" : kept ? "preserved" : "lost";
+    }
+  }
+  evidence.durationMs = now() - started;
+  evidence.cost = teamCost(usage, eventsByWorker);
+  const events = [...eventsByWorker.values()].flat();
+  try {
+    (0, import_fs52.writeFileSync)(input.eventsPath, events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : ""));
+  } catch {
+  }
+  const error2 = timedOut ? `tasks did not settle within ${budgetMs} ms; the team was shut down with --force` : shutdown.code !== 0 ? `omg team shutdown exited ${String(shutdown.code)}: ${excerpt(shutdown.stderr.slice(-300), 300)}` : void 0;
+  return {
+    ...base,
+    events,
+    idle: !timedOut && start.code === 0 && shutdown.code === 0,
+    timedOut,
+    ...error2 ? { error: error2 } : {},
+    team: evidence
+  };
+}
+var import_child_process20, import_fs52, import_path68, sleep6;
+var init_copilot_team_scenario = __esm({
+  "src/smoke/copilot-team-scenario.ts"() {
+    "use strict";
+    import_child_process20 = require("child_process");
+    import_fs52 = require("fs");
+    import_path68 = require("path");
+    init_worktree_paths();
+    init_copilot_session_eval();
+    init_copilot_sdk_scenarios();
+    init_process_utils2();
+    sleep6 = (ms) => new Promise((r) => {
+      setTimeout(r, ms);
+    });
+  }
+});
+
 // src/lib/env-vars.ts
 var OMC_PLUGIN_ROOT_ENV;
 var init_env_vars = __esm({
@@ -34327,7 +34710,7 @@ function isStrippedEnvKey(key) {
 }
 function resolveDefaultPluginRoot(env = process.env) {
   const fromEnv = env[OMC_PLUGIN_ROOT_ENV]?.trim();
-  if (fromEnv) return (0, import_path68.resolve)(fromEnv);
+  if (fromEnv) return (0, import_path69.resolve)(fromEnv);
   return findPluginRoot([...moduleDirs(), process.cwd()]) ?? process.cwd();
 }
 function resolvePackageRoot() {
@@ -34337,17 +34720,17 @@ function moduleDirs() {
   const starts = [];
   if (typeof __dirname !== "undefined" && __dirname) starts.push(__dirname);
   try {
-    starts.push((0, import_path68.dirname)((0, import_url8.fileURLToPath)(importMetaUrl)));
+    starts.push((0, import_path69.dirname)((0, import_url8.fileURLToPath)(importMetaUrl)));
   } catch {
   }
   return starts;
 }
 function findPluginRoot(starts) {
   for (const start of starts) {
-    let dir = (0, import_path68.resolve)(start);
+    let dir = (0, import_path69.resolve)(start);
     for (let i = 0; i < 8; i++) {
       if (isPluginRoot(dir)) return dir;
-      const parent = (0, import_path68.dirname)(dir);
+      const parent = (0, import_path69.dirname)(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -34356,8 +34739,8 @@ function findPluginRoot(starts) {
 }
 function isPluginRoot(dir) {
   try {
-    const manifest = JSON.parse((0, import_fs52.readFileSync)((0, import_path68.join)(dir, "plugin.json"), "utf-8"));
-    return manifest.name === PLUGIN_NAME2 && (0, import_fs52.existsSync)((0, import_path68.join)(dir, "package.json"));
+    const manifest = JSON.parse((0, import_fs53.readFileSync)((0, import_path69.join)(dir, "plugin.json"), "utf-8"));
+    return manifest.name === PLUGIN_NAME2 && (0, import_fs53.existsSync)((0, import_path69.join)(dir, "package.json"));
   } catch {
     return false;
   }
@@ -34376,7 +34759,7 @@ function buildSessionEnv(base, home, opts = {}) {
 }
 function loginIdentity(userConfigDir) {
   try {
-    const parsed = parseJsonc((0, import_fs52.readFileSync)((0, import_path68.join)(userConfigDir, "config.json"), "utf-8"));
+    const parsed = parseJsonc((0, import_fs53.readFileSync)((0, import_path69.join)(userConfigDir, "config.json"), "utf-8"));
     if (!parsed || typeof parsed !== "object") return {};
     const out = {};
     for (const key of ["loggedInUsers", "lastLoggedInUser"]) if (parsed[key] !== void 0) out[key] = parsed[key];
@@ -34385,12 +34768,12 @@ function loginIdentity(userConfigDir) {
     return {};
   }
 }
-var import_fs52, import_path68, import_url8, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV;
+var import_fs53, import_path69, import_url8, STRIPPED_ENV_EXACT, STRIPPED_ENV_PREFIXES, LOGIN_SHADOWING_TOKENS, SMOKE_SET_ENV, SESSION_SET_ENV;
 var init_copilot_session_env = __esm({
   "src/smoke/copilot-session-env.ts"() {
     "use strict";
-    import_fs52 = require("fs");
-    import_path68 = require("path");
+    import_fs53 = require("fs");
+    import_path69 = require("path");
     import_url8 = require("url");
     init_env_vars();
     init_jsonc();
@@ -34471,23 +34854,23 @@ function tier1Ids(delegate) {
     ...delegate ? ["subagent.selected"] : []
   ];
 }
-function readJson2(path15) {
+function readJson3(path15) {
   try {
-    return JSON.parse((0, import_fs53.readFileSync)(path15, "utf-8"));
+    return JSON.parse((0, import_fs54.readFileSync)(path15, "utf-8"));
   } catch {
     return null;
   }
 }
 function countDirsWith(dir, file) {
   try {
-    return (0, import_fs53.readdirSync)(dir).filter((name) => (0, import_fs53.existsSync)((0, import_path69.join)(dir, name, file))).sort();
+    return (0, import_fs54.readdirSync)(dir).filter((name) => (0, import_fs54.existsSync)((0, import_path70.join)(dir, name, file))).sort();
   } catch {
     return [];
   }
 }
 function countFiles(dir, ext) {
   try {
-    return (0, import_fs53.readdirSync)(dir).filter((name) => name.endsWith(ext)).length;
+    return (0, import_fs54.readdirSync)(dir).filter((name) => name.endsWith(ext)).length;
   } catch {
     return -1;
   }
@@ -34504,18 +34887,18 @@ function extractJsonArray(text) {
   }
 }
 function makeTempDir(prefix) {
-  return (0, import_fs53.mkdtempSync)((0, import_path69.join)((0, import_os8.tmpdir)(), prefix));
+  return (0, import_fs54.mkdtempSync)((0, import_path70.join)((0, import_os8.tmpdir)(), prefix));
 }
 function removeDir(path15) {
   if (!path15) return;
   try {
-    (0, import_fs53.rmSync)(path15, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+    (0, import_fs54.rmSync)(path15, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
   } catch {
   }
 }
 function checkManifest(root) {
-  const manifest = readJson2((0, import_path69.join)(root, "plugin.json"));
-  const pkg = readJson2((0, import_path69.join)(root, "package.json"));
+  const manifest = readJson3((0, import_path70.join)(root, "plugin.json"));
+  const pkg = readJson3((0, import_path70.join)(root, "package.json"));
   const pluginVersion = typeof manifest?.version === "string" ? manifest.version : null;
   const packageVersion = typeof pkg?.version === "string" ? pkg.version : null;
   const problems = [];
@@ -34561,8 +34944,8 @@ function checkGeneratedHooks(ctx) {
   };
 }
 function checkAgents(root) {
-  const source = countFiles((0, import_path69.join)(root, "agents"), ".md");
-  const generated = countFiles((0, import_path69.join)(root, "copilot", "agents"), ".md");
+  const source = countFiles((0, import_path70.join)(root, "agents"), ".md");
+  const generated = countFiles((0, import_path70.join)(root, "copilot", "agents"), ".md");
   const ok = source > 0 && source === generated;
   return {
     id: "copilot.agents",
@@ -34599,22 +34982,22 @@ function checkPluginList(ctx, bin, env, cwd, packageVersion) {
   };
 }
 function normalizePath(p) {
-  let out = (0, import_path69.resolve)(p);
+  let out = (0, import_path70.resolve)(p);
   try {
-    out = import_fs53.realpathSync.native(out);
+    out = import_fs54.realpathSync.native(out);
   } catch {
   }
   return process.platform === "win32" ? out.toLowerCase() : out;
 }
 function checkSkillList(ctx, bin, env, cwd) {
-  const expected = countDirsWith((0, import_path69.join)(ctx.root, "skills"), "SKILL.md");
+  const expected = countDirsWith((0, import_path70.join)(ctx.root, "skills"), "SKILL.md");
   const res = runCopilotSync(ctx, bin, ["--plugin-dir", ctx.root, "--no-auto-update", "skill", "list", "--json"], env, cwd);
   const stdout = String(res.stdout ?? "");
   const list = extractJsonArray(stdout);
   if (res.status !== 0 || !list) {
     return { id: "copilot.skill_list", ok: false, detail: `skill list exit ${res.status}${list ? "" : ", no JSON array"}`, evidence: excerpt(`${stdout}${res.stderr ?? ""}`) };
   }
-  const skillsDir = normalizePath((0, import_path69.join)(ctx.root, "skills")) + import_path69.sep;
+  const skillsDir = normalizePath((0, import_path70.join)(ctx.root, "skills")) + import_path70.sep;
   const pluginSkills = list.filter((s) => s.source === "plugin");
   const fromSkillsDir = new Set(pluginSkills.filter((s) => typeof s.path === "string" && normalizePath(s.path).startsWith(skillsDir)).map((s) => normalizePath(s.path).slice(skillsDir.length).split(/[\\/]/)[0]));
   const missing = expected.filter((d) => !fromSkillsDir.has(process.platform === "win32" ? d.toLowerCase() : d));
@@ -34632,8 +35015,8 @@ async function defaultExpectedToolCount() {
 }
 async function checkMcpListTools(ctx) {
   const id = "mcp.list_tools";
-  const server2 = (0, import_path69.join)(ctx.root, "dist", "mcp", "standalone-server.js");
-  if (!(0, import_fs53.existsSync)(server2)) return { id, ok: false, detail: `${server2} missing; run npm run build` };
+  const server2 = (0, import_path70.join)(ctx.root, "dist", "mcp", "standalone-server.js");
+  if (!(0, import_fs54.existsSync)(server2)) return { id, ok: false, detail: `${server2} missing; run npm run build` };
   let expected;
   try {
     expected = await (ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount)();
@@ -34723,11 +35106,11 @@ async function checkMcpListTools(ctx) {
 }
 function initProject(ctx, projectDir, env) {
   const res = ctx.spawnSyncFn("git", ["init", "-q"], { cwd: projectDir, env, encoding: "utf8", timeout: 3e4, windowsHide: true });
-  if (res.status !== 0 || !(0, import_fs53.existsSync)((0, import_path69.join)(projectDir, ".git"))) (0, import_fs53.mkdirSync)((0, import_path69.join)(projectDir, ".git"), { recursive: true });
+  if (res.status !== 0 || !(0, import_fs54.existsSync)((0, import_path70.join)(projectDir, ".git"))) (0, import_fs54.mkdirSync)((0, import_path70.join)(projectDir, ".git"), { recursive: true });
 }
 function readText(path15) {
   try {
-    return (0, import_fs53.readFileSync)(path15, "utf-8");
+    return (0, import_fs54.readFileSync)(path15, "utf-8");
   } catch {
     return null;
   }
@@ -34735,33 +35118,33 @@ function readText(path15) {
 function readDebugLogs(logDir) {
   let files;
   try {
-    files = (0, import_fs53.readdirSync)(logDir).filter((f) => f.endsWith(".log")).map((f) => (0, import_path69.join)(logDir, f));
+    files = (0, import_fs54.readdirSync)(logDir).filter((f) => f.endsWith(".log")).map((f) => (0, import_path70.join)(logDir, f));
   } catch {
     return { text: null };
   }
   if (files.length === 0) return { text: null };
-  files.sort((a, b) => (0, import_fs53.statSync)(a).mtimeMs - (0, import_fs53.statSync)(b).mtimeMs);
+  files.sort((a, b) => (0, import_fs54.statSync)(a).mtimeMs - (0, import_fs54.statSync)(b).mtimeMs);
   return { text: files.map((f) => readText(f) ?? "").join("\n"), path: files[files.length - 1] };
 }
 function mcpServerNames(root) {
-  const mcp = readJson2((0, import_path69.join)(root, ".mcp.json"));
+  const mcp = readJson3((0, import_path70.join)(root, ".mcp.json"));
   const servers = mcp?.mcpServers;
   return servers && typeof servers === "object" ? Object.keys(servers) : [];
 }
 async function runTier1(ctx, bin, opts, cleanup, artifacts) {
   const parent = makeTempDir("omg-smoke-");
   cleanup.push(parent);
-  const home = (0, import_path69.join)(parent, "home");
+  const home = (0, import_path70.join)(parent, "home");
   artifacts.copilotHome = home;
-  const projectDir = (0, import_path69.join)(parent, "project");
-  (0, import_fs53.mkdirSync)(home);
-  (0, import_fs53.mkdirSync)(projectDir);
-  const logDir = (0, import_path69.join)(home, "logs");
+  const projectDir = (0, import_path70.join)(parent, "project");
+  (0, import_fs54.mkdirSync)(home);
+  (0, import_fs54.mkdirSync)(projectDir);
+  const logDir = (0, import_path70.join)(home, "logs");
   const sessionId = (ctx.deps.randomUUID ?? import_crypto15.randomUUID)();
   const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
   const env = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   const config2 = { ...identity, trustedFolders: [projectDir] };
-  (0, import_fs53.writeFileSync)((0, import_path69.join)(home, "config.json"), `${JSON.stringify(config2, null, 2)}
+  (0, import_fs54.writeFileSync)((0, import_path70.join)(home, "config.json"), `${JSON.stringify(config2, null, 2)}
 `);
   initProject(ctx, projectDir, env);
   const prompt = opts.prompt ?? (opts.delegate ? DELEGATE_SMOKE_PROMPT : DEFAULT_SMOKE_PROMPT);
@@ -34793,12 +35176,12 @@ async function runTier1(ctx, bin, opts, cleanup, artifacts) {
     timeoutMs,
     windowsVerbatimArguments: plan.windowsVerbatimArguments
   });
-  const stdoutPath = (0, import_path69.join)(home, "smoke-stdout.jsonl");
+  const stdoutPath = (0, import_path70.join)(home, "smoke-stdout.jsonl");
   try {
-    (0, import_fs53.writeFileSync)(stdoutPath, run.stdout);
+    (0, import_fs54.writeFileSync)(stdoutPath, run.stdout);
   } catch {
   }
-  const eventsPath = (0, import_path69.join)(home, "session-state", sessionId, "events.jsonl");
+  const eventsPath = (0, import_path70.join)(home, "session-state", sessionId, "events.jsonl");
   const logs = readDebugLogs(logDir);
   Object.assign(artifacts, { eventsLog: eventsPath, debugLog: logs.path, stdout: stdoutPath });
   return evaluateTier1({
@@ -34850,7 +35233,7 @@ async function runCopilotSmoke(input = {}) {
   const env = input.env ?? process.env;
   const deps = input.deps ?? {};
   const tier = input.tier === 1 || input.tier === 2 ? input.tier : 0;
-  const root = (0, import_path69.resolve)(input.pluginRoot ?? resolveDefaultPluginRoot(env));
+  const root = (0, import_path70.resolve)(input.pluginRoot ?? resolveDefaultPluginRoot(env));
   const opts = { ...input, pluginRoot: root, tier };
   if (opts.prompt !== void 0 && /\0/.test(opts.prompt)) throw new Error("smoke prompt must not contain NUL");
   const unknown2 = (opts.scenarios ?? []).filter((s) => !KNOWN_SCENARIOS.includes(s));
@@ -34872,8 +35255,8 @@ async function runCopilotSmoke(input = {}) {
   const ctx = {
     root,
     env: { ...env },
-    spawnFn: deps.spawn ?? import_child_process20.spawn,
-    spawnSyncFn: deps.spawnSync ?? import_child_process20.spawnSync,
+    spawnFn: deps.spawn ?? import_child_process21.spawn,
+    spawnSyncFn: deps.spawnSync ?? import_child_process21.spawnSync,
     deps,
     timeoutMs: tier === 0 ? opts.timeoutMs ?? DEFAULT_TIER0_TIMEOUT_MS : DEFAULT_TIER0_TIMEOUT_MS
   };
@@ -34957,18 +35340,18 @@ async function runChecks(ctx, opts, started, checks, artifacts, cleanup) {
 async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, cleanup, artifacts) {
   const parent = makeTempDir("omg-smoke-sdk-");
   cleanup.push(parent);
-  const home = (0, import_path69.join)(parent, "home");
-  const projectDir = (0, import_path69.join)(parent, "project");
-  (0, import_fs53.mkdirSync)(home);
+  const home = (0, import_path70.join)(parent, "home");
+  const projectDir = (0, import_path70.join)(parent, "project");
+  (0, import_fs54.mkdirSync)(home);
   artifacts.copilotHome = home;
   const identity = loginIdentity(ctx.deps.userConfigDir ?? getCopilotConfigDir());
   const env = buildSessionEnv(ctx.env, home, { session: true, hasLogin: identity.loggedInUsers !== void 0 });
   env.OMC_GIT_GUARDRAILS = "1";
-  (0, import_fs53.writeFileSync)((0, import_path69.join)(home, "config.json"), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}
+  (0, import_fs54.writeFileSync)((0, import_path70.join)(home, "config.json"), `${JSON.stringify({ ...identity, trustedFolders: [projectDir] }, null, 2)}
 `);
   let agentFiles = [];
   try {
-    agentFiles = (0, import_fs53.readdirSync)((0, import_path69.join)(ctx.root, "agents")).filter((f) => f.endsWith(".md")).sort();
+    agentFiles = (0, import_fs54.readdirSync)((0, import_path70.join)(ctx.root, "agents")).filter((f) => f.endsWith(".md")).sort();
   } catch {
   }
   const result = await runSdkTier({
@@ -34978,7 +35361,7 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     packageVersion,
     home,
     projectDir,
-    remoteDir: (0, import_path69.join)(parent, "remote.git"),
+    remoteDir: (0, import_path70.join)(parent, "remote.git"),
     env,
     scenarios,
     model: opts.model,
@@ -34988,25 +35371,26 @@ async function runTier2(ctx, bin, binVersion, packageVersion, opts, scenarios, c
     loadSdk: ctx.deps.loadSdk ?? (() => loadCopilotSdk(ctx.env, ctx.spawnSyncFn)),
     loadExpectedToolCount: ctx.deps.loadExpectedToolCount ?? defaultExpectedToolCount,
     spawnSync: ctx.spawnSyncFn,
-    skillDirs: countDirsWith((0, import_path69.join)(ctx.root, "skills"), "SKILL.md"),
+    skillDirs: countDirsWith((0, import_path70.join)(ctx.root, "skills"), "SKILL.md"),
     agentFiles,
     mcpServer: mcpServerNames(ctx.root)[0] ?? "t",
-    runChain: runChainScenario
+    runChain: runChainScenario,
+    runTeam: runTeamScenario
   });
   if (Object.keys(result.events).length) artifacts.events = result.events;
-  const logs = readDebugLogs((0, import_path69.join)(home, "logs"));
+  const logs = readDebugLogs((0, import_path70.join)(home, "logs"));
   if (logs.path) artifacts.debugLog = logs.path;
   return result;
 }
-var import_child_process20, import_crypto15, import_fs53, import_os8, import_path69, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL;
+var import_child_process21, import_crypto15, import_fs54, import_os8, import_path70, DEFAULT_SMOKE_MODEL, DEFAULT_MAX_CREDITS, MIN_MAX_CREDITS, DEFAULT_TIER0_TIMEOUT_MS, DEFAULT_TIER1_TIMEOUT_MS, MCP_LIST_TIMEOUT_MS, PLUGIN_NAME3, DELEGATE_AGENT2, DEFAULT_SMOKE_PROMPT, DELEGATE_SMOKE_PROMPT, SMOKE_PERMISSION_FLAGS, TIER0_COPILOT_IDS, LIVE_RUN_REFUSED_DETAIL;
 var init_copilot_smoke = __esm({
   "src/smoke/copilot-smoke.ts"() {
     "use strict";
-    import_child_process20 = require("child_process");
+    import_child_process21 = require("child_process");
     import_crypto15 = require("crypto");
-    import_fs53 = require("fs");
+    import_fs54 = require("fs");
     import_os8 = require("os");
-    import_path69 = require("path");
+    import_path70 = require("path");
     init_tmux_utils();
     init_config_dir();
     init_copilot_binary();
@@ -35014,6 +35398,7 @@ var init_copilot_smoke = __esm({
     init_process_utils2();
     init_copilot_sdk_driver();
     init_copilot_chain_scenario();
+    init_copilot_team_scenario();
     init_copilot_sdk_scenarios();
     init_copilot_session_env();
     init_copilot_session_env();
@@ -35036,9 +35421,9 @@ var init_copilot_smoke = __esm({
 
 // src/tools/host-smoke-tool.ts
 function canonical(p) {
-  let out = (0, import_path70.resolve)(p);
+  let out = (0, import_path71.resolve)(p);
   try {
-    out = import_fs54.realpathSync.native(out);
+    out = import_fs55.realpathSync.native(out);
   } catch {
   }
   return process.platform === "win32" ? out.toLowerCase() : out;
@@ -35046,12 +35431,12 @@ function canonical(p) {
 function errorResult(text) {
   return { content: [{ type: "text", text }], isError: true };
 }
-var import_fs54, import_path70, SMOKE_ALLOW_LIVE_ENV, SMOKE_ALLOW_ANY_ROOT_ENV, SCENARIO_NAMES, hostSmokeSchema, hostSmokeTool;
+var import_fs55, import_path71, SMOKE_ALLOW_LIVE_ENV, SMOKE_ALLOW_ANY_ROOT_ENV, SCENARIO_NAMES, hostSmokeSchema, hostSmokeTool;
 var init_host_smoke_tool = __esm({
   "src/tools/host-smoke-tool.ts"() {
     "use strict";
-    import_fs54 = require("fs");
-    import_path70 = require("path");
+    import_fs55 = require("fs");
+    import_path71 = require("path");
     init_zod();
     init_names();
     SMOKE_ALLOW_LIVE_ENV = "OMC_SMOKE_ALLOW_LIVE";
@@ -35123,18 +35508,18 @@ var init_host_smoke_tool = __esm({
 });
 
 // src/hooks/learner/constants.ts
-var import_path71, import_os9, USER_SKILLS_DIR, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, PROJECT_AGENT_SKILLS_SUBDIR, MAX_RECURSION_DEPTH, SKILL_EXTENSION, DEBUG_ENABLED;
+var import_path72, import_os9, USER_SKILLS_DIR, GLOBAL_SKILLS_DIR, PROJECT_SKILLS_SUBDIR, PROJECT_AGENT_SKILLS_SUBDIR, MAX_RECURSION_DEPTH, SKILL_EXTENSION, DEBUG_ENABLED;
 var init_constants3 = __esm({
   "src/hooks/learner/constants.ts"() {
     "use strict";
-    import_path71 = require("path");
+    import_path72 = require("path");
     import_os9 = require("os");
     init_config_dir();
     init_worktree_paths();
-    USER_SKILLS_DIR = (0, import_path71.join)(getCopilotConfigDir(), "skills", "omc-learned");
-    GLOBAL_SKILLS_DIR = (0, import_path71.join)((0, import_os9.homedir)(), ".omg", "skills");
+    USER_SKILLS_DIR = (0, import_path72.join)(getCopilotConfigDir(), "skills", "omc-learned");
+    GLOBAL_SKILLS_DIR = (0, import_path72.join)((0, import_os9.homedir)(), ".omg", "skills");
     PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
-    PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path71.join)(".agents", "skills");
+    PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path72.join)(".agents", "skills");
     MAX_RECURSION_DEPTH = 10;
     SKILL_EXTENSION = ".md";
     DEBUG_ENABLED = process.env.OMC_DEBUG === "1";
@@ -35143,12 +35528,12 @@ var init_constants3 = __esm({
 
 // src/hooks/learner/finder.ts
 function findSkillFilesRecursive(dir, results, depth = 0) {
-  if (!(0, import_fs55.existsSync)(dir)) return;
+  if (!(0, import_fs56.existsSync)(dir)) return;
   if (depth > MAX_RECURSION_DEPTH) return;
   try {
-    const entries = (0, import_fs55.readdirSync)(dir, { withFileTypes: true });
+    const entries = (0, import_fs56.readdirSync)(dir, { withFileTypes: true });
     for (const entry of entries) {
-      const fullPath = (0, import_path72.join)(dir, entry.name);
+      const fullPath = (0, import_path73.join)(dir, entry.name);
       if (entry.isDirectory()) {
         findSkillFilesRecursive(fullPath, results, depth + 1);
       } else if (entry.isFile() && entry.name.endsWith(SKILL_EXTENSION)) {
@@ -35163,15 +35548,15 @@ function findSkillFilesRecursive(dir, results, depth = 0) {
 }
 function safeRealpathSync(filePath) {
   try {
-    return (0, import_fs55.realpathSync)(filePath);
+    return (0, import_fs56.realpathSync)(filePath);
   } catch {
     return filePath;
   }
 }
 function isWithinBoundary(realPath, boundary) {
-  const normalizedReal = (0, import_path72.normalize)(realPath);
-  const normalizedBoundary = (0, import_path72.normalize)(safeRealpathSync(boundary));
-  return normalizedReal === normalizedBoundary || normalizedReal.startsWith(normalizedBoundary + import_path72.sep);
+  const normalizedReal = (0, import_path73.normalize)(realPath);
+  const normalizedBoundary = (0, import_path73.normalize)(safeRealpathSync(boundary));
+  return normalizedReal === normalizedBoundary || normalizedReal.startsWith(normalizedBoundary + import_path73.sep);
 }
 function findSkillFiles(projectRoot, options) {
   const candidates = [];
@@ -35179,8 +35564,8 @@ function findSkillFiles(projectRoot, options) {
   const scope = options?.scope ?? "all";
   if (projectRoot && (scope === "project" || scope === "all")) {
     const projectSkillDirs = [
-      (0, import_path72.join)(projectRoot, PROJECT_SKILLS_SUBDIR),
-      (0, import_path72.join)(projectRoot, PROJECT_AGENT_SKILLS_SUBDIR)
+      (0, import_path73.join)(projectRoot, PROJECT_SKILLS_SUBDIR),
+      (0, import_path73.join)(projectRoot, PROJECT_AGENT_SKILLS_SUBDIR)
     ];
     for (const projectSkillsDir of projectSkillDirs) {
       const projectFiles = [];
@@ -35230,12 +35615,12 @@ function findSkillFiles(projectRoot, options) {
   }
   return candidates;
 }
-var import_fs55, import_path72;
+var import_fs56, import_path73;
 var init_finder2 = __esm({
   "src/hooks/learner/finder.ts"() {
     "use strict";
-    import_fs55 = require("fs");
-    import_path72 = require("path");
+    import_fs56 = require("fs");
+    import_path73 = require("path");
     init_constants3();
   }
 });
@@ -35403,7 +35788,7 @@ function loadAllSkills(projectRoot) {
   const seenIds = /* @__PURE__ */ new Map();
   for (const candidate of candidates) {
     try {
-      const rawContent = (0, import_fs56.readFileSync)(candidate.path, "utf-8");
+      const rawContent = (0, import_fs57.readFileSync)(candidate.path, "utf-8");
       const { metadata, content, valid, errors } = parseSkillFile(rawContent);
       if (!valid) {
         if (DEBUG_ENABLED) {
@@ -35412,7 +35797,7 @@ function loadAllSkills(projectRoot) {
         continue;
       }
       const skillId = metadata.id;
-      const relativePath = (0, import_path73.normalize)((0, import_path73.relative)(candidate.sourceDir, candidate.path));
+      const relativePath = (0, import_path74.normalize)((0, import_path74.relative)(candidate.sourceDir, candidate.path));
       const skill = {
         path: candidate.path,
         relativePath,
@@ -35434,13 +35819,13 @@ function loadAllSkills(projectRoot) {
   }
   return Array.from(seenIds.values()).sort((a, b) => b.priority - a.priority);
 }
-var import_fs56, import_crypto16, import_path73;
+var import_fs57, import_crypto16, import_path74;
 var init_loader2 = __esm({
   "src/hooks/learner/loader.ts"() {
     "use strict";
-    import_fs56 = require("fs");
+    import_fs57 = require("fs");
     import_crypto16 = require("crypto");
-    import_path73 = require("path");
+    import_path74 = require("path");
     init_finder2();
     init_parser();
     init_constants3();
@@ -35449,13 +35834,13 @@ var init_loader2 = __esm({
 
 // src/tools/skills-tools.ts
 function validateProjectRoot(input) {
-  const normalized = (0, import_path74.normalize)((0, import_path74.resolve)(input));
+  const normalized = (0, import_path75.normalize)((0, import_path75.resolve)(input));
   if (input.includes("..")) {
     throw new Error("Invalid project root: path traversal not allowed");
   }
   const isWithinAllowed = ALLOWED_BOUNDARIES.some((boundary) => {
-    const normalizedBoundary = (0, import_path74.normalize)(boundary);
-    return normalized === normalizedBoundary || normalized.startsWith(normalizedBoundary + import_path74.sep);
+    const normalizedBoundary = (0, import_path75.normalize)(boundary);
+    return normalized === normalizedBoundary || normalized.startsWith(normalizedBoundary + import_path75.sep);
   });
   if (!isWithinAllowed) {
     throw new Error("Invalid project root: path is outside allowed directories");
@@ -35481,12 +35866,12 @@ function formatSkillOutput(skills) {
   }
   return lines.join("\n");
 }
-var import_path74, import_os10, ALLOWED_BOUNDARIES, loadLocalSchema, loadGlobalSchema, listSkillsSchema, loadLocalTool, loadGlobalTool, listSkillsTool, skillsTools;
+var import_path75, import_os10, ALLOWED_BOUNDARIES, loadLocalSchema, loadGlobalSchema, listSkillsSchema, loadLocalTool, loadGlobalTool, listSkillsTool, skillsTools;
 var init_skills_tools = __esm({
   "src/tools/skills-tools.ts"() {
     "use strict";
     init_zod();
-    import_path74 = require("path");
+    import_path75 = require("path");
     import_os10 = require("os");
     init_config_dir();
     init_loader2();
@@ -35967,14 +36352,14 @@ function promiseAllObject(promisesObj) {
 }
 function randomString(length = 10) {
   const chars = "abcdefghijklmnopqrstuvwxyz";
-  let str3 = "";
+  let str4 = "";
   for (let i = 0; i < length; i++) {
-    str3 += chars[Math.floor(Math.random() * chars.length)];
+    str4 += chars[Math.floor(Math.random() * chars.length)];
   }
-  return str3;
+  return str4;
 }
-function esc(str3) {
-  return JSON.stringify(str3);
+function esc(str4) {
+  return JSON.stringify(str4);
 }
 var captureStackTrace = Error.captureStackTrace ? Error.captureStackTrace : (..._args) => {
 };
@@ -36062,8 +36447,8 @@ var getParsedType2 = (data) => {
 };
 var propertyKeyTypes = /* @__PURE__ */ new Set(["string", "number", "symbol"]);
 var primitiveTypes = /* @__PURE__ */ new Set(["string", "number", "bigint", "boolean", "symbol", "undefined"]);
-function escapeRegex(str3) {
-  return str3.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function escapeRegex(str4) {
+  return str4.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function clone(inst, def, params) {
   const cl = new inst._zod.constr(def ?? inst._zod.def);
