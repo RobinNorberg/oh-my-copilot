@@ -26,7 +26,6 @@ import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { pathToFileURL } from 'url';
 import { excerpt, type CopilotEvent, type SmokeCheck } from './copilot-session-eval.js';
 import {
-  chainCost,
   chooseModel,
   CREDIT_CAP_SKIP_DETAIL,
   evaluateScenario,
@@ -38,9 +37,9 @@ import {
   evaluateSdkToolsExcluded,
   failedTier2Checks,
   hostSmokeToolName,
+  runCost,
   RUNTIME_MIN_MAX_CREDITS,
   SCENARIOS,
-  scenarioCost,
   scenarioExcludedTools,
   SDK_MISSING_DETAIL,
   SDK_PACKAGE,
@@ -56,8 +55,9 @@ import {
 import { killProcessTree, type SpawnSyncFn } from './process-utils.js';
 // Type-only: the team bundle reaches this driver (runtime-v2, sdk-host), and the
 // chain scenario pulls in the factory CLI (commander). The smoke entry injects
-// the runner as `runChain`.
+// the runners as `runChain` and `runTeam`.
 import type { runChainScenario } from './copilot-chain-scenario.js';
+import type { runTeamScenario } from './copilot-team-scenario.js';
 
 // ---------------------------------------------------------------------------
 // The slice of the SDK surface the driver uses (SDK 1.0.16, protocol 3)
@@ -392,6 +392,8 @@ export interface SdkTierInput {
   killTree?: (pid: number) => void;
   /** The `chain` scenario runner ({@link runChainScenario}, real `copilot -p` links), injected by the smoke entry. */
   runChain: typeof runChainScenario;
+  /** The `team` scenario runner ({@link runTeamScenario}, a real 2-worker sdk team), injected by the smoke entry. */
+  runTeam: typeof runTeamScenario;
 }
 
 export interface SdkTierResult {
@@ -486,8 +488,11 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
     checks.push(...await staticChecks(client, input));
 
     let stopReason: string | undefined;
-    // chain rewrites the shared sandbox (route table, a project skill): run it last.
-    for (const name of [...input.scenarios.filter((s) => s !== 'chain'), ...input.scenarios.filter((s) => s === 'chain')]) {
+    // chain rewrites the shared sandbox (route table, a project skill): run it
+    // last. team runs before it, so its worker sessions never meet that route
+    // table, and its copied worker logs fall in its own time slice.
+    const order: Scenario[] = ['team', 'chain'];
+    for (const name of [...input.scenarios.filter((s) => !order.includes(s)), ...order.filter((s) => input.scenarios.includes(s))]) {
       if (projectError) { entries.push({ name, skip: `sandbox project setup failed: ${projectError}` }); continue; }
       if (stopReason) { entries.push({ name, skip: stopReason }); continue; }
       const path = join(input.home, `events-${name}.jsonl`);
@@ -512,9 +517,23 @@ export async function runSdkTier(input: SdkTierInput): Promise<SdkTierResult> {
           eventsPath: path,
           spawnSync: input.spawnSync,
         })
-        : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
+        // `team` drives a real `omg team` with sdk workers, not this client's session.
+        : name === 'team'
+          ? await input.runTeam({
+            root: input.root,
+            bin: input.bin,
+            env: input.env,
+            projectDir: input.projectDir,
+            home: input.home,
+            timeoutMs: input.timeoutMs,
+            maxCredits: input.maxCredits,
+            budget: input.maxCredits - total.credits,
+            eventsPath: path,
+            spawnSync: input.spawnSync,
+          })
+          : await runScenario(client, input, name, choice.model, modelLabel, path, input.maxCredits - total.credits);
       entries.push({ name, run, start });
-      const cost = run.chain ? chainCost(run.chain) : scenarioCost(run.events);
+      const cost = runCost(run);
       total.premiumRequests += cost.premiumRequests;
       total.credits += cost.credits;
       if (run.capped || total.credits > input.maxCredits) stopReason = CREDIT_CAP_SKIP_DETAIL;

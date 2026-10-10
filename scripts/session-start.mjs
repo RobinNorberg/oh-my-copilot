@@ -366,7 +366,11 @@ async function resolveProjectMemorySummary(directory, projectMemoryModules) {
       memory.userDirectives = existing.userDirectives;
     }
 
-    await saveProjectMemory(projectRoot, memory);
+    // A team worker runs in its own worktree: a detected-environment file
+    // there reads as worker output and keeps the worktree at team shutdown.
+    if (!process.env.OMC_TEAM_WORKER && !process.env.OMX_TEAM_WORKER) {
+      await saveProjectMemory(projectRoot, memory);
+    }
   }
 
   if (!hasProjectMemoryContent(memory)) {

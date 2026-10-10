@@ -43,7 +43,7 @@ const baseSnapshot = {
       name: 'worker-1',
       alive: true,
       providerLiveness: 'alive' as const,
-      status: { state: 'idle' },
+      status: { state: 'working', current_task_id: '1' },
       sdk: {
         state: 'ready',
         turns: 3,
@@ -53,7 +53,13 @@ const baseSnapshot = {
         last_error: null,
         credits: 1.25,
         premium_requests: 2,
+        premium_requests_final: false,
         model: 'claude-sonnet-5',
+        host_pid: 4242,
+        runtime_pid: 4343,
+        session_id: 'sess-1',
+        attempt_id: 'attempt-1',
+        updated_at: '2026-10-06T00:00:01.000Z',
       },
     },
   ],
@@ -63,6 +69,7 @@ const baseSnapshot = {
 
 const baseConfig = {
   instance_id: 'inst-123',
+  tmux_session: 'sdk:demo-team',
   workspace_mode: 'single',
   worktree_mode: 'disabled',
   team_state_root: '/repo/.omg/state/team/demo-team',
@@ -101,6 +108,7 @@ describe('omg team status --json', () => {
     expect(status.team).toBe('demo-team');
     expect(status.instance_id).toBe('inst-123');
     expect(status.phase).toBe('running');
+    expect(status.transport).toBe('sdk');
     expect(status.tasks).toMatchObject({ total: 2, pending: 1, completed: 1 });
     expect(status.workers.sdk).toEqual([
       expect.objectContaining({
@@ -109,10 +117,36 @@ describe('omg team status --json', () => {
         state: 'ready',
         turns: 3,
         premium_requests: 2,
+        premium_requests_final: false,
         credits: 1.25,
         model: 'claude-sonnet-5',
+        host_pid: 4242,
+        runtime_pid: 4343,
+        session_id: 'sess-1',
+        attempt_id: 'attempt-1',
+        updated_at: '2026-10-06T00:00:01.000Z',
+        last_event_at: '2026-10-06T00:00:00.000Z',
+        task_state: 'working',
+        current_task_id: '1',
       }),
     ]);
+  });
+
+  it('reports the pane transport for a multiplexer team', async () => {
+    runtimeV2Mocks.monitorTeamV2.mockResolvedValue({ ...baseSnapshot, workers: [] });
+    monitorMocks.readTeamConfig.mockResolvedValue({ ...baseConfig, tmux_session: 'omc-team-demo' });
+
+    const status = JSON.parse((await captureLog(() => teamCommand(['status', 'demo-team', '--json'])))[0]);
+    expect(status.transport).toBe('pane');
+    expect(status.workers.sdk).toEqual([]);
+  });
+
+  it('prints the host pid and session id on the human sdk_worker line', async () => {
+    runtimeV2Mocks.monitorTeamV2.mockResolvedValue(baseSnapshot);
+    monitorMocks.readTeamConfig.mockResolvedValue(baseConfig);
+
+    const logs = await captureLog(() => teamCommand(['status', 'demo-team']));
+    expect(logs.find((line) => line.startsWith('sdk_worker='))).toMatch(/host_pid=4242 session=sess-1 state=ready/);
   });
 
   it('accepts --json before the team name', async () => {
@@ -153,6 +187,38 @@ describe('omg team status --json', () => {
     const status = JSON.parse(logs[0]);
     expect(status.ok).toBe(false);
     expect(status.team).toBe('ghost-team');
+    expect(status.preserved_worktrees).toBeUndefined();
+  });
+
+  it('lists the worktrees a shut-down team kept for unmerged commits', async () => {
+    runtimeV2Mocks.monitorTeamV2.mockResolvedValue(null);
+    const { mkdtempSync, mkdirSync, rmSync } = await import('fs');
+    const { join } = await import('path');
+    const { tmpdir } = await import('os');
+    const { execFileSync } = await import('child_process');
+    const { writePreservedWorktreesRecord } = await import('../../../team/git-worktree.js');
+    const dir = mkdtempSync(join(tmpdir(), 'omg-status-preserved-'));
+    const previous = process.cwd();
+    try {
+      // A repository, so git can tell the gone worker's branch is missing (when
+      // git cannot read branches, the record keeps the entry to be safe).
+      execFileSync('git', ['init'], { cwd: dir, stdio: 'pipe' });
+      const kept = join(dir, '.omg', 'team', 'done-team', 'worktrees', 'worker-1');
+      mkdirSync(kept, { recursive: true });
+      const gone = join(dir, '.omg', 'team', 'done-team', 'worktrees', 'worker-2');
+      writePreservedWorktreesRecord(dir, 'done-team', [
+        { workerName: 'worker-1', path: kept, branch: null, commits: 2 },
+        { workerName: 'worker-2', path: gone, branch: 'omc-team/done-team/worker-2', commits: 1 },
+      ]);
+      process.chdir(dir);
+      const logs = await captureLog(() => teamCommand(['status', 'done-team', '--json']));
+      const status = JSON.parse(logs[0]);
+      expect(status).toMatchObject({ ok: false, team: 'done-team' });
+      expect(status.preserved_worktrees).toEqual([{ workerName: 'worker-1', path: kept, branch: null, commits: 2 }]);
+    } finally {
+      process.chdir(previous);
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('keeps human-readable output as plain text (not JSON) without --json', async () => {
