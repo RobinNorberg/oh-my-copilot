@@ -195,10 +195,14 @@ describe('omg team status --json', () => {
     const { mkdtempSync, mkdirSync, rmSync } = await import('fs');
     const { join } = await import('path');
     const { tmpdir } = await import('os');
+    const { execFileSync } = await import('child_process');
     const { writePreservedWorktreesRecord } = await import('../../../team/git-worktree.js');
     const dir = mkdtempSync(join(tmpdir(), 'omg-status-preserved-'));
     const previous = process.cwd();
     try {
+      // A repository, so git can tell the gone worker's branch is missing (when
+      // git cannot read branches, the record keeps the entry to be safe).
+      execFileSync('git', ['init'], { cwd: dir, stdio: 'pipe' });
       const kept = join(dir, '.omg', 'team', 'done-team', 'worktrees', 'worker-1');
       mkdirSync(kept, { recursive: true });
       const gone = join(dir, '.omg', 'team', 'done-team', 'worktrees', 'worker-2');

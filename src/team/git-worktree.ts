@@ -14,7 +14,7 @@
  */
 
 import { existsSync, realpathSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { atomicWriteJson, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
 import { validateWorktreeRemovalTarget } from '../lib/worktree-cleanup-safety.js';
@@ -144,13 +144,29 @@ function assertCleanLeaderWorktree(repoRoot: string): void {
   }
 }
 
-/** Win32 paths compare case-insensitively: git and callers may spell the same directory differently. */
+/**
+ * Win32 paths compare case-insensitively: git and callers may spell the same
+ * directory differently. A path that does not exist (a deleted worker
+ * directory) is canonicalized through its nearest existing parent, so an
+ * aliased repo root still matches the path git recorded.
+ */
 function canonicalPathForComparison(path: string): string {
+  let existing = resolve(path);
+  const missingTail: string[] = [];
   let canonical: string;
-  try {
-    canonical = realpathSync.native(path);
-  } catch {
-    canonical = resolve(path);
+  for (;;) {
+    try {
+      canonical = join(realpathSync.native(existing), ...missingTail);
+      break;
+    } catch {
+      const parent = dirname(existing);
+      if (parent === existing) {
+        canonical = resolve(path);
+        break;
+      }
+      missingTail.unshift(basename(existing));
+      existing = parent;
+    }
   }
   return process.platform === 'win32' ? canonical.toLowerCase() : canonical;
 }
@@ -343,6 +359,23 @@ function commitCheckFailedError(message: string): Error {
 }
 
 /**
+ * Whether git stores refs/heads/<branch> anywhere (a loose ref file or a
+ * packed-refs entry), readable or not. Throws when git cannot say where.
+ */
+function branchRefStored(repoRoot: string, branch: string): boolean {
+  const commonDir = gitOrNull(['rev-parse', '--git-common-dir'], repoRoot);
+  if (!commonDir) throw commitCheckFailedError(`keeping worker branch ${branch} (cannot locate the git directory)`);
+  const gitDir = resolve(repoRoot, commonDir);
+  if (existsSync(join(gitDir, 'refs', 'heads', ...branch.split('/')))) return true;
+  try {
+    return readFileSync(join(gitDir, 'packed-refs'), 'utf-8').split('\n').some((line) => line.trimEnd().endsWith(` refs/heads/${branch}`));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw commitCheckFailedError(`keeping worker branch ${branch} (cannot read packed-refs)`);
+  }
+}
+
+/**
  * The commit a local branch points at, or null when the branch does not
  * exist. Any other git failure throws `worktree_commit_check_failed`: an
  * unreadable branch is never taken for a missing one.
@@ -351,8 +384,9 @@ function resolveBranchCommit(repoRoot: string, branch: string): string | null {
   try {
     execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
   } catch (err) {
-    // show-ref exits 1 for a missing ref; anything else is git failing.
-    if ((err as { status?: unknown } | null)?.status === 1) return null;
+    // show-ref exits 1 for a missing ref, and also for a garbage or empty
+    // loose ref file: only a ref stored nowhere counts as missing.
+    if ((err as { status?: unknown } | null)?.status === 1 && !branchRefStored(repoRoot, branch)) return null;
     throw commitCheckFailedError(`keeping worker branch ${branch} (cannot read it)`);
   }
   const commit = gitOrNull(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`], repoRoot);
@@ -361,17 +395,22 @@ function resolveBranchCommit(repoRoot: string, branch: string): string | null {
 }
 
 /**
- * Delete a worker branch only while it still points at `commit`, the commit
- * the unmerged-commit check counted (`update-ref -d` with an old value fails
- * when the ref moved), and never while any worktree has it checked out.
- * Throws `worktree_branch_delete_failed`, keeping the branch, otherwise.
+ * Delete a fully merged worker branch only while it still points at `commit`,
+ * the commit the unmerged-commit check counted (`update-ref -d` with an old
+ * value fails when the ref moved): that failure, or git failing to list
+ * worktrees, throws `worktree_branch_delete_failed`, keeping the branch. A
+ * branch some worktree (the leader) has checked out is kept with a warning
+ * and no error: its commits are merged, so it must not fail the teardown.
  * @internal Exported for tests.
  */
 export function deleteWorkerBranchAt(repoRoot: string, branch: string, commit: string): void {
   const ref = `refs/heads/${branch}`;
   try {
     const checkedOut = git(repoRoot, ['worktree', 'list', '--porcelain']).split('\n').some((line) => line.trim() === `branch ${ref}`);
-    if (checkedOut) throw new Error('checked out in a worktree');
+    if (checkedOut) {
+      process.stderr.write(`[omc] warning: kept merged worker branch ${branch} (checked out in a worktree)\n`);
+      return;
+    }
     git(repoRoot, ['update-ref', '-d', ref, commit]);
   } catch (err) {
     const detail = err instanceof Error && err.message ? `: ${err.message}` : '';
