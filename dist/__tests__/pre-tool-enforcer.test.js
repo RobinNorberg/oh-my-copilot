@@ -1838,9 +1838,9 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
         writeFileSync(join(xdgConfigHome, 'claude-omc', 'config.jsonc'), jsonc);
     }
     function writeProjectConfig(jsonc) {
-        const dir = join(tempDir, '.claude');
+        const dir = join(tempDir, '.copilot');
         mkdirSync(dir, { recursive: true });
-        writeFileSync(join(dir, 'omc.jsonc'), jsonc);
+        writeFileSync(join(dir, 'omg.jsonc'), jsonc);
     }
     function run(input, env = {}) {
         return runPreToolEnforcerWithEnv({ cwd: tempDir, ...input }, { XDG_CONFIG_HOME: xdgConfigHome, OMC_ROUTING_FORCE_INHERIT: 'false', ...env });

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "aaa00a1a7ffb772236dc0c30603307cb6c8a5741",
-    "sourceSha256": "2f539dac52ce7ccbf2a56cda132e8360c451f7b14feb97f0f616c521125a81f6",
+    "head": "4e5490097129351e1d6ddee4d4e2516292cf62d1",
+    "sourceSha256": "fb72bed7ff2f3da7b09ede3893b602f416f4cf4185f411c26e4393e9a5cd4055",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "aaa00a1a7ffb772236dc0c30603307cb6c8a5741",
-  "sourceSha256": "2f539dac52ce7ccbf2a56cda132e8360c451f7b14feb97f0f616c521125a81f6",
+  "head": "4e5490097129351e1d6ddee4d4e2516292cf62d1",
+  "sourceSha256": "fb72bed7ff2f3da7b09ede3893b602f416f4cf4185f411c26e4393e9a5cd4055",
   "counts": {
     "public": {
       "skills": 61,
@@ -26,15 +26,15 @@
       "hookFiles": 350,
       "featureFiles": 84,
       "toolFiles": 62,
-      "libFiles": 47,
+      "libFiles": 48,
       "templateHooks": 23,
       "srcFiles": 1540,
       "total": 1563
     },
     "generated": {
-      "distFiles": 5911,
+      "distFiles": 5943,
       "bridgeFiles": 9,
-      "total": 5920
+      "total": 5952
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -689,6 +689,7 @@
       "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
       "src/lib/__tests__/worktree-paths-git-probe-locale.test.ts",
       "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+      "src/lib/__tests__/worktree-paths-issue-4254-win32.test.ts",
       "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
       "src/lib/__tests__/worktree-paths-split-warning.test.ts",
       "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
@@ -951,6 +952,10 @@
       "dist/__tests__/agent-boundary-guidance.test.d.ts.map",
       "dist/__tests__/agent-boundary-guidance.test.js",
       "dist/__tests__/agent-boundary-guidance.test.js.map",
+      "dist/__tests__/agent-model-config.test.d.ts",
+      "dist/__tests__/agent-model-config.test.d.ts.map",
+      "dist/__tests__/agent-model-config.test.js",
+      "dist/__tests__/agent-model-config.test.js.map",
       "dist/__tests__/agent-registry.test.d.ts",
       "dist/__tests__/agent-registry.test.d.ts.map",
       "dist/__tests__/agent-registry.test.js",
@@ -1095,6 +1100,10 @@
       "dist/__tests__/copilot-hook-adapter.test.d.ts.map",
       "dist/__tests__/copilot-hook-adapter.test.js",
       "dist/__tests__/copilot-hook-adapter.test.js.map",
+      "dist/__tests__/copilot-hook-dispatch.test.d.ts",
+      "dist/__tests__/copilot-hook-dispatch.test.d.ts.map",
+      "dist/__tests__/copilot-hook-dispatch.test.js",
+      "dist/__tests__/copilot-hook-dispatch.test.js.map",
       "dist/__tests__/copilot-hooks-manifest.test.d.ts",
       "dist/__tests__/copilot-hooks-manifest.test.d.ts.map",
       "dist/__tests__/copilot-hooks-manifest.test.js",
@@ -1139,6 +1148,10 @@
       "dist/__tests__/doctor-legacy-config-dir.test.d.ts.map",
       "dist/__tests__/doctor-legacy-config-dir.test.js",
       "dist/__tests__/doctor-legacy-config-dir.test.js.map",
+      "dist/__tests__/doctor-legacy-project-config.test.d.ts",
+      "dist/__tests__/doctor-legacy-project-config.test.d.ts.map",
+      "dist/__tests__/doctor-legacy-project-config.test.js",
+      "dist/__tests__/doctor-legacy-project-config.test.js.map",
       "dist/__tests__/doctor-node-on-path.test.d.ts",
       "dist/__tests__/doctor-node-on-path.test.d.ts.map",
       "dist/__tests__/doctor-node-on-path.test.js",
@@ -2135,6 +2148,10 @@
       "dist/__tests__/workflow-profile-activation-script.test.d.ts.map",
       "dist/__tests__/workflow-profile-activation-script.test.js",
       "dist/__tests__/workflow-profile-activation-script.test.js.map",
+      "dist/__tests__/workflow-profile-runtime.test.d.ts",
+      "dist/__tests__/workflow-profile-runtime.test.d.ts.map",
+      "dist/__tests__/workflow-profile-runtime.test.js",
+      "dist/__tests__/workflow-profile-runtime.test.js.map",
       "dist/__tests__/worktree-metadata-locking.test.d.ts",
       "dist/__tests__/worktree-metadata-locking.test.d.ts.map",
       "dist/__tests__/worktree-metadata-locking.test.js",
@@ -2635,6 +2652,10 @@
       "dist/config/__tests__/plan-output.test.d.ts.map",
       "dist/config/__tests__/plan-output.test.js",
       "dist/config/__tests__/plan-output.test.js.map",
+      "dist/config/__tests__/project-config-path.test.d.ts",
+      "dist/config/__tests__/project-config-path.test.d.ts.map",
+      "dist/config/__tests__/project-config-path.test.js",
+      "dist/config/__tests__/project-config-path.test.js.map",
       "dist/config/__tests__/test-helpers.d.ts",
       "dist/config/__tests__/test-helpers.d.ts.map",
       "dist/config/__tests__/test-helpers.js",
@@ -2660,6 +2681,10 @@
       "dist/config/plan-output.d.ts.map",
       "dist/config/plan-output.js",
       "dist/config/plan-output.js.map",
+      "dist/config/project-config-path.d.ts",
+      "dist/config/project-config-path.d.ts.map",
+      "dist/config/project-config-path.js",
+      "dist/config/project-config-path.js.map",
       "dist/constants/index.d.ts",
       "dist/constants/index.d.ts.map",
       "dist/constants/index.js",
@@ -5018,6 +5043,10 @@
       "dist/lib/__tests__/worktree-paths-git-timeout.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths-git-timeout.test.js",
       "dist/lib/__tests__/worktree-paths-git-timeout.test.js.map",
+      "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.d.ts",
+      "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.d.ts.map",
+      "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.js",
+      "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.js.map",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths-nongit-anchor.test.js",
@@ -5750,6 +5779,10 @@
       "dist/team/__tests__/index.compat-exports.test.d.ts.map",
       "dist/team/__tests__/index.compat-exports.test.js",
       "dist/team/__tests__/index.compat-exports.test.js.map",
+      "dist/team/__tests__/issue-4261-cmux-team-failures.test.d.ts",
+      "dist/team/__tests__/issue-4261-cmux-team-failures.test.d.ts.map",
+      "dist/team/__tests__/issue-4261-cmux-team-failures.test.js",
+      "dist/team/__tests__/issue-4261-cmux-team-failures.test.js.map",
       "dist/team/__tests__/leader-inbox.test.d.ts",
       "dist/team/__tests__/leader-inbox.test.d.ts.map",
       "dist/team/__tests__/leader-inbox.test.js",
@@ -8543,6 +8576,26 @@
         "path": "dist/__tests__/agent-boundary-guidance.test.js.map"
       },
       {
+        "id": "dist/__tests__/agent-model-config.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/agent-model-config.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/agent-model-config.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/agent-model-config.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/agent-model-config.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/agent-model-config.test.js"
+      },
+      {
+        "id": "dist/__tests__/agent-model-config.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/agent-model-config.test.js.map"
+      },
+      {
         "id": "dist/__tests__/agent-registry.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/agent-registry.test.d.ts"
@@ -9263,6 +9316,26 @@
         "path": "dist/__tests__/copilot-hook-adapter.test.js.map"
       },
       {
+        "id": "dist/__tests__/copilot-hook-dispatch.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-hook-dispatch.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/copilot-hook-dispatch.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-hook-dispatch.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-hook-dispatch.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-hook-dispatch.test.js"
+      },
+      {
+        "id": "dist/__tests__/copilot-hook-dispatch.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-hook-dispatch.test.js.map"
+      },
+      {
         "id": "dist/__tests__/copilot-hooks-manifest.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/copilot-hooks-manifest.test.d.ts"
@@ -9481,6 +9554,26 @@
         "id": "dist/__tests__/doctor-legacy-config-dir.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/doctor-legacy-config-dir.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/doctor-legacy-project-config.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/doctor-legacy-project-config.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/doctor-legacy-project-config.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/doctor-legacy-project-config.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/doctor-legacy-project-config.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/doctor-legacy-project-config.test.js"
+      },
+      {
+        "id": "dist/__tests__/doctor-legacy-project-config.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/doctor-legacy-project-config.test.js.map"
       },
       {
         "id": "dist/__tests__/doctor-node-on-path.test.d.ts",
@@ -14463,6 +14556,26 @@
         "path": "dist/__tests__/workflow-profile-activation-script.test.js.map"
       },
       {
+        "id": "dist/__tests__/workflow-profile-runtime.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/workflow-profile-runtime.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/workflow-profile-runtime.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/workflow-profile-runtime.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/workflow-profile-runtime.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/workflow-profile-runtime.test.js"
+      },
+      {
+        "id": "dist/__tests__/workflow-profile-runtime.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/workflow-profile-runtime.test.js.map"
+      },
+      {
         "id": "dist/__tests__/worktree-metadata-locking.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/worktree-metadata-locking.test.d.ts"
@@ -16963,6 +17076,26 @@
         "path": "dist/config/__tests__/plan-output.test.js.map"
       },
       {
+        "id": "dist/config/__tests__/project-config-path.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/config/__tests__/project-config-path.test.d.ts"
+      },
+      {
+        "id": "dist/config/__tests__/project-config-path.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/config/__tests__/project-config-path.test.d.ts.map"
+      },
+      {
+        "id": "dist/config/__tests__/project-config-path.test.js",
+        "kind": "generated-dist",
+        "path": "dist/config/__tests__/project-config-path.test.js"
+      },
+      {
+        "id": "dist/config/__tests__/project-config-path.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/config/__tests__/project-config-path.test.js.map"
+      },
+      {
         "id": "dist/config/__tests__/test-helpers.d.ts",
         "kind": "generated-dist",
         "path": "dist/config/__tests__/test-helpers.d.ts"
@@ -17086,6 +17219,26 @@
         "id": "dist/config/plan-output.js.map",
         "kind": "generated-dist",
         "path": "dist/config/plan-output.js.map"
+      },
+      {
+        "id": "dist/config/project-config-path.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/config/project-config-path.d.ts"
+      },
+      {
+        "id": "dist/config/project-config-path.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/config/project-config-path.d.ts.map"
+      },
+      {
+        "id": "dist/config/project-config-path.js",
+        "kind": "generated-dist",
+        "path": "dist/config/project-config-path.js"
+      },
+      {
+        "id": "dist/config/project-config-path.js.map",
+        "kind": "generated-dist",
+        "path": "dist/config/project-config-path.js.map"
       },
       {
         "id": "dist/constants/index.d.ts",
@@ -28878,6 +29031,26 @@
         "path": "dist/lib/__tests__/worktree-paths-git-timeout.test.js.map"
       },
       {
+        "id": "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/worktree-paths-issue-4254-win32.test.js.map"
+      },
+      {
         "id": "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/worktree-paths-nongit-anchor.test.d.ts"
@@ -32536,6 +32709,26 @@
         "id": "dist/team/__tests__/index.compat-exports.test.js.map",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/index.compat-exports.test.js.map"
+      },
+      {
+        "id": "dist/team/__tests__/issue-4261-cmux-team-failures.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/issue-4261-cmux-team-failures.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/issue-4261-cmux-team-failures.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/issue-4261-cmux-team-failures.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/issue-4261-cmux-team-failures.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/issue-4261-cmux-team-failures.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/issue-4261-cmux-team-failures.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/issue-4261-cmux-team-failures.test.js.map"
       },
       {
         "id": "dist/team/__tests__/leader-inbox.test.d.ts",
@@ -45438,6 +45631,11 @@
         "path": "src/lib/__tests__/worktree-paths-git-timeout.test.ts"
       },
       {
+        "id": "src/lib/__tests__/worktree-paths-issue-4254-win32.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/worktree-paths-issue-4254-win32.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts"
@@ -46128,11 +46326,6 @@
         "path": "src/smoke/__tests__/copilot-smoke.test.ts"
       },
       {
-        "id": "src/smoke/__tests__/copilot-team-scenario.test.ts",
-        "kind": "src",
-        "path": "src/smoke/__tests__/copilot-team-scenario.test.ts"
-      },
-      {
         "id": "src/smoke/__tests__/fixtures/tier1-debug-excerpt.log",
         "kind": "src",
         "path": "src/smoke/__tests__/fixtures/tier1-debug-excerpt.log"
@@ -46226,11 +46419,6 @@
         "id": "src/smoke/copilot-smoke.ts",
         "kind": "src",
         "path": "src/smoke/copilot-smoke.ts"
-      },
-      {
-        "id": "src/smoke/copilot-team-scenario.ts",
-        "kind": "src",
-        "path": "src/smoke/copilot-team-scenario.ts"
       },
       {
         "id": "src/smoke/process-utils.ts",
@@ -46421,6 +46609,11 @@
         "id": "src/team/__tests__/index.compat-exports.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/index.compat-exports.test.ts"
+      },
+      {
+        "id": "src/team/__tests__/issue-4261-cmux-team-failures.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/issue-4261-cmux-team-failures.test.ts"
       },
       {
         "id": "src/team/__tests__/leader-inbox.test.ts",
@@ -53152,11 +53345,6 @@
       {
         "from": "src/__tests__/host-detection.test.ts",
         "to": "src/utils/host-detection.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/host-detection.test.ts",
-        "to": "src/utils/host-signal.ts",
         "kind": "imports"
       },
       {
@@ -60966,32 +61154,12 @@
       },
       {
         "from": "src/cli/commands/__tests__/team-status-json.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/team-status-json.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/team-status-json.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/team-status-json.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
       {
         "from": "src/cli/commands/__tests__/team-status-json.test.ts",
         "to": "src/cli/commands/team.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/team-status-json.test.ts",
-        "to": "src/team/git-worktree.ts",
         "kind": "imports"
       },
       {
@@ -61022,11 +61190,6 @@
       {
         "from": "src/cli/commands/__tests__/team.test.ts",
         "to": "src/cli/commands/team.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/team.test.ts",
-        "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
       {
@@ -61521,11 +61684,6 @@
       },
       {
         "from": "src/cli/commands/team.ts",
-        "to": "src/platform/process-utils.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/team.ts",
         "to": "src/team/api-interop.ts",
         "kind": "imports"
       },
@@ -61542,11 +61700,6 @@
       {
         "from": "src/cli/commands/team.ts",
         "to": "src/team/events.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/team.ts",
-        "to": "src/team/git-worktree.ts",
         "kind": "imports"
       },
       {
@@ -61587,11 +61740,6 @@
       {
         "from": "src/cli/commands/team.ts",
         "to": "src/team/sdk-host.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/team.ts",
-        "to": "src/team/sdk-transport.ts",
         "kind": "imports"
       },
       {
@@ -77565,6 +77713,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/lib/__tests__/worktree-paths-issue-4254-win32.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-issue-4254-win32.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-issue-4254-win32.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-issue-4254-win32.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-issue-4254-win32.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-issue-4254-win32.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -80745,56 +80923,6 @@
         "kind": "type-imports"
       },
       {
-        "from": "src/smoke/__tests__/copilot-team-scenario.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/__tests__/copilot-team-scenario.test.ts",
-        "to": "external:events",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/__tests__/copilot-team-scenario.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/__tests__/copilot-team-scenario.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/__tests__/copilot-team-scenario.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/__tests__/copilot-team-scenario.test.ts",
-        "to": "external:stream",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/__tests__/copilot-team-scenario.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/__tests__/copilot-team-scenario.test.ts",
-        "to": "src/smoke/copilot-sdk-scenarios.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/__tests__/copilot-team-scenario.test.ts",
-        "to": "src/smoke/copilot-team-scenario.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/__tests__/copilot-team-scenario.test.ts",
-        "to": "src/smoke/process-utils.ts",
-        "kind": "type-imports"
-      },
-      {
         "from": "src/smoke/copilot-binary.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -80932,11 +81060,6 @@
       {
         "from": "src/smoke/copilot-sdk-driver.ts",
         "to": "src/smoke/copilot-session-eval.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/smoke/copilot-sdk-driver.ts",
-        "to": "src/smoke/copilot-team-scenario.ts",
         "kind": "type-imports"
       },
       {
@@ -81121,11 +81244,6 @@
       },
       {
         "from": "src/smoke/copilot-smoke.ts",
-        "to": "src/smoke/copilot-team-scenario.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/copilot-smoke.ts",
         "to": "src/smoke/process-utils.ts",
         "kind": "imports"
       },
@@ -81138,56 +81256,6 @@
         "from": "src/smoke/copilot-smoke.ts",
         "to": "src/utils/config-dir.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/smoke/copilot-team-scenario.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/copilot-team-scenario.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/copilot-team-scenario.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/copilot-team-scenario.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/copilot-team-scenario.ts",
-        "to": "src/smoke/copilot-sdk-scenarios.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/copilot-team-scenario.ts",
-        "to": "src/smoke/copilot-sdk-scenarios.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/smoke/copilot-team-scenario.ts",
-        "to": "src/smoke/copilot-session-eval.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/copilot-team-scenario.ts",
-        "to": "src/smoke/copilot-session-eval.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/smoke/copilot-team-scenario.ts",
-        "to": "src/smoke/process-utils.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/smoke/copilot-team-scenario.ts",
-        "to": "src/smoke/process-utils.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/smoke/process-utils.ts",
@@ -82218,6 +82286,26 @@
         "from": "src/team/__tests__/index.compat-exports.test.ts",
         "to": "src/team/index.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/issue-4261-cmux-team-failures.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/issue-4261-cmux-team-failures.test.ts",
+        "to": "src/team/mailbox-notification-guard.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/issue-4261-cmux-team-failures.test.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/issue-4261-cmux-team-failures.test.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/team/__tests__/leader-inbox.test.ts",
@@ -87691,16 +87779,6 @@
       },
       {
         "from": "src/team/runtime-v2.ts",
-        "to": "src/utils/host-signal.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/runtime-v2.ts",
-        "to": "src/utils/host-signal.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/team/runtime-v2.ts",
         "to": "src/utils/omc-cli-rendering.ts",
         "kind": "imports"
       },
@@ -92846,12 +92924,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8163,
-      "edgeCount": 8916,
-      "importEdgeCount": 7385,
+      "nodeCount": 8195,
+      "edgeCount": 8893,
+      "importEdgeCount": 7366,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "dee71a8db4a824f28a3c897959eb1a3976d6e454ed47afe68f0d71eea64c3c13",
-  "manifestSha256": "9a513f785500bdb1403e75633ad7c5c1923fe55ba56f5ba9e2eeacc9cca1be04"
+  "inventorySha256": "318aed2ca70eb1b84b74e635e4e76f3b4162334ee1cc61ee3976b2abcecce080",
+  "manifestSha256": "d3d94f3aa79bd76df7c05357af5ce00840ee0dbfc763385cfbdc630e9eb0a5ac"
 }

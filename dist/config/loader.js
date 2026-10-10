@@ -3,7 +3,7 @@
  *
  * Handles loading and merging configuration from multiple sources:
  * - User config: ~/.config/claude-omc/config.jsonc
- * - Project config: .copilot/omg.jsonc
+ * - Project config: .copilot/omg.jsonc (falls back to legacy .copilot/omc.jsonc)
  * - Environment variables
  */
 import { readFileSync, existsSync } from "fs";
@@ -11,6 +11,7 @@ import { join, dirname } from "path";
 import { CANONICAL_TEAM_ROLES, KNOWN_AGENT_NAMES, } from "../shared/types.js";
 import { getConfigDir } from "../utils/paths.js";
 import { parseJsonc } from "../utils/jsonc.js";
+import { resolveProjectConfigPath } from "./project-config-path.js";
 import { getDefaultTierModels, BUILTIN_EXTERNAL_MODEL_DEFAULTS, shouldAutoForceInherit, } from "./models.js";
 import { normalizeDelegationRole } from "../features/delegation-routing/types.js";
 import { isDeprecatedMcpProvider } from "../features/delegation-routing/index.js";
@@ -194,7 +195,7 @@ export function getConfigPaths() {
     const userConfigDir = getConfigDir();
     return {
         user: join(userConfigDir, "claude-omc", "config.jsonc"),
-        project: join(process.cwd(), ".copilot", "omg.jsonc"),
+        project: resolveProjectConfigPath(process.cwd()),
     };
 }
 /**

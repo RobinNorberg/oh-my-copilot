@@ -3,6 +3,7 @@
  * Scans for and reports plugin coexistence issues.
  */
 import { inspectUnifiedMcpRegistrySync } from '../../installer/mcp-registry.js';
+import { type LegacyProjectConfig } from '../../config/project-config-path.js';
 export interface WorkspaceMarkerStatus {
     /** Absolute path to the directory containing .omc-workspace, or null if absent. */
     markerRoot: string | null;
@@ -49,6 +50,8 @@ export interface ConflictReport {
     mcpRegistrySync: ReturnType<typeof inspectUnifiedMcpRegistrySync>;
     workspaceMarker: WorkspaceMarkerStatus;
     nodeOnPath: boolean;
+    /** Legacy-named project config files (`.copilot/omc.jsonc`, `.claude/omc.jsonc`). WARN only. */
+    legacyProjectConfigs: LegacyProjectConfig[];
     hasConflicts: boolean;
 }
 export interface ClaudeMdFileStatus {

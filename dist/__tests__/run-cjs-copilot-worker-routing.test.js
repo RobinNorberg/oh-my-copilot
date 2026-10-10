@@ -14,6 +14,30 @@ const REPO_ROOT = join(__dirname, '..', '..');
 const RUN_CJS_PATH = join(REPO_ROOT, 'scripts', 'run.cjs');
 const NODE = process.execPath;
 const runCjs = createRequire(__filename)(RUN_CJS_PATH);
+const dispatcher = createRequire(__filename)(join(REPO_ROOT, 'scripts', 'copilot', 'dispatch.cjs'));
+/**
+ * copilot/hooks.json runs one scripts/copilot/dispatch.cjs entry per
+ * (event, matcher) group. Expand it back into one entry per hook, each with
+ * its own hooks/hooks.json timeout: what run.cjs routing sees per hook.
+ */
+function perHookEntries() {
+    const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'copilot', 'hooks.json'), 'utf8'));
+    return Object.entries(manifest.hooks).flatMap(([event, entries]) => entries.flatMap((entry) => {
+        const dispatchIndex = entry.args.findIndex((arg) => arg.endsWith('/scripts/copilot/dispatch.cjs'));
+        expect(dispatchIndex, event).toBeGreaterThanOrEqual(0);
+        const parsed = dispatcher.parseDispatchArgv(entry.args.slice(dispatchIndex + 1));
+        expect(parsed.event).toBe(event);
+        return parsed.hooks.map(({ script, args }) => {
+            const scriptPath = join(REPO_ROOT, 'scripts', basename(script));
+            const manifestHook = runCjs.resolveHookTimeoutMs(scriptPath, args);
+            expect(manifestHook, script).not.toBeNull();
+            return {
+                event,
+                entry: { script: scriptPath, extraArgs: args, env: entry.env, timeoutSec: manifestHook.timeoutMs / 1000 },
+            };
+        });
+    }));
+}
 /**
  * A tiny --require preload that reports, via fd 3, whether it ever loaded
  * inside a Worker thread, without touching stdout/stderr. It is passed on
@@ -149,42 +173,36 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
         expect(JSON.parse(result.stdout.trim()).isMainThread).toBe(true);
     });
     it('the audited set covers exactly the generic entries of copilot/hooks.json', () => {
-        const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'copilot', 'hooks.json'), 'utf8'));
         const generic = new Set();
-        for (const entries of Object.values(manifest.hooks)) {
-            for (const entry of entries) {
-                const script = basename(entry.args[3]);
-                if (!runCjs.TRUSTED_WORKER_HOOKS.has(script) && !/^(wiki-)?session-end\.mjs$/.test(script))
-                    generic.add(script);
-            }
+        for (const { entry } of perHookEntries()) {
+            const script = basename(entry.script);
+            if (!runCjs.TRUSTED_WORKER_HOOKS.has(script) && !/^(wiki-)?session-end\.mjs$/.test(script))
+                generic.add(script);
         }
         // A new upstream hook must be audited (no process.chdir, signal handlers,
         // isMainThread gating, or stdio-inheriting children) before it joins the set.
         expect([...runCjs.COPILOT_WORKER_HOOKS].sort()).toEqual([...generic].sort());
     });
     it('every shipped generic entry resolves to the Worker path under its own event, except the <=3s-budget ones that stay on the child path', () => {
-        const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'copilot', 'hooks.json'), 'utf8'));
         const root = realpathSync(REPO_ROOT);
         let checked = 0;
-        for (const entries of Object.values(manifest.hooks)) {
-            for (const entry of entries) {
-                const script = basename(entry.args[3]);
-                if (!runCjs.COPILOT_WORKER_HOOKS.has(script))
-                    continue;
-                const resolution = { targetPath: realpathSync(join(root, 'scripts', script)), trustedPluginRoot: root };
-                const hook = runCjs.resolveCopilotWorkerTarget(resolution, entry.args.slice(4), entry.env);
-                const label = `${script} ${entry.env.OMC_HOOK_EVENT} (timeoutSec=${entry.timeoutSec})`;
-                if (entry.timeoutSec * 1000 <= runCjs.COPILOT_WORKER_MIN_TIMEOUT_MS) {
-                    // A Worker cannot preempt a blocked sync call; a tight manifest
-                    // budget stays on the supervised child path instead.
-                    expect(hook, label).toBeNull();
-                }
-                else {
-                    expect(hook, label).toMatchObject({ event: entry.env.OMC_HOOK_EVENT });
-                }
-                expect(runCjs.resolveCopilotWorkerTarget(resolution, entry.args.slice(4), {})).toBeNull();
-                checked++;
+        for (const { entry } of perHookEntries()) {
+            const script = basename(entry.script);
+            if (!runCjs.COPILOT_WORKER_HOOKS.has(script))
+                continue;
+            const resolution = { targetPath: realpathSync(join(root, 'scripts', script)), trustedPluginRoot: root };
+            const hook = runCjs.resolveCopilotWorkerTarget(resolution, entry.extraArgs, entry.env);
+            const label = `${script} ${entry.env.OMC_HOOK_EVENT} (timeoutSec=${entry.timeoutSec})`;
+            if (entry.timeoutSec * 1000 <= runCjs.COPILOT_WORKER_MIN_TIMEOUT_MS) {
+                // A Worker cannot preempt a blocked sync call; a tight manifest
+                // budget stays on the supervised child path instead.
+                expect(hook, label).toBeNull();
             }
+            else {
+                expect(hook, label).toMatchObject({ event: entry.env.OMC_HOOK_EVENT });
+            }
+            expect(runCjs.resolveCopilotWorkerTarget(resolution, entry.extraArgs, {})).toBeNull();
+            checked++;
         }
         expect(checked).toBe(runCjs.COPILOT_WORKER_HOOKS.size + 1); // subagent-tracker start + stop
     });
@@ -192,7 +210,6 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
     // payload in fresh identical projects: exit code, normalised stdout, and the
     // set of files written must match.
     it('on an idle project, every hook\'s stdout/stderr and written files match the child path, and the worker run actually used the Worker path where expected', () => {
-        const manifest = JSON.parse(readFileSync(join(REPO_ROOT, 'copilot', 'hooks.json'), 'utf8'));
         const sessionId = '11111111-2222-4333-8444-555555555555';
         const runAll = (tag, extra, markerPath) => {
             const base = tempDir(`omc-copilot-worker-equiv-${tag}-`);
@@ -208,53 +225,51 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
                 .replace(/\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z/g, '<TS>');
             const results = [];
             const runtimeByName = {};
-            for (const [event, entries] of Object.entries(manifest.hooks)) {
-                for (const entry of entries) {
-                    const args = entry.args.map((arg) => arg.replaceAll('${CLAUDE_PLUGIN_ROOT}', REPO_ROOT)).slice(2);
-                    if (!runCjs.COPILOT_WORKER_HOOKS.has(basename(args[1])))
-                        continue;
-                    const payload = {
-                        session_id: sessionId, cwd: project, hook_event_name: event, transcript_path: join(home, 'events.jsonl'),
-                    };
-                    if (/ToolUse|Permission/.test(event))
-                        Object.assign(payload, { tool_name: 'Bash', tool_input: { command: 'ls' }, tool_response: { output: 'README.md' }, error: 'boom' });
-                    if (event === 'SessionStart')
-                        payload.source = 'startup';
-                    if (/Subagent/.test(event))
-                        Object.assign(payload, { agent_id: 'a1', agent_type: 'executor' });
-                    if (/Stop/.test(event))
-                        payload.stop_hook_active = false;
-                    if (event === 'PreCompact')
-                        payload.trigger = 'auto';
-                    // fd 3 carries the --require marker's worker/child report so it
-                    // never touches the stdout/stderr the hook itself produces.
-                    const result = spawnSync(NODE, ['--require', markerPath, ...args], {
-                        cwd: project,
-                        env: hostEnv({
-                            HOME: home, USERPROFILE: home, COPILOT_HOME: home, CLAUDE_CONFIG_DIR: home, CLAUDE_PLUGIN_ROOT: REPO_ROOT,
-                            OMC_STATE_DIR: '', ...entry.env, ...extra,
-                        }),
-                        input: JSON.stringify(payload),
-                        encoding: 'utf8',
-                        stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
-                        timeout: 30_000,
-                        windowsHide: true,
-                    });
-                    const name = `${event} ${args.slice(1).map((arg) => basename(arg)).join(' ')}`;
-                    results.push({
-                        name,
-                        status: result.status,
-                        stdout: normalise(result.stdout || ''),
-                        stderr: normalise(result.stderr || ''),
-                    });
-                    const stayedOnChildPath = entry.timeoutSec * 1000 <= runCjs.COPILOT_WORKER_MIN_TIMEOUT_MS;
-                    const expectedWorker = extra.OMC_COPILOT_HOOK_WORKER !== '0' && !stayedOnChildPath;
-                    // `encoding: 'utf8'` above decodes every stdio slot in `output`,
-                    // including fd 3, to a string rather than a Buffer.
-                    const marker = result.output?.[3];
-                    const actualWorker = typeof marker === 'string' && marker.trim() === 'worker';
-                    runtimeByName[name] = { actualWorker, expectedWorker };
-                }
+            for (const { event, entry } of perHookEntries()) {
+                const args = [RUN_CJS_PATH, entry.script, ...entry.extraArgs];
+                if (!runCjs.COPILOT_WORKER_HOOKS.has(basename(args[1])))
+                    continue;
+                const payload = {
+                    session_id: sessionId, cwd: project, hook_event_name: event, transcript_path: join(home, 'events.jsonl'),
+                };
+                if (/ToolUse|Permission/.test(event))
+                    Object.assign(payload, { tool_name: 'Bash', tool_input: { command: 'ls' }, tool_response: { output: 'README.md' }, error: 'boom' });
+                if (event === 'SessionStart')
+                    payload.source = 'startup';
+                if (/Subagent/.test(event))
+                    Object.assign(payload, { agent_id: 'a1', agent_type: 'executor' });
+                if (/Stop/.test(event))
+                    payload.stop_hook_active = false;
+                if (event === 'PreCompact')
+                    payload.trigger = 'auto';
+                // fd 3 carries the --require marker's worker/child report so it
+                // never touches the stdout/stderr the hook itself produces.
+                const result = spawnSync(NODE, ['--require', markerPath, ...args], {
+                    cwd: project,
+                    env: hostEnv({
+                        HOME: home, USERPROFILE: home, COPILOT_HOME: home, CLAUDE_CONFIG_DIR: home, CLAUDE_PLUGIN_ROOT: REPO_ROOT,
+                        OMC_STATE_DIR: '', ...entry.env, ...extra,
+                    }),
+                    input: JSON.stringify(payload),
+                    encoding: 'utf8',
+                    stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
+                    timeout: 30_000,
+                    windowsHide: true,
+                });
+                const name = `${event} ${args.slice(1).map((arg) => basename(arg)).join(' ')}`;
+                results.push({
+                    name,
+                    status: result.status,
+                    stdout: normalise(result.stdout || ''),
+                    stderr: normalise(result.stderr || ''),
+                });
+                const stayedOnChildPath = entry.timeoutSec * 1000 <= runCjs.COPILOT_WORKER_MIN_TIMEOUT_MS;
+                const expectedWorker = extra.OMC_COPILOT_HOOK_WORKER !== '0' && !stayedOnChildPath;
+                // `encoding: 'utf8'` above decodes every stdio slot in `output`,
+                // including fd 3, to a string rather than a Buffer.
+                const marker = result.output?.[3];
+                const actualWorker = typeof marker === 'string' && marker.trim() === 'worker';
+                runtimeByName[name] = { actualWorker, expectedWorker };
             }
             const files = [];
             const walk = (dir) => {
