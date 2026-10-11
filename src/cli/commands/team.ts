@@ -1307,7 +1307,9 @@ export async function teamCommand(args: string[]): Promise<void> {
     const specPath = args[args.indexOf('--spec') + 1];
     if (!args.includes('--spec') || !specPath) throw new Error('Usage: omg team sdk-host --spec <sdk-host-spec.json>');
     const { runSdkHostMain } = await import('../../team/sdk-host.js');
-    await runSdkHostMain(specPath);
+    // Injected here, not imported by sdk-host.ts: the team and runtime-cli bundles
+    // reach sdk-host.ts and must not pull in the whole MCP tool registry.
+    await runSdkHostMain(specPath, async () => (await import('../../team/sdk-inprocess-tools.js')).buildSdkInProcessTools);
     return;
   }
 

@@ -420,6 +420,58 @@ describe('sdk host', () => {
     expect(await observeWorkerLaunchProvider(attempt)).toBe('dead');
     expect(await retireAndCleanupCurrentWorkerLaunchAttempt(attempt, 'test', async () => true)).toBe(true);
     expect(existsSync(attempt.currentPath)).toBe(false);
+    expect(session.tool_transport).toBe('mcp');
+    expect(cfg.tools).toBeUndefined();
+  });
+
+  describe('in_process_tools', () => {
+    const fakeTool = { name: 't-state_read', description: 'd', parameters: { type: 'object' as const, properties: {}, required: [] }, skipPermission: true as const, handler: async () => '' };
+
+    async function runWith(builder: SdkHostDeps['loadInProcessTools'], hostEnv: NodeJS.ProcessEnv) {
+      const attempt = await newAttempt();
+      const { loaded, rec } = fakeSdk();
+      const calls: unknown[][] = [];
+      const host = await hostWithLeader(attempt, deps(loaded, { env: hostEnv, ...(builder ? { loadInProcessTools: async () => {
+        const build = await builder();
+        return ((...args: Parameters<typeof build>) => { calls.push(args); return build(...args); }) as typeof build;
+      } } : {}) }), async () => {
+        await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
+        ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
+      }, specFor(attempt, { in_process_tools: true }));
+      expect(await host).toBe('stopped');
+      return { cfg: rec.sessions[0]!, connEnv: rec.connection!.env!, calls, session: readSdkSession(stateRoot, WORKER)! };
+    }
+
+    it('registers the tools, disables the t server and gives the handlers the session env', async () => {
+      const hostEnv: NodeJS.ProcessEnv = { [process.platform === 'win32' ? 'Path' : 'PATH']: '/usr/bin', OMC_STRIPPED: '1', COPILOT_HOME: '/real-home' };
+      const { cfg, connEnv, calls, session } = await runWith(
+        async () => () => ({ tools: [fakeTool], disabledMcpServer: 't' }),
+        hostEnv,
+      );
+      expect(cfg.tools).toEqual([fakeTool]);
+      expect(cfg.disabledMcpServers).toEqual(['github-mcp-server', 't']);
+      expect(cfg.excludedTools).toEqual(expect.arrayContaining(['t-host_smoke', 'web_fetch']));
+      // builder(sdk module, server, the session's excludedTools, the session env's OMC_DISABLE_TOOLS)
+      expect(calls[0]?.[1]).toBe('t');
+      expect(calls[0]?.[2]).toEqual(cfg.excludedTools);
+      expect(session.tool_transport).toBe('in-process');
+      // The host env now equals the runtime's (MCP child) env.
+      expect(hostEnv).toEqual(connEnv);
+      expect(hostEnv.OMC_STRIPPED).toBeUndefined();
+      expect(hostEnv.COPILOT_HOME).toBe(sdkWorkerFiles(stateRoot, WORKER).home);
+    });
+
+    it.each([
+      ['the SDK lacks the capability', (async () => () => null) as SdkHostDeps['loadInProcessTools']],
+      ['no builder is wired', undefined],
+    ])('falls back to the t MCP server when %s', async (_label, builder) => {
+      const hostEnv: NodeJS.ProcessEnv = { OMC_STRIPPED: '1' };
+      const { cfg, session } = await runWith(builder, hostEnv);
+      expect(cfg.tools).toBeUndefined();
+      expect(cfg.disabledMcpServers).toEqual(['github-mcp-server']);
+      expect(session.tool_transport).toBe('mcp');
+      expect(hostEnv.OMC_STRIPPED).toBe('1');
+    });
   });
 
   it('a termination request hard-stops: tree-kills the runtime and publishes termination-complete', async () => {

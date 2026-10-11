@@ -86,6 +86,8 @@ export interface SdkHostSpec {
   node_path: string;
   /** Copilot config dir whose login identity the per-worker home copies. */
   user_config_dir: string;
+  /** `team.sdk.inProcessTools`: register the plugin tools in the host instead of the `t` MCP server (sdk-inprocess-tools.ts). */
+  in_process_tools?: boolean;
 }
 
 export interface SdkDoorbellEntry {
@@ -125,6 +127,8 @@ export interface SdkSessionFile {
     shutdown_credits: number | null;
   };
   hooks: { session_end_runs: number; failed: number };
+  /** Where the plugin tools run: `mcp` (the `t` server) or `in-process` (the host); absent before the session exists. */
+  tool_transport?: 'mcp' | 'in-process';
   aborts: number;
   permissions: Array<{ at: string; kind: string; approve: boolean; reason: string; detail: string }>;
   last_error: string | null;
@@ -174,6 +178,7 @@ export interface SdkLaunchInput {
   denyTools: string[];
   denyUrls: string[];
   mcpServer?: string;
+  inProcessTools?: boolean;
   /** Test seam for the detached spawn. */
   spawnHost?: (cliPath: string, specPath: string, logPath: string, cwd: string) => number | undefined;
   ackTimeoutMs?: number;
@@ -244,6 +249,7 @@ export async function launchSdkHost(input: SdkLaunchInput): Promise<SdkLaunchRes
     omg_cli_path: cliPath,
     node_path: process.execPath,
     user_config_dir: input.userConfigDir,
+    ...(input.inProcessTools ? { in_process_tools: true } : {}),
   };
   writeFileSync(files.spec, `${JSON.stringify(spec, null, 2)}\n`);
   // A new host reads the doorbell from offset 0: start it empty so a previous

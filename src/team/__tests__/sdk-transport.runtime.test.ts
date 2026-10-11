@@ -94,6 +94,30 @@ describe('team.sdk.launchConcurrency', () => {
   });
 });
 
+describe('team.sdk.inProcessTools', () => {
+  const previous = process.env.OMC_TEAM_SDK_INPROCESS_TOOLS;
+  afterEach(() => {
+    if (previous === undefined) delete process.env.OMC_TEAM_SDK_INPROCESS_TOOLS;
+    else process.env.OMC_TEAM_SDK_INPROCESS_TOOLS = previous;
+  });
+  const withFlag = (value: unknown): PluginConfig => ({ team: { sdk: { inProcessTools: value as boolean } } } as PluginConfig);
+
+  it('defaults off, honours the config, and lets OMC_TEAM_SDK_INPROCESS_TOOLS=1/0 override it', () => {
+    delete process.env.OMC_TEAM_SDK_INPROCESS_TOOLS;
+    expect(resolveSdkTeamSettings({} as PluginConfig).inProcessTools).toBe(false);
+    expect(resolveSdkTeamSettings(withFlag(true)).inProcessTools).toBe(true);
+    process.env.OMC_TEAM_SDK_INPROCESS_TOOLS = '0';
+    expect(resolveSdkTeamSettings(withFlag(true)).inProcessTools).toBe(false);
+    process.env.OMC_TEAM_SDK_INPROCESS_TOOLS = '1';
+    expect(resolveSdkTeamSettings({} as PluginConfig).inProcessTools).toBe(true);
+  });
+
+  it('rejects a non-boolean as a config error', () => {
+    delete process.env.OMC_TEAM_SDK_INPROCESS_TOOLS;
+    expect(() => resolveSdkTeamSettings(withFlag('yes'))).toThrow(/^invalid_team_sdk_config:inProcessTools/);
+  });
+});
+
 describe('team.sdk settings', () => {
   const previous = process.env.OMC_TEAM_SDK_MAX_CREDITS;
   afterEach(() => {

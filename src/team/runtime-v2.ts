@@ -1567,6 +1567,8 @@ export interface SdkTeamSettings {
   startupEvidenceMs: number;
   /** Hosts launched at once; each launch waits on its own worker's claim. */
   launchConcurrency: number;
+  /** `team.sdk.inProcessTools` / `OMC_TEAM_SDK_INPROCESS_TOOLS=1`. */
+  inProcessTools: boolean;
   denyTools: string[];
   denyUrls: string[];
 }
@@ -1666,9 +1668,15 @@ export function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings
   if (configConcurrency !== undefined && !(Number.isInteger(configConcurrency) && (configConcurrency as number) > 0)) {
     throw new Error(`invalid_team_sdk_config:launchConcurrency must be a positive integer (got ${JSON.stringify(configConcurrency)})`);
   }
+  const configInProcess = sdk.inProcessTools as unknown;
+  if (configInProcess !== undefined && typeof configInProcess !== 'boolean') {
+    throw new Error(`invalid_team_sdk_config:inProcessTools must be a boolean (got ${JSON.stringify(configInProcess)})`);
+  }
+  const envInProcess = process.env.OMC_TEAM_SDK_INPROCESS_TOOLS?.trim();
   const envConcurrency = envNumber('OMC_TEAM_SDK_LAUNCH_CONCURRENCY');
   const model = process.env.OMC_TEAM_SDK_MODEL?.trim() || sdk.model?.trim();
   return {
+    inProcessTools: envInProcess === '1' ? true : envInProcess === '0' ? false : (configInProcess as boolean | undefined) ?? false,
     launchConcurrency: (envConcurrency !== undefined ? Math.max(1, Math.floor(envConcurrency)) : undefined)
       ?? (configConcurrency as number | undefined) ?? DEFAULT_SDK_LAUNCH_CONCURRENCY,
     maxCreditsPerWorker: envNumber('OMC_TEAM_SDK_MAX_CREDITS') ?? (configCap as number | undefined) ?? 10,
@@ -1730,6 +1738,7 @@ async function spawnSdkV2Worker(opts: SpawnV2WorkerOptions, sdk: SdkTeamSettings
     maxCredits: sdk.maxCreditsPerWorker,
     denyTools: sdk.denyTools,
     denyUrls: sdk.denyUrls,
+    inProcessTools: sdk.inProcessTools,
   });
   const paneId = sdkPaneId(opts.workerName);
   if (!launch.ok) {

@@ -36,6 +36,8 @@ import {
 import { loadWorkerLaunchAttempt, type WorkerLaunchAttempt } from './worker-launch-ack.js';
 import { buildSdkExcludedTools, decideSdkPermission, type SdkPermissionRequest, type SdkPolicyContext } from './sdk-policy.js';
 import { sdkWorkerFiles, type SdkDoorbellEntry, type SdkHostSpec, type SdkSessionFile } from './sdk-transport.js';
+// Type-only: the builder is injected (SdkHostDeps.loadInProcessTools).
+import type { buildSdkInProcessTools, SdkInProcessToolSet } from './sdk-inprocess-tools.js';
 
 const DECISION_TIMEOUT_MS = 15_000;
 const START_TIMEOUT_MS = 60_000;
@@ -59,6 +61,8 @@ export interface SdkHostDeps {
   log?: (line: string) => void;
   /** Session-file writer (test seam for win32 rename contention); defaults to atomicWriteJson. */
   writeSessionJson?: (path: string, value: unknown) => Promise<void>;
+  /** Loads the in-process tool builder for `spec.in_process_tools`; absent means the `t` MCP server. */
+  loadInProcessTools?: () => Promise<typeof buildSdkInProcessTools>;
 }
 
 export type SdkHostOutcome =
@@ -169,6 +173,20 @@ export function prependPath(env: NodeJS.ProcessEnv, dir: string, platform: NodeJ
     : 'PATH';
   const sep = platform === 'win32' ? ';' : ':';
   env[key] = env[key] ? `${dir}${sep}${env[key]}` : dir;
+}
+
+/**
+ * Make `target` hold exactly `env`. The `t` MCP server child runs with the
+ * session env; in-process tool handlers read `process.env`, so with
+ * `in_process_tools` the host adopts that env once the runtime is spawned.
+ */
+export function adoptSessionEnv(target: NodeJS.ProcessEnv, env: NodeJS.ProcessEnv): void {
+  for (const key of Object.keys(target)) {
+    if (!(key in env)) delete target[key];
+  }
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined) target[key] = value;
+  }
 }
 
 /** `omg` shims so `omg team api …` inside the worker runs the leader's own CLI build. */
@@ -430,19 +448,37 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
       : { kind: 'reject' as const, feedback: `omg team sdk worker policy: ${decision.reason}` };
   };
 
+  const excludedTools = buildSdkExcludedTools(spec.mcp_server, spec.deny_tools);
+  // team.sdk.inProcessTools: the plugin tools as SDK session tools; null (no
+  // builder, or an SDK without the capability) keeps the `t` MCP server.
+  let inProcess: SdkInProcessToolSet | null = null;
+  if (spec.in_process_tools) {
+    try {
+      const build = deps.loadInProcessTools ? await deps.loadInProcessTools() : null;
+      inProcess = build ? build(loaded.module, spec.mcp_server, excludedTools, env.OMC_DISABLE_TOOLS) : null;
+    } catch (err) {
+      log(`in-process tools failed to load: ${errText(err)}`);
+    }
+    if (!inProcess) log(`in-process tools unavailable; using the ${spec.mcp_server} MCP server`);
+  }
+  session.tool_transport = inProcess ? 'in-process' : 'mcp';
+
   try {
     await withTimeout(client.start(), START_TIMEOUT_MS, 'client.start()');
     session.runtime_pid = runtimePid(client) ?? null;
     // The leader's last-resort kill checks this identity, never a bare pid.
     session.runtime_start_identity = session.runtime_pid ? deps.startIdentity(session.runtime_pid) : null;
     mark('client_started_at');
+    // The runtime has its env now; the in-process handlers get the same one.
+    if (inProcess) adoptSessionEnv(deps.env, env);
     sessionRef = await withTimeout(client.createSession({
       onPermissionRequest,
       onEvent,
       pluginDirectories: [spec.plugin_root],
       workingDirectory: spec.worker_cwd,
-      disabledMcpServers: ['github-mcp-server'],
-      excludedTools: buildSdkExcludedTools(spec.mcp_server, spec.deny_tools),
+      disabledMcpServers: inProcess ? ['github-mcp-server', inProcess.disabledMcpServer] : ['github-mcp-server'],
+      excludedTools,
+      ...(inProcess ? { tools: inProcess.tools } : {}),
       ...(spec.model ? { model: spec.model } : {}),
     }), RPC_TIMEOUT_MS, 'createSession()');
     session.session_id = sessionRef.sessionId;
@@ -537,7 +573,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
 }
 
 /** CLI entry (`omg team sdk-host --spec <file>`): runs the host, then exits the process. */
-export async function runSdkHostMain(specPath: string): Promise<never> {
+export async function runSdkHostMain(specPath: string, loadInProcessTools?: SdkHostDeps['loadInProcessTools']): Promise<never> {
   const { spawnSync } = await import('node:child_process');
   const { loadCopilotSdk } = await import('../smoke/copilot-sdk-driver.js');
   const { killProcessTree } = await import('../smoke/process-utils.js');
@@ -558,6 +594,7 @@ export async function runSdkHostMain(specPath: string): Promise<never> {
       pollMs: 250,
       env: process.env,
       log,
+      ...(loadInProcessTools ? { loadInProcessTools } : {}),
     });
     log(`exit outcome=${outcome}`);
     code = outcome === 'stopped' || outcome === 'terminated' || outcome === 'team_gone' ? 0 : 1;

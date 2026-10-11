@@ -17,7 +17,7 @@ import {
 import type { CallToolRequest, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { registerStandaloneShutdownHandlers } from './standalone-shutdown.js';
 import { cleanupOwnedBridgeSessions } from '../tools/python-repl/bridge-manager.js';
-import { buildListToolsResponse, getEnabledTools } from './tool-registry.js';
+import { buildListToolsResponse, callTool, getEnabledTools } from './tool-registry.js';
 import { disconnectAll as disconnectAllLsp } from '../tools/lsp/index.js';
 
 type StandaloneCallToolHandler = (
@@ -52,28 +52,7 @@ const setStandaloneCallToolRequestHandler =
 
 setStandaloneCallToolRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-
-  const tool = getStandaloneTools().find(t => t.name === name);
-  if (!tool) {
-    return {
-      content: [{ type: 'text', text: `Unknown tool: ${name}` }],
-      isError: true,
-    };
-  }
-
-  try {
-    const result = await tool.handler((args ?? {}) as unknown);
-    return {
-      content: result.content,
-      isError: result.isError ?? false,
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return {
-      content: [{ type: 'text', text: `Error: ${errorMessage}` }],
-      isError: true,
-    };
-  }
+  return callTool(name, args, getStandaloneTools());
 });
 
 // Graceful shutdown: disconnect LSP servers on process termination (#768).
