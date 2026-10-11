@@ -4,6 +4,67 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Changed: upstream port a720eabd0..7cb577e94
+
+Upstream oh-my-claudecode `dev` is ported through 7cb577e94 (224 commits,
+42 merges). See [MIGRATION.md](docs/MIGRATION.md) for the three upstream
+migration notes (glossary rename, shipyard tracker artifacts and audit
+contract v2, SSRF guard for IPv6 literals).
+
+- **Shipyard is lean (upstream #4274).** Drydock seeds two faces on day one
+  (`CLAUDE.md` + `GLOSSARY.md`); every other surface appears on first use,
+  and `scripts/shipyard-audit.mjs` (contract v2) checks only adopted
+  surfaces. Navigator maps, launch specs and tickets are tracker-only; the
+  glossary file is `GLOSSARY.md` (a legacy `CONTEXT.md` glossary is still
+  read, and both at once is a `duplicate-authority` finding).
+- **New `session-flow` skill (upstream #4319)**: an evidence-backed map of the
+  current session; its Tasks are excluded from the continuation hook. The
+  plugin now ships 63 skills.
+- **Permission auto-approval is narrower (upstream #4283, #4280).** The
+  PermissionRequest hook auto-approves only `git status`, `gh issue|pr
+  view|list|status`, `ls` and the repo-scoped inspection commands; build,
+  lint, targeted-test and heredoc `git commit`/`git tag` commands go through
+  the normal permission flow. The Copilot camelCase input shape is unchanged.
+- **AFK user settings are opt-in (upstream #4282).** `OMC_AFK_INCLUDE_USER_SETTINGS=1`
+  widens a Claude Code factory link or `omg ralph afk` to
+  `--setting-sources user,project,local`; chain ledgers carry the choice.
+  Copilot links have no setting-sources flag and are unaffected.
+
+### Fixed: upstream port a720eabd0..7cb577e94
+
+- MCP registry sync parses multiline TOML strings and literal strings,
+  extended Unicode escapes and quoted keys, infers omitted registry
+  transports, and ignores Codex-only type drift (upstream #4297, #4294).
+- Native Windows tmux gets a PowerShell identity-guard condition (upstream
+  #4269); the fork's psmux private-namespace path, which never runs the
+  `if-shell` guard, is unchanged.
+- Stale plugin-cache purge validates hook payloads, redirect targets, UNC and
+  symlink-cycle traversal before relinking (upstream #4298); cache occupancy
+  fails closed on unreadable records (#4299).
+- Notifications: JSON webhook templates escape values (#4295), inherited
+  template properties are ignored (#4300), custom integration shapes are
+  validated (#4301), carriage returns are normalized before reply injection
+  (#4308), Telegram proxy exclusions honor ports (#4311), tmux session names
+  keep whitespace (#4312), and the reply registry is rewritten atomically
+  (#4314).
+- HUD: custom rate-provider stderr is drained (#4302) and its cache is keyed
+  by command and periods (#4304), completed background-task history is capped
+  (#4303), directory hyperlinks are encoded (#4305), and ANSI truncation uses
+  visible text (#4306, #4287).
+- Team: Cursor worker lifecycle and centralized state resolution (#4272),
+  usage records count Unicode characters (#4310) and skip invalid records
+  (#4315).
+- Also: JSONC comment token boundaries (#4285), payloads without a JSON
+  representation are rejected (#4286), complete IPv6 local ranges in the SSRF
+  guard (#4288), custom-note delimiter collisions (#4289), literal git tag
+  arguments (#4290), exact Azure DevOps host matching (#4291), transcript
+  context usage within a complete frame (#4292), incomplete version-manager
+  Node installs skipped (#4293), Git remote cache keyed by resolved cwd
+  (#4296), directory diagnostics fail on compiler invocation errors (#4309),
+  session-search terminal output escapes controls (#4307), LSP file URIs use
+  native paths (#4313), and keyword detection skips attributed paste blocks
+  (#4318).
+
 ### Added: `omg ship` and the `ship` skill
 
 - **`/oh-my-copilot:ship`** takes a task or an open PR to merge-ready: an
