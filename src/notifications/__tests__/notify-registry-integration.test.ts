@@ -6,9 +6,11 @@ import { join } from "node:path";
 // Mock session-registry before importing notify
 const mockRegisterMessage = vi.fn();
 const mockRemoveMessagesByPane = vi.fn();
+const mockMarkPaneNonReplyable = vi.fn();
 vi.mock("../session-registry.js", () => ({
   registerMessage: (mapping: unknown) => mockRegisterMessage(mapping),
-  removeMessagesByPane: (paneId: string) => mockRemoveMessagesByPane(paneId),
+  removeMessagesByPane: (...args: unknown[]) => mockRemoveMessagesByPane(...args),
+  markPaneNonReplyable: (...args: unknown[]) => mockMarkPaneNonReplyable(...args),
 }));
 
 // Mock tmux to control pane ID
@@ -104,6 +106,7 @@ describe("notify() -> session-registry integration", () => {
     // Reset forwarding mocks to defaults
     mockGetCurrentTmuxPaneId.mockReturnValue("%42");
     mockGetCurrentTmuxSession.mockReturnValue("main");
+    mockRemoveMessagesByPane.mockReturnValue(true);
     mockGetNotificationConfig.mockReturnValue(DEFAULT_CONFIG);
     mockIsEventEnabled.mockReturnValue(true);
     mockShouldIncludeTmuxTail.mockReturnValue(false);
@@ -426,6 +429,7 @@ describe("notify() -> session-registry integration", () => {
   it("drops the pane's earlier reply mappings before sending a non-replyable message", async () => {
     const order: string[] = [];
     mockRemoveMessagesByPane.mockImplementation(() => { order.push("remove"); return true; });
+    mockMarkPaneNonReplyable.mockImplementation(() => { order.push("mark"); });
     vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => {
       order.push("send");
       return { ok: true, status: 200, json: async () => ({ id: "discord-msg-x" }) };
@@ -442,14 +446,44 @@ describe("notify() -> session-registry integration", () => {
       question: "Permission needed: Run command: rm",
       replyable: false,
     });
-    expect(mockRemoveMessagesByPane).toHaveBeenCalledWith("%42");
-    expect(order).toEqual(["remove", "send"]);
+    expect(mockMarkPaneNonReplyable).toHaveBeenCalledWith("%42", "main");
+    expect(mockRemoveMessagesByPane).toHaveBeenCalledWith("%42", "main");
+    expect(order).toEqual(["mark", "remove", "send"]);
 
     // Without a pane there is nothing to invalidate.
     mockGetCurrentTmuxPaneId.mockReturnValue(null);
     mockRemoveMessagesByPane.mockClear();
     await notify("ask-user-question", { sessionId: "sess-1", projectPath: "/test/project", question: "Permission", replyable: false });
     expect(mockRemoveMessagesByPane).not.toHaveBeenCalled();
+  });
+
+  it("fails closed: no non-replyable message when the pane's mappings cannot be removed (lock timeout)", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ id: "m" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    mockRemoveMessagesByPane.mockReturnValue(false);
+    expect(await notify("ask-user-question", { sessionId: "s", projectPath: "/p", question: "Permission", replyable: false })).toBeNull();
+    mockRemoveMessagesByPane.mockImplementation(() => { throw new Error("EACCES"); });
+    expect(await notify("ask-user-question", { sessionId: "s", projectPath: "/p", question: "Permission", replyable: false })).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+    // The marker is still written, so the listener refuses older mappings.
+    expect(mockMarkPaneNonReplyable).toHaveBeenCalledTimes(2);
+
+    // A marker write failure alone does not block the message.
+    mockRemoveMessagesByPane.mockReset().mockReturnValue(true);
+    mockMarkPaneNonReplyable.mockImplementation(() => { throw new Error("EACCES"); });
+    expect((await notify("ask-user-question", { sessionId: "s", projectPath: "/p", question: "Permission", replyable: false }))!.anySuccess).toBe(true);
+  });
+
+  it("dates a reply mapping from before dispatch, so a marker set while it was in flight blocks it", async () => {
+    let sentAt = "";
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      sentAt = new Date().toISOString();
+      return { ok: true, status: 200, json: async () => ({ id: "m" }) };
+    }));
+    await notify("ask-user-question", { sessionId: "s", projectPath: "/p", question: "Which?" });
+    const mapping = mockRegisterMessage.mock.calls[0]![0] as { createdAt: string };
+    expect(Date.parse(mapping.createdAt)).toBeLessThan(Date.parse(sentAt));
   });
 
   it("does NOT register when dispatch fails", async () => {

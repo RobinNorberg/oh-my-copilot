@@ -143,6 +143,9 @@ export async function notify(
     return null;
   }
 
+  // A reply mapping's createdAt: before dispatch, so a non-replyable marker
+  // set while this message was in flight blocks its replies.
+  const startedAt = new Date().toISOString();
   try {
     const config = getNotificationConfig(data.profileName);
     if (!config || !isEventEnabled(config, event)) {
@@ -254,15 +257,25 @@ export async function notify(
     }
 
     // A non-replyable message (Copilot permission prompt) means the pane now
-    // shows a menu that a reply would answer: drop the pane's earlier reply
-    // mappings first, so a reply to an older message cannot be injected either.
+    // shows a menu that a reply would answer: mark the pane non-replyable
+    // (the reply listener refuses mappings created before the mark, which
+    // covers one registered after the removal by a message already in flight)
+    // and drop its earlier reply mappings. Fail closed: when the removal
+    // fails (registry lock timeout), the message is not sent.
     if (payload.replyable === false && payload.tmuxPaneId) {
+      const { markPaneNonReplyable, removeMessagesByPane } = await import("./session-registry.js");
       try {
-        const { removeMessagesByPane } = await import("./session-registry.js");
-        removeMessagesByPane(payload.tmuxPaneId);
+        markPaneNonReplyable(payload.tmuxPaneId, payload.tmuxSession ?? "");
       } catch {
-        // Non-fatal: reply correlation is best-effort
+        // The removal below still guards the earlier mappings
       }
+      let removed = false;
+      try {
+        removed = removeMessagesByPane(payload.tmuxPaneId, payload.tmuxSession);
+      } catch {
+        removed = false;
+      }
+      if (!removed) return null;
     }
 
     // Dispatch to all enabled platforms
@@ -293,7 +306,7 @@ export async function notify(
               tmuxPaneId: payload.tmuxPaneId ?? "",
               tmuxSessionName: payload.tmuxSession || "",
               event: payload.event,
-              createdAt: new Date().toISOString(),
+              createdAt: startedAt,
               projectPath: payload.projectPath,
               ...(payload.approval
                 ? { approvalRef: payload.approval }

@@ -421,16 +421,67 @@ export function removeSession(sessionId: string): boolean {
 
 
 /**
- * Remove all entries for a given pane ID.
- * Called by reply listener when pane verification fails (stale pane cleanup).
+ * Remove the pane-injecting entries for a given pane ID. Called by the reply
+ * listener when pane verification fails (stale pane cleanup) and by notify()
+ * before a non-replyable message. Approval-gate entries (`approvalRef`, from
+ * `omg graph` remote approval) are kept: their replies never touch a pane.
+ *
+ * Pane ids (`%N`) are per tmux/psmux server, and a mapping records no server
+ * identifier. With `tmuxSessionName`, an entry recorded under another session
+ * name is kept; a collision with the same session name on another server
+ * still matches (removal is the safe side).
  */
-export function removeMessagesByPane(paneId: string): boolean {
+export function removeMessagesByPane(paneId: string, tmuxSessionName?: string): boolean {
   return withRegistryLock(() => {
     const mappings = readAllMappingsUnsafe();
-    const filtered = mappings.filter(m => m.tmuxPaneId !== paneId);
+    const filtered = mappings.filter(m => m.tmuxPaneId !== paneId || Boolean(m.approvalRef)
+      || Boolean(tmuxSessionName && m.tmuxSessionName && m.tmuxSessionName !== tmuxSessionName));
     if (filtered.length !== mappings.length) rewriteRegistryUnsafe(filtered);
     return true;
   }) ?? false;
+}
+
+/** Per-pane "non-replyable since" markers: `{ [tmuxSessionName | '']: ISO time }`. */
+function getPaneReplyBlockPath(paneId: string): string {
+  return join(getRegistryStateDir(), `reply-blocked-pane-${paneId.replace(/[^A-Za-z0-9_-]/g, '_')}.json`);
+}
+
+function readPaneReplyBlocks(paneId: string): Record<string, string> {
+  try {
+    const parsed = JSON.parse(readFileSync(getPaneReplyBlockPath(paneId), 'utf-8'));
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Record that the pane shows a non-replyable message (a Copilot permission
+ * menu) from now on. No registry lock: it must hold when the lock times out.
+ * {@link isPaneReplyBlocked} then refuses every mapping created before it, so
+ * a reply mapping registered after removeMessagesByPane by a notification
+ * that started earlier (concurrent hook children) is never injected.
+ */
+export function markPaneNonReplyable(paneId: string, tmuxSessionName = '', at = new Date()): void {
+  ensureRegistryDir();
+  const blocks = readPaneReplyBlocks(paneId);
+  blocks[tmuxSessionName] = at.toISOString();
+  writeFileSync(getPaneReplyBlockPath(paneId), JSON.stringify(blocks), { mode: SECURE_FILE_MODE });
+}
+
+/**
+ * Whether a reply into the pane must be refused: a non-replyable marker for
+ * the pane (same session name, or either side unnamed) is not older than the
+ * mapping's `createdAt`. Without a mapping, any marker younger than MAX_AGE_MS.
+ */
+export function isPaneReplyBlocked(paneId: string, mapping?: Pick<SessionMapping, 'createdAt' | 'tmuxSessionName'>, nowMs = Date.now()): boolean {
+  const createdMs = mapping ? new Date(mapping.createdAt).getTime() : NaN;
+  return Object.entries(readPaneReplyBlocks(paneId)).some(([session, at]) => {
+    if (session && mapping?.tmuxSessionName && session !== mapping.tmuxSessionName) return false;
+    const atMs = new Date(at).getTime();
+    if (!Number.isFinite(atMs)) return true; // unreadable marker: fail closed
+    return Number.isFinite(createdMs) ? createdMs <= atMs : nowMs - atMs < MAX_AGE_MS;
+  });
 }
 
 

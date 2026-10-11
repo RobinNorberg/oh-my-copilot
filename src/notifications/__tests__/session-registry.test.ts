@@ -19,6 +19,8 @@ import {
   lookupByMessageId,
   removeSession,
   removeMessagesByPane,
+  markPaneNonReplyable,
+  isPaneReplyBlocked,
   pruneStale,
   loadAllMappings,
   type SessionMapping,
@@ -466,6 +468,61 @@ describe("session-registry", () => {
       const remaining = loadAllMappings();
       expect(remaining).toHaveLength(1);
       expect(remaining[0].tmuxPaneId).toBe("%1");
+    });
+
+    it("keeps approval-gate mappings (omg graph remote approval) and other session names", () => {
+      const base = { platform: "discord-bot" as const, sessionId: "s", tmuxPaneId: "%0", event: "ask-user-question", createdAt: new Date().toISOString() };
+      registerMessage({ ...base, messageId: "ask", tmuxSessionName: "main" });
+      registerMessage({ ...base, messageId: "unnamed", tmuxSessionName: "" });
+      registerMessage({ ...base, messageId: "other-server", tmuxSessionName: "work" });
+      registerMessage({ ...base, messageId: "gate", tmuxSessionName: "main", event: "approval-request", approvalRef: { runsRoot: "/r", runId: "run-1", activationId: "a-1" } });
+
+      expect(removeMessagesByPane("%0", "main")).toBe(true);
+      expect(loadAllMappings().map(m => m.messageId).sort()).toEqual(["gate", "other-server"]);
+
+      // Without a session name every pane-injecting mapping on the pane goes.
+      expect(removeMessagesByPane("%0")).toBe(true);
+      expect(loadAllMappings().map(m => m.messageId)).toEqual(["gate"]);
+    });
+
+    it("returns false when the registry lock cannot be taken", () => {
+      writeFileSync(LOCK_PATH, JSON.stringify({ pid: process.pid, token: "held", acquiredAt: Date.now() }));
+      const started = Date.now();
+      expect(removeMessagesByPane("%0")).toBe(false);
+      expect(Date.now() - started).toBeGreaterThanOrEqual(1_000);
+      unlinkSync(LOCK_PATH);
+    }, 20_000);
+  });
+
+  describe("non-replyable pane markers", () => {
+    const at = (ms: number) => new Date(ms).toISOString();
+    const t0 = Date.parse("2026-10-11T10:00:00.000Z");
+
+    it("blocks a mapping created before the marker, even one registered after the removal", () => {
+      // An ask_user notification starts (createdAt = t0), a permission prompt
+      // marks the pane at t0+50 and removes its mappings, then the ask_user
+      // child registers its mapping: the marker still refuses it.
+      markPaneNonReplyable("%3", "main", new Date(t0 + 50));
+      registerMessage({ platform: "telegram", messageId: "late", sessionId: "s", tmuxPaneId: "%3", tmuxSessionName: "main", event: "ask-user-question", createdAt: at(t0) });
+      const late = lookupByMessageId("telegram", "late")!;
+      expect(isPaneReplyBlocked("%3", late)).toBe(true);
+      expect(isPaneReplyBlocked("%3", { createdAt: at(t0 + 50), tmuxSessionName: "main" })).toBe(true);
+      // A question asked after the permission prompt is replyable again.
+      expect(isPaneReplyBlocked("%3", { createdAt: at(t0 + 51), tmuxSessionName: "main" })).toBe(false);
+      // Another pane, or the same pane id under another session name, is unaffected.
+      expect(isPaneReplyBlocked("%4", late)).toBe(false);
+      expect(isPaneReplyBlocked("%3", { createdAt: at(t0), tmuxSessionName: "work" })).toBe(false);
+      // An unnamed mapping matches any session's marker.
+      expect(isPaneReplyBlocked("%3", { createdAt: at(t0), tmuxSessionName: "" })).toBe(true);
+    });
+
+    it("without a mapping blocks while the marker is recent; fails closed on an unreadable marker", () => {
+      markPaneNonReplyable("%5", "", new Date(t0));
+      expect(isPaneReplyBlocked("%5", undefined, t0 + 1_000)).toBe(true);
+      expect(isPaneReplyBlocked("%5", undefined, t0 + 25 * 60 * 60 * 1000)).toBe(false);
+      writeFileSync(join(testDir, "reply-blocked-pane-_6.json"), JSON.stringify({ main: "not a date" }));
+      expect(isPaneReplyBlocked("%6", { createdAt: at(t0), tmuxSessionName: "main" })).toBe(true);
+      expect(isPaneReplyBlocked("%7", { createdAt: at(t0), tmuxSessionName: "main" })).toBe(false);
     });
   });
 
