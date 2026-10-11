@@ -4,8 +4,11 @@
  * the failed job's log, and watch until green / failed / timeout.
  *
  * Merge rule: green only when every check outside the advisory list is
- * SUCCESS or SKIPPED. Unknown states count as failed (fail closed), and a PR
- * with no required checks yet is pending, never green.
+ * SUCCESS or SKIPPED, every name in `ship.requiredChecks` has been reported
+ * (a missing one is pending: `needs:`-dependent jobs appear late), and every
+ * Actions workflow run for the head sha has status `completed`. Unknown
+ * states count as failed (fail closed), and a PR with no required checks yet
+ * is pending, never green.
  */
 
 import type { ShipConfig, KnownFlakyTest } from './config.js';
@@ -40,11 +43,28 @@ export interface FailingTest {
 export interface FlakyAnalysis {
   check: string;
   runId?: string;
+  /** Actions job id the log came from; analyses are matched to checks by it. */
+  jobId?: string;
   failingTests: FailingTest[];
-  /** True when at least one failing test was found and every one is on the known-flaky list. */
+  /**
+   * True when at least one failing test was found, every one is on the
+   * known-flaky list, and the log shows no non-test failure (`blockers`).
+   */
   knownFlaky: boolean;
   unknown: FailingTest[];
+  /** Log evidence that the job failed for a reason other than its failing tests. */
+  blockers: string[];
 }
+
+/** One `gh run list --commit <sha> --json ...` entry. */
+export interface WorkflowRun {
+  databaseId: number;
+  status: string;
+  conclusion?: string;
+  workflowName?: string;
+}
+
+export const RUN_FIELDS = 'databaseId,status,conclusion,workflowName';
 
 export type GateVerdict = 'green' | 'pending' | 'failed' | 'flaky';
 
@@ -102,11 +122,16 @@ export function classifyCheck(check: GhCheck, advisory: readonly string[]): Clas
   return { ...check, class: cls, ...actionsIds(check.link) };
 }
 
-/** Pure merge-rule evaluation without log analysis (failed stays failed). */
-export function evaluateChecks(pr: number, checks: GhCheck[], config: Pick<ShipConfig, 'advisoryChecks'>): GateReport {
+/**
+ * Pure merge-rule evaluation without log analysis (failed stays failed). A
+ * `requiredChecks` name absent from `checks` is listed as pending.
+ */
+export function evaluateChecks(pr: number, checks: GhCheck[], config: Pick<ShipConfig, 'advisoryChecks' | 'requiredChecks'>): GateReport {
   const classified = checks.map((c) => classifyCheck(c, config.advisoryChecks));
   const names = (cls: CheckClass) => classified.filter((c) => c.class === cls).map((c) => c.name);
-  const pending = names('pending');
+  const reported = new Set(classified.map((c) => c.name));
+  const missing = config.requiredChecks.filter((n) => !reported.has(n) && !config.advisoryChecks.includes(n));
+  const pending = [...names('pending'), ...missing];
   const failed = names('failed');
   const required = classified.filter((c) => c.class !== 'advisory');
   const advisoryFailed = classified
@@ -115,7 +140,41 @@ export function evaluateChecks(pr: number, checks: GhCheck[], config: Pick<ShipC
   const verdict: GateVerdict = failed.length > 0 ? 'failed' : pending.length > 0 || required.length === 0 ? 'pending' : 'green';
   const suggestions: string[] = [];
   if (required.length === 0) suggestions.push('No required checks reported yet; CI may not have started.');
+  if (missing.length > 0) suggestions.push(`Required checks not reported yet (counted as pending): ${missing.join(', ')}`);
   return { pr, verdict, checks: classified, pending, failed, advisoryFailed, flaky: [], rerunnable: [], suggestions };
+}
+
+/** Parse `gh run list --json` stdout; throws GhChecksError on anything but an array of {databaseId,status}. */
+export function parseRunsJson(stdout: string): WorkflowRun[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new GhChecksError('gh run list did not print JSON');
+  }
+  if (!Array.isArray(parsed)) throw new GhChecksError('gh run list JSON is not an array');
+  return parsed.map((raw, i) => {
+    const r = raw as Record<string, unknown>;
+    if (typeof r?.databaseId !== 'number' || typeof r.status !== 'string') {
+      throw new GhChecksError(`gh run list entry ${i} lacks databaseId/status`);
+    }
+    return r as unknown as WorkflowRun;
+  });
+}
+
+/**
+ * A green report stays green only when every workflow run for the head sha is
+ * `completed`; a queued / in-progress run (jobs not yet reported) is pending.
+ */
+export function applyWorkflowRuns(report: GateReport, runs: WorkflowRun[]): GateReport {
+  const open = runs.filter((r) => r.status.toLowerCase() !== 'completed');
+  if (open.length === 0) return report;
+  const labels = open.map((r) => `workflow run ${r.workflowName ?? r.databaseId} (${r.status.toLowerCase()})`);
+  return {
+    ...report,
+    verdict: report.verdict === 'green' ? 'pending' : report.verdict,
+    pending: [...report.pending, ...labels],
+  };
 }
 
 const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g;
@@ -141,25 +200,64 @@ export function parseFailingTests(log: string): FailingTest[] {
   return out;
 }
 
+/** A file-level failure (no title) never matches: it is a collection error, not a flaky test. */
 export function isKnownFlaky(test: FailingTest, known: readonly KnownFlakyTest[]): boolean {
-  return known.some((k) => k.file === test.file && (k.title === undefined || (test.title ?? '').includes(k.title)));
+  return test.title !== undefined && known.some((k) => k.file === test.file && Boolean(k.title) && test.title!.includes(k.title));
 }
 
-export function analyzeFailedLog(check: string, runId: string | undefined, log: string, known: readonly KnownFlakyTest[]): FlakyAnalysis {
+const UNHANDLED = /\bUnhandled (?:Errors?|Rejections?)\b/;
+const FAILED_SUITES = /\bFailed Suites \d+/;
+const STEP_ERROR = /##\[error\]/;
+
+/**
+ * Evidence in a job log that the job did not fail only because of its failing
+ * tests: vitest unhandled errors, failed suites (collection errors), or an
+ * `##[error]` in a step that printed no FAIL line (a non-test step failed).
+ */
+export function logBlockers(log: string): string[] {
+  const blockers = new Set<string>();
+  const testSteps = new Set<string>();
+  const errorSteps = new Set<string>();
+  for (const rawLine of log.split(/\r?\n/)) {
+    const step = rawLine.split('\t').length >= 3 ? rawLine.split('\t')[1] : '';
+    const line = rawLine.replace(ANSI, '').replace(GH_LOG_PREFIX, '');
+    if (UNHANDLED.test(line)) blockers.add('vitest reported unhandled errors');
+    if (FAILED_SUITES.test(line)) blockers.add('vitest reported failed suites (collection errors)');
+    if (FAIL_LINE.test(line)) testSteps.add(step);
+    if (STEP_ERROR.test(line)) errorSteps.add(step);
+  }
+  for (const step of errorSteps) {
+    if (!testSteps.has(step)) blockers.add(`step "${step || '(unnamed)'}" failed without a failing test`);
+  }
+  return [...blockers];
+}
+
+export function analyzeFailedLog(check: string, runId: string | undefined, log: string, known: readonly KnownFlakyTest[], jobId?: string): FlakyAnalysis {
   const failingTests = parseFailingTests(log);
   const unknown = failingTests.filter((t) => !isKnownFlaky(t, known));
-  return { check, runId, failingTests, unknown, knownFlaky: failingTests.length > 0 && unknown.length === 0 };
+  const blockers = logBlockers(log);
+  return {
+    check,
+    runId,
+    ...(jobId ? { jobId } : {}),
+    failingTests,
+    unknown,
+    blockers,
+    knownFlaky: failingTests.length > 0 && unknown.length === 0 && blockers.length === 0,
+  };
 }
+
+const analysisKey = (jobId: string | undefined, name: string) => (jobId ? `job:${jobId}` : `name:${name}`);
 
 /**
  * Fold log analyses into a report: verdict becomes `flaky` when every failed
- * required check is a known-flaky failure; a run is rerunnable only when all
- * its required jobs are finished.
+ * required check is a known-flaky failure (matched by job id); a run is
+ * rerunnable only when all its required jobs are finished.
  */
 export function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[]): GateReport {
-  const byCheck = new Map(analyses.map((a) => [a.check, a]));
+  const byJob = new Map(analyses.map((a) => [analysisKey(a.jobId, a.check), a]));
   const failedChecks = report.checks.filter((c) => c.class === 'failed');
-  const allFlaky = failedChecks.length > 0 && failedChecks.every((c) => byCheck.get(c.name)?.knownFlaky === true);
+  const allFlaky = failedChecks.length > 0 && failedChecks.every((c) => byJob.get(analysisKey(c.jobId, c.name))?.knownFlaky === true);
   const runIds = [...new Set(failedChecks.map((c) => c.runId).filter((id): id is string => Boolean(id)))];
   const rerunnable = allFlaky
     ? runIds.filter((id) => !report.checks.some((c) => c.runId === id && c.class === 'pending'))
@@ -168,6 +266,8 @@ export function applyFlakyAnalysis(report: GateReport, analyses: FlakyAnalysis[]
   for (const a of analyses) {
     if (a.knownFlaky) {
       suggestions.push(`${a.check}: known-flaky failure (${a.failingTests.map((t) => t.title ?? t.file).join('; ')}) -> gh run rerun ${a.runId ?? '<run-id>'} --failed`);
+    } else if (a.blockers.length > 0) {
+      suggestions.push(`${a.check}: not flaky: ${a.blockers.join('; ')}`);
     } else if (a.failingTests.length > 0) {
       suggestions.push(`${a.check}: real failure: ${a.unknown.map((t) => (t.title ? `${t.file} > ${t.title}` : t.file)).join('; ')}`);
     }
@@ -190,15 +290,44 @@ export function fetchChecks(exec: Exec, pr: number, cwd?: string): GhCheck[] {
   throw new GhChecksError(`gh pr checks ${pr} failed (exit ${res.status}): ${res.stderr.trim() || out}`);
 }
 
-/** One gate evaluation: fetch, classify, and read the logs of failed Actions jobs. */
-export function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string): GateReport {
+/** The PR head sha from `gh pr view <pr> --json headRefOid`. */
+export function fetchHeadSha(exec: Exec, pr: number, cwd?: string): string {
+  const res = exec('gh', ['pr', 'view', String(pr), '--json', 'headRefOid'], { cwd });
+  let sha: unknown;
+  try {
+    sha = (JSON.parse(res.stdout) as { headRefOid?: unknown }).headRefOid;
+  } catch {
+    sha = undefined;
+  }
+  if (res.status !== 0 || typeof sha !== 'string' || !/^[0-9a-f]{40}$/.test(sha)) {
+    throw new GhChecksError(`gh pr view ${pr} did not return a head sha (exit ${res.status}): ${res.stderr.trim()}`);
+  }
+  return sha;
+}
+
+/** Run `gh run list --commit <sha> --json ...`: every Actions workflow run for the head sha. */
+export function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: string): WorkflowRun[] {
+  const res = exec('gh', ['run', 'list', '--commit', headSha, '--json', RUN_FIELDS, '--limit', '100'], { cwd });
+  if (res.status !== 0) throw new GhChecksError(`gh run list --commit ${headSha.slice(0, 12)} failed (exit ${res.status}): ${res.stderr.trim()}`);
+  return parseRunsJson(res.stdout.trim() || '[]');
+}
+
+/**
+ * One gate evaluation: fetch, classify, read the logs of failed Actions jobs,
+ * and before calling it green confirm every workflow run for the head sha is
+ * completed. `headSha` is looked up with `gh pr view` when not given.
+ */
+export function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string): GateReport {
   const report = evaluateChecks(pr, fetchChecks(exec, pr, cwd), config);
+  if (report.verdict === 'green') {
+    return applyWorkflowRuns(report, fetchWorkflowRuns(exec, headSha ?? fetchHeadSha(exec, pr, cwd), cwd));
+  }
   if (report.verdict !== 'failed' || known.length === 0) return report;
   const analyses: FlakyAnalysis[] = [];
   for (const check of report.checks) {
     if (check.class !== 'failed' || !check.jobId) continue;
     const log = exec('gh', ['run', 'view', '--job', check.jobId, '--log'], { cwd });
-    analyses.push(analyzeFailedLog(check.name, check.runId, log.status === 0 ? log.stdout : '', known));
+    analyses.push(analyzeFailedLog(check.name, check.runId, log.status === 0 ? log.stdout : '', known, check.jobId));
   }
   return applyFlakyAnalysis(report, analyses);
 }
@@ -209,6 +338,8 @@ export interface WatchOptions {
   config: ShipConfig;
   known: readonly KnownFlakyTest[];
   cwd?: string;
+  /** PR head sha for the workflow-run check (looked up per poll when omitted). */
+  headSha?: string;
   watch: boolean;
   /** Rerun budget lookup/record (persisted in the ship state); omitted = never rerun. */
   reruns?: { count(runId: string): number; record(runId: string): void };
@@ -221,6 +352,7 @@ export interface WatchResult {
   report: GateReport;
   /** Run ids rerun during this watch. */
   rerun: string[];
+  /** The window elapsed while waiting (pending, or a flaky run's reruns / sibling jobs still going). */
   timedOut: boolean;
 }
 
@@ -234,7 +366,7 @@ export async function watchGates(opts: WatchOptions): Promise<WatchResult> {
   const deadline = config.watchTimeoutMinutes > 0 ? opts.now() + config.watchTimeoutMinutes * 60_000 : Infinity;
   const rerun: string[] = [];
   for (;;) {
-    const report = evaluateGates(opts.exec, opts.pr, config, opts.known, opts.cwd);
+    const report = evaluateGates(opts.exec, opts.pr, config, opts.known, opts.cwd, opts.headSha);
     opts.onReport?.(report);
     if (!opts.watch || report.verdict === 'green' || report.verdict === 'failed') {
       return { report, rerun, timedOut: false };
@@ -246,8 +378,9 @@ export async function watchGates(opts: WatchOptions): Promise<WatchResult> {
       const waitingOnSiblings = report.rerunnable.length === 0;
       if (ready.length === 0 && !waitingOnSiblings) return { report, rerun, timedOut: false };
       for (const id of ready) {
-        const res = opts.exec('gh', ['run', 'rerun', id, '--failed'], { cwd: opts.cwd });
+        // Spend the budget first: a crash after the rerun must not allow a second one.
         budget!.record(id);
+        const res = opts.exec('gh', ['run', 'rerun', id, '--failed'], { cwd: opts.cwd });
         if (res.status !== 0) {
           report.suggestions.push(`gh run rerun ${id} --failed failed: ${res.stderr.trim()}`);
           return { report, rerun, timedOut: false };
