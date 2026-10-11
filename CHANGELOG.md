@@ -118,6 +118,62 @@ All notable changes to oh-my-copilot will be documented in this file.
   any npm command and refuses pushes to `main`, `master`, `dev` and the
   run's base.
 
+### Added: Copilot `notification` hook
+
+- **"Input needed" notifications on Copilot.** The generated
+  `copilot/hooks.json` maps Copilot's `notification` event (fork-owned
+  `FORK_HOOKS` in `scripts/copilot/build-hooks.mjs`, no upstream counterpart)
+  to `scripts/copilot/notification.mjs`. A `permission_prompt` or
+  `elicitation_dialog` (which includes the `ask_user` tool) sends OMC's
+  `ask-user-question` notification to the configured Discord, Telegram or
+  Slack targets. Upstream sends it from PreToolUse for `AskUserQuestion`, which
+  Copilot never calls, so on Copilot it never fired. Team workers are skipped.
+  A permission prompt is sent as its title, tool category and command binary
+  only (`Permission needed: Run command: curl`), never the command arguments.
+  `ask_user` text is redacted (`redactTokens`, now also covering secret
+  assignments and flags, secret JSON fields, credential headers, `curl -u`,
+  `mysql -p`, `login -p`, URL credentials, webhook URLs, PEM keys, OpenAI-style
+  keys and padded base64) and capped at 200 characters. Permission-prompt
+  notifications are not replyable, and sending one marks the pane
+  non-replyable and drops its earlier reply mappings (approval-gate mappings
+  stay): remote replies never answer a permission prompt, also for an
+  `ask_user` mapping registered while the prompt was sent. When the mappings
+  cannot be dropped (registry lock timeout) the prompt is not sent. A title
+  that is not plain letters and spaces is sent as `Permission needed`. On a
+  stale `dist/` that lacks these guarantees (`NOTIFICATION_CAPS`, redaction
+  self-test) the hook sends no permission prompt, and `ask_user` only as
+  `Copilot is asking you a question`. A
+  permission prompt is sent at most once per 30 s per session, an identical
+  `ask_user` question once per 30 s. The hook's run.cjs timeout is now its
+  generated 5 s instead of the 60 s default.
+  The other three unmapped events (`errorOccurred`, `preMcpToolCall`,
+  `userPromptTransformed`) stay unmapped; the reasons are in
+  [DEVELOPERS.md](docs/DEVELOPERS.md#copilot-cli-hook-events).
+
+### Added: in-process plugin tools for sdk team workers (opt-in)
+
+- **`team.sdk.inProcessTools`** (default `false`; env
+  `OMC_TEAM_SDK_INPROCESS_TOOLS=1`/`0`) registers the plugin MCP tools in the
+  sdk host as SDK session tools and disables the `t` stdio MCP server for that
+  worker. Names (`t-<tool>`), schemas and results match the MCP server. An SDK
+  without `convertMcpCallToolResult` keeps the MCP server.
+  `sdk-session.json` records `tool_transport`. Measured on Copilot CLI 1.0.91
+  with SDK 1.0.16, 12 runs per mode: session start median 2843 ms in-process
+  vs 2872 ms MCP. The start time is unchanged; each worker saves one node
+  process of about 85 MB working set. Off by default; see
+  [DEVELOPERS.md](docs/DEVELOPERS.md#sdk-in-process-tools).
+- **In-process host lifetime.** After `createSession()` the host checks the
+  session's tool metadata for `t-state_read`; a session that does not offer it
+  is recreated on the MCP server, and one the SDK cannot check is recorded as
+  `tool_transport_verified: false`. `workerDenyTools: ['t']` offers no
+  in-process tool. Teardown runs the MCP server's shutdown cleanup (Python REPL
+  bridges, LSP clients) with a 5 s deadline; on Windows the bridges go straight
+  to `taskkill /F`, since `/T` alone does not stop them. An unhandled rejection is
+  recorded and the host keeps serving; an uncaught exception stops the host
+  hard with a `failed` session (outcome `tool_crash`); `SIGTERM`/`SIGINT`/
+  `SIGHUP` stop it hard. `OMC_TEAM_SDK_INPROCESS_TOOLS` also accepts
+  `true`/`false` (any case) and rejects other values as a config error.
+
 # oh-my-copilot v5.9.0
 
 ## [5.9.0] - 2026-10-10

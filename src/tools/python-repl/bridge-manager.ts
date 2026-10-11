@@ -730,10 +730,12 @@ export async function cleanupBridgeSessions(
   return result;
 }
 
-export async function cleanupOwnedBridgeSessions(): Promise<BridgeSessionCleanupResult> {
+export async function cleanupOwnedBridgeSessions(
+  options: BridgeSessionCleanupOptions = {},
+): Promise<BridgeSessionCleanupResult> {
   const ownedSessions = [...ownedBridgeSessionIds];
   ownedBridgeSessionIds.clear();
-  return cleanupBridgeSessions(ownedSessions);
+  return cleanupBridgeSessions(ownedSessions, options);
 }
 
 /**

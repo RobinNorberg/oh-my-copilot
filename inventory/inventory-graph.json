@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "456318399f2da672e1f510ff9894395d0b58f610",
-    "sourceSha256": "6dbf7f3f112483c1b35c4ca71d434ea4ca8ea1b9d574e90edd36a1b8985c3b09",
+    "head": "15d20077d77c22f6d7f45abf5a382c052c89dc34",
+    "sourceSha256": "6df928af49746ab1f664d3692338495b30a59cb44c285882997ce6cf0f96bdc4",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "456318399f2da672e1f510ff9894395d0b58f610",
-  "sourceSha256": "6dbf7f3f112483c1b35c4ca71d434ea4ca8ea1b9d574e90edd36a1b8985c3b09",
+  "head": "15d20077d77c22f6d7f45abf5a382c052c89dc34",
+  "sourceSha256": "6df928af49746ab1f664d3692338495b30a59cb44c285882997ce6cf0f96bdc4",
   "counts": {
     "public": {
-      "skills": 62,
+      "skills": 61,
       "commands": 21,
       "workflows": 9,
       "agents": 20,
-      "total": 112
+      "total": 111
     },
     "internal": {
       "hookFiles": 350,
@@ -28,8 +28,8 @@
       "toolFiles": 62,
       "libFiles": 48,
       "templateHooks": 23,
-      "srcFiles": 1559,
-      "total": 1582
+      "srcFiles": 1545,
+      "total": 1568
     },
     "generated": {
       "distFiles": 5951,
@@ -39,7 +39,7 @@
     "prompt": {
       "promptLikeFiles": 61
     },
-    "skills": 62,
+    "skills": 61,
     "commands": 21,
     "hookFiles": 350,
     "workflows": 9,
@@ -100,7 +100,6 @@
       "research",
       "review",
       "self-improve",
-      "ship",
       "skill",
       "skillify",
       "tdd",
@@ -835,6 +834,7 @@
       "scripts/copilot/build-agents.mjs",
       "scripts/copilot/build-hooks.mjs",
       "scripts/copilot/dispatch.cjs",
+      "scripts/copilot/notification.mjs",
       "scripts/demo-team.mjs",
       "scripts/dev/repro-state-lock.mjs",
       "scripts/eval-autoresearch-json.mjs",
@@ -7533,11 +7533,6 @@
         "id": ".github/SPONSOR_TIERS.md",
         "kind": "other",
         "path": ".github/SPONSOR_TIERS.md"
-      },
-      {
-        "id": ".github/known-flaky-tests.json",
-        "kind": "other",
-        "path": ".github/known-flaky-tests.json"
       },
       {
         "id": ".github/release-body.md",
@@ -39255,6 +39250,11 @@
         "path": "scripts/copilot/dispatch.cjs"
       },
       {
+        "id": "scripts/copilot/notification.mjs",
+        "kind": "script",
+        "path": "scripts/copilot/notification.mjs"
+      },
+      {
         "id": "scripts/demo-team.mjs",
         "kind": "script",
         "path": "scripts/demo-team.mjs"
@@ -40315,11 +40315,6 @@
         "path": "skills/self-improve/templates/settings.json"
       },
       {
-        "id": "skills/ship/SKILL.md",
-        "kind": "skill",
-        "path": "skills/ship/SKILL.md"
-      },
-      {
         "id": "skills/skill/SKILL.md",
         "kind": "skill",
         "path": "skills/skill/SKILL.md"
@@ -40573,6 +40568,11 @@
         "id": "src/__tests__/copilot-hooks-manifest.test.ts",
         "kind": "src",
         "path": "src/__tests__/copilot-hooks-manifest.test.ts"
+      },
+      {
+        "id": "src/__tests__/copilot-notification-hook.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/copilot-notification-hook.test.ts"
       },
       {
         "id": "src/__tests__/daemon-module-path.test.ts",
@@ -42410,11 +42410,6 @@
         "path": "src/cli/commands/__tests__/intake.test.ts"
       },
       {
-        "id": "src/cli/commands/__tests__/ship-cli.test.ts",
-        "kind": "src",
-        "path": "src/cli/commands/__tests__/ship-cli.test.ts"
-      },
-      {
         "id": "src/cli/commands/__tests__/smoke-tier2.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/smoke-tier2.test.ts"
@@ -42493,11 +42488,6 @@
         "id": "src/cli/commands/session-search.ts",
         "kind": "src",
         "path": "src/cli/commands/session-search.ts"
-      },
-      {
-        "id": "src/cli/commands/ship.ts",
-        "kind": "src",
-        "path": "src/cli/commands/ship.ts"
       },
       {
         "id": "src/cli/commands/smoke.ts",
@@ -46355,81 +46345,6 @@
         "path": "src/shared/types.ts"
       },
       {
-        "id": "src/ship/__tests__/fixtures/checks-pr233-green.json",
-        "kind": "src",
-        "path": "src/ship/__tests__/fixtures/checks-pr233-green.json"
-      },
-      {
-        "id": "src/ship/__tests__/fixtures/job-log-flaky.txt",
-        "kind": "src",
-        "path": "src/ship/__tests__/fixtures/job-log-flaky.txt"
-      },
-      {
-        "id": "src/ship/__tests__/fixtures/job-log-real-failure.txt",
-        "kind": "src",
-        "path": "src/ship/__tests__/fixtures/job-log-real-failure.txt"
-      },
-      {
-        "id": "src/ship/__tests__/fixtures/project-config-admin-merge.jsonc",
-        "kind": "src",
-        "path": "src/ship/__tests__/fixtures/project-config-admin-merge.jsonc"
-      },
-      {
-        "id": "src/ship/__tests__/gates.test.ts",
-        "kind": "src",
-        "path": "src/ship/__tests__/gates.test.ts"
-      },
-      {
-        "id": "src/ship/__tests__/git-trust.test.ts",
-        "kind": "src",
-        "path": "src/ship/__tests__/git-trust.test.ts"
-      },
-      {
-        "id": "src/ship/__tests__/prepare-merge.test.ts",
-        "kind": "src",
-        "path": "src/ship/__tests__/prepare-merge.test.ts"
-      },
-      {
-        "id": "src/ship/__tests__/safety-state.test.ts",
-        "kind": "src",
-        "path": "src/ship/__tests__/safety-state.test.ts"
-      },
-      {
-        "id": "src/ship/__tests__/workflow-checks.test.ts",
-        "kind": "src",
-        "path": "src/ship/__tests__/workflow-checks.test.ts"
-      },
-      {
-        "id": "src/ship/config.ts",
-        "kind": "src",
-        "path": "src/ship/config.ts"
-      },
-      {
-        "id": "src/ship/exec.ts",
-        "kind": "src",
-        "path": "src/ship/exec.ts"
-      },
-      {
-        "id": "src/ship/gates.ts",
-        "kind": "src",
-        "path": "src/ship/gates.ts"
-      },
-      {
-        "id": "src/ship/merge.ts",
-        "kind": "src",
-        "path": "src/ship/merge.ts"
-      },
-      {
-        "id": "src/ship/prepare.ts",
-        "kind": "src",
-        "path": "src/ship/prepare.ts"
-      },
-      {
-        "id": "src/ship/state.ts",
-        "kind": "src",
-        "path": "src/ship/state.ts"
-      },
-      {
         "id": "src/skills/__tests__/mingw-escape.test.ts",
         "kind": "src",
         "path": "src/skills/__tests__/mingw-escape.test.ts"
@@ -47025,6 +46940,11 @@
         "path": "src/team/__tests__/scaling.test.ts"
       },
       {
+        "id": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/sdk-inprocess-tools.test.ts"
+      },
+      {
         "id": "src/team/__tests__/sdk-transport.runtime.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/sdk-transport.runtime.test.ts"
@@ -47513,6 +47433,11 @@
         "id": "src/team/sdk-host.ts",
         "kind": "src",
         "path": "src/team/sdk-host.ts"
+      },
+      {
+        "id": "src/team/sdk-inprocess-tools.ts",
+        "kind": "src",
+        "path": "src/team/sdk-inprocess-tools.ts"
       },
       {
         "id": "src/team/sdk-policy.ts",
@@ -49469,6 +49394,56 @@
       {
         "from": "scripts/copilot/dispatch.cjs",
         "to": "scripts/lib/copilot-hook-adapter.cjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "dist/hooks/background-notifications.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "dist/notifications/index.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "external:node:worker_threads",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "scripts/lib/atomic-write.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "scripts/lib/state-root.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "scripts/lib/stdin.mjs",
         "kind": "imports"
       },
       {
@@ -51757,11 +51732,6 @@
         "kind": "imports"
       },
       {
-        "from": "skills/ship/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
         "from": "skills/skill/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -52784,6 +52754,46 @@
       {
         "from": "src/__tests__/copilot-hooks-manifest.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "src/notifications/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "src/notifications/redact.ts",
         "kind": "imports"
       },
       {
@@ -61272,56 +61282,6 @@
         "kind": "type-imports"
       },
       {
-        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
-        "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
-        "to": "src/cli/commands/ship.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
-        "to": "src/ship/state.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/cli/commands/__tests__/smoke-tier2.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -61867,71 +61827,6 @@
         "kind": "type-imports"
       },
       {
-        "from": "src/cli/commands/ship.ts",
-        "to": "external:chalk",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/ship.ts",
-        "to": "external:commander",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/ship.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/ship.ts",
-        "to": "src/ship/config.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/ship.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/ship.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/ship.ts",
-        "to": "src/ship/gates.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/ship.ts",
-        "to": "src/ship/gates.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/ship.ts",
-        "to": "src/ship/merge.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/ship.ts",
-        "to": "src/ship/merge.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/cli/commands/ship.ts",
-        "to": "src/ship/prepare.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/ship.ts",
-        "to": "src/ship/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/ship.ts",
-        "to": "src/ship/state.ts",
-        "kind": "type-imports"
-      },
-      {
         "from": "src/cli/commands/smoke.ts",
         "to": "external:path",
         "kind": "imports"
@@ -62059,6 +61954,11 @@
       {
         "from": "src/cli/commands/team.ts",
         "to": "src/team/sdk-host.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
+        "to": "src/team/sdk-inprocess-tools.ts",
         "kind": "imports"
       },
       {
@@ -62364,11 +62264,6 @@
       {
         "from": "src/cli/index.ts",
         "to": "src/cli/commands/session-search.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/index.ts",
-        "to": "src/cli/commands/ship.ts",
         "kind": "imports"
       },
       {
@@ -80028,6 +79923,11 @@
       },
       {
         "from": "src/notifications/session-registry.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/session-registry.ts",
         "to": "src/platform/index.ts",
         "kind": "imports"
       },
@@ -80940,376 +80840,6 @@
         "from": "src/shared/index.ts",
         "to": "src/shared/types.ts",
         "kind": "exports"
-      },
-      {
-        "from": "src/ship/__tests__/gates.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/gates.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/gates.test.ts",
-        "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/gates.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/gates.test.ts",
-        "to": "src/cli/commands/ship.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/gates.test.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/gates.test.ts",
-        "to": "src/ship/config.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/__tests__/gates.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/gates.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/__tests__/gates.test.ts",
-        "to": "src/ship/gates.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/gates.test.ts",
-        "to": "src/ship/gates.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/__tests__/git-trust.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/git-trust.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/git-trust.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/git-trust.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/git-trust.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/git-trust.test.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/git-trust.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/git-trust.test.ts",
-        "to": "src/ship/merge.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/prepare-merge.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/prepare-merge.test.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/prepare-merge.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/prepare-merge.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/__tests__/prepare-merge.test.ts",
-        "to": "src/ship/gates.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/prepare-merge.test.ts",
-        "to": "src/ship/gates.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/__tests__/prepare-merge.test.ts",
-        "to": "src/ship/merge.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/prepare-merge.test.ts",
-        "to": "src/ship/merge.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/__tests__/prepare-merge.test.ts",
-        "to": "src/ship/prepare.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/prepare-merge.test.ts",
-        "to": "src/ship/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/prepare-merge.test.ts",
-        "to": "src/ship/state.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/__tests__/safety-state.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/safety-state.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/safety-state.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/safety-state.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/safety-state.test.ts",
-        "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/safety-state.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/safety-state.test.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/safety-state.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/safety-state.test.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/__tests__/safety-state.test.ts",
-        "to": "src/ship/gates.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/safety-state.test.ts",
-        "to": "src/ship/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/safety-state.test.ts",
-        "to": "src/ship/state.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/__tests__/safety-state.test.ts",
-        "to": "src/utils/jsonc.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/workflow-checks.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/workflow-checks.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/workflow-checks.test.ts",
-        "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/workflow-checks.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/__tests__/workflow-checks.test.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/config.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/config.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/config.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/config.ts",
-        "to": "src/config/loader.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/config.ts",
-        "to": "src/config/project-config-path.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/config.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/config.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/config.ts",
-        "to": "src/utils/jsonc.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/exec.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/gates.ts",
-        "to": "src/ship/config.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/gates.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/merge.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/merge.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/merge.ts",
-        "to": "src/ship/gates.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/merge.ts",
-        "to": "src/ship/state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/merge.ts",
-        "to": "src/ship/state.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/prepare.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/prepare.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/prepare.ts",
-        "to": "src/ship/config.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/prepare.ts",
-        "to": "src/ship/exec.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/ship/state.ts",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/state.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/state.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/state.ts",
-        "to": "src/lib/atomic-write.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/state.ts",
-        "to": "src/lib/file-lock.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/ship/state.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
       },
       {
         "from": "src/skills/__tests__/mingw-escape.test.ts",
@@ -85012,6 +84542,46 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "src/mcp/tool-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "src/team/sdk-inprocess-tools.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "src/team/sdk-policy.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/__tests__/sdk-transport.runtime.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -85054,6 +84624,11 @@
       {
         "from": "src/team/__tests__/sdk-transport.test.ts",
         "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-transport.test.ts",
+        "to": "external:events",
         "kind": "imports"
       },
       {
@@ -85105,6 +84680,11 @@
         "from": "src/team/__tests__/sdk-transport.test.ts",
         "to": "src/team/sdk-host.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-transport.test.ts",
+        "to": "src/team/sdk-inprocess-tools.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/__tests__/sdk-transport.test.ts",
@@ -88873,6 +88453,11 @@
       },
       {
         "from": "src/team/sdk-host.ts",
+        "to": "src/team/sdk-inprocess-tools.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/sdk-host.ts",
         "to": "src/team/sdk-policy.ts",
         "kind": "imports"
       },
@@ -88900,6 +88485,26 @@
         "from": "src/team/sdk-host.ts",
         "to": "src/team/worker-launch-ack.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/sdk-inprocess-tools.ts",
+        "to": "src/mcp/tool-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/sdk-inprocess-tools.ts",
+        "to": "src/mcp/tool-registry.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/sdk-inprocess-tools.ts",
+        "to": "src/tools/lsp/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/sdk-inprocess-tools.ts",
+        "to": "src/tools/python-repl/bridge-manager.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/sdk-policy.ts",
@@ -93743,12 +93348,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8224,
-      "edgeCount": 9026,
-      "importEdgeCount": 7470,
-      "registerEdgeCount": 83
+      "nodeCount": 8209,
+      "edgeCount": 8962,
+      "importEdgeCount": 7427,
+      "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "7e0ef081265cdfeb6bf223799c8a9f34da84e4aec4b95e6b1c9456bc9fc2b5aa",
-  "manifestSha256": "9b457e493605d330c1b688045fdb7c424629f504950d2fc9004266374ef8a69a"
+  "inventorySha256": "57fb34558e14524ac7700987fc7162533ce12790ee666b5287b169b2d819814c",
+  "manifestSha256": "7db7533a6d87960ad64d93f5c39b49d770d010a7acbd21e26d30793a1274d9cd"
 }
