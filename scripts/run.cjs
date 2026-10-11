@@ -1109,6 +1109,9 @@ async function runWorker(targetPath, manifestHook, timeoutMs, options = {}) {
         if (terminal) return;
         discardOutput = true;
         terminal = true;
+        // Fork (dispatcher): the same signal the supervised child path gives.
+        // Nothing reached the sink yet, so for the dispatcher it only records the timeout.
+        if (typeof options.onTimeout === 'function') options.onTimeout();
         cleanupInput();
         try {
           await worker.terminate();
@@ -1177,9 +1180,9 @@ if (require.main === module) {
  * Route one resolved hook to its runner and resolve to its exit status.
  * Fork: shared by the CLI entry above and scripts/copilot/dispatch.cjs.
  * `io` ({ input, stdout, stderr, onTimeout }) is passed only by the dispatcher;
- * the CLI entry passes none and keeps process stdin/stdout/stderr. The
- * supervised child path calls `onTimeout()` when the hook times out, so the
- * caller can drop stdout the child streamed before it hung.
+ * the CLI entry passes none and keeps process stdin/stdout/stderr. Both the
+ * supervised child and the Worker path call `onTimeout()` when the hook times
+ * out, so the caller can drop stdout the child streamed before it hung.
  */
 function runResolvedHook(resolution, extraArgs, io = {}) {
   const workerManifestHook = resolveWorkerTarget(resolution, extraArgs);

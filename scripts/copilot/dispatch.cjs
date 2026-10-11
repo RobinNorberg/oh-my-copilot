@@ -48,6 +48,11 @@
  * manifest timeout + 2s, capped at what is left of the group's summed
  * timeouts (the entry's timeoutSec); past that its process tree is killed.
  *
+ * Warm daemon (opt-in, OMC_COPILOT_HOOK_DAEMON=1): main() first offers the
+ * group to scripts/copilot/hook-daemon.cjs, which runs this file's dispatch()
+ * in a long-lived process; on any daemon problem this process runs the group
+ * as below. Off by default.
+ *
  * Isolation: a hook whose run throws or rejects counts as that hook's failure
  * (an `[omg-hook]` line; exit 1 under OMC_HOOK_FAIL_CLOSED=1, else 0), and the
  * other hooks' outputs are kept. A hook that times out contributes no stdout
@@ -260,13 +265,18 @@ function createCollector() {
   return stream;
 }
 
-/** Forwards each chunk to fd 2 at once and keeps the tail for transform(). */
-function createStderrTee() {
+/** fd 2 of this process: the host's stderr. The warm daemon passes its own sink instead. */
+function writeProcessStderr(chunk) {
+  writeAllSync(2, chunk);
+}
+
+/** Forwards each chunk to `writeStderr` at once and keeps the tail for transform(). */
+function createStderrTee(writeStderr = writeProcessStderr) {
   let tail = Buffer.alloc(0);
   const stream = new Writable({
     write(chunk, _encoding, callback) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      writeAllSync(2, buffer);
+      writeStderr(buffer);
       const next = Buffer.concat([tail, buffer]);
       tail = next.length > STDERR_TAIL_BYTES ? next.subarray(next.length - STDERR_TAIL_BYTES) : next;
       callback();
@@ -280,7 +290,7 @@ function createStderrTee() {
  * The adapter's run.cjs target check, per hook: a note for a non-file target,
  * and a final exit code when the old path would have exited before run.cjs.
  */
-function checkHookTarget(event, script, env = process.env) {
+function checkHookTarget(event, script, env = process.env, writeStderr = writeProcessStderr) {
   let stat = null;
   try {
     stat = statSync(script);
@@ -288,23 +298,32 @@ function checkHookTarget(event, script, env = process.env) {
     stat = null;
   }
   if (stat && stat.isFile()) return null;
-  writeAllSync(2, `[omg-hook] ${event}: hook target is not a file: ${script}\n`);
+  writeStderr(`[omg-hook] ${event}: hook target is not a file: ${script}\n`);
   const strict = env.OMC_HOOK_STRICT === '1';
   if (strict || stat) return { exitCode: strict ? 1 : 0 };
   return null;
 }
 
-/** Default path: one hook through run.cjs routing inside this process. */
-async function runHookInProcess(event, hook, input) {
+/**
+ * Default path: one hook through run.cjs routing inside this process.
+ * `status` (the runner's own code) and `timedOut` are for the warm daemon's
+ * retire decision only; the merge reads `exitCode`.
+ */
+async function runHookInProcess(event, hook, input, writeStderr = writeProcessStderr) {
   const started = Date.now();
-  const early = checkHookTarget(event, hook.script);
-  if (early) return { script: hook.script, stdout: '', exitCode: early.exitCode, ms: Date.now() - started };
+  const early = checkHookTarget(event, hook.script, process.env, writeStderr);
+  if (early) return { script: hook.script, stdout: '', exitCode: early.exitCode, status: early.exitCode, ms: Date.now() - started };
   const runCjs = require(RUN_CJS);
   const stdout = createCollector();
-  const stderr = createStderrTee();
+  const stderr = createStderrTee(writeStderr);
+  let timedOut = false;
+  const onTimeout = () => {
+    timedOut = true;
+    stdout.discard();
+  };
   const resolution = runCjs.resolveTarget(hook.script);
   const status = resolution
-    ? await runCjs.runResolvedHook(resolution, hook.args, { input, stdout, stderr, onTimeout: stdout.discard })
+    ? await runCjs.runResolvedHook(resolution, hook.args, { input, stdout, stderr, onTimeout })
     : 0;
   let adapted;
   try {
@@ -323,8 +342,8 @@ async function runHookInProcess(event, hook, input) {
       stderr: `[omg-hook] ${event} adapter error: ${error && error.message ? error.message : String(error)}\n`,
     };
   }
-  if (adapted.stderr) writeAllSync(2, adapted.stderr);
-  return { script: hook.script, stdout: adapted.stdout, exitCode: adapted.exitCode, ms: Date.now() - started };
+  if (adapted.stderr) writeStderr(adapted.stderr);
+  return { script: hook.script, stdout: adapted.stdout, exitCode: adapted.exitCode, status, timedOut, ms: Date.now() - started };
 }
 
 /** The hook's hooks/hooks.json timeout in ms, or null when the manifest has none. */
@@ -439,9 +458,15 @@ function readStdin() {
   });
 }
 
-async function dispatch(event, hooks, input) {
+/**
+ * `io` is passed only by the warm daemon (scripts/copilot/hook-daemon.cjs):
+ * `writeStderr` replaces fd 2, and `results` (an array) receives the per-hook
+ * results. The daemon never runs the kill-switch path.
+ */
+async function dispatch(event, hooks, input, io = {}) {
   const legacy = process.env.OMC_COPILOT_HOOK_DISPATCH === '0';
   const debug = Boolean(process.env.OMC_DEBUG_HOOKS);
+  const writeStderr = io.writeStderr || writeProcessStderr;
   const results = [];
   const budgetMs = legacy ? groupBudgetMs(hooks) : null;
   const groupDeadline = budgetMs === null ? null : Date.now() + budgetMs;
@@ -449,19 +474,20 @@ async function dispatch(event, hooks, input) {
     const started = Date.now();
     let result;
     try {
-      result = legacy ? await runHookAsProcess(event, hook, input, groupDeadline) : await runHookInProcess(event, hook, input);
+      result = legacy ? await runHookAsProcess(event, hook, input, groupDeadline) : await runHookInProcess(event, hook, input, writeStderr);
     } catch (error) {
       // One hook's throw or rejection is that hook's failure; the others keep their output.
       const failClosed = failClosedEnabled();
       const message = error && error.message ? error.message : String(error);
-      writeAllSync(2, `[omg-hook] ${event}: ${path.basename(hook.script)} failed: ${message}; failing ${failClosed ? 'closed' : 'open'}\n`);
-      result = { script: hook.script, stdout: '', exitCode: failClosed ? 1 : 0, ms: Date.now() - started };
+      writeStderr(`[omg-hook] ${event}: ${path.basename(hook.script)} failed: ${message}; failing ${failClosed ? 'closed' : 'open'}\n`);
+      result = { script: hook.script, stdout: '', exitCode: failClosed ? 1 : 0, threw: true, ms: Date.now() - started };
     }
     if (debug) {
-      writeAllSync(2, `[omg-hook] ${event} dispatch${legacy ? ' (per-hook processes)' : ''}: ${path.basename(hook.script)} ${result.ms}ms exit ${result.exitCode}\n`);
+      writeStderr(`[omg-hook] ${event} dispatch${legacy ? ' (per-hook processes)' : ''}: ${path.basename(hook.script)} ${result.ms}ms exit ${result.exitCode}\n`);
     }
     results.push(result);
   }
+  if (Array.isArray(io.results)) io.results.push(...results);
   return mergeHookResults(event, results);
 }
 
@@ -477,7 +503,17 @@ async function main() {
   // run.cjs routing (Copilot Worker path, SessionEnd budget) reads the event from the env.
   process.env.OMC_HOOK_EVENT = parsed.event;
   const input = await readStdin();
-  const merged = await dispatch(parsed.event, parsed.hooks, input);
+  // Opt-in warm daemon (OMC_COPILOT_HOOK_DAEMON=1). null on any daemon
+  // problem, before or during the request: then this process runs the group.
+  let warm = null;
+  if (process.env.OMC_COPILOT_HOOK_DAEMON === '1') {
+    try {
+      warm = await require('./hook-daemon.cjs').runViaDaemon(parsed.event, parsed.hooks, input);
+    } catch {
+      warm = null;
+    }
+  }
+  const merged = warm || await dispatch(parsed.event, parsed.hooks, input);
   if (merged.stdout) writeAllSync(1, merged.stdout);
   if (merged.stderr) writeAllSync(2, merged.stderr);
   process.exitCode = merged.exitCode;
