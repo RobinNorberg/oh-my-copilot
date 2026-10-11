@@ -472,7 +472,7 @@ export async function generateInventoryGraph(opts = {}) {
         // dist/ and bridge/ are build output: resolve them from the tracked
         // shipping surface and the source tree, never from the local disk, so
         // a local build cannot add or drop edges. Everything else must exist.
-        const generated = resolveGeneratedTarget(resolved.candidates,genDistSet, genBridgeSet, relStableSet);
+        const generated = resolveGeneratedTarget(resolved.candidates, genDistSet, genBridgeSet, relStableSet);
         const hit = generated ? generated.path : await existsAny(root, resolved.candidates);
         if (generated?.path && !nodeSet.has(generated.path)) {
           nodeSet.set(generated.path, { id: generated.path, kind: generated.kind, path: generated.path });
