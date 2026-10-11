@@ -13,6 +13,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const CHECKS_GREEN = readFileSync(join(HERE, '../../../ship/__tests__/fixtures/checks-pr233-green.json'), 'utf8');
 const HEAD = '1234567890abcdef1234567890abcdef12345678';
 const BASE = 'abcdefabcdefabcdefabcdefabcdefabcdefabcd';
+const PR_URL = 'https://github.com/RobinNorberg/oh-my-copilot/pull/42';
 const ok = (stdout = ''): ExecResult => ({ status: 0, stdout, stderr: '' });
 
 describe('omg ship CLI (scripted gh/git, no network)', () => {
@@ -26,11 +27,12 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
     const key = `${cmd === process.execPath ? 'node' : cmd} ${args.join(' ')}`;
     calls.push(key);
     if (key === 'git rev-parse --show-toplevel') return ok(`${root}\n`);
-    if (key.startsWith('gh pr view 42 --json headRefName')) return ok(JSON.stringify({ headRefName: 'feat/x', baseRefName: prBase, baseRefOid: BASE }));
+    if (key.startsWith('gh pr view 42 --json headRefName')) return ok(JSON.stringify({ headRefName: 'feat/x', baseRefName: prBase, baseRefOid: BASE, url: PR_URL }));
     if (key.startsWith('gh pr view 42 --json number')) {
-      return ok(JSON.stringify({ number: 42, state: 'OPEN', isDraft: false, baseRefName: prBase, baseRefOid: BASE, headRefName: 'feat/x', headRefOid: HEAD }));
+      return ok(JSON.stringify({ number: 42, state: 'OPEN', isDraft: false, baseRefName: prBase, baseRefOid: BASE, headRefName: 'feat/x', headRefOid: HEAD, url: PR_URL }));
     }
-    if (key === 'gh pr view 42 --json baseRefName,baseRefOid') return ok(JSON.stringify({ baseRefName: prBase, baseRefOid: BASE }));
+    if (key === 'gh pr view 42 --json baseRefName,baseRefOid,url') return ok(JSON.stringify({ baseRefName: prBase, baseRefOid: BASE, url: PR_URL }));
+    if (key === 'git remote get-url origin') return ok(`${remoteUrl}\n`);
     if (key.startsWith('gh pr view 42 --json headRefOid')) return ok(JSON.stringify({ headRefOid: HEAD }));
     if (key.startsWith(`gh run list --commit ${HEAD}`)) return ok(runs);
     if (key.startsWith('git fetch origin ') && fetchFails) return { status: 128, stdout: '', stderr: 'fatal: unable to access remote' };
@@ -55,6 +57,8 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
   let prBase: string;
   let remoteBase: string;
   let fetchFails: boolean;
+  /** What `git remote get-url origin` prints. */
+  let remoteUrl: string;
 
   /** The real trust-model loader: user block + base-branch file + the temp repo's working tree. */
   async function runTrusted(...argv: string[]): Promise<number> {
@@ -91,6 +95,7 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
     prBase = 'dev';
     remoteBase = BASE;
     fetchFails = false;
+    remoteUrl = 'https://github.com/RobinNorberg/oh-my-copilot.git';
     delete process.env.OMG_SHIP_HUMAN;
     vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => { logs.push(a.join(' ')); });
     vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { logs.push(a.join(' ')); });

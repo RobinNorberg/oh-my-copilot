@@ -3,9 +3,12 @@ import { execFileSync } from 'child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
-import { defaultExec, guardExec } from '../exec.js';
-import { loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile } from '../config.js';
-import { listChangedFiles, protectedChanges } from '../merge.js';
+import { defaultExec, guardExec, type Exec } from '../exec.js';
+import { loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, resolveShipConfig } from '../config.js';
+import { evaluateChecks } from '../gates.js';
+import { decideMerge, listChangedFiles, protectedChanges, readCommitsSinceReview } from '../merge.js';
+import { runPrepare } from '../prepare.js';
+import { createShipState, recordVerdict, sealShipState, transition } from '../state.js';
 
 /**
  * The trust layer against a real git: replace refs, injected git config and
@@ -61,7 +64,7 @@ describe('trusted reads against a real git', () => {
       // The attack works against a plain read...
       expect(git(clone, 'show', 'origin/dev:.copilot/omg.jsonc')).toContain('"allowAdminMerge": true');
       // ...but not against the engine's.
-      const config = loadTrustedShipConfig({ exec, root: clone, base: 'dev', baseSha, strict: true, user: null, project: {}, warn: () => {} });
+      const config = loadTrustedShipConfig({ exec, root: clone, base: 'dev', baseSha, repoUrl: up, strict: true, user: null, project: {}, warn: () => {} });
       expect(config.allowAdminMerge).toBe(false);
       expect(config.advisoryChecks).not.toContain('Test');
       expect(config.trustedBaseCommit).toBe(baseSha);
@@ -85,7 +88,7 @@ describe('trusted reads against a real git', () => {
 
   it('H1: a base sha GitHub did not report fails closed', () => {
     const other = 'e'.repeat(40);
-    expect(() => loadTrustedShipConfig({ exec, root: clone, base: 'dev', baseSha: other, strict: true, user: null, project: {}, warn: () => {} }))
+    expect(() => loadTrustedShipConfig({ exec, root: clone, base: 'dev', baseSha: other, repoUrl: up, strict: true, user: null, project: {}, warn: () => {} }))
       .toThrow(/refs\/remotes\/origin\/dev is [0-9a-f]{40}, but GitHub reports dev at e{40}.*fail closed/);
   });
 
@@ -129,5 +132,129 @@ describe('trusted reads against a real git', () => {
     // Any read failure is null (fail closed).
     expect(listChangedFiles(exec, clone, 'f'.repeat(40), head)).toBeNull();
     expect(listChangedFiles(exec, clone, 'origin/dev', head)).toBeNull();
+  });
+});
+
+describe('prepare and merge against a real git: the base is GitHub\'s sha, from the PR\'s repository', () => {
+  /** Real git through the guard; repo scripts (node) are stubbed as passing. */
+  const exec = guardExec(((cmd, args, opts) => (/node(\.exe)?$/i.test(cmd)
+    ? { status: 0, stdout: '', stderr: '' }
+    : defaultExec(cmd, args, opts))) as Exec);
+  const T = '2026-10-11T00:00:00.000Z';
+  const config = resolveShipConfig({ requiredChecks: ['Test'] });
+  const green = evaluateChecks(9, [{ name: 'Test', state: 'SUCCESS' }], config);
+  let dir: string;
+
+  afterAll(() => {
+    if (dir) rmSync(dir, { recursive: true, force: true });
+  });
+
+  /**
+   * `up` (GitHub) with dev at `baseSha`, which moved past the PR's fork point;
+   * `clone` on feat/x at `reviewed` (the approved commit); `evil`, a commit
+   * only in the clone, branched from the old base.
+   */
+  function setup(name: string) {
+    dir ??= mkdtempSync(join(tmpdir(), 'omg-ship-prep-'));
+    const up = join(dir, `${name}-up`);
+    const clone = join(dir, `${name}-clone`);
+    mkdirSync(up);
+    git(up, 'init', '-q', '-b', 'dev');
+    write(up, 'a.txt', 'a\n');
+    git(up, 'add', '-A');
+    git(up, 'commit', '-q', '-m', 'base');
+    git(dir, 'clone', '-q', up, clone);
+    for (const [k, v] of [['user.name', 't'], ['user.email', 't@example.com'], ['commit.gpgsign', 'false']]) git(clone, 'config', k, v);
+    git(clone, 'checkout', '-q', '-b', 'feat/x');
+    write(clone, 'feature.txt', 'feature\n');
+    git(clone, 'add', '-A');
+    git(clone, 'commit', '-q', '-m', 'feature');
+    const reviewed = git(clone, 'rev-parse', 'HEAD');
+    write(up, 'b.txt', 'b\n');
+    git(up, 'add', '-A');
+    git(up, 'commit', '-q', '-m', 'base moved');
+    const baseSha = git(up, 'rev-parse', 'HEAD');
+    git(clone, 'checkout', '-q', '-b', 'evil', 'origin/dev');
+    write(clone, 'evil.txt', 'evil\n');
+    git(clone, 'add', '-A');
+    git(clone, 'commit', '-q', '-m', 'evil');
+    const evil = git(clone, 'rev-parse', 'HEAD');
+    git(clone, 'checkout', '-q', 'feat/x');
+    return { up, clone, reviewed, baseSha, evil };
+  }
+
+  function approvedState(reviewed: string, housekeeping: string[]) {
+    let s = createShipState({ pr: 9, base: 'dev', branch: 'feat/x', implementer: 'executor-1', maxFixRounds: 2 }, T);
+    s = recordVerdict(s, { reviewer: 'verifier-1', verdict: 'approve', sha: reviewed, at: T });
+    s = transition({ ...s, housekeepingCommits: housekeeping }, 'gates', 'prepared', T);
+    return sealShipState(transition(s, 'ready', 'green', T));
+  }
+
+  function decide(clone: string, reviewed: string, baseSha: string, housekeeping: string[]) {
+    const head = git(clone, 'rev-parse', 'HEAD');
+    const since = readCommitsSinceReview(exec, clone, reviewed, head, baseSha, housekeeping);
+    return decideMerge({
+      state: approvedState(reviewed, housekeeping),
+      pr: { number: 9, state: 'OPEN', isDraft: false, baseRefName: 'dev', headRefOid: head },
+      gate: green,
+      changedFiles: [],
+      ...since,
+    });
+  }
+
+  it('the legitimate path: merges GitHub\'s base sha, and merge accepts the recorded merge', () => {
+    const { up, clone, reviewed, baseSha } = setup('ok');
+    const r = runPrepare({ exec, cwd: clone, base: 'dev', branch: 'feat/x', reviewedSha: reviewed, baseSha, repoUrl: up, checks: false });
+    expect(r.ok, r.blockedReason).toBe(true);
+    expect(r.housekeepingCommits).toHaveLength(1);
+    expect(git(clone, 'rev-parse', 'HEAD^2')).toBe(baseSha);
+    expect(decide(clone, reviewed, baseSha, r.housekeepingCommits)).toMatchObject({ ok: true, reasons: [] });
+  });
+
+  it('a tag named origin/dev does not shadow the base: the merge takes GitHub\'s sha', () => {
+    const { up, clone, reviewed, baseSha, evil } = setup('tag');
+    git(clone, 'fetch', '-q', 'origin', 'dev');
+    git(clone, 'tag', 'origin/dev', evil);
+    // The attack works against a ref-name merge...
+    expect(git(clone, 'rev-parse', 'origin/dev^{commit}')).toBe(evil);
+    // ...but not against the engine's.
+    const r = runPrepare({ exec, cwd: clone, base: 'dev', branch: 'feat/x', reviewedSha: reviewed, baseSha, repoUrl: up, checks: false });
+    expect(r.ok, r.blockedReason).toBe(true);
+    expect(git(clone, 'rev-parse', 'HEAD^2')).toBe(baseSha);
+    expect(() => git(clone, 'merge-base', '--is-ancestor', evil, 'HEAD')).toThrow();
+    expect(decide(clone, reviewed, baseSha, r.housekeepingCommits).ok).toBe(true);
+  });
+
+  it('remote.origin.url pointing at another repository (or rewritten by insteadOf) is refused before any fetch', () => {
+    const { up, clone, reviewed, baseSha } = setup('url');
+    const other = join(dir, 'url-other');
+    git(dir, 'clone', '-q', '--bare', up, other);
+    const before = git(clone, 'rev-parse', 'HEAD');
+
+    git(clone, 'remote', 'set-url', 'origin', other);
+    const r = runPrepare({ exec, cwd: clone, base: 'dev', branch: 'feat/x', reviewedSha: reviewed, baseSha, repoUrl: up, checks: false });
+    expect(r.ok).toBe(false);
+    expect(r.blockedReason).toMatch(/^remote: remote origin points at .*url-other, but the PR is in .*url-up/);
+    expect(git(clone, 'rev-parse', 'HEAD')).toBe(before);
+    expect(() => loadTrustedShipConfig({ exec, root: clone, base: 'dev', baseSha, repoUrl: up, strict: true, user: null, project: {}, warn: () => {} }))
+      .toThrow(/remote origin points at .*url-other.*fail closed/);
+
+    // The configured URL is right, but insteadOf rewrites what fetch really uses.
+    git(clone, 'remote', 'set-url', 'origin', up);
+    git(clone, 'config', `url.${other}.insteadOf`, up);
+    const rewritten = runPrepare({ exec, cwd: clone, base: 'dev', branch: 'feat/x', reviewedSha: reviewed, baseSha, repoUrl: up, checks: false });
+    expect(rewritten.blockedReason).toMatch(/^remote: remote origin points at .*url-other/);
+    expect(git(clone, 'rev-parse', 'HEAD')).toBe(before);
+  });
+
+  it('merge refuses a recorded housekeeping merge whose second parent is not in GitHub\'s base history', () => {
+    const { clone, reviewed, baseSha, evil } = setup('forged');
+    git(clone, 'fetch', '-q', 'origin', 'dev');
+    // What the old ref-name prepare produced with a shadowing tag: a merge of the lane's commit, recorded as housekeeping.
+    git(clone, 'merge', '-q', '--no-ff', '--no-edit', evil);
+    const forged = git(clone, 'rev-parse', 'HEAD');
+    const d = decide(clone, reviewed, baseSha, [forged]);
+    expect(d.ok).toBe(false);
+    expect(d.reasons.join('\n')).toMatch(new RegExp(`housekeeping merge ${forged.slice(0, 12)} brings in ${evil.slice(0, 12)}, which is not in GitHub's base history`));
   });
 });

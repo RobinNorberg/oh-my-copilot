@@ -28,7 +28,7 @@
  * any reviewer, or put another `git` / `gh` first on PATH. The engine scrubs
  * the git / gh variables that redirect its commands (scrubShipEnv), reads
  * the user config's safety keys from the OS-reported home only, and checks
- * the base against GitHub, but it guards against lanes that follow their
+ * the remote URL and the base sha against GitHub, but it guards against lanes that follow their
  * briefs or slip, not against one that rewrites its own environment.
  *
  * Exit codes: 0 ok / green / ready, 1 refused or failed, 2 usage error,
@@ -42,13 +42,14 @@ import {
   isPlainBranchName,
   loadBaseKnownFlaky,
   loadTrustedShipConfig,
+  prRepoUrl,
   userConfigLayers,
   type LoadedShipConfig,
   type ShipConfig,
 } from '../../ship/config.js';
 import { defaultExec, guardExec, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { watchGates, type GateReport } from '../../ship/gates.js';
-import { decideMerge, listChangedFiles, type PrView } from '../../ship/merge.js';
+import { decideMerge, listChangedFiles, readCommitsSinceReview, type PrView } from '../../ship/merge.js';
 import { runPrepare } from '../../ship/prepare.js';
 import {
   createShipState,
@@ -91,6 +92,8 @@ export interface ShipConfigContext {
   base: string;
   /** GitHub's base sha (baseRefOid); the fetched base must equal it before its files are read. */
   baseSha?: string;
+  /** The PR's repository URL on GitHub; the remote must point at it before the base is fetched. */
+  repoUrl?: string;
   /** merge: an unverifiable base throws (fail closed) instead of falling back to the defaults. */
   strict?: boolean;
 }
@@ -102,10 +105,10 @@ const shipConfig: ShipConfigLoader = (ctx) => loadTrustedShipConfig({ ...ctx, ..
 
 const FULL_SHA = /^[0-9a-f]{40}$/;
 
-/** The PR's base branch and base sha as GitHub reports them. */
-function prBaseInfo(exec: Exec, pr: number): { base: string; baseSha: string } {
-  const view = exec('gh', ['pr', 'view', String(pr), '--json', 'baseRefName,baseRefOid']);
-  let info: { baseRefName?: unknown; baseRefOid?: unknown } = {};
+/** The PR's base branch, base sha and repository URL as GitHub reports them. */
+function prBaseInfo(exec: Exec, pr: number): { base: string; baseSha: string; repoUrl: string | undefined } {
+  const view = exec('gh', ['pr', 'view', String(pr), '--json', 'baseRefName,baseRefOid,url']);
+  let info: { baseRefName?: unknown; baseRefOid?: unknown; url?: unknown } = {};
   try {
     info = JSON.parse(view.stdout) as typeof info;
   } catch {
@@ -114,7 +117,7 @@ function prBaseInfo(exec: Exec, pr: number): { base: string; baseSha: string } {
   if (view.status !== 0 || !isPlainBranchName(info.baseRefName) || typeof info.baseRefOid !== 'string' || !FULL_SHA.test(info.baseRefOid)) {
     throw new Error(`gh pr view ${pr} did not return a base branch and sha: ${view.stderr.trim()}`);
   }
-  return { base: info.baseRefName, baseSha: info.baseRefOid };
+  return { base: info.baseRefName, baseSha: info.baseRefOid, repoUrl: prRepoUrl(info.url) };
 }
 
 /**
@@ -201,13 +204,13 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
       guarded(Boolean(o.json), () => {
         const pr = parsePr(prRaw);
         const root = repoRoot(exec);
-        const view = exec('gh', ['pr', 'view', String(pr), '--json', 'headRefName,baseRefName,baseRefOid']);
-        const prInfo = view.status === 0 ? (JSON.parse(view.stdout) as { headRefName?: string; baseRefName?: string; baseRefOid?: string }) : {};
+        const view = exec('gh', ['pr', 'view', String(pr), '--json', 'headRefName,baseRefName,baseRefOid,url']);
+        const prInfo = view.status === 0 ? (JSON.parse(view.stdout) as { headRefName?: string; baseRefName?: string; baseRefOid?: string; url?: string }) : {};
         if (o.base !== undefined && prInfo.baseRefName !== undefined && o.base !== prInfo.baseRefName) {
           throw new UsageError(`--base ${JSON.stringify(o.base)} differs from PR #${pr}'s base on GitHub (${prInfo.baseRefName}); retarget the PR on GitHub instead`);
         }
         const known = prInfo.baseRefName ?? o.base;
-        const config = loadShipConfig({ exec, root, base: assertBranchName(exec, known ?? DEFAULT_SHIP_CONFIG.base, '--base'), baseSha: prInfo.baseRefOid });
+        const config = loadShipConfig({ exec, root, base: assertBranchName(exec, known ?? DEFAULT_SHIP_CONFIG.base, '--base'), baseSha: prInfo.baseRefOid, repoUrl: prRepoUrl(prInfo.url) });
         const base = assertBranchName(exec, known ?? config.base, '--base');
         const branch = prInfo.headRefName === undefined ? undefined : assertBranchName(exec, prInfo.headRefName, 'PR head branch');
         const maxFixRounds = parseNumber(o.maxFixRounds, '--max-fix-rounds') ?? config.maxFixRounds;
@@ -300,7 +303,10 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         const reviewedSha = latestVerdict(state)?.sha;
         if (!reviewedSha) throw new UsageError(`no verdict recorded for PR #${pr}`);
         runBase = [state.base];
-        const result = runPrepare({ exec, cwd: root, base: state.base, branch: state.branch, reviewedSha, checks: o.checks, push: o.push });
+        // GitHub's base sha is what gets merged; the local ref only has to agree with it.
+        const { base: prBaseBranch, baseSha, repoUrl } = prBaseInfo(exec, pr);
+        if (prBaseBranch !== state.base) throw new Error(`PR #${pr} targets ${prBaseBranch} on GitHub, but the ship run expects ${state.base}; re-run omg ship init ${pr} --force`);
+        const result = runPrepare({ exec, cwd: root, base: state.base, branch: state.branch, reviewedSha, baseSha, repoUrl, checks: o.checks, push: o.push });
         const next = updateShipState(root, pr, (current) => {
           const s = current ?? state;
           const withCommits = { ...s, housekeepingCommits: [...s.housekeepingCommits, ...result.housekeepingCommits] };
@@ -332,11 +338,11 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         const root = repoRoot(exec);
         const existing = readShipState(root, pr);
         // GitHub's base, never the state's: a retargeted PR is gated under its real base.
-        const { base: prBaseBranch, baseSha } = prBaseInfo(exec, pr);
+        const { base: prBaseBranch, baseSha, repoUrl } = prBaseInfo(exec, pr);
         if (existing && existing.base !== prBaseBranch) {
           console.error(chalk.yellow(`omg ship: PR #${pr} targets ${prBaseBranch} on GitHub, but the ship run expects ${existing.base}; merge will refuse until they agree`));
         }
-        const loaded = loadShipConfig({ exec, root, base: prBaseBranch, baseSha });
+        const loaded = loadShipConfig({ exec, root, base: prBaseBranch, baseSha, repoUrl });
         const config: ShipConfig = {
           ...loaded,
           pollIntervalSeconds: parseNumber(o.interval, '--interval') || loaded.pollIntervalSeconds,
@@ -387,14 +393,14 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         const pr = parsePr(prRaw);
         const root = repoRoot(exec);
         const state = requireState(root, pr);
-        const view = exec('gh', ['pr', 'view', String(pr), '--json', 'number,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid']);
+        const view = exec('gh', ['pr', 'view', String(pr), '--json', 'number,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid,url']);
         if (view.status !== 0) throw new Error(`gh pr view ${pr} failed: ${view.stderr.trim()}`);
-        const prView = JSON.parse(view.stdout) as PrView & { headRefName: string; baseRefOid: string };
+        const prView = JSON.parse(view.stdout) as PrView & { headRefName: string; baseRefOid: string; url?: string };
         if (!isPlainBranchName(prView.baseRefName) || !FULL_SHA.test(String(prView.baseRefOid)) || !FULL_SHA.test(String(prView.headRefOid))) {
           throw new Error(`gh pr view ${pr} did not return a base branch, base sha and head sha`);
         }
         // Trusted layer = the PR's real base on GitHub at its real sha (decideMerge also requires it to equal the run's base).
-        const config = loadShipConfig({ exec, root, base: prView.baseRefName, baseSha: prView.baseRefOid, strict: true });
+        const config = loadShipConfig({ exec, root, base: prView.baseRefName, baseSha: prView.baseRefOid, repoUrl: prRepoUrl(prView.url), strict: true });
         const trustedBase = config.trustedBases.includes(prView.baseRefName);
         const { report: gate } = await watchGates({
           exec, pr, config, known: loadBaseKnownFlaky(exec, root, config.trustedBaseCommit, config.knownFlakyFile), cwd: root, headSha: prView.headRefOid, watch: false,
@@ -406,14 +412,10 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         }
         const changedFiles = listChangedFiles(exec, root, prView.baseRefOid, prView.headRefOid);
         const reviewed = state.verdicts[state.verdicts.length - 1]?.sha;
-        let commitsSinceReview: string[] | null = [];
-        if (reviewed && reviewed !== prView.headRefOid) {
-          const ancestor = exec('git', ['merge-base', '--is-ancestor', reviewed, prView.headRefOid], { cwd: root }).status === 0;
-          const list = ancestor ? exec('git', ['rev-list', '--first-parent', `${reviewed}..${prView.headRefOid}`], { cwd: root }) : null;
-          commitsSinceReview = list && list.status === 0 ? list.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : null;
-        }
+        // The base was fetched and checked against baseRefOid by the strict config load above.
+        const { commitsSinceReview, baseHistory } = readCommitsSinceReview(exec, root, reviewed, prView.headRefOid, prView.baseRefOid, state.housekeepingCommits);
         const decision = decideMerge({
-          state, pr: prView, gate, commitsSinceReview, changedFiles,
+          state, pr: prView, gate, commitsSinceReview, baseHistory, changedFiles,
           humanOverride: humanOverride(),
           extraProtected: config.knownFlakyFile === DEFAULT_SHIP_CONFIG.knownFlakyFile ? [] : [config.knownFlakyFile],
         });

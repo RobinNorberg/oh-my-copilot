@@ -92,6 +92,14 @@ describe('assertSafeCommand', () => {
     ['git', 'reset', 'HEAD', 'file'],
     ['git', 'merge', '--no-edit', 'origin/dev'],
     ['git', 'merge', '--no-ff', '--no-edit', '--upload-pack=evil'],
+    // The base is merged by GitHub's sha only: a tag or branch named origin/dev cannot shadow it.
+    ['git', 'merge', '--no-ff', '--no-edit', 'origin/dev'],
+    ['git', 'merge', '--no-ff', '--no-edit', 'refs/remotes/origin/dev'],
+    ['git', 'merge', '--no-ff', '--no-edit', SHA_A.slice(0, 12)],
+    ['git', 'diff', '--name-only', 'origin/dev...HEAD'],
+    ['git', 'rev-list', '--first-parent', `${SHA_A}..${'b'.repeat(40)}`],
+    ['git', 'remote', 'get-url', '--push', 'origin'],
+    ['git', 'remote', 'set-url', 'origin', 'https://example.com/x'],
     ['git', 'fetch', 'origin', '--upload-pack=touch /tmp/pwned'],
     ['git', 'fetch', '--upload-pack=x', 'origin', 'dev'],
     ['git', 'merge-base', '--is-ancestor', '--upload-pack=x', 'HEAD'],
@@ -168,9 +176,10 @@ describe('assertSafeCommand', () => {
     ['git', 'fetch', 'origin', 'dev'],
     ['git', 'merge-base', '--is-ancestor', 'origin/dev', 'HEAD'],
     ['git', 'merge-base', '--is-ancestor', SHA_A, 'HEAD'],
-    ['git', 'merge', '--no-ff', '--no-edit', 'origin/dev'],
+    ['git', 'merge', '--no-ff', '--no-edit', SHA_A],
     ['git', 'diff', '--name-only', '--diff-filter=U'],
-    ['git', 'diff', '--name-only', 'origin/dev...HEAD'],
+    ['git', 'diff', '--name-only', `${SHA_A}...HEAD`],
+    ['git', 'remote', 'get-url', 'origin'],
     ['git', 'diff', '--cached', '--quiet'],
     ['git', 'checkout', '--theirs', '--', 'inventory'],
     ['git', 'add', '--', 'inventory'],
@@ -178,7 +187,7 @@ describe('assertSafeCommand', () => {
     ['git', 'commit', '-m', 'chore(inventory): regenerate inventory graph baseline'],
     ['git', 'push', 'origin', 'HEAD:refs/heads/feat/x'],
     ['git', 'cat-file', '-e', `${SHA_A}^{commit}`],
-    ['git', 'rev-list', '--first-parent', `${SHA_A}..${'b'.repeat(40)}`],
+    ['git', 'rev-list', '--first-parent', '--parents', `${SHA_A}..${'b'.repeat(40)}`],
     ['git', 'log', '--oneline', 'origin/dev'],
     ['git.exe', 'show', SHA_A],
     ['gh', 'pr', 'view', '12', '--json', 'headRefName,baseRefName'],
@@ -344,11 +353,16 @@ describe('trusted ship config (safety keys never from the working tree or the PR
   const failedTest = CHECKS.map((c) => (c.name === 'Test' ? { ...c, state: 'FAILURE' } : c));
 
   const BASE_SHA = 'c'.repeat(40);
+  const REPO_URL = 'https://github.com/o/r';
 
-  /** Scripted git: origin/dev fetched at `remote` (default GitHub's BASE_SHA), `.copilot/omg.jsonc` at BASE_SHA = baseFile. */
-  function execWithBase(baseFile: string | null, opts: { remote?: string; fetchFails?: boolean } = {}): { exec: Exec; calls: string[] } {
+  /**
+   * Scripted git: the origin remote at `url` (default the PR's repository), origin/dev fetched at
+   * `remote` (default GitHub's BASE_SHA), `.copilot/omg.jsonc` at BASE_SHA = baseFile.
+   */
+  function execWithBase(baseFile: string | null, opts: { remote?: string; fetchFails?: boolean; url?: string } = {}): { exec: Exec; calls: string[] } {
     const calls: string[] = [];
     const exec: Exec = (_cmd, args, o) => {
+      if (args[0] === 'remote') return { status: 0, stdout: `${opts.url ?? `${REPO_URL}.git`}\n`, stderr: '' };
       calls.push(args.join(' '));
       if (o?.env && JSON.stringify(o.env) !== JSON.stringify(TRUSTED_READ_ENV)) throw new Error('unexpected env');
       if (args[0] === 'fetch' && opts.fetchFails) return { status: 128, stdout: '', stderr: 'fatal: could not read from remote repository' };
@@ -363,7 +377,7 @@ describe('trusted ship config (safety keys never from the working tree or the PR
   it('the probe: a working-tree allowAdminMerge + advisory Test is ignored with a warning, and a FAILED Test stays failed', () => {
     const { exec, calls } = execWithBase(null);
     const warnings: string[] = [];
-    const config = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, user: null, project: PROBE_PROJECT, warn: (m) => warnings.push(m) });
+    const config = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, user: null, project: PROBE_PROJECT, warn: (m) => warnings.push(m) });
     expect(config.allowAdminMerge).toBe(false);
     expect(config.advisoryChecks).not.toContain('Test');
     expect(evaluateChecks(233, failedTest, config).verdict).toBe('failed');
@@ -378,7 +392,7 @@ describe('trusted ship config (safety keys never from the working tree or the PR
     try {
       mkdirSync(join(root, '.copilot'));
       writeFileSync(join(root, '.copilot', 'omg.jsonc'), readFileSync(join(HERE, 'fixtures/project-config-admin-merge.jsonc'), 'utf8'));
-      const config = loadTrustedShipConfig({ exec: execWithBase(null).exec, root, base: 'dev', baseSha: BASE_SHA, user: undefined, warn: () => {} });
+      const config = loadTrustedShipConfig({ exec: execWithBase(null).exec, root, base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, user: undefined, warn: () => {} });
       expect(config.allowAdminMerge).toBe(false);
       expect(config.advisoryChecks).toEqual(DEFAULT_SHIP_CONFIG.advisoryChecks);
     } finally {
@@ -392,7 +406,7 @@ describe('trusted ship config (safety keys never from the working tree or the PR
       mkdirSync(join(root, '.copilot'));
       writeFileSync(join(root, '.copilot', 'omc.jsonc'), readFileSync(join(HERE, 'fixtures/project-config-admin-merge.jsonc'), 'utf8'));
       const warnings: string[] = [];
-      const config = loadTrustedShipConfig({ exec: execWithBase(null).exec, root, base: 'dev', baseSha: BASE_SHA, user: undefined, warn: (m) => warnings.push(m) });
+      const config = loadTrustedShipConfig({ exec: execWithBase(null).exec, root, base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, user: undefined, warn: (m) => warnings.push(m) });
       expect(config.allowAdminMerge).toBe(false);
       expect(warnings).toEqual([expect.stringMatching(/omc\.jsonc \(legacy name\) is not read from the base branch.*allowAdminMerge, advisoryChecks.*Rename it to \.copilot\/omg\.jsonc/)]);
     } finally {
@@ -403,35 +417,37 @@ describe('trusted ship config (safety keys never from the working tree or the PR
   it('honors the file committed on the base branch, and the user config wins over it', () => {
     const base = '// committed on dev\n{ "ship": { "allowAdminMerge": true, "advisoryChecks": ["Size Check"], "maxFixRounds": 3, } }';
     const { exec } = execWithBase(base);
-    const fromBase = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, user: null, project: {}, warn: () => {} });
+    const fromBase = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, user: null, project: {}, warn: () => {} });
     expect(fromBase).toMatchObject({ allowAdminMerge: true, advisoryChecks: ['Size Check'], maxFixRounds: 3 });
-    const userWins = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, user: { ship: { allowAdminMerge: false } }, project: {}, warn: () => {} });
+    const userWins = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, user: { ship: { allowAdminMerge: false } }, project: {}, warn: () => {} });
     expect(userWins.allowAdminMerge).toBe(false);
     expect(userWins.advisoryChecks).toEqual(['Size Check']);
     // The working tree still sets non-safety keys, and an unchanged safety key does not warn.
     const warnings: string[] = [];
     const project = { ship: { maxFixRounds: 5, allowAdminMerge: true, requiredChecks: [] } };
-    const mixed = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, user: null, project, warn: (m) => warnings.push(m) });
+    const mixed = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, user: null, project, warn: (m) => warnings.push(m) });
     expect(mixed).toMatchObject({ maxFixRounds: 5, allowAdminMerge: true, requiredChecks: DEFAULT_SHIP_CONFIG.requiredChecks });
     expect(warnings).toEqual([expect.stringMatching(/ignoring ship\.requiredChecks/)]);
   });
 
   it('H1/M2: a failed fetch, a missing or mismatched base sha skips the base layer with a warning, or throws when strict', () => {
     const base = '{ "ship": { "allowAdminMerge": true } }';
-    const cases: Array<[string, ReturnType<typeof execWithBase>, string | undefined, RegExp]> = [
+    const cases: Array<[string, ReturnType<typeof execWithBase>, string | undefined, RegExp, string?]> = [
       ['fetch fails', execWithBase(base, { fetchFails: true }), BASE_SHA, /git fetch origin dev failed: fatal: could not read/],
       ['ref moved', execWithBase(base, { remote: 'd'.repeat(40) }), BASE_SHA, /refs\/remotes\/origin\/dev is d{40}, but GitHub reports dev at c{40}/],
       ['no sha', execWithBase(base), undefined, /GitHub reported no base sha for dev/],
       ['bad sha', execWithBase(base), 'origin/dev', /GitHub reported no base sha for dev/],
+      ['remote elsewhere', execWithBase(base, { url: 'git@github.com:evil/r.git' }), BASE_SHA, /remote origin points at git@github.com:evil\/r.git, but the PR is in https:\/\/github.com\/o\/r/],
+      ['no repo url', execWithBase(base), BASE_SHA, /GitHub reported no repository url for the PR/, ''],
     ];
-    for (const [label, { exec, calls }, baseSha, reason] of cases) {
+    for (const [label, { exec, calls }, baseSha, reason, repoUrl = REPO_URL] of cases) {
       const warnings: string[] = [];
-      const lenient = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha, user: null, project: {}, warn: (m) => warnings.push(m) });
+      const lenient = loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha, repoUrl, user: null, project: {}, warn: (m) => warnings.push(m) });
       expect(lenient.allowAdminMerge, label).toBe(false);
       expect(lenient.trustedBaseCommit, label).toBeUndefined();
       expect(warnings.join('\n'), label).toMatch(reason);
       expect(calls.some((c) => c.startsWith('show ')), label).toBe(false);
-      expect(() => loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha, strict: true, user: null, project: {}, warn: () => {} }), label)
+      expect(() => loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha, repoUrl, strict: true, user: null, project: {}, warn: () => {} }), label)
         .toThrow(new RegExp(`${reason.source}.*fail closed`));
     }
   });
@@ -439,25 +455,25 @@ describe('trusted ship config (safety keys never from the working tree or the PR
   it('N4: a base file that is not JSONC, or whose ship block is not an object, throws', () => {
     for (const [text, error] of [['{ "ship": { ', /is not valid JSONC/], ['{ "ship": ["allowAdminMerge"] }', /ship config must be an object/], ['{ "ship": true }', /ship config must be an object/]] as const) {
       const { exec } = execWithBase(text);
-      expect(() => loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, user: null, project: {}, warn: () => {} }), text).toThrow(error);
+      expect(() => loadTrustedShipConfig({ exec, root: '.', base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, user: null, project: {}, warn: () => {} }), text).toThrow(error);
     }
   });
 
   it('H4: trustedBases comes only from the user config; an untrusted base is fetched and verified but never read', () => {
     const base = '{ "ship": { "allowAdminMerge": true, "trustedBases": ["evil"] } }';
     const warnings: string[] = [];
-    const fromBase = loadTrustedShipConfig({ exec: execWithBase(base).exec, root: '.', base: 'dev', baseSha: BASE_SHA, user: null, project: { ship: { trustedBases: ['wt'] } }, warn: (m) => warnings.push(m) });
+    const fromBase = loadTrustedShipConfig({ exec: execWithBase(base).exec, root: '.', base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, user: null, project: { ship: { trustedBases: ['wt'] } }, warn: (m) => warnings.push(m) });
     expect(fromBase.trustedBases).toEqual(['dev', 'main', 'master']);
     expect(fromBase.allowAdminMerge).toBe(true);
     expect(warnings.join('\n')).toMatch(/ignoring ship\.trustedBases from dev:\.copilot\/omg\.jsonc/);
     expect(warnings.join('\n')).toMatch(/ignoring ship\.trustedBases from the working-tree project config/);
 
     const { exec, calls } = execWithBase(base);
-    const untrusted = loadTrustedShipConfig({ exec, root: '.', base: 'release/x', baseSha: BASE_SHA, user: null, project: {}, warn: () => {} });
+    const untrusted = loadTrustedShipConfig({ exec, root: '.', base: 'release/x', baseSha: BASE_SHA, repoUrl: REPO_URL, user: null, project: {}, warn: () => {} });
     expect(untrusted.allowAdminMerge).toBe(false);
     expect(untrusted.trustedBaseCommit).toBeUndefined();
     expect(calls).toEqual(['fetch origin release/x', 'rev-parse --verify refs/remotes/origin/release/x']);
-    const owner = loadTrustedShipConfig({ exec, root: '.', base: 'release/x', baseSha: BASE_SHA, user: { ship: { trustedBases: ['release/x'] } }, project: {}, warn: () => {} });
+    const owner = loadTrustedShipConfig({ exec, root: '.', base: 'release/x', baseSha: BASE_SHA, repoUrl: REPO_URL, user: { ship: { trustedBases: ['release/x'] } }, project: {}, warn: () => {} });
     expect(owner).toMatchObject({ allowAdminMerge: true, trustedBases: ['release/x'], trustedBaseCommit: BASE_SHA });
   });
 
@@ -475,14 +491,14 @@ describe('trusted ship config (safety keys never from the working tree or the PR
       const layers = userConfigLayers(undefined, join(dir, 'no-such-default', 'config.jsonc'));
       expect(layers.user).toMatchObject({ ship: { allowAdminMerge: true } });
       const warnings: string[] = [];
-      const config = loadTrustedShipConfig({ exec: execWithBase(null).exec, root: '.', base: 'dev', baseSha: BASE_SHA, ...layers, project: {}, warn: (m) => warnings.push(m) });
+      const config = loadTrustedShipConfig({ exec: execWithBase(null).exec, root: '.', base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, ...layers, project: {}, warn: (m) => warnings.push(m) });
       expect(config.allowAdminMerge).toBe(false);
       expect(config.trustedBases).toEqual(['dev', 'main', 'master']);
       expect(config.maxFixRounds).toBe(4);
       expect(warnings.join('\n')).toMatch(/ignoring ship\.allowAdminMerge from the user config selected by APPDATA \/ XDG_CONFIG_HOME/);
       // Same file at both locations: honored.
       const same = userConfigLayers(join(dir, 'claude-omc', 'config.jsonc'), join(dir, 'claude-omc', 'config.jsonc'));
-      expect(loadTrustedShipConfig({ exec: execWithBase(null).exec, root: '.', base: 'dev', baseSha: BASE_SHA, ...same, project: {}, warn: () => {} }).allowAdminMerge).toBe(true);
+      expect(loadTrustedShipConfig({ exec: execWithBase(null).exec, root: '.', base: 'dev', baseSha: BASE_SHA, repoUrl: REPO_URL, ...same, project: {}, warn: () => {} }).allowAdminMerge).toBe(true);
     } finally {
       for (const [k, v] of Object.entries(saved)) {
         if (v === undefined) delete process.env[k];

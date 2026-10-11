@@ -145,12 +145,16 @@ function gitAllowed(a: string[], protectedBranches: readonly string[]): boolean 
       return r.length === 2 && REMOTE.test(r[0]) && isBranch(r[1]);
     case 'merge-base':
       return r.length === 3 && r[0] === '--is-ancestor' && isOperand(r[1]) && isOperand(r[2]);
+    case 'remote':
+      // The URL the base is fetched from, checked against the PR's repository.
+      return r.length === 2 && r[0] === 'get-url' && REMOTE.test(r[1]);
     case 'merge':
-      return r.length === 3 && r[0] === '--no-ff' && r[1] === '--no-edit' && isOperand(r[2]);
+      // Only GitHub's base sha, never a ref name a local tag or branch could shadow.
+      return r.length === 3 && r[0] === '--no-ff' && r[1] === '--no-edit' && HEX40.test(r[2]);
     case 'diff':
       return same(r, ['--name-only', '--diff-filter=U'])
         || same(r, ['--cached', '--quiet'])
-        || (r.length === 2 && r[0] === '--name-only' && /^[\w./-]+\.\.\.HEAD$/.test(r[1]) && !r[1].startsWith('-'))
+        || (r.length === 2 && r[0] === '--name-only' && /^[0-9a-f]{40}\.\.\.HEAD$/.test(r[1]))
         // The merge's changed-file list: GitHub's base and head commits, renames split into delete + add.
         || (r.length === 4 && r[0] === '--name-only' && r[1] === '--no-renames' && r[2] === '-z' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[3]));
     case 'checkout':
@@ -167,8 +171,8 @@ function gitAllowed(a: string[], protectedBranches: readonly string[]): boolean 
     case 'cat-file':
       return r.length === 2 && r[0] === '-e' && /^[0-9a-f]{40}\^\{commit\}$/.test(r[1]);
     case 'rev-list': {
-      const m = r.length === 2 && r[0] === '--first-parent' ? /^([0-9a-f]{40})\.\.([0-9a-f]{40})$/.exec(r[1]) : null;
-      return Boolean(m);
+      // The commits after the reviewed sha on the head's first-parent chain, each with its parents.
+      return r.length === 3 && r[0] === '--first-parent' && r[1] === '--parents' && /^[0-9a-f]{40}\.\.[0-9a-f]{40}$/.test(r[2]);
     }
     case 'show':
       // `<base commit>:<repo path>`: the trusted config / known-flaky file at GitHub's base sha.

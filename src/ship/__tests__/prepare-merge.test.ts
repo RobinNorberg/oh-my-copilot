@@ -10,6 +10,9 @@ const NODE = process.execPath;
 const T = '2026-10-11T00:00:00.000Z';
 /** The sha the reviewer approved; the fake repo's HEAD contains it unless overridden. */
 const REVIEWED_SHA = 'a'.repeat(40);
+/** GitHub's base sha; the fake repo's refs/remotes/origin/dev resolves to it. */
+const BASE_SHA = 'd'.repeat(40);
+const REPO_URL = 'https://github.com/o/r';
 const res = (status: number, stdout = '', stderr = ''): ExecResult => ({ status, stdout, stderr });
 
 type Responder = (args: string[]) => ExecResult | undefined;
@@ -38,10 +41,12 @@ function fakeRepo(overrides: Record<string, ExecResult | Responder> = {}) {
     if (key.startsWith('git rev-parse -q --verify')) return res(1);
     if (key.startsWith('git rev-parse --git-path')) return res(0, `.git/${args[2]}\n`);
     if (key === 'git rev-parse HEAD') return res(0, `${head()}\n`);
+    if (key === 'git remote get-url origin') return res(0, 'git@github.com:o/r.git\n');
+    if (key === 'git rev-parse --verify refs/remotes/origin/dev') return res(0, `${BASE_SHA}\n`);
     if (key === `git merge-base --is-ancestor ${REVIEWED_SHA} HEAD`) return res(0);
     if (key.startsWith('git merge-base --is-ancestor')) return res(1);
     if (key.startsWith('git merge --no-ff') || key.startsWith('git commit')) { headN += 1; return res(0); }
-    if (key.startsWith('git diff --name-only origin/dev...HEAD')) return res(0, 'src/ship/gates.ts\nskills/ship/SKILL.md\n');
+    if (key.startsWith(`git diff --name-only ${BASE_SHA}...HEAD`)) return res(0, 'src/ship/gates.ts\nskills/ship/SKILL.md\n');
     if (key.startsWith('git diff --cached --quiet')) return res(1);
     return res(0);
   };
@@ -74,7 +79,7 @@ describe('selectTargetedTests', () => {
 });
 
 describe('runPrepare', () => {
-  const base = { cwd: '/repo', base: 'dev', branch: 'feat/x', reviewedSha: REVIEWED_SHA, node: NODE, exists };
+  const base = { cwd: '/repo', base: 'dev', branch: 'feat/x', reviewedSha: REVIEWED_SHA, baseSha: BASE_SHA, repoUrl: REPO_URL, node: NODE, exists };
 
   it('merges the base, runs checks, and regenerates the inventory as the last commit', () => {
     const { exec, calls } = fakeRepo({ [`node ${INVENTORY_SCRIPT} --verify`]: (() => { let n = 0; return () => res(n++ === 0 ? 1 : 0); })() });
@@ -84,7 +89,8 @@ describe('runPrepare', () => {
       'preflight:ok', 'fetch:ok', 'merge-base:ok', 'tsc:ok', 'lint:ok', 'tests:ok', 'generate-prompt-projections.mjs:ok', 'inventory:ok',
     ]);
     expect(r.housekeepingCommits).toHaveLength(2);
-    expect(calls).toContain('git merge --no-ff --no-edit origin/dev');
+    expect(calls).toContain(`git merge --no-ff --no-edit ${BASE_SHA}`);
+    expect(calls.indexOf('git remote get-url origin')).toBeLessThan(calls.indexOf('git fetch origin dev'));
     expect(calls).toContain(`git merge-base --is-ancestor ${REVIEWED_SHA} HEAD`);
     expect(calls).toContain(`git commit -m ${INVENTORY_COMMIT_MESSAGE}`);
     // inventory commit is the last write; nothing commits after it
@@ -192,6 +198,21 @@ describe('runPrepare', () => {
     expect(calls.some((c) => c.startsWith('git commit'))).toBe(false);
   });
 
+  it.each<[string, Record<string, ExecResult>, RegExp, Partial<typeof base>?]>([
+    ['a remote pointing at another repository', { 'git remote get-url origin': res(0, 'https://github.com/evil/r.git\n') }, /remote: remote origin points at https:\/\/github.com\/evil\/r.git, but the PR is in https:\/\/github.com\/o\/r/],
+    ['a local-path remote', { 'git remote get-url origin': res(0, 'C:\\tmp\\o\\r\n') }, /remote: remote origin points at/],
+    ['no repository url from GitHub', {}, /remote: GitHub reported no repository url/, { repoUrl: undefined }],
+    ['a fetched base that is not GitHub\'s base sha', { 'git rev-parse --verify refs/remotes/origin/dev': res(0, `${'e'.repeat(40)}\n`) }, /fetch: refs\/remotes\/origin\/dev is e{40}, but GitHub reports dev at d{40}/],
+    ['a missing remote-tracking ref', { 'git rev-parse --verify refs/remotes/origin/dev': res(128, '', 'fatal: Needed a single revision') }, /fetch: refs\/remotes\/origin\/dev is missing/],
+    ['a base sha that is not a full sha', {}, /preflight: GitHub's base sha "origin\/dev"/, { baseSha: 'origin/dev' }],
+  ])('refuses %s before merging anything', (_label, overrides, pattern, patch = {}) => {
+    const { exec, calls } = fakeRepo(overrides);
+    const r = runPrepare({ ...base, exec, checks: false, ...patch });
+    expect(r.ok).toBe(false);
+    expect(r.blockedReason).toMatch(pattern);
+    expect(calls.some((c) => c.startsWith('git merge ') || c.startsWith('git commit'))).toBe(false);
+  });
+
   it('push is plain and targets the run\'s PR branch', () => {
     const { exec, calls } = fakeRepo({ 'git merge-base --is-ancestor': res(0) });
     expect(runPrepare({ ...base, exec, checks: false, push: true }).ok).toBe(true);
@@ -207,7 +228,11 @@ describe('decideMerge', () => {
   const green: GateReport = evaluateChecks(9, [{ name: 'Test', state: 'SUCCESS' }, { name: 'No Committed Build Artifacts', state: 'FAILURE' }], config);
   const pr: PrView = { number: 9, state: 'OPEN', isDraft: false, baseRefName: 'dev', headRefOid: HEAD };
 
-  function approved(sha = REVIEWED, housekeeping: string[] = [INV]): ShipState {
+  /** The head is the engine's inventory commit right after the reviewed sha. */
+  const HK = [{ sha: HEAD, parents: [REVIEWED] }];
+  const NONE: ReadonlySet<string> = new Set();
+
+  function approved(sha = REVIEWED, housekeeping: string[] = [HEAD]): ShipState {
     let s = createShipState({ pr: 9, base: 'dev', implementer: 'executor-1', maxFixRounds: 2 }, T);
     s = recordVerdict(s, { reviewer: 'verifier-1', verdict: 'approve', sha, at: T });
     s = transition({ ...s, housekeepingCommits: housekeeping }, 'gates', 'prepared', T);
@@ -215,68 +240,90 @@ describe('decideMerge', () => {
   }
 
   it('refuses a state that fails its integrity check (hand-edited or unsealed)', () => {
-    const edited = { ...approved(), housekeepingCommits: [INV, HEAD] };
-    expect(decideMerge({ state: edited, pr, gate: green, changedFiles: [], commitsSinceReview:[HEAD, INV] }).reasons.join()).toMatch(/integrity check/);
+    const edited = { ...approved(), housekeepingCommits: [HEAD, INV] };
+    expect(decideMerge({ state: edited, pr, gate: green, changedFiles: [], commitsSinceReview: HK, baseHistory: NONE }).reasons.join()).toMatch(/integrity check/);
     const { integrity: _drop, ...unsealed } = approved();
-    expect(decideMerge({ state: unsealed, pr, gate: green, changedFiles: [], commitsSinceReview:[INV] }).reasons.join()).toMatch(/integrity check/);
+    expect(decideMerge({ state: unsealed, pr, gate: green, changedFiles: [], commitsSinceReview: HK, baseHistory: NONE }).reasons.join()).toMatch(/integrity check/);
   });
 
   it('is ready when gates are green and only housekeeping follows the reviewed sha', () => {
-    const d = decideMerge({ state: approved(), pr, gate: green, changedFiles: [], commitsSinceReview:[INV] });
+    const d = decideMerge({ state: approved(), pr, gate: green, changedFiles: [], commitsSinceReview: HK, baseHistory: NONE });
     expect(d).toEqual({ ok: true, reasons: [], command: mergeCommand(9, HEAD) });
     expect(d.command).toEqual(['gh', 'pr', 'merge', '9', '--admin', '--merge', '--match-head-commit', HEAD]);
   });
 
   it('accepts a verdict on the exact head', () => {
-    expect(decideMerge({ state: approved(HEAD, []), pr, gate: green, changedFiles: [], commitsSinceReview:[] }).ok).toBe(true);
+    expect(decideMerge({ state: approved(HEAD, []), pr, gate: green, changedFiles: [], commitsSinceReview: [], baseHistory: NONE }).ok).toBe(true);
   });
 
   it('refuses unreviewed commits after the verdict', () => {
-    const d = decideMerge({ state: approved(), pr, gate: green, changedFiles: [], commitsSinceReview:[HEAD, INV] });
+    const since = [{ sha: HEAD, parents: [INV] }, { sha: INV, parents: [REVIEWED] }];
+    const d = decideMerge({ state: approved(REVIEWED, [INV]), pr, gate: green, changedFiles: [], commitsSinceReview: since, baseHistory: NONE });
     expect(d.ok).toBe(false);
     expect(d.reasons.join()).toMatch(/re-review needed\): bbbbbbbbbbbb$/);
   });
 
+  it('accepts a housekeeping merge only when its second parent is in GitHub\'s current base history', () => {
+    const BASE_TIP = 'e'.repeat(40);
+    const since = [{ sha: HEAD, parents: [INV] }, { sha: INV, parents: [REVIEWED, BASE_TIP] }];
+    const state = approved(REVIEWED, [INV, HEAD]);
+    expect(decideMerge({ state, pr, gate: green, changedFiles: [], commitsSinceReview: since, baseHistory: new Set([BASE_TIP]) }).ok).toBe(true);
+    const forged = decideMerge({ state, pr, gate: green, changedFiles: [], commitsSinceReview: since, baseHistory: NONE });
+    expect(forged.ok).toBe(false);
+    expect(forged.reasons.join()).toMatch(/housekeeping merge cccccccccccc brings in eeeeeeeeeeee, which is not in GitHub's base history \(re-review needed\)/);
+    // An octopus merge is never a ship merge, even with every parent in the base.
+    const octopus = [{ sha: HEAD, parents: [REVIEWED, BASE_TIP, INV] }];
+    expect(decideMerge({ state: approved(), pr, gate: green, changedFiles: [], commitsSinceReview: octopus, baseHistory: new Set([BASE_TIP, INV]) }).reasons.join())
+      .toMatch(/has 3 parents; not a ship merge/);
+  });
+
+  it('refuses when the first-parent chain does not lead from the head back to the reviewed sha', () => {
+    for (const since of [[{ sha: HEAD, parents: [INV] }], [{ sha: INV, parents: [REVIEWED] }], []]) {
+      const d = decideMerge({ state: approved(REVIEWED, [HEAD, INV]), pr, gate: green, changedFiles: [], commitsSinceReview: since, baseHistory: NONE });
+      expect(d.reasons.join()).toMatch(/first-parent chain does not lead back to the reviewed sha/);
+    }
+  });
+
   it('refuses when the reviewed sha is not an ancestor', () => {
-    expect(decideMerge({ state: approved(), pr, gate: green, changedFiles: [], commitsSinceReview:null }).reasons.join()).toMatch(/not an ancestor/);
+    expect(decideMerge({ state: approved(), pr, gate: green, changedFiles: [], commitsSinceReview: null, baseHistory: NONE }).reasons.join()).toMatch(/not an ancestor/);
   });
 
   it('refuses without any verdict, or with changes requested last', () => {
     const fresh = createShipState({ pr: 9, base: 'dev', implementer: 'executor-1', maxFixRounds: 2 }, T);
-    expect(decideMerge({ state: fresh, pr, gate: green, changedFiles: [], commitsSinceReview:[] }).reasons.join()).toMatch(/no independent verifier verdict/);
+    expect(decideMerge({ state: fresh, pr, gate: green, changedFiles: [], commitsSinceReview: [], baseHistory: NONE }).reasons.join()).toMatch(/no independent verifier verdict/);
     const changes = recordVerdict(approved(), { reviewer: 'verifier-1', verdict: 'changes-requested', sha: REVIEWED, at: T });
-    expect(decideMerge({ state: changes, pr, gate: green, changedFiles: [], commitsSinceReview:[] }).reasons.join()).toMatch(/changes-requested/);
+    expect(decideMerge({ state: changes, pr, gate: green, changedFiles: [], commitsSinceReview: [], baseHistory: NONE }).reasons.join()).toMatch(/changes-requested/);
   });
 
   it('refuses a self-approval even if one was written into the state by hand', () => {
     const s = approved();
     const forged = { ...s, verdicts: [{ ...s.verdicts[0], reviewer: 'EXECUTOR-1' }] };
-    expect(decideMerge({ state: forged, pr, gate: green, changedFiles: [], commitsSinceReview:[INV] }).reasons.join()).toMatch(/self-approval/);
+    expect(decideMerge({ state: forged, pr, gate: green, changedFiles: [], commitsSinceReview: HK, baseHistory: NONE }).reasons.join()).toMatch(/self-approval/);
   });
 
   it('refuses on pending / failed gates, drafts, closed PRs and a base mismatch', () => {
     const pending = evaluateChecks(9, [{ name: 'Test', state: 'IN_PROGRESS' }], config);
-    expect(decideMerge({ state: approved(), pr, gate: pending, changedFiles: [], commitsSinceReview:[INV] }).reasons.join()).toMatch(/gates are pending \(pending: Test\)/);
-    const reasons = decideMerge({ state: approved(), pr: { ...pr, isDraft: true, state: 'CLOSED', baseRefName: 'main' }, gate: green, changedFiles: [], commitsSinceReview:[INV] }).reasons;
+    expect(decideMerge({ state: approved(), pr, gate: pending, changedFiles: [], commitsSinceReview: HK, baseHistory: NONE }).reasons.join()).toMatch(/gates are pending \(pending: Test\)/);
+    const reasons = decideMerge({ state: approved(), pr: { ...pr, isDraft: true, state: 'CLOSED', baseRefName: 'main' }, gate: green, changedFiles: [], commitsSinceReview: HK, baseHistory: NONE }).reasons;
     expect(reasons).toEqual(expect.arrayContaining([expect.stringMatching(/draft/), expect.stringMatching(/CLOSED/), expect.stringMatching(/base is main/)]));
   });
 
   it('refuses a PR touching the merge-rule files unless the owner overrides (OMG_SHIP_HUMAN=1)', () => {
     for (const file of ['.copilot/omg.jsonc', '.copilot/omc.jsonc', '.github/known-flaky-tests.json', '.github/workflows/ci.yml', '.GitHub/Workflows/new.yml']) {
-      const d = decideMerge({ state: approved(), pr, gate: green, changedFiles: ['src/a.ts', file], commitsSinceReview: [INV] });
+      const d = decideMerge({ state: approved(), pr, gate: green, changedFiles: ['src/a.ts', file], commitsSinceReview: HK, baseHistory: NONE });
       expect(d.ok).toBe(false);
       expect(d.reasons.join()).toMatch(/touches merge-rule files .*only the owner may merge it \(OMG_SHIP_HUMAN=1\)/);
-      expect(decideMerge({ state: approved(), pr, gate: green, changedFiles: [file], commitsSinceReview: [INV], humanOverride: true }).ok).toBe(true);
+      expect(decideMerge({ state: approved(), pr, gate: green, changedFiles: [file], commitsSinceReview: HK, baseHistory: NONE, humanOverride: true }).ok).toBe(true);
     }
     expect(protectedChanges(['.github/workflowsX.yml', '.copilot/omg.jsonc.bak', 'docs/.github/workflows/x.yml'])).toEqual([]);
     expect(protectedChanges(['ci/flaky.json'], ['ci/flaky.json'])).toEqual(['ci/flaky.json']);
     // An unreadable diff fails closed.
-    expect(decideMerge({ state: approved(), pr, gate: green, changedFiles: null, commitsSinceReview: [INV] }).reasons.join()).toMatch(/could not list the PR's changed files/);
+    expect(decideMerge({ state: approved(), pr, gate: green, changedFiles: null, commitsSinceReview: HK, baseHistory: NONE }).reasons.join()).toMatch(/could not list the PR's changed files/);
   });
 
   it('refuses before prepare ran', () => {
     let s = createShipState({ pr: 9, base: 'dev', implementer: 'executor-1', maxFixRounds: 2 }, T);
     s = recordVerdict(s, { reviewer: 'verifier-1', verdict: 'approve', sha: HEAD, at: T });
-    expect(decideMerge({ state: s, pr, gate: green, changedFiles: [], commitsSinceReview:[] }).reasons.join()).toMatch(/phase is prepare/);
+    expect(decideMerge({ state: s, pr, gate: green, changedFiles: [], commitsSinceReview: [], baseHistory: NONE }).reasons.join()).toMatch(/phase is prepare/);
   });
 });

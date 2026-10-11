@@ -2,8 +2,10 @@
  * `omg ship prepare`: the mechanical steps between an approved verdict and
  * the CI gate, in a fixed order:
  *   preflight (on the run's PR branch, containing the reviewed sha, clean,
- *   no merge / rebase / cherry-pick / revert in progress) -> fetch ->
- *   merge origin/<base> in (--no-ff, never rebase) -> tsc / lint /
+ *   no merge / rebase / cherry-pick / revert in progress) -> remote check
+ *   (the remote is the PR's repository) -> fetch (refs/remotes/origin/<base>
+ *   must equal GitHub's base sha) -> merge that sha in (--no-ff, never
+ *   rebase; never a ref name a local tag could shadow) -> tsc / lint /
  *   targeted tests -> inventory regeneration as the LAST commit -> optional
  *   plain push.
  * Every command goes through the guarded Exec, so force pushes and rebases
@@ -12,7 +14,7 @@
 
 import { existsSync } from 'fs';
 import { isAbsolute, join, posix } from 'path';
-import { isPlainBranchName } from './config.js';
+import { isPlainBranchName, remoteRepoMismatch } from './config.js';
 import type { Exec } from './exec.js';
 
 export type StepStatus = 'ok' | 'skipped' | 'failed';
@@ -31,6 +33,10 @@ export interface PrepareOptions {
   branch: string;
   /** Latest verdict sha; HEAD must contain it. */
   reviewedSha: string;
+  /** GitHub's base sha (baseRefOid): the fetched base must equal it, and it is what gets merged. */
+  baseSha: string;
+  /** The PR's repository URL on GitHub (prRepoUrl); the remote must point at it. */
+  repoUrl: string | undefined;
   remote?: string;
   /** Run tsc / eslint / targeted vitest (default true). */
   checks?: boolean;
@@ -99,7 +105,8 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
   const remote = opts.remote ?? 'origin';
   const node = opts.node ?? process.execPath;
   const exists = opts.exists ?? ((p: string) => existsSync(isAbsolute(p) ? p : join(cwd, p)));
-  const upstream = `${remote}/${base}`;
+  const upstream = `refs/remotes/${remote}/${base}`;
+  const { baseSha } = opts;
   const steps: PrepareStep[] = [];
   const housekeepingCommits: string[] = [];
   const git = (...args: string[]) => exec('git', args, { cwd });
@@ -117,6 +124,7 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
   }
   if (!/^[\w][\w.-]*$/.test(remote)) return fail('preflight', `remote ${JSON.stringify(remote)} is not a valid remote name`);
   if (!/^[0-9a-f]{40}$/.test(opts.reviewedSha)) return fail('preflight', `reviewed sha ${JSON.stringify(opts.reviewedSha)} is not a full commit id`);
+  if (!/^[0-9a-f]{40}$/.test(baseSha)) return fail('preflight', `GitHub's base sha ${JSON.stringify(baseSha)} is not a full commit id`);
   const branch = git('rev-parse', '--abbrev-ref', 'HEAD').stdout.trim();
   if (!branch || branch === 'HEAD') return fail('preflight', 'detached HEAD; check out the PR branch');
   if (branch === base || branch === 'main' || branch === 'master') return fail('preflight', `refusing to prepare on ${branch}; use the PR branch`);
@@ -135,16 +143,22 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
   if (dirty) return fail('preflight', `working tree has uncommitted changes:\n${dirty}`);
   steps.push({ name: 'preflight', status: 'ok', detail: branch });
 
-  // 2. fetch
+  // 2. fetch from the PR's repository; the fetched base must be the commit GitHub reports
+  const mismatch = remoteRepoMismatch(exec, cwd, remote, opts.repoUrl);
+  if (mismatch) return fail('remote', `${mismatch}; refusing to fetch (fail closed)`);
   const fetched = git('fetch', remote, base);
   if (fetched.status !== 0) return fail('fetch', tail(fetched.stderr));
-  steps.push({ name: 'fetch', status: 'ok', detail: upstream });
+  const local = git('rev-parse', '--verify', upstream);
+  if (local.status !== 0 || local.stdout.trim() !== baseSha) {
+    return fail('fetch', `${upstream} is ${local.stdout.trim() || 'missing'}, but GitHub reports ${base} at ${baseSha}; refusing (fail closed; re-run if ${base} just moved)`);
+  }
+  steps.push({ name: 'fetch', status: 'ok', detail: `${upstream} = ${baseSha}` });
 
-  // 3. merge the base in (never rebase)
-  if (git('merge-base', '--is-ancestor', upstream, 'HEAD').status === 0) {
-    steps.push({ name: 'merge-base', status: 'skipped', detail: `already contains ${upstream}` });
+  // 3. merge GitHub's base sha in (never rebase, never by ref name)
+  if (git('merge-base', '--is-ancestor', baseSha, 'HEAD').status === 0) {
+    steps.push({ name: 'merge-base', status: 'skipped', detail: `already contains ${base} ${baseSha.slice(0, 12)}` });
   } else {
-    const merged = git('merge', '--no-ff', '--no-edit', upstream);
+    const merged = git('merge', '--no-ff', '--no-edit', baseSha);
     if (merged.status !== 0) {
       const conflicts = lines(git('diff', '--name-only', '--diff-filter=U').stdout);
       const inventoryOnly = conflicts.length > 0 && conflicts.every((f) => f.startsWith(`${INVENTORY_DIR}/`));
@@ -158,16 +172,16 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
         const r = git(...args);
         if (r.status !== 0) return fail('merge-base', `git ${args.join(' ')}: ${tail(r.stderr || r.stdout)}`, { conflicts });
       }
-      steps.push({ name: 'merge-base', status: 'ok', detail: `merged ${upstream}; inventory conflict resolved with --theirs` });
+      steps.push({ name: 'merge-base', status: 'ok', detail: `merged ${base} ${baseSha.slice(0, 12)}; inventory conflict resolved with --theirs` });
     } else {
-      steps.push({ name: 'merge-base', status: 'ok', detail: `merged ${upstream}` });
+      steps.push({ name: 'merge-base', status: 'ok', detail: `merged ${base} ${baseSha.slice(0, 12)}` });
     }
     housekeepingCommits.push(head());
   }
 
   // 4. checks chosen from the diff against the base
   if (opts.checks !== false) {
-    const changed = lines(git('diff', '--name-only', `${upstream}...HEAD`).stdout);
+    const changed = lines(git('diff', '--name-only', `${baseSha}...HEAD`).stdout);
     const lintable = changed.filter((f) => /^src\/.*\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith('.d.ts') && exists(f));
     const tests = selectTargetedTests(changed, exists);
     const plan: Array<[string, string[] | null, string]> = [

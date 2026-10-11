@@ -1,7 +1,8 @@
 /**
  * Merge-readiness decision for `omg ship merge`. decideMerge is pure: the CLI
  * gathers the PR view, a fresh gate report, the changed files
- * (listChangedFiles) and the first-parent commits since the reviewed sha;
+ * (listChangedFiles) and the first-parent commits since the reviewed sha
+ * with their parents (readCommitsSinceReview);
  * this module says yes or no and why.
  */
 
@@ -23,6 +24,49 @@ export function listChangedFiles(exec: Exec, cwd: string, baseSha: string, headS
   return res.status === 0 ? res.stdout.split('\0').filter((f) => f.length > 0) : null;
 }
 
+export interface CommitParents {
+  sha: string;
+  parents: string[];
+}
+
+/** `git rev-list --parents` output (`<sha> <parent>...` per line); null on a malformed line. */
+export function parseCommitParents(stdout: string): CommitParents[] | null {
+  const out: CommitParents[] = [];
+  for (const line of stdout.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
+    const [sha, ...parents] = line.split(/\s+/);
+    if (![sha, ...parents].every((s) => /^[0-9a-f]{40}$/.test(s))) return null;
+    out.push({ sha, parents });
+  }
+  return out;
+}
+
+/**
+ * The decideMerge inputs about the commits after the reviewed sha:
+ * `git rev-list --first-parent --parents <reviewed>..<head>` (null when the
+ * reviewed sha is not an ancestor of the head or the list fails), and the
+ * second parents of the recorded housekeeping merges that are GitHub's
+ * current base sha or its ancestors. `baseSha` must be in the object store
+ * (fetched and checked against GitHub); an unknown one puts nothing in
+ * baseHistory (fail closed).
+ */
+export function readCommitsSinceReview(
+  exec: Exec, cwd: string, reviewed: string | undefined, head: string, baseSha: string, housekeeping: readonly string[],
+): { commitsSinceReview: CommitParents[] | null; baseHistory: Set<string> } {
+  const baseHistory = new Set<string>();
+  if (!reviewed || reviewed === head) return { commitsSinceReview: [], baseHistory };
+  const ancestor = exec('git', ['merge-base', '--is-ancestor', reviewed, head], { cwd }).status === 0;
+  const list = ancestor ? exec('git', ['rev-list', '--first-parent', '--parents', `${reviewed}..${head}`], { cwd }) : null;
+  const commitsSinceReview = list && list.status === 0 ? parseCommitParents(list.stdout) : null;
+  for (const c of commitsSinceReview ?? []) {
+    const second = c.parents[1];
+    if (c.parents.length === 2 && housekeeping.includes(c.sha)
+      && exec('git', ['merge-base', '--is-ancestor', second, baseSha], { cwd }).status === 0) {
+      baseHistory.add(second);
+    }
+  }
+  return { commitsSinceReview, baseHistory };
+}
+
 export interface PrView {
   number: number;
   state: string;
@@ -36,10 +80,16 @@ export interface MergeInput {
   pr: PrView;
   gate: GateReport;
   /**
-   * `git rev-list --first-parent <reviewed>..<head>`; null when the reviewed
-   * sha is not an ancestor of the head (or the range could not be listed).
+   * `git rev-list --first-parent --parents <reviewed>..<head>` (newest first,
+   * parseCommitParents); null when the reviewed sha is not an ancestor of the
+   * head (or the range could not be listed).
    */
-  commitsSinceReview: string[] | null;
+  commitsSinceReview: CommitParents[] | null;
+  /**
+   * Second parents of the housekeeping merges in commitsSinceReview that are
+   * GitHub's CURRENT base sha or its ancestors (`git merge-base --is-ancestor`).
+   */
+  baseHistory: ReadonlySet<string>;
   /** listChangedFiles(base sha, head sha); null when it could not be read (refused unless humanOverride). */
   changedFiles: string[] | null;
   /** OMG_SHIP_HUMAN=1: the owner accepts a PR that touches PROTECTED_PATHS. */
@@ -75,7 +125,34 @@ export function mergeCommand(pr: number, headSha: string): string[] {
   return ['gh', 'pr', 'merge', String(pr), '--admin', '--merge', '--match-head-commit', headSha];
 }
 
-export function decideMerge({ state, pr, gate, commitsSinceReview, changedFiles, humanOverride = false, extraProtected = [] }: MergeInput): MergeDecision {
+/**
+ * Why the commits after the reviewed sha need a new verdict (empty = they are
+ * all ship housekeeping). Accepted only: a first-parent chain from the head
+ * back to the reviewed sha made of engine-recorded commits, where each
+ * recorded merge has exactly two parents and brings in a commit in GitHub's
+ * current base history (so a merge of a forged `origin/<base>` is not
+ * housekeeping, even when the engine recorded it).
+ */
+function unreviewedReasons(commits: readonly CommitParents[], reviewed: string, head: string, housekeeping: readonly string[], baseHistory: ReadonlySet<string>): string[] {
+  const reasons: string[] = [];
+  const short = (s: string) => s.slice(0, 12);
+  const chained = commits.length > 0 && commits[0].sha === head
+    && commits.every((c, i) => c.parents[0] === (i + 1 < commits.length ? commits[i + 1].sha : reviewed));
+  if (!chained) reasons.push(`the head's first-parent chain does not lead back to the reviewed sha ${short(reviewed)} (re-review needed)`);
+  const unrecorded = commits.filter((c) => !housekeeping.includes(c.sha)).map((c) => short(c.sha));
+  if (unrecorded.length > 0) reasons.push(`commits after the reviewed sha are not ship housekeeping (re-review needed): ${unrecorded.join(', ')}`);
+  for (const c of commits) {
+    if (!housekeeping.includes(c.sha)) continue;
+    if (c.parents.length > 2 || c.parents.length === 0) {
+      reasons.push(`housekeeping commit ${short(c.sha)} has ${c.parents.length} parents; not a ship merge (re-review needed)`);
+    } else if (c.parents.length === 2 && !baseHistory.has(c.parents[1])) {
+      reasons.push(`housekeeping merge ${short(c.sha)} brings in ${short(c.parents[1])}, which is not in GitHub's base history (re-review needed)`);
+    }
+  }
+  return reasons;
+}
+
+export function decideMerge({ state, pr, gate, commitsSinceReview, baseHistory, changedFiles, humanOverride = false, extraProtected = [] }: MergeInput): MergeDecision {
   const reasons: string[] = [];
   if (!humanOverride) {
     if (changedFiles === null) {
@@ -109,10 +186,7 @@ export function decideMerge({ state, pr, gate, commitsSinceReview, changedFiles,
     if (commitsSinceReview === null) {
       reasons.push(`reviewed sha ${verdict.sha.slice(0, 12)} is not an ancestor of head ${pr.headRefOid.slice(0, 12)}`);
     } else {
-      const unreviewed = commitsSinceReview.filter((sha) => !state.housekeepingCommits.includes(sha));
-      if (unreviewed.length > 0) {
-        reasons.push(`commits after the reviewed sha are not ship housekeeping (re-review needed): ${unreviewed.map((s) => s.slice(0, 12)).join(', ')}`);
-      }
+      reasons.push(...unreviewedReasons(commitsSinceReview, verdict.sha, pr.headRefOid, state.housekeepingCommits, baseHistory));
     }
   }
   return { ok: reasons.length === 0, reasons, command: mergeCommand(pr.number, pr.headRefOid) };

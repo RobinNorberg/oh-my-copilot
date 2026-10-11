@@ -208,6 +208,39 @@ export function readBaseFile(exec: Exec, cwd: string, commit: string, path: stri
 }
 
 /**
+ * Comparable identity of a repository URL: `gh:<host>/<owner>/<repo>` for an
+ * https / ssh / scp-style URL (case-insensitive, `.git` and a trailing `/`
+ * dropped), `path:<url>` for anything else (a local path), so a local path
+ * can never equal a GitHub repository.
+ */
+function repoIdentity(url: string): string {
+  const s = url.trim().replace(/\\/g, '/').replace(/\/+$/, '').replace(/\.git$/i, '').toLowerCase();
+  const m = /^(?:https?|ssh|git):\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/([^/]+)\/([^/]+)$/.exec(s)
+    ?? /^(?:[^@/:]+@)?([^/:]{2,}):([^/]+)\/([^/]+)$/.exec(s);
+  return m ? `gh:${m[1]}/${m[2]}/${m[3]}` : `path:${s}`;
+}
+
+/**
+ * Null when `git remote get-url <remote>` (insteadOf rewrites applied, so the
+ * URL fetch really uses) names the PR's repository (`repoUrl`, from
+ * `gh pr view --json url` without `/pull/<n>`); otherwise why not. Checked
+ * before every fetch of the base, so a lane that points the remote at another
+ * repository is refused instead of fetched from.
+ */
+export function remoteRepoMismatch(exec: Exec, cwd: string, remote: string, repoUrl: string | undefined): string | null {
+  if (!repoUrl) return 'GitHub reported no repository url for the PR';
+  const got = exec('git', ['remote', 'get-url', remote], { cwd, env: TRUSTED_READ_ENV });
+  if (got.status !== 0) return `git remote get-url ${remote} failed: ${got.stderr.trim().split('\n')[0]}`;
+  const url = got.stdout.trim();
+  return repoIdentity(url) === repoIdentity(repoUrl) ? null : `remote ${remote} points at ${url}, but the PR is in ${repoUrl}`;
+}
+
+/** The repository URL of a PR URL (`https://github.com/o/r/pull/12` -> `https://github.com/o/r`); undefined when it is not one. */
+export function prRepoUrl(prUrl: unknown): string | undefined {
+  return typeof prUrl === 'string' && /^https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+\/pull\/\d+$/.test(prUrl) ? prUrl.replace(/\/pull\/\d+$/, '') : undefined;
+}
+
+/**
  * The user config's default location, derived from the account's home
  * directory as the OS reports it (`os.userInfo()`: passwd / the Windows
  * profile, not HOME / USERPROFILE / APPDATA / XDG_CONFIG_HOME, which a lane
@@ -256,6 +289,8 @@ export interface TrustedShipConfigInput {
   /** merge: a failed fetch or an unknown / mismatched base sha throws instead of skipping the base layer. */
   strict?: boolean;
   remote?: string;
+  /** The PR's repository URL on GitHub (prRepoUrl); the remote must point at it before the base is fetched. */
+  repoUrl?: string;
   /** The user config the normal loader reads (env-selected location); non-safety keys. */
   user: unknown;
   /** The user config at its default location (userConfigLayers); the only user source of safety keys. Default: `user`. */
@@ -280,7 +315,8 @@ export interface LoadedShipConfig extends ShipConfig {
  * - trustedBases (SHIP_USER_ONLY_KEYS): the user config at its default location only.
  * - other keys: defaults < base-branch file < user config < working-tree
  *   project file (the usual project-over-user order).
- * The base is fetched and `refs/remotes/<remote>/<base>` must equal GitHub's
+ * The remote must point at the PR's repository (remoteRepoMismatch), the
+ * base is fetched and `refs/remotes/<remote>/<base>` must equal GitHub's
  * base sha; the files are then read at that sha with replace refs off. A base
  * outside trustedBases is never read. When the base cannot be verified the
  * base layer is empty with a warning (defaults are the strict setting), or,
@@ -318,9 +354,11 @@ export function loadTrustedShipConfig(input: TrustedShipConfigInput): LoadedShip
   if (!input.baseSha || !FULL_SHA.test(input.baseSha)) {
     commit = unverified(`GitHub reported no base sha for ${base}`);
   } else {
-    const fetched = exec('git', ['fetch', remote, base], { cwd: root, env: TRUSTED_READ_ENV });
-    const local = fetched.status === 0 ? exec('git', ['rev-parse', '--verify', ref], { cwd: root, env: TRUSTED_READ_ENV }) : null;
-    if (!local) commit = unverified(`git fetch ${remote} ${base} failed: ${fetched.stderr.trim().split('\n')[0]}`);
+    const mismatch = remoteRepoMismatch(exec, root, remote, input.repoUrl);
+    const fetched = mismatch ? null : exec('git', ['fetch', remote, base], { cwd: root, env: TRUSTED_READ_ENV });
+    const local = fetched?.status === 0 ? exec('git', ['rev-parse', '--verify', ref], { cwd: root, env: TRUSTED_READ_ENV }) : null;
+    if (mismatch) commit = unverified(mismatch);
+    else if (!local) commit = unverified(`git fetch ${remote} ${base} failed: ${fetched!.stderr.trim().split('\n')[0]}`);
     else if (local.status !== 0 || local.stdout.trim() !== input.baseSha) {
       commit = unverified(`${ref} is ${local.stdout.trim() || 'missing'}, but GitHub reports ${base} at ${input.baseSha}`);
     } else commit = input.baseSha;
