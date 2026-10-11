@@ -236,31 +236,43 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
   let dirty = true;
   const writeSessionJson = deps.writeSessionJson ?? atomicWriteJson;
   // Budget ledger (src/budget): this worker's live usage under its team. Fail-open.
-  let recordedUsage = '0:0';
-  const recordBudget = () => {
+  // The live count is x1 per user-initiated call (multiplier unknown), so it is
+  // an estimate until the shutdown totals arrive; the ledger lets measured replace it.
+  // The lock is tried once (timeoutMs 0) so the event loop never blocks on it:
+  // on contention the next flush retries. Returns false when a retry is due.
+  let recordedUsage = 'estimated:0:0';
+  const recordBudget = (): boolean => {
     const u = session.usage;
+    const measured = u.shutdown_premium_requests !== null;
     const premiumRequests = u.shutdown_premium_requests ?? u.premium_requests;
     const credits = u.shutdown_credits ?? u.credits;
-    if (`${premiumRequests}:${credits}` === recordedUsage || deps.env.OMC_BUDGET_GOVERNOR === '0') return;
+    const stamp = `${measured ? 'measured' : 'estimated'}:${premiumRequests}:${credits}`;
+    if (stamp === recordedUsage || deps.env.OMC_BUDGET_GOVERNOR === '0') return true;
     try {
       recordUsage(ledgerPath(spec.leader_cwd), `${spec.worker_name}:${spec.attempt_id}`, {
         premiumRequests,
         credits,
-        source: 'measured',
-        detail: u.shutdown_premium_requests !== null ? 'session.shutdown' : 'sdk assistant.usage (user-initiated calls, x1 each)',
+        source: measured ? 'measured' : 'estimated',
+        detail: measured ? 'session.shutdown' : 'sdk assistant.usage: AI credits as billed, user-initiated calls x1 each (multiplier unknown)',
         ...(session.model ? { model: session.model } : {}),
         updatedAt: new Date().toISOString(),
-      }, spec.team_name);
-      recordedUsage = `${premiumRequests}:${credits}`;
+      }, spec.team_name, { timeoutMs: 0 });
+      recordedUsage = stamp;
+      return true;
     } catch (err) {
-      log(`budget ledger write failed: ${errText(err)}`);
+      const busy = errText(err).startsWith('Failed to acquire file lock');
+      if (!busy) {
+        log(`budget ledger write failed: ${errText(err)}`);
+        recordedUsage = stamp; // not a contention: do not retry every tick
+      }
+      return !busy;
     }
   };
   const flush = async (force = false) => {
     if (!dirty && !force) return;
     dirty = false;
     session.updated_at = new Date().toISOString();
-    recordBudget();
+    if (!recordBudget()) dirty = true;
     try {
       await writeSessionJson(files.session, session);
     } catch (err) {
@@ -556,6 +568,8 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
   session.state = 'closed';
   mark('closed_at');
   await flush(true);
+  // The final totals: a few async retries if a hook holds the ledger lock.
+  for (let i = 0; i < 10 && !recordBudget(); i++) await sleep(50);
   await writeTerminal(runtimeGone);
   return outcome;
 }
