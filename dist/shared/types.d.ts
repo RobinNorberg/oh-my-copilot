@@ -211,6 +211,7 @@ export interface PluginConfig {
     externalModels?: ExternalModelsConfig;
     delegationRouting?: DelegationRoutingConfig;
     team?: TeamConfigBlock;
+    budget?: BudgetConfig;
     autopilot?: AutopilotConfigBlock;
     planOutput?: {
         /** Relative directory for generated plan artifacts. Default: .omg/plans */
@@ -278,6 +279,8 @@ export interface PluginConfig {
         /** Execution keywords that activate the gate. */
         executionKeywords?: string[];
     };
+    /** `omg ship` workflow: merge rule, fix-round budget, admin-merge opt-in. */
+    ship?: import("../ship/config.js").ShipConfigInput;
 }
 export interface SessionState {
     sessionId?: string;
@@ -446,6 +449,19 @@ export interface TeamRoleAssignmentSpec {
 }
 /** Orchestrator is pinned to the host CLI; only `model` is user-configurable. */
 export type OrchestratorSpec = Pick<TeamRoleAssignmentSpec, 'model'>;
+/** `budget` config block: premium-request governor (docs/REFERENCE.md#premium-request-budget). */
+export interface BudgetConfig {
+    /** `warn` (default) only reports; `enforce` also refuses or clamps `omg team` fan-out. */
+    mode?: 'warn' | 'enforce';
+    /** Unit of the limits: `premiumRequests` (default) or AI `credits`. */
+    unit?: 'premiumRequests' | 'credits';
+    /** Usage that triggers a one-time warning. */
+    softLimit?: number;
+    /** Usage that triggers a one-time alert; in enforce mode it also bounds team fan-out. */
+    hardLimit?: number;
+    /** Largest projected cost of one `omg team` launch (enforce mode). */
+    perTeamLimit?: number;
+}
 /** Cost mode reserved for future downgrade behavior (no implementation yet). */
 export type TeamCostMode = 'normal' | 'downgrade';
 /** Ops-level knobs for `/team`. */
@@ -479,6 +495,11 @@ export interface TeamConfigBlock {
         startupEvidenceMs?: number;
         /** How many sdk hosts `omg team` starts at once. Default 4; 1 restores serial launch. */
         launchConcurrency?: number;
+        /**
+         * Register the plugin MCP tools in the sdk host as SDK session tools instead
+         * of starting the `t` stdio MCP server per worker. Default false.
+         */
+        inProcessTools?: boolean;
     };
     roleRouting?: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> & {
         orchestrator?: OrchestratorSpec;

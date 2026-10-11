@@ -156,7 +156,7 @@ export function computeTemplateVariables(payload) {
  */
 function processConditionals(template, vars) {
     return template.replace(/\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_match, varName, content) => {
-        const value = vars[varName] || "";
+        const value = Object.hasOwn(vars, varName) ? vars[varName] : "";
         return value ? content : "";
     });
 }
@@ -165,7 +165,7 @@ function processConditionals(template, vars) {
  * Unknown/missing variables become empty string.
  */
 function replaceVariables(template, vars) {
-    return template.replace(/\{\{(\w+)\}\}/g, (_match, varName) => vars[varName] ?? "");
+    return template.replace(/\{\{(\w+)\}\}/g, (_match, varName) => Object.hasOwn(vars, varName) ? vars[varName] : "");
 }
 /**
  * Post-process interpolated text:
@@ -190,6 +190,40 @@ export function interpolateTemplate(template, payload) {
     result = replaceVariables(result, vars);
     result = postProcess(result);
     return result;
+}
+function interpolateJsonStringToken(token, vars) {
+    const contents = token.slice(1, -1);
+    let value = "";
+    let cursor = 0;
+    for (const match of contents.matchAll(/\{\{(\w+)\}\}/g)) {
+        const start = match.index;
+        value += JSON.parse(`"${contents.slice(cursor, start)}"`);
+        value += vars[match[1]] ?? "";
+        cursor = start + match[0].length;
+    }
+    value += JSON.parse(`"${contents.slice(cursor)}"`);
+    return JSON.stringify(value);
+}
+/** Interpolate JSON string values without injecting payload text into JSON syntax. */
+export function interpolateJsonTemplate(template, payload) {
+    const vars = computeTemplateVariables(payload);
+    const conditioned = processConditionals(template, vars);
+    let result = "";
+    let cursor = 0;
+    // Decode only quoted tokens: numeric literals must retain their exact bytes,
+    // and raw placeholders outside strings keep their existing numeric behavior.
+    for (const match of conditioned.matchAll(/"(?:\\[\s\S]|[^"\\])*"/g)) {
+        const start = match.index;
+        result += replaceVariables(conditioned.slice(cursor, start), vars);
+        try {
+            result += interpolateJsonStringToken(match[0], vars);
+        }
+        catch {
+            result += replaceVariables(match[0], vars);
+        }
+        cursor = start + match[0].length;
+    }
+    return result + replaceVariables(conditioned.slice(cursor), vars);
 }
 /**
  * Validate a template string for unknown variables.

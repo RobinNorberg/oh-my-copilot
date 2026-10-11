@@ -7,7 +7,7 @@ disable-model-invocation: true
 
 # Map
 
-You know something needs doing; you do not know which skill owns it. Find the job below, call the Skill tool with the routed skill. The map routes and explains nothing twice — each routed skill owns its own doctrine.
+You know something needs doing; you do not know which skill owns it. Find the job below and follow its route. Most routes call the Skill tool; a route marked manual gives you the slash command to invoke yourself because model invocation is disabled. The map routes and explains nothing twice — each routed skill owns its own doctrine.
 
 ## The delivery loop
 
@@ -40,6 +40,7 @@ You know something needs doing; you do not know which skill owns it. Find the jo
 | An open question needs grounded answers | `research`; external docs: `external-context` |
 | Knowledge should compound across sessions | `wiki`; durable project memory: `remember` |
 | A recurring autonomous improvement loop | `self-improve`; durable goal ledger: `ultragoal` |
+| A session needs reorientation across its pivots and outcomes | `session-flow` — run `/oh-my-copilot:session-flow` manually |
 | Visual work needs verdicts or diagrams | `visual-verdict`; `diagram` |
 | Unpushed commits need a pre-push critique | `critique` |
 | A change needs multi-pass review (security, quality, structure) | `deep-review` |
@@ -67,7 +68,7 @@ You know something needs doing; you do not know which skill owns it. Find the jo
 
 ## Rules
 
-- The map routes; it never executes. Every row resolves to one Skill-tool call — make it, then follow that skill's own doctrine.
+- The map routes; it never executes. Each ordinary row resolves to one Skill-tool call — make it, then follow that skill's doctrine. For a manual-only route, show the user its slash command; do not try to call the Skill tool.
 - When two rows both fit, the delivery loop above is the tiebreak: earlier legs come first.
 - Phase boundaries (continue / re-enter from disk / hand off / compact) are defined in `launch`'s Context hygiene — the map does not restate them.
 - A job matching no row is itself information: say so plainly rather than picking the nearest-sounding skill.

@@ -90,7 +90,7 @@ export declare function killBridgeWithEscalation(sessionId: string, options?: Br
  * Used by session-end to terminate bridges created during the ending session.
  */
 export declare function cleanupBridgeSessions(sessionIds: Iterable<string>, options?: BridgeSessionCleanupOptions): Promise<BridgeSessionCleanupResult>;
-export declare function cleanupOwnedBridgeSessions(): Promise<BridgeSessionCleanupResult>;
+export declare function cleanupOwnedBridgeSessions(options?: BridgeSessionCleanupOptions): Promise<BridgeSessionCleanupResult>;
 /**
  * Clean up stale bridge artifacts across all runtime sessions.
  * "Stale" means metadata is invalid OR process is no longer alive.

@@ -25,7 +25,7 @@ export function getCurrentTmuxSession() {
             }).split("\n");
             const match = lines.find((l) => l.startsWith(paneId + " "));
             if (match)
-                return match.split(" ")[1] ?? null;
+                return match.slice(paneId.length + 1) || null;
         }
         // Fallback: ask the attached session (may differ when detached).
         const sessionName = tmuxShell(["display-message", "-p", "#S"], {

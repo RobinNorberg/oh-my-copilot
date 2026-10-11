@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 const DEFAULT_REPO_URL = 'https://github.com/RobinNorberg/oh-my-copilot';
 const CONVENTIONAL_RE = /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?:\s*(?<desc>.+)$/;
 function parseConventionalSubject(raw) {
@@ -14,8 +14,11 @@ function parseConventionalSubject(raw) {
 export function getLatestTag(options = {}) {
     const { cwd = process.cwd(), excludeTag, ref = 'HEAD' } = options;
     try {
-        const excludeArg = excludeTag ? ` --exclude ${JSON.stringify(excludeTag)}` : '';
-        return execSync(`git describe --tags --abbrev=0${excludeArg} ${JSON.stringify(ref)}`, {
+        const args = ['describe', '--tags', '--abbrev=0'];
+        if (excludeTag)
+            args.push('--exclude', excludeTag);
+        args.push('--', ref);
+        return execFileSync('git', args, {
             cwd,
             encoding: 'utf-8',
         }).trim();

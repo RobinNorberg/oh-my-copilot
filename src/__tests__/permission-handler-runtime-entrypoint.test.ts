@@ -67,14 +67,25 @@ describe('scripts/permission-handler.mjs runtime entrypoint', () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it('auto-allows repo-scoped inspection and single-file tests only inside a git worktree', () => {
+  it('auto-allows repo-scoped inspection but not tests inside a git worktree', () => {
     const inspectionResult = runPermissionHandler('cat src/sample.ts', gitDir);
     expect(inspectionResult.continue).toBe(true);
     expect(inspectionResult.hookSpecificOutput?.decision?.behavior).toBe('allow');
 
     const targetedTestResult = runPermissionHandler('vitest run src/__tests__/sample.test.ts', gitDir);
     expect(targetedTestResult.continue).toBe(true);
-    expect(targetedTestResult.hookSpecificOutput?.decision?.behavior).toBe('allow');
+    expect(targetedTestResult.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
+  });
+
+  it.each([
+    `git commit -m "$(cat <<'EOF'\nfeat: commit message\nEOF\n)"`,
+    `git tag -a v1.0.0 -m "$(cat <<'EOF'\nRelease v1.0.0\nEOF\n)"`,
+    `git commit -m "$(cat <<EOF\n$(touch /tmp/permission-bypass)\nEOF\n)"`,
+    `git commit; rm -rf / <<'EOF'\nmalicious payload\nEOF`,
+  ])('does not auto-allow Git heredoc commands: %s', (command) => {
+    const result = runPermissionHandler(command, gitDir);
+    expect(result.continue).toBe(true);
+    expect(result.hookSpecificOutput?.decision?.behavior).not.toBe('allow');
   });
 
   it('does not auto-allow ripgrep directory or hidden sweeps inside a git worktree', () => {

@@ -47,6 +47,7 @@ import { doctorConflictsCommand } from './commands/doctor-conflicts.js';
 import { ralphCommand } from './commands/ralph.js';
 import { doctorTeamRoutingCommand } from './commands/doctor-team-routing.js';
 import { smokeCopilotCommand } from './commands/smoke.js';
+import { budgetCommand } from './commands/budget.js';
 import { capabilitiesCheckCommand, capabilitiesLockCommand } from './commands/capabilities.js';
 import { sessionSearchCommand } from './commands/session-search.js';
 import { sessionFrictionReportCommand } from './commands/session-friction-report.js';
@@ -70,6 +71,7 @@ import { checkpointCommand } from './checkpoint.js';
 import { lookoutCommand } from './lookout.js';
 import { intakeCommand } from './commands/intake.js';
 import { factoryCommand } from './commands/factory.js';
+import { shipCommand } from './commands/ship.js';
 import { warnIfWin32 } from './win32-warning.js';
 import { autoresearchCommand } from './autoresearch.js';
 import { parseHudWatchInterval, runHudWatchLoop } from './hud-watch.js';
@@ -1307,6 +1309,25 @@ Examples:
   });
 
 /**
+ * Budget command - premium-request ledger and limits (src/budget)
+ */
+program
+  .command('budget [action]')
+  .description('Show (status, the default) or reset the premium-request budget ledger')
+  .option('--json', 'Output as JSON')
+  .addHelpText('after', `
+Examples:
+  $ omg budget                                  Usage since the last reset against budget.* limits
+  $ omg budget status --json                    Full ledger: sessions, teams, measured vs estimated
+  $ omg budget reset                            Start a new accounting period
+
+Exit code 1 means budget.hardLimit is reached. Configure limits in .copilot/omg.jsonc ("budget").`)
+  .action(async (action: string | undefined, options: { json?: boolean }) => {
+    const exitCode = await budgetCommand(action ?? 'status', options);
+    process.exit(exitCode);
+  });
+
+/**
  * Smoke command - load-check the plugin inside a real host CLI
  */
 const smokeCmd = program
@@ -1628,6 +1649,7 @@ program.addCommand(checkpointCommand());
 program.addCommand(lookoutCommand());
 program.addCommand(intakeCommand());
 program.addCommand(factoryCommand());
+program.addCommand(shipCommand());
 
 /**
  * Returns the fully-configured commander program.

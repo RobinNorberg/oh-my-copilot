@@ -5,41 +5,41 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "7d3f9daed1299536cf313eb77d5a9515c6af1553",
-    "sourceSha256": "e28306a57dd3e7b2c8a20d9eb3dd0e97f45c1fb052a9e78622a19ea9b56c8174",
+    "head": "5fe574db40f8fe649ddebe4e09fa3dfbdad80d55",
+    "sourceSha256": "8ebdca19d0d6558b35548d1f9210d8084c996d04cac6fa68684ccd691cf214dc",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "7d3f9daed1299536cf313eb77d5a9515c6af1553",
-  "sourceSha256": "e28306a57dd3e7b2c8a20d9eb3dd0e97f45c1fb052a9e78622a19ea9b56c8174",
+  "head": "5fe574db40f8fe649ddebe4e09fa3dfbdad80d55",
+  "sourceSha256": "8ebdca19d0d6558b35548d1f9210d8084c996d04cac6fa68684ccd691cf214dc",
   "counts": {
     "public": {
-      "skills": 61,
+      "skills": 63,
       "commands": 21,
       "workflows": 9,
       "agents": 20,
-      "total": 111
+      "total": 113
     },
     "internal": {
       "hookFiles": 350,
       "featureFiles": 84,
-      "toolFiles": 62,
+      "toolFiles": 65,
       "libFiles": 48,
       "templateHooks": 23,
-      "srcFiles": 1542,
-      "total": 1565
+      "srcFiles": 1586,
+      "total": 1609
     },
     "generated": {
-      "distFiles": 5951,
+      "distFiles": 6111,
       "bridgeFiles": 9,
-      "total": 5960
+      "total": 6120
     },
     "prompt": {
       "promptLikeFiles": 61
     },
-    "skills": 61,
+    "skills": 63,
     "commands": 21,
     "hookFiles": 350,
     "workflows": 9,
@@ -100,6 +100,8 @@
       "research",
       "review",
       "self-improve",
+      "session-flow",
+      "ship",
       "skill",
       "skillify",
       "tdd",
@@ -622,6 +624,8 @@
       "src/tools/deepinit-manifest.ts",
       "src/tools/diagnostics/AGENTS.md",
       "src/tools/diagnostics/__tests__/lsp-aggregator.test.ts",
+      "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts",
+      "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
       "src/tools/diagnostics/index.ts",
       "src/tools/diagnostics/lsp-aggregator.ts",
       "src/tools/diagnostics/tsc-runner.ts",
@@ -639,6 +643,7 @@
       "src/tools/lsp/__tests__/client-timeout-env.test.ts",
       "src/tools/lsp/__tests__/client-win32-spawn.test.ts",
       "src/tools/lsp/__tests__/devcontainer.test.ts",
+      "src/tools/lsp/__tests__/utils-file-uri.test.ts",
       "src/tools/lsp/client.ts",
       "src/tools/lsp/devcontainer.ts",
       "src/tools/lsp/index.ts",
@@ -834,6 +839,7 @@
       "scripts/copilot/build-agents.mjs",
       "scripts/copilot/build-hooks.mjs",
       "scripts/copilot/dispatch.cjs",
+      "scripts/copilot/notification.mjs",
       "scripts/demo-team.mjs",
       "scripts/dev/repro-state-lock.mjs",
       "scripts/eval-autoresearch-json.mjs",
@@ -895,6 +901,7 @@
       "scripts/postinstall-contained-fs.mjs",
       "scripts/pre-compact.mjs",
       "scripts/pre-tool-enforcer.mjs",
+      "scripts/premium-budget.mjs",
       "scripts/project-memory-posttool.mjs",
       "scripts/project-memory-precompact.mjs",
       "scripts/project-memory-session.mjs",
@@ -1108,6 +1115,10 @@
       "dist/__tests__/copilot-hooks-manifest.test.d.ts.map",
       "dist/__tests__/copilot-hooks-manifest.test.js",
       "dist/__tests__/copilot-hooks-manifest.test.js.map",
+      "dist/__tests__/copilot-notification-hook.test.d.ts",
+      "dist/__tests__/copilot-notification-hook.test.d.ts.map",
+      "dist/__tests__/copilot-notification-hook.test.js",
+      "dist/__tests__/copilot-notification-hook.test.js.map",
       "dist/__tests__/daemon-module-path.test.d.ts",
       "dist/__tests__/daemon-module-path.test.d.ts.map",
       "dist/__tests__/daemon-module-path.test.js",
@@ -1264,6 +1275,10 @@
       "dist/__tests__/hud/background-cleanup.test.d.ts.map",
       "dist/__tests__/hud/background-cleanup.test.js",
       "dist/__tests__/hud/background-cleanup.test.js.map",
+      "dist/__tests__/hud/background-history-cap.test.d.ts",
+      "dist/__tests__/hud/background-history-cap.test.d.ts.map",
+      "dist/__tests__/hud/background-history-cap.test.js",
+      "dist/__tests__/hud/background-history-cap.test.js.map",
       "dist/__tests__/hud/background-tasks.test.d.ts",
       "dist/__tests__/hud/background-tasks.test.d.ts.map",
       "dist/__tests__/hud/background-tasks.test.js",
@@ -1288,6 +1303,10 @@
       "dist/__tests__/hud/custom-rate-provider.test.d.ts.map",
       "dist/__tests__/hud/custom-rate-provider.test.js",
       "dist/__tests__/hud/custom-rate-provider.test.js.map",
+      "dist/__tests__/hud/cwd-hyperlink-boundary.test.d.ts",
+      "dist/__tests__/hud/cwd-hyperlink-boundary.test.d.ts.map",
+      "dist/__tests__/hud/cwd-hyperlink-boundary.test.js",
+      "dist/__tests__/hud/cwd-hyperlink-boundary.test.js.map",
       "dist/__tests__/hud/cwd.test.d.ts",
       "dist/__tests__/hud/cwd.test.d.ts.map",
       "dist/__tests__/hud/cwd.test.js",
@@ -1764,6 +1783,18 @@
       "dist/__tests__/psm-tmux-naming.test.d.ts.map",
       "dist/__tests__/psm-tmux-naming.test.js",
       "dist/__tests__/psm-tmux-naming.test.js.map",
+      "dist/__tests__/purge-stale-cache-relink.test.d.ts",
+      "dist/__tests__/purge-stale-cache-relink.test.d.ts.map",
+      "dist/__tests__/purge-stale-cache-relink.test.js",
+      "dist/__tests__/purge-stale-cache-relink.test.js.map",
+      "dist/__tests__/purge-stale-cache-symlink.integration.test.d.ts",
+      "dist/__tests__/purge-stale-cache-symlink.integration.test.d.ts.map",
+      "dist/__tests__/purge-stale-cache-symlink.integration.test.js",
+      "dist/__tests__/purge-stale-cache-symlink.integration.test.js.map",
+      "dist/__tests__/purge-stale-cache-validation.test.d.ts",
+      "dist/__tests__/purge-stale-cache-validation.test.d.ts.map",
+      "dist/__tests__/purge-stale-cache-validation.test.js",
+      "dist/__tests__/purge-stale-cache-validation.test.js.map",
       "dist/__tests__/purge-stale-cache.integration.test.d.ts",
       "dist/__tests__/purge-stale-cache.integration.test.d.ts.map",
       "dist/__tests__/purge-stale-cache.integration.test.js",
@@ -2336,6 +2367,18 @@
       "dist/autoresearch/setup-contract.d.ts.map",
       "dist/autoresearch/setup-contract.js",
       "dist/autoresearch/setup-contract.js.map",
+      "dist/budget/__tests__/budget.test.d.ts",
+      "dist/budget/__tests__/budget.test.d.ts.map",
+      "dist/budget/__tests__/budget.test.js",
+      "dist/budget/__tests__/budget.test.js.map",
+      "dist/budget/governor.d.ts",
+      "dist/budget/governor.d.ts.map",
+      "dist/budget/governor.js",
+      "dist/budget/governor.js.map",
+      "dist/budget/ledger.d.ts",
+      "dist/budget/ledger.d.ts.map",
+      "dist/budget/ledger.js",
+      "dist/budget/ledger.js.map",
       "dist/cli/__tests__/ask.test.d.ts",
       "dist/cli/__tests__/ask.test.d.ts.map",
       "dist/cli/__tests__/ask.test.js",
@@ -2404,6 +2447,10 @@
       "dist/cli/__tests__/session-search-help.test.d.ts.map",
       "dist/cli/__tests__/session-search-help.test.js",
       "dist/cli/__tests__/session-search-help.test.js.map",
+      "dist/cli/__tests__/session-search-terminal.test.d.ts",
+      "dist/cli/__tests__/session-search-terminal.test.d.ts.map",
+      "dist/cli/__tests__/session-search-terminal.test.js",
+      "dist/cli/__tests__/session-search-terminal.test.js.map",
       "dist/cli/__tests__/session-search.test.d.ts",
       "dist/cli/__tests__/session-search.test.d.ts.map",
       "dist/cli/__tests__/session-search.test.js",
@@ -2504,10 +2551,18 @@
       "dist/cli/commands/__tests__/intake.test.d.ts.map",
       "dist/cli/commands/__tests__/intake.test.js",
       "dist/cli/commands/__tests__/intake.test.js.map",
+      "dist/cli/commands/__tests__/ship-cli.test.d.ts",
+      "dist/cli/commands/__tests__/ship-cli.test.d.ts.map",
+      "dist/cli/commands/__tests__/ship-cli.test.js",
+      "dist/cli/commands/__tests__/ship-cli.test.js.map",
       "dist/cli/commands/__tests__/smoke-tier2.test.d.ts",
       "dist/cli/commands/__tests__/smoke-tier2.test.d.ts.map",
       "dist/cli/commands/__tests__/smoke-tier2.test.js",
       "dist/cli/commands/__tests__/smoke-tier2.test.js.map",
+      "dist/cli/commands/__tests__/team-budget-governor.test.d.ts",
+      "dist/cli/commands/__tests__/team-budget-governor.test.d.ts.map",
+      "dist/cli/commands/__tests__/team-budget-governor.test.js",
+      "dist/cli/commands/__tests__/team-budget-governor.test.js.map",
       "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts",
       "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts.map",
       "dist/cli/commands/__tests__/team-role-shorthand.test.js",
@@ -2532,6 +2587,10 @@
       "dist/cli/commands/alias-retirement.d.ts.map",
       "dist/cli/commands/alias-retirement.js",
       "dist/cli/commands/alias-retirement.js.map",
+      "dist/cli/commands/budget.d.ts",
+      "dist/cli/commands/budget.d.ts.map",
+      "dist/cli/commands/budget.js",
+      "dist/cli/commands/budget.js.map",
       "dist/cli/commands/capabilities.d.ts",
       "dist/cli/commands/capabilities.d.ts.map",
       "dist/cli/commands/capabilities.js",
@@ -2568,6 +2627,10 @@
       "dist/cli/commands/session-search.d.ts.map",
       "dist/cli/commands/session-search.js",
       "dist/cli/commands/session-search.js.map",
+      "dist/cli/commands/ship.d.ts",
+      "dist/cli/commands/ship.d.ts.map",
+      "dist/cli/commands/ship.js",
+      "dist/cli/commands/ship.js.map",
       "dist/cli/commands/smoke.d.ts",
       "dist/cli/commands/smoke.d.ts.map",
       "dist/cli/commands/smoke.js",
@@ -4626,6 +4689,10 @@
       "dist/hud/__tests__/autopilot-profile.test.d.ts.map",
       "dist/hud/__tests__/autopilot-profile.test.js",
       "dist/hud/__tests__/autopilot-profile.test.js.map",
+      "dist/hud/__tests__/custom-provider-cache-identity.test.d.ts",
+      "dist/hud/__tests__/custom-provider-cache-identity.test.d.ts.map",
+      "dist/hud/__tests__/custom-provider-cache-identity.test.js",
+      "dist/hud/__tests__/custom-provider-cache-identity.test.js.map",
       "dist/hud/__tests__/custom-rate-provider.test.d.ts",
       "dist/hud/__tests__/custom-rate-provider.test.d.ts.map",
       "dist/hud/__tests__/custom-rate-provider.test.js",
@@ -4746,6 +4813,10 @@
       "dist/hud/elements/prd.d.ts.map",
       "dist/hud/elements/prd.js",
       "dist/hud/elements/prd.js.map",
+      "dist/hud/elements/premium-budget.d.ts",
+      "dist/hud/elements/premium-budget.d.ts.map",
+      "dist/hud/elements/premium-budget.js",
+      "dist/hud/elements/premium-budget.js.map",
       "dist/hud/elements/prompt-time.d.ts",
       "dist/hud/elements/prompt-time.d.ts.map",
       "dist/hud/elements/prompt-time.js",
@@ -5259,10 +5330,18 @@
       "dist/notifications/__tests__/config.test.d.ts.map",
       "dist/notifications/__tests__/config.test.js",
       "dist/notifications/__tests__/config.test.js.map",
+      "dist/notifications/__tests__/custom-config-shapes.test.d.ts",
+      "dist/notifications/__tests__/custom-config-shapes.test.d.ts.map",
+      "dist/notifications/__tests__/custom-config-shapes.test.js",
+      "dist/notifications/__tests__/custom-config-shapes.test.js.map",
       "dist/notifications/__tests__/custom-integration.test.d.ts",
       "dist/notifications/__tests__/custom-integration.test.d.ts.map",
       "dist/notifications/__tests__/custom-integration.test.js",
       "dist/notifications/__tests__/custom-integration.test.js.map",
+      "dist/notifications/__tests__/custom-webhook-body.test.d.ts",
+      "dist/notifications/__tests__/custom-webhook-body.test.d.ts.map",
+      "dist/notifications/__tests__/custom-webhook-body.test.js",
+      "dist/notifications/__tests__/custom-webhook-body.test.js.map",
       "dist/notifications/__tests__/dispatcher.test.d.ts",
       "dist/notifications/__tests__/dispatcher.test.d.ts.map",
       "dist/notifications/__tests__/dispatcher.test.js",
@@ -5303,6 +5382,10 @@
       "dist/notifications/__tests__/reply-listener.test.d.ts.map",
       "dist/notifications/__tests__/reply-listener.test.js",
       "dist/notifications/__tests__/reply-listener.test.js.map",
+      "dist/notifications/__tests__/session-registry-durability.test.d.ts",
+      "dist/notifications/__tests__/session-registry-durability.test.d.ts.map",
+      "dist/notifications/__tests__/session-registry-durability.test.js",
+      "dist/notifications/__tests__/session-registry-durability.test.js.map",
       "dist/notifications/__tests__/session-registry.test.d.ts",
       "dist/notifications/__tests__/session-registry.test.d.ts.map",
       "dist/notifications/__tests__/session-registry.test.js",
@@ -5567,6 +5650,50 @@
       "dist/shared/types.d.ts.map",
       "dist/shared/types.js",
       "dist/shared/types.js.map",
+      "dist/ship/__tests__/gates.test.d.ts",
+      "dist/ship/__tests__/gates.test.d.ts.map",
+      "dist/ship/__tests__/gates.test.js",
+      "dist/ship/__tests__/gates.test.js.map",
+      "dist/ship/__tests__/git-trust.test.d.ts",
+      "dist/ship/__tests__/git-trust.test.d.ts.map",
+      "dist/ship/__tests__/git-trust.test.js",
+      "dist/ship/__tests__/git-trust.test.js.map",
+      "dist/ship/__tests__/prepare-merge.test.d.ts",
+      "dist/ship/__tests__/prepare-merge.test.d.ts.map",
+      "dist/ship/__tests__/prepare-merge.test.js",
+      "dist/ship/__tests__/prepare-merge.test.js.map",
+      "dist/ship/__tests__/safety-state.test.d.ts",
+      "dist/ship/__tests__/safety-state.test.d.ts.map",
+      "dist/ship/__tests__/safety-state.test.js",
+      "dist/ship/__tests__/safety-state.test.js.map",
+      "dist/ship/__tests__/workflow-checks.test.d.ts",
+      "dist/ship/__tests__/workflow-checks.test.d.ts.map",
+      "dist/ship/__tests__/workflow-checks.test.js",
+      "dist/ship/__tests__/workflow-checks.test.js.map",
+      "dist/ship/config.d.ts",
+      "dist/ship/config.d.ts.map",
+      "dist/ship/config.js",
+      "dist/ship/config.js.map",
+      "dist/ship/exec.d.ts",
+      "dist/ship/exec.d.ts.map",
+      "dist/ship/exec.js",
+      "dist/ship/exec.js.map",
+      "dist/ship/gates.d.ts",
+      "dist/ship/gates.d.ts.map",
+      "dist/ship/gates.js",
+      "dist/ship/gates.js.map",
+      "dist/ship/merge.d.ts",
+      "dist/ship/merge.d.ts.map",
+      "dist/ship/merge.js",
+      "dist/ship/merge.js.map",
+      "dist/ship/prepare.d.ts",
+      "dist/ship/prepare.d.ts.map",
+      "dist/ship/prepare.js",
+      "dist/ship/prepare.js.map",
+      "dist/ship/state.d.ts",
+      "dist/ship/state.d.ts.map",
+      "dist/ship/state.js",
+      "dist/ship/state.js.map",
       "dist/skills/__tests__/mingw-escape.test.d.ts",
       "dist/skills/__tests__/mingw-escape.test.d.ts.map",
       "dist/skills/__tests__/mingw-escape.test.js",
@@ -6003,6 +6130,10 @@
       "dist/team/__tests__/scaling.test.d.ts.map",
       "dist/team/__tests__/scaling.test.js",
       "dist/team/__tests__/scaling.test.js.map",
+      "dist/team/__tests__/sdk-inprocess-tools.test.d.ts",
+      "dist/team/__tests__/sdk-inprocess-tools.test.d.ts.map",
+      "dist/team/__tests__/sdk-inprocess-tools.test.js",
+      "dist/team/__tests__/sdk-inprocess-tools.test.js.map",
       "dist/team/__tests__/sdk-transport.runtime.test.d.ts",
       "dist/team/__tests__/sdk-transport.runtime.test.d.ts.map",
       "dist/team/__tests__/sdk-transport.runtime.test.js",
@@ -6131,6 +6262,10 @@
       "dist/team/__tests__/tmux-session.spawn.test.d.ts.map",
       "dist/team/__tests__/tmux-session.spawn.test.js",
       "dist/team/__tests__/tmux-session.spawn.test.js.map",
+      "dist/team/__tests__/tmux-session.split-pane-env.test.d.ts",
+      "dist/team/__tests__/tmux-session.split-pane-env.test.d.ts.map",
+      "dist/team/__tests__/tmux-session.split-pane-env.test.js",
+      "dist/team/__tests__/tmux-session.split-pane-env.test.js.map",
       "dist/team/__tests__/tmux-session.startup.test.d.ts",
       "dist/team/__tests__/tmux-session.startup.test.d.ts.map",
       "dist/team/__tests__/tmux-session.startup.test.js",
@@ -6147,10 +6282,18 @@
       "dist/team/__tests__/unified-team.test.d.ts.map",
       "dist/team/__tests__/unified-team.test.js",
       "dist/team/__tests__/unified-team.test.js.map",
+      "dist/team/__tests__/usage-record-shape.test.d.ts",
+      "dist/team/__tests__/usage-record-shape.test.d.ts.map",
+      "dist/team/__tests__/usage-record-shape.test.js",
+      "dist/team/__tests__/usage-record-shape.test.js.map",
       "dist/team/__tests__/usage-tracker.test.d.ts",
       "dist/team/__tests__/usage-tracker.test.d.ts.map",
       "dist/team/__tests__/usage-tracker.test.js",
       "dist/team/__tests__/usage-tracker.test.js.map",
+      "dist/team/__tests__/usage-unicode-counts.test.d.ts",
+      "dist/team/__tests__/usage-unicode-counts.test.d.ts.map",
+      "dist/team/__tests__/usage-unicode-counts.test.js",
+      "dist/team/__tests__/usage-unicode-counts.test.js.map",
       "dist/team/__tests__/worker-activation-gate.test.d.ts",
       "dist/team/__tests__/worker-activation-gate.test.d.ts.map",
       "dist/team/__tests__/worker-activation-gate.test.js",
@@ -6395,6 +6538,10 @@
       "dist/team/sdk-host.d.ts.map",
       "dist/team/sdk-host.js",
       "dist/team/sdk-host.js.map",
+      "dist/team/sdk-inprocess-tools.d.ts",
+      "dist/team/sdk-inprocess-tools.d.ts.map",
+      "dist/team/sdk-inprocess-tools.js",
+      "dist/team/sdk-inprocess-tools.js.map",
       "dist/team/sdk-policy.d.ts",
       "dist/team/sdk-policy.d.ts.map",
       "dist/team/sdk-policy.js",
@@ -6567,6 +6714,14 @@
       "dist/tools/diagnostics/__tests__/lsp-aggregator.test.d.ts.map",
       "dist/tools/diagnostics/__tests__/lsp-aggregator.test.js",
       "dist/tools/diagnostics/__tests__/lsp-aggregator.test.js.map",
+      "dist/tools/diagnostics/__tests__/tsc-project-failures.test.d.ts",
+      "dist/tools/diagnostics/__tests__/tsc-project-failures.test.d.ts.map",
+      "dist/tools/diagnostics/__tests__/tsc-project-failures.test.js",
+      "dist/tools/diagnostics/__tests__/tsc-project-failures.test.js.map",
+      "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.d.ts",
+      "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.d.ts.map",
+      "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.js",
+      "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.js.map",
       "dist/tools/diagnostics/index.d.ts",
       "dist/tools/diagnostics/index.d.ts.map",
       "dist/tools/diagnostics/index.js",
@@ -6631,6 +6786,10 @@
       "dist/tools/lsp/__tests__/devcontainer.test.d.ts.map",
       "dist/tools/lsp/__tests__/devcontainer.test.js",
       "dist/tools/lsp/__tests__/devcontainer.test.js.map",
+      "dist/tools/lsp/__tests__/utils-file-uri.test.d.ts",
+      "dist/tools/lsp/__tests__/utils-file-uri.test.d.ts.map",
+      "dist/tools/lsp/__tests__/utils-file-uri.test.js",
+      "dist/tools/lsp/__tests__/utils-file-uri.test.js.map",
       "dist/tools/lsp/client.d.ts",
       "dist/tools/lsp/client.d.ts.map",
       "dist/tools/lsp/client.js",
@@ -6819,6 +6978,10 @@
       "dist/utils/jsonc.d.ts.map",
       "dist/utils/jsonc.js",
       "dist/utils/jsonc.js.map",
+      "dist/utils/node-version.d.ts",
+      "dist/utils/node-version.d.ts.map",
+      "dist/utils/node-version.js",
+      "dist/utils/node-version.js.map",
       "dist/utils/omc-cli-rendering.d.ts",
       "dist/utils/omc-cli-rendering.d.ts.map",
       "dist/utils/omc-cli-rendering.js",
@@ -6827,6 +6990,10 @@
       "dist/utils/paths.d.ts.map",
       "dist/utils/paths.js",
       "dist/utils/paths.js.map",
+      "dist/utils/plugin-cache-validation.d.ts",
+      "dist/utils/plugin-cache-validation.d.ts.map",
+      "dist/utils/plugin-cache-validation.js",
+      "dist/utils/plugin-cache-validation.js.map",
       "dist/utils/resolve-node.d.ts",
       "dist/utils/resolve-node.d.ts.map",
       "dist/utils/resolve-node.js",
@@ -7437,6 +7604,8 @@
       "src/tools/deepinit-manifest.ts",
       "src/tools/diagnostics/AGENTS.md",
       "src/tools/diagnostics/__tests__/lsp-aggregator.test.ts",
+      "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts",
+      "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
       "src/tools/diagnostics/index.ts",
       "src/tools/diagnostics/lsp-aggregator.ts",
       "src/tools/diagnostics/tsc-runner.ts",
@@ -7454,6 +7623,7 @@
       "src/tools/lsp/__tests__/client-timeout-env.test.ts",
       "src/tools/lsp/__tests__/client-win32-spawn.test.ts",
       "src/tools/lsp/__tests__/devcontainer.test.ts",
+      "src/tools/lsp/__tests__/utils-file-uri.test.ts",
       "src/tools/lsp/client.ts",
       "src/tools/lsp/devcontainer.ts",
       "src/tools/lsp/index.ts",
@@ -7532,6 +7702,11 @@
         "id": ".github/SPONSOR_TIERS.md",
         "kind": "other",
         "path": ".github/SPONSOR_TIERS.md"
+      },
+      {
+        "id": ".github/known-flaky-tests.json",
+        "kind": "other",
+        "path": ".github/known-flaky-tests.json"
       },
       {
         "id": ".github/release-body.md",
@@ -9364,6 +9539,26 @@
         "path": "dist/__tests__/copilot-hooks-manifest.test.js.map"
       },
       {
+        "id": "dist/__tests__/copilot-notification-hook.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-notification-hook.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/copilot-notification-hook.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-notification-hook.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/copilot-notification-hook.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-notification-hook.test.js"
+      },
+      {
+        "id": "dist/__tests__/copilot-notification-hook.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/copilot-notification-hook.test.js.map"
+      },
+      {
         "id": "dist/__tests__/daemon-module-path.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/daemon-module-path.test.d.ts"
@@ -10144,6 +10339,26 @@
         "path": "dist/__tests__/hud/background-cleanup.test.js.map"
       },
       {
+        "id": "dist/__tests__/hud/background-history-cap.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/background-history-cap.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/background-history-cap.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/background-history-cap.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/background-history-cap.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/background-history-cap.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/background-history-cap.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/background-history-cap.test.js.map"
+      },
+      {
         "id": "dist/__tests__/hud/background-tasks.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud/background-tasks.test.d.ts"
@@ -10262,6 +10477,26 @@
         "id": "dist/__tests__/hud/custom-rate-provider.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/hud/custom-rate-provider.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/hud/cwd-hyperlink-boundary.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/cwd-hyperlink-boundary.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/hud/cwd-hyperlink-boundary.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/cwd-hyperlink-boundary.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/hud/cwd-hyperlink-boundary.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/cwd-hyperlink-boundary.test.js"
+      },
+      {
+        "id": "dist/__tests__/hud/cwd-hyperlink-boundary.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/hud/cwd-hyperlink-boundary.test.js.map"
       },
       {
         "id": "dist/__tests__/hud/cwd.test.d.ts",
@@ -12642,6 +12877,66 @@
         "id": "dist/__tests__/psm-tmux-naming.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/psm-tmux-naming.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/purge-stale-cache-relink.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/purge-stale-cache-relink.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/purge-stale-cache-relink.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/purge-stale-cache-relink.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/purge-stale-cache-relink.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/purge-stale-cache-relink.test.js"
+      },
+      {
+        "id": "dist/__tests__/purge-stale-cache-relink.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/purge-stale-cache-relink.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/purge-stale-cache-symlink.integration.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/purge-stale-cache-symlink.integration.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/purge-stale-cache-symlink.integration.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/purge-stale-cache-symlink.integration.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/purge-stale-cache-symlink.integration.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/purge-stale-cache-symlink.integration.test.js"
+      },
+      {
+        "id": "dist/__tests__/purge-stale-cache-symlink.integration.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/purge-stale-cache-symlink.integration.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/purge-stale-cache-validation.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/purge-stale-cache-validation.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/purge-stale-cache-validation.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/purge-stale-cache-validation.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/purge-stale-cache-validation.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/purge-stale-cache-validation.test.js"
+      },
+      {
+        "id": "dist/__tests__/purge-stale-cache-validation.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/purge-stale-cache-validation.test.js.map"
       },
       {
         "id": "dist/__tests__/purge-stale-cache.integration.test.d.ts",
@@ -15504,6 +15799,66 @@
         "path": "dist/autoresearch/setup-contract.js.map"
       },
       {
+        "id": "dist/budget/__tests__/budget.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/budget.test.d.ts"
+      },
+      {
+        "id": "dist/budget/__tests__/budget.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/budget.test.d.ts.map"
+      },
+      {
+        "id": "dist/budget/__tests__/budget.test.js",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/budget.test.js"
+      },
+      {
+        "id": "dist/budget/__tests__/budget.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/budget.test.js.map"
+      },
+      {
+        "id": "dist/budget/governor.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/budget/governor.d.ts"
+      },
+      {
+        "id": "dist/budget/governor.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/governor.d.ts.map"
+      },
+      {
+        "id": "dist/budget/governor.js",
+        "kind": "generated-dist",
+        "path": "dist/budget/governor.js"
+      },
+      {
+        "id": "dist/budget/governor.js.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/governor.js.map"
+      },
+      {
+        "id": "dist/budget/ledger.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/budget/ledger.d.ts"
+      },
+      {
+        "id": "dist/budget/ledger.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/ledger.d.ts.map"
+      },
+      {
+        "id": "dist/budget/ledger.js",
+        "kind": "generated-dist",
+        "path": "dist/budget/ledger.js"
+      },
+      {
+        "id": "dist/budget/ledger.js.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/ledger.js.map"
+      },
+      {
         "id": "dist/cli/__tests__/ask.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/__tests__/ask.test.d.ts"
@@ -15842,6 +16197,26 @@
         "id": "dist/cli/__tests__/session-search-help.test.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/__tests__/session-search-help.test.js.map"
+      },
+      {
+        "id": "dist/cli/__tests__/session-search-terminal.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/session-search-terminal.test.d.ts"
+      },
+      {
+        "id": "dist/cli/__tests__/session-search-terminal.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/session-search-terminal.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/__tests__/session-search-terminal.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/session-search-terminal.test.js"
+      },
+      {
+        "id": "dist/cli/__tests__/session-search-terminal.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/session-search-terminal.test.js.map"
       },
       {
         "id": "dist/cli/__tests__/session-search.test.d.ts",
@@ -16344,6 +16719,26 @@
         "path": "dist/cli/commands/__tests__/intake.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/ship-cli.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/ship-cli.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/ship-cli.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/ship-cli.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/ship-cli.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/ship-cli.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/ship-cli.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/ship-cli.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/smoke-tier2.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/smoke-tier2.test.d.ts"
@@ -16362,6 +16757,26 @@
         "id": "dist/cli/commands/__tests__/smoke-tier2.test.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/smoke-tier2.test.js.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-budget-governor.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-budget-governor.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-budget-governor.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-budget-governor.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-budget-governor.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-budget-governor.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-budget-governor.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-budget-governor.test.js.map"
       },
       {
         "id": "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts",
@@ -16482,6 +16897,26 @@
         "id": "dist/cli/commands/alias-retirement.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/alias-retirement.js.map"
+      },
+      {
+        "id": "dist/cli/commands/budget.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/budget.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/budget.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/budget.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/budget.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/budget.js"
+      },
+      {
+        "id": "dist/cli/commands/budget.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/budget.js.map"
       },
       {
         "id": "dist/cli/commands/capabilities.d.ts",
@@ -16662,6 +17097,26 @@
         "id": "dist/cli/commands/session-search.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/session-search.js.map"
+      },
+      {
+        "id": "dist/cli/commands/ship.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/ship.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/ship.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/ship.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/ship.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/ship.js"
+      },
+      {
+        "id": "dist/cli/commands/ship.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/ship.js.map"
       },
       {
         "id": "dist/cli/commands/smoke.d.ts",
@@ -26954,6 +27409,26 @@
         "path": "dist/hud/__tests__/autopilot-profile.test.js.map"
       },
       {
+        "id": "dist/hud/__tests__/custom-provider-cache-identity.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/__tests__/custom-provider-cache-identity.test.d.ts"
+      },
+      {
+        "id": "dist/hud/__tests__/custom-provider-cache-identity.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/__tests__/custom-provider-cache-identity.test.d.ts.map"
+      },
+      {
+        "id": "dist/hud/__tests__/custom-provider-cache-identity.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hud/__tests__/custom-provider-cache-identity.test.js"
+      },
+      {
+        "id": "dist/hud/__tests__/custom-provider-cache-identity.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/__tests__/custom-provider-cache-identity.test.js.map"
+      },
+      {
         "id": "dist/hud/__tests__/custom-rate-provider.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/hud/__tests__/custom-rate-provider.test.d.ts"
@@ -27552,6 +28027,26 @@
         "id": "dist/hud/elements/prd.js.map",
         "kind": "generated-dist",
         "path": "dist/hud/elements/prd.js.map"
+      },
+      {
+        "id": "dist/hud/elements/premium-budget.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/premium-budget.d.ts"
+      },
+      {
+        "id": "dist/hud/elements/premium-budget.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/premium-budget.d.ts.map"
+      },
+      {
+        "id": "dist/hud/elements/premium-budget.js",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/premium-budget.js"
+      },
+      {
+        "id": "dist/hud/elements/premium-budget.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/premium-budget.js.map"
       },
       {
         "id": "dist/hud/elements/prompt-time.d.ts",
@@ -30119,6 +30614,26 @@
         "path": "dist/notifications/__tests__/config.test.js.map"
       },
       {
+        "id": "dist/notifications/__tests__/custom-config-shapes.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/custom-config-shapes.test.d.ts"
+      },
+      {
+        "id": "dist/notifications/__tests__/custom-config-shapes.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/custom-config-shapes.test.d.ts.map"
+      },
+      {
+        "id": "dist/notifications/__tests__/custom-config-shapes.test.js",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/custom-config-shapes.test.js"
+      },
+      {
+        "id": "dist/notifications/__tests__/custom-config-shapes.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/custom-config-shapes.test.js.map"
+      },
+      {
         "id": "dist/notifications/__tests__/custom-integration.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/notifications/__tests__/custom-integration.test.d.ts"
@@ -30137,6 +30652,26 @@
         "id": "dist/notifications/__tests__/custom-integration.test.js.map",
         "kind": "generated-dist",
         "path": "dist/notifications/__tests__/custom-integration.test.js.map"
+      },
+      {
+        "id": "dist/notifications/__tests__/custom-webhook-body.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/custom-webhook-body.test.d.ts"
+      },
+      {
+        "id": "dist/notifications/__tests__/custom-webhook-body.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/custom-webhook-body.test.d.ts.map"
+      },
+      {
+        "id": "dist/notifications/__tests__/custom-webhook-body.test.js",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/custom-webhook-body.test.js"
+      },
+      {
+        "id": "dist/notifications/__tests__/custom-webhook-body.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/custom-webhook-body.test.js.map"
       },
       {
         "id": "dist/notifications/__tests__/dispatcher.test.d.ts",
@@ -30337,6 +30872,26 @@
         "id": "dist/notifications/__tests__/reply-listener.test.js.map",
         "kind": "generated-dist",
         "path": "dist/notifications/__tests__/reply-listener.test.js.map"
+      },
+      {
+        "id": "dist/notifications/__tests__/session-registry-durability.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/session-registry-durability.test.d.ts"
+      },
+      {
+        "id": "dist/notifications/__tests__/session-registry-durability.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/session-registry-durability.test.d.ts.map"
+      },
+      {
+        "id": "dist/notifications/__tests__/session-registry-durability.test.js",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/session-registry-durability.test.js"
+      },
+      {
+        "id": "dist/notifications/__tests__/session-registry-durability.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/notifications/__tests__/session-registry-durability.test.js.map"
       },
       {
         "id": "dist/notifications/__tests__/session-registry.test.d.ts",
@@ -31657,6 +32212,226 @@
         "id": "dist/shared/types.js.map",
         "kind": "generated-dist",
         "path": "dist/shared/types.js.map"
+      },
+      {
+        "id": "dist/ship/__tests__/gates.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/gates.test.d.ts"
+      },
+      {
+        "id": "dist/ship/__tests__/gates.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/gates.test.d.ts.map"
+      },
+      {
+        "id": "dist/ship/__tests__/gates.test.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/gates.test.js"
+      },
+      {
+        "id": "dist/ship/__tests__/gates.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/gates.test.js.map"
+      },
+      {
+        "id": "dist/ship/__tests__/git-trust.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/git-trust.test.d.ts"
+      },
+      {
+        "id": "dist/ship/__tests__/git-trust.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/git-trust.test.d.ts.map"
+      },
+      {
+        "id": "dist/ship/__tests__/git-trust.test.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/git-trust.test.js"
+      },
+      {
+        "id": "dist/ship/__tests__/git-trust.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/git-trust.test.js.map"
+      },
+      {
+        "id": "dist/ship/__tests__/prepare-merge.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/prepare-merge.test.d.ts"
+      },
+      {
+        "id": "dist/ship/__tests__/prepare-merge.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/prepare-merge.test.d.ts.map"
+      },
+      {
+        "id": "dist/ship/__tests__/prepare-merge.test.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/prepare-merge.test.js"
+      },
+      {
+        "id": "dist/ship/__tests__/prepare-merge.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/prepare-merge.test.js.map"
+      },
+      {
+        "id": "dist/ship/__tests__/safety-state.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/safety-state.test.d.ts"
+      },
+      {
+        "id": "dist/ship/__tests__/safety-state.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/safety-state.test.d.ts.map"
+      },
+      {
+        "id": "dist/ship/__tests__/safety-state.test.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/safety-state.test.js"
+      },
+      {
+        "id": "dist/ship/__tests__/safety-state.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/safety-state.test.js.map"
+      },
+      {
+        "id": "dist/ship/__tests__/workflow-checks.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/workflow-checks.test.d.ts"
+      },
+      {
+        "id": "dist/ship/__tests__/workflow-checks.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/workflow-checks.test.d.ts.map"
+      },
+      {
+        "id": "dist/ship/__tests__/workflow-checks.test.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/workflow-checks.test.js"
+      },
+      {
+        "id": "dist/ship/__tests__/workflow-checks.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/__tests__/workflow-checks.test.js.map"
+      },
+      {
+        "id": "dist/ship/config.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/config.d.ts"
+      },
+      {
+        "id": "dist/ship/config.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/config.d.ts.map"
+      },
+      {
+        "id": "dist/ship/config.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/config.js"
+      },
+      {
+        "id": "dist/ship/config.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/config.js.map"
+      },
+      {
+        "id": "dist/ship/exec.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/exec.d.ts"
+      },
+      {
+        "id": "dist/ship/exec.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/exec.d.ts.map"
+      },
+      {
+        "id": "dist/ship/exec.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/exec.js"
+      },
+      {
+        "id": "dist/ship/exec.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/exec.js.map"
+      },
+      {
+        "id": "dist/ship/gates.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/gates.d.ts"
+      },
+      {
+        "id": "dist/ship/gates.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/gates.d.ts.map"
+      },
+      {
+        "id": "dist/ship/gates.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/gates.js"
+      },
+      {
+        "id": "dist/ship/gates.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/gates.js.map"
+      },
+      {
+        "id": "dist/ship/merge.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/merge.d.ts"
+      },
+      {
+        "id": "dist/ship/merge.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/merge.d.ts.map"
+      },
+      {
+        "id": "dist/ship/merge.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/merge.js"
+      },
+      {
+        "id": "dist/ship/merge.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/merge.js.map"
+      },
+      {
+        "id": "dist/ship/prepare.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/prepare.d.ts"
+      },
+      {
+        "id": "dist/ship/prepare.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/prepare.d.ts.map"
+      },
+      {
+        "id": "dist/ship/prepare.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/prepare.js"
+      },
+      {
+        "id": "dist/ship/prepare.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/prepare.js.map"
+      },
+      {
+        "id": "dist/ship/state.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/ship/state.d.ts"
+      },
+      {
+        "id": "dist/ship/state.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/state.d.ts.map"
+      },
+      {
+        "id": "dist/ship/state.js",
+        "kind": "generated-dist",
+        "path": "dist/ship/state.js"
+      },
+      {
+        "id": "dist/ship/state.js.map",
+        "kind": "generated-dist",
+        "path": "dist/ship/state.js.map"
       },
       {
         "id": "dist/skills/__tests__/mingw-escape.test.d.ts",
@@ -33839,6 +34614,26 @@
         "path": "dist/team/__tests__/scaling.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/sdk-inprocess-tools.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/sdk-inprocess-tools.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/sdk-inprocess-tools.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/sdk-inprocess-tools.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/sdk-inprocess-tools.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/sdk-inprocess-tools.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/sdk-inprocess-tools.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/sdk-inprocess-tools.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/sdk-transport.runtime.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/sdk-transport.runtime.test.d.ts"
@@ -34479,6 +35274,26 @@
         "path": "dist/team/__tests__/tmux-session.spawn.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/tmux-session.split-pane-env.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/tmux-session.split-pane-env.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/tmux-session.split-pane-env.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/tmux-session.split-pane-env.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/tmux-session.split-pane-env.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/tmux-session.split-pane-env.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/tmux-session.split-pane-env.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/tmux-session.split-pane-env.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/tmux-session.startup.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/tmux-session.startup.test.d.ts"
@@ -34559,6 +35374,26 @@
         "path": "dist/team/__tests__/unified-team.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/usage-record-shape.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/usage-record-shape.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/usage-record-shape.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/usage-record-shape.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/usage-record-shape.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/usage-record-shape.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/usage-record-shape.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/usage-record-shape.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/usage-tracker.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/usage-tracker.test.d.ts"
@@ -34577,6 +35412,26 @@
         "id": "dist/team/__tests__/usage-tracker.test.js.map",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/usage-tracker.test.js.map"
+      },
+      {
+        "id": "dist/team/__tests__/usage-unicode-counts.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/usage-unicode-counts.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/usage-unicode-counts.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/usage-unicode-counts.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/usage-unicode-counts.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/usage-unicode-counts.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/usage-unicode-counts.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/usage-unicode-counts.test.js.map"
       },
       {
         "id": "dist/team/__tests__/worker-activation-gate.test.d.ts",
@@ -35799,6 +36654,26 @@
         "path": "dist/team/sdk-host.js.map"
       },
       {
+        "id": "dist/team/sdk-inprocess-tools.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/sdk-inprocess-tools.d.ts"
+      },
+      {
+        "id": "dist/team/sdk-inprocess-tools.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/sdk-inprocess-tools.d.ts.map"
+      },
+      {
+        "id": "dist/team/sdk-inprocess-tools.js",
+        "kind": "generated-dist",
+        "path": "dist/team/sdk-inprocess-tools.js"
+      },
+      {
+        "id": "dist/team/sdk-inprocess-tools.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/sdk-inprocess-tools.js.map"
+      },
+      {
         "id": "dist/team/sdk-policy.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/sdk-policy.d.ts"
@@ -36659,6 +37534,46 @@
         "path": "dist/tools/diagnostics/__tests__/lsp-aggregator.test.js.map"
       },
       {
+        "id": "dist/tools/diagnostics/__tests__/tsc-project-failures.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/tools/diagnostics/__tests__/tsc-project-failures.test.d.ts"
+      },
+      {
+        "id": "dist/tools/diagnostics/__tests__/tsc-project-failures.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/diagnostics/__tests__/tsc-project-failures.test.d.ts.map"
+      },
+      {
+        "id": "dist/tools/diagnostics/__tests__/tsc-project-failures.test.js",
+        "kind": "generated-dist",
+        "path": "dist/tools/diagnostics/__tests__/tsc-project-failures.test.js"
+      },
+      {
+        "id": "dist/tools/diagnostics/__tests__/tsc-project-failures.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/diagnostics/__tests__/tsc-project-failures.test.js.map"
+      },
+      {
+        "id": "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.d.ts"
+      },
+      {
+        "id": "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.d.ts.map"
+      },
+      {
+        "id": "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.js",
+        "kind": "generated-dist",
+        "path": "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.js"
+      },
+      {
+        "id": "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.js.map"
+      },
+      {
         "id": "dist/tools/diagnostics/index.d.ts",
         "kind": "generated-dist",
         "path": "dist/tools/diagnostics/index.d.ts"
@@ -36977,6 +37892,26 @@
         "id": "dist/tools/lsp/__tests__/devcontainer.test.js.map",
         "kind": "generated-dist",
         "path": "dist/tools/lsp/__tests__/devcontainer.test.js.map"
+      },
+      {
+        "id": "dist/tools/lsp/__tests__/utils-file-uri.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/tools/lsp/__tests__/utils-file-uri.test.d.ts"
+      },
+      {
+        "id": "dist/tools/lsp/__tests__/utils-file-uri.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/lsp/__tests__/utils-file-uri.test.d.ts.map"
+      },
+      {
+        "id": "dist/tools/lsp/__tests__/utils-file-uri.test.js",
+        "kind": "generated-dist",
+        "path": "dist/tools/lsp/__tests__/utils-file-uri.test.js"
+      },
+      {
+        "id": "dist/tools/lsp/__tests__/utils-file-uri.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/lsp/__tests__/utils-file-uri.test.js.map"
       },
       {
         "id": "dist/tools/lsp/client.d.ts",
@@ -37919,6 +38854,26 @@
         "path": "dist/utils/jsonc.js.map"
       },
       {
+        "id": "dist/utils/node-version.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/utils/node-version.d.ts"
+      },
+      {
+        "id": "dist/utils/node-version.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/node-version.d.ts.map"
+      },
+      {
+        "id": "dist/utils/node-version.js",
+        "kind": "generated-dist",
+        "path": "dist/utils/node-version.js"
+      },
+      {
+        "id": "dist/utils/node-version.js.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/node-version.js.map"
+      },
+      {
         "id": "dist/utils/omc-cli-rendering.d.ts",
         "kind": "generated-dist",
         "path": "dist/utils/omc-cli-rendering.d.ts"
@@ -37957,6 +38912,26 @@
         "id": "dist/utils/paths.js.map",
         "kind": "generated-dist",
         "path": "dist/utils/paths.js.map"
+      },
+      {
+        "id": "dist/utils/plugin-cache-validation.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/utils/plugin-cache-validation.d.ts"
+      },
+      {
+        "id": "dist/utils/plugin-cache-validation.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/plugin-cache-validation.d.ts.map"
+      },
+      {
+        "id": "dist/utils/plugin-cache-validation.js",
+        "kind": "generated-dist",
+        "path": "dist/utils/plugin-cache-validation.js"
+      },
+      {
+        "id": "dist/utils/plugin-cache-validation.js.map",
+        "kind": "generated-dist",
+        "path": "dist/utils/plugin-cache-validation.js.map"
       },
       {
         "id": "dist/utils/resolve-node.d.ts",
@@ -38839,6 +39814,11 @@
         "path": "node:stream"
       },
       {
+        "id": "external:node:string_decoder",
+        "kind": "external",
+        "path": "node:string_decoder"
+      },
+      {
         "id": "external:node:url",
         "kind": "external",
         "path": "node:url"
@@ -38847,6 +39827,11 @@
         "id": "external:node:util",
         "kind": "external",
         "path": "node:util"
+      },
+      {
+        "id": "external:node:vm",
+        "kind": "external",
+        "path": "node:vm"
       },
       {
         "id": "external:node:worker_threads",
@@ -39249,6 +40234,11 @@
         "path": "scripts/copilot/dispatch.cjs"
       },
       {
+        "id": "scripts/copilot/notification.mjs",
+        "kind": "script",
+        "path": "scripts/copilot/notification.mjs"
+      },
+      {
         "id": "scripts/demo-team.mjs",
         "kind": "script",
         "path": "scripts/demo-team.mjs"
@@ -39552,6 +40542,11 @@
         "id": "scripts/pre-tool-enforcer.mjs",
         "kind": "script",
         "path": "scripts/pre-tool-enforcer.mjs"
+      },
+      {
+        "id": "scripts/premium-budget.mjs",
+        "kind": "script",
+        "path": "scripts/premium-budget.mjs"
       },
       {
         "id": "scripts/project-memory-posttool.mjs",
@@ -40309,6 +41304,16 @@
         "path": "skills/self-improve/templates/settings.json"
       },
       {
+        "id": "skills/session-flow/SKILL.md",
+        "kind": "skill",
+        "path": "skills/session-flow/SKILL.md"
+      },
+      {
+        "id": "skills/ship/SKILL.md",
+        "kind": "skill",
+        "path": "skills/ship/SKILL.md"
+      },
+      {
         "id": "skills/skill/SKILL.md",
         "kind": "skill",
         "path": "skills/skill/SKILL.md"
@@ -40564,6 +41569,11 @@
         "path": "src/__tests__/copilot-hooks-manifest.test.ts"
       },
       {
+        "id": "src/__tests__/copilot-notification-hook.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/copilot-notification-hook.test.ts"
+      },
+      {
         "id": "src/__tests__/daemon-module-path.test.ts",
         "kind": "src",
         "path": "src/__tests__/daemon-module-path.test.ts"
@@ -40809,6 +41819,11 @@
         "path": "src/__tests__/hud/background-cleanup.test.ts"
       },
       {
+        "id": "src/__tests__/hud/background-history-cap.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/background-history-cap.test.ts"
+      },
+      {
         "id": "src/__tests__/hud/background-tasks.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/background-tasks.test.ts"
@@ -40837,6 +41852,11 @@
         "id": "src/__tests__/hud/custom-rate-provider.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/custom-rate-provider.test.ts"
+      },
+      {
+        "id": "src/__tests__/hud/cwd-hyperlink-boundary.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/cwd-hyperlink-boundary.test.ts"
       },
       {
         "id": "src/__tests__/hud/cwd.test.ts",
@@ -41452,6 +42472,21 @@
         "id": "src/__tests__/psm-tmux-naming.test.ts",
         "kind": "src",
         "path": "src/__tests__/psm-tmux-naming.test.ts"
+      },
+      {
+        "id": "src/__tests__/purge-stale-cache-relink.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/purge-stale-cache-relink.test.ts"
+      },
+      {
+        "id": "src/__tests__/purge-stale-cache-symlink.integration.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/purge-stale-cache-symlink.integration.test.ts"
+      },
+      {
+        "id": "src/__tests__/purge-stale-cache-validation.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/purge-stale-cache-validation.test.ts"
       },
       {
         "id": "src/__tests__/purge-stale-cache.integration.test.ts",
@@ -42189,6 +43224,21 @@
         "path": "src/autoresearch/setup-contract.ts"
       },
       {
+        "id": "src/budget/__tests__/budget.test.ts",
+        "kind": "src",
+        "path": "src/budget/__tests__/budget.test.ts"
+      },
+      {
+        "id": "src/budget/governor.ts",
+        "kind": "src",
+        "path": "src/budget/governor.ts"
+      },
+      {
+        "id": "src/budget/ledger.ts",
+        "kind": "src",
+        "path": "src/budget/ledger.ts"
+      },
+      {
         "id": "src/cli/__tests__/ask.test.ts",
         "kind": "src",
         "path": "src/cli/__tests__/ask.test.ts"
@@ -42272,6 +43322,11 @@
         "id": "src/cli/__tests__/session-search-help.test.ts",
         "kind": "src",
         "path": "src/cli/__tests__/session-search-help.test.ts"
+      },
+      {
+        "id": "src/cli/__tests__/session-search-terminal.test.ts",
+        "kind": "src",
+        "path": "src/cli/__tests__/session-search-terminal.test.ts"
       },
       {
         "id": "src/cli/__tests__/session-search.test.ts",
@@ -42399,9 +43454,19 @@
         "path": "src/cli/commands/__tests__/intake.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/ship-cli.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/smoke-tier2.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/smoke-tier2.test.ts"
+      },
+      {
+        "id": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/team-budget-governor.test.ts"
       },
       {
         "id": "src/cli/commands/__tests__/team-role-shorthand.test.ts",
@@ -42432,6 +43497,11 @@
         "id": "src/cli/commands/alias-retirement.ts",
         "kind": "src",
         "path": "src/cli/commands/alias-retirement.ts"
+      },
+      {
+        "id": "src/cli/commands/budget.ts",
+        "kind": "src",
+        "path": "src/cli/commands/budget.ts"
       },
       {
         "id": "src/cli/commands/capabilities.ts",
@@ -42477,6 +43547,11 @@
         "id": "src/cli/commands/session-search.ts",
         "kind": "src",
         "path": "src/cli/commands/session-search.ts"
+      },
+      {
+        "id": "src/cli/commands/ship.ts",
+        "kind": "src",
+        "path": "src/cli/commands/ship.ts"
       },
       {
         "id": "src/cli/commands/smoke.ts",
@@ -45099,6 +46174,11 @@
         "path": "src/hud/__tests__/autopilot-profile.test.ts"
       },
       {
+        "id": "src/hud/__tests__/custom-provider-cache-identity.test.ts",
+        "kind": "src",
+        "path": "src/hud/__tests__/custom-provider-cache-identity.test.ts"
+      },
+      {
         "id": "src/hud/__tests__/custom-rate-provider.test.ts",
         "kind": "src",
         "path": "src/hud/__tests__/custom-rate-provider.test.ts"
@@ -45247,6 +46327,11 @@
         "id": "src/hud/elements/prd.ts",
         "kind": "src",
         "path": "src/hud/elements/prd.ts"
+      },
+      {
+        "id": "src/hud/elements/premium-budget.ts",
+        "kind": "src",
+        "path": "src/hud/elements/premium-budget.ts"
       },
       {
         "id": "src/hud/elements/prompt-time.ts",
@@ -45949,9 +47034,19 @@
         "path": "src/notifications/__tests__/config.test.ts"
       },
       {
+        "id": "src/notifications/__tests__/custom-config-shapes.test.ts",
+        "kind": "src",
+        "path": "src/notifications/__tests__/custom-config-shapes.test.ts"
+      },
+      {
         "id": "src/notifications/__tests__/custom-integration.test.ts",
         "kind": "src",
         "path": "src/notifications/__tests__/custom-integration.test.ts"
+      },
+      {
+        "id": "src/notifications/__tests__/custom-webhook-body.test.ts",
+        "kind": "src",
+        "path": "src/notifications/__tests__/custom-webhook-body.test.ts"
       },
       {
         "id": "src/notifications/__tests__/dispatcher.test.ts",
@@ -46002,6 +47097,11 @@
         "id": "src/notifications/__tests__/reply-listener.test.ts",
         "kind": "src",
         "path": "src/notifications/__tests__/reply-listener.test.ts"
+      },
+      {
+        "id": "src/notifications/__tests__/session-registry-durability.test.ts",
+        "kind": "src",
+        "path": "src/notifications/__tests__/session-registry-durability.test.ts"
       },
       {
         "id": "src/notifications/__tests__/session-registry.test.ts",
@@ -46332,6 +47432,81 @@
         "id": "src/shared/types.ts",
         "kind": "src",
         "path": "src/shared/types.ts"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/checks-pr233-green.json",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/checks-pr233-green.json"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/job-log-flaky.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-flaky.txt"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/job-log-real-failure.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-real-failure.txt"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/project-config-admin-merge.jsonc",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/project-config-admin-merge.jsonc"
+      },
+      {
+        "id": "src/ship/__tests__/gates.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/gates.test.ts"
+      },
+      {
+        "id": "src/ship/__tests__/git-trust.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/git-trust.test.ts"
+      },
+      {
+        "id": "src/ship/__tests__/prepare-merge.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/prepare-merge.test.ts"
+      },
+      {
+        "id": "src/ship/__tests__/safety-state.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/safety-state.test.ts"
+      },
+      {
+        "id": "src/ship/__tests__/workflow-checks.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/workflow-checks.test.ts"
+      },
+      {
+        "id": "src/ship/config.ts",
+        "kind": "src",
+        "path": "src/ship/config.ts"
+      },
+      {
+        "id": "src/ship/exec.ts",
+        "kind": "src",
+        "path": "src/ship/exec.ts"
+      },
+      {
+        "id": "src/ship/gates.ts",
+        "kind": "src",
+        "path": "src/ship/gates.ts"
+      },
+      {
+        "id": "src/ship/merge.ts",
+        "kind": "src",
+        "path": "src/ship/merge.ts"
+      },
+      {
+        "id": "src/ship/prepare.ts",
+        "kind": "src",
+        "path": "src/ship/prepare.ts"
+      },
+      {
+        "id": "src/ship/state.ts",
+        "kind": "src",
+        "path": "src/ship/state.ts"
       },
       {
         "id": "src/skills/__tests__/mingw-escape.test.ts",
@@ -46929,6 +48104,11 @@
         "path": "src/team/__tests__/scaling.test.ts"
       },
       {
+        "id": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/sdk-inprocess-tools.test.ts"
+      },
+      {
         "id": "src/team/__tests__/sdk-transport.runtime.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/sdk-transport.runtime.test.ts"
@@ -47089,6 +48269,11 @@
         "path": "src/team/__tests__/tmux-session.spawn.test.ts"
       },
       {
+        "id": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/tmux-session.split-pane-env.test.ts"
+      },
+      {
         "id": "src/team/__tests__/tmux-session.startup.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/tmux-session.startup.test.ts"
@@ -47109,9 +48294,19 @@
         "path": "src/team/__tests__/unified-team.test.ts"
       },
       {
+        "id": "src/team/__tests__/usage-record-shape.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/usage-record-shape.test.ts"
+      },
+      {
         "id": "src/team/__tests__/usage-tracker.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/usage-tracker.test.ts"
+      },
+      {
+        "id": "src/team/__tests__/usage-unicode-counts.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/usage-unicode-counts.test.ts"
       },
       {
         "id": "src/team/__tests__/worker-activation-gate.test.ts",
@@ -47419,6 +48614,11 @@
         "path": "src/team/sdk-host.ts"
       },
       {
+        "id": "src/team/sdk-inprocess-tools.ts",
+        "kind": "src",
+        "path": "src/team/sdk-inprocess-tools.ts"
+      },
+      {
         "id": "src/team/sdk-policy.ts",
         "kind": "src",
         "path": "src/team/sdk-policy.ts"
@@ -47644,6 +48844,16 @@
         "path": "src/tools/diagnostics/__tests__/lsp-aggregator.test.ts"
       },
       {
+        "id": "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts",
+        "kind": "tool",
+        "path": "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts"
+      },
+      {
+        "id": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
+        "kind": "tool",
+        "path": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts"
+      },
+      {
         "id": "src/tools/diagnostics/index.ts",
         "kind": "tool",
         "path": "src/tools/diagnostics/index.ts"
@@ -47727,6 +48937,11 @@
         "id": "src/tools/lsp/__tests__/devcontainer.test.ts",
         "kind": "tool",
         "path": "src/tools/lsp/__tests__/devcontainer.test.ts"
+      },
+      {
+        "id": "src/tools/lsp/__tests__/utils-file-uri.test.ts",
+        "kind": "tool",
+        "path": "src/tools/lsp/__tests__/utils-file-uri.test.ts"
       },
       {
         "id": "src/tools/lsp/client.ts",
@@ -47969,6 +49184,11 @@
         "path": "src/utils/jsonc.ts"
       },
       {
+        "id": "src/utils/node-version.ts",
+        "kind": "src",
+        "path": "src/utils/node-version.ts"
+      },
+      {
         "id": "src/utils/omc-cli-rendering.ts",
         "kind": "src",
         "path": "src/utils/omc-cli-rendering.ts"
@@ -47977,6 +49197,11 @@
         "id": "src/utils/paths.ts",
         "kind": "src",
         "path": "src/utils/paths.ts"
+      },
+      {
+        "id": "src/utils/plugin-cache-validation.ts",
+        "kind": "src",
+        "path": "src/utils/plugin-cache-validation.ts"
       },
       {
         "id": "src/utils/resolve-node.ts",
@@ -48319,6 +49544,11 @@
         "path": "tests/integration/runs-reconciler.test.ts"
       },
       {
+        "id": "tests/integration/session-flow-skill.test.ts",
+        "kind": "other",
+        "path": "tests/integration/session-flow-skill.test.ts"
+      },
+      {
         "id": "tests/integration/skill-map-references.test.ts",
         "kind": "other",
         "path": "tests/integration/skill-map-references.test.ts"
@@ -48417,6 +49647,11 @@
         "id": "tests/lint/issue-4156-windows-dev-zero.test.ts",
         "kind": "other",
         "path": "tests/lint/issue-4156-windows-dev-zero.test.ts"
+      },
+      {
+        "id": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts",
+        "kind": "other",
+        "path": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts"
       },
       {
         "id": "tests/lint/session-end-forwarder-no-op.test.ts",
@@ -49373,6 +50608,56 @@
       {
         "from": "scripts/copilot/dispatch.cjs",
         "to": "scripts/lib/copilot-hook-adapter.cjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "dist/hooks/background-notifications.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "dist/notifications/index.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "external:node:worker_threads",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "scripts/lib/atomic-write.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "scripts/lib/state-root.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "scripts/lib/stdin.mjs",
         "kind": "imports"
       },
       {
@@ -50551,6 +51836,16 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/premium-budget.mjs",
+        "to": "dist/budget/governor.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/premium-budget.mjs",
+        "to": "scripts/lib/stdin.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/project-memory-posttool.mjs",
         "to": "dist/hooks/project-memory/learner.js",
         "kind": "imports"
@@ -51661,6 +52956,16 @@
         "kind": "imports"
       },
       {
+        "from": "skills/session-flow/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/ship/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
         "from": "skills/skill/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -52686,6 +53991,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "src/notifications/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "src/notifications/redact.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/daemon-module-path.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -53676,6 +55021,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/hud/background-history-cap.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/background-history-cap.test.ts",
+        "to": "src/hud/background-cleanup.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/background-history-cap.test.ts",
+        "to": "src/hud/background-tasks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/background-history-cap.test.ts",
+        "to": "src/hud/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/background-history-cap.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/__tests__/hud/background-tasks.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -53777,6 +55147,11 @@
       },
       {
         "from": "src/__tests__/hud/custom-rate-provider.test.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/custom-rate-provider.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -53789,6 +55164,36 @@
         "from": "src/__tests__/hud/custom-rate-provider.test.ts",
         "to": "src/hud/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/hud/cwd-hyperlink-boundary.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/cwd-hyperlink-boundary.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/cwd-hyperlink-boundary.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/cwd-hyperlink-boundary.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/cwd-hyperlink-boundary.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/cwd-hyperlink-boundary.test.ts",
+        "to": "src/hud/elements/cwd.ts",
+        "kind": "imports"
       },
       {
         "from": "src/__tests__/hud/cwd.test.ts",
@@ -56457,6 +57862,26 @@
       },
       {
         "from": "src/__tests__/providers/detection.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/providers/detection.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/providers/detection.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/providers/detection.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/providers/detection.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -56548,6 +57973,81 @@
       {
         "from": "src/__tests__/psm-tmux-naming.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-relink.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-relink.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-relink.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-relink.test.ts",
+        "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-symlink.integration.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-symlink.integration.test.ts",
+        "to": "external:net",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-symlink.integration.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-symlink.integration.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-symlink.integration.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-symlink.integration.test.ts",
+        "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-validation.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-validation.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-validation.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-validation.test.ts",
+        "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-validation.test.ts",
+        "to": "src/utils/plugin-cache-validation.ts",
         "kind": "imports"
       },
       {
@@ -57203,6 +58703,11 @@
       {
         "from": "src/__tests__/resolve-transcript-path.test.ts",
         "to": "src/utils/encode-project-path.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/resolve-transcript-path.test.ts",
+        "to": "src/utils/plugin-cache-validation.ts",
         "kind": "imports"
       },
       {
@@ -60101,6 +61606,151 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/budget/governor.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/budget/governor.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/cli/commands/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/cli/commands/team.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/hud/elements/premium-budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "src/config/project-config-path.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "src/shared/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "src/utils/config-dir.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/__tests__/ask.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -60533,6 +62183,41 @@
       {
         "from": "src/cli/__tests__/session-search-help.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/session-search-terminal.test.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/session-search-terminal.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/session-search-terminal.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/session-search-terminal.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/session-search-terminal.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/session-search-terminal.test.ts",
+        "to": "src/cli/commands/session-search.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/session-search-terminal.test.ts",
+        "to": "src/utils/encode-project-path.ts",
         "kind": "imports"
       },
       {
@@ -61171,6 +62856,56 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "src/cli/commands/ship.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/smoke-tier2.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -61204,6 +62939,31 @@
         "from": "src/cli/commands/__tests__/smoke-tier2.test.ts",
         "to": "src/smoke/copilot-smoke.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "src/cli/commands/team.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/__tests__/team-role-shorthand.test.ts",
@@ -61381,6 +63141,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/budget.ts",
+        "to": "src/budget/governor.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/budget.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/capabilities.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -61423,6 +63193,11 @@
       {
         "from": "src/cli/commands/doctor-conflicts.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/doctor-conflicts.ts",
+        "to": "src/budget/governor.ts",
         "kind": "imports"
       },
       {
@@ -61716,6 +63491,71 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/ship.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/cli/commands/smoke.ts",
         "to": "external:path",
         "kind": "imports"
@@ -61758,6 +63598,16 @@
       {
         "from": "src/cli/commands/team.ts",
         "to": "src/agents/utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
+        "to": "src/budget/governor.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
+        "to": "src/budget/ledger.ts",
         "kind": "imports"
       },
       {
@@ -61843,6 +63693,11 @@
       {
         "from": "src/cli/commands/team.ts",
         "to": "src/team/sdk-host.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
+        "to": "src/team/sdk-inprocess-tools.ts",
         "kind": "imports"
       },
       {
@@ -62107,6 +63962,11 @@
       },
       {
         "from": "src/cli/index.ts",
+        "to": "src/cli/commands/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
         "to": "src/cli/commands/capabilities.ts",
         "kind": "imports"
       },
@@ -62148,6 +64008,11 @@
       {
         "from": "src/cli/index.ts",
         "to": "src/cli/commands/session-search.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
+        "to": "src/cli/commands/ship.ts",
         "kind": "imports"
       },
       {
@@ -62844,6 +64709,11 @@
         "from": "src/factory/__tests__/listener.test.ts",
         "to": "src/factory/listener.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/factory/__tests__/listener.test.ts",
+        "to": "src/hooks/session-end/spawn-next.ts",
+        "kind": "imports"
       },
       {
         "from": "src/factory/__tests__/listener.test.ts",
@@ -75011,6 +76881,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/hud/__tests__/custom-provider-cache-identity.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/__tests__/custom-provider-cache-identity.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/__tests__/custom-provider-cache-identity.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/__tests__/custom-provider-cache-identity.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/__tests__/custom-provider-cache-identity.test.ts",
+        "to": "src/hud/custom-rate-provider.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hud/__tests__/custom-rate-provider.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -75113,6 +77008,11 @@
       {
         "from": "src/hud/custom-rate-provider.ts",
         "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/custom-rate-provider.ts",
+        "to": "external:node:crypto",
         "kind": "imports"
       },
       {
@@ -75248,6 +77148,11 @@
       {
         "from": "src/hud/elements/cwd.ts",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/cwd.ts",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -75524,6 +77429,21 @@
         "from": "src/hud/elements/prd.ts",
         "to": "src/hud/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hud/elements/premium-budget.ts",
+        "to": "src/budget/governor.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/premium-budget.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/premium-budget.ts",
+        "to": "src/hud/colors.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hud/elements/prompt-time.ts",
@@ -75913,6 +77833,11 @@
       {
         "from": "src/hud/render.ts",
         "to": "src/hud/elements/prd.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/render.ts",
+        "to": "src/hud/elements/premium-budget.ts",
         "kind": "imports"
       },
       {
@@ -77092,6 +79017,11 @@
       },
       {
         "from": "src/installer/index.ts",
+        "to": "src/utils/node-version.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/index.ts",
         "to": "src/utils/resolve-node.ts",
         "kind": "imports"
       },
@@ -77118,6 +79048,11 @@
       {
         "from": "src/installer/mcp-registry.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/mcp-registry.ts",
+        "to": "external:util",
         "kind": "imports"
       },
       {
@@ -79071,6 +81006,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/notifications/__tests__/custom-config-shapes.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/custom-config-shapes.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/custom-config-shapes.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/custom-config-shapes.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/custom-config-shapes.test.ts",
+        "to": "src/notifications/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/custom-config-shapes.test.ts",
+        "to": "src/notifications/dispatcher.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/custom-config-shapes.test.ts",
+        "to": "src/notifications/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/notifications/__tests__/custom-config-shapes.test.ts",
+        "to": "src/notifications/validation.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/notifications/__tests__/custom-integration.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -79099,6 +81074,21 @@
         "from": "src/notifications/__tests__/custom-integration.test.ts",
         "to": "src/notifications/validation.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/custom-webhook-body.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/custom-webhook-body.test.ts",
+        "to": "src/notifications/dispatcher.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/custom-webhook-body.test.ts",
+        "to": "src/notifications/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/notifications/__tests__/dispatcher.test.ts",
@@ -79308,6 +81298,31 @@
       {
         "from": "src/notifications/__tests__/reply-listener.test.ts",
         "to": "src/notifications/reply-listener.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/session-registry-durability.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/session-registry-durability.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/session-registry-durability.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/session-registry-durability.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/session-registry-durability.test.ts",
+        "to": "external:vitest",
         "kind": "imports"
       },
       {
@@ -79803,6 +81818,11 @@
       {
         "from": "src/notifications/session-registry.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/session-registry.ts",
+        "to": "src/lib/atomic-write.ts",
         "kind": "imports"
       },
       {
@@ -80497,6 +82517,11 @@
       },
       {
         "from": "src/providers/index.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/providers/index.ts",
         "to": "src/providers/azure-devops.ts",
         "kind": "imports"
       },
@@ -80719,6 +82744,396 @@
         "from": "src/shared/index.ts",
         "to": "src/shared/types.ts",
         "kind": "exports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "src/cli/commands/ship.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "src/ship/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/workflow-checks.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/workflow-checks.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/workflow-checks.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/workflow-checks.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/workflow-checks.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/config.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/config.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/config.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/config.ts",
+        "to": "src/config/loader.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/config.ts",
+        "to": "src/config/project-config-path.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/config.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/config.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/config.ts",
+        "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/exec.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/gates.ts",
+        "to": "src/ship/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/gates.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/merge.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/merge.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/merge.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/merge.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/merge.ts",
+        "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/prepare.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/prepare.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/prepare.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/prepare.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/state.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/state.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/state.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/state.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/state.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/state.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
       },
       {
         "from": "src/skills/__tests__/mingw-escape.test.ts",
@@ -81653,6 +84068,11 @@
       {
         "from": "src/team/__tests__/api-interop.cwd-resolution.test.ts",
         "to": "src/team/recovery-request-store.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/api-interop.cwd-resolution.test.ts",
+        "to": "src/team/state-paths.ts",
         "kind": "imports"
       },
       {
@@ -84421,6 +86841,46 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "src/mcp/tool-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "src/team/sdk-inprocess-tools.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "src/team/sdk-policy.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/__tests__/sdk-transport.runtime.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -84467,6 +86927,11 @@
       },
       {
         "from": "src/team/__tests__/sdk-transport.test.ts",
+        "to": "external:events",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-transport.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -84483,6 +86948,11 @@
       {
         "from": "src/team/__tests__/sdk-transport.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-transport.test.ts",
+        "to": "src/budget/ledger.ts",
         "kind": "imports"
       },
       {
@@ -84514,6 +86984,11 @@
         "from": "src/team/__tests__/sdk-transport.test.ts",
         "to": "src/team/sdk-host.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-transport.test.ts",
+        "to": "src/team/sdk-inprocess-tools.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/__tests__/sdk-transport.test.ts",
@@ -85266,6 +87741,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/__tests__/tmux-session-liveness.test.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session-liveness.test.ts",
+        "to": "src/team/types.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/team/__tests__/tmux-session-prereqs.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -85384,6 +87869,36 @@
         "from": "src/team/__tests__/tmux-session.spawn.test.ts",
         "to": "src/team/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/__tests__/tmux-session.startup.test.ts",
@@ -85551,6 +88066,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/__tests__/usage-record-shape.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/usage-record-shape.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/usage-record-shape.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/usage-record-shape.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/usage-record-shape.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/usage-record-shape.test.ts",
+        "to": "src/team/usage-tracker.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/usage-record-shape.test.ts",
+        "to": "src/team/usage-tracker.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/team/__tests__/usage-tracker.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -85579,6 +88129,31 @@
         "from": "src/team/__tests__/usage-tracker.test.ts",
         "to": "src/team/usage-tracker.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/usage-unicode-counts.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/usage-unicode-counts.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/usage-unicode-counts.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/usage-unicode-counts.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/usage-unicode-counts.test.ts",
+        "to": "src/team/usage-tracker.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/__tests__/worker-activation-gate.test.ts",
@@ -88242,6 +90817,11 @@
       },
       {
         "from": "src/team/sdk-host.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/sdk-host.ts",
         "to": "src/lib/atomic-write.ts",
         "kind": "imports"
       },
@@ -88282,6 +90862,11 @@
       },
       {
         "from": "src/team/sdk-host.ts",
+        "to": "src/team/sdk-inprocess-tools.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/sdk-host.ts",
         "to": "src/team/sdk-policy.ts",
         "kind": "imports"
       },
@@ -88309,6 +90894,26 @@
         "from": "src/team/sdk-host.ts",
         "to": "src/team/worker-launch-ack.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/sdk-inprocess-tools.ts",
+        "to": "src/mcp/tool-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/sdk-inprocess-tools.ts",
+        "to": "src/mcp/tool-registry.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/sdk-inprocess-tools.ts",
+        "to": "src/tools/lsp/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/sdk-inprocess-tools.ts",
+        "to": "src/tools/python-repl/bridge-manager.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/sdk-policy.ts",
@@ -89082,6 +91687,16 @@
       },
       {
         "from": "src/team/usage-tracker.ts",
+        "to": "external:node:string_decoder",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/usage-tracker.ts",
+        "to": "external:zod",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/usage-tracker.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -89751,6 +92366,56 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts",
+        "to": "src/tools/diagnostics/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
+        "to": "src/tools/diagnostics/tsc-runner.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/tools/diagnostics/index.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -89833,6 +92498,11 @@
       {
         "from": "src/tools/diagnostics/tsc-runner.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/tsc-runner.ts",
+        "to": "src/platform/executable-resolution.ts",
         "kind": "imports"
       },
       {
@@ -90121,6 +92791,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/tools/lsp/__tests__/utils-file-uri.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/utils-file-uri.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/utils-file-uri.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/utils-file-uri.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/utils-file-uri.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/utils-file-uri.test.ts",
+        "to": "src/tools/lsp/utils.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/tools/lsp/client.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -90233,6 +92933,11 @@
       {
         "from": "src/tools/lsp/servers.ts",
         "to": "src/platform/executable-resolution.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/utils.ts",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -91106,6 +93811,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/utils/__tests__/cache-occupancy.test.ts",
+        "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/utils/__tests__/encode-project-path.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -91123,6 +93833,16 @@
       {
         "from": "src/utils/__tests__/frontmatter.test.ts",
         "to": "src/utils/frontmatter.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/jsonc.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/jsonc.test.ts",
+        "to": "external:node:vm",
         "kind": "imports"
       },
       {
@@ -91148,6 +93868,11 @@
       {
         "from": "src/utils/__tests__/string-width.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/__tests__/string-width.test.ts",
+        "to": "src/hud/elements/background.ts",
         "kind": "imports"
       },
       {
@@ -91251,6 +93976,26 @@
         "kind": "imports"
       },
       {
+        "from": "src/utils/paths.ts",
+        "to": "src/utils/plugin-cache-validation.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/plugin-cache-validation.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/plugin-cache-validation.ts",
+        "to": "external:fs",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/utils/plugin-cache-validation.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
         "from": "src/utils/resolve-node.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -91268,6 +94013,11 @@
       {
         "from": "src/utils/resolve-node.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/resolve-node.ts",
+        "to": "src/utils/node-version.ts",
         "kind": "imports"
       },
       {
@@ -92391,6 +95141,31 @@
         "kind": "imports"
       },
       {
+        "from": "tests/integration/session-flow-skill.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/session-flow-skill.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/session-flow-skill.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/session-flow-skill.test.ts",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/session-flow-skill.test.ts",
+        "to": "src/workflow/registry.ts",
+        "kind": "imports"
+      },
+      {
         "from": "tests/integration/skill-map-references.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -92796,6 +95571,11 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/inventory-graph-drift.test.ts",
+        "to": "scripts/generate-inventory-graph.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/issue-3996-ruby-false-positive.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -92863,6 +95643,51 @@
       {
         "from": "tests/lint/issue-4156-windows-dev-zero.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts",
+        "to": "src/team/psmux-adapter.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts",
+        "to": "src/team/team-owner-epoch.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts",
+        "to": "src/team/tmux-session.ts",
         "kind": "imports"
       },
       {
@@ -93152,12 +95977,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8205,
-      "edgeCount": 8927,
-      "importEdgeCount": 7394,
-      "registerEdgeCount": 82
+      "nodeCount": 8418,
+      "edgeCount": 9245,
+      "importEdgeCount": 7674,
+      "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "2003fd1e1bf527ef813fe46afddc6dc3450f737b817e9f148d8736cd62ccf830",
-  "manifestSha256": "d94ec031232f7e5add1af0c6592c033ee97e93e638f42a41aae65c79c5a43e8a"
+  "inventorySha256": "80bb985a4adb29b5a830f601202efa76669ef61809256f5eb56336e5cf3cfe20",
+  "manifestSha256": "486e2898019ab6d5aefa9bf8bdd7ec254d92fb08bc6056d53060dde5853927fd"
 }

@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.9.0, the plugin ships 20 agents, 61 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
+For v5.10.0, the plugin ships 20 agents, 63 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
 
 ---
 
@@ -16,7 +16,7 @@ For v5.9.0, the plugin ships 20 agents, 61 skills, 21 command files, and one con
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated-opt-in-only)
 - [Agents (20 Total)](#agents-20-total)
 - [Goal Workflow UX: `/goal`, Ralph, Team, Ultragoal](#goal-workflow-ux-goal-ralph-team-ultragoal)
-- [Skills (61 Total)](#skills-61-total)
+- [Skills (63 Total)](#skills-63-total)
 - [Slash Commands](#slash-commands)
 - [Shipyard Methodology](./shipyard.md) — governed delivery & shared harness map
 - [Claude Code `/goal` Adapter Design](#claude-code-goal-adapter-design)
@@ -121,6 +121,7 @@ If both configurations exist, **project-scoped takes precedence** over global:
 | -------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `COPILOT_HOME`             | `~/.copilot`         | Host config directory. This is GitHub Copilot CLI's own variable, and OMC resolves its config directory (settings, hooks, HUD, user config) from the same value, so one setting moves both. The legacy `COPILOT_CONFIG_DIR` is not read; `omg doctor conflicts` warns when it is set. |
 | `OMC_STATE_DIR`            | _(unset)_            | Centralized state directory. When set, OMC stores state at `$OMC_STATE_DIR/{project-id}/` instead of `{worktree}/.omg/`. This preserves state across worktree deletions. The project identifier is derived from the git remote URL (or worktree path for local-only repos). |
+| `OMC_AFK_INCLUDE_USER_SETTINGS` | `0` | Set to `1` to load user-level settings and hooks in factory chain links and `omg ralph afk` on Claude Code (no effect on Copilot CLI links); see the AFK settings note below. |
 | `OMC_BRIDGE_SCRIPT`        | _(auto-detected)_    | Path to the Python bridge script                                                                                                                                                                                                                                            |
 | `OMC_PARALLEL_EXECUTION`   | `true`               | Enable/disable parallel agent execution                                                                                                                                                                                                                                     |
 | `OMC_CODEX_DEFAULT_MODEL`  | _(provider default)_ | Default model for Codex CLI workers                                                                                                                                                                                                                                         |
@@ -133,6 +134,7 @@ If both configurations exist, **project-scoped takes precedence** over global:
 | `DISABLE_OMC`              | _(unset)_            | Set to `1` or `true` to disable all OMC hooks |
 | `OMC_SKIP_HOOKS`           | _(unset)_            | Comma-separated list of hook names to skip                                                                                                                                                                                                                                  |
 | `OMC_GIT_GUARDRAILS`       | _(unset)_            | `1` force-enables the destructive-git PreToolUse guard in any session; `0` always disables it (immediate exit, wins over everything). With the variable unset, the guard is on by default while an active unattended mode (ralph/autopilot/team/ultragoal) is detected.      |
+| `OMC_BUDGET_GOVERNOR`      | _(unset)_            | `0` turns the [premium-request budget](#omg-budget-premium-request-budget) governor off: no ledger writes, hook messages, HUD element or team fan-out check. |
 | `OMC_RUN_BUDGET_TOKENS`    | _(unset)_            | Opt-in session token budget for unattended modes. Ralph and autopilot compare spend at iteration/phase boundaries (via the `trace_summary` tool): warn at 90%, stop with a resumable budget report at 100%. Advisory today — the model reads the tool output.               |
 | `OMC_STALE_RUN_HOURS`      | `2`                  | Stale-run watchdog threshold in hours. A SessionStart hook reports unattended-mode state files left `active: true` with no mtime progress for this long (the signature of a crashed run). Advisory only — the watchdog never mutates state or resumes runs.                |
 | `OMC_HOST_LOAD_THRESHOLD` | _(dynamic)_ | CPU load threshold (1-minute average). Gate blocks operations when load exceeds this. Default: 80% of available cores. Set to negative value to disable. |
@@ -140,6 +142,10 @@ If both configurations exist, **project-scoped takes precedence** over global:
 | `OMC_MAX_SIBLING_SESSIONS` | `8` | Maximum concurrent OMC sessions before gating expensive operations. Set to negative value to disable. |
 | `OMC_HOST_LOAD_GATE_DISABLED` | _(unset)_ | Set to any value to disable the host load gate entirely. |
 | `OMC_CHAIN_LINK` | _(set by the spawner)_ | Internal. The chain-link id of a Copilot factory link, set on the spawned `copilot` process by the factory listener or the SessionEnd worker. Do not set it yourself: SessionEnd only trusts it when it names a `host: "copilot"` ledger, and a finished link is a no-op. See [Factory chains on Copilot](#factory-chains-on-copilot). |
+
+#### Headless factory and AFK settings
+
+Factory chain links and `omg ralph afk` use Claude Code's `project,local` setting sources by default, so user-level settings and hooks do not run in these unattended sessions. Set `OMC_AFK_INCLUDE_USER_SETTINGS=1` in the environment that launches OMC to include the `user` source (`user,project,local`). Factory chains capture this choice in the initial link ledger and carry it through later links and recovery, so a recovering process's environment cannot change the chain's setting sources. This is opt-in because user-level settings may run arbitrary hooks in unattended sessions; enable it only when those hooks are trusted. Copilot CLI links have no setting-sources equivalent: they always load the user configuration, and the variable has no effect on them.
 
 #### Host Load Gate
 
@@ -705,6 +711,8 @@ Worker panes run unattended, so each provider launches with its own auto-approve
 
 **Launch.** SDK hosts start concurrently, up to `team.sdk.launchConcurrency` at once (default 4, a positive integer; env `OMC_TEAM_SDK_LAUNCH_CONCURRENCY`; 1 restores serial launch). Each launch still waits for its own worker's task claim. A worker whose launch fails is a startup failure of that worker only. A launch whose cleanup cannot be verified stops further launches, lets the running ones finish, and rolls the team back. The start prints `[omg team] sdk workers launched: N in X ms` on stderr.
 
+**In-process tools.** `team.sdk.inProcessTools: true` (env `OMC_TEAM_SDK_INPROCESS_TOOLS=1`/`true` or `0`/`false`; default `false`) runs the plugin MCP tools inside each sdk host instead of a `t` MCP server per worker. Tool names, schemas and results are unchanged. It saves one node process per worker, not start time; see [DEVELOPERS.md](./DEVELOPERS.md#sdk-in-process-tools).
+
 **Status.** `omg team status --json` carries `transport` (`sdk` or `pane`) and, per sdk worker in `workers.sdk`, `host_pid`, `runtime_pid`, `session_id`, `attempt_id`, `state`, `updated_at`, `last_event_type`/`last_event_at`, `turns`, `queued`, `task_state`, `current_task_id`, `credits`, `premium_requests` and `premium_requests_final` (true once the runtime's `session.shutdown` totals replaced the running sum). A session file left by an earlier launch attempt is not reported.
 
 **One team per leader session.** The `one_team_per_leader_session` guard counts an sdk team as live while any of its hosts is: its session file belongs to the worker's current launch attempt and is not `closed`/`failed`, and the host pid still has the process start identity recorded in the attempt's `provider-started.json`. A crashed host whose pid was reused does not block a new team.
@@ -773,6 +781,32 @@ omg lookout scan --strict   # exit 1 when review is recommended (for scripts)
 - `--json` emits the full report; exit codes: `0` for every successful non-strict scan and for strict scans without a review-recommended verdict, `1` for `--strict` with a review-recommended verdict, `2` for a usage/scan error
 - High-risk verdicts pair with approval gates and checkpoints: `omg graph run --approval-mode remote --checkpoint`, `omg checkpoint create`
 
+### `omg ship`
+
+The deterministic half of the `/oh-my-copilot:ship` workflow (executor lane → independent verifier lane → fix rounds by a fresh agent → housekeeping → merge-readiness). The skill runs the agent lanes; these commands record verdicts, do the mechanical steps, and refuse the unsafe ones. State: `.omg/state/ship/<pr>.json`, written under the state file lock, so a run survives restarts.
+
+```bash
+omg ship init 241 --implementer executor-1        # start a run; the implementer can never approve
+omg ship verdict 241 --reviewer verifier-1 --sha <reviewed sha> --approve   # or --request-changes --notes "..."
+omg ship prepare 241 --push                        # merge origin/<base>, checks, inventory LAST, plain push
+omg ship gates 241 --watch                         # exit 0 green, 1 failed, 8 still pending (run again)
+omg ship merge 241                                 # refuses, or prints / runs the admin merge
+omg ship status 241 --json
+```
+
+- **Phases:** `review` → `fix` (changes requested; up to `ship.maxFixRounds`, default 2, then `blocked`) → `prepare` (approved) → `gates` → `ready` → `merged`. A later changes-requested verdict reopens any non-terminal phase.
+- **Merge rule (`gates`):** green only when every check outside `ship.advisoryChecks` (default `No Committed Build Artifacts`, `Authorize generated artifacts from base trust root`, and the Socket Security GitHub App checks `Socket Security: Pull Request Alerts` / `Socket Security: Project Report`) is `SUCCESS` or `SKIPPED`, every name in `ship.requiredChecks` has been reported (default: the 18 checks this repo's CI reports on a PR, including the late `needs:` jobs `Build`, `npm pack + install test` and `Copilot smoke (tier 2)`; a missing one is pending), and every Actions workflow run for the head sha (`gh run list --commit <head>`) has status `completed`. Pending: `PENDING`, `QUEUED`, `IN_PROGRESS`, `WAITING`, `REQUESTED`, `EXPECTED`. Any other state is failed. No required checks yet is pending, never green. The latest run of a workflow that completed with a conclusion other than `success` / `skipped` / `neutral` and reported no check (a startup failure) is failed. `gates` resolves the head (`headRefOid`) first, reads the checks and runs for it, and re-reads the head; a head that moved is pending. No checks and no workflow runs at all is pending with the reason `no-workflows-triggered` (a PR opened or pushed with the Actions `GITHUB_TOKEN` triggers no workflows: push from a PAT, or close and reopen the PR). A test (`src/ship/__tests__/workflow-checks.test.ts`) parses `.github/workflows/*.yml` and fails when the PR jobs (matrix names expanded like GitHub) differ from the default required + advisory lists; the tag-only `Create GitHub Release` and the external Socket checks are the documented exclusions.
+- **Known-flaky failures:** for a failed Actions job, `gates` reads `gh run view --job <id> --log` and parses the vitest `FAIL` lines. When every failing test of every failed required check matches `.github/known-flaky-tests.json` as committed on the base branch (`git show origin/<base>:<file>`, never the PR head; `file` plus a required `title` substring, so a file-level collection error never matches) and the log shows no `Unhandled Errors`, no `Failed Suites` and no `##[error]` in a step without a failing test, the verdict is `flaky` and the output suggests `gh run rerun <id> --failed`. Analyses are matched to checks by job id. `--watch` reruns each such run once (the budget is recorded in the run state before the rerun is issued, and holds across invocations) once the run has no pending jobs; the same test failing again is a real failure. `--no-rerun` or `ship.autoRerunFlaky: false` turns the rerun off.
+- **Watch window:** one `--watch` lasts `ship.watchTimeoutMinutes` (default 9, below the 10-minute cap of background watchers), polling every `ship.pollIntervalSeconds` (30). Exit 8 = still pending (also when the window ends while a flaky run's rerun or sibling jobs are still going): run the same command again.
+- **`prepare`:** refuses unless HEAD is the run's PR branch and contains the latest verdict's sha (`git merge-base --is-ancestor`); refuses a detached HEAD, the base/main branch, a dirty tree, staged changes in the index (`git diff --cached --quiet`), a merge/rebase/cherry-pick/revert in progress, and a base, branch or remote that is option-shaped or fails `git check-ref-format --branch`. Then `git remote get-url origin` (`insteadOf` applied) must name the PR's repository (`gh pr view --json url`) → `git fetch origin <base>` → `refs/remotes/origin/<base>` must equal GitHub's `baseRefOid` (all fail closed) → `git merge --no-ff --no-edit --no-verify <baseRefOid>`, by sha, so a local tag or branch named `origin/<base>` cannot shadow the base (a conflict only under `inventory/` is resolved with `git checkout --theirs -- inventory`; any other conflict stops for a fix lane) → `tsc --noEmit`, eslint on changed `src` files, the tests mapped from the diff (`X.test.ts` beside or in `__tests__/` next to each changed `src/**/X.ts`, changed tests, the skills suite for `skills/`), the generator `--verify` scripts for `skills/`, `agents/`, `hooks/` → `scripts/generate-inventory-graph.mjs --write` + `--verify` as the last commit (`git commit --no-verify -m <msg> -- inventory`, so a file another lane stages during the checks stays out; a failing `git add -- inventory` stops it) → `--push` (plain, to `refs/heads/<run's branch>`). Every engine merge and commit runs with `--no-verify`, so `pre-commit`, `pre-merge-commit` and `commit-msg` hooks never shape it. The commits it makes are recorded as housekeeping.
+- **`merge`:** refuses unless the PR is open, not a draft, on the run's base, the gates are green, the state passes its integrity check, and the latest verdict is an approval from someone other than the implementer whose reviewed sha is the head or is followed only by housekeeping commits (`git rev-list --first-parent --parents <reviewed>..<head>`: the chain leads from the head back to the reviewed sha, every commit on it is one `prepare` recorded, every recorded merge has two parents, the second the current `baseRefOid` or its ancestor, and every recorded commit is inventory-only by content: a one-parent commit changes nothing outside `inventory/` against its parent (`git diff --name-only --no-renames -z <parent> <commit>`), a merge differs from the tree `git merge-tree --write-tree <parent1> <parent2>` rebuilds (the first stdout line, a tree even on a conflict) only under `inventory/`, and a merge is refused outright while any `merge.<name>.driver` is configured (`git config --get-regexp '^merge\..*\.driver$'`); anything else, including a git read that fails, needs a new verdict), and the PR's changed files touch none of `.copilot/omg.jsonc`, `.copilot/omc.jsonc`, `.github/known-flaky-tests.json` (or the configured `knownFlakyFile`) and `.github/workflows/` unless `OMG_SHIP_HUMAN=1`. The changed files are computed locally between GitHub's base and head shas (`git diff --name-only --no-renames -z <baseRefOid>...<headRefOid>`, replace refs off; unreadable = refused): a rename lists its old path too, non-ASCII paths are not quoted, and `gh pr diff`'s 300-file cap no longer applies. It also refuses when `git fetch origin <base>` fails or `refs/remotes/origin/<base>` differs from GitHub's `baseRefOid`. Then it prints `gh pr merge <pr> --admin --merge --match-head-commit <head>`, or runs it only when the owner set `ship.allowAdminMerge: true` and the base is in `ship.trustedBases` (there is no CLI flag for it).
+- **Base from GitHub:** `init`, `prepare`, `gates` and `merge` take the base, `baseRefOid`, `headRefOid` and the PR's repository `url` from `gh pr view`; before any fetch of the base, `git remote get-url origin` must name that repository (`gates` warns and uses the defaults on a mismatch, `prepare` and `merge` refuse). `prepare` also refuses a PR whose base on GitHub differs from the run's. `init --base` must equal the PR's base on GitHub when `gh` answers (retarget the PR instead); `gates` warns when the run's recorded base differs.
+- **Known limits:** a lane with write access to `.git/objects` can forge loose objects (git trusts its object store, so content behind a correct sha is not re-verified); environment and `PATH` overrides are advisory (see the trust model); `gh` resolves the repository from the checkout's remotes, so the remote check catches `origin` pointing away from the repository `gh` reports, not a checkout whose every remote and `gh` default were repointed; engine commits are checked by content, not trusted by provenance: `--no-verify` skips the commit hooks, but `post-commit` / `post-merge` hooks and custom merge drivers still run in the engine's git, so `merge` rejects any recorded commit whose content goes beyond `inventory/` (see above) rather than trusting that `prepare` made it.
+- **`init --force`:** replaces a non-terminal run and keeps the old one in `previousRuns`. A run with verdicts (now or in a replaced run) keeps its implementer, `fixRounds` and `maxFixRounds`; a different `--implementer` is refused. Replacing a `blocked` or `merged` run, a state that fails its integrity check, or resetting a reviewed run needs `OMG_SHIP_HUMAN=1` (owner-only; lane briefs forbid it). `history` and `previousRuns` entries are shape-checked on read.
+- **Trust model:** implementer/reviewer names, `OMG_SHIP_HUMAN` and every other environment input are advisory against a hostile lane (a process that controls the environment can set them or put another `git` first on `PATH`). Engine children run with a scrubbed environment: every `GIT_*` variable except commit identity, `GIT_ASKPASS`, `GIT_TERMINAL_PROMPT` and `GIT_SSL_CAINFO` / `GIT_SSL_CAPATH` is dropped (`GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_*` / `GIT_CONFIG_PARAMETERS`, `GIT_DIR`, `GIT_WORK_TREE`, `GIT_EXEC_PATH`, `GIT_SSH_COMMAND`, ...), `GH_REPO` / `GH_HOST` are dropped, `GH_TOKEN` / `GITHUB_TOKEN` pass through for authentication, and `GIT_NO_REPLACE_OBJECTS=1` is set. The state file is not tamper-proof: every engine write stores a sha256 over the state in `integrity`, and later updates and `merge` refuse a mismatch, which catches hand edits but not someone who recomputes the hash. `verdict --sha` must be hex.
+- **Safety guard (allowlist):** every command the engine spawns must match one of the exact shapes the engine builds: `git rev-parse|check-ref-format|status|remote get-url <remote>|fetch|merge-base|merge --no-ff --no-edit <sha40>|diff|checkout --theirs -- inventory|add -- inventory|commit|push <remote> HEAD:refs/heads/<branch>|cat-file|rev-list|log|show`, `git show <base sha>:<repo path>`, `git rev-parse --verify refs/remotes/<remote>/<branch>`, `git diff --name-only --no-renames -z <sha>...<sha>`, `gh pr view|checks|merge <pr> --admin --merge --match-head-commit <sha>`, `gh run view|list|rerun <id> --failed`, and the node repo scripts (`tsc`, `eslint`, `vitest run`, the generators). Everything else is refused before it spawns, including global options before the subcommand (`-c`, `--config-env`, `--namespace`, `gh -R`), option-shaped operands (`--upload-pack=…`), reads by ref name (a tag `origin/dev` would shadow the remote-tracking ref), any extra environment except `GIT_NO_REPLACE_OBJECTS=1` on git, forced or deleting refspecs, a push to `main` / `master` / `dev` or the run's base (case-insensitive), `--auto`, `--delete-branch`, `gh api`, `.cmd` shims and every npm command.
+- **Config** (key `ship`, owner-edited): `base`, `advisoryChecks`, `requiredChecks`, `knownFlakyFile`, `maxFixRounds`, `allowAdminMerge`, `autoRerunFlaky`, `pollIntervalSeconds`, `watchTimeoutMinutes`, `trustedBases`. Ill-typed values are an error, not ignored. The safety keys `allowAdminMerge`, `advisoryChecks`, `requiredChecks` and `knownFlakyFile` come only from the user config at its default location, then `.copilot/omg.jsonc` as committed on the PR's base branch, then the defaults; the same keys in the working-tree project file (which a lane can drop in untracked) or the PR head are ignored with a warning. The default user-config location is derived from the account's home as the OS reports it (`os.userInfo()`): `<home>/.config/claude-omc/config.jsonc`, on Windows `<home>/AppData/Roaming/claude-omc/config.jsonc`; when `XDG_CONFIG_HOME` / `APPDATA` select another file, its safety keys are ignored with a warning. The base layer is read only for a base in `ship.trustedBases` (user config only; default `dev`, `main`, `master`), after `git fetch origin <base>` and a check that `refs/remotes/origin/<base>` equals GitHub's `baseRefOid`, as `git show <baseRefOid>:.copilot/omg.jsonc` with `GIT_NO_REPLACE_OBJECTS=1`; when the check fails `gates` warns and uses the defaults, `merge` refuses. A base-branch file that is not valid JSONC, or whose `ship` is not an object, is an error. The legacy `.copilot/omc.jsonc` name is never read from the base; a working-tree file under that name gets a single warning. The other keys use defaults < base-branch file < user config < working-tree file. `knownFlakyFile` must be a repo-relative path. The default `requiredChecks` are what a PR to `dev` reports: `ci.yml` and `upgrade-test.yml` filter on `pull_request.branches: [main, dev]`, so on a PR to another base those checks stay pending until the user config lists that base's checks.
+
 ### `omg factory`
 
 `omg factory init` seeds the project route table `.omg/factory-routes.json`, `omg factory listen` runs the HMAC-verified tracker intake daemon, and `omg factory status [--json]` is the read-only chain audit. A chain is a series of headless AFK links: when a link's session ends, the SessionEnd hook routes its `outcome:reason` through the route table and the detached SessionEnd worker spawns the next link. Guardrails apply per link: one active link per intent (serial lock) and a daily cap of 10 (`OMC_DAILY_CHAIN_LIMIT`).
@@ -839,6 +873,53 @@ claude mcp add omg-dev -- node C:/Code/OMC/dist/mcp/standalone-server.js
 ```
 
 `OMC_DISABLE_TOOLS=smoke` hides `host_smoke`. See [DEVELOPERS.md](./DEVELOPERS.md#headless-smoke-against-a-local-build) for the developer workflow.
+
+### `omg budget` (premium-request budget)
+
+Copilot bills per premium request. The budget governor keeps a ledger of what this project's Copilot sessions and teams used, warns at your limits, and in enforce mode stops `omg team` from fanning out past them.
+
+```bash
+omg budget                  # usage since the last reset against the configured limits
+omg budget status --json    # the full ledger: sessions, teams, measured vs estimated records
+omg budget reset            # start a new accounting period
+```
+
+Configure it in `.copilot/omg.jsonc` (or the user config). Nothing is limited until you set a limit:
+
+```jsonc
+{
+  "budget": {
+    "mode": "warn",              // "warn" (default): report only; "enforce": also refuse or clamp omg team
+    "unit": "premiumRequests",   // or "credits" (AI credits)
+    "softLimit": 200,            // one-time warning
+    "hardLimit": 300,            // one-time alert; in enforce mode it bounds team fan-out
+    "perTeamLimit": 20           // enforce mode: largest projected cost of one omg team launch
+  }
+}
+```
+
+**What is measured.** The ledger lives at `.omg/state/budget-ledger.json`. Each record is labelled `measured` or `estimated`:
+
+- **Copilot CLI sessions** are read from `$COPILOT_HOME/session-state/<session id>/events.jsonl`. Its `session.shutdown` and `session.usage_checkpoint` events carry `totalPremiumRequests` (model multiplier applied) and `totalNanoAiu` (1e-9 AI credits); those are measured. Copilot CLI 1.0.91 writes them when the session ends, so a running session is an estimate: one premium request per top-level prompt at an assumed x1 multiplier, with credits unknown. The file is read incrementally (the record keeps a byte offset and count, at most 8 MB per hook call), so an estimate only grows. The next SessionStart checks up to 20 estimated records (sessions and pane team workers, in rotation) by reading the last 64 KB of their events file, skips files unchanged since the last check, replaces an estimate with the measured totals once they exist, and marks a record final when its events file is gone.
+- **SDK team workers** (`omg team` sdk transport) are recorded by their host from the live `assistant.usage` events: AI credits as billed and premium requests counted x1 per user-initiated call, an estimate (the multiplier is unknown) until the `session.shutdown` totals replace it when the worker stops. Pane team workers are recorded by their own hooks under the team.
+- A measured record is never replaced by an estimate, and an estimate never goes down. If a session's measured total ever drops (for example a resumed session that restarts its counter), the ledger keeps the larger value and says so in the record's `detail`.
+- `omg budget reset` starts a new period for running sessions too: prompts before the reset no longer count, and a session's later cumulative totals have its pre-reset usage subtracted (an estimate when that pre-reset part was estimated).
+- A non-zero `estimatedRecords` means part of the total is estimated: the summary line and threshold notices add `; N record(s) estimated` / `(N record(s) estimated)`, and the HUD value gets a leading `~`.
+- With `"unit": "credits"` a still-running estimated session counts 0 credits (its credits are unknown until the session ends), so the credits total lags behind until then.
+- A pane team worker started without `OMC_TEAM_LEADER_CWD` records into the ledger of its own working directory (usually its worktree), not the leader's; `omg team` sets the variable for the workers it launches.
+- A corrupt or foreign-version ledger is copied to `budget-ledger.json.corrupt` before it is rebuilt.
+
+**Hooks.** `scripts/premium-budget.mjs` runs in the SessionStart, UserPromptSubmit and Stop groups of the per-event dispatcher. SessionStart prints one summary line when a limit is set. Stop records the turn's usage and, on the first crossing of `softLimit` or `hardLimit` per period, stores a notice that the next prompt delivers as context; raising that limit re-arms its notice. The phase arguments are `start`, `turn` and `submit`. Each hook waits at most 250 ms for the ledger lock, and the SessionStart refresh is bounded (above). The hook fails open: an error, a missing build or an unreadable ledger produces no output and never blocks. Hooks never block a session in either mode.
+
+**HUD.** The `premiumBudget` element shows `prq:12/300` (`cr:` in credits) against the hard limit, else the soft limit: yellow from the soft limit, red from the hard limit. It appears only when a limit is set; `"premiumBudget": false` under `elements` hides it.
+
+**Team fan-out.** Before `omg team` starts, the governor projects the launch cost: at least one premium request per copilot worker (its first prompt at x1, a floor; follow-up turns and multipliers add to it), or `team.sdk.maxCreditsPerWorker` per copilot worker with `"unit": "credits"` (a ceiling the sdk host enforces). Workers of other providers are not billed to Copilot. When the projection exceeds `perTeamLimit` or what is left of `hardLimit`:
+
+- **warn mode** prints `[omg budget] projected ... exceeds ...; starting anyway (warn mode).` to stderr and starts the team;
+- **enforce mode** clamps an all-copilot team to the workers that fit, and refuses the launch when none fit, when the team mixes providers, or when workers own decomposed subtasks (clamping would drop scope);
+- **`--budget-override`** starts the team unchanged with the warning.
+
+`omg budget` exits `1` once `hardLimit` is reached, so scripts can gate on it. `omg doctor conflicts` warns about invalid `budget` values; the governor ignores them and keeps its defaults. `OMC_BUDGET_GOVERNOR=0` turns everything off.
 
 ### Graph approval gates (remote approvals)
 
@@ -1102,7 +1183,7 @@ Autopilot continues to own cancel, resume, cleanup, state inspection, HUD, and S
 
 V1 deliberately defers `stageModels` and all model/provider/role routing, inline/no-spawn execution, dynamic commands/modes/state files, arbitrary stages/prompts/plugins and control-flow extensions, and the separate custom-skill inline-array frontmatter parser mismatch. See [ADR 03487](./adr/03487-named-autopilot-stage-profiles.md) for the decision record.
 
-## Skills (61 Total)
+## Skills (63 Total)
 
 Includes bundled workflow, utility, domain, and compatibility skills. Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
@@ -1166,6 +1247,8 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `remember`                | Save and retrieve durable session memory                                        | `/oh-my-copilot:remember`                |
 | `research`                | Investigate an open question and return grounded findings                       | `/oh-my-copilot:research`               |
 | `self-improve`            | Autonomous evolutionary code improvement engine                                | `/oh-my-copilot:self-improve`           |
+| `ship`                    | Task or PR to merge-ready: executor lane, independent verifier lane, bounded fix rounds, `omg ship` gates | `/oh-my-copilot:ship` |
+| `session-flow`            | Reorient in the current session with an evidence-backed map of its flow        | `/oh-my-copilot:session-flow`           |
 | `skill`                   | Manage local skills (list/add/remove/search/edit)                              | `/oh-my-copilot:skill`                   |
 | `skillify`                | Extract a reusable skill from the current session                              | `/oh-my-copilot:skillify`                |
 | `team`                    | Coordinated multi-agent workflow                                               | `/oh-my-copilot:team`                    |
@@ -1181,7 +1264,7 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 
 ## Slash Commands
 
-Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plugin ships 21 command files alongside the 61 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
+Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plugin ships 21 command files alongside the 63 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
 
 | Command                                                  | Description                                                                                   |
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -1204,7 +1287,7 @@ Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plu
 | `/oh-my-copilot:external-context <topic>`             | Run parallel document-specialist research                                                     |
 | `/oh-my-copilot:harbor [sweep\|look at #N\|what's ready?]` | Sweep external issues and PRs, verify claims, hand a signature docket                    |
 | `/oh-my-copilot:hud [setup\|minimal\|focused\|full\|status]` | Configure HUD/statusline                                                               |
-| `/oh-my-copilot:drydock [--check]`                   | Lay the shipyard harness keel in a repo (5 surfaces); --check audits drift                     |
+| `/oh-my-copilot:drydock [--check]`                   | Lay the shipyard harness keel in a repo (two faces seeded day one; every other surface appears on first use); --check audits drift |
 | `/oh-my-copilot:launch <brief\|spec-path> [--serial]` | Run the shipyard governed delivery pipeline (spec -> tickets -> frontier)                      |
 | `/oh-my-copilot:loft <design-question>`               | Loft the shape before cutting steel: a throwaway artifact answers a design question prose cannot settle |
 | `/oh-my-copilot:minimal-code-discipline`              | Apply the YAGNI-ladder writing-time discipline while implementing                              |
@@ -1223,6 +1306,7 @@ Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plu
 | `/oh-my-copilot:remember <note>`                      | Save durable session memory                                                                   |
 | `/oh-my-copilot:research <question>`                  | Investigate an open question and return grounded findings                                      |
 | `/oh-my-copilot:self-improve <topic>`                 | Run the autonomous code-improvement workflow                                                   |
+| `/oh-my-copilot:ship <task> \| --pr <n>`              | Take a task or PR to merge-ready through independent review and the `omg ship` gate engine     |
 | `/oh-my-copilot:skill <action>`                       | Manage local skills                                                                           |
 | `/oh-my-copilot:skillify`                             | Extract a reusable skill from the current session                                             |
 | `/oh-my-copilot:team <N>:<agent> <task>`               | Coordinated native team workflow                                                              |
@@ -1279,8 +1363,8 @@ OMC registers 21 hook scripts across 11 Claude Code lifecycle events. For detail
 
 | Event                  | Scripts                                                                                                           | Timeout                                      |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| **UserPromptSubmit**   | `keyword-detector.mjs`, `skill-injector.mjs`                                                                      | 30s outer fuse per command; 8s, 12s trusted Worker limits |
-| **SessionStart**       | `session-start.mjs`, `project-memory-session.mjs`, `setup-init.mjs` (init), `setup-maintenance.mjs` (maintenance) | 5s, 5s, 30s, 60s |
+| **UserPromptSubmit**   | `keyword-detector.mjs`, `skill-injector.mjs`, `premium-budget.mjs submit`                                        | 30s outer fuse per command; 8s, 12s trusted Worker limits (5s for `premium-budget.mjs submit`) |
+| **SessionStart**       | `session-start.mjs`, `project-memory-session.mjs`, `premium-budget.mjs start`, `setup-init.mjs` (init), `setup-maintenance.mjs` (maintenance) | 5s, 5s, 5s, 30s, 60s |
 | **PreToolUse**         | `pre-tool-enforcer.mjs`                                                                                           | 5s trusted Worker |
 | **PermissionRequest**  | `permission-handler.mjs` (Bash only)                                                                              | 5s               |
 | **PostToolUse**        | `post-tool-verifier.mjs`, `project-memory-posttool.mjs`, `post-tool-rules-injector.mjs`                          | 5s, 3s, 3s trusted Workers |
@@ -1288,7 +1372,7 @@ OMC registers 21 hook scripts across 11 Claude Code lifecycle events. For detail
 | **SubagentStart**      | `subagent-tracker.mjs start`                                                                                      | 3s               |
 | **SubagentStop**       | `subagent-tracker.mjs stop`, `verify-deliverables.mjs`                                                            | 5s, 5s           |
 | **PreCompact**         | `pre-compact.mjs`, `project-memory-precompact.mjs`                                                                | 10s, 5s          |
-| **Stop**               | `context-guard-stop.mjs`, `workflow-drift-guard.mjs`, `persistent-mode.mjs`, `code-simplifier.mjs`                | 5s, 3s, 10s, 5s  |
+| **Stop**               | `context-guard-stop.mjs`, `workflow-drift-guard.mjs`, `persistent-mode.mjs`, `premium-budget.mjs turn`, `code-simplifier.mjs` | 5s, 3s, 10s, 5s, 5s |
 | **SessionEnd**         | `session-end.mjs`                                                                                                 | 30s              |
 
 For each UserPromptSubmit command, 30s is the outer host fuse, including any launcher delay before `run.cjs`. Exact canonical targets use the trusted Worker branch only when their manifest event matches: the prompt hooks receive the 8s keyword-detector or 12s skill-injector execution caps, while the PreToolUse and PostToolUse hooks retain their manifest-derived inner budgets. Generic targets, untrusted paths, event mismatches, and invocations with extra arguments retain the isolated child-process path. A command that never starts the runner can take the entire 30s per-command fuse, and host scheduling does not imply an aggregate latency.

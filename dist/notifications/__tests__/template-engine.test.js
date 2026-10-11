@@ -407,4 +407,11 @@ describe("reply channel template variables", () => {
         expect(interpolateTemplate(template, without)).toBe("");
     });
 });
+describe("unknown inherited template variable names", () => {
+    it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf', 'isPrototypeOf'])('replaces unknown inherited %s with empty text and hides its conditional', name => {
+        const payload = makePayload({ projectName: 'known-project' });
+        expect.soft(interpolateTemplate(`before{{${name}}}after`, payload)).toBe('beforeafter');
+        expect(interpolateTemplate(`{{#if ${name}}}unexpected{{/if}}{{projectName}}`, payload)).toBe('known-project');
+    });
+});
 //# sourceMappingURL=template-engine.test.js.map

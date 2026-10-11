@@ -4,6 +4,7 @@ export declare class AdoError extends Error {
     readonly type: AdoErrorType;
     constructor(message: string, type: AdoErrorType);
 }
+export declare function isAzureDevOpsHost(host: string): boolean;
 export declare class AzureDevOpsProvider implements GitProvider {
     readonly name: "azure-devops";
     readonly displayName = "Azure DevOps";

@@ -171,7 +171,7 @@ function processConditionals(
   return template.replace(
     /\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g,
     (_match, varName: string, content: string) => {
-      const value = vars[varName] || "";
+      const value = Object.hasOwn(vars, varName) ? vars[varName] : "";
       return value ? content : "";
     },
   );
@@ -187,7 +187,7 @@ function replaceVariables(
 ): string {
   return template.replace(
     /\{\{(\w+)\}\}/g,
-    (_match, varName: string) => vars[varName] ?? "",
+    (_match, varName: string) => Object.hasOwn(vars, varName) ? vars[varName] : "",
   );
 }
 
@@ -218,6 +218,47 @@ export function interpolateTemplate(
   result = replaceVariables(result, vars);
   result = postProcess(result);
   return result;
+}
+
+function interpolateJsonStringToken(
+  token: string,
+  vars: Record<string, string>,
+): string {
+  const contents = token.slice(1, -1);
+  let value = "";
+  let cursor = 0;
+  for (const match of contents.matchAll(/\{\{(\w+)\}\}/g)) {
+    const start = match.index!;
+    value += JSON.parse(`"${contents.slice(cursor, start)}"`);
+    value += vars[match[1]] ?? "";
+    cursor = start + match[0].length;
+  }
+  value += JSON.parse(`"${contents.slice(cursor)}"`);
+  return JSON.stringify(value);
+}
+
+/** Interpolate JSON string values without injecting payload text into JSON syntax. */
+export function interpolateJsonTemplate(
+  template: string,
+  payload: NotificationPayload,
+): string {
+  const vars = computeTemplateVariables(payload);
+  const conditioned = processConditionals(template, vars);
+  let result = "";
+  let cursor = 0;
+  // Decode only quoted tokens: numeric literals must retain their exact bytes,
+  // and raw placeholders outside strings keep their existing numeric behavior.
+  for (const match of conditioned.matchAll(/"(?:\\[\s\S]|[^"\\])*"/g)) {
+    const start = match.index!;
+    result += replaceVariables(conditioned.slice(cursor, start), vars);
+    try {
+      result += interpolateJsonStringToken(match[0], vars);
+    } catch {
+      result += replaceVariables(match[0], vars);
+    }
+    cursor = start + match[0].length;
+  }
+  return result + replaceVariables(conditioned.slice(cursor), vars);
 }
 
 /**

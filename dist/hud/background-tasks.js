@@ -14,8 +14,6 @@ const TASK_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes
 export function addBackgroundTask(id, description, agentType, directory, sessionId) {
     try {
         let state = readHudState(directory, sessionId) || createEmptyHudState();
-        // Clean up old/expired tasks
-        state = cleanupTasks(state);
         // Add new task
         const task = {
             id,
@@ -25,6 +23,8 @@ export function addBackgroundTask(id, description, agentType, directory, session
             status: 'running',
         };
         state.backgroundTasks.push(task);
+        // Apply expiry and history capacity to the state that will be written.
+        state = cleanupTasks(state);
         state.timestamp = new Date().toISOString();
         return writeHudState(state, directory, sessionId);
     }
@@ -161,9 +161,10 @@ function cleanupTasks(state) {
     if (state.backgroundTasks.length > MAX_TASK_HISTORY) {
         // Keep running tasks and most recent completed
         const running = state.backgroundTasks.filter((t) => t.status === 'running');
-        const completed = state.backgroundTasks
+        const historyCapacity = Math.max(0, MAX_TASK_HISTORY - running.length);
+        const completed = historyCapacity === 0 ? [] : state.backgroundTasks
             .filter((t) => t.status !== 'running')
-            .slice(-Math.max(0, MAX_TASK_HISTORY - running.length));
+            .slice(-historyCapacity);
         state.backgroundTasks = [...running, ...completed];
     }
     return state;

@@ -125,16 +125,22 @@ run plus a retag cycle. Work through pre-flight completely BEFORE tagging.
 
 ## Known flaky tests (rerun once before diagnosing)
 
-`session-end-process-exit` (producer grace), `runtime-done-recovery`
-(briefly-malformed window), `tests/perf/subagent-lock.bench.ts` (45ms latency
+`session-end-process-exit` (producer grace), `tests/perf/subagent-lock.bench.ts` (45ms latency
 guardrail on shared runners), `runtime-v2.dispatch` ("requeues the selected
 task through an exact read…", 30 s timeout — hit on the v5.6.1 tag run),
 `subagent-tracker` ("persists durably under the already-held lock", 310 ms
 latency bound — hit on PR #209), `tests/integration/workflow-profile-lock-recovery`
 ("serializes concurrent reclaimers without removing a live replacement" — hit on
-PR #231's Linux run 2026-10-07, passed on rerun). One `gh run rerun <id> --failed` clears them;
+PR #231's Linux run 2026-10-07, passed on rerun), `src/__tests__/copilot-hook-dispatch.test.ts`
+("stdout parity with the per-hook path (real hooks) > SessionStart", real SessionStart
+hooks against a 60 s spawn timeout on shared runners). One `gh run rerun <id> --failed` clears them;
 only investigate if the SAME test fails twice. A rerun keeps the tag and
-workflow path, so the provenance attestation is unaffected.
+workflow path, so the provenance attestation is unaffected. The machine-read
+list is `.github/known-flaky-tests.json` (`omg ship gates`); keep both in sync.
+The former `runtime-done-recovery` entry (briefly-malformed `done.json`
+window) is retired: the header of
+`src/team/__tests__/runtime-done-recovery.test.ts` says the done.json polling
+protocol is intentionally retired, and no test in that file has the window.
 
 ## Verification (a green run is necessary, not sufficient — check the outputs)
 

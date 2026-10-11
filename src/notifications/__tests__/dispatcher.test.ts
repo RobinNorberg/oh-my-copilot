@@ -569,6 +569,40 @@ describe("sendTelegram", () => {
     expect(callArgs).not.toHaveProperty("agent");
   });
 
+  it.each([
+    ["api.telegram.org:80", false],
+    ["telegram.org:80", false],
+    [".telegram.org:443", true],
+    ["api.telegram.org:443", true],
+    ["api.telegram.org", true],
+    ["unrelated.example:443", false],
+    ["http://api.telegram.org", true],
+    ["http://api.telegram.org:80", false],
+    ["https://api.telegram.org:443", true],
+    ["https://api.telegram.org:8443", false],
+    ["https://api.telegram.org", true],
+    ["http://api.telegram.org/path", true],
+    ["https://api.telegram.org/path:80", true],
+    ["http://api.telegram.org:80/path", false],
+    ["https://api.telegram.org:443/path", true],
+    ["http://" + "fixture:80@" + "api.telegram.org", true],
+    ["http://" + "fixture:80@" + "api.telegram.org:80", false],
+    ["http://api.telegram.org?value=:80", true],
+    [String.raw`http://api.telegram.org:80\path`, false],
+    [String.raw`http://api.telegram.org\path:80`, true],
+    [String.raw`https://api.telegram.org:443\path`, true],
+  ])("honors the NO_PROXY port in %s", async (entry, bypass) => {
+    vi.stubEnv("HTTPS_PROXY", "http://proxy.example:8080");
+    vi.stubEnv("NO_PROXY", entry);
+    const { request } = await import("https");
+    const result = await sendTelegram({
+      enabled: true, botToken: "123456:ABCdef", chatId: "999",
+    }, basePayload);
+    expect(result.success).toBe(true);
+    const options = vi.mocked(request).mock.calls.at(-1)![0] as unknown as Record<string, unknown>;
+    expect("createConnection" in options).toBe(!bypass);
+  });
+
   it("bypasses proxy when NO_PROXY matches parent domain", async () => {
     vi.stubEnv("https_proxy", "http://proxy.example:8080");
     vi.stubEnv("no_proxy", ".telegram.org");

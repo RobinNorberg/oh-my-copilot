@@ -14,7 +14,7 @@ import { appendFileSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { decideNextStage } from '../hooks/session-end/routing.js';
 import { acquireChainSlot, releaseChainSlot } from '../hooks/session-end/guardrails.js';
-import { chainLinkHost, defaultSpawnFn, factoryLinkArgv, factoryLinkCommand, writeChainLinkLedger } from '../hooks/session-end/spawn-next.js';
+import { AFK_INCLUDE_USER_SETTINGS_ENV, chainLinkHost, defaultSpawnFn, factoryLinkArgv, factoryLinkCommand, writeChainLinkLedger } from '../hooks/session-end/spawn-next.js';
 import { DEFAULT_STALL_THRESHOLD_MS, detectStalledLinks, flagStall } from './watchdog.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 export const INTAKE_LABEL = 'intake';
@@ -130,7 +130,8 @@ function spawnChainLink(req) {
         return { status: 204, kind: 'discarded', detail: `guardrail ${slot.reason}: ${slot.detail}` };
     }
     const nextSessionId = randomUUID();
-    const args = factoryLinkArgv(req.prompt, nextSessionId, [], [], req.config.cwd);
+    const includeUserSettings = process.env[AFK_INCLUDE_USER_SETTINGS_ENV] === '1';
+    const args = factoryLinkArgv(req.prompt, nextSessionId, [], [], includeUserSettings, req.config.cwd);
     const command = factoryLinkCommand();
     // chainLink: a Copilot link cannot take --session-id, so it gets the link id as OMC_CHAIN_LINK.
     const spawnCtx = { cwd: req.config.cwd, chainLink: nextSessionId };
@@ -142,6 +143,7 @@ function spawnChainLink(req) {
             writeChainLinkLedger(join(getOmcRoot(req.config.cwd), 'state', 'factory'), nextSessionId, chainLinkHost(command), {
                 intentId: req.intentId,
                 stage: req.directive.stage,
+                includeUserSettings,
                 ...(req.tracker ? { tracker: req.tracker } : {}),
             });
         }

@@ -25,6 +25,17 @@ export declare function buildDetachedTmuxServerKeepaliveArgs(socketPath: string)
  */
 export declare function buildPrivateTmuxSocketPath(): string;
 /**
+ * @internal Exported for testing only.
+ */
+export declare function shellQuote(value: string): string;
+/**
+ * Quote a string for PowerShell invocation using single-quoted literals.
+ * Single quotes in PowerShell prevent variable expansion and subexpression evaluation.
+ * Literal apostrophes are escaped by doubling them.
+ * @internal Exported for testing only.
+ */
+export declare function powershellQuote(value: string): string;
+/**
  * Capture the selected tmux server's endpoint and strict process incarnation.
  *
  * With no endpoint argument the ambient tmux context is queried once. When an
@@ -46,6 +57,36 @@ export interface TmuxServerIdentityGuardOptions {
  * condition. Returns a process exit status (0 success, 1 fail closed).
  */
 export declare function runTmuxServerIdentityGuard(expected: TmuxServerIdentity, formattedActualServerPid: string, formattedActualSocket?: string, options?: TmuxServerIdentityGuardOptions): 0 | 1;
+/**
+ * Distinguish a POSIX tmux session from native psmux on Windows. psmux also
+ * exports TMUX, but identifies its socket namespace under `/tmp/psmux-*`.
+ * @internal Exported for testing only.
+ */
+export declare function isPosixTmuxSession(): boolean;
+/**
+ * Generate the tmux server identity guard condition for the native shell.
+ * On native Windows and native psmux, generates PowerShell syntax even when
+ * OMC's parent process runs under MSYS/Git Bash; psmux independently chooses
+ * PowerShell for its `if-shell` implementation. POSIX tmux uses POSIX syntax.
+ * @internal Exported for testing only.
+ */
+export declare function tmuxServerGuardCondition(identity: TmuxServerIdentity): string;
+/**
+ * Generate POSIX shell syntax for the guard condition.
+ * Uses `env -i` to create a clean environment and `< /dev/null` for stdin safety.
+ * @internal Exported for testing only.
+ */
+export declare function tmuxServerGuardConditionPosix(nodePath: string, runtimePath: string, encodedIdentity: string): string;
+/**
+ * Generate PowerShell syntax for the guard condition.
+ * Uses the `&` call operator for invocation in a clean environment.
+ * Clears NODE_OPTIONS and other Node-related startup variables to prevent
+ * unauthorized module loading before the identity guard runs.
+ * Note: The tmux format expansion placeholder `#{pid}` is preserved as-is
+ * for tmux to expand it before passing to PowerShell.
+ * @internal Exported for testing only.
+ */
+export declare function tmuxServerGuardConditionPowerShell(nodePath: string, runtimePath: string, encodedIdentity: string): string;
 export type TeamMultiplexerContext = 'tmux' | 'cmux' | 'none';
 export declare function detectTeamMultiplexerContext(env?: NodeJS.ProcessEnv): TeamMultiplexerContext;
 /**
@@ -407,7 +448,7 @@ export declare function getWorkerLiveness(paneId: string): Promise<WorkerPaneLiv
  * Liveness bound to the original tmux server. A positively dead original
  * process means its panes are absent without querying a replacement server.
  */
-export declare function getOwnedWorkerLiveness(ownership: WorkerPaneOwnership): Promise<WorkerPaneLiveness>;
+export declare function getOwnedWorkerLiveness(ownership: WorkerPaneOwnership, dependencies?: TmuxServerIdentityDependencies): Promise<WorkerPaneLiveness>;
 export declare function isWorkerAlive(paneId: string): Promise<boolean>;
 /**
  * Normalize only the response form published for a detached session.  A

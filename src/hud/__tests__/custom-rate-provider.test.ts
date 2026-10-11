@@ -24,6 +24,12 @@ describe('custom rate provider child lifecycle', () => {
     }
   }, 2_000);
 
+  it('drains diagnostic stderr before reading valid provider output', async () => {
+    const output = JSON.stringify({ version: 1, buckets: [] });
+    const script = `process.stderr.write(Buffer.alloc(1024 * 1024, 120), () => process.stdout.write(${JSON.stringify(output)}));`;
+    await expect(spawnWithTimeout([process.execPath, '-e', script], 1_000)).resolves.toBe(output);
+  }, 3_000);
+
   it('returns normal command output before the timeout', async () => {
     await expect(spawnWithTimeout('printf normal-output', 500)).resolves.toBe('normal-output');
   });

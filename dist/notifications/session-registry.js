@@ -8,9 +8,10 @@
  * Registry location: XDG-aware global OMC state (legacy ~/.omg/state fallback for reads)
  * File permissions: 0600 (owner read/write only)
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync, openSync, closeSync, writeSync, unlinkSync, statSync, constants, } from 'fs';
+import { existsSync, readFileSync, mkdirSync, openSync, closeSync, writeSync, unlinkSync, statSync, constants, } from 'fs';
 import { join, dirname } from 'path';
 import { randomUUID } from 'crypto';
+import { atomicWriteFileSync } from '../lib/atomic-write.js';
 import { isProcessAlive } from '../platform/index.js';
 import { getGlobalOmcStateCandidates, getGlobalOmcStateRoot } from '../utils/paths.js';
 // ============================================================================
@@ -334,17 +335,79 @@ export function removeSession(sessionId) {
     }) ?? false;
 }
 /**
- * Remove all entries for a given pane ID.
- * Called by reply listener when pane verification fails (stale pane cleanup).
+ * Remove the pane-injecting entries for a given pane ID. Called by the reply
+ * listener when pane verification fails (stale pane cleanup) and by notify()
+ * before a non-replyable message. Approval-gate entries (`approvalRef`, from
+ * `omg graph` remote approval) are kept: their replies never touch a pane.
+ *
+ * Pane ids (`%N`) are per tmux/psmux server, and a mapping records no server
+ * identifier. With `tmuxSessionName`, an entry recorded under another session
+ * name is kept; a collision with the same session name on another server
+ * still matches (removal is the safe side).
  */
-export function removeMessagesByPane(paneId) {
+export function removeMessagesByPane(paneId, tmuxSessionName) {
     return withRegistryLock(() => {
         const mappings = readAllMappingsUnsafe();
-        const filtered = mappings.filter(m => m.tmuxPaneId !== paneId);
+        const filtered = mappings.filter(m => m.tmuxPaneId !== paneId || Boolean(m.approvalRef)
+            || Boolean(tmuxSessionName && m.tmuxSessionName && m.tmuxSessionName !== tmuxSessionName));
         if (filtered.length !== mappings.length)
             rewriteRegistryUnsafe(filtered);
         return true;
     }) ?? false;
+}
+/** Per-pane "non-replyable since" markers: `{ [tmuxSessionName | '']: ISO time }`. */
+function getPaneReplyBlockPath(paneId) {
+    return join(getRegistryStateDir(), `reply-blocked-pane-${paneId.replace(/[^A-Za-z0-9_-]/g, '_')}.json`);
+}
+/**
+ * The pane's markers (a null-prototype object, so a session named
+ * `__proto__` is an ordinary key), `{}` without a marker file, or null when
+ * the file exists but cannot be read or parsed: callers fail closed.
+ */
+function readPaneReplyBlocks(paneId) {
+    const blocks = Object.create(null);
+    try {
+        const parsed = JSON.parse(readFileSync(getPaneReplyBlockPath(paneId), 'utf-8'));
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? Object.assign(blocks, parsed) : null;
+    }
+    catch (err) {
+        return err.code === 'ENOENT' ? blocks : null;
+    }
+}
+/**
+ * Record that the pane shows a non-replyable message (a Copilot permission
+ * menu) from now on. No registry lock: it must hold when the lock times out.
+ * {@link isPaneReplyBlocked} then refuses every mapping created before it, so
+ * a reply mapping registered after removeMessagesByPane by a notification
+ * that started earlier (concurrent hook children) is never injected.
+ * Written via temp file + rename, so a reader never sees a truncated file.
+ * An unparseable marker file is replaced by an unnamed marker, which refuses
+ * every session's earlier mappings as the unparseable file did.
+ */
+export function markPaneNonReplyable(paneId, tmuxSessionName = '', at = new Date()) {
+    ensureRegistryDir();
+    const blocks = readPaneReplyBlocks(paneId) ?? Object.assign(Object.create(null), { '': at.toISOString() });
+    blocks[tmuxSessionName] = at.toISOString();
+    atomicWriteFileSync(getPaneReplyBlockPath(paneId), JSON.stringify(blocks));
+}
+/**
+ * Whether a reply into the pane must be refused: a non-replyable marker for
+ * the pane (same session name, or either side unnamed) is not older than the
+ * mapping's `createdAt`. Without a mapping, any marker younger than MAX_AGE_MS.
+ */
+export function isPaneReplyBlocked(paneId, mapping, nowMs = Date.now()) {
+    const blocks = readPaneReplyBlocks(paneId);
+    if (!blocks)
+        return true; // unreadable marker file: fail closed
+    const createdMs = mapping ? new Date(mapping.createdAt).getTime() : NaN;
+    return Object.entries(blocks).some(([session, at]) => {
+        if (session && mapping?.tmuxSessionName && session !== mapping.tmuxSessionName)
+            return false;
+        const atMs = new Date(at).getTime();
+        if (!Number.isFinite(atMs))
+            return true; // unreadable marker: fail closed
+        return Number.isFinite(createdMs) ? createdMs <= atMs : nowMs - atMs < MAX_AGE_MS;
+    });
 }
 /**
  * Remove entries older than MAX_AGE_MS (24 hours).
@@ -373,12 +436,9 @@ export function pruneStale() {
  */
 function rewriteRegistryUnsafe(mappings) {
     ensureRegistryDir();
-    if (mappings.length === 0) {
-        // Empty registry - write empty file
-        writeFileSync(getRegistryPath(), '', { mode: SECURE_FILE_MODE });
-        return;
-    }
-    const content = mappings.map(m => JSON.stringify(m)).join('\n') + '\n';
-    writeFileSync(getRegistryPath(), content, { mode: SECURE_FILE_MODE });
+    const content = mappings.length === 0
+        ? ''
+        : mappings.map(m => JSON.stringify(m)).join('\n') + '\n';
+    atomicWriteFileSync(getRegistryPath(), content);
 }
 //# sourceMappingURL=session-registry.js.map

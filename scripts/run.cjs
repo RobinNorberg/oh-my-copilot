@@ -213,8 +213,36 @@ function resolveHookTimeoutMsFromRoot(pluginRoot, targetPath, extraArgs) {
   return null;
 }
 
+// Fork (oh-my-copilot): hooks in scripts/copilot/ (build-hooks.mjs FORK_HOOKS)
+// have no hooks/hooks.json entry. Their timeout is the generated
+// copilot/hooks.json entry's timeoutSec when that entry runs this script alone
+// (a group's timeoutSec is the sum of its hooks' timeouts).
+function resolveForkCopilotHookTimeoutMs(targetPath, extraArgs) {
+  const scriptsDir = dirname(dirname(targetPath));
+  if (basename(dirname(targetPath)) !== 'copilot' || basename(scriptsDir) !== 'scripts') return null;
+  const generatedPath = join(dirname(scriptsDir), 'copilot', 'hooks.json');
+  if (!existsSync(generatedPath)) return null;
+  try {
+    const generated = JSON.parse(readFileSync(generatedPath, 'utf-8'));
+    const scriptArg = `\${CLAUDE_PLUGIN_ROOT}/scripts/copilot/${basename(targetPath)}`;
+    for (const { event, entry } of flattenHookEntries(generated?.hooks)) {
+      const args = Array.isArray(entry?.args) ? entry.args : [];
+      const at = args.indexOf(event);
+      const timeout = Number(entry?.timeoutSec);
+      if (at < 0 || args[at + 1] !== scriptArg || args.includes('--')) continue;
+      if (args.slice(at + 2).join(' ') !== extraArgs.join(' ')) continue;
+      if (!Number.isFinite(timeout) || timeout <= 0) continue;
+      return { event, timeoutMs: Math.floor(timeout * 1000) };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function resolveHookTimeoutMs(targetPath, extraArgs) {
-  return resolveHookTimeoutMsFromRoot(dirname(dirname(targetPath)), targetPath, extraArgs);
+  return resolveHookTimeoutMsFromRoot(dirname(dirname(targetPath)), targetPath, extraArgs)
+    ?? resolveForkCopilotHookTimeoutMs(targetPath, extraArgs);
 }
 
 function normalizedComparisonPath(value) {
@@ -1021,6 +1049,7 @@ const COPILOT_WORKER_HOOKS = new Set([
   'workflow-drift-guard.mjs',
   'persistent-mode.mjs',
   'budget-guard.mjs',
+  'premium-budget.mjs',
   'code-simplifier.mjs',
 ]);
 

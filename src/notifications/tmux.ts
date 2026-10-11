@@ -27,7 +27,7 @@ export function getCurrentTmuxSession(): string | null {
         stdio: ["pipe", "pipe", "pipe"],
       }).split("\n");
       const match = lines.find((l) => l.startsWith(paneId + " "));
-      if (match) return match.split(" ")[1] ?? null;
+      if (match) return match.slice(paneId.length + 1) || null;
     }
 
     // Fallback: ask the attached session (may differ when detached).

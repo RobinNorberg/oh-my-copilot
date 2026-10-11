@@ -310,7 +310,7 @@ describe('Background Process Guard (issue #302)', () => {
                 sessionId: 'test-session',
                 toolName: 'Bash',
                 toolInput: {
-                    command: 'npm run lint',
+                    command: 'git status',
                     run_in_background: true,
                 },
                 directory: '/tmp/test',
@@ -352,7 +352,7 @@ describe('Background Process Guard (issue #302)', () => {
                 sessionId: 'test-session',
                 toolName: 'Bash',
                 toolInput: {
-                    command: 'npm run lint',
+                    command: 'git status',
                     run_in_background: true,
                 },
                 directory: '/tmp/test',
@@ -407,7 +407,7 @@ describe('Background Process Guard (issue #302)', () => {
                 rmSync(nonGitDir, { recursive: true, force: true });
             }
         });
-        it('should keep single-test Bash commands in background', async () => {
+        it('should block targeted Bash test files in background', async () => {
             const relativeRoot = 'tmp-bg-testcmd';
             const repoDir = join(resolvedDirectory, relativeRoot);
             mkdirSync(join(repoDir, 'src', '__tests__'), { recursive: true });
@@ -423,8 +423,9 @@ describe('Background Process Guard (issue #302)', () => {
                     directory: resolvedDirectory,
                 };
                 const result = await processHook('pre-tool-use', input);
-                expect(result.continue).toBe(true);
-                expect(result.message ?? '').not.toContain('[BACKGROUND PERMISSIONS]');
+                expect(result.continue).toBe(false);
+                expect(result.reason).toContain('[BACKGROUND PERMISSIONS]');
+                expect(result.modifiedInput).toBeUndefined();
             }
             finally {
                 rmSync(repoDir, { recursive: true, force: true });

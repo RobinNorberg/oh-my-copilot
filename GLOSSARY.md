@@ -27,8 +27,8 @@ One entry per term: definition, boundaries, resolved ambiguity. Vocabulary here 
 - Resolved ambiguity: refit writes nothing without user approval; a declined finding is declined explicitly with its reason, and "no findings" is a stated outcome, never a silent one.
 
 ## Scout
-- Definition: The single pre-dispatch exploration pass in launch Phase 4 that resolves questions shared by two or more tickets, writing notes to `.omg/specs/<feature-slug>/notes/` for workers to consume by pointer.
-- Boundary: (covers shared questions only — a question one ticket needs stays in that ticket; the scout writes notes, never code)
+- Definition: The single pre-dispatch exploration pass in launch Phase 4 that resolves questions shared by two or more tickets; findings stay in the session and are folded into the relevant tracker tickets at dispatch.
+- Boundary: (covers shared questions only — a question one ticket needs stays in that ticket; findings are not written to a local notes tree, and the scout never writes code)
 - Resolved ambiguity: the pass runs once per launch run, before the frontier opens — not per ticket, and not per worker.
 
 ## Integration branch

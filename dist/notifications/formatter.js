@@ -407,6 +407,9 @@ export function formatAskUserQuestion(payload) {
         }
     }
     lines.push(`Copilot is waiting for your response.`);
+    if (payload.replyable === false) {
+        lines.push(`Answer it in the terminal: replies to this message are ignored.`);
+    }
     lines.push("");
     lines.push(buildFooter(payload, true));
     return lines.join("\n");

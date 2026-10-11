@@ -495,6 +495,7 @@ export interface HudElementConfig {
     showTokens?: boolean;
     enterpriseMode?: boolean;
     showEnterpriseCost?: boolean;
+    premiumBudget?: boolean;
     useBars: boolean;
     showCallCounts?: boolean;
     callCountsFormat?: CallCountsFormat;

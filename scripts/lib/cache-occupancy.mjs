@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, unlinkSync, mkdirSync, writeFileSync, renameSync } from 'fs';
+import { existsSync, readdirSync, lstatSync, readFileSync, unlinkSync, mkdirSync, writeFileSync, renameSync } from 'fs';
 import { join, resolve } from 'path';
 import { createHash, randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
@@ -93,11 +93,24 @@ export function readOccupiedPluginRoots(configDir, options = {}) {
   try { names = readdirSync(dir).filter(name => NAME.test(name)); }
   catch (error) { return { roots: new Set(), unavailable: error?.code !== 'ENOENT', identities: new Map() }; }
   const roots = new Set();
-  const records = [];
+  const records = []; let unavailable = false;
   for (const name of names) {
     const path = join(dir, name);
+    let regularFile;
+    try { regularFile = lstatSync(path).isFile(); }
+    catch (error) {
+      if (error?.code !== 'ENOENT') unavailable = true;
+      continue;
+    }
+    if (!regularFile) continue;
     let record;
-    try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { try { unlinkSync(path); } catch {} continue; }
+    let content;
+    try { content = readFileSync(path, 'utf8'); }
+    catch (error) {
+      if (error?.code !== 'ENOENT') unavailable = true;
+      continue;
+    }
+    try { record = JSON.parse(content); } catch { try { unlinkSync(path); } catch { /* best effort */ } continue; }
     const age = Date.now() - Date.parse(record?.updatedAt);
     if (record?.version !== 1 || !Number.isSafeInteger(record?.pid) || !record?.processStartIdentity || !record?.pluginRoot || !Number.isFinite(Date.parse(record?.updatedAt)) || age < -300000 || !alive(record.pid)) {
       try { unlinkSync(path); } catch {}
@@ -120,5 +133,5 @@ export function readOccupiedPluginRoots(configDir, options = {}) {
     }
     roots.add(pathIdentity(record.pluginRoot));
   }
-  return { roots, unavailable: false, identities: currentIdentities };
+  return { roots, unavailable, identities: currentIdentities };
 }

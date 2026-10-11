@@ -4,15 +4,8 @@ import * as path from 'path';
 import { getOmcRoot, probeGitTopLevel } from '../../lib/worktree-paths.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
 const SAFE_PATTERNS = [
-    /^git (status|diff|log|branch|show|fetch)/,
-    /^npm run (lint|build|check|typecheck)/,
-    /^pnpm (lint|build|check|typecheck|run (lint|build|check|typecheck))/,
-    /^yarn (lint|build|check|typecheck|run (lint|build|check|typecheck))/,
-    /^tsc( |$)/,
-    /^gh (issue|pr) (view|list|status)\b/,
-    /^eslint /,
-    /^prettier /,
-    /^cargo (check|clippy|build)/,
+    /^git status$/,
+    /^gh (issue|pr) (view|list|status)(?=$|\s)/,
     /^ls( |$)/,
     // REMOVED: cat, head, tail - they allow reading arbitrary files
 ];
@@ -21,17 +14,6 @@ const SAFE_PATTERNS = [
 // Note: Quotes ("') intentionally excluded - they're needed for paths with spaces
 // and command substitution is already caught by $ detection
 const DANGEROUS_SHELL_CHARS = /[;&|`$()<>\n\r\t\0\\{}\[\]*?~!#]/;
-// Heredoc operator detection (<<, <<-, <<~, with optional quoting of delimiter)
-const HEREDOC_PATTERN = /<<[-~]?\s*['"]?\w+['"]?/;
-/**
- * Patterns that are safe to auto-allow even when they contain heredoc content.
- * Matched against the first line of the command (before the heredoc body).
- * Issue #608: Prevents full heredoc body from being stored in settings.local.json.
- */
-const SAFE_HEREDOC_PATTERNS = [
-    /^git commit\b/,
-    /^git tag\b/,
-];
 const SAFE_RIPGREP_FLAGS = new Set([
     '-n',
     '--line-number',
@@ -353,40 +335,6 @@ function isSafeRipgrepInspectionCommand(tokens, cwd) {
     const searchPaths = tokens.slice(index + 1);
     return areSafeRepoPaths(cwd, searchPaths, { allowDirectory: false });
 }
-function isSafeTargetedVitestCommand(tokens, cwd) {
-    const supportedPrefixes = [
-        ['vitest', 'run'],
-        ['pnpm', 'vitest', 'run'],
-        ['yarn', 'vitest', 'run'],
-    ];
-    const matchedPrefix = supportedPrefixes.find(prefix => prefix.every((part, index) => tokens[index] === part));
-    if (!matchedPrefix) {
-        return false;
-    }
-    const remaining = tokens.slice(matchedPrefix.length);
-    return remaining.length === 1 && isSafeRepoPath(cwd, remaining[0], { allowDirectory: false });
-}
-function isSafeTargetedPackageManagerTestCommand(tokens, cwd) {
-    const supportedPrefixes = [
-        ['npm', 'test', '--', '--run'],
-        ['npm', 'run', 'test', '--', '--run'],
-        ['pnpm', 'test', '--', '--run'],
-        ['pnpm', 'run', 'test', '--', '--run'],
-        ['yarn', 'test', '--run'],
-    ];
-    const matchedPrefix = supportedPrefixes.find(prefix => prefix.every((part, index) => tokens[index] === part));
-    if (!matchedPrefix) {
-        return false;
-    }
-    const remaining = tokens.slice(matchedPrefix.length);
-    return remaining.length === 1 && isSafeRepoPath(cwd, remaining[0], { allowDirectory: false });
-}
-function isSafeTargetedNodeTestCommand(tokens, cwd) {
-    return tokens[0] === 'node'
-        && tokens[1] === '--test'
-        && tokens.length === 3
-        && isSafeRepoPath(cwd, tokens[2], { allowDirectory: false });
-}
 export function isSafeRepoInspectionCommand(command, cwd) {
     const trimmed = command.trim();
     if (!trimmed || DANGEROUS_SHELL_CHARS.test(trimmed)) {
@@ -401,24 +349,9 @@ export function isSafeRepoInspectionCommand(command, cwd) {
         || isSafeSedInspectionCommand(tokens, cwd)
         || isSafeRipgrepInspectionCommand(tokens, cwd);
 }
-export function isSafeTargetedLocalTestCommand(command, cwd) {
-    const trimmed = command.trim();
-    if (!trimmed || DANGEROUS_SHELL_CHARS.test(trimmed)) {
-        return false;
-    }
-    const tokens = tokenizeShellCommand(trimmed);
-    if (!tokens) {
-        return false;
-    }
-    return isSafeTargetedVitestCommand(tokens, cwd)
-        || isSafeTargetedPackageManagerTestCommand(tokens, cwd)
-        || isSafeTargetedNodeTestCommand(tokens, cwd);
-}
 export function isSafeAutoApprovedCommand(command, cwd) {
     return isSafeCommand(command)
-        || isSafeRepoInspectionCommand(command, cwd)
-        || isSafeTargetedLocalTestCommand(command, cwd)
-        || isHeredocWithSafeBase(command);
+        || isSafeRepoInspectionCommand(command, cwd);
 }
 /**
  * Check if a command matches safe patterns
@@ -431,32 +364,6 @@ export function isSafeCommand(command) {
         return false;
     }
     return SAFE_PATTERNS.some(pattern => pattern.test(trimmed));
-}
-/**
- * Check if a command is a heredoc command with a safe base command.
- * Issue #608: Heredoc commands contain shell metacharacters (<<, \n, $, etc.)
- * that cause isSafeCommand() to reject them. When they fall through to Claude
- * Code's native permission flow and the user approves "Always allow", the entire
- * heredoc body (potentially hundreds of lines) gets stored in settings.local.json.
- *
- * This function detects heredoc commands and checks whether the base command
- * (first line) matches known-safe patterns, allowing auto-approval without
- * polluting settings.local.json.
- */
-export function isHeredocWithSafeBase(command) {
-    const trimmed = command.trim();
-    // Heredoc commands from Claude Code are always multi-line
-    if (!trimmed.includes('\n')) {
-        return false;
-    }
-    // Must contain a heredoc operator
-    if (!HEREDOC_PATTERN.test(trimmed)) {
-        return false;
-    }
-    // Extract the first line as the base command
-    const firstLine = trimmed.split('\n')[0].trim();
-    // Check if the first line starts with a safe pattern
-    return SAFE_HEREDOC_PATTERNS.some(pattern => pattern.test(firstLine));
 }
 /**
  * Check if an active supported mode is running
@@ -517,16 +424,13 @@ export function processPermissionRequest(input) {
     const shouldAskBashPermission = hasClaudePermissionAsk(cwd, 'Bash', command);
     // Auto-allow safe commands
     if (!shouldAskBashPermission && isSafeAutoApprovedCommand(command, cwd)) {
-        const reason = isHeredocWithSafeBase(command)
-            ? 'Safe command with heredoc content'
-            : 'Safe read-only or test command';
         return {
             continue: true,
             hookSpecificOutput: {
                 hookEventName: 'PermissionRequest',
                 decision: {
                     behavior: 'allow',
-                    reason,
+                    reason: 'Safe read-only command',
                 },
             },
         };

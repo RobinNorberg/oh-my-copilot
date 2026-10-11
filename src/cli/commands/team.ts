@@ -70,6 +70,7 @@ Transport:
 Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omg/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
 
 Auto-merge (v2-only):
+  --budget-override    Start even when budget.mode "enforce" would refuse or clamp the fan-out.
   --no-decompose       Treat the launch text as pre-authored/fixed worker scope; do not split by commas/lists.
   --auto-merge          Enable per-commit auto-merge to leader and auto-rebase fanout.
                         Each worker runs in a dedicated git worktree on omc-team/{team}/{worker}.
@@ -324,6 +325,8 @@ export interface ParsedTeamArgs {
   noDecompose: boolean;
   /** Worker transport override (`--transport`; `tmux`/`psmux` parse as `pane`). */
   transport?: 'pane' | 'sdk' | 'auto';
+  /** `--budget-override`: start even when budget.mode "enforce" would refuse or clamp. */
+  budgetOverride?: true;
 }
 
 interface NormalizedWorkerSpecSegment {
@@ -471,6 +474,7 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = defau
   let autoMerge: boolean = process.env.OMC_TEAMS_AUTO_MERGE === '1';
   let noDecompose = false;
   let transport: 'pane' | 'sdk' | 'auto' | undefined;
+  let budgetOverride = false;
   let taskFromFlag: string | undefined;
   const normalizedDefaultAgentType = VALID_TEAM_CLI_AGENT_TYPES.has(defaultAgentType as CliAgentType)
     ? defaultAgentType
@@ -488,6 +492,8 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = defau
       autoMerge = true;
     } else if (arg === '--no-decompose' || arg === '--fixed-workers' || arg === '--preformed-plan') {
       noDecompose = true;
+    } else if (arg === '--budget-override') {
+      budgetOverride = true;
     } else if (arg === '--transport' || arg.startsWith('--transport=')) {
       const value = arg.includes('=') ? arg.slice('--transport='.length) : args[++index];
       // tmux and psmux name the multiplexer behind the pane transport.
@@ -601,7 +607,7 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = defau
   }
 
   const teamName = slugifyTask(task);
-  return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow, autoMerge, explicitWorkerSpec, noDecompose, ...(transport ? { transport } : {}) };
+  return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow, autoMerge, explicitWorkerSpec, noDecompose, ...(transport ? { transport } : {}), ...(budgetOverride ? { budgetOverride: true as const } : {}) };
 }
 
 export function buildStartupTasks(parsed: ParsedTeamArgs): Array<{ subject: string; description: string; owner?: string; delegation?: TeamTaskDelegationPlan }> {
@@ -833,6 +839,39 @@ async function collectStartRolePromptOptions(parsed: ParsedTeamArgs): Promise<{
   };
 }
 
+/**
+ * Premium-request budget governor (src/budget): warn about, clamp or refuse
+ * the copilot fan-out. Only a refusal throws; a governor failure starts the
+ * team unchanged (fail-open).
+ */
+export async function applyBudgetGovernor(parsed: ParsedTeamArgs, workerCount: number, clampable: boolean, cwd: string): Promise<number> {
+  let decision: { workerCount: number; notice?: string; refusal?: string };
+  try {
+    const { loadBudgetSettings, governTeamFanout } = await import('../../budget/governor.js');
+    const { ledgerPath, ledgerTotals, readLedger } = await import('../../budget/ledger.js');
+    const { resolveSdkTeamSettings } = await import('../../team/runtime-v2.js');
+    const { settings } = loadBudgetSettings(cwd);
+    let maxCreditsPerWorker = resolveSdkTeamSettings({}).maxCreditsPerWorker;
+    try {
+      const { loadConfig } = await import('../../config/loader.js');
+      maxCreditsPerWorker = resolveSdkTeamSettings(loadConfig()).maxCreditsPerWorker;
+    } catch { /* the default cap */ }
+    decision = governTeamFanout({
+      settings,
+      totals: ledgerTotals(readLedger(ledgerPath(cwd))),
+      agentTypes: parsed.agentTypes.slice(0, workerCount),
+      maxCreditsPerWorker,
+      override: parsed.budgetOverride === true,
+      clampable,
+    });
+  } catch {
+    return workerCount;
+  }
+  if (decision.notice) console.error(decision.notice);
+  if (decision.refusal) throw new Error(decision.refusal);
+  return decision.workerCount;
+}
+
 async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<void> {
   const { isRuntimeV2Enabled, startTeamV2, monitorTeamV2 } = await import('../../team/runtime-v2.js');
   if (!isRuntimeV2Enabled()) {
@@ -844,13 +883,16 @@ async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<voi
 
   // Decompose the task string into subtasks when possible
   const decomposition = splitTaskString(parsed.task);
-  const effectiveWorkerCount = resolveTeamFanoutLimit(
+  const fanoutWorkerCount = resolveTeamFanoutLimit(
     parsed.workerCount,
     parsed.agentTypes[0],
     parsed.explicitWorkerSpec ? parsed.workerCount : undefined,
     decomposition,
     parsed.noDecompose,
   );
+  // Clamping drops workers, so only when no worker owns a decomposed subtask.
+  const clampable = parsed.noDecompose || decomposition.subtasks.length <= 1;
+  const effectiveWorkerCount = await applyBudgetGovernor(parsed, fanoutWorkerCount, clampable, cwd);
 
   const tasks = buildTeamLaunchTasks(parsed, decomposition, effectiveWorkerCount);
   const launchTeamName = resolveAvailableTeamName(parsed.teamName, cwd);
@@ -1307,7 +1349,9 @@ export async function teamCommand(args: string[]): Promise<void> {
     const specPath = args[args.indexOf('--spec') + 1];
     if (!args.includes('--spec') || !specPath) throw new Error('Usage: omg team sdk-host --spec <sdk-host-spec.json>');
     const { runSdkHostMain } = await import('../../team/sdk-host.js');
-    await runSdkHostMain(specPath);
+    // Injected here, not imported by sdk-host.ts: the team and runtime-cli bundles
+    // reach sdk-host.ts and must not pull in the whole MCP tool registry.
+    await runSdkHostMain(specPath, async () => (await import('../../team/sdk-inprocess-tools.js')).buildSdkInProcessTools);
     return;
   }
 

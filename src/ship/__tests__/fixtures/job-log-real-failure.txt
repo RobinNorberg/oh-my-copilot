@@ -1,0 +1,36 @@
+Test	Run functional tests	2026-10-09T23:56:52.0727144Z  [32m✓[39m src/cli/__tests__/session-search-help.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 4[2mms[22m[39m
+Test	Run functional tests	2026-10-09T23:56:52.1266367Z  [32m✓[39m src/hooks/persistent-mode/__tests__/deleted-state-writeback.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 5[2mms[22m[39m
+Test	Run functional tests	2026-10-09T23:56:52.2141303Z  [32m✓[39m src/cli/__tests__/teleport-help.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+Test	Run functional tests	2026-10-09T23:56:52.2430721Z  [32m✓[39m src/team/__tests__/index.compat-exports.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+Test	Run functional tests	2026-10-09T23:56:52.2840809Z  [32m✓[39m src/team/__tests__/mcp-team-bridge.spawn-args.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+Test	Run functional tests	2026-10-09T23:56:52.3956825Z  [32m✓[39m src/features/model-routing/__tests__/index.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 12[2mms[22m[39m
+Test	Run functional tests	2026-10-09T23:56:52.4037607Z  [32m✓[39m src/features/notepad-wisdom/__tests__/extractor.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+Test	Run functional tests	2026-10-09T23:56:52.4586434Z  [32m✓[39m src/__tests__/setup-no-plugin-flag.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+Test	Run functional tests	2026-10-09T23:56:52.5555934Z  [32m✓[39m src/cli/__tests__/team-command-branding.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 5[2mms[22m[39m
+Test	Run functional tests	2026-10-09T23:56:52.6016949Z  [32m✓[39m src/hooks/factcheck/__tests__/config-tokens.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+Test	Run functional tests	2026-10-09T23:56:52.6151961Z  [32m✓[39m src/tools/lsp/__tests__/client-singleton.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 22[2mms[22m[39m
+Test	Run functional tests	2026-10-09T23:56:53.2003674Z 
+Test	Run functional tests	2026-10-09T23:56:53.2004882Z [31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+Test	Run functional tests	2026-10-09T23:56:53.2005452Z 
+Test	Run functional tests	2026-10-09T23:56:53.2007109Z [41m[1m FAIL [22m[49m src/cli/commands/__tests__/team-status-json.test.ts[2m > [22momg team status --json[2m > [22mlists the worktrees a shut-down team kept for unmerged commits
+Test	Run functional tests	2026-10-09T23:56:53.2013042Z [31m[1mAssertionError[22m: expected [ …(2) ] to deeply equal [ { workerName: 'worker-1', …(3) } ][39m
+Test	Run functional tests	2026-10-09T23:56:53.2013566Z 
+Test	Run functional tests	2026-10-09T23:56:53.2013835Z [32m- Expected[39m
+Test	Run functional tests	2026-10-09T23:56:53.2014180Z [31m+ Received[39m
+Test	Run functional tests	2026-10-09T23:56:53.2054596Z     [90m   |[39m                                          [31m^[39m
+Test	Run functional tests	2026-10-09T23:56:53.2055190Z     [90m214|[39m     } [35mfinally[39m {
+Test	Run functional tests	2026-10-09T23:56:53.2055763Z     [90m215|[39m       process[33m.[39m[34mchdir[39m(previous)[33m;[39m
+Test	Run functional tests	2026-10-09T23:56:53.2056385Z 
+Test	Run functional tests	2026-10-09T23:56:53.2056709Z [31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+Test	Run functional tests	2026-10-09T23:56:53.2056975Z 
+Test	Run functional tests	2026-10-09T23:56:53.2057016Z 
+Test	Run functional tests	2026-10-09T23:56:53.2092723Z [2m Test Files [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m862 passed[39m[22m[2m | [22m[33m4 skipped[39m[90m (867)[39m
+Test	Run functional tests	2026-10-09T23:56:53.2182273Z [2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m16605 passed[39m[22m[2m | [22m[33m33 skipped[39m[90m (16639)[39m
+Test	Run functional tests	2026-10-09T23:56:53.2183119Z [2m   Start at [22m 23:47:31
+Test	Run functional tests	2026-10-09T23:56:53.2191030Z [2m   Duration [22m 561.50s[2m (transform 19.15s, setup 3.70s, import 116.44s, tests 1451.33s, environment 138ms)[22m
+Test	Run functional tests	  ]
+Test	Run functional tests	
+Test	Run functional tests	 ❯ src/cli/commands/__tests__/team-status-json.test.ts:213:42
+Test	Run functional tests	
+Test	Run functional tests	
+Test	Run functional tests	2026-10-09T23:56:53.4150527Z ##[error]Process completed with exit code 1.

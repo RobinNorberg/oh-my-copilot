@@ -841,17 +841,27 @@ export function getCustomIntegrationsConfig() {
     if (!raw)
         return null;
     const customIntegrations = raw.customIntegrations;
-    if (!customIntegrations)
+    if (!customIntegrations || typeof customIntegrations !== 'object' || Array.isArray(customIntegrations))
+        return null;
+    if (customIntegrations.integrations !== undefined && !Array.isArray(customIntegrations.integrations))
         return null;
     // Validate and filter out invalid integrations
     const validIntegrations = [];
-    for (const integration of customIntegrations.integrations || []) {
+    for (const rawIntegration of customIntegrations.integrations || []) {
+        let integration = rawIntegration;
+        if (integration && typeof integration === 'object' && !Array.isArray(integration) &&
+            integration.config && typeof integration.config === 'object' && !Array.isArray(integration.config) &&
+            integration.config.timeout === undefined && ['webhook', 'cli'].includes(integration.type)) {
+            // Preserve omitted-timeout compatibility with the documented setup defaults.
+            integration = { ...integration, config: { ...integration.config,
+                    timeout: integration.type === 'webhook' ? 10000 : 5000 } };
+        }
         const result = validateCustomIntegration(integration);
         if (result.valid) {
             validIntegrations.push(integration);
         }
         else {
-            console.warn(`[notifications] Invalid custom integration "${integration.id}": ${result.errors.join(", ")}`);
+            console.warn(`[notifications] Invalid custom integration "${typeof integration?.id === 'string' ? integration.id : 'unknown'}": ${result.errors.join(", ")}`);
         }
     }
     // Check for duplicate IDs

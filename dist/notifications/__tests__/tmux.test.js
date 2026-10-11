@@ -28,6 +28,13 @@ describe("getCurrentTmuxSession", () => {
         expect(getCurrentTmuxSession()).toBe("my-detached-session");
         expect(mockTmuxShell).toHaveBeenCalledWith(["list-panes", "-a", "-F", "#{pane_id} #{session_name}"], expect.objectContaining({ timeout: 3000 }));
     });
+    it("preserves spaces and tabs in the matched session name", () => {
+        process.env.TMUX = "/tmp/owned-socket,1234,0";
+        process.env.TMUX_PANE = "%3";
+        mockTmuxShell.mockReturnValue("%30 other\n%3 owned project\twith tab\n");
+        expect(getCurrentTmuxSession()).toBe("owned project\twith tab");
+        expect(formatTmuxInfo()).toBe("tmux: owned project\twith tab");
+    });
     it("returns the correct session even when an earlier pane has the same ID prefix", () => {
         process.env.TMUX = "/tmp/tmux-1000/default,1234,0";
         process.env.TMUX_PANE = "%1";

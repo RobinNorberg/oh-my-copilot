@@ -272,6 +272,8 @@ export interface SdkTeamSettings {
     startupEvidenceMs: number;
     /** Hosts launched at once; each launch waits on its own worker's claim. */
     launchConcurrency: number;
+    /** `team.sdk.inProcessTools` / `OMC_TEAM_SDK_INPROCESS_TOOLS` (`1`/`true`, `0`/`false`). */
+    inProcessTools: boolean;
     denyTools: string[];
     denyUrls: string[];
 }

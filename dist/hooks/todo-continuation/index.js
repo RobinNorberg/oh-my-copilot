@@ -486,6 +486,11 @@ export function readTaskFiles(sessionId) {
  * status change.
  */
 export function isTaskIncomplete(task) {
+    const isSessionFlowRecord = /^\[S\d+\]/.test(task.subject)
+        && typeof task.description === 'string'
+        && task.description.split(/\r?\n/).some((line) => line.trim() === 'session-flow: managed stage');
+    if (isSessionFlowRecord)
+        return false;
     // Treat 'completed' and any unknown/deleted status as complete
     return task.status === 'pending' || task.status === 'in_progress';
 }

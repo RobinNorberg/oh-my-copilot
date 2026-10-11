@@ -38,6 +38,20 @@ export interface ToolDef {
 export declare const allTools: ToolDef[];
 /** Tools currently enabled for standalone ListTools after OMC_DISABLE_TOOLS filtering. */
 export declare function getEnabledTools(envValue?: string): ToolDef[];
+/** The CallTool result the standalone server returns for one call. */
+export type CallToolEntryResult = {
+    content: Array<{
+        type: 'text';
+        text: string;
+    }>;
+    isError: boolean;
+};
+/**
+ * Run one tool call exactly as the standalone server's CallTool handler does:
+ * unknown names and thrown errors become `isError` text results. The SDK
+ * in-process tools (src/team/sdk-inprocess-tools.ts) call this too.
+ */
+export declare function callTool(name: string, args: unknown, tools?: ToolDef[]): Promise<CallToolEntryResult>;
 export declare function zodToJsonSchema(schema: z.ZodRawShape | z.ZodObject<z.ZodRawShape>): {
     type: 'object';
     properties: Record<string, unknown>;

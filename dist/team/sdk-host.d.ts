@@ -19,6 +19,7 @@
  */
 import { type LoadedSdk } from '../smoke/copilot-sdk-driver.js';
 import { type SdkDoorbellEntry, type SdkHostSpec } from './sdk-transport.js';
+import type { buildSdkInProcessTools } from './sdk-inprocess-tools.js';
 export interface SdkHostDeps {
     loadSdk: () => Promise<LoadedSdk | null>;
     pid: number;
@@ -33,8 +34,18 @@ export interface SdkHostDeps {
     log?: (line: string) => void;
     /** Session-file writer (test seam for win32 rename contention); defaults to atomicWriteJson. */
     writeSessionJson?: (path: string, value: unknown) => Promise<void>;
+    /** Loads the in-process tool builder for `spec.in_process_tools`; absent means the `t` MCP server. */
+    loadInProcessTools?: () => Promise<typeof buildSdkInProcessTools>;
+    /**
+     * Where the in-process host listens for crashes and termination signals
+     * (`process` in the CLI entry; a fake emitter in tests). Only used once the
+     * in-process tool builder is loaded.
+     */
+    processEvents?: Pick<NodeJS.EventEmitter, 'on' | 'off'>;
 }
-export type SdkHostOutcome = 'stopped' | 'terminated' | 'team_gone' | 'invalid_spec' | 'decision_revoked' | 'decision_timeout' | 'ack_conflict' | 'sdk_missing' | 'start_failed';
+export type SdkHostOutcome = 'stopped' | 'terminated' | 'team_gone' | 'invalid_spec' | 'decision_revoked' | 'decision_timeout' | 'ack_conflict' | 'sdk_missing' | 'start_failed'
+/** An in-process tool threw past its handler (uncaughtException): stopped hard, session `failed`. */
+ | 'tool_crash';
 /** Parse doorbell lines after `offset`; returns entries and the new offset (complete lines only). */
 export declare function readDoorbell(path: string, offset: number): {
     entries: SdkDoorbellEntry[];
@@ -42,7 +53,13 @@ export declare function readDoorbell(path: string, offset: number): {
 };
 /** Prepend `dir` to PATH, matching the key case-insensitively on win32. */
 export declare function prependPath(env: NodeJS.ProcessEnv, dir: string, platform: NodeJS.Platform): void;
+/**
+ * Make `target` hold exactly `env`. The `t` MCP server child runs with the
+ * session env; in-process tool handlers read `process.env`, so with
+ * `in_process_tools` the host adopts that env once the runtime is spawned.
+ */
+export declare function adoptSessionEnv(target: NodeJS.ProcessEnv, env: NodeJS.ProcessEnv): void;
 export declare function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<SdkHostOutcome>;
 /** CLI entry (`omg team sdk-host --spec <file>`): runs the host, then exits the process. */
-export declare function runSdkHostMain(specPath: string): Promise<never>;
+export declare function runSdkHostMain(specPath: string, loadInProcessTools?: SdkHostDeps['loadInProcessTools']): Promise<never>;
 //# sourceMappingURL=sdk-host.d.ts.map

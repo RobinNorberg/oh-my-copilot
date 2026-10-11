@@ -30,7 +30,17 @@ function normalizeNoProxyEntry(entry) {
         return entry;
     }
     try {
-        return new URL(entry).host.toLowerCase();
+        const url = new URL(entry);
+        // URL.port drops explicit scheme-default ports, so inspect the raw authority.
+        const authority = entry
+            .slice(entry.indexOf("://") + 3)
+            .split(/[\\/?#]/, 1)[0] ?? "";
+        const hostPort = authority.slice(authority.lastIndexOf("@") + 1);
+        const hasExplicitPort = /:\d+$/.test(hostPort);
+        if (!url.port && !hasExplicitPort)
+            return url.hostname.toLowerCase();
+        const port = url.port || (url.protocol === "https:" ? "443" : "80");
+        return `${url.hostname.toLowerCase()}:${port}`;
     }
     catch {
         return entry;
@@ -41,7 +51,6 @@ function shouldBypassProxy(hostname, port) {
     if (!noProxy)
         return false;
     const host = hostname.toLowerCase();
-    const hostWithPort = `${host}:${port}`;
     return noProxy.split(",").some((rawEntry) => {
         const entry = rawEntry.trim().toLowerCase();
         if (!entry)
@@ -49,13 +58,11 @@ function shouldBypassProxy(hostname, port) {
         if (entry === "*")
             return true;
         const normalizedEntry = normalizeNoProxyEntry(entry);
-        const entryHost = normalizedEntry.startsWith(".")
-            ? normalizedEntry.slice(1)
-            : normalizedEntry.split(":")[0];
-        return (host === normalizedEntry ||
-            hostWithPort === normalizedEntry ||
-            host === entryHost ||
-            host.endsWith(`.${entryHost}`));
+        const match = /^(.*?)(?::(\d+))?$/.exec(normalizedEntry);
+        if (!match || (match[2] && Number(match[2]) !== port))
+            return false;
+        const entryHost = match[1].startsWith(".") ? match[1].slice(1) : match[1];
+        return host === entryHost || host.endsWith(`.${entryHost}`);
     });
 }
 function getTelegramProxyUrl() {
@@ -766,7 +773,7 @@ export async function dispatchNotifications(config, event, payload, platformMess
 // ============================================================================
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { interpolateTemplate } from "./template-engine.js";
+import { interpolateTemplate, interpolateJsonTemplate } from "./template-engine.js";
 import { getCustomIntegrationsForEvent } from "./config.js";
 const execFileAsync = promisify(execFile);
 /**
@@ -777,12 +784,16 @@ export async function sendCustomWebhook(integration, payload) {
     try {
         // Interpolate template variables
         const url = interpolateTemplate(config.url, payload);
-        const body = interpolateTemplate(config.bodyTemplate, payload);
         // Prepare headers
         const headers = {};
         for (const [key, value] of Object.entries(config.headers)) {
             headers[key] = interpolateTemplate(value, payload);
         }
+        const contentType = Object.entries(headers).find(([key]) => key.toLowerCase() === "content-type")?.[1] ?? "";
+        const isJsonBody = /^application\/(?:json|[^\s;]+\+json)(?:\s*;|$)/i.test(contentType.trim());
+        const body = isJsonBody
+            ? interpolateJsonTemplate(config.bodyTemplate, payload)
+            : interpolateTemplate(config.bodyTemplate, payload);
         // Use native fetch (Node.js 18+)
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), config.timeout);

@@ -10,12 +10,13 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync, rmSync, realpathSync } from 'fs';
+import { mkdirSync, writeFileSync, rmSync, realpathSync, statSync, symlinkSync } from 'fs';
 import { execSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { resolveTranscriptPath } from '../lib/worktree-paths.js';
 import { encodeProjectPath } from '../utils/encode-project-path.js';
+import { isUsableVersionPath } from '../utils/plugin-cache-validation.js';
 
 describe('resolveTranscriptPath', () => {
   let tempDir: string;
@@ -95,12 +96,7 @@ describe('resolveTranscriptPath', () => {
     const realTranscript = join(projectDir, 'sess.jsonl');
     writeFileSync(realTranscript, '{}');
 
-    const worktreePath = join(
-      tempDir,
-      'projects',
-      '-Users-dev-app--claude-worktrees-feature',
-      'sess.jsonl',
-    );
+    const worktreePath = join(tempDir, 'projects', '-Users-dev-app--claude-worktrees-feature', 'sess.jsonl');
 
     const resolved = resolveTranscriptPath(worktreePath);
     expect(resolved).toBe(realTranscript);
@@ -108,12 +104,7 @@ describe('resolveTranscriptPath', () => {
 
   it('returns original path when resolved path also does not exist', () => {
     // Both worktree and original paths don't exist
-    const worktreePath = join(
-      tempDir,
-      'projects',
-      '-missing-project--claude-worktrees-wt',
-      'transcript.jsonl',
-    );
+    const worktreePath = join(tempDir, 'projects', '-missing-project--claude-worktrees-wt', 'transcript.jsonl');
 
     const resolved = resolveTranscriptPath(worktreePath);
     expect(resolved).toBe(worktreePath);
@@ -183,8 +174,10 @@ describe('resolveTranscriptPath', () => {
         stdio: 'pipe',
         env: {
           ...process.env,
-          GIT_AUTHOR_NAME: 'test', GIT_AUTHOR_EMAIL: 'test@test.com',
-          GIT_COMMITTER_NAME: 'test', GIT_COMMITTER_EMAIL: 'test@test.com',
+          GIT_AUTHOR_NAME: 'test',
+          GIT_AUTHOR_EMAIL: 'test@test.com',
+          GIT_COMMITTER_NAME: 'test',
+          GIT_COMMITTER_EMAIL: 'test@test.com',
         },
       });
 
@@ -251,5 +244,21 @@ describe('resolveTranscriptPath', () => {
       const resolved = resolveTranscriptPath(worktreePath, worktreeDir);
       expect(resolved).toBe(worktreePath);
     });
+  });
+
+  it.skipIf(process.platform !== 'win32')('rejects an OMC payload junction into a stale cache version', () => {
+    const pluginDir = join(tempDir, 'plugin-cache', 'omc', 'oh-my-copilot');
+    const active = join(pluginDir, '4.15.10');
+    const stale = join(pluginDir, '4.15.6');
+    for (const version of [active, stale]) {
+      mkdirSync(join(version, 'hooks'), { recursive: true });
+      mkdirSync(join(version, 'scripts'), { recursive: true });
+      writeFileSync(join(version, 'hooks', 'hooks.json'), '{}\n');
+      writeFileSync(join(version, 'scripts', 'run.cjs'), '// plugin root\n');
+    }
+    writeFileSync(join(stale, 'scripts', 'session-start.mjs'), '// stale hook payload\n');
+    symlinkSync(join(stale, 'scripts'), join(active, 'payload'), 'junction');
+
+    expect(isUsableVersionPath(active, statSync(stale))).toBe(false);
   });
 });

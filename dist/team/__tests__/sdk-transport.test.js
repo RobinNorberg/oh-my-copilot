@@ -1,11 +1,13 @@
 import { spawn } from 'child_process';
+import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildSdkExcludedTools, decideSdkPermission } from '../sdk-policy.js';
 import { prependPath, readDoorbell, runSdkHost } from '../sdk-host.js';
+import { ledgerPath, readLedger } from '../../budget/ledger.js';
 import { isSdkTarget, launchSdkHost, readSdkSession, ringDoorbell, sdkPaneId, sdkWorkerFiles, stopSdkHost, } from '../sdk-transport.js';
 import { awaitWorkerLaunchAcknowledgement, loadWorkerLaunchAttempt, observeWorkerLaunchProvider, prepareWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt, } from '../worker-launch-ack.js';
 import { teamStateRoot } from '../state-paths.js';
@@ -16,7 +18,12 @@ let cwd;
 let worktree;
 let pluginRoot;
 let stateRoot;
+let omcStateDir;
 beforeEach(() => {
+    // Centralized state in a temp dir: a non-git temp cwd would otherwise anchor
+    // state (team files, the budget ledger) in the real home directory.
+    omcStateDir = mkdtempSync(join(tmpdir(), 'sdk-team-state-'));
+    vi.stubEnv('OMC_STATE_DIR', omcStateDir);
     // The state root does not follow a temp cwd under the test config: keep each test's team distinct.
     TEAM = `sdk-team-${randomUUID().slice(0, 8)}`;
     cwd = mkdtempSync(join(tmpdir(), 'sdk-team-leader-'));
@@ -26,7 +33,8 @@ beforeEach(() => {
     mkdirSync(join(stateRoot, 'workers', WORKER), { recursive: true });
 });
 afterEach(() => {
-    for (const dir of [cwd, worktree, pluginRoot, stateRoot])
+    vi.unstubAllEnvs();
+    for (const dir of [cwd, worktree, pluginRoot, stateRoot, omcStateDir])
         rmSync(dir, { recursive: true, force: true });
 });
 // ---------------------------------------------------------------------------
@@ -197,6 +205,11 @@ function fakeSdk(opts = {}) {
                     skills: { list: async () => ({}) },
                     agent: { list: async () => ({}) },
                     mcp: { list: async () => ({}), listTools: async () => ({}) },
+                    ...(opts.offeredTools ? {
+                        tools: {
+                            getCurrentMetadata: async () => ({ tools: opts.offeredTools(config).map((name) => ({ name })) }),
+                        },
+                    } : {}),
                 },
             };
         }
@@ -285,13 +298,17 @@ describe('sdk host', () => {
                 { kind: 'shell', fullCommandText: 'omg team api claim-task --json' },
             ] });
         const killed = [];
+        let liveBudget;
         const host = await hostWithLeader(attempt, deps(loaded, { alive, killed }), async () => {
             await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
             ringDoorbell(stateRoot, WORKER, { kind: 'prompt', text: 'first' });
             ringDoorbell(stateRoot, WORKER, { kind: 'prompt', text: 'second' });
             await until(() => rec.prompts.length === 2 && readSdkSession(stateRoot, WORKER)?.state === 'idle');
+            liveBudget = readLedger(ledgerPath(cwd)).teams[TEAM]?.[`${WORKER}:${attempt.attempt_id}`];
             ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
         });
+        // Before the shutdown totals the x1-per-call count is an estimate (the multiplier is unknown).
+        expect(liveBudget).toMatchObject({ premiumRequests: 2, source: 'estimated' });
         expect(await host).toBe('stopped');
         // The second prompt waited for the first turn's idle.
         expect(rec.prompts).toEqual(['first', 'second']);
@@ -330,6 +347,9 @@ describe('sdk host', () => {
         expect(session.usage.premium_requests).toBe(2);
         expect(session.usage.shutdown_premium_requests).toBe(2);
         expect(session.usage.credits).toBeCloseTo(1);
+        // Budget ledger: the host records the worker's final totals under its team.
+        const budget = readLedger(ledgerPath(cwd)).teams[TEAM]?.[`${WORKER}:${attempt.attempt_id}`];
+        expect(budget).toMatchObject({ premiumRequests: 2, credits: 1.5, source: 'measured', detail: 'session.shutdown' });
         expect(session.permissions.map((p) => [p.kind, p.approve])).toEqual([
             ['write', false], ['shell', true], ['write', false], ['shell', true],
         ]);
@@ -342,6 +362,130 @@ describe('sdk host', () => {
         expect(await observeWorkerLaunchProvider(attempt)).toBe('dead');
         expect(await retireAndCleanupCurrentWorkerLaunchAttempt(attempt, 'test', async () => true)).toBe(true);
         expect(existsSync(attempt.currentPath)).toBe(false);
+        expect(session.tool_transport).toBe('mcp');
+        expect(cfg.tools).toBeUndefined();
+    });
+    describe('in_process_tools', () => {
+        const fakeTool = { name: 't-state_read', description: 'd', parameters: { type: 'object', properties: {}, required: [] }, skipPermission: true, handler: async () => '' };
+        const toolNames = (config) => (config.tools ?? []).map((t) => t.name);
+        async function runWith(builder, hostEnv, opts = {}) {
+            const attempt = await newAttempt();
+            const { loaded, rec } = fakeSdk(opts.fake);
+            const calls = [];
+            const cleanups = [];
+            const events = opts.events ?? new EventEmitter();
+            const host = await hostWithLeader(attempt, deps(loaded, { env: hostEnv, processEvents: events, ...(builder ? { loadInProcessTools: async () => {
+                        const build = await builder();
+                        return ((...args) => {
+                            calls.push(args);
+                            const set = build(...args);
+                            return set ? { ...set, cleanup: async () => { cleanups.push(Date.now()); await set.cleanup(); } } : null;
+                        });
+                    } } : {}) }), async () => {
+                await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
+                if (opts.drive)
+                    opts.drive(events);
+                else
+                    ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
+            }, specFor(attempt, { in_process_tools: true }));
+            expect(await host).toBe(opts.outcome ?? 'stopped');
+            return { cfg: rec.sessions[0], rec, connEnv: rec.connection.env, calls, cleanups, events, attempt, session: readSdkSession(stateRoot, WORKER) };
+        }
+        const withTools = (tools = [fakeTool]) => (async () => () => ({ tools, disabledMcpServer: 't', cleanup: async () => { } }));
+        it('registers the tools, disables the t server and gives the handlers the session env', async () => {
+            const hostEnv = { [process.platform === 'win32' ? 'Path' : 'PATH']: '/usr/bin', OMC_STRIPPED: '1', COPILOT_HOME: '/real-home' };
+            const { cfg, connEnv, calls, cleanups, events, session } = await runWith(withTools(), hostEnv);
+            expect(cfg.tools).toEqual([fakeTool]);
+            expect(cfg.disabledMcpServers).toEqual(['github-mcp-server', 't']);
+            expect(cfg.excludedTools).toEqual(expect.arrayContaining(['t-host_smoke', 'web_fetch']));
+            // builder(sdk module, server, the session's excludedTools, the session env's OMC_DISABLE_TOOLS)
+            expect(calls[0]?.[1]).toBe('t');
+            expect(calls[0]?.[2]).toEqual(cfg.excludedTools);
+            expect(session.tool_transport).toBe('in-process');
+            // No tools RPC on this fake SDK: in-process, but recorded as unverified.
+            expect(session.tool_transport_verified).toBe(false);
+            // The host env now equals the runtime's (MCP child) env.
+            expect(hostEnv).toEqual(connEnv);
+            expect(hostEnv.OMC_STRIPPED).toBeUndefined();
+            expect(hostEnv.COPILOT_HOME).toBe(sdkWorkerFiles(stateRoot, WORKER).home);
+            // Teardown ran the tools' cleanup once and removed every process guard.
+            expect(cleanups).toHaveLength(1);
+            for (const event of ['uncaughtException', 'unhandledRejection', 'SIGTERM', 'SIGINT', 'SIGHUP'])
+                expect(events.listenerCount(event), event).toBe(0);
+        });
+        it('verifies the session offers an in-process tool', async () => {
+            const { session, rec } = await runWith(withTools(), {}, { fake: { offeredTools: (c) => ['view', ...toolNames(c)] } });
+            expect(session.tool_transport).toBe('in-process');
+            expect(session.tool_transport_verified).toBe(true);
+            expect(rec.sessions).toHaveLength(1);
+        });
+        it('recreates the session on the t MCP server when the runtime does not offer the in-process tools', async () => {
+            const { session, rec, cleanups } = await runWith(withTools(), {}, { fake: { offeredTools: () => ['view', 'shell'] } });
+            expect(rec.sessions).toHaveLength(2);
+            expect(rec.sessions[1].tools).toBeUndefined();
+            expect(rec.sessions[1].disabledMcpServers).toEqual(['github-mcp-server']);
+            expect(rec.ops.slice(0, 5)).toEqual(['start', 'create', 'disconnect', 'delete:s1', 'create']);
+            expect(session.tool_transport).toBe('mcp');
+            expect(session.tool_transport_verified).toBeUndefined();
+            expect(cleanups).toHaveLength(0);
+        });
+        it('offers no tools and keeps the t server disabled for workerDenyTools: [t]', async () => {
+            const { buildSdkInProcessTools } = await import('../sdk-inprocess-tools.js');
+            const sdk = { convertMcpCallToolResult: (r) => r };
+            const set = buildSdkInProcessTools(sdk, 't', buildSdkExcludedTools('t', ['t']), '');
+            expect(set?.tools).toEqual([]);
+            expect(set?.disabledMcpServer).toBe('t');
+            const { cfg, session } = await runWith(withTools([]), {}, { fake: { offeredTools: () => ['view'] } });
+            expect(cfg.tools).toEqual([]);
+            expect(cfg.disabledMcpServers).toEqual(['github-mcp-server', 't']);
+            expect(session.tool_transport).toBe('in-process');
+            expect(session.tool_transport_verified).toBe(true);
+        });
+        it('records an unhandled rejection and keeps serving', async () => {
+            const { session } = await runWith(withTools(), {}, {
+                drive: (events) => {
+                    events.emit('unhandledRejection', new Error('stream closed'));
+                    ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
+                },
+            });
+            expect(session.state).toBe('closed');
+            expect(session.last_error).toBe('unhandled rejection: stream closed');
+        });
+        it('an uncaught tool exception stops hard: runtime killed, tools cleaned up, terminal record, session failed', async () => {
+            const alive = new Set([991]);
+            const { session, cleanups, attempt, rec } = await runWith(withTools(), {}, {
+                fake: { pid: 991, alive },
+                drive: (events) => { events.emit('uncaughtException', new Error('lsp socket EPIPE')); },
+                outcome: 'tool_crash',
+            });
+            // The hard-stop path: forceStop, no graceful disconnect.
+            expect(rec.ops).toContain('forceStop');
+            expect(rec.ops).not.toContain('disconnect');
+            expect(alive.has(991)).toBe(false);
+            expect(cleanups).toHaveLength(1);
+            expect(session.state).toBe('failed');
+            expect(session.last_error).toBe('in-process tool crash: lsp socket EPIPE');
+            expect(existsSync(`${attempt.startedPath}.terminal`)).toBe(true);
+        });
+        it.each(['SIGTERM', 'SIGINT', 'SIGHUP'])('%s stops the in-process host (the LSP listeners replace the default exit)', async (sig) => {
+            const { session, cleanups } = await runWith(withTools(), {}, {
+                drive: (events) => { events.emit(sig); },
+                outcome: 'terminated',
+            });
+            expect(session.state).toBe('closed');
+            expect(cleanups).toHaveLength(1);
+        });
+        it.each([
+            ['the SDK lacks the capability', (async () => () => null)],
+            ['no builder is wired', undefined],
+        ])('falls back to the t MCP server when %s', async (_label, builder) => {
+            const hostEnv = { OMC_STRIPPED: '1' };
+            const { cfg, session } = await runWith(builder, hostEnv);
+            expect(cfg.tools).toBeUndefined();
+            expect(cfg.disabledMcpServers).toEqual(['github-mcp-server']);
+            expect(session.tool_transport).toBe('mcp');
+            expect(hostEnv.OMC_STRIPPED).toBe('1');
+        });
     });
     it('a termination request hard-stops: tree-kills the runtime and publishes termination-complete', async () => {
         const attempt = await newAttempt();

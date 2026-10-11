@@ -28,6 +28,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 <br/>This work is based on [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) by Yeachan Heo, but with a Copilot CLI focus.
 
+> **v5.10.0** adds a premium-request budget governor (`omg budget`, warn-only by default), the `omg ship` merge-gate engine and skill, a Copilot `notification` hook for permission prompts and `ask_user`, opt-in in-process SDK tools for sdk team workers, and ports upstream `dev` through 7cb577e94 with narrower permission auto-approval ([changelog](CHANGELOG.md)).
 > **v5.9.0** runs `omg team` on headless SDK workers by default under the Copilot CLI, dispatches Copilot hooks per event (12 entries), reads `.copilot/omg.jsonc` everywhere, adds a daily upstream drift bot, and ports upstream `dev` through a720eabd0 ([migration note](docs/MIGRATION.md#v581--v590-sdk-team-transport-by-default)).
 > **v5.8.1** ports upstream oh-my-claudecode `dev` through ef9a44f0e: a cheaper HUD cache wrapper, HUD support for `TaskCreate`/`TaskUpdate` todos and an effort-level element, a pasted-echo autopilot fix, a detached-session format fix, and ralph's `hardMaxIterations` enforced in the Stop hook scripts ([migration note](docs/MIGRATION.md#v580--v581-ralph-hard-max-in-the-stop-hook)).
 > **v5.8.0** adds an experimental headless team transport (`omg team --transport sdk`), factory chains and faster hooks on Copilot, and a Copilot smoke job in CI ([migration note](docs/MIGRATION.md#v570--v580-sdk-team-transport)).

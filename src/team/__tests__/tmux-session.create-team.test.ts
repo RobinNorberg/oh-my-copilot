@@ -6,6 +6,7 @@ type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) =>
 const mockedCalls = vi.hoisted(() => ({
   strictIdentityUnavailable: false,
   forceWindowsStrictIdentity: false,
+  omitGuardMarkerForCreationOutput: false,
   execFileArgs: [] as string[][],
   identitySocketPath: '/tmp/omc-create-team.sock',
   splitCount: 0,
@@ -53,6 +54,7 @@ vi.mock('child_process', async (importOriginal) => {
       const commandText = tmuxArgs.join(' ');
       const marker = commandText.match(/OMC_TMUX_GUARD_OK_[A-Za-z0-9_]+/)?.[0];
       if (!marker) return { stdout: '', stderr: '' };
+      const creationMarker = mockedCalls.omitGuardMarkerForCreationOutput ? '' : `${marker}\n`;
       if (commandText.includes('split-window')) {
         mockedCalls.splitCount += 1;
         if (mockedCalls.tmuxSplitError) {
@@ -66,7 +68,7 @@ vi.mock('child_process', async (importOriginal) => {
         const paneLine = paneOutput.trim() === '' || !/^%\d+$/.test(paneOutput.trim())
           ? paneOutput
           : `${paneOutput.trim()}\t${socket ?? mockedCalls.identitySocketPath}\t${process.pid}\n`;
-        return { stdout: `${paneLine}${marker}\n`, stderr: '' };
+        return { stdout: `${paneLine}${creationMarker}`, stderr: '' };
       }
       if (commandText.includes('new-session')) {
         mockedCalls.freshServerAlive = true;
@@ -77,7 +79,7 @@ vi.mock('child_process', async (importOriginal) => {
           return { stdout: `#S:#{window_index}\t#{pane_id}\t#{socket_path}\t#{pid}\n${marker}\n`, stderr: '' };
         }
         return {
-          stdout: `${session}:0\t%91\t${socket ?? mockedCalls.identitySocketPath}\t${process.pid}\n${marker}\n`,
+          stdout: `${session}:0\t%91\t${socket ?? mockedCalls.identitySocketPath}\t${process.pid}\n${creationMarker}`,
           stderr: '',
         };
       }
@@ -102,7 +104,7 @@ vi.mock('child_process', async (importOriginal) => {
           }
         }
         return {
-          stdout: `${windowOutput}${marker}\n`,
+          stdout: `${windowOutput}${creationMarker}`,
           stderr: '',
         };
       }
@@ -301,6 +303,7 @@ describe('createTeamSession context resolution', () => {
   beforeEach(() => {
     mockedCalls.strictIdentityUnavailable = false;
     mockedCalls.forceWindowsStrictIdentity = false;
+    mockedCalls.omitGuardMarkerForCreationOutput = false;
     mockedCalls.execFileArgs = [];
     mockedCalls.splitCount = 0;
     mockedCalls.newSplitStdouts = [];
@@ -372,6 +375,22 @@ describe('createTeamSession context resolution', () => {
       process_started_at: strictProcessStartedAt,
     });
     expect(session.tmuxServerIdentity?.socket_path).toBe(keepaliveCall?.[1]);
+  });
+
+  it.skipIf(!supportsStrictTmuxFixture)('accepts matching creation records when psmux omits trailing guard markers', async () => {
+    vi.stubEnv('TMUX', '');
+    vi.stubEnv('TMUX_PANE', '');
+    vi.stubEnv('CMUX_SURFACE_ID', '');
+    mockedCalls.omitGuardMarkerForCreationOutput = true;
+
+    const session = await createTeamSession('race-team', 1, '/tmp');
+
+    expect(session.sessionMode).toBe('detached-session');
+    expect(session.workerPaneIds).toEqual(['%501']);
+    expect(mockedCalls.execFileArgs.filter(args =>
+      args.includes('if-shell')
+      && (args.join(' ').includes('new-session') || args.join(' ').includes('split-window')),
+    )).toHaveLength(2);
   });
 
   it.skipIf(!supportsStrictTmuxFixture)('filters ambient environment from tmux pane shells', async () => {

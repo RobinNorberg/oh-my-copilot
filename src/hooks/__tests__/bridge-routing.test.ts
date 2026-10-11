@@ -2277,18 +2277,18 @@ $ ultrawork search the codebase`,
       expect(decision.behavior).toBe('allow');
     });
 
-    it('permission-request: camelCase input auto-allows explicitly targeted single-test commands', async () => {
+    it('permission-request: camelCase input auto-allows repo-scoped inspection', async () => {
       const tempDir = mkdtempSync(join(tmpdir(), 'bridge-858-permission-camel-'));
       try {
-        mkdirSync(join(tempDir, 'src', '__tests__'), { recursive: true });
+        mkdirSync(join(tempDir, 'src'), { recursive: true });
         execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-        writeFileSync(join(tempDir, 'src', '__tests__', 'safe.test.ts'), 'test("x", () => {});\n');
+        writeFileSync(join(tempDir, 'src', 'safe.ts'), 'export const value = 1;\n');
 
         const input: HookInput = {
           sessionId: 'test-session-858',
           directory: tempDir,
           toolName: 'Bash',
-          toolInput: { command: 'vitest run src/__tests__/safe.test.ts' },
+          toolInput: { command: 'cat src/safe.ts' },
         };
 
         const result = await processHook('permission-request', input);
@@ -2296,6 +2296,7 @@ $ ultrawork search the codebase`,
         const out = result as unknown as Record<string, unknown>;
         expect(out.hookSpecificOutput).toBeDefined();
         const specific = out.hookSpecificOutput as Record<string, unknown>;
+        expect(specific.hookEventName).toBe('PermissionRequest');
         const decision = specific.decision as Record<string, unknown>;
         expect(decision.behavior).toBe('allow');
       } finally {

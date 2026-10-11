@@ -19,6 +19,7 @@
  * cache is returned (stale: true); if no cache exists, error is set.
  */
 import { spawn } from 'child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
@@ -38,13 +39,13 @@ function readCache() {
         return null;
     }
 }
-function writeCache(buckets) {
+function writeCache(buckets, identity) {
     try {
         const p = getCachePath();
         const dir = dirname(p);
         if (!existsSync(dir))
             mkdirSync(dir, { recursive: true });
-        const cache = { timestamp: Date.now(), buckets };
+        const cache = { timestamp: Date.now(), buckets, identity };
         writeFileSync(p, JSON.stringify(cache, null, 2));
     }
     catch {
@@ -84,6 +85,9 @@ export function spawnWithTimeout(cmd, timeoutMs) {
                 // The process group may already have exited.
             }
         };
+        // Consume diagnostics without retaining them so a full stderr pipe cannot
+        // block the command before it writes its JSON result to stdout.
+        child.stderr.on('data', () => { });
         let stdout = '';
         child.stdout.on('data', (chunk) => {
             stdout += chunk.toString();
@@ -169,7 +173,12 @@ function parseOutput(raw, periods) {
  * - If no cache exists, returns {buckets: [], error: 'command failed'}.
  */
 export async function executeCustomProvider(config) {
-    const cache = readCache();
+    // Period order and duplicates do not affect the existing membership filter.
+    const identity = createHash('sha256').update(JSON.stringify({
+        command: config.command, periods: [...new Set(config.periods ?? [])].sort(),
+    })).digest('hex');
+    const storedCache = readCache();
+    const cache = storedCache?.identity === identity ? storedCache : null;
     // Return fresh cache
     if (cache && isCacheValid(cache)) {
         return { buckets: cache.buckets, stale: false };
@@ -186,7 +195,7 @@ export async function executeCustomProvider(config) {
                 return { buckets: cache.buckets, stale: true };
             return { buckets: [], stale: false, error: 'invalid output' };
         }
-        writeCache(buckets);
+        writeCache(buckets, identity);
         return { buckets, stale: false };
     }
     catch (err) {

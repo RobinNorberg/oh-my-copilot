@@ -73,6 +73,8 @@ export interface SdkSessionConfig {
   disabledMcpServers: string[];
   excludedTools: string[];
   model?: string;
+  /** SDK session tools (`Tool[]`); the team host's in-process plugin tools. */
+  tools?: unknown[];
 }
 
 export interface SdkSessionLike {

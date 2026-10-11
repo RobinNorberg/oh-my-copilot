@@ -13,12 +13,15 @@
           "UserPromptSubmit",
           "${CLAUDE_PLUGIN_ROOT}/scripts/keyword-detector.mjs",
           "--",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/skill-injector.mjs"
+          "${CLAUDE_PLUGIN_ROOT}/scripts/skill-injector.mjs",
+          "--",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/premium-budget.mjs",
+          "submit"
         ],
         "env": {
           "OMC_HOOK_EVENT": "UserPromptSubmit"
         },
-        "timeoutSec": 60
+        "timeoutSec": 65
       }
     ],
     "SessionStart": [
@@ -38,12 +41,15 @@
           "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/stale-run-reporter.mjs",
           "--",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/runs-reconciler.mjs"
+          "${CLAUDE_PLUGIN_ROOT}/scripts/runs-reconciler.mjs",
+          "--",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/premium-budget.mjs",
+          "start"
         ],
         "env": {
           "OMC_HOOK_EVENT": "SessionStart"
         },
-        "timeoutSec": 25
+        "timeoutSec": 30
       }
     ],
     "PreToolUse": [
@@ -213,12 +219,15 @@
           "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/budget-guard.mjs",
           "--",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/premium-budget.mjs",
+          "turn",
+          "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/code-simplifier.mjs"
         ],
         "env": {
           "OMC_HOOK_EVENT": "Stop"
         },
-        "timeoutSec": 28
+        "timeoutSec": 33
       }
     ],
     "SessionEnd": [
@@ -238,6 +247,23 @@
           "OMC_HOOK_EVENT": "SessionEnd"
         },
         "timeoutSec": 60
+      }
+    ],
+    "Notification": [
+      {
+        "type": "command",
+        "exec": "node",
+        "args": [
+          "--require",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "Notification",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/notification.mjs"
+        ],
+        "env": {
+          "OMC_HOOK_EVENT": "Notification"
+        },
+        "timeoutSec": 5
       }
     ]
   }

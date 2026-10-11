@@ -52,6 +52,8 @@ export interface ConflictReport {
     nodeOnPath: boolean;
     /** Legacy-named project config files (`.copilot/omc.jsonc`, `.claude/omc.jsonc`). WARN only. */
     legacyProjectConfigs: LegacyProjectConfig[];
+    /** Invalid `budget` config values (ignored by the governor, which fails open). WARN only. */
+    budgetIssues?: string[];
     hasConflicts: boolean;
 }
 export interface ClaudeMdFileStatus {

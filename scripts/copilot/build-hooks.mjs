@@ -21,6 +21,8 @@
  *   - `env.OMC_HOOK_EVENT` names the event for the output adapter preload.
  *   - Any command or hook field outside the known upstream form throws, so an
  *     upstream change breaks the build instead of shipping a silent no-op.
+ *   - FORK_HOOKS adds fork-owned groups for Copilot-only events; an upstream
+ *     group for the same event throws.
  *
  * Usage:
  *   node scripts/copilot/build-hooks.mjs            print to stdout
@@ -46,12 +48,33 @@ const COMMAND_PATTERN = /^node "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/run\.cjs "\$
 const KNOWN_HOOK_FIELDS = new Set(['type', 'command', 'timeout', 'async']);
 const KNOWN_GROUP_FIELDS = new Set(['matcher', 'hooks']);
 
-export function buildCopilotHooks(source, { preload = true } = {}) {
+/**
+ * Fork-owned groups for Copilot events upstream registers no hook for, in the
+ * upstream form so they take the same dispatcher + adapter path. Appended after
+ * the upstream events. Each accepted or rejected event is listed in
+ * docs/DEVELOPERS.md ("Copilot CLI hook events").
+ */
+export const FORK_HOOKS = {
+  Notification: [{
+    hooks: [{
+      type: 'command',
+      command: 'node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs "${CLAUDE_PLUGIN_ROOT}"/scripts/copilot/notification.mjs',
+      timeout: 5,
+    }],
+  }],
+};
+
+export function buildCopilotHooks(source, { preload = true, forkHooks = FORK_HOOKS } = {}) {
   if (!source || typeof source !== 'object' || !source.hooks || typeof source.hooks !== 'object') {
     throw new Error('hooks/hooks.json must have a "hooks" object');
   }
+  for (const event of Object.keys(forkHooks)) {
+    if (Object.prototype.hasOwnProperty.call(source.hooks, event)) {
+      throw new Error(`hooks/hooks.json now registers ${event}; merge or drop the fork-owned FORK_HOOKS.${event}`);
+    }
+  }
   const hooks = {};
-  for (const [event, groups] of Object.entries(source.hooks)) {
+  for (const [event, groups] of Object.entries({ ...source.hooks, ...forkHooks })) {
     if (!Array.isArray(groups)) throw new Error(`hooks/hooks.json ${event} must be an array`);
     const entries = [];
     for (const group of groups) {

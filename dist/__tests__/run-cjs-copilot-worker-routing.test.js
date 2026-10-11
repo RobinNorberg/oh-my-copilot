@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'child_process';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'fs';
 import { createRequire } from 'module';
 import { tmpdir } from 'os';
-import { basename, join, relative } from 'path';
+import { basename, dirname, join, relative } from 'path';
 /**
  * Fork (oh-my-copilot): under Copilot (OMC_HOOK_EVENT set) scripts/run.cjs runs
  * the audited generic hooks in an in-process Worker instead of the win32
@@ -28,7 +28,10 @@ function perHookEntries() {
         const parsed = dispatcher.parseDispatchArgv(entry.args.slice(dispatchIndex + 1));
         expect(parsed.event).toBe(event);
         return parsed.hooks.map(({ script, args }) => {
-            const scriptPath = join(REPO_ROOT, 'scripts', basename(script));
+            // Keep the subdirectory: fork hooks (build-hooks.mjs FORK_HOOKS) live in
+            // scripts/copilot/, e.g. `${CLAUDE_PLUGIN_ROOT}/scripts/copilot/notification.mjs`.
+            expect(script.startsWith('${CLAUDE_PLUGIN_ROOT}/scripts/'), script).toBe(true);
+            const scriptPath = join(REPO_ROOT, ...script.slice('${CLAUDE_PLUGIN_ROOT}/'.length).split('/'));
             const manifestHook = runCjs.resolveHookTimeoutMs(scriptPath, args);
             expect(manifestHook, script).not.toBeNull();
             return {
@@ -174,14 +177,25 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
     });
     it('the audited set covers exactly the generic entries of copilot/hooks.json', () => {
         const generic = new Set();
+        const root = realpathSync(REPO_ROOT);
+        let forkHooks = 0;
         for (const { entry } of perHookEntries()) {
             const script = basename(entry.script);
+            if (basename(dirname(entry.script)) === 'copilot') {
+                // Fork hooks in scripts/copilot/ are not upstream generic hooks: they
+                // stay on the supervised child path.
+                const resolution = { targetPath: realpathSync(entry.script), trustedPluginRoot: root };
+                expect(runCjs.resolveCopilotWorkerTarget(resolution, entry.extraArgs, entry.env), script).toBeNull();
+                forkHooks++;
+                continue;
+            }
             if (!runCjs.TRUSTED_WORKER_HOOKS.has(script) && !/^(wiki-)?session-end\.mjs$/.test(script))
                 generic.add(script);
         }
         // A new upstream hook must be audited (no process.chdir, signal handlers,
         // isMainThread gating, or stdio-inheriting children) before it joins the set.
         expect([...runCjs.COPILOT_WORKER_HOOKS].sort()).toEqual([...generic].sort());
+        expect(forkHooks).toBeGreaterThan(0); // notification.mjs
     });
     it('every shipped generic entry resolves to the Worker path under its own event, except the <=3s-budget ones that stay on the child path', () => {
         const root = realpathSync(REPO_ROOT);
@@ -204,7 +218,7 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
             expect(runCjs.resolveCopilotWorkerTarget(resolution, entry.extraArgs, {})).toBeNull();
             checked++;
         }
-        expect(checked).toBe(runCjs.COPILOT_WORKER_HOOKS.size + 1); // subagent-tracker start + stop
+        expect(checked).toBe(runCjs.COPILOT_WORKER_HOOKS.size + 3); // subagent-tracker start + stop, premium-budget start + submit + turn
     });
     // Every generic shipped hook, once through each path with the same fixture
     // payload in fresh identical projects: exit code, normalised stdout, and the
@@ -291,7 +305,7 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
         const markerPath = writeRuntimeMarker(tempDir('omc-copilot-worker-marker-'));
         const child = runAll('child', { OMC_COPILOT_HOOK_WORKER: '0' }, markerPath);
         const worker = runAll('worker', {}, markerPath);
-        expect(worker.results.length).toBe(runCjs.COPILOT_WORKER_HOOKS.size + 1); // subagent-tracker start + stop
+        expect(worker.results.length).toBe(runCjs.COPILOT_WORKER_HOOKS.size + 3); // subagent-tracker start + stop, premium-budget start + submit + turn
         expect(worker.results).toEqual(child.results);
         expect(worker.files).toEqual(child.files);
         // Every child-path run actually ran in a plain child process (no Worker

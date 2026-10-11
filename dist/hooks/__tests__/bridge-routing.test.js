@@ -1852,23 +1852,24 @@ $ ultrawork search the codebase`,
             const decision = specific.decision;
             expect(decision.behavior).toBe('allow');
         });
-        it('permission-request: camelCase input auto-allows explicitly targeted single-test commands', async () => {
+        it('permission-request: camelCase input auto-allows repo-scoped inspection', async () => {
             const tempDir = mkdtempSync(join(tmpdir(), 'bridge-858-permission-camel-'));
             try {
-                mkdirSync(join(tempDir, 'src', '__tests__'), { recursive: true });
+                mkdirSync(join(tempDir, 'src'), { recursive: true });
                 execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-                writeFileSync(join(tempDir, 'src', '__tests__', 'safe.test.ts'), 'test("x", () => {});\n');
+                writeFileSync(join(tempDir, 'src', 'safe.ts'), 'export const value = 1;\n');
                 const input = {
                     sessionId: 'test-session-858',
                     directory: tempDir,
                     toolName: 'Bash',
-                    toolInput: { command: 'vitest run src/__tests__/safe.test.ts' },
+                    toolInput: { command: 'cat src/safe.ts' },
                 };
                 const result = await processHook('permission-request', input);
                 expect(result.continue).toBe(true);
                 const out = result;
                 expect(out.hookSpecificOutput).toBeDefined();
                 const specific = out.hookSpecificOutput;
+                expect(specific.hookEventName).toBe('PermissionRequest');
                 const decision = specific.decision;
                 expect(decision.behavior).toBe('allow');
             }
