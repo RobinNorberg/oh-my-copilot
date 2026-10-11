@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildListToolsResponse, callTool, getEnabledTools } from '../../mcp/tool-registry.js';
-import { buildSdkInProcessTools } from '../sdk-inprocess-tools.js';
+import { BRIDGE_CLEANUP_BUDGET, buildSdkInProcessTools } from '../sdk-inprocess-tools.js';
 import { buildSdkExcludedTools } from '../sdk-policy.js';
 
 // Records what the SDK converter receives and returns it unchanged, so a
@@ -63,6 +63,13 @@ describe('sdk in-process tools: parity with the t MCP server', () => {
     expect(set.tools).toEqual([]);
     expect(set.disabledMcpServer).toBe('t');
     expect(typeof set.cleanup).toBe('function');
+  });
+
+  it('escalates bridge cleanup to SIGKILL inside the host\'s 5 s cleanup deadline', () => {
+    const { gracePeriodMs, sigtermGraceMs, finalWaitMs, parallel } = BRIDGE_CLEANUP_BUDGET;
+    expect(parallel).toBe(true);
+    expect(gracePeriodMs + sigtermGraceMs).toBeLessThan(5_000); // SIGKILL is sent before the deadline
+    expect(gracePeriodMs + sigtermGraceMs + finalWaitMs).toBeLessThanOrEqual(4_000); // with margin for the LSP disconnect
   });
 
   it('returns null without the SDK converter, so the host keeps the MCP server', () => {

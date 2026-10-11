@@ -51,9 +51,20 @@ export interface SdkInProcessToolSet {
   cleanup: () => Promise<void>;
 }
 
+/**
+ * Bridge escalation that reaches SIGKILL inside the host's 5 s cleanup
+ * deadline (sdk-host TOOL_CLEANUP_TIMEOUT_MS): SIGINT 1.5 s, SIGTERM 1.5 s,
+ * SIGKILL then 0.5 s, all bridges in parallel = 3.5 s. The defaults
+ * (5 s + 2.5 s + 1 s, one bridge at a time) would be cut off before SIGTERM.
+ */
+export const BRIDGE_CLEANUP_BUDGET = Object.freeze({ gracePeriodMs: 1_500, sigtermGraceMs: 1_500, finalWaitMs: 500, parallel: true });
+
 async function cleanupInProcessTools(): Promise<void> {
-  try { await cleanupOwnedBridgeSessions(); } catch { /* best effort, as the MCP server */ }
-  try { await disconnectAllLsp(); } catch { /* best effort, as the MCP server */ }
+  // In parallel: the LSP clients do not wait behind the bridge escalation.
+  await Promise.all([
+    cleanupOwnedBridgeSessions(BRIDGE_CLEANUP_BUDGET).catch(() => undefined), // best effort, as the MCP server
+    Promise.resolve().then(disconnectAllLsp).catch(() => undefined),
+  ]);
 }
 
 /**

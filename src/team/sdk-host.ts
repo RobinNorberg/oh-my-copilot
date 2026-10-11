@@ -612,6 +612,8 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
         await atomicWriteJson(files.probe, await probeSession(s)).catch(() => undefined);
       }
     }
+    // Also the first check of a crash or signal that arrived during startup
+    // (its RPCs cannot be cancelled): before any prompt is sent.
     if (!stop && crashed) { stop = 'hard'; outcome = 'tool_crash'; }
     if (!stop && signalled) { stop = 'hard'; outcome = 'terminated'; }
     if (!stop && existsSync(`${attempt.startedPath}.termination-request`)) { stop = 'hard'; outcome = 'terminated'; }
