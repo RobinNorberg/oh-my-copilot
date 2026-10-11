@@ -133,6 +133,7 @@ If both configurations exist, **project-scoped takes precedence** over global:
 | `DISABLE_OMC`              | _(unset)_            | Set to `1` or `true` to disable all OMC hooks |
 | `OMC_SKIP_HOOKS`           | _(unset)_            | Comma-separated list of hook names to skip                                                                                                                                                                                                                                  |
 | `OMC_GIT_GUARDRAILS`       | _(unset)_            | `1` force-enables the destructive-git PreToolUse guard in any session; `0` always disables it (immediate exit, wins over everything). With the variable unset, the guard is on by default while an active unattended mode (ralph/autopilot/team/ultragoal) is detected.      |
+| `OMC_BUDGET_GOVERNOR`      | _(unset)_            | `0` turns the [premium-request budget](#omg-budget-premium-request-budget) governor off: no ledger writes, hook messages, HUD element or team fan-out check. |
 | `OMC_RUN_BUDGET_TOKENS`    | _(unset)_            | Opt-in session token budget for unattended modes. Ralph and autopilot compare spend at iteration/phase boundaries (via the `trace_summary` tool): warn at 90%, stop with a resumable budget report at 100%. Advisory today — the model reads the tool output.               |
 | `OMC_STALE_RUN_HOURS`      | `2`                  | Stale-run watchdog threshold in hours. A SessionStart hook reports unattended-mode state files left `active: true` with no mtime progress for this long (the signature of a crashed run). Advisory only — the watchdog never mutates state or resumes runs.                |
 | `OMC_HOST_LOAD_THRESHOLD` | _(dynamic)_ | CPU load threshold (1-minute average). Gate blocks operations when load exceeds this. Default: 80% of available cores. Set to negative value to disable. |
@@ -840,6 +841,48 @@ claude mcp add omg-dev -- node C:/Code/OMC/dist/mcp/standalone-server.js
 
 `OMC_DISABLE_TOOLS=smoke` hides `host_smoke`. See [DEVELOPERS.md](./DEVELOPERS.md#headless-smoke-against-a-local-build) for the developer workflow.
 
+### `omg budget` (premium-request budget)
+
+Copilot bills per premium request. The budget governor keeps a ledger of what this project's Copilot sessions and teams used, warns at your limits, and in enforce mode stops `omg team` from fanning out past them.
+
+```bash
+omg budget                  # usage since the last reset against the configured limits
+omg budget status --json    # the full ledger: sessions, teams, measured vs estimated records
+omg budget reset            # start a new accounting period
+```
+
+Configure it in `.copilot/omg.jsonc` (or the user config). Nothing is limited until you set a limit:
+
+```jsonc
+{
+  "budget": {
+    "mode": "warn",              // "warn" (default): report only; "enforce": also refuse or clamp omg team
+    "unit": "premiumRequests",   // or "credits" (AI credits)
+    "softLimit": 200,            // one-time warning
+    "hardLimit": 300,            // one-time alert; in enforce mode it bounds team fan-out
+    "perTeamLimit": 20           // enforce mode: largest projected cost of one omg team launch
+  }
+}
+```
+
+**What is measured.** The ledger lives at `.omg/state/budget-ledger.json`. Each record is labelled `measured` or `estimated`:
+
+- **Copilot CLI sessions** are read from `$COPILOT_HOME/session-state/<session id>/events.jsonl`. Its `session.shutdown` and `session.usage_checkpoint` events carry `totalPremiumRequests` (model multiplier applied) and `totalNanoAiu` (1e-9 AI credits); those are measured. Copilot CLI 1.0.91 writes them when the session ends, so a running session is an estimate: one premium request per top-level prompt at an assumed x1 multiplier, with credits unknown. The next SessionStart re-reads up to 20 estimated sessions and replaces them with the measured totals once they exist.
+- **SDK team workers** (`omg team` sdk transport) are recorded by their host from the live `assistant.usage` events: AI credits as billed, premium requests counted x1 per user-initiated call, and the `session.shutdown` totals once the worker stops. Pane team workers are recorded by their own hooks under the team.
+- A measured record is never replaced by an estimate. A HUD value or summary prefixed with `~`, or a non-zero `estimatedRecords`, means part of the total is estimated.
+
+**Hooks.** `scripts/premium-budget.mjs` runs in the SessionStart, UserPromptSubmit and Stop groups of the per-event dispatcher. SessionStart prints one summary line when a limit is set. Stop records the turn's usage and, on the first crossing of `softLimit` or `hardLimit` per period, stores a notice that the next prompt delivers as context. The hook fails open: an error, a missing build or an unreadable ledger produces no output and never blocks. Hooks never block a session in either mode.
+
+**HUD.** The `premiumBudget` element shows `prq:12/300` (`cr:` in credits) against the hard limit, else the soft limit: yellow from the soft limit, red from the hard limit. It appears only when a limit is set; `"premiumBudget": false` under `elements` hides it.
+
+**Team fan-out.** Before `omg team` starts, the governor projects the launch cost, an estimate: one premium request per copilot worker, or `team.sdk.maxCreditsPerWorker` per copilot worker with `"unit": "credits"`. Workers of other providers are not billed to Copilot. When the projection exceeds `perTeamLimit` or what is left of `hardLimit`:
+
+- **warn mode** prints `[omg budget] projected ... exceeds ...; starting anyway (warn mode).` to stderr and starts the team;
+- **enforce mode** clamps an all-copilot team to the workers that fit, and refuses the launch when none fit, when the team mixes providers, or when workers own decomposed subtasks (clamping would drop scope);
+- **`--budget-override`** starts the team unchanged with the warning.
+
+`omg budget` exits `1` once `hardLimit` is reached, so scripts can gate on it. `omg doctor conflicts` warns about invalid `budget` values; the governor ignores them and keeps its defaults. `OMC_BUDGET_GOVERNOR=0` turns everything off.
+
 ### Graph approval gates (remote approvals)
 
 Graph runtime `human-approval` nodes support two gate styles via `omg graph run`:
@@ -1279,8 +1322,8 @@ OMC registers 21 hook scripts across 11 Claude Code lifecycle events. For detail
 
 | Event                  | Scripts                                                                                                           | Timeout                                      |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| **UserPromptSubmit**   | `keyword-detector.mjs`, `skill-injector.mjs`                                                                      | 30s outer fuse per command; 8s, 12s trusted Worker limits |
-| **SessionStart**       | `session-start.mjs`, `project-memory-session.mjs`, `setup-init.mjs` (init), `setup-maintenance.mjs` (maintenance) | 5s, 5s, 30s, 60s |
+| **UserPromptSubmit**   | `keyword-detector.mjs`, `skill-injector.mjs`, `premium-budget.mjs prompt`                                        | 30s outer fuse per command; 8s, 12s trusted Worker limits |
+| **SessionStart**       | `session-start.mjs`, `project-memory-session.mjs`, `premium-budget.mjs session-start`, `setup-init.mjs` (init), `setup-maintenance.mjs` (maintenance) | 5s, 5s, 30s, 60s |
 | **PreToolUse**         | `pre-tool-enforcer.mjs`                                                                                           | 5s trusted Worker |
 | **PermissionRequest**  | `permission-handler.mjs` (Bash only)                                                                              | 5s               |
 | **PostToolUse**        | `post-tool-verifier.mjs`, `project-memory-posttool.mjs`, `post-tool-rules-injector.mjs`                          | 5s, 3s, 3s trusted Workers |
@@ -1288,7 +1331,7 @@ OMC registers 21 hook scripts across 11 Claude Code lifecycle events. For detail
 | **SubagentStart**      | `subagent-tracker.mjs start`                                                                                      | 3s               |
 | **SubagentStop**       | `subagent-tracker.mjs stop`, `verify-deliverables.mjs`                                                            | 5s, 5s           |
 | **PreCompact**         | `pre-compact.mjs`, `project-memory-precompact.mjs`                                                                | 10s, 5s          |
-| **Stop**               | `context-guard-stop.mjs`, `workflow-drift-guard.mjs`, `persistent-mode.mjs`, `code-simplifier.mjs`                | 5s, 3s, 10s, 5s  |
+| **Stop**               | `context-guard-stop.mjs`, `workflow-drift-guard.mjs`, `persistent-mode.mjs`, `premium-budget.mjs stop`, `code-simplifier.mjs` | 5s, 3s, 10s, 5s  |
 | **SessionEnd**         | `session-end.mjs`                                                                                                 | 30s              |
 
 For each UserPromptSubmit command, 30s is the outer host fuse, including any launcher delay before `run.cjs`. Exact canonical targets use the trusted Worker branch only when their manifest event matches: the prompt hooks receive the 8s keyword-detector or 12s skill-injector execution caps, while the PreToolUse and PostToolUse hooks retain their manifest-derived inner budgets. Generic targets, untrusted paths, event mismatches, and invocations with extra arguments retain the isolated child-process path. A command that never starts the runner can take the entire 30s per-command fuse, and host scheduling does not imply an aggregate latency.

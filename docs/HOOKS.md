@@ -422,6 +422,15 @@ On a Stop re-entry (`stop_hook_active` or `stopHookActive`), it records a pass a
 - **Rollout (tri-state, mirrors the jev off/shadow/active protocol)**: `OMC_BUDGET_ENFORCE=off` does nothing; `shadow` (default) logs judgments to `.omg/state/enforcement/shadow.jsonl` and never blocks or warns; `active` warns at 90% (system message) and blocks at 100% (exit 2, budget-report contract in the refusal).
 - **Evidence**: every judgment is appended to the shadow log (`{ts, rule, mode, outcome, detail, latencyMs}`) — the promotion evidence for moving the default from shadow to active. A rule promotes only after enough samples with zero false blocks.
 
+#### premium-budget (`premium-budget.mjs`)
+
+The hook side of the [premium-request budget](./REFERENCE.md#omg-budget-premium-request-budget). It records the session's Copilot usage in `.omg/state/budget-ledger.json` and reports the `budget` limits of `.copilot/omg.jsonc`. It never blocks.
+
+- **Events**: SessionStart (`session-start`: record, re-read estimated sessions, one summary line as context when a limit is set), Stop (`stop`: record the turn, mark a first soft or hard limit crossing), UserPromptSubmit (`prompt`: deliver that notice once as `additionalContext`, the only hook output Copilot injects).
+- **Source**: `$COPILOT_HOME/session-state/<session id>/events.jsonl`; measured from `session.shutdown` / `session.usage_checkpoint` totals, else estimated at one premium request per top-level prompt.
+- **Team workers**: with `OMC_TEAM_WORKER` set the usage goes under the team in the leader's ledger (`OMC_TEAM_LEADER_CWD`) and no message is printed; sdk workers (`OMC_BUDGET_HOST_LEDGER=1`) are skipped because their host records them.
+- **Fail-open**: the logic loads from `dist/budget/governor.js`; any error prints `{"continue":true,"suppressOutput":true}`. `OMC_BUDGET_GOVERNOR=0` turns it off.
+
 ### Mode State Management
 
 Execution mode hooks manage state files in the `.omg/state/` directory.

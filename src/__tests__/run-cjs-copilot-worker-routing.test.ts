@@ -232,7 +232,7 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
       expect(runCjs.resolveCopilotWorkerTarget(resolution, entry.extraArgs, {})).toBeNull();
       checked++;
     }
-    expect(checked).toBe(runCjs.COPILOT_WORKER_HOOKS.size + 1); // subagent-tracker start + stop
+    expect(checked).toBe(runCjs.COPILOT_WORKER_HOOKS.size + 3); // subagent-tracker start + stop, premium-budget session-start + prompt + stop
   });
 
   // Every generic shipped hook, once through each path with the same fixture
@@ -311,7 +311,7 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
     const markerPath = writeRuntimeMarker(tempDir('omc-copilot-worker-marker-'));
     const child = runAll('child', { OMC_COPILOT_HOOK_WORKER: '0' }, markerPath);
     const worker = runAll('worker', {}, markerPath);
-    expect(worker.results.length).toBe(runCjs.COPILOT_WORKER_HOOKS.size + 1); // subagent-tracker start + stop
+    expect(worker.results.length).toBe(runCjs.COPILOT_WORKER_HOOKS.size + 3); // subagent-tracker start + stop, premium-budget session-start + prompt + stop
     expect(worker.results).toEqual(child.results);
     expect(worker.files).toEqual(child.files);
     // Every child-path run actually ran in a plain child process (no Worker
