@@ -47,7 +47,10 @@ const elicitation = { ...permissionPrompt, notification_type: 'elicitation_dialo
 
 const tmpDirs: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), 'omg-notif-')); tmpDirs.push(d); return d; };
-afterEach(() => { for (const d of tmpDirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => {
+  vi.unstubAllEnvs();
+  for (const d of tmpDirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
 
 describe('copilot notification hook', () => {
   it('turns a permission prompt into a non-replyable ask-user-question notification', async () => {
@@ -83,13 +86,28 @@ describe('copilot notification hook', () => {
     const q = (message: string) => notificationFor({ ...permissionPrompt, message }, {}, redactTokens)?.data.question;
     expect(q('Write file: C:\\secret\\keys.txt')).toBe('Permission needed: Write file');
     expect(q('no category here password=x')).toBe('Permission needed');
-    expect(q('Run command: ghp_16C7e42F292c6912E7710c838347Ae178B4a --x')).toBe('Permission needed: Run command: ghp_****');
+    // A binary the redactor masks, or none at all, is not sent.
+    expect(q('Run command: ghp_16C7e42F292c6912E7710c838347Ae178B4a --x')).toBe('Permission needed: Run command');
+    expect(q('Run command: "unterminated path x')).toBe('Permission needed: Run command');
     expect(commandBinary('  ')).toBe('');
     expect(commandBinary('FOO=1 BAR=2 ./scripts/run.sh --flag')).toBe('run.sh');
     expect(commandBinary('<weird> x')).toBe('');
     expect(commandBinary('"C:\\Program Files\\Git\\bin\\git.exe" push')).toBe('git.exe');
     expect(commandBinary("TOKEN=x '/usr/local/my tools/deploy' --prod")).toBe('deploy');
-    expect(commandBinary('"unterminated path x')).toBe('unterminated');
+    expect(commandBinary('"unterminated path x')).toBe('');
+  });
+
+  it.each([
+    ['DB_PASSWORD="correct horse" psql -h db', 'psql', 'horse'],
+    ["TOKEN='abc def/hunter2' curl https://x", 'curl', 'hunter2'],
+    ['A="x y" B="z w" make all', 'make', 'y'],
+    ['TOKEN=`cat f` curl https://x', 'curl', 'f'],
+  ])('never takes a fragment of a quoted assignment for the binary: %s', async (command, binary, fragment) => {
+    const { notificationFor, commandBinary } = await hook;
+    expect(commandBinary(command)).toBe(binary);
+    const question = String(notificationFor({ ...permissionPrompt, message: `Run command: ${command}` }, {}, redactTokens)?.data.question);
+    expect(question).toBe(`Permission needed: Run command: ${binary}`);
+    expect(question.split(': ')).not.toContain(fragment);
   });
 
   it('sends only an allowlisted title (letters and spaces, at most 40), else the constant', async () => {
@@ -184,6 +202,7 @@ describe('copilot notification hook', () => {
       const { runNotificationHook } = await hook;
       const dispatch = vi.fn();
       const state = tmp();
+      vi.stubEnv('OMC_STATE_DIR', state); // keep cooldown files out of a ~/.omg the temp dir resolves to
       await runNotificationHook({}, {
         readInput: async () => JSON.stringify({ ...(payload as object), cwd: state }),
         load: async () => ({ notifications, dispatchNotificationInBackground: dispatch }),
@@ -217,6 +236,21 @@ describe('copilot notification hook', () => {
       expect(ask[0]![1]).toMatchObject({ question: ASK_USER_GENERIC_TEXT });
       const current = await run({ ...elicitation, sessionId: 'sess-current-ask' }, srcNotifications);
       expect(current[0]![1]).toMatchObject({ question: 'Question: Which database?' });
+    });
+
+    it('dedupes a stale-build ask_user on the original question, not the identical generic text', async () => {
+      const { runNotificationHook, ASK_USER_GENERIC_TEXT } = await hook;
+      const dispatch = vi.fn();
+      const state = tmp();
+      vi.stubEnv('OMC_STATE_DIR', state);
+      const ask =(message: string) => runNotificationHook({}, {
+        readInput: async () => JSON.stringify({ ...elicitation, sessionId: 'sess-stale-dedupe', cwd: state, message }),
+        load: async () => ({ notifications: staleNotifications, dispatchNotificationInBackground: dispatch }),
+      });
+      await ask('Which database?');
+      await ask('Which region?');
+      await ask('Which region?');
+      expect(dispatch.mock.calls.map(([, data]) => (data as { question: string }).question)).toEqual([ASK_USER_GENERIC_TEXT, ASK_USER_GENERIC_TEXT]);
     });
 
     it('never sends ask_user secrets through the committed dist/notifications', async () => {

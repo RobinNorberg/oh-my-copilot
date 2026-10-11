@@ -10,6 +10,7 @@ import {
   utimesSync,
   openSync,
   closeSync,
+  readdirSync,
 } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -523,6 +524,35 @@ describe("session-registry", () => {
       writeFileSync(join(testDir, "reply-blocked-pane-_6.json"), JSON.stringify({ main: "not a date" }));
       expect(isPaneReplyBlocked("%6", { createdAt: at(t0), tmuxSessionName: "main" })).toBe(true);
       expect(isPaneReplyBlocked("%7", { createdAt: at(t0), tmuxSessionName: "main" })).toBe(false);
+    });
+
+    it("fails closed on a truncated, empty or non-object marker file; a later mark replaces it", () => {
+      const fresh = { createdAt: at(t0 + 10_000), tmuxSessionName: "work" };
+      writeFileSync(join(testDir, "reply-blocked-pane-_10.json"), '{"main":"2026-10-11T1');
+      writeFileSync(join(testDir, "reply-blocked-pane-_11.json"), "");
+      writeFileSync(join(testDir, "reply-blocked-pane-_12.json"), "null");
+      for (const pane of ["%10", "%11", "%12"]) {
+        expect(isPaneReplyBlocked(pane, fresh)).toBe(true);
+        expect(isPaneReplyBlocked(pane)).toBe(true);
+      }
+      // Marking a corrupt pane writes an unnamed marker: earlier mappings of
+      // any session stay refused, later ones are replyable again.
+      markPaneNonReplyable("%10", "main", new Date(t0));
+      expect(JSON.parse(readFileSync(join(testDir, "reply-blocked-pane-_10.json"), "utf-8"))).toEqual({ "": at(t0), main: at(t0) });
+      expect(isPaneReplyBlocked("%10", { createdAt: at(t0 - 1), tmuxSessionName: "work" })).toBe(true);
+      expect(isPaneReplyBlocked("%10", fresh)).toBe(false);
+    });
+
+    it("writes markers atomically and keeps a session named __proto__", () => {
+      markPaneNonReplyable("%9", "__proto__", new Date(t0));
+      markPaneNonReplyable("%9", "main", new Date(t0 + 5));
+      const text = readFileSync(join(testDir, "reply-blocked-pane-_9.json"), "utf-8");
+      expect(text).toBe(JSON.stringify({ ["__proto__"]: at(t0), main: at(t0 + 5) }));
+      expect(isPaneReplyBlocked("%9", { createdAt: at(t0), tmuxSessionName: "__proto__" })).toBe(true);
+      expect(isPaneReplyBlocked("%9", { createdAt: at(t0 + 1), tmuxSessionName: "__proto__" })).toBe(false);
+      expect(isPaneReplyBlocked("%9", { createdAt: at(t0 + 5), tmuxSessionName: "main" })).toBe(true);
+      // No temp file is left next to the marker.
+      expect(readdirSync(testDir).filter(name => name.includes(".tmp."))).toEqual([]);
     });
   });
 

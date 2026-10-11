@@ -24,6 +24,7 @@ import {
 import { join, dirname } from 'path';
 import { randomUUID } from 'crypto';
 import { isProcessAlive } from '../platform/index.js';
+import { atomicWriteFileSync } from '../lib/atomic-write.js';
 import { getGlobalOmcStateCandidates, getGlobalOmcStateRoot } from '../utils/paths.js';
 
 // ============================================================================
@@ -446,12 +447,18 @@ function getPaneReplyBlockPath(paneId: string): string {
   return join(getRegistryStateDir(), `reply-blocked-pane-${paneId.replace(/[^A-Za-z0-9_-]/g, '_')}.json`);
 }
 
-function readPaneReplyBlocks(paneId: string): Record<string, string> {
+/**
+ * The pane's markers (a null-prototype object, so a session named
+ * `__proto__` is an ordinary key), `{}` without a marker file, or null when
+ * the file exists but cannot be read or parsed: callers fail closed.
+ */
+function readPaneReplyBlocks(paneId: string): Record<string, string> | null {
+  const blocks: Record<string, string> = Object.create(null);
   try {
     const parsed = JSON.parse(readFileSync(getPaneReplyBlockPath(paneId), 'utf-8'));
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? Object.assign(blocks, parsed) : null;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'ENOENT' ? blocks : null;
   }
 }
 
@@ -461,12 +468,15 @@ function readPaneReplyBlocks(paneId: string): Record<string, string> {
  * {@link isPaneReplyBlocked} then refuses every mapping created before it, so
  * a reply mapping registered after removeMessagesByPane by a notification
  * that started earlier (concurrent hook children) is never injected.
+ * Written via temp file + rename, so a reader never sees a truncated file.
+ * An unparseable marker file is replaced by an unnamed marker, which refuses
+ * every session's earlier mappings as the unparseable file did.
  */
 export function markPaneNonReplyable(paneId: string, tmuxSessionName = '', at = new Date()): void {
   ensureRegistryDir();
-  const blocks = readPaneReplyBlocks(paneId);
+  const blocks = readPaneReplyBlocks(paneId) ?? Object.assign(Object.create(null), { '': at.toISOString() });
   blocks[tmuxSessionName] = at.toISOString();
-  writeFileSync(getPaneReplyBlockPath(paneId), JSON.stringify(blocks), { mode: SECURE_FILE_MODE });
+  atomicWriteFileSync(getPaneReplyBlockPath(paneId), JSON.stringify(blocks));
 }
 
 /**
@@ -475,8 +485,10 @@ export function markPaneNonReplyable(paneId: string, tmuxSessionName = '', at = 
  * mapping's `createdAt`. Without a mapping, any marker younger than MAX_AGE_MS.
  */
 export function isPaneReplyBlocked(paneId: string, mapping?: Pick<SessionMapping, 'createdAt' | 'tmuxSessionName'>, nowMs = Date.now()): boolean {
+  const blocks = readPaneReplyBlocks(paneId);
+  if (!blocks) return true; // unreadable marker file: fail closed
   const createdMs = mapping ? new Date(mapping.createdAt).getTime() : NaN;
-  return Object.entries(readPaneReplyBlocks(paneId)).some(([session, at]) => {
+  return Object.entries(blocks).some(([session, at]) => {
     if (session && mapping?.tmuxSessionName && session !== mapping.tmuxSessionName) return false;
     const atMs = new Date(at).getTime();
     if (!Number.isFinite(atMs)) return true; // unreadable marker: fail closed

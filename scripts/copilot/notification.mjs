@@ -34,7 +34,8 @@
  *   exports NOTIFICATION_CAPS.nonReplyable and its redactTokens passes
  *   REDACT_SELF_TEST (permissionPromptSupported);
  * - per session, a permission prompt is sent at most once per COOLDOWN_MS and
- *   an identical ask_user question once per COOLDOWN_MS
+ *   an identical ask_user question once per COOLDOWN_MS, keyed on a hash of
+ *   the original title and message, not the sent text
  *   (`<state>/sessions/<sessionId>/notification-input-cooldown.json`).
  */
 import { readStdin } from '../lib/stdin.mjs';
@@ -43,6 +44,7 @@ import { atomicWriteFileSync } from '../lib/atomic-write.mjs';
 import { isMainThread } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 
 export const INPUT_NEEDED_TYPES = new Set(['permission_prompt', 'elicitation_dialog']);
@@ -63,13 +65,14 @@ const cap = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` :
 /**
  * The binary of a command line: the first word that is not an env assignment,
  * without quotes and directories, or '' when none looks like a program name.
- * A quoted word is one word (`"C:\Program Files\Git\bin\git.exe" push` ->
- * `git.exe`). A statement that starts with a PowerShell variable
+ * Words split as a shell splits them: quotes anywhere in a word keep their
+ * spaces inside it (`"C:\Program Files\Git\bin\git.exe" push` -> `git.exe`,
+ * `PW="correct horse" psql` -> `psql`, never `horse`). A statement that starts with a PowerShell variable
  * (`$env:X = 'v';`) is skipped whole, so its value is never taken for the binary.
  */
 export function commandBinary(commandLine) {
   for (const statement of commandLine.split(/;|&&|\|\||\||\n/)) {
-    const words = (statement.match(/"[^"]*"|'[^']*'|`[^`]*`|\S+/g) ?? []).map((raw) => raw.replace(/^["'`(]+|["'`)]+$/g, ''))
+    const words = (statement.match(/(?:"[^"]*"?|'[^']*'?|`[^`]*`?|[^\s"'`])+/g) ?? []).map((raw) => raw.replace(/^["'`(]+|["'`)]+$/g, ''))
       .filter((word) => word && !word.includes('=') && !word.startsWith('-'));
     if (words.length === 0) continue;
     if (words[0].startsWith('$')) continue;
@@ -87,7 +90,9 @@ export function permissionPromptText(title, message, redact) {
   const at = message.indexOf(':');
   const category = at > 0 ? message.slice(0, at).trim() : '';
   const safeCategory = /^[A-Za-z][A-Za-z ]{0,39}$/.test(category) ? category : '';
-  const binary = safeCategory && /command|shell|run|exec/i.test(safeCategory) ? commandBinary(message.slice(at + 1)) : '';
+  const derived = safeCategory && /command|shell|run|exec/i.test(safeCategory) ? commandBinary(message.slice(at + 1)) : '';
+  // A binary that looks like a secret (an assignment, or one the redactor masks) is not sent.
+  const binary = derived && !derived.includes('=') && redact(derived) === derived ? derived : '';
   const safeTitle = /^[A-Za-z ]{1,40}$/.test(title) ? title : PERMISSION_TITLE;
   const text = [safeTitle, safeCategory, binary].filter(Boolean).join(': ');
   return redact(text).replace(/\s+/g, ' ');
@@ -191,7 +196,9 @@ export async function runNotificationHook(env = process.env, deps = {}) {
     if (!dispatch) return;
     if (env.OMC_NOTIFY === '0') { debug('OMC_NOTIFY=0, not dispatched'); return; }
     const path = cooldownPath(await resolveOmcStateRoot(dispatch.data.projectPath), dispatch.data.sessionId);
-    if (path && !takeCooldown(path, payload.notification_type, dispatch.data.question)) {
+    // Dedupe on the original text: a stale dist sends the same generic text for every question.
+    const questionKey = createHash('sha256').update(JSON.stringify([payload.title, payload.message])).digest('hex');
+    if (path && !takeCooldown(path, payload.notification_type, questionKey)) {
       debug(`${payload.notification_type} within ${COOLDOWN_MS} ms cooldown, not dispatched`);
       return;
     }
