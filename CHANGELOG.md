@@ -4,6 +4,131 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Added: `omg ship` and the `ship` skill
+
+- **`/oh-my-copilot:ship`** takes a task or an open PR to merge-ready: an
+  executor lane, an independent verifier lane (the implementer's own verdict
+  is refused), fix rounds by a fresh agent up to `ship.maxFixRounds`
+  (default 2), then the mechanical steps below. The skill ships the executor,
+  reviewer and fix brief templates (reviewers get the diff, not the author's
+  conclusion) and runs the lanes through `omg team --transport sdk` or the
+  in-session Task tool.
+- **`omg ship gates <pr> [--watch]`** applies the merge rule to
+  `gh pr checks --json`: green only when every check outside
+  `ship.advisoryChecks` (default `No Committed Build Artifacts`,
+  `Authorize generated artifacts from base trust root` and the two Socket
+  Security app checks) is SUCCESS or
+  SKIPPED, every `ship.requiredChecks` name has been reported (a missing one,
+  such as `Build` before its `needs:` jobs start, is pending), and every
+  workflow run for the head sha is completed; unknown states fail closed. A
+  failed job whose every failing vitest test matches a title-scoped entry in
+  `.github/known-flaky-tests.json`, with no unhandled errors, failed suites
+  or failing non-test step in its log, is classified flaky and rerun once per
+  run (`gh run rerun <id> --failed`; the budget is recorded before the
+  rerun). One watch window lasts 9 minutes (under the 10-minute background
+  watcher cap); exit 8 means still pending, so run the command again.
+- **`omg ship prepare <pr>`** refuses unless HEAD is the run's PR branch and
+  contains the reviewed sha, then merges GitHub's base sha in (`--no-ff`, never
+  rebases), resolves an inventory-only sibling conflict with `--theirs`, runs
+  `tsc`, eslint on changed files, the tests mapped from the diff and the
+  generator `--verify` checks, regenerates the inventory as the last commit,
+  and with `--push` pushes plainly to the run's branch. Option-shaped or
+  invalid base / branch names and a non-hex `verdict --sha` are refused.
+- **`omg ship merge <pr>`** refuses unless the gates are green, the state
+  passes its integrity check, and the latest independent approval covers the
+  head (only commits `prepare` made may follow the reviewed sha). It prints
+  `gh pr merge --admin --merge --match-head-commit <sha>` unless the owner set
+  `ship.allowAdminMerge`; there is no CLI flag for the admin merge.
+- **`omg ship init <pr> --force`** keeps the replaced run in `previousRuns`;
+  replacing a blocked or merged run needs the owner-only `OMG_SHIP_HUMAN=1`.
+  Reviewer identity is advisory and the state file is not tamper-proof: a
+  sha256 `integrity` field written on every engine update catches hand edits
+  (later updates and `merge` refuse a mismatch) but is not a signature.
+- Every engine command passes an allowlist guard: only the exact git / gh /
+  node shapes the engine builds may spawn, so force pushes, deleting
+  refspecs, rebase, pull, amend, `reset`, global `-c` / `--config-env`
+  options, option-shaped operands, `git worktree`, `gh api`, `gh -R`,
+  `--auto` / `--delete-branch` merges, `.cmd` shims and `npm ci` are refused.
+  Run state lives in `.omg/state/ship/<pr>.json` under the state file lock
+  and is shape-checked on read (including `history` and `previousRuns`
+  entries).
+- **Safety settings come from trusted sources only.** `ship.allowAdminMerge`,
+  `advisoryChecks`, `requiredChecks` and `knownFlakyFile` are read from the
+  user config at its default location, then `.copilot/omg.jsonc` as
+  committed on the PR's base branch, then the defaults. The same keys in the
+  working-tree project file (a lane can drop one in untracked) or the PR head
+  are ignored with a warning, and the known-flaky list is read from the base
+  branch. `omg ship merge` refuses a PR whose changed files touch
+  `.copilot/omg.jsonc`, `.github/known-flaky-tests.json` or
+  `.github/workflows/` unless the owner sets `OMG_SHIP_HUMAN=1`.
+- **The base branch is checked against GitHub.** `init`, `gates` and `merge`
+  take the base and its sha (`baseRefOid`) from `gh pr view`, fetch the
+  base, require `refs/remotes/origin/<base>` to equal that sha, and read
+  `<sha>:.copilot/omg.jsonc` with `GIT_NO_REPLACE_OBJECTS=1`, so a lane's
+  `git replace` or a moved or shadowed ref cannot change the trusted config.
+  When the check (or the fetch) fails, `gates` warns and uses the defaults
+  and `merge` refuses. `init --base` must match the PR's base on GitHub, and
+  `gates` uses GitHub's base rather than the recorded one.
+- **`prepare` merges GitHub's base sha, never a ref name.** It checks that
+  `git remote get-url origin` (`insteadOf` applied) is the PR's repository
+  (`gh pr view --json url`), fetches the base, requires
+  `refs/remotes/origin/<base>` to equal `baseRefOid`, and runs
+  `git merge --no-ff --no-edit <baseRefOid>`; the guard no longer allows a
+  merge by ref name, so a lane's tag named `origin/dev` or a repointed
+  `remote.origin.url` cannot get its content merged and recorded as
+  housekeeping. The trusted config loader runs the same remote check.
+- **`merge` re-checks housekeeping merges.** The commits after the reviewed
+  sha (`git rev-list --first-parent --parents`) must form a chain from the
+  head back to the reviewed sha of commits `prepare` recorded, and each
+  recorded merge must have two parents, the second GitHub's current
+  `baseRefOid` or its ancestor; anything else needs a new verdict.
+- **`merge` checks housekeeping content, not just parents.** A recorded
+  one-parent commit may change only `inventory/` against its parent; a
+  recorded merge may differ only under `inventory/` from the tree
+  `git merge-tree --write-tree` rebuilds from its parents, and is refused
+  while any `merge.<name>.driver` is configured. A custom merge driver, a
+  hook that stages a file, or a file another lane stages during the checks
+  can no longer ride into a commit `merge` accepts without re-review.
+  `prepare` also hardens the commits it makes: merges and commits run with
+  `--no-verify` (hooks never shape engine commits), the inventory commit
+  names `-- inventory`, and it refuses to start with staged changes in the
+  index.
+- Known limits, documented: a lane with write access to `.git/objects` can
+  forge loose objects; environment and `PATH` overrides are advisory; `gh`
+  resolves the repository from the checkout's remotes too.
+- **`ship.trustedBases`** (user config only; default `dev`, `main`,
+  `master`): any other base is never read and never admin-merged; `merge`
+  prints the command instead.
+- **User-config safety keys ignore `APPDATA` / `XDG_CONFIG_HOME`.** They come
+  from the default location under the account's home as the OS reports it;
+  a file chosen through those variables keeps its other keys, and its safety
+  keys are ignored with a warning.
+- **The merge's changed-file list is computed locally**
+  (`git diff --name-only --no-renames -z <base sha>...<head sha>`): a rename
+  out of `.github/workflows/` names the old path too, non-ASCII paths are
+  read unquoted, and the 300-file cap of `gh pr diff` no longer blocks a
+  merge.
+- Engine commands run with a scrubbed environment: the `GIT_*` variables
+  that redirect git (`GIT_CONFIG_*`, `GIT_DIR`, `GIT_EXEC_PATH`,
+  `GIT_SSH_COMMAND`, ...) and `GH_REPO` / `GH_HOST` are dropped, `GH_TOKEN`
+  passes through. The push guard compares protected branch names
+  case-insensitively. A legacy-named `.copilot/omc.jsonc` (never read from
+  the base) gets one warning instead of one per key. `OMG_SHIP_HUMAN` and
+  the lane names stay advisory against a lane that controls its own
+  environment.
+- `gates` resolves the PR head first, reads checks and workflow runs for that
+  sha, and is pending when the head moved during the read; a workflow run
+  that completed red without reporting any check (startup failure) is
+  failed; a head with no checks and no workflow runs reports
+  `no-workflows-triggered` (bot PRs pushed with `GITHUB_TOKEN` trigger no
+  workflows). The Socket Security app checks are advisory by default, and a
+  test compares `.github/workflows/*.yml` PR jobs with the default
+  required + advisory lists.
+- `init --force` keeps the implementer and fix-round budget of a run that has
+  verdicts (resetting needs `OMG_SHIP_HUMAN=1`). The guard no longer allows
+  any npm command and refuses pushes to `main`, `master`, `dev` and the
+  run's base.
+
 ### Added
 
 - **Premium-request budget governor.** A ledger at

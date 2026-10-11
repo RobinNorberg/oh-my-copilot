@@ -1,0 +1,2 @@
+// Verifier probe (PR #238 round 3): a working-tree .copilot/omg.jsonc a lane can drop in untracked.
+{ "ship": { "allowAdminMerge": true, "advisoryChecks": ["Test", "Authorize generated artifacts from base trust root"] } }

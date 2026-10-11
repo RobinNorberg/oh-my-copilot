@@ -1,0 +1,10 @@
+{
+  "$comment": "Known-flaky tests (omg ship gates). A failed CI job whose every failing vitest test matches an entry here, with no unhandled errors, failed suites or failing non-test step, is classified flaky: gates suggests `gh run rerun <id> --failed` and `gates --watch` reruns each run at most once. A test failing twice is a real failure. Source: .omc/skills/omg-release-runbook.md 'Known flaky tests'. `file` is repo-relative; `title` (required) is a substring of the full test title, so a file-level collection error never matches. The runbook's runtime-done-recovery entry is omitted: its done.json polling test was retired and no current test in that file has the briefly-malformed window.",
+  "tests": [
+    { "file": "src/__tests__/session-end-process-exit.test.ts", "title": "keeps the detached worker alive through producer grace", "note": "producer grace window" },
+    { "file": "tests/perf/subagent-lock.bench.ts", "title": "sequential locked updates stay within Linux latency guardrails", "note": "45ms latency guardrail on shared runners" },
+    { "file": "src/team/__tests__/runtime-v2.dispatch.test.ts", "title": "requeues the selected task through an exact read", "note": "30 s timeout, v5.6.1 tag run" },
+    { "file": "src/hooks/subagent-tracker/__tests__/index.test.ts", "title": "persists durably under the already-held lock", "note": "310 ms latency bound, PR #209" },
+    { "file": "tests/integration/workflow-profile-lock-recovery.test.ts", "title": "serializes concurrent reclaimers without removing a live replacement", "note": "PR #231 Linux run 2026-10-07" }
+  ]
+}

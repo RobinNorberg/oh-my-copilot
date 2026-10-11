@@ -284,6 +284,9 @@ export interface PluginConfig {
     /** Execution keywords that activate the gate. */
     executionKeywords?: string[];
   };
+
+  /** `omg ship` workflow: merge rule, fix-round budget, admin-merge opt-in. */
+  ship?: import("../ship/config.js").ShipConfigInput;
 }
 
 export interface SessionState {

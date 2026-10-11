@@ -47,10 +47,10 @@ describe('registry projections — drift check against installed surfaces', () =
     // and drydock, v5.3.0's ask-navigator and loft, v5.4.0's harbor and
     // agent-doc-discipline, and v5.5.0's architecture-survey, diagram, intent,
     // and minimal-prose-discipline, and upstream dev's map, pr, refit, and tdd)
-    // plus this fork's 14 exclusive skills: the critique / deep-review /
-    // discover / ralph-experiment lanes and the omc-ado-* and omc-gh-*
+    // plus this fork's 15 exclusive skills: the critique / deep-review /
+    // discover / ralph-experiment lanes, ship, and the omc-ado-* and omc-gh-*
     // issue-tracker lanes.
-    expect(installed.skills.length).toBe(61);
+    expect(installed.skills.length).toBe(62);
     expect(installed.commands.length).toBe(21);
     const drift = checkProjectionDrift(installed);
     expect(drift.unregistered).toEqual([]);
