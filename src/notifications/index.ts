@@ -93,6 +93,15 @@ export type {
 } from "./slack-socket.js";
 export { redactTokens } from "./redact.js";
 
+/**
+ * What this build of notify() supports. scripts/copilot/notification.mjs
+ * loads the committed dist/ and sends a Copilot permission prompt only when
+ * the loaded module carries this marker (a dist/ older than the source lacks
+ * it): `nonReplyable` means `replyable: false` is honoured (no reply mapping
+ * is registered and the pane's earlier mappings are removed).
+ */
+export const NOTIFICATION_CAPS = Object.freeze({ nonReplyable: true });
+
 import type {
   NotificationEvent,
   NotificationPlatform,
@@ -241,6 +250,18 @@ export async function notify(
         if (map.size > 0) {
           platformMessages = map;
         }
+      }
+    }
+
+    // A non-replyable message (Copilot permission prompt) means the pane now
+    // shows a menu that a reply would answer: drop the pane's earlier reply
+    // mappings first, so a reply to an older message cannot be injected either.
+    if (payload.replyable === false && payload.tmuxPaneId) {
+      try {
+        const { removeMessagesByPane } = await import("./session-registry.js");
+        removeMessagesByPane(payload.tmuxPaneId);
+      } catch {
+        // Non-fatal: reply correlation is best-effort
       }
     }
 

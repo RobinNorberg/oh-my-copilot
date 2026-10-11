@@ -5,8 +5,10 @@ import { join } from "node:path";
 
 // Mock session-registry before importing notify
 const mockRegisterMessage = vi.fn();
+const mockRemoveMessagesByPane = vi.fn();
 vi.mock("../session-registry.js", () => ({
   registerMessage: (mapping: unknown) => mockRegisterMessage(mapping),
+  removeMessagesByPane: (paneId: string) => mockRemoveMessagesByPane(paneId),
 }));
 
 // Mock tmux to control pane ID
@@ -419,6 +421,35 @@ describe("notify() -> session-registry integration", () => {
     // The same event without the flag stays replyable.
     await notify("ask-user-question", { sessionId: "sess-ask", projectPath: "/test/project", question: "Which?" });
     expect(mockRegisterMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops the pane's earlier reply mappings before sending a non-replyable message", async () => {
+    const order: string[] = [];
+    mockRemoveMessagesByPane.mockImplementation(() => { order.push("remove"); return true; });
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => {
+      order.push("send");
+      return { ok: true, status: 200, json: async () => ({ id: "discord-msg-x" }) };
+    }));
+
+    // An earlier replyable question keeps the pane's mappings.
+    await notify("ask-user-question", { sessionId: "sess-1", projectPath: "/test/project", question: "Which?" });
+    expect(mockRemoveMessagesByPane).not.toHaveBeenCalled();
+
+    order.length = 0;
+    await notify("ask-user-question", {
+      sessionId: "sess-1",
+      projectPath: "/test/project",
+      question: "Permission needed: Run command: rm",
+      replyable: false,
+    });
+    expect(mockRemoveMessagesByPane).toHaveBeenCalledWith("%42");
+    expect(order).toEqual(["remove", "send"]);
+
+    // Without a pane there is nothing to invalidate.
+    mockGetCurrentTmuxPaneId.mockReturnValue(null);
+    mockRemoveMessagesByPane.mockClear();
+    await notify("ask-user-question", { sessionId: "sess-1", projectPath: "/test/project", question: "Permission", replyable: false });
+    expect(mockRemoveMessagesByPane).not.toHaveBeenCalled();
   });
 
   it("does NOT register when dispatch fails", async () => {
