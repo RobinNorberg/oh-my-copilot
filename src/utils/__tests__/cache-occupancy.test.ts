@@ -46,7 +46,7 @@ describe('cache occupancy registry', () => {
     expect.soft(read(dir).unavailable).toBe(true);
     expect.soft(existsSync(recordPath)).toBe(true);
     readFailures.clear();
-    expect(read(dir).roots).toEqual(new Set([root]));
+    expect(read(dir).roots).toEqual(new Set([pathIdentity(root)]));
   });
 
   it.each([
@@ -100,7 +100,7 @@ describe('cache occupancy registry', () => {
     expect(result.unavailable).toBe(code !== 'ENOENT');
     expect(existsSync(recordPath)).toBe(true);
     lstatFailures.clear();
-    expect(read(dir).roots).toEqual(new Set([root]));
+    expect(read(dir).roots).toEqual(new Set([pathIdentity(root)]));
   });
 
   it.each(['EACCES', 'EIO'])('preserves a live pinned cache version when its record reports %s', async code => {

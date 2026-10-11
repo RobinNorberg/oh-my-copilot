@@ -354,7 +354,7 @@ OMC Ultrawork = "특수부대 작전 반"
 
       // An unterminated comment makes the config invalid, so it cannot disable TDD.
       writeFileSync(
-        join(disabledDir, '.claude', 'omc.jsonc'),
+        join(disabledDir, '.copilot', 'omg.jsonc'),
         '{"keywordDetector":{"disabled":["tdd"]}}/*unterminated',
       );
       for (const scriptPath of [templatePath, pluginPath]) {

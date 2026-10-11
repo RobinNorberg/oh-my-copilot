@@ -980,7 +980,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
   ])('rejects workflow config containing %s without writing state', (_kind, config) => {
     const { cwd, configHome } = createFixture();
     try {
-      writeFileSync(join(cwd, '.claude', 'omc.jsonc'), config);
+      writeFileSync(join(cwd, '.copilot', 'omg.jsonc'), config);
       for (const script of HOOKS) {
         const output = runHook(script, '/autopilot --workflow release-flow ship it', cwd, configHome);
         const context = output.hookSpecificOutput?.additionalContext ?? '';
@@ -998,7 +998,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
       const { cwd, configHome } = createFixture();
       try {
         writeFileSync(
-          join(cwd, '.claude', 'omc.jsonc'),
+          join(cwd, '.copilot', 'omg.jsonc'),
           '{"autopilot":{"workflows":{"release-flow":{"version":1,"stages":["ralplan","execution",],},}}}',
         );
         const output = runHook(script, '/autopilot --workflow release-flow ship it', cwd, configHome);
