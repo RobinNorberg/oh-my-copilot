@@ -17,12 +17,20 @@
  * policy answers, and no worker waits on a human.
  *
  * Safety:
- * - the text is passed through `redactTokens` (dist/notifications/redact.js)
- *   and capped at QUESTION_MAX_CHARS before it reaches the notify path; a
- *   permission prompt's message is the full command line (`Run command: ...`);
+ * - a `permission_prompt` sends no command arguments at all: only the title,
+ *   the tool category (`Run command`) and, for a command, the binary's base
+ *   name (`Permission needed: Run command: curl`). The message is the full
+ *   command line, and no redaction pattern list is complete;
+ * - an `elicitation_dialog` question is passed through `redactTokens` and
+ *   capped at QUESTION_MAX_CHARS;
  * - a `permission_prompt` notification is not replyable: a remote reply is
  *   never injected into the pane, where Enter would answer Copilot's
- *   permission menu (and approve the command);
+ *   permission menu (and approve the command), and notify() drops the pane's
+ *   earlier reply mappings;
+ * - fail closed on a stale build: the committed dist/ can predate this file.
+ *   A permission prompt is sent only when the loaded dist/notifications/index.js
+ *   exports NOTIFICATION_CAPS.nonReplyable and its redactTokens passes
+ *   REDACT_SELF_TEST (permissionPromptSupported);
  * - per session, a permission prompt is sent at most once per COOLDOWN_MS and
  *   an identical ask_user question once per COOLDOWN_MS
  *   (`<state>/sessions/<sessionId>/notification-input-cooldown.json`).
@@ -38,12 +46,50 @@ import { join, resolve } from 'node:path';
 export const INPUT_NEEDED_TYPES = new Set(['permission_prompt', 'elicitation_dialog']);
 export const QUESTION_MAX_CHARS = 200;
 export const COOLDOWN_MS = 30_000;
+/** [input, secret]: inputs a current redactTokens masks and an older dist build does not. */
+export const REDACT_SELF_TEST = [
+  ['--password=selftest1', 'selftest1'],
+  ['{"password":"selftest2"}', 'selftest2'],
+  ['X-API-Key: selftest3', 'selftest3'],
+];
+
+const cap = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+/**
+ * The binary of a command line: the first word that is not an env assignment,
+ * without quotes and directories, or '' when none looks like a program name.
+ * A statement that starts with a PowerShell variable (`$env:X = 'v';`) is
+ * skipped whole, so its value is never taken for the binary.
+ */
+export function commandBinary(commandLine) {
+  for (const statement of commandLine.split(/;|&&|\|\||\||\n/)) {
+    const words = statement.split(/\s+/).map((raw) => raw.replace(/^["'`(]+|["'`)]+$/g, ''))
+      .filter((word) => word && !word.includes('=') && !word.startsWith('-'));
+    if (words.length === 0) continue;
+    if (words[0].startsWith('$')) continue;
+    const base = words[0].split(/[\\/]/).pop() ?? '';
+    return /^[A-Za-z0-9][A-Za-z0-9._+-]{0,39}$/.test(base) ? base : '';
+  }
+  return '';
+}
+
+/**
+ * The text of a permission prompt: title, tool category and, for a command,
+ * its binary. `Run command: curl -H "..." https://x` -> `Run command: curl`.
+ */
+export function permissionPromptText(title, message, redact) {
+  const at = message.indexOf(':');
+  const category = at > 0 ? message.slice(0, at).trim() : '';
+  const safeCategory = /^[A-Za-z][A-Za-z ]{0,39}$/.test(category) ? category : '';
+  const binary = safeCategory && /command|shell|run|exec/i.test(safeCategory) ? commandBinary(message.slice(at + 1)) : '';
+  const text = [cap(title, 60), safeCategory, binary].filter(Boolean).join(': ');
+  return redact(text).replace(/\s+/g, ' ');
+}
 
 /**
  * The notification to dispatch for one hook payload, or null. `redact` is
- * `redactTokens`; it runs on the whole text before the cap, so the command's
- * binary (its first word) always survives and a cut never splits a secret
- * out of its pattern.
+ * `redactTokens`; for a question it runs on the whole text before the cap, so
+ * a cut never splits a secret out of its pattern.
  */
 export function notificationFor(payload, env = process.env, redact) {
   if (!payload || typeof payload !== 'object') return null;
@@ -54,8 +100,10 @@ export function notificationFor(payload, env = process.env, redact) {
   if (typeof sessionId !== 'string' || !sessionId) return null;
   const message = typeof payload.message === 'string' ? payload.message.trim() : '';
   const title = typeof payload.title === 'string' ? payload.title.trim() : '';
-  const text = redact([title, message].filter(Boolean).join(': ')).replace(/\s+/g, ' ');
-  const question = text.length > QUESTION_MAX_CHARS ? `${text.slice(0, QUESTION_MAX_CHARS - 1)}…` : text;
+  const permission = payload.notification_type === 'permission_prompt';
+  const question = permission
+    ? permissionPromptText(title, message, redact)
+    : cap(redact([title, message].filter(Boolean).join(': ')).replace(/\s+/g, ' '), QUESTION_MAX_CHARS);
   return {
     event: 'ask-user-question',
     data: {
@@ -63,9 +111,23 @@ export function notificationFor(payload, env = process.env, redact) {
       projectPath: typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : process.cwd(),
       question: question || 'User input requested',
       profileName: env.OMC_NOTIFY_PROFILE,
-      ...(payload.notification_type === 'permission_prompt' ? { replyable: false } : {}),
+      ...(permission ? { replyable: false } : {}),
     },
   };
+}
+
+/**
+ * Whether the loaded notify module may carry a permission prompt: it honours
+ * `replyable: false` and its redactor masks the current patterns.
+ */
+export function permissionPromptSupported(notifications) {
+  if (notifications?.NOTIFICATION_CAPS?.nonReplyable !== true) return false;
+  if (typeof notifications.redactTokens !== 'function') return false;
+  try {
+    return REDACT_SELF_TEST.every(([input, secret]) => !String(notifications.redactTokens(input)).includes(secret));
+  } catch {
+    return false;
+  }
 }
 
 /** The per-session cooldown file, or null for a session id unsafe as a path segment. */
@@ -91,17 +153,28 @@ export function takeCooldown(path, type, question, nowMs = Date.now(), windowMs 
   return true;
 }
 
-export async function runNotificationHook(env = process.env) {
+/** The dist modules the hook dispatches through (the background child loads the same index.js). */
+async function loadDistModules() {
+  const [notifications, { dispatchNotificationInBackground }] = await Promise.all([
+    import('../../dist/notifications/index.js'),
+    import('../../dist/hooks/background-notifications.js'),
+  ]);
+  return { notifications, dispatchNotificationInBackground };
+}
+
+/** `deps` (tests): `readInput()` replaces stdin, `load()` the dist modules. */
+export async function runNotificationHook(env = process.env, deps = {}) {
   const debug = (line) => { if (env.OMC_DEBUG_HOOKS) process.stderr.write(`[omg-hook] Notification: ${line}\n`); };
   try {
-    const input = await readStdin();
+    const input = await (deps.readInput ?? readStdin)();
     const payload = JSON.parse(input || '{}');
     if (!INPUT_NEEDED_TYPES.has(payload?.notification_type)) return;
-    const [{ redactTokens }, { dispatchNotificationInBackground }] = await Promise.all([
-      import('../../dist/notifications/redact.js'),
-      import('../../dist/hooks/background-notifications.js'),
-    ]);
-    const dispatch = notificationFor(payload, env, redactTokens);
+    const { notifications, dispatchNotificationInBackground } = await (deps.load ?? loadDistModules)();
+    if (payload.notification_type === 'permission_prompt' && !permissionPromptSupported(notifications)) {
+      debug('dist/notifications predates non-replyable prompts or current redaction, permission prompt not dispatched');
+      return;
+    }
+    const dispatch = notificationFor(payload, env, notifications?.redactTokens);
     if (!dispatch) return;
     if (env.OMC_NOTIFY === '0') { debug('OMC_NOTIFY=0, not dispatched'); return; }
     const path = cooldownPath(await resolveOmcStateRoot(dispatch.data.projectPath), dispatch.data.sessionId);

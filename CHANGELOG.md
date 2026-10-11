@@ -14,10 +14,16 @@ All notable changes to oh-my-copilot will be documented in this file.
   `ask-user-question` notification to the configured Discord, Telegram or
   Slack targets. Upstream sends it from PreToolUse for `AskUserQuestion`, which
   Copilot never calls, so on Copilot it never fired. Team workers are skipped.
-  The text is redacted (`redactTokens`, now also covering `*_TOKEN=`/secret
-  assignments, `--password`/`--api-key` flags, `ghu_`/`ghr_` tokens and URL
-  credentials) and capped at 200 characters. Permission-prompt notifications
-  are not replyable: remote replies never answer a permission prompt. A
+  A permission prompt is sent as its title, tool category and command binary
+  only (`Permission needed: Run command: curl`), never the command arguments.
+  `ask_user` text is redacted (`redactTokens`, now also covering secret
+  assignments and flags, secret JSON fields, credential headers, `curl -u`,
+  `mysql -p`, `login -p`, URL credentials, webhook URLs, PEM keys, OpenAI-style
+  keys and padded base64) and capped at 200 characters. Permission-prompt
+  notifications are not replyable, and sending one drops the pane's earlier
+  reply mappings: remote replies never answer a permission prompt. On a stale
+  `dist/` that lacks these guarantees (`NOTIFICATION_CAPS`, redaction
+  self-test) the hook sends no permission prompt. A
   permission prompt is sent at most once per 30 s per session, an identical
   `ask_user` question once per 30 s. The hook's run.cjs timeout is now its
   generated 5 s instead of the 60 s default.
