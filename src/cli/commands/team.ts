@@ -844,7 +844,7 @@ async function collectStartRolePromptOptions(parsed: ParsedTeamArgs): Promise<{
  * the copilot fan-out. Only a refusal throws; a governor failure starts the
  * team unchanged (fail-open).
  */
-async function applyBudgetGovernor(parsed: ParsedTeamArgs, workerCount: number, clampable: boolean, cwd: string): Promise<number> {
+export async function applyBudgetGovernor(parsed: ParsedTeamArgs, workerCount: number, clampable: boolean, cwd: string): Promise<number> {
   let decision: { workerCount: number; notice?: string; refusal?: string };
   try {
     const { loadBudgetSettings, governTeamFanout } = await import('../../budget/governor.js');

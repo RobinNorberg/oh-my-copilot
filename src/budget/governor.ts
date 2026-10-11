@@ -7,7 +7,7 @@
  * Kill switch: `OMC_BUDGET_GOVERNOR=0` turns every part off.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BudgetConfig } from '../shared/types.js';
 import { resolveProjectConfigPath } from '../config/project-config-path.js';
@@ -15,14 +15,20 @@ import { getConfigDir } from '../utils/paths.js';
 import { parseJsonc } from '../utils/jsonc.js';
 import {
   copilotEventsPath,
+  HOOK_LOCK_TIMEOUT_MS,
   ledgerPath,
   ledgerTotals,
+  putRecord,
   readCopilotSessionUsage,
   readLedger,
+  readTailTotals,
+  scanSince,
   recordUsage,
   updateLedger,
   type BudgetLedger,
+  type LedgerLockOptions,
   type LedgerTotals,
+  type UsageRecord,
 } from './ledger.js';
 
 export type BudgetUnit = 'premiumRequests' | 'credits';
@@ -38,8 +44,10 @@ export interface BudgetSettings {
 
 const LIMIT_KEYS = ['softLimit', 'hardLimit', 'perTeamLimit'] as const;
 const KNOWN_KEYS = new Set<string>(['mode', 'unit', ...LIMIT_KEYS]);
-/** Estimated sessions re-read per SessionStart to pick up their final totals. */
+/** Estimated records re-read per SessionStart to pick up their final totals. */
 const REFRESH_MAX = 20;
+/** Time budget of that refresh; the rotation picks up the rest next time. */
+const REFRESH_DEADLINE_MS = 300;
 
 /** Validate a raw `budget` block; invalid values are dropped and reported, never thrown. */
 export function resolveBudgetSettings(raw: unknown, env: NodeJS.ProcessEnv = process.env): { settings: BudgetSettings; issues: string[] } {
@@ -119,16 +127,33 @@ export function summaryLine(ledger: BudgetLedger, settings: BudgetSettings): str
 
 /** Mark newly crossed thresholds in `ledger` and return the notice, or null. */
 export function checkThresholds(ledger: BudgetLedger, settings: BudgetSettings, now = new Date()): string | null {
-  const used = usedInUnit(ledgerTotals(ledger), settings.unit);
-  const amount = (limit: number) => `${formatAmount(Number(used.toFixed(3)), settings.unit)} of ${limit} used since ${ledger.since.slice(0, 10)}`;
-  if (settings.hardLimit !== undefined && used >= settings.hardLimit && !ledger.notified.hard) {
-    ledger.notified.hard = now.toISOString();
-    ledger.notified.soft ??= ledger.notified.hard;
+  const totals = ledgerTotals(ledger);
+  const used = usedInUnit(totals, settings.unit);
+  const n = ledger.notified;
+  // A raised limit re-arms its notice.
+  if (n.hard && n.hardLimit !== undefined && settings.hardLimit !== undefined && settings.hardLimit > n.hardLimit) {
+    delete n.hard;
+    delete n.hardLimit;
+  }
+  if (n.soft && n.softLimit !== undefined && settings.softLimit !== undefined && settings.softLimit > n.softLimit) {
+    delete n.soft;
+    delete n.softLimit;
+  }
+  const estimated = totals.estimatedRecords > 0 ? ` (${totals.estimatedRecords} record(s) estimated)` : '';
+  const amount = (limit: number) => `${formatAmount(Number(used.toFixed(3)), settings.unit)} of ${limit} used since ${ledger.since.slice(0, 10)}${estimated}`;
+  if (settings.hardLimit !== undefined && used >= settings.hardLimit && !n.hard) {
+    n.hard = now.toISOString();
+    n.hardLimit = settings.hardLimit;
+    if (!n.soft && settings.softLimit !== undefined) {
+      n.soft = n.hard;
+      n.softLimit = settings.softLimit;
+    }
     const gate = settings.mode === 'enforce' ? ' New `omg team` fan-out is refused or clamped until `omg budget reset` or a higher budget.hardLimit.' : '';
     return `[BUDGET] Hard limit reached: ${amount(settings.hardLimit)}.${gate} Tell the user before starting more work.`;
   }
-  if (settings.softLimit !== undefined && used >= settings.softLimit && !ledger.notified.soft) {
-    ledger.notified.soft = now.toISOString();
+  if (settings.softLimit !== undefined && used >= settings.softLimit && !n.soft) {
+    n.soft = now.toISOString();
+    n.softLimit = settings.softLimit;
     return `[BUDGET] Soft limit reached: ${amount(settings.softLimit)}. Mention this to the user.`;
   }
   return null;
@@ -142,6 +167,8 @@ export interface BudgetHookInput {
   payload: Record<string, unknown> | null;
   env?: NodeJS.ProcessEnv;
   now?: Date;
+  /** SessionStart refresh time budget (tests). */
+  refreshDeadlineMs?: number;
 }
 
 function payloadString(payload: Record<string, unknown> | null, ...keys: string[]): string | undefined {
@@ -168,15 +195,22 @@ export function runBudgetHook(input: BudgetHookInput): Record<string, unknown> |
   if (!settings.enabled) return null;
   const path = ledgerPath(ledgerCwd);
 
+  const lock = { timeoutMs: HOOK_LOCK_TIMEOUT_MS };
+  const team = worker?.split('/')[0];
+
   if (input.phase !== 'submit' && sessionId && env.OMC_BUDGET_HOST_LEDGER !== '1') {
     const events = copilotEventsPath(sessionId);
-    const usage = events ? readCopilotSessionUsage(events, now) : null;
-    if (usage) recordUsage(path, sessionId, usage, worker?.split('/')[0]);
+    if (events) {
+      const ledger = readLedger(path);
+      const stored = team ? ledger.teams[team]?.[sessionId] : ledger.sessions[sessionId];
+      const usage = readCopilotSessionUsage(events, now, { since: scanSince(ledger), ...(stored?.scan ? { prev: stored.scan } : {}) });
+      if (usage) recordUsage(path, sessionId, usage, team, lock);
+    }
   }
   if (worker) return null;
 
   if (input.phase === 'start') {
-    refreshEstimates(path, now);
+    refreshEstimates(path, now, lock, input.refreshDeadlineMs);
     if (!hasLimits(settings)) return null;
     return { continue: true, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: summaryLine(readLedger(path), settings) } };
   }
@@ -186,7 +220,7 @@ export function runBudgetHook(input: BudgetHookInput): Record<string, unknown> |
       const n = checkThresholds(ledger, settings, now);
       if (n) ledger.pendingNotice = n;
       return n;
-    });
+    }, lock);
     return notice ? { continue: true, systemMessage: notice } : null;
   }
   // submit: deliver a pending notice as model context (Copilot injects top-level additionalContext).
@@ -195,19 +229,69 @@ export function runBudgetHook(input: BudgetHookInput): Record<string, unknown> |
     const n = ledger.pendingNotice;
     delete ledger.pendingNotice;
     return n;
-  });
+  }, lock);
   return notice ? { continue: true, hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: notice } } : null;
 }
 
-/** Re-read estimated sessions: once a session has ended its events carry measured totals. */
-function refreshEstimates(path: string, now: Date): void {
+/**
+ * Upgrade estimated records (sessions and pane team workers) whose session
+ * has since written its totals. Bounded: at most REFRESH_MAX records per call,
+ * rotating through the candidates, a tail read each, skipped when the events
+ * file is unchanged since the last check, and a REFRESH_DEADLINE_MS budget.
+ * A record whose events file is gone is marked final. Records without scan
+ * state (sdk host records) are their host's business.
+ */
+export function refreshEstimates(path: string, now: Date, lock: LedgerLockOptions = {}, deadlineMs = REFRESH_DEADLINE_MS): void {
   const ledger = readLedger(path);
-  const stale = Object.entries(ledger.sessions).filter(([, r]) => r.source === 'estimated').slice(0, REFRESH_MAX);
-  for (const [id] of stale) {
-    const events = copilotEventsPath(id);
-    const usage = events ? readCopilotSessionUsage(events, now) : null;
-    if (usage?.source === 'measured') recordUsage(path, id, usage);
+  const candidates: Array<{ key: string; team?: string; record: UsageRecord }> = [];
+  for (const key of Object.keys(ledger.sessions).sort()) candidates.push({ key, record: ledger.sessions[key]! });
+  for (const team of Object.keys(ledger.teams).sort()) {
+    for (const key of Object.keys(ledger.teams[team]!).sort()) candidates.push({ key, team, record: ledger.teams[team]![key]! });
   }
+  const stale = candidates.filter((c) => c.record.source === 'estimated' && c.record.scan && !c.record.scan.gone);
+  if (stale.length === 0) return;
+  const start = (ledger.refreshCursor ?? 0) % stale.length;
+  const deadline = Date.now() + deadlineMs;
+  const updates: Array<{ key: string; team?: string; usage: UsageRecord }> = [];
+  let visited = 0;
+  // At least one record per call, so the rotation always moves on.
+  for (; visited < Math.min(REFRESH_MAX, stale.length) && (visited === 0 || Date.now() < deadline); visited++) {
+    const { key, team, record } = stale[(start + visited) % stale.length]!;
+    const scan = record.scan!;
+    const events = copilotEventsPath(key);
+    let stat: { size: number; mtimeMs: number } | null = null;
+    try { stat = events ? statSync(events) : null; } catch { stat = null; }
+    if (!stat) {
+      updates.push({ key, team, usage: { ...record, detail: `${record.detail}; events file gone, final`, scan: { ...scan, gone: true }, updatedAt: now.toISOString() } });
+      continue;
+    }
+    const mtimeMs = Math.floor(stat.mtimeMs); // whole ms: survives JSON and filesystems with coarser stamps
+    if (scan.checkedSize === stat.size && scan.checkedMtimeMs === mtimeMs) continue;
+    const checked = { ...scan, checkedSize: stat.size, checkedMtimeMs: mtimeMs };
+    const tail = readTailTotals(events!, stat.size);
+    const usage: UsageRecord = tail
+      ? { premiumRequests: tail.premium, credits: tail.nano / 1e9, source: 'measured', detail: `${tail.type} (events tail)`, ...(tail.model ? { model: tail.model } : {}), updatedAt: now.toISOString(), scan: checked }
+      : { ...record, scan: checked };
+    updates.push({ key, team, usage });
+  }
+  const cursor = (start + visited) % stale.length;
+  if (updates.length === 0 && cursor === (ledger.refreshCursor ?? 0)) return;
+  updateLedger(path, (fresh) => {
+    if (fresh.since !== ledger.since) return; // reset in between: these records are gone
+    for (const { key, team, usage } of updates) {
+      const current = team ? fresh.teams[team]?.[key] : fresh.sessions[key];
+      if (!current) continue;
+      if (usage.source === 'estimated') {
+        // Bookkeeping only (checked size/mtime, gone): never lower what a concurrent hook stored.
+        const merged = { ...current, scan: { ...(current.scan ?? usage.scan!), checkedSize: usage.scan!.checkedSize, checkedMtimeMs: usage.scan!.checkedMtimeMs, ...(usage.scan!.gone ? { gone: true as const } : {}) } };
+        if (usage.scan!.gone && current.source === 'estimated') merged.detail = usage.detail;
+        if (team) fresh.teams[team]![key] = merged; else fresh.sessions[key] = merged;
+      } else {
+        putRecord(fresh, key, usage, team);
+      }
+    }
+    fresh.refreshCursor = cursor;
+  }, lock);
 }
 
 export interface FanoutInput {
@@ -250,8 +334,10 @@ export function governTeamFanout(input: FanoutInput): FanoutDecision {
   const tightest = bounds.reduce((a, b) => (b.budget < a.budget ? b : a));
   const projected = copilot * perWorker;
   if (projected <= tightest.budget) return { workerCount };
-  const basis = settings.unit === 'credits' ? `x ${perWorker} credit cap` : 'x 1 premium request, estimated';
-  const over = `[omg budget] projected ${formatAmount(projected, settings.unit)} (${copilot} copilot worker(s) ${basis}) exceeds ${tightest.label}`;
+  const basis = settings.unit === 'credits' ? `x ${perWorker} credit cap` : 'x 1 premium request for the first prompt, estimated';
+  // A floor: each worker's first prompt at x1; follow-ups and multipliers add to it.
+  const amount = settings.unit === 'credits' ? formatAmount(projected, settings.unit) : `at least ${formatAmount(projected, settings.unit)}`;
+  const over = `[omg budget] projected ${amount} (${copilot} copilot worker(s) ${basis}) exceeds ${tightest.label}`;
   if (settings.mode !== 'enforce' || input.override) {
     return { workerCount, notice: `${over}; starting anyway (${input.override ? '--budget-override' : 'warn mode'}).` };
   }

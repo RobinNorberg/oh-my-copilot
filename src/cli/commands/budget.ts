@@ -4,19 +4,23 @@
  */
 
 import { formatAmount, loadBudgetSettings, summaryLine, usedInUnit } from '../../budget/governor.js';
-import { emptyLedger, ledgerPath, ledgerTotals, readLedger, updateLedger } from '../../budget/ledger.js';
+import { ledgerPath, ledgerTotals, readLedger, resetLedger, updateLedger } from '../../budget/ledger.js';
 
 export async function budgetCommand(action: string, options: { json?: boolean }, cwd: string = process.cwd()): Promise<number> {
   const path = ledgerPath(cwd);
   const { settings, issues } = loadBudgetSettings(cwd);
 
   if (action === 'reset') {
-    const previous = updateLedger(path, (ledger) => {
-      const before = { since: ledger.since, ...ledgerTotals(ledger) };
-      delete ledger.pendingNotice;
-      Object.assign(ledger, emptyLedger());
-      return before;
-    });
+    let previous: ReturnType<typeof resetLedger>;
+    try {
+      previous = updateLedger(path, (ledger) => resetLedger(ledger));
+    } catch (error) {
+      const busy = error instanceof Error && error.message.startsWith('Failed to acquire file lock');
+      console.error(busy
+        ? `omg budget reset: the ledger is locked by another process (${path}.lock); try again in a moment.`
+        : `omg budget reset: could not write ${path}: ${error instanceof Error ? error.message : String(error)}`);
+      return 1;
+    }
     if (options.json) {
       console.log(JSON.stringify({ ok: true, ledgerPath: path, previous: { since: previous.since, premiumRequests: previous.premiumRequests, credits: previous.credits } }));
     } else {
