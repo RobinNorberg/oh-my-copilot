@@ -15,6 +15,7 @@ import type {
 } from '../../smoke/copilot-sdk-driver.js';
 import { buildSdkExcludedTools, decideSdkPermission, type SdkPolicyContext } from '../sdk-policy.js';
 import { prependPath, readDoorbell, runSdkHost, type SdkHostDeps } from '../sdk-host.js';
+import { ledgerPath, readLedger } from '../../budget/ledger.js';
 import {
   isSdkTarget,
   launchSdkHost,
@@ -407,6 +408,9 @@ describe('sdk host', () => {
     expect(session.usage.premium_requests).toBe(2);
     expect(session.usage.shutdown_premium_requests).toBe(2);
     expect(session.usage.credits).toBeCloseTo(1);
+    // Budget ledger: the host records the worker's final totals under its team.
+    const budget = readLedger(ledgerPath(cwd)).teams[TEAM]?.[`${WORKER}:${attempt.attempt_id}`];
+    expect(budget).toMatchObject({ premiumRequests: 2, credits: 1.5, source: 'measured', detail: 'session.shutdown' });
     expect(session.permissions.map((p) => [p.kind, p.approve])).toEqual([
       ['write', false], ['shell', true], ['write', false], ['shell', true],
     ]);
