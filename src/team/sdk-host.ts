@@ -37,6 +37,8 @@ import {
 import { loadWorkerLaunchAttempt, type WorkerLaunchAttempt } from './worker-launch-ack.js';
 import { buildSdkExcludedTools, decideSdkPermission, type SdkPermissionRequest, type SdkPolicyContext } from './sdk-policy.js';
 import { sdkWorkerFiles, type SdkDoorbellEntry, type SdkHostSpec, type SdkSessionFile } from './sdk-transport.js';
+// Type-only: the builder is injected (SdkHostDeps.loadInProcessTools).
+import type { buildSdkInProcessTools, SdkInProcessToolSet } from './sdk-inprocess-tools.js';
 
 const DECISION_TIMEOUT_MS = 15_000;
 const START_TIMEOUT_MS = 60_000;
@@ -44,7 +46,9 @@ const RPC_TIMEOUT_MS = 30_000;
 const ABORT_GRACE_MS = 10_000;
 const SHUTDOWN_GRACE_MS = 2_000;
 const STOP_TIMEOUT_MS = 15_000;
+const TOOL_CLEANUP_TIMEOUT_MS = 5_000;
 const PERMISSION_LOG_MAX = 200;
+const STOP_SIGNALS = ['SIGTERM', 'SIGINT', 'SIGHUP'] as const;
 
 export interface SdkHostDeps {
   loadSdk: () => Promise<LoadedSdk | null>;
@@ -60,6 +64,14 @@ export interface SdkHostDeps {
   log?: (line: string) => void;
   /** Session-file writer (test seam for win32 rename contention); defaults to atomicWriteJson. */
   writeSessionJson?: (path: string, value: unknown) => Promise<void>;
+  /** Loads the in-process tool builder for `spec.in_process_tools`; absent means the `t` MCP server. */
+  loadInProcessTools?: () => Promise<typeof buildSdkInProcessTools>;
+  /**
+   * Where the in-process host listens for crashes and termination signals
+   * (`process` in the CLI entry; a fake emitter in tests). Only used once the
+   * in-process tool builder is loaded.
+   */
+  processEvents?: Pick<NodeJS.EventEmitter, 'on' | 'off'>;
 }
 
 export type SdkHostOutcome =
@@ -71,7 +83,9 @@ export type SdkHostOutcome =
   | 'decision_timeout'
   | 'ack_conflict'
   | 'sdk_missing'
-  | 'start_failed';
+  | 'start_failed'
+  /** An in-process tool threw past its handler (uncaughtException): stopped hard, session `failed`. */
+  | 'tool_crash';
 
 class TimeoutError extends Error {}
 
@@ -172,6 +186,20 @@ export function prependPath(env: NodeJS.ProcessEnv, dir: string, platform: NodeJ
   env[key] = env[key] ? `${dir}${sep}${env[key]}` : dir;
 }
 
+/**
+ * Make `target` hold exactly `env`. The `t` MCP server child runs with the
+ * session env; in-process tool handlers read `process.env`, so with
+ * `in_process_tools` the host adopts that env once the runtime is spawned.
+ */
+export function adoptSessionEnv(target: NodeJS.ProcessEnv, env: NodeJS.ProcessEnv): void {
+  for (const key of Object.keys(target)) {
+    if (!(key in env)) delete target[key];
+  }
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined) target[key] = value;
+  }
+}
+
 /** `omg` shims so `omg team api …` inside the worker runs the leader's own CLI build. */
 function writeOmgShims(binDir: string, cliPath: string, nodePath: string): void {
   mkdirSync(binDir, { recursive: true });
@@ -192,6 +220,31 @@ async function probeSession(s: SdkSessionLike): Promise<Record<string, unknown>>
   } catch (err) { out.tools_error = errText(err); }
   try { out.mcp = await withTimeout(s.rpc.mcp.list(), RPC_TIMEOUT_MS, 'mcp.list'); } catch (err) { out.mcp_error = errText(err); }
   return out;
+}
+
+/**
+ * Whether the session offers tool `name` (zero-model tool metadata, built
+ * first when empty); null when the SDK has no metadata RPC, it fails, or it
+ * lists no tools at all, so the answer is unknown.
+ */
+async function sessionOffersTool(s: SdkSessionLike, name: string): Promise<boolean | null> {
+  const tools = s.rpc.tools;
+  if (!tools?.getCurrentMetadata) return null;
+  const names = async () => {
+    const meta = await withTimeout(tools.getCurrentMetadata!(), RPC_TIMEOUT_MS, 'tools.getCurrentMetadata');
+    const list = (meta as { tools?: Array<{ name?: unknown }> | null } | null)?.tools;
+    return Array.isArray(list) ? list.map((t) => t?.name) : [];
+  };
+  try {
+    let offered = await names();
+    if (offered.length === 0 && tools.initializeAndValidate) {
+      await withTimeout(tools.initializeAndValidate(), RPC_TIMEOUT_MS, 'tools.initializeAndValidate');
+      offered = await names();
+    }
+    return offered.length === 0 ? null : offered.includes(name);
+  } catch {
+    return null;
+  }
 }
 
 export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<SdkHostOutcome> {
@@ -466,21 +519,98 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
       : { kind: 'reject' as const, feedback: `omg team sdk worker policy: ${decision.reason}` };
   };
 
+  const excludedTools = buildSdkExcludedTools(spec.mcp_server, spec.deny_tools);
+  // team.sdk.inProcessTools: the plugin tools as SDK session tools; null (no
+  // builder, or an SDK without the capability) keeps the `t` MCP server.
+  let inProcess: SdkInProcessToolSet | null = null;
+  let builderLoaded = false;
+  if (spec.in_process_tools) {
+    try {
+      const build = deps.loadInProcessTools ? await deps.loadInProcessTools() : null;
+      builderLoaded = build !== null;
+      inProcess = build ? build(loaded.module, spec.mcp_server, excludedTools, env.OMC_DISABLE_TOOLS) : null;
+    } catch (err) {
+      log(`in-process tools failed to load: ${errText(err)}`);
+    }
+    if (!inProcess) log(`in-process tools unavailable; using the ${spec.mcp_server} MCP server`);
+  }
+  session.tool_transport = inProcess ? 'in-process' : 'mcp';
+
+  // In-process guards. The tools share this process, so a throw that escapes
+  // a tool handler (timer, stream, native module) would kill the worker with
+  // no terminal record. An unhandled rejection is logged and recorded and the
+  // host keeps serving: the rejected promise is not the handler's own (callTool
+  // turns those into isError results). An uncaughtException leaves the process
+  // state undefined (Node docs), so the host stops hard: the runtime is
+  // killed, the tools are cleaned up, and the terminal record plus a `failed`
+  // session let the leader reclaim the task at once instead of waiting for a
+  // dead pid. The builder's import also adds the LSP client manager's
+  // SIGTERM/SIGINT/SIGHUP listeners, which replace Node's default exit, so the
+  // host handles those signals itself: a hard stop, as for a termination request.
+  let crashed: string | null = null;
+  let signalled: string | null = null;
+  const guards: Array<[string, (...args: unknown[]) => void]> = [];
+  if (builderLoaded && deps.processEvents) {
+    guards.push(['uncaughtException', (err) => {
+      crashed = errText(err);
+      session.last_error = `in-process tool crash: ${crashed}`.slice(0, 500);
+      log(`uncaughtException: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
+      dirty = true;
+    }]);
+    guards.push(['unhandledRejection', (reason) => {
+      session.last_error = `unhandled rejection: ${errText(reason)}`.slice(0, 500);
+      log(`unhandledRejection: ${reason instanceof Error ? reason.stack ?? reason.message : String(reason)}`);
+      dirty = true;
+    }]);
+    for (const sig of STOP_SIGNALS) guards.push([sig, () => { signalled ??= sig; log(`${sig}: stopping`); }]);
+    for (const [event, handler] of guards) deps.processEvents.on(event, handler);
+  }
+  const removeGuards = () => { for (const [event, handler] of guards) deps.processEvents?.off(event, handler); };
+
+  const createWith = (tools: SdkInProcessToolSet | null) => withTimeout(client.createSession({
+    onPermissionRequest,
+    onEvent,
+    pluginDirectories: [spec.plugin_root],
+    workingDirectory: spec.worker_cwd,
+    disabledMcpServers: tools ? ['github-mcp-server', tools.disabledMcpServer] : ['github-mcp-server'],
+    excludedTools,
+    ...(tools ? { tools: tools.tools } : {}),
+    ...(spec.model ? { model: spec.model } : {}),
+  }), RPC_TIMEOUT_MS, 'createSession()');
+
   try {
     await withTimeout(client.start(), START_TIMEOUT_MS, 'client.start()');
     session.runtime_pid = runtimePid(client) ?? null;
     // The leader's last-resort kill checks this identity, never a bare pid.
     session.runtime_start_identity = session.runtime_pid ? deps.startIdentity(session.runtime_pid) : null;
     mark('client_started_at');
-    sessionRef = await withTimeout(client.createSession({
-      onPermissionRequest,
-      onEvent,
-      pluginDirectories: [spec.plugin_root],
-      workingDirectory: spec.worker_cwd,
-      disabledMcpServers: ['github-mcp-server'],
-      excludedTools: buildSdkExcludedTools(spec.mcp_server, spec.deny_tools),
-      ...(spec.model ? { model: spec.model } : {}),
-    }), RPC_TIMEOUT_MS, 'createSession()');
+    // The runtime has its env now; the in-process handlers get the same one.
+    if (inProcess) adoptSessionEnv(deps.env, env);
+    sessionRef = await createWith(inProcess);
+    // The SDK capability check above sees the module only. Ask the session
+    // whether it offers a tool: not offered means the runtime ignored
+    // `tools`, so recreate the session on the MCP server; unknown (no metadata
+    // RPC) keeps in-process but records it as unverified.
+    if (inProcess && inProcess.tools.length > 0) {
+      const probe = inProcess.tools.find((t) => t.name === `${spec.mcp_server}-state_read`)?.name ?? inProcess.tools[0]!.name;
+      const offered = await sessionOffersTool(sessionRef, probe);
+      if (offered === false) {
+        log(`in-process tool ${probe} not offered by the session; recreating it on the ${spec.mcp_server} MCP server`);
+        const stale = sessionRef;
+        sessionRef = null;
+        try { await withTimeout(stale.disconnect(), RPC_TIMEOUT_MS, 'disconnect()'); } catch { /* replaced */ }
+        try { await withTimeout(client.deleteSession(stale.sessionId), RPC_TIMEOUT_MS, 'deleteSession()'); } catch { /* best effort */ }
+        inProcess = null;
+        session.tool_transport = 'mcp';
+        sessionRef = await createWith(null);
+      } else {
+        session.tool_transport_verified = offered === true;
+        if (offered === null) log(`in-process tools unverified: the session reports no tool metadata`);
+      }
+    } else if (inProcess) {
+      // Nothing to offer (workerDenyTools denies the whole server): nothing to verify.
+      session.tool_transport_verified = true;
+    }
     session.session_id = sessionRef.sessionId;
     session.state = 'idle';
     mark('session_created_at');
@@ -489,6 +619,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
     const pid = session.runtime_pid ?? runtimePid(client);
     if (pid && deps.isAlive(pid)) deps.killTree(pid);
     try { await withTimeout(client.forceStop?.() ?? Promise.resolve(), 5_000, 'forceStop()'); } catch { /* gone */ }
+    removeGuards();
     return fail('start_failed', errText(err));
   }
 
@@ -517,6 +648,10 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
         await atomicWriteJson(files.probe, await probeSession(s)).catch(() => undefined);
       }
     }
+    // Also the first check of a crash or signal that arrived during startup
+    // (its RPCs cannot be cancelled): before any prompt is sent.
+    if (!stop && crashed) { stop = 'hard'; outcome = 'tool_crash'; }
+    if (!stop && signalled) { stop = 'hard'; outcome = 'terminated'; }
     if (!stop && existsSync(`${attempt.startedPath}.termination-request`)) { stop = 'hard'; outcome = 'terminated'; }
     if (!stop && !existsSync(spec.state_root)) { stop = 'hard'; outcome = 'team_gone'; }
     if (stop) break;
@@ -565,8 +700,21 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
   }
   if (pid && deps.isAlive(pid)) deps.killTree(pid);
   const runtimeGone = !pid || !deps.isAlive(pid);
-  session.state = 'closed';
+  // The MCP server's shutdown cleanup, which in-process mode does not get: the
+  // detached Python REPL bridges and the LSP servers would outlive the host.
+  if (inProcess) {
+    try { await withTimeout(inProcess.cleanup(), TOOL_CLEANUP_TIMEOUT_MS, 'in-process tool cleanup'); } catch (err) { log(`in-process tool cleanup: ${errText(err)}`); }
+  }
+  removeGuards();
   mark('closed_at');
+  if (outcome === 'tool_crash') {
+    // As fail(): terminal record first, then the `failed` session file.
+    session.state = 'failed';
+    await writeTerminal(runtimeGone);
+    await flush(true);
+    return outcome;
+  }
+  session.state = 'closed';
   await flush(true);
   // The final totals: a few async retries if a hook holds the ledger lock.
   for (let i = 0; i < 10 && !recordBudget(); i++) await sleep(50);
@@ -575,7 +723,7 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
 }
 
 /** CLI entry (`omg team sdk-host --spec <file>`): runs the host, then exits the process. */
-export async function runSdkHostMain(specPath: string): Promise<never> {
+export async function runSdkHostMain(specPath: string, loadInProcessTools?: SdkHostDeps['loadInProcessTools']): Promise<never> {
   const { spawnSync } = await import('node:child_process');
   const { loadCopilotSdk } = await import('../smoke/copilot-sdk-driver.js');
   const { killProcessTree } = await import('../smoke/process-utils.js');
@@ -596,6 +744,7 @@ export async function runSdkHostMain(specPath: string): Promise<never> {
       pollMs: 250,
       env: process.env,
       log,
+      ...(loadInProcessTools ? { loadInProcessTools, processEvents: process } : {}),
     });
     log(`exit outcome=${outcome}`);
     code = outcome === 'stopped' || outcome === 'terminated' || outcome === 'team_gone' ? 0 : 1;

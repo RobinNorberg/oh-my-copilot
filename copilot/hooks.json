@@ -248,6 +248,23 @@
         },
         "timeoutSec": 60
       }
+    ],
+    "Notification": [
+      {
+        "type": "command",
+        "exec": "node",
+        "args": [
+          "--require",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "Notification",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/notification.mjs"
+        ],
+        "env": {
+          "OMC_HOOK_EVENT": "Notification"
+        },
+        "timeoutSec": 5
+      }
     ]
   }
 }

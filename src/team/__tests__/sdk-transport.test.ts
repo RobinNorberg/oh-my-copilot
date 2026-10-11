@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'child_process';
+import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -217,6 +218,8 @@ interface FakeOpts {
   hang?: boolean;
   /** Live pids; the runtime pid leaves it on stop/forceStop (the runtime exits). */
   alive?: Set<number>;
+  /** The session's `rpc.tools.getCurrentMetadata()` tool names for its config; absent means no tools RPC. */
+  offeredTools?: (config: SdkSessionConfig) => string[];
 }
 
 function fakeSdk(opts: FakeOpts = {}): { loaded: LoadedSdk; rec: FakeRec } {
@@ -266,6 +269,11 @@ function fakeSdk(opts: FakeOpts = {}): { loaded: LoadedSdk; rec: FakeRec } {
           skills: { list: async () => ({}) },
           agent: { list: async () => ({}) },
           mcp: { list: async () => ({}), listTools: async () => ({}) },
+          ...(opts.offeredTools ? {
+            tools: {
+              getCurrentMetadata: async () => ({ tools: opts.offeredTools!(config).map((name) => ({ name })) }),
+            },
+          } : {}),
         },
       };
     }
@@ -434,6 +442,145 @@ describe('sdk host', () => {
     expect(await observeWorkerLaunchProvider(attempt)).toBe('dead');
     expect(await retireAndCleanupCurrentWorkerLaunchAttempt(attempt, 'test', async () => true)).toBe(true);
     expect(existsSync(attempt.currentPath)).toBe(false);
+    expect(session.tool_transport).toBe('mcp');
+    expect(cfg.tools).toBeUndefined();
+  });
+
+  describe('in_process_tools', () => {
+    const fakeTool = { name: 't-state_read', description: 'd', parameters: { type: 'object' as const, properties: {}, required: [] }, skipPermission: true as const, handler: async () => '' };
+    const toolNames = (config: SdkSessionConfig) => (config.tools as Array<{ name: string }> | undefined ?? []).map((t) => t.name);
+
+    interface RunOpts {
+      fake?: FakeOpts;
+      events?: EventEmitter;
+      /** Plays the leader once the session is idle; default rings shutdown. */
+      drive?: (events: EventEmitter) => void;
+      outcome?: string;
+    }
+
+    async function runWith(builder: SdkHostDeps['loadInProcessTools'], hostEnv: NodeJS.ProcessEnv, opts: RunOpts = {}) {
+      const attempt = await newAttempt();
+      const { loaded, rec } = fakeSdk(opts.fake);
+      const calls: unknown[][] = [];
+      const cleanups: number[] = [];
+      const events = opts.events ?? new EventEmitter();
+      const host = await hostWithLeader(attempt, deps(loaded, { env: hostEnv, processEvents: events, ...(builder ? { loadInProcessTools: async () => {
+        const build = await builder();
+        return ((...args: Parameters<typeof build>) => {
+          calls.push(args);
+          const set = build(...args);
+          return set ? { ...set, cleanup: async () => { cleanups.push(Date.now()); await set.cleanup(); } } : null;
+        }) as typeof build;
+      } } : {}) }), async () => {
+        await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
+        if (opts.drive) opts.drive(events);
+        else ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
+      }, specFor(attempt, { in_process_tools: true }));
+      expect(await host).toBe(opts.outcome ?? 'stopped');
+      return { cfg: rec.sessions[0]!, rec, connEnv: rec.connection!.env!, calls, cleanups, events, attempt, session: readSdkSession(stateRoot, WORKER)! };
+    }
+    const withTools = (tools = [fakeTool]) => (async () => () => ({ tools, disabledMcpServer: 't', cleanup: async () => {} })) as SdkHostDeps['loadInProcessTools'];
+
+    it('registers the tools, disables the t server and gives the handlers the session env', async () => {
+      const hostEnv: NodeJS.ProcessEnv = { [process.platform === 'win32' ? 'Path' : 'PATH']: '/usr/bin', OMC_STRIPPED: '1', COPILOT_HOME: '/real-home' };
+      const { cfg, connEnv, calls, cleanups, events, session } = await runWith(withTools(), hostEnv);
+      expect(cfg.tools).toEqual([fakeTool]);
+      expect(cfg.disabledMcpServers).toEqual(['github-mcp-server', 't']);
+      expect(cfg.excludedTools).toEqual(expect.arrayContaining(['t-host_smoke', 'web_fetch']));
+      // builder(sdk module, server, the session's excludedTools, the session env's OMC_DISABLE_TOOLS)
+      expect(calls[0]?.[1]).toBe('t');
+      expect(calls[0]?.[2]).toEqual(cfg.excludedTools);
+      expect(session.tool_transport).toBe('in-process');
+      // No tools RPC on this fake SDK: in-process, but recorded as unverified.
+      expect(session.tool_transport_verified).toBe(false);
+      // The host env now equals the runtime's (MCP child) env.
+      expect(hostEnv).toEqual(connEnv);
+      expect(hostEnv.OMC_STRIPPED).toBeUndefined();
+      expect(hostEnv.COPILOT_HOME).toBe(sdkWorkerFiles(stateRoot, WORKER).home);
+      // Teardown ran the tools' cleanup once and removed every process guard.
+      expect(cleanups).toHaveLength(1);
+      for (const event of ['uncaughtException', 'unhandledRejection', 'SIGTERM', 'SIGINT', 'SIGHUP']) expect(events.listenerCount(event), event).toBe(0);
+    });
+
+    it('verifies the session offers an in-process tool', async () => {
+      const { session, rec } = await runWith(withTools(), {}, { fake: { offeredTools: (c) => ['view', ...toolNames(c)] } });
+      expect(session.tool_transport).toBe('in-process');
+      expect(session.tool_transport_verified).toBe(true);
+      expect(rec.sessions).toHaveLength(1);
+    });
+
+    it('recreates the session on the t MCP server when the runtime does not offer the in-process tools', async () => {
+      const { session, rec, cleanups } = await runWith(withTools(), {}, { fake: { offeredTools: () => ['view', 'shell'] } });
+      expect(rec.sessions).toHaveLength(2);
+      expect(rec.sessions[1]!.tools).toBeUndefined();
+      expect(rec.sessions[1]!.disabledMcpServers).toEqual(['github-mcp-server']);
+      expect(rec.ops.slice(0, 5)).toEqual(['start', 'create', 'disconnect', 'delete:s1', 'create']);
+      expect(session.tool_transport).toBe('mcp');
+      expect(session.tool_transport_verified).toBeUndefined();
+      expect(cleanups).toHaveLength(0);
+    });
+
+    it('offers no tools and keeps the t server disabled for workerDenyTools: [t]', async () => {
+      const { buildSdkInProcessTools } = await import('../sdk-inprocess-tools.js');
+      const sdk = { convertMcpCallToolResult: (r: unknown) => r };
+      const set = buildSdkInProcessTools(sdk, 't', buildSdkExcludedTools('t', ['t']), '');
+      expect(set?.tools).toEqual([]);
+      expect(set?.disabledMcpServer).toBe('t');
+      const { cfg, session } = await runWith(withTools([]), {}, { fake: { offeredTools: () => ['view'] } });
+      expect(cfg.tools).toEqual([]);
+      expect(cfg.disabledMcpServers).toEqual(['github-mcp-server', 't']);
+      expect(session.tool_transport).toBe('in-process');
+      expect(session.tool_transport_verified).toBe(true);
+    });
+
+    it('records an unhandled rejection and keeps serving', async () => {
+      const { session } = await runWith(withTools(), {}, {
+        drive: (events) => {
+          events.emit('unhandledRejection', new Error('stream closed'));
+          ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
+        },
+      });
+      expect(session.state).toBe('closed');
+      expect(session.last_error).toBe('unhandled rejection: stream closed');
+    });
+
+    it('an uncaught tool exception stops hard: runtime killed, tools cleaned up, terminal record, session failed', async () => {
+      const alive = new Set([991]);
+      const { session, cleanups, attempt, rec } = await runWith(withTools(), {}, {
+        fake: { pid: 991, alive },
+        drive: (events) => { events.emit('uncaughtException', new Error('lsp socket EPIPE')); },
+        outcome: 'tool_crash',
+      });
+      // The hard-stop path: forceStop, no graceful disconnect.
+      expect(rec.ops).toContain('forceStop');
+      expect(rec.ops).not.toContain('disconnect');
+      expect(alive.has(991)).toBe(false);
+      expect(cleanups).toHaveLength(1);
+      expect(session.state).toBe('failed');
+      expect(session.last_error).toBe('in-process tool crash: lsp socket EPIPE');
+      expect(existsSync(`${attempt.startedPath}.terminal`)).toBe(true);
+    });
+
+    it.each(['SIGTERM', 'SIGINT', 'SIGHUP'])('%s stops the in-process host (the LSP listeners replace the default exit)', async (sig) => {
+      const { session, cleanups } = await runWith(withTools(), {}, {
+        drive: (events) => { events.emit(sig); },
+        outcome: 'terminated',
+      });
+      expect(session.state).toBe('closed');
+      expect(cleanups).toHaveLength(1);
+    });
+
+    it.each([
+      ['the SDK lacks the capability', (async () => () => null) as SdkHostDeps['loadInProcessTools']],
+      ['no builder is wired', undefined],
+    ])('falls back to the t MCP server when %s', async (_label, builder) => {
+      const hostEnv: NodeJS.ProcessEnv = { OMC_STRIPPED: '1' };
+      const { cfg, session } = await runWith(builder, hostEnv);
+      expect(cfg.tools).toBeUndefined();
+      expect(cfg.disabledMcpServers).toEqual(['github-mcp-server']);
+      expect(session.tool_transport).toBe('mcp');
+      expect(hostEnv.OMC_STRIPPED).toBe('1');
+    });
   });
 
   it('a termination request hard-stops: tree-kills the runtime and publishes termination-complete', async () => {

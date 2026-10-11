@@ -31,6 +31,7 @@ import {
   isTmuxAvailable,
 } from '../features/rate-limit-wait/tmux-detector.js';
 import {
+  isPaneReplyBlocked,
   lookupByMessageId,
   lockRegistryIfEmpty,
   removeMessagesByPane,
@@ -499,6 +500,13 @@ function injectReply(
   config: ReplyListenerDaemonConfig,
   mapping?: SessionMapping,
 ): boolean {
+  // 0. A non-replyable message (Copilot permission menu) was sent to the pane
+  // after this mapping was created: Enter would answer that menu.
+  if (isPaneReplyBlocked(paneId, mapping)) {
+    log(`WARN: Pane ${paneId} shows a non-replyable prompt newer than the replied message. Skipping injection.`);
+    return false;
+  }
+
   // 1. Verify pane has content (non-empty pane = active session per registry)
   const content = capturePaneContent(paneId, 15);
 
