@@ -82,6 +82,17 @@ All notable changes to oh-my-copilot will be documented in this file.
   head back to the reviewed sha of commits `prepare` recorded, and each
   recorded merge must have two parents, the second GitHub's current
   `baseRefOid` or its ancestor; anything else needs a new verdict.
+- **`merge` checks housekeeping content, not just parents.** A recorded
+  one-parent commit may change only `inventory/` against its parent; a
+  recorded merge may differ only under `inventory/` from the tree
+  `git merge-tree --write-tree` rebuilds from its parents, and is refused
+  while any `merge.<name>.driver` is configured. A custom merge driver, a
+  hook that stages a file, or a file another lane stages during the checks
+  can no longer ride into a commit `merge` accepts without re-review.
+  `prepare` also hardens the commits it makes: merges and commits run with
+  `--no-verify` (hooks never shape engine commits), the inventory commit
+  names `-- inventory`, and it refuses to start with staged changes in the
+  index.
 - Known limits, documented: a lane with write access to `.git/objects` can
   forge loose objects; environment and `PATH` overrides are advisory; `gh`
   resolves the repository from the checkout's remotes too.

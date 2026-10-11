@@ -149,20 +149,31 @@ function gitAllowed(a: string[], protectedBranches: readonly string[]): boolean 
       // The URL the base is fetched from, checked against the PR's repository.
       return r.length === 2 && r[0] === 'get-url' && REMOTE.test(r[1]);
     case 'merge':
-      // Only GitHub's base sha, never a ref name a local tag or branch could shadow.
-      return r.length === 3 && r[0] === '--no-ff' && r[1] === '--no-edit' && HEX40.test(r[2]);
+      // Only GitHub's base sha, never a ref name a local tag or branch could shadow; hooks never run.
+      return r.length === 4 && r[0] === '--no-ff' && r[1] === '--no-edit' && r[2] === '--no-verify' && HEX40.test(r[3]);
+    case 'merge-tree':
+      // The tree a housekeeping merge should have (merge re-checks its content).
+      return r.length === 3 && r[0] === '--write-tree' && HEX40.test(r[1]) && HEX40.test(r[2]);
+    case 'config':
+      // Custom merge drivers: a housekeeping merge made with one is refused.
+      return same(r, ['--get-regexp', '^merge\\..*\\.driver$']);
     case 'diff':
       return same(r, ['--name-only', '--diff-filter=U'])
         || same(r, ['--cached', '--quiet'])
+        || same(r, ['--cached', '--quiet', '--', 'inventory'])
         || (r.length === 2 && r[0] === '--name-only' && /^[0-9a-f]{40}\.\.\.HEAD$/.test(r[1]))
         // The merge's changed-file list: GitHub's base and head commits, renames split into delete + add.
-        || (r.length === 4 && r[0] === '--name-only' && r[1] === '--no-renames' && r[2] === '-z' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[3]));
+        || (r.length === 4 && r[0] === '--name-only' && r[1] === '--no-renames' && r[2] === '-z' && /^[0-9a-f]{40}\.\.\.[0-9a-f]{40}$/.test(r[3]))
+        // A housekeeping commit's content: its parent (or the expected merge tree) against the commit.
+        || (r.length === 5 && r[0] === '--name-only' && r[1] === '--no-renames' && r[2] === '-z' && HEX40.test(r[3]) && HEX40.test(r[4]));
     case 'checkout':
       return same(r, ['--theirs', '--', 'inventory']);
     case 'add':
       return same(r, ['--', 'inventory']);
     case 'commit':
-      return same(r, ['--no-edit']) || (r.length === 2 && r[0] === '-m' && isPath(r[1]));
+      // Hooks never shape an engine commit; the inventory commit takes only inventory/ (an unrelated staged file stays out).
+      return same(r, ['--no-edit', '--no-verify'])
+        || (r.length === 5 && r[0] === '--no-verify' && r[1] === '-m' && isPath(r[2]) && r[3] === '--' && r[4] === 'inventory');
     case 'push': {
       const m = r.length === 2 ? /^HEAD:refs\/heads\/(.+)$/.exec(r[1]) : null;
       return Boolean(m) && REMOTE.test(r[0]) && isBranch(m![1])

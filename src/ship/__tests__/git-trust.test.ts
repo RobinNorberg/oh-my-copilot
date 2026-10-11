@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { execFileSync } from 'child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { defaultExec, guardExec, type Exec } from '../exec.js';
 import { loadBaseKnownFlaky, loadTrustedShipConfig, readBaseFile, resolveShipConfig } from '../config.js';
 import { evaluateChecks } from '../gates.js';
 import { decideMerge, listChangedFiles, protectedChanges, readCommitsSinceReview } from '../merge.js';
-import { runPrepare } from '../prepare.js';
+import { INVENTORY_COMMIT_MESSAGE, INVENTORY_SCRIPT, runPrepare } from '../prepare.js';
 import { createShipState, recordVerdict, sealShipState, transition } from '../state.js';
 
 /**
@@ -161,6 +161,7 @@ describe('prepare and merge against a real git: the base is GitHub\'s sha, from 
     mkdirSync(up);
     git(up, 'init', '-q', '-b', 'dev');
     write(up, 'a.txt', 'a\n');
+    write(up, 'inventory/graph.json', '{}\n');
     git(up, 'add', '-A');
     git(up, 'commit', '-q', '-m', 'base');
     git(dir, 'clone', '-q', up, clone);
@@ -190,6 +191,32 @@ describe('prepare and merge against a real git: the base is GitHub\'s sha, from 
     return sealShipState(transition(s, 'ready', 'green', T));
   }
 
+  /**
+   * Real git, with the repo scripts stubbed: the inventory baseline is stale
+   * on the first `--verify` when `stale` (so prepare regenerates and commits
+   * it), `--write` rewrites inventory/graph.json, and `onChecks` runs in the
+   * tsc window (what a concurrent lane can do meanwhile).
+   */
+  function stubbed(clone: string, { stale = false, onChecks }: { stale?: boolean; onChecks?: () => void } = {}): Exec {
+    let verifies = 0;
+    return guardExec(((cmd, args, opts) => {
+      if (!/node(\.exe)?$/i.test(cmd)) return defaultExec(cmd, args, opts);
+      if (args[0] === 'node_modules/typescript/bin/tsc') onChecks?.();
+      if (args[0] === INVENTORY_SCRIPT && args[1] === '--verify') return { status: stale && verifies++ === 0 ? 1 : 0, stdout: '', stderr: '' };
+      if (args[0] === INVENTORY_SCRIPT && args[1] === '--write') write(clone, 'inventory/graph.json', '{ "regenerated": true }\n');
+      return { status: 0, stdout: '', stderr: '' };
+    }) as Exec);
+  }
+
+  /** A pre-commit / pre-merge-commit hook that stages a file into whatever is being committed. */
+  function stagingHook(clone: string, hook: string, file: string): void {
+    write(clone, `.git/hooks/${hook}`, `#!/bin/sh\necho evil > ${file}\ngit add ${file}\n`);
+    chmodSync(join(clone, '.git', 'hooks', hook), 0o755);
+  }
+
+  const prepare = (exec: Exec, up: string, clone: string, reviewed: string, baseSha: string, checks = false) =>
+    runPrepare({ exec, cwd: clone, base: 'dev', branch: 'feat/x', reviewedSha: reviewed, baseSha, repoUrl: up, checks });
+
   function decide(clone: string, reviewed: string, baseSha: string, housekeeping: string[]) {
     const head = git(clone, 'rev-parse', 'HEAD');
     const since = readCommitsSinceReview(exec, clone, reviewed, head, baseSha, housekeeping);
@@ -202,13 +229,93 @@ describe('prepare and merge against a real git: the base is GitHub\'s sha, from 
     });
   }
 
-  it('the legitimate path: merges GitHub\'s base sha, and merge accepts the recorded merge', () => {
+  it('A0, the legitimate path: merges GitHub\'s base sha, commits the regenerated inventory, and merge accepts both', () => {
     const { up, clone, reviewed, baseSha } = setup('ok');
-    const r = runPrepare({ exec, cwd: clone, base: 'dev', branch: 'feat/x', reviewedSha: reviewed, baseSha, repoUrl: up, checks: false });
+    const r = prepare(stubbed(clone, { stale: true }), up, clone, reviewed, baseSha, true);
     expect(r.ok, r.blockedReason).toBe(true);
-    expect(r.housekeepingCommits).toHaveLength(1);
-    expect(git(clone, 'rev-parse', 'HEAD^2')).toBe(baseSha);
+    expect(r.steps.find((s) => s.name === 'inventory')?.status).toBe('ok');
+    expect(r.housekeepingCommits).toHaveLength(2);
+    expect(git(clone, 'rev-parse', 'HEAD~1^2')).toBe(baseSha);
+    expect(git(clone, 'log', '-1', '--format=%s')).toBe(INVENTORY_COMMIT_MESSAGE);
+    expect(git(clone, 'diff', '--name-only', 'HEAD~1', 'HEAD')).toBe('inventory/graph.json');
     expect(decide(clone, reviewed, baseSha, r.housekeepingCommits)).toMatchObject({ ok: true, reasons: [] });
+  });
+
+  it('A5, an inventory-only conflict: the merge takes the base\'s inventory, the regeneration follows, and merge accepts both', () => {
+    const { up, clone } = setup('invconf');
+    write(clone, 'inventory/graph.json', '{ "pr": 1 }\n');
+    git(clone, 'commit', '-q', '-am', 'pr inventory');
+    const reviewed = git(clone, 'rev-parse', 'HEAD');
+    write(up, 'inventory/graph.json', '{ "base": 1 }\n');
+    git(up, 'commit', '-q', '-am', 'base inventory');
+    const baseSha = git(up, 'rev-parse', 'HEAD');
+    const r = prepare(stubbed(clone, { stale: true }), up, clone, reviewed, baseSha);
+    expect(r.ok, r.blockedReason).toBe(true);
+    expect(r.steps.find((s) => s.name === 'merge-base')?.detail).toMatch(/inventory conflict resolved with --theirs/);
+    expect(r.housekeepingCommits).toHaveLength(2);
+    expect(decide(clone, reviewed, baseSha, r.housekeepingCommits)).toMatchObject({ ok: true, reasons: [] });
+  });
+
+  it('A2: a custom merge driver that rewrites content in the engine\'s own merge is refused', () => {
+    const { up, clone } = setup('driver');
+    write(clone, 'a.txt', 'a\nfeature line\n');
+    git(clone, 'commit', '-q', '-am', 'touch a');
+    const reviewed = git(clone, 'rev-parse', 'HEAD');
+    write(up, 'a.txt', 'base line\na\n');
+    git(up, 'commit', '-q', '-am', 'base touches a');
+    const baseSha = git(up, 'rev-parse', 'HEAD');
+    write(clone, '.git/info/attributes', '* merge=evil\n');
+    git(clone, 'config', 'merge.evil.driver', 'sh -c "echo PWNED > %A"');
+    const r = prepare(stubbed(clone), up, clone, reviewed, baseSha);
+    expect(r.ok, r.blockedReason).toBe(true);
+    // The attack works: the engine's merge carries content nobody reviewed...
+    expect(git(clone, 'show', 'HEAD:a.txt')).toBe('PWNED');
+    // ...but merge refuses it.
+    const d = decide(clone, reviewed, baseSha, r.housekeepingCommits);
+    expect(d.ok).toBe(false);
+    expect(d.reasons.join('\n')).toMatch(new RegExp(`housekeeping commit ${r.housekeepingCommits[0].slice(0, 12)} is not inventory-only: a custom merge driver is configured \\(merge\\.evil\\.driver\\)`));
+  });
+
+  it('A3: a pre-commit hook does not run on the engine\'s inventory commit, and a commit it shaped is refused', () => {
+    const { up, clone, reviewed, baseSha } = setup('hook');
+    stagingHook(clone, 'pre-commit', 'src_evil.txt');
+    stagingHook(clone, 'pre-merge-commit', 'src_evil_merge.txt');
+    const r = prepare(stubbed(clone, { stale: true }), up, clone, reviewed, baseSha);
+    expect(r.ok, r.blockedReason).toBe(true);
+    expect(r.housekeepingCommits).toHaveLength(2);
+    expect(git(clone, 'diff', '--name-only', reviewed, 'HEAD').split('\n')).toEqual(['b.txt', 'inventory/graph.json']);
+    expect(decide(clone, reviewed, baseSha, r.housekeepingCommits).ok).toBe(true);
+    // What a hooked `git commit -m` (the old inventory commit) records: the hook's file rides along.
+    write(clone, 'inventory/graph.json', '{ "again": true }\n');
+    git(clone, 'add', '--', 'inventory');
+    git(clone, 'commit', '-q', '-m', INVENTORY_COMMIT_MESSAGE);
+    const hooked = git(clone, 'rev-parse', 'HEAD');
+    const d = decide(clone, reviewed, baseSha, [...r.housekeepingCommits, hooked]);
+    expect(d.ok).toBe(false);
+    expect(d.reasons.join('\n')).toMatch(new RegExp(`housekeeping commit ${hooked.slice(0, 12)} is not inventory-only: it changes files outside inventory/: src_evil.txt`));
+  });
+
+  it('A4: a file another lane stages during the checks stays out of the inventory commit, and a commit that swept it in is refused', () => {
+    const { up, clone, reviewed, baseSha } = setup('race');
+    const onChecks = () => {
+      write(clone, 'src_evil3.txt', 'evil\n');
+      execFileSync('git', ['add', 'src_evil3.txt'], { cwd: clone });
+    };
+    const r = prepare(stubbed(clone, { stale: true, onChecks }), up, clone, reviewed, baseSha, true);
+    expect(r.ok, r.blockedReason).toBe(true);
+    expect(git(clone, 'diff', '--name-only', 'HEAD~1', 'HEAD')).toBe('inventory/graph.json');
+    expect(git(clone, 'diff', '--cached', '--name-only')).toBe('src_evil3.txt');
+    expect(decide(clone, reviewed, baseSha, r.housekeepingCommits).ok).toBe(true);
+    // A later prepare refuses to start with the staged file in the index.
+    expect(prepare(stubbed(clone), up, clone, reviewed, baseSha).blockedReason).toMatch(/^preflight: /);
+    // What the old `git commit -m` did: sweep the staged file into the engine's commit.
+    write(clone, 'inventory/graph.json', '{ "again": true }\n');
+    git(clone, 'add', '--', 'inventory');
+    git(clone, 'commit', '-q', '-m', INVENTORY_COMMIT_MESSAGE);
+    const swept = git(clone, 'rev-parse', 'HEAD');
+    const d = decide(clone, reviewed, baseSha, [...r.housekeepingCommits, swept]);
+    expect(d.ok).toBe(false);
+    expect(d.reasons.join('\n')).toMatch(new RegExp(`housekeeping commit ${swept.slice(0, 12)} is not inventory-only: it changes files outside inventory/: src_evil3.txt`));
   });
 
   it('a tag named origin/dev does not shadow the base: the merge takes GitHub\'s sha', () => {

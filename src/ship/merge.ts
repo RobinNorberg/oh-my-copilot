@@ -40,31 +40,81 @@ export function parseCommitParents(stdout: string): CommitParents[] | null {
   return out;
 }
 
+const HOUSEKEEPING_DIR = 'inventory/';
+
+/** `git diff --name-only --no-renames -z <from> <to>` paths outside inventory/; null when the diff fails. */
+function outsideInventory(exec: Exec, cwd: string, from: string, to: string): string[] | null {
+  const res = exec('git', ['diff', '--name-only', '--no-renames', '-z', from, to], { cwd, env: TRUSTED_READ_ENV });
+  return res.status === 0 ? res.stdout.split('\0').filter((f) => f.length > 0 && !f.startsWith(HOUSEKEEPING_DIR)) : null;
+}
+
+/**
+ * Why a recorded housekeeping commit carries more than an inventory change
+ * (null = it changes only inventory/). Its parents prove where it sits, not
+ * what it holds, so its content is checked too: a one-parent commit against
+ * its parent; a merge against the tree `git merge-tree --write-tree` builds
+ * from its parents (on a conflict the first stdout line is still that tree,
+ * with conflict markers; the engine then takes the base's inventory/). A
+ * custom merge driver (`merge.<name>.driver` in any git config) can rewrite
+ * both the engine's merge and merge-tree's, so a merge made while one is
+ * configured is refused. Any git failure is a reason (fail closed).
+ */
+function housekeepingContentProblem(exec: Exec, cwd: string, c: CommitParents, drivers: () => string | null): string | null {
+  const short = (s: string) => s.slice(0, 12);
+  let expected = c.parents[0];
+  if (c.parents.length === 2) {
+    const configured = drivers();
+    if (configured === null) return 'could not read the git config for custom merge drivers';
+    if (configured) return `a custom merge driver is configured (${configured.split(/\r?\n/).map((l) => l.split(/\s/)[0]).join(', ')}), which can rewrite the merge's content`;
+    const tree = exec('git', ['merge-tree', '--write-tree', c.parents[0], c.parents[1]], { cwd, env: TRUSTED_READ_ENV });
+    const first = tree.stdout.split(/\r?\n/)[0].trim();
+    if ((tree.status !== 0 && tree.status !== 1) || !/^[0-9a-f]{40}$/.test(first)) {
+      return `git merge-tree could not rebuild the merge of ${short(c.parents[0])} and ${short(c.parents[1])}`;
+    }
+    expected = first;
+  }
+  const outside = outsideInventory(exec, cwd, expected, c.sha);
+  if (outside === null) return `could not diff it against ${c.parents.length === 2 ? 'the rebuilt merge' : `its parent ${short(expected)}`}`;
+  return outside.length > 0 ? `it changes files outside ${HOUSEKEEPING_DIR}: ${outside.join(', ')}` : null;
+}
+
 /**
  * The decideMerge inputs about the commits after the reviewed sha:
  * `git rev-list --first-parent --parents <reviewed>..<head>` (null when the
- * reviewed sha is not an ancestor of the head or the list fails), and the
+ * reviewed sha is not an ancestor of the head or the list fails), the
  * second parents of the recorded housekeeping merges that are GitHub's
- * current base sha or its ancestors. `baseSha` must be in the object store
- * (fetched and checked against GitHub); an unknown one puts nothing in
- * baseHistory (fail closed).
+ * current base sha or its ancestors, and the content check of every
+ * recorded one- or two-parent housekeeping commit (housekeepingContentProblem).
+ * `baseSha` must be in the object store (fetched and checked against
+ * GitHub); an unknown one puts nothing in baseHistory (fail closed).
  */
 export function readCommitsSinceReview(
   exec: Exec, cwd: string, reviewed: string | undefined, head: string, baseSha: string, housekeeping: readonly string[],
-): { commitsSinceReview: CommitParents[] | null; baseHistory: Set<string> } {
+): { commitsSinceReview: CommitParents[] | null; baseHistory: Set<string>; housekeepingContent: Map<string, string | null> } {
   const baseHistory = new Set<string>();
-  if (!reviewed || reviewed === head) return { commitsSinceReview: [], baseHistory };
+  const housekeepingContent = new Map<string, string | null>();
+  if (!reviewed || reviewed === head) return { commitsSinceReview: [], baseHistory, housekeepingContent };
   const ancestor = exec('git', ['merge-base', '--is-ancestor', reviewed, head], { cwd }).status === 0;
   const list = ancestor ? exec('git', ['rev-list', '--first-parent', '--parents', `${reviewed}..${head}`], { cwd }) : null;
   const commitsSinceReview = list && list.status === 0 ? parseCommitParents(list.stdout) : null;
+  let drivers: string | null | undefined;
+  const readDrivers = () => {
+    if (drivers === undefined) {
+      const res = exec('git', ['config', '--get-regexp', '^merge\\..*\\.driver$'], { cwd, env: TRUSTED_READ_ENV });
+      // Exit 1: no such key.
+      drivers = res.status === 0 ? res.stdout.trim() : res.status === 1 ? '' : null;
+    }
+    return drivers;
+  };
   for (const c of commitsSinceReview ?? []) {
+    if (!housekeeping.includes(c.sha)) continue;
     const second = c.parents[1];
-    if (c.parents.length === 2 && housekeeping.includes(c.sha)
-      && exec('git', ['merge-base', '--is-ancestor', second, baseSha], { cwd }).status === 0) {
+    if (c.parents.length === 2 && exec('git', ['merge-base', '--is-ancestor', second, baseSha], { cwd }).status === 0) {
       baseHistory.add(second);
     }
+    if (c.parents.length === 1 || c.parents.length === 2) housekeepingContent.set(c.sha, housekeepingContentProblem(exec, cwd, c, readDrivers));
   }
-  return { commitsSinceReview, baseHistory };
+  return { commitsSinceReview, baseHistory, housekeepingContent };
 }
 
 export interface PrView {
@@ -90,6 +140,12 @@ export interface MergeInput {
    * GitHub's CURRENT base sha or its ancestors (`git merge-base --is-ancestor`).
    */
   baseHistory: ReadonlySet<string>;
+  /**
+   * Content check of each recorded one- or two-parent housekeeping commit in
+   * commitsSinceReview: null when it changes only inventory/, else why not.
+   * A housekeeping commit missing from the map is refused (fail closed).
+   */
+  housekeepingContent: ReadonlyMap<string, string | null>;
   /** listChangedFiles(base sha, head sha); null when it could not be read (refused unless humanOverride). */
   changedFiles: string[] | null;
   /** OMG_SHIP_HUMAN=1: the owner accepts a PR that touches PROTECTED_PATHS. */
@@ -131,9 +187,14 @@ export function mergeCommand(pr: number, headSha: string): string[] {
  * back to the reviewed sha made of engine-recorded commits, where each
  * recorded merge has exactly two parents and brings in a commit in GitHub's
  * current base history (so a merge of a forged `origin/<base>` is not
- * housekeeping, even when the engine recorded it).
+ * housekeeping, even when the engine recorded it), and every recorded commit
+ * changes nothing outside inventory/ beyond what its parents give (so a hook,
+ * a merge driver or a file staged by another lane cannot ride along).
  */
-function unreviewedReasons(commits: readonly CommitParents[], reviewed: string, head: string, housekeeping: readonly string[], baseHistory: ReadonlySet<string>): string[] {
+function unreviewedReasons(
+  commits: readonly CommitParents[], reviewed: string, head: string, housekeeping: readonly string[],
+  baseHistory: ReadonlySet<string>, content: ReadonlyMap<string, string | null>,
+): string[] {
   const reasons: string[] = [];
   const short = (s: string) => s.slice(0, 12);
   const chained = commits.length > 0 && commits[0].sha === head
@@ -148,11 +209,15 @@ function unreviewedReasons(commits: readonly CommitParents[], reviewed: string, 
     } else if (c.parents.length === 2 && !baseHistory.has(c.parents[1])) {
       reasons.push(`housekeeping merge ${short(c.sha)} brings in ${short(c.parents[1])}, which is not in GitHub's base history (re-review needed)`);
     }
+    if (c.parents.length === 1 || c.parents.length === 2) {
+      const problem = content.has(c.sha) ? content.get(c.sha) : 'its content was not checked';
+      if (problem) reasons.push(`housekeeping commit ${short(c.sha)} is not inventory-only: ${problem} (re-review needed)`);
+    }
   }
   return reasons;
 }
 
-export function decideMerge({ state, pr, gate, commitsSinceReview, baseHistory, changedFiles, humanOverride = false, extraProtected = [] }: MergeInput): MergeDecision {
+export function decideMerge({ state, pr, gate, commitsSinceReview, baseHistory, housekeepingContent, changedFiles, humanOverride = false, extraProtected = [] }: MergeInput): MergeDecision {
   const reasons: string[] = [];
   if (!humanOverride) {
     if (changedFiles === null) {
@@ -186,7 +251,7 @@ export function decideMerge({ state, pr, gate, commitsSinceReview, baseHistory, 
     if (commitsSinceReview === null) {
       reasons.push(`reviewed sha ${verdict.sha.slice(0, 12)} is not an ancestor of head ${pr.headRefOid.slice(0, 12)}`);
     } else {
-      reasons.push(...unreviewedReasons(commitsSinceReview, verdict.sha, pr.headRefOid, state.housekeepingCommits, baseHistory));
+      reasons.push(...unreviewedReasons(commitsSinceReview, verdict.sha, pr.headRefOid, state.housekeepingCommits, baseHistory, housekeepingContent));
     }
   }
   return { ok: reasons.length === 0, reasons, command: mergeCommand(pr.number, pr.headRefOid) };

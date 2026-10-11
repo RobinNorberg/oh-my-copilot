@@ -106,6 +106,15 @@ Known limits:
 - `gh` resolves the repository from the checkout's remotes too. The remote
   check catches `origin` pointing away from the repository `gh` reports,
   not a checkout whose every remote and `gh` default were repointed.
+- Engine commits are checked by content, not trusted by provenance. Hooks
+  (`pre-commit`, `pre-merge-commit`, `commit-msg`) are skipped with
+  `--no-verify`, but `post-commit` / `post-merge` hooks and custom merge
+  drivers still run. So `merge` re-checks every recorded housekeeping
+  commit: a one-parent commit may change only `inventory/` against its
+  parent; a merge is rebuilt with `git merge-tree --write-tree` and may
+  differ from that tree only under `inventory/`; and a merge made while any
+  `merge.<name>.driver` is configured is refused outright. Anything else
+  needs a new verdict.
 
 ## Steps
 
@@ -129,14 +138,16 @@ Known limits:
    report to the user instead of starting another round.
 5. **Prepare:** `omc ship prepare <pr> --push`, run on the PR branch the run
    was started for, with the reviewed sha in HEAD (it refuses otherwise, and
-   refuses a dirty tree or a merge / rebase / cherry-pick / revert in
-   progress). It checks that `origin` is the PR's repository, fetches the
-   base, requires `refs/remotes/origin/<base>` to equal GitHub's base sha,
-   and merges that sha (never the ref name, which a local tag named
-   `origin/<base>` could shadow) in with `--no-ff`,
+   refuses a dirty tree, staged changes in the index, or a merge / rebase /
+   cherry-pick / revert in progress). It checks that `origin` is the PR's
+   repository, fetches the base, requires `refs/remotes/origin/<base>` to
+   equal GitHub's base sha, and merges that sha (never the ref name, which a
+   local tag named `origin/<base>` could shadow) in with `--no-ff`,
    runs `tsc`, eslint on changed files, the tests mapped from the diff and
    the generator `--verify` checks, then regenerates the inventory as the
-   last commit and pushes plainly. A conflict outside `inventory/` stops it:
+   last commit (`git commit -- inventory`, so a file another lane stages
+   meanwhile stays out) and pushes plainly. Its merges and commits run with
+   `--no-verify`: hooks never shape engine commits. A conflict outside `inventory/` stops it:
    hand the conflict to a fresh fix agent, then re-review (step 3).
 6. **Gates:** `omc ship gates <pr> --watch`. Exit 8 means still pending after
    one watch window (9 minutes, under the 10-minute watcher cap): run the
@@ -159,8 +170,9 @@ Known limits:
    passes its integrity check, the last approval covers the head (only
    ship housekeeping commits may follow the reviewed sha: the head's
    first-parent chain back to it holds only commits `prepare` recorded,
-   and each recorded merge brings in a commit in GitHub's current base
-   history; anything else needs a new verdict), and the PR's
+   each recorded merge brings in a commit in GitHub's current base
+   history, and each recorded commit changes nothing outside `inventory/`
+   beyond what its parents give; anything else needs a new verdict), and the PR's
    changed files touch no merge-rule file (those PRs are the owner's to
    merge). It lists the changed files itself
    (`git diff --name-only --no-renames -z <base sha>...<head sha>`), so a

@@ -413,9 +413,9 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         const changedFiles = listChangedFiles(exec, root, prView.baseRefOid, prView.headRefOid);
         const reviewed = state.verdicts[state.verdicts.length - 1]?.sha;
         // The base was fetched and checked against baseRefOid by the strict config load above.
-        const { commitsSinceReview, baseHistory } = readCommitsSinceReview(exec, root, reviewed, prView.headRefOid, prView.baseRefOid, state.housekeepingCommits);
+        const since = readCommitsSinceReview(exec, root, reviewed, prView.headRefOid, prView.baseRefOid, state.housekeepingCommits);
         const decision = decideMerge({
-          state, pr: prView, gate, commitsSinceReview, baseHistory, changedFiles,
+          state, pr: prView, gate, ...since, changedFiles,
           humanOverride: humanOverride(),
           extraProtected: config.knownFlakyFile === DEFAULT_SHIP_CONFIG.knownFlakyFile ? [] : [config.knownFlakyFile],
         });

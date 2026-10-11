@@ -9,7 +9,12 @@
  *   targeted tests -> inventory regeneration as the LAST commit -> optional
  *   plain push.
  * Every command goes through the guarded Exec, so force pushes and rebases
- * are refused before they spawn.
+ * are refused before they spawn. Engine merges and commits run with
+ * `--no-verify` (pre-commit / pre-merge-commit / commit-msg hooks never shape
+ * them), the index must hold no staged changes at the start, and the
+ * inventory commit names `-- inventory` so a file a concurrent lane stages
+ * during the checks stays out of it. `omg ship merge` re-checks the content
+ * of every engine commit anyway (readCommitsSinceReview).
  */
 
 import { existsSync } from 'fs';
@@ -141,6 +146,7 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
   }
   const dirty = git('status', '--porcelain', '--untracked-files=no').stdout.trim();
   if (dirty) return fail('preflight', `working tree has uncommitted changes:\n${dirty}`);
+  if (git('diff', '--cached', '--quiet').status !== 0) return fail('preflight', 'the index has staged changes; commit or unstage them first');
   steps.push({ name: 'preflight', status: 'ok', detail: branch });
 
   // 2. fetch from the PR's repository; the fetched base must be the commit GitHub reports
@@ -158,7 +164,7 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
   if (git('merge-base', '--is-ancestor', baseSha, 'HEAD').status === 0) {
     steps.push({ name: 'merge-base', status: 'skipped', detail: `already contains ${base} ${baseSha.slice(0, 12)}` });
   } else {
-    const merged = git('merge', '--no-ff', '--no-edit', baseSha);
+    const merged = git('merge', '--no-ff', '--no-edit', '--no-verify', baseSha);
     if (merged.status !== 0) {
       const conflicts = lines(git('diff', '--name-only', '--diff-filter=U').stdout);
       const inventoryOnly = conflicts.length > 0 && conflicts.every((f) => f.startsWith(`${INVENTORY_DIR}/`));
@@ -168,7 +174,7 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
           : tail(merged.stderr || merged.stdout), { conflicts });
       }
       // Sibling-PR inventory conflict: take the base's baseline; it is regenerated below.
-      for (const args of [['checkout', '--theirs', '--', INVENTORY_DIR], ['add', '--', INVENTORY_DIR], ['commit', '--no-edit']]) {
+      for (const args of [['checkout', '--theirs', '--', INVENTORY_DIR], ['add', '--', INVENTORY_DIR], ['commit', '--no-edit', '--no-verify']]) {
         const r = git(...args);
         if (r.status !== 0) return fail('merge-base', `git ${args.join(' ')}: ${tail(r.stderr || r.stdout)}`, { conflicts });
       }
@@ -208,8 +214,9 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
     if (written.status !== 0) return fail('inventory', tail(written.stderr || written.stdout));
     const added = git('add', '--', INVENTORY_DIR);
     if (added.status !== 0) return fail('inventory', `git add -- ${INVENTORY_DIR}: ${tail(added.stderr || added.stdout)}`);
-    if (git('diff', '--cached', '--quiet').status !== 0) {
-      const committed = git('commit', '-m', INVENTORY_COMMIT_MESSAGE);
+    if (git('diff', '--cached', '--quiet', '--', INVENTORY_DIR).status !== 0) {
+      // Only inventory/: a file a concurrent lane staged meanwhile is not swept into the engine's commit.
+      const committed = git('commit', '--no-verify', '-m', INVENTORY_COMMIT_MESSAGE, '--', INVENTORY_DIR);
       if (committed.status !== 0) return fail('inventory', tail(committed.stderr || committed.stdout));
       housekeepingCommits.push(head());
     }
