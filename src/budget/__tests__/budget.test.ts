@@ -346,6 +346,10 @@ describe('runBudgetHook', () => {
       writeEvents(id, [PROMPT, padding]);
       runBudgetHook({ phase: 'turn', payload: payload({ session_id: id }) });
     }
+    // Whole-second mtime: a sub-ms stamp does not survive utimesSync's float-seconds round trip exactly.
+    const first = join(copilotHome, 'session-state', ids[0]!, 'events.jsonl');
+    const pinned = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000);
+    utimesSync(first, pinned, pinned);
     const sessions = () => readLedger(ledgerPath(project)).sessions;
     const checked = () => Object.entries(sessions()).filter(([, r]) => r.scan?.checkedSize !== undefined).map(([id]) => id);
     // A generous time budget: the count bound is under test here, not the clock (a loaded runner is slow).
@@ -355,12 +359,11 @@ describe('runBudgetHook', () => {
     start(2);
     expect(checked()).toEqual(ids); // the rotation reached the last five
     // Same size and mtime as at the last check: not re-read, even though the content now holds totals.
-    const first = join(copilotHome, 'session-state', ids[0]!, 'events.jsonl');
-    const { size, mtime } = statSync(first);
+    const { size } = statSync(first);
     const shutdown = line('session.shutdown', { totalPremiumRequests: 9, totalNanoAiu: 0 });
     writeFileSync(first, `${shutdown}\n`.padEnd(size - 1, ' ') + '\n');
     expect(statSync(first).size).toBe(size);
-    utimesSync(first, mtime, mtime);
+    utimesSync(first, pinned, pinned);
     start(3);
     expect(sessions()[ids[0]!]?.source).toBe('estimated');
     // Changed mtime: re-read, upgraded to measured.
