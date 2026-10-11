@@ -64,7 +64,7 @@ describe('alias-retirement registry', () => {
     }
   });
 
-  it('built-in loader exposes 63 entries (61 canonical + 2 aliases) after the 5.0.0 retirement', () => {
+  it('built-in loader exposes 64 entries (62 canonical + 2 aliases) after the 5.0.0 retirement', () => {
     // This is the baseline that retirement must not silently change without an eligibility receipt.
     // Raised 37 -> 40 canonical when execute/review/research shipped as real
     // skill directories; this is an addition, not an alias retirement.
@@ -84,11 +84,13 @@ describe('alias-retirement registry', () => {
     // directories; additions, not retirements.
     // Raised 57 -> 61 canonical when upstream dev's map, pr, refit, and tdd
     // shipped as real skill directories; additions, not retirements.
+    // Raised 61 -> 62 canonical when the ship skill (omg ship) shipped as a real
+    // skill directory; an addition, not a retirement.
     const all = createBuiltinSkills();
-    expect(all).toHaveLength(63);
+    expect(all).toHaveLength(64);
     const canonical = all.filter((s) => !s.aliasOf);
     const aliases = all.filter((s) => !!s.aliasOf);
-    expect(canonical).toHaveLength(61);
+    expect(canonical).toHaveLength(62);
     expect(aliases).toHaveLength(2);
     expect(aliases.map((s) => s.name).sort()).toEqual(['cancel-ralph', 'psm'].sort());
   });
