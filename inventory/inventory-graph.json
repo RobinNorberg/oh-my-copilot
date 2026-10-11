@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "af3d1befbafe583c85cb0b3fde605a74c151235f",
-    "sourceSha256": "9a9afc34aa3dd199b2fe9166bd86bb1f832111d37c00a727297da067747c7c49",
+    "head": "15d20077d77c22f6d7f45abf5a382c052c89dc34",
+    "sourceSha256": "6df928af49746ab1f664d3692338495b30a59cb44c285882997ce6cf0f96bdc4",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "af3d1befbafe583c85cb0b3fde605a74c151235f",
-  "sourceSha256": "9a9afc34aa3dd199b2fe9166bd86bb1f832111d37c00a727297da067747c7c49",
+  "head": "15d20077d77c22f6d7f45abf5a382c052c89dc34",
+  "sourceSha256": "6df928af49746ab1f664d3692338495b30a59cb44c285882997ce6cf0f96bdc4",
   "counts": {
     "public": {
       "skills": 61,
@@ -49408,6 +49408,11 @@
       },
       {
         "from": "scripts/copilot/notification.mjs",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -79918,6 +79923,11 @@
       },
       {
         "from": "src/notifications/session-registry.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/session-registry.ts",
         "to": "src/platform/index.ts",
         "kind": "imports"
       },
@@ -93339,11 +93349,11 @@
     ],
     "stats": {
       "nodeCount": 8209,
-      "edgeCount": 8960,
-      "importEdgeCount": 7425,
+      "edgeCount": 8962,
+      "importEdgeCount": 7427,
       "registerEdgeCount": 82
     }
   },
   "inventorySha256": "57fb34558e14524ac7700987fc7162533ce12790ee666b5287b169b2d819814c",
-  "manifestSha256": "c389466589baf117ccde51d2c38134a5e72dff7febbbb46a564f547cf204ce6b"
+  "manifestSha256": "7db7533a6d87960ad64d93f5c39b49d770d010a7acbd21e26d30793a1274d9cd"
 }
