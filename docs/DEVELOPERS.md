@@ -191,6 +191,79 @@ The dispatcher reads stdin once and runs the group's hooks in order through `run
 
 **Tests.** `src/__tests__/copilot-hook-dispatch.test.ts` pins the argv round trip, the merge rules per event, the exit-code precedence, per-hook isolation, timed-out stdout discard, the kill switch and its outer-timer cap, and parity with the per-hook path for the real Stop and SessionStart hooks: the same stdout, and the same state files with the same contents once timestamps and pids are scrubbed. Latency numbers are in [HOOKS.md](./HOOKS.md#per-event-dispatcher).
 
+## Copilot hooks: warm daemon (opt-in)
+
+`scripts/copilot/hook-daemon.cjs` is an opt-in, long-lived Node process that runs a dispatcher group instead of the hook entry's own process. It is **off by default**. `OMC_COPILOT_HOOK_DAEMON=1` in the environment Copilot runs in turns it on, and `0` or unset keeps it off. `OMC_COPILOT_HOOK_DISPATCH=0` also turns it off. No regeneration of `copilot/hooks.json` is needed.
+
+**What it saves, and what it does not.** The Copilot hook entry still starts `node` for every event; the generated command is unchanged. The daemon saves only what the entry's own process would spend after start-up: loading `run.cjs`, the first Worker in the process, and a cold JIT. Most hook time is the hooks' own work, and most of that is two `git rev-parse` spawns per hook (`resolveToWorktreeRoot`). A daemon cannot share that work without caching results across hooks, which would change what they see, so it does not. See the numbers below before turning it on.
+
+**Request path.** `dispatch.cjs` reads stdin, then calls `runViaDaemon()`:
+
+1. **Eligibility.** Every hook of the group must be in `DAEMON_SAFE_HOOKS` (see [Daemon safety](#daemon-safety)) and be `<CLAUDE_PLUGIN_ROOT>/scripts/<name>` of this plugin after resolving symlinks. Otherwise the group runs cold without touching the daemon.
+2. **Key.** One daemon per key: plugin root, package version, size and mtime of the main-thread modules (`dispatch.cjs`, `run.cjs`, the adapter, `hook-daemon.cjs`), node binary and version, the entry's parent pid (the host), and the cwd. An in-place edit or a version bump gets a new daemon.
+3. **Files.** `<COPILOT_HOME or ~/.copilot>/.omg/state/hook-daemon/<key>.json|.lock|.sock`. The directory is created `0700`; on POSIX a directory another user owns or others can enter is refused. The metadata file (`0600`, written by rename) holds the pid, version, code fingerprint, endpoint and a 32-byte random token.
+4. **Transport.** A Windows named pipe `\\.\pipe\omg-hookd-<key>-<random>`, or the unix socket `<key>.sock` in that directory (`0600`). A socket path over 100 bytes keeps the daemon off. Each request is one connection with three newline-delimited JSON lines: the request (token, version, code fingerprint, event, hooks, base64 payload, env, cwd, parent pid), an accept with the group budget, and the result.
+5. **No daemon.** The client starts one detached (`stdio: 'ignore'`, `windowsHide`, cwd = the state directory) and runs this group cold. It never waits for the daemon. A live lock or a start in the last 10 s suppresses another start.
+
+The client returns `null`, and the dispatcher runs the group in its own process, on every problem: no or stale metadata, a refused connection, a wrong token, a version or code mismatch, `busy`, a protocol error, a dropped connection, a connect timeout (300 ms), an accept timeout (1 s), or no result within the group budget plus 3 s. The cold path is the same code that runs without the daemon, so the verdict cannot change. One consequence: when the connection drops while the daemon is running hooks, the hooks that already ran there run again cold.
+
+**Inside the daemon.** For each request it sets `process.env` (in place, so Windows keeps its case-insensitive env) to the entry's env, `chdir`s to the entry's cwd, sets `process.ppid` to the entry's parent, and captures its own `process.stdout`/`process.stderr` writes, such as the `run.cjs` timeout diagnostics. Then it calls the same `dispatch()` as the cold path, so every hook keeps its Worker or supervised-child routing, its manifest timeout, `OMC_SESSION_OWNER_PID`, its extra arguments, every merge rule and the exit code. Hook code never runs on the daemon's main thread: each hook gets a fresh Worker or child process, exactly as cold. The result is the stdout the cold dispatcher would print, the stderr it would print in the same order, and its exit code; the client writes them once, as the dispatcher does. Requests run one at a time; a concurrent one is refused as `busy` and runs cold with its own env.
+
+**Lifecycle.**
+
+- **Idle.** It exits after `OMC_COPILOT_HOOK_DAEMON_IDLE_MS` without a request (default 600000, 10 min; 500 to 86400000).
+- **Host gone.** It polls the host pid every 2 s and exits when it is gone. Copilot fires `SessionEnd` after every turn, so the session's end is the host's exit.
+- **Retire after an abnormal request.** It exits right after replying when a hook timed out, threw, or exited other than `0` or `2`, or the entry hung up early. A killed hook may leave an open fd or a half-written file; the daemon's pid then dies as soon as the cold dispatcher's would have. It also exits after 1000 requests.
+- **One per key.** `<key>.lock` is created with `O_EXCL` (pid and nonce) and touched every 15 s. A second daemon for a live lock exits at once. A lock whose owner pid is dead, or that nobody touched for 60 s (pid reuse), is moved aside and reclaimed; a reclaim that lost a race puts the lock back and exits.
+- **Cleanup.** On exit it removes its metadata, lock and socket when they are still its own. After a hard kill they stay; the next entry's connect fails, it runs cold, and the next daemon reclaims the lock.
+- **No orphans and no host pipes.** The daemon starts `detached`, so on Windows it is outside the entry's kill-on-close job, with stdio ignored. Node does not let a child inherit its stdio handles, so the daemon never holds the entry's stdout or stderr, and Copilot sees the entry close as soon as it exits. Hook children are reaped by `run.cjs` exactly as on the cold path.
+
+**Security.** Only the user can read the token, and on POSIX only the user can reach the socket. A request without the token is refused. Named pipes on Windows are enumerable by other users, but the default pipe DACL does not let them write, and the pipe name is random per daemon. The env sent to the daemon is the env the entry already has.
+
+### Daemon safety
+
+A hook may run in the daemon only when it behaves the same in a process that outlives the event. Each hook's whole module closure (static imports, literal dynamic imports, `dist/` modules) was checked for:
+
+- **pid-liveness locks.** A lock whose staleness test is "the owner pid is dead": `scripts/lib/state-lock.mjs`, `scripts/lib/atomic-write.mjs`, `dist/lib/file-lock.js`, the `dist/notifications` session registry, and the pid lock files in `skill-injector.mjs` and `post-tool-use-failure.mjs`. In a daemon the owner pid stays alive, so a lock a killed hook left behind would block the next hooks instead of being reclaimed.
+- **`process.ppid`.** A Worker's `process.ppid` is the daemon's parent, not the host.
+- **process lifetime.** `isMainThread` gating, exit or signal handlers in the host process, async non-detached children (they die with the process that started them on Windows), stdio inheritance.
+
+`dist/lib/worktree-paths.js` `getProcessSessionId()` uses `process.pid` only in an id that is fresh per Worker, so it does not count. `DAEMON_SAFE_HOOKS` in `hook-daemon.cjs` holds the `yes` rows; `src/__tests__/copilot-hook-daemon.test.ts` fails when this table and the list differ, or when a Copilot hook is missing here.
+
+| Script | Daemon-safe | Why |
+|---|---|---|
+| `budget-guard.mjs` | yes | stdin, state root, enforcement log; no lock. |
+| `code-simplifier.mjs` | yes | Sync git probes; the Jev shadow child is detached on Windows. |
+| `context-guard-stop.mjs` | yes | Sync git probes, transcript read. |
+| `git-guardrails.mjs` | yes | stdin, state root. |
+| `keyword-detector.mjs` | no | `state-lock.mjs` and `atomic-write.mjs` locks. |
+| `permission-handler.mjs` | yes | `dist/hooks/permission-handler`; no lock. |
+| `persistent-mode.mjs` | no | `state-lock.mjs` and `atomic-write.mjs` locks, session registry. |
+| `post-tool-directory-context-injector.mjs` | yes | `dist/hooks/directory-readme-injector`; no lock. |
+| `post-tool-rules-injector.mjs` | yes | `dist/hooks/rules-injector`; no lock. |
+| `post-tool-use-failure.mjs` | no | pid lock file, `state-lock.mjs`. |
+| `post-tool-verifier.mjs` | no | Imports the package index (`dist/index.js`), about 470 modules including `state-lock.mjs`, `file-lock.js` and the job-state database. |
+| `pre-compact.mjs` | no | `dist/lib/file-lock.js`, mode-state database. |
+| `pre-tool-enforcer.mjs` | yes | Except a payload naming the `AskUserQuestion` tool: that branch imports `dist/notifications` and its session registry lock, so the client sends it cold. |
+| `project-memory-posttool.mjs` | no | `dist/lib/file-lock.js`. |
+| `project-memory-precompact.mjs` | no | `dist/lib/file-lock.js`. |
+| `project-memory-session.mjs` | no | `dist/lib/file-lock.js`. |
+| `runs-reconciler.mjs` | yes | stdin, state root. |
+| `session-end.mjs` | no | `isMainThread` gating, the SessionEnd worker and its children, `file-lock.js`. |
+| `session-start.mjs` | no | Cache-occupancy records keyed by `process.pid`, a `process.ppid` fallback, background children. |
+| `skill-injector.mjs` | no | pid lock file, `state-lock.mjs`. |
+| `stale-run-reporter.mjs` | yes | Reads run records; never signals a process. |
+| `subagent-tracker.mjs` | no | `dist/lib/file-lock.js`. |
+| `verify-deliverables.mjs` | yes | stdin, state root. |
+| `wiki-pre-compact.mjs` | no | `dist/lib/file-lock.js`. |
+| `wiki-session-end.mjs` | no | As `session-end.mjs`. |
+| `wiki-session-start.mjs` | no | `dist/lib/file-lock.js`. |
+| `workflow-drift-guard.mjs` | yes | stdin only. |
+
+A group runs in the daemon only when every hook in it is `yes`. With today's `copilot/hooks.json` that is both PreToolUse entries and PermissionRequest; Stop, SessionStart, PostToolUse, PreCompact, SubagentStart, SubagentStop, UserPromptSubmit and SessionEnd each contain at least one `no` hook and stay cold. Before you add a script to the list, repeat the audit for its whole closure, and add a payload guard when only one branch is unsafe.
+
+**Tests.** `src/__tests__/copilot-hook-daemon.test.ts` runs the same group and payload cold and through a running daemon in a self-contained probe plugin, and requires the same exit code, stdout, stderr, hook order, cwd and owner pid, with the Worker hooks shown to run in the daemon. It covers the Stop merge rules, non-JSON stdout, fail-open and fail-closed exit codes, a timed-out supervised child (124) and a timed-out Worker, PreToolUse deny, PermissionRequest exit 2 and extra hook arguments. It breaks the daemon in each way listed above and requires the cold verdict. It pins the idle exit, the host-gone exit, retire after an abnormal request, one daemon per key, stale-lock reclaim, and that the entry closes as soon as it exits. It also runs every daemon-eligible group of the real `copilot/hooks.json` cold and warm in fresh projects and requires the same output and state files.
+
 ## Upstream drift bot
 
 `.github/workflows/upstream-drift.yml` notices new upstream oh-my-claudecode `dev` commits and does the mechanical first step of a port. Conflict resolution, the `package.json` delta, generators, build, inventory, tests, and release stay with a human or agent (`.omc/skills/port-and-release-cycle.md`).

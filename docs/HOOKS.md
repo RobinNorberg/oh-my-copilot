@@ -94,6 +94,7 @@ The adapter fails **open** on a hook's internal error. Copilot treats a PreToolU
 | `OMC_HOOK_STRICT=1` | A hook target that is missing or not a file exits 1 instead of 0 plus a stderr line. |
 | `OMC_COPILOT_HOOK_DISPATCH=0` | The dispatcher runs each hook as its own `node --require <adapter> run.cjs <script>` process, one after another, as before the dispatcher, and still merges the outputs (see [Per-event dispatcher](#per-event-dispatcher)). No regeneration needed. |
 | `OMC_COPILOT_HOOK_WORKER=0` | Run every generic hook as a child process under Copilot, as under Claude Code (see [Latency](#latency)). |
+| `OMC_COPILOT_HOOK_DAEMON=1` | Opt in to the warm hook daemon: groups whose hooks are all daemon-safe run in a long-lived per-host process instead of the entry's own, with the same verdicts, and fall back to the entry's own process on any daemon problem. Off by default; `0` or unset keeps it off. `OMC_COPILOT_HOOK_DAEMON_IDLE_MS` sets its idle exit (default 600000). See [DEVELOPERS.md](./DEVELOPERS.md#copilot-hooks-warm-daemon-opt-in). |
 | `OMC_SESSION_END_BUDGET_MS` | Foreground budget of each SessionEnd hook (`session-end.mjs`, `wiki-session-end.mjs`) in `scripts/run.cjs`, on both hosts. An integer from 1 to 60000; any other value is ignored. The default is 1500 under Copilot and 300 under Claude Code (see [SessionEnd](#sessionend)). |
 | `OMC_DEBUG_HOOKS` | Log adapter decisions, such as a dropped `updatedInput`, to stderr. |
 

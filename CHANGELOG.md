@@ -2,6 +2,32 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **Opt-in warm hook daemon for Copilot hooks (`OMC_COPILOT_HOOK_DAEMON=1`).**
+  Off by default. With it on, `scripts/copilot/dispatch.cjs` hands a group whose
+  hooks are all daemon-safe to a long-lived per-host process
+  (`scripts/copilot/hook-daemon.cjs`). That process runs the same `dispatch()`
+  with the entry's env, cwd and parent pid, so routing, timeouts, merge rules and
+  exit codes are unchanged. The client talks to it over a Windows named pipe, or
+  a unix socket in a `0700` directory, and authenticates with a random token
+  stored in a `0600` file. On any daemon problem (none running, stale, refused,
+  busy, version mismatch, protocol error, timeout, dropped connection) the entry
+  runs the group in its own process as before. The daemon exits when idle (10
+  min, `OMC_COPILOT_HOOK_DAEMON_IDLE_MS`), when the host is gone, and right
+  after a request in which a hook timed out or failed. Today the daemon-safe
+  groups are PreToolUse and PermissionRequest. Every other group uses a hook
+  with a pid-liveness lock or `process.ppid` and stays cold; the audit table is
+  in `docs/DEVELOPERS.md`.
+- **Measured: no speed-up, so the default stays off.** Windows 11, Ryzen 9
+  5950X, Node 25.1.0, 25 interleaved runs per entry. Served entries: PreToolUse
+  225 → 220 ms p50 (256 → 250 p95), git-guardrails 92 → 94 ms,
+  PermissionRequest 100 → 101 ms. Cold entries with the switch on are within
+  ±9 ms. The entry still starts `node` for every event, and most hook time is
+  the hooks' own `git rev-parse` spawns, not Node start-up.
+
 # oh-my-copilot v5.9.0
 
 ## [5.9.0] - 2026-10-10
