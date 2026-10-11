@@ -6,8 +6,13 @@
  *   prepare  merge the base in, run checks, regenerate the inventory last
  *   gates    apply the merge rule to `gh pr checks` (optionally watch)
  *   merge    refuse unless gates are green and an independent approval
- *            covers the head; admin-merge only with ship.allowAdminMerge
+ *            covers the head; admin-merge only with the owner-edited config
+ *            key ship.allowAdminMerge (no CLI override)
  *   status   print the persisted run state
+ *
+ * Owner-only escape hatch: `init --force` over a blocked or merged run (or a
+ * state that fails its integrity check) needs OMG_SHIP_HUMAN=1, which lane
+ * briefs forbid.
  *
  * Exit codes: 0 ok / green / ready, 1 refused or failed, 2 usage error,
  * 8 gates still pending (re-run to keep watching).
@@ -16,13 +21,14 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { loadConfig } from '../../config/loader.js';
-import { loadKnownFlaky, resolveShipConfig, type ShipConfig } from '../../ship/config.js';
+import { isPlainBranchName, loadKnownFlaky, resolveShipConfig, type ShipConfig } from '../../ship/config.js';
 import { defaultExec, guardExec, type Exec } from '../../ship/exec.js';
 import { watchGates, type GateReport } from '../../ship/gates.js';
 import { decideMerge, type PrView } from '../../ship/merge.js';
 import { runPrepare } from '../../ship/prepare.js';
 import {
   createShipState,
+  latestVerdict,
   readShipState,
   recordVerdict,
   shipStatePath,
@@ -56,6 +62,18 @@ function repoRoot(exec: Exec): string {
 
 function shipConfig(): ShipConfig {
   return resolveShipConfig(loadConfig().ship);
+}
+
+/** OMG_SHIP_HUMAN=1: the owner's override for replacing a terminal or hand-edited run. Lane briefs forbid it. */
+function humanOverride(): boolean {
+  return process.env.OMG_SHIP_HUMAN === '1';
+}
+
+function assertBranchName(exec: Exec, name: string, label: string): string {
+  if (!isPlainBranchName(name) || exec('git', ['check-ref-format', '--branch', name]).status !== 0) {
+    throw new UsageError(`${label} ${JSON.stringify(name)} is not a valid branch name`);
+  }
+  return name;
 }
 
 function requireState(root: string, pr: number): ShipState {
@@ -101,11 +119,13 @@ function printGates(report: GateReport): void {
   for (const s of report.suggestions) console.log(`  -> ${s}`);
 }
 
-function gateExit(report: GateReport): number {
-  return report.verdict === 'green' ? 0 : report.verdict === 'pending' ? EXIT_PENDING : 1;
+/** A watch that ran out of time while a flaky run's rerun / sibling jobs were still going is pending, not failed. */
+export function gateExit(report: GateReport, timedOut = false): number {
+  if (report.verdict === 'green') return 0;
+  return report.verdict === 'pending' || (timedOut && report.verdict === 'flaky') ? EXIT_PENDING : 1;
 }
 
-export function shipCommand(execImpl: Exec = defaultExec): Command {
+export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: () => ShipConfig = shipConfig): Command {
   const exec = guardExec(execImpl);
   const cmd = new Command('ship');
   cmd.description('Ship a PR: independent review verdicts, mechanical prepare, CI gate engine, guarded admin merge');
@@ -116,20 +136,29 @@ export function shipCommand(execImpl: Exec = defaultExec): Command {
     .requiredOption('--implementer <lane>', 'Name of the implementing agent/lane (its own verdicts are refused)')
     .option('--base <branch>', 'Integration branch (default: ship.base, else dev)')
     .option('--max-fix-rounds <n>', 'Fix rounds before the run blocks (default: ship.maxFixRounds, else 2)')
-    .option('--force', 'Replace an existing run for this PR')
+    .option('--force', 'Replace an existing non-terminal run for this PR (kept in previousRuns); a blocked or merged run needs OMG_SHIP_HUMAN=1')
     .option('--json', 'JSON output')
     .action((prRaw: string, o: { implementer: string; base?: string; maxFixRounds?: string; force?: boolean; json?: boolean }) =>
       guarded(Boolean(o.json), () => {
         const pr = parsePr(prRaw);
-        const config = shipConfig();
+        const config = loadShipConfig();
         const root = repoRoot(exec);
         const view = exec('gh', ['pr', 'view', String(pr), '--json', 'headRefName,baseRefName']);
         const prInfo = view.status === 0 ? (JSON.parse(view.stdout) as { headRefName?: string; baseRefName?: string }) : {};
+        const base = assertBranchName(exec, o.base ?? prInfo.baseRefName ?? config.base, '--base');
+        const branch = prInfo.headRefName === undefined ? undefined : assertBranchName(exec, prInfo.headRefName, 'PR head branch');
         const maxFixRounds = parseNumber(o.maxFixRounds, '--max-fix-rounds') ?? config.maxFixRounds;
+        const human = humanOverride();
         const state = updateShipState(root, pr, (current) => {
-          if (current && !o.force) throw new UsageError(`a ship run for PR #${pr} exists (phase ${current.phase}); pass --force to replace it`);
-          return createShipState({ pr, base: o.base ?? prInfo.baseRefName ?? config.base, branch: prInfo.headRefName, implementer: o.implementer, maxFixRounds: Math.floor(maxFixRounds) }, now());
-        });
+          const fresh = createShipState({ pr, base, branch, implementer: o.implementer, maxFixRounds: Math.floor(maxFixRounds) }, now());
+          if (!current) return fresh;
+          if (!o.force) throw new UsageError(`a ship run for PR #${pr} exists (phase ${current.phase}); pass --force to replace it`);
+          if ((current.phase === 'blocked' || current.phase === 'merged') && !human) {
+            throw new UsageError(`the ship run for PR #${pr} is ${current.phase}; only the owner may replace it (OMG_SHIP_HUMAN=1)`);
+          }
+          const { previousRuns = [], ...prior } = current;
+          return { ...fresh, previousRuns: [...previousRuns, prior] };
+        }, { allowUnverified: human });
         emit(Boolean(o.json), { ok: true, state, path: shipStatePath(root, pr) }, () => printState(state));
         return 0;
       }));
@@ -159,6 +188,7 @@ export function shipCommand(execImpl: Exec = defaultExec): Command {
         if (Boolean(o.approve) === Boolean(o.requestChanges)) throw new UsageError('pass exactly one of --approve / --request-changes');
         const pr = parsePr(prRaw);
         const root = repoRoot(exec);
+        if (!/^[0-9a-fA-F]{7,40}$/.test(o.sha)) throw new UsageError(`--sha must be a hex commit id (7-40 characters), got ${JSON.stringify(o.sha)}`);
         const resolved = exec('git', ['rev-parse', '--verify', `${o.sha}^{commit}`]);
         if (resolved.status !== 0) throw new UsageError(`--sha ${o.sha} is not a commit in this repository (fetch it first)`);
         const state = updateShipState(root, pr, (current) => {
@@ -189,7 +219,10 @@ export function shipCommand(execImpl: Exec = defaultExec): Command {
         if (!['prepare', 'gates', 'ready'].includes(state.phase)) {
           throw new UsageError(`phase is ${state.phase}; prepare runs after an approve verdict`);
         }
-        const result = runPrepare({ exec, cwd: root, base: state.base, checks: o.checks, push: o.push });
+        if (!state.branch) throw new UsageError(`the ship run for PR #${pr} has no PR branch recorded; re-run omg ship init ${pr} --force once gh pr view works`);
+        const reviewedSha = latestVerdict(state)?.sha;
+        if (!reviewedSha) throw new UsageError(`no verdict recorded for PR #${pr}`);
+        const result = runPrepare({ exec, cwd: root, base: state.base, branch: state.branch, reviewedSha, checks: o.checks, push: o.push });
         const next = updateShipState(root, pr, (current) => {
           const s = current ?? state;
           const withCommits = { ...s, housekeepingCommits: [...s.housekeepingCommits, ...result.housekeepingCommits] };
@@ -219,7 +252,7 @@ export function shipCommand(execImpl: Exec = defaultExec): Command {
       guarded(Boolean(o.json), async () => {
         const pr = parsePr(prRaw);
         const root = repoRoot(exec);
-        const base = shipConfig();
+        const base = loadShipConfig();
         const config: ShipConfig = {
           ...base,
           pollIntervalSeconds: parseNumber(o.interval, '--interval') || base.pollIntervalSeconds,
@@ -258,25 +291,24 @@ export function shipCommand(execImpl: Exec = defaultExec): Command {
           if (result.rerun.length > 0) console.log(`reran (once each): ${result.rerun.join(', ')}`);
           if (result.timedOut) console.log(chalk.yellow('watch window elapsed; run the same command again to keep watching'));
         });
-        return gateExit(report);
+        return gateExit(report, result.timedOut);
       }));
 
   cmd
     .command('merge <pr>')
-    .description('Merge only when gates are green and an independent approval covers the head (admin merge needs ship.allowAdminMerge)')
-    .option('--allow-admin-merge', 'Run gh pr merge --admin for this invocation (same as ship.allowAdminMerge)')
+    .description('Merge only when gates are green and an independent approval covers the head (running the admin merge needs the owner-set ship.allowAdminMerge)')
     .option('--json', 'JSON output')
-    .action((prRaw: string, o: { allowAdminMerge?: boolean; json?: boolean }) =>
+    .action((prRaw: string, o: { json?: boolean }) =>
       guarded(Boolean(o.json), async () => {
         const pr = parsePr(prRaw);
         const root = repoRoot(exec);
-        const config = shipConfig();
+        const config = loadShipConfig();
         const state = requireState(root, pr);
         const view = exec('gh', ['pr', 'view', String(pr), '--json', 'number,state,isDraft,baseRefName,headRefName,headRefOid']);
         if (view.status !== 0) throw new Error(`gh pr view ${pr} failed: ${view.stderr.trim()}`);
         const prView = JSON.parse(view.stdout) as PrView & { headRefName: string };
         const { report: gate } = await watchGates({
-          exec, pr, config, known: loadKnownFlaky(root, config.knownFlakyFile), cwd: root, watch: false,
+          exec, pr, config, known: loadKnownFlaky(root, config.knownFlakyFile), cwd: root, headSha: prView.headRefOid, watch: false,
           sleep: async () => {}, now: () => Date.now(),
         });
         const reviewed = state.verdicts[state.verdicts.length - 1]?.sha;
@@ -290,7 +322,7 @@ export function shipCommand(execImpl: Exec = defaultExec): Command {
           commitsSinceReview = list && list.status === 0 ? list.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : null;
         }
         const decision = decideMerge({ state, pr: prView, gate, commitsSinceReview });
-        const allowAdmin = config.allowAdminMerge || Boolean(o.allowAdminMerge);
+        const allowAdmin = config.allowAdminMerge;
         const commandText = decision.command.join(' ');
         if (!decision.ok) {
           emit(Boolean(o.json), { ok: false, merged: false, reasons: decision.reasons, command: decision.command }, () => {

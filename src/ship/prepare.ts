@@ -1,7 +1,9 @@
 /**
  * `omg ship prepare`: the mechanical steps between an approved verdict and
  * the CI gate, in a fixed order:
- *   preflight -> fetch -> merge origin/<base> in (never rebase) -> tsc / lint /
+ *   preflight (on the run's PR branch, containing the reviewed sha, clean,
+ *   no merge / rebase / cherry-pick / revert in progress) -> fetch ->
+ *   merge origin/<base> in (--no-ff, never rebase) -> tsc / lint /
  *   targeted tests -> inventory regeneration as the LAST commit -> optional
  *   plain push.
  * Every command goes through the guarded Exec, so force pushes and rebases
@@ -10,6 +12,7 @@
 
 import { existsSync } from 'fs';
 import { isAbsolute, join, posix } from 'path';
+import { isPlainBranchName } from './config.js';
 import type { Exec } from './exec.js';
 
 export type StepStatus = 'ok' | 'skipped' | 'failed';
@@ -24,6 +27,10 @@ export interface PrepareOptions {
   exec: Exec;
   cwd: string;
   base: string;
+  /** The ship run's PR branch: HEAD must be on it, and `push` updates exactly it. */
+  branch: string;
+  /** Latest verdict sha; HEAD must contain it. */
+  reviewedSha: string;
   remote?: string;
   /** Run tsc / eslint / targeted vitest (default true). */
   checks?: boolean;
@@ -103,10 +110,23 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
   const head = () => git('rev-parse', 'HEAD').stdout.trim();
 
   // 1. preflight
+  for (const [label, name] of [['base', base], ['branch', opts.branch]] as const) {
+    if (!isPlainBranchName(name) || git('check-ref-format', '--branch', name).status !== 0) {
+      return fail('preflight', `${label} ${JSON.stringify(name)} is not a valid branch name`);
+    }
+  }
+  if (!/^[\w][\w.-]*$/.test(remote)) return fail('preflight', `remote ${JSON.stringify(remote)} is not a valid remote name`);
+  if (!/^[0-9a-f]{40}$/.test(opts.reviewedSha)) return fail('preflight', `reviewed sha ${JSON.stringify(opts.reviewedSha)} is not a full commit id`);
   const branch = git('rev-parse', '--abbrev-ref', 'HEAD').stdout.trim();
   if (!branch || branch === 'HEAD') return fail('preflight', 'detached HEAD; check out the PR branch');
   if (branch === base || branch === 'main' || branch === 'master') return fail('preflight', `refusing to prepare on ${branch}; use the PR branch`);
-  if (git('rev-parse', '-q', '--verify', 'MERGE_HEAD').status === 0) return fail('preflight', 'a merge is in progress; commit or abort it first');
+  if (branch !== opts.branch) return fail('preflight', `checked out ${branch}, but the ship run is for ${opts.branch}; check out the PR branch`);
+  if (git('merge-base', '--is-ancestor', opts.reviewedSha, 'HEAD').status !== 0) {
+    return fail('preflight', `HEAD does not contain the reviewed commit ${opts.reviewedSha.slice(0, 12)}; pull the PR branch (merge, never rebase) or re-review`);
+  }
+  for (const [ref, what] of [['MERGE_HEAD', 'a merge'], ['CHERRY_PICK_HEAD', 'a cherry-pick'], ['REVERT_HEAD', 'a revert']] as const) {
+    if (git('rev-parse', '-q', '--verify', ref).status === 0) return fail('preflight', `${what} is in progress; commit or abort it first`);
+  }
   for (const marker of ['rebase-merge', 'rebase-apply']) {
     const p = git('rev-parse', '--git-path', marker).stdout.trim();
     if (p && exists(isAbsolute(p) ? p : join(cwd, p))) return fail('preflight', 'a rebase is in progress; finish or abort it (ship never rebases)');
@@ -124,7 +144,7 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
   if (git('merge-base', '--is-ancestor', upstream, 'HEAD').status === 0) {
     steps.push({ name: 'merge-base', status: 'skipped', detail: `already contains ${upstream}` });
   } else {
-    const merged = git('merge', '--no-edit', upstream);
+    const merged = git('merge', '--no-ff', '--no-edit', upstream);
     if (merged.status !== 0) {
       const conflicts = lines(git('diff', '--name-only', '--diff-filter=U').stdout);
       const inventoryOnly = conflicts.length > 0 && conflicts.every((f) => f.startsWith(`${INVENTORY_DIR}/`));
@@ -172,7 +192,8 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
   } else {
     const written = exec(node, [INVENTORY_SCRIPT, '--write'], { cwd });
     if (written.status !== 0) return fail('inventory', tail(written.stderr || written.stdout));
-    git('add', '--', INVENTORY_DIR);
+    const added = git('add', '--', INVENTORY_DIR);
+    if (added.status !== 0) return fail('inventory', `git add -- ${INVENTORY_DIR}: ${tail(added.stderr || added.stdout)}`);
     if (git('diff', '--cached', '--quiet').status !== 0) {
       const committed = git('commit', '-m', INVENTORY_COMMIT_MESSAGE);
       if (committed.status !== 0) return fail('inventory', tail(committed.stderr || committed.stdout));
@@ -185,9 +206,9 @@ export function runPrepare(opts: PrepareOptions): PrepareResult {
 
   // 6. plain push
   if (opts.push) {
-    const pushed = git('push', remote, `HEAD:refs/heads/${branch}`);
+    const pushed = git('push', remote, `HEAD:refs/heads/${opts.branch}`);
     if (pushed.status !== 0) return fail('push', tail(pushed.stderr));
-    steps.push({ name: 'push', status: 'ok', detail: `${remote} ${branch}` });
+    steps.push({ name: 'push', status: 'ok', detail: `${remote} ${opts.branch}` });
   }
 
   return { ok: true, steps, housekeepingCommits };

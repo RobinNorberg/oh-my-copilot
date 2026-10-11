@@ -3,19 +3,25 @@ import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { DEFAULT_SHIP_CONFIG, loadKnownFlaky, resolveShipConfig, type ShipConfig } from '../config.js';
-import type { Exec, ExecResult } from '../exec.js';
+import { guardExec, type Exec, type ExecResult } from '../exec.js';
 import {
   applyFlakyAnalysis,
+  applyWorkflowRuns,
   analyzeFailedLog,
   classifyCheck,
   evaluateChecks,
   evaluateGates,
   fetchChecks,
+  logBlockers,
   parseChecksJson,
   parseFailingTests,
+  parseRunsJson,
   watchGates,
   type GhCheck,
+  type WorkflowRun,
 } from '../gates.js';
+
+import { EXIT_PENDING, gateExit } from '../../cli/commands/ship.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(HERE, 'fixtures');
@@ -27,7 +33,8 @@ const KNOWN = loadKnownFlaky(REPO_ROOT, DEFAULT_SHIP_CONFIG.knownFlakyFile);
 const CONFIG: ShipConfig = resolveShipConfig(undefined);
 
 const RUN = '38006018811';
-const TEST_LINK = `https://github.com/RobinNorberg/oh-my-copilot/actions/runs/${RUN}/job/114080000001`;
+const TEST_JOB = '114080000001';
+const TEST_LINK = `https://github.com/RobinNorberg/oh-my-copilot/actions/runs/${RUN}/job/${TEST_JOB}`;
 
 function withCheck(name: string, patch: Partial<GhCheck>): GhCheck[] {
   return PR233.map((c) => (c.name === name ? { ...c, ...patch } : c));
@@ -37,15 +44,31 @@ function ok(stdout: string): ExecResult {
   return { status: 0, stdout, stderr: '' };
 }
 
-/** Fake gh: serves successive `pr checks` payloads and job logs by job id; records every call. */
-function fakeGh(checkSeq: GhCheck[][], logs: Record<string, string> = {}) {
+const HEAD_SHA = 'f'.repeat(40);
+const COMPLETED_RUNS: WorkflowRun[] = [
+  { databaseId: 1, status: 'completed', conclusion: 'success', workflowName: 'CI' },
+  { databaseId: 2, status: 'completed', conclusion: 'success', workflowName: 'PR Check' },
+];
+
+/**
+ * Fake gh (through the real guard): serves successive `pr checks` payloads,
+ * job logs by job id and successive `run list` payloads; records every call.
+ */
+function fakeGh(checkSeq: GhCheck[][], logs: Record<string, string> = {}, runSeq: WorkflowRun[][] = [COMPLETED_RUNS]) {
   const calls: string[][] = [];
   let i = 0;
+  let j = 0;
   const exec: Exec = (cmd, args) => {
     calls.push([cmd, ...args]);
     if (args[0] === 'pr' && args[1] === 'checks') {
       const payload = checkSeq[Math.min(i, checkSeq.length - 1)];
       i += 1;
+      return ok(JSON.stringify(payload));
+    }
+    if (args[0] === 'pr' && args[1] === 'view') return ok(JSON.stringify({ headRefOid: HEAD_SHA }));
+    if (args[0] === 'run' && args[1] === 'list') {
+      const payload = runSeq[Math.min(j, runSeq.length - 1)];
+      j += 1;
       return ok(JSON.stringify(payload));
     }
     if (args[0] === 'run' && args[1] === 'view') {
@@ -55,7 +78,7 @@ function fakeGh(checkSeq: GhCheck[][], logs: Record<string, string> = {}) {
     if (args[0] === 'run' && args[1] === 'rerun') return ok('');
     throw new Error(`unexpected command ${cmd} ${args.join(' ')}`);
   };
-  return { exec, calls };
+  return { exec: guardExec(exec), calls };
 }
 
 describe('merge rule on recorded gh pr checks JSON', () => {
@@ -108,6 +131,50 @@ describe('merge rule on recorded gh pr checks JSON', () => {
     expect(evaluateChecks(1, onlyAdvisory, CONFIG).verdict).toBe('pending');
   });
 
+  it('a required check not reported yet is pending (the needs: window before Build exists)', () => {
+    const withoutLate = PR233.filter((c) => !['Build', 'npm pack + install test', 'Copilot smoke (tier 2)'].includes(c.name));
+    const report = evaluateChecks(233, withoutLate, CONFIG);
+    expect(report.verdict).toBe('pending');
+    expect(report.pending).toEqual(['Build', 'npm pack + install test', 'Copilot smoke (tier 2)']);
+    expect(report.suggestions.join('\n')).toMatch(/not reported yet/);
+    expect(evaluateChecks(233, PR233.filter((c) => c.name !== 'Build'), CONFIG).pending).toEqual(['Build']);
+    // A real failure still outranks the missing ones.
+    const failing = withoutLate.map((c) => (c.name === 'Test' ? { ...c, state: 'FAILURE' } : c));
+    expect(evaluateChecks(233, failing, CONFIG).verdict).toBe('failed');
+  });
+
+  it('the default required list is exactly what PR #233 reported outside the advisory and tag-only checks', () => {
+    const reported = PR233.map((c) => c.name);
+    expect(CONFIG.requiredChecks.every((n) => reported.includes(n))).toBe(true);
+  });
+
+  it('green needs every workflow run for the head sha completed', () => {
+    const green = evaluateChecks(233, PR233, CONFIG);
+    expect(applyWorkflowRuns(green, COMPLETED_RUNS).verdict).toBe('green');
+    const open = applyWorkflowRuns(green, [...COMPLETED_RUNS, { databaseId: 3, status: 'in_progress', workflowName: 'Upgrade Test' }, { databaseId: 4, status: 'queued' }]);
+    expect(open.verdict).toBe('pending');
+    expect(open.pending).toEqual(['workflow run Upgrade Test (in_progress)', 'workflow run 4 (queued)']);
+    const failed = evaluateChecks(233, withCheck('Build', { state: 'FAILURE' }), CONFIG);
+    expect(applyWorkflowRuns(failed, [{ databaseId: 3, status: 'in_progress' }]).verdict).toBe('failed');
+  });
+
+  it('evaluateGates asks gh run list for the head sha before calling it green', () => {
+    const { exec, calls } = fakeGh([PR233], {}, [[{ databaseId: 9, status: 'in_progress', workflowName: 'CI' }]]);
+    expect(evaluateGates(exec, 233, CONFIG, KNOWN).verdict).toBe('pending');
+    expect(calls).toContainEqual(['gh', 'pr', 'view', '233', '--json', 'headRefOid']);
+    expect(calls).toContainEqual(['gh', 'run', 'list', '--commit', HEAD_SHA, '--json', 'databaseId,status,conclusion,workflowName', '--limit', '100']);
+    const given = fakeGh([PR233]);
+    expect(evaluateGates(given.exec, 233, CONFIG, KNOWN, undefined, 'e'.repeat(40)).verdict).toBe('green');
+    expect(given.calls.some((c) => c[2] === 'view')).toBe(false);
+    expect(given.calls.find((c) => c[2] === 'list')?.[4]).toBe('e'.repeat(40));
+  });
+
+  it('a failing gh run list fails closed', () => {
+    const exec: Exec = (_cmd, args) => (args[1] === 'checks' ? ok(JSON.stringify(PR233)) : { status: 1, stdout: '', stderr: 'HTTP 502' });
+    expect(() => evaluateGates(exec, 233, CONFIG, KNOWN, undefined, HEAD_SHA)).toThrow(/HTTP 502/);
+    expect(() => parseRunsJson('[{"status":"completed"}]')).toThrow(/databaseId/);
+  });
+
   it('honours a configured advisory list', () => {
     const config = resolveShipConfig({ advisoryChecks: [] });
     expect(evaluateChecks(233, PR233, config).verdict).toBe('failed');
@@ -145,9 +212,51 @@ describe('fetchChecks', () => {
 });
 
 describe('known-flaky attribution from job logs', () => {
-  it('ships a valid known-flaky list', () => {
-    expect(KNOWN.length).toBeGreaterThanOrEqual(6);
-    expect(KNOWN.every((k) => !k.file.includes('\\'))).toBe(true);
+  it('ships a valid known-flaky list, every entry title-scoped', () => {
+    expect(KNOWN.length).toBeGreaterThanOrEqual(5);
+    expect(KNOWN.every((k) => !k.file.includes('\\') && k.title.length > 0)).toBe(true);
+  });
+
+  it('a file-level failure (collection error) of a listed file is never flaky', () => {
+    const log = ' FAIL  src/team/__tests__/runtime-v2.dispatch.test.ts [ src/team/__tests__/runtime-v2.dispatch.test.ts ]';
+    expect(analyzeFailedLog('Test', RUN, log, KNOWN).knownFlaky).toBe(false);
+  });
+
+  it('unhandled errors, failed suites or a failing non-test step make a known-flaky log real', () => {
+    const flakyLog = fixture('job-log-flaky.txt');
+    expect(logBlockers(flakyLog)).toEqual([]);
+    const cases: Array<[string, RegExp]> = [
+      [`${flakyLog}\nTest\tRun functional tests\t2026-10-09T23:56:53.3Z ⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯`, /unhandled errors/],
+      [`${flakyLog}\nTest\tRun functional tests\t2026-10-09T23:56:53.3Z ⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯`, /failed suites/],
+      [`${flakyLog}\nTest\tBuild dist\t2026-10-09T23:40:00.0Z ##[error]Process completed with exit code 2.`, /step "Build dist" failed without a failing test/],
+    ];
+    for (const [log, pattern] of cases) {
+      const a = analyzeFailedLog('Test', RUN, log, KNOWN);
+      expect(a.knownFlaky).toBe(false);
+      expect(a.blockers.join('\n')).toMatch(pattern);
+    }
+  });
+
+  it('matches analyses to checks by job id, not by name', () => {
+    const OTHER_JOB = `https://github.com/RobinNorberg/oh-my-copilot/actions/runs/${RUN}/job/114080000002`;
+    const checks: GhCheck[] = [
+      ...PR233.filter((c) => c.name !== 'Test'),
+      { name: 'Test', state: 'FAILURE', link: TEST_LINK },
+      { name: 'Test', state: 'FAILURE', link: OTHER_JOB, workflow: 'Other' },
+    ];
+    const report = evaluateChecks(233, checks, CONFIG);
+    const flakyOnly = applyFlakyAnalysis(report, [analyzeFailedLog('Test', RUN, fixture('job-log-flaky.txt'), KNOWN, '114080000001')]);
+    expect(flakyOnly.verdict).toBe('failed');
+    const both = applyFlakyAnalysis(report, [
+      analyzeFailedLog('Test', RUN, fixture('job-log-flaky.txt'), KNOWN, '114080000001'),
+      analyzeFailedLog('Test', RUN, fixture('job-log-real-failure.txt'), KNOWN, '114080000002'),
+    ]);
+    expect(both.verdict).toBe('failed');
+    const allFlaky = applyFlakyAnalysis(report, [
+      analyzeFailedLog('Test', RUN, fixture('job-log-flaky.txt'), KNOWN, '114080000001'),
+      analyzeFailedLog('Test', RUN, fixture('job-log-flaky.txt'), KNOWN, '114080000002'),
+    ]);
+    expect(allFlaky.verdict).toBe('flaky');
   });
 
   it('parses the vitest FAIL line from a recorded Actions log (ANSI + step prefix)', () => {
@@ -187,13 +296,13 @@ describe('known-flaky attribution from job logs', () => {
   it('verdict is flaky only when every failed required check is known-flaky', () => {
     const checks = withCheck('Test', { state: 'FAILURE', link: TEST_LINK });
     const base = evaluateChecks(233, checks, CONFIG);
-    const flaky = applyFlakyAnalysis(base, [analyzeFailedLog('Test', RUN, fixture('job-log-flaky.txt'), KNOWN)]);
+    const flaky = applyFlakyAnalysis(base, [analyzeFailedLog('Test', RUN, fixture('job-log-flaky.txt'), KNOWN, TEST_JOB)]);
     expect(flaky.verdict).toBe('flaky');
     expect(flaky.rerunnable).toEqual([RUN]);
     expect(flaky.suggestions.join('\n')).toContain(`gh run rerun ${RUN} --failed`);
 
     const both = withCheck('Test', { state: 'FAILURE', link: TEST_LINK }).map((c) => (c.name === 'Build' ? { ...c, state: 'FAILURE' } : c));
-    const mixed = applyFlakyAnalysis(evaluateChecks(233, both, CONFIG), [analyzeFailedLog('Test', RUN, fixture('job-log-flaky.txt'), KNOWN)]);
+    const mixed = applyFlakyAnalysis(evaluateChecks(233, both, CONFIG), [analyzeFailedLog('Test', RUN, fixture('job-log-flaky.txt'), KNOWN, TEST_JOB)]);
     expect(mixed.verdict).toBe('failed');
     expect(mixed.rerunnable).toEqual([]);
   });
@@ -201,7 +310,7 @@ describe('known-flaky attribution from job logs', () => {
   it('a flaky run with pending sibling jobs is not yet rerunnable', () => {
     const checks = withCheck('Test', { state: 'FAILURE', link: TEST_LINK })
       .map((c) => (c.name === 'Build' ? { ...c, state: 'IN_PROGRESS', link: `https://github.com/o/r/actions/runs/${RUN}/job/2` } : c));
-    const report = applyFlakyAnalysis(evaluateChecks(233, checks, CONFIG), [analyzeFailedLog('Test', RUN, fixture('job-log-flaky.txt'), KNOWN)]);
+    const report = applyFlakyAnalysis(evaluateChecks(233, checks, CONFIG), [analyzeFailedLog('Test', RUN, fixture('job-log-flaky.txt'), KNOWN, TEST_JOB)]);
     expect(report.verdict).toBe('flaky');
     expect(report.rerunnable).toEqual([]);
   });
@@ -291,6 +400,32 @@ describe('watchGates', () => {
       expect(r.report.verdict).toBe('flaky');
       expect(calls.some((x) => x[2] === 'rerun')).toBe(false);
     }
+  });
+
+  it('spends the rerun budget before running gh run rerun', async () => {
+    const b = budget();
+    let spentAtRerun = -1;
+    const inner = fakeGh([flaky, PR233], logs);
+    const exec: Exec = (cmd, args, o) => {
+      if (args[1] === 'rerun') spentAtRerun = b.count(RUN);
+      return inner.exec(cmd, args, o);
+    };
+    await watchGates({ exec, pr: 233, config: CONFIG, known: KNOWN, watch: true, reruns: b, ...clock() });
+    expect(spentAtRerun).toBe(1);
+  });
+
+  it('times out (timedOut, not a final flaky) while a flaky run still has pending sibling jobs', async () => {
+    const siblings = withCheck('Test', { state: 'FAILURE', link: TEST_LINK })
+      .map((c) => (c.name === 'Build' ? { ...c, state: 'IN_PROGRESS', link: `https://github.com/o/r/actions/runs/${RUN}/job/2` } : c));
+    const { exec, calls } = fakeGh([siblings], logs);
+    const c = clock();
+    const r = await watchGates({ exec, pr: 233, config: CONFIG, known: KNOWN, watch: true, reruns: budget(), ...c });
+    expect(r.report.verdict).toBe('flaky');
+    expect(r.timedOut).toBe(true);
+    expect(c.now()).toBe(9 * 60_000);
+    expect(calls.some((x) => x[2] === 'rerun')).toBe(false);
+    expect(gateExit(r.report, r.timedOut)).toBe(EXIT_PENDING);
+    expect(gateExit(r.report, false)).toBe(1);
   });
 
   it('never reruns a run whose failure is not on the allowlist', async () => {

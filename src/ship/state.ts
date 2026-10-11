@@ -10,6 +10,7 @@
  * conflict it may not resolve.
  */
 
+import { createHash } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { atomicWriteJsonSync, ensureDirSync } from '../lib/atomic-write.js';
@@ -56,6 +57,14 @@ export interface ShipState {
   history: ShipHistoryEntry[];
   createdAt: string;
   updatedAt: string;
+  /** Earlier runs for this PR replaced by `init --force`, oldest first. */
+  previousRuns?: Array<Omit<ShipState, 'previousRuns'>>;
+  /**
+   * sha256 over the rest of the state, written by the engine on every update
+   * and re-checked before every update and by `merge`. Detects hand edits; it
+   * is not a signature (anyone can recompute it), so it is not tamper-proof.
+   */
+  integrity?: string;
 }
 
 const TRANSITIONS: Record<ShipPhase, readonly ShipPhase[]> = {
@@ -139,23 +148,88 @@ export function shipStatePath(repoRoot: string, pr: number): string {
   return join(getOmcRoot(repoRoot), 'state', 'ship', `${pr}.json`);
 }
 
+/** sha256 of the state without its `integrity` field (key order as stored). */
+export function computeIntegrity(state: ShipState): string {
+  return createHash('sha256').update(JSON.stringify({ ...state, integrity: undefined })).digest('hex');
+}
+
+export function sealShipState(state: ShipState): ShipState {
+  return { ...state, integrity: computeIntegrity(state) };
+}
+
+/** True when the stored integrity matches the content (false for a hand-edited or unsealed state). */
+export function verifyShipIntegrity(state: ShipState): boolean {
+  return typeof state.integrity === 'string' && state.integrity === computeIntegrity(state);
+}
+
+const PHASES: readonly ShipPhase[] = ['review', 'fix', 'prepare', 'gates', 'ready', 'merged', 'blocked'];
+const isStr = (v: unknown): v is string => typeof v === 'string';
+const isCount = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
+
+/** Structural check of a parsed state file; returns the first problem or null. */
+function shapeProblem(s: Record<string, unknown>): string | null {
+  if (!isStr(s.base) || !s.base) return 'base';
+  if (s.branch !== undefined && !isStr(s.branch)) return 'branch';
+  if (!isStr(s.implementer) || !s.implementer) return 'implementer';
+  if (!PHASES.includes(s.phase as ShipPhase)) return 'phase';
+  if (!isCount(s.fixRounds) || !isCount(s.maxFixRounds)) return 'fixRounds/maxFixRounds';
+  if (!Array.isArray(s.verdicts) || !s.verdicts.every((v) => {
+    const x = v as Record<string, unknown>;
+    return isStr(x?.reviewer) && (x.verdict === 'approve' || x.verdict === 'changes-requested') && isStr(x.sha) && /^[0-9a-f]{40}$/.test(x.sha) && isStr(x.at);
+  })) return 'verdicts';
+  if (!Array.isArray(s.housekeepingCommits) || !s.housekeepingCommits.every((c) => isStr(c) && /^[0-9a-f]{40}$/.test(c))) return 'housekeepingCommits';
+  if (typeof s.reruns !== 'object' || s.reruns === null || Array.isArray(s.reruns) || !Object.values(s.reruns).every(isCount)) return 'reruns';
+  if (!Array.isArray(s.history)) return 'history';
+  if (!isStr(s.createdAt) || !isStr(s.updatedAt)) return 'createdAt/updatedAt';
+  if (s.previousRuns !== undefined && !Array.isArray(s.previousRuns)) return 'previousRuns';
+  if (s.integrity !== undefined && !isStr(s.integrity)) return 'integrity';
+  return null;
+}
+
+/** Read and shape-check the state file; throws ShipStateError on malformed content. */
 export function readShipState(repoRoot: string, pr: number): ShipState | null {
   const path = shipStatePath(repoRoot, pr);
   if (!existsSync(path)) return null;
-  const parsed = JSON.parse(readFileSync(path, 'utf8')) as ShipState;
-  if (parsed?.version !== 1 || parsed.pr !== pr) throw new ShipStateError(`${path} is not a ship state for PR #${pr}`);
-  return parsed;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    throw new ShipStateError(`${path} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const s = parsed as Record<string, unknown>;
+  if (typeof parsed !== 'object' || parsed === null || s.version !== 1 || s.pr !== pr) throw new ShipStateError(`${path} is not a ship state for PR #${pr}`);
+  const problem = shapeProblem(s);
+  if (problem) throw new ShipStateError(`${path} is malformed (field ${problem})`);
+  return parsed as ShipState;
+}
+
+export interface UpdateShipStateOptions {
+  /** Hand the mutator a state whose integrity check fails (owner-only `init --force`). */
+  allowUnverified?: boolean;
 }
 
 /**
  * Read-modify-write under the state file's lock. `mutate` receives the
- * current state (null when none) and returns the next one.
+ * current state (null when none) and returns the next one, which is sealed
+ * with a fresh integrity hash. A stored state that fails its integrity check
+ * (hand-edited) is refused unless `allowUnverified`. `repoRoot` must be a git
+ * work tree: elsewhere the state root would resolve under the home directory.
  */
-export function updateShipState(repoRoot: string, pr: number, mutate: (current: ShipState | null) => ShipState): ShipState {
+export function updateShipState(
+  repoRoot: string,
+  pr: number,
+  mutate: (current: ShipState | null) => ShipState,
+  options: UpdateShipStateOptions = {},
+): ShipState {
+  if (!existsSync(join(repoRoot, '.git'))) throw new ShipStateError(`${repoRoot} is not a git work tree; ship state lives in the repo`);
   const path = shipStatePath(repoRoot, pr);
   ensureDirSync(join(path, '..'));
   return withFileLockSync(lockPathFor(path), () => {
-    const next = mutate(readShipState(repoRoot, pr));
+    const current = readShipState(repoRoot, pr);
+    if (current && !options.allowUnverified && !verifyShipIntegrity(current)) {
+      throw new ShipStateError(`${path} fails its integrity check (edited outside omg ship); an owner can replace it with OMG_SHIP_HUMAN=1 omg ship init ${pr} --force`);
+    }
+    const next = sealShipState(mutate(current));
     atomicWriteJsonSync(path, next);
     return next;
   }, { timeoutMs: 5_000 });

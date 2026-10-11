@@ -5,7 +5,7 @@
  */
 
 import type { GateReport } from './gates.js';
-import { latestVerdict, type ShipState } from './state.js';
+import { latestVerdict, verifyShipIntegrity, type ShipState } from './state.js';
 
 export interface PrView {
   number: number;
@@ -38,6 +38,7 @@ export function mergeCommand(pr: number, headSha: string): string[] {
 
 export function decideMerge({ state, pr, gate, commitsSinceReview }: MergeInput): MergeDecision {
   const reasons: string[] = [];
+  if (!verifyShipIntegrity(state)) reasons.push('ship state fails its integrity check (edited outside omg ship); re-run the workflow from omg ship init');
   if (state.phase === 'merged') reasons.push('already merged');
   if (state.phase === 'blocked') reasons.push(`run is blocked: ${state.blockedReason ?? 'see history'}`);
   if (state.phase === 'review' || state.phase === 'fix' || state.phase === 'prepare') {
