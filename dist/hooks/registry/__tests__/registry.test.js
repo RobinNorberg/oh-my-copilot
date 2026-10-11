@@ -143,6 +143,7 @@ describe('hook registry — selection and ordering', () => {
             'wiki-session-start.mjs',
             'stale-run-reporter.mjs',
             'runs-reconciler.mjs',
+            'premium-budget.mjs',
         ]);
         const sessionStartInit = selectApplicableEntries(registry, 'SessionStart', 'init');
         expect(sessionStartInit.some((e) => e.entrypoint === 'setup-init.mjs')).toBe(true);

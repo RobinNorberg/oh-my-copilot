@@ -61,6 +61,7 @@ Transport:
 Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omg/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
 
 Auto-merge (v2-only):
+  --budget-override    Start even when budget.mode "enforce" would refuse or clamp the fan-out.
   --no-decompose       Treat the launch text as pre-authored/fixed worker scope; do not split by commas/lists.
   --auto-merge          Enable per-commit auto-merge to leader and auto-rebase fanout.
                         Each worker runs in a dedicated git worktree on omc-team/{team}/{worker}.
@@ -388,6 +389,7 @@ export function parseTeamArgs(tokens, defaultAgentType = defaultTeamCliAgentType
     let autoMerge = process.env.OMC_TEAMS_AUTO_MERGE === '1';
     let noDecompose = false;
     let transport;
+    let budgetOverride = false;
     let taskFromFlag;
     const normalizedDefaultAgentType = VALID_TEAM_CLI_AGENT_TYPES.has(defaultAgentType)
         ? defaultAgentType
@@ -407,6 +409,9 @@ export function parseTeamArgs(tokens, defaultAgentType = defaultTeamCliAgentType
         }
         else if (arg === '--no-decompose' || arg === '--fixed-workers' || arg === '--preformed-plan') {
             noDecompose = true;
+        }
+        else if (arg === '--budget-override') {
+            budgetOverride = true;
         }
         else if (arg === '--transport' || arg.startsWith('--transport=')) {
             const value = arg.includes('=') ? arg.slice('--transport='.length) : args[++index];
@@ -513,7 +518,7 @@ export function parseTeamArgs(tokens, defaultAgentType = defaultTeamCliAgentType
         throw new Error('Usage: omg team [N:agent-type[:role]] "<task description>" (or use --task "<task description>")');
     }
     const teamName = slugifyTask(task);
-    return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow, autoMerge, explicitWorkerSpec, noDecompose, ...(transport ? { transport } : {}) };
+    return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow, autoMerge, explicitWorkerSpec, noDecompose, ...(transport ? { transport } : {}), ...(budgetOverride ? { budgetOverride: true } : {}) };
 }
 export function buildStartupTasks(parsed) {
     return Array.from({ length: parsed.workerCount }, (_, index) => {
@@ -712,6 +717,42 @@ async function collectStartRolePromptOptions(parsed) {
         rolePromptByRole,
     };
 }
+/**
+ * Premium-request budget governor (src/budget): warn about, clamp or refuse
+ * the copilot fan-out. Only a refusal throws; a governor failure starts the
+ * team unchanged (fail-open).
+ */
+export async function applyBudgetGovernor(parsed, workerCount, clampable, cwd) {
+    let decision;
+    try {
+        const { loadBudgetSettings, governTeamFanout } = await import('../../budget/governor.js');
+        const { ledgerPath, ledgerTotals, readLedger } = await import('../../budget/ledger.js');
+        const { resolveSdkTeamSettings } = await import('../../team/runtime-v2.js');
+        const { settings } = loadBudgetSettings(cwd);
+        let maxCreditsPerWorker = resolveSdkTeamSettings({}).maxCreditsPerWorker;
+        try {
+            const { loadConfig } = await import('../../config/loader.js');
+            maxCreditsPerWorker = resolveSdkTeamSettings(loadConfig()).maxCreditsPerWorker;
+        }
+        catch { /* the default cap */ }
+        decision = governTeamFanout({
+            settings,
+            totals: ledgerTotals(readLedger(ledgerPath(cwd))),
+            agentTypes: parsed.agentTypes.slice(0, workerCount),
+            maxCreditsPerWorker,
+            override: parsed.budgetOverride === true,
+            clampable,
+        });
+    }
+    catch {
+        return workerCount;
+    }
+    if (decision.notice)
+        console.error(decision.notice);
+    if (decision.refusal)
+        throw new Error(decision.refusal);
+    return decision.workerCount;
+}
 async function handleTeamStart(parsed, cwd) {
     const { isRuntimeV2Enabled, startTeamV2, monitorTeamV2 } = await import('../../team/runtime-v2.js');
     if (!isRuntimeV2Enabled()) {
@@ -720,7 +761,10 @@ async function handleTeamStart(parsed, cwd) {
     await assertTeamSpawnAllowed(cwd);
     // Decompose the task string into subtasks when possible
     const decomposition = splitTaskString(parsed.task);
-    const effectiveWorkerCount = resolveTeamFanoutLimit(parsed.workerCount, parsed.agentTypes[0], parsed.explicitWorkerSpec ? parsed.workerCount : undefined, decomposition, parsed.noDecompose);
+    const fanoutWorkerCount = resolveTeamFanoutLimit(parsed.workerCount, parsed.agentTypes[0], parsed.explicitWorkerSpec ? parsed.workerCount : undefined, decomposition, parsed.noDecompose);
+    // Clamping drops workers, so only when no worker owns a decomposed subtask.
+    const clampable = parsed.noDecompose || decomposition.subtasks.length <= 1;
+    const effectiveWorkerCount = await applyBudgetGovernor(parsed, fanoutWorkerCount, clampable, cwd);
     const tasks = buildTeamLaunchTasks(parsed, decomposition, effectiveWorkerCount);
     const launchTeamName = resolveAvailableTeamName(parsed.teamName, cwd);
     const rolePromptOptions = await collectStartRolePromptOptions(parsed);
