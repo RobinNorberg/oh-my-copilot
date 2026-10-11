@@ -20,6 +20,16 @@ export { interpolateTemplate, getDefaultTemplate, validateTemplate, computeTempl
 export { verifySlackSignature, isTimestampValid, validateSlackEnvelope, validateSlackMessage, SlackConnectionStateTracker, } from "./slack-socket.js";
 export type { SlackConnectionState, SlackValidationResult, SlackSocketEnvelope, } from "./slack-socket.js";
 export { redactTokens } from "./redact.js";
+/**
+ * What this build of notify() supports. scripts/copilot/notification.mjs
+ * loads the committed dist/ and sends a Copilot permission prompt only when
+ * the loaded module carries this marker (a dist/ older than the source lacks
+ * it): `nonReplyable` means `replyable: false` is honoured (no reply mapping
+ * is registered and the pane's earlier mappings are removed).
+ */
+export declare const NOTIFICATION_CAPS: Readonly<{
+    nonReplyable: true;
+}>;
 import type { NotificationEvent, NotificationPayload, DispatchResult } from "./types.js";
 /**
  * High-level notification function.

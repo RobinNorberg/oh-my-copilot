@@ -12,7 +12,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema, } from '@modelcontextprotocol/sdk/types.js';
 import { registerStandaloneShutdownHandlers } from './standalone-shutdown.js';
 import { cleanupOwnedBridgeSessions } from '../tools/python-repl/bridge-manager.js';
-import { buildListToolsResponse, getEnabledTools } from './tool-registry.js';
+import { buildListToolsResponse, callTool, getEnabledTools } from './tool-registry.js';
 import { disconnectAll as disconnectAllLsp } from '../tools/lsp/index.js';
 // Create the MCP server
 const server = new Server({
@@ -30,27 +30,7 @@ const getStandaloneTools = () => getEnabledTools();
 const setStandaloneCallToolRequestHandler = server.setRequestHandler.bind(server);
 setStandaloneCallToolRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
-    const tool = getStandaloneTools().find(t => t.name === name);
-    if (!tool) {
-        return {
-            content: [{ type: 'text', text: `Unknown tool: ${name}` }],
-            isError: true,
-        };
-    }
-    try {
-        const result = await tool.handler((args ?? {}));
-        return {
-            content: result.content,
-            isError: result.isError ?? false,
-        };
-    }
-    catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        return {
-            content: [{ type: 'text', text: `Error: ${errorMessage}` }],
-            isError: true,
-        };
-    }
+    return callTool(name, args, getStandaloneTools());
 });
 // Graceful shutdown: disconnect LSP servers on process termination (#768).
 // Without this, LSP child processes (e.g. jdtls) survive the MCP server exit

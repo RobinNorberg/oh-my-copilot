@@ -156,6 +156,20 @@ Final draft.`);
             expect(result).not.toContain('ralph');
             expect(result).toContain('hello');
         });
+        it('should strip matching XML tags with attributes on the closing tag', () => {
+            const result = sanitizeForKeywordDetection('<pasted_content id="ab12">ralph</pasted_content id="ab12"> visible');
+            expect(result).not.toContain('ralph');
+            expect(result).toContain('visible');
+        });
+        it('should preserve a request after a malformed closing tag newline', () => {
+            const result = sanitizeForKeywordDetection('<pasted_content>reference</pasted_content\ndeslop this repo > report.txt');
+            expect(result).toContain('deslop');
+        });
+        it('should not scan across repeated malformed closing tags', { timeout: 5000 }, () => {
+            const closers = '</pasted_content '.repeat(64_000);
+            const result = sanitizeForKeywordDetection(`<pasted_content>anti-slop</pasted_content ${closers}`);
+            expect(result).toContain('anti-slop');
+        });
         it('should strip nested matching XML tags', () => {
             const result = sanitizeForKeywordDetection('<outer>some <inner>text</inner> ralph</outer> visible');
             expect(result).not.toContain('ralph');

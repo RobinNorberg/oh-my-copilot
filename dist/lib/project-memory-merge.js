@@ -75,7 +75,7 @@ export function deepMerge(base, incoming) {
 function mergeArrays(fieldName, base, incoming) {
     switch (fieldName) {
         case 'customNotes':
-            return mergeByKey(base, incoming, (note) => `${note.category}::${note.content}`, (a, b) => (b.timestamp >= a.timestamp ? b : a));
+            return mergeByKey(base, incoming, (note) => JSON.stringify([note.category, note.content]), (a, b) => (b.timestamp >= a.timestamp ? b : a));
         case 'userDirectives':
             return mergeByKey(base, incoming, (d) => d.directive, (a, b) => (b.timestamp >= a.timestamp ? b : a));
         case 'hotPaths':

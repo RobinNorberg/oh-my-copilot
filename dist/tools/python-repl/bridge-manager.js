@@ -597,10 +597,10 @@ export async function cleanupBridgeSessions(sessionIds, options = {}) {
     }
     return result;
 }
-export async function cleanupOwnedBridgeSessions() {
+export async function cleanupOwnedBridgeSessions(options = {}) {
     const ownedSessions = [...ownedBridgeSessionIds];
     ownedBridgeSessionIds.clear();
-    return cleanupBridgeSessions(ownedSessions);
+    return cleanupBridgeSessions(ownedSessions, options);
 }
 /**
  * Clean up stale bridge artifacts across all runtime sessions.

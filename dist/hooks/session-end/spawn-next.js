@@ -110,13 +110,21 @@ export const AFK_ALLOWED_TOOLS = [
     'Edit',
     'WebFetch(domain:github.com)',
 ].join(',');
+export const AFK_INCLUDE_USER_SETTINGS_ENV = 'OMC_AFK_INCLUDE_USER_SETTINGS';
 export const AFK_SPAWN_FLAGS = [
     '--permission-mode', 'acceptEdits',
     '--allowedTools', AFK_ALLOWED_TOOLS,
-    // Isolation: AFK links run with project+local settings only — user-level
-    // hooks/settings must never fire in a headless chain link.
+    // Default isolation: user-level hooks/settings do not fire in a headless
+    // chain link unless OMC_AFK_INCLUDE_USER_SETTINGS=1 opts them in.
     '--setting-sources', 'project,local',
 ];
+function afkSpawnFlags(includeUserSettings) {
+    const flags = [...AFK_SPAWN_FLAGS];
+    if (includeUserSettings) {
+        flags[flags.indexOf('--setting-sources') + 1] = 'user,project,local';
+    }
+    return flags;
+}
 /**
  * Copilot CLI translation of AFK_SPAWN_FLAGS: the same gh/file-write/
  * github.com-WebFetch surface as `--allow-tool` / `--allow-url` rules
@@ -180,9 +188,10 @@ export function factoryLinkCommand() {
  * `--allow-tool=shell(<command>)` per extra command. Copilot cannot pin a
  * session id at launch, so `sessionId` is not passed to it: the spawner hands
  * it over as CHAIN_LINK_ENV. A dev plugin root adds `--plugin-dir`
- * (copilotPluginDirArgs).
+ * (copilotPluginDirArgs). `includeUserSettings` only widens a Claude link's
+ * `--setting-sources`; Copilot has no equivalent, so it is a no-op there.
  */
-export function factoryLinkArgv(prompt, sessionId, verifyCommands = [], fixedBashCommands = [], 
+export function factoryLinkArgv(prompt, sessionId, verifyCommands = [], fixedBashCommands = [], includeUserSettings = process.env[AFK_INCLUDE_USER_SETTINGS_ENV] === '1', 
 /** The link's working directory (spawn cwd), for the --plugin-dir overlap check. */
 linkCwd = process.cwd()) {
     const isValid = (command) => command.length <= MAX_VERIFY_COMMAND_LENGTH && VERIFY_COMMAND_PATTERN.test(command);
@@ -195,7 +204,7 @@ linkCwd = process.cwd()) {
         return ['-p', prompt, ...COPILOT_AFK_SPAWN_FLAGS, ...extra, ...copilotPluginDirArgs(process.env, linkCwd)];
     }
     if (verifyCommands.length === 0 && fixedBashCommands.length === 0) {
-        return ['-p', prompt, '--session-id', sessionId, ...AFK_SPAWN_FLAGS];
+        return ['-p', prompt, '--session-id', sessionId, ...afkSpawnFlags(includeUserSettings)];
     }
     // fixedBashCommands are caller-owned constants (e.g. ralph's read-only git
     // set); only the user/route-declared verify list counts against the cap.
@@ -207,7 +216,7 @@ linkCwd = process.cwd()) {
             .slice(0, MAX_VERIFY_COMMANDS)
             .map((command) => `Bash(${command})`),
     ].join(',');
-    const flags = [...AFK_SPAWN_FLAGS];
+    const flags = afkSpawnFlags(includeUserSettings);
     flags[flags.indexOf('--allowedTools') + 1] = allowedTools;
     return ['-p', prompt, '--session-id', sessionId, ...flags];
 }
@@ -221,6 +230,9 @@ export const LABEL_PATTERN = /^[\w.-]+$/;
  */
 export function validateChainFields(chain) {
     validateSessionId(chain.sessionId);
+    if (chain.includeUserSettings !== undefined && typeof chain.includeUserSettings !== 'boolean') {
+        throw new Error('invalid chain user settings option');
+    }
     const tracker = chain.tracker;
     if (tracker) {
         if (!REPO_PATTERN.test(tracker.repo))
@@ -293,7 +305,7 @@ export function planSpawnNext(chain, omcRoot, linkCwd = process.cwd()) {
     return {
         directive,
         handoffPath,
-        spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`/${directive.skill} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId, directive.verify, [], linkCwd)],
+        spawnArgv: [factoryLinkCommand(), ...factoryLinkArgv(`/${directive.skill} 继续 ${directive.stage} 环；交接上下文：${path.basename(handoffPath)}`, nextSessionId, directive.verify, [], chain.includeUserSettings === true, linkCwd)],
         nextSessionId,
         trackerCommands,
     };
@@ -323,6 +335,7 @@ export function executeSpawnNext(chain, directory, spawnFn = defaultSpawnFn) {
             tracker: chain.tracker,
             visits: { ...(chain.visits ?? {}), [plan.directive.stage]: (chain.visits?.[plan.directive.stage] ?? 0) + 1 },
             ...(chain.maxStageVisits !== undefined ? { maxStageVisits: chain.maxStageVisits } : {}),
+            includeUserSettings: chain.includeUserSettings === true,
             parentLink: chain.sessionId,
         });
         spawnFn(plan.spawnArgv[0], plan.spawnArgv.slice(1), { cwd: directory, chainLink: plan.nextSessionId });

@@ -1,92 +1,102 @@
-# oh-my-copilot v5.9.0
+# oh-my-copilot v5.10.0
 
-A minor release. Under the Copilot CLI host, `omg team` now starts headless
-SDK workers by default; Copilot hooks run through a per-event dispatcher; the
-project config is `.copilot/omg.jsonc` everywhere; a daily upstream drift bot
-proposes ports; and upstream oh-my-claudecode `dev` is ported through
-a720eabd0 (ef9a44f0e..a720eabd0, 6 commits). Under Claude Code nothing about
-the team transport changes.
+A minor release. It adds a premium-request budget governor (`omg budget`,
+warn-only by default), the `omg ship` merge-gate engine and `ship` skill, a
+Copilot `notification` hook for permission prompts and `ask_user`, opt-in
+in-process SDK tools for sdk team workers, and the `session-flow` skill (63
+skills). Upstream oh-my-claudecode `dev` is ported through 7cb577e94
+(a720eabd0..7cb577e94, 224 commits).
 
-Install with `npm install -g oh-my-copilot@5.9.0`, or from the plugin
+Install with `npm install -g oh-my-copilot@5.10.0`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
 
-To keep tmux/psmux panes under Copilot CLI, pass `--transport pane` or set
-`{ "team": { "transport": "pane" } }` in `.copilot/omg.jsonc`. See the
-[migration note](https://github.com/RobinNorberg/oh-my-copilot/blob/main/docs/MIGRATION.md#v581--v590-sdk-team-transport-by-default).
+**Behavior change:** permission auto-approval is narrower. On Copilot,
+`npm run build`, test commands, git read commands (`git diff`, `git log`,
+`git branch`, `git show`, `git fetch`) and heredoc `git commit`/`git tag`
+are no longer auto-approved; they go through the normal permission flow.
 
-## SDK team transport by default under Copilot CLI
+## Added
 
-- **`omg team` defaults to `--transport auto`.** That means `sdk` under the
-  Copilot CLI host and `pane` under Claude Code or a plain terminal. `auto`
-  falls back to panes, with a note on stderr, for `--auto-merge`, non-copilot
-  workers, an explicitly assigned reviewer-contract role, or a missing
-  `@github/copilot-sdk`. `team.transport` in the project config overrides it.
-- **Parallel worker launch.** SDK hosts start 4 at a time by default
-  (`team.sdk.launchConcurrency`, env `OMC_TEAM_SDK_LAUNCH_CONCURRENCY`). A live
-  2-worker launch went from 75.3 s serial to 24.0 to 51.8 s parallel.
-- **`omg team status --json`** adds `transport` and, per SDK worker,
-  `host_pid`, `runtime_pid`, `session_id`, `attempt_id`, `updated_at`,
-  `task_state`, `current_task_id` and `premium_requests_final`.
-- **Shutdown no longer loses work.** A worker worktree with commits the leader
-  HEAD does not contain is kept, with its branch, and named on stderr. Worker
-  branches the commit check did not cover are kept, and a merged worker branch
-  the leader has checked out no longer fails teardown.
-- **Shutdown no longer keeps every worktree.** A copilot worker's own `.omg/`
-  runtime state (SessionEnd job records) no longer counts as dirty, so
-  `omg team shutdown` cleans up instead of exiting 1 and keeping the
-  reservation.
-- **`one_team_per_leader_session` sees SDK teams**, and
-  `omg smoke copilot --tier 2 --scenario team` (opt-in, about 2 premium
-  requests) runs a real 2-worker team from start to clean shutdown.
+### Premium-request budget governor
 
-## Per-event Copilot hook dispatcher
+- A ledger at `.omg/state/budget-ledger.json` records Copilot usage per
+  session and per team, each record labelled measured (from the session's
+  `events.jsonl` totals) or estimated (one premium request per prompt).
+- `budget` keys in `.copilot/omg.jsonc`: `mode` (`warn` default, `enforce`
+  opt-in), `unit`, `softLimit`, `hardLimit`, `perTeamLimit`. A fail-open hook
+  prints a SessionStart summary and a one-time notice when a limit is crossed;
+  the HUD gains a `premiumBudget` element.
+- In enforce mode `omg team` clamps or refuses a fan-out whose projected cost
+  exceeds the limits (`--budget-override` starts it anyway).
+- `omg budget` (`status`, `reset`, `--json`) shows and resets the ledger.
+  `OMC_BUDGET_GOVERNOR=0` turns it all off.
 
-`copilot/hooks.json` now has 12 entries, one per `(event, matcher)` group,
-instead of one per hook. Each runs `scripts/copilot/dispatch.cjs`, which reads
-stdin once, runs the group's hooks in order with the same routing and per-hook
-timeouts, and merges their outputs (a PreToolUse deny wins, a Stop block
-survives, a throwing hook fails alone). On Windows, Stop drops from 1358 to
-1011 ms and SessionStart from 2403 to 2036 ms. Set
-`OMC_COPILOT_HOOK_DISPATCH=0` to run one process per hook again without
-regenerating. Claude Code and `hooks/hooks.json` are unchanged.
+### `omg ship` and the `ship` skill
 
-## Canonical `.copilot/omg.jsonc` config
+- `/oh-my-copilot:ship` takes a task or an open PR to merge-ready: executor
+  lane, independent verifier lane, bounded fix rounds by fresh agents.
+- `omg ship gates <pr> [--watch]` is green only when every non-advisory check
+  is SUCCESS or SKIPPED and every workflow run for the head is complete; known
+  flaky tests (`.github/known-flaky-tests.json`) are rerun once.
+- `omg ship prepare` merges GitHub's base sha (never rebases), runs the local
+  gates and regenerates the inventory last. `omg ship merge` prints the
+  `gh pr merge --admin` command; it runs the admin merge itself only when the
+  owner sets `ship.allowAdminMerge` in the user config. There is no CLI flag.
+- Safety keys come from the user config and the base branch's committed
+  `.copilot/omg.jsonc` only. `ship.trustedBases` (default `dev`, `main`,
+  `master`) limits which bases are read and admin-merged.
+- Known limits: the state file's integrity hash is not a signature; a lane
+  with write access to `.git/objects` can forge objects; environment and
+  `PATH` overrides are advisory.
 
-The security config reader, the Stop hook, the keyword detector opt-out,
-per-agent model overrides and `autopilot --workflow` profiles all read
-`.copilot/omg.jsonc` first, with `.copilot/omc.jsonc` (and, where it applied
-before, `.claude/omc.jsonc`) as a fallback. `omg doctor conflicts` prints the
-rename command for a legacy-named file and never renames it itself.
+### Copilot `notification` hook
 
-## Upstream drift bot
+- Permission prompts and `ask_user` questions are sent to the configured
+  Discord, Telegram or Slack targets. On Copilot the upstream
+  `AskUserQuestion` path never fired.
+- A permission prompt is sent as its title, tool category and command binary
+  only (`Permission needed: Run command: curl`), never the arguments, and it
+  is never replyable: remote replies cannot answer a permission prompt.
+- `ask_user` text is redacted and capped at 200 characters.
+- Fail-closed: on a stale `dist/` without these guarantees the hook sends no
+  permission prompt until `dist/` is rebuilt.
 
-A daily workflow, `.github/workflows/upstream-drift.yml`, compares upstream
-`dev` with the last ported sha in `.github/upstream-port.json`, applies the
-range with the runbook's exclusions and rename map, and opens a draft port PR
-(clean apply) or an issue listing the conflicts. Scheduled workflows run only
-from the default branch. The optional `UPSTREAM_DRIFT_TOKEN` secret lets CI
-run on the bot's PRs.
+### In-process SDK tools for sdk team workers (opt-in)
 
-## Upstream port (ef9a44f0e..a720eabd0, 6 commits)
+- `team.sdk.inProcessTools` (default `false`; env
+  `OMC_TEAM_SDK_INPROCESS_TOOLS=1`) registers the plugin tools in the sdk host
+  instead of a stdio MCP server per worker. There is no latency gain (session
+  start 2843 ms vs 2872 ms); each worker saves one node process (about 85 MB).
 
-- Plugin cache cleanup keeps symlinked versions and ignores orphaned
-  `*.tmp~*` directories (#4263).
-- cmux teams verify pane ownership through the tmux-compat layer, and
-  `--force` shutdown no longer stalls on workers without a verifiable pane
-  (#4261).
-- Session cwds in a repo subdirectory on Windows resolve to the right worktree
-  (#4254).
-- `omg ask antigravity` runs on Windows, and antigravity team workers are no
-  longer refused there (#4258).
+### `session-flow` skill
 
-## Documentation
+- An evidence-backed map of the current session (upstream #4319). The plugin
+  ships 63 skills.
 
-`docs/DEVELOPERS.md` audits every hook event Copilot CLI 1.0.91 supports
-against the generated `copilot/hooks.json`.
+## Changed: upstream port (a720eabd0..7cb577e94, 224 commits)
+
+- Shipyard is lean: drydock seeds `CLAUDE.md` + `GLOSSARY.md`; other surfaces
+  appear on first use; the audit (contract v2) checks only adopted surfaces.
+- Permission auto-approval is narrower (#4283, #4280); see the behavior change
+  above.
+- AFK user settings are opt-in (`OMC_AFK_INCLUDE_USER_SETTINGS=1`, #4282).
+- Fixes: MCP registry TOML parsing (multiline and literal strings, quoted
+  keys), a native Windows tmux identity guard, Cursor team worker lifecycle,
+  plugin-cache purge validation, notification template escaping and reply
+  registry hardening, HUD fixes, and SSRF guard IPv6 ranges. See
+  [MIGRATION.md](https://github.com/RobinNorberg/oh-my-copilot/blob/main/docs/MIGRATION.md)
+  for the three upstream migration notes.
+
+## Fork deviations
+
+- Split panes remove the private pane env file again when a split fails.
+- MSYS2/Cygwin tmux keeps the POSIX identity guard (the PowerShell guard is
+  chosen only for psmux).
+- `lsp_diagnostics_directory` resolves tsc on Windows (project TypeScript or
+  the `tsc.cmd` shim) and reports a missing compiler as a failure.
 
 ## Upstream credits
 
 Ported work originates from
 [Yeachan-Heo/oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode)
-`dev` ef9a44f0e..a720eabd0 (#4254, #4258, #4261, #4263); see `CHANGELOG.md`
-for the breakdown.
+`dev` a720eabd0..7cb577e94; see `CHANGELOG.md` for the breakdown.

@@ -29,8 +29,9 @@ export interface TeamUsageReport {
  */
 export declare function recordTaskUsage(workingDirectory: string, teamName: string, record: TaskUsageRecord): void;
 /**
- * Compute character counts from prompt and output files.
- * Returns { promptChars, responseChars }. Returns 0 for missing files.
+ * Compute Unicode code point counts from UTF-8 prompt and output files.
+ * Combining marks count separately; these are not grapheme or token counts.
+ * Returns { promptChars, responseChars }. Returns 0 for missing/unreadable files.
  */
 export declare function measureCharCounts(promptFilePath: string, outputFilePath: string): {
     promptChars: number;

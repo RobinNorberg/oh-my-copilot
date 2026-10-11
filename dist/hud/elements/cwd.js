@@ -5,7 +5,8 @@
  * Supports OSC 8 terminal hyperlinks for supported terminals (iTerm2, WezTerm, etc.)
  */
 import { homedir } from 'node:os';
-import { basename, dirname } from 'node:path';
+import { basename, dirname, resolve, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { dim } from '../colors.js';
 /**
  * Wrap text in an OSC 8 terminal hyperlink.
@@ -20,13 +21,20 @@ function osc8Link(url, text) {
  * Handles Windows paths (C:\path -> file:///C:/path).
  */
 function pathToFileUrl(absPath) {
-    // Normalize backslashes on Windows
-    const normalized = absPath.replace(/\\/g, '/');
-    // Windows absolute path (e.g. C:/...)
-    if (/^[A-Za-z]:\//.test(normalized)) {
-        return `file:///${normalized}`;
+    // Preserve portable drive-path inputs when rendering on a non-Windows host.
+    if (process.platform !== 'win32' && /^[A-Za-z]:[\\/]/.test(absPath)) {
+        const segments = absPath.replace(/\\/g, '/').split('/');
+        return `file:///${segments.map((segment, index) => index === 0 ? segment : encodeURIComponent(segment)).join('/')}`;
     }
-    return `file://${normalized}`;
+    // Do not add a sentinel to filesystem roots: UNC roots preserve repeated
+    // separators when pathToFileURL converts them.
+    const normalized = resolve(absPath);
+    if (normalized.endsWith(sep))
+        return pathToFileURL(normalized).href;
+    // A trailing directory separator keeps WHATWG URL trimming from dropping
+    // valid trailing control bytes in POSIX names; remove only the added slash.
+    const url = pathToFileURL(`${normalized}${sep}`).href;
+    return url.slice(0, -1);
 }
 /**
  * Render current working directory based on format.
@@ -77,7 +85,9 @@ export function renderCwd(cwd, format = 'relative', useHyperlinks = false) {
         default:
             displayPath = cwd;
     }
-    const rendered = `${dim(displayPath)}`;
+    // File names are untrusted terminal text; keep controls visible and inert.
+    const safeDisplayPath = displayPath.replace(/[\x00-\x1f\x7f-\x9f]/g, character => `\\x${character.charCodeAt(0).toString(16).padStart(2, '0')}`);
+    const rendered = `${dim(safeDisplayPath)}`;
     if (useHyperlinks) {
         const url = pathToFileUrl(cwd);
         return osc8Link(url, rendered);

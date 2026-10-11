@@ -49,6 +49,34 @@ export const allTools = [
 export function getEnabledTools(envValue) {
     return filterDisabledTools(allTools, envValue);
 }
+/**
+ * Run one tool call exactly as the standalone server's CallTool handler does:
+ * unknown names and thrown errors become `isError` text results. The SDK
+ * in-process tools (src/team/sdk-inprocess-tools.ts) call this too.
+ */
+export async function callTool(name, args, tools = getEnabledTools()) {
+    const tool = tools.find(t => t.name === name);
+    if (!tool) {
+        return {
+            content: [{ type: 'text', text: `Unknown tool: ${name}` }],
+            isError: true,
+        };
+    }
+    try {
+        const result = await tool.handler((args ?? {}));
+        return {
+            content: result.content,
+            isError: result.isError ?? false,
+        };
+    }
+    catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return {
+            content: [{ type: 'text', text: `Error: ${errorMessage}` }],
+            isError: true,
+        };
+    }
+}
 // ---------------------------------------------------------------------------
 // Zod → JSON Schema helpers (mirrors what the MCP server sends over the wire)
 // ---------------------------------------------------------------------------

@@ -57,6 +57,8 @@ export interface SdkHostSpec {
     node_path: string;
     /** Copilot config dir whose login identity the per-worker home copies. */
     user_config_dir: string;
+    /** `team.sdk.inProcessTools`: register the plugin tools in the host instead of the `t` MCP server (sdk-inprocess-tools.ts). */
+    in_process_tools?: boolean;
 }
 export interface SdkDoorbellEntry {
     id: string;
@@ -96,6 +98,14 @@ export interface SdkSessionFile {
         session_end_runs: number;
         failed: number;
     };
+    /** Where the plugin tools run: `mcp` (the `t` server) or `in-process` (the host); absent before the session exists. */
+    tool_transport?: 'mcp' | 'in-process';
+    /**
+     * `in-process` only: true when the session's tool metadata listed an
+     * in-process tool (or the set is empty), false when the SDK could not tell.
+     * A session that did not offer the tool was recreated on the MCP server.
+     */
+    tool_transport_verified?: boolean;
     aborts: number;
     permissions: Array<{
         at: string;
@@ -128,6 +138,7 @@ export interface SdkLaunchInput {
     denyTools: string[];
     denyUrls: string[];
     mcpServer?: string;
+    inProcessTools?: boolean;
     /** Test seam for the detached spawn. */
     spawnHost?: (cliPath: string, specPath: string, logPath: string, cwd: string) => number | undefined;
     ackTimeoutMs?: number;

@@ -126,6 +126,7 @@ export async function launchSdkHost(input) {
         omg_cli_path: cliPath,
         node_path: process.execPath,
         user_config_dir: input.userConfigDir,
+        ...(input.inProcessTools ? { in_process_tools: true } : {}),
     };
     writeFileSync(files.spec, `${JSON.stringify(spec, null, 2)}\n`);
     // A new host reads the doorbell from offset 0: start it empty so a previous

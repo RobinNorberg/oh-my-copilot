@@ -164,6 +164,26 @@ describe('Task System Support', () => {
             const task = { id: '1', subject: 'Test', status: 'completed' };
             expect(isTaskIncomplete(task)).toBe(false);
         });
+        it('does not treat owned session-flow stages as unfinished work', () => {
+            for (const status of ['pending', 'in_progress']) {
+                const task = {
+                    id: status,
+                    subject: '[S1] Current stage',
+                    description: 'session-flow: managed stage\nEvidence: user request',
+                    status,
+                };
+                expect(isTaskIncomplete(task)).toBe(false);
+            }
+        });
+        it('keeps unowned stage-like Tasks in the incomplete set', () => {
+            const task = {
+                id: 'work',
+                subject: '[S1] User task',
+                description: 'Finish the actual work',
+                status: 'pending',
+            };
+            expect(isTaskIncomplete(task)).toBe(true);
+        });
     });
     describe('readTaskFiles', () => {
         it('should return empty array when directory does not exist', () => {
@@ -272,6 +292,34 @@ describe('Task System Support', () => {
             expect(result.count).toBe(2);
             expect(result.total).toBe(3);
             expect(result.tasks).toHaveLength(2);
+        });
+        it('ignores owned session-flow records in the continuation hook but preserves real work', async () => {
+            vi.mocked(fs.existsSync).mockReturnValue(true);
+            vi.mocked(fs.readdirSync).mockReturnValue(['flow.json', 'current.json', 'work.json']);
+            vi.mocked(fs.readFileSync).mockImplementation((filePath) => {
+                if (filePath.includes('flow.json')) {
+                    return JSON.stringify({
+                        id: 'flow',
+                        subject: '[S1] Completed stage',
+                        description: 'session-flow: managed stage\nEvidence: tool result',
+                        status: 'pending',
+                    });
+                }
+                if (filePath.includes('current.json')) {
+                    return JSON.stringify({
+                        id: 'current',
+                        subject: '[S2] Current stage',
+                        description: 'session-flow: managed stage\nEvidence: current turn',
+                        status: 'in_progress',
+                    });
+                }
+                return JSON.stringify({ id: 'work', subject: 'Write tests', status: 'pending' });
+            });
+            const result = await checkIncompleteTodos('session123');
+            expect(result.source).toBe('task');
+            expect(result.total).toBe(3);
+            expect(result.count).toBe(1);
+            expect(result.todos.map((task) => task.content)).toEqual(['Write tests']);
         });
         it('should return zero when all tasks complete', () => {
             vi.mocked(fs.existsSync).mockReturnValue(true);

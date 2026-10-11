@@ -443,6 +443,7 @@ function decideChainLink(directory, ledger, ctx) {
             intentId,
             tracker: ledger.tracker,
             visits,
+            includeUserSettings: ledger.includeUserSettings === true,
             // The cap is per chain, not per link: carry it so a later link keeps it.
             ...(stageVisitCap(ledger.maxStageVisits) !== undefined ? { maxStageVisits: stageVisitCap(ledger.maxStageVisits) } : {}),
         };

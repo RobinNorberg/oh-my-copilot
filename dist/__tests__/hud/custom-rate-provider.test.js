@@ -3,6 +3,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
+import { createHash } from 'node:crypto';
 import { executeCustomProvider } from '../../hud/custom-rate-provider.js';
 import { existsSync, readFileSync } from 'fs';
 import { spawn } from 'child_process';
@@ -62,6 +63,7 @@ const BASE_CONFIG = {
     command: 'my-rate-cmd',
     timeoutMs: 500,
 };
+const CACHE_IDENTITY = createHash('sha256').update(JSON.stringify({ command: BASE_CONFIG.command, periods: [] })).digest('hex');
 describe('executeCustomProvider', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -152,7 +154,7 @@ describe('executeCustomProvider', () => {
                 { id: 'cached', label: 'Cached', usage: { type: 'percent', value: 77 } },
             ];
             vi.mocked(existsSync).mockReturnValue(true);
-            vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ timestamp: Date.now(), buckets: cachedBuckets }));
+            vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ timestamp: Date.now(), buckets: cachedBuckets, identity: CACHE_IDENTITY }));
             const result = await executeCustomProvider(BASE_CONFIG);
             expect(result.stale).toBe(false);
             expect(result.buckets).toHaveLength(1);
@@ -166,7 +168,7 @@ describe('executeCustomProvider', () => {
             ];
             // Cache expired (timestamp 60s ago)
             vi.mocked(existsSync).mockReturnValue(true);
-            vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ timestamp: Date.now() - 60_000, buckets: oldBuckets }));
+            vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ timestamp: Date.now() - 60_000, buckets: oldBuckets, identity: CACHE_IDENTITY }));
             mockSpawn(VALID_OUTPUT);
             const result = await executeCustomProvider(BASE_CONFIG);
             expect(result.stale).toBe(false);
@@ -178,7 +180,7 @@ describe('executeCustomProvider', () => {
             ];
             // Expired cache exists
             vi.mocked(existsSync).mockReturnValue(true);
-            vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ timestamp: Date.now() - 60_000, buckets: staleBuckets }));
+            vi.mocked(readFileSync).mockReturnValue(JSON.stringify({ timestamp: Date.now() - 60_000, buckets: staleBuckets, identity: CACHE_IDENTITY }));
             mockSpawn('', 1); // command fails
             const result = await executeCustomProvider(BASE_CONFIG);
             expect(result.stale).toBe(true);

@@ -113,7 +113,7 @@ describe('shipyard document-language behavior contract', () => {
     });
     it('infers only from unanimous high-confidence canonical sources', () => {
         const contract = documentLanguageContract();
-        expect(contract.authority).toEqual({ path: 'CONTEXT.md', frontmatterKey: 'documentLanguage' });
+        expect(contract.authority).toEqual({ path: 'GLOSSARY.md', frontmatterKey: 'documentLanguage' });
         expect(contract.canonicalSources).toEqual(['CLAUDE.md', 'README.md']);
         expect(resolveDocumentLanguage({
             sources: {
@@ -149,7 +149,7 @@ describe('shipyard document-language behavior contract', () => {
             expect(output).toContain('# <Project> — Agent & Human Shipyard');
             expect(output).toContain('/oh-my-copilot:launch');
             expect(output).toContain('plan → execute → review → verify');
-            expect(output).toContain('CONTEXT.md');
+            expect(output).toContain('GLOSSARY.md');
             expect(renderSeed('b', tag)).toContain(`documentLanguage: ${tag}`);
             expect(renderSeed('b', tag)).toContain('## <term>');
         }

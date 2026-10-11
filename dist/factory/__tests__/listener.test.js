@@ -6,13 +6,17 @@ import { join } from 'path';
 import { buildIntentPrompt, MAX_BODY_BYTES, processEvent, routeTrackerEvent, startListener, stopListener, verifySignature, } from '../listener.js';
 import { acquireFileLockSync, releaseFileLockSync } from '../../lib/file-lock.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { AFK_INCLUDE_USER_SETTINGS_ENV } from '../../hooks/session-end/spawn-next.js';
 const SECRET = 'test-secret';
 const WHITELIST = ['pangpang778/factory-demo'];
 const tempCwds = [];
 let previousOmcStateDir;
+let previousAfkIncludeUserSettings;
 let stateRoot;
 beforeEach(() => {
     previousOmcStateDir = process.env.OMC_STATE_DIR;
+    previousAfkIncludeUserSettings = process.env[AFK_INCLUDE_USER_SETTINGS_ENV];
+    delete process.env[AFK_INCLUDE_USER_SETTINGS_ENV];
     stateRoot = mkdtempSync(join(tmpdir(), 'omc-factory-state-'));
     tempCwds.push(stateRoot);
     process.env.OMC_STATE_DIR = stateRoot;
@@ -34,6 +38,10 @@ afterEach(() => {
         delete process.env.OMC_STATE_DIR;
     else
         process.env.OMC_STATE_DIR = previousOmcStateDir;
+    if (previousAfkIncludeUserSettings === undefined)
+        delete process.env[AFK_INCLUDE_USER_SETTINGS_ENV];
+    else
+        process.env[AFK_INCLUDE_USER_SETTINGS_ENV] = previousAfkIncludeUserSettings;
     for (const dir of tempCwds)
         rmSync(dir, { recursive: true, force: true });
     tempCwds.length = 0;
@@ -113,8 +121,22 @@ describe('processEvent', () => {
         const ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
         expect(ledger.intentId).toBe('pangpang778-factory-demo-7');
         expect(ledger.stage).toBe('intent');
+        expect(ledger.includeUserSettings).toBe(false);
         expect(ledger.tracker).toEqual({ repo: 'pangpang778/factory-demo', issue: 7, nextLabel: 'needs-review', failedLabel: 'failed' });
         expect(audits[0]).toMatchObject({ kind: 'routed', stage: 'intent', skill: 'intent', issue: 'https://github.com/pangpang778/factory-demo/issues/7', session: sessionId });
+    });
+    it('captures the user-settings choice in the initial factory ledger and link argv', () => {
+        process.env[AFK_INCLUDE_USER_SETTINGS_ENV] = '1';
+        const cfg = config();
+        const spawned = [];
+        const result = processEvent(event(), cfg, { spawner: (cmd, args) => spawned.push([cmd, args]) });
+        expect(result.kind).toBe('accepted');
+        const argv = spawned[0][1];
+        const sourcesIndex = argv.indexOf('--setting-sources');
+        expect(argv[sourcesIndex + 1]).toBe('user,project,local');
+        const sessionId = argv[argv.indexOf('--session-id') + 1];
+        const ledgerPath = join(getOmcRoot(cfg.cwd), 'state', 'factory', `chain-${sessionId}.json`);
+        expect(JSON.parse(fs.readFileSync(ledgerPath, 'utf8'))).toMatchObject({ includeUserSettings: true });
     });
     it('omits the tracker from the pre-written ledger when the event has no issue number', () => {
         const cfg = config();

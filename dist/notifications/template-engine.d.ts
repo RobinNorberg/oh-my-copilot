@@ -18,6 +18,8 @@ export declare function computeTemplateVariables(payload: NotificationPayload): 
  * 3. Post-process to normalize blank lines
  */
 export declare function interpolateTemplate(template: string, payload: NotificationPayload): string;
+/** Interpolate JSON string values without injecting payload text into JSON syntax. */
+export declare function interpolateJsonTemplate(template: string, payload: NotificationPayload): string;
 /**
  * Validate a template string for unknown variables.
  * Returns { valid, unknownVars }.

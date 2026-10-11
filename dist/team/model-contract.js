@@ -503,6 +503,7 @@ export function buildWorkerCommand(agentType, config) {
         .join(' ');
 }
 const WORKER_MODEL_ENV_ALLOWLIST = [
+    'OMC_STATE_DIR',
     'ANTHROPIC_MODEL',
     'CLAUDE_MODEL',
     'ANTHROPIC_BASE_URL',

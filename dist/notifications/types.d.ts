@@ -205,6 +205,12 @@ export interface NotificationPayload {
     replyTarget?: string;
     /** Reply thread ID (from OPENCLAW_REPLY_THREAD env var) */
     replyThread?: string;
+    /**
+     * `false`: never register the sent message for reply injection. Copilot
+     * permission prompts set it, so a remote reply can never press Enter on the
+     * permission menu and approve a command.
+     */
+    replyable?: boolean;
 }
 /** Named notification profiles (keyed by profile name) */
 export type NotificationProfilesConfig = Record<string, NotificationConfig>;
