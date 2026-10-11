@@ -47,6 +47,7 @@ import { doctorConflictsCommand } from './commands/doctor-conflicts.js';
 import { ralphCommand } from './commands/ralph.js';
 import { doctorTeamRoutingCommand } from './commands/doctor-team-routing.js';
 import { smokeCopilotCommand } from './commands/smoke.js';
+import { budgetCommand } from './commands/budget.js';
 import { capabilitiesCheckCommand, capabilitiesLockCommand } from './commands/capabilities.js';
 import { sessionSearchCommand } from './commands/session-search.js';
 import { sessionFrictionReportCommand } from './commands/session-friction-report.js';
@@ -1303,6 +1304,25 @@ Examples:
     const opts = command.optsWithGlobals();
     applyPluginDirOption(opts.pluginDir);
     const exitCode = await doctorConflictsCommand({ json: opts.json ?? false });
+    process.exit(exitCode);
+  });
+
+/**
+ * Budget command - premium-request ledger and limits (src/budget)
+ */
+program
+  .command('budget [action]')
+  .description('Show (status, the default) or reset the premium-request budget ledger')
+  .option('--json', 'Output as JSON')
+  .addHelpText('after', `
+Examples:
+  $ omg budget                                  Usage since the last reset against budget.* limits
+  $ omg budget status --json                    Full ledger: sessions, teams, measured vs estimated
+  $ omg budget reset                            Start a new accounting period
+
+Exit code 1 means budget.hardLimit is reached. Configure limits in .copilot/omg.jsonc ("budget").`)
+  .action(async (action: string | undefined, options: { json?: boolean }) => {
+    const exitCode = await budgetCommand(action ?? 'status', options);
     process.exit(exitCode);
   });
 

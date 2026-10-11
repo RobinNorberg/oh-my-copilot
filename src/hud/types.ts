@@ -681,6 +681,7 @@ export interface HudElementConfig {
   showTokens?: boolean;           // Show last-request token usage when enabled (tok:i1.2k/o340)
   enterpriseMode?: boolean;       // Explicit override for enterprise mode (undefined = auto-detect)
   showEnterpriseCost?: boolean;   // Whether to render enterprise billing cost (default: true when enterprise)
+  premiumBudget?: boolean;        // Copilot premium-request budget (prq:used/limit); shown when budget limits are configured (default: true)
   useBars: boolean;           // Show visual progress bars instead of/alongside percentages
   showCallCounts?: boolean;   // Show tool/agent/skill call counts on the right of the status line (default: true)
   callCountsFormat?: CallCountsFormat; // Controls call count icon rendering: auto (platform default), emoji, or ascii
@@ -739,7 +740,7 @@ export interface LayoutConfig {
 export const DEFAULT_ELEMENT_ORDER: Required<LayoutConfig> = {
   line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'apiKeySource', 'profile'],
   main: [
-    'omcLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'rateLimits', 'customBuckets', 'permission', 'thinking',
+    'omcLabel', 'model', 'effort', 'claudeLabel', 'enterpriseCost', 'premiumBudget', 'rateLimits', 'customBuckets', 'permission', 'thinking',
     'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'prd',
     'skills', 'lastSkill', 'contextBar', 'agents', 'background',
     'callCounts', 'lastTool', 'recentTools', 'sessionSummary',

@@ -24,6 +24,7 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 
 import { atomicWriteJson } from '../lib/atomic-write.js';
+import { ledgerPath, recordUsage } from '../budget/ledger.js';
 import type { CopilotEvent } from '../smoke/copilot-session-eval.js';
 import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scenarios.js';
 import { buildSessionEnv, loginIdentity } from '../smoke/copilot-session-env.js';
@@ -234,10 +235,32 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
   };
   let dirty = true;
   const writeSessionJson = deps.writeSessionJson ?? atomicWriteJson;
+  // Budget ledger (src/budget): this worker's live usage under its team. Fail-open.
+  let recordedUsage = '0:0';
+  const recordBudget = () => {
+    const u = session.usage;
+    const premiumRequests = u.shutdown_premium_requests ?? u.premium_requests;
+    const credits = u.shutdown_credits ?? u.credits;
+    if (`${premiumRequests}:${credits}` === recordedUsage || deps.env.OMC_BUDGET_GOVERNOR === '0') return;
+    try {
+      recordUsage(ledgerPath(spec.leader_cwd), `${spec.worker_name}:${spec.attempt_id}`, {
+        premiumRequests,
+        credits,
+        source: 'measured',
+        detail: u.shutdown_premium_requests !== null ? 'session.shutdown' : 'sdk assistant.usage (user-initiated calls, x1 each)',
+        ...(session.model ? { model: session.model } : {}),
+        updatedAt: new Date().toISOString(),
+      }, spec.team_name);
+      recordedUsage = `${premiumRequests}:${credits}`;
+    } catch (err) {
+      log(`budget ledger write failed: ${errText(err)}`);
+    }
+  };
   const flush = async (force = false) => {
     if (!dirty && !force) return;
     dirty = false;
     session.updated_at = new Date().toISOString();
+    recordBudget();
     try {
       await writeSessionJson(files.session, session);
     } catch (err) {
@@ -331,7 +354,8 @@ export async function runSdkHost(spec: SdkHostSpec, deps: SdkHostDeps): Promise<
   }
   writeOmgShims(files.bin, spec.omg_cli_path, spec.node_path);
   const env = buildSessionEnv(deps.env, files.home, { session: false, hasLogin: ident.loggedInUsers !== undefined });
-  Object.assign(env, spec.worker_env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false' });
+  // OMC_BUDGET_HOST_LEDGER: this host records the session's usage; its hooks must not count it again.
+  Object.assign(env, spec.worker_env, { OMC_GIT_GUARDRAILS: '1', COPILOT_ALLOW_ALL: 'false', OMC_BUDGET_HOST_LEDGER: '1' });
   prependPath(env, files.bin, deps.platform);
 
   const policy: SdkPolicyContext = {

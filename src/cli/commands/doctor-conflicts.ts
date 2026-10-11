@@ -15,6 +15,7 @@ import { inspectUnifiedMcpRegistrySync } from '../../installer/mcp-registry.js';
 import { findWorkspaceRoot, WORKSPACE_MARKER } from '../../lib/worktree-paths.js';
 import { getHostCliType } from '../../utils/host-detection.js';
 import { findLegacyProjectConfigs, type LegacyProjectConfig } from '../../config/project-config-path.js';
+import { loadBudgetSettings } from '../../budget/governor.js';
 
 function hasActiveOmcPluginForDiagnostics(): boolean {
   if (process.env.CLAUDE_PLUGIN_ROOT?.trim()) return true;
@@ -62,6 +63,8 @@ export interface ConflictReport {
   nodeOnPath: boolean;
   /** Legacy-named project config files (`.copilot/omc.jsonc`, `.claude/omc.jsonc`). WARN only. */
   legacyProjectConfigs: LegacyProjectConfig[];
+  /** Invalid `budget` config values (ignored by the governor, which fails open). WARN only. */
+  budgetIssues?: string[];
   hasConflicts: boolean;
 }
 
@@ -684,6 +687,7 @@ export function runConflictCheck(): ConflictReport {
   const workspaceMarker = checkWorkspaceMarker();
   const nodeOnPath = checkNodeOnPath();
   const legacyProjectConfigs = findLegacyProjectConfigs(process.cwd());
+  const budgetIssues = loadBudgetSettings(process.cwd()).issues;
 
   // Determine if there are actual conflicts
   const hasConflicts =
@@ -703,6 +707,7 @@ export function runConflictCheck(): ConflictReport {
     // Note: workspaceMarker.precedenceConflict is a WARN, not a hard conflict
     // Note: envFlags.legacyConfigDirEnv (retired COPILOT_CONFIG_DIR) is a WARN, not a hard conflict
     // Note: legacyProjectConfigs (legacy-named project config) is a WARN, not a hard conflict
+    // Note: budgetIssues (invalid budget.* values, ignored) is a WARN, not a hard conflict
 
   return {
     hookConflicts,
@@ -715,6 +720,7 @@ export function runConflictCheck(): ConflictReport {
     workspaceMarker,
     nodeOnPath,
     legacyProjectConfigs,
+    budgetIssues,
     hasConflicts
   };
 }
@@ -881,6 +887,14 @@ export function formatReport(report: ConflictReport, json: boolean): string {
         lines.push(`    ${colors.gray(`A higher-precedence config is read instead. Merge any settings you still need into ${mergeTarget}, then delete ${shown}.`)}`);
       }
     }
+    lines.push('');
+  }
+
+  if (report.budgetIssues && report.budgetIssues.length > 0) {
+    lines.push(colors.bold('💳 Premium-Request Budget'));
+    lines.push('');
+    for (const issue of report.budgetIssues) lines.push(`  ${colors.yellow('⚠')} ${issue}`);
+    lines.push(`    ${colors.gray('Invalid values are ignored (the governor stays warn-only). Fix the "budget" block in .copilot/omg.jsonc.')}`);
     lines.push('');
   }
 

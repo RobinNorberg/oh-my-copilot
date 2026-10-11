@@ -201,6 +201,9 @@ export interface PluginConfig {
   // /team role routing configuration (scoped to /team only; distinct from delegationRouting)
   team?: TeamConfigBlock;
 
+  // Premium-request budget governor (src/budget); warn-only unless mode is "enforce"
+  budget?: BudgetConfig;
+
   // /autopilot pipeline and team execution configuration
   autopilot?: AutopilotConfigBlock;
 
@@ -525,6 +528,20 @@ export interface TeamRoleAssignmentSpec {
 
 /** Orchestrator is pinned to the host CLI; only `model` is user-configurable. */
 export type OrchestratorSpec = Pick<TeamRoleAssignmentSpec, 'model'>;
+
+/** `budget` config block: premium-request governor (docs/REFERENCE.md#premium-request-budget). */
+export interface BudgetConfig {
+  /** `warn` (default) only reports; `enforce` also refuses or clamps `omg team` fan-out. */
+  mode?: 'warn' | 'enforce';
+  /** Unit of the limits: `premiumRequests` (default) or AI `credits`. */
+  unit?: 'premiumRequests' | 'credits';
+  /** Usage that triggers a one-time warning. */
+  softLimit?: number;
+  /** Usage that triggers a one-time alert; in enforce mode it also bounds team fan-out. */
+  hardLimit?: number;
+  /** Largest projected cost of one `omg team` launch (enforce mode). */
+  perTeamLimit?: number;
+}
 
 /** Cost mode reserved for future downgrade behavior (no implementation yet). */
 export type TeamCostMode = 'normal' | 'downgrade';
