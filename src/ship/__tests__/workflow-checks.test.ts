@@ -31,11 +31,13 @@ const stripExpr = (s: string) => unquote(s).replace(/^\$\{\{\s*([\s\S]*?)\s*\}\}
 
 /**
  * Tight parser for the subset these workflow files use: block-style `on:`
- * keys at 2 spaces, jobs at 2 spaces under `jobs:`, `name:` / `if:` at 4,
- * and `strategy: matrix: <key>: [a, b]` flow lists at 8.
+ * keys at 2 spaces with an optional `branches: [a, b]` flow list at 4, jobs
+ * at 2 spaces under `jobs:`, `name:` / `if:` at 4, and
+ * `strategy: matrix: <key>: [a, b]` flow lists at 8.
  */
-function parseWorkflow(text: string): { triggers: string[]; jobs: Job[] } {
+function parseWorkflow(text: string): { triggers: string[]; branches: Record<string, string[]>; jobs: Job[] } {
   const triggers: string[] = [];
+  const branches: Record<string, string[]> = {};
   const jobs: Job[] = [];
   let section: 'on' | 'jobs' | null = null;
   let job: Job | null = null;
@@ -49,6 +51,8 @@ function parseWorkflow(text: string): { triggers: string[]; jobs: Job[] } {
     if (section === 'on') {
       const m = /^ {2}([a-z_]+):/.exec(line);
       if (m) triggers.push(m[1]);
+      const filter = /^ {4}branches:\s*\[(.*)\]\s*$/.exec(line);
+      if (filter && triggers.length > 0) branches[triggers[triggers.length - 1]] = filter[1].split(',').map(unquote).filter(Boolean);
       continue;
     }
     if (section !== 'jobs') continue;
@@ -70,7 +74,7 @@ function parseWorkflow(text: string): { triggers: string[]; jobs: Job[] } {
     const axis = inMatrix ? /^ {8}([\w-]+):\s*\[(.*)\]\s*$/.exec(line) : null;
     if (axis) job.matrix[axis[1]] = axis[2].split(',').map(unquote).filter(Boolean);
   }
-  return { triggers, jobs };
+  return { triggers, branches, jobs };
 }
 
 /** GitHub's check names: `${{ matrix.x }}` substituted, else ` (<values>)` appended per combination. */
@@ -91,14 +95,19 @@ function runsOnPullRequest(job: Job): boolean {
   return !/^github\.event_name == '(push|workflow_dispatch|schedule)'(\s*&&|\s*$)/.test(job.if ?? '');
 }
 
-function prCheckNames(): { reported: string[]; skipped: string[] } {
+/**
+ * Check names a PR to `base` reports: workflows with a pull_request /
+ * pull_request_target trigger whose `branches:` filter (if any) names the base.
+ */
+function prCheckNames(base = DEFAULT_SHIP_CONFIG.base): { reported: string[]; skipped: string[] } {
   const reported: string[] = [];
   const skipped: string[] = [];
   for (const file of readdirSync(WORKFLOWS).filter((f) => /\.ya?ml$/.test(f)).sort()) {
-    const { triggers, jobs } = parseWorkflow(readFileSync(join(WORKFLOWS, file), 'utf8'));
+    const { triggers, branches, jobs } = parseWorkflow(readFileSync(join(WORKFLOWS, file), 'utf8'));
     expect(triggers.length, `${file}: no on: triggers parsed`).toBeGreaterThan(0);
     expect(jobs.length, `${file}: no jobs parsed`).toBeGreaterThan(0);
-    if (!triggers.some((t) => t === 'pull_request' || t === 'pull_request_target')) continue;
+    const prTriggers = triggers.filter((t) => t === 'pull_request' || t === 'pull_request_target');
+    if (!prTriggers.some((t) => branches[t] === undefined || branches[t].includes(base))) continue;
     for (const job of jobs) (runsOnPullRequest(job) ? reported : skipped).push(...checkNames(job));
   }
   return { reported, skipped };
@@ -117,6 +126,17 @@ describe('requiredChecks drift (workflow files vs the ship defaults)', () => {
     const expected = [...DEFAULT_SHIP_CONFIG.requiredChecks, ...DEFAULT_SHIP_CONFIG.advisoryChecks.filter((n) => !EXTERNAL_CHECKS.includes(n))];
     expect([...reported].sort()).toEqual([...expected].sort());
     expect(skipped).toEqual(TAG_ONLY);
+  });
+
+  it('honors pull_request.branches: a PR to another base never gets the ci.yml / upgrade-test.yml checks (they stay pending)', () => {
+    expect(parseWorkflow('on:\n  pull_request:\n    branches: [main, dev]\n  push:\n    branches: ["x"]\njobs:\n  a:\n    name: A\n').branches)
+      .toEqual({ pull_request: ['main', 'dev'], push: ['x'] });
+    const { reported } = prCheckNames('release/x');
+    expect(reported).not.toContain('Test');
+    expect(reported).not.toContain('omg update + session-start hook');
+    expect(reported).toContain('Draft PR Check');
+    // So the default requiredChecks never go green on such a base: it needs its own list in the user config.
+    expect(DEFAULT_SHIP_CONFIG.requiredChecks.filter((n) => !reported.includes(n))).toEqual(expect.arrayContaining(['Test', 'Build']));
   });
 
   it('covers ci.yml, pr-check.yml and upgrade-test.yml', () => {
