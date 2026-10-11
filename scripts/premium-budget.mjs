@@ -3,9 +3,9 @@
 /**
  * Premium-request budget hook (SessionStart, UserPromptSubmit, Stop).
  *
- * argv[2] is the phase: `session-start` records the session and prints the
- * budget summary line, `stop` records the turn's usage and marks a crossed
- * soft/hard limit, `prompt` delivers that pending notice as context. The
+ * argv[2] is the phase: `start` (SessionStart) records the session and prints the
+ * budget summary line, `turn` (Stop) records the turn's usage and marks a crossed
+ * soft/hard limit, `submit` (UserPromptSubmit) delivers that pending notice as context. The
  * logic lives in dist/budget/governor.js (src/budget, docs/REFERENCE.md
  * "Premium-request budget").
  *
@@ -17,7 +17,7 @@
 import { readStdin } from './lib/stdin.mjs';
 
 const noop = { continue: true, suppressOutput: true };
-const PHASES = new Set(['session-start', 'prompt', 'stop']);
+const PHASES = new Set(['start', 'submit', 'turn']);
 
 async function main() {
   const phase = process.argv[2];

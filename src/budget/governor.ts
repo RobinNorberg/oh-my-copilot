@@ -134,7 +134,8 @@ export function checkThresholds(ledger: BudgetLedger, settings: BudgetSettings, 
   return null;
 }
 
-export type BudgetHookPhase = 'session-start' | 'prompt' | 'stop';
+/** CLI argv phases; not the hook type names (the registry shadow matches those in args). */
+export type BudgetHookPhase = 'start' | 'submit' | 'turn';
 
 export interface BudgetHookInput {
   phase: BudgetHookPhase;
@@ -167,19 +168,19 @@ export function runBudgetHook(input: BudgetHookInput): Record<string, unknown> |
   if (!settings.enabled) return null;
   const path = ledgerPath(ledgerCwd);
 
-  if (input.phase !== 'prompt' && sessionId && env.OMC_BUDGET_HOST_LEDGER !== '1') {
+  if (input.phase !== 'submit' && sessionId && env.OMC_BUDGET_HOST_LEDGER !== '1') {
     const events = copilotEventsPath(sessionId);
     const usage = events ? readCopilotSessionUsage(events, now) : null;
     if (usage) recordUsage(path, sessionId, usage, worker?.split('/')[0]);
   }
   if (worker) return null;
 
-  if (input.phase === 'session-start') {
+  if (input.phase === 'start') {
     refreshEstimates(path, now);
     if (!hasLimits(settings)) return null;
     return { continue: true, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: summaryLine(readLedger(path), settings) } };
   }
-  if (input.phase === 'stop') {
+  if (input.phase === 'turn') {
     if (!hasLimits(settings)) return null;
     const notice = updateLedger(path, (ledger) => {
       const n = checkThresholds(ledger, settings, now);
@@ -188,7 +189,7 @@ export function runBudgetHook(input: BudgetHookInput): Record<string, unknown> |
     });
     return notice ? { continue: true, systemMessage: notice } : null;
   }
-  // prompt: deliver a pending notice as model context (Copilot injects top-level additionalContext).
+  // submit: deliver a pending notice as model context (Copilot injects top-level additionalContext).
   if (!readLedger(path).pendingNotice) return null;
   const notice = updateLedger(path, (ledger) => {
     const n = ledger.pendingNotice;

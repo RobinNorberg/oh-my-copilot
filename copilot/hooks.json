@@ -16,7 +16,7 @@
           "${CLAUDE_PLUGIN_ROOT}/scripts/skill-injector.mjs",
           "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/premium-budget.mjs",
-          "prompt"
+          "submit"
         ],
         "env": {
           "OMC_HOOK_EVENT": "UserPromptSubmit"
@@ -44,7 +44,7 @@
           "${CLAUDE_PLUGIN_ROOT}/scripts/runs-reconciler.mjs",
           "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/premium-budget.mjs",
-          "session-start"
+          "start"
         ],
         "env": {
           "OMC_HOOK_EVENT": "SessionStart"
@@ -220,7 +220,7 @@
           "${CLAUDE_PLUGIN_ROOT}/scripts/budget-guard.mjs",
           "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/premium-budget.mjs",
-          "stop",
+          "turn",
           "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/code-simplifier.mjs"
         ],

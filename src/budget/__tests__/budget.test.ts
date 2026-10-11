@@ -159,26 +159,26 @@ describe('runBudgetHook', () => {
 
   it('records usage silently when no limit is configured', () => {
     writeEvents(SID, [PROMPT]);
-    expect(runBudgetHook({ phase: 'stop', payload: payload() })).toBeNull();
+    expect(runBudgetHook({ phase: 'turn', payload: payload() })).toBeNull();
     expect(readLedger(ledgerPath(project)).sessions[SID]).toMatchObject({ premiumRequests: 1, source: 'estimated' });
   });
 
   it('marks a crossed limit at stop and delivers it once on the next prompt', () => {
     writeBudget({ softLimit: 1, hardLimit: 10 });
     writeEvents(SID, [PROMPT]);
-    const stop = runBudgetHook({ phase: 'stop', payload: payload() });
+    const stop = runBudgetHook({ phase: 'turn', payload: payload() });
     expect(stop?.systemMessage).toMatch(/Soft limit reached/);
-    const prompt = runBudgetHook({ phase: 'prompt', payload: payload() }) as { hookSpecificOutput: { additionalContext: string } };
+    const prompt = runBudgetHook({ phase: 'submit', payload: payload() }) as { hookSpecificOutput: { additionalContext: string } };
     expect(prompt.hookSpecificOutput.additionalContext).toMatch(/Soft limit reached/);
-    expect(runBudgetHook({ phase: 'prompt', payload: payload() })).toBeNull();
+    expect(runBudgetHook({ phase: 'submit', payload: payload() })).toBeNull();
   });
 
   it('prints the summary at session start and upgrades ended estimates to measured', () => {
     writeBudget({ hardLimit: 50 });
     writeEvents(SID, [PROMPT]);
-    runBudgetHook({ phase: 'stop', payload: payload() });
+    runBudgetHook({ phase: 'turn', payload: payload() });
     writeEvents(SID, [PROMPT, SHUTDOWN]);
-    const out = runBudgetHook({ phase: 'session-start', payload: payload({ session_id: 'new-session' }) }) as { hookSpecificOutput: { additionalContext: string } };
+    const out = runBudgetHook({ phase: 'start', payload: payload({ session_id: 'new-session' }) }) as { hookSpecificOutput: { additionalContext: string } };
     expect(out.hookSpecificOutput.additionalContext).toMatch(/^\[BUDGET\] Copilot usage since .*: 3 premium requests, 0\.617 AI credits \(1 session\(s\), 0 team\(s\)\)\. Limits in premiumRequests: hard 50 \(warn mode\)/);
     expect(readLedger(ledgerPath(project)).sessions[SID]?.source).toBe('measured');
   });
@@ -187,18 +187,18 @@ describe('runBudgetHook', () => {
     writeBudget({ softLimit: 1 });
     writeEvents(SID, [PROMPT]);
     const env = { ...process.env, OMC_TEAM_WORKER: 'alpha/worker-1', OMC_TEAM_LEADER_CWD: project };
-    expect(runBudgetHook({ phase: 'stop', payload: payload({ cwd: join(root, 'wt') }), env })).toBeNull();
+    expect(runBudgetHook({ phase: 'turn', payload: payload({ cwd: join(root, 'wt') }), env })).toBeNull();
     expect(readLedger(ledgerPath(project)).teams.alpha?.[SID]?.premiumRequests).toBe(1);
     expect(readLedger(ledgerPath(project)).sessions).toEqual({});
     writeEvents('other', [PROMPT]);
-    runBudgetHook({ phase: 'stop', payload: payload({ session_id: 'other' }), env: { ...env, OMC_BUDGET_HOST_LEDGER: '1' } });
+    runBudgetHook({ phase: 'turn', payload: payload({ session_id: 'other' }), env: { ...env, OMC_BUDGET_HOST_LEDGER: '1' } });
     expect(readLedger(ledgerPath(project)).teams.alpha?.other).toBeUndefined();
   });
 
   it('does nothing under the kill switch', () => {
     writeBudget({ softLimit: 1 });
     writeEvents(SID, [PROMPT]);
-    expect(runBudgetHook({ phase: 'stop', payload: payload(), env: { ...process.env, OMC_BUDGET_GOVERNOR: '0' } })).toBeNull();
+    expect(runBudgetHook({ phase: 'turn', payload: payload(), env: { ...process.env, OMC_BUDGET_GOVERNOR: '0' } })).toBeNull();
     expect(readLedger(ledgerPath(project)).sessions).toEqual({});
   });
 });
