@@ -19,6 +19,8 @@ export interface SpawnNextChain {
     visits?: Record<string, number>;
     /** Stage-visit cap carried forward from the first ledger (default 2 when absent). */
     maxStageVisits?: number;
+    /** User setting-source opt-in captured at the first link and carried by its ledger. */
+    includeUserSettings?: boolean;
 }
 export interface SpawnNextPlan {
     directive: {
@@ -85,6 +87,7 @@ export declare function copilotPluginDirArgs(env?: NodeJS.ProcessEnv, linkCwd?: 
  * fall back to HITL (the session's issue-comment contract), never silent failure.
  */
 export declare const AFK_ALLOWED_TOOLS: string;
+export declare const AFK_INCLUDE_USER_SETTINGS_ENV = "OMC_AFK_INCLUDE_USER_SETTINGS";
 export declare const AFK_SPAWN_FLAGS: string[];
 /**
  * Copilot CLI translation of AFK_SPAWN_FLAGS: the same gh/file-write/
@@ -115,9 +118,10 @@ export declare function factoryLinkCommand(): string;
  * `--allow-tool=shell(<command>)` per extra command. Copilot cannot pin a
  * session id at launch, so `sessionId` is not passed to it: the spawner hands
  * it over as CHAIN_LINK_ENV. A dev plugin root adds `--plugin-dir`
- * (copilotPluginDirArgs).
+ * (copilotPluginDirArgs). `includeUserSettings` only widens a Claude link's
+ * `--setting-sources`; Copilot has no equivalent, so it is a no-op there.
  */
-export declare function factoryLinkArgv(prompt: string, sessionId: string, verifyCommands?: readonly string[], fixedBashCommands?: readonly string[], 
+export declare function factoryLinkArgv(prompt: string, sessionId: string, verifyCommands?: readonly string[], fixedBashCommands?: readonly string[], includeUserSettings?: boolean, 
 /** The link's working directory (spawn cwd), for the --plugin-dir overlap check. */
 linkCwd?: string): string[];
 /** Shared label charset (stage/skill/labels): safe for paths and argv. */
@@ -146,6 +150,8 @@ export interface ChainLinkLedgerSeed {
     tracker?: SpawnNextTracker;
     visits?: Record<string, number>;
     maxStageVisits?: number;
+    /** User setting-source choice captured by the originating factory link. */
+    includeUserSettings?: boolean;
     /** Link id of the link whose SessionEnd spawned this one (absent for a first link). */
     parentLink?: string;
 }

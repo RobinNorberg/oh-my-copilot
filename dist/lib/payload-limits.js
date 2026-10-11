@@ -68,6 +68,9 @@ export function validatePayload(payload, limits = {}) {
     catch {
         return { valid: false, error: 'Payload cannot be serialized to JSON' };
     }
+    if (typeof serialized !== 'string') {
+        return { valid: false, error: 'Payload cannot be serialized to JSON' };
+    }
     const byteSize = Buffer.byteLength(serialized, 'utf-8');
     if (byteSize > resolved.maxPayloadBytes) {
         const sizeMB = (byteSize / 1_048_576).toFixed(2);

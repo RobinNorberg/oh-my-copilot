@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { tmpdir } from 'os';
 import { extractPullRequestNumbers, isReleasePullRequest, deriveContributorLogins, buildReleaseNoteEntriesFromPullRequests, categorizeReleaseNoteEntries, generateChangelog, generateReleaseBody, getLatestTag, } from '../lib/release-generation.js';
 describe('release generation', () => {
@@ -63,6 +63,25 @@ describe('release generation', () => {
         expect(changelog).toContain('### Other Changes');
         expect(changelog).toContain('Fix team tmux pane geometry collapse and bundled agent path resolution');
         expect(changelog).not.toContain('1+ PRs merged');
+    });
+    it('preserves literal shell substitution characters in refs and excluded tags', () => {
+        const repoDir = mkdtempSync(join(tmpdir(), 'release-literal-tag-'));
+        const git = (...args) => execFileSync('git', args, { cwd: repoDir, stdio: 'pipe' });
+        try {
+            git('init');
+            git('config', 'user.name', 'Test');
+            git('config', 'user.email', 'test@example.com');
+            git('commit', '--allow-empty', '-m', 'first');
+            git('tag', 'v1.0.0');
+            git('commit', '--allow-empty', '-m', 'second');
+            const tag = 'v$(echo)';
+            git('tag', tag);
+            expect(getLatestTag({ cwd: repoDir, ref: tag })).toBe(tag);
+            expect(getLatestTag({ cwd: repoDir, excludeTag: tag })).toBe('v1.0.0');
+        }
+        finally {
+            rmSync(repoDir, { recursive: true, force: true });
+        }
     });
     it('excludes the current release tag when resolving the previous tag', () => {
         const repoDir = mkdtempSync(join(tmpdir(), 'release-tag-test-'));

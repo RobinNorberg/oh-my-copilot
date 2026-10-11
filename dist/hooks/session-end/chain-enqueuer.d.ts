@@ -22,6 +22,8 @@ export interface ChainLedger {
     gateFacts?: GateFacts;
     /** Per-stage link counts carried forward; guards against route-table self-loops. */
     visits?: Record<string, number>;
+    /** User setting-source choice captured by the originating factory link. */
+    includeUserSettings?: boolean;
     /** Cap on visits to any one stage before the chain halts. Default 2. */
     maxStageVisits?: number;
     /** Link identity: the id this ledger is named after (`chain-<chainLink>.json`). */

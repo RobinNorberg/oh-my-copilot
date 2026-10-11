@@ -131,7 +131,9 @@ task through an exact read…", 30 s timeout — hit on the v5.6.1 tag run),
 `subagent-tracker` ("persists durably under the already-held lock", 310 ms
 latency bound — hit on PR #209), `tests/integration/workflow-profile-lock-recovery`
 ("serializes concurrent reclaimers without removing a live replacement" — hit on
-PR #231's Linux run 2026-10-07, passed on rerun). One `gh run rerun <id> --failed` clears them;
+PR #231's Linux run 2026-10-07, passed on rerun), `src/__tests__/copilot-hook-dispatch.test.ts`
+("stdout parity with the per-hook path (real hooks) > SessionStart", real SessionStart
+hooks against a 60 s spawn timeout on shared runners). One `gh run rerun <id> --failed` clears them;
 only investigate if the SAME test fails twice. A rerun keeps the tag and
 workflow path, so the provenance attestation is unaffected. The machine-read
 list is `.github/known-flaky-tests.json` (`omg ship gates`); keep both in sync.

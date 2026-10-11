@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, unlinkSync } from 'fs';
+import { readdirSync, lstatSync, readFileSync, unlinkSync } from 'fs';
 import { mkdir, writeFile, rename, rm } from 'fs/promises';
 import { createHash, randomUUID } from 'crypto';
 import { execFileSync } from 'node:child_process';
@@ -136,12 +136,34 @@ export function readOccupiedPluginRoots(configDir = getCopilotConfigDir(), optio
     }
     const roots = new Set();
     const records = [];
+    let unavailable = false;
     const now = Date.now();
     for (const name of names) {
         const path = join(directory, name);
-        let record;
+        let regularFile;
         try {
-            record = JSON.parse(readFileSync(path, 'utf8'));
+            regularFile = lstatSync(path).isFile();
+        }
+        catch (error) {
+            if (error.code !== 'ENOENT')
+                unavailable = true;
+            continue;
+        }
+        if (!regularFile)
+            continue;
+        let record;
+        let content;
+        try {
+            content = readFileSync(path, 'utf8');
+        }
+        catch (error) {
+            const code = error.code;
+            if (code !== 'ENOENT')
+                unavailable = true;
+            continue;
+        }
+        try {
+            record = JSON.parse(content);
         }
         catch {
             try {
@@ -194,6 +216,6 @@ export function readOccupiedPluginRoots(configDir = getCopilotConfigDir(), optio
         // conservatively; only a proven-dead PID or proven mismatch self-invalidates.
         roots.add(pathIdentity(record.pluginRoot));
     }
-    return { roots, unavailable: false, identities: currentIdentities };
+    return { roots, unavailable, identities: currentIdentities };
 }
 //# sourceMappingURL=cache-occupancy.js.map

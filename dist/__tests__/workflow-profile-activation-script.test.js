@@ -934,6 +934,47 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
         }
     });
     it.each([
+        [
+            'a block comment embedded in a number token',
+            '{"autopilot":{"workflows":{"release-flow":{"version":1e/*comment*/0,"stages":["ralplan","execution"]}}}}',
+        ],
+        [
+            'an unterminated block comment',
+            '{"autopilot":{"workflows":{"release-flow":{"version":1,"stages":["ralplan","execution"]}}}}/*unterminated',
+        ],
+    ])('rejects workflow config containing %s without writing state', (_kind, config) => {
+        const { cwd, configHome } = createFixture();
+        try {
+            writeFileSync(join(cwd, '.copilot', 'omg.jsonc'), config);
+            for (const script of HOOKS) {
+                const output = runHook(script, '/autopilot --workflow release-flow ship it', cwd, configHome);
+                const context = output.hookSpecificOutput?.additionalContext ?? '';
+                expect(context).toContain('[AUTOPILOT WORKFLOW ERROR] invalid JSONC');
+                expect(context).toContain('No autopilot state was activated.');
+                expect(stateBytes(cwd)).toBeNull();
+            }
+        }
+        finally {
+            rmSync(cwd, { recursive: true, force: true });
+        }
+    });
+    it('accepts trailing commas in workflow config in both packaged artifacts', () => {
+        for (const script of HOOKS) {
+            const { cwd, configHome } = createFixture();
+            try {
+                writeFileSync(join(cwd, '.copilot', 'omg.jsonc'), '{"autopilot":{"workflows":{"release-flow":{"version":1,"stages":["ralplan","execution",],},}}}');
+                const output = runHook(script, '/autopilot --workflow release-flow ship it', cwd, configHome);
+                expect(output.hookSpecificOutput?.additionalContext).toContain('## PIPELINE STAGE: RALPLAN (Consensus Planning)');
+                expect(JSON.parse(stateBytes(cwd).toString())).toMatchObject({
+                    workflow: { workflowName: 'release-flow', stages: ['ralplan', 'execution'] },
+                });
+            }
+            finally {
+                rmSync(cwd, { recursive: true, force: true });
+            }
+        }
+    });
+    it.each([
         ['comma-bearing stage', ['ralplan', 'execution,qa']],
         ['nested stage array', [['ralplan', 'execution']]],
     ])('rejects a %s in plugin and template profile validation', (_name, stages) => {

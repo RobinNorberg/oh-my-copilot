@@ -3,6 +3,7 @@
  *
  * Helper functions for formatting LSP results and converting between formats.
  */
+import { fileURLToPath } from 'node:url';
 /**
  * Symbol kind names (LSP spec)
  */
@@ -49,10 +50,10 @@ const SEVERITY_NAMES = {
 export function uriToPath(uri) {
     if (uri.startsWith('file://')) {
         try {
-            return decodeURIComponent(uri.slice(7));
+            return fileURLToPath(uri);
         }
         catch {
-            // Malformed percent-encoding — return the raw path segment
+            // Unsupported or malformed file URI — preserve the raw path segment
             return uri.slice(7);
         }
     }

@@ -71,7 +71,7 @@ function entry(e) {
 }
 const ALIAS_MILESTONE = REMOVAL_MILESTONE;
 // ---------------------------------------------------------------------------
-// Skills — all 61 installed surfaces + defined Tier-0 targets + legacy alias
+// Skills — all 63 installed surfaces + defined Tier-0 targets + legacy alias
 // names. Classification per plan §4.2 with the owner's authoritative Tier-0
 // decision (plan/execute/review/verify; specialists remain internal).
 // ---------------------------------------------------------------------------
@@ -119,6 +119,7 @@ const SKILL_ENTRIES = [
     entry({ name: 'project-session-manager', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Utility only; workflow-gate behavior removed per plan.' }),
     entry({ name: 'pr', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Advisory PR-body assembly from existing verify evidence; never recollects evidence or gates delivery.' }),
     entry({ name: 'refit', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'User-invoked retrospective; only lands findings approved by the user.' }),
+    entry({ name: 'session-flow', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'User-invoked session reorientation; updates only its own session-flow Tasks.' }),
     entry({ name: 'map', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Router over shipped skills; routes and never executes.' }),
     entry({ name: 'tdd', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Test-first discipline at pre-agreed seams; opt-in, never a default gate.' }),
     entry({ name: 'ai-slop-cleaner', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in review tool; never a default gate.' }),
@@ -148,6 +149,7 @@ const SKILL_ENTRIES = [
     entry({ name: 'deep-review', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Multi-pass review (security, quality, structure, validation); opt-in alongside review.' }),
     entry({ name: 'discover', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Parallel specialist scan producing a prioritized improvement backlog.' }),
     entry({ name: 'ralph-experiment', kind: 'skill', decision: 'keep', riskClass: 'destructive-mutation', owner: REGISTRY_OWNER, notes: 'Hypothesis loop that git-checkpoints and reverts the working tree between trials.' }),
+    entry({ name: 'ship', kind: 'skill', decision: 'keep', riskClass: 'release-authority', owner: REGISTRY_OWNER, notes: 'Task/PR to merge-ready: executor lane, independent verifier lane, bounded fix rounds; omg ship gates/prepare/merge refuse force pushes, rebases and unverified merges, and admin-merge only with ship.allowAdminMerge.' }),
     // Fork-exclusive issue-tracker lanes (Azure DevOps and GitHub). The setup
     // lanes walk the user through host authentication, so they carry the
     // secrets-privacy boundary; the rest read and comment through an already

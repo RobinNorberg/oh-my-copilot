@@ -279,6 +279,8 @@ export interface PluginConfig {
         /** Execution keywords that activate the gate. */
         executionKeywords?: string[];
     };
+    /** `omg ship` workflow: merge rule, fix-round budget, admin-merge opt-in. */
+    ship?: import("../ship/config.js").ShipConfigInput;
 }
 export interface SessionState {
     sessionId?: string;
@@ -493,6 +495,11 @@ export interface TeamConfigBlock {
         startupEvidenceMs?: number;
         /** How many sdk hosts `omg team` starts at once. Default 4; 1 restores serial launch. */
         launchConcurrency?: number;
+        /**
+         * Register the plugin MCP tools in the sdk host as SDK session tools instead
+         * of starting the `t` stdio MCP server per worker. Default false.
+         */
+        inProcessTools?: boolean;
     };
     roleRouting?: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> & {
         orchestrator?: OrchestratorSpec;

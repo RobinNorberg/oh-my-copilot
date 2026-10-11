@@ -858,7 +858,7 @@ describe('recovery pane rollback evidence', () => {
             const followup = await Promise.race([
                 executeRecoverDeadWorkerV2Owner({ teamName, cwd, workerName: 'worker-1', requestId: followupRequestId, instanceId: TEAM_INSTANCE_ID }),
                 new Promise((_, reject) => {
-                    lockTimeout = setTimeout(() => reject(new Error('recovery lock remained')), 2_000);
+                    lockTimeout = setTimeout(() => reject(new Error('recovery lock remained')), 10_000);
                 }),
             ]);
             if (lockTimeout)

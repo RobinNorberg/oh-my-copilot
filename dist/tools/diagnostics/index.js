@@ -43,8 +43,12 @@ function formatTscResult(result) {
     let diagnostics = '';
     let summary = '';
     if (result.diagnostics.length === 0) {
-        diagnostics = 'No diagnostics found. All files are clean!';
-        summary = 'TypeScript check passed: 0 errors, 0 warnings';
+        diagnostics = result.success
+            ? 'No diagnostics found. All files are clean!'
+            : result.error || 'TypeScript compiler failed without file-position diagnostics.';
+        summary = result.success
+            ? 'TypeScript check passed: 0 errors, 0 warnings'
+            : `TypeScript check failed: ${result.errorCount} errors, ${result.warningCount} warnings`;
     }
     else {
         // Group diagnostics by file

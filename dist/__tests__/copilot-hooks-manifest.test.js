@@ -66,9 +66,10 @@ describe('copilot/hooks.json generation', () => {
         for (const repoPath of referenced)
             expect(existsSync(join(REPO_ROOT, repoPath)), repoPath).toBe(true);
     });
-    it('emits one dispatcher entry per (event, matcher) group with its hooks, extra args and summed timeout', () => {
+    it('emits one dispatcher entry per (event, matcher) group with its hooks, extra args and summed timeout', async () => {
+        const { FORK_HOOKS } = await generator;
         const pattern = /^node "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/run\.cjs "\$\{CLAUDE_PLUGIN_ROOT\}"\/scripts\/(\S+)((?: \S+)*)$/;
-        const expected = Object.entries(source.hooks).flatMap(([event, groups]) => groups
+        const expected = Object.entries({ ...source.hooks, ...FORK_HOOKS }).flatMap(([event, groups]) => groups
             .filter(group => !(event === 'SessionStart' && group.matcher && group.matcher !== '*'))
             .map(group => ({
             event,
@@ -102,7 +103,27 @@ describe('copilot/hooks.json generation', () => {
             PreCompact: 1,
             Stop: 1,
             SessionEnd: 1,
+            Notification: 1,
         });
+    });
+    it('adds the fork-owned Copilot-only groups and refuses an upstream group for the same event', async () => {
+        const { buildCopilotHooks, FORK_HOOKS } = await generator;
+        expect(Object.keys(FORK_HOOKS)).toEqual(['Notification']);
+        for (const event of Object.keys(FORK_HOOKS))
+            expect(source.hooks, event).not.toHaveProperty(event);
+        expect(generated.hooks.Notification[0].args.at(-1)).toBe(`${ROOT_TOKEN}/scripts/copilot/notification.mjs`);
+        const upstream = { type: 'command', command: `node "${ROOT_TOKEN}"/scripts/run.cjs "${ROOT_TOKEN}"/scripts/x.mjs` };
+        expect(() => buildCopilotHooks({ hooks: { Notification: [{ hooks: [upstream] }] } })).toThrow(/FORK_HOOKS\.Notification/);
+        expect(Object.keys(buildCopilotHooks({ hooks: {} }, { forkHooks: {} }).hooks)).toEqual([]);
+    });
+    it('gives each fork hook its generated timeoutSec as the run.cjs/dispatcher manifest timeout, not the 60 s default', () => {
+        const runCjs = createRequire(import.meta.url)(join(REPO_ROOT, 'scripts', 'run.cjs'));
+        const notification = join(REPO_ROOT, 'scripts', 'copilot', 'notification.mjs');
+        const manifestHook = runCjs.resolveHookTimeoutMs(notification, []);
+        expect(manifestHook).toEqual({ event: 'Notification', timeoutMs: generated.hooks.Notification[0].timeoutSec * 1000 });
+        expect(runCjs.resolveGenericTimeoutMs(manifestHook)).toBeLessThan(5_000);
+        expect(runCjs.resolveHookTimeoutMs(notification, ['--extra'])).toBeNull();
+        expect(runCjs.resolveHookTimeoutMs(join(REPO_ROOT, 'scripts', 'copilot', 'dispatch.cjs'), [])).toBeNull();
     });
     it('uses the dispatcher hook separator', async () => {
         const { HOOK_SEPARATOR } = await generator;

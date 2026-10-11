@@ -49,6 +49,7 @@ export declare function stringWidth(str: string): number;
 export declare function stripAnsi(str: string): string;
 /**
  * Truncate a string to fit within a maximum visual width.
+ * Boundary-limited output is plain text; fitting strings retain formatting.
  * CJK-aware: accounts for double-width characters.
  *
  * @param str - The string to truncate
@@ -69,6 +70,7 @@ export declare function truncateToWidth(str: string, maxWidth: number, suffix?: 
 export declare function padToWidth(str: string, minWidth: number, padChar?: string): string;
 /**
  * Slice a string by visual width instead of character count.
+ * Partial slices are plain text; a full visible-range slice retains formatting.
  * CJK-aware: accounts for double-width characters.
  *
  * @param str - The string to slice

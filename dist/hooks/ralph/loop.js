@@ -26,7 +26,8 @@ export const RALPH_CRITIC_MODES = ['architect', 'critic', 'codex'];
 export function ralphFeedbackGateNotice(sessionId) {
     const session = sessionId ? ` --session ${sessionId}` : '';
     return (`[RALPH FEEDBACK GATE] Before the first story: run \`omg ralph verify --write-baseline${session}\` to record the feedback baseline. ` +
-        `Every later gate (story verification, post-deslop re-verification): run \`omg ralph verify${session}\` — exit 0 = pass (baseline-only failures are warnings), exit 1 = new failures to fix. Never hand-roll the diff.`);
+        `Every later gate (story verification, post-deslop re-verification): run \`omg ralph verify${session}\` — exit 0 = pass (baseline-only failures are warnings), exit 1 = new failures to fix. Never hand-roll the diff. ` +
+        `When you deliberately break something to prove a test catches it, first show the mutation landed (diff the change against the untouched copy) before trusting the red — a red from a change that never took is worth nothing.`);
 }
 const DEFAULT_MAX_ITERATIONS = 10;
 const DEFAULT_RALPH_CRITIC_MODE = 'architect';
