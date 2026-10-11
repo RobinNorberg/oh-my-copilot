@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "487f71c5e9208126d381dd02308f265280566131",
-    "sourceSha256": "c634f85f47f33293626d0d73eb095843b5f7e68f1e1fd01b1149b5f37a62a40c",
+    "head": "af05b280a37324c215b7c7cc1b2df99f6d3542e1",
+    "sourceSha256": "855b62ec3121fbf60e9486f18a1b762d9a554645daa1321c6e3096d51f26493a",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "487f71c5e9208126d381dd02308f265280566131",
-  "sourceSha256": "c634f85f47f33293626d0d73eb095843b5f7e68f1e1fd01b1149b5f37a62a40c",
+  "head": "af05b280a37324c215b7c7cc1b2df99f6d3542e1",
+  "sourceSha256": "855b62ec3121fbf60e9486f18a1b762d9a554645daa1321c6e3096d51f26493a",
   "counts": {
     "public": {
       "skills": 63,
@@ -25,11 +25,11 @@
     "internal": {
       "hookFiles": 350,
       "featureFiles": 84,
-      "toolFiles": 64,
+      "toolFiles": 65,
       "libFiles": 48,
       "templateHooks": 23,
-      "srcFiles": 1584,
-      "total": 1607
+      "srcFiles": 1586,
+      "total": 1609
     },
     "generated": {
       "distFiles": 5975,
@@ -625,6 +625,7 @@
       "src/tools/diagnostics/AGENTS.md",
       "src/tools/diagnostics/__tests__/lsp-aggregator.test.ts",
       "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts",
+      "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
       "src/tools/diagnostics/index.ts",
       "src/tools/diagnostics/lsp-aggregator.ts",
       "src/tools/diagnostics/tsc-runner.ts",
@@ -7468,6 +7469,7 @@
       "src/tools/diagnostics/AGENTS.md",
       "src/tools/diagnostics/__tests__/lsp-aggregator.test.ts",
       "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts",
+      "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
       "src/tools/diagnostics/index.ts",
       "src/tools/diagnostics/lsp-aggregator.ts",
       "src/tools/diagnostics/tsc-runner.ts",
@@ -47451,6 +47453,11 @@
         "path": "src/team/__tests__/tmux-session.spawn.test.ts"
       },
       {
+        "id": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/tmux-session.split-pane-env.test.ts"
+      },
+      {
         "id": "src/team/__tests__/tmux-session.startup.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/tmux-session.startup.test.ts"
@@ -48024,6 +48031,11 @@
         "id": "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts",
         "kind": "tool",
         "path": "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts"
+      },
+      {
+        "id": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
+        "kind": "tool",
+        "path": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts"
       },
       {
         "id": "src/tools/diagnostics/index.ts",
@@ -87043,6 +87055,36 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.split-pane-env.test.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/__tests__/tmux-session.startup.test.ts",
         "to": "external:node:crypto",
         "kind": "imports"
@@ -91533,6 +91575,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
+        "to": "src/tools/diagnostics/tsc-runner.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/tools/diagnostics/index.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -91615,6 +91682,11 @@
       {
         "from": "src/tools/diagnostics/tsc-runner.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/diagnostics/tsc-runner.ts",
+        "to": "src/platform/executable-resolution.ts",
         "kind": "imports"
       },
       {
@@ -94789,6 +94861,11 @@
       },
       {
         "from": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts",
+        "to": "src/team/psmux-adapter.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/issue-4267-tmux-guard-shell-syntax.test.ts",
         "to": "src/team/team-owner-epoch.ts",
         "kind": "imports"
       },
@@ -95084,12 +95161,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8280,
-      "edgeCount": 9232,
-      "importEdgeCount": 7661,
+      "nodeCount": 8282,
+      "edgeCount": 9245,
+      "importEdgeCount": 7674,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "73fdc7455e5401d6009a3ec2b0740514a0ab59c4a469612ca2a9418c67c55563",
-  "manifestSha256": "6140560fd109ab614c5409b1e36a369a03f6f8a852664bfa3b3d6ee07b5c9e6b"
+  "inventorySha256": "80bb985a4adb29b5a830f601202efa76669ef61809256f5eb56336e5cf3cfe20",
+  "manifestSha256": "05da42e9aeeecceb1b05e6c44053e4673afa519f46d509cfc1cf777653e4e553"
 }
