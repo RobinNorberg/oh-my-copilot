@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "388552d35c7700bb5f399174976a1163b55657b9",
-    "sourceSha256": "da6d962f308f08ff6211d2bf76def21d0681d5bec56535aab076eda499aaad8d",
+    "head": "6eff02be7ee3be11d3dc93854457f551d626bb17",
+    "sourceSha256": "0bb3792e7daa605ae588253ec893e952d3cfd4623f9eb5a5bf95f84244666a13",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "388552d35c7700bb5f399174976a1163b55657b9",
-  "sourceSha256": "da6d962f308f08ff6211d2bf76def21d0681d5bec56535aab076eda499aaad8d",
+  "head": "6eff02be7ee3be11d3dc93854457f551d626bb17",
+  "sourceSha256": "0bb3792e7daa605ae588253ec893e952d3cfd4623f9eb5a5bf95f84244666a13",
   "counts": {
     "public": {
       "skills": 61,
@@ -49403,7 +49403,7 @@
       },
       {
         "from": "scripts/copilot/notification.mjs",
-        "to": "dist/notifications/redact.js",
+        "to": "dist/notifications/index.js",
         "kind": "imports"
       },
       {
@@ -52779,6 +52779,11 @@
       {
         "from": "src/__tests__/copilot-notification-hook.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "src/notifications/index.ts",
         "kind": "imports"
       },
       {
@@ -93334,11 +93339,11 @@
     ],
     "stats": {
       "nodeCount": 8209,
-      "edgeCount": 8959,
-      "importEdgeCount": 7424,
+      "edgeCount": 8960,
+      "importEdgeCount": 7425,
       "registerEdgeCount": 82
     }
   },
   "inventorySha256": "57fb34558e14524ac7700987fc7162533ce12790ee666b5287b169b2d819814c",
-  "manifestSha256": "ec6d6621e1999366238fed3b32211f74bf6082454c8e5add274579c80976dee0"
+  "manifestSha256": "22c5556b54d1c285333ef3eb303fa2aa70a030c7abd1346d4e0dbb41d50b25b0"
 }
