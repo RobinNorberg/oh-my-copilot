@@ -179,9 +179,16 @@ function shapeProblem(s: Record<string, unknown>): string | null {
   })) return 'verdicts';
   if (!Array.isArray(s.housekeepingCommits) || !s.housekeepingCommits.every((c) => isStr(c) && /^[0-9a-f]{40}$/.test(c))) return 'housekeepingCommits';
   if (typeof s.reruns !== 'object' || s.reruns === null || Array.isArray(s.reruns) || !Object.values(s.reruns).every(isCount)) return 'reruns';
-  if (!Array.isArray(s.history)) return 'history';
+  if (!Array.isArray(s.history) || !s.history.every((h) => {
+    const x = h as Record<string, unknown>;
+    return isStr(x?.at) && (x.from === null || PHASES.includes(x.from as ShipPhase)) && PHASES.includes(x.to as ShipPhase) && isStr(x.note);
+  })) return 'history';
   if (!isStr(s.createdAt) || !isStr(s.updatedAt)) return 'createdAt/updatedAt';
-  if (s.previousRuns !== undefined && !Array.isArray(s.previousRuns)) return 'previousRuns';
+  if (s.previousRuns !== undefined && (!Array.isArray(s.previousRuns) || !s.previousRuns.every((p) => {
+    const x = p as Record<string, unknown>;
+    return typeof p === 'object' && p !== null && !Array.isArray(p) && x.version === 1 && x.pr === s.pr
+      && x.previousRuns === undefined && shapeProblem(x) === null;
+  }))) return 'previousRuns';
   if (s.integrity !== undefined && !isStr(s.integrity)) return 'integrity';
   return null;
 }

@@ -162,18 +162,54 @@ export function parseRunsJson(stdout: string): WorkflowRun[] {
   });
 }
 
+const OK_CONCLUSIONS = new Set(['success', 'skipped', 'neutral']);
+
+/** Pending label when the head sha has no checks and no workflow runs at all. */
+export const NO_WORKFLOWS_TRIGGERED = 'no-workflows-triggered';
+
 /**
  * A green report stays green only when every workflow run for the head sha is
  * `completed`; a queued / in-progress run (jobs not yet reported) is pending.
+ * The latest run of each workflow that completed with a conclusion other than
+ * success / skipped / neutral and reported no check (a workflow that failed at
+ * startup, e.g. an invalid workflow file) is failed. A run whose jobs did
+ * report is judged by its checks (its advisory jobs may fail).
  */
 export function applyWorkflowRuns(report: GateReport, runs: WorkflowRun[]): GateReport {
   const open = runs.filter((r) => r.status.toLowerCase() !== 'completed');
-  if (open.length === 0) return report;
-  const labels = open.map((r) => `workflow run ${r.workflowName ?? r.databaseId} (${r.status.toLowerCase()})`);
+  const latest = new Map<string, WorkflowRun>();
+  for (const r of runs) {
+    const key = r.workflowName ?? `#${r.databaseId}`;
+    const seen = latest.get(key);
+    if (!seen || r.databaseId > seen.databaseId) latest.set(key, r);
+  }
+  const reportedRuns = new Set(report.checks.map((c) => c.runId).filter(Boolean));
+  const broken = [...latest.values()].filter((r) => r.status.toLowerCase() === 'completed'
+    && !OK_CONCLUSIONS.has((r.conclusion ?? '').toLowerCase())
+    && !reportedRuns.has(String(r.databaseId)));
+  if (open.length === 0 && broken.length === 0) return report;
+  const label = (r: WorkflowRun, what: string) => `workflow run ${r.workflowName ?? r.databaseId} (${what})`;
+  const failed = [...report.failed, ...broken.map((r) => label(r, `${(r.conclusion || 'no conclusion').toLowerCase()}, no checks reported`))];
+  const pending = [...report.pending, ...open.map((r) => label(r, r.status.toLowerCase()))];
+  const verdict: GateVerdict = broken.length > 0 ? 'failed' : report.verdict === 'green' ? 'pending' : report.verdict;
+  return { ...report, verdict, failed, pending };
+}
+
+/**
+ * No check and no workflow run for the head: a PR opened or pushed with the
+ * Actions GITHUB_TOKEN (draft bot PRs) triggers no workflows, so waiting
+ * would be pending forever. Reported as a distinct pending reason.
+ */
+export function applyNoWorkflows(report: GateReport, runs: WorkflowRun[], headSha: string): GateReport {
+  if (report.checks.length > 0 || runs.length > 0) return report;
   return {
     ...report,
-    verdict: report.verdict === 'green' ? 'pending' : report.verdict,
-    pending: [...report.pending, ...labels],
+    verdict: 'pending',
+    pending: [...report.pending.filter((p) => p !== NO_WORKFLOWS_TRIGGERED), NO_WORKFLOWS_TRIGGERED],
+    suggestions: [
+      ...report.suggestions,
+      `${NO_WORKFLOWS_TRIGGERED}: no checks and no workflow runs exist for head ${headSha.slice(0, 12)}. A PR opened or pushed with the Actions GITHUB_TOKEN triggers no workflows: push the branch from a PAT, or close and reopen the PR.`,
+    ],
   };
 }
 
@@ -313,14 +349,26 @@ export function fetchWorkflowRuns(exec: Exec, headSha: string, cwd?: string): Wo
 }
 
 /**
- * One gate evaluation: fetch, classify, read the logs of failed Actions jobs,
- * and before calling it green confirm every workflow run for the head sha is
- * completed. `headSha` is looked up with `gh pr view` when not given.
+ * One gate evaluation against a single head sha: resolve the head first
+ * (unless given), read the checks and the workflow runs for it, then re-read
+ * the head; a head that moved in between is pending, never green. Failed
+ * Actions jobs' logs are read for known-flaky attribution.
  */
 export function evaluateGates(exec: Exec, pr: number, config: ShipConfig, known: readonly KnownFlakyTest[], cwd?: string, headSha?: string): GateReport {
-  const report = evaluateChecks(pr, fetchChecks(exec, pr, cwd), config);
-  if (report.verdict === 'green') {
-    return applyWorkflowRuns(report, fetchWorkflowRuns(exec, headSha ?? fetchHeadSha(exec, pr, cwd), cwd));
+  const head = headSha ?? fetchHeadSha(exec, pr, cwd);
+  const checked = evaluateChecks(pr, fetchChecks(exec, pr, cwd), config);
+  let report = checked;
+  if (checked.verdict === 'green' || checked.checks.length === 0) {
+    const runs = fetchWorkflowRuns(exec, head, cwd);
+    report = applyNoWorkflows(applyWorkflowRuns(checked, runs), runs, head);
+    const after = fetchHeadSha(exec, pr, cwd);
+    if (after !== head) {
+      return {
+        ...report,
+        verdict: report.verdict === 'green' ? 'pending' : report.verdict,
+        pending: [...report.pending, `head moved from ${head.slice(0, 12)} to ${after.slice(0, 12)} during the gate read`],
+      };
+    }
   }
   if (report.verdict !== 'failed' || known.length === 0) return report;
   const analyses: FlakyAnalysis[] = [];

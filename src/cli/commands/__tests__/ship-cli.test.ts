@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { shipCommand, EXIT_PENDING } from '../ship.js';
 import type { Exec, ExecResult } from '../../../ship/exec.js';
-import { resolveShipConfig } from '../../../ship/config.js';
+import { loadTrustedShipConfig, resolveShipConfig } from '../../../ship/config.js';
 import { readShipState, shipStatePath } from '../../../ship/state.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -37,8 +37,25 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
     if (key.startsWith('git rev-parse -q --verify')) return { status: 1, stdout: '', stderr: '' };
     if (key.startsWith('git rev-parse --git-path')) return ok(`.git/${args[2]}\n`);
     if (key === 'git rev-parse HEAD') return ok(`${HEAD}\n`);
+    if (key === 'git show origin/dev:.copilot/omg.jsonc' && baseConfig !== null) return ok(baseConfig);
+    if (key.startsWith('git show ')) return { status: 128, stdout: '', stderr: 'fatal: path does not exist in origin/dev' };
+    if (key === 'gh pr diff 42 --name-only') return ok(diffFiles);
     return ok();
   };
+
+  /** `.copilot/omg.jsonc` committed on origin/dev (null = none), and the PR's changed files. */
+  let baseConfig: string | null;
+  let diffFiles: string;
+  let userBlock: unknown;
+
+  /** The real trust-model loader: user block + base-branch file + the temp repo's working tree. */
+  async function runTrusted(...argv: string[]): Promise<number> {
+    process.exitCode = undefined;
+    await shipCommand(exec, (ctx) => loadTrustedShipConfig({ ...ctx, user: userBlock, warn: (m) => logs.push(m) })).parseAsync(argv, { from: 'user' });
+    const code = Number(process.exitCode ?? 0);
+    process.exitCode = undefined;
+    return code;
+  }
 
   /** Ship config the command sees (the owner's `.copilot/omg.jsonc` `ship` block). */
   let shipBlock: Record<string, unknown>;
@@ -60,6 +77,9 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
     checks = CHECKS_GREEN;
     runs = '[{"databaseId":1,"status":"completed","conclusion":"success","workflowName":"CI"}]';
     shipBlock = {};
+    baseConfig = null;
+    diffFiles = 'src/a.ts\n';
+    userBlock = null;
     delete process.env.OMG_SHIP_HUMAN;
     vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => { logs.push(a.join(' ')); });
     vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => { logs.push(a.join(' ')); });
@@ -191,6 +211,75 @@ describe('omg ship CLI (scripted gh/git, no network)', () => {
     await run('init', '42', '--implementer', 'executor-1');
     expect(await run('init', '42', '--implementer', 'executor-2')).toBe(2);
     expect(await run('verdict', '42', '--reviewer', 'v', '--sha', HEAD)).toBe(2);
+  });
+
+  async function approvedAndPrepared(runner: (...argv: string[]) => Promise<number>): Promise<void> {
+    expect(await runner('init', '42', '--implementer', 'executor-1')).toBe(0);
+    expect(await runner('verdict', '42', '--reviewer', 'verifier-1', '--sha', HEAD, '--approve')).toBe(0);
+    expect(await runner('prepare', '42', '--no-checks')).toBe(0);
+  }
+
+  it('B1 probe: an untracked working-tree omg.jsonc (admin merge on, Test advisory) is ignored; a FAILED Test blocks', async () => {
+    mkdirSync(join(root, '.copilot'));
+    writeFileSync(join(root, '.copilot', 'omg.jsonc'), readFileSync(join(HERE, '../../../ship/__tests__/fixtures/project-config-admin-merge.jsonc'), 'utf8'));
+    await approvedAndPrepared(runTrusted);
+    checks = JSON.stringify(JSON.parse(CHECKS_GREEN).map((c: { name: string }) => (c.name === 'Test' ? { ...c, state: 'FAILURE' } : c)));
+    logs = [];
+    expect(await runTrusted('gates', '42')).toBe(1);
+    expect(logs.join('\n')).toMatch(/ignoring ship\.allowAdminMerge from the working-tree project config/);
+    expect(await runTrusted('merge', '42')).toBe(1);
+    expect(logs.join('\n')).toMatch(/gates are failed \(failed: Test\)/);
+    expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+    expect(calls).toContain('git show origin/dev:.copilot/omg.jsonc');
+  });
+
+  it('B1: the config committed on the base branch is honored (admin merge runs when gates are green)', async () => {
+    baseConfig = '{ "ship": { "allowAdminMerge": true } }';
+    await approvedAndPrepared(runTrusted);
+    expect(await runTrusted('gates', '42')).toBe(0);
+    expect(await runTrusted('merge', '42')).toBe(0);
+    expect(calls).toContain(`gh pr merge 42 --admin --merge --match-head-commit ${HEAD}`);
+  });
+
+  it('B1: the user config wins over the base branch', async () => {
+    baseConfig = '{ "ship": { "allowAdminMerge": true } }';
+    userBlock = { ship: { allowAdminMerge: false } };
+    await approvedAndPrepared(runTrusted);
+    expect(await runTrusted('merge', '42')).toBe(0);
+    expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+  });
+
+  it('merge refuses a PR touching the merge-rule files unless OMG_SHIP_HUMAN=1', async () => {
+    baseConfig = '{ "ship": { "allowAdminMerge": true } }';
+    await approvedAndPrepared(runTrusted);
+    for (const file of ['.copilot/omg.jsonc', '.github/known-flaky-tests.json', '.github/workflows/ci.yml']) {
+      diffFiles = `src/a.ts\n${file}\n`;
+      logs = [];
+      expect(await runTrusted('merge', '42')).toBe(1);
+      expect(logs.join('\n')).toMatch(/touches merge-rule files/);
+    }
+    expect(calls.some((c) => c.startsWith('gh pr merge'))).toBe(false);
+    process.env.OMG_SHIP_HUMAN = '1';
+    expect(await runTrusted('merge', '42')).toBe(0);
+    expect(calls).toContain(`gh pr merge 42 --admin --merge --match-head-commit ${HEAD}`);
+  });
+
+  it('init --force keeps the fix-round budget and implementer of a run with verdicts; resetting needs OMG_SHIP_HUMAN=1', async () => {
+    await run('init', '42', '--implementer', 'executor-1', '--max-fix-rounds', '2');
+    await run('verdict', '42', '--reviewer', 'verifier-1', '--sha', HEAD, '--request-changes');
+    await run('verdict', '42', '--reviewer', 'verifier-1', '--sha', HEAD, '--request-changes');
+    expect(readShipState(root, 42)).toMatchObject({ fixRounds: 2, phase: 'fix' });
+    expect(await run('init', '42', '--implementer', 'executor-1', '--force', '--max-fix-rounds', '9')).toBe(0);
+    expect(readShipState(root, 42)).toMatchObject({ fixRounds: 2, maxFixRounds: 2, implementer: 'executor-1', phase: 'review' });
+    logs = [];
+    expect(await run('init', '42', '--implementer', 'executor-2', '--force')).toBe(2);
+    expect(logs.join('\n')).toMatch(/implementer stays executor-1/);
+    // A third changes-requested still blocks: the budget was not reset.
+    expect(await run('verdict', '42', '--reviewer', 'verifier-1', '--sha', HEAD, '--request-changes')).toBe(1);
+    expect(readShipState(root, 42)?.phase).toBe('blocked');
+    process.env.OMG_SHIP_HUMAN = '1';
+    expect(await run('init', '42', '--implementer', 'executor-2', '--force')).toBe(0);
+    expect(readShipState(root, 42)).toMatchObject({ fixRounds: 0, implementer: 'executor-2' });
   });
 
   it('a spent fix-round budget blocks the run', async () => {

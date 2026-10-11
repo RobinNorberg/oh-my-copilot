@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { DEFAULT_SHIP_CONFIG, loadKnownFlaky, resolveShipConfig, type ShipConfig } from '../config.js';
+import { DEFAULT_SHIP_CONFIG, parseKnownFlaky, resolveShipConfig, type ShipConfig } from '../config.js';
 import { guardExec, type Exec, type ExecResult } from '../exec.js';
 import {
   applyFlakyAnalysis,
@@ -13,6 +13,7 @@ import {
   evaluateGates,
   fetchChecks,
   logBlockers,
+  NO_WORKFLOWS_TRIGGERED,
   parseChecksJson,
   parseFailingTests,
   parseRunsJson,
@@ -29,7 +30,7 @@ const REPO_ROOT = join(HERE, '..', '..', '..');
 const fixture = (name: string) => readFileSync(join(FIXTURES, name), 'utf8');
 /** Recorded `gh pr checks 233 --json ...` (merged PR; the authorization gate is red by design). */
 const PR233: GhCheck[] = JSON.parse(fixture('checks-pr233-green.json'));
-const KNOWN = loadKnownFlaky(REPO_ROOT, DEFAULT_SHIP_CONFIG.knownFlakyFile);
+const KNOWN = parseKnownFlaky(readFileSync(join(REPO_ROOT, DEFAULT_SHIP_CONFIG.knownFlakyFile), 'utf8'), DEFAULT_SHIP_CONFIG.knownFlakyFile);
 const CONFIG: ShipConfig = resolveShipConfig(undefined);
 
 const RUN = '38006018811';
@@ -54,10 +55,11 @@ const COMPLETED_RUNS: WorkflowRun[] = [
  * Fake gh (through the real guard): serves successive `pr checks` payloads,
  * job logs by job id and successive `run list` payloads; records every call.
  */
-function fakeGh(checkSeq: GhCheck[][], logs: Record<string, string> = {}, runSeq: WorkflowRun[][] = [COMPLETED_RUNS]) {
+function fakeGh(checkSeq: GhCheck[][], logs: Record<string, string> = {}, runSeq: WorkflowRun[][] = [COMPLETED_RUNS], headSeq: string[] = [HEAD_SHA]) {
   const calls: string[][] = [];
   let i = 0;
   let j = 0;
+  let k = 0;
   const exec: Exec = (cmd, args) => {
     calls.push([cmd, ...args]);
     if (args[0] === 'pr' && args[1] === 'checks') {
@@ -65,7 +67,11 @@ function fakeGh(checkSeq: GhCheck[][], logs: Record<string, string> = {}, runSeq
       i += 1;
       return ok(JSON.stringify(payload));
     }
-    if (args[0] === 'pr' && args[1] === 'view') return ok(JSON.stringify({ headRefOid: HEAD_SHA }));
+    if (args[0] === 'pr' && args[1] === 'view') {
+      const head = headSeq[Math.min(k, headSeq.length - 1)];
+      k += 1;
+      return ok(JSON.stringify({ headRefOid: head }));
+    }
     if (args[0] === 'run' && args[1] === 'list') {
       const payload = runSeq[Math.min(j, runSeq.length - 1)];
       j += 1;
@@ -163,10 +169,57 @@ describe('merge rule on recorded gh pr checks JSON', () => {
     expect(evaluateGates(exec, 233, CONFIG, KNOWN).verdict).toBe('pending');
     expect(calls).toContainEqual(['gh', 'pr', 'view', '233', '--json', 'headRefOid']);
     expect(calls).toContainEqual(['gh', 'run', 'list', '--commit', HEAD_SHA, '--json', 'databaseId,status,conclusion,workflowName', '--limit', '100']);
-    const given = fakeGh([PR233]);
+    const given = fakeGh([PR233], {}, [COMPLETED_RUNS], ['e'.repeat(40)]);
     expect(evaluateGates(given.exec, 233, CONFIG, KNOWN, undefined, 'e'.repeat(40)).verdict).toBe('green');
-    expect(given.calls.some((c) => c[2] === 'view')).toBe(false);
+    // An explicit head is not looked up first, only re-read after the checks and runs.
+    expect(given.calls.filter((c) => c[2] === 'view')).toHaveLength(1);
+    expect(given.calls.findIndex((c) => c[2] === 'view')).toBeGreaterThan(given.calls.findIndex((c) => c[2] === 'list'));
     expect(given.calls.find((c) => c[2] === 'list')?.[4]).toBe('e'.repeat(40));
+  });
+
+  it('resolves the head first, reads checks and runs for it, and refuses green when the head moved', () => {
+    const steady = fakeGh([PR233]);
+    expect(evaluateGates(steady.exec, 233, CONFIG, KNOWN).verdict).toBe('green');
+    expect(steady.calls.map((c) => c.slice(1, 3).join(' '))).toEqual(['pr view', 'pr checks', 'run list', 'pr view']);
+    const NEW = 'd'.repeat(40);
+    const moved = fakeGh([PR233], {}, [COMPLETED_RUNS], [HEAD_SHA, NEW]);
+    const report = evaluateGates(moved.exec, 233, CONFIG, KNOWN);
+    expect(report.verdict).toBe('pending');
+    expect(report.pending).toContain(`head moved from ${HEAD_SHA.slice(0, 12)} to ${NEW.slice(0, 12)} during the gate read`);
+    expect(moved.calls.find((c) => c[2] === 'list')?.[4]).toBe(HEAD_SHA);
+  });
+
+  it('a completed workflow run that failed without reporting a check (startup failure) is failed', () => {
+    const green = evaluateChecks(233, PR233, CONFIG);
+    const startup = applyWorkflowRuns(green, [...COMPLETED_RUNS, { databaseId: 5, status: 'completed', conclusion: 'startup_failure', workflowName: 'Upgrade Test' }]);
+    expect(startup.verdict).toBe('failed');
+    expect(startup.failed).toEqual(['workflow run Upgrade Test (startup_failure, no checks reported)']);
+    for (const conclusion of ['failure', 'cancelled', 'timed_out', 'action_required', '']) {
+      expect(applyWorkflowRuns(green, [{ databaseId: 6, status: 'completed', conclusion, workflowName: 'X' }]).verdict).toBe('failed');
+    }
+    for (const conclusion of ['success', 'skipped', 'neutral']) {
+      expect(applyWorkflowRuns(green, [{ databaseId: 6, status: 'completed', conclusion, workflowName: 'X' }]).verdict).toBe('green');
+    }
+    // A failed run whose jobs reported is judged by its checks (here its failing job is advisory).
+    const authRun = green.checks.find((c) => c.name === 'Authorize generated artifacts from base trust root')!.runId;
+    expect(authRun).toMatch(/^\d+$/);
+    expect(applyWorkflowRuns(green, [{ databaseId: Number(authRun), status: 'completed', conclusion: 'failure', workflowName: 'Generated Artifact Authorization' }]).verdict).toBe('green');
+    // Superseded by a newer run of the same workflow: only the latest counts.
+    expect(applyWorkflowRuns(green, [
+      { databaseId: 7, status: 'completed', conclusion: 'cancelled', workflowName: 'X' },
+      { databaseId: 8, status: 'completed', conclusion: 'success', workflowName: 'X' },
+    ]).verdict).toBe('green');
+  });
+
+  it('no checks and no workflow runs for the head is a distinct no-workflows-triggered pending reason', () => {
+    const { exec } = fakeGh([[]], {}, [[]]);
+    const report = evaluateGates(exec, 9, CONFIG, KNOWN);
+    expect(report.verdict).toBe('pending');
+    expect(report.pending).toContain(NO_WORKFLOWS_TRIGGERED);
+    expect(report.suggestions.join('\n')).toMatch(/GITHUB_TOKEN triggers no workflows: push the branch from a PAT, or close and reopen the PR/);
+    // Runs exist but no checks yet: plain pending, not the bot-PR reason.
+    const started = fakeGh([[]], {}, [[{ databaseId: 1, status: 'queued', workflowName: 'CI' }]]);
+    expect(evaluateGates(started.exec, 9, CONFIG, KNOWN).pending).not.toContain(NO_WORKFLOWS_TRIGGERED);
   });
 
   it('a failing gh run list fails closed', () => {

@@ -1,10 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'child_process';
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { assertSafeCommand, guardExec, ShipSafetyError, type Exec } from '../exec.js';
-import { isPlainBranchName, loadKnownFlaky, resolveShipConfig } from '../config.js';
+import {
+  DEFAULT_SHIP_CONFIG,
+  isPlainBranchName,
+  loadBaseKnownFlaky,
+  loadTrustedShipConfig,
+  resolveShipConfig,
+  SHIP_SAFETY_KEYS,
+} from '../config.js';
+import { evaluateChecks } from '../gates.js';
+import { parseJsonc } from '../../utils/jsonc.js';
 import {
   canTransition,
   computeIntegrity,
@@ -19,6 +29,7 @@ import {
   type ShipState,
 } from '../state.js';
 
+const HERE = dirname(fileURLToPath(import.meta.url));
 const SHA_A = 'a'.repeat(40);
 const T = '2026-10-11T00:00:00.000Z';
 
@@ -46,6 +57,19 @@ describe('assertSafeCommand', () => {
     ['gh', 'pr', 'merge', '12', '--admin', '--rebase'],
     ['gh', 'pr', 'merge', '12', '--admin'],
     ['npm', 'ci'],
+    // The engine never runs npm at all.
+    ['npm', 'run', 'generate:inventory'],
+    // Never a push to an integration branch, whatever the caller asks.
+    ['git', 'push', 'origin', 'HEAD:refs/heads/dev'],
+    ['git', 'push', 'origin', 'HEAD:refs/heads/main'],
+    ['git', 'push', 'origin', 'HEAD:refs/heads/master'],
+    // Base-branch file reads: plain repo paths only.
+    ['git', 'show', 'origin/dev:../x'],
+    ['git', 'show', 'origin/dev:/etc/passwd'],
+    ['git', 'show', '--output=x', 'origin/dev:a.json'],
+    ['git', 'show', 'origin/-x:a.json'],
+    ['gh', 'pr', 'diff', '12'],
+    ['gh', 'pr', 'diff', '12', '--patch'],
     // Shapes the engine never builds are refused too (allowlist, not denylist).
     ['git', 'push', '-u', 'origin', 'feat/x'],
     ['git', 'push', 'origin', 'feat/x'],
@@ -153,7 +177,10 @@ describe('assertSafeCommand', () => {
     ['node', 'node_modules/vitest/vitest.mjs', 'run', 'src/ship/__tests__/gates.test.ts'],
     ['node', 'scripts/generate-inventory-graph.mjs', '--write'],
     ['node', 'scripts/generate-prompt-projections.mjs', '--verify'],
-    ['npm', 'run', 'generate:inventory'],
+    ['git', 'show', 'origin/dev:.copilot/omg.jsonc'],
+    ['git', 'show', 'origin/release/v5.9.0:.github/known-flaky-tests.json'],
+    ['gh', 'pr', 'diff', '12', '--name-only'],
+    ['gh', 'pr', 'view', '12', '--json', 'baseRefName'],
   ];
   for (const [cmd, ...args] of allowed) {
     it(`allows ${cmd} ${args.join(' ')}`, () => {
@@ -170,13 +197,28 @@ describe('assertSafeCommand', () => {
     guarded('git', ['rev-parse', 'HEAD']);
     expect(spawned).toBe(1);
   });
+
+  it('guardExec also refuses a push to the run base it is given', () => {
+    const exec: Exec = () => ({ status: 0, stdout: '', stderr: '' });
+    let base: string[] = [];
+    const guarded = guardExec(exec, () => base);
+    expect(() => guarded('git', ['push', 'origin', 'HEAD:refs/heads/release/v6'])).not.toThrow();
+    base = ['release/v6'];
+    expect(() => guarded('git', ['push', 'origin', 'HEAD:refs/heads/release/v6'])).toThrow(ShipSafetyError);
+    expect(() => guarded('git', ['push', 'origin', 'HEAD:refs/heads/feat/x'])).not.toThrow();
+  });
 });
 
 describe('ship config', () => {
-  it('defaults: dev base, two advisory gates, admin merge off', () => {
+  it('defaults: dev base, advisory gates incl. the Socket Security app checks, admin merge off', () => {
     const c = resolveShipConfig(undefined);
     expect(c.base).toBe('dev');
-    expect(c.advisoryChecks).toEqual(['No Committed Build Artifacts', 'Authorize generated artifacts from base trust root']);
+    expect(c.advisoryChecks).toEqual([
+      'No Committed Build Artifacts',
+      'Authorize generated artifacts from base trust root',
+      'Socket Security: Pull Request Alerts',
+      'Socket Security: Project Report',
+    ]);
     expect(c.allowAdminMerge).toBe(false);
     expect(c.maxFixRounds).toBe(2);
     expect(c.watchTimeoutMinutes).toBeLessThan(10);
@@ -205,19 +247,89 @@ describe('ship config', () => {
     expect(isPlainBranchName('release/v5.9.0')).toBe(true);
   });
 
-  it('loadKnownFlaky: missing file is empty, malformed throws', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omg-ship-flaky-'));
+  it('loadBaseKnownFlaky reads the base branch (never the working tree): missing is empty, malformed throws', () => {
+    const files: Record<string, string> = {
+      'origin/dev:bad.json': '{"tests":[{"title":"x"}]}',
+      'origin/dev:untitled.json': '{"tests":[{"file":"src/a.test.ts"}]}',
+      'origin/dev:ok.json': '{"tests":[{"file":"src\\\\a.test.ts","title":"t"}]}',
+    };
+    const shown: string[] = [];
+    const exec: Exec = (_cmd, args) => {
+      shown.push(args.join(' '));
+      const text = args[0] === 'show' ? files[args[1]] : undefined;
+      return text === undefined ? { status: 128, stdout: '', stderr: 'fatal: path does not exist' } : { status: 0, stdout: text, stderr: '' };
+    };
+    const guarded = guardExec(exec);
+    expect(loadBaseKnownFlaky(guarded, '.', 'dev', 'nope.json')).toEqual([]);
+    expect(() => loadBaseKnownFlaky(guarded, '.', 'dev', 'bad.json')).toThrow(/file must be a string/);
+    expect(() => loadBaseKnownFlaky(guarded, '.', 'dev', 'untitled.json')).toThrow(/title must be a non-empty string/);
+    expect(loadBaseKnownFlaky(guarded, '.', 'dev', 'ok.json')).toEqual([{ file: 'src/a.test.ts', title: 't', note: undefined }]);
+    expect(shown).toContain('show origin/dev:ok.json');
+    expect(() => loadBaseKnownFlaky(guarded, '.', 'dev', '../outside.json')).toThrow(/repo-relative/);
+    expect(() => resolveShipConfig({ knownFlakyFile: '/etc/x.json' })).toThrow(/knownFlakyFile/);
+  });
+});
+
+describe('trusted ship config (safety keys never from the working tree or the PR head)', () => {
+  // Verifier probe v238-cfg: an untracked project file turns admin merge on and makes Test advisory.
+  const PROBE_PROJECT = parseJsonc(readFileSync(join(HERE, 'fixtures/project-config-admin-merge.jsonc'), 'utf8'));
+  const CHECKS = JSON.parse(readFileSync(join(HERE, 'fixtures/checks-pr233-green.json'), 'utf8')) as Array<{ name: string; state: string }>;
+  const failedTest = CHECKS.map((c) => (c.name === 'Test' ? { ...c, state: 'FAILURE' } : c));
+
+  function execWithBase(baseFile: string | null): { exec: Exec; calls: string[] } {
+    const calls: string[] = [];
+    const exec: Exec = (_cmd, args) => {
+      calls.push(args.join(' '));
+      if (args[0] === 'show' && args[1] === 'origin/dev:.copilot/omg.jsonc' && baseFile !== null) return { status: 0, stdout: baseFile, stderr: '' };
+      if (args[0] === 'show') return { status: 128, stdout: '', stderr: 'fatal: path does not exist in origin/dev' };
+      return { status: 0, stdout: '', stderr: '' };
+    };
+    return { exec: guardExec(exec), calls };
+  }
+
+  it('the probe: a working-tree allowAdminMerge + advisory Test is ignored with a warning, and a FAILED Test stays failed', () => {
+    const { exec, calls } = execWithBase(null);
+    const warnings: string[] = [];
+    const config = loadTrustedShipConfig({ exec, root: '.', base: 'dev', user: null, project: PROBE_PROJECT, warn: (m) => warnings.push(m) });
+    expect(config.allowAdminMerge).toBe(false);
+    expect(config.advisoryChecks).not.toContain('Test');
+    expect(evaluateChecks(233, failedTest, config).verdict).toBe('failed');
+    expect(warnings.join('\n')).toMatch(/ignoring ship\.allowAdminMerge/);
+    expect(warnings.join('\n')).toMatch(/ignoring ship\.advisoryChecks/);
+    expect(calls).toEqual(['fetch origin dev', 'show origin/dev:.copilot/omg.jsonc']);
+  });
+
+  it('reads the project file from the repo root by default (the untracked-file attack)', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omg-ship-cfg-'));
     try {
-      expect(loadKnownFlaky(dir, 'nope.json')).toEqual([]);
-      writeFileSync(join(dir, 'bad.json'), '{"tests":[{"title":"x"}]}');
-      expect(() => loadKnownFlaky(dir, 'bad.json')).toThrow(/file must be a string/);
-      writeFileSync(join(dir, 'untitled.json'), '{"tests":[{"file":"src/a.test.ts"}]}');
-      expect(() => loadKnownFlaky(dir, 'untitled.json')).toThrow(/title must be a non-empty string/);
-      writeFileSync(join(dir, 'ok.json'), '{"tests":[{"file":"src\\\\a.test.ts","title":"t"}]}');
-      expect(loadKnownFlaky(dir, 'ok.json')).toEqual([{ file: 'src/a.test.ts', title: 't', note: undefined }]);
+      mkdirSync(join(root, '.copilot'));
+      writeFileSync(join(root, '.copilot', 'omg.jsonc'), readFileSync(join(HERE, 'fixtures/project-config-admin-merge.jsonc'), 'utf8'));
+      const config = loadTrustedShipConfig({ exec: execWithBase(null).exec, root, base: 'dev', user: undefined, warn: () => {} });
+      expect(config.allowAdminMerge).toBe(false);
+      expect(config.advisoryChecks).toEqual(DEFAULT_SHIP_CONFIG.advisoryChecks);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it('honors the file committed on the base branch, and the user config wins over it', () => {
+    const base = '// committed on dev\n{ "ship": { "allowAdminMerge": true, "advisoryChecks": ["Size Check"], "maxFixRounds": 3, } }';
+    const { exec } = execWithBase(base);
+    const fromBase = loadTrustedShipConfig({ exec, root: '.', base: 'dev', user: null, project: {}, warn: () => {} });
+    expect(fromBase).toMatchObject({ allowAdminMerge: true, advisoryChecks: ['Size Check'], maxFixRounds: 3 });
+    const userWins = loadTrustedShipConfig({ exec, root: '.', base: 'dev', user: { ship: { allowAdminMerge: false } }, project: {}, warn: () => {} });
+    expect(userWins.allowAdminMerge).toBe(false);
+    expect(userWins.advisoryChecks).toEqual(['Size Check']);
+    // The working tree still sets non-safety keys, and an unchanged safety key does not warn.
+    const warnings: string[] = [];
+    const project = { ship: { maxFixRounds: 5, allowAdminMerge: true, requiredChecks: [] } };
+    const mixed = loadTrustedShipConfig({ exec, root: '.', base: 'dev', user: null, project, warn: (m) => warnings.push(m) });
+    expect(mixed).toMatchObject({ maxFixRounds: 5, allowAdminMerge: true, requiredChecks: DEFAULT_SHIP_CONFIG.requiredChecks });
+    expect(warnings).toEqual([expect.stringMatching(/ignoring ship\.requiredChecks/)]);
+  });
+
+  it('every safety key is covered', () => {
+    expect([...SHIP_SAFETY_KEYS].sort()).toEqual(['advisoryChecks', 'allowAdminMerge', 'knownFlakyFile', 'requiredChecks']);
   });
 });
 
@@ -320,6 +432,11 @@ describe('ship state machine', () => {
         [JSON.stringify({ ...good, housekeepingCommits: 'x' }), /field housekeepingCommits/],
         [JSON.stringify({ ...good, reruns: { 1: 'many' } }), /field reruns/],
         [JSON.stringify({ ...good, implementer: 7 }), /field implementer/],
+        [JSON.stringify({ ...good, history: [{ at: T, from: null, to: 'shipped', note: 'x' }] }), /field history/],
+        [JSON.stringify({ ...good, history: ['x'] }), /field history/],
+        [JSON.stringify({ ...good, previousRuns: ['x'] }), /field previousRuns/],
+        [JSON.stringify({ ...good, previousRuns: [{ ...good, fixRounds: -1 }] }), /field previousRuns/],
+        [JSON.stringify({ ...good, previousRuns: [{ ...good, pr: 8 }] }), /field previousRuns/],
       ];
       for (const [content, pattern] of cases) {
         writeFileSync(path, content as string);

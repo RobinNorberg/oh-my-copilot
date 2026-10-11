@@ -24,6 +24,29 @@ export interface MergeInput {
    * sha is not an ancestor of the head (or the range could not be listed).
    */
   commitsSinceReview: string[] | null;
+  /** `gh pr diff <pr> --name-only`; null when it could not be read (refused unless humanOverride). */
+  changedFiles: string[] | null;
+  /** OMG_SHIP_HUMAN=1: the owner accepts a PR that touches PROTECTED_PATHS. */
+  humanOverride?: boolean;
+  /** Extra protected files (the configured known-flaky file when it differs from the default). */
+  extraProtected?: readonly string[];
+}
+
+/** Files and prefixes that steer the merge rule itself; a PR touching them needs the owner. */
+export const PROTECTED_PATHS: readonly string[] = [
+  '.copilot/omg.jsonc',
+  '.copilot/omc.jsonc',
+  '.github/known-flaky-tests.json',
+  '.github/workflows/',
+];
+
+/** The changed files that hit PROTECTED_PATHS (exact file, or under a `/`-terminated prefix; case-insensitive). */
+export function protectedChanges(changed: readonly string[], extra: readonly string[] = []): string[] {
+  const rules = [...PROTECTED_PATHS, ...extra].map((p) => p.toLowerCase());
+  return changed.filter((raw) => {
+    const f = raw.replace(/\\/g, '/').trim().toLowerCase();
+    return rules.some((p) => (p.endsWith('/') ? f.startsWith(p) : f === p));
+  });
 }
 
 export interface MergeDecision {
@@ -36,8 +59,16 @@ export function mergeCommand(pr: number, headSha: string): string[] {
   return ['gh', 'pr', 'merge', String(pr), '--admin', '--merge', '--match-head-commit', headSha];
 }
 
-export function decideMerge({ state, pr, gate, commitsSinceReview }: MergeInput): MergeDecision {
+export function decideMerge({ state, pr, gate, commitsSinceReview, changedFiles, humanOverride = false, extraProtected = [] }: MergeInput): MergeDecision {
   const reasons: string[] = [];
+  if (!humanOverride) {
+    if (changedFiles === null) {
+      reasons.push('could not list the PR diff (gh pr diff --name-only); the protected-path check fails closed');
+    } else {
+      const hit = protectedChanges(changedFiles, extraProtected);
+      if (hit.length > 0) reasons.push(`PR touches merge-rule files (${hit.join(', ')}); only the owner may merge it (OMG_SHIP_HUMAN=1)`);
+    }
+  }
   if (!verifyShipIntegrity(state)) reasons.push('ship state fails its integrity check (edited outside omg ship); re-run the workflow from omg ship init');
   if (state.phase === 'merged') reasons.push('already merged');
   if (state.phase === 'blocked') reasons.push(`run is blocked: ${state.blockedReason ?? 'see history'}`);

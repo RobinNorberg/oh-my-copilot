@@ -1,10 +1,19 @@
 /**
- * `omg ship` configuration: defaults, the `ship` block of the project
- * config (`.copilot/omg.jsonc`), and the repo's known-flaky test list.
+ * `omg ship` configuration: defaults, the `ship` config block, and the
+ * repo's known-flaky test list.
+ *
+ * Trust model (see loadTrustedShipConfig): the safety keys
+ * (SHIP_SAFETY_KEYS) come only from the user-level config, then the
+ * `.copilot/omg.jsonc` committed on the base branch
+ * (`git show <remote>/<base>:.copilot/omg.jsonc`), then the defaults. The
+ * working-tree project file and the PR head never set them: a lane can drop
+ * an untracked file into the checkout, and a PR can commit one.
  */
 
 import { existsSync, readFileSync } from 'fs';
-import { isAbsolute, join } from 'path';
+import { parseJsonc } from '../utils/jsonc.js';
+import { resolveProjectConfigPath } from '../config/project-config-path.js';
+import type { Exec } from './exec.js';
 
 export interface ShipConfig {
   /** Integration branch PRs target and `prepare` merges in. */
@@ -36,7 +45,15 @@ export type ShipConfigInput = Partial<ShipConfig>;
 
 export const DEFAULT_SHIP_CONFIG: Readonly<ShipConfig> = Object.freeze({
   base: 'dev',
-  advisoryChecks: ['No Committed Build Artifacts', 'Authorize generated artifacts from base trust root'],
+  // No Committed Build Artifacts (ci.yml) and the pull_request_target
+  // authorization job report but never block; the Socket Security GitHub App
+  // checks are external (no workflow file) and advisory too.
+  advisoryChecks: [
+    'No Committed Build Artifacts',
+    'Authorize generated artifacts from base trust root',
+    'Socket Security: Pull Request Alerts',
+    'Socket Security: Project Report',
+  ],
   // Every check this repo's CI reports on a PR to dev (ci.yml, pr-check.yml,
   // upgrade-test.yml); Build, npm pack and the smoke job start late (`needs:`).
   requiredChecks: [
@@ -81,6 +98,11 @@ export function isPlainBranchName(value: unknown): value is string {
   return typeof value === 'string' && /^[\w.][\w./-]*$/.test(value) && !value.includes('..');
 }
 
+/** Repo-relative forward-slash path: plain segments, no `..`, not absolute or option-shaped. */
+export function isRepoPath(value: unknown): value is string {
+  return typeof value === 'string' && /^[\w.][\w.-]*(?:\/[\w.][\w.-]*)*$/.test(value) && !value.split('/').includes('..');
+}
+
 function nonNegative(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
@@ -101,7 +123,7 @@ export function resolveShipConfig(input: unknown): ShipConfig {
   if (raw.base !== undefined) config.base = isPlainBranchName(raw.base) ? raw.base : bad('base', 'a branch name');
   if (raw.advisoryChecks !== undefined) config.advisoryChecks = isStringArray(raw.advisoryChecks) ? raw.advisoryChecks : bad('advisoryChecks', 'a string array');
   if (raw.requiredChecks !== undefined) config.requiredChecks = isStringArray(raw.requiredChecks) ? raw.requiredChecks : bad('requiredChecks', 'a string array');
-  if (raw.knownFlakyFile !== undefined) config.knownFlakyFile = typeof raw.knownFlakyFile === 'string' && raw.knownFlakyFile ? raw.knownFlakyFile : bad('knownFlakyFile', 'a path');
+  if (raw.knownFlakyFile !== undefined) config.knownFlakyFile = isRepoPath(raw.knownFlakyFile) ? raw.knownFlakyFile : bad('knownFlakyFile', 'a repo-relative path (read from the base branch)');
   if (raw.maxFixRounds !== undefined) config.maxFixRounds = Number.isInteger(raw.maxFixRounds) && nonNegative(raw.maxFixRounds) ? raw.maxFixRounds : bad('maxFixRounds', 'a non-negative integer');
   if (raw.allowAdminMerge !== undefined) config.allowAdminMerge = typeof raw.allowAdminMerge === 'boolean' ? raw.allowAdminMerge : bad('allowAdminMerge', 'a boolean');
   if (raw.autoRerunFlaky !== undefined) config.autoRerunFlaky = typeof raw.autoRerunFlaky === 'boolean' ? raw.autoRerunFlaky : bad('autoRerunFlaky', 'a boolean');
@@ -118,11 +140,9 @@ export interface KnownFlakyTest {
   note?: string;
 }
 
-/** Read the known-flaky list; a missing file is an empty list, a malformed one throws. */
-export function loadKnownFlaky(repoRoot: string, file: string): KnownFlakyTest[] {
-  const path = isAbsolute(file) ? file : join(repoRoot, file);
-  if (!existsSync(path)) return [];
-  const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+/** Parse a known-flaky list (`{ "tests": [...] }`); malformed content throws. */
+export function parseKnownFlaky(content: string, file: string): KnownFlakyTest[] {
+  const parsed: unknown = JSON.parse(content);
   const tests = (parsed as { tests?: unknown })?.tests;
   if (!Array.isArray(tests)) throw new Error(`${file}: expected { "tests": [...] }`);
   return tests.map((entry, i) => {
@@ -131,4 +151,89 @@ export function loadKnownFlaky(repoRoot: string, file: string): KnownFlakyTest[]
     if (typeof e.title !== 'string' || !e.title) throw new Error(`${file}: tests[${i}].title must be a non-empty string`);
     return { file: e.file.replace(/\\/g, '/'), title: e.title, note: typeof e.note === 'string' ? e.note : undefined };
   });
+}
+
+/** Ship keys a lane or PR could use to merge a red PR; never read from the working tree or the PR head. */
+export const SHIP_SAFETY_KEYS = ['allowAdminMerge', 'advisoryChecks', 'requiredChecks', 'knownFlakyFile'] as const;
+
+/** Project config path inside the repo, read from the base branch for the safety keys. */
+export const BASE_CONFIG_PATH = '.copilot/omg.jsonc';
+
+function shipBlock(config: unknown, source: string): Record<string, unknown> {
+  const ship = (config as { ship?: unknown } | null | undefined)?.ship;
+  if (ship === undefined || ship === null) return {};
+  if (typeof ship !== 'object' || Array.isArray(ship)) throw new Error(`${source}: ship config must be an object`);
+  return ship as Record<string, unknown>;
+}
+
+/** `git show <remote>/<base>:<path>`; null when the ref or the file does not exist there. */
+export function readBaseFile(exec: Exec, cwd: string, ref: string, path: string): string | null {
+  const shown = exec('git', ['show', `${ref}:${path}`], { cwd });
+  return shown.status === 0 ? shown.stdout : null;
+}
+
+export interface TrustedShipConfigInput {
+  exec: Exec;
+  /** Repo root (the checkout being shipped). */
+  root: string;
+  /** Base branch whose committed config is trusted (the PR's base). */
+  base: string;
+  remote?: string;
+  /** The user-level config's parsed content (`~/.config/claude-omc/config.jsonc`). */
+  user: unknown;
+  /** Working-tree project config content; default: read `.copilot/omg.jsonc` under `root`. */
+  project?: unknown;
+  warn?: (message: string) => void;
+}
+
+/**
+ * Resolve the ship config for a run. Precedence:
+ * - safety keys (SHIP_SAFETY_KEYS): user config, then the base branch's
+ *   committed `.copilot/omg.jsonc`, then the defaults. A safety key in the
+ *   working-tree project file that differs from the base branch is ignored
+ *   with a warning.
+ * - other keys: defaults < base-branch file < user config < working-tree
+ *   project file (the usual project-over-user order).
+ * The base ref is fetched first; when it cannot be read the base layer is
+ * empty (defaults are the strict setting).
+ */
+export function loadTrustedShipConfig(input: TrustedShipConfigInput): ShipConfig {
+  const { exec, root, base } = input;
+  const remote = input.remote ?? 'origin';
+  const warn = input.warn ?? ((m: string) => console.error(m));
+  if (!isPlainBranchName(base)) throw new Error(`base ${JSON.stringify(base)} is not a branch name`);
+  const ref = `${remote}/${base}`;
+  exec('git', ['fetch', remote, base], { cwd: root });
+  const baseText = readBaseFile(exec, root, ref, BASE_CONFIG_PATH);
+  const baseShip = baseText && baseText.trim() ? shipBlock(parseJsonc(baseText), `${ref}:${BASE_CONFIG_PATH}`) : {};
+  const userShip = shipBlock(input.user, 'user config');
+  let project = input.project;
+  if (project === undefined) {
+    const path = resolveProjectConfigPath(root);
+    project = existsSync(path) ? parseJsonc(readFileSync(path, 'utf8')) : undefined;
+  }
+  const projectShip = { ...shipBlock(project, 'project config') };
+  const safety = new Set<string>(SHIP_SAFETY_KEYS);
+  for (const key of Object.keys(projectShip)) {
+    if (!safety.has(key)) continue;
+    if (JSON.stringify(projectShip[key]) !== JSON.stringify(baseShip[key])) {
+      warn(`omg ship: ignoring ship.${key} from the working-tree project config; safety keys come only from the user config or ${ref}:${BASE_CONFIG_PATH}`);
+    }
+    delete projectShip[key];
+  }
+  const merged: Record<string, unknown> = { ...baseShip, ...userShip, ...projectShip };
+  for (const key of SHIP_SAFETY_KEYS) {
+    const value = userShip[key] !== undefined ? userShip[key] : baseShip[key];
+    if (value === undefined) delete merged[key];
+    else merged[key] = value;
+  }
+  return resolveShipConfig(merged);
+}
+
+/** The known-flaky list as committed on the base branch (never the PR head); absent = empty. */
+export function loadBaseKnownFlaky(exec: Exec, root: string, base: string, file: string, remote = 'origin'): KnownFlakyTest[] {
+  if (!isPlainBranchName(base)) throw new Error(`base ${JSON.stringify(base)} is not a branch name`);
+  if (!isRepoPath(file)) throw new Error(`knownFlakyFile ${JSON.stringify(file)} is not a repo-relative path`);
+  const text = readBaseFile(exec, root, `${remote}/${base}`, file);
+  return text && text.trim() ? parseKnownFlaky(text, `${remote}/${base}:${file}`) : [];
 }
