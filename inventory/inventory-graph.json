@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "7d3f9daed1299536cf313eb77d5a9515c6af1553",
-    "sourceSha256": "e28306a57dd3e7b2c8a20d9eb3dd0e97f45c1fb052a9e78622a19ea9b56c8174",
+    "head": "868d698b39645737e00a252a584ac6ca43b51576",
+    "sourceSha256": "93269f01f9c869cadfc8aabba6d9257fae4389c217b6e3e78cf9c353d11254ef",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "7d3f9daed1299536cf313eb77d5a9515c6af1553",
-  "sourceSha256": "e28306a57dd3e7b2c8a20d9eb3dd0e97f45c1fb052a9e78622a19ea9b56c8174",
+  "head": "868d698b39645737e00a252a584ac6ca43b51576",
+  "sourceSha256": "93269f01f9c869cadfc8aabba6d9257fae4389c217b6e3e78cf9c353d11254ef",
   "counts": {
     "public": {
-      "skills": 61,
+      "skills": 62,
       "commands": 21,
       "workflows": 9,
       "agents": 20,
-      "total": 111
+      "total": 112
     },
     "internal": {
       "hookFiles": 350,
@@ -28,8 +28,8 @@
       "toolFiles": 62,
       "libFiles": 48,
       "templateHooks": 23,
-      "srcFiles": 1542,
-      "total": 1565
+      "srcFiles": 1556,
+      "total": 1579
     },
     "generated": {
       "distFiles": 5951,
@@ -39,7 +39,7 @@
     "prompt": {
       "promptLikeFiles": 61
     },
-    "skills": 61,
+    "skills": 62,
     "commands": 21,
     "hookFiles": 350,
     "workflows": 9,
@@ -100,6 +100,7 @@
       "research",
       "review",
       "self-improve",
+      "ship",
       "skill",
       "skillify",
       "tdd",
@@ -7532,6 +7533,11 @@
         "id": ".github/SPONSOR_TIERS.md",
         "kind": "other",
         "path": ".github/SPONSOR_TIERS.md"
+      },
+      {
+        "id": ".github/known-flaky-tests.json",
+        "kind": "other",
+        "path": ".github/known-flaky-tests.json"
       },
       {
         "id": ".github/release-body.md",
@@ -40309,6 +40315,11 @@
         "path": "skills/self-improve/templates/settings.json"
       },
       {
+        "id": "skills/ship/SKILL.md",
+        "kind": "skill",
+        "path": "skills/ship/SKILL.md"
+      },
+      {
         "id": "skills/skill/SKILL.md",
         "kind": "skill",
         "path": "skills/skill/SKILL.md"
@@ -42399,6 +42410,11 @@
         "path": "src/cli/commands/__tests__/intake.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/ship-cli.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/smoke-tier2.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/smoke-tier2.test.ts"
@@ -42477,6 +42493,11 @@
         "id": "src/cli/commands/session-search.ts",
         "kind": "src",
         "path": "src/cli/commands/session-search.ts"
+      },
+      {
+        "id": "src/cli/commands/ship.ts",
+        "kind": "src",
+        "path": "src/cli/commands/ship.ts"
       },
       {
         "id": "src/cli/commands/smoke.ts",
@@ -46332,6 +46353,66 @@
         "id": "src/shared/types.ts",
         "kind": "src",
         "path": "src/shared/types.ts"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/checks-pr233-green.json",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/checks-pr233-green.json"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/job-log-flaky.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-flaky.txt"
+      },
+      {
+        "id": "src/ship/__tests__/fixtures/job-log-real-failure.txt",
+        "kind": "src",
+        "path": "src/ship/__tests__/fixtures/job-log-real-failure.txt"
+      },
+      {
+        "id": "src/ship/__tests__/gates.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/gates.test.ts"
+      },
+      {
+        "id": "src/ship/__tests__/prepare-merge.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/prepare-merge.test.ts"
+      },
+      {
+        "id": "src/ship/__tests__/safety-state.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/safety-state.test.ts"
+      },
+      {
+        "id": "src/ship/config.ts",
+        "kind": "src",
+        "path": "src/ship/config.ts"
+      },
+      {
+        "id": "src/ship/exec.ts",
+        "kind": "src",
+        "path": "src/ship/exec.ts"
+      },
+      {
+        "id": "src/ship/gates.ts",
+        "kind": "src",
+        "path": "src/ship/gates.ts"
+      },
+      {
+        "id": "src/ship/merge.ts",
+        "kind": "src",
+        "path": "src/ship/merge.ts"
+      },
+      {
+        "id": "src/ship/prepare.ts",
+        "kind": "src",
+        "path": "src/ship/prepare.ts"
+      },
+      {
+        "id": "src/ship/state.ts",
+        "kind": "src",
+        "path": "src/ship/state.ts"
       },
       {
         "id": "src/skills/__tests__/mingw-escape.test.ts",
@@ -51659,6 +51740,11 @@
         "from": "skills/self-improve/scripts/resolve-paths.mjs",
         "to": "scripts/lib/state-root.mjs",
         "kind": "imports"
+      },
+      {
+        "from": "skills/ship/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
       },
       {
         "from": "skills/skill/SKILL.md",
@@ -61171,6 +61257,51 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "src/cli/commands/ship.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/ship-cli.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/smoke-tier2.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -61716,6 +61847,76 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/ship.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/config/loader.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ship.ts",
+        "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/cli/commands/smoke.ts",
         "to": "external:path",
         "kind": "imports"
@@ -62148,6 +62349,11 @@
       {
         "from": "src/cli/index.ts",
         "to": "src/cli/commands/session-search.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
+        "to": "src/cli/commands/ship.ts",
         "kind": "imports"
       },
       {
@@ -80721,6 +80927,236 @@
         "kind": "exports"
       },
       {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/gates.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/prepare.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/prepare-merge.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/safety-state.test.ts",
+        "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/config.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/config.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/exec.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/gates.ts",
+        "to": "src/ship/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/gates.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/merge.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/merge.ts",
+        "to": "src/ship/state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/merge.ts",
+        "to": "src/ship/state.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/prepare.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/prepare.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/prepare.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/state.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/state.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/state.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/state.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/state.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/skills/__tests__/mingw-escape.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -93152,12 +93588,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8205,
-      "edgeCount": 8927,
-      "importEdgeCount": 7394,
-      "registerEdgeCount": 82
+      "nodeCount": 8221,
+      "edgeCount": 8998,
+      "importEdgeCount": 7444,
+      "registerEdgeCount": 83
     }
   },
-  "inventorySha256": "2003fd1e1bf527ef813fe46afddc6dc3450f737b817e9f148d8736cd62ccf830",
-  "manifestSha256": "d94ec031232f7e5add1af0c6592c033ee97e93e638f42a41aae65c79c5a43e8a"
+  "inventorySha256": "a1588d6908bbc4e83f55c7d964413956c4b788446f7dde70d32399bbb9c38bb9",
+  "manifestSha256": "32a40b3ebd55fd160721cb0fe9b6acb4ac6758c00a310b088f378c83cf6dd218"
 }
