@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "27e700143e858d5dc5457fca31cf08b0d5db4ffd",
-    "sourceSha256": "52b323cceeb98f219828f18a4a9b7fef806cedca6ba51538890d5b635efd4ec5",
+    "head": "f9f1fd19e194122a09523d75b3b7d1d92bc3f74d",
+    "sourceSha256": "df5099f6f7fda8498ceb60f7a950a6a4d5e0d2f031c24aa66169d8ae50396420",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "27e700143e858d5dc5457fca31cf08b0d5db4ffd",
-  "sourceSha256": "52b323cceeb98f219828f18a4a9b7fef806cedca6ba51538890d5b635efd4ec5",
+  "head": "f9f1fd19e194122a09523d75b3b7d1d92bc3f74d",
+  "sourceSha256": "df5099f6f7fda8498ceb60f7a950a6a4d5e0d2f031c24aa66169d8ae50396420",
   "counts": {
     "public": {
       "skills": 61,
@@ -28,8 +28,8 @@
       "toolFiles": 62,
       "libFiles": 48,
       "templateHooks": 23,
-      "srcFiles": 1547,
-      "total": 1570
+      "srcFiles": 1548,
+      "total": 1571
     },
     "generated": {
       "distFiles": 5951,
@@ -15503,6 +15503,11 @@
         "id": "dist/autoresearch/setup-contract.js.map",
         "kind": "generated-dist",
         "path": "dist/autoresearch/setup-contract.js.map"
+      },
+      {
+        "id": "dist/budget/governor.js",
+        "kind": "generated-dist",
+        "path": "dist/budget/governor.js"
       },
       {
         "id": "dist/cli/__tests__/ask.test.d.ts",
@@ -42425,6 +42430,11 @@
         "path": "src/cli/commands/__tests__/smoke-tier2.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/team-budget-governor.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/team-role-shorthand.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/team-role-shorthand.test.ts"
@@ -50579,6 +50589,11 @@
       {
         "from": "scripts/pre-tool-enforcer.mjs",
         "to": "scripts/lib/stdin.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/premium-budget.mjs",
+        "to": "dist/budget/governor.js",
         "kind": "imports"
       },
       {
@@ -60138,6 +60153,11 @@
       },
       {
         "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -60149,6 +60169,11 @@
       {
         "from": "src/budget/__tests__/budget.test.ts",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:node:url",
         "kind": "imports"
       },
       {
@@ -60189,6 +60214,11 @@
       {
         "from": "src/budget/__tests__/budget.test.ts",
         "to": "src/hud/elements/premium-budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/lib/file-lock.ts",
         "kind": "imports"
       },
       {
@@ -60234,6 +60264,11 @@
       {
         "from": "src/budget/ledger.ts",
         "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "external:node:os",
         "kind": "imports"
       },
       {
@@ -61365,6 +61400,31 @@
         "from": "src/cli/commands/__tests__/smoke-tier2.test.ts",
         "to": "src/smoke/copilot-smoke.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "src/cli/commands/team.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/commands/__tests__/team-role-shorthand.test.ts",
@@ -93017,6 +93077,11 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/inventory-graph-drift.test.ts",
+        "to": "scripts/generate-inventory-graph.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/issue-3996-ruby-false-positive.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -93373,12 +93438,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8211,
-      "edgeCount": 8965,
-      "importEdgeCount": 7428,
+      "nodeCount": 8213,
+      "edgeCount": 8976,
+      "importEdgeCount": 7439,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "9288e626988053b5507cd4b3b0e7c83a7f3003ed44f2edd0a15d182888f12c79",
-  "manifestSha256": "248bbf2addab681174a88e35836d947c948dadb0218af9d4609ed9809afa4d0f"
+  "inventorySha256": "253842ad625fcbc13e7cddc0defcc78c98abd5f687a1d62f8366449a199a76f1",
+  "manifestSha256": "e8ba4b9c7b88d9b9749418c96fe444f7fc464649d9273614efdc63fdba01b32b"
 }
