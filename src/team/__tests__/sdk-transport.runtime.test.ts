@@ -116,6 +116,18 @@ describe('team.sdk.inProcessTools', () => {
     delete process.env.OMC_TEAM_SDK_INPROCESS_TOOLS;
     expect(() => resolveSdkTeamSettings(withFlag('yes'))).toThrow(/^invalid_team_sdk_config:inProcessTools/);
   });
+
+  it('accepts true/false in any case and rejects other env values as a config error', () => {
+    for (const [value, expected] of [['TRUE', true], [' true ', true], ['False', false], ['', true]] as const) {
+      process.env.OMC_TEAM_SDK_INPROCESS_TOOLS = value;
+      expect(resolveSdkTeamSettings(withFlag(true)).inProcessTools, value).toBe(expected);
+    }
+    for (const value of ['yes', 'on', '2']) {
+      process.env.OMC_TEAM_SDK_INPROCESS_TOOLS = value;
+      expect(() => resolveSdkTeamSettings({} as PluginConfig), value)
+        .toThrow(/^invalid_team_sdk_config:OMC_TEAM_SDK_INPROCESS_TOOLS must be 1, 0, true or false/);
+    }
+  });
 });
 
 describe('team.sdk settings', () => {

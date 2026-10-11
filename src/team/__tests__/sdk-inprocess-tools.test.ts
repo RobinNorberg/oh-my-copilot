@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildListToolsResponse, callTool, getEnabledTools } from '../../mcp/tool-registry.js';
 import { buildSdkInProcessTools } from '../sdk-inprocess-tools.js';
+import { buildSdkExcludedTools } from '../sdk-policy.js';
 
 // Records what the SDK converter receives and returns it unchanged, so a
 // handler's result is exactly the MCP CallTool result it converted.
@@ -55,6 +56,13 @@ describe('sdk in-process tools: parity with the t MCP server', () => {
     expect(result).toBe(seen[0]);
     expect(result).toEqual(await callTool(name, args()));
     expect(result).toMatchObject({ content: [expect.objectContaining({ type: 'text' })], isError: expect.any(Boolean) });
+  });
+
+  it('offers no tool for a bare server name in excludedTools (workerDenyTools: [t]) and keeps the server disabled', () => {
+    const set = buildSdkInProcessTools(identitySdk, 't', buildSdkExcludedTools('t', ['t']), '')!;
+    expect(set.tools).toEqual([]);
+    expect(set.disabledMcpServer).toBe('t');
+    expect(typeof set.cleanup).toBe('function');
   });
 
   it('returns null without the SDK converter, so the host keeps the MCP server', () => {

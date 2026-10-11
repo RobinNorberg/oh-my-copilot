@@ -1567,7 +1567,7 @@ export interface SdkTeamSettings {
   startupEvidenceMs: number;
   /** Hosts launched at once; each launch waits on its own worker's claim. */
   launchConcurrency: number;
-  /** `team.sdk.inProcessTools` / `OMC_TEAM_SDK_INPROCESS_TOOLS=1`. */
+  /** `team.sdk.inProcessTools` / `OMC_TEAM_SDK_INPROCESS_TOOLS` (`1`/`true`, `0`/`false`). */
   inProcessTools: boolean;
   denyTools: string[];
   denyUrls: string[];
@@ -1672,7 +1672,13 @@ export function resolveSdkTeamSettings(pluginCfg: PluginConfig): SdkTeamSettings
   if (configInProcess !== undefined && typeof configInProcess !== 'boolean') {
     throw new Error(`invalid_team_sdk_config:inProcessTools must be a boolean (got ${JSON.stringify(configInProcess)})`);
   }
-  const envInProcess = process.env.OMC_TEAM_SDK_INPROCESS_TOOLS?.trim();
+  const rawEnvInProcess = process.env.OMC_TEAM_SDK_INPROCESS_TOOLS?.trim().toLowerCase();
+  const envInProcess = rawEnvInProcess === '1' || rawEnvInProcess === 'true' ? '1'
+    : rawEnvInProcess === '0' || rawEnvInProcess === 'false' ? '0'
+      : undefined;
+  if (rawEnvInProcess && !envInProcess) {
+    throw new Error(`invalid_team_sdk_config:OMC_TEAM_SDK_INPROCESS_TOOLS must be 1, 0, true or false (got ${JSON.stringify(process.env.OMC_TEAM_SDK_INPROCESS_TOOLS)})`);
+  }
   const envConcurrency = envNumber('OMC_TEAM_SDK_LAUNCH_CONCURRENCY');
   const model = process.env.OMC_TEAM_SDK_MODEL?.trim() || sdk.model?.trim();
   return {

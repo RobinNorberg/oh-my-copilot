@@ -129,6 +129,12 @@ export interface SdkSessionFile {
   hooks: { session_end_runs: number; failed: number };
   /** Where the plugin tools run: `mcp` (the `t` server) or `in-process` (the host); absent before the session exists. */
   tool_transport?: 'mcp' | 'in-process';
+  /**
+   * `in-process` only: true when the session's tool metadata listed an
+   * in-process tool (or the set is empty), false when the SDK could not tell.
+   * A session that did not offer the tool was recreated on the MCP server.
+   */
+  tool_transport_verified?: boolean;
   aborts: number;
   permissions: Array<{ at: string; kind: string; approve: boolean; reason: string; detail: string }>;
   last_error: string | null;

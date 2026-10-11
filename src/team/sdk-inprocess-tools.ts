@@ -20,9 +20,17 @@
  *
  * Fallback: {@link buildSdkInProcessTools} returns null when the loaded SDK
  * lacks `convertMcpCallToolResult`, and the session keeps the MCP server.
+ *
+ * A bare server name in `excludedTools` (`workerDenyTools: ['t']`, deny every
+ * tool of the server) yields an empty tool set with the server still disabled.
+ *
+ * `cleanup` is the MCP server's shutdown cleanup (standalone-server.ts): the
+ * owned Python REPL bridges and the LSP clients. The host runs it on teardown.
  */
 
 import { callTool, getEnabledTools, zodToJsonSchema, type ToolDef } from '../mcp/tool-registry.js';
+import { cleanupOwnedBridgeSessions } from '../tools/python-repl/bridge-manager.js';
+import { disconnectAll as disconnectAllLsp } from '../tools/lsp/index.js';
 
 /** The SDK `Tool` fields this layer sets (SDK 1.0.16 `dist/types.d.ts`). */
 export interface SdkInProcessTool {
@@ -39,6 +47,13 @@ export interface SdkInProcessToolSet {
   tools: SdkInProcessTool[];
   /** The MCP server the session must disable, so no tool is offered twice. */
   disabledMcpServer: string;
+  /** Best-effort shutdown cleanup of tool-owned processes; never throws. */
+  cleanup: () => Promise<void>;
+}
+
+async function cleanupInProcessTools(): Promise<void> {
+  try { await cleanupOwnedBridgeSessions(); } catch { /* best effort, as the MCP server */ }
+  try { await disconnectAllLsp(); } catch { /* best effort, as the MCP server */ }
 }
 
 /**
@@ -55,6 +70,7 @@ export function buildSdkInProcessTools(
   const convert = (sdkModule as { convertMcpCallToolResult?: unknown } | null)?.convertMcpCallToolResult;
   if (typeof convert !== 'function') return null;
   const excluded = new Set(excludedTools);
+  if (excluded.has(serverName)) return { tools: [], disabledMcpServer: serverName, cleanup: cleanupInProcessTools };
   const tools = registry
     .filter((tool) => !excluded.has(`${serverName}-${tool.name}`))
     .map((tool): SdkInProcessTool => ({
@@ -64,5 +80,5 @@ export function buildSdkInProcessTools(
       skipPermission: true,
       handler: async (args: unknown) => (convert as ConvertMcpResult)(await callTool(tool.name, args, registry)),
     }));
-  return { tools, disabledMcpServer: serverName };
+  return { tools, disabledMcpServer: serverName, cleanup: cleanupInProcessTools };
 }

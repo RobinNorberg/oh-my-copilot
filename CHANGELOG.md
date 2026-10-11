@@ -37,6 +37,16 @@ All notable changes to oh-my-copilot will be documented in this file.
   vs 2872 ms MCP. The start time is unchanged; each worker saves one node
   process of about 85 MB working set. Off by default; see
   [DEVELOPERS.md](docs/DEVELOPERS.md#sdk-in-process-tools).
+- **In-process host lifetime.** After `createSession()` the host checks the
+  session's tool metadata for `t-state_read`; a session that does not offer it
+  is recreated on the MCP server, and one the SDK cannot check is recorded as
+  `tool_transport_verified: false`. `workerDenyTools: ['t']` offers no
+  in-process tool. Teardown runs the MCP server's shutdown cleanup (Python REPL
+  bridges, LSP clients) with a 5 s deadline. An unhandled rejection is
+  recorded and the host keeps serving; an uncaught exception stops the host
+  hard with a `failed` session (outcome `tool_crash`); `SIGTERM`/`SIGINT`/
+  `SIGHUP` stop it hard. `OMC_TEAM_SDK_INPROCESS_TOOLS` also accepts
+  `true`/`false` (any case) and rejects other values as a config error.
 
 # oh-my-copilot v5.9.0
 

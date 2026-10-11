@@ -187,9 +187,18 @@ Every upstream event is projected. `FORK_HOOKS` in `build-hooks.mjs` adds Copilo
 
 ## SDK in-process tools
 
-`team.sdk.inProcessTools: true` (env `OMC_TEAM_SDK_INPROCESS_TOOLS=1` turns it on, `0` turns it off; default off) makes each sdk team host register the plugin MCP tools as SDK session tools (`SessionConfig.tools`) and disable the `t` server for its session (`disabledMcpServers`). The session then starts no `node bridge/mcp-server.cjs` child, and the tools run in the host process.
+`team.sdk.inProcessTools: true` (env `OMC_TEAM_SDK_INPROCESS_TOOLS=1` or `true` turns it on, `0` or `false` turns it off, any case; any other value is an `invalid_team_sdk_config` error; default off) makes each sdk team host register the plugin MCP tools as SDK session tools (`SessionConfig.tools`) and disable the `t` server for its session (`disabledMcpServers`). The session then starts no `node bridge/mcp-server.cjs` child, and the tools run in the host process.
 
-**Capability.** `@github/copilot-sdk` 1.0.16 exposes `SessionConfig.tools: Tool[]` (`name`, `description`, JSON-schema `parameters`, `handler`, `skipPermission`) and `convertMcpCallToolResult` (`dist/types.d.ts`). The runtime accepts the hyphenated `t-<tool>` names, and `excludedTools` applies to them, so `t-host_smoke` and `workerDenyTools` keep working. When the loaded SDK has no `convertMcpCallToolResult`, the host logs `in-process tools unavailable` and keeps the MCP server.
+**Capability.** `@github/copilot-sdk` 1.0.16 exposes `SessionConfig.tools: Tool[]` (`name`, `description`, JSON-schema `parameters`, `handler`, `skipPermission`) and `convertMcpCallToolResult` (`dist/types.d.ts`). The runtime accepts the hyphenated `t-<tool>` names. The host builds the set without the `excludedTools` names, so `t-host_smoke` and `workerDenyTools` entries for single tools (`t(<tool>)`) stay denied. A bare server name (`workerDenyTools: ['t']`, deny every tool of the server) gives an empty set, with the `t` server still disabled. When the loaded SDK has no `convertMcpCallToolResult`, the host logs `in-process tools unavailable` and keeps the MCP server.
+
+**Verification.** The capability check above sees only the SDK module. After `createSession()` the host asks the session, with no model call, whether it offers `t-state_read` (`tools.getCurrentMetadata()`, built first with `tools.initializeAndValidate()` when empty). If the session lists tools but not that one, the host deletes it and creates it again on the `t` MCP server, and `tool_transport` is `mcp`. If the SDK has no metadata RPC, or the RPC fails or lists no tools, the host keeps in-process and records `tool_transport_verified: false` in `sdk-session.json`; `true` means the tool was listed, or the set is empty.
+
+**Process lifetime.** The tools share the host process, so the host takes over what the MCP server process did:
+
+- **Cleanup.** On teardown, before the terminal record, the host runs the server's shutdown cleanup (`cleanupOwnedBridgeSessions()` for the detached Python REPL bridges, then `disconnectAll()` for the LSP clients), best effort with a 5 s deadline. The cleanup comes with the injected builder (`SdkInProcessToolSet.cleanup`), so the team bundle still does not load the tool registry.
+- **Crashes.** An `unhandledRejection` is logged and recorded in `last_error`, and the host keeps serving: `callTool()` already turns a handler's own failure into an `isError` result, so a stray rejection does not mean the host is broken. An `uncaughtException` leaves the process in an undefined state, so the host stops hard instead of resuming. It kills the runtime, runs the cleanup, writes the terminal record and then a `failed` session (outcome `tool_crash`), so the leader can reclaim the task at once instead of waiting for a dead pid.
+- **Signals.** Importing the LSP client manager adds `SIGTERM`/`SIGINT`/`SIGHUP` listeners (`src/tools/lsp/client.ts`), and any listener replaces Node's default exit. The in-process host therefore handles these signals itself, with a hard stop as for a termination request (outcome `terminated`), so a manual `kill` still stops it.
+- **Event loop.** The tools now run on the host's event loop. A synchronous tool call (for example the `execFileSync` `tsc --noEmit` run behind `lsp_diagnostics_directory`, or the synchronous file I/O in the state tools) blocks the doorbell loop, session events and permission answers until it returns. The MCP server had the same blocking, but in its own process. Keep the default MCP transport for workloads with long synchronous tool calls.
 
 **Parity.** `src/team/sdk-inprocess-tools.ts` reuses the server's code and adds no tool logic:
 
@@ -213,7 +222,7 @@ Every upstream event is projected. `FORK_HOOKS` in `build-hooks.mjs` adds Copilo
 
 The start latency is unchanged: about 30 ms of 2.9 s, within noise. `createSession()` carries the 55 tool schemas, and the MCP server connects while the session is created. What in-process saves is the MCP child, about 85 MB working set per worker. That is why it stays opt-in: the gain is memory only. The cost is that the tools share the host process. A native crash or memory growth in a tool, such as the LSP clients or the Python REPL bridge, now hits the host instead of a disposable child. A single cold first run measured 840 ms to tools offered for MCP, against 348 ms in-process.
 
-**Rollback.** Leave the key unset, or set `false`, or set `OMC_TEAM_SDK_INPROCESS_TOOLS=0`. Each worker's `sdk-session.json` records `tool_transport` (`mcp` or `in-process`).
+**Rollback.** Leave the key unset, or set `false`, or set `OMC_TEAM_SDK_INPROCESS_TOOLS=0`. Each worker's `sdk-session.json` records `tool_transport` (`mcp` or `in-process`) and, for `in-process`, `tool_transport_verified`.
 
 ## Copilot hooks: per-event dispatcher
 
