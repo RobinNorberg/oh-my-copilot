@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "f9f1fd19e194122a09523d75b3b7d1d92bc3f74d",
-    "sourceSha256": "df5099f6f7fda8498ceb60f7a950a6a4d5e0d2f031c24aa66169d8ae50396420",
+    "head": "1f2ed4bfde6d1b416ae3acd274de2db36ea35cb5",
+    "sourceSha256": "4feda7b7875d16bdac29e679c64e070394d2a1b9e896cd58e8354dd95d3f8bc5",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "f9f1fd19e194122a09523d75b3b7d1d92bc3f74d",
-  "sourceSha256": "df5099f6f7fda8498ceb60f7a950a6a4d5e0d2f031c24aa66169d8ae50396420",
+  "head": "1f2ed4bfde6d1b416ae3acd274de2db36ea35cb5",
+  "sourceSha256": "4feda7b7875d16bdac29e679c64e070394d2a1b9e896cd58e8354dd95d3f8bc5",
   "counts": {
     "public": {
       "skills": 61,
@@ -32,9 +32,9 @@
       "total": 1571
     },
     "generated": {
-      "distFiles": 5951,
+      "distFiles": 5975,
       "bridgeFiles": 9,
-      "total": 5960
+      "total": 5984
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -2337,6 +2337,18 @@
       "dist/autoresearch/setup-contract.d.ts.map",
       "dist/autoresearch/setup-contract.js",
       "dist/autoresearch/setup-contract.js.map",
+      "dist/budget/__tests__/budget.test.d.ts",
+      "dist/budget/__tests__/budget.test.d.ts.map",
+      "dist/budget/__tests__/budget.test.js",
+      "dist/budget/__tests__/budget.test.js.map",
+      "dist/budget/governor.d.ts",
+      "dist/budget/governor.d.ts.map",
+      "dist/budget/governor.js",
+      "dist/budget/governor.js.map",
+      "dist/budget/ledger.d.ts",
+      "dist/budget/ledger.d.ts.map",
+      "dist/budget/ledger.js",
+      "dist/budget/ledger.js.map",
       "dist/cli/__tests__/ask.test.d.ts",
       "dist/cli/__tests__/ask.test.d.ts.map",
       "dist/cli/__tests__/ask.test.js",
@@ -2509,6 +2521,10 @@
       "dist/cli/commands/__tests__/smoke-tier2.test.d.ts.map",
       "dist/cli/commands/__tests__/smoke-tier2.test.js",
       "dist/cli/commands/__tests__/smoke-tier2.test.js.map",
+      "dist/cli/commands/__tests__/team-budget-governor.test.d.ts",
+      "dist/cli/commands/__tests__/team-budget-governor.test.d.ts.map",
+      "dist/cli/commands/__tests__/team-budget-governor.test.js",
+      "dist/cli/commands/__tests__/team-budget-governor.test.js.map",
       "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts",
       "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts.map",
       "dist/cli/commands/__tests__/team-role-shorthand.test.js",
@@ -2533,6 +2549,10 @@
       "dist/cli/commands/alias-retirement.d.ts.map",
       "dist/cli/commands/alias-retirement.js",
       "dist/cli/commands/alias-retirement.js.map",
+      "dist/cli/commands/budget.d.ts",
+      "dist/cli/commands/budget.d.ts.map",
+      "dist/cli/commands/budget.js",
+      "dist/cli/commands/budget.js.map",
       "dist/cli/commands/capabilities.d.ts",
       "dist/cli/commands/capabilities.d.ts.map",
       "dist/cli/commands/capabilities.js",
@@ -4747,6 +4767,10 @@
       "dist/hud/elements/prd.d.ts.map",
       "dist/hud/elements/prd.js",
       "dist/hud/elements/prd.js.map",
+      "dist/hud/elements/premium-budget.d.ts",
+      "dist/hud/elements/premium-budget.d.ts.map",
+      "dist/hud/elements/premium-budget.js",
+      "dist/hud/elements/premium-budget.js.map",
       "dist/hud/elements/prompt-time.d.ts",
       "dist/hud/elements/prompt-time.d.ts.map",
       "dist/hud/elements/prompt-time.js",
@@ -15505,9 +15529,64 @@
         "path": "dist/autoresearch/setup-contract.js.map"
       },
       {
+        "id": "dist/budget/__tests__/budget.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/budget.test.d.ts"
+      },
+      {
+        "id": "dist/budget/__tests__/budget.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/budget.test.d.ts.map"
+      },
+      {
+        "id": "dist/budget/__tests__/budget.test.js",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/budget.test.js"
+      },
+      {
+        "id": "dist/budget/__tests__/budget.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/budget.test.js.map"
+      },
+      {
+        "id": "dist/budget/governor.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/budget/governor.d.ts"
+      },
+      {
+        "id": "dist/budget/governor.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/governor.d.ts.map"
+      },
+      {
         "id": "dist/budget/governor.js",
         "kind": "generated-dist",
         "path": "dist/budget/governor.js"
+      },
+      {
+        "id": "dist/budget/governor.js.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/governor.js.map"
+      },
+      {
+        "id": "dist/budget/ledger.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/budget/ledger.d.ts"
+      },
+      {
+        "id": "dist/budget/ledger.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/ledger.d.ts.map"
+      },
+      {
+        "id": "dist/budget/ledger.js",
+        "kind": "generated-dist",
+        "path": "dist/budget/ledger.js"
+      },
+      {
+        "id": "dist/budget/ledger.js.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/ledger.js.map"
       },
       {
         "id": "dist/cli/__tests__/ask.test.d.ts",
@@ -16370,6 +16449,26 @@
         "path": "dist/cli/commands/__tests__/smoke-tier2.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/team-budget-governor.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-budget-governor.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-budget-governor.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-budget-governor.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-budget-governor.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-budget-governor.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-budget-governor.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-budget-governor.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts"
@@ -16488,6 +16587,26 @@
         "id": "dist/cli/commands/alias-retirement.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/alias-retirement.js.map"
+      },
+      {
+        "id": "dist/cli/commands/budget.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/budget.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/budget.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/budget.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/budget.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/budget.js"
+      },
+      {
+        "id": "dist/cli/commands/budget.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/budget.js.map"
       },
       {
         "id": "dist/cli/commands/capabilities.d.ts",
@@ -27558,6 +27677,26 @@
         "id": "dist/hud/elements/prd.js.map",
         "kind": "generated-dist",
         "path": "dist/hud/elements/prd.js.map"
+      },
+      {
+        "id": "dist/hud/elements/premium-budget.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/premium-budget.d.ts"
+      },
+      {
+        "id": "dist/hud/elements/premium-budget.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/premium-budget.d.ts.map"
+      },
+      {
+        "id": "dist/hud/elements/premium-budget.js",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/premium-budget.js"
+      },
+      {
+        "id": "dist/hud/elements/premium-budget.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/premium-budget.js.map"
       },
       {
         "id": "dist/hud/elements/prompt-time.d.ts",
@@ -93438,12 +93577,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8213,
+      "nodeCount": 8236,
       "edgeCount": 8976,
       "importEdgeCount": 7439,
       "registerEdgeCount": 82
     }
   },
   "inventorySha256": "253842ad625fcbc13e7cddc0defcc78c98abd5f687a1d62f8366449a199a76f1",
-  "manifestSha256": "e8ba4b9c7b88d9b9749418c96fe444f7fc464649d9273614efdc63fdba01b32b"
+  "manifestSha256": "a87ad8f412d04e8f0c17e3da5e07185848cdbb33cb61fd31d34e6bbcdbe43d5c"
 }
