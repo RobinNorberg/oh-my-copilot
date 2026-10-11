@@ -293,6 +293,28 @@ function resolveImportSpec(fromPath, spec) {
   return { kind: 'external', spec, candidates: [] };
 }
 
+/**
+ * Resolve a dist/ or bridge/ import target without touching the disk.
+ * Returns undefined for any other path (resolved from the disk as usual),
+ * `{ path: null }` when it cannot be justified (stays unresolved), else the
+ * node to link: a tracked generated file, or an untracked dist/ module whose
+ * TypeScript source exists (dist/x/y.js <- src/x/y.ts). A dist/ edge with no
+ * source therefore still surfaces as unresolved; it never hides a typo.
+ */
+export function resolveGeneratedTarget(candidates, distFiles, bridgeFiles, stableFiles) {
+  const target = candidates[0];
+  if (target.startsWith('bridge/')) {
+    const tracked = candidates.find((c) => bridgeFiles.has(c));
+    return tracked ? { path: tracked, kind: 'generated-bridge' } : { path: null };
+  }
+  if (!target.startsWith('dist/')) return undefined;
+  const tracked = candidates.find((c) => distFiles.has(c));
+  if (tracked) return { path: tracked, kind: 'generated-dist' };
+  const source = `src/${target.slice('dist/'.length)}`.replace(/\.(?:mjs|cjs|js)$/, '');
+  const hasSource = ['.ts', '.mts', '.cts', '.tsx'].some((ext) => stableFiles.has(source + ext));
+  return hasSource ? { path: target, kind: 'generated-dist' } : { path: null };
+}
+
 async function existsAny(root, cands) {
   for (const c of cands) {
     const absolute = resolve(root, c);
@@ -395,6 +417,9 @@ export async function generateInventoryGraph(opts = {}) {
   };
   const genDist = await collectGenerated('dist');
   const genBridge = await collectGenerated('bridge');
+  const genDistSet = new Set(genDist);
+  const genBridgeSet = new Set(genBridge);
+  const relStableSet = new Set(relStable);
 
   // Build nodes — one per stable file + generated files as nodes (for counts completeness)
   const nodeSet = new Map();
@@ -444,8 +469,14 @@ export async function generateInventoryGraph(opts = {}) {
         if (!nodeSet.has(to)) nodeSet.set(to, { id: to, kind: 'external', path: spec });
         pushEdge(from, to, kind);
       } else {
-        // Try to resolve relative to an existing stable file
-        const hit = await existsAny(root, resolved.candidates);
+        // dist/ and bridge/ are build output: resolve them from the tracked
+        // shipping surface and the source tree, never from the local disk, so
+        // a local build cannot add or drop edges. Everything else must exist.
+        const generated = resolveGeneratedTarget(resolved.candidates,genDistSet, genBridgeSet, relStableSet);
+        const hit = generated ? generated.path : await existsAny(root, resolved.candidates);
+        if (generated?.path && !nodeSet.has(generated.path)) {
+          nodeSet.set(generated.path, { id: generated.path, kind: generated.kind, path: generated.path });
+        }
         if (hit) {
           // Prefer canonical posix relative
           pushEdge(from, hit, kind);

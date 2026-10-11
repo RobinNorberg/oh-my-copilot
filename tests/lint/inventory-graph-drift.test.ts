@@ -348,6 +348,23 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(generated.provenance.head).toBe(EXPECTED_BASE);
   });
 
+  it('resolves dist/ and bridge/ targets from tracked files and sources, never the local disk', async () => {
+    const { resolveGeneratedTarget } = await import('../../scripts/generate-inventory-graph.mjs') as {
+      resolveGeneratedTarget: (c: string[], d: Set<string>, b: Set<string>, s: Set<string>) => { path: string | null; kind?: string } | undefined;
+    };
+    const dist = new Set(['dist/tracked.js']);
+    const bridge = new Set(['bridge/cli.cjs']);
+    const stable = new Set(['src/budget/governor.ts']);
+    expect(resolveGeneratedTarget(['dist/tracked.js'], dist, bridge, stable)).toEqual({ path: 'dist/tracked.js', kind: 'generated-dist' });
+    expect(resolveGeneratedTarget(['dist/budget/governor.js'], dist, bridge, stable)).toEqual({ path: 'dist/budget/governor.js', kind: 'generated-dist' });
+    // No tracked file and no TypeScript source: stays unresolved (a typo is never hidden).
+    expect(resolveGeneratedTarget(['dist/budget/govenor.js'], dist, bridge, stable)).toEqual({ path: null });
+    expect(resolveGeneratedTarget(['bridge/missing.cjs'], dist, bridge, stable)).toEqual({ path: null });
+    expect(resolveGeneratedTarget(['bridge/cli.cjs'], dist, bridge, stable)).toEqual({ path: 'bridge/cli.cjs', kind: 'generated-bridge' });
+    // Source paths keep the on-disk resolution.
+    expect(resolveGeneratedTarget(['src/budget/governor.js'], dist, bridge, stable)).toBeUndefined();
+  });
+
   it('verify mode passes when baseline is current (drift closed)', () => {
     const r = spawnSync('node', [GENERATOR, '--verify'], { cwd: REPO_ROOT, encoding: 'utf8' as const, maxBuffer: 20 * 1024 * 1024 });
     expect(r.status, `verify failed — stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
