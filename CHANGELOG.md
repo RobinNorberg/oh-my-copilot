@@ -2,6 +2,35 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Added: Copilot `notification` hook
+
+- **"Input needed" notifications on Copilot.** The generated
+  `copilot/hooks.json` maps Copilot's `notification` event (fork-owned
+  `FORK_HOOKS` in `scripts/copilot/build-hooks.mjs`, no upstream counterpart)
+  to `scripts/copilot/notification.mjs`. A `permission_prompt` or
+  `elicitation_dialog` (which includes the `ask_user` tool) sends OMC's
+  `ask-user-question` notification to the configured Discord, Telegram or
+  Slack targets. Upstream sends it from PreToolUse for `AskUserQuestion`, which
+  Copilot never calls, so on Copilot it never fired. Team workers are skipped.
+  The other three unmapped events (`errorOccurred`, `preMcpToolCall`,
+  `userPromptTransformed`) stay unmapped; the reasons are in
+  [DEVELOPERS.md](docs/DEVELOPERS.md#copilot-cli-hook-events).
+
+### Added: in-process plugin tools for sdk team workers (opt-in)
+
+- **`team.sdk.inProcessTools`** (default `false`; env
+  `OMC_TEAM_SDK_INPROCESS_TOOLS=1`/`0`) registers the plugin MCP tools in the
+  sdk host as SDK session tools and disables the `t` stdio MCP server for that
+  worker. Names (`t-<tool>`), schemas and results match the MCP server. An SDK
+  without `convertMcpCallToolResult` keeps the MCP server.
+  `sdk-session.json` records `tool_transport`. Measured on Copilot CLI 1.0.91
+  with SDK 1.0.16, 12 runs per mode: session start median 2843 ms in-process
+  vs 2872 ms MCP. The start time is unchanged; each worker saves one node
+  process of about 85 MB working set. Off by default; see
+  [DEVELOPERS.md](docs/DEVELOPERS.md#sdk-in-process-tools).
+
 # oh-my-copilot v5.9.0
 
 ## [5.9.0] - 2026-10-10
