@@ -20,10 +20,15 @@ All notable changes to oh-my-copilot will be documented in this file.
   assignments and flags, secret JSON fields, credential headers, `curl -u`,
   `mysql -p`, `login -p`, URL credentials, webhook URLs, PEM keys, OpenAI-style
   keys and padded base64) and capped at 200 characters. Permission-prompt
-  notifications are not replyable, and sending one drops the pane's earlier
-  reply mappings: remote replies never answer a permission prompt. On a stale
-  `dist/` that lacks these guarantees (`NOTIFICATION_CAPS`, redaction
-  self-test) the hook sends no permission prompt. A
+  notifications are not replyable, and sending one marks the pane
+  non-replyable and drops its earlier reply mappings (approval-gate mappings
+  stay): remote replies never answer a permission prompt, also for an
+  `ask_user` mapping registered while the prompt was sent. When the mappings
+  cannot be dropped (registry lock timeout) the prompt is not sent. A title
+  that is not plain letters and spaces is sent as `Permission needed`. On a
+  stale `dist/` that lacks these guarantees (`NOTIFICATION_CAPS`, redaction
+  self-test) the hook sends no permission prompt, and `ask_user` only as
+  `Copilot is asking you a question`. A
   permission prompt is sent at most once per 30 s per session, an identical
   `ask_user` question once per 30 s. The hook's run.cjs timeout is now its
   generated 5 s instead of the 60 s default.
@@ -48,7 +53,8 @@ All notable changes to oh-my-copilot will be documented in this file.
   is recreated on the MCP server, and one the SDK cannot check is recorded as
   `tool_transport_verified: false`. `workerDenyTools: ['t']` offers no
   in-process tool. Teardown runs the MCP server's shutdown cleanup (Python REPL
-  bridges, LSP clients) with a 5 s deadline. An unhandled rejection is
+  bridges, LSP clients) with a 5 s deadline; on Windows the bridges go straight
+  to `taskkill /F`, since `/T` alone does not stop them. An unhandled rejection is
   recorded and the host keeps serving; an uncaught exception stops the host
   hard with a `failed` session (outcome `tool_crash`); `SIGTERM`/`SIGINT`/
   `SIGHUP` stop it hard. `OMC_TEAM_SDK_INPROCESS_TOOLS` also accepts
