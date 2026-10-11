@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "a6ff036debab34c3ba64667f39600fa2da6ca9da",
-    "sourceSha256": "bcb4321de5914cf1c97b7395f2d865dab676e522a29cbd2b4c17d2f7e9c6338b",
+    "head": "456318399f2da672e1f510ff9894395d0b58f610",
+    "sourceSha256": "6dbf7f3f112483c1b35c4ca71d434ea4ca8ea1b9d574e90edd36a1b8985c3b09",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "a6ff036debab34c3ba64667f39600fa2da6ca9da",
-  "sourceSha256": "bcb4321de5914cf1c97b7395f2d865dab676e522a29cbd2b4c17d2f7e9c6338b",
+  "head": "456318399f2da672e1f510ff9894395d0b58f610",
+  "sourceSha256": "6dbf7f3f112483c1b35c4ca71d434ea4ca8ea1b9d574e90edd36a1b8985c3b09",
   "counts": {
     "public": {
       "skills": 62,
@@ -28,8 +28,8 @@
       "toolFiles": 62,
       "libFiles": 48,
       "templateHooks": 23,
-      "srcFiles": 1558,
-      "total": 1581
+      "srcFiles": 1559,
+      "total": 1582
     },
     "generated": {
       "distFiles": 5951,
@@ -46380,6 +46380,11 @@
         "path": "src/ship/__tests__/gates.test.ts"
       },
       {
+        "id": "src/ship/__tests__/git-trust.test.ts",
+        "kind": "src",
+        "path": "src/ship/__tests__/git-trust.test.ts"
+      },
+      {
         "id": "src/ship/__tests__/prepare-merge.test.ts",
         "kind": "src",
         "path": "src/ship/__tests__/prepare-merge.test.ts"
@@ -61869,11 +61874,6 @@
       {
         "from": "src/cli/commands/ship.ts",
         "to": "external:commander",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/ship.ts",
-        "to": "src/config/loader.ts",
         "kind": "imports"
       },
       {
@@ -80997,6 +80997,46 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/__tests__/git-trust.test.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/ship/__tests__/prepare-merge.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -81148,7 +81188,27 @@
       },
       {
         "from": "src/ship/config.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/config.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/config.ts",
+        "to": "src/config/loader.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/config.ts",
         "to": "src/config/project-config-path.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/config.ts",
+        "to": "src/ship/exec.ts",
         "kind": "imports"
       },
       {
@@ -81173,6 +81233,16 @@
       },
       {
         "from": "src/ship/gates.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/ship/merge.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/ship/merge.ts",
         "to": "src/ship/exec.ts",
         "kind": "type-imports"
       },
@@ -93673,12 +93743,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8223,
-      "edgeCount": 9013,
-      "importEdgeCount": 7458,
+      "nodeCount": 8224,
+      "edgeCount": 9026,
+      "importEdgeCount": 7470,
       "registerEdgeCount": 83
     }
   },
-  "inventorySha256": "b9af8818474782ec10e0c7e5b84d546f3bd5ef37c5f01cf84ef4f3e120168487",
-  "manifestSha256": "7c81b420a09585a3a1dc895bce59c066bcd6af0b1df546146ad5c71db5f55bc7"
+  "inventorySha256": "7e0ef081265cdfeb6bf223799c8a9f34da84e4aec4b95e6b1c9456bc9fc2b5aa",
+  "manifestSha256": "9b457e493605d330c1b688045fdb7c424629f504950d2fc9004266374ef8a69a"
 }
