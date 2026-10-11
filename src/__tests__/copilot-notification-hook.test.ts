@@ -16,6 +16,8 @@ type Hook = {
   takeCooldown(path: string, type: string, question: string, nowMs?: number, windowMs?: number): boolean;
   commandBinary(commandLine: string): string;
   permissionPromptSupported(notifications: unknown): boolean;
+  redactorCurrent(redact: unknown): boolean;
+  ASK_USER_GENERIC_TEXT: string;
   runNotificationHook(env?: NodeJS.ProcessEnv, deps?: {
     readInput?: () => Promise<string>;
     load?: () => Promise<{ notifications: unknown; dispatchNotificationInBackground: (event: string, data: unknown) => void }>;
@@ -85,6 +87,19 @@ describe('copilot notification hook', () => {
     expect(commandBinary('  ')).toBe('');
     expect(commandBinary('FOO=1 BAR=2 ./scripts/run.sh --flag')).toBe('run.sh');
     expect(commandBinary('<weird> x')).toBe('');
+    expect(commandBinary('"C:\\Program Files\\Git\\bin\\git.exe" push')).toBe('git.exe');
+    expect(commandBinary("TOKEN=x '/usr/local/my tools/deploy' --prod")).toBe('deploy');
+    expect(commandBinary('"unterminated path x')).toBe('unterminated');
+  });
+
+  it('sends only an allowlisted title (letters and spaces, at most 40), else the constant', async () => {
+    const { notificationFor } = await hook;
+    const q = (title: string) => notificationFor({ ...permissionPrompt, title, message: 'Run command: ls' }, {}, redactTokens)?.data.question;
+    expect(q('Approve tool use')).toBe('Approve tool use: Run command: ls');
+    expect(q('Permission needed for curl -H "X-API-Key: SECRET123"')).toBe('Permission needed: Run command: ls');
+    expect(q('Run curl with password hunter2')).toBe('Permission needed: Run command: ls');
+    expect(q('a'.repeat(41))).toBe('Permission needed: Run command: ls');
+    expect(q('')).toBe('Permission needed: Run command: ls');
   });
 
   it('caps and redacts elicitation (ask_user) text', async () => {
@@ -193,12 +208,24 @@ describe('copilot notification hook', () => {
       expect(dispatch[0]![1]).toMatchObject({ question: 'Permission needed: Run command: ping', replyable: false });
     });
 
-    it('sends no permission prompt through a stale build, but keeps ask_user notifications', async () => {
+    it('sends no permission prompt through a stale build, and ask_user only as generic text', async () => {
+      const { ASK_USER_GENERIC_TEXT } = await hook;
       expect(await run({ ...permissionPrompt, sessionId: 'sess-stale' }, staleNotifications)).toHaveLength(0);
       expect(await run({ ...permissionPrompt, sessionId: 'sess-stale2' }, { ...staleNotifications, NOTIFICATION_CAPS: { nonReplyable: true } })).toHaveLength(0);
-      const ask = await run({ ...elicitation, sessionId: 'sess-stale-ask' }, staleNotifications);
+      const ask = await run({ ...elicitation, sessionId: 'sess-stale-ask', message: 'Which db? password=hunter2' }, staleNotifications);
       expect(ask).toHaveLength(1);
-      expect(ask[0]![1]).toMatchObject({ question: 'Question: Which database?' });
+      expect(ask[0]![1]).toMatchObject({ question: ASK_USER_GENERIC_TEXT });
+      const current = await run({ ...elicitation, sessionId: 'sess-current-ask' }, srcNotifications);
+      expect(current[0]![1]).toMatchObject({ question: 'Question: Which database?' });
+    });
+
+    it('never sends ask_user secrets through the committed dist/notifications', async () => {
+      const { redactorCurrent, ASK_USER_GENERIC_TEXT } = await hook;
+      const dist = await import(pathToFileURL(join(REPO_ROOT, 'dist', 'notifications', 'index.js')).href);
+      const ask = await run({ ...elicitation, sessionId: 'sess-dist-ask', message: 'Which db? password=hunter2' }, dist);
+      expect(ask).toHaveLength(1);
+      expect(JSON.stringify(ask[0]![1])).not.toContain('hunter2');
+      if (!redactorCurrent(dist.redactTokens)) expect(ask[0]![1]).toMatchObject({ question: ASK_USER_GENERIC_TEXT });
     });
   });
 });

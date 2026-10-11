@@ -17,12 +17,14 @@
  * policy answers, and no worker waits on a human.
  *
  * Safety:
- * - a `permission_prompt` sends no command arguments at all: only the title,
- *   the tool category (`Run command`) and, for a command, the binary's base
- *   name (`Permission needed: Run command: curl`). The message is the full
- *   command line, and no redaction pattern list is complete;
+ * - a `permission_prompt` sends no command arguments at all: only the title
+ *   (letters and spaces, else `Permission needed`), the tool category
+ *   (`Run command`) and, for a command, the binary's base name
+ *   (`Permission needed: Run command: curl`). The message is the full command
+ *   line, and no redaction pattern list is complete;
  * - an `elicitation_dialog` question is passed through `redactTokens` and
- *   capped at QUESTION_MAX_CHARS;
+ *   capped at QUESTION_MAX_CHARS; when that redactor fails REDACT_SELF_TEST
+ *   (a stale dist) the text is not sent, only ASK_USER_GENERIC_TEXT;
  * - a `permission_prompt` notification is not replyable: a remote reply is
  *   never injected into the pane, where Enter would answer Copilot's
  *   permission menu (and approve the command), and notify() drops the pane's
@@ -52,18 +54,22 @@ export const REDACT_SELF_TEST = [
   ['{"password":"selftest2"}', 'selftest2'],
   ['X-API-Key: selftest3', 'selftest3'],
 ];
+/** The ask_user text sent when the loaded redactor fails REDACT_SELF_TEST. */
+export const ASK_USER_GENERIC_TEXT = 'Copilot is asking you a question';
+const PERMISSION_TITLE = 'Permission needed';
 
 const cap = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
 /**
  * The binary of a command line: the first word that is not an env assignment,
  * without quotes and directories, or '' when none looks like a program name.
- * A statement that starts with a PowerShell variable (`$env:X = 'v';`) is
- * skipped whole, so its value is never taken for the binary.
+ * A quoted word is one word (`"C:\Program Files\Git\bin\git.exe" push` ->
+ * `git.exe`). A statement that starts with a PowerShell variable
+ * (`$env:X = 'v';`) is skipped whole, so its value is never taken for the binary.
  */
 export function commandBinary(commandLine) {
   for (const statement of commandLine.split(/;|&&|\|\||\||\n/)) {
-    const words = statement.split(/\s+/).map((raw) => raw.replace(/^["'`(]+|["'`)]+$/g, ''))
+    const words = (statement.match(/"[^"]*"|'[^']*'|`[^`]*`|\S+/g) ?? []).map((raw) => raw.replace(/^["'`(]+|["'`)]+$/g, ''))
       .filter((word) => word && !word.includes('=') && !word.startsWith('-'));
     if (words.length === 0) continue;
     if (words[0].startsWith('$')) continue;
@@ -82,7 +88,8 @@ export function permissionPromptText(title, message, redact) {
   const category = at > 0 ? message.slice(0, at).trim() : '';
   const safeCategory = /^[A-Za-z][A-Za-z ]{0,39}$/.test(category) ? category : '';
   const binary = safeCategory && /command|shell|run|exec/i.test(safeCategory) ? commandBinary(message.slice(at + 1)) : '';
-  const text = [cap(title, 60), safeCategory, binary].filter(Boolean).join(': ');
+  const safeTitle = /^[A-Za-z ]{1,40}$/.test(title) ? title : PERMISSION_TITLE;
+  const text = [safeTitle, safeCategory, binary].filter(Boolean).join(': ');
   return redact(text).replace(/\s+/g, ' ');
 }
 
@@ -101,9 +108,10 @@ export function notificationFor(payload, env = process.env, redact) {
   const message = typeof payload.message === 'string' ? payload.message.trim() : '';
   const title = typeof payload.title === 'string' ? payload.title.trim() : '';
   const permission = payload.notification_type === 'permission_prompt';
-  const question = permission
-    ? permissionPromptText(title, message, redact)
-    : cap(redact([title, message].filter(Boolean).join(': ')).replace(/\s+/g, ' '), QUESTION_MAX_CHARS);
+  let question;
+  if (permission) question = permissionPromptText(title, message, redact);
+  else if (!redactorCurrent(redact)) question = ASK_USER_GENERIC_TEXT; // stale dist: no question text
+  else question = cap(redact([title, message].filter(Boolean).join(': ')).replace(/\s+/g, ' '), QUESTION_MAX_CHARS);
   return {
     event: 'ask-user-question',
     data: {
@@ -122,9 +130,14 @@ export function notificationFor(payload, env = process.env, redact) {
  */
 export function permissionPromptSupported(notifications) {
   if (notifications?.NOTIFICATION_CAPS?.nonReplyable !== true) return false;
-  if (typeof notifications.redactTokens !== 'function') return false;
+  return redactorCurrent(notifications.redactTokens);
+}
+
+/** Whether `redact` masks every REDACT_SELF_TEST secret (false for an older dist build). */
+export function redactorCurrent(redact) {
+  if (typeof redact !== 'function') return false;
   try {
-    return REDACT_SELF_TEST.every(([input, secret]) => !String(notifications.redactTokens(input)).includes(secret));
+    return REDACT_SELF_TEST.every(([input, secret]) => !String(redact(input)).includes(secret));
   } catch {
     return false;
   }
