@@ -45,19 +45,46 @@ Each rule exists because breaking it once cost a round-trip or a wiped tree.
 ### Where the safety settings come from
 
 `ship.allowAdminMerge`, `ship.advisoryChecks`, `ship.requiredChecks` and
-`ship.knownFlakyFile` are read only from (1) the user config
-(`~/.config/claude-omc/config.jsonc`), then (2) `.copilot/omg.jsonc` as
-committed on the base branch (`git show origin/<base>:.copilot/omg.jsonc`),
+`ship.knownFlakyFile` are read only from (1) the user config at its default
+location, then (2) `.copilot/omg.jsonc` as committed on the base branch,
 then (3) the defaults. A lane can drop an untracked file into the checkout
 and a PR can commit one, so the working-tree file and the PR head never set
 them: `omc ship` ignores those keys there and prints a warning. The other
 `ship` keys keep the usual order (defaults, base-branch file, user config,
 working-tree file). The known-flaky list is read from the base branch too.
 
+- **User config location.** The safety keys come from
+  `<home>/.config/claude-omc/config.jsonc` (Windows:
+  `<home>\AppData\Roaming\claude-omc\config.jsonc`), with `<home>` the
+  account's home as the OS reports it. When `XDG_CONFIG_HOME` / `APPDATA`
+  select another file, that file's safety keys are ignored with a warning.
+- **Base branch.** The base, its sha and the head sha come from GitHub
+  (`gh pr view`), never from the run state. `omc ship` fetches the base,
+  checks that `refs/remotes/origin/<base>` equals GitHub's base sha, and
+  reads `<base sha>:.copilot/omg.jsonc` with replace refs off
+  (`GIT_NO_REPLACE_OBJECTS=1`), so `git replace` or a moved or shadowed ref
+  in the checkout changes nothing. When that check fails, `gates` warns and
+  uses the defaults; `merge` refuses.
+- **Trusted bases.** Only bases in `ship.trustedBases` (user config only;
+  default `dev`, `main`, `master`) are read. For any other base the defaults
+  apply and `merge` prints the admin merge command instead of running it: a
+  lane can create a branch and target its PR at it.
+- **Legacy name.** `.copilot/omc.jsonc` is never read from the base branch.
+  A working-tree file under that name gets one warning; rename it to
+  `.copilot/omg.jsonc` and commit it to the base.
+- **Environment.** Engine commands run without the `GIT_*` variables that
+  redirect git (`GIT_CONFIG_*`, `GIT_DIR`, `GIT_SSH_COMMAND`,
+  `GIT_EXEC_PATH`, ...) and without `GH_REPO` / `GH_HOST`; `GH_TOKEN`
+  passes through for authentication. A custom ssh belongs in
+  `core.sshCommand`.
+
 ### What the engine can and cannot prove
 
-The implementer / reviewer names are advisory: `omc ship` compares the
-strings it is given and cannot verify which agent typed them. The state file
+The implementer / reviewer names, `OMG_SHIP_HUMAN` and every other
+environment input are advisory against a hostile lane: `omc ship` compares
+the strings it is given and cannot verify which agent typed them, and a
+process that controls its environment can set `OMG_SHIP_HUMAN=1` or put
+another `git` first on `PATH`. The state file
 is not tamper-proof either. Every engine write records a sha256 over the
 state (verdicts, housekeeping commits, phase, history) in `integrity`; later
 updates and `merge` refuse a state whose hash no longer matches, which
@@ -112,11 +139,17 @@ real protections are the lane discipline above, the owner-only config, and
 7. **Merge-readiness:** mark the PR ready (`gh pr ready <pr>`), then
    `omc ship merge <pr>`. It refuses unless the gates are green, the state
    passes its integrity check, the last approval covers the head (only
-   ship housekeeping commits may follow the reviewed sha), and the PR diff
-   touches no merge-rule file (those PRs are the owner's to merge). With
-   `ship.allowAdminMerge` unset (the default) it prints the exact
-   `gh pr merge --admin --merge` command for the owner; there is no flag that
-   turns it on, and merging is the owner's call.
+   ship housekeeping commits may follow the reviewed sha), and the PR's
+   changed files touch no merge-rule file (those PRs are the owner's to
+   merge). It lists the changed files itself
+   (`git diff --name-only --no-renames -z <base sha>...<head sha>`), so a
+   rename out of `.github/workflows/` still counts and the 300-file cap of
+   `gh pr diff` no longer applies. It also refuses when the base cannot be
+   fetched or does not match GitHub's base sha. With
+   `ship.allowAdminMerge` unset (the default), or a base outside
+   `ship.trustedBases`, it prints the exact `gh pr merge --admin --merge`
+   command for the owner; there is no flag that turns it on, and merging is
+   the owner's call.
 
 ## Executor brief (template)
 
@@ -167,6 +200,9 @@ Report the new head sha and which finding each commit addresses.
     "maxFixRounds": 2,
     // Safety keys: user config or the base branch's committed file only.
     "allowAdminMerge": false,
+    // User config only: bases whose committed config is read and that merge
+    // may admin-merge into.
+    "trustedBases": ["dev", "main", "master"],
     // Never blocking. The Socket Security GitHub App checks have no workflow
     // file and are advisory by default too.
     "advisoryChecks": [
@@ -177,6 +213,8 @@ Report the new head sha and which finding each commit addresses.
     ],
     // Omit to keep the default (all 18 checks this repo's CI reports on a PR);
     // a value replaces the whole list. A listed check not reported yet is pending.
+    // ci.yml and upgrade-test.yml run only for PRs to main / dev, so a PR to
+    // another base stays pending under the default list: give it its own.
     "requiredChecks": ["Lint & Type Check", "Test", "Test (Windows path suite)", "Build", "npm pack + install test", "..."],
     "knownFlakyFile": ".github/known-flaky-tests.json",
     "autoRerunFlaky": true,

@@ -54,13 +54,41 @@ All notable changes to oh-my-copilot will be documented in this file.
   entries).
 - **Safety settings come from trusted sources only.** `ship.allowAdminMerge`,
   `advisoryChecks`, `requiredChecks` and `knownFlakyFile` are read from the
-  user config, then `.copilot/omg.jsonc` as committed on the PR's base branch
-  (`git show origin/<base>:...`), then the defaults. The same keys in the
+  user config at its default location, then `.copilot/omg.jsonc` as
+  committed on the PR's base branch, then the defaults. The same keys in the
   working-tree project file (a lane can drop one in untracked) or the PR head
   are ignored with a warning, and the known-flaky list is read from the base
-  branch. `omg ship merge` refuses a PR whose diff touches
+  branch. `omg ship merge` refuses a PR whose changed files touch
   `.copilot/omg.jsonc`, `.github/known-flaky-tests.json` or
   `.github/workflows/` unless the owner sets `OMG_SHIP_HUMAN=1`.
+- **The base branch is checked against GitHub.** `init`, `gates` and `merge`
+  take the base and its sha (`baseRefOid`) from `gh pr view`, fetch the
+  base, require `refs/remotes/origin/<base>` to equal that sha, and read
+  `<sha>:.copilot/omg.jsonc` with `GIT_NO_REPLACE_OBJECTS=1`, so a lane's
+  `git replace` or a moved or shadowed ref cannot change the trusted config.
+  When the check (or the fetch) fails, `gates` warns and uses the defaults
+  and `merge` refuses. `init --base` must match the PR's base on GitHub, and
+  `gates` uses GitHub's base rather than the recorded one.
+- **`ship.trustedBases`** (user config only; default `dev`, `main`,
+  `master`): any other base is never read and never admin-merged; `merge`
+  prints the command instead.
+- **User-config safety keys ignore `APPDATA` / `XDG_CONFIG_HOME`.** They come
+  from the default location under the account's home as the OS reports it;
+  a file chosen through those variables keeps its other keys, and its safety
+  keys are ignored with a warning.
+- **The merge's changed-file list is computed locally**
+  (`git diff --name-only --no-renames -z <base sha>...<head sha>`): a rename
+  out of `.github/workflows/` names the old path too, non-ASCII paths are
+  read unquoted, and the 300-file cap of `gh pr diff` no longer blocks a
+  merge.
+- Engine commands run with a scrubbed environment: the `GIT_*` variables
+  that redirect git (`GIT_CONFIG_*`, `GIT_DIR`, `GIT_EXEC_PATH`,
+  `GIT_SSH_COMMAND`, ...) and `GH_REPO` / `GH_HOST` are dropped, `GH_TOKEN`
+  passes through. The push guard compares protected branch names
+  case-insensitively. A legacy-named `.copilot/omc.jsonc` (never read from
+  the base) gets one warning instead of one per key. `OMG_SHIP_HUMAN` and
+  the lane names stay advisory against a lane that controls its own
+  environment.
 - `gates` resolves the PR head first, reads checks and workflow runs for that
   sha, and is pending when the head moved during the read; a workflow run
   that completed red without reporting any check (startup failure) is
