@@ -16,7 +16,8 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **`omg ship gates <pr> [--watch]`** applies the merge rule to
   `gh pr checks --json`: green only when every check outside
   `ship.advisoryChecks` (default `No Committed Build Artifacts`,
-  `Authorize generated artifacts from base trust root`) is SUCCESS or
+  `Authorize generated artifacts from base trust root` and the two Socket
+  Security app checks) is SUCCESS or
   SKIPPED, every `ship.requiredChecks` name has been reported (a missing one,
   such as `Build` before its `needs:` jobs start, is pending), and every
   workflow run for the head sha is completed; unknown states fail closed. A
@@ -44,12 +45,34 @@ All notable changes to oh-my-copilot will be documented in this file.
   sha256 `integrity` field written on every engine update catches hand edits
   (later updates and `merge` refuse a mismatch) but is not a signature.
 - Every engine command passes an allowlist guard: only the exact git / gh /
-  node / npm shapes the engine builds may spawn, so force pushes, deleting
+  node shapes the engine builds may spawn, so force pushes, deleting
   refspecs, rebase, pull, amend, `reset`, global `-c` / `--config-env`
   options, option-shaped operands, `git worktree`, `gh api`, `gh -R`,
   `--auto` / `--delete-branch` merges, `.cmd` shims and `npm ci` are refused.
   Run state lives in `.omg/state/ship/<pr>.json` under the state file lock
-  and is shape-checked on read.
+  and is shape-checked on read (including `history` and `previousRuns`
+  entries).
+- **Safety settings come from trusted sources only.** `ship.allowAdminMerge`,
+  `advisoryChecks`, `requiredChecks` and `knownFlakyFile` are read from the
+  user config, then `.copilot/omg.jsonc` as committed on the PR's base branch
+  (`git show origin/<base>:...`), then the defaults. The same keys in the
+  working-tree project file (a lane can drop one in untracked) or the PR head
+  are ignored with a warning, and the known-flaky list is read from the base
+  branch. `omg ship merge` refuses a PR whose diff touches
+  `.copilot/omg.jsonc`, `.github/known-flaky-tests.json` or
+  `.github/workflows/` unless the owner sets `OMG_SHIP_HUMAN=1`.
+- `gates` resolves the PR head first, reads checks and workflow runs for that
+  sha, and is pending when the head moved during the read; a workflow run
+  that completed red without reporting any check (startup failure) is
+  failed; a head with no checks and no workflow runs reports
+  `no-workflows-triggered` (bot PRs pushed with `GITHUB_TOKEN` trigger no
+  workflows). The Socket Security app checks are advisory by default, and a
+  test compares `.github/workflows/*.yml` PR jobs with the default
+  required + advisory lists.
+- `init --force` keeps the implementer and fix-round budget of a run that has
+  verdicts (resetting needs `OMG_SHIP_HUMAN=1`). The guard no longer allows
+  any npm command and refuses pushes to `main`, `master`, `dev` and the
+  run's base.
 
 # oh-my-copilot v5.9.0
 

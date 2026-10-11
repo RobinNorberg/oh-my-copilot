@@ -26,9 +26,10 @@ Each rule exists because breaking it once cost a round-trip or a wiped tree.
   tree: removing a worktree empties the shared `node_modules` junction target.
 - No force push, no rebase, no amend. Update a branch with
   `git merge origin/<base>` and a plain push. `omc ship` only spawns an
-  allowlist of the exact git/gh/node/npm command shapes it builds, so force,
-  rebase, pull, amend, `reset`, `gh api` and `npm ci` are refused before
-  anything spawns.
+  allowlist of the exact git/gh/node command shapes it builds, so force,
+  rebase, pull, amend, `reset`, `gh api`, any npm command and a push to
+  `main` / `master` / `dev` / the run's base are refused before anything
+  spawns.
 - The inventory regeneration is the LAST commit. Any later commit re-stales
   `inventory/inventory-graph.json`; `omc ship prepare` orders this for you.
 - Merge only through `omc ship merge`. It checks the gates and the verdict;
@@ -37,7 +38,21 @@ Each rule exists because breaking it once cost a round-trip or a wiped tree.
   `.copilot/omg.jsonc`, and never set `OMG_SHIP_HUMAN`. Those are the owner's
   controls: `ship.allowAdminMerge` is the only switch that runs the admin
   merge, and `OMG_SHIP_HUMAN=1` is the only way to `init --force` over a
-  blocked or merged run.
+  blocked or merged run, to reset the implementer or fix-round count of a
+  run that has verdicts, or to merge a PR that touches `.copilot/omg.jsonc`,
+  `.github/known-flaky-tests.json` or `.github/workflows/`.
+
+### Where the safety settings come from
+
+`ship.allowAdminMerge`, `ship.advisoryChecks`, `ship.requiredChecks` and
+`ship.knownFlakyFile` are read only from (1) the user config
+(`~/.config/claude-omc/config.jsonc`), then (2) `.copilot/omg.jsonc` as
+committed on the base branch (`git show origin/<base>:.copilot/omg.jsonc`),
+then (3) the defaults. A lane can drop an untracked file into the checkout
+and a PR can commit one, so the working-tree file and the PR head never set
+them: `omc ship` ignores those keys there and prints a warning. The other
+`ship` keys keep the usual order (defaults, base-branch file, user config,
+working-tree file). The known-flaky list is read from the base branch too.
 
 ### What the engine can and cannot prove
 
@@ -82,16 +97,23 @@ real protections are the lane discipline above, the owner-only config, and
    one watch window (9 minutes, under the 10-minute watcher cap): run the
    same command again. Green needs every `ship.requiredChecks` name reported
    (a missing one, such as `Build` before its `needs:` jobs finish, is
-   pending) and every workflow run for the head sha completed. Exit 1 lists
+   pending) and every workflow run for the head sha completed; a run that
+   completed red without reporting any check (a startup failure) is failed,
+   and a head that moves during the read is pending. `no-workflows-triggered`
+   means the head has no checks and no workflow runs at all: a PR opened or
+   pushed with the Actions `GITHUB_TOKEN` (draft bot PRs) triggers nothing,
+   so push from a PAT or close and reopen the PR. Exit 1 lists
    the real failures; a failure whose every failing test matches a
-   title-scoped entry in `.github/known-flaky-tests.json`, with no unhandled
+   title-scoped entry in `.github/known-flaky-tests.json` (as committed on the
+   base branch), with no unhandled
    errors, failed suites or failing non-test step in the log, is rerun once
    automatically (`gh run rerun <id> --failed`); the same test failing again
    is a real failure.
 7. **Merge-readiness:** mark the PR ready (`gh pr ready <pr>`), then
    `omc ship merge <pr>`. It refuses unless the gates are green, the state
-   passes its integrity check, and the last approval covers the head (only
-   ship housekeeping commits may follow the reviewed sha). With
+   passes its integrity check, the last approval covers the head (only
+   ship housekeeping commits may follow the reviewed sha), and the PR diff
+   touches no merge-rule file (those PRs are the owner's to merge). With
    `ship.allowAdminMerge` unset (the default) it prints the exact
    `gh pr merge --admin --merge` command for the owner; there is no flag that
    turns it on, and merging is the owner's call.
@@ -136,15 +158,23 @@ Never: git worktree add/remove, npm ci, force push, rebase, editing
 Report the new head sha and which finding each commit addresses.
 ```
 
-## Config (`.copilot/omg.jsonc`, owner-edited)
+## Config (owner-edited: user config, or `.copilot/omg.jsonc` committed on the base)
 
 ```jsonc
 {
   "ship": {
     "base": "dev",
     "maxFixRounds": 2,
+    // Safety keys: user config or the base branch's committed file only.
     "allowAdminMerge": false,
-    "advisoryChecks": ["No Committed Build Artifacts", "Authorize generated artifacts from base trust root"],
+    // Never blocking. The Socket Security GitHub App checks have no workflow
+    // file and are advisory by default too.
+    "advisoryChecks": [
+      "No Committed Build Artifacts",
+      "Authorize generated artifacts from base trust root",
+      "Socket Security: Pull Request Alerts",
+      "Socket Security: Project Report"
+    ],
     // Omit to keep the default (all 18 checks this repo's CI reports on a PR);
     // a value replaces the whole list. A listed check not reported yet is pending.
     "requiredChecks": ["Lint & Type Check", "Test", "Test (Windows path suite)", "Build", "npm pack + install test", "..."],
