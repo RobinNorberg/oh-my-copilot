@@ -4,6 +4,25 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Premium-request budget governor.** A ledger at
+  `.omg/state/budget-ledger.json` records Copilot usage per session and per
+  team, each record labelled measured or estimated. Copilot CLI sessions are
+  read from their `events.jsonl` (`session.shutdown` /
+  `session.usage_checkpoint` totals, else an estimate of one premium request
+  per prompt until the session ends); sdk team workers are recorded live by
+  their host. New `budget` keys in `.copilot/omg.jsonc`: `mode`
+  (`warn` default, `enforce` opt-in), `unit` (`premiumRequests` or
+  `credits`), `softLimit`, `hardLimit`, `perTeamLimit`. A fail-open
+  `premium-budget.mjs` hook prints a SessionStart summary and a one-time
+  notice when a limit is crossed; the HUD gains a `premiumBudget` element;
+  in enforce mode `omg team` clamps or refuses a fan-out whose projected cost
+  exceeds the limits (`--budget-override` starts it anyway); `omg budget`
+  (`status`, `reset`, `--json`) shows and resets the ledger; `omg doctor
+  conflicts` warns about invalid values. `OMC_BUDGET_GOVERNOR=0` turns it
+  all off. See [REFERENCE.md](docs/REFERENCE.md#omg-budget-premium-request-budget).
+
 ### Added: Copilot `notification` hook
 
 - **"Input needed" notifications on Copilot.** The generated

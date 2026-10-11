@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "15d20077d77c22f6d7f45abf5a382c052c89dc34",
-    "sourceSha256": "6df928af49746ab1f664d3692338495b30a59cb44c285882997ce6cf0f96bdc4",
+    "head": "9b052930ca6848a0ff37ab48b2d057e8afe697cb",
+    "sourceSha256": "7e445bef59868c79200949a19394ad1c0a480cb9c842ad1a3b8b1c71b08755d6",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "15d20077d77c22f6d7f45abf5a382c052c89dc34",
-  "sourceSha256": "6df928af49746ab1f664d3692338495b30a59cb44c285882997ce6cf0f96bdc4",
+  "head": "9b052930ca6848a0ff37ab48b2d057e8afe697cb",
+  "sourceSha256": "7e445bef59868c79200949a19394ad1c0a480cb9c842ad1a3b8b1c71b08755d6",
   "counts": {
     "public": {
       "skills": 61,
@@ -28,13 +28,13 @@
       "toolFiles": 62,
       "libFiles": 48,
       "templateHooks": 23,
-      "srcFiles": 1545,
-      "total": 1568
+      "srcFiles": 1551,
+      "total": 1574
     },
     "generated": {
-      "distFiles": 5951,
+      "distFiles": 5975,
       "bridgeFiles": 9,
-      "total": 5960
+      "total": 5984
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -896,6 +896,7 @@
       "scripts/postinstall-contained-fs.mjs",
       "scripts/pre-compact.mjs",
       "scripts/pre-tool-enforcer.mjs",
+      "scripts/premium-budget.mjs",
       "scripts/project-memory-posttool.mjs",
       "scripts/project-memory-precompact.mjs",
       "scripts/project-memory-session.mjs",
@@ -2337,6 +2338,18 @@
       "dist/autoresearch/setup-contract.d.ts.map",
       "dist/autoresearch/setup-contract.js",
       "dist/autoresearch/setup-contract.js.map",
+      "dist/budget/__tests__/budget.test.d.ts",
+      "dist/budget/__tests__/budget.test.d.ts.map",
+      "dist/budget/__tests__/budget.test.js",
+      "dist/budget/__tests__/budget.test.js.map",
+      "dist/budget/governor.d.ts",
+      "dist/budget/governor.d.ts.map",
+      "dist/budget/governor.js",
+      "dist/budget/governor.js.map",
+      "dist/budget/ledger.d.ts",
+      "dist/budget/ledger.d.ts.map",
+      "dist/budget/ledger.js",
+      "dist/budget/ledger.js.map",
       "dist/cli/__tests__/ask.test.d.ts",
       "dist/cli/__tests__/ask.test.d.ts.map",
       "dist/cli/__tests__/ask.test.js",
@@ -2509,6 +2522,10 @@
       "dist/cli/commands/__tests__/smoke-tier2.test.d.ts.map",
       "dist/cli/commands/__tests__/smoke-tier2.test.js",
       "dist/cli/commands/__tests__/smoke-tier2.test.js.map",
+      "dist/cli/commands/__tests__/team-budget-governor.test.d.ts",
+      "dist/cli/commands/__tests__/team-budget-governor.test.d.ts.map",
+      "dist/cli/commands/__tests__/team-budget-governor.test.js",
+      "dist/cli/commands/__tests__/team-budget-governor.test.js.map",
       "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts",
       "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts.map",
       "dist/cli/commands/__tests__/team-role-shorthand.test.js",
@@ -2533,6 +2550,10 @@
       "dist/cli/commands/alias-retirement.d.ts.map",
       "dist/cli/commands/alias-retirement.js",
       "dist/cli/commands/alias-retirement.js.map",
+      "dist/cli/commands/budget.d.ts",
+      "dist/cli/commands/budget.d.ts.map",
+      "dist/cli/commands/budget.js",
+      "dist/cli/commands/budget.js.map",
       "dist/cli/commands/capabilities.d.ts",
       "dist/cli/commands/capabilities.d.ts.map",
       "dist/cli/commands/capabilities.js",
@@ -4747,6 +4768,10 @@
       "dist/hud/elements/prd.d.ts.map",
       "dist/hud/elements/prd.js",
       "dist/hud/elements/prd.js.map",
+      "dist/hud/elements/premium-budget.d.ts",
+      "dist/hud/elements/premium-budget.d.ts.map",
+      "dist/hud/elements/premium-budget.js",
+      "dist/hud/elements/premium-budget.js.map",
       "dist/hud/elements/prompt-time.d.ts",
       "dist/hud/elements/prompt-time.d.ts.map",
       "dist/hud/elements/prompt-time.js",
@@ -15505,6 +15530,66 @@
         "path": "dist/autoresearch/setup-contract.js.map"
       },
       {
+        "id": "dist/budget/__tests__/budget.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/budget.test.d.ts"
+      },
+      {
+        "id": "dist/budget/__tests__/budget.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/budget.test.d.ts.map"
+      },
+      {
+        "id": "dist/budget/__tests__/budget.test.js",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/budget.test.js"
+      },
+      {
+        "id": "dist/budget/__tests__/budget.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/__tests__/budget.test.js.map"
+      },
+      {
+        "id": "dist/budget/governor.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/budget/governor.d.ts"
+      },
+      {
+        "id": "dist/budget/governor.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/governor.d.ts.map"
+      },
+      {
+        "id": "dist/budget/governor.js",
+        "kind": "generated-dist",
+        "path": "dist/budget/governor.js"
+      },
+      {
+        "id": "dist/budget/governor.js.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/governor.js.map"
+      },
+      {
+        "id": "dist/budget/ledger.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/budget/ledger.d.ts"
+      },
+      {
+        "id": "dist/budget/ledger.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/ledger.d.ts.map"
+      },
+      {
+        "id": "dist/budget/ledger.js",
+        "kind": "generated-dist",
+        "path": "dist/budget/ledger.js"
+      },
+      {
+        "id": "dist/budget/ledger.js.map",
+        "kind": "generated-dist",
+        "path": "dist/budget/ledger.js.map"
+      },
+      {
         "id": "dist/cli/__tests__/ask.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/__tests__/ask.test.d.ts"
@@ -16365,6 +16450,26 @@
         "path": "dist/cli/commands/__tests__/smoke-tier2.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/team-budget-governor.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-budget-governor.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-budget-governor.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-budget-governor.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-budget-governor.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-budget-governor.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/team-budget-governor.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/team-budget-governor.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/team-role-shorthand.test.d.ts"
@@ -16483,6 +16588,26 @@
         "id": "dist/cli/commands/alias-retirement.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/alias-retirement.js.map"
+      },
+      {
+        "id": "dist/cli/commands/budget.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/budget.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/budget.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/budget.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/budget.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/budget.js"
+      },
+      {
+        "id": "dist/cli/commands/budget.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/budget.js.map"
       },
       {
         "id": "dist/cli/commands/capabilities.d.ts",
@@ -27553,6 +27678,26 @@
         "id": "dist/hud/elements/prd.js.map",
         "kind": "generated-dist",
         "path": "dist/hud/elements/prd.js.map"
+      },
+      {
+        "id": "dist/hud/elements/premium-budget.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/premium-budget.d.ts"
+      },
+      {
+        "id": "dist/hud/elements/premium-budget.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/premium-budget.d.ts.map"
+      },
+      {
+        "id": "dist/hud/elements/premium-budget.js",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/premium-budget.js"
+      },
+      {
+        "id": "dist/hud/elements/premium-budget.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hud/elements/premium-budget.js.map"
       },
       {
         "id": "dist/hud/elements/prompt-time.d.ts",
@@ -39560,6 +39705,11 @@
         "path": "scripts/pre-tool-enforcer.mjs"
       },
       {
+        "id": "scripts/premium-budget.mjs",
+        "kind": "script",
+        "path": "scripts/premium-budget.mjs"
+      },
+      {
         "id": "scripts/project-memory-posttool.mjs",
         "kind": "script",
         "path": "scripts/project-memory-posttool.mjs"
@@ -42200,6 +42350,21 @@
         "path": "src/autoresearch/setup-contract.ts"
       },
       {
+        "id": "src/budget/__tests__/budget.test.ts",
+        "kind": "src",
+        "path": "src/budget/__tests__/budget.test.ts"
+      },
+      {
+        "id": "src/budget/governor.ts",
+        "kind": "src",
+        "path": "src/budget/governor.ts"
+      },
+      {
+        "id": "src/budget/ledger.ts",
+        "kind": "src",
+        "path": "src/budget/ledger.ts"
+      },
+      {
         "id": "src/cli/__tests__/ask.test.ts",
         "kind": "src",
         "path": "src/cli/__tests__/ask.test.ts"
@@ -42415,6 +42580,11 @@
         "path": "src/cli/commands/__tests__/smoke-tier2.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/team-budget-governor.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/team-role-shorthand.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/team-role-shorthand.test.ts"
@@ -42443,6 +42613,11 @@
         "id": "src/cli/commands/alias-retirement.ts",
         "kind": "src",
         "path": "src/cli/commands/alias-retirement.ts"
+      },
+      {
+        "id": "src/cli/commands/budget.ts",
+        "kind": "src",
+        "path": "src/cli/commands/budget.ts"
       },
       {
         "id": "src/cli/commands/capabilities.ts",
@@ -45258,6 +45433,11 @@
         "id": "src/hud/elements/prd.ts",
         "kind": "src",
         "path": "src/hud/elements/prd.ts"
+      },
+      {
+        "id": "src/hud/elements/premium-budget.ts",
+        "kind": "src",
+        "path": "src/hud/elements/premium-budget.ts"
       },
       {
         "id": "src/hud/elements/prompt-time.ts",
@@ -50618,6 +50798,16 @@
       },
       {
         "from": "scripts/pre-tool-enforcer.mjs",
+        "to": "scripts/lib/stdin.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/premium-budget.mjs",
+        "to": "dist/budget/governor.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/premium-budget.mjs",
         "to": "scripts/lib/stdin.mjs",
         "kind": "imports"
       },
@@ -60212,6 +60402,151 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/budget/governor.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/budget/governor.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/cli/commands/budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/cli/commands/team.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/hud/elements/premium-budget.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/__tests__/budget.test.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "src/config/project-config-path.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "src/shared/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "src/utils/jsonc.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/governor.ts",
+        "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "src/lib/file-lock.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/budget/ledger.ts",
+        "to": "src/utils/config-dir.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/__tests__/ask.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -61317,6 +61652,31 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/team-budget-governor.test.ts",
+        "to": "src/cli/commands/team.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/team-role-shorthand.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -61492,6 +61852,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/budget.ts",
+        "to": "src/budget/governor.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/budget.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/capabilities.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -61534,6 +61904,11 @@
       {
         "from": "src/cli/commands/doctor-conflicts.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/doctor-conflicts.ts",
+        "to": "src/budget/governor.ts",
         "kind": "imports"
       },
       {
@@ -61869,6 +62244,16 @@
       {
         "from": "src/cli/commands/team.ts",
         "to": "src/agents/utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
+        "to": "src/budget/governor.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/team.ts",
+        "to": "src/budget/ledger.ts",
         "kind": "imports"
       },
       {
@@ -62219,6 +62604,11 @@
       {
         "from": "src/cli/index.ts",
         "to": "src/cli/commands/alias-retirement.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
+        "to": "src/cli/commands/budget.ts",
         "kind": "imports"
       },
       {
@@ -75642,6 +76032,21 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hud/elements/premium-budget.ts",
+        "to": "src/budget/governor.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/premium-budget.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/elements/premium-budget.ts",
+        "to": "src/hud/colors.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hud/elements/prompt-time.ts",
         "to": "src/hud/colors.ts",
         "kind": "imports"
@@ -76029,6 +76434,11 @@
       {
         "from": "src/hud/render.ts",
         "to": "src/hud/elements/prd.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/render.ts",
+        "to": "src/hud/elements/premium-budget.ts",
         "kind": "imports"
       },
       {
@@ -84653,6 +85063,11 @@
       },
       {
         "from": "src/team/__tests__/sdk-transport.test.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-transport.test.ts",
         "to": "src/lib/atomic-write.ts",
         "kind": "imports"
       },
@@ -88409,6 +88824,11 @@
       {
         "from": "src/team/sdk-host.ts",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/sdk-host.ts",
+        "to": "src/budget/ledger.ts",
         "kind": "imports"
       },
       {
@@ -92992,6 +93412,11 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/inventory-graph-drift.test.ts",
+        "to": "scripts/generate-inventory-graph.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/issue-3996-ruby-false-positive.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -93348,12 +93773,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8209,
-      "edgeCount": 8962,
-      "importEdgeCount": 7427,
+      "nodeCount": 8240,
+      "edgeCount": 9011,
+      "importEdgeCount": 7472,
       "registerEdgeCount": 82
     }
   },
-  "inventorySha256": "57fb34558e14524ac7700987fc7162533ce12790ee666b5287b169b2d819814c",
-  "manifestSha256": "7db7533a6d87960ad64d93f5c39b49d770d010a7acbd21e26d30793a1274d9cd"
+  "inventorySha256": "6216ed3dec2f5f8649c20df5362d4edeb9b49c65ca49c2399b02c69b55ea4db3",
+  "manifestSha256": "5d5d8a8e8b7b7c8135ddd752f269341668f28c3f4d49717551539cc082c666cb"
 }

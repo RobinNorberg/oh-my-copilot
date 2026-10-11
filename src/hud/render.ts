@@ -34,6 +34,7 @@ import { renderEnterpriseCost } from "./elements/enterprise-cost.js";
 import { renderPromptTime } from "./elements/prompt-time.js";
 import { renderAutopilot } from "./elements/autopilot.js";
 import { renderCwd } from "./elements/cwd.js";
+import { renderPremiumBudget } from "./elements/premium-budget.js";
 import { renderHostname } from "./elements/hostname.js";
 import { renderGitRepo, renderGitBranch, renderGitStatus } from "./elements/git.js";
 import { renderMultiRepo } from "./elements/multi-repo.js";
@@ -420,6 +421,11 @@ export async function render(
       const session = renderSession(context.sessionHealth);
       if (session) rendered.set("session", session);
     }
+  }
+
+  if (enabledElements.premiumBudget !== false) {
+    const budget = renderPremiumBudget(context.cwd);
+    if (budget) rendered.set("premiumBudget", budget);
   }
 
   if (isEnterprise && enabledElements.showEnterpriseCost !== false) {

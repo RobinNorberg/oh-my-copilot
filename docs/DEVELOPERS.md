@@ -139,9 +139,9 @@ These were verified against Copilot CLI 1.0.91.
 
 | Copilot event | Name in `copilot/hooks.json` | Fork hook scripts | Upstream Claude hook | Status |
 |---|---|---|---|---|
-| `sessionStart` | `SessionStart` | session-start, project-memory-session, wiki-session-start, stale-run-reporter, runs-reconciler | `SessionStart` | mapped; the `init` and `maintenance` matcher groups are [not projected](./HOOKS.md#not-projected) |
+| `sessionStart` | `SessionStart` | session-start, project-memory-session, wiki-session-start, stale-run-reporter, runs-reconciler, premium-budget | `SessionStart` | mapped; the `init` and `maintenance` matcher groups are [not projected](./HOOKS.md#not-projected) |
 | `sessionEnd` | `SessionEnd` | session-end, wiki-session-end | `SessionEnd` | mapped |
-| `userPromptSubmitted` | `UserPromptSubmit` | keyword-detector, skill-injector | `UserPromptSubmit` | mapped |
+| `userPromptSubmitted` | `UserPromptSubmit` | keyword-detector, skill-injector, premium-budget | `UserPromptSubmit` | mapped |
 | `preToolUse` | `PreToolUse` | pre-tool-enforcer, git-guardrails (`Bash`) | `PreToolUse` | mapped |
 | `permissionRequest` | `PermissionRequest` | permission-handler (`Bash`) | `PermissionRequest` | mapped |
 | `postToolUse` | `PostToolUse` | post-tool-verifier, project-memory-posttool, post-tool-rules-injector, post-tool-directory-context-injector | `PostToolUse` | mapped |
@@ -149,7 +149,7 @@ These were verified against Copilot CLI 1.0.91.
 | `subagentStart` | `SubagentStart` | subagent-tracker start | `SubagentStart` | mapped |
 | `subagentStop` | `SubagentStop` | subagent-tracker stop, verify-deliverables | `SubagentStop` | mapped |
 | `preCompact` | `PreCompact` | pre-compact, project-memory-precompact, wiki-pre-compact | `PreCompact` | mapped |
-| `agentStop` | `Stop` | context-guard-stop, workflow-drift-guard, persistent-mode, budget-guard, code-simplifier | `Stop` | mapped |
+| `agentStop` | `Stop` | context-guard-stop, workflow-drift-guard, persistent-mode, budget-guard, premium-budget, code-simplifier | `Stop` | mapped |
 | `notification` | `Notification` (fork-owned `FORK_HOOKS`) | copilot/notification.mjs | none in upstream `hooks/hooks.json` (Claude Code has `Notification`; upstream sends `ask-user-question` from PreToolUse `AskUserQuestion` instead) | mapped: `permission_prompt` and `elicitation_dialog` send the `ask-user-question` notification; other types and team workers are ignored |
 | `errorOccurred` | none | none | none | rejected: no OMC consumer. A failed turn already reaches `sessionEnd` with `reason: "error"` and `error`, and SDK workers record `session.error`. The `errorHandling: retry` output would duplicate the runtime's own retries |
 | `preMcpToolCall` | none | none | none | rejected: the only output is `metaToUse`, the outgoing MCP request `_meta`, which OMC has no use for. `PreToolUse` already sees and can deny MCP tools |
