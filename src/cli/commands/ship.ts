@@ -11,8 +11,10 @@
  *   status   print the persisted run state
  *
  * The safety keys (allowAdminMerge, advisoryChecks, requiredChecks,
- * knownFlakyFile) come from the user config or the base branch's committed
- * `.copilot/omg.jsonc`, never the working tree (loadTrustedShipConfig).
+ * knownFlakyFile) come from the user config at its default location or the
+ * `.copilot/omg.jsonc` committed on a trusted base (ship.trustedBases) at
+ * the sha GitHub reports, never the working tree (loadTrustedShipConfig).
+ * The base, base sha and head sha always come from GitHub, not the state.
  *
  * Owner-only escape hatch (OMG_SHIP_HUMAN=1, which lane briefs forbid):
  * `init --force` over a blocked or merged run, a state that fails its
@@ -20,23 +22,33 @@
  * fix-round budget; `merge` of a PR touching `.copilot/omg.jsonc`,
  * `.github/known-flaky-tests.json` or `.github/workflows/`.
  *
+ * Trust note: OMG_SHIP_HUMAN, the --implementer / --reviewer names and every
+ * other environment input are advisory against a hostile lane. A process
+ * that controls this command's environment can set OMG_SHIP_HUMAN=1, name
+ * any reviewer, or put another `git` / `gh` first on PATH. The engine scrubs
+ * the git / gh variables that redirect its commands (scrubShipEnv), reads
+ * the user config's safety keys from the OS-reported home only, and checks
+ * the base against GitHub, but it guards against lanes that follow their
+ * briefs or slip, not against one that rewrites its own environment.
+ *
  * Exit codes: 0 ok / green / ready, 1 refused or failed, 2 usage error,
  * 8 gates still pending (re-run to keep watching).
  */
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { getConfigPaths, loadJsoncFile } from '../../config/loader.js';
 import {
   DEFAULT_SHIP_CONFIG,
   isPlainBranchName,
   loadBaseKnownFlaky,
   loadTrustedShipConfig,
+  userConfigLayers,
+  type LoadedShipConfig,
   type ShipConfig,
 } from '../../ship/config.js';
-import { defaultExec, guardExec, type Exec } from '../../ship/exec.js';
+import { defaultExec, guardExec, TRUSTED_READ_ENV, type Exec } from '../../ship/exec.js';
 import { watchGates, type GateReport } from '../../ship/gates.js';
-import { decideMerge, type PrView } from '../../ship/merge.js';
+import { decideMerge, listChangedFiles, type PrView } from '../../ship/merge.js';
 import { runPrepare } from '../../ship/prepare.js';
 import {
   createShipState,
@@ -75,29 +87,41 @@ function repoRoot(exec: Exec): string {
 export interface ShipConfigContext {
   exec: Exec;
   root: string;
-  /** The PR's base branch: its committed `.copilot/omg.jsonc` is the trusted project layer. */
+  /** The PR's base branch on GitHub: its committed `.copilot/omg.jsonc` is the trusted project layer. */
   base: string;
+  /** GitHub's base sha (baseRefOid); the fetched base must equal it before its files are read. */
+  baseSha?: string;
+  /** merge: an unverifiable base throws (fail closed) instead of falling back to the defaults. */
+  strict?: boolean;
 }
 
-export type ShipConfigLoader = (ctx: ShipConfigContext) => ShipConfig;
+export type ShipConfigLoader = (ctx: ShipConfigContext) => LoadedShipConfig;
 
-/** User config + the base branch's committed project config; the working-tree file never sets the safety keys. */
-const shipConfig: ShipConfigLoader = ({ exec, root, base }) =>
-  loadTrustedShipConfig({ exec, root, base, user: loadJsoncFile(getConfigPaths().user) });
+/** User config (default location for the safety keys) + the trusted base's committed project config. */
+const shipConfig: ShipConfigLoader = (ctx) => loadTrustedShipConfig({ ...ctx, ...userConfigLayers() });
 
-function prBase(exec: Exec, pr: number): string {
-  const view = exec('gh', ['pr', 'view', String(pr), '--json', 'baseRefName']);
-  let base: unknown;
+const FULL_SHA = /^[0-9a-f]{40}$/;
+
+/** The PR's base branch and base sha as GitHub reports them. */
+function prBaseInfo(exec: Exec, pr: number): { base: string; baseSha: string } {
+  const view = exec('gh', ['pr', 'view', String(pr), '--json', 'baseRefName,baseRefOid']);
+  let info: { baseRefName?: unknown; baseRefOid?: unknown } = {};
   try {
-    base = (JSON.parse(view.stdout) as { baseRefName?: unknown }).baseRefName;
+    info = JSON.parse(view.stdout) as typeof info;
   } catch {
-    base = undefined;
+    info = {};
   }
-  if (view.status !== 0 || !isPlainBranchName(base)) throw new Error(`gh pr view ${pr} did not return a base branch: ${view.stderr.trim()}`);
-  return base;
+  if (view.status !== 0 || !isPlainBranchName(info.baseRefName) || typeof info.baseRefOid !== 'string' || !FULL_SHA.test(info.baseRefOid)) {
+    throw new Error(`gh pr view ${pr} did not return a base branch and sha: ${view.stderr.trim()}`);
+  }
+  return { base: info.baseRefName, baseSha: info.baseRefOid };
 }
 
-/** OMG_SHIP_HUMAN=1: the owner's override for replacing a terminal or hand-edited run. Lane briefs forbid it. */
+/**
+ * OMG_SHIP_HUMAN=1: the owner's override for replacing a terminal or
+ * hand-edited run. Lane briefs forbid it; like every environment input it is
+ * advisory against a hostile lane (see the trust note above).
+ */
 function humanOverride(): boolean {
   return process.env.OMG_SHIP_HUMAN === '1';
 }
@@ -177,10 +201,13 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
       guarded(Boolean(o.json), () => {
         const pr = parsePr(prRaw);
         const root = repoRoot(exec);
-        const view = exec('gh', ['pr', 'view', String(pr), '--json', 'headRefName,baseRefName']);
-        const prInfo = view.status === 0 ? (JSON.parse(view.stdout) as { headRefName?: string; baseRefName?: string }) : {};
-        const known = o.base ?? prInfo.baseRefName;
-        const config = loadShipConfig({ exec, root, base: assertBranchName(exec, known ?? DEFAULT_SHIP_CONFIG.base, '--base') });
+        const view = exec('gh', ['pr', 'view', String(pr), '--json', 'headRefName,baseRefName,baseRefOid']);
+        const prInfo = view.status === 0 ? (JSON.parse(view.stdout) as { headRefName?: string; baseRefName?: string; baseRefOid?: string }) : {};
+        if (o.base !== undefined && prInfo.baseRefName !== undefined && o.base !== prInfo.baseRefName) {
+          throw new UsageError(`--base ${JSON.stringify(o.base)} differs from PR #${pr}'s base on GitHub (${prInfo.baseRefName}); retarget the PR on GitHub instead`);
+        }
+        const known = prInfo.baseRefName ?? o.base;
+        const config = loadShipConfig({ exec, root, base: assertBranchName(exec, known ?? DEFAULT_SHIP_CONFIG.base, '--base'), baseSha: prInfo.baseRefOid });
         const base = assertBranchName(exec, known ?? config.base, '--base');
         const branch = prInfo.headRefName === undefined ? undefined : assertBranchName(exec, prInfo.headRefName, 'PR head branch');
         const maxFixRounds = parseNumber(o.maxFixRounds, '--max-fix-rounds') ?? config.maxFixRounds;
@@ -304,8 +331,12 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         const pr = parsePr(prRaw);
         const root = repoRoot(exec);
         const existing = readShipState(root, pr);
-        const prBaseBranch = existing?.base ?? prBase(exec, pr);
-        const loaded = loadShipConfig({ exec, root, base: prBaseBranch });
+        // GitHub's base, never the state's: a retargeted PR is gated under its real base.
+        const { base: prBaseBranch, baseSha } = prBaseInfo(exec, pr);
+        if (existing && existing.base !== prBaseBranch) {
+          console.error(chalk.yellow(`omg ship: PR #${pr} targets ${prBaseBranch} on GitHub, but the ship run expects ${existing.base}; merge will refuse until they agree`));
+        }
+        const loaded = loadShipConfig({ exec, root, base: prBaseBranch, baseSha });
         const config: ShipConfig = {
           ...loaded,
           pollIntervalSeconds: parseNumber(o.interval, '--interval') || loaded.pollIntervalSeconds,
@@ -317,7 +348,7 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
           exec,
           pr,
           config,
-          known: loadBaseKnownFlaky(exec, root, prBaseBranch, config.knownFlakyFile),
+          known: loadBaseKnownFlaky(exec, root, loaded.trustedBaseCommit, config.knownFlakyFile),
           cwd: root,
           watch: Boolean(o.watch),
           reruns: hasState
@@ -356,24 +387,27 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         const pr = parsePr(prRaw);
         const root = repoRoot(exec);
         const state = requireState(root, pr);
-        const view = exec('gh', ['pr', 'view', String(pr), '--json', 'number,state,isDraft,baseRefName,headRefName,headRefOid']);
+        const view = exec('gh', ['pr', 'view', String(pr), '--json', 'number,state,isDraft,baseRefName,baseRefOid,headRefName,headRefOid']);
         if (view.status !== 0) throw new Error(`gh pr view ${pr} failed: ${view.stderr.trim()}`);
-        const prView = JSON.parse(view.stdout) as PrView & { headRefName: string };
-        // Trusted layer = the PR's real base on GitHub (decideMerge also requires it to equal the run's base).
-        const trustedBase = isPlainBranchName(prView.baseRefName) ? prView.baseRefName : state.base;
-        const config = loadShipConfig({ exec, root, base: trustedBase });
+        const prView = JSON.parse(view.stdout) as PrView & { headRefName: string; baseRefOid: string };
+        if (!isPlainBranchName(prView.baseRefName) || !FULL_SHA.test(String(prView.baseRefOid)) || !FULL_SHA.test(String(prView.headRefOid))) {
+          throw new Error(`gh pr view ${pr} did not return a base branch, base sha and head sha`);
+        }
+        // Trusted layer = the PR's real base on GitHub at its real sha (decideMerge also requires it to equal the run's base).
+        const config = loadShipConfig({ exec, root, base: prView.baseRefName, baseSha: prView.baseRefOid, strict: true });
+        const trustedBase = config.trustedBases.includes(prView.baseRefName);
         const { report: gate } = await watchGates({
-          exec, pr, config, known: loadBaseKnownFlaky(exec, root, trustedBase, config.knownFlakyFile), cwd: root, headSha: prView.headRefOid, watch: false,
+          exec, pr, config, known: loadBaseKnownFlaky(exec, root, config.trustedBaseCommit, config.knownFlakyFile), cwd: root, headSha: prView.headRefOid, watch: false,
           sleep: async () => {}, now: () => Date.now(),
         });
-        const diff = exec('gh', ['pr', 'diff', String(pr), '--name-only'], { cwd: root });
-        const changedFiles = diff.status === 0 ? diff.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : null;
+        // The head GitHub reports must be present locally before the diff and ancestry reads.
+        if (exec('git', ['cat-file', '-e', `${prView.headRefOid}^{commit}`], { cwd: root }).status !== 0) {
+          exec('git', ['fetch', 'origin', prView.headRefName], { cwd: root, env: TRUSTED_READ_ENV });
+        }
+        const changedFiles = listChangedFiles(exec, root, prView.baseRefOid, prView.headRefOid);
         const reviewed = state.verdicts[state.verdicts.length - 1]?.sha;
         let commitsSinceReview: string[] | null = [];
         if (reviewed && reviewed !== prView.headRefOid) {
-          if (exec('git', ['cat-file', '-e', `${prView.headRefOid}^{commit}`], { cwd: root }).status !== 0) {
-            exec('git', ['fetch', 'origin', prView.headRefName], { cwd: root });
-          }
           const ancestor = exec('git', ['merge-base', '--is-ancestor', reviewed, prView.headRefOid], { cwd: root }).status === 0;
           const list = ancestor ? exec('git', ['rev-list', '--first-parent', `${reviewed}..${prView.headRefOid}`], { cwd: root }) : null;
           commitsSinceReview = list && list.status === 0 ? list.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : null;
@@ -383,7 +417,8 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
           humanOverride: humanOverride(),
           extraProtected: config.knownFlakyFile === DEFAULT_SHIP_CONFIG.knownFlakyFile ? [] : [config.knownFlakyFile],
         });
-        const allowAdmin = config.allowAdminMerge;
+        // A base outside ship.trustedBases never gets an admin merge (a lane can create and target a branch).
+        const allowAdmin = config.allowAdminMerge && trustedBase;
         const commandText = decision.command.join(' ');
         if (!decision.ok) {
           emit(Boolean(o.json), { ok: false, merged: false, reasons: decision.reasons, command: decision.command }, () => {
@@ -395,7 +430,10 @@ export function shipCommand(execImpl: Exec = defaultExec, loadShipConfig: ShipCo
         if (!allowAdmin) {
           updateShipState(root, pr, (s) => (s!.phase === 'ready' ? s! : transition(s!, 'ready', 'merge-ready', now())));
           emit(Boolean(o.json), { ok: true, merged: false, command: decision.command }, () => {
-            console.log(chalk.green(`PR #${pr} is merge-ready. ship.allowAdminMerge is off; run:`));
+            const why = config.allowAdminMerge
+              ? `base ${prView.baseRefName} is not in ship.trustedBases, so ship does not admin-merge`
+              : 'ship.allowAdminMerge is off';
+            console.log(chalk.green(`PR #${pr} is merge-ready. ${why}; run:`));
             console.log(`  ${commandText}`);
           });
           return 0;

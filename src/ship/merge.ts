@@ -1,11 +1,27 @@
 /**
- * Merge-readiness decision for `omg ship merge`. Pure: the CLI gathers the
- * PR view, a fresh gate report and the first-parent commits since the
- * reviewed sha; this module says yes or no and why.
+ * Merge-readiness decision for `omg ship merge`. decideMerge is pure: the CLI
+ * gathers the PR view, a fresh gate report, the changed files
+ * (listChangedFiles) and the first-parent commits since the reviewed sha;
+ * this module says yes or no and why.
  */
 
+import { TRUSTED_READ_ENV, type Exec } from './exec.js';
 import type { GateReport } from './gates.js';
 import { latestVerdict, verifyShipIntegrity, type ShipState } from './state.js';
+
+/**
+ * The PR's changed files, computed locally between GitHub's base and head
+ * shas: `git diff --name-only --no-renames -z <base>...<head>` with replace
+ * refs off. `--no-renames` lists a rename as its old and new path (a rename
+ * out of `.github/workflows/` still names the workflow), `-z` prints paths
+ * unquoted (non-ASCII names intact), and there is no 300-file cap as with
+ * `gh pr diff`. Null on any failure (fail closed).
+ */
+export function listChangedFiles(exec: Exec, cwd: string, baseSha: string, headSha: string): string[] | null {
+  if (!/^[0-9a-f]{40}$/.test(baseSha) || !/^[0-9a-f]{40}$/.test(headSha)) return null;
+  const res = exec('git', ['diff', '--name-only', '--no-renames', '-z', `${baseSha}...${headSha}`], { cwd, env: TRUSTED_READ_ENV });
+  return res.status === 0 ? res.stdout.split('\0').filter((f) => f.length > 0) : null;
+}
 
 export interface PrView {
   number: number;
@@ -24,7 +40,7 @@ export interface MergeInput {
    * sha is not an ancestor of the head (or the range could not be listed).
    */
   commitsSinceReview: string[] | null;
-  /** `gh pr diff <pr> --name-only`; null when it could not be read (refused unless humanOverride). */
+  /** listChangedFiles(base sha, head sha); null when it could not be read (refused unless humanOverride). */
   changedFiles: string[] | null;
   /** OMG_SHIP_HUMAN=1: the owner accepts a PR that touches PROTECTED_PATHS. */
   humanOverride?: boolean;
@@ -63,7 +79,7 @@ export function decideMerge({ state, pr, gate, commitsSinceReview, changedFiles,
   const reasons: string[] = [];
   if (!humanOverride) {
     if (changedFiles === null) {
-      reasons.push('could not list the PR diff (gh pr diff --name-only); the protected-path check fails closed');
+      reasons.push('could not list the PR\'s changed files (git diff base...head); the protected-path check fails closed');
     } else {
       const hit = protectedChanges(changedFiles, extraProtected);
       if (hit.length > 0) reasons.push(`PR touches merge-rule files (${hit.join(', ')}); only the owner may merge it (OMG_SHIP_HUMAN=1)`);

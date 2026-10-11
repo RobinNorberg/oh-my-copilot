@@ -271,7 +271,7 @@ describe('decideMerge', () => {
     expect(protectedChanges(['.github/workflowsX.yml', '.copilot/omg.jsonc.bak', 'docs/.github/workflows/x.yml'])).toEqual([]);
     expect(protectedChanges(['ci/flaky.json'], ['ci/flaky.json'])).toEqual(['ci/flaky.json']);
     // An unreadable diff fails closed.
-    expect(decideMerge({ state: approved(), pr, gate: green, changedFiles: null, commitsSinceReview: [INV] }).reasons.join()).toMatch(/could not list the PR diff/);
+    expect(decideMerge({ state: approved(), pr, gate: green, changedFiles: null, commitsSinceReview: [INV] }).reasons.join()).toMatch(/could not list the PR's changed files/);
   });
 
   it('refuses before prepare ran', () => {

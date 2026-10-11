@@ -3,17 +3,22 @@
  * repo's known-flaky test list.
  *
  * Trust model (see loadTrustedShipConfig): the safety keys
- * (SHIP_SAFETY_KEYS) come only from the user-level config, then the
- * `.copilot/omg.jsonc` committed on the base branch
- * (`git show <remote>/<base>:.copilot/omg.jsonc`), then the defaults. The
- * working-tree project file and the PR head never set them: a lane can drop
- * an untracked file into the checkout, and a PR can commit one.
+ * (SHIP_SAFETY_KEYS) come only from the user-level config at its default
+ * location, then the `.copilot/omg.jsonc` committed on a trusted base branch
+ * at the sha GitHub reports (`git show <baseRefOid>:.copilot/omg.jsonc`,
+ * replace refs off), then the defaults. The working-tree project file and the
+ * PR head never set them: a lane can drop an untracked file into the
+ * checkout, and a PR can commit one. The legacy `.copilot/omc.jsonc` name is
+ * never read from the base branch.
  */
 
 import { existsSync, readFileSync } from 'fs';
+import { userInfo } from 'os';
+import { basename, join, resolve } from 'path';
 import { parseJsonc } from '../utils/jsonc.js';
-import { resolveProjectConfigPath } from '../config/project-config-path.js';
-import type { Exec } from './exec.js';
+import { getConfigPaths, loadJsoncFile } from '../config/loader.js';
+import { LEGACY_PROJECT_CONFIG_FILE, resolveProjectConfigPath } from '../config/project-config-path.js';
+import { TRUSTED_READ_ENV, type Exec } from './exec.js';
 
 export interface ShipConfig {
   /** Integration branch PRs target and `prepare` merges in. */
@@ -39,6 +44,12 @@ export interface ShipConfig {
   pollIntervalSeconds: number;
   /** One `gates --watch` invocation stops after this long (exit 8); 0 = no limit. */
   watchTimeoutMinutes: number;
+  /**
+   * User config only. Bases whose committed config is read and into which
+   * `merge` may admin-merge; for any other base the defaults apply and merge
+   * prints the command instead (a lane can create a branch and target it).
+   */
+  trustedBases: string[];
 }
 
 export type ShipConfigInput = Partial<ShipConfig>;
@@ -56,6 +67,10 @@ export const DEFAULT_SHIP_CONFIG: Readonly<ShipConfig> = Object.freeze({
   ],
   // Every check this repo's CI reports on a PR to dev (ci.yml, pr-check.yml,
   // upgrade-test.yml); Build, npm pack and the smoke job start late (`needs:`).
+  // ci.yml and upgrade-test.yml run only for PRs to main / dev
+  // (`pull_request.branches`): on a PR to another base their checks never
+  // report and stay pending, so such a base needs its own requiredChecks in
+  // the user config.
   requiredChecks: [
     'Lint & Type Check',
     'Test',
@@ -83,6 +98,7 @@ export const DEFAULT_SHIP_CONFIG: Readonly<ShipConfig> = Object.freeze({
   pollIntervalSeconds: 30,
   // Below the 10-minute cap of background watchers; the caller loops on exit 8.
   watchTimeoutMinutes: 9,
+  trustedBases: ['dev', 'main', 'master'],
 });
 
 function isStringArray(value: unknown): value is string[] {
@@ -113,6 +129,7 @@ export function resolveShipConfig(input: unknown): ShipConfig {
     ...DEFAULT_SHIP_CONFIG,
     advisoryChecks: [...DEFAULT_SHIP_CONFIG.advisoryChecks],
     requiredChecks: [...DEFAULT_SHIP_CONFIG.requiredChecks],
+    trustedBases: [...DEFAULT_SHIP_CONFIG.trustedBases],
   };
   if (input === undefined || input === null) return config;
   if (typeof input !== 'object' || Array.isArray(input)) throw new Error('ship config must be an object');
@@ -129,6 +146,9 @@ export function resolveShipConfig(input: unknown): ShipConfig {
   if (raw.autoRerunFlaky !== undefined) config.autoRerunFlaky = typeof raw.autoRerunFlaky === 'boolean' ? raw.autoRerunFlaky : bad('autoRerunFlaky', 'a boolean');
   if (raw.pollIntervalSeconds !== undefined) config.pollIntervalSeconds = nonNegative(raw.pollIntervalSeconds) && raw.pollIntervalSeconds > 0 ? raw.pollIntervalSeconds : bad('pollIntervalSeconds', 'a positive number');
   if (raw.watchTimeoutMinutes !== undefined) config.watchTimeoutMinutes = nonNegative(raw.watchTimeoutMinutes) ? raw.watchTimeoutMinutes : bad('watchTimeoutMinutes', 'a non-negative number');
+  if (raw.trustedBases !== undefined) {
+    config.trustedBases = Array.isArray(raw.trustedBases) && raw.trustedBases.every(isPlainBranchName) ? raw.trustedBases : bad('trustedBases', 'an array of branch names');
+  }
   return config;
 }
 
@@ -156,6 +176,9 @@ export function parseKnownFlaky(content: string, file: string): KnownFlakyTest[]
 /** Ship keys a lane or PR could use to merge a red PR; never read from the working tree or the PR head. */
 export const SHIP_SAFETY_KEYS = ['allowAdminMerge', 'advisoryChecks', 'requiredChecks', 'knownFlakyFile'] as const;
 
+/** Keys only the user config (default location) sets: ignored in the base-branch and working-tree files. */
+export const SHIP_USER_ONLY_KEYS = ['trustedBases'] as const;
+
 /** Project config path inside the repo, read from the base branch for the safety keys. */
 export const BASE_CONFIG_PATH = '.copilot/omg.jsonc';
 
@@ -166,74 +189,214 @@ function shipBlock(config: unknown, source: string): Record<string, unknown> {
   return ship as Record<string, unknown>;
 }
 
-/** `git show <remote>/<base>:<path>`; null when the ref or the file does not exist there. */
-export function readBaseFile(exec: Exec, cwd: string, ref: string, path: string): string | null {
-  const shown = exec('git', ['show', `${ref}:${path}`], { cwd });
-  return shown.status === 0 ? shown.stdout : null;
+const FULL_SHA = /^[0-9a-f]{40}$/;
+const MISSING_PATH = /does not exist in|exists on disk, but not in/;
+
+/**
+ * `git show <commit>:<path>` with replace refs off; null when the file does
+ * not exist at that commit. Any other failure throws (fail closed).
+ */
+export function readBaseFile(exec: Exec, cwd: string, commit: string, path: string): string | null {
+  // git reports "path does not exist" for an unknown commit too; check the commit first.
+  if (exec('git', ['cat-file', '-e', `${commit}^{commit}`], { cwd, env: TRUSTED_READ_ENV }).status !== 0) {
+    throw new Error(`base commit ${commit.slice(0, 12)} is not in the local object store (fetch it first)`);
+  }
+  const shown = exec('git', ['show', `${commit}:${path}`], { cwd, env: TRUSTED_READ_ENV });
+  if (shown.status === 0) return shown.stdout;
+  if (MISSING_PATH.test(shown.stderr)) return null;
+  throw new Error(`git show ${commit.slice(0, 12)}:${path} failed (exit ${shown.status}): ${shown.stderr.trim()}`);
+}
+
+/**
+ * The user config's default location, derived from the account's home
+ * directory as the OS reports it (`os.userInfo()`: passwd / the Windows
+ * profile, not HOME / USERPROFILE / APPDATA / XDG_CONFIG_HOME, which a lane
+ * can set): `<home>/AppData/Roaming/claude-omc/config.jsonc` on Windows,
+ * `<home>/.config/claude-omc/config.jsonc` elsewhere, the layout the normal
+ * loader (getConfigPaths) uses when those variables are unset.
+ */
+export function trustedUserConfigPath(home: string = userInfo().homedir): string {
+  const configDir = process.platform === 'win32' ? join(home, 'AppData', 'Roaming') : join(home, '.config');
+  return join(configDir, 'claude-omc', 'config.jsonc');
+}
+
+function samePath(a: string, b: string): boolean {
+  const norm = (p: string) => (process.platform === 'win32' ? resolve(p).toLowerCase() : resolve(p));
+  return norm(a) === norm(b);
+}
+
+/**
+ * The user-config layers for loadTrustedShipConfig: `user` is the file the
+ * normal loader reads (env-selected), `trustedUser` the file at the default
+ * location (trustedUserConfigPath). When the two differ, the safety keys come
+ * only from `trustedUser`. No resolvable home directory = no trusted user layer.
+ */
+export function userConfigLayers(envPath: string = getConfigPaths().user, trustedPath?: string | null): { user: unknown; trustedUser: unknown } {
+  let defaultPath = trustedPath;
+  if (defaultPath === undefined) {
+    try {
+      defaultPath = trustedUserConfigPath();
+    } catch {
+      defaultPath = null;
+    }
+  }
+  const user = loadJsoncFile(envPath);
+  if (defaultPath && samePath(envPath, defaultPath)) return { user, trustedUser: user };
+  return { user, trustedUser: defaultPath ? loadJsoncFile(defaultPath) : null };
 }
 
 export interface TrustedShipConfigInput {
   exec: Exec;
   /** Repo root (the checkout being shipped). */
   root: string;
-  /** Base branch whose committed config is trusted (the PR's base). */
+  /** The PR's base branch on GitHub (baseRefName). */
   base: string;
+  /** GitHub's base sha (baseRefOid): the base layer is read at this commit, after the fetched ref is checked against it. */
+  baseSha?: string;
+  /** merge: a failed fetch or an unknown / mismatched base sha throws instead of skipping the base layer. */
+  strict?: boolean;
   remote?: string;
-  /** The user-level config's parsed content (`~/.config/claude-omc/config.jsonc`). */
+  /** The user config the normal loader reads (env-selected location); non-safety keys. */
   user: unknown;
-  /** Working-tree project config content; default: read `.copilot/omg.jsonc` under `root`. */
+  /** The user config at its default location (userConfigLayers); the only user source of safety keys. Default: `user`. */
+  trustedUser?: unknown;
+  /** Working-tree project config content; default: read `.copilot/omg.jsonc` (or the legacy name) under `root`. */
   project?: unknown;
   warn?: (message: string) => void;
 }
 
+export interface LoadedShipConfig extends ShipConfig {
+  /** Base commit whose committed files were read (equal to GitHub's base sha); undefined when the base layer was skipped. */
+  trustedBaseCommit?: string;
+}
+
 /**
  * Resolve the ship config for a run. Precedence:
- * - safety keys (SHIP_SAFETY_KEYS): user config, then the base branch's
- *   committed `.copilot/omg.jsonc`, then the defaults. A safety key in the
- *   working-tree project file that differs from the base branch is ignored
- *   with a warning.
+ * - safety keys (SHIP_SAFETY_KEYS): the user config at its default location,
+ *   then the trusted base's committed `.copilot/omg.jsonc`, then the
+ *   defaults. A safety key in the working-tree project file that differs from
+ *   the base branch, or in an env-selected user config that differs from the
+ *   default location's, is ignored with a warning.
+ * - trustedBases (SHIP_USER_ONLY_KEYS): the user config at its default location only.
  * - other keys: defaults < base-branch file < user config < working-tree
  *   project file (the usual project-over-user order).
- * The base ref is fetched first; when it cannot be read the base layer is
- * empty (defaults are the strict setting).
+ * The base is fetched and `refs/remotes/<remote>/<base>` must equal GitHub's
+ * base sha; the files are then read at that sha with replace refs off. A base
+ * outside trustedBases is never read. When the base cannot be verified the
+ * base layer is empty with a warning (defaults are the strict setting), or,
+ * with `strict`, the load throws.
  */
-export function loadTrustedShipConfig(input: TrustedShipConfigInput): ShipConfig {
+export function loadTrustedShipConfig(input: TrustedShipConfigInput): LoadedShipConfig {
   const { exec, root, base } = input;
   const remote = input.remote ?? 'origin';
   const warn = input.warn ?? ((m: string) => console.error(m));
   if (!isPlainBranchName(base)) throw new Error(`base ${JSON.stringify(base)} is not a branch name`);
-  const ref = `${remote}/${base}`;
-  exec('git', ['fetch', remote, base], { cwd: root });
-  const baseText = readBaseFile(exec, root, ref, BASE_CONFIG_PATH);
-  const baseShip = baseText && baseText.trim() ? shipBlock(parseJsonc(baseText), `${ref}:${BASE_CONFIG_PATH}`) : {};
-  const userShip = shipBlock(input.user, 'user config');
+  if (!/^[\w][\w.-]*$/.test(remote)) throw new Error(`remote ${JSON.stringify(remote)} is not a remote name`);
+
+  const userShip = { ...shipBlock(input.user, 'user config') };
+  const trustedUserShip = input.trustedUser === undefined
+    ? shipBlock(input.user, 'user config')
+    : shipBlock(input.trustedUser, 'user config (default location)');
+  const userOnly = new Set<string>([...SHIP_SAFETY_KEYS, ...SHIP_USER_ONLY_KEYS]);
+  for (const key of Object.keys(userShip)) {
+    if (!userOnly.has(key)) continue;
+    if (JSON.stringify(userShip[key]) !== JSON.stringify(trustedUserShip[key])) {
+      warn(`omg ship: ignoring ship.${key} from the user config selected by APPDATA / XDG_CONFIG_HOME; safety keys come only from ${trustedUserConfigPathOrDefault()}`);
+    }
+    delete userShip[key];
+  }
+  const trustedBases = resolveShipConfig({ trustedBases: trustedUserShip.trustedBases }).trustedBases;
+
+  // Verify the base against GitHub before reading anything committed on it.
+  const ref = `refs/remotes/${remote}/${base}`;
+  const unverified = (reason: string): undefined => {
+    if (input.strict) throw new Error(`omg ship: ${reason}; refusing (fail closed)`);
+    warn(`omg ship: ${reason}; the base branch's committed config is not read (defaults apply)`);
+    return undefined;
+  };
+  let commit: string | undefined;
+  if (!input.baseSha || !FULL_SHA.test(input.baseSha)) {
+    commit = unverified(`GitHub reported no base sha for ${base}`);
+  } else {
+    const fetched = exec('git', ['fetch', remote, base], { cwd: root, env: TRUSTED_READ_ENV });
+    const local = fetched.status === 0 ? exec('git', ['rev-parse', '--verify', ref], { cwd: root, env: TRUSTED_READ_ENV }) : null;
+    if (!local) commit = unverified(`git fetch ${remote} ${base} failed: ${fetched.stderr.trim().split('\n')[0]}`);
+    else if (local.status !== 0 || local.stdout.trim() !== input.baseSha) {
+      commit = unverified(`${ref} is ${local.stdout.trim() || 'missing'}, but GitHub reports ${base} at ${input.baseSha}`);
+    } else commit = input.baseSha;
+  }
+  const trusted = trustedBases.includes(base);
+  if (!trusted) warn(`omg ship: base ${base} is not in ship.trustedBases (${trustedBases.join(', ')}); its committed config is not read and merge never admin-merges into it`);
+
+  let baseShip: Record<string, unknown> = {};
+  if (trusted && commit) {
+    const source = `${commit.slice(0, 12)}:${BASE_CONFIG_PATH}`;
+    const text = readBaseFile(exec, root, commit, BASE_CONFIG_PATH);
+    let parsed: unknown;
+    try {
+      parsed = text && text.trim() ? parseJsonc(text) : undefined;
+    } catch (error) {
+      throw new Error(`${base} ${source} is not valid JSONC: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    baseShip = { ...shipBlock(parsed, `${base} ${source}`) };
+  }
+
   let project = input.project;
+  let legacyProject = false;
   if (project === undefined) {
     const path = resolveProjectConfigPath(root);
+    legacyProject = basename(path) === LEGACY_PROJECT_CONFIG_FILE;
     project = existsSync(path) ? parseJsonc(readFileSync(path, 'utf8')) : undefined;
   }
   const projectShip = { ...shipBlock(project, 'project config') };
-  const safety = new Set<string>(SHIP_SAFETY_KEYS);
-  for (const key of Object.keys(projectShip)) {
-    if (!safety.has(key)) continue;
-    if (JSON.stringify(projectShip[key]) !== JSON.stringify(baseShip[key])) {
-      warn(`omg ship: ignoring ship.${key} from the working-tree project config; safety keys come only from the user config or ${ref}:${BASE_CONFIG_PATH}`);
+  const ignored: string[] = [];
+  for (const key of SHIP_USER_ONLY_KEYS) {
+    for (const [layer, source] of [[baseShip, `${base}:${BASE_CONFIG_PATH}`], [projectShip, 'the working-tree project config']] as const) {
+      if (layer[key] === undefined) continue;
+      warn(`omg ship: ignoring ship.${key} from ${source}; it is read only from the user config`);
+      delete layer[key];
     }
+  }
+  for (const key of Object.keys(projectShip)) {
+    if (!userOnly.has(key)) continue;
+    if (JSON.stringify(projectShip[key]) !== JSON.stringify(baseShip[key])) ignored.push(key);
     delete projectShip[key];
   }
+  if (ignored.length > 0 && legacyProject) {
+    // One line, not one per key: the legacy name is simply not a trusted source.
+    warn(`omg ship: .copilot/${LEGACY_PROJECT_CONFIG_FILE} (legacy name) is not read from the base branch; its ship safety keys (${ignored.join(', ')}) are ignored. Rename it to ${BASE_CONFIG_PATH} and commit it to ${base}.`);
+  } else {
+    for (const key of ignored) {
+      warn(`omg ship: ignoring ship.${key} from the working-tree project config; safety keys come only from the user config or ${base}:${BASE_CONFIG_PATH}`);
+    }
+  }
+
   const merged: Record<string, unknown> = { ...baseShip, ...userShip, ...projectShip };
   for (const key of SHIP_SAFETY_KEYS) {
-    const value = userShip[key] !== undefined ? userShip[key] : baseShip[key];
+    const value = trustedUserShip[key] !== undefined ? trustedUserShip[key] : baseShip[key];
     if (value === undefined) delete merged[key];
     else merged[key] = value;
   }
-  return resolveShipConfig(merged);
+  merged.trustedBases = trustedBases;
+  return { ...resolveShipConfig(merged), trustedBaseCommit: trusted ? commit : undefined };
 }
 
-/** The known-flaky list as committed on the base branch (never the PR head); absent = empty. */
-export function loadBaseKnownFlaky(exec: Exec, root: string, base: string, file: string, remote = 'origin'): KnownFlakyTest[] {
-  if (!isPlainBranchName(base)) throw new Error(`base ${JSON.stringify(base)} is not a branch name`);
+function trustedUserConfigPathOrDefault(): string {
+  try {
+    return trustedUserConfigPath();
+  } catch {
+    return 'the default user config location';
+  }
+}
+
+/**
+ * The known-flaky list committed at the verified base commit (never the PR
+ * head; LoadedShipConfig.trustedBaseCommit). No commit or no file = empty.
+ */
+export function loadBaseKnownFlaky(exec: Exec, root: string, commit: string | undefined, file: string): KnownFlakyTest[] {
+  if (commit === undefined) return [];
+  if (!FULL_SHA.test(commit)) throw new Error(`base commit ${JSON.stringify(commit)} is not a full sha`);
   if (!isRepoPath(file)) throw new Error(`knownFlakyFile ${JSON.stringify(file)} is not a repo-relative path`);
-  const text = readBaseFile(exec, root, `${remote}/${base}`, file);
-  return text && text.trim() ? parseKnownFlaky(text, `${remote}/${base}:${file}`) : [];
+  const text = readBaseFile(exec, root, commit, file);
+  return text && text.trim() ? parseKnownFlaky(text, `${commit.slice(0, 12)}:${file}`) : [];
 }
