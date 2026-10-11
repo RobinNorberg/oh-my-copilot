@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildListToolsResponse, callTool, getEnabledTools } from '../../mcp/tool-registry.js';
-import { BRIDGE_CLEANUP_BUDGET, buildSdkInProcessTools } from '../sdk-inprocess-tools.js';
+import { bridgeCleanupBudget, buildSdkInProcessTools } from '../sdk-inprocess-tools.js';
 import { buildSdkExcludedTools } from '../sdk-policy.js';
 
 // Records what the SDK converter receives and returns it unchanged, so a
@@ -65,11 +65,35 @@ describe('sdk in-process tools: parity with the t MCP server', () => {
     expect(typeof set.cleanup).toBe('function');
   });
 
-  it('escalates bridge cleanup to SIGKILL inside the host\'s 5 s cleanup deadline', () => {
-    const { gracePeriodMs, sigtermGraceMs, finalWaitMs, parallel } = BRIDGE_CLEANUP_BUDGET;
-    expect(parallel).toBe(true);
-    expect(gracePeriodMs + sigtermGraceMs).toBeLessThan(5_000); // SIGKILL is sent before the deadline
-    expect(gracePeriodMs + sigtermGraceMs + finalWaitMs).toBeLessThanOrEqual(4_000); // with margin for the LSP disconnect
+  // Timeline model of killBridgeWithEscalation: an identity check (cost
+  // `poll`), each signal stage (cost `signal`), and waitForExit(t) polling
+  // (poll + 100 ms sleep) until t has elapsed; worst case, the bridge never
+  // exits before SIGKILL. Measured costs: win32 poll ~500 ms (PowerShell
+  // CIM), taskkill ~340 ms; POSIX poll and kill are a few ms.
+  const timeline = (budget: ReturnType<typeof bridgeCleanupBudget>, poll: number, signal: number) => {
+    const wait = (t: number) => (t <= 0 ? 0 : Math.ceil(t / (poll + 100)) * (poll + 100));
+    const sigkillAt = poll + signal + wait(budget.gracePeriodMs) + signal + wait(budget.sigtermGraceMs);
+    return { sigkillAt, doneAt: sigkillAt + signal + wait(budget.finalWaitMs) };
+  };
+
+  it('escalates bridge cleanup to SIGKILL inside the host\'s 5 s cleanup deadline on POSIX', () => {
+    const budget = bridgeCleanupBudget('linux');
+    expect(budget).toEqual(bridgeCleanupBudget('darwin'));
+    expect(budget.parallel).toBe(true);
+    expect(budget.gracePeriodMs).toBeGreaterThan(0); // SIGINT/SIGTERM work on POSIX: keep a grace
+    const { sigkillAt, doneAt } = timeline(budget, 5, 1);
+    expect(sigkillAt).toBeLessThan(5_000);
+    expect(doneAt).toBeLessThanOrEqual(4_000); // with margin for the LSP disconnect
+  });
+
+  it('goes straight to taskkill /F on win32, where /T without /F does not stop the bridge', () => {
+    const budget = bridgeCleanupBudget('win32');
+    expect(budget).toMatchObject({ gracePeriodMs: 0, sigtermGraceMs: 0, parallel: true });
+    const { sigkillAt, doneAt } = timeline(budget, 500, 340);
+    expect(sigkillAt).toBeLessThan(1_500);
+    expect(doneAt).toBeLessThanOrEqual(4_000);
+    // The POSIX budget on win32 sends /F only after ~4.8 s (measured) and finishes past the deadline.
+    expect(timeline(bridgeCleanupBudget('linux'), 500, 340).doneAt).toBeGreaterThan(5_000);
   });
 
   it('returns null without the SDK converter, so the host keeps the MCP server', () => {

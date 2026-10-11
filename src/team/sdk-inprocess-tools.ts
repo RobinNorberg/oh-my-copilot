@@ -53,16 +53,26 @@ export interface SdkInProcessToolSet {
 
 /**
  * Bridge escalation that reaches SIGKILL inside the host's 5 s cleanup
- * deadline (sdk-host TOOL_CLEANUP_TIMEOUT_MS): SIGINT 1.5 s, SIGTERM 1.5 s,
- * SIGKILL then 0.5 s, all bridges in parallel = 3.5 s. The defaults
- * (5 s + 2.5 s + 1 s, one bridge at a time) would be cut off before SIGTERM.
+ * deadline (sdk-host TOOL_CLEANUP_TIMEOUT_MS), all bridges in parallel. The
+ * defaults (5 s + 2.5 s + 1 s, one bridge at a time) would be cut off before
+ * SIGTERM.
+ * - POSIX: SIGINT 1.5 s, SIGTERM 1.5 s, SIGKILL then 0.5 s = 3.5 s.
+ * - win32: no grace. The SIGINT/SIGTERM stages are `taskkill /T` without
+ *   `/F`, which does not stop a windowless bridge (~340 ms each), and every
+ *   exit poll costs ~500 ms (process start time via PowerShell CIM), so the
+ *   POSIX budget sends `/F` only after ~4.8 s. With 0 grace `/F` goes out
+ *   after the identity check and the two no-op taskkills (~1.2 s).
  */
-export const BRIDGE_CLEANUP_BUDGET = Object.freeze({ gracePeriodMs: 1_500, sigtermGraceMs: 1_500, finalWaitMs: 500, parallel: true });
+export function bridgeCleanupBudget(platform: NodeJS.Platform = process.platform) {
+  return platform === 'win32'
+    ? { gracePeriodMs: 0, sigtermGraceMs: 0, finalWaitMs: 1_500, parallel: true }
+    : { gracePeriodMs: 1_500, sigtermGraceMs: 1_500, finalWaitMs: 500, parallel: true };
+}
 
 async function cleanupInProcessTools(): Promise<void> {
   // In parallel: the LSP clients do not wait behind the bridge escalation.
   await Promise.all([
-    cleanupOwnedBridgeSessions(BRIDGE_CLEANUP_BUDGET).catch(() => undefined), // best effort, as the MCP server
+    cleanupOwnedBridgeSessions(bridgeCleanupBudget()).catch(() => undefined), // best effort, as the MCP server
     Promise.resolve().then(disconnectAllLsp).catch(() => undefined),
   ]);
 }
