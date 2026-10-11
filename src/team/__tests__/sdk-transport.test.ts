@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CopilotEvent } from '../../smoke/copilot-session-eval.js';
 import type {
@@ -16,6 +16,7 @@ import type {
 } from '../../smoke/copilot-sdk-driver.js';
 import { buildSdkExcludedTools, decideSdkPermission, type SdkPolicyContext } from '../sdk-policy.js';
 import { prependPath, readDoorbell, runSdkHost, type SdkHostDeps } from '../sdk-host.js';
+import { ledgerPath, readLedger } from '../../budget/ledger.js';
 import {
   isSdkTarget,
   launchSdkHost,
@@ -45,8 +46,13 @@ let cwd: string;
 let worktree: string;
 let pluginRoot: string;
 let stateRoot: string;
+let omcStateDir: string;
 
 beforeEach(() => {
+  // Centralized state in a temp dir: a non-git temp cwd would otherwise anchor
+  // state (team files, the budget ledger) in the real home directory.
+  omcStateDir = mkdtempSync(join(tmpdir(), 'sdk-team-state-'));
+  vi.stubEnv('OMC_STATE_DIR', omcStateDir);
   // The state root does not follow a temp cwd under the test config: keep each test's team distinct.
   TEAM = `sdk-team-${randomUUID().slice(0, 8)}`;
   cwd = mkdtempSync(join(tmpdir(), 'sdk-team-leader-'));
@@ -57,7 +63,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const dir of [cwd, worktree, pluginRoot, stateRoot]) rmSync(dir, { recursive: true, force: true });
+  vi.unstubAllEnvs();
+  for (const dir of [cwd, worktree, pluginRoot, stateRoot, omcStateDir]) rmSync(dir, { recursive: true, force: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -365,13 +372,17 @@ describe('sdk host', () => {
       { kind: 'shell', fullCommandText: 'omg team api claim-task --json' },
     ] });
     const killed: number[] = [];
+    let liveBudget: unknown;
     const host = await hostWithLeader(attempt, deps(loaded, { alive, killed }), async () => {
       await until(() => readSdkSession(stateRoot, WORKER)?.state === 'idle');
       ringDoorbell(stateRoot, WORKER, { kind: 'prompt', text: 'first' });
       ringDoorbell(stateRoot, WORKER, { kind: 'prompt', text: 'second' });
       await until(() => rec.prompts.length === 2 && readSdkSession(stateRoot, WORKER)?.state === 'idle');
+      liveBudget = readLedger(ledgerPath(cwd)).teams[TEAM]?.[`${WORKER}:${attempt.attempt_id}`];
       ringDoorbell(stateRoot, WORKER, { kind: 'shutdown' });
     });
+    // Before the shutdown totals the x1-per-call count is an estimate (the multiplier is unknown).
+    expect(liveBudget).toMatchObject({ premiumRequests: 2, source: 'estimated' });
     expect(await host).toBe('stopped');
 
     // The second prompt waited for the first turn's idle.
@@ -415,6 +426,9 @@ describe('sdk host', () => {
     expect(session.usage.premium_requests).toBe(2);
     expect(session.usage.shutdown_premium_requests).toBe(2);
     expect(session.usage.credits).toBeCloseTo(1);
+    // Budget ledger: the host records the worker's final totals under its team.
+    const budget = readLedger(ledgerPath(cwd)).teams[TEAM]?.[`${WORKER}:${attempt.attempt_id}`];
+    expect(budget).toMatchObject({ premiumRequests: 2, credits: 1.5, source: 'measured', detail: 'session.shutdown' });
     expect(session.permissions.map((p) => [p.kind, p.approve])).toEqual([
       ['write', false], ['shell', true], ['write', false], ['shell', true],
     ]);

@@ -1049,6 +1049,7 @@ const COPILOT_WORKER_HOOKS = new Set([
   'workflow-drift-guard.mjs',
   'persistent-mode.mjs',
   'budget-guard.mjs',
+  'premium-budget.mjs',
   'code-simplifier.mjs',
 ]);
 
