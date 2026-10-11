@@ -68,6 +68,59 @@ afterEach(() => {
   while (created.length) rmSync(created.pop()!, { recursive: true, force: true });
 });
 
+describe.each(hooks)('keyword detector pasted-content filtering (%s)', hook => {
+  it('ignores anti-slop keywords inside pasted content with attributes on the closing tag', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'keyword-pasted-content-'));
+    created.push(directory);
+
+    const output = await invoke(
+      hook,
+      directory,
+      '<pasted_content id="ab12">\narticle text mentioning anti-slop and AI-slop\n</pasted_content id="ab12">\n\nsummarize the material',
+    );
+
+    expect(JSON.parse(output)).toMatchObject({ continue: true, suppressOutput: true });
+  });
+
+  it('still activates anti-slop for an explicit cleanup request', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'keyword-direct-cleanup-'));
+    created.push(directory);
+
+    const output = await invoke(hook, directory, 'deslop the file src/app.py please');
+
+    expect(JSON.parse(output).hookSpecificOutput.additionalContext).toContain(
+      '[MAGIC KEYWORD: AI-SLOP-CLEANER]',
+    );
+  });
+
+  it('preserves an explicit cleanup request after a malformed closing-tag newline', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'keyword-malformed-newline-'));
+    created.push(directory);
+
+    const output = await invoke(
+      hook,
+      directory,
+      '<pasted_content>reference</pasted_content\ndeslop this repo > report.txt',
+    );
+
+    expect(JSON.parse(output).hookSpecificOutput.additionalContext).toContain(
+      '[MAGIC KEYWORD: AI-SLOP-CLEANER]',
+    );
+  });
+
+  it('bounds scanning across repeated malformed closing tags', { timeout: 5000 }, async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'keyword-malformed-paste-'));
+    created.push(directory);
+    const prompt = `<pasted_content>article mentions anti-slop</pasted_content ${'</pasted_content '.repeat(64_000)}`;
+
+    const output = await invoke(hook, directory, prompt);
+
+    expect(JSON.parse(output).hookSpecificOutput.additionalContext).toContain(
+      '[MAGIC KEYWORD: AI-SLOP-CLEANER]',
+    );
+  });
+});
+
 describe.each(hooks)('keyword autopilot activation fence (%s)', hook => {
   it('preserves an active named descriptor byte-for-byte when legacy autopilot activates', async () => {
     const f = fixture();

@@ -61,10 +61,11 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 |-----------|-------|---------|
 | `ai-slop-cleaner/SKILL.md` | ai-slop-cleaner | Regression-safe cleanup workflow for AI-generated code slop |
 | `agent-doc-discipline/SKILL.md` | agent-doc-discipline | Writing-time discipline for agent-facing documents |
-| `drydock/SKILL.md` | drydock | Shipyard harness scaffold: 4-pillar shared environment across 5 surfaces, with --check drift audit |
+| `drydock/SKILL.md` | drydock | Shipyard harness scaffold: 4-pillar shared environment, two faces seeded on day one (CLAUDE.md + GLOSSARY.md), other surfaces on first use, with --check drift audit |
 | `harbor/SKILL.md` | harbor | Shipyard intake gate: sweeps external issues and PRs, verifies claims, hands the maintainer a signature docket |
 | `loft/SKILL.md` | loft | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions prose cannot settle |
 | `refit/SKILL.md` | refit | Cross-session environment retrospective: OMC instruments (trace, friction, logs, notepads) in, user-approved fixes out onto checks/steering/tooling/information surfaces |
+| `session-flow/SKILL.md` | session-flow | Reorient in the current session with an evidence-backed flow map |
 | `minimal-code-discipline/SKILL.md` | minimal-code-discipline | YAGNI-ladder writing-time discipline: existence-first, reuse before writing, shortest correct diff |
 | `minimal-prose-discipline/SKILL.md` | minimal-prose-discipline | Writing-time discipline for the agent's own prose: protected core, no filler, close on the action |
 | `tdd/SKILL.md` | tdd | Test-first discipline at pre-agreed seams: tracer-bullet red/green, independent expected values, boundary-class-only substitution |

@@ -83,9 +83,10 @@ export async function cleanupStaleBackgroundTasks(
   // cleanupTasks() in background-tasks.ts)
   if (state.backgroundTasks.length > 20) {
     const running = state.backgroundTasks.filter(t => t.status === 'running');
-    const nonRunning = state.backgroundTasks
+    const historyCapacity = Math.max(0, 20 - running.length);
+    const nonRunning = historyCapacity === 0 ? [] : state.backgroundTasks
       .filter(t => t.status !== 'running')
-      .slice(-Math.max(0, 20 - running.length));
+      .slice(-historyCapacity);
     state.backgroundTasks = [...running, ...nonRunning];
   }
 

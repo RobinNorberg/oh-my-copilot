@@ -4,6 +4,8 @@
  * Helper functions for formatting LSP results and converting between formats.
  */
 
+import { fileURLToPath } from 'node:url';
+
 import type { Hover, Location, DocumentSymbol, SymbolInformation, Diagnostic, CodeAction, WorkspaceEdit, Range } from './client.js';
 
 /**
@@ -54,9 +56,9 @@ const SEVERITY_NAMES: Record<number, string> = {
 export function uriToPath(uri: string): string {
   if (uri.startsWith('file://')) {
     try {
-      return decodeURIComponent(uri.slice(7));
+      return fileURLToPath(uri);
     } catch {
-      // Malformed percent-encoding — return the raw path segment
+      // Unsupported or malformed file URI — preserve the raw path segment
       return uri.slice(7);
     }
   }

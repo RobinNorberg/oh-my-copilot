@@ -12,7 +12,6 @@
 import {
   existsSync,
   readFileSync,
-  writeFileSync,
   mkdirSync,
   openSync,
   closeSync,
@@ -23,8 +22,8 @@ import {
 } from 'fs';
 import { join, dirname } from 'path';
 import { randomUUID } from 'crypto';
-import { isProcessAlive } from '../platform/index.js';
 import { atomicWriteFileSync } from '../lib/atomic-write.js';
+import { isProcessAlive } from '../platform/index.js';
 import { getGlobalOmcStateCandidates, getGlobalOmcStateRoot } from '../utils/paths.js';
 
 // ============================================================================
@@ -524,12 +523,8 @@ export function pruneStale(): boolean {
 function rewriteRegistryUnsafe(mappings: SessionMapping[]): void {
   ensureRegistryDir();
 
-  if (mappings.length === 0) {
-    // Empty registry - write empty file
-    writeFileSync(getRegistryPath(), '', { mode: SECURE_FILE_MODE });
-    return;
-  }
-
-  const content = mappings.map(m => JSON.stringify(m)).join('\n') + '\n';
-  writeFileSync(getRegistryPath(), content, { mode: SECURE_FILE_MODE });
+  const content = mappings.length === 0
+    ? ''
+    : mappings.map(m => JSON.stringify(m)).join('\n') + '\n';
+  atomicWriteFileSync(getRegistryPath(), content);
 }

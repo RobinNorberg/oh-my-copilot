@@ -21,9 +21,12 @@ const VALID_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
  */
 export function validateCustomIntegration(integration: CustomIntegration): ValidationResult {
   const errors: string[] = [];
+  if (!integration || typeof integration !== 'object' || Array.isArray(integration)) {
+    return { valid: false, errors: ['Integration must be an object'] };
+  }
 
   // Validate ID format
-  if (!integration.id) {
+  if (typeof integration.id !== 'string' || !integration.id) {
     errors.push('Integration ID is required');
   } else if (!VALID_ID_PATTERN.test(integration.id)) {
     errors.push('Integration ID must be alphanumeric with hyphens/underscores only');
@@ -35,7 +38,8 @@ export function validateCustomIntegration(integration: CustomIntegration): Valid
   }
 
   // Validate events
-  if (!integration.events || integration.events.length === 0) {
+  if (!Array.isArray(integration.events) || integration.events.length === 0 ||
+      !integration.events.every(event => typeof event === 'string')) {
     errors.push('At least one event must be selected');
   }
 
@@ -56,9 +60,12 @@ export function validateCustomIntegration(integration: CustomIntegration): Valid
  */
 function validateWebhookIntegrationConfig(config: WebhookIntegrationConfig): string[] {
   const errors: string[] = [];
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return ['Webhook configuration must be an object'];
+  }
 
   // URL validation
-  if (!config.url) {
+  if (typeof config.url !== 'string' || !config.url) {
     errors.push('Webhook URL is required');
   } else {
     try {
@@ -89,14 +96,21 @@ function validateWebhookIntegrationConfig(config: WebhookIntegrationConfig): str
 
   // Timeout validation
   if (config.timeout !== undefined) {
-    if (config.timeout < MIN_TIMEOUT || config.timeout > MAX_TIMEOUT) {
+    if (typeof config.timeout !== 'number' || !Number.isFinite(config.timeout) ||
+        config.timeout < MIN_TIMEOUT || config.timeout > MAX_TIMEOUT) {
       errors.push(`Timeout must be between ${MIN_TIMEOUT}ms and ${MAX_TIMEOUT}ms`);
     }
   }
 
   // Header validation (prevent injection)
-  if (config.headers) {
+  if (!config.headers || typeof config.headers !== 'object' || Array.isArray(config.headers)) {
+    errors.push('Headers must be an object of string values');
+  } else {
     for (const [key, value] of Object.entries(config.headers)) {
+      if (typeof value !== 'string') {
+        errors.push(`Header value must be a string for key: "${key}"`);
+        continue;
+      }
       // Check for CRLF injection
       if (/[\r\n]/.test(key)) {
         errors.push(`Header name contains invalid characters: "${key}"`);
@@ -112,6 +126,10 @@ function validateWebhookIntegrationConfig(config: WebhookIntegrationConfig): str
     }
   }
 
+  if (typeof config.bodyTemplate !== 'string') {
+    errors.push('Body template must be a string');
+  }
+
   return errors;
 }
 
@@ -120,9 +138,12 @@ function validateWebhookIntegrationConfig(config: WebhookIntegrationConfig): str
  */
 function validateCliIntegrationConfig(config: CliIntegrationConfig): string[] {
   const errors: string[] = [];
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    return ['CLI configuration must be an object'];
+  }
 
   // Command validation
-  if (!config.command) {
+  if (typeof config.command !== 'string' || !config.command) {
     errors.push('Command is required');
   } else {
     // Command must be a single executable, no spaces or shell metacharacters
@@ -138,8 +159,14 @@ function validateCliIntegrationConfig(config: CliIntegrationConfig): string[] {
   }
 
   // Arguments validation
-  if (config.args && Array.isArray(config.args)) {
+  if (!Array.isArray(config.args)) {
+    errors.push('Arguments must be an array of strings');
+  } else {
     for (const arg of config.args) {
+      if (typeof arg !== 'string') {
+        errors.push('Arguments must be strings');
+        continue;
+      }
       // Check for shell metacharacters outside of template syntax
       const withoutTemplates = arg.replace(/\{\{[^}]+\}\}/g, '');
       const shellMetacharacters = /[;&|`$(){}[\]<>!#*?~]/;
@@ -157,7 +184,8 @@ function validateCliIntegrationConfig(config: CliIntegrationConfig): string[] {
 
   // Timeout validation
   if (config.timeout !== undefined) {
-    if (config.timeout < MIN_TIMEOUT || config.timeout > MAX_TIMEOUT) {
+    if (typeof config.timeout !== 'number' || !Number.isFinite(config.timeout) ||
+        config.timeout < MIN_TIMEOUT || config.timeout > MAX_TIMEOUT) {
       errors.push(`Timeout must be between ${MIN_TIMEOUT}ms and ${MAX_TIMEOUT}ms`);
     }
   }

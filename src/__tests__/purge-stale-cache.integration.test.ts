@@ -9,8 +9,17 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-  mkdtempSync, mkdirSync, writeFileSync, symlinkSync, renameSync, rmSync,
-  existsSync, lstatSync, readdirSync, readlinkSync, utimesSync,
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  symlinkSync,
+  renameSync,
+  rmSync,
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readlinkSync,
+  utimesSync,
 } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -47,12 +56,12 @@ function writeVersion(version: string) {
   return dir;
 }
 
-function installedPlugins() {
+function installedPlugins(installPath = join(pluginDir, ACTIVE)) {
   writeFileSync(
     join(configDir, 'plugins', 'installed_plugins.json'),
     JSON.stringify({
       version: 2,
-      plugins: { 'oh-my-copilot@omc': [{ installPath: join(pluginDir, ACTIVE), version: ACTIVE }] },
+      plugins: { 'oh-my-copilot@omc': [{ installPath, version: ACTIVE }] },
     }),
   );
 }
@@ -64,9 +73,11 @@ function installedPlugins() {
  */
 function hookResolves(version: string): boolean {
   const root = join(pluginDir, version);
-  return existsSync(join(root, 'hooks', 'hooks.json'))
-    && existsSync(join(root, 'scripts', 'run.cjs'))
-    && existsSync(join(root, 'scripts'));
+  return (
+    existsSync(join(root, 'hooks', 'hooks.json')) &&
+    existsSync(join(root, 'scripts', 'run.cjs')) &&
+    existsSync(join(root, 'scripts'))
+  );
 }
 
 /**
@@ -100,6 +111,178 @@ afterEach(() => {
 });
 
 describe('purgeStalePluginCacheVersions on a real filesystem', () => {
+  it.each(['missing', 'incomplete'])('preserves pinned paths when the registered active target is %s', (state) => {
+    const stale = writeVersion(STALE);
+    for (const version of LEGACY) symlinkSync(stale, join(pluginDir, version), 'dir');
+    makeStale(stale);
+    rmSync(join(pluginDir, ACTIVE), { recursive: true, force: true });
+    if (state === 'incomplete') mkdirSync(join(pluginDir, ACTIVE));
+
+    const result = purgeStalePluginCacheVersions();
+
+    expect(result.symlinked).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(lstatSync(stale).isDirectory()).toBe(true);
+    for (const version of [STALE, ...LEGACY]) expect(hookResolves(version)).toBe(true);
+    expect(readdirSync(pluginDir).filter((name) => name.includes('.omc-stale-'))).toEqual([]);
+  });
+
+  it.each(['win32', 'darwin'])('recognizes a mixed-case OMC cache directory on %s', (platform) => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', {
+      value: platform,
+      configurable: true,
+    });
+    try {
+      rmSync(join(configDir, 'plugins', 'cache', 'omc'), {
+        recursive: true,
+        force: true,
+      });
+      pluginDir = join(configDir, 'plugins', 'cache', 'omc', 'Oh-My-Copilot');
+      mkdirSync(pluginDir, { recursive: true });
+      const active = join(pluginDir, ACTIVE);
+      mkdirSync(active);
+      const stale = writeVersion(STALE);
+      makeStale(stale);
+      installedPlugins();
+
+      const result = purgeStalePluginCacheVersions();
+
+      expect(result.symlinked).toBe(0);
+      expect(result.errors).toHaveLength(1);
+      expect(lstatSync(stale).isDirectory()).toBe(true);
+      expect(hookResolves(STALE)).toBe(true);
+      expect(readdirSync(pluginDir).filter((name) => name.includes('.omc-stale-'))).toEqual([]);
+    } finally {
+      Object.defineProperty(process, 'platform', {
+        value: originalPlatform,
+        configurable: true,
+      });
+    }
+  });
+
+  it('preserves case-aliased cache entries on case-insensitive macOS', ({ skip }) => {
+    if (process.platform !== 'darwin') skip();
+    const stale = writeVersion('4.15.6-BETA');
+    const activeAlias = join(pluginDir, '4.15.6-beta');
+    if (!existsSync(activeAlias)) skip();
+    makeStale(stale);
+    installedPlugins(activeAlias);
+
+    const result = purgeStalePluginCacheVersions();
+
+    expect(result.symlinked).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(lstatSync(stale).isDirectory()).toBe(true);
+    expect(hookResolves('4.15.6-BETA')).toBe(true);
+    expect(readdirSync(pluginDir).filter((name) => name.includes('.omc-stale-'))).toEqual([]);
+  });
+
+  for (const shape of ['descendant', 'ancestor']) {
+    it(`preserves a stale root through a case-aliased ${shape} target`, ({ skip }) => {
+      if (process.platform !== 'darwin') skip();
+      const stale = writeVersion('4.15.6-BETA');
+      const alias = join(pluginDir, '4.15.6-beta');
+      if (!existsSync(alias)) skip();
+      let target: string;
+      if (shape === 'descendant') {
+        writeVersion('4.15.6-BETA/nested');
+        target = join(alias, 'nested');
+      } else {
+        mkdirSync(join(pluginDir, 'scripts'), { recursive: true });
+        writeFileSync(join(pluginDir, 'scripts', 'run.cjs'), '// namespace fixture');
+        mkdirSync(join(pluginDir, 'hooks'), { recursive: true });
+        writeFileSync(join(pluginDir, 'hooks', 'hooks.json'), '{}');
+        target = pluginDir.replace('oh-my-copilot', 'OH-MY-COPILOT');
+      }
+      const redirect = join(pluginDir, LEGACY[0]);
+      symlinkSync(target, redirect, 'dir');
+      makeStale(stale);
+      installedPlugins(redirect);
+
+      const result = purgeStalePluginCacheVersions();
+
+      expect(result.symlinked).toBe(0);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(lstatSync(stale).isDirectory()).toBe(true);
+      expect(hookResolves('4.15.6-BETA')).toBe(true);
+      expect(readlinkSync(redirect)).toBe(target);
+    });
+  }
+
+  it('matches a case-aliased parent namespace on case-insensitive macOS', ({ skip }) => {
+    if (process.platform !== 'darwin') skip();
+    const marketplaceDir = join(configDir, 'plugins', 'cache', 'omc');
+    rmSync(pluginDir, { recursive: true, force: true });
+    pluginDir = join(marketplaceDir, 'Oh-My-Copilot');
+    mkdirSync(pluginDir, { recursive: true });
+    const stale = writeVersion(STALE);
+    mkdirSync(join(pluginDir, ACTIVE));
+    const aliasedActive = join(marketplaceDir, 'oh-my-copilot', ACTIVE);
+    if (!existsSync(aliasedActive)) skip();
+    makeStale(stale);
+    installedPlugins(aliasedActive);
+
+    const result = purgeStalePluginCacheVersions();
+
+    expect(result.symlinked).toBe(0);
+    expect(result.removed).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(lstatSync(stale).isDirectory()).toBe(true);
+    expect(hookResolves(STALE)).toBe(true);
+    expect(readdirSync(pluginDir).filter((name) => name.includes('.omc-stale-'))).toEqual([]);
+  });
+
+  it('retains support for other plugins without OMC hook entry points', () => {
+    const genericDir = join(configDir, 'plugins', 'cache', 'official', 'hookify');
+    const active = join(genericDir, ACTIVE);
+    const stale = join(genericDir, STALE);
+    mkdirSync(active, { recursive: true });
+    writeFileSync(join(active, 'README.md'), 'generic plugin payload');
+    mkdirSync(stale);
+    writeFileSync(join(stale, 'README.md'), 'old plugin payload');
+    makeStale(stale);
+    writeFileSync(
+      join(configDir, 'plugins', 'installed_plugins.json'),
+      JSON.stringify({
+        version: 2,
+        plugins: { 'hookify@official': [{ installPath: active }] },
+      }),
+    );
+
+    const result = purgeStalePluginCacheVersions();
+
+    expect(result.errors).toEqual([]);
+    expect(result.symlinkPaths).toContain(stale);
+    expect(readlinkSync(stale)).toBe(active);
+    expect(existsSync(join(stale, 'README.md'))).toBe(true);
+  });
+
+  it('retains generic layout for an OMC-named plugin from another marketplace', () => {
+    const genericDir = join(configDir, 'plugins', 'cache', 'official', 'oh-my-copilot');
+    const active = join(genericDir, ACTIVE);
+    const stale = join(genericDir, STALE);
+    mkdirSync(active, { recursive: true });
+    writeFileSync(join(active, 'README.md'), 'generic plugin payload');
+    mkdirSync(stale);
+    writeFileSync(join(stale, 'README.md'), 'old generic plugin payload');
+    makeStale(stale);
+    writeFileSync(
+      join(configDir, 'plugins', 'installed_plugins.json'),
+      JSON.stringify({
+        version: 2,
+        plugins: { 'oh-my-copilot@official': [{ installPath: active }] },
+      }),
+    );
+
+    const result = purgeStalePluginCacheVersions();
+
+    expect(result.errors).toEqual([]);
+    expect(result.symlinkPaths).toContain(stale);
+    expect(readlinkSync(stale)).toBe(active);
+    expect(existsSync(join(stale, 'README.md'))).toBe(true);
+  });
+
   it('demotes a stale version to a redirect and keeps every pinned path resolving', () => {
     const stale = writeVersion(STALE);
     for (const v of LEGACY) symlinkSync(stale, join(pluginDir, v), 'dir');
@@ -114,7 +297,7 @@ describe('purgeStalePluginCacheVersions on a real filesystem', () => {
     // The pinned path and everything chaining through it still resolve
     for (const v of [STALE, ...LEGACY]) expect(hookResolves(v)).toBe(true);
     // No aside directory survives a clean run
-    expect(readdirSync(pluginDir).filter(n => n.includes('.omc-stale-'))).toEqual([]);
+    expect(readdirSync(pluginDir).filter((n) => n.includes('.omc-stale-'))).toEqual([]);
   });
 
   it('restores the backup when only a squatter holds the pinned path', () => {
@@ -143,7 +326,7 @@ describe('purgeStalePluginCacheVersions on a real filesystem', () => {
     const aside = `${stale}.omc-stale-999998`;
     renameSync(stale, aside);
     symlinkSync(join(pluginDir, 'gone-away'), stale, 'dir');
-    expect(existsSync(stale)).toBe(false);            // follows the broken link
+    expect(existsSync(stale)).toBe(false); // follows the broken link
     expect(lstatSync(stale).isSymbolicLink()).toBe(true);
 
     const result = purgeStalePluginCacheVersions();
@@ -195,7 +378,7 @@ describe('purgeStalePluginCacheVersions on a real filesystem', () => {
     const stale = writeVersion(STALE);
     const aside = `${stale}.omc-stale-999995`;
     renameSync(stale, aside);
-    writeVersion(STALE);                       // reinstalled, has scripts/run.cjs
+    writeVersion(STALE); // reinstalled, has scripts/run.cjs
     mkdirSync(join(pluginDir, STALE, 'hooks'), { recursive: true });
     writeFileSync(join(pluginDir, STALE, 'hooks', 'hooks.json'), '{}');
     makeStale(aside);
@@ -209,7 +392,7 @@ describe('purgeStalePluginCacheVersions on a real filesystem', () => {
 
   it('leaves a backup alone while its owning purge is still running', () => {
     const stale = writeVersion(STALE);
-    const aside = `${stale}.omc-stale-${process.pid}`;   // this process is alive
+    const aside = `${stale}.omc-stale-${process.pid}`; // this process is alive
     renameSync(stale, aside);
     makeStale(aside);
 
@@ -274,8 +457,8 @@ describe('purgeStalePluginCacheVersions on a real filesystem', () => {
     const aside = `${stale}.omc-stale-999993`;
     renameSync(stale, aside);
     symlinkSync(elsewhere, stale, 'dir');
-    expect(existsSync(stale)).toBe(true);       // the link resolves…
-    expect(hookResolves(STALE)).toBe(false);    // …but it is not a root
+    expect(existsSync(stale)).toBe(true); // the link resolves…
+    expect(hookResolves(STALE)).toBe(false); // …but it is not a root
     makeStale(aside);
 
     const result = purgeStalePluginCacheVersions();
@@ -297,7 +480,7 @@ describe('purgeStalePluginCacheVersions on a real filesystem', () => {
 
     expect(result.restored).toBe(0);
     expect(existsSync(aside)).toBe(false);
-    expect(hookResolves(STALE)).toBe(true);     // resolves through the redirect
+    expect(hookResolves(STALE)).toBe(true); // resolves through the redirect
   });
 
   it('deletes a stale version outright when no active sibling exists', () => {
@@ -334,17 +517,33 @@ describe('invariant across every cache shape', () => {
   // skip.  Invariant — if payload existed anywhere before the purge, then after
   // it either the pinned path resolves, or an intact backup survives AND the
   // result says so (as an error, or as a backup left to its running owner).
-  const OCCUPANTS = ['missing', 'empty-dir', 'dotfile-only', 'junk-only', 'partial-scripts', 'payload', 'live-symlink', 'dangling-link', 'file'] as const;
+  const OCCUPANTS = [
+    'missing',
+    'empty-dir',
+    'dotfile-only',
+    'junk-only',
+    'partial-scripts',
+    'payload',
+    'live-symlink',
+    'dangling-link',
+    'file',
+  ] as const;
   const BACKUPS = ['none', 'payload-dead', 'payload-live', 'empty-dead', 'dotfile-dead'] as const;
   const DEAD_PID = 999997;
 
-  function shape(occupant: typeof OCCUPANTS[number], backup: typeof BACKUPS[number]) {
+  function shape(occupant: (typeof OCCUPANTS)[number], backup: (typeof BACKUPS)[number]) {
     const V = join(pluginDir, STALE);
     if (occupant === 'empty-dir') mkdirSync(V, { recursive: true });
-    else if (occupant === 'dotfile-only') { mkdirSync(V, { recursive: true }); writeFileSync(join(V, '.DS_Store'), 'x'); }
-    else if (occupant === 'junk-only') { mkdirSync(V, { recursive: true }); writeFileSync(join(V, 'desktop.ini'), 'x'); }
-    else if (occupant === 'partial-scripts') { mkdirSync(join(V, 'scripts'), { recursive: true }); writeFileSync(join(V, 'scripts', 'partial.txt'), 'x'); }
-    else if (occupant === 'payload') writeVersion(STALE);
+    else if (occupant === 'dotfile-only') {
+      mkdirSync(V, { recursive: true });
+      writeFileSync(join(V, '.DS_Store'), 'x');
+    } else if (occupant === 'junk-only') {
+      mkdirSync(V, { recursive: true });
+      writeFileSync(join(V, 'desktop.ini'), 'x');
+    } else if (occupant === 'partial-scripts') {
+      mkdirSync(join(V, 'scripts'), { recursive: true });
+      writeFileSync(join(V, 'scripts', 'partial.txt'), 'x');
+    } else if (occupant === 'payload') writeVersion(STALE);
     else if (occupant === 'live-symlink') symlinkSync(join(pluginDir, ACTIVE), V, 'dir');
     else if (occupant === 'dangling-link') symlinkSync(join(pluginDir, 'gone-away'), V, 'dir');
     else if (occupant === 'file') writeFileSync(V, 'not a directory');
@@ -359,25 +558,32 @@ describe('invariant across every cache shape', () => {
         writeFileSync(join(aside, 'scripts', 'run.cjs'), '//\n');
         mkdirSync(join(aside, 'hooks'), { recursive: true });
         writeFileSync(join(aside, 'hooks', 'hooks.json'), '{}\n');
+      } else if (backup.startsWith('empty')) mkdirSync(aside, { recursive: true });
+      else {
+        mkdirSync(aside, { recursive: true });
+        writeFileSync(join(aside, '.DS_Store'), 'x');
       }
-      else if (backup.startsWith('empty')) mkdirSync(aside, { recursive: true });
-      else { mkdirSync(aside, { recursive: true }); writeFileSync(join(aside, '.DS_Store'), 'x'); }
     }
     for (const p of [V, aside].filter(Boolean) as string[]) {
-      try { makeStale(p); } catch { /* symlinks and plain files cannot be aged */ }
+      try {
+        makeStale(p);
+      } catch {
+        /* symlinks and plain files cannot be aged */
+      }
     }
     return { V, aside };
   }
 
   /** A backup only counts as intact if it is a root the runner would load. */
   const loadableRoot = (dir: string) =>
-    existsSync(join(dir, 'hooks', 'hooks.json'))
-    && existsSync(join(dir, 'scripts', 'run.cjs'))
-    && existsSync(join(dir, 'scripts'));
+    existsSync(join(dir, 'hooks', 'hooks.json')) &&
+    existsSync(join(dir, 'scripts', 'run.cjs')) &&
+    existsSync(join(dir, 'scripts'));
 
   const intactBackupSurvives = () =>
-    readdirSync(pluginDir).filter(n => n.includes('.omc-stale-'))
-      .some(n => loadableRoot(join(pluginDir, n)));
+    readdirSync(pluginDir)
+      .filter((n) => n.includes('.omc-stale-'))
+      .some((n) => loadableRoot(join(pluginDir, n)));
 
   it('never ends with a broken pinned path and nothing to show for it', () => {
     const violations: string[] = [];
@@ -396,16 +602,19 @@ describe('invariant across every cache shape', () => {
 
         let result: ReturnType<typeof purgeStalePluginCacheVersions> | undefined;
         let threw: unknown = null;
-        try { result = purgeStalePluginCacheVersions(); } catch (err) { threw = err; }
+        try {
+          result = purgeStalePluginCacheVersions();
+        } catch (err) {
+          threw = err;
+        }
 
         const accounted = (result?.errors.length ?? 0) > 0 || (result?.skipped ?? 0) > 0;
-        const held = threw === null
-          && (!hadPayload || hookResolves(STALE) || (intactBackupSurvives() && accounted));
+        const held = threw === null && (!hadPayload || hookResolves(STALE) || (intactBackupSurvives() && accounted));
         if (!held) {
           violations.push(
             `${occupant} + ${backup}: resolves=${hookResolves(STALE)} ` +
-            `backup=${intactBackupSurvives()} errors=${result?.errors.length ?? '-'} ` +
-            `skipped=${result?.skipped ?? '-'} threw=${(threw as NodeJS.ErrnoException)?.code ?? '-'}`,
+              `backup=${intactBackupSurvives()} errors=${result?.errors.length ?? '-'} ` +
+              `skipped=${result?.skipped ?? '-'} threw=${(threw as NodeJS.ErrnoException)?.code ?? '-'}`,
           );
         }
       }
@@ -421,11 +630,20 @@ describe('invariant across every cache shape', () => {
 // if it is ever added.
 describe.skipIf(process.platform === 'win32')('syscall semantics this implementation relies on', () => {
   let root: string;
-  beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'omc-posix-')); });
-  afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'omc-posix-'));
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
 
   const code = (fn: () => void): string => {
-    try { fn(); return 'ok'; } catch (err) { return (err as NodeJS.ErrnoException).code ?? 'unknown'; }
+    try {
+      fn();
+      return 'ok';
+    } catch (err) {
+      return (err as NodeJS.ErrnoException).code ?? 'unknown';
+    }
   };
   const payloadDir = (name: string) => {
     const p = join(root, name);

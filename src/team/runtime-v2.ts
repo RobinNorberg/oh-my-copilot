@@ -5208,6 +5208,17 @@ export async function requeueDeadWorkerTasks(
 // AC-7: CLI worker verdict completion handler
 // ---------------------------------------------------------------------------
 
+const CURSOR_RUNTIME_POLICY_SKIP_REASON = 'runtime worker protocol forbids nested subagents';
+const CURSOR_RUNTIME_POLICY_SKIP_PROVENANCE = 'runtime-policy';
+const CURSOR_DELEGATION_EVIDENCE_LINE = /^\s*Subagent (?:spawn evidence|skip reason):/i;
+
+function stripCursorDelegationEvidenceMarkers(summary: string): string {
+  return summary
+    .split(/\r\n|\r|\n/)
+    .filter(line => !CURSOR_DELEGATION_EVIDENCE_LINE.test(line))
+    .join('\n');
+}
+
 export type CliWorkerVerdictStatus =
   | 'completed'
   | 'failed'
@@ -5231,6 +5242,43 @@ interface NonCursorVerdictBinding {
   worker_name: string;
   task_id: string;
   task_version: number;
+}
+
+function cursorTransitionFailureMarkerPath(outputFile: string): string {
+  return `${outputFile}.transition-failure`;
+}
+
+function cursorTransitionFailureMarkerKey(input: {
+  instanceId: string;
+  workerName: string;
+  launchAttemptId: string | undefined;
+  claimToken: string;
+  taskId: string;
+  taskVersion: number;
+  error: string;
+}): string {
+  return createHash('sha256')
+    .update(JSON.stringify([
+      input.instanceId,
+      input.workerName,
+      input.launchAttemptId ?? null,
+      input.claimToken,
+      input.taskId,
+      input.taskVersion,
+      input.error,
+    ]))
+    .digest('hex');
+}
+
+async function readCursorTransitionFailureMarker(
+  outputFile: string,
+): Promise<string | null> {
+  try {
+    const marker = (await readFile(cursorTransitionFailureMarkerPath(outputFile), 'utf8')).trim();
+    return marker || null;
+  } catch {
+    return null;
+  }
 }
 
 type NonCursorVerdictBindingRead =
@@ -5385,7 +5433,8 @@ async function processCliWorkerVerdictsUnderLock(
   const sanitized = sanitizeTeamName(teamName);
   const config = await readTeamConfig(sanitized, cwd);
   if (!config) return [];
-  if (!config.instance_id || config.instance_id.toLowerCase() !== expectedInstanceId) return [];
+  const configInstanceId = config.instance_id;
+  if (!configInstanceId || configInstanceId.toLowerCase() !== expectedInstanceId) return [];
 
   const results: CliWorkerVerdictResult[] = [];
   const logEventFailure = createSwallowedErrorLogger(
@@ -5394,6 +5443,45 @@ async function processCliWorkerVerdictsUnderLock(
   const logCompletionMarkerFailure = createSwallowedErrorLogger(
     'team.runtime-v2.processCliWorkerVerdicts teamMarkTaskCompleted failed',
   );
+  const logCursorTransitionMarkerFailure = createSwallowedErrorLogger(
+    'team.runtime-v2.processCliWorkerVerdicts Cursor transition marker failed',
+  );
+  const logCursorTransitionFailure = async (
+    outputFile: string,
+    workerName: string,
+    taskId: string,
+    taskVersion: number,
+    claimToken: string,
+    launchAttemptId: string | undefined,
+    error: string,
+  ): Promise<void> => {
+    if (error === 'already_terminal') return;
+    const marker = cursorTransitionFailureMarkerKey({
+      instanceId: configInstanceId,
+      workerName,
+      launchAttemptId,
+      claimToken,
+      taskId,
+      taskVersion,
+      error,
+    });
+    if (await readCursorTransitionFailureMarker(outputFile) === marker) return;
+    try {
+      await appendTeamEvent(sanitized, {
+        type: 'team_leader_nudge',
+        worker: 'leader-fixed',
+        task_id: taskId,
+        reason: `cli_worker_verdict_transition_failed:${workerName}:${taskId}:${error}`,
+      }, cwd);
+    } catch (eventError) {
+      logEventFailure(eventError);
+      return;
+    }
+    await writeAtomic(
+      cursorTransitionFailureMarkerPath(outputFile),
+      `${marker}\n`,
+    ).catch(logCursorTransitionMarkerFailure);
+  };
 
   const { rename } = await import('fs/promises');
   const { renameSync, readFileSync, existsSync: fsExistsSync } = await import('fs');
@@ -5646,6 +5734,7 @@ async function processCliWorkerVerdictsUnderLock(
     let targetTaskId: string | null = null;
     let targetTaskPath: string | null = null;
     let targetTaskVersion: number | null = null;
+    let targetTaskDelegation: TeamTaskDelegationPlan | undefined;
     if (!cursorReviewer && nonCursorBinding) {
       targetTaskId = nonCursorBinding.task_id;
       targetTaskPath = absPath(cwd, TeamPaths.taskFile(sanitized, nonCursorBinding.task_id));
@@ -5685,6 +5774,7 @@ async function processCliWorkerVerdictsUnderLock(
           targetTaskId = taskId;
           targetTaskPath = taskPath;
           targetTaskVersion = taskData.version ?? 1;
+          targetTaskDelegation = taskData.delegation;
           break;
         }
       } catch {
@@ -5766,6 +5856,15 @@ async function processCliWorkerVerdictsUnderLock(
     let publishFailureReason: string | undefined;
     try {
       if (cursorReviewer) {
+        const cursorReviewerSkipEvidenceAllowed = terminalStatus === 'completed'
+          && targetTaskDelegation?.skip_allowed_reason_required === true
+          && (targetTaskDelegation.mode === 'auto'
+            || targetTaskDelegation.mode === 'required'
+            || targetTaskDelegation.required_parallel_probe === true);
+        const cursorSummary = stripCursorDelegationEvidenceMarkers(payload.summary);
+        const transitionResult = cursorReviewerSkipEvidenceAllowed
+          ? `${cursorSummary}\nSubagent skip reason: ${CURSOR_RUNTIME_POLICY_SKIP_REASON}`
+          : cursorSummary;
         const transition = await teamTransitionTaskStatus(
           sanitized,
           targetTaskId,
@@ -5775,7 +5874,7 @@ async function processCliWorkerVerdictsUnderLock(
           cwd,
           terminalStatus === 'completed'
             ? {
-              result: payload.summary,
+              result: transitionResult,
               metadata: {
                 verdict: payload.verdict,
                 verdict_summary: payload.summary,
@@ -5784,6 +5883,9 @@ async function processCliWorkerVerdictsUnderLock(
                 verdict_source: 'cli_worker_output_contract',
                 verdict_claim_token: payload.claim_token,
                 verdict_task_version: payload.task_version,
+                ...(cursorReviewerSkipEvidenceAllowed
+                  ? { verdict_delegation_provenance: CURSOR_RUNTIME_POLICY_SKIP_PROVENANCE }
+                  : {}),
                 ...(worker.launch_attempt_id
                   ? { verdict_worker_launch_attempt_id: worker.launch_attempt_id }
                   : {}),
@@ -5806,6 +5908,7 @@ async function processCliWorkerVerdictsUnderLock(
             },
         );
         transitionOk = transition.ok;
+        if (!transition.ok) publishFailureReason = transition.error;
       } else {
         const artifactResult = await withProcessIdentityFileLock(
           `${outputFile}.lock`,
@@ -5988,14 +6091,31 @@ async function processCliWorkerVerdictsUnderLock(
     }
 
     if (!transitionOk) {
+      if (cursorReviewer && publishFailureReason) {
+        await logCursorTransitionFailure(
+          outputFile,
+          worker.name,
+          targetTaskId,
+          observedTaskVersion,
+          payload.claim_token!,
+          worker.launch_attempt_id ?? payload.launch_attempt_id,
+          publishFailureReason,
+        );
+      }
+      const cursorTransitionStatus = publishFailureReason === 'already_terminal'
+        ? 'already_terminal'
+        : 'skipped';
+      const transitionReason = cursorReviewer
+        ? cursorTransitionStatus === 'skipped'
+          ? publishFailureReason ?? 'task_transition_rejected'
+          : undefined
+        : publishFailureReason ?? 'task_transition_rejected';
       results.push({
         workerName: worker.name,
         taskId: targetTaskId,
-        status: cursorReviewer ? 'already_terminal' : 'skipped',
+        status: cursorReviewer ? cursorTransitionStatus : 'skipped',
         verdict: payload.verdict,
-        ...(cursorReviewer
-          ? {}
-          : { reason: publishFailureReason ?? 'task_transition_rejected' }),
+        ...(transitionReason ? { reason: transitionReason } : {}),
       });
       continue;
     }

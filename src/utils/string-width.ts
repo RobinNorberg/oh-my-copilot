@@ -130,13 +130,14 @@ export function stripAnsi(str: string): string {
   // ANSI escape code pattern: ESC [ ... m (SGR sequences)
   // Also handles other common sequences
   return str.replace(
-    /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g,
+    /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g,
     ""
   );
 }
 
 /**
  * Truncate a string to fit within a maximum visual width.
+ * Boundary-limited output is plain text; fitting strings retain formatting.
  * CJK-aware: accounts for double-width characters.
  *
  * @param str - The string to truncate
@@ -173,7 +174,7 @@ function truncateToWidthNoSuffix(str: string, maxWidth: number): string {
   let width = 0;
   let result = "";
 
-  for (const char of str) {
+  for (const char of stripAnsi(str)) {
     const charWidth = getCharWidth(char);
     if (width + charWidth > maxWidth) break;
     result += char;
@@ -206,6 +207,7 @@ export function padToWidth(
 
 /**
  * Slice a string by visual width instead of character count.
+ * Partial slices are plain text; a full visible-range slice retains formatting.
  * CJK-aware: accounts for double-width characters.
  *
  * @param str - The string to slice
@@ -219,12 +221,13 @@ export function sliceByWidth(
   endWidth?: number
 ): string {
   if (!str) return "";
+  if (startWidth <= 0 && (endWidth === undefined || endWidth >= stringWidth(str))) return str;
 
   let currentWidth = 0;
   let result = "";
   let started = false;
 
-  for (const char of str) {
+  for (const char of stripAnsi(str)) {
     const charWidth = getCharWidth(char);
 
     // Check if we've reached the start position.

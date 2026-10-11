@@ -29,6 +29,8 @@ export interface ChainLedger {
   gateFacts?: GateFacts;
   /** Per-stage link counts carried forward; guards against route-table self-loops. */
   visits?: Record<string, number>;
+  /** User setting-source choice captured by the originating factory link. */
+  includeUserSettings?: boolean;
   /** Cap on visits to any one stage before the chain halts. Default 2. */
   maxStageVisits?: number;
   /** Link identity: the id this ledger is named after (`chain-<chainLink>.json`). */
@@ -497,6 +499,7 @@ function decideChainLink(directory: string, ledger: ChainLedger, ctx: ChainLinkC
       intentId,
       tracker: ledger.tracker,
       visits,
+      includeUserSettings: ledger.includeUserSettings === true,
       // The cap is per chain, not per link: carry it so a later link keeps it.
       ...(stageVisitCap(ledger.maxStageVisits) !== undefined ? { maxStageVisits: stageVisitCap(ledger.maxStageVisits) } : {}),
     };

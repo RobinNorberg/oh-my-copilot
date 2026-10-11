@@ -22,6 +22,8 @@ export interface TscResult {
   diagnostics: TscDiagnostic[];
   errorCount: number;
   warningCount: number;
+  /** Raw compiler or invocation failure when no file-position diagnostic is available. */
+  error?: string;
 }
 
 /**
@@ -55,7 +57,13 @@ export function runTscDiagnostics(directory: string): TscResult {
     };
   } catch (error: any) {
     const output = error.stdout || error.stderr || '';
-    return parseTscOutput(output);
+    const result = parseTscOutput(output);
+    return {
+      ...result,
+      success: false,
+      errorCount: Math.max(1, result.errorCount),
+      ...(result.diagnostics.length === 0 ? { error: output.trim() || error.message } : {}),
+    };
   }
 }
 

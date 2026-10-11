@@ -58,6 +58,8 @@ const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const execFileAsync = promisify(execFile);
 
 const TMUX_SESSION_PREFIX = 'omc-team';
+const TMUX_LIVENESS_SERVER_RECHECK_ATTEMPTS = 3;
+const TMUX_LIVENESS_SERVER_RECHECK_DELAY_MS = 20;
 
 export type TmuxServerIdentityObservation = 'matching' | 'dead' | 'unknown';
 
@@ -133,8 +135,23 @@ function tmuxFormatEscape(value: string): string {
   return value.replace(/#/g, '##');
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+/**
+ * @internal Exported for testing only.
+ */
+export function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+/**
+ * Quote a string for PowerShell invocation using single-quoted literals.
+ * Single quotes in PowerShell prevent variable expansion and subexpression evaluation.
+ * Literal apostrophes are escaped by doubling them.
+ * @internal Exported for testing only.
+ */
+export function powershellQuote(value: string): string {
+  // PowerShell single-quoted strings: apostrophes must be doubled
+  const escaped = value.replace(/'/g, "''");
+  return `'${escaped}'`;
 }
 
 interface TmuxServerGuardRuntime {
@@ -386,18 +403,78 @@ function encodeTmuxServerIdentity(identity: TmuxServerIdentity): string {
   return Buffer.from(JSON.stringify(identity), 'utf8').toString('base64url');
 }
 
-function tmuxServerGuardCondition(identity: TmuxServerIdentity): string {
+/**
+ * Distinguish a POSIX tmux session from native psmux on Windows. psmux also
+ * exports TMUX, but identifies its socket namespace under `/tmp/psmux-*`.
+ * @internal Exported for testing only.
+ */
+export function isPosixTmuxSession(): boolean {
+  const tmuxValue = process.env.TMUX;
+  if (!tmuxValue) return false;
+
+  const parts = tmuxValue.split(',');
+  if (parts.length !== 3 || !parts[0] || !/^[0-9]+$/.test(parts[1]!)) return false;
+
+  // Native psmux exports TMUX too, using `/tmp/psmux-<pid>/<namespace>`;
+  // the presence of TMUX alone therefore cannot identify a POSIX shell.
+  const socketPath = parts[0]!.replace(/\\/g, '/');
+  return !/^\/tmp\/psmux-[^/]+(?:\/|$)/i.test(socketPath);
+}
+
+/**
+ * Generate the tmux server identity guard condition for the native shell.
+ * On native Windows and native psmux, generates PowerShell syntax even when
+ * OMC's parent process runs under MSYS/Git Bash; psmux independently chooses
+ * PowerShell for its `if-shell` implementation. POSIX tmux uses POSIX syntax.
+ * @internal Exported for testing only.
+ */
+export function tmuxServerGuardCondition(identity: TmuxServerIdentity): string {
   const runtime = resolveTmuxServerGuardRuntime();
   const runtimePath = tmuxFormatEscape(runtime.runtimePath);
   const nodePath = tmuxFormatEscape(runtime.nodePath);
-  const envPath = process.platform === 'win32' && !isUnixLikeOnWindows()
-    ? 'env'
-    : '/usr/bin/env';
   const encodedIdentity = tmuxFormatEscape(encodeTmuxServerIdentity(identity));
+
+  // Detect native Windows (not MSYS2/Cygwin)
+  if (process.platform === 'win32' && !isUnixLikeOnWindows()) {
+    return tmuxServerGuardConditionPowerShell(
+      nodePath,
+      runtimePath,
+      encodedIdentity,
+    );
+  }
+
+  // MSYS tmux runs POSIX commands; native psmux uses PowerShell even when
+  // the parent process has MSYS variables and psmux sets a valid TMUX value.
+  if (process.platform === 'win32' && isUnixLikeOnWindows() && !isPosixTmuxSession()) {
+    return tmuxServerGuardConditionPowerShell(
+      nodePath,
+      runtimePath,
+      encodedIdentity,
+    );
+  }
+
+  // POSIX shell syntax
+  return tmuxServerGuardConditionPosix(
+    nodePath,
+    runtimePath,
+    encodedIdentity,
+  );
+}
+
+/**
+ * Generate POSIX shell syntax for the guard condition.
+ * Uses `env -i` to create a clean environment and `< /dev/null` for stdin safety.
+ * @internal Exported for testing only.
+ */
+export function tmuxServerGuardConditionPosix(
+  nodePath: string,
+  runtimePath: string,
+  encodedIdentity: string,
+): string {
   // `#{pid}` is controlled tmux format syntax. All other values are shell
   // quoted after escaping tmux's `#` expansion characters.
   return [
-    shellQuote(envPath),
+    shellQuote('/usr/bin/env'),
     '-i',
     shellQuote(nodePath),
     shellQuote(runtimePath),
@@ -406,6 +483,46 @@ function tmuxServerGuardCondition(identity: TmuxServerIdentity): string {
     shellQuote('#{pid}'),
     '<',
     shellQuote('/dev/null'),
+  ].join(' ');
+}
+
+/**
+ * Generate PowerShell syntax for the guard condition.
+ * Uses the `&` call operator for invocation in a clean environment.
+ * Clears NODE_OPTIONS and other Node-related startup variables to prevent
+ * unauthorized module loading before the identity guard runs.
+ * Note: The tmux format expansion placeholder `#{pid}` is preserved as-is
+ * for tmux to expand it before passing to PowerShell.
+ * @internal Exported for testing only.
+ */
+export function tmuxServerGuardConditionPowerShell(
+  nodePath: string,
+  runtimePath: string,
+  encodedIdentity: string,
+): string {
+  // Use the call operator (&) with properly quoted arguments. The outer
+  // PowerShell process otherwise exits successfully even when a native child
+  // exits nonzero, so explicitly propagate the guard's verdict and fail
+  // closed if Node cannot be started.
+  // Note: `#{pid}` is preserved as literal text for tmux format expansion.
+  return [
+    '&',
+    '{',
+    'Remove-Item',
+    '@(\"env:NODE_OPTIONS\",\"env:NODE_PATH\",\"env:NODE_PRESERVE_SYMLINKS\")',
+    '-ErrorAction',
+    'SilentlyContinue',
+    ';',
+    '&',
+    powershellQuote(nodePath),
+    powershellQuote(runtimePath),
+    powershellQuote('--tmux-server-identity-guard'),
+    powershellQuote(encodedIdentity),
+    powershellQuote('#{pid}'),
+    ';',
+    'if ($LASTEXITCODE -eq 0) { exit 0 }',
+    'exit 1',
+    '}',
   ].join(' ');
 }
 
@@ -470,6 +587,27 @@ async function runGuardedNativeTmuxCommand(
       stderr: isTmuxServerNotFoundError(error) ? 'tmux_server_unavailable' : redactBoundedDiagnostic(error),
     };
   }
+}
+
+async function runGuardedNativeTmuxCreationCommand(
+  identity: TmuxServerIdentity,
+  nativeCommand: string,
+  resourceFields: 3 | 4,
+): ReturnType<typeof runGuardedNativeTmuxCommand> {
+  const result = await runGuardedNativeTmuxCommand(identity, nativeCommand);
+  if (result.outcome !== 'unknown' || result.stderr.trim()) return result;
+
+  // psmux can return a successful `-P -F` creation record while omitting a
+  // following `display-message -p` marker. Accept only a well-formed record
+  // bound to the already-captured server incarnation as proof of execution.
+  const record = parseTmuxCreationRecord(
+    result.stdout,
+    resourceFields,
+    currentStrictProcessStartIdentity,
+    identity,
+  );
+  if (!record || !sameTmuxServerIdentity(record.identity, identity)) return result;
+  return { ...result, outcome: 'executed' };
 }
 
 function isTmuxServerNotFoundError(error: unknown): boolean {
@@ -1537,10 +1675,11 @@ async function runPaneCreationCommand(
   identity: TmuxServerIdentity,
   nativeCommand: string,
   paneShell: WorkerPaneShell,
+  resourceFields: 3 | 4,
 ): ReturnType<typeof runGuardedNativeTmuxCommand> {
   let result: Awaited<ReturnType<typeof runGuardedNativeTmuxCommand>>;
   try {
-    result = await runGuardedNativeTmuxCommand(identity, nativeCommand);
+    result = await runGuardedNativeTmuxCreationCommand(identity, nativeCommand, resourceFields);
   } catch (error) {
     discardPaneEnvFile(paneShell.envFile);
     throw error;
@@ -2020,10 +2159,10 @@ export async function splitTeamWorkerPaneWithEvidence(
       '-c', cwd,
       ...splitPaneShell.args,
     ];
-    const splitResult = await runPaneCreationCommand(
+    const splitResult = await runGuardedNativeTmuxCreationCommand(
           identity,
           tmuxCommandString(splitArgs, ['#{pane_id}\t#{socket_path}\t#{pid}']),
-          splitPaneShell,
+          3,
         );
     const parsed = splitResult.outcome === 'executed'
       ? parseTmuxCreationRecord(
@@ -2214,6 +2353,7 @@ export async function createTeamSession(
           existingDetachedIdentity,
           tmuxCommandString(detachedArgs, [detachedFormat]),
           detachedPaneShell,
+          4,
         );
       } catch (error) {
         const cleaned = await cleanupDetachedSession();
@@ -2295,6 +2435,7 @@ export async function createTeamSession(
           tmuxServerIdentity,
           tmuxCommandString(detachedArgs, [detachedFormat]),
           detachedPaneShell,
+          4,
         );
       } catch (error) {
         // Reached only when bootstrap failed before new-session ran or the
@@ -2496,6 +2637,7 @@ export async function createTeamSession(
           tmuxServerIdentity!,
           tmuxCommandString(newWindowArgs, ['#S:#I\t#{pane_id}\t#{socket_path}\t#{pid}']),
           newWindowPaneShell,
+          4,
         );
     } catch (error) {
       const creationError = new TeamSessionCreationError(
@@ -2696,6 +2838,7 @@ export async function createTeamSession(
           tmuxServerIdentity!,
           tmuxCommandString(splitArgs, ['#{pane_id}\t#{socket_path}\t#{pid}']),
           splitPaneShell,
+          3,
         );
     if (splitResult.outcome !== 'executed') {
       const creationError = new TeamSessionCreationError(
@@ -3917,27 +4060,81 @@ export async function getWorkerLiveness(paneId: string): Promise<WorkerPaneLiven
   }
 }
 
+/**
+ * Give a tmux server that is already shutting down a bounded opportunity to
+ * publish its process death. The initial identity probe is the only tmux
+ * query; when it is `unknown`, the short retry polls only process identity.
+ * A matching process observation never promotes the result to `matching`, so
+ * a foreign/replaced server remains fail-closed while an original process
+ * death can still be observed after a detached server is killed.
+ */
+async function observeTmuxServerIdentityWithBoundedRecheck(
+  identity: TmuxServerIdentity,
+  dependencies: TmuxServerIdentityDependencies = {},
+): Promise<TmuxServerIdentityObservation> {
+  if (!isValidTmuxServerIdentity(identity)) return 'unknown';
+  const deps: Required<TmuxServerIdentityDependencies> = {
+    ...defaultTmuxServerIdentityDependencies,
+    ...dependencies,
+  };
+  // Keep the original dependency shape for the initial probe. In particular,
+  // the Windows default path uses its single-process probe when callers did
+  // not inject one; only the bounded follow-up uses the merged dependency.
+  const initialState = await observeTmuxServerIdentity(identity, dependencies);
+  if (initialState !== 'unknown') return initialState;
+
+  for (let attempt = 1; attempt < TMUX_LIVENESS_SERVER_RECHECK_ATTEMPTS; attempt += 1) {
+    await sleep(TMUX_LIVENESS_SERVER_RECHECK_DELAY_MS);
+    let processState: ProcessIdentityObservation;
+    try {
+      processState = deps.processObservation({
+        server_pid: identity.server_pid,
+        process_started_at: identity.process_started_at,
+      });
+    } catch {
+      return 'unknown';
+    }
+    if (processState === 'dead') return 'dead';
+  }
+  return 'unknown';
+}
+
 async function getWorkerLivenessAtTmuxIdentity(
   paneId: string,
   identity: TmuxServerIdentity,
+  dependencies: TmuxServerIdentityDependencies = {},
 ): Promise<WorkerPaneLiveness> {
   if (!isValidTmuxServerIdentity(identity) || !TMUX_MAILBOX_PANE_ID.test(paneId)) return 'unknown';
+  let result: { stdout: string; stderr: string } | undefined;
+  let queryError: unknown;
   try {
-    const result = await tmuxCmdAsync(
+    result = await tmuxCmdAsync(
       tmuxArgsForIdentity(identity, ['display-message', '-t', paneId, '-p', '#{pane_dead}']),
       { timeout: 2_000, stripTmux: true },
     );
-    if (result.stderr.trim()) return 'unknown';
-    const afterState = await observeTmuxServerIdentity(identity);
-    if (afterState === 'dead') return 'dead';
-    if (afterState !== 'matching') return 'unknown';
-    const state = result.stdout.replace(/\r?\n$/, '');
-    if (state === '0') return 'alive';
-    if (state === '1') return 'dead';
-    return getTmuxPaneLivenessFromInventory(paneId, identity);
   } catch (error) {
-    return isTmuxPaneNotFoundError(error) ? 'dead' : 'unknown';
+    queryError = error;
   }
+
+  const afterState = await observeTmuxServerIdentityWithBoundedRecheck(identity, dependencies);
+  if (afterState === 'dead') return 'dead';
+  if (afterState !== 'matching') return 'unknown';
+
+  // A missing-pane response is meaningful only after the original server has
+  // been revalidated. This covers tmux versions which return the diagnostic in
+  // stderr instead of rejecting the command, while keeping foreign/replaced
+  // servers fail-closed.
+  if (queryError !== undefined) {
+    return isTmuxPaneNotFoundError(queryError) ? 'dead' : 'unknown';
+  }
+  if (!result) return 'unknown';
+  if (result.stderr.trim()) {
+    return isTmuxPaneNotFoundError(result) ? 'dead' : 'unknown';
+  }
+  const state = result.stdout.replace(/\r?\n$/, '');
+  if (state === '0') return 'alive';
+  if (state === '1') return 'dead';
+  return getTmuxPaneLivenessFromInventory(paneId, identity, dependencies);
 }
 
 /**
@@ -3946,13 +4143,21 @@ async function getWorkerLivenessAtTmuxIdentity(
  */
 export async function getOwnedWorkerLiveness(
   ownership: WorkerPaneOwnership,
+  dependencies: TmuxServerIdentityDependencies = {},
 ): Promise<WorkerPaneLiveness> {
   if (ownership.provider === 'cmux') return getWorkerLiveness(ownership.paneId);
   if (!isValidTmuxServerIdentity(ownership.tmuxServerIdentity)) return 'unknown';
-  const serverState = await observeTmuxServerIdentity(ownership.tmuxServerIdentity);
+  const serverState = await observeTmuxServerIdentityWithBoundedRecheck(
+    ownership.tmuxServerIdentity,
+    dependencies,
+  );
   if (serverState === 'dead') return 'dead';
   if (serverState !== 'matching') return 'unknown';
-  return getWorkerLivenessAtTmuxIdentity(ownership.paneId, ownership.tmuxServerIdentity);
+  return getWorkerLivenessAtTmuxIdentity(
+    ownership.paneId,
+    ownership.tmuxServerIdentity,
+    dependencies,
+  );
 }
 
 export async function isWorkerAlive(paneId: string): Promise<boolean> {
@@ -4043,40 +4248,49 @@ function parseTmuxPaneRecords(output: string): TmuxPaneRecord[] | null {
 async function getTmuxPaneLivenessFromInventory(
   paneId: string,
   tmuxServerIdentity?: TmuxServerIdentity,
+  dependencies: TmuxServerIdentityDependencies = {},
 ): Promise<WorkerPaneLiveness> {
   if (tmuxServerIdentity) {
-    const beforeState = await observeTmuxServerIdentity(tmuxServerIdentity);
+    const beforeState = await observeTmuxServerIdentityWithBoundedRecheck(
+      tmuxServerIdentity,
+      dependencies,
+    );
     if (beforeState === 'dead') return 'dead';
     if (beforeState !== 'matching') return 'unknown';
   }
+  let result: { stdout: string; stderr: string } | undefined;
+  let queryError: unknown;
   try {
     const args = [
       'list-panes', '-a', '-F', '#{pane_id} #{pane_dead}',
     ];
-    const result = await tmuxCmdAsync(
+    result = await tmuxCmdAsync(
       tmuxServerIdentity ? tmuxArgsForIdentity(tmuxServerIdentity, args) : args,
       tmuxServerIdentity ? { timeout: 2_000, stripTmux: true } : undefined,
     );
-    if (result.stderr.trim()) return 'unknown';
-    if (tmuxServerIdentity) {
-      const afterState = await observeTmuxServerIdentity(tmuxServerIdentity);
-      if (afterState === 'dead') return 'dead';
-      if (afterState !== 'matching') return 'unknown';
-    }
-    const panes = parseTmuxPaneRecords(result.stdout);
-    if (!panes) return 'unknown';
-    const matches = panes.filter(pane => pane.id === paneId);
-    if (matches.length > 1) return 'unknown';
-    const pane = matches[0];
-    if (!pane) {
-      // A valid, complete non-empty inventory proves the exact native pane is
-      // absent. Never infer this from an empty or malformed response.
-      return 'dead';
-    }
-    return pane.dead === '0' ? 'alive' : 'dead';
-  } catch {
-    return 'unknown';
+  } catch (error) {
+    queryError = error;
   }
+  if (tmuxServerIdentity) {
+    const afterState = await observeTmuxServerIdentityWithBoundedRecheck(
+      tmuxServerIdentity,
+      dependencies,
+    );
+    if (afterState === 'dead') return 'dead';
+    if (afterState !== 'matching') return 'unknown';
+  }
+  if (queryError !== undefined || !result || result.stderr.trim()) return 'unknown';
+  const panes = parseTmuxPaneRecords(result.stdout);
+  if (!panes) return 'unknown';
+  const matches = panes.filter(pane => pane.id === paneId);
+  if (matches.length > 1) return 'unknown';
+  const pane = matches[0];
+  if (!pane) {
+    // A valid, complete non-empty inventory proves the exact native pane is
+    // absent. Never infer this from an empty or malformed response.
+    return 'dead';
+  }
+  return pane.dead === '0' ? 'alive' : 'dead';
 }
 
 function parseTmuxWindowRecords(output: string): TmuxWindowRecord[] | null {
