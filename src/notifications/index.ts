@@ -93,6 +93,15 @@ export type {
 } from "./slack-socket.js";
 export { redactTokens } from "./redact.js";
 
+/**
+ * What this build of notify() supports. scripts/copilot/notification.mjs
+ * loads the committed dist/ and sends a Copilot permission prompt only when
+ * the loaded module carries this marker (a dist/ older than the source lacks
+ * it): `nonReplyable` means `replyable: false` is honoured (no reply mapping
+ * is registered and the pane's earlier mappings are removed).
+ */
+export const NOTIFICATION_CAPS = Object.freeze({ nonReplyable: true });
+
 import type {
   NotificationEvent,
   NotificationPlatform,
@@ -134,6 +143,9 @@ export async function notify(
     return null;
   }
 
+  // A reply mapping's createdAt: before dispatch, so a non-replyable marker
+  // set while this message was in flight blocks its replies.
+  const startedAt = new Date().toISOString();
   try {
     const config = getNotificationConfig(data.profileName);
     if (!config || !isEventEnabled(config, event)) {
@@ -187,6 +199,7 @@ export async function notify(
       replyTarget: data.replyTarget ?? process.env.OPENCLAW_REPLY_TARGET ?? undefined,
       replyThread: data.replyThread ?? process.env.OPENCLAW_REPLY_THREAD ?? undefined,
       approval: data.approval,
+      replyable: data.replyable,
     };
 
     // Capture tmux tail for events that benefit from it
@@ -243,14 +256,39 @@ export async function notify(
       }
     }
 
+    // A non-replyable message (Copilot permission prompt) means the pane now
+    // shows a menu that a reply would answer: mark the pane non-replyable
+    // (the reply listener refuses mappings created before the mark, which
+    // covers one registered after the removal by a message already in flight)
+    // and drop its earlier reply mappings. Fail closed: when the removal
+    // fails (registry lock timeout), the message is not sent.
+    if (payload.replyable === false && payload.tmuxPaneId) {
+      const { markPaneNonReplyable, removeMessagesByPane } = await import("./session-registry.js");
+      try {
+        markPaneNonReplyable(payload.tmuxPaneId, payload.tmuxSession ?? "");
+      } catch {
+        // The removal below still guards the earlier mappings
+      }
+      let removed = false;
+      try {
+        removed = removeMessagesByPane(payload.tmuxPaneId, payload.tmuxSession);
+      } catch {
+        removed = false;
+      }
+      if (!removed) return null;
+    }
+
     // Dispatch to all enabled platforms
     const result = await dispatchNotifications(
       config, event, payload, platformMessages,
     );
 
-    // NEW: Register message IDs for reply correlation
+    // NEW: Register message IDs for reply correlation. A non-replyable
+    // message (Copilot permission prompts) gets no mapping, so the reply
+    // listener ignores every reply to it.
     if (
       result.anySuccess &&
+      payload.replyable !== false &&
       (payload.tmuxPaneId || payload.event === "approval-request")
     ) {
       try {
@@ -268,7 +306,7 @@ export async function notify(
               tmuxPaneId: payload.tmuxPaneId ?? "",
               tmuxSessionName: payload.tmuxSession || "",
               event: payload.event,
-              createdAt: new Date().toISOString(),
+              createdAt: startedAt,
               projectPath: payload.projectPath,
               ...(payload.approval
                 ? { approvalRef: payload.approval }
