@@ -218,6 +218,7 @@ const SKILL_ENTRIES: readonly WorkflowEntry[] = [
   entry({ name: 'deep-review', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Multi-pass review (security, quality, structure, validation); opt-in alongside review.' }),
   entry({ name: 'discover', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Parallel specialist scan producing a prioritized improvement backlog.' }),
   entry({ name: 'ralph-experiment', kind: 'skill', decision: 'keep', riskClass: 'destructive-mutation', owner: REGISTRY_OWNER, notes: 'Hypothesis loop that git-checkpoints and reverts the working tree between trials.' }),
+  entry({ name: 'ship', kind: 'skill', decision: 'keep', riskClass: 'release-authority', owner: REGISTRY_OWNER, notes: 'Task/PR to merge-ready: executor lane, independent verifier lane, bounded fix rounds; omg ship gates/prepare/merge refuse force pushes, rebases and unverified merges, and admin-merge only with ship.allowAdminMerge.' }),
 
   // Fork-exclusive issue-tracker lanes (Azure DevOps and GitHub). The setup
   // lanes walk the user through host authentication, so they carry the
