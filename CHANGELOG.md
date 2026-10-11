@@ -28,7 +28,7 @@ All notable changes to oh-my-copilot will be documented in this file.
   rerun). One watch window lasts 9 minutes (under the 10-minute background
   watcher cap); exit 8 means still pending, so run the command again.
 - **`omg ship prepare <pr>`** refuses unless HEAD is the run's PR branch and
-  contains the reviewed sha, then merges `origin/<base>` in (`--no-ff`, never
+  contains the reviewed sha, then merges GitHub's base sha in (`--no-ff`, never
   rebases), resolves an inventory-only sibling conflict with `--theirs`, runs
   `tsc`, eslint on changed files, the tests mapped from the diff and the
   generator `--verify` checks, regenerates the inventory as the last commit,
@@ -69,6 +69,22 @@ All notable changes to oh-my-copilot will be documented in this file.
   When the check (or the fetch) fails, `gates` warns and uses the defaults
   and `merge` refuses. `init --base` must match the PR's base on GitHub, and
   `gates` uses GitHub's base rather than the recorded one.
+- **`prepare` merges GitHub's base sha, never a ref name.** It checks that
+  `git remote get-url origin` (`insteadOf` applied) is the PR's repository
+  (`gh pr view --json url`), fetches the base, requires
+  `refs/remotes/origin/<base>` to equal `baseRefOid`, and runs
+  `git merge --no-ff --no-edit <baseRefOid>`; the guard no longer allows a
+  merge by ref name, so a lane's tag named `origin/dev` or a repointed
+  `remote.origin.url` cannot get its content merged and recorded as
+  housekeeping. The trusted config loader runs the same remote check.
+- **`merge` re-checks housekeeping merges.** The commits after the reviewed
+  sha (`git rev-list --first-parent --parents`) must form a chain from the
+  head back to the reviewed sha of commits `prepare` recorded, and each
+  recorded merge must have two parents, the second GitHub's current
+  `baseRefOid` or its ancestor; anything else needs a new verdict.
+- Known limits, documented: a lane with write access to `.git/objects` can
+  forge loose objects; environment and `PATH` overrides are advisory; `gh`
+  resolves the repository from the checkout's remotes too.
 - **`ship.trustedBases`** (user config only; default `dev`, `main`,
   `master`): any other base is never read and never admin-merged; `merge`
   prints the command instead.

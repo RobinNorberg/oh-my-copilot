@@ -59,7 +59,9 @@ working-tree file). The known-flaky list is read from the base branch too.
   account's home as the OS reports it. When `XDG_CONFIG_HOME` / `APPDATA`
   select another file, that file's safety keys are ignored with a warning.
 - **Base branch.** The base, its sha and the head sha come from GitHub
-  (`gh pr view`), never from the run state. `omc ship` fetches the base,
+  (`gh pr view`), never from the run state. `omc ship` checks that the
+  `origin` URL (`git remote get-url origin`, `insteadOf` applied) is the
+  PR's repository, fetches the base,
   checks that `refs/remotes/origin/<base>` equals GitHub's base sha, and
   reads `<base sha>:.copilot/omg.jsonc` with replace refs off
   (`GIT_NO_REPLACE_OBJECTS=1`), so `git replace` or a moved or shadowed ref
@@ -92,6 +94,19 @@ catches a hand edit, but anyone who reads the source can recompute it. The
 real protections are the lane discipline above, the owner-only config, and
 `gh pr merge --match-head-commit`.
 
+Known limits:
+
+- A lane with write access to `.git/objects` can forge loose objects (a
+  commit or blob stored under another object's sha). Replace refs are off
+  and every base read is by GitHub's sha, but git trusts its object store;
+  `omc ship` cannot detect a forged object behind a correct sha.
+- Environment and `PATH` overrides are advisory: the engine scrubs the git
+  and gh variables it knows, but a process that controls the environment
+  can run another `git` or `gh`.
+- `gh` resolves the repository from the checkout's remotes too. The remote
+  check catches `origin` pointing away from the repository `gh` reports,
+  not a checkout whose every remote and `gh` default were repointed.
+
 ## Steps
 
 1. **Implement (executor lane).** Skip with `--pr <n>` when the PR exists.
@@ -115,7 +130,10 @@ real protections are the lane discipline above, the owner-only config, and
 5. **Prepare:** `omc ship prepare <pr> --push`, run on the PR branch the run
    was started for, with the reviewed sha in HEAD (it refuses otherwise, and
    refuses a dirty tree or a merge / rebase / cherry-pick / revert in
-   progress). It merges `origin/<base>` in with `--no-ff`,
+   progress). It checks that `origin` is the PR's repository, fetches the
+   base, requires `refs/remotes/origin/<base>` to equal GitHub's base sha,
+   and merges that sha (never the ref name, which a local tag named
+   `origin/<base>` could shadow) in with `--no-ff`,
    runs `tsc`, eslint on changed files, the tests mapped from the diff and
    the generator `--verify` checks, then regenerates the inventory as the
    last commit and pushes plainly. A conflict outside `inventory/` stops it:
@@ -139,7 +157,10 @@ real protections are the lane discipline above, the owner-only config, and
 7. **Merge-readiness:** mark the PR ready (`gh pr ready <pr>`), then
    `omc ship merge <pr>`. It refuses unless the gates are green, the state
    passes its integrity check, the last approval covers the head (only
-   ship housekeeping commits may follow the reviewed sha), and the PR's
+   ship housekeeping commits may follow the reviewed sha: the head's
+   first-parent chain back to it holds only commits `prepare` recorded,
+   and each recorded merge brings in a commit in GitHub's current base
+   history; anything else needs a new verdict), and the PR's
    changed files touch no merge-rule file (those PRs are the owner's to
    merge). It lists the changed files itself
    (`git diff --name-only --no-renames -z <base sha>...<head sha>`), so a
