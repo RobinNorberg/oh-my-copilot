@@ -30,7 +30,9 @@ async function main() {
     return noop;
   }
   try {
-    const { runBudgetHook } = await import('../dist/budget/governor.js');
+    // Resolved at run time: dist/ is rebuilt at release, so the module may be absent on a dev branch (no-op then).
+    const governor = new URL('../dist/budget/governor.js', import.meta.url);
+    const { runBudgetHook } = await import(governor.href);
     return runBudgetHook({ phase, payload: payload && typeof payload === 'object' ? payload : null }) ?? noop;
   } catch (error) {
     if (process.env.OMC_DEBUG_HOOKS === '1') process.stderr.write(`[premium-budget] ${error?.message ?? error}\n`);
