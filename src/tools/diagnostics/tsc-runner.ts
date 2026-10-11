@@ -7,6 +7,7 @@
 import { execFileSync } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { resolveExecutable } from '../../platform/executable-resolution.js';
 
 export interface TscDiagnostic {
   file: string;
@@ -43,11 +44,16 @@ export function runTscDiagnostics(directory: string): TscResult {
     };
   }
 
+  // fork deviation: bare execFileSync('tsc') cannot start the Windows tsc.cmd shim (always ENOENT).
+  const invocation = resolveTscInvocation(directory);
+  if (!invocation) return tscNotFound('ENOENT');
+
   try {
-    execFileSync('tsc', ['--noEmit', '--pretty', 'false'], {
+    execFileSync(invocation.file, invocation.args, {
       cwd: directory,
       encoding: 'utf-8',
-      stdio: 'pipe'
+      stdio: 'pipe',
+      shell: invocation.shell
     });
     return {
       success: true,
@@ -56,6 +62,7 @@ export function runTscDiagnostics(directory: string): TscResult {
       warningCount: 0
     };
   } catch (error: any) {
+    if (error?.code === 'ENOENT') return tscNotFound(error.message);
     const output = error.stdout || error.stderr || '';
     const result = parseTscOutput(output);
     return {
@@ -65,6 +72,32 @@ export function runTscDiagnostics(directory: string): TscResult {
       ...(result.diagnostics.length === 0 ? { error: output.trim() || error.message } : {}),
     };
   }
+}
+
+const TSC_ARGS = ['--noEmit', '--pretty', 'false'];
+
+/**
+ * fork deviation: prefer the project's own TypeScript (run by this Node), then
+ * `tsc` on PATH; on win32 that is the tsc.cmd shim, which only cmd.exe can start.
+ * Returns null when win32 has no `tsc` on PATH.
+ */
+function resolveTscInvocation(directory: string): { file: string; args: string[]; shell: boolean } | null {
+  const local = join(directory, 'node_modules', 'typescript', 'bin', 'tsc');
+  if (existsSync(local)) return { file: process.execPath, args: [local, ...TSC_ARGS], shell: false };
+  if (process.platform !== 'win32') return { file: 'tsc', args: TSC_ARGS, shell: false };
+  // The shell sees only this fixed literal command line, never caller input.
+  return resolveExecutable('tsc') ? { file: ['tsc', ...TSC_ARGS].join(' '), args: [], shell: true } : null;
+}
+
+/** A missing compiler is a failed check, named distinctly from type errors. */
+function tscNotFound(detail: string): TscResult {
+  return {
+    success: false,
+    diagnostics: [],
+    errorCount: 1,
+    warningCount: 0,
+    error: `tsc not found (${detail}): install typescript in the project or put tsc on PATH`
+  };
 }
 
 /**

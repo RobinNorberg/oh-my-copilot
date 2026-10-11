@@ -24,11 +24,35 @@ contract v2, SSRF guard for IPv6 literals).
   PermissionRequest hook auto-approves only `git status`, `gh issue|pr
   view|list|status`, `ls` and the repo-scoped inspection commands; build,
   lint, targeted-test and heredoc `git commit`/`git tag` commands go through
-  the normal permission flow. The Copilot camelCase input shape is unchanged.
+  the normal permission flow. On Copilot this means `git diff`, `git log`,
+  `git branch`, `git show`, `git fetch`, `tsc`, `eslint`, `prettier`,
+  `cargo`, `pnpm` and `yarn` are no longer auto-approved. The Copilot
+  camelCase input shape is unchanged.
 - **AFK user settings are opt-in (upstream #4282).** `OMC_AFK_INCLUDE_USER_SETTINGS=1`
   widens a Claude Code factory link or `omg ralph afk` to
   `--setting-sources user,project,local`; chain ledgers carry the choice.
   Copilot links have no setting-sources flag and are unaffected.
+
+### Fork deviations: upstream port a720eabd0..7cb577e94
+
+Three upstream defects are fixed in the fork only; each site carries a
+`// fork deviation:` comment so later ports merge them deliberately.
+
+- **Split panes discard the private pane env file again.**
+  `splitTeamWorkerPaneWithEvidence` goes back through `runPaneCreationCommand`,
+  so a split the server guard did not run, or one that throws, removes the
+  `OMC_TEAM_WORKER_ENV_PASSTHROUGH` file (which may hold credentials) on POSIX
+  tmux. Upstream left it on disk.
+- **MSYS2/Cygwin tmux keeps the POSIX identity guard.** The PowerShell
+  `if-shell` guard under MSYS is chosen only when the `tmux` binary is psmux,
+  not whenever `TMUX` is unset. Upstream's PowerShell guard is a `/bin/sh`
+  syntax error under MSYS tmux, so the team could not start.
+- **`lsp_diagnostics_directory` runs tsc on Windows.** The tsc strategy runs
+  the project's `node_modules/typescript` with the current Node. Otherwise it
+  uses `tsc` from PATH, through cmd.exe on win32 because there it is the
+  `tsc.cmd` shim. A missing compiler reports `tsc not found` as a failed check,
+  never as clean. Upstream's bare `execFileSync('tsc')` always failed with
+  ENOENT on Windows.
 
 ### Fixed: upstream port a720eabd0..7cb577e94
 

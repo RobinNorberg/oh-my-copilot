@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { __setPsmuxDetectionForTests } from '../../src/team/psmux-adapter.js';
 
 // Test fix for issue #4267: tmuxServerGuardCondition() should emit
 // shell-appropriate syntax based on platform:
@@ -17,9 +18,12 @@ describe('issue #4267 - tmux guard shell syntax platform compatibility', () => {
   beforeEach(() => {
     originalPlatform = process.platform as NodeJS.Platform;
     originalEnv = { ...process.env };
+    // fork deviation: the MSYS PowerShell guard is keyed on the psmux binary; default to MSYS tmux.
+    __setPsmuxDetectionForTests(false);
   });
 
   afterEach(() => {
+    __setPsmuxDetectionForTests(undefined);
     // Remove keys added by this test before restoring the original snapshot.
     for (const key of Object.keys(process.env)) {
       if (!(key in originalEnv)) delete process.env[key];
@@ -289,6 +293,7 @@ describe('issue #4267 - tmux guard shell syntax platform compatibility', () => {
     // Simulate Git Bash (MSYSTEM set) but not in real tmux
     process.env.MSYSTEM = 'MINGW64';
     delete process.env.TMUX;
+    __setPsmuxDetectionForTests(true); // fork deviation: PowerShell only when tmux is psmux
 
     const { tmuxServerGuardCondition } = await import(
       '../../src/team/tmux-session.js'
@@ -411,6 +416,7 @@ describe('issue #4267 - tmux guard shell syntax platform compatibility', () => {
     mockPlatform('win32');
     process.env.MSYSTEM = 'MINGW64';
     process.env.TMUX = 'invalid-tmux-format'; // Invalid tmux value
+    __setPsmuxDetectionForTests(true); // fork deviation: PowerShell only when tmux is psmux
 
     const { tmuxServerGuardCondition } = await import(
       '../../src/team/tmux-session.js'
@@ -428,6 +434,7 @@ describe('issue #4267 - tmux guard shell syntax platform compatibility', () => {
     process.env.MSYSTEM = 'MINGW64';
     process.env.TMUX = '/tmp/psmux-30336/default,30336,0';
     process.env.PSMUX_SESSION = 'psmux-session-30336';
+    __setPsmuxDetectionForTests(true); // fork deviation: PowerShell only when tmux is psmux
 
     const { tmuxServerGuardCondition } = await import(
       '../../src/team/tmux-session.js'
@@ -438,6 +445,29 @@ describe('issue #4267 - tmux guard shell syntax platform compatibility', () => {
     expect(condition.trim()).toMatch(/^&\s+\{/);
     expect(condition).not.toContain('/usr/bin/env');
     expect(condition).not.toContain('/dev/null');
+  });
+
+  // fork deviation: MSYS2/Cygwin tmux runs if-shell under /bin/sh, so without
+  // psmux an unset TMUX must still produce the POSIX guard.
+  it('Git Bash with MSYS tmux and no TMUX: uses POSIX syntax', async () => {
+    mockPlatform('win32');
+    mockUnixLikeOnWindows(true);
+    delete process.env.TMUX;
+    __setPsmuxDetectionForTests(false);
+
+    const { tmuxServerGuardCondition } = await import(
+      '../../src/team/tmux-session.js'
+    );
+
+    const condition = tmuxServerGuardCondition(buildTestIdentity());
+
+    expect(condition).toContain('/usr/bin/env');
+    expect(condition).toContain("< '/dev/null'");
+    expect(condition.trim()).not.toMatch(/^&/);
+    expect(condition).not.toContain('Remove-Item');
+    // POSIX-valid: `sh -n` parses without a syntax error (skipped when no sh is on PATH).
+    const parsed = spawnSync('sh', ['-n', '-c', condition], { encoding: 'utf8', windowsHide: true });
+    if (!parsed.error) expect(parsed.status, parsed.stderr).toBe(0);
   });
 
   it.skipIf(process.platform !== 'win32')(

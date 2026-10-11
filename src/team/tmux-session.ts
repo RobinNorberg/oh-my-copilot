@@ -445,7 +445,8 @@ export function tmuxServerGuardCondition(identity: TmuxServerIdentity): string {
 
   // MSYS tmux runs POSIX commands; native psmux uses PowerShell even when
   // the parent process has MSYS variables and psmux sets a valid TMUX value.
-  if (process.platform === 'win32' && isUnixLikeOnWindows() && !isPosixTmuxSession()) {
+  // fork deviation: key on the psmux binary, not TMUX, so MSYS2/Cygwin tmux (if-shell under /bin/sh) keeps the POSIX guard.
+  if (process.platform === 'win32' && isUnixLikeOnWindows() && isPsmux()) {
     return tmuxServerGuardConditionPowerShell(
       nodePath,
       runtimePath,
@@ -2159,9 +2160,11 @@ export async function splitTeamWorkerPaneWithEvidence(
       '-c', cwd,
       ...splitPaneShell.args,
     ];
-    const splitResult = await runGuardedNativeTmuxCreationCommand(
+    // fork deviation: route through runPaneCreationCommand so a not-executed or thrown split discards the private pane env file.
+    const splitResult = await runPaneCreationCommand(
           identity,
           tmuxCommandString(splitArgs, ['#{pane_id}\t#{socket_path}\t#{pid}']),
+          splitPaneShell,
           3,
         );
     const parsed = splitResult.outcome === 'executed'
