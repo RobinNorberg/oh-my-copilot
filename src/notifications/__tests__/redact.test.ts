@@ -131,4 +131,31 @@ describe('redactTokens', () => {
     const result = redactTokens(input);
     expect(result).not.toContain('my-secret-token');
   });
+
+  // ── Command lines (Copilot permission prompts) ────────────────────────
+
+  it.each([
+    ['curl -H "Authorization: Bearer abc.def-ghi" https://api.example.com', 'abc.def-ghi'],
+    ['git clone https://ghp_A1b2C3d4E5f6G7h8I9j0@github.com/o/r', 'A1b2C3d4E5f6G7h8I9j0'],
+    ['gh api -H "token github_pat_11ABC_def456" /user', '11ABC_def456'],
+    ['AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY aws s3 ls', 'wJalrXUtnFEMI'],
+    ['aws configure set aws_access_key_id AKIAIOSFODNN7EXAMPLE', 'IOSFODNN7EXAMPLE'],
+    ['GITHUB_TOKEN="s3cr3t value" npm publish', 's3cr3t'],
+    ['$env:OPENAI_API_KEY = \'sk-live-123\'; node app.js', 'sk-live-123'],
+    ['mysql --password=hunter2 -u root', 'hunter2'],
+    ['tool --api-key hunter3 --verbose', 'hunter3'],
+    ['psql postgres://admin:pa55word@db.local/app', 'pa55word'],
+  ])('redacts the secret in %s', (input, secret) => {
+    const result = redactTokens(input);
+    expect(result).not.toContain(secret);
+    expect(result).toContain('****');
+  });
+
+  it('keeps the command and non-secret arguments readable', () => {
+    expect(redactTokens('AWS_SECRET_ACCESS_KEY=abc aws s3 ls --region eu-north-1'))
+      .toBe('AWS_SECRET_ACCESS_KEY=**** aws s3 ls --region eu-north-1');
+    expect(redactTokens('mysql --password=hunter2 -u root')).toBe('mysql --password=**** -u root');
+    expect(redactTokens('tool --api-key hunter3 --verbose')).toBe('tool --api-key **** --verbose');
+    expect(redactTokens('ping -n 3 127.0.0.1')).toBe('ping -n 3 127.0.0.1');
+  });
 });

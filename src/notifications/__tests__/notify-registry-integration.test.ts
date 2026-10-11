@@ -396,6 +396,31 @@ describe("notify() -> session-registry integration", () => {
     expect(mockRegisterMessage).not.toHaveBeenCalled();
   });
 
+  it("does NOT register a non-replyable message (Copilot permission prompt), so no reply is ever injected", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "discord-msg-perm" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await notify("ask-user-question", {
+      sessionId: "sess-perm",
+      projectPath: "/test/project",
+      question: "Permission needed: Run command: rm -rf build",
+      replyable: false,
+    });
+
+    expect(result!.anySuccess).toBe(true);
+    expect(mockRegisterMessage).not.toHaveBeenCalled();
+    const body = JSON.parse(fetchMock.mock.calls[0]![1].body as string) as { content: string };
+    expect(body.content).toContain("replies to this message are ignored");
+
+    // The same event without the flag stays replyable.
+    await notify("ask-user-question", { sessionId: "sess-ask", projectPath: "/test/project", question: "Which?" });
+    expect(mockRegisterMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("does NOT register when dispatch fails", async () => {
     vi.stubGlobal(
       "fetch",

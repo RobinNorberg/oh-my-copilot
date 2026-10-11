@@ -168,7 +168,14 @@ Every upstream event is projected. `FORK_HOOKS` in `build-hooks.mjs` adds Copilo
 | `userPromptTransformed` | `prompt`, `transformedPrompt` (the prompt with runtime context such as `<current_datetime>`) | `modifiedTransformedPrompt` |
 | `errorOccurred` | `error`, `errorContext` (`model_call`, `tool_execution`, `system`, `user_input`), `recoverable`. Did not fire for a failing shell command in the probe | `errorHandling` (`retry`, `skip`, `abort`), `retryCount`, `userNotification`, `suppressOutput` |
 
-**Cost.** Copilot runs the `Notification` entry asynchronously. The dispatcher and the hook took about 0.7 s per event on Windows; a dispatched notification runs in a detached child.
+**Cost.** Copilot runs the `Notification` entry asynchronously. The dispatcher and the hook took about 0.7 s per event on Windows; a dispatched notification runs in a detached child. The entry's 5 s `timeoutSec` is also the hook's run.cjs and dispatcher timeout: `resolveHookTimeoutMs()` reads a `scripts/copilot/` hook's timeout from the generated `copilot/hooks.json`, since `hooks/hooks.json` has no entry for it.
+
+**Notification safety.** A permission prompt's message is the whole command line, which can carry credentials.
+
+- **Redaction.** `notification.mjs` passes the text through `redactTokens()` (`src/notifications/redact.ts`: Bearer values, GitHub `ghp_`/`github_pat_` tokens, AWS key IDs, `*_TOKEN=`/`*SECRET*=`/`--password` style assignments and flags, URL credentials). It then caps the text at 200 characters, so the title and the command's binary stay readable. Without the redactor it sends nothing.
+- **Remote replies never answer permission prompts.** A `permission_prompt` notification is sent with `replyable: false`. `notify()` registers no reply mapping for it, so the reply listener ignores replies to it and never types into the pane, where Enter would select the menu's default and approve the command. The message says to answer in the terminal. `elicitation_dialog` (`ask_user`) notifications stay replyable.
+- **Cooldown.** Per session, a permission prompt is sent at most once per 30 s, and an identical `ask_user` question once per 30 s (`<state>/sessions/<sessionId>/notification-input-cooldown.json`).
+- **No separate switch.** Permission prompts and `ask_user` questions share the `ask-user-question` event. Disabling that event (`events["ask-user-question"].enabled: false`) stops both.
 
 **Evidence.** All paths are inside the CLI package, `%LOCALAPPDATA%\copilot\pkg\win32-x64\1.0.91\` on Windows.
 

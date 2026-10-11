@@ -187,6 +187,7 @@ export async function notify(
       replyTarget: data.replyTarget ?? process.env.OPENCLAW_REPLY_TARGET ?? undefined,
       replyThread: data.replyThread ?? process.env.OPENCLAW_REPLY_THREAD ?? undefined,
       approval: data.approval,
+      replyable: data.replyable,
     };
 
     // Capture tmux tail for events that benefit from it
@@ -248,9 +249,12 @@ export async function notify(
       config, event, payload, platformMessages,
     );
 
-    // NEW: Register message IDs for reply correlation
+    // NEW: Register message IDs for reply correlation. A non-replyable
+    // message (Copilot permission prompts) gets no mapping, so the reply
+    // listener ignores every reply to it.
     if (
       result.anySuccess &&
+      payload.replyable !== false &&
       (payload.tmuxPaneId || payload.event === "approval-request")
     ) {
       try {

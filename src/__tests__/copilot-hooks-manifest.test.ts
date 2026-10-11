@@ -153,6 +153,19 @@ describe('copilot/hooks.json generation', () => {
     expect(Object.keys(buildCopilotHooks({ hooks: {} }, { forkHooks: {} }).hooks)).toEqual([]);
   });
 
+  it('gives each fork hook its generated timeoutSec as the run.cjs/dispatcher manifest timeout, not the 60 s default', () => {
+    const runCjs = createRequire(import.meta.url)(join(REPO_ROOT, 'scripts', 'run.cjs')) as {
+      resolveHookTimeoutMs(targetPath: string, extraArgs: string[]): { event: string; timeoutMs: number } | null;
+      resolveGenericTimeoutMs(manifestHook: { event: string; timeoutMs: number } | null): number;
+    };
+    const notification = join(REPO_ROOT, 'scripts', 'copilot', 'notification.mjs');
+    const manifestHook = runCjs.resolveHookTimeoutMs(notification, []);
+    expect(manifestHook).toEqual({ event: 'Notification', timeoutMs: generated.hooks.Notification[0].timeoutSec! * 1000 });
+    expect(runCjs.resolveGenericTimeoutMs(manifestHook)).toBeLessThan(5_000);
+    expect(runCjs.resolveHookTimeoutMs(notification, ['--extra'])).toBeNull();
+    expect(runCjs.resolveHookTimeoutMs(join(REPO_ROOT, 'scripts', 'copilot', 'dispatch.cjs'), [])).toBeNull();
+  });
+
   it('uses the dispatcher hook separator', async () => {
     const { HOOK_SEPARATOR } = await generator;
     expect(HOOK_SEPARATOR).toBe(dispatcher.HOOK_SEPARATOR);
