@@ -57,8 +57,8 @@ describe('durable SessionEnd cleanup manifest', () => {
     const stale = JSON.parse(readFileSync(jobPath, 'utf8')) as { actions: Record<string, unknown> };
     delete stale.actions['spawn-next'];
     writeFileSync(jobPath, JSON.stringify(stale));
-    expect(prepareCoreManifest(directory, sessionId, { source: 'core', chain: { intentId: 'i-1' } })).not.toBeNull();
-    expect(readSessionEndJob(directory, sessionId)?.actions['spawn-next']?.payload).toMatchObject({ chain: { intentId: 'i-1' } });
+    expect(prepareCoreManifest(directory, sessionId, { source: 'core', chain: { intentId: 'i-1', includeUserSettings: true } })).not.toBeNull();
+    expect(readSessionEndJob(directory, sessionId)?.actions['spawn-next']?.payload).toMatchObject({ chain: { intentId: 'i-1', includeUserSettings: true } });
 
     // absent-core manifest from an older build: seed + durable payload merge
     const absent = JSON.parse(readFileSync(jobPath, 'utf8')) as { actions: Record<string, unknown>; producers: { core: { state: string } } };

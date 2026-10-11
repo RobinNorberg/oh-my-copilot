@@ -1,19 +1,19 @@
 ---
 name: drydock
-description: Lay the keel of the shipyard harness in any repo — the 4-pillar shared environment (Context, Rules, Tools, Standards) across 5 surfaces (CLAUDE.md, skills, design-system, mcp/cli, shared context) so that every human and agent inherits the same design language and anyone can ship. Run once per repo; re-run with --check to audit drift.
+description: Lay the keel of the shipyard harness in any repo — the 4-pillar shared environment (Context, Rules, Tools, Standards), seeded as two faces on day one (CLAUDE.md + GLOSSARY.md) with every other surface appearing on first use, so that every human and agent inherits the same design language and anyone can ship. Run once per repo; re-run with --check to audit drift.
 argument-hint: "[--check]"
 level: 3
 ---
 
 # Drydock
 
-Lay the keel of the **shipyard**: one repo, one shared harness, every contributor inherits it. This skill scaffolds the environment that turns "everyone ships" into "everyone ships on the same design language" — it creates the 5 surfaces, seeds them minimally, wires them to the flows that fill them (launch writes CONTEXT/ADR; the launch C5 sediment pass and reviews sediment standards), and reports what exists, what was created, and what stays empty on purpose.
+Lay the keel of the **shipyard**: one repo, one shared harness, every contributor inherits it. This skill seeds exactly two faces (CLAUDE.md and GLOSSARY.md), with a read-once migration for recognizable legacy glossary CONTEXT.md files, and defines the first-use moment when every other surface appears. It wires the flows that fill them (launch writes GLOSSARY.md vocabulary and decision records; launch C5 sediment and reviews sediment standards) and reports what was seeded, what is deferred and why, and what was skipped on purpose.
 
 The four pillars and where they physically live:
 
 | Pillar | Surfaces |
 |---|---|
-| Context (shared background) | `CONTEXT.md` (glossary) + `docs/business/` + `docs/adr/` + OMC wiki |
+| Context (shared background) | `GLOSSARY.md` (glossary) + `docs/business/` + `docs/adr/` + OMC wiki |
 | Rules (boundaries) | `CLAUDE.md` (thin entry: conventions, principles, index) + `docs/standards/` |
 | Tools (composable capability) | `.omg/skills/` + `.mcp.json` + `scripts/` |
 | Standards (the classification society) | `design-system/` (tokens, components, patterns) + `docs/standards/` |
@@ -38,7 +38,7 @@ Metaphor map: the shipyard is the shared facility; the classification society (`
 Inventory what exists before writing anything:
 
 - `CLAUDE.md` present? `AGENTS.md` present? (rule: if either exists, extend it in place; create the missing one as a one-line pointer to the other; **never create both fresh**)
-- `CONTEXT.md`, `docs/adr/`, `docs/standards/`, `docs/business/`, `design-system/`, `.omg/skills/`, `.mcp.json`, `scripts/`, `.gitattributes` — which exist, which are missing?
+- `GLOSSARY.md` (or a recognizable legacy glossary `CONTEXT.md`), `docs/adr/`, `docs/standards/`, `docs/business/`, `design-system/`, `.omg/skills/`, `.mcp.json`, `scripts/`, `.gitattributes` — which exist (adopted — their integrity is audited), which are absent (not adopted — each gets its first-use trigger below, never a speculative creation)?
 - OMC installed? — only worth checking when running inside an OMC session; outside one, skip this check silently (the harness works with or without OMC)
 
 Report the map first, then act.
@@ -51,14 +51,14 @@ The document language for the generated harness files is a file-backed decision,
 ```json
 {
   "schemaVersion": 1,
-  "authority": { "path": "CONTEXT.md", "frontmatterKey": "documentLanguage" },
+  "authority": { "path": "GLOSSARY.md", "frontmatterKey": "documentLanguage" },
   "canonicalSources": ["CLAUDE.md", "README.md"],
   "askOn": ["missing", "mixed", "conflict", "low-confidence", "invalid-explicit", "script-ambiguous"],
   "tagPattern": "^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-(?:[A-Z]{2}|[0-9]{3}))?$",
   "scriptVariants": ["zh-Hans", "zh-Hant"],
   "seedCompanionPrefixes": { "en": "en", "zh-Hans": "zh-Hans", "zh-Hant": "zh-Hant" },
   "stableTokens": [
-    "CONTEXT.md", "documentLanguage", "/oh-my-copilot:launch", "--serial",
+    "GLOSSARY.md", "documentLanguage", "/oh-my-copilot:launch", "--serial",
     "plan", "execute", "review", "verify", "blockedBy", "blocked_by",
     "pending", "in_progress", "completed", "failed", "ready-for-agent",
     "id", "name", "description", "triggers", "mcpServers", "```",
@@ -68,42 +68,51 @@ The document language for the generated harness files is a file-backed decision,
 ```
 <!-- shipyard-document-language-contract:end -->
 
+Legacy glossary migration (full runs only; `--check` never renames or rewrites anything and just audits the legacy file in place): a `CONTEXT.md` is a legacy glossary only when its YAML frontmatter carries a `documentLanguage` key or its first visible non-blank line (after the frontmatter, ignoring a BOM and HTML comments) is a drydock glossary seed heading (`Glossary`, `术语表`, `詞彙表` — seeds that predate the language tag); any other `CONTEXT.md` is an unrelated agent-context document and is left alone. If the yard has a legacy glossary `CONTEXT.md` but no `GLOSSARY.md`, rename it to `GLOSSARY.md` (`git mv` when tracked) before resolving the language or scaffolding anything, preserving its content and frontmatter byte-for-byte. Never create a fresh `GLOSSARY.md` beside a legacy glossary `CONTEXT.md`; one yard has exactly one glossary authority. An unrelated `CONTEXT.md` does not block creating `GLOSSARY.md` and is never reported for removal. If both `GLOSSARY.md` and a legacy glossary `CONTEXT.md` exist, `GLOSSARY.md` is authoritative and the leftover `CONTEXT.md` is reported for the human to merge or remove.
+
+**CLAUDE.md rewrite during migration**: Whenever `GLOSSARY.md` is the glossary authority (after the rename above, and also when `GLOSSARY.md` and a legacy glossary `CONTEXT.md` both exist), rewrite legacy `CLAUDE.md` references such as `Glossary: CONTEXT.md` or `On term conflicts CONTEXT.md wins` to `GLOSSARY.md`, so installed instructions never point at a file that is renamed or about to be removed. The rewrite belongs to the migration, not the scaffold step.
+
 Resolution order:
 
 1. An explicit human choice in the current invocation wins when valid. Normalize it to a stable BCP-47-style tag: lowercase language, Title-Case script, uppercase region. Invalid explicit input must be asked once rather than guessed.
-2. Otherwise, read `documentLanguage` from the YAML frontmatter at the top of `CONTEXT.md`. A valid, script-unambiguous tag is authoritative for fresh Drydock and Launch invocations. If the persisted tag is bare or region-only Chinese, ask once at this authority tier; never bypass it with source inference.
+2. Otherwise, read `documentLanguage` from the YAML frontmatter at the top of `GLOSSARY.md`. A valid, script-unambiguous tag is authoritative for fresh Drydock and Launch invocations. If the persisted tag is bare or region-only Chinese, ask once at this authority tier; never bypass it with source inference.
 3. If the marker is absent or invalid, inspect canonical sources in this order: `CLAUDE.md`, then `README.md`. Infer only when every usable source has one unambiguous dominant language and all usable sources agree on the same normalized tag. One unambiguous source is sufficient when the other is missing or empty.
-4. Chinese must resolve to an explicit script-qualified tag: `zh-Hans` or `zh-Hant` (optionally followed by a region). Bare `zh` and region-only Chinese tags are script-ambiguous and must be asked once rather than selecting a companion. Companion selection uses the longest language/script prefix: `zh-Hans-*` selects the `zh-Hans` companion and `zh-Hant-*` selects `zh-Hant`; preserve the full normalized tag (for example `zh-Hans-CN`) in `CONTEXT.md`.
+4. Chinese must resolve to an explicit script-qualified tag: `zh-Hans` or `zh-Hant` (optionally followed by a region). Bare `zh` and region-only Chinese tags are script-ambiguous and must be asked once rather than selecting a companion. Companion selection uses the longest language/script prefix: `zh-Hans-*` selects the `zh-Hans` companion and `zh-Hant-*` selects `zh-Hant`; preserve the full normalized tag (for example `zh-Hans-CN`) in `GLOSSARY.md`.
 5. Missing usable sources, mixed-language content, conflicting tags, low-confidence inference, invalid explicit input, or script-ambiguous Chinese must trigger one batched language question. Do not guess. If no answer is available, stop before writing localized artifacts.
-6. Before scaffolding, write the resolved tag to the exact stable frontmatter key `documentLanguage` in `CONTEXT.md` (creating or extending its frontmatter without translating the key). This visible file is the init report's language authority; no daemon, hidden ledger, or runtime state is created.
+6. Before scaffolding, write the resolved tag to the exact stable frontmatter key `documentLanguage` in `GLOSSARY.md` (creating or extending its frontmatter without translating the key). This visible file is the init report's language authority; no daemon, hidden ledger, or runtime state is created.
 
 Only prose and human-facing labels/localizable values follow the selected language; structural keys stay language-stable. Keep paths, slash commands, flags, code fences, placeholders, frontmatter keys and machine-semantic values, YAML/JSON keys, lifecycle tokens, status enums, IDs, `blockedBy`, public Team `blocked_by`, and parser/control tokens byte-for-byte stable.
 
 Ask the remaining questions only after language is resolved:
 
 - package/tech stack (for standards and design-system seeds)
-- does this repo have a UI? (no UI → design-system/ is created as a stub with a note, or skipped on request)
-- issue tracker location (GitHub / GitLab / local `.scratch/`) — for V1 harbor intake only GitHub is supported; also record the maintainer's communication authority for intake (issue comments, label changes) — consumed by the navigator's map home and the harbor's intake queue
+- does this repo have a UI? (informational only — `design-system/` follows the same deferred-surface rule as everything else: it is created when the first UI token or component contract is worth reusing, never as a stub)
+- issue tracker location (GitHub — V1 supports GitHub only, no local fallback) — also record the maintainer's communication authority for intake (issue comments, label changes) — consumed by the navigator's map home and the harbor's intake queue
 
-### 3. Scaffold (create missing surfaces — seeds render in the document language)
+### 3. Scaffold (seed the two faces — seeds render in the document language)
+
+Drydock writes exactly two faces on day one:
 
 ```
 CLAUDE.md                      # thin entry — see seed A
-CONTEXT.md                     # glossary — see seed B
-.gitattributes                 # * text=auto eol=lf  (kills CRLF warning noise on Windows)
-docs/adr/0001-adopt-shipyard-harness.md
-docs/standards/architecture.md # seed C
-docs/standards/data.md
-docs/standards/process.md
-docs/business/README.md        # seed D
-design-system/README.md        # seed E (UI repos only; stub otherwise)
-design-system/tokens/README.md
-.omg/skills/README.md          # seed F
-.mcp.json                      # {"mcpServers": {}}
-scripts/README.md
+GLOSSARY.md                    # glossary and language authority — see seed B
 ```
 
-Seed exemplars are reference companions, never a combined payload. Select exactly one companion after resolving `documentLanguage`; do not emit duplicate headings or labels from another companion. Use the longest matching language/script prefix: `en-*` uses English, `zh-Hans-*` uses Simplified Chinese, and `zh-Hant-*` uses Traditional Chinese, while Seed B writes the full resolved tag into `documentLanguage`. For any other valid tag, translate the English canonical companion once while preserving every stable token above.
+**Every other surface is deferred: it appears on first use, never speculatively.** A surface exists to hold something; it is created the first time that something actually happens, seeded with the matching exemplar below. A file created with no first use behind it is session content pretending to be a repository surface:
+
+| Surface | Appears when |
+|---|---|
+| `docs/adr/` | the first load-bearing decision settles — write ADR-0001 at that moment (adopting the harness is the natural first entry) |
+| `docs/standards/` | the first checkable rule is sedimented — a launch C5 sediment pass or a review correction that repeats (seeds C / C2) |
+| `docs/business/` | the first business rule or background article must outlive the conversation (seed D) |
+| `design-system/` | the first UI token or component contract is worth reusing — UI repos only (seed E) |
+| `.omg/skills/` | the first reusable capability passes the skillify gate (seed F) |
+| `scripts/` | the first automation is needed more than once |
+| `.mcp.json` | the first tool integration is actually wired (seed: `{"mcpServers": {}}` — servers get added when a tool integration is actually needed, not speculatively) |
+| `.gitattributes` | the repo first hits line-ending churn (seed: `* text=auto eol=lf` — kills CRLF warning noise on Windows) |
+| yard audit script (`scripts/shipyard-audit.mjs`) | the governance loop is first exercised — a launch yard gate or `--check` drift audit needs the mechanical half; seed it at that moment |
+
+Seed exemplars are reference companions, never a combined payload. Select exactly one companion after resolving `documentLanguage`; do not emit duplicate headings or labels from another companion. Use the longest matching language/script prefix: `en-*` uses English, `zh-Hans-*` uses Simplified Chinese, and `zh-Hant-*` uses Traditional Chinese, while Seed B writes the full resolved tag into `documentLanguage`. For any other valid tag, translate the English canonical companion once while preserving every stable token above. Seeds A and B are written now; seeds C–F wait for their surface's first-use trigger and render in the document language when that moment comes.
 
 Before generating seed prose, call the Skill tool with `agent-doc-discipline` and apply its rules; seed prose is ready only when every rule is checkable and carries a why, every surface is self-describing without chat history, and sources are named rather than assumed. A teammate or agent should be able to act on the seed's content by reading alone.
 
@@ -119,21 +128,13 @@ Seed A — CLAUDE.md, en (thin entry; extend in place if the file exists):
 ## Architecture principles
 - <the 3-5 principles most often violated in this project>
 
-## Standards index (full text in docs/standards/)
-- Architecture: docs/standards/architecture.md
-- Data: docs/standards/data.md
-- Process: docs/standards/process.md
-
-## Decision records (full text in docs/adr/; load-bearing ones listed here)
-- ADR-0001: adopt shipyard harness
-
 ## Shared background
-- Glossary: CONTEXT.md ｜ Business knowledge: docs/business/ ｜ Decision context: docs/adr/
+- Glossary: GLOSSARY.md
 
 ## Agent guide
 - Delivery follows the canonical workflow plan → execute → review → verify; `/oh-my-copilot:launch` is an optional governed delivery pipeline (opt-in, invoke explicitly)
-- On term conflicts CONTEXT.md wins; new terms are recorded the moment they settle
-- Reusable capability goes to .omg/skills/; UI patterns go to design-system/
+- On term conflicts GLOSSARY.md wins; new terms are recorded the moment they settle
+- When a deferred surface first appears (standards, decision records, business knowledge, project skills, the design system), it gets an index section here at the moment it is created — never before
 ```
 <!-- shipyard-seed-a:en:end -->
 
@@ -149,21 +150,13 @@ Seed A — zh-Hans companion (结构一致，二选一按文档语言渲染):
 ## 架构原则
 - <the 3-5 principles most often violated in this project>
 
-## 规范索引（全文在 docs/standards/）
-- 架构规范: docs/standards/architecture.md
-- 数据规范: docs/standards/data.md
-- 流程规范: docs/standards/process.md
-
-## 决策记录（全文在 docs/adr/，此处只列 load-bearing 的）
-- ADR-0001: adopt shipyard harness
-
 ## 共享背景
-- 术语: CONTEXT.md ｜ 业务知识: docs/business/ ｜ 决策背景: docs/adr/
+- 术语: GLOSSARY.md
 
 ## Agent 指南
 - 交付遵循 canonical 工作流 plan → execute → review → verify；`/oh-my-copilot:launch` 是可选的受治理交付管道（opt-in，需要时显式调用）
-- 术语冲突以 CONTEXT.md 为准；新术语当场补录
-- 可复用能力沉淀到 .omg/skills/；UI 模式沉淀到 design-system/
+- 术语冲突以 GLOSSARY.md 为准；新术语当场补录
+- 延后面首次出现时（规范、决策记录、业务知识、项目技能、设计系统），在创建的当下于此补一段索引——绝不提前
 ```
 <!-- shipyard-seed-a:zh-Hans:end -->
 
@@ -179,25 +172,17 @@ Seed A — zh-Hant companion（結構一致，只渲染此版本）:
 ## 架構原則
 - <the 3-5 principles most often violated in this project>
 
-## 規範索引（全文在 docs/standards/）
-- 架構規範: docs/standards/architecture.md
-- 資料規範: docs/standards/data.md
-- 流程規範: docs/standards/process.md
-
-## 決策記錄（全文在 docs/adr/，此處只列 load-bearing 項目）
-- ADR-0001: adopt shipyard harness
-
 ## 共享背景
-- 詞彙: CONTEXT.md ｜ 業務知識: docs/business/ ｜ 決策背景: docs/adr/
+- 詞彙: GLOSSARY.md
 
 ## Agent 指南
 - 交付遵循 canonical 工作流 plan → execute → review → verify；`/oh-my-copilot:launch` 是可選的治理交付管道（opt-in，必須明確呼叫）
-- 術語衝突以 CONTEXT.md 為準；新術語確定時立即補錄
-- 可重用能力沉澱到 .omg/skills/；UI 模式沉澱到 design-system/
+- 術語衝突以 GLOSSARY.md 為準；新術語確定時立即補錄
+- 延後面首次出現時（規範、決策記錄、業務知識、專案技能、設計系統），在建立時於此補一段索引——絕不提前
 ```
 <!-- shipyard-seed-a:zh-Hant:end -->
 
-Seed B — CONTEXT.md (the stable frontmatter key is the language authority):
+Seed B — GLOSSARY.md (the stable frontmatter key is the language authority):
 
 en:
 
@@ -334,8 +319,6 @@ Bar for admission matches skillify: if it can be Googled in 5 minutes it is not 
 write "this project's specific decision discipline", not generic tutorials.
 ````
 
-`.mcp.json` seed: `{"mcpServers": {}}` — servers get added when a tool integration is actually needed, not speculatively.
-
 **Destructive-operation guardrail preset.** On request, drydock seeds a hook preset that blocks destructive git operations — push, force-push, hard reset, clean, and branch deletion — behind explicit approval. It is installed as ordinary, inspectable repo config (a hooks entry the repo can read and audit — the same place the repo's other hooks live, e.g. the agent harness's settings hooks or a git pre-push hook), never a hidden enforcement layer: the rules are listed in the report, and removing the entry is an explicit human act. The preset protects the laid harness, not the agent — no agent session can end the repo's history by accident. Seed shape:
 
 ```json
@@ -358,24 +341,24 @@ The matcher and command are the repo's own choice of hook mechanism — drydock 
 
 ### 4. Wire the governance loop (this is what makes it a shipyard, not a folder)
 
-Tell the user, and rely on these flows to fill the skeleton:
+Tell the user, and rely on these flows to fill the faces (each flow also carries the first-use trigger for the surface it fills):
 
-- **launch** writes CONTEXT.md vocabulary, ADRs, and docs/business/ as decisions settle (paper trail)
-- **launch C5 sediment / code-review** sediment recurring corrections into docs/standards/ and CLAUDE.md principles
-- **anyone** can add a project skill to .omg/skills/ — the barrier is the skillify quality gate, not permission
-- **wiki** (OMC) compounds session knowledge; promote anything referenced twice into docs/business/
+- **launch** writes GLOSSARY.md vocabulary as terms settle, creates docs/adr/ when the first load-bearing decision lands, and docs/business/ when the first business article must outlive the conversation (paper trail)
+- **launch C5 sediment / code-review** sediment recurring corrections into docs/standards/ (created with the first sedimented rule) and CLAUDE.md principles
+- **anyone** can add a project skill to .omg/skills/ (created with the first skill) — the barrier is the skillify quality gate, not permission
+- **wiki** (OMC) compounds session knowledge; promote anything referenced twice into docs/business/ (created with the first promoted article)
 
 The rule that keeps 先动手 aligned: **starting needs no permission; landing goes into a shipyard slot.** A change that cannot say which slot it lands in (or explicitly none) is the smell.
 
 ### 5. Report
 
-- created / extended / deliberately skipped (each with why)
-- resolved document language as `CONTEXT.md` frontmatter `documentLanguage: <tag>`, including whether it came from explicit choice, the persisted marker, or unanimous inference
-- the 3 surfaces that most need human content next (usually CLAUDE.md conventions, architecture.md, CONTEXT.md first terms)
+- seeded (the two faces) / extended / deferred (each with its first-use trigger) / deliberately skipped (each with why)
+- resolved document language as `GLOSSARY.md` frontmatter `documentLanguage: <tag>`, including whether it came from explicit choice, the persisted marker, or unanimous inference
+- the next human content the two seeded faces need (usually CLAUDE.md conventions and GLOSSARY.md first terms)
 - reminder: re-run with `--check` any time to see drift between filesystem and harness
 
 ## `--check` mode
 
-Diff actual repo state against the shipyard map; report: missing surfaces, a missing or invalid `CONTEXT.md` frontmatter `documentLanguage` tag, CLAUDE.md sections that point at dead paths, CONTEXT.md terms unused in code, and standards never referenced. For each finding, state the confidence (`high` when mechanically checkable, `low` when heuristic) and whether it is actionable after excluding throwaway/scratch repositories explicitly declared by the user. Launch's yard gate treats high-confidence actionable findings as blocking; low-confidence or explicitly-classified false-positive findings, and findings in a user-declared scratch/throwaway scope, may be overridden only with deliberate per-invocation intent (see `/oh-my-copilot:launch`). `/oh-my-copilot:ask-navigator` may also run this audit in report-only mode while charting a foggy effort: findings are recorded verbatim in the map's Notes (never swallowed) and remain live findings for the launch yard gate.
+Diff actual repo state against the shipyard map; require the day-one faces `CLAUDE.md` and `GLOSSARY.md` (a recognizable legacy glossary `CONTEXT.md` is accepted until migrated), then report integrity findings on adopted optional surfaces only (an absent optional surface is not adopted, not missing), a missing or invalid glossary `documentLanguage` tag, CLAUDE.md sections that point at dead paths, GLOSSARY.md terms unused in code, and standards never referenced. For each finding, state the confidence (`high` when mechanically checkable, `low` when heuristic) and whether it is actionable after excluding throwaway/scratch repositories explicitly declared by the user. Launch's yard gate treats high-confidence actionable findings as blocking; low-confidence or explicitly-classified false-positive findings, and findings in a user-declared scratch/throwaway scope, may be overridden only with deliberate per-invocation intent (see `/oh-my-copilot:launch`). `/oh-my-copilot:ask-navigator` may also run this audit in report-only mode while charting a foggy effort: findings are recorded verbatim in the map's Notes (never swallowed) and remain live findings for the launch yard gate.
 
-**The structured exit contract.** The mechanical subset of this audit is executable: `node scripts/shipyard-audit.mjs [repoRoot]` checks the high-confidence classes only — missing surfaces, a missing/invalid `documentLanguage` tag, dead paths in `CLAUDE.md`, project-skill triggers present, and intent statuses within the documented vocabulary — and emits JSON on stdout (human summary on stderr) in the same finding vocabulary the lookout CLI uses: `severity` (high/medium/low/info), `confidence` (high/low), `actionable`, plus a stable finding id, evidence, and advice. Exit code 0 = clean, 1 = high-confidence actionable findings present, 2 = invocation error. The heuristic classes (terms unused in code, standards never referenced) stay in this prose layer by design — they are `low`-confidence by construction and the script never invents findings it cannot verify mechanically. Read-only.
+**The structured exit contract (version 2).** The mechanical subset of this audit is executable: `node scripts/shipyard-audit.mjs [repoRoot]` emits JSON on stdout (human summary on stderr) with `contractVersion: 2` and checks required base faces (`CLAUDE.md` plus `GLOSSARY.md`, or a recognizable legacy glossary `CONTEXT.md`), duplicate glossary authority, a missing/invalid `documentLanguage` tag, dead paths in `CLAUDE.md`, project-skill triggers, and intent statuses. Optional absent surfaces are not findings; `shipyard.surface.missing.*` IDs are retired, and consumers must use the new contract rather than depend on the old finding family. Findings use the shared `severity` (high/medium/low/info), `confidence` (high/low), `actionable`, id, evidence, and advice fields. Exit code 0 = clean, 1 = high-confidence actionable findings present, 2 = invocation error. The heuristic classes (terms unused in code, standards never referenced) stay in this prose layer by design — they are `low`-confidence by construction and the script never invents findings it cannot verify mechanically. Read-only.

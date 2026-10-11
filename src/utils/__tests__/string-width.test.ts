@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { renderBackgroundDetailed } from "../../hud/elements/background.js";
 import {
   isCJKCharacter,
   isZeroWidth,
@@ -219,5 +220,57 @@ describe("sliceByWidth", () => {
 
   it("handles empty string", () => {
     expect(sliceByWidth("", 0, 5)).toBe("");
+  });
+});
+
+
+describe("ANSI CSI parameter and intermediate bytes", () => {
+  it.each([
+    ["colon-separated color parameters", "\x1b[38:2::255:0:0mred\x1b[0m"],
+    ["private parameters", "\x1b[?25lred\x1b[?25h"],
+    ["intermediate bytes", "\x1b[2 qred"],
+    ["punctuation final byte", "\x1b[2@red"],
+  ])("does not count terminal controls as visible columns: %s", (_name, text) => {
+    expect(stripAnsi(text)).toBe("red");
+    expect(stringWidth(text)).toBe(3);
+  });
+});
+
+describe("ANSI text at visible-width boundaries", () => {
+  const colored = "\x1b[31mabcdefghijk\x1b[0m";
+
+  it("keeps all fitting visible characters without partial ANSI in truncated ASCII", () => {
+    expect(truncateToWidth(colored, 8, "")).toBe("abcdefgh");
+    expect(truncateToWidth(colored, 4)).toBe("a...");
+  });
+
+  it("uses visible CJK width when truncating colored text", () => {
+    expect(truncateToWidth("\x1b[31m가나다라마바사\x1b[0m", 7)).toBe("가나...");
+  });
+
+  it("truncates a colored suffix by its visible width", () => {
+    expect(truncateToWidth("abcdef", 2, "\x1b[31m...\x1b[0m")).toBe("..");
+  });
+
+  it("removes hyperlink sequences completely from a boundary-limited result", () => {
+    expect(truncateToWidth("\x1b]8;;https://example.invalid\x1b\\abcdefgh\x1b]8;;\x1b\\", 4, "")).toBe("abcd");
+  });
+
+  it("slices colored text by visible columns", () => {
+    expect(sliceByWidth(colored, 1, 3)).toBe("bc");
+    expect(sliceByWidth("\x1b[31m가나다\x1b[0m", 1, 5)).toBe(" 나");
+  });
+
+  it("preserves formatting when truncation or slicing keeps the full visible string", () => {
+    expect(truncateToWidth(colored, 11)).toBe(colored);
+    expect(sliceByWidth(colored, 0, 11)).toBe(colored);
+    expect(sliceByWidth(colored, 0)).toBe(colored);
+  });
+
+  it("renders complete task description text through the actual background HUD consumer", () => {
+    const rendered = renderBackgroundDetailed([{
+      id: "colored-task", description: colored, status: "running", startedAt: new Date().toISOString(),
+    }]);
+    expect(stripAnsi(rendered!)).toContain("[abcdefgh]");
   });
 });

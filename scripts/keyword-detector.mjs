@@ -248,8 +248,8 @@ function sanitizeForKeywordDetection(text) {
   return stripPastedCommandPayloads(text)
     // 0. Strip HTML/markdown comments before tag stripping
     .replace(/<!--[\s\S]*?-->/g, '')
-    // 1. Strip XML-style tag blocks: <tag-name ...>...</tag-name> (multi-line, greedy on tag name)
-    .replace(/<(\w[\w-]*)[\s>][\s\S]*?<\/\1>/g, '')
+    // 1. Strip XML-style tag blocks; closing-tag attributes stay on one line and stop at adjacent tags.
+    .replace(/<(\w[\w-]*)[\s>][\s\S]*?<\/\1(?:[ \t][^<>\r\n]*)?>/g, '')
     // 2. Strip self-closing XML tags: <tag-name />, <tag-name attr="val" />
     .replace(/<\w[\w-]*(?:\s[^>]*)?\s*\/>/g, '')
     // 3. Strip URLs: http://... or https://... up to whitespace
@@ -1467,7 +1467,9 @@ function stripComments(content) {
     if (content[i] === '/' && content[i + 1] === '*') {
       i += 2;
       while (i < content.length && !(content[i] === '*' && content[i + 1] === '/')) i++;
+      if (i >= content.length) throw new SyntaxError('Unterminated JSONC block comment');
       i += 2;
+      result += ' ';
       continue;
     }
     if (content[i] === '"') {

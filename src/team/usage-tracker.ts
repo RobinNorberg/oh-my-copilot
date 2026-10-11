@@ -10,7 +10,9 @@
  * Storage: append-only JSONL at .omg/logs/team-usage-{team}.jsonl
  */
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { z } from 'zod';
+import { closeSync, existsSync, openSync, readFileSync, readSync } from 'node:fs';
+import { StringDecoder } from 'node:string_decoder';
 import { join } from 'node:path';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { appendFileWithMode, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
@@ -66,9 +68,28 @@ export function recordTaskUsage(
   appendFileWithMode(logPath, JSON.stringify(record) + '\n');
 }
 
+/** Count UTF-8 Unicode code points with bounded memory, preserving split characters. */
+function countFileCharacters(filePath: string): number {
+  const descriptor = openSync(filePath, 'r');
+  try {
+    const buffer = Buffer.alloc(64 * 1024);
+    const decoder = new StringDecoder('utf8');
+    let count = 0;
+    let bytesRead: number;
+    while ((bytesRead = readSync(descriptor, buffer, 0, buffer.length, null)) > 0) {
+      for (const _character of decoder.write(buffer.subarray(0, bytesRead))) count++;
+    }
+    for (const _character of decoder.end()) count++;
+    return count;
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 /**
- * Compute character counts from prompt and output files.
- * Returns { promptChars, responseChars }. Returns 0 for missing files.
+ * Compute Unicode code point counts from UTF-8 prompt and output files.
+ * Combining marks count separately; these are not grapheme or token counts.
+ * Returns { promptChars, responseChars }. Returns 0 for missing/unreadable files.
  */
 export function measureCharCounts(
   promptFilePath: string,
@@ -78,18 +99,79 @@ export function measureCharCounts(
   let responseChars = 0;
 
   try {
-    if (existsSync(promptFilePath)) {
-      promptChars = statSync(promptFilePath).size;
-    }
-  } catch { /* missing file */ }
+    promptChars = countFileCharacters(promptFilePath);
+  } catch { /* missing or unreadable file */ }
 
   try {
-    if (existsSync(outputFilePath)) {
-      responseChars = statSync(outputFilePath).size;
-    }
-  } catch { /* missing file */ }
+    responseChars = countFileCharacters(outputFilePath);
+  } catch { /* missing or unreadable file */ }
 
   return { promptChars, responseChars };
+}
+
+const nonemptyString = z.string().refine(value => value.trim().length > 0);
+const taskUsageRecordSchema: z.ZodType<TaskUsageRecord> = z.object({
+  taskId: nonemptyString,
+  workerName: nonemptyString,
+  provider: z.enum(['codex', 'gemini']),
+  model: z.string(),
+  startedAt: nonemptyString,
+  completedAt: nonemptyString,
+  wallClockMs: z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  promptChars: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  responseChars: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+});
+
+/** Base-10 representation used to sum JSON duration values without intermediate binary rounding. */
+interface ExactDecimal {
+  coefficient: bigint;
+  scale: number;
+}
+
+const ZERO_DURATION: ExactDecimal = { coefficient: 0n, scale: 0 };
+const MAX_SAFE_DURATION: ExactDecimal = { coefficient: BigInt(Number.MAX_SAFE_INTEGER), scale: 0 };
+
+function exactDecimalFromNumber(value: number): ExactDecimal {
+  const [mantissa, exponentText] = value.toString().toLowerCase().split('e');
+  const [whole, fraction = ''] = mantissa.split('.');
+  let coefficient = BigInt(`${whole}${fraction}`);
+  let scale = fraction.length - Number(exponentText ?? 0);
+  if (scale < 0) {
+    coefficient *= 10n ** BigInt(-scale);
+    scale = 0;
+  }
+  return { coefficient, scale };
+}
+
+function alignExactDecimals(left: ExactDecimal, right: ExactDecimal): [bigint, bigint, number] {
+  const scale = Math.max(left.scale, right.scale);
+  return [
+    left.coefficient * 10n ** BigInt(scale - left.scale),
+    right.coefficient * 10n ** BigInt(scale - right.scale),
+    scale,
+  ];
+}
+
+function addExactDecimals(left: ExactDecimal, right: ExactDecimal): ExactDecimal {
+  const [leftCoefficient, rightCoefficient, scale] = alignExactDecimals(left, right);
+  return { coefficient: leftCoefficient + rightCoefficient, scale };
+}
+
+function compareExactDecimals(left: ExactDecimal, right: ExactDecimal): number {
+  const [leftCoefficient, rightCoefficient] = alignExactDecimals(left, right);
+  return leftCoefficient < rightCoefficient ? -1 : leftCoefficient > rightCoefficient ? 1 : 0;
+}
+
+function exactDecimalToNumber(value: ExactDecimal): number {
+  const isNegative = value.coefficient < 0n;
+  const digits = (isNegative ? -value.coefficient : value.coefficient).toString();
+  const integerLength = digits.length - value.scale;
+  const magnitude = value.scale === 0
+    ? digits
+    : integerLength > 0
+      ? `${digits.slice(0, integerLength)}.${digits.slice(integerLength)}`
+      : `0.${'0'.repeat(-integerLength)}${digits}`;
+  return Number(isNegative ? `-${magnitude}` : magnitude);
 }
 
 /**
@@ -105,7 +187,8 @@ function readUsageRecords(workingDirectory: string, teamName: string): TaskUsage
   const records: TaskUsageRecord[] = [];
   for (const line of lines) {
     try {
-      records.push(JSON.parse(line));
+      const record = taskUsageRecordSchema.safeParse(JSON.parse(line));
+      if (record.success) records.push(record.data);
     } catch { /* skip malformed */ }
   }
 
@@ -124,21 +207,37 @@ export function generateUsageReport(
 
   // Aggregate per worker
   const workerMap = new Map<string, WorkerUsageSummary>();
+  const workerDurationTotals = new Map<string, ExactDecimal>();
+  let totalWallClockMsExact = ZERO_DURATION;
 
   for (const r of records) {
     const existing = workerMap.get(r.workerName);
+    const currentWallClockMsExact = workerDurationTotals.get(r.workerName) ?? ZERO_DURATION;
+    const durationExact = exactDecimalFromNumber(r.wallClockMs);
+    const nextWallClockMsExact = addExactDecimals(currentWallClockMsExact, durationExact);
+    const nextPromptChars = (existing?.totalPromptChars ?? 0) + r.promptChars;
+    const nextResponseChars = (existing?.totalResponseChars ?? 0) + r.responseChars;
+    const nextTotalWallClockMsExact = addExactDecimals(totalWallClockMsExact, durationExact);
+    if (compareExactDecimals(nextWallClockMsExact, MAX_SAFE_DURATION) > 0
+      || compareExactDecimals(nextTotalWallClockMsExact, MAX_SAFE_DURATION) > 0) continue;
+    const nextWallClockMs = exactDecimalToNumber(nextWallClockMsExact);
+    const nextTotalWallClockMs = exactDecimalToNumber(nextTotalWallClockMsExact);
+    if (!Number.isFinite(nextWallClockMs) || !Number.isFinite(nextTotalWallClockMs)
+      || !Number.isSafeInteger(nextPromptChars) || !Number.isSafeInteger(nextResponseChars)) continue;
+    workerDurationTotals.set(r.workerName, nextWallClockMsExact);
+    totalWallClockMsExact = nextTotalWallClockMsExact;
     if (existing) {
       existing.taskCount++;
-      existing.totalWallClockMs += r.wallClockMs;
-      existing.totalPromptChars += r.promptChars;
-      existing.totalResponseChars += r.responseChars;
+      existing.totalWallClockMs = nextWallClockMs;
+      existing.totalPromptChars = nextPromptChars;
+      existing.totalResponseChars = nextResponseChars;
     } else {
       workerMap.set(r.workerName, {
         workerName: r.workerName,
         provider: r.provider,
         model: r.model,
         taskCount: 1,
-        totalWallClockMs: r.wallClockMs,
+        totalWallClockMs: nextWallClockMs,
         totalPromptChars: r.promptChars,
         totalResponseChars: r.responseChars,
       });
@@ -149,7 +248,7 @@ export function generateUsageReport(
 
   return {
     teamName,
-    totalWallClockMs: workers.reduce((sum, w) => sum + w.totalWallClockMs, 0),
+    totalWallClockMs: exactDecimalToNumber(totalWallClockMsExact),
     taskCount: workers.reduce((sum, w) => sum + w.taskCount, 0),
     workers,
   };

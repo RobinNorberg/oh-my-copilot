@@ -20,6 +20,20 @@ describe("reply-listener", () => {
       expect(sanitized).toBe(expected);
     });
 
+    it("normalizes every CR/LF line ending before reply injection", () => {
+      const text = "first\rsecond\r\nthird\nfourth";
+      expect(sanitizeReplyInput(text)).toBe("first second third fourth");
+      expect(buildReplyInjectionSteps(text, "telegram", {
+        includePrefix: false, maxMessageLength: 500,
+      })).toEqual([
+        { kind: "literal", value: "first second third fourth" },
+        { kind: "key", value: "Enter" },
+      ]);
+      expect(buildReplyInjectionSteps("a\rb", "telegram", {
+        includePrefix: true, maxMessageLength: 19,
+      })[0]).toEqual({ kind: "literal", value: "[reply:telegram] a " });
+    });
+
     it("escapes backticks", () => {
       const input = "echo `whoami`";
       const expected = "echo \\`whoami\\`";

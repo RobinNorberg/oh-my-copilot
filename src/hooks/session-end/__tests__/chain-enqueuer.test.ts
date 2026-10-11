@@ -1,8 +1,9 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFileSync } from 'child_process';
+import { AFK_INCLUDE_USER_SETTINGS_ENV } from '../spawn-next.js';
 import {
   planChainEnqueue,
   readChainLedger,
@@ -18,6 +19,8 @@ import { acquireChainSlot, releaseChainSlot, readChainStopMarker, DAILY_CHAIN_LI
 
 const tempRoots: string[] = [];
 
+beforeEach(() => vi.stubEnv(AFK_INCLUDE_USER_SETTINGS_ENV, '0'));
+
 function tempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'omc-chain-enqueuer-'));
   tempRoots.push(dir);
@@ -28,6 +31,7 @@ function tempDir(): string {
 afterEach(() => {
   for (const dir of tempRoots) rmSync(dir, { recursive: true, force: true });
   tempRoots.length = 0;
+  vi.unstubAllEnvs();
 });
 
 function writeLedger(directory: string, sessionId: string, ledger: Record<string, unknown>): void {
@@ -108,9 +112,30 @@ describe('planChainEnqueue', () => {
       reason: 'prompt_input_exit',
       sessionId: 'sess-a',
       intentId: 'intent-a',
+      includeUserSettings: false,
       routeTable: { 'success:*': { stage: 'spec', skill: 'spec' } },
     });
     expect(readDecisions(dir).at(-1)).toMatchObject({ decision: 'enqueued', stage: 'spec', intentId: 'intent-a' });
+  });
+
+  it('uses the originating ledger choice instead of the recovering process environment', () => {
+    const routeTable = { 'success:*': { stage: 'spec', skill: 'spec' } };
+    const optedIn = tempDir();
+    writeLedger(optedIn, 'sess-opted-in', { intentId: 'intent-opted-in', includeUserSettings: true });
+    writeProjectRoutes(optedIn, routeTable);
+    vi.stubEnv(AFK_INCLUDE_USER_SETTINGS_ENV, '0');
+    expect(planChainEnqueue(optedIn, 'sess-opted-in', 'prompt_input_exit')).toMatchObject({ includeUserSettings: true });
+
+    const optedOut = tempDir();
+    writeLedger(optedOut, 'sess-opted-out', { intentId: 'intent-opted-out', includeUserSettings: false });
+    writeProjectRoutes(optedOut, routeTable);
+    vi.stubEnv(AFK_INCLUDE_USER_SETTINGS_ENV, '1');
+    expect(planChainEnqueue(optedOut, 'sess-opted-out', 'prompt_input_exit')).toMatchObject({ includeUserSettings: false });
+
+    const legacy = tempDir();
+    writeLedger(legacy, 'sess-legacy', { intentId: 'intent-legacy' });
+    writeProjectRoutes(legacy, routeTable);
+    expect(planChainEnqueue(legacy, 'sess-legacy', 'prompt_input_exit')).toMatchObject({ includeUserSettings: false });
   });
 
   it('the project file overrides a ledger copy', () => {

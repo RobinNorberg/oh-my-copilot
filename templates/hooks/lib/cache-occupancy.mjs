@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, unlinkSync, mkdirSync, writeFileSync, renameSync } from 'fs';
+import { existsSync, readdirSync, lstatSync, readFileSync, unlinkSync, mkdirSync, writeFileSync, renameSync } from 'fs';
 import { join, resolve } from 'path';
 import { createHash, randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
@@ -53,8 +53,21 @@ export function publishCacheOccupancy(pluginRoot, configDir, pid = process.ppid,
 export function readOccupiedPluginRoots(configDir, options = {}) {
   const dir = registryDir(configDir); let names;
   try { names = readdirSync(dir).filter(name => typeof name === 'string' && NAME.test(name)); } catch (error) { return { roots: new Set(), unavailable: error?.code !== 'ENOENT', identities: new Map() }; }
-  const roots = new Set(); const records = [];
-  for (const name of names) { const path = join(dir, name); let record; try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { try { unlinkSync(path); } catch {} continue; } const age = Date.now() - Date.parse(record?.updatedAt); if (record?.version !== 1 || !Number.isSafeInteger(record?.pid) || !record?.processStartIdentity || !record?.pluginRoot || !Number.isFinite(Date.parse(record?.updatedAt)) || age < -300000 || !alive(record.pid)) { try { unlinkSync(path); } catch {} continue; } records.push({ path, record }); }
+  const roots = new Set(); const records = []; let unavailable = false;
+  for (const name of names) { const path = join(dir, name); let record; let content;
+    let regularFile;
+    try { regularFile = lstatSync(path).isFile(); }
+    catch (error) {
+      if (error?.code !== 'ENOENT') unavailable = true;
+      continue;
+    }
+    if (!regularFile) continue;
+    try { content = readFileSync(path, 'utf8'); }
+    catch (error) {
+      if (error?.code !== 'ENOENT') unavailable = true;
+      continue;
+    }
+    try { record = JSON.parse(content); } catch { try { unlinkSync(path); } catch { /* best effort */ } continue; } const age = Date.now() - Date.parse(record?.updatedAt); if (record?.version !== 1 || !Number.isSafeInteger(record?.pid) || !record?.processStartIdentity || !record?.pluginRoot || !Number.isFinite(Date.parse(record?.updatedAt)) || age < -300000 || !alive(record.pid)) { try { unlinkSync(path); } catch {} continue; } records.push({ path, record }); }
   // A precomputed map (same-process reuse, issue #3995) verifies records
   // without a second PowerShell host; the fresh batched probe runs otherwise.
   const currentIdentities = Array.isArray(options.identities)
@@ -63,5 +76,5 @@ export function readOccupiedPluginRoots(configDir, options = {}) {
       ? options.identities
       : identities([...records.map(({ record }) => record.pid), ...(Array.isArray(options.includePids) ? options.includePids : [])]));
   for (const { path, record } of records) { const current = process.platform === 'win32' ? currentIdentities.get(record.pid) : identity(record.pid); if (current && current !== record.processStartIdentity) { try { unlinkSync(path); } catch {} continue; } roots.add(pathIdentity(record.pluginRoot)); }
-  return { roots, unavailable: false, identities: currentIdentities };
+  return { roots, unavailable, identities: currentIdentities };
 }

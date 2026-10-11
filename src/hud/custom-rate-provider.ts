@@ -20,6 +20,7 @@
  */
 
 import { spawn } from 'child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
@@ -34,6 +35,8 @@ const CACHE_TTL_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 800;
 
 interface CustomProviderCache {
+  /** Hash of the command and effective period filter; no command text persisted. */
+  identity: string;
   /** Unix timestamp (ms) of the last successful execution */
   timestamp: number;
   /** Buckets from the last successful execution */
@@ -59,12 +62,12 @@ function readCache(): CustomProviderCache | null {
   }
 }
 
-function writeCache(buckets: CustomBucket[]): void {
+function writeCache(buckets: CustomBucket[], identity: string): void {
   try {
     const p = getCachePath();
     const dir = dirname(p);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    const cache: CustomProviderCache = { timestamp: Date.now(), buckets };
+    const cache: CustomProviderCache = { timestamp: Date.now(), buckets, identity };
     writeFileSync(p, JSON.stringify(cache, null, 2));
   } catch {
     // Silent failure — cache is best-effort
@@ -104,6 +107,10 @@ export function spawnWithTimeout(cmd: string | string[], timeoutMs: number): Pro
         // The process group may already have exited.
       }
     };
+
+    // Consume diagnostics without retaining them so a full stderr pipe cannot
+    // block the command before it writes its JSON result to stdout.
+    child.stderr.on('data', () => {});
 
     let stdout = '';
     child.stdout.on('data', (chunk: Buffer) => {
@@ -196,7 +203,12 @@ function parseOutput(raw: string, periods?: string[]): CustomBucket[] | null {
 export async function executeCustomProvider(
   config: RateLimitsProviderConfig,
 ): Promise<CustomProviderResult> {
-  const cache = readCache();
+  // Period order and duplicates do not affect the existing membership filter.
+  const identity = createHash('sha256').update(JSON.stringify({
+    command: config.command, periods: [...new Set(config.periods ?? [])].sort(),
+  })).digest('hex');
+  const storedCache = readCache();
+  const cache = storedCache?.identity === identity ? storedCache : null;
 
   // Return fresh cache
   if (cache && isCacheValid(cache)) {
@@ -217,7 +229,7 @@ export async function executeCustomProvider(
       return { buckets: [], stale: false, error: 'invalid output' };
     }
 
-    writeCache(buckets);
+    writeCache(buckets, identity);
     return { buckets, stale: false };
   } catch (err) {
     if (process.env.OMC_DEBUG) {

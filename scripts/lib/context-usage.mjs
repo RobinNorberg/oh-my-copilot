@@ -199,44 +199,39 @@ export function resolveTranscriptContextPercent(transcriptPath, tailBytes = TRAN
     const stat = statSync(transcriptPath);
     if (stat.size === 0) return null;
 
-    const readSize = Math.min(tailBytes, stat.size);
+    let readSize = Math.min(tailBytes, stat.size, 1024 * 1024);
     if (readSize <= 0) return null;
-    const buffer = Buffer.alloc(readSize);
+    const maxReadSize = Math.min(stat.size, 1024 * 1024);
     fd = openSync(transcriptPath, 'r');
-    readSync(fd, buffer, 0, readSize, stat.size - readSize);
-    closeSync(fd);
-    fd = -1;
-
-    const tail = buffer.toString('utf-8');
-    const windowMatches = tail.match(/"context_window"\s{0,5}:\s{0,5}(\d+)/g);
-    const inputMatches = tail.match(/"input_tokens"\s{0,5}:\s{0,5}(\d+)/g);
-    if (!windowMatches || !inputMatches) return null;
-
-    const cacheCreationMatches = tail.match(/"cache_creation_input_tokens"\s{0,5}:\s{0,5}(\d+)/g);
-    const cacheReadMatches = tail.match(/"cache_read_input_tokens"\s{0,5}:\s{0,5}(\d+)/g);
-    const lastWindow = Number.parseInt(
-      windowMatches[windowMatches.length - 1].match(/(\d+)/)?.[1] || '0',
-      10,
-    );
-    const lastInput = Number.parseInt(
-      inputMatches[inputMatches.length - 1].match(/(\d+)/)?.[1] || '0',
-      10,
-    );
-    const lastCacheCreation = Number.parseInt(
-      cacheCreationMatches?.[cacheCreationMatches.length - 1].match(/(\d+)/)?.[1] || '0',
-      10,
-    );
-    const lastCacheRead = Number.parseInt(
-      cacheReadMatches?.[cacheReadMatches.length - 1].match(/(\d+)/)?.[1] || '0',
-      10,
-    );
-
-    if (!Number.isFinite(lastWindow) || lastWindow <= 0) return null;
-    if (!Number.isFinite(lastInput) || lastInput < 0) return null;
-    if (!Number.isFinite(lastCacheCreation) || lastCacheCreation < 0) return null;
-    if (!Number.isFinite(lastCacheRead) || lastCacheRead < 0) return null;
-
-    return clampPercent(((lastInput + lastCacheCreation + lastCacheRead) / lastWindow) * 100);
+    while (true) {
+      const offset = stat.size - readSize;
+      const buffer = Buffer.alloc(readSize);
+      const bytesRead = readSync(fd, buffer, 0, readSize, offset);
+      // The first line can begin inside a frame or UTF-8 sequence. Discard it
+      // unless the read reaches the file start, then expand until a complete
+      // usage frame is found. Never read more than 1 MiB from the snapshot tail.
+      const frames = buffer.subarray(0, bytesRead).toString('utf-8').split(/\r?\n/);
+      for (let i = frames.length - 1; i >= (offset > 0 ? 1 : 0); i--) {
+        let frame;
+        try {
+          frame = JSON.parse(frames[i]);
+        } catch {
+          // Ignore invalid or unfinished JSONL records.
+          continue;
+        }
+        const usage = frame?.message?.usage ?? frame?.usage ?? frame;
+        const window = usage?.context_window ?? frame?.message?.context_window ?? frame?.context_window;
+        const input = usage?.input_tokens;
+        const cacheCreation = usage?.cache_creation_input_tokens ?? 0;
+        const cacheRead = usage?.cache_read_input_tokens ?? 0;
+        if (!Number.isFinite(window) || window <= 0) continue;
+        if (![input, cacheCreation, cacheRead].every(value => Number.isFinite(value) && value >= 0)) continue;
+        return clampPercent(((input + cacheCreation + cacheRead) / window) * 100);
+      }
+      if (readSize >= maxReadSize) break;
+      readSize = Math.min(readSize * 2, maxReadSize);
+    }
+    return null;
   } catch {
     return null;
   } finally {

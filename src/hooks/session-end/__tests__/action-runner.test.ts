@@ -111,7 +111,7 @@ describe('SessionEnd action runner', () => {
     expect(child.unref).toHaveBeenCalledOnce();
   });
 
-  it('passes model-provider auth and gh auth context through to every action runner', async () => {
+  it('passes model-provider auth and gh auth context to spawn-next without forwarding ambient AFK settings', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'omc-action-runner-auth-'));
     directories.push(directory);
     const child = Object.assign(new EventEmitter(), { pid: 12350, unref: vi.fn() });
@@ -127,6 +127,7 @@ describe('SessionEnd action runner', () => {
     vi.stubEnv('COPILOT_ALLOW_ALL', 'true');
     vi.stubEnv('OMC_PLUGIN_ROOT', '/opt/omg');
     vi.stubEnv('OMC_CHAIN_LINK', '6f1c2b3a-4d5e-4f60-8a7b-9c0d1e2f3a4b');
+    vi.stubEnv('OMC_AFK_INCLUDE_USER_SETTINGS', '1');
 
     // The spawn-next action launches claude chain links from its runner; the
     // passthrough must reach it or every link exits "Not logged in".
@@ -145,6 +146,9 @@ describe('SessionEnd action runner', () => {
     expect(environment).not.toHaveProperty('COPILOT_ALLOW_ALL');
     // The ended link's identity stays behind; spawn-next sets the next link's own.
     expect(environment).not.toHaveProperty('OMC_CHAIN_LINK');
+    // The opt-in is stored in the durable chain ledger, not copied from the
+    // process that happens to recover this action.
+    expect(environment).not.toHaveProperty('OMC_AFK_INCLUDE_USER_SETTINGS');
     if (process.platform === 'win32') {
       expect(environment).toHaveProperty('APPDATA', process.env.APPDATA);
       expect(environment).toHaveProperty('LOCALAPPDATA', process.env.LOCALAPPDATA);
@@ -153,6 +157,7 @@ describe('SessionEnd action runner', () => {
 
   it('does not pass model-provider auth to non spawn-next action children', async () => {
     vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    vi.stubEnv('OMC_AFK_INCLUDE_USER_SETTINGS', '1');
     for (const name of ['callback', 'openclaw', 'foreground-cleanup'] as const) {
       const directory = mkdtempSync(join(tmpdir(), 'omc-action-runner-noauth-'));
       directories.push(directory);
@@ -168,6 +173,7 @@ describe('SessionEnd action runner', () => {
       await runSessionEndAction(ctx, async () => undefined);
       const environment = childProcess.spawn.mock.calls[0][2].env as NodeJS.ProcessEnv;
       expect(environment).not.toHaveProperty('ANTHROPIC_API_KEY');
+      expect(environment).not.toHaveProperty('OMC_AFK_INCLUDE_USER_SETTINGS');
     }
   });
 
