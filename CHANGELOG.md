@@ -17,24 +17,39 @@ All notable changes to oh-my-copilot will be documented in this file.
   `gh pr checks --json`: green only when every check outside
   `ship.advisoryChecks` (default `No Committed Build Artifacts`,
   `Authorize generated artifacts from base trust root`) is SUCCESS or
-  SKIPPED; unknown states fail closed. A failed job whose every failing vitest
-  test is listed in `.github/known-flaky-tests.json` is classified flaky and
-  rerun once per run (`gh run rerun <id> --failed`). One watch window lasts
-  9 minutes (under the 10-minute background watcher cap); exit 8 means still
-  pending, so run the command again.
-- **`omg ship prepare <pr>`** merges `origin/<base>` in (never rebases),
-  resolves an inventory-only sibling conflict with `--theirs`, runs `tsc`,
-  eslint on changed files, the tests mapped from the diff and the generator
-  `--verify` checks, then regenerates the inventory as the last commit.
-- **`omg ship merge <pr>`** refuses unless the gates are green and the latest
-  independent approval covers the head (only commits `prepare` made may
-  follow the reviewed sha). It prints `gh pr merge --admin --merge
-  --match-head-commit <sha>` unless `ship.allowAdminMerge` (or
-  `--allow-admin-merge`) is set.
-- Every engine command passes a guard that refuses force pushes, deleting
-  refspecs, rebase, pull, amend, `reset --hard`, `git worktree add/remove`,
-  `npm ci` and squash/rebase PR merges. Run state lives in
-  `.omg/state/ship/<pr>.json` under the state file lock.
+  SKIPPED, every `ship.requiredChecks` name has been reported (a missing one,
+  such as `Build` before its `needs:` jobs start, is pending), and every
+  workflow run for the head sha is completed; unknown states fail closed. A
+  failed job whose every failing vitest test matches a title-scoped entry in
+  `.github/known-flaky-tests.json`, with no unhandled errors, failed suites
+  or failing non-test step in its log, is classified flaky and rerun once per
+  run (`gh run rerun <id> --failed`; the budget is recorded before the
+  rerun). One watch window lasts 9 minutes (under the 10-minute background
+  watcher cap); exit 8 means still pending, so run the command again.
+- **`omg ship prepare <pr>`** refuses unless HEAD is the run's PR branch and
+  contains the reviewed sha, then merges `origin/<base>` in (`--no-ff`, never
+  rebases), resolves an inventory-only sibling conflict with `--theirs`, runs
+  `tsc`, eslint on changed files, the tests mapped from the diff and the
+  generator `--verify` checks, regenerates the inventory as the last commit,
+  and with `--push` pushes plainly to the run's branch. Option-shaped or
+  invalid base / branch names and a non-hex `verdict --sha` are refused.
+- **`omg ship merge <pr>`** refuses unless the gates are green, the state
+  passes its integrity check, and the latest independent approval covers the
+  head (only commits `prepare` made may follow the reviewed sha). It prints
+  `gh pr merge --admin --merge --match-head-commit <sha>` unless the owner set
+  `ship.allowAdminMerge`; there is no CLI flag for the admin merge.
+- **`omg ship init <pr> --force`** keeps the replaced run in `previousRuns`;
+  replacing a blocked or merged run needs the owner-only `OMG_SHIP_HUMAN=1`.
+  Reviewer identity is advisory and the state file is not tamper-proof: a
+  sha256 `integrity` field written on every engine update catches hand edits
+  (later updates and `merge` refuse a mismatch) but is not a signature.
+- Every engine command passes an allowlist guard: only the exact git / gh /
+  node / npm shapes the engine builds may spawn, so force pushes, deleting
+  refspecs, rebase, pull, amend, `reset`, global `-c` / `--config-env`
+  options, option-shaped operands, `git worktree`, `gh api`, `gh -R`,
+  `--auto` / `--delete-branch` merges, `.cmd` shims and `npm ci` are refused.
+  Run state lives in `.omg/state/ship/<pr>.json` under the state file lock
+  and is shape-checked on read.
 
 # oh-my-copilot v5.9.0
 

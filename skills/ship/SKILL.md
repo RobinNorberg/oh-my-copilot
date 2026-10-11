@@ -25,12 +25,30 @@ Each rule exists because breaking it once cost a round-trip or a wiped tree.
 - No `git worktree add` / `git worktree remove`, no `npm ci` in a junctioned
   tree: removing a worktree empties the shared `node_modules` junction target.
 - No force push, no rebase, no amend. Update a branch with
-  `git merge origin/<base>` and a plain push. `omc ship` refuses force,
-  rebase, pull, amend and `reset --hard` before anything spawns.
+  `git merge origin/<base>` and a plain push. `omc ship` only spawns an
+  allowlist of the exact git/gh/node/npm command shapes it builds, so force,
+  rebase, pull, amend, `reset`, `gh api` and `npm ci` are refused before
+  anything spawns.
 - The inventory regeneration is the LAST commit. Any later commit re-stales
   `inventory/inventory-graph.json`; `omc ship prepare` orders this for you.
 - Merge only through `omc ship merge`. It checks the gates and the verdict;
   a human-typed `gh pr merge` skips both.
+- Lanes never edit `.omg/state/ship/`, never touch the `ship` block of
+  `.copilot/omg.jsonc`, and never set `OMG_SHIP_HUMAN`. Those are the owner's
+  controls: `ship.allowAdminMerge` is the only switch that runs the admin
+  merge, and `OMG_SHIP_HUMAN=1` is the only way to `init --force` over a
+  blocked or merged run.
+
+### What the engine can and cannot prove
+
+The implementer / reviewer names are advisory: `omc ship` compares the
+strings it is given and cannot verify which agent typed them. The state file
+is not tamper-proof either. Every engine write records a sha256 over the
+state (verdicts, housekeeping commits, phase, history) in `integrity`; later
+updates and `merge` refuse a state whose hash no longer matches, which
+catches a hand edit, but anyone who reads the source can recompute it. The
+real protections are the lane discipline above, the owner-only config, and
+`gh pr merge --match-head-commit`.
 
 ## Steps
 
@@ -52,23 +70,31 @@ Each rule exists because breaking it once cost a round-trip or a wiped tree.
    with the fix brief below, then back to step 3 with the new head sha. The
    run blocks after `ship.maxFixRounds` (default 2) change requests; stop and
    report to the user instead of starting another round.
-5. **Prepare:** `omc ship prepare <pr> --push`. It merges `origin/<base>` in,
+5. **Prepare:** `omc ship prepare <pr> --push`, run on the PR branch the run
+   was started for, with the reviewed sha in HEAD (it refuses otherwise, and
+   refuses a dirty tree or a merge / rebase / cherry-pick / revert in
+   progress). It merges `origin/<base>` in with `--no-ff`,
    runs `tsc`, eslint on changed files, the tests mapped from the diff and
    the generator `--verify` checks, then regenerates the inventory as the
    last commit and pushes plainly. A conflict outside `inventory/` stops it:
    hand the conflict to a fresh fix agent, then re-review (step 3).
 6. **Gates:** `omc ship gates <pr> --watch`. Exit 8 means still pending after
    one watch window (9 minutes, under the 10-minute watcher cap): run the
-   same command again. Exit 1 lists the real failures; a failure whose every
-   failing test is in `.github/known-flaky-tests.json` is rerun once
+   same command again. Green needs every `ship.requiredChecks` name reported
+   (a missing one, such as `Build` before its `needs:` jobs finish, is
+   pending) and every workflow run for the head sha completed. Exit 1 lists
+   the real failures; a failure whose every failing test matches a
+   title-scoped entry in `.github/known-flaky-tests.json`, with no unhandled
+   errors, failed suites or failing non-test step in the log, is rerun once
    automatically (`gh run rerun <id> --failed`); the same test failing again
    is a real failure.
 7. **Merge-readiness:** mark the PR ready (`gh pr ready <pr>`), then
-   `omc ship merge <pr>`. It refuses unless the gates are green and the last
-   approval covers the head (only ship housekeeping commits may follow the
-   reviewed sha). With `ship.allowAdminMerge` unset it prints the exact
-   `gh pr merge --admin --merge` command for the owner; merging is the
-   owner's call.
+   `omc ship merge <pr>`. It refuses unless the gates are green, the state
+   passes its integrity check, and the last approval covers the head (only
+   ship housekeeping commits may follow the reviewed sha). With
+   `ship.allowAdminMerge` unset (the default) it prints the exact
+   `gh pr merge --admin --merge` command for the owner; there is no flag that
+   turns it on, and merging is the owner's call.
 
 ## Executor brief (template)
 
@@ -78,7 +104,8 @@ Repo: <path>, branch <branch> off origin/<base>. Read <files> first.
 Deliver: the change, tests for it, a plain `git push -u origin <branch>`, a
 DRAFT PR to <base>. Report the PR number and head sha.
 Never: git worktree add/remove, npm ci, force push, rebase, amend, merging
-the PR. Do not edit dist/ or bridge/.
+the PR, editing .omg/state/ship/ or the ship config, setting OMG_SHIP_HUMAN.
+Do not edit dist/ or bridge/.
 Verify before reporting: npx tsc --noEmit and the tests you touched.
 ```
 
@@ -91,7 +118,8 @@ You were not given the author's summary on purpose; judge the diff.
 Check: does it do the task, correctness and edge cases, tests that would fail
 without the change, safety rules (no force/rebase paths, no dist/ edits).
 Run the targeted tests yourself. Do not edit, commit, or push anything.
-Never: git worktree add/remove, npm ci, force push.
+Never: git worktree add/remove, npm ci, force push, editing .omg/state/ship/
+or the ship config, setting OMG_SHIP_HUMAN.
 Answer with VERDICT: approve | changes-requested, then a numbered list of
 blocking findings (file:line, why, expected) and non-blocking notes.
 ```
@@ -103,11 +131,12 @@ PR #<pr>, branch <branch>, head <sha>. A reviewer requested changes:
 <numbered blocking findings, verbatim>
 Fix exactly these findings; do not refactor beyond them. Add or adjust a test
 per finding. Commit as new commits and plain-push (`git push`), never amend.
-Never: git worktree add/remove, npm ci, force push, rebase.
+Never: git worktree add/remove, npm ci, force push, rebase, editing
+.omg/state/ship/ or the ship config, setting OMG_SHIP_HUMAN.
 Report the new head sha and which finding each commit addresses.
 ```
 
-## Config (`.copilot/omg.jsonc`)
+## Config (`.copilot/omg.jsonc`, owner-edited)
 
 ```jsonc
 {
@@ -116,6 +145,9 @@ Report the new head sha and which finding each commit addresses.
     "maxFixRounds": 2,
     "allowAdminMerge": false,
     "advisoryChecks": ["No Committed Build Artifacts", "Authorize generated artifacts from base trust root"],
+    // Omit to keep the default (all 18 checks this repo's CI reports on a PR);
+    // a value replaces the whole list. A listed check not reported yet is pending.
+    "requiredChecks": ["Lint & Type Check", "Test", "Test (Windows path suite)", "Build", "npm pack + install test", "..."],
     "knownFlakyFile": ".github/known-flaky-tests.json",
     "autoRerunFlaky": true,
     "pollIntervalSeconds": 30,
