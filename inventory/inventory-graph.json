@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "6805c26168e8afa36f4ef79f899b04a120ff4491",
-    "sourceSha256": "34a341cfe8f8fc68a6a9b29609b47a814a0cc16c72bb55d39c4572d9662ea987",
+    "head": "388552d35c7700bb5f399174976a1163b55657b9",
+    "sourceSha256": "da6d962f308f08ff6211d2bf76def21d0681d5bec56535aab076eda499aaad8d",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "6805c26168e8afa36f4ef79f899b04a120ff4491",
-  "sourceSha256": "34a341cfe8f8fc68a6a9b29609b47a814a0cc16c72bb55d39c4572d9662ea987",
+  "head": "388552d35c7700bb5f399174976a1163b55657b9",
+  "sourceSha256": "da6d962f308f08ff6211d2bf76def21d0681d5bec56535aab076eda499aaad8d",
   "counts": {
     "public": {
       "skills": 61,
@@ -49403,6 +49403,16 @@
       },
       {
         "from": "scripts/copilot/notification.mjs",
+        "to": "dist/notifications/redact.js",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -49414,6 +49424,16 @@
       {
         "from": "scripts/copilot/notification.mjs",
         "to": "external:node:worker_threads",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "scripts/lib/atomic-write.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/copilot/notification.mjs",
+        "to": "scripts/lib/state-root.mjs",
         "kind": "imports"
       },
       {
@@ -52738,6 +52758,16 @@
       },
       {
         "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -52749,6 +52779,11 @@
       {
         "from": "src/__tests__/copilot-notification-hook.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-notification-hook.test.ts",
+        "to": "src/notifications/redact.ts",
         "kind": "imports"
       },
       {
@@ -84527,6 +84562,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/__tests__/sdk-inprocess-tools.test.ts",
+        "to": "src/team/sdk-policy.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/__tests__/sdk-transport.runtime.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -84569,6 +84609,11 @@
       {
         "from": "src/team/__tests__/sdk-transport.test.ts",
         "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-transport.test.ts",
+        "to": "external:events",
         "kind": "imports"
       },
       {
@@ -84620,6 +84665,11 @@
         "from": "src/team/__tests__/sdk-transport.test.ts",
         "to": "src/team/sdk-host.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/__tests__/sdk-transport.test.ts",
+        "to": "src/team/sdk-inprocess-tools.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/__tests__/sdk-transport.test.ts",
@@ -88430,6 +88480,16 @@
         "from": "src/team/sdk-inprocess-tools.ts",
         "to": "src/mcp/tool-registry.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/sdk-inprocess-tools.ts",
+        "to": "src/tools/lsp/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/sdk-inprocess-tools.ts",
+        "to": "src/tools/python-repl/bridge-manager.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/sdk-policy.ts",
@@ -93274,11 +93334,11 @@
     ],
     "stats": {
       "nodeCount": 8209,
-      "edgeCount": 8947,
-      "importEdgeCount": 7412,
+      "edgeCount": 8959,
+      "importEdgeCount": 7424,
       "registerEdgeCount": 82
     }
   },
   "inventorySha256": "57fb34558e14524ac7700987fc7162533ce12790ee666b5287b169b2d819814c",
-  "manifestSha256": "2dff7158a927a57f1af851ec21afe9fa0e91febe797f0465c391838660c06a65"
+  "manifestSha256": "ec6d6621e1999366238fed3b32211f74bf6082454c8e5add274579c80976dee0"
 }
