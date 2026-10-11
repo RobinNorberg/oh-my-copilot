@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.9.0, the plugin ships 20 agents, 61 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
+For v5.9.0, the plugin ships 20 agents, 62 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
 
 ---
 
@@ -16,7 +16,7 @@ For v5.9.0, the plugin ships 20 agents, 61 skills, 21 command files, and one con
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated-opt-in-only)
 - [Agents (20 Total)](#agents-20-total)
 - [Goal Workflow UX: `/goal`, Ralph, Team, Ultragoal](#goal-workflow-ux-goal-ralph-team-ultragoal)
-- [Skills (61 Total)](#skills-61-total)
+- [Skills (62 Total)](#skills-62-total)
 - [Slash Commands](#slash-commands)
 - [Shipyard Methodology](./shipyard.md) — governed delivery & shared harness map
 - [Claude Code `/goal` Adapter Design](#claude-code-goal-adapter-design)
@@ -773,6 +773,28 @@ omg lookout scan --strict   # exit 1 when review is recommended (for scripts)
 - `--json` emits the full report; exit codes: `0` for every successful non-strict scan and for strict scans without a review-recommended verdict, `1` for `--strict` with a review-recommended verdict, `2` for a usage/scan error
 - High-risk verdicts pair with approval gates and checkpoints: `omg graph run --approval-mode remote --checkpoint`, `omg checkpoint create`
 
+### `omg ship`
+
+The deterministic half of the `/oh-my-copilot:ship` workflow (executor lane → independent verifier lane → fix rounds by a fresh agent → housekeeping → merge-readiness). The skill runs the agent lanes; these commands record verdicts, do the mechanical steps, and refuse the unsafe ones. State: `.omg/state/ship/<pr>.json`, written under the state file lock, so a run survives restarts.
+
+```bash
+omg ship init 241 --implementer executor-1        # start a run; the implementer can never approve
+omg ship verdict 241 --reviewer verifier-1 --sha <reviewed sha> --approve   # or --request-changes --notes "..."
+omg ship prepare 241 --push                        # merge origin/<base>, checks, inventory LAST, plain push
+omg ship gates 241 --watch                         # exit 0 green, 1 failed, 8 still pending (run again)
+omg ship merge 241                                 # refuses, or prints / runs the admin merge
+omg ship status 241 --json
+```
+
+- **Phases:** `review` → `fix` (changes requested; up to `ship.maxFixRounds`, default 2, then `blocked`) → `prepare` (approved) → `gates` → `ready` → `merged`. A later changes-requested verdict reopens any non-terminal phase.
+- **Merge rule (`gates`):** green only when every check outside `ship.advisoryChecks` (default `No Committed Build Artifacts` and `Authorize generated artifacts from base trust root`) is `SUCCESS` or `SKIPPED`. Pending: `PENDING`, `QUEUED`, `IN_PROGRESS`, `WAITING`, `REQUESTED`, `EXPECTED`. Any other state is failed. No required checks yet is pending, never green.
+- **Known-flaky failures:** for a failed Actions job, `gates` reads `gh run view --job <id> --log` and parses the vitest `FAIL` lines. When every failing test of every failed required check matches `.github/known-flaky-tests.json` (`file`, optional `title` substring), the verdict is `flaky` and the output suggests `gh run rerun <id> --failed`. `--watch` reruns each such run once (budget kept in the run state, across invocations) once the run has no pending jobs; the same test failing again is a real failure. `--no-rerun` or `ship.autoRerunFlaky: false` turns the rerun off.
+- **Watch window:** one `--watch` lasts `ship.watchTimeoutMinutes` (default 9, below the 10-minute cap of background watchers), polling every `ship.pollIntervalSeconds` (30). Exit 8 = still pending: run the same command again.
+- **`prepare`:** refuses a detached HEAD, the base/main branch, a dirty tree, or a merge/rebase in progress. Then `git fetch` → `git merge --no-edit origin/<base>` (a conflict only under `inventory/` is resolved with `git checkout --theirs -- inventory`; any other conflict stops for a fix lane) → `tsc --noEmit`, eslint on changed `src` files, the tests mapped from the diff (`X.test.ts` beside or in `__tests__/` next to each changed `src/**/X.ts`, changed tests, the skills suite for `skills/`), the generator `--verify` scripts for `skills/`, `agents/`, `hooks/` → `scripts/generate-inventory-graph.mjs --write` + `--verify` as the last commit → `--push` (plain). The commits it makes are recorded as housekeeping.
+- **`merge`:** refuses unless the PR is open, not a draft, on the run's base, the gates are green, and the latest verdict is an approval from someone other than the implementer whose reviewed sha is the head or is followed (first-parent) only by housekeeping commits. Then it prints `gh pr merge <pr> --admin --merge --match-head-commit <head>`, or runs it when `ship.allowAdminMerge` is `true` or `--allow-admin-merge` is passed.
+- **Safety guard:** every command the engine spawns is checked first. Refused: `git push` with `--force*`, `-f`, `--delete`, `--mirror`, `+`/`:` refspecs; `git rebase`, `git pull`, `git commit --amend`, `git reset --hard`, `git worktree` other than `list`; `gh pr merge` without `--merge` or with `--squash`/`--rebase`; `npm ci`.
+- **Config** (`.copilot/omg.jsonc`, key `ship`): `base`, `advisoryChecks`, `knownFlakyFile`, `maxFixRounds`, `allowAdminMerge`, `autoRerunFlaky`, `pollIntervalSeconds`, `watchTimeoutMinutes`. Ill-typed values are an error, not ignored.
+
 ### `omg factory`
 
 `omg factory init` seeds the project route table `.omg/factory-routes.json`, `omg factory listen` runs the HMAC-verified tracker intake daemon, and `omg factory status [--json]` is the read-only chain audit. A chain is a series of headless AFK links: when a link's session ends, the SessionEnd hook routes its `outcome:reason` through the route table and the detached SessionEnd worker spawns the next link. Guardrails apply per link: one active link per intent (serial lock) and a daily cap of 10 (`OMC_DAILY_CHAIN_LIMIT`).
@@ -1102,7 +1124,7 @@ Autopilot continues to own cancel, resume, cleanup, state inspection, HUD, and S
 
 V1 deliberately defers `stageModels` and all model/provider/role routing, inline/no-spawn execution, dynamic commands/modes/state files, arbitrary stages/prompts/plugins and control-flow extensions, and the separate custom-skill inline-array frontmatter parser mismatch. See [ADR 03487](./adr/03487-named-autopilot-stage-profiles.md) for the decision record.
 
-## Skills (61 Total)
+## Skills (62 Total)
 
 Includes bundled workflow, utility, domain, and compatibility skills. Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
@@ -1166,6 +1188,7 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `remember`                | Save and retrieve durable session memory                                        | `/oh-my-copilot:remember`                |
 | `research`                | Investigate an open question and return grounded findings                       | `/oh-my-copilot:research`               |
 | `self-improve`            | Autonomous evolutionary code improvement engine                                | `/oh-my-copilot:self-improve`           |
+| `ship`                    | Task or PR to merge-ready: executor lane, independent verifier lane, bounded fix rounds, `omg ship` gates | `/oh-my-copilot:ship` |
 | `skill`                   | Manage local skills (list/add/remove/search/edit)                              | `/oh-my-copilot:skill`                   |
 | `skillify`                | Extract a reusable skill from the current session                              | `/oh-my-copilot:skillify`                |
 | `team`                    | Coordinated multi-agent workflow                                               | `/oh-my-copilot:team`                    |
@@ -1181,7 +1204,7 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 
 ## Slash Commands
 
-Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plugin ships 21 command files alongside the 61 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
+Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plugin ships 21 command files alongside the 62 skill entrypoints listed above; the commands below list both surfaces. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands. OMC's manual compaction helper is plugin-scoped as `/oh-my-copilot:compact`; bare `/compact` remains Claude Code's native command and is not shadowed by OMC. The helper preserves the user's note and instructs them to run bare `/compact`; OMC does not invoke native compaction itself because Claude Code's built-in `/compact` is not a prompt skill.
 
 | Command                                                  | Description                                                                                   |
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -1223,6 +1246,7 @@ Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plu
 | `/oh-my-copilot:remember <note>`                      | Save durable session memory                                                                   |
 | `/oh-my-copilot:research <question>`                  | Investigate an open question and return grounded findings                                      |
 | `/oh-my-copilot:self-improve <topic>`                 | Run the autonomous code-improvement workflow                                                   |
+| `/oh-my-copilot:ship <task> \| --pr <n>`              | Take a task or PR to merge-ready through independent review and the `omg ship` gate engine     |
 | `/oh-my-copilot:skill <action>`                       | Manage local skills                                                                           |
 | `/oh-my-copilot:skillify`                             | Extract a reusable skill from the current session                                             |
 | `/oh-my-copilot:team <N>:<agent> <task>`               | Coordinated native team workflow                                                              |

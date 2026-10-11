@@ -2,6 +2,40 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Added: `omg ship` and the `ship` skill
+
+- **`/oh-my-copilot:ship`** takes a task or an open PR to merge-ready: an
+  executor lane, an independent verifier lane (the implementer's own verdict
+  is refused), fix rounds by a fresh agent up to `ship.maxFixRounds`
+  (default 2), then the mechanical steps below. The skill ships the executor,
+  reviewer and fix brief templates (reviewers get the diff, not the author's
+  conclusion) and runs the lanes through `omg team --transport sdk` or the
+  in-session Task tool.
+- **`omg ship gates <pr> [--watch]`** applies the merge rule to
+  `gh pr checks --json`: green only when every check outside
+  `ship.advisoryChecks` (default `No Committed Build Artifacts`,
+  `Authorize generated artifacts from base trust root`) is SUCCESS or
+  SKIPPED; unknown states fail closed. A failed job whose every failing vitest
+  test is listed in `.github/known-flaky-tests.json` is classified flaky and
+  rerun once per run (`gh run rerun <id> --failed`). One watch window lasts
+  9 minutes (under the 10-minute background watcher cap); exit 8 means still
+  pending, so run the command again.
+- **`omg ship prepare <pr>`** merges `origin/<base>` in (never rebases),
+  resolves an inventory-only sibling conflict with `--theirs`, runs `tsc`,
+  eslint on changed files, the tests mapped from the diff and the generator
+  `--verify` checks, then regenerates the inventory as the last commit.
+- **`omg ship merge <pr>`** refuses unless the gates are green and the latest
+  independent approval covers the head (only commits `prepare` made may
+  follow the reviewed sha). It prints `gh pr merge --admin --merge
+  --match-head-commit <sha>` unless `ship.allowAdminMerge` (or
+  `--allow-admin-merge`) is set.
+- Every engine command passes a guard that refuses force pushes, deleting
+  refspecs, rebase, pull, amend, `reset --hard`, `git worktree add/remove`,
+  `npm ci` and squash/rebase PR merges. Run state lives in
+  `.omg/state/ship/<pr>.json` under the state file lock.
+
 # oh-my-copilot v5.9.0
 
 ## [5.9.0] - 2026-10-10
