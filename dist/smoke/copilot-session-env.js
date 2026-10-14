@@ -12,6 +12,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { COPILOT_RUN_ALLOW_ENV } from '../copilot-run/names.js';
 import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
 import { parseJsonc } from '../utils/jsonc.js';
 import { PLUGIN_NAME } from './copilot-sdk-scenarios.js';
@@ -28,6 +29,7 @@ import { PLUGIN_NAME } from './copilot-sdk-scenarios.js';
  * - `NODE_OPTIONS` (preloads would run inside our node hooks);
  * - `COPILOT_HOME`, `COPILOT_OFFLINE`, `COPILOT_MODEL` (only `--model` picks the
  *   model), every `COPILOT_PROVIDER_*` (BYO provider routing);
+ * - `OMG_COPILOT_RUN_ALLOW` (a session must not start copilot_run jobs);
  * - tier 1 with a copied login identity: `GH_TOKEN`, `GITHUB_TOKEN` (see
  *   {@link buildSessionEnv}).
  * Kept: everything else, notably PATH/PATHEXT/SystemRoot/HOME/USERPROFILE/
@@ -43,6 +45,7 @@ export const STRIPPED_ENV_EXACT = [
     'COPILOT_HOME',
     'COPILOT_OFFLINE',
     'COPILOT_MODEL',
+    COPILOT_RUN_ALLOW_ENV,
 ];
 export const STRIPPED_ENV_PREFIXES = ['OMC_', 'CLAUDE_CODE_', 'COPILOT_PROVIDER_'];
 /** Generic GitHub tokens dropped from the tier 1 session when a stored login was copied. */

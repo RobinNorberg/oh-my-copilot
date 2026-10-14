@@ -29,6 +29,7 @@ export declare const TOOL_CATEGORIES: {
     readonly DEEPINIT: "deepinit";
     readonly WIKI: "wiki";
     readonly SMOKE: "smoke";
+    readonly COPILOT_RUN: "copilot-run";
 };
 export type ToolCategory = typeof TOOL_CATEGORIES[keyof typeof TOOL_CATEGORIES];
 export declare const HOOK_EVENTS: {

@@ -371,6 +371,33 @@ function trustedUserConfigPathOrDefault() {
     }
 }
 /**
+ * Merge-rule paths beyond PROTECTED_PATHS for a guard outside a ship run
+ * (copilot_run): a non-default ship.knownFlakyFile from the user config at its
+ * default location and from the working-tree project config under `root`.
+ * Protection only widens here, so the untrusted project file may add a path
+ * but never drop one; the base branch is not read (no fetch). An unreadable
+ * layer adds nothing.
+ */
+export function configuredProtectedPaths(root) {
+    const paths = new Set();
+    const layers = [
+        [() => userConfigLayers().trustedUser, 'user config (default location)'],
+        [() => {
+                const path = resolveProjectConfigPath(root);
+                return existsSync(path) ? parseJsonc(readFileSync(path, 'utf8')) : undefined;
+            }, 'project config'],
+    ];
+    for (const [read, source] of layers) {
+        try {
+            const file = shipBlock(read(), source).knownFlakyFile;
+            if (isRepoPath(file) && file !== DEFAULT_SHIP_CONFIG.knownFlakyFile)
+                paths.add(file);
+        }
+        catch { /* unreadable: the defaults still apply */ }
+    }
+    return [...paths];
+}
+/**
  * The known-flaky list committed at the verified base commit (never the PR
  * head; LoadedShipConfig.trustedBaseCommit). No commit or no file = empty.
  */

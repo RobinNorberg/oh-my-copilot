@@ -15393,6 +15393,47 @@ function removeRuntimeLeftover(wtPath, retryMs = RUNTIME_LEFTOVER_RETRY_MS) {
     }
   }
 }
+function unlinkUntrackedWorktreeLinks(wtPath) {
+  const tracked = new Set(
+    (gitOrNull(["ls-files", "-z", "--stage"], wtPath) ?? "").split("\0").filter((entry) => entry.startsWith("120000 ")).map((entry) => (0, import_node_path9.resolve)(wtPath, entry.slice(entry.indexOf("	") + 1)))
+  );
+  const pending = [wtPath];
+  while (pending.length > 0) {
+    const dir = pending.pop();
+    let entries;
+    try {
+      entries = (0, import_node_fs8.readdirSync)(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const path5 = (0, import_node_path9.join)(dir, entry.name);
+      if (dir === wtPath && entry.name === ".git") continue;
+      let stat2;
+      try {
+        stat2 = (0, import_node_fs8.lstatSync)(path5);
+      } catch {
+        continue;
+      }
+      if (stat2.isSymbolicLink()) {
+        if (tracked.has((0, import_node_path9.resolve)(path5))) continue;
+        try {
+          (0, import_node_fs8.unlinkSync)(path5);
+        } catch {
+          try {
+            (0, import_node_fs8.rmdirSync)(path5);
+          } catch (err) {
+            const error = new Error(`worktree_link_unremovable: preserving worker worktree at ${wtPath}; cannot unlink ${path5}: ${err instanceof Error ? err.message : String(err)}`);
+            error.code = "worktree_link_unremovable";
+            throw error;
+          }
+        }
+      } else if (stat2.isDirectory()) {
+        pending.push(path5);
+      }
+    }
+  }
+}
 function gitOrNull(args, cwd) {
   try {
     return (0, import_node_child_process3.execFileSync)("git", args, { cwd, encoding: "utf-8", stdio: "pipe", windowsHide: true }).trim();
@@ -15791,7 +15832,14 @@ function removeWorkerWorktree(teamName, workerName, repoRoot) {
       if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch, commits });
     }
     const runtimeOnly = (0, import_node_fs8.existsSync)(wtPath) && isWorktreeDirtyExcept(wtPath, ["AGENTS.md"]).runtimeState;
-    const force = runtimeOnly && !hasInitializedSubmodules(wtPath);
+    const submodules = (0, import_node_fs8.existsSync)(wtPath) && hasInitializedSubmodules(wtPath);
+    const force = runtimeOnly && !submodules;
+    if (wasRegisteredWorktree && submodules) {
+      const error = new Error(`worktree_remove_failed: preserving metadata for registered worker worktree at ${wtPath}: initialized submodules`);
+      error.code = "worktree_remove_failed";
+      throw error;
+    }
+    if ((0, import_node_fs8.existsSync)(wtPath)) unlinkUntrackedWorktreeLinks(wtPath);
     try {
       (0, import_node_child_process3.execFileSync)("git", ["worktree", "remove", ...force ? ["--force"] : [], wtPath], { cwd: repoRoot, stdio: "pipe", windowsHide: true });
     } catch (err) {
@@ -18361,6 +18409,13 @@ var init_copilot_sdk_driver = __esm({
   }
 });
 
+// src/copilot-run/names.ts
+var init_names = __esm({
+  "src/copilot-run/names.ts"() {
+    "use strict";
+  }
+});
+
 // src/lib/env-vars.ts
 var OMC_PLUGIN_ROOT_ENV;
 var init_env_vars = __esm({
@@ -18412,6 +18467,7 @@ var init_copilot_session_env = __esm({
     import_fs35 = require("fs");
     import_path39 = require("path");
     import_url6 = require("url");
+    init_names();
     init_env_vars();
     init_jsonc();
     init_copilot_sdk_scenarios();
