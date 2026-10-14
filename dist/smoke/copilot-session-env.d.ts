@@ -22,13 +22,14 @@
  * - `NODE_OPTIONS` (preloads would run inside our node hooks);
  * - `COPILOT_HOME`, `COPILOT_OFFLINE`, `COPILOT_MODEL` (only `--model` picks the
  *   model), every `COPILOT_PROVIDER_*` (BYO provider routing);
+ * - `OMG_COPILOT_RUN_ALLOW` (a session must not start copilot_run jobs);
  * - tier 1 with a copied login identity: `GH_TOKEN`, `GITHUB_TOKEN` (see
  *   {@link buildSessionEnv}).
  * Kept: everything else, notably PATH/PATHEXT/SystemRoot/HOME/USERPROFILE/
  * APPDATA/LOCALAPPDATA/TEMP (hooks spawn node and resolve home dirs),
  * `COPILOT_GITHUB_TOKEN`, and the remaining `COPILOT_*` (e.g. COPILOT_CLI_PATH).
  */
-export declare const STRIPPED_ENV_EXACT: readonly ["DISABLE_OMC", "CLAUDECODE", "CLAUDE_SESSION_ID", "CLAUDE_PLUGIN_ROOT", "NODE_OPTIONS", "COPILOT_HOME", "COPILOT_OFFLINE", "COPILOT_MODEL"];
+export declare const STRIPPED_ENV_EXACT: readonly ["DISABLE_OMC", "CLAUDECODE", "CLAUDE_SESSION_ID", "CLAUDE_PLUGIN_ROOT", "NODE_OPTIONS", "COPILOT_HOME", "COPILOT_OFFLINE", "COPILOT_MODEL", "OMG_COPILOT_RUN_ALLOW"];
 export declare const STRIPPED_ENV_PREFIXES: readonly ["OMC_", "CLAUDE_CODE_", "COPILOT_PROVIDER_"];
 /** Generic GitHub tokens dropped from the tier 1 session when a stored login was copied. */
 export declare const LOGIN_SHADOWING_TOKENS: readonly ["GH_TOKEN", "GITHUB_TOKEN"];

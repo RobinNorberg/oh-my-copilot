@@ -148,6 +148,15 @@ export interface LoadedShipConfig extends ShipConfig {
  */
 export declare function loadTrustedShipConfig(input: TrustedShipConfigInput): LoadedShipConfig;
 /**
+ * Merge-rule paths beyond PROTECTED_PATHS for a guard outside a ship run
+ * (copilot_run): a non-default ship.knownFlakyFile from the user config at its
+ * default location and from the working-tree project config under `root`.
+ * Protection only widens here, so the untrusted project file may add a path
+ * but never drop one; the base branch is not read (no fetch). An unreadable
+ * layer adds nothing.
+ */
+export declare function configuredProtectedPaths(root: string): string[];
+/**
  * The known-flaky list committed at the verified base commit (never the PR
  * head; LoadedShipConfig.trustedBaseCommit). No commit or no file = empty.
  */
