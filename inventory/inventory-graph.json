@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "464f9d3c69819796bcf421527e0afed9bf799f95",
-    "sourceSha256": "0ef1781205079e5d994344a7c8781406e417da2249fc680a71beb80080c27fef",
+    "head": "3868306ac9547491cd3c025551798baa36ee38f3",
+    "sourceSha256": "4b938bbb7ff47b6ac44fee3e07532fb42ff0bbc14361205789cde385bfbd5861",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "464f9d3c69819796bcf421527e0afed9bf799f95",
-  "sourceSha256": "0ef1781205079e5d994344a7c8781406e417da2249fc680a71beb80080c27fef",
+  "head": "3868306ac9547491cd3c025551798baa36ee38f3",
+  "sourceSha256": "4b938bbb7ff47b6ac44fee3e07532fb42ff0bbc14361205789cde385bfbd5861",
   "counts": {
     "public": {
       "skills": 63,
@@ -64699,6 +64699,11 @@
       },
       {
         "from": "src/copilot-run/job.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
         "to": "src/ship/merge.ts",
         "kind": "imports"
       },
@@ -80889,6 +80894,11 @@
       },
       {
         "from": "src/mcp/standalone-server.ts",
+        "to": "src/tools/copilot-run-tools.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/standalone-server.ts",
         "to": "src/tools/lsp/index.ts",
         "kind": "imports"
       },
@@ -96205,11 +96215,11 @@
     ],
     "stats": {
       "nodeCount": 8422,
-      "edgeCount": 9286,
-      "importEdgeCount": 7707,
+      "edgeCount": 9288,
+      "importEdgeCount": 7709,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "2eaa172da023a51deac4394935a6b86b264525cd63a51ab9a73fd7f0c620214d",
-  "manifestSha256": "51cdb157d7446fc683fe329fc32dd81431d8ef7b2750fbaf29df76d230fb67c9"
+  "manifestSha256": "76a7be17470530ef76c33ac54d87ebdb0bf234334deb78e7babdfc32bcb49132"
 }
