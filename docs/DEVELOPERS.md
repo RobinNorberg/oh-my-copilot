@@ -52,6 +52,24 @@ claude mcp add omg-dev -e OMC_SMOKE_ALLOW_LIVE=1 -- node C:/Code/OMC/dist/mcp/st
 
 The `omg smoke copilot` CLI has no such gate.
 
+### From Claude Code: delegate a task to Copilot (`copilot_run_*`)
+
+The same server can hand Claude Code's work to Copilot. `copilot_run_start` starts a headless SDK session on a prompt in a new git worktree and returns a job id; `copilot_run_wait` returns the final assistant text, the spend and the worktree's `git diff --stat` for review; `copilot_run_cleanup` removes the worktree once its changes are merged or discarded. Starting a job is billed, so it needs its own opt-in on the server:
+
+```bash
+claude mcp add omg-dev -e OMG_COPILOT_RUN_ALLOW=1 -- node C:/Code/OMC/dist/mcp/standalone-server.js
+```
+
+Then, for example:
+
+```json
+{ "tool": "copilot_run_start", "arguments": { "prompt": "Reply with the word OK", "cwd": "C:/Code/OMC", "isolation": "worktree" } }
+{ "tool": "copilot_run_wait", "arguments": { "jobId": "<jobId from start>" } }
+{ "tool": "copilot_run_cleanup", "arguments": { "jobId": "<jobId from start>" } }
+```
+
+Each job passes the budget governor first and lands in its ledger as `copilot-run:<jobId>`. It needs `@github/copilot-sdk` installed like tier 2 below. Limits, permissions and the report fields are in [REFERENCE.md](./REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot). Both env vars can be combined: `-e OMC_SMOKE_ALLOW_LIVE=1 -e OMG_COPILOT_RUN_ALLOW=1`.
+
 ### Tier 2 — SDK scenarios
 
 Tier 2 drives Copilot through `@github/copilot-sdk` instead of `copilot -p`. The SDK sees the full event stream and the runtime's own plugin, skill, agent, and MCP lists, so it can assert behaviour that tier 1 cannot: a guardrail deny, a skill invocation, a delegation.

@@ -721,7 +721,7 @@ Worker panes run unattended, so each provider launches with its own auto-approve
 
 - **No allow-all.** The host answers every permission request. Writes are allowed only inside the worker's worktree and the team state root. Reads also allow the plugin root. MCP calls are allowed only to the plugin server.
 - **The shell policy is a denylist, not a sandbox.** It rejects team control other than `team api`, `omg smoke`, `tmux`/`psmux` and `git push`, plus `shell(<prefix>)` entries of `workerDenyTools`, including quoted spellings such as `"omg" team shutdown`. A command built indirectly (a script file, an alias, `Invoke-Expression`, an encoded command) is not caught. Treat the write-path check, the credit cap and the per-worker `COPILOT_HOME` as the boundaries.
-- **Sub-agent tools are removed**: `task`, `run_dynamic_workflow`, `dynamic_workflows_manage`, `write_agent`, `read_agent`, `list_agents`, `search_code_subagent` and the plugin's `host_smoke`.
+- **Sub-agent tools are removed**: `task`, `run_dynamic_workflow`, `dynamic_workflows_manage`, `write_agent`, `read_agent`, `list_agents`, `search_code_subagent` and the plugin's `host_smoke` and `copilot_run_*` tools.
 - **Credit cap.** `team.sdk.maxCreditsPerWorker` (default 10, must be a positive number; env `OMC_TEAM_SDK_MAX_CREDITS`) is enforced by the host: at the cap it aborts the turn and takes no more prompts, and `omg team status` shows the worker as `capped` with a reassign recommendation.
 - **Unsupported under sdk:** `--auto-merge`, non-copilot workers, scaling, dead-worker recovery, and an **explicitly** assigned reviewer role with a verdict contract (`critic`, `code-reviewer`, `security-reviewer`, `test-engineer` — set directly via a task's `role` or via `team.roleRouting`); startup rejects them. A contract role merely *inferred* from task text (with no explicit assignment) is not rejected: the role is dropped and the worker runs as a plain executor instead, since an SDK host never exits between turns and so could never have its verdict file read anyway.
 
@@ -873,6 +873,38 @@ claude mcp add omg-dev -- node C:/Code/OMC/dist/mcp/standalone-server.js
 ```
 
 `OMC_DISABLE_TOOLS=smoke` hides `host_smoke`. See [DEVELOPERS.md](./DEVELOPERS.md#headless-smoke-against-a-local-build) for the developer workflow.
+
+### MCP tools `copilot_run_*` (delegate a task to Copilot)
+
+The standalone MCP server can hand a task to GitHub Copilot as a background job: one headless `@github/copilot-sdk` session per job, driven like an sdk team worker. Claude Code (or any MCP client) starts the job, waits for it, and reviews the result in a separate git worktree.
+
+| Tool | Arguments | What it does |
+|------|-----------|--------------|
+| `copilot_run_start` | `prompt`, `cwd?`, `model?`, `timeoutMs?`, `maxCredits?`, `isolation?` | Starts the job and returns its `jobId` (`cr-<12 hex>`) at once. |
+| `copilot_run_status` | `jobId` | The job report, without waiting. |
+| `copilot_run_wait` | `jobId`, `timeoutMs?` | Waits until the job ends or `timeoutMs` passes (default 300000, max 3600000), then returns the report. |
+| `copilot_run_cancel` | `jobId` | Aborts the turn and stops the session. The worktree and its changes stay. |
+| `copilot_run_cleanup` | `jobId` | Removes a finished job's worktree and branch, only when nothing in them would be lost. |
+
+The report is JSON: `status` (`starting`, `running`, `completed`, `failed`, `timeout`, `cancelled`), `stopRequested` (`cancelled`, `timeout` or `capped` from the moment a stop is asked for, while the teardown may still run; else `null`), `finalText` (the last assistant message), `sessionId`, `model`, `error`, `usage` (`premiumRequests`, `credits`, `source`: `measured` once the session's `session.shutdown` totals arrived, else `estimated`), `worktree` (`path`, `branch`, `repoRoot`, `baseCommit`, `removed`), and once the job has ended `changes` (`diffStat` from `git diff --stat <baseCommit>`, `changedFiles`, `untrackedFiles`, `protectedChanges`; taken at the repository root with root-relative paths, also when `cwd` is a subdirectory). `deniedPermissions` lists refused requests, `notes` carries budget warnings, and `eventsPath` is the session's event log.
+
+- **Opt-in.** `copilot_run_start` runs a live, billed session and refuses unless `OMG_COPILOT_RUN_ALLOW=1` is set in the MCP server env. The other tools work on existing jobs and need no opt-in. All five are always listed; `OMC_DISABLE_TOOLS=copilot-run` hides them.
+- **Budget governor.** Before anything is created, the job is checked like an `omg team` launch of one copilot worker ([`omg budget`](#omg-budget-premium-request-budget)): in enforce mode a projected spend past `budget.hardLimit` or `budget.perTeamLimit` refuses the job, in warn mode the warning lands in `notes`. The spend is recorded in the ledger as session `copilot-run:<jobId>`: a live estimate, replaced by the measured totals at the end.
+- **Isolation.** `isolation: "worktree"` (default) creates a git worktree and branch from the repository's `HEAD` at `.omg/team/copilot-run/worktrees/<jobId>`, branch `omc-team/copilot-run/<jobId>`, with the team worktree code. Uncommitted changes in your tree are not in it (a note says so). Copilot works only there; `cwd` must be inside a git repository. `isolation: "none"` lets Copilot edit `cwd` directly, and its `changes` then include edits that were already there.
+- **Permissions.** As for sdk team workers: no allow-all, writes only inside the working directory and the job's state dir, reads also in the plugin root, MCP calls only to the plugin server, the same shell denylist (`git push`, team control, `omg smoke`, multiplexers). Writes to the `omg ship` merge-rule paths (`.copilot/omg.jsonc`, `.copilot/omc.jsonc`, `.github/known-flaky-tests.json`, `.github/workflows/`, plus a non-default `ship.knownFlakyFile` from your user config or the repository's `.copilot/omg.jsonc`) are refused, and `changes.protectedChanges` flags any such file that changed anyway. Only the write tool is confined: the shell denylist is not a sandbox, so a shell command can still reach your working tree. The session cannot start jobs of its own: the `copilot_run_*`, `host_smoke` and sub-agent tools are excluded and `OMG_COPILOT_RUN_ALLOW` is stripped from its env.
+- **Limits.** `timeoutMs` defaults to 900000 (15 min), at most 3600000, counted from start; at the timeout the turn is aborted and the status is `timeout`. `maxCredits` (default 30) aborts the turn once the session's AI credits pass it (status `failed`); the runtime also gets `--max-ai-credits` of at least 30, the CLI minimum. At most 2 jobs run at once per MCP server.
+- **Cleanup.** `copilot_run_cleanup` refuses while the worktree has uncommitted changes or commits your `HEAD` does not contain: merge the branch (or discard the changes), then call it again. Files git ignores (build output such as `dist/`, `.env`, `node_modules`) are not protected work: they are deleted with the worktree. Symlinks and junctions in it (a linked `node_modules`) are unlinked first, so their targets are never emptied. Nothing is removed automatically.
+- **Lifetime.** Jobs live in the MCP server process. When the server shuts down (a signal, or its stdin closing), it cancels the running jobs, waits up to 3 s for their teardown and then kills the Copilot runtimes still alive; the job ids are gone, and the worktrees and branches stay for review. A server killed outright stops nothing, and its runtimes can outlive it. The job's `COPILOT_HOME` (`.omg/state/copilot-run/<jobId>/home`) is deleted after a completed job and kept otherwise; the events log stays until cleanup.
+- **Requirements.** `@github/copilot-sdk` and the `copilot` CLI, resolved like `omg smoke copilot` tier 2. The session reuses your Copilot login identity.
+
+```bash
+claude mcp add omg-dev -e OMG_COPILOT_RUN_ALLOW=1 -- node C:/Code/OMC/dist/mcp/standalone-server.js
+```
+
+```json
+{ "tool": "copilot_run_start", "arguments": { "prompt": "Add a --dry-run flag to scripts/release.mjs and a test for it. Commit your change.", "cwd": "C:/Code/OMC" } }
+{ "tool": "copilot_run_wait", "arguments": { "jobId": "cr-3f9a1c2b7d4e", "timeoutMs": 600000 } }
+```
 
 ### `omg budget` (premium-request budget)
 

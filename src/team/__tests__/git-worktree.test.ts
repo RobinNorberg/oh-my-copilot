@@ -148,6 +148,29 @@ describe('git-worktree', () => {
   });
 
   describe('removeWorkerWorktree', () => {
+    it('unlinks ignored junctions/symlinks before removal and leaves their targets intact', () => {
+      // No trailing slash: git sees a POSIX symlink as a file, which `node_modules/` does not match.
+      writeFileSync(join(repoDir, '.gitignore'), 'node_modules\n');
+      execFileSync('git', ['add', '.gitignore'], { cwd: repoDir, stdio: 'pipe' });
+      execFileSync('git', ['commit', '-m', 'ignore node_modules'], { cwd: repoDir, stdio: 'pipe' });
+      const target = mkdtempSync(join(tmpdir(), 'git-worktree-link-target-'));
+      try {
+        writeFileSync(join(target, 'sentinel.txt'), 'keep me');
+        const info = createWorkerWorktree(teamName, 'link-worker', repoDir);
+        const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+        symlinkSync(target, join(info.path, 'node_modules'), linkType);
+        mkdirSync(join(info.path, 'pkg'), { recursive: true });
+        symlinkSync(target, join(info.path, 'pkg', 'node_modules'), linkType);
+
+        removeWorkerWorktree(teamName, 'link-worker', repoDir);
+
+        expect(existsSync(info.path)).toBe(false);
+        expect(readFileSync(join(target, 'sentinel.txt'), 'utf-8')).toBe('keep me');
+      } finally {
+        rmSync(target, { recursive: true, force: true });
+      }
+    });
+
     it('removes a worktree whose only untracked files are its own OMC runtime state (a copilot worker SessionEnd job)', () => {
       const info = createWorkerWorktree(teamName, 'runtime-worker', repoDir);
       const jobDir = join(info.path, '.omg', 'state', 'session-end-jobs', 'runs', 'r1');
@@ -327,14 +350,26 @@ describe('git-worktree', () => {
         execFileSync('git', ['add', '.'], { cwd: subRepo, stdio: 'pipe' });
         execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'lib'], { cwd: subRepo, stdio: 'pipe' });
         execFileSync('git', ['-c', 'protocol.file.allow=always', 'submodule', 'add', subRepo, 'sub'], { cwd: repoDir, stdio: 'pipe' });
+        // The node_modules link must be ignored, or a POSIX symlink alone makes the worktree dirty.
+        writeFileSync(join(repoDir, '.gitignore'), 'node_modules\n');
+        execFileSync('git', ['add', '.gitignore'], { cwd: repoDir, stdio: 'pipe' });
         execFileSync('git', ['commit', '-m', 'add submodule'], { cwd: repoDir, stdio: 'pipe' });
 
         const info = createWorkerWorktree(teamName, 'submodule-worker', repoDir);
         execFileSync('git', ['-c', 'protocol.file.allow=always', 'submodule', 'update', '--init'], { cwd: info.path, stdio: 'pipe' });
         mkdirSync(join(info.path, '.omg', 'state'), { recursive: true });
         writeFileSync(join(info.path, '.omg', 'state', 'job.json'), '{}');
+        const linkTarget = mkdtempSync(join(tmpdir(), 'git-worktree-sub-link-'));
+        symlinkSync(linkTarget, join(info.path, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
 
-        expect(() => removeWorkerWorktree(teamName, 'submodule-worker', repoDir)).toThrow(/worktree_remove_failed/);
+        try {
+          expect(() => removeWorkerWorktree(teamName, 'submodule-worker', repoDir)).toThrow(/worktree_remove_failed/);
+          // Refused before unlinking: the kept worktree keeps its junctioned link.
+          expect(existsSync(join(info.path, 'node_modules'))).toBe(true);
+        } finally {
+          rmSync(join(info.path, 'node_modules'), { recursive: true, force: true });
+          rmSync(linkTarget, { recursive: true, force: true });
+        }
         expect(existsSync(join(info.path, 'sub', 'lib.txt'))).toBe(true);
       } finally {
         rmSync(subRepo, { recursive: true, force: true });

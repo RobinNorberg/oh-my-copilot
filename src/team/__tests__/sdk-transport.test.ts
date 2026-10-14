@@ -144,7 +144,8 @@ describe('sdk permission policy', () => {
 
   it('excludes the recursion fence and maps workerDenyTools to SDK tool names', () => {
     expect(buildSdkExcludedTools('t', ['shell(rm -rf)', 'web_fetch', 't(state_clear)', 'write']).sort())
-      .toEqual(['create', 'edit', 't-host_smoke', 't-state_clear', 'task', 'web_fetch',
+      .toEqual(['create', 'edit', 't-host_smoke', 't-copilot_run_start', 't-copilot_run_status', 't-copilot_run_wait',
+        't-copilot_run_cancel', 't-copilot_run_cleanup', 't-state_clear', 'task', 'web_fetch',
         'run_dynamic_workflow', 'dynamic_workflows_manage', 'write_agent', 'read_agent', 'list_agents',
         'search_code_subagent'].sort());
     expect(buildSdkExcludedTools('t', ['shell'])).toEqual(expect.arrayContaining(['shell', 'powershell']));
