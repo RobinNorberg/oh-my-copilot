@@ -148,6 +148,28 @@ describe('git-worktree', () => {
   });
 
   describe('removeWorkerWorktree', () => {
+    it('unlinks ignored junctions/symlinks before removal and leaves their targets intact', () => {
+      writeFileSync(join(repoDir, '.gitignore'), 'node_modules/\n');
+      execFileSync('git', ['add', '.gitignore'], { cwd: repoDir, stdio: 'pipe' });
+      execFileSync('git', ['commit', '-m', 'ignore node_modules'], { cwd: repoDir, stdio: 'pipe' });
+      const target = mkdtempSync(join(tmpdir(), 'git-worktree-link-target-'));
+      try {
+        writeFileSync(join(target, 'sentinel.txt'), 'keep me');
+        const info = createWorkerWorktree(teamName, 'link-worker', repoDir);
+        const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+        symlinkSync(target, join(info.path, 'node_modules'), linkType);
+        mkdirSync(join(info.path, 'pkg'), { recursive: true });
+        symlinkSync(target, join(info.path, 'pkg', 'node_modules'), linkType);
+
+        removeWorkerWorktree(teamName, 'link-worker', repoDir);
+
+        expect(existsSync(info.path)).toBe(false);
+        expect(readFileSync(join(target, 'sentinel.txt'), 'utf-8')).toBe('keep me');
+      } finally {
+        rmSync(target, { recursive: true, force: true });
+      }
+    });
+
     it('removes a worktree whose only untracked files are its own OMC runtime state (a copilot worker SessionEnd job)', () => {
       const info = createWorkerWorktree(teamName, 'runtime-worker', repoDir);
       const jobDir = join(info.path, '.omg', 'state', 'session-end-jobs', 'runs', 'r1');
