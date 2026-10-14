@@ -4,27 +4,13 @@ Verification scales with task complexity to optimize cost while maintaining qual
 
 ## Tier Definitions
 
-| Tier | Criteria | Agent | Model | Evidence Required |
+| Tier | Criteria | Recommended Agent | Model | Evidence Required |
 |------|----------|-------|-------|-------------------|
-| **LIGHT** | <5 files, <100 lines, full test coverage | architect-low | haiku | lsp_diagnostics clean |
-| **STANDARD** | Default (not LIGHT or THOROUGH) | architect-medium | sonnet | diagnostics + build pass |
-| **THOROUGH** | >20 files OR architectural/security changes | architect | opus | Full review + all tests |
+| **LIGHT** | <5 files, <100 lines, full test coverage | `architect` | haiku | lsp_diagnostics clean |
+| **STANDARD** | Default (not LIGHT or THOROUGH) | `architect` | sonnet | diagnostics + build pass |
+| **THOROUGH** | >20 files OR architectural/security changes | `architect` | opus | Full review + all tests |
 
-## Selection Interface
-
-```typescript
-interface ChangeMetadata {
-  filesChanged: number;
-  linesChanged: number;
-  hasArchitecturalChanges: boolean;
-  hasSecurityImplications: boolean;
-  testCoverage: 'none' | 'partial' | 'full';
-}
-
-type VerificationTier = 'LIGHT' | 'STANDARD' | 'THOROUGH';
-```
-
-## Selection Logic
+## Verification Selection Logic
 
 ```
 IF hasSecurityImplications OR hasArchitecturalChanges:
@@ -39,9 +25,9 @@ ELSE:
 
 ## Override Triggers
 
-User keywords that override auto-detection:
+Keywords that influence tier selection:
 
-| Keyword | Forces Tier |
+| Keyword | Suggested Tier |
 |---------|-------------|
 | "thorough", "careful", "important", "critical" | THOROUGH |
 | "quick", "simple", "trivial", "minor" | LIGHT |
@@ -49,7 +35,8 @@ User keywords that override auto-detection:
 
 ## Architectural Change Detection
 
-Files that trigger `hasArchitecturalChanges`:
+Path patterns that trigger architectural change detection:
+
 - `**/config.{ts,js,json}`
 - `**/schema.{ts,prisma,sql}`
 - `**/definitions.ts`
@@ -57,9 +44,12 @@ Files that trigger `hasArchitecturalChanges`:
 - `package.json`
 - `tsconfig.json`
 
+Any changes to these files warrant THOROUGH verification.
+
 ## Security Implication Detection
 
-Path patterns that trigger `hasSecurityImplications`:
+Path patterns that trigger security concerns:
+
 - `**/auth/**`
 - `**/security/**`
 - `**/permissions?.{ts,js}`
@@ -84,24 +74,25 @@ Required evidence for different claim types:
 
 ## Cost Comparison
 
-| Tier | Relative Cost | Use Case |
-|------|---------------|----------|
+| Tier | Typical Cost | Use Case |
+|------|---|---|
 | LIGHT | 1x | Single-file bug fixes with tests |
 | STANDARD | 5x | Multi-file feature additions |
 | THOROUGH | 20x | Major refactoring, security changes |
 
 Estimated savings: ~40% reduction in verification costs by using tiered system vs. always using THOROUGH.
 
-## Usage in Modes
+## Example Usage
 
-All persistence modes (ralph, autopilot) should use the tier-selector before spawning verification agents:
+When reviewing changes, use this pattern:
 
-```typescript
-import { selectVerificationTier, getVerificationAgent } from '../verification/tier-selector';
+```bash
+# Simple change (< 5 files, < 100 lines, full tests)
+architect (model="haiku") "Verify these 2-line test fixes"
 
-const tier = selectVerificationTier(changeMetadata);
-const { agent, model } = getVerificationAgent(tier);
+# Standard work (multi-file feature)
+architect (model="sonnet") "Verify this feature implementation"
 
-// Spawn appropriate verification agent
-Task(subagent_type=`oh-my-copilot:${agent}`, model, prompt="Verify...")
+# Complex work (refactoring or security)
+architect (model="opus") "Thoroughly review this security-critical refactoring"
 ```

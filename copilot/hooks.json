@@ -114,8 +114,22 @@
           "PostToolUse",
           "${CLAUDE_PLUGIN_ROOT}/scripts/post-tool-verifier.mjs",
           "--",
-          "${CLAUDE_PLUGIN_ROOT}/scripts/project-memory-posttool.mjs",
-          "--",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/project-memory-posttool.mjs"
+        ],
+        "env": {
+          "OMC_HOOK_EVENT": "PostToolUse"
+        },
+        "timeoutSec": 8
+      },
+      {
+        "type": "command",
+        "matcher": "Read|Write|Edit|MultiEdit",
+        "exec": "node",
+        "args": [
+          "--require",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/lib/copilot-hook-adapter.cjs",
+          "${CLAUDE_PLUGIN_ROOT}/scripts/copilot/dispatch.cjs",
+          "PostToolUse",
           "${CLAUDE_PLUGIN_ROOT}/scripts/post-tool-rules-injector.mjs",
           "--",
           "${CLAUDE_PLUGIN_ROOT}/scripts/post-tool-directory-context-injector.mjs"
@@ -123,7 +137,7 @@
         "env": {
           "OMC_HOOK_EVENT": "PostToolUse"
         },
-        "timeoutSec": 14
+        "timeoutSec": 6
       }
     ],
     "PostToolUseFailure": [

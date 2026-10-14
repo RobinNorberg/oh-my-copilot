@@ -132,7 +132,7 @@ describe('copilot/hooks.json generation', () => {
       SessionStart: 1,
       PreToolUse: 2,
       PermissionRequest: 1,
-      PostToolUse: 1,
+      PostToolUse: 2,
       PostToolUseFailure: 1,
       SubagentStart: 1,
       SubagentStop: 1,

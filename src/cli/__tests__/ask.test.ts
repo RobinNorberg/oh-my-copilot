@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import { mkdtempSync } from 'fs';
 import { join, dirname } from 'path';
 import { tmpdir } from 'os';
 import { spawnSync } from 'child_process';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { parseAskArgs, resolveAskAdvisorScriptPath } from '../ask.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -83,7 +83,7 @@ function runAdvisorScriptWithPrelude(
   envOverrides: Record<string, string> = {},
   options: RunOptions = {},
 ): CliRunResult {
-  const result = spawnSync(process.execPath, ['--import', preludePath, ADVISOR_SCRIPT, ...args], {
+  const result = spawnSync(process.execPath, ['--import', pathToFileURL(preludePath).href, ADVISOR_SCRIPT, ...args], {
     cwd,
     encoding: 'utf-8',
     env: buildChildEnv(envOverrides, options),
@@ -282,7 +282,115 @@ exit 9
   return binDir;
 }
 
+describe('private provider prompt files', () => {
+  it.each([
+    ['muse', 0], ['muse', 7], ['grok', 0], ['grok', 7],
+  ] as const)('delivers UTF-8 frontmatter to %s and preserves exit %i', (provider, exitCode) => {
+    // Given a real executable that consumes the provider prompt-file contract.
+    const wd = mkdtempSync(join(tmpdir(), 'omc-ask-file-child-'));
+    try {
+      const bin = join(wd, provider);
+      const capture = join(wd, 'received.json');
+      const prompt = '---\nname: critic\n---\n한국어 café & | > "quoted" $HOME `echo unsafe`';
+      writeFileSync(bin, `#!${process.execPath}
+const fs = require('node:fs');
+const path = require('node:path');
+const args = process.argv.slice(2);
+if (args[0] === '--version') process.exit(0);
+const file = args[args.indexOf('--prompt-file') + 1];
+const contents = fs.readFileSync(file, 'utf8');
+fs.writeFileSync(process.env.ASK_CAPTURE, JSON.stringify({
+  args, file, contents, mode: fs.statSync(file).mode & 0o777,
+  dirMode: fs.statSync(path.dirname(file)).mode & 0o777,
+  stdin: fs.readFileSync(0, 'utf8'),
+}));
+process.stdout.write('CHILD_OUTPUT');
+process.stderr.write('CHILD_DIAGNOSTIC');
+process.exit(Number(process.env.ASK_EXIT));
+`, { mode: 0o755 });
+
+      // When the real advisor launches the executable.
+      const result = runAdvisorScript([provider, '--prompt', prompt], wd, {
+        PATH: `${wd}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH}`,
+        ASK_CAPTURE: capture, ASK_EXIT: String(exitCode), TMPDIR: wd,
+        OMC_STATE_DIR: join(wd, 'state'),
+      });
+
+      // Then the child sees exact bytes, private permissions, and closed stdin;
+      // the advisor keeps its status/output artifact after removing the file.
+      expect(result.status, result.stderr).toBe(exitCode);
+      const received = JSON.parse(readFileSync(capture, 'utf8'));
+      expect(received.contents).toBe(prompt);
+      expect(received.stdin).toBe('');
+      expect(received.mode).toBe(0o600);
+      expect(received.dirMode).toBe(0o700);
+      expect(received.args).toEqual(provider === 'muse'
+        ? ['exec', '--prompt-file', received.file, '--approval-mode', 'never', '--user-input-auto-resolve']
+        : ['--prompt-file', received.file, '--always-approve']);
+      expect(existsSync(dirname(received.file))).toBe(false);
+      const artifact = readFileSync(result.stdout.trim(), 'utf8');
+      expect(artifact).toContain(`- Exit code: ${exitCode}`);
+      expect(artifact).toContain(prompt);
+      expect(artifact).toContain('CHILD_OUTPUT\n\nCHILD_DIAGNOSTIC');
+    } finally {
+      rmSync(wd, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['muse', 'grok'])('cleans up and records failure when the %s executable disappears after probing', (provider) => {
+    const wd = mkdtempSync(join(tmpdir(), 'omc-ask-file-enoent-'));
+    try {
+      const bin = join(wd, provider);
+      writeFileSync(bin, `#!${process.execPath}\nrequire('node:fs').unlinkSync(__filename);\n`, { mode: 0o755 });
+      const result = runAdvisorScript([provider, '---\nrole: critic'], wd, {
+        PATH: wd, TMPDIR: wd, OMC_STATE_DIR: join(wd, 'state'),
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('ENOENT');
+      expect(readFileSync(result.stdout.trim(), 'utf8')).toContain('- Exit code: 1');
+      expect(readdirSync(wd).filter((name) => name.startsWith('omc-ask-'))).toEqual([]);
+    } finally {
+      rmSync(wd, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['write', 'spawn'])('cleans up when prompt %s throws', (failure) => {
+    const wd = mkdtempSync(join(tmpdir(), 'omc-ask-file-throw-'));
+    try {
+      const prelude = join(wd, 'throw.mjs');
+      writeFileSync(prelude, `
+import fs from 'node:fs';
+import cp from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
+const originalWrite = fs.writeFileSync;
+fs.writeFileSync = (file, ...args) => {
+  if (${JSON.stringify(failure)} === 'write' && String(file).endsWith('prompt.md')) throw new Error('WRITE_FAILED');
+  return originalWrite(file, ...args);
+};
+cp.spawnSync = (_command, args) => {
+  if (args[0] === '--version') return { status: 0 };
+  throw new Error('SPAWN_FAILED');
+};
+syncBuiltinESMExports();
+`);
+      const result = runAdvisorScriptWithPrelude(prelude, ['grok', '---\nrole: critic'], wd, {
+        TMPDIR: wd, OMC_STATE_DIR: join(wd, 'state'),
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(`${failure.toUpperCase()}_FAILED`);
+      expect(readdirSync(wd).filter((name) => name.startsWith('omc-ask-'))).toEqual([]);
+    } finally {
+      rmSync(wd, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('parseAskArgs', () => {
+  it('accepts Muse with a role prompt', () => {
+    expect(parseAskArgs(['muse', '--agent-prompt', 'critic', '--prompt', 'review'])).toEqual({
+      provider: 'muse', agentPromptRole: 'critic', prompt: 'review',
+    });
+  });
   it('supports positional and print/prompt flag forms', () => {
     expect(parseAskArgs(['claude', 'review', 'this'])).toEqual({ provider: 'claude', prompt: 'review this' });
     expect(parseAskArgs(['gemini', '-p', 'brainstorm'])).toEqual({ provider: 'gemini', prompt: 'brainstorm' });
@@ -574,22 +682,31 @@ describe('run-provider-advisor script contract', () => {
     ['antigravity', ['antigravity', '--prompt', 'nested antigravity prompt']],
     ['grok', ['grok', '--prompt', 'nested grok prompt']],
     ['cursor', ['cursor', '--prompt', 'nested cursor prompt']],
+    ['muse', ['muse', '--prompt', 'nested muse prompt']],
   ] as const)('strips Claude session env vars for %s advisor spawns', (provider, args) => {
     const wd = mkdtempSync(join(tmpdir(), `omc-ask-${provider}-advisor-env-`));
     try {
       const capturePath = join(wd, 'spawn-sync-calls.json');
       const preludePath = writeSpawnSyncCapturePrelude(wd);
+      const envOverrides: Record<string, string> = {
+        SPAWN_CAPTURE_PATH: capturePath,
+        CLAUDECODE: '1',
+        CLAUDE_SESSION_ID: 'session-123',
+        CLAUDECODE_SESSION_ID: 'session-legacy',
+        CLAUDE_CODE_ENTRYPOINT: 'plugin',
+      };
+      // grok and muse use prompt files and need tmpdir when process.platform = 'win32'
+      if (provider === 'grok' || provider === 'muse') {
+        envOverrides.TMPDIR = wd;
+        envOverrides.TEMP = wd;
+        envOverrides.TMP = wd;
+        envOverrides.OMC_STATE_DIR = join(wd, 'state');
+      }
       const result = runAdvisorScriptWithPrelude(
         preludePath,
         args,
         wd,
-        {
-          SPAWN_CAPTURE_PATH: capturePath,
-          CLAUDECODE: '1',
-          CLAUDE_SESSION_ID: 'session-123',
-          CLAUDECODE_SESSION_ID: 'session-legacy',
-          CLAUDE_CODE_ENTRYPOINT: 'plugin',
-        },
+        envOverrides,
         { preserveClaudeSessionEnv: true },
       );
 
@@ -622,18 +739,16 @@ describe('run-provider-advisor script contract', () => {
     }
   });
 
-  it('launches grok as `grok -p <prompt> --always-approve` and never pipes stdin', () => {
-    const wd = mkdtempSync(join(tmpdir(), 'omc-ask-grok-args-'));
+  it.each(['grok', 'muse'])('quotes the %s prompt-file path for Windows shell launches', (provider) => {
+    const wd = mkdtempSync(join(tmpdir(), 'omc ask file args '));
     try {
       const capturePath = join(wd, 'spawn-sync-calls.json');
       const preludePath = writeSpawnSyncCapturePrelude(wd);
-      // A multiline prompt is piped over stdin for codex/gemini; grok reserves stdin
-      // for ACP JSON-RPC, so it must take the prompt as a `-p` arg instead.
       const result = runAdvisorScriptWithPrelude(
         preludePath,
-        ['grok', '--prompt', 'review this\nand that'],
+        [provider, '--prompt', '---\nrole: critic\n---\nreview this & that'],
         wd,
-        { SPAWN_CAPTURE_PATH: capturePath },
+        { SPAWN_CAPTURE_PATH: capturePath, TMPDIR: wd, TEMP: wd, TMP: wd, OMC_STATE_DIR: join(wd, 'state') },
       );
 
       expect(result.error).toBeUndefined();
@@ -645,13 +760,17 @@ describe('run-provider-advisor script contract', () => {
         options: { input: string | null };
       }>;
 
-      // version probe + launch, both via the `grok` binary
       expect(calls).toHaveLength(2);
       const launch = calls.find((c) => !c.args.includes('--version'));
-      expect(launch).toBeDefined();
-      expect(launch!.command).toBe('grok');
-      expect(launch!.args).toEqual(['-p', 'review this\nand that', '--always-approve']);
-      expect(launch!.options.input ?? null).toBeNull();
+      if (!launch) throw new Error('Missing provider launch');
+      expect(launch.command).toBe(provider);
+      const promptFile = launch.args[launch.args.indexOf('--prompt-file') + 1];
+      expect(promptFile).toMatch(/^".*omc ask file args .*prompt\.md"$/);
+      expect(launch.args).toEqual(provider === 'muse'
+        ? ['exec', '--prompt-file', promptFile, '--approval-mode', 'never', '--user-input-auto-resolve']
+        : ['--prompt-file', promptFile, '--always-approve']);
+      expect(launch.options.input ?? null).toBeNull();
+      expect(existsSync(promptFile.slice(1, -1))).toBe(false);
     } finally {
       rmSync(wd, { recursive: true, force: true });
     }

@@ -1,7 +1,9 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, rmSync, existsSync, lstatSync, symlinkSync, utimesSync } from 'fs';
+import { chmodSync, mkdtempSync, mkdirSync, writeFileSync, readdirSync, rmSync, existsSync, lstatSync, symlinkSync, utimesSync } from 'fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { purgeStalePluginCacheVersions } from '../paths.js';
 import { pathIdentity, processStartIdentities, publishCacheOccupancy, readOccupiedPluginRoots } from '../cache-occupancy.js';
 
@@ -255,6 +257,53 @@ describe('cache occupancy registry', () => {
       expect(mismatched.identities.get(process.pid)).toBe('ticks:638933184000000002');
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    }
+  });
+
+  it.skipIf(process.platform !== 'linux')('bounds Windows occupancy probes for script and template helpers', () => {
+    const probeDirectory = join(dir, 'fake-bin');
+    mkdirSync(probeDirectory);
+    const powershell = join(probeDirectory, 'powershell');
+    writeFileSync(powershell, '#!/bin/sh\nwhile :; do :; done\n');
+    chmodSync(powershell, 0o755);
+
+    const helperPaths = [
+      fileURLToPath(new URL('../../../scripts/lib/cache-occupancy.mjs', import.meta.url)),
+      fileURLToPath(new URL('../../../templates/hooks/lib/cache-occupancy.mjs', import.meta.url)),
+    ];
+    const script = `
+      import { createHash } from 'node:crypto';
+      import { mkdirSync, writeFileSync } from 'node:fs';
+      import { join } from 'node:path';
+      const helper = await import(process.argv[1]);
+      const configDir = process.argv[2];
+      const pluginRoot = process.argv[3];
+      const pid = process.pid;
+      const processStartIdentity = 'ticks:638933184000000001';
+      const registryDir = join(configDir, '.omg', 'cache-occupancy');
+      mkdirSync(registryDir, { recursive: true });
+      const name = createHash('sha256').update([pluginRoot, pid, processStartIdentity].join('\\0')).digest('hex');
+      writeFileSync(join(registryDir, name + '.json'), JSON.stringify({ version: 1, pid, processStartIdentity, pluginRoot, updatedAt: new Date().toISOString() }));
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      const startedAt = Date.now();
+      const result = helper.readOccupiedPluginRoots(configDir, { includePids: [pid], probeTimeoutMs: 75 });
+      process.stdout.write(JSON.stringify({ roots: [...result.roots], identityCount: result.identities.size, elapsedMs: Date.now() - startedAt }));
+    `;
+
+    for (const [index, helperPath] of helperPaths.entries()) {
+      const configDir = join(dir, `config-${index}`);
+      const pluginRoot = join(dir, 'plugins', `version-${index}`);
+      const output = execFileSync(process.execPath, [
+        '--input-type=module', '-e', script, pathToFileURL(helperPath).href, configDir, pluginRoot,
+      ], {
+        encoding: 'utf8',
+        env: { ...process.env, PATH: probeDirectory },
+        timeout: 1000,
+      });
+      const result = JSON.parse(output) as { roots: string[]; identityCount: number; elapsedMs: number };
+      expect(result.roots).toEqual([pluginRoot.toLowerCase()]);
+      expect(result.identityCount).toBe(0);
+      expect(result.elapsedMs).toBeLessThan(500);
     }
   });
 });

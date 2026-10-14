@@ -696,28 +696,37 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
     expect(readFileSync(join(hooksDir, 'keyword-detector.mjs'), 'utf-8')).toContain('Ralph keywords');
   });
 
-  it('preserves non-OMC hooks in settings.json when pruning plugin duplicates', async () => {
-    // Set up plugin first (creates settings.json with enabledPlugins)
+  it('preserves non-OMC hooks and prunes empty containers when pruning plugin duplicates (#4277)', async () => {
     setupPluginWithHooks();
+    writeFileSync(join(fakePluginRoot, 'hooks', 'hooks.json'), JSON.stringify({
+      hooks: {
+        UserPromptSubmit: [{ hooks: [{ type: 'command', command: 'node test.mjs' }] }],
+        SessionStart: [{ hooks: [{ type: 'command', command: 'node test-start.mjs' }] }],
+      },
+    }));
 
-    // Then overwrite settings.json with mixed OMC + non-OMC hooks
     writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
       enabledPlugins: { 'oh-my-copilot': true },
       hooks: {
         UserPromptSubmit: [
           {
-            hooks: [{
-              type: 'command',
-              command: 'node $HOME/.claude/hooks/other-plugin.mjs',
-            }],
+            matcher: '*',
+            timeout: 42,
+            hooks: [{ type: 'command', command: 'node $HOME/.claude/hooks/other-plugin.mjs', owner: 'third-party' }],
           },
           {
-            hooks: [{
-              type: 'command',
-              command: 'node "$HOME/.claude/hooks/keyword-detector.mjs"',
-            }],
+            matcher: 'omc-legacy',
+            hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/keyword-detector.mjs"' }],
+          },
+          {
+            matcher: 'empty-after-cleanup',
+            hooks: [],
           },
         ],
+        SessionStart: [{
+          matcher: '*',
+          hooks: [{ type: 'command', command: 'node "$HOME/.claude/hooks/session-start.mjs"' }],
+        }],
       },
     }, null, 2));
 
@@ -726,13 +735,15 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
 
     const writtenSettings = JSON.parse(
       readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'),
-    ) as { hooks?: Record<string, Array<{ hooks: Array<{ command: string }> }>> };
+    ) as { hooks?: Record<string, Array<Record<string, unknown> & { hooks: Array<Record<string, unknown>> }>> };
 
-    // Non-OMC hook should be preserved
-    const commands = writtenSettings.hooks?.UserPromptSubmit?.map(g => g.hooks[0]?.command) ?? [];
-    expect(commands).toContain('node $HOME/.claude/hooks/other-plugin.mjs');
-    // OMC hook should NOT be re-added
-    expect(commands).not.toContain('node "$HOME/.claude/hooks/keyword-detector.mjs"');
+    expect(writtenSettings.hooks).toEqual({
+      UserPromptSubmit: [{
+        matcher: '*',
+        timeout: 42,
+        hooks: [{ type: 'command', command: 'node $HOME/.claude/hooks/other-plugin.mjs', owner: 'third-party' }],
+      }],
+    });
   });
 
   it('removes exact same-event plugin duplicates while preserving mixed user hooks and cross-event entries (#3638)', async () => {

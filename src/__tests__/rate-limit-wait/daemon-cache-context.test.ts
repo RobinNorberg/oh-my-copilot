@@ -69,6 +69,9 @@ describe('detached daemon HUD cache context', () => {
     expect(readStdinCache()?.version).toBe('2.1.232');
     await checkRateLimitStatus();
 
-    expect(getUsageMock).toHaveBeenCalledWith({ clientVersion: '2.1.232' });
+    expect(getUsageMock).toHaveBeenCalledWith({
+      clientVersion: '2.1.232',
+      skipWarmCache: true,
+    });
   });
 });

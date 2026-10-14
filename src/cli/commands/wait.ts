@@ -108,7 +108,12 @@ export async function waitCommand(options: WaitOptions): Promise<void> {
       console.log(chalk.gray('  Your session will resume automatically when the limit clears.\n'));
     }
   } else if (isRateLimitStatusDegraded(rateLimitStatus)) {
-    console.log(chalk.yellow.bold('⚠️  Usage API Rate Limited'));
+    const degradedTitle = rateLimitStatus.apiErrorReason === 'rate_limited'
+      ? '⚠️  Usage API Rate Limited'
+      : rateLimitStatus.usingStaleData
+        ? '⚠️  Usage Data Stale'
+        : '⚠️  Usage API Error';
+    console.log(chalk.yellow.bold(degradedTitle));
     console.log(chalk.yellow(`\n${formatRateLimitStatus(rateLimitStatus)}\n`));
 
     if (daemonRunning) {

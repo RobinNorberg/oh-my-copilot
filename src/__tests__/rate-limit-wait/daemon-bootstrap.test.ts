@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
 import { tmpdir } from 'os';
+import { getUsageProfileHash } from '../../features/rate-limit-wait/daemon-state.js';
 import type { DaemonConfig } from '../../features/rate-limit-wait/types.js';
 
 const { mockSpawn, mockResolveDaemonModulePath, mockIsTmuxAvailable } = vi.hoisted(() => ({
@@ -10,6 +11,10 @@ const { mockSpawn, mockResolveDaemonModulePath, mockIsTmuxAvailable } = vi.hoist
   mockResolveDaemonModulePath: vi.fn(),
   mockIsTmuxAvailable: vi.fn(() => true),
 }));
+
+function currentUsageProfileHash(): string | null {
+  return getUsageProfileHash(false);
+}
 
 vi.mock('child_process', async () => {
   const actual = await vi.importActual<typeof import('child_process')>('child_process');
@@ -143,6 +148,101 @@ describe('daemon bootstrap', () => {
     expect(daemonScript).toContain('import("file://');
     expect(daemonScript).not.toContain("import('C:\\Users");
     expect(daemonScript).not.toContain('\\features\\rate-limit-wait\\daemon.js');
+  });
+
+  it('preserves quota recovery only for the profile that recorded it', () => {
+    const unref = vi.fn();
+    mockSpawn.mockReturnValue({ pid: 4244, unref } as any);
+
+    const config: DaemonConfig = {
+      stateFilePath: join(testDir, 'state.json'),
+      pidFilePath: join(testDir, 'daemon.pid'),
+      logFilePath: join(testDir, 'daemon.log'),
+    };
+    mkdirSync(testDir, { recursive: true });
+    const profileA = join(testDir, 'profile-a');
+    mkdirSync(profileA, { recursive: true });
+    process.env.COPILOT_HOME = profileA;
+    writeFileSync(join(profileA, '.credentials.json'), JSON.stringify({
+      claudeAiOauth: {
+        accessToken: 'profile-a-access',
+        refreshToken: 'profile-a-refresh',
+        oauthAccount: { uuid: 'profile-a' },
+      },
+    }));
+    writeFileSync(config.stateFilePath!, JSON.stringify({
+      isRunning: false,
+      pid: null,
+      startedAt: new Date('2026-01-01T00:00:00.000Z'),
+      lastPollAt: null,
+      rateLimitStatus: {
+        fiveHourLimited: true,
+        weeklyLimited: false,
+        monthlyLimited: false,
+        isLimited: true,
+        fiveHourResetsAt: null,
+        weeklyResetsAt: null,
+        monthlyResetsAt: null,
+        nextResetAt: null,
+        timeUntilResetMs: null,
+        lastCheckedAt: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      lastConfirmedLimited: true,
+      usageProfileHash: currentUsageProfileHash(),
+      blockedPanes: [{
+        id: '%test',
+        session: 'test',
+        windowIndex: 0,
+        windowName: 'test',
+        paneIndex: 0,
+        isActive: false,
+        analysis: { hasCopilotCode: true, hasRateLimitMessage: true, isBlocked: true, confidence: 1 },
+        firstDetectedAt: new Date('2026-01-01T00:00:00.000Z'),
+        resumeAttempted: false,
+      }],
+      resumedPaneIds: [],
+      totalResumeAttempts: 0,
+      successfulResumes: 0,
+      errorCount: 0,
+    }));
+
+    const result = startDaemon(config);
+
+    expect(result.success).toBe(true);
+    expect(result.state).toMatchObject({
+      isRunning: true,
+      pid: 4244,
+      lastConfirmedLimited: true,
+      rateLimitStatus: { isLimited: true },
+      blockedPanes: [expect.objectContaining({ id: '%test' })],
+    });
+    const persistedState = JSON.parse(readFileSync(config.stateFilePath!, 'utf-8'));
+    expect(persistedState.lastConfirmedLimited).toBe(true);
+    expect(persistedState.blockedPanes).toMatchObject([{ id: '%test' }]);
+    expect(unref).toHaveBeenCalledOnce();
+
+    rmSync(config.pidFilePath!, { force: true });
+    const profileB = join(testDir, 'profile-b');
+    mkdirSync(profileB, { recursive: true });
+    process.env.COPILOT_HOME = profileB;
+    writeFileSync(join(profileB, '.credentials.json'), JSON.stringify({
+      claudeAiOauth: {
+        accessToken: 'profile-b-access',
+        refreshToken: 'profile-b-refresh',
+        oauthAccount: { uuid: 'profile-b' },
+      },
+    }));
+    mockSpawn.mockReturnValue({ pid: 4245, unref: vi.fn() } as any);
+
+    const switchedProfile = startDaemon(config);
+
+    expect(switchedProfile.state).toMatchObject({
+      lastConfirmedLimited: false,
+      usageProfileHash: currentUsageProfileHash(),
+      rateLimitStatus: null,
+      blockedPanes: [],
+      resumedPaneIds: [],
+    });
   });
 
   it('returns already running when config pid file points to a live process', () => {

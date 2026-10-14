@@ -965,13 +965,6 @@ Examples:
         console.log('    executor            - Focused execution (Sonnet)');
         console.log('    planner          - Strategic planning (Opus)');
         console.log('    qa-tester           - Interactive CLI testing (Sonnet)');
-        console.log(chalk.gray('  Tiered Variants (for smart routing):'));
-        console.log('    architect-medium       - Simpler analysis (Sonnet)');
-        console.log('    architect-low          - Quick questions (Haiku)');
-        console.log('    executor-high       - Complex tasks (Opus)');
-        console.log('    executor-low        - Trivial tasks (Haiku)');
-        console.log('    designer-high       - Design systems (Opus)');
-        console.log('    designer-low        - Simple styling (Haiku)');
         console.log('');
         console.log(chalk.yellow('After Updates:'));
         console.log('  Run \'/omc-default\' (project) or \'/omc-default-global\' (global)');

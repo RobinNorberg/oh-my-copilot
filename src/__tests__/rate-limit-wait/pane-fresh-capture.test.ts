@@ -16,7 +16,11 @@ vi.mock('../../cli/tmux-utils.js', async (importOriginal) => {
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { tmuxExec } from '../../cli/tmux-utils.js';
-import { getNewPaneTail, getPaneHistorySize } from '../../features/rate-limit-wait/pane-fresh-capture.js';
+import {
+  getNewPaneTail,
+  getPaneHistorySize,
+  resetPaneTailPositions,
+} from '../../features/rate-limit-wait/pane-fresh-capture.js';
 
 const STATE_DIR = '/project/.omg/state';
 const PANE_ID = '%5';
@@ -219,6 +223,17 @@ describe('pane-fresh-capture', () => {
       expect(written['%9']).toBe(77);
       expect(written[PANE_ID]).toBe(25);
     });
+  });
+
+  it('resets saved cursors so unchanged blocked output is captured again', () => {
+    withStateFile({ [PANE_ID]: 100 });
+
+    resetPaneTailPositions(STATE_DIR);
+
+    expect(JSON.parse(vi.mocked(writeFileSync).mock.calls[0][1] as string)).toEqual({});
+    vi.mocked(readFileSync as any).mockReturnValue('{}');
+    mockHistorySize(100, 'Rate limit reached\n');
+    expect(getNewPaneTail(PANE_ID, STATE_DIR, 15)).toBe('Rate limit reached\n');
   });
 
   describe('getPaneHistorySize', () => {

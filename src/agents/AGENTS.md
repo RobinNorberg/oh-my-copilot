@@ -3,16 +3,15 @@
 
 # agents
 
-18 specialized AI agent definitions with 3-tier model routing for optimal cost and performance.
+18 specialized AI agent definitions for a wide range of tasks.
 
 ## Purpose
 
 This directory defines all agents available in oh-my-copilot:
 
-- **18 base agents** with default model assignments
-- **Tiered variants** (LOW/MEDIUM/HIGH) for smart routing
 - Prompts loaded dynamically from `/agents/*.md` files
 - Tools assigned based on agent specialization
+- Model selection via explicit model parameter or routing logic
 
 ## Key Files
 
@@ -58,34 +57,30 @@ const agents = getAgentDefinitions();
 
 #### Agent Selection Guide
 
-| Task Type | Best Agent | Model | Tools |
-|-----------|------------|-------|-------|
-| Complex debugging | `architect` | opus | Read, Glob, Grep, WebSearch, WebFetch |
-| Quick code lookup | `architect-low` | haiku | Read, Glob, Grep |
-| Standard analysis | `architect-medium` | sonnet | Read, Glob, Grep, WebSearch, WebFetch |
-| Feature implementation | `executor` | sonnet | Read, Glob, Grep, Edit, Write, Bash, TodoWrite |
-| Simple fixes | `executor-low` | haiku | Read, Glob, Grep, Edit, Write, Bash, TodoWrite |
-| Complex refactoring | `executor-high` | opus | Read, Glob, Grep, Edit, Write, Bash, TodoWrite |
-| Fast file search | `explore` | haiku | Read, Glob, Grep |
-| Architectural discovery | `explore-high` | opus | Read, Glob, Grep |
-| UI components | `designer` | sonnet | Read, Glob, Grep, Edit, Write, Bash |
-| Simple styling | `designer-low` | haiku | Read, Glob, Grep, Edit, Write, Bash |
-| Design systems | `designer-high` | opus | Read, Glob, Grep, Edit, Write, Bash |
-| API documentation | `document-specialist` | sonnet | Read, Glob, Grep, WebSearch, WebFetch |
-| README/docs | `writer` | haiku | Read, Glob, Grep, Edit, Write |
-| Image analysis | `vision` | sonnet | Read, Glob, Grep |
-| Plan review | `critic` | opus | Read, Glob, Grep |
-| Requirements analysis | `analyst` | opus | Read, Glob, Grep, WebSearch |
-| Strategic planning | `planner` | opus | Read, Glob, Grep, WebSearch |
-| CLI testing | `qa-tester` | sonnet | Bash, Read, Grep, Glob, TodoWrite |
-| Data analysis | `scientist` | sonnet | Read, Glob, Grep, Bash, python_repl |
-| Deep data analysis | `scientist-high` | opus | Read, Glob, Grep, Bash, python_repl |
-| Security audit | `security-reviewer` | opus | Read, Grep, Glob, Bash |
-| Quick security scan | `security-reviewer-low` | haiku | Read, Grep, Glob, Bash |
-| Build errors | `debugger` | sonnet | Read, Grep, Glob, Edit, Write, Bash |
-| TDD workflow | `test-engineer` | sonnet | Read, Grep, Glob, Edit, Write, Bash |
-| Test suggestions | `test-engineer` (model=haiku) | haiku | Read, Grep, Glob, Bash |
-| Code review | `code-reviewer` | opus | Read, Grep, Glob, Bash |
+| Task Type | Best Agent | Default Model | Alternate Models |
+|-----------|------------|----------------|------------------|
+| Quick lookups | `architect` | sonnet | haiku for very simple |
+| Complex debugging | `architect` | opus | - |
+| Feature implementation | `executor` | sonnet | haiku for trivial changes |
+| Complex refactoring | `executor` | opus | - |
+| Fast file search | `explore` | haiku | - |
+| Architectural discovery | `architect` | opus | - |
+| UI components | `designer` | sonnet | haiku for simple styling |
+| Design systems | `designer` | opus | - |
+| API documentation | `document-specialist` | sonnet | - |
+| README/docs | `writer` | haiku | - |
+| Image analysis | `vision` | sonnet | - |
+| Plan review | `critic` | opus | - |
+| Requirements analysis | `analyst` | opus | - |
+| Strategic planning | `planner` | opus | - |
+| CLI testing | `qa-tester` | sonnet | - |
+| Data analysis | `scientist` | sonnet | opus for complex analysis |
+| Security audit | `security-reviewer` | sonnet | opus for complex review |
+| Test-driven development | `test-engineer` | sonnet | - |
+| Build errors | `debugger` | sonnet | - |
+| TDD workflow | `test-engineer` | sonnet | - |
+| Test suggestions | `test-engineer` | haiku | - |
+| Code review | `code-reviewer` | opus | - |
 
 #### Creating a New Agent
 
@@ -228,19 +223,19 @@ None - pure TypeScript definitions.
 
 | Category | Agents | Purpose |
 |----------|--------|---------|
-| Analysis | architect, architect-medium, architect-low | Debugging, architecture |
-| Execution | executor, executor-low, executor-high | Code implementation |
-| Search | explore, explore-high | Codebase exploration |
+| Analysis | architect | Debugging, architecture |
+| Execution | executor | Code implementation |
+| Search | explore | Codebase exploration |
 | Research | document-specialist | External documentation |
-| Frontend | designer, designer-low, designer-high | UI/UX work |
+| Frontend | designer | UI/UX work |
 | Documentation | writer | Technical writing |
 | Visual | vision | Image/screenshot analysis |
 | Planning | planner, analyst, critic | Strategic planning |
 | Testing | qa-tester | Interactive testing |
-| Security | security-reviewer, security-reviewer-low | Security audits |
+| Security | security-reviewer | Security audits |
 | TDD | test-engineer | Test-driven development |
 | Review | code-reviewer | Code quality + style + performance |
-| Data | scientist, scientist-high | Data analysis |
+| Data | scientist | Data analysis |
 
 <!-- MANUAL:
 - Legacy alias wording was removed from active prompts to keep agent naming consistent with current conventions.

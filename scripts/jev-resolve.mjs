@@ -24,21 +24,22 @@
  * deliberate mirrors; parity with the TS parse is locked by the test suite.
  */
 
-import { readFileSync, rmdirSync, unlinkSync } from 'node:fs';
-import { appendFile, mkdir } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { lstatSync, readFileSync, rmdirSync, unlinkSync } from "node:fs";
+import { appendFile, mkdir } from "node:fs/promises";
+import { basename, dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 
-import { resolveOmcStateRoot } from './lib/state-root.mjs';
+import { resolveOmcStateRoot } from "./lib/state-root.mjs";
 
-const DEFAULT_ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
+const DEFAULT_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
 const DEFAULT_TIMEOUT_MS = 2000;
 const DEFAULT_EXCERPT_CHARS = 200;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
-const JEV_MODEL = 'jev-latest';
+const JEV_MODEL = "jev-latest";
 
 function positiveInt(raw, fallback, max = Number.MAX_SAFE_INTEGER) {
-  if (typeof raw !== 'string' || !/^[1-9]\d*$/.test(raw)) return fallback;
+  if (typeof raw !== "string" || !/^[1-9]\d*$/.test(raw)) return fallback;
   const parsed = Number(raw);
   return Number.isSafeInteger(parsed) && parsed <= max ? parsed : fallback;
 }
@@ -51,9 +52,12 @@ function positiveInt(raw, fallback, max = Number.MAX_SAFE_INTEGER) {
 export function serializeQuestions(questions) {
   const out = {};
   for (const [name, question] of Object.entries(questions ?? {})) {
-    out[name] = question?.type === 'score' && question.criteria && !Array.isArray(question.criteria)
-      ? { ...question, criteria: Object.values(question.criteria) }
-      : question;
+    out[name] =
+      question?.type === "score" &&
+      question.criteria &&
+      !Array.isArray(question.criteria)
+        ? { ...question, criteria: Object.values(question.criteria) }
+        : question;
   }
   return out;
 }
@@ -64,19 +68,19 @@ export function serializeQuestions(questions) {
  * off | shadow | active.
  */
 export function parseJevEnv(point, env = process.env) {
-  const raw = (env.OMC_JEV || '').trim();
-  if (!env.TYPESAFE_API_KEY || raw === 'off') return 'off';
+  const raw = (env.OMC_JEV || "").trim();
+  if (!env.TYPESAFE_API_KEY || raw === "off") return "off";
   let sawAll = false;
   let activateAll = false;
   let active = false;
   let listed = false;
-  for (const entry of raw.split(',')) {
+  for (const entry of raw.split(",")) {
     const token = entry.trim();
     if (!token) continue;
-    const colon = token.lastIndexOf(':');
+    const colon = token.lastIndexOf(":");
     const name = colon === -1 ? token : token.slice(0, colon);
-    const isActive = colon !== -1 && token.slice(colon + 1) === 'active';
-    if (name === 'all') {
+    const isActive = colon !== -1 && token.slice(colon + 1) === "active";
+    if (name === "all") {
       sawAll = true;
       if (isActive) activateAll = true;
     } else if (name === point) {
@@ -84,18 +88,21 @@ export function parseJevEnv(point, env = process.env) {
       if (isActive) active = true;
     }
   }
-  if (!sawAll && !listed) return 'off';
-  if (activateAll || active) return 'active';
-  return 'shadow';
+  if (!sawAll && !listed) return "off";
+  if (activateAll || active) return "active";
+  return "shadow";
 }
 
 /** Mirror of boundExcerpts in config.ts: recursively bound strings to max chars. */
 export function boundExcerpts(value, max) {
-  if (typeof value === 'string') return value.length > max ? value.slice(0, max) : value;
-  if (Array.isArray(value)) return value.map((item) => boundExcerpts(item, max));
-  if (value !== null && typeof value === 'object') {
+  if (typeof value === "string")
+    return value.length > max ? value.slice(0, max) : value;
+  if (Array.isArray(value))
+    return value.map((item) => boundExcerpts(item, max));
+  if (value !== null && typeof value === "object") {
     const out = {};
-    for (const [key, val] of Object.entries(value)) out[key] = boundExcerpts(val, max);
+    for (const [key, val] of Object.entries(value))
+      out[key] = boundExcerpts(val, max);
     return out;
   }
   return value;
@@ -103,16 +110,28 @@ export function boundExcerpts(value, max) {
 
 /** Mirror of validateJevResponse in client.ts. Throws on any invalid shape. */
 export function validateJevResponse(body) {
-  if (body === null || typeof body !== 'object') throw new Error('invalid response: expected object');
+  if (body === null || typeof body !== "object")
+    throw new Error("invalid response: expected object");
   const answers = body.answers;
-  if (answers === null || typeof answers !== 'object' || Array.isArray(answers)) {
-    throw new Error('invalid response: missing answers object');
+  if (
+    answers === null ||
+    typeof answers !== "object" ||
+    Array.isArray(answers)
+  ) {
+    throw new Error("invalid response: missing answers object");
   }
   const entries = Object.entries(answers);
-  if (entries.length === 0) throw new Error('invalid response: answers is empty');
+  if (entries.length === 0)
+    throw new Error("invalid response: answers is empty");
   for (const [name, answer] of entries) {
-    if (answer === null || typeof answer !== 'object' || typeof answer.type !== 'string') {
-      throw new Error('invalid response: answer "' + name + '" has no string type');
+    if (
+      answer === null ||
+      typeof answer !== "object" ||
+      typeof answer.type !== "string"
+    ) {
+      throw new Error(
+        'invalid response: answer "' + name + '" has no string type',
+      );
     }
   }
   return body;
@@ -121,7 +140,7 @@ export function validateJevResponse(body) {
 async function logDirFor(env) {
   if (env.OMC_JEV_LOG_DIR) return env.OMC_JEV_LOG_DIR;
   const omcRoot = await resolveOmcStateRoot(process.cwd());
-  return join(omcRoot, 'state', 'jev');
+  return join(omcRoot, "state", "jev");
 }
 
 /**
@@ -131,7 +150,11 @@ async function logDirFor(env) {
 async function writeShadowLog(entry, logDir) {
   try {
     await mkdir(logDir, { recursive: true });
-    await appendFile(join(logDir, 'shadow.jsonl'), JSON.stringify(entry) + '\n', 'utf8');
+    await appendFile(
+      join(logDir, "shadow.jsonl"),
+      JSON.stringify(entry) + "\n",
+      "utf8",
+    );
   } catch {
     // Best-effort logging: a logging failure must never affect the judgment.
   }
@@ -142,10 +165,14 @@ async function writeShadowLog(entry, logDir) {
  * shadow-log line. Never throws - every failure degrades to mode:"degraded".
  * fetchFn is a test hook.
  */
-export async function resolveRequest(request, env = process.env, fetchFn = fetch) {
+export async function resolveRequest(
+  request,
+  env = process.env,
+  fetchFn = fetch,
+) {
   const startedAt = Date.now();
   const mode = parseJevEnv(request.point, env);
-  if (mode === 'off') {
+  if (mode === "off") {
     return { mode, answer: null, confidence: undefined, durationMs: 0 };
   }
   const bound = boundExcerpts(
@@ -154,11 +181,15 @@ export async function resolveRequest(request, env = process.env, fetchFn = fetch
   );
   const controller = new AbortController();
   let timer;
-  const timeoutMs = positiveInt(env.OMC_JEV_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, MAX_TIMER_DELAY_MS);
+  const timeoutMs = positiveInt(
+    env.OMC_JEV_TIMEOUT_MS,
+    DEFAULT_TIMEOUT_MS,
+    MAX_TIMER_DELAY_MS,
+  );
   const timeoutPromise = new Promise((resolve, reject) => {
     timer = setTimeout(() => {
       controller.abort();
-      reject(new Error('jev request timed out after ' + timeoutMs + 'ms'));
+      reject(new Error("jev request timed out after " + timeoutMs + "ms"));
     }, timeoutMs);
   });
   let jevAnswer = null;
@@ -167,45 +198,63 @@ export async function resolveRequest(request, env = process.env, fetchFn = fetch
   try {
     const response = await Promise.race([
       fetchFn(env.OMC_JEV_ENDPOINT || DEFAULT_ENDPOINT, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + env.TYPESAFE_API_KEY,
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + env.TYPESAFE_API_KEY,
         },
-        body: JSON.stringify({ state: bound.state, questions: serializeQuestions(bound.questions), model: JEV_MODEL }),
+        body: JSON.stringify({
+          state: bound.state,
+          questions: serializeQuestions(bound.questions),
+          model: JEV_MODEL,
+        }),
         signal: controller.signal,
       }),
       timeoutPromise,
     ]);
-    if (!response.ok) throw new Error('jev request failed: HTTP ' + response.status);
+    if (!response.ok)
+      throw new Error("jev request failed: HTTP " + response.status);
     const body = validateJevResponse(await response.json());
     jevAnswer = Object.values(body.answers)[0];
     confidence = jevAnswer.confidence;
   } catch (error) {
-    entryMode = 'degraded';
-    console.error('[jev] ' + request.point + ': degraded - ' + (error instanceof Error ? error.message : String(error)));
+    entryMode = "degraded";
+    console.error(
+      "[jev] " +
+        request.point +
+        ": degraded - " +
+        (error instanceof Error ? error.message : String(error)),
+    );
   } finally {
     if (timer) clearTimeout(timer);
   }
   const durationMs = Date.now() - startedAt;
-  await writeShadowLog({
-    ts: new Date().toISOString(),
-    point: request.point,
+  await writeShadowLog(
+    {
+      ts: new Date().toISOString(),
+      point: request.point,
+      mode: entryMode,
+      state: bound.state,
+      heuristic: request.heuristic ?? null,
+      jev: entryMode === "degraded" ? null : jevAnswer,
+      confidence,
+      durationMs,
+    },
+    await logDirFor(env),
+  );
+  return {
     mode: entryMode,
-    state: bound.state,
-    heuristic: request.heuristic ?? null,
-    jev: entryMode === 'degraded' ? null : jevAnswer,
+    answer: entryMode === "degraded" ? null : jevAnswer,
     confidence,
     durationMs,
-  }, await logDirFor(env));
-  return { mode: entryMode, answer: entryMode === 'degraded' ? null : jevAnswer, confidence, durationMs };
+  };
 }
 
 /** Read one JSON request from stdin, print one JSON result to stdout. */
 export async function readStdinJson() {
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
 /**
@@ -215,31 +264,64 @@ export async function readStdinJson() {
  * passed on argv: /proc/<pid>/cmdline is world-readable.
  */
 export function readRequestFile(path) {
-  const raw = readFileSync(path, 'utf8');
+  let raw;
+  const dir = dirname(resolve(path));
   try {
-    unlinkSync(path);
-  } catch {
-    // Best effort: the caller's temp dir is cleaned up independently.
+    raw = readFileSync(path, "utf8");
+  } finally {
+    try {
+      unlinkSync(path);
+    } catch {
+      // The request may already be gone or unavailable for cleanup.
+    }
+
+    try {
+      const safeTmpDir = resolve(tmpdir());
+      const dirBasename = basename(dir);
+      const dirStats = lstatSync(dir);
+
+      // Only remove an empty, owned Jev directory directly under os.tmpdir().
+      if (
+        dirname(dir) === safeTmpDir &&
+        dirBasename.startsWith("omc-jev-") &&
+        dirStats.isDirectory() &&
+        (typeof process.getuid !== "function" ||
+          dirStats.uid === process.getuid())
+      ) {
+        rmdirSync(dir);
+      }
+    } catch {
+      // Best effort: temp dir cleanup is best-effort; never block on it.
+    }
   }
-  try {
-    // The caller's mkdtemp dir holds only request.json; rmdir fails harmlessly if anything else remains.
-    rmdirSync(dirname(path));
-  } catch {
-    // Best effort.
-  }
+  if (!raw) throw new Error("Failed to read request file");
   return JSON.parse(raw);
 }
 
-const isMain = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isMain =
+  Boolean(process.argv[1]) &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   try {
-    const requestFileFlag = process.argv.indexOf('--request-file');
-    const requestFile = requestFileFlag === -1 ? undefined : process.argv[requestFileFlag + 1];
-    const request = requestFile ? readRequestFile(requestFile) : await readStdinJson();
+    const requestFileFlag = process.argv.indexOf("--request-file");
+    const requestFile =
+      requestFileFlag === -1 ? undefined : process.argv[requestFileFlag + 1];
+    const request = requestFile
+      ? readRequestFile(requestFile)
+      : await readStdinJson();
     const result = await resolveRequest(request);
     console.log(JSON.stringify(result));
   } catch (error) {
-    console.error('[jev] ' + (error instanceof Error ? error.message : String(error)));
-    console.log(JSON.stringify({ mode: 'degraded', answer: null, confidence: undefined, durationMs: 0 }));
+    console.error(
+      "[jev] " + (error instanceof Error ? error.message : String(error)),
+    );
+    console.log(
+      JSON.stringify({
+        mode: "degraded",
+        answer: null,
+        confidence: undefined,
+        durationMs: 0,
+      }),
+    );
   }
 }

@@ -823,13 +823,11 @@ OMC Ultrawork = "특수부대 작전 반"
       join(packageRoot, 'templates', 'hooks', 'session-start.mjs'),
     ]) {
       const source = readFileSync(hookPath, 'utf8');
-      // Exactly one batched readOccupiedPluginRoots CALL per execution path:
-      // the runtime hook calls it twice (hoisted owner resolution + GC scan
-      // that reuses the hoisted identities map); the template calls it once
-      // and has no GC consumer. The publish call must carry the identity
-      // resolved from that single host, and no hook may spawn its own
-      // PowerShell probe.
-      const expectedReadCalls = hookPath.endsWith(join('scripts', 'session-start.mjs')) ? 2 : 1;
+      // The runtime hook reads occupancy for owner resolution, GC, and the
+      // stabilization worker; the template reads it for publish and cleanup.
+      // The publish call must carry the identity resolved from the relevant
+      // batched host, and no hook may spawn its own PowerShell probe.
+      const expectedReadCalls = hookPath.endsWith(join('scripts', 'session-start.mjs')) ? 3 : 2;
       expect(source.match(/readOccupiedPluginRoots\(/g)!.length).toBe(expectedReadCalls);
       expect(source).toMatch(/publishCacheOccupancy\([^)]*identit(?:ies\.get|y)/s);
       expect(source).not.toMatch(/spawnSync\(\s*'powershell'/);

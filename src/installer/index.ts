@@ -965,9 +965,12 @@ export const isStateFileLockingSupported = canonical.isStateFileLockingSupported
 export const isExclusiveStateLockingAvailable = canonical.isExclusiveStateLockingAvailable;
 export const getStateFileLockDiagnostic = canonical.getStateFileLockDiagnostic;
 export const getStateFileLockFailureMessage = canonical.getStateFileLockFailureMessage;
+export const getStateFileLockFailureKind = canonical.getStateFileLockFailureKind;
 export const acquireStateFileLockSync = canonical.acquireStateFileLockSync;
+export const acquireStateFileLockAtPathSync = canonical.acquireStateFileLockAtPathSync;
 export const releaseStateFileLockSync = canonical.releaseStateFileLockSync;
 export const withStateFileLockSync = canonical.withStateFileLockSync;
+export const withStateFileLockAtPathSync = canonical.withStateFileLockAtPathSync;
 export const acquireRecoveryClaim = canonical.acquireRecoveryClaim;
 export const readRecoveryClaim = canonical.readRecoveryClaim;
 export const releaseRecoveryClaim = canonical.releaseRecoveryClaim;
@@ -2750,9 +2753,14 @@ export function install(options: InstallOptions = {}): InstallResult {
       });
       if (!transaction.ok) throw new Error(transaction.error ?? 'CLAUDE.md transaction failed');
       for (const backupPath of transaction.backups) log(`Backed up existing CLAUDE.md to ${backupPath}`);
-      log(transaction.operations.some(operation => operation.type === 'write' && operation.existedBefore && basename(operation.path) === 'CLAUDE.md')
-        ? 'Updated CLAUDE.md (merged with existing content)'
-        : 'Created CLAUDE.md');
+      // The transaction drops writes whose bytes already match, so a missing
+      // CLAUDE.md write op means the existing file was left untouched.
+      const claudeMdWrite = transaction.operations.find(operation => operation.type === 'write' && basename(operation.path) === 'CLAUDE.md');
+      log(!claudeMdWrite
+        ? 'CLAUDE.md already up to date'
+        : claudeMdWrite.existedBefore
+          ? 'Updated CLAUDE.md (merged with existing content)'
+          : 'Created CLAUDE.md');
     }
 
     // Install HUD statusline (skip for project-scoped plugins, skipHud option, or hudEnabled config)
