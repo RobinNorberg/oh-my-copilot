@@ -1039,7 +1039,6 @@ const COPILOT_WORKER_HOOKS = new Set([
   'stale-run-reporter.mjs',
   'runs-reconciler.mjs',
   'permission-handler.mjs',
-  'post-tool-directory-context-injector.mjs',
   'post-tool-use-failure.mjs',
   'subagent-tracker.mjs',
   'verify-deliverables.mjs',
