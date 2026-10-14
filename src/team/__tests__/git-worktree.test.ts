@@ -355,8 +355,17 @@ describe('git-worktree', () => {
         execFileSync('git', ['-c', 'protocol.file.allow=always', 'submodule', 'update', '--init'], { cwd: info.path, stdio: 'pipe' });
         mkdirSync(join(info.path, '.omg', 'state'), { recursive: true });
         writeFileSync(join(info.path, '.omg', 'state', 'job.json'), '{}');
+        const linkTarget = mkdtempSync(join(tmpdir(), 'git-worktree-sub-link-'));
+        symlinkSync(linkTarget, join(info.path, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
 
-        expect(() => removeWorkerWorktree(teamName, 'submodule-worker', repoDir)).toThrow(/worktree_remove_failed/);
+        try {
+          expect(() => removeWorkerWorktree(teamName, 'submodule-worker', repoDir)).toThrow(/worktree_remove_failed/);
+          // Refused before unlinking: the kept worktree keeps its junctioned link.
+          expect(existsSync(join(info.path, 'node_modules'))).toBe(true);
+        } finally {
+          rmSync(join(info.path, 'node_modules'), { recursive: true, force: true });
+          rmSync(linkTarget, { recursive: true, force: true });
+        }
         expect(existsSync(join(info.path, 'sub', 'lib.txt'))).toBe(true);
       } finally {
         rmSync(subRepo, { recursive: true, force: true });

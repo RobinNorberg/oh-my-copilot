@@ -66,22 +66,13 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
   console.error(`OMC MCP Server: received ${signal}, disconnecting LSP servers...`);
 
-  try {
-    // Live copilot_run sessions are billed: cancel them first (bounded, then killed).
-    await stopCopilotRunJobs();
-  } catch {
-    // Best-effort — do not block exit
-  }
-  try {
-    await cleanupOwnedBridgeSessions();
-  } catch {
-    // Best-effort — do not block exit
-  }
-  try {
-    await disconnectAllLsp();
-  } catch {
-    // Best-effort — do not block exit
-  }
+  // Concurrent and best-effort: a slow copilot_run stop (live sessions are
+  // billed: cancelled, bounded, then killed) must not eat the LSP cleanup budget.
+  await Promise.allSettled([
+    stopCopilotRunJobs(),
+    cleanupOwnedBridgeSessions(),
+    disconnectAllLsp(),
+  ]);
   try {
     await server.close();
   } catch {

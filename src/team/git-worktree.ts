@@ -997,7 +997,15 @@ export function removeWorkerWorktree(
     // runtime state, which git refuses to drop without --force. A worktree with
     // initialized submodules keeps the plain removal, which refuses it.
     const runtimeOnly = existsSync(wtPath) && isWorktreeDirtyExcept(wtPath, ['AGENTS.md']).runtimeState;
-    const force = runtimeOnly && !hasInitializedSubmodules(wtPath);
+    const submodules = existsSync(wtPath) && hasInitializedSubmodules(wtPath);
+    const force = runtimeOnly && !submodules;
+    if (wasRegisteredWorktree && submodules) {
+      // git refuses to remove it: refuse before unlinking, so the kept
+      // worktree keeps its junctioned links.
+      const error = new Error(`worktree_remove_failed: preserving metadata for registered worker worktree at ${wtPath}: initialized submodules`);
+      (error as Error & { code?: string }).code = 'worktree_remove_failed';
+      throw error;
+    }
     if (existsSync(wtPath)) unlinkUntrackedWorktreeLinks(wtPath);
     try {
       execFileSync('git', ['worktree', 'remove', ...(force ? ['--force'] : []), wtPath], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
