@@ -187,6 +187,17 @@ describe('copilot/hooks.json generation', () => {
     expect(generated.hooks.PermissionRequest.map(entry => entry.matcher)).toEqual(['Bash']);
   });
 
+  it('keeps the Claude tool names of the PostToolUse file-context matcher verbatim', () => {
+    // Copilot CLI (>= 1.0.62/1.0.63) matches PascalCase hooks against Claude tool names: its
+    // runtime maps view->Read, create->Write, edit->Edit, bash->Bash (docs/HOOKS.md), so no
+    // Copilot-id translation belongs in the generator.
+    expect(generated.hooks.PostToolUse.map(entry => entry.matcher)).toEqual([undefined, 'Read|Write|Edit|MultiEdit']);
+    expect(generated.hooks.PostToolUse[1].args.slice(4).filter(arg => arg !== '--')).toEqual([
+      `${ROOT_TOKEN}/scripts/post-tool-rules-injector.mjs`,
+      `${ROOT_TOKEN}/scripts/post-tool-directory-context-injector.mjs`,
+    ]);
+  });
+
   it('throws on any command or field outside the upstream form', async () => {
     const { buildCopilotHooks } = await generator;
     const wrap = (hook: Record<string, unknown>) => ({ hooks: { Stop: [{ matcher: '*', hooks: [hook] }] } });
