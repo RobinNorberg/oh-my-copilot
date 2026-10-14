@@ -35,7 +35,7 @@ describe('real compiler invocation failures', () => {
       const result = await runDirectoryDiagnostics(directory, 'tsc');
       expect(result.success).toBe(false);
       expect(result.errorCount).toBeGreaterThan(0);
-      expect(result.diagnostics).toContain('ENOENT');
+      expect(result.diagnostics).toContain('tsc not found');
       expect(result.summary).toContain('failed');
     } finally {
       if (previousPath === undefined) delete process.env.PATH;

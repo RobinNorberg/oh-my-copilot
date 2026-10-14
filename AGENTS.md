@@ -164,15 +164,12 @@ Do not ask for confirmation — just read the skill file and follow its instruct
 |-------------|-------|--------|
 | "ralph", "don't stop", "must complete", "keep going" | `$ralph` | Read `~/.agents/skills/ralph/SKILL.md`, execute persistence loop |
 | "autopilot", "build me", "I want a" | `$autopilot` | Read `~/.agents/skills/autopilot/SKILL.md`, execute autonomous pipeline |
-| "ultrawork", "ulw", "parallel" | `$ultrawork` | Read `~/.agents/skills/ultrawork/SKILL.md`, execute parallel agents |
 | "plan this", "plan the", "let's plan" | `$plan` | Read `~/.agents/skills/plan/SKILL.md`, start planning workflow |
 | "interview", "deep interview", "gather requirements", "interview me", "don't assume", "ouroboros" | `$deep-interview` | Read `~/.agents/skills/deep-interview/SKILL.md`, run Ouroboros-inspired Socratic ambiguity-gated interview workflow |
 | "ralplan", "consensus plan" | `$ralplan` | Read `~/.agents/skills/ralplan/SKILL.md`, start consensus planning with RALPLAN-DR structured deliberation (short by default, `--deliberate` for high-risk) |
-| "ecomode", "eco", "budget" | `$ecomode` | Read `~/.agents/skills/ecomode/SKILL.md`, enable token-efficient mode |
 | "cancel", "stop", "abort" | `$cancel` | Read `~/.agents/skills/cancel/SKILL.md`, cancel active modes |
 | "tdd", "test first" | keyword mode | Inject TDD-mode guidance and favor test-first execution with `test-engineer` when appropriate |
 | "cleanup", "deslop", "anti-slop" | `$ai-slop-cleaner` | Read `~/.agents/skills/ai-slop-cleaner/SKILL.md`, plan and clean AI-generated slop with separate writer/reviewer passes |
-| "web-clone", "clone site", "clone website", "copy webpage" | `$web-clone` | Read `~/.agents/skills/web-clone/SKILL.md`, start website cloning pipeline |
 
 Detection rules:
 - Keywords are case-insensitive and match anywhere in the user's message
@@ -194,10 +191,7 @@ Skills are workflow commands. Invoke via `$name` (e.g., `$ralph`) or browse with
 Workflow Skills:
 - `autopilot`: Full autonomous execution from idea to working code
 - `ralph`: Self-referential persistence loop with verification
-- `ultrawork`: Maximum parallelism with parallel agent orchestration
 - `visual-verdict`: Structured visual QA verdict loop for screenshot/reference comparisons
-- `web-clone`: URL-driven website cloning with visual + functional verification
-- `ecomode`: Token-efficient execution using lightweight models
 - `team`: N coordinated agents on shared task list
 - `plan`: Strategic planning with optional RALPLAN-DR consensus mode
 - `deep-interview`: Socratic deep interview with Ouroboros-inspired mathematical ambiguity gating before execution
@@ -392,9 +386,8 @@ Mode lifecycle requirements:
 Recommended mode fields:
 - `ralph`: `active`, `iteration`, `max_iterations`, `current_phase`, `started_at`, `completed_at`
 - `autopilot`: `active`, `current_phase` (`expansion|planning|execution|qa|validation|complete`), `started_at`, `completed_at`
-- `ultrawork`: `active`, `reinforcement_count`, `started_at`
 - `team`: `active`, `current_phase` (`team-plan|team-prd|team-exec|team-verify|team-fix|complete`), `agent_count`, `team_name`
-- `ecomode`: `active`
+
 </state_management>
 
 ---

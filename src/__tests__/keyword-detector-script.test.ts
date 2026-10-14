@@ -496,6 +496,30 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
     }
   });
 
+  it.each([
+    '/ask muse',
+    '/oh-my-copilot:ask muse',
+    '/ask antigravity',
+    '/ask agy',
+    '/ask cursor',
+  ])('does not activate modes from a delegated %s payload in both detector copies', (command) => {
+    for (const detectorPath of [SCRIPT_PATH, TEMPLATE_PATH]) {
+      const tempDir = mkdtempSync(join(tmpdir(), 'keyword-detector-ask-provider-'));
+      try {
+        const sessionId = 'ask-provider-session';
+        const output = runKeywordDetector(`${command} ralplan ralph ultrawork autopilot review`, tempDir, sessionId, {}, detectorPath);
+        expect(output.continue).toBe(true);
+        expect(output.suppressOutput).toBe(true);
+        expect(output.hookSpecificOutput).toBeUndefined();
+        for (const mode of ['ralplan', 'ralph', 'ultrawork', 'autopilot']) {
+          expect(existsSync(join(tempDir, '.omg', 'state', 'sessions', sessionId, `${mode}-state.json`))).toBe(false);
+        }
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    }
+  });
+
   it('does not activate ralplan from a delegated /ask codex payload', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'keyword-detector-ask-codex-'));
 

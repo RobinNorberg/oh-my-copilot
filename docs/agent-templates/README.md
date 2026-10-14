@@ -16,7 +16,7 @@ The template uses the following placeholders:
 
 | Placeholder | Description | Example |
 |-------------|-------------|---------|
-| `{{AGENT_NAME}}` | Agent identifier | `executor-low`, `architect-medium` |
+| `{{AGENT_NAME}}` | Agent identifier | `executor`, `architect`, `designer` |
 | `{{ROLE_DESCRIPTION}}` | What this agent does | "You execute simple code changes..." |
 | `{{TIER_INSTRUCTIONS}}` | Tier-specific behavior | LOW/MEDIUM/HIGH instructions |
 | `{{TASK_SPECIFIC_INSTRUCTIONS}}` | Agent-specific protocols | "When fixing bugs, always add tests" |
@@ -41,10 +41,10 @@ The template uses the following placeholders:
    - These apply to ALL agents and don't need modification
    - Only extend if your agent needs additional protocols
 
-### Example: Creating executor-low
+### Example: Creating executor
 
 ```markdown
-# executor-low
+# executor
 
 ## Role
 You execute simple, well-defined code changes quickly and efficiently. Handle single-file modifications, small bug fixes, and straightforward feature additions.

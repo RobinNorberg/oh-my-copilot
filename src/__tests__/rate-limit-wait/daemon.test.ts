@@ -11,8 +11,8 @@ import {
   isDaemonRunning,
   getDaemonStatus,
   formatDaemonState,
-  shouldResumeBlockedPanesOnStatusChange,
 } from '../../features/rate-limit-wait/daemon.js';
+import { shouldResumeBlockedPanesOnStatusChange } from '../../features/rate-limit-wait/daemon-state.js';
 import type { DaemonState, DaemonConfig, RateLimitStatus } from '../../features/rate-limit-wait/types.js';
 
 describe('daemon', () => {

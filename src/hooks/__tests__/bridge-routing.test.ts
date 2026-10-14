@@ -1036,6 +1036,25 @@ $ ultrawork search the codebase`,
       }
     });
 
+    it.each(['/ask muse', '/oh-my-copilot:ask muse'])('does not arm modes for keywords inside %s payloads', async (command) => {
+      const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-ask-muse-'));
+      try {
+        execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
+        const sessionId = 'ask-muse-session';
+        const result = await processHook('keyword-detector', {
+          sessionId, directory: tempDir,
+          prompt: `${command} ralplan ralph ultrawork autopilot review`,
+        });
+        expect(result.continue).toBe(true);
+        expect(result.message).toBeUndefined();
+        for (const mode of ['ralplan', 'ralph', 'ultrawork', 'autopilot']) {
+          expect(existsSync(join(tempDir, '.omg', 'state', 'sessions', sessionId, `${mode}-state.json`))).toBe(false);
+        }
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it('does not arm ralplan state for keywords inside delegated /ask grok prompts', async () => {
       const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-ask-grok-'));
       try {

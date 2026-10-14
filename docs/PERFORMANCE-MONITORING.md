@@ -410,7 +410,7 @@ cleanupReplayFiles(process.cwd()); // Keeps last 10 sessions
 **Symptoms**: Costs higher than expected, context window filling quickly
 
 **Solutions**:
-1. Use `eco` mode for token-efficient execution: `eco fix all errors`
+1. Set `OMC_RUN_BUDGET_TOKENS` to limit session spending (see REFERENCE.md for details)
 2. Check for unnecessary file reads in agent prompts
 3. Review the Agent Observatory in HUD (or replay logs) for agent-level breakdown
 4. Enable cache - check cache efficiency in analytics
@@ -423,7 +423,7 @@ cleanupReplayFiles(process.cwd()); // Keeps last 10 sessions
 1. Check Observatory for bottleneck indicators
 2. Review tool_usage for slow operations
 3. Consider splitting large tasks into smaller agents
-4. Use `architect-low` instead of `architect` for simple verifications
+4. Use `architect` with model="haiku" instead of model="opus" for simple verifications
 
 ### File Conflicts
 

@@ -128,9 +128,9 @@ const CATEGORY_TO_AGENT: Record<DelegationCategory, string> = {
   'visual-engineering': 'designer',
   'ultrabrain': 'architect',
   'artistry': 'designer', // High creativity
-  'quick': 'explorer',
+  'quick': 'explore',
   'writing': 'writer',
-  'unspecified-low': 'executor-low',
+  'unspecified-low': 'executor',
   'unspecified-high': 'executor',
 };
 
@@ -261,7 +261,7 @@ const detected = getCategoryForTask({ taskPrompt });
 const agentMap = {
   'visual-engineering': 'designer',
   'ultrabrain': 'architect',
-  'quick': 'explorer',
+  'quick': 'explore',
 };
 
 const agent = agentMap[detected.category] || 'executor';

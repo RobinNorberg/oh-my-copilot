@@ -258,7 +258,7 @@ describe('python_repl sandbox guidance parity (#3682)', () => {
 
     it('docs/REFERENCE.md guidance keeps scientist rows without unrelated agent rows', () => {
       const guidance = extractPythonGuidance(readDoc('../../../../docs/REFERENCE.md'));
-      expect(guidance).toContain('`scientist-high`');
+      expect(guidance).toContain('`scientist`');
       expect(guidance).not.toContain('`git-master`');
     });
   });

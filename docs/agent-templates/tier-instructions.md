@@ -76,9 +76,9 @@ This document defines the behavioral differences between agent tiers (LOW/MEDIUM
 
 When creating an agent prompt, replace `{{TIER_INSTRUCTIONS}}` with the appropriate tier block above.
 
-Example for executor-low:
+Example for executor:
 ```markdown
-# executor-low
+# executor
 
 ## Role
 You execute simple, well-defined code changes quickly and efficiently.

@@ -154,9 +154,9 @@ Rules:
    c. If ALL complete, proceed to Step 7 (architect verification)
 
 7. **Reviewer verification** (tiered, against acceptance criteria):
-   - <5 files, <100 lines with full tests: STANDARD tier minimum (architect-medium / Sonnet)
-   - Standard changes: STANDARD tier (architect-medium / Sonnet)
-   - > 20 files or security/architectural changes: THOROUGH tier (architect / Opus)
+   - <5 files, <100 lines with full tests: STANDARD tier minimum (architect with model="sonnet")
+   - Standard changes: STANDARD tier (architect with model="sonnet")
+   - > 20 files or security/architectural changes: THOROUGH tier (architect with model="opus")
    - If `--critic=critic`, use the Claude `critic` agent for the approval pass
    - If `--critic=codex`, run `omc ask codex --agent-prompt critic "..."` for the approval pass. The Codex critic prompt MUST include:
      1. The full list of acceptance criteria from prd.json for verification

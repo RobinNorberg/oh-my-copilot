@@ -1,323 +1,158 @@
-# Tiered Agents v2 Architecture Design
+# Model Routing and Agent Selection (v2)
 
-## Overview
+## Historical Context
 
-This document describes an improved tiered agent architecture that addresses current gaps and implements sophisticated patterns for model routing, capability inheritance, and dynamic escalation.
+Earlier versions of oh-my-copilot used tiered agent variants (executor-low, executor-medium, executor-high) to provide cost-optimized agent selection. These have been retired in favor of a simpler approach: base agents with explicit model selection via model parameter.
 
-## Current Issues Identified
+## Current Architecture (v5+)
 
-1. **Incomplete Inheritance**: Tiered agents don't inherit core behavioral patterns from base agents
-2. **Inconsistent Tool Restrictions**: Tool restrictions vary without clear rationale
-3. **Missing Escalation Signals**: No mechanism for agents to request escalation when overloaded
-4. **Minimal Behavioral Instructions**: Tiered variants have too few instructions
-5. **No Dynamic Routing in Markdown**: TypeScript router exists but markdown agents don't leverage it
+### Agent Naming
 
-## Design Principles
+We maintain 18 base agents, each with a default model assignment:
 
-### 1. Template-Based Inheritance
+- **architect** (default: opus) - Architecture, debugging, analysis
+- **executor** (default: sonnet) - Code implementation, features
+- **designer** (default: sonnet) - UI/UX components
+- **planner** (default: opus) - Strategic planning
+- **critic** (default: opus) - Plan/design review
+- **analyst** (default: opus) - Requirements analysis
+- **explore** (default: haiku) - Fast code search
+- **document-specialist** (default: sonnet) - API research
+- **writer** (default: haiku) - Documentation
+- **vision** (default: sonnet) - Image analysis
+- **qa-tester** (default: sonnet) - CLI testing
+- **debugger** (default: sonnet) - Build/type errors
+- **security-reviewer** (default: sonnet) - Security audit
+- **code-reviewer** (default: opus) - Code quality
+- **test-engineer** (default: sonnet) - Test-driven development
+- **scientist** (default: sonnet) - Data analysis
+- **git-master** (default: sonnet) - Git strategy
+- **code-simplifier** (default: sonnet) - Code cleanup
 
-Each tiered agent should inherit from a base template that provides:
-- Core identity and role
-- Fundamental constraints (read-only, no delegation, etc.)
-- Output format requirements
-- Quality standards
+### Model Selection Strategy
 
-Tier-specific overrides then customize:
-- Task complexity boundaries
-- Tool restrictions
-- Response depth/breadth
-- Escalation thresholds
+For any agent, use the model parameter to override the default:
 
-### 2. Explicit Capability Boundaries
+```
+executor (model="haiku")              # Cheap, fast simple changes
+executor (model="sonnet")             # Balanced, standard features
+executor (model="opus")               # Powerful, complex refactoring
 
-Each tier has clear boundaries:
-
-| Tier | Complexity | Response Depth | Self-Assessment |
-|------|------------|----------------|-----------------|
-| LOW (Haiku) | Simple, single-focus | Concise, direct | "Is this within my scope?" |
-| MEDIUM (Sonnet) | Moderate, multi-step | Thorough, structured | "Can I handle this fully?" |
-| HIGH (Opus) | Complex, system-wide | Comprehensive, nuanced | "What are the trade-offs?" |
-
-### 3. Escalation Signals
-
-Agents should recognize when to recommend escalation:
-
-```markdown
-<Escalation_Signals>
-## When to Recommend Higher Tier
-
-Escalate when you detect:
-- Task exceeds your complexity boundary
-- Multiple failed attempts (>2)
-- Cross-system dependencies you can't trace
-- Security-sensitive changes
-- Irreversible operations
-
-Output escalation recommendation:
-**ESCALATION RECOMMENDED**: [reason] → Use [higher-tier-agent]
-</Escalation_Signals>
+architect (model="haiku")             # Quick questions, basic lookup
+architect (model="sonnet")            # Standard debugging
+architect (model="opus")              # Deep architectural analysis
 ```
 
-### 4. Tool Capability Tiers
+### Cost Optimization
 
-| Tool | LOW | MEDIUM | HIGH |
-|------|-----|--------|------|
-| Read | ✅ | ✅ | ✅ |
-| Glob | ✅ | ✅ | ✅ |
-| Grep | ✅ | ✅ | ✅ |
-| Edit | ✅ (simple) | ✅ | ✅ |
-| Write | ✅ (simple) | ✅ | ✅ |
-| Bash | Limited | ✅ | ✅ |
-| WebSearch | ❌ | ✅ | ✅ |
-| WebFetch | ❌ | ✅ | ✅ |
-| Task | ❌ | ❌ | Varies |
-| TodoWrite | ✅ | ✅ | ✅ |
+| Model | Best For | Cost |
+|-------|----------|------|
+| **haiku** | Quick lookups, trivial changes, file discovery | ~1x |
+| **sonnet** | Feature work, standard debugging, balanced quality | ~10x |
+| **opus** | Complex analysis, refactoring, architecture | ~50x |
 
-## Agent Family Templates
+Use haiku for simple tasks to reduce cost. Reserve opus for complex work where quality matters most.
 
-### Architect Family (Analysis)
+### Why We Retired Tiered Variants
 
-**Base Identity**: Strategic advisor, READ-ONLY consultant, diagnoses not implements
+Previous approach had downsides:
+- Proliferated agent names (18 → 54+ variants)
+- Created unnecessary aliases and routing complexity
+- Discouraged explicit model selection
+- Made it unclear which agent was "real"
+- Historical artifact from v4.0 experiment
 
-| Variant | Model | Tools | Focus |
-|---------|-------|-------|-------|
-| architect-low | Haiku | Read, Glob, Grep | Quick lookups, single-file analysis |
-| architect-medium | Sonnet | + WebSearch, WebFetch | Standard analysis, dependency tracing |
-| architect | Opus | Full read access | Deep architecture analysis, system-wide patterns |
+New approach is simpler:
+- Clear agent semantics - each agent has one role
+- Explicit model selection via model parameter
+- Predictable naming and discovery
+- Easier to document and teach
+- Scales better as model options change
 
-**Shared Constraints**:
-- NO Write/Edit tools
-- NO implementation
-- MUST cite file:line references
-- MUST provide actionable recommendations
+### Migration Path
 
-**Tier-Specific Behaviors**:
+If you were using tiered variants:
 
-```markdown
-## architect-low
-- Answer direct questions quickly
-- Single-file focus
-- Output: Answer + Location + Context (3 lines max)
-- Escalate if: cross-file dependencies, architecture questions
+```
+OLD: executor-low              NEW: executor (model="haiku")
+OLD: executor                  NEW: executor (model="sonnet")
+OLD: executor-high             NEW: executor (model="opus")
 
-## architect-medium
-- Standard analysis workflow
-- Multi-file tracing allowed
-- Output: Summary + Findings + Diagnosis + Recommendations
-- Escalate if: system-wide impact, security concerns, irreversible changes
+OLD: architect-low             NEW: architect (model="haiku")
+OLD: architect-medium          NEW: architect (model="sonnet")
+OLD: architect                 NEW: architect (model="opus")
 
-## architect (high)
-- Deep architectural analysis
-- System-wide pattern recognition
-- Output: Full structured analysis with trade-offs
-- No escalation needed (highest tier)
+OLD: designer-low              NEW: designer (model="haiku")
+OLD: designer                  NEW: designer (model="sonnet")
+OLD: designer-high             NEW: designer (model="opus")
 ```
 
-### Executor Family (Execution)
+### Verification Tier Selection
 
-**Base Identity**: Focused executor, works ALONE, no delegation, TODO obsessed
+For work that needs verification, match the verifier to task complexity:
 
-| Variant | Model | Tools | Focus |
-|---------|-------|-------|-------|
-| executor-low | Haiku | Read, Glob, Grep, Edit, Write, Bash, TodoWrite | Single-file, trivial changes |
-| executor | Sonnet | Same | Multi-step, moderate complexity |
-| executor-high | Opus | Same | Multi-file, complex refactoring |
+| Tier | Criteria | Verifier | Model | When to Use |
+|------|----------|----------|-------|-------------|
+| **LIGHT** | <5 files, <100 lines, full tests | architect | haiku | Small, well-tested changes |
+| **STANDARD** | Default case | architect | sonnet | Multi-file features |
+| **THOROUGH** | >20 files or security/architectural | architect | opus | Major changes, security |
 
-**Shared Constraints**:
-- Task tool BLOCKED (no delegation)
-- MUST use TodoWrite for 2+ step tasks
-- MUST verify after changes
-- Works ALONE
+## Implementation Details
 
-**Tier-Specific Behaviors**:
+### Agent Definitions
 
-```markdown
-## executor-low
-- Single-file edits only
-- Trivial changes (typos, simple additions)
-- Skip TodoWrite for <2 step tasks
-- Escalate if: multi-file changes, complex logic, architectural decisions
+See `src/agents/definitions.ts` for the agent registry. Each agent:
 
-## executor (medium)
-- Multi-step tasks within a module
-- Standard complexity
-- Always use TodoWrite
-- Escalate if: system-wide changes, cross-module dependencies
-
-## executor-high
-- Multi-file refactoring
-- Complex architectural changes
-- Deep analysis before changes
-- No escalation needed (use architect for consultation)
+```typescript
+{
+  name: 'executor',
+  defaultModel: 'sonnet',
+  files: ['executor.ts'],
+  description: 'Implementation and refactoring'
+}
 ```
 
-### Designer Family (UI/UX)
+### Tool Assignment
 
-**Base Identity**: Designer-developer hybrid, sees what pure devs miss, creates memorable interfaces
+Each agent gets a specific set of tools based on its role:
 
-| Variant | Model | Tools | Focus |
-|---------|-------|-------|-------|
-| designer-low | Haiku | Read, Glob, Grep, Edit, Write, Bash | Simple styling, minor tweaks |
-| designer | Sonnet | Same | Standard UI work, components |
-| designer-high | Opus | Same | Design systems, complex architecture |
+- **Read tools**: Read, Glob, Grep (all agents)
+- **Write tools**: Edit, Write, Bash, TodoWrite (executor, designer, test-engineer)
+- **Search tools**: WebSearch, WebFetch (architect, document-specialist, analyst)
+- **Meta tools**: Task (only delegating agents)
 
-**Shared Constraints**:
-- NEVER use generic fonts (Inter, Roboto, Arial)
-- NEVER use cliched patterns (purple gradients)
-- Match existing code patterns
-- Production-quality output
+See `src/agents/definitions.ts#toolsByAgent` for complete tool assignments.
 
-**Tier-Specific Behaviors**:
+### Model Routing
 
-```markdown
-## designer-low
-- Simple CSS changes (colors, spacing, fonts)
-- Minor component tweaks
-- Match existing patterns exactly
-- Escalate if: new component design, design system changes
+When an agent is invoked:
+1. Check for explicit model parameter
+2. Fall back to agent's defaultModel
+3. Never use tiered variant names
 
-## designer (medium)
-- Standard component work
-- Apply design philosophy
-- Make intentional aesthetic choices
-- Escalate if: design system creation, complex state management
-
-## designer-high
-- Design system architecture
-- Complex component hierarchies
-- Deep aesthetic reasoning
-- Full creative latitude
+Example routing:
+```typescript
+function resolveAgentModel(agentName: string, modelOverride?: string): string {
+  if (modelOverride) return modelOverride;
+  return getAgentDefinition(agentName).defaultModel;
+}
 ```
 
-### Document-Specialist Family (Research)
+## Documentation Changes
 
-**Base Identity**: External documentation document-specialist, searches EXTERNAL resources
+All documentation now uses base agent names with model guidance:
 
-| Variant | Model | Tools | Focus |
-|---------|-------|-------|-------|
-| document-specialist-low | Haiku | Read, Glob, Grep, WebSearch, WebFetch | Quick lookups |
-| document-specialist | Sonnet | Same | Comprehensive research |
+- **REFERENCE.md** - Agent selection guide with model recommendations
+- **shared/agent-tiers.md** - Cost optimization and tier selection
+- **shared/verification-tiers.md** - Verification strategy by complexity
+- **AGENTS.md** - Agent catalog with tool assignments
 
-**Shared Constraints**:
-- Check repo docs first when the question is project-specific
-- ALWAYS cite sources with URLs (or stable curated-doc IDs when a URL is unavailable)
-- Prefer Context Hub / `chub` (or another curated docs backend already configured) for external API/framework correctness when available, then official docs
-- Note version compatibility
-- Flag outdated information
+Legacy documents kept for reference:
+- **TIERED_AGENTS_V2.md** - This file, historical context
+- **MIGRATION.md** - Migration notes from v4 to v5
 
-**Tier-Specific Behaviors**:
+## See Also
 
-```markdown
-## document-specialist-low
-- Quick API lookups
-- Find specific references
-- Output: Answer + Source + Example (if applicable)
-- Escalate if: comprehensive research needed, multiple sources required
-
-## document-specialist (medium)
-- Comprehensive research
-- Multiple source synthesis
-- Full structured output format
-- No escalation needed for research tasks
-```
-
-### Explore Family (Search)
-
-**Base Identity**: Codebase search specialist, finds files and code patterns
-
-| Variant | Model | Tools | Focus |
-|---------|-------|-------|-------|
-| explore | Haiku | Read, Glob, Grep | Quick searches |
-| explore (model=sonnet) | Sonnet | Same | Thorough analysis |
-
-**Shared Constraints**:
-- READ-ONLY
-- Always use absolute paths
-- Return structured results
-- Address underlying need, not just literal request
-
-**Tier-Specific Behaviors**:
-
-```markdown
-## explore (low)
-- Quick pattern matching
-- File location
-- Parallel tool calls (3+)
-- Escalate if: architecture understanding needed, cross-module analysis
-
-## explore (model=sonnet)
-- Thorough analysis
-- Cross-reference findings
-- Explain relationships
-- No escalation needed
-```
-
-## Implementation Changes Required
-
-### 1. Update Markdown Agent Files
-
-Each tiered agent file should include:
-
-```markdown
----
-name: [agent]-[tier]
-description: [tier-specific description]
-tools: [restricted tool list]
-model: [haiku|sonnet|opus]
----
-
-<Inherits_From>
-Base: [base-agent].md
-</Inherits_From>
-
-<Tier_Identity>
-[Tier-specific role and focus]
-</Tier_Identity>
-
-<Complexity_Boundary>
-You handle: [specific types of tasks]
-Escalate when: [specific conditions]
-</Complexity_Boundary>
-
-[Tier-specific instructions...]
-
-<Escalation_Protocol>
-When you detect tasks beyond your scope, output:
-**ESCALATION RECOMMENDED**: [reason] → Use oh-my-copilot:[higher-tier]
-</Escalation_Protocol>
-```
-
-### 2. Update TypeScript Router
-
-The router should:
-- Parse agent capabilities from markdown
-- Match task signals to tier boundaries
-- Provide escalation recommendations in output
-
-### 3. Add Escalation Detection
-
-The orchestrator should:
-- Detect "ESCALATION RECOMMENDED" in agent output
-- Automatically retry with recommended higher tier
-- Log escalation patterns for optimization
-
-## Cost Impact Analysis
-
-Based on current pricing (Haiku $1/$5, Sonnet $3/$15, Opus $5/$25 per million tokens):
-
-| Scenario | Before (all Sonnet) | After (Tiered) | Savings |
-|----------|---------------------|----------------|---------|
-| Simple lookups (70%) | $3/$15 | $1/$5 (Haiku) | ~67% |
-| Standard work (25%) | $3/$15 | $3/$15 (Sonnet) | 0% |
-| Complex work (5%) | $3/$15 | $5/$25 (Opus) | -67% |
-| **Weighted Average** | $3/$15 | ~$1.60/$8 | **~47%** |
-
-Intelligent routing can reduce costs by ~47% while improving quality for complex tasks.
-
-## Next Steps
-
-1. Create updated markdown files for all tiered agents
-2. Add escalation detection to hooks
-3. Update router to use agent capability parsing
-4. Add telemetry for tier usage optimization
-5. Create tests for escalation scenarios
+- `docs/REFERENCE.md` - Complete agent guide
+- `docs/shared/agent-tiers.md` - Tier selection by task type
+- `src/agents/definitions.ts` - Agent registry source

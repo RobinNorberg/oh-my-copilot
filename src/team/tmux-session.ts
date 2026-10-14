@@ -2160,7 +2160,6 @@ export async function splitTeamWorkerPaneWithEvidence(
       '-c', cwd,
       ...splitPaneShell.args,
     ];
-    // fork deviation: route through runPaneCreationCommand so a not-executed or thrown split discards the private pane env file.
     const splitResult = await runPaneCreationCommand(
           identity,
           tmuxCommandString(splitArgs, ['#{pane_id}\t#{socket_path}\t#{pid}']),

@@ -11,7 +11,7 @@ export function pathIdentity(path) {
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
-function identity(pid) {
+function identity(pid, probeTimeoutMs = 3000) {
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
   if (process.platform === 'linux') {
     try {
@@ -22,7 +22,9 @@ function identity(pid) {
   }
   if (process.platform === 'darwin') {
     try {
-      const result = spawnSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', timeout: 2000 });
+      if (probeTimeoutMs <= 0) return null;
+      const timeout = Math.max(1, Math.min(2000, Math.floor(probeTimeoutMs)));
+      const result = spawnSync('ps', ['-p', String(pid), '-o', 'lstart='], { encoding: 'utf8', timeout });
       if (result.status !== 0) return null;
       const value = new Date(result.stdout.trim()).getTime();
       return Number.isFinite(value) ? String(value) : null;
@@ -30,7 +32,9 @@ function identity(pid) {
   }
   if (process.platform === 'win32') {
     try {
-      const result = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', `$p=Get-Process -Id ${pid} -ErrorAction Stop; $p.StartTime.ToUniversalTime().Ticks`], { encoding: 'utf8', timeout: 3000, windowsHide: true });
+      if (probeTimeoutMs <= 0) return null;
+      const timeout = Math.max(1, Math.min(3000, Math.floor(probeTimeoutMs)));
+      const result = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', `$p=Get-Process -Id ${pid} -ErrorAction Stop; $p.StartTime.ToUniversalTime().Ticks`], { encoding: 'utf8', timeout, windowsHide: true });
       const ticks = result.stdout?.trim().match(/^\d+$/)?.[0];
       return ticks ? `ticks:${ticks}` : null;
     } catch { return null; }
@@ -38,22 +42,34 @@ function identity(pid) {
   return null;
 }
 
-function identities(pids) {
-  if (process.platform !== 'win32') return new Map();
+function identities(pids, probeTimeoutMs = 3000) {
   const validPids = [...new Set(pids.filter(pid => Number.isSafeInteger(pid) && pid > 0))];
-  if (validPids.length === 0) return new Map();
-  try {
-    const filter = validPids.join(',');
-    const command = `$items=Get-Process -Id ${filter} -ErrorAction SilentlyContinue | Select-Object Id,@{Name='StartTicks';Expression={[string]$_.StartTime.ToUniversalTime().Ticks}}; $items | ConvertTo-Json -Compress`;
-    const result = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', command], { encoding: 'utf8', timeout: 3000, windowsHide: true });
-    if (result.status !== 0) return new Map();
-    const parsed = JSON.parse(result.stdout?.trim() || 'null');
-    const items = Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
-    return new Map(items
-      .map(item => [Number(item?.Id), item?.StartTicks])
-      .filter(([pid, ticks]) => validPids.includes(pid) && typeof ticks === 'string' && /^\d+$/.test(ticks))
-      .map(([pid, ticks]) => [pid, `ticks:${ticks}`]));
-  } catch { return new Map(); }
+  if (validPids.length === 0 || probeTimeoutMs <= 0) return new Map();
+  if (process.platform === 'win32') {
+    try {
+      const filter = validPids.join(',');
+      const command = `$items=Get-Process -Id ${filter} -ErrorAction SilentlyContinue | Select-Object Id,@{Name='StartTicks';Expression={[string]$_.StartTime.ToUniversalTime().Ticks}}; $items | ConvertTo-Json -Compress`;
+      const timeout = Math.max(1, Math.min(3000, Math.floor(probeTimeoutMs)));
+      const result = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', command], { encoding: 'utf8', timeout, windowsHide: true });
+      if (result.status !== 0) return new Map();
+      const parsed = JSON.parse(result.stdout?.trim() || 'null');
+      const items = Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
+      return new Map(items
+        .map(item => [Number(item?.Id), item?.StartTicks])
+        .filter(([pid, ticks]) => validPids.includes(pid) && typeof ticks === 'string' && /^\d+$/.test(ticks))
+        .map(([pid, ticks]) => [pid, `ticks:${ticks}`]));
+    } catch { return new Map(); }
+  }
+
+  const deadline = Date.now() + probeTimeoutMs;
+  const result = new Map();
+  for (const pid of validPids) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    const start = identity(pid, remaining);
+    if (start) result.set(pid, start);
+  }
+  return result;
 }
 function alive(pid) {
   try { process.kill(pid, 0); return true; }
@@ -70,11 +86,11 @@ function fileName(root, pid, start) { return `${createHash('sha256').update(`${r
 // readOccupiedPluginRoots() accepts a previously returned identities map to
 // verify records without spawning a second host (pids absent from the map are
 // kept conservatively — the record survives unless proven stale otherwise).
-export function publishCacheOccupancy(pluginRoot, configDir, pid = process.ppid, precomputedIdentity) {
+export function publishCacheOccupancy(pluginRoot, configDir, pid = process.ppid, precomputedIdentity, probeTimeoutMs = 3000) {
   const root = pathIdentity(pluginRoot || '');
   const start = typeof precomputedIdentity === 'string' && precomputedIdentity.length > 0
     ? precomputedIdentity
-    : identity(pid);
+    : precomputedIdentity === null ? null : identity(pid, probeTimeoutMs);
   if (!root || !start) return false;
   const dir = registryDir(configDir);
   const target = join(dir, fileName(root, pid, start));
@@ -88,12 +104,16 @@ export function publishCacheOccupancy(pluginRoot, configDir, pid = process.ppid,
 }
 
 export function readOccupiedPluginRoots(configDir, options = {}) {
+  const probeBudget = Number.isFinite(options.probeTimeoutMs) ? Math.max(0, options.probeTimeoutMs) : undefined;
+  const probeDeadline = probeBudget === undefined ? Infinity : Date.now() + probeBudget;
+  const remainingProbeMs = () => probeBudget === undefined ? 3000 : Math.max(0, probeDeadline - Date.now());
   const dir = registryDir(configDir);
-  let names;
+  let names = [];
+  let unavailable = false;
   try { names = readdirSync(dir).filter(name => NAME.test(name)); }
-  catch (error) { return { roots: new Set(), unavailable: error?.code !== 'ENOENT', identities: new Map() }; }
+  catch (error) { if (error?.code !== 'ENOENT') unavailable = true; }
   const roots = new Set();
-  const records = []; let unavailable = false;
+  const records = [];
   for (const name of names) {
     const path = join(dir, name);
     let regularFile;
@@ -124,9 +144,12 @@ export function readOccupiedPluginRoots(configDir, options = {}) {
     ? new Map(options.identities)
     : (options.identities instanceof Map
       ? options.identities
-      : identities([...records.map(({ record }) => record.pid), ...(Array.isArray(options.includePids) ? options.includePids : [])]));
+      : identities(
+        [...(Array.isArray(options.includePids) ? options.includePids : []), ...records.map(({ record }) => record.pid)],
+        remainingProbeMs(),
+      ));
   for (const { path, record } of records) {
-    const current = process.platform === 'win32' ? currentIdentities.get(record.pid) : identity(record.pid);
+    const current = currentIdentities.get(record.pid);
     if (current && current !== record.processStartIdentity) {
       try { unlinkSync(path); } catch {}
       continue;

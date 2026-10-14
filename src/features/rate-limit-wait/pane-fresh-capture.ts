@@ -48,6 +48,11 @@ function writePaneTailState(stateDir: string, state: PaneTailState): void {
   }
 }
 
+/** Reset saved pane cursors so a new usage profile can recapture live prompts. */
+export function resetPaneTailPositions(stateDir: string): void {
+  writePaneTailState(stateDir, {});
+}
+
 /**
  * Get the current scrollback history size for a tmux pane.
  * Returns null when the pane is dead, does not exist, or tmux is unavailable.
