@@ -5,14 +5,14 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "7327df09dd53dc86fdddea265363658219052b70",
+    "head": "1602384dbf46dbb92358294bf7330b30f9f26fcf",
     "sourceSha256": "33c5690731054afca7b57ff65855f01e60e04af23abc05e5c9652a1ad03d738e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "7327df09dd53dc86fdddea265363658219052b70",
+  "head": "1602384dbf46dbb92358294bf7330b30f9f26fcf",
   "sourceSha256": "33c5690731054afca7b57ff65855f01e60e04af23abc05e5c9652a1ad03d738e",
   "counts": {
     "public": {
@@ -32,9 +32,9 @@
       "total": 1615
     },
     "generated": {
-      "distFiles": 6127,
+      "distFiles": 6119,
       "bridgeFiles": 9,
-      "total": 6136
+      "total": 6128
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -7046,14 +7046,6 @@
       "dist/utils/user-skill-compat.d.ts.map",
       "dist/utils/user-skill-compat.js",
       "dist/utils/user-skill-compat.js.map",
-      "dist/verification/tier-selector.d.ts",
-      "dist/verification/tier-selector.d.ts.map",
-      "dist/verification/tier-selector.js",
-      "dist/verification/tier-selector.js.map",
-      "dist/verification/tier-selector.test.d.ts",
-      "dist/verification/tier-selector.test.d.ts.map",
-      "dist/verification/tier-selector.test.js",
-      "dist/verification/tier-selector.test.js.map",
       "dist/workflow/__tests__/alias-resolver.test.d.ts",
       "dist/workflow/__tests__/alias-resolver.test.d.ts.map",
       "dist/workflow/__tests__/alias-resolver.test.js",
@@ -39195,46 +39187,6 @@
         "id": "dist/utils/user-skill-compat.js.map",
         "kind": "generated-dist",
         "path": "dist/utils/user-skill-compat.js.map"
-      },
-      {
-        "id": "dist/verification/tier-selector.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/verification/tier-selector.d.ts"
-      },
-      {
-        "id": "dist/verification/tier-selector.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/verification/tier-selector.d.ts.map"
-      },
-      {
-        "id": "dist/verification/tier-selector.js",
-        "kind": "generated-dist",
-        "path": "dist/verification/tier-selector.js"
-      },
-      {
-        "id": "dist/verification/tier-selector.js.map",
-        "kind": "generated-dist",
-        "path": "dist/verification/tier-selector.js.map"
-      },
-      {
-        "id": "dist/verification/tier-selector.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/verification/tier-selector.test.d.ts"
-      },
-      {
-        "id": "dist/verification/tier-selector.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/verification/tier-selector.test.d.ts.map"
-      },
-      {
-        "id": "dist/verification/tier-selector.test.js",
-        "kind": "generated-dist",
-        "path": "dist/verification/tier-selector.test.js"
-      },
-      {
-        "id": "dist/verification/tier-selector.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/verification/tier-selector.test.js.map"
       },
       {
         "id": "dist/workflow/__tests__/alias-resolver.test.d.ts",
@@ -96620,12 +96572,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8444,
+      "nodeCount": 8436,
       "edgeCount": 9343,
       "importEdgeCount": 7764,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "1eadabbd65652b74e2703cd5a20b9371f00de571b6ec68c23ce2f3ddc9eb2e57",
-  "manifestSha256": "9e4ac2f0c2b827b9b4787c9c4e2a653fe377117bee87a50073464c443a97d16f"
+  "manifestSha256": "f5221ed56788885a011ffecd673b614766bd070caa0a057d16e49f9c1c6495db"
 }
