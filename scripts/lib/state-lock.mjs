@@ -814,7 +814,6 @@ export function releaseStateFileLockSync(lock, operationDeadline = undefined) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.max(1, Math.min(10, Math.floor(deadline - Date.now()))));
           continue;
         }
-        abandonedOwnNonces.add(lock.owner.nonce); // Fork fix: a failed release must not self-deadlock.
         if (busy) {
           // Keep local ownership so a later same-process acquisition can retry the
           // release instead of leaving a live row that blocks the state path.
@@ -825,6 +824,7 @@ export function releaseStateFileLockSync(lock, operationDeadline = undefined) {
           console.error(`[omc-lock] state_mutation_lock_release_deferred: ${lock.path}`);
           return false;
         }
+        abandonedOwnNonces.add(lock.owner.nonce); // Fork fix: a failed release must not self-deadlock.
         localLocks.delete(lock.key);
         recordFailure('unverifiable', `State mutation lock release failed for ${lock.path}: ${error?.code || 'unknown error'}`);
         console.error(`[omc-lock] state_mutation_lock_release_failed: ${lock.path} ${error?.code || ''}`.trim());

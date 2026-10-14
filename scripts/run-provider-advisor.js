@@ -103,7 +103,7 @@ const ADVISOR_BYPASS_FLAGS = {
   antigravity: '--dangerously-skip-permissions',
   grok: '--always-approve',
   cursor: '--force --trust --sandbox disabled',
-  muse: '--approval-mode never',
+  muse: '--approval-mode never --user-input-auto-resolve',
 };
 
 function shouldPipePromptViaStdin(provider, prompt) {
