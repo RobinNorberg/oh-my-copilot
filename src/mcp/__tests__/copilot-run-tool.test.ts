@@ -382,7 +382,8 @@ describe('copilot_run job lifecycle', () => {
   });
 
   it('cleanup unlinks a junctioned node_modules and keeps its target', async () => {
-    writeFileSync(join(repo, '.gitignore'), '.omg/\nnode_modules/\n');
+    // No trailing slash: git sees a POSIX symlink as a file, which `node_modules/` does not match.
+    writeFileSync(join(repo, '.gitignore'), '.omg/\nnode_modules\n');
     gitIn(repo, 'commit', '-q', '-am', 'ignore node_modules');
     const target = join(root, 'shared-node-modules');
     mkdirSync(target);

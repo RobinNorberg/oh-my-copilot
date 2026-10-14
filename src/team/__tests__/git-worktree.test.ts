@@ -149,7 +149,8 @@ describe('git-worktree', () => {
 
   describe('removeWorkerWorktree', () => {
     it('unlinks ignored junctions/symlinks before removal and leaves their targets intact', () => {
-      writeFileSync(join(repoDir, '.gitignore'), 'node_modules/\n');
+      // No trailing slash: git sees a POSIX symlink as a file, which `node_modules/` does not match.
+      writeFileSync(join(repoDir, '.gitignore'), 'node_modules\n');
       execFileSync('git', ['add', '.gitignore'], { cwd: repoDir, stdio: 'pipe' });
       execFileSync('git', ['commit', '-m', 'ignore node_modules'], { cwd: repoDir, stdio: 'pipe' });
       const target = mkdtempSync(join(tmpdir(), 'git-worktree-link-target-'));
@@ -349,6 +350,9 @@ describe('git-worktree', () => {
         execFileSync('git', ['add', '.'], { cwd: subRepo, stdio: 'pipe' });
         execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-m', 'lib'], { cwd: subRepo, stdio: 'pipe' });
         execFileSync('git', ['-c', 'protocol.file.allow=always', 'submodule', 'add', subRepo, 'sub'], { cwd: repoDir, stdio: 'pipe' });
+        // The node_modules link must be ignored, or a POSIX symlink alone makes the worktree dirty.
+        writeFileSync(join(repoDir, '.gitignore'), 'node_modules\n');
+        execFileSync('git', ['add', '.gitignore'], { cwd: repoDir, stdio: 'pipe' });
         execFileSync('git', ['commit', '-m', 'add submodule'], { cwd: repoDir, stdio: 'pipe' });
 
         const info = createWorkerWorktree(teamName, 'submodule-worker', repoDir);
