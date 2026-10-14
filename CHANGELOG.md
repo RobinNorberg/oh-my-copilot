@@ -2,6 +2,29 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- **`copilot_run_*` MCP tools: delegate a task to Copilot.** The standalone
+  MCP server (`t`, `dist/mcp/standalone-server.js`) gains
+  `copilot_run_start`, `copilot_run_status`, `copilot_run_wait`,
+  `copilot_run_cancel` and `copilot_run_cleanup`: Claude Code (or any MCP
+  client) starts a headless `@github/copilot-sdk` session on a prompt as a
+  background job and gets back the final assistant text, the session id, the
+  premium requests and AI credits spent, and the worktree path, branch and
+  `git diff --stat` to review. Starting needs `OMG_COPILOT_RUN_ALLOW=1` in
+  the server env and passes the budget governor (the spend is recorded as
+  `copilot-run:<jobId>`). By default Copilot works in a new git worktree and
+  branch, never in the caller's tree; writes are confined to it and refused
+  on the `omg ship` merge-rule paths; a timeout (15 min default), a credit
+  cap and cancel abort the session; at most 2 jobs run at once; cleanup
+  never removes a worktree with uncommitted or unmerged work.
+  `OMC_DISABLE_TOOLS=copilot-run` hides the tools; sdk team workers and the
+  jobs' own sessions do not get them, and the Copilot sessions omg starts
+  never inherit the opt-in. See
+  [REFERENCE.md](docs/REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot).
+
 # oh-my-copilot v5.10.0
 
 ## [5.10.0] - 2026-10-11
