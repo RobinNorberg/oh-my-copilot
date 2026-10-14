@@ -14,7 +14,7 @@
 // Usage:
 //   node scripts/build-generated-artifact-authorization.mjs \
 //     --pull 4066 --base origin/main --head HEAD --target main \
-//     --owner Yeachan-Heo --expires 2026-10-01T00:00:00Z
+//     --owner RobinNorberg --expires 2026-10-01T00:00:00Z
 //
 // Prints the entry to stdout; `--out <path>` writes it instead.
 
@@ -37,7 +37,7 @@ const pullNumber = Number.parseInt(arg('pull') || '', 10);
 const baseRef = arg('base', 'origin/main');
 const headRef = arg('head', 'HEAD');
 const targetRef = arg('target', 'main');
-const owner = arg('owner', 'Yeachan-Heo');
+const owner = arg('owner', 'RobinNorberg'); // fork: upstream defaults to Yeachan-Heo
 const expiresAt = arg('expires');
 const outPath = arg('out');
 

@@ -4,13 +4,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const REPOSITORY = 'Yeachan-Heo/oh-my-claudecode';
-const OWNER = 'Yeachan-Heo';
+// fork: the protected identity is RobinNorberg/oh-my-copilot (upstream: Yeachan-Heo/oh-my-claudecode).
+const REPOSITORY = 'RobinNorberg/oh-my-copilot';
+const OWNER = 'RobinNorberg';
 const MERGE_BASE_SHA = '76c90920b74494df6e34d6165be963bca8a9adf6';
 const LIVE_BASE_SHA = '21a6e488ce12d79b9a22d37e1093ac8e79f21029';
 const HEAD_SHA = '10078ece166ad36332390ecbaab2d5e247852bbc';
 const MAIN_SHA = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const PULL_NUMBER = 3537;
+// fork: the fork manifest carries no upstream authorization entries, so the
+// positive case uses a synthetic 150-file closure (more than one 100-file page).
+// Its digest was derived independently with sha256(JSON.stringify(records)).
+const FIXTURE_DELTA = {
+  count: 150,
+  sha256: '65e07890e5f97f2d0dbba267820aa9798b884e517a3475dc24304f7696f54073',
+};
 const FIXTURE_NOW = new Date('2026-08-01T00:00:00.000Z');
 const ROOT = process.cwd();
 const WORKFLOW_PATH = join(ROOT, '.github', 'workflows', 'generated-artifact-authorization.yml');
@@ -125,12 +133,23 @@ type VerifierModule = {
 
 
 const verifier = (await import(pathToFileURL(VERIFIER_PATH).href)) as unknown as VerifierModule;
-const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as Manifest;
-const exactAuthorization = (() => {
-  const authorization = manifest.authorizations.find(entry => entry.pullNumber === PULL_NUMBER);
-  if (!authorization) throw new Error('Missing exact #3537 base-owned authorization fixture');
-  return authorization;
-})();
+const repositoryManifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as Manifest;
+const exactAuthorization: Manifest['authorizations'][number] = {
+  pullNumber: PULL_NUMBER,
+  targetRef: 'main',
+  mergeBaseSha: MERGE_BASE_SHA,
+  headSha: HEAD_SHA,
+  owner: OWNER,
+  expiresAt: '2026-08-19T00:00:00.000Z',
+  generatedDelta: FIXTURE_DELTA,
+  generatedFiles: Array.from({ length: FIXTURE_DELTA.count }, (_, index) => ({
+    status: 'added',
+    filename: `dist/fixture-${String(index).padStart(3, '0')}.js`,
+    sha: index.toString(16).padStart(40, '0'),
+    previousFilename: null,
+  })),
+};
+const manifest: Manifest = { ...repositoryManifest, authorizations: [exactAuthorization] };
 const EXPIRES_AT = exactAuthorization.expiresAt;
 const EXPIRY_INSTANT = Date.parse(EXPIRES_AT);
 
@@ -255,7 +274,12 @@ describe('generated-artifact base trust root workflow', () => {
 
     expect(workflow).toContain('workflow bytes from the default branch, main');
     expect(workflow).toContain('branches: [main, dev]');
-    expect(manifest.authorizations).not.toHaveLength(0);
+    expect(verifier.validateAuthorizationManifest(repositoryManifest)).toEqual({
+      schemaVersion: 2,
+      repository: REPOSITORY,
+      owner: OWNER,
+      authorizations: [],
+    });
     expect(verifier.validateAuthorizationManifest(manifest)).toMatchObject({
       repository: REPOSITORY,
       owner: OWNER,
@@ -332,25 +356,13 @@ describe('generated-artifact base trust root workflow', () => {
 });
 
 describe('generated-artifact base-owned authorization decision', () => {
-  it('contains the exact independently derived #3537 closure and allows only its exact positive case', () => {
-    expect(manifest).toMatchObject({
+  it('matches the independently derived fixture closure and allows only its exact positive case', () => {
+    expect(repositoryManifest).toMatchObject({
       schemaVersion: 2,
       repository: REPOSITORY,
       owner: OWNER,
     });
-    expect(exactAuthorization).toMatchObject({
-      pullNumber: PULL_NUMBER,
-      targetRef: 'main',
-      mergeBaseSha: MERGE_BASE_SHA,
-      headSha: HEAD_SHA,
-      owner: OWNER,
-      expiresAt: '2026-08-19T00:00:00.000Z',
-      generatedDelta: {
-        count: 199,
-        sha256: '3c1987d239441a787e5428d38b74e9bff51d694ad554d9fe34eae72cd78b059f',
-      },
-    });
-    expect(verifier.calculateGeneratedDelta(exactAuthorization.generatedFiles)).toEqual(exactAuthorization.generatedDelta);
+    expect(verifier.calculateGeneratedDelta(exactAuthorization.generatedFiles)).toEqual(FIXTURE_DELTA);
     expect(verifier.validateAuthorizationManifest(manifest)).toBeTruthy();
     expect(LIVE_BASE_SHA).not.toBe(MERGE_BASE_SHA);
 
@@ -384,6 +396,42 @@ describe('generated-artifact base-owned authorization decision', () => {
         generatedDelta: { count: 0, sha256: null },
       },
     });
+  });
+
+  it('passes fork pull requests without generated changes and fails closed on generated changes under the repository manifest', () => {
+    const sourceOnly = authorizedInput();
+    sourceOnly.manifest = clone(repositoryManifest);
+    sourceOnly.event.pull_request.base.ref = 'dev';
+    sourceOnly.livePull.base.ref = 'dev';
+    sourceOnly.environment.trustedEventBaseRef = 'dev';
+    sourceOnly.livePull.changed_files = 1;
+    sourceOnly.files = [{ status: 'modified', filename: 'src/index.ts', sha: 'a'.repeat(40) }];
+    expect(verifier.evaluateGeneratedArtifactAuthorization(sourceOnly)).toMatchObject({
+      allowed: true,
+      decision: { requiresAuthorization: false },
+    });
+
+    const generated = authorizedInput();
+    generated.manifest = clone(repositoryManifest);
+    expect(verifier.evaluateGeneratedArtifactAuthorization(generated)).toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('no base-owned authorization entry'),
+    });
+
+    const upstreamEvent = clone(sourceOnly);
+    upstreamEvent.event.repository = {
+      full_name: 'Yeachan-Heo/oh-my-claudecode',
+      owner: { login: 'Yeachan-Heo' },
+    };
+    expect(verifier.evaluateGeneratedArtifactAuthorization(upstreamEvent)).toMatchObject({
+      allowed: false,
+      reason: expect.stringContaining('event repository does not match the protected repository'),
+    });
+
+    const upstreamManifest = clone(repositoryManifest);
+    upstreamManifest.repository = 'Yeachan-Heo/oh-my-claudecode';
+    upstreamManifest.owner = 'Yeachan-Heo';
+    expect(() => verifier.validateAuthorizationManifest(upstreamManifest)).toThrow('not the protected repository owner');
   });
 
   it('requires separate main runtime/workflow and explicit event-base provenance before every decision', () => {

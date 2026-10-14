@@ -126,6 +126,7 @@ When replacing files wholesale, check for these fork-specific additions:
 - `isRunningAsPlugin` dual check (`PLUGIN_ROOT` and `CLAUDE_PLUGIN_ROOT`)
 - HUD wrapper template at `scripts/lib/hud-wrapper-template.txt`
 - `scripts/run.cjs` fail-closed timeout contract: `hookTimeoutStatus()` returns `124` under `OMC_HOOK_FAIL_CLOSED=1`, used at the generic-child and Worker timeout resolves; keep it when taking upstream `run.cjs` and re-run `npx vitest run src/__tests__/run-cjs-fail-closed-timeout.test.ts`
+- Generated-artifact authorization identity: the `// fork:` `OWNER` constant in `scripts/verify-generated-artifact-authorization.mjs`, the `--owner` default in `scripts/build-generated-artifact-authorization.mjs`, `.github/generated-artifact-authorizations.json` (`RobinNorberg/oh-my-copilot`, no upstream entries; the drift bot already excludes it) and the `// fork:` fixture in `src/__tests__/generated-artifact-authorization.test.ts`. Always keep ours on port conflicts, including any future workflow change to `.github/workflows/generated-artifact-authorization.yml`; upstream values make every fork PR fail "event repository does not match the protected repository". Re-run `npx vitest run src/__tests__/generated-artifact-authorization.test.ts`
 
 ## Key Gotchas
 
