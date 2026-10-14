@@ -17,11 +17,15 @@
  * - isolation `worktree` (default) runs Copilot in a new git worktree and
  *   branch (src/team/git-worktree.ts, team name {@link WORKTREE_TEAM}); the
  *   caller's tree is used only with isolation `none`;
- * - writes to the ship merge-rule files (PROTECTED_PATHS) are refused;
- * - a credit cap, a job timeout and cancel all abort the session;
+ * - writes to the ship merge-rule files (PROTECTED_PATHS plus a configured
+ *   ship.knownFlakyFile) are refused;
+ * - a credit cap, a job timeout and cancel all abort the session; so does the
+ *   server's shutdown (stopAll);
  * - at most {@link MAX_RUNNING_JOBS} jobs run at once;
  * - `cleanup` removes a job's worktree only when it is clean and holds no
- *   commit the repository HEAD lacks (removeWorkerWorktree refuses otherwise).
+ *   commit the repository HEAD lacks (removeWorkerWorktree refuses otherwise);
+ *   ignored files in it (build output, .env) go with it, links (a junctioned
+ *   node_modules) are unlinked first so their targets survive.
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -32,6 +36,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path';
 import { formatAmount, governTeamFanout, loadBudgetSettings } from '../budget/governor.js';
 import { ledgerPath, ledgerTotals, readLedger, recordUsage, type UsageRecord } from '../budget/ledger.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
+import { configuredProtectedPaths } from '../ship/config.js';
 import { protectedChanges } from '../ship/merge.js';
 import { resolveCopilotBinary } from '../smoke/copilot-binary.js';
 import {
@@ -47,7 +52,7 @@ import { RUNTIME_MIN_MAX_CREDITS, usageCredits } from '../smoke/copilot-sdk-scen
 import type { CopilotEvent } from '../smoke/copilot-session-eval.js';
 import { buildSessionEnv, loginIdentity, resolveDefaultPluginRoot } from '../smoke/copilot-session-env.js';
 import { killProcessTree } from '../smoke/process-utils.js';
-import { ensureWorkerWorktree, removeWorkerWorktree } from '../team/git-worktree.js';
+import { ensureWorkerWorktree, getBranchName, getWorktreePath, removeWorkerWorktree } from '../team/git-worktree.js';
 import { buildSdkExcludedTools, decideSdkPermission, type SdkPermissionRequest } from '../team/sdk-policy.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { COPILOT_RUN_ALLOW_ENV } from './names.js';
@@ -65,6 +70,8 @@ const RPC_TIMEOUT_MS = 30_000;
 const ABORT_GRACE_MS = 10_000;
 const SHUTDOWN_GRACE_MS = 2_000;
 const STOP_TIMEOUT_MS = 15_000;
+/** stopAll's wait for the teardowns before it kills the runtimes (the server force-exits at 5 s). */
+const SERVER_EXIT_GRACE_MS = 3_000;
 const GIT_TIMEOUT_MS = 30_000;
 const DENIED_LOG_MAX = 50;
 const JOB_ID = /^cr-[0-9a-f]{12}$/;
@@ -102,7 +109,7 @@ export interface WorktreeSummary {
 }
 
 export interface ChangeSummary {
-  /** `git diff --stat <base>` in the working directory (commits and uncommitted tracked changes). */
+  /** `git diff --stat <base>` at the repository toplevel (commits and uncommitted tracked changes); all paths are root-relative. */
   diffStat: string;
   changedFiles: string[];
   untrackedFiles: string[];
@@ -127,6 +134,10 @@ interface Job {
   eventsPath: string;
   baseCommit: string | null;
   worktree: WorktreeSummary | null;
+  /** Configured merge-rule paths beyond PROTECTED_PATHS (ship.knownFlakyFile). */
+  extraProtected: string[];
+  /** The runtime's pid once the client started (stopAll's kill fallback). */
+  pid: number | undefined;
   startedAt: string;
   endedAt: string | null;
   sessionId: string | null;
@@ -155,6 +166,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ]).finally(() => clearTimeout(timer));
 }
 
+/** Wait for `promise` (which never rejects) or `ms`, whichever comes first; the timer is cleared either way. */
+function settleWithin(promise: Promise<unknown>, ms: number): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    promise.then(() => {}),
+    new Promise<void>((r) => { timer = setTimeout(r, ms); }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 /** One git command as an argv array (never a shell); trimmed stdout, or null on failure. */
 function git(cwd: string, args: string[]): string | null {
   try {
@@ -166,19 +186,25 @@ function git(cwd: string, args: string[]): string | null {
 
 const lines = (text: string | null) => (text ?? '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
-/** What changed in `cwd` since `base`; null when git cannot tell. */
-export function summarizeChanges(cwd: string, base: string | null): ChangeSummary | null {
+/**
+ * What changed in the repository around `cwd` since `base`; null when git
+ * cannot tell. Run at the toplevel (cwd may be a subdirectory), so every path
+ * is root-relative and untracked files outside the subdirectory count too.
+ */
+export function summarizeChanges(cwd: string, base: string | null, extraProtected: readonly string[] = []): ChangeSummary | null {
   if (!base) return null;
-  const stat = git(cwd, ['diff', '--stat', base, '--']);
-  const names = git(cwd, ['diff', '--name-only', base, '--']);
+  const top = git(cwd, ['rev-parse', '--show-toplevel']);
+  if (!top) return null;
+  const stat = git(top, ['diff', '--stat', base, '--']);
+  const names = git(top, ['diff', '--name-only', base, '--']);
   if (stat === null || names === null) return null;
   const changedFiles = lines(names);
-  const untrackedFiles = lines(git(cwd, ['ls-files', '--others', '--exclude-standard']));
+  const untrackedFiles = lines(git(top, ['ls-files', '--others', '--exclude-standard']));
   return {
     diffStat: stat,
     changedFiles,
     untrackedFiles,
-    protectedChanges: protectedChanges([...changedFiles, ...untrackedFiles]),
+    protectedChanges: protectedChanges([...changedFiles, ...untrackedFiles], extraProtected),
   };
 }
 
@@ -253,7 +279,15 @@ export class CopilotRunManager {
       try {
         info = ensureWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd, { mode: 'named', requireCleanLeader: false });
       } catch (err) {
-        throw new CopilotRunError(`copilot_run_start: could not create the job worktree: ${errText(err)}`);
+        // A failure after `git worktree add` leaves a worktree no job id can clean: remove it now (same safety checks), or name it.
+        const path = getWorktreePath(ledgerCwd, WORKTREE_TEAM, id);
+        const branch = getBranchName(WORKTREE_TEAM, id);
+        let left = '';
+        if (existsSync(path)) {
+          try { removeWorkerWorktree(WORKTREE_TEAM, id, ledgerCwd); } catch { /* reported below */ }
+          if (existsSync(path)) left = ` The partly created worktree ${path} (branch ${branch}) is left; check it and remove it by hand (unlink any junction in it first).`;
+        }
+        throw new CopilotRunError(`copilot_run_start: could not create the job worktree: ${errText(err)}.${left}`);
       }
       if (!info) throw new CopilotRunError('copilot_run_start: worktree creation unexpectedly disabled.');
       // The caller's subdirectory, mirrored in the worktree.
@@ -267,6 +301,9 @@ export class CopilotRunManager {
     } else if (repoRoot) {
       notes.push('isolation "none": Copilot works in your working tree; the change summary includes edits that were already there.');
     }
+
+    let extraProtected: string[] = [];
+    try { extraProtected = configuredProtectedPaths(ledgerCwd); } catch { /* the defaults still apply */ }
 
     const jobDir = join(getOmcRoot(ledgerCwd), 'state', 'copilot-run', id);
     let requestStop: Job['requestStop'] = () => {};
@@ -287,6 +324,8 @@ export class CopilotRunManager {
       eventsPath: join(jobDir, 'events.jsonl'),
       baseCommit,
       worktree,
+      extraProtected,
+      pid: undefined,
       startedAt: new Date().toISOString(),
       endedAt: null,
       sessionId: null,
@@ -310,7 +349,7 @@ export class CopilotRunManager {
       .catch((err): CopilotRunStatus => { job.error ??= errText(err); return 'failed'; })
       .then((outcome) => {
         clearTimeout(timer);
-        job.changes = summarizeChanges(job.workCwd, job.baseCommit);
+        job.changes = summarizeChanges(job.workCwd, job.baseCommit, job.extraProtected);
         job.endedAt = new Date().toISOString();
         job.status = outcome;
       });
@@ -324,7 +363,7 @@ export class CopilotRunManager {
   /** Wait until the job ends or `timeoutMs` passes; the snapshot says which. */
   async wait(jobId: string, timeoutMs: number): Promise<Record<string, unknown>> {
     const job = this.find(jobId);
-    await Promise.race([job.done, sleep(Math.max(0, timeoutMs))]);
+    await settleWithin(job.done, Math.max(0, timeoutMs));
     return this.snapshot(job);
   }
 
@@ -333,9 +372,22 @@ export class CopilotRunManager {
     const job = this.find(jobId);
     if (!isTerminal(job.status)) {
       job.requestStop('cancelled');
-      await Promise.race([job.done, sleep(ABORT_GRACE_MS + STOP_TIMEOUT_MS + RPC_TIMEOUT_MS)]);
+      await settleWithin(job.done, ABORT_GRACE_MS + STOP_TIMEOUT_MS + RPC_TIMEOUT_MS);
     }
     return this.snapshot(job);
+  }
+
+  /**
+   * Server shutdown: cancel every live job, wait up to `graceMs` for the
+   * teardowns, then kill the runtimes still alive. Worktrees stay for review.
+   */
+  async stopAll(graceMs = SERVER_EXIT_GRACE_MS): Promise<void> {
+    const live = [...this.jobs.values()].filter((j) => !isTerminal(j.status));
+    for (const job of live) job.requestStop('cancelled');
+    await settleWithin(Promise.all(live.map((j) => j.done)), graceMs);
+    for (const job of live) {
+      try { if (job.pid && this.deps.isAlive(job.pid)) this.deps.killTree(job.pid); } catch { /* best effort */ }
+    }
   }
 
   /** Remove a finished job's worktree and branch when nothing in them would be lost. */
@@ -382,7 +434,12 @@ export class CopilotRunManager {
       return undefined;
     }
     if (decision.refusal) {
-      throw new CopilotRunError(`copilot_run_start refused by the budget governor: ${decision.refusal.replace('team launch refused', 'job refused')}`);
+      // The governor's own advice names `omg team --budget-override`, which this tool lacks.
+      const over = decision.refusal.split('; team launch refused')[0];
+      throw new CopilotRunError(
+        `copilot_run_start refused by the budget governor: ${over}; job refused. `
+        + 'Raise the limit in .copilot/omg.jsonc, run `omg budget reset`, or (budget.unit "credits") pass a lower maxCredits; copilot_run_start has no budget override.',
+      );
     }
     return decision.notice;
   }
@@ -446,7 +503,7 @@ export class CopilotRunManager {
       if (decision.approve && req.kind === 'write') {
         const raw = [req.resolvedPath, req.path, req.fileName].find((v): v is string => typeof v === 'string' && v.trim() !== '');
         const rel = raw ? relativeInside(isAbsolute(raw) ? raw : resolve(job.workCwd, raw), protectedRoot) : null;
-        if (rel && protectedChanges([rel]).length > 0) decision = { approve: false, reason: `protected merge-rule path ${rel}` };
+        if (rel && protectedChanges([rel], job.extraProtected).length > 0) decision = { approve: false, reason: `protected merge-rule path ${rel}` };
       }
       if (decision.approve) return { kind: 'approve-once' };
       job.denied.push({ kind: String(req.kind), reason: decision.reason });
@@ -505,8 +562,10 @@ export class CopilotRunManager {
     let pid: number | undefined;
     let outcome: CopilotRunStatus = 'failed';
     try {
-      await withTimeout(client.start(), START_TIMEOUT_MS, 'client.start()');
+      // A stop (cancel, server exit) during a slow start goes straight to the teardown.
+      await withTimeout(Promise.race([client.start(), job.stopped]), START_TIMEOUT_MS, 'client.start()');
       pid = runtimePid(client);
+      job.pid = pid;
       if (!job.stopReason) {
         session = await withTimeout(client.createSession({
           onPermissionRequest,
@@ -528,7 +587,7 @@ export class CopilotRunManager {
           const s = session;
           idle = new Promise<void>((r) => { onIdle = r; });
           try { await withTimeout(s.abort(), RPC_TIMEOUT_MS, 'abort()'); } catch { /* best effort */ }
-          await Promise.race([idle, sleep(ABORT_GRACE_MS)]);
+          await settleWithin(idle, ABORT_GRACE_MS);
         }
       }
       outcome = job.stopReason === 'timeout'
@@ -547,10 +606,11 @@ export class CopilotRunManager {
       if (session) {
         try { await withTimeout(session.disconnect(), RPC_TIMEOUT_MS, 'disconnect()'); } catch { /* runtime gone */ }
         // session.shutdown (the billing totals) is emitted while the session closes.
-        await Promise.race([shutdown, sleep(SHUTDOWN_GRACE_MS)]);
+        await settleWithin(shutdown, SHUTDOWN_GRACE_MS);
         try { await withTimeout(client.deleteSession(session.sessionId), RPC_TIMEOUT_MS, 'deleteSession()'); } catch { /* best effort */ }
       }
       pid ??= runtimePid(client);
+      job.pid = pid;
       let stopped = false;
       try { await withTimeout(client.stop(), STOP_TIMEOUT_MS, 'client.stop()'); stopped = true; } catch { /* escalate */ }
       if (!stopped) {
@@ -578,6 +638,8 @@ export class CopilotRunManager {
     return {
       jobId: job.id,
       status: job.status,
+      // Set as soon as a stop is asked for: a cancel that returns while the teardown runs still shows it.
+      stopRequested: job.stopReason,
       isolation: job.isolation,
       cwd: job.cwd,
       workingDirectory: job.workCwd,

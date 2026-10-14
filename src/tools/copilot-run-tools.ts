@@ -9,7 +9,7 @@
  *   worktree path, branch and `git diff --stat` to review and merge;
  * - `copilot_run_cancel` aborts the session;
  * - `copilot_run_cleanup` removes a finished job's worktree and branch only
- *   when nothing in them would be lost.
+ *   when no uncommitted or unmerged work is in them (ignored files go too).
  *
  * The tools are always listed; only start is gated (like host_smoke's live
  * tiers). The job library is loaded lazily so listing tools never pays its
@@ -33,6 +33,11 @@ async function getManager(): Promise<CopilotRunManager> {
     manager = new Manager(defaultCopilotRunDeps());
   }
   return manager;
+}
+
+/** Server shutdown: stop the live jobs (bounded); a no-op when no tool was ever called. */
+export async function stopCopilotRunJobs(): Promise<void> {
+  await manager?.stopAll();
 }
 
 /** Test seam: replace the job manager (null restores the lazy default). */
@@ -143,7 +148,8 @@ export const copilotRunCleanupTool: ToolDefinition<{ jobId: typeof jobIdSchema }
   name: 'copilot_run_cleanup',
   description:
     'Remove a finished copilot_run job\'s worktree and branch. Refused while the worktree has uncommitted changes or commits your HEAD does not contain: '
-    + 'merge or discard them first. Never forces a removal.',
+    + 'merge or discard them first. Ignored files in the worktree (build output such as dist/, .env, node_modules) are deleted with it; '
+    + 'symlinks and junctions are unlinked first, so their targets are kept.',
   category: TOOL_CATEGORIES.COPILOT_RUN,
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   schema: { jobId: jobIdSchema },

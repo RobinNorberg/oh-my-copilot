@@ -1,10 +1,22 @@
 import { execFileSync } from 'child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CopilotRunManager, type CopilotRunDeps } from '../../copilot-run/job.js';
+const governor = vi.hoisted(() => ({ fail: false }));
+vi.mock('../../budget/governor.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../budget/governor.js')>();
+  return {
+    ...actual,
+    governTeamFanout: (...args: Parameters<typeof actual.governTeamFanout>) => {
+      if (governor.fail) throw new Error('governor exploded');
+      return actual.governTeamFanout(...args);
+    },
+  };
+});
+
+import { CopilotRunManager, summarizeChanges, type CopilotRunDeps } from '../../copilot-run/job.js';
 import { COPILOT_RUN_TOOL_NAMES } from '../../copilot-run/names.js';
 import type { LoadedSdk, SdkSessionConfig } from '../../smoke/copilot-sdk-driver.js';
 import {
@@ -15,7 +27,7 @@ import {
 } from '../../tools/copilot-run-tools.js';
 import { allTools, buildListToolsResponse } from '../tool-registry.js';
 
-type Behavior = 'complete' | 'hang' | 'burn';
+type Behavior = 'complete' | 'hang' | 'burn' | 'slow-start' | 'stuck';
 
 interface Calls {
   connections: Array<{ path?: string; args?: string[]; env?: NodeJS.ProcessEnv }>;
@@ -29,7 +41,10 @@ function newCalls(): Calls {
   return { connections: [], sessions: [], prompts: [], aborts: 0, stops: 0 };
 }
 
-/** A fake @github/copilot-sdk: `complete` edits README.md and idles, `hang` never idles, `burn` passes the credit cap. */
+/**
+ * A fake @github/copilot-sdk: `complete` edits README.md and idles, `hang` never idles, `burn` passes the credit cap,
+ * `slow-start` never finishes start(), `stuck` never finishes start() or stop() and has a runtime pid (4242).
+ */
 function fakeSdk(behavior: Behavior, calls: Calls): LoadedSdk {
   class Session {
     sessionId = `sess-${calls.sessions.length}`;
@@ -57,10 +72,12 @@ function fakeSdk(behavior: Behavior, calls: Calls): LoadedSdk {
       this.emit('session.shutdown', { totalPremiumRequests: 1, totalNanoAiu: 2.5e9, currentModel: 'gpt-test' });
     }
   }
+  const never = () => new Promise<never>(() => {});
   class Client {
+    cliProcess = behavior === 'stuck' ? { pid: 4242 } : null;
     constructor(_opts: unknown) {}
-    async start() {}
-    async stop() { calls.stops += 1; return []; }
+    async start() { if (behavior === 'slow-start' || behavior === 'stuck') await never(); }
+    async stop() { calls.stops += 1; if (behavior === 'stuck') await never(); return []; }
     async getStatus() { return {}; }
     async listModels() { return []; }
     async createSession(cfg: SdkSessionConfig) { calls.sessions.push(cfg); return new Session(cfg); }
@@ -112,6 +129,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  governor.fail = false;
+  vi.useRealTimers();
   setCopilotRunManagerForTests(null);
   rmSync(root, { recursive: true, force: true });
 });
@@ -184,8 +203,30 @@ describe('copilot_run_start gate and validation', () => {
     }));
     const m = new CopilotRunManager(deps('complete'));
     expect(() => m.start({ prompt: 'x', cwd: repo })).toThrow(/refused by the budget governor.*budget\.hardLimit 1/);
+    expect(() => m.start({ prompt: 'x', cwd: repo })).toThrow(/has no budget override/);
+    expect(() => m.start({ prompt: 'x', cwd: repo })).not.toThrow(/--budget-override/);
     expect(calls.connections).toHaveLength(0);
     expect(existsSync(join(repo, '.omg', 'team'))).toBe(false);
+  });
+
+  it('starts anyway when the budget governor itself fails (fail-open)', async () => {
+    governor.fail = true;
+    const m = new CopilotRunManager(deps('complete'));
+    const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none' });
+    const done = await m.wait(started.jobId as string, 10_000);
+    expect(done.status).toBe('completed');
+    expect(calls.connections).toHaveLength(1);
+  });
+
+  it('reports a worktree creation failure and leaves no orphaned worktree or branch', () => {
+    // A directory where the worktree metadata file goes: `git worktree add` succeeds, recording the metadata fails.
+    mkdirSync(join(repo, '.omg', 'state', 'team', 'copilot-run', 'worktrees.json'), { recursive: true });
+    const m = new CopilotRunManager(deps('complete'));
+    expect(() => m.start({ prompt: 'x', cwd: repo })).toThrow(/could not create the job worktree/);
+    const wtDir = join(repo, '.omg', 'team', 'copilot-run', 'worktrees');
+    expect(existsSync(wtDir) ? readdirSync(wtDir) : []).toEqual([]);
+    expect(gitIn(repo, 'branch', '--list', 'omc-team/copilot-run/*')).toBe('');
+    expect(calls.connections).toHaveLength(0);
   });
 
   it('caps concurrent jobs', async () => {
@@ -324,5 +365,106 @@ describe('copilot_run job lifecycle', () => {
     const m = new CopilotRunManager(deps('complete'));
     expect(() => m.status('cr-000000000000')).toThrow(/No copilot_run job/);
     expect(() => m.status('../etc')).toThrow(/Invalid jobId/);
+  });
+
+  it('refuses writes to a configured ship.knownFlakyFile', async () => {
+    mkdirSync(join(repo, '.copilot'));
+    writeFileSync(join(repo, '.copilot', 'omg.jsonc'), JSON.stringify({ ship: { knownFlakyFile: 'ci/flaky.json' } }));
+    gitIn(repo, 'add', '.');
+    gitIn(repo, 'commit', '-q', '-m', 'ship config');
+    const m = new CopilotRunManager(deps('hang'));
+    const started = m.start({ prompt: 'x', cwd: repo });
+    await new Promise((r) => setTimeout(r, 50));
+    const wtPath = (started.worktree as { path: string }).path;
+    const decide = calls.sessions[0].onPermissionRequest;
+    expect(await decide({ kind: 'write', path: join(wtPath, 'ci', 'flaky.json') }, { sessionId: 's' })).toMatchObject({ kind: 'reject' });
+    await m.cancel(started.jobId as string);
+  });
+
+  it('cleanup unlinks a junctioned node_modules and keeps its target', async () => {
+    writeFileSync(join(repo, '.gitignore'), '.omg/\nnode_modules/\n');
+    gitIn(repo, 'commit', '-q', '-am', 'ignore node_modules');
+    const target = join(root, 'shared-node-modules');
+    mkdirSync(target);
+    writeFileSync(join(target, 'sentinel.txt'), 'keep me');
+    const m = new CopilotRunManager(deps('complete'));
+    const started = m.start({ prompt: 'x', cwd: repo });
+    await m.wait(started.jobId as string, 10_000);
+    const wtPath = (started.worktree as { path: string }).path;
+    gitIn(wtPath, 'checkout', '--', 'README.md');
+    symlinkSync(target, join(wtPath, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+
+    const cleaned = m.cleanup(started.jobId as string);
+    expect((cleaned.worktree as { removed: boolean }).removed).toBe(true);
+    expect(existsSync(wtPath)).toBe(false);
+    expect(readFileSync(join(target, 'sentinel.txt'), 'utf8')).toBe('keep me');
+  });
+
+  it('summarizes changes at the repository root when cwd is a subdirectory', async () => {
+    mkdirSync(join(repo, 'pkg'));
+    writeFileSync(join(repo, 'pkg', 'a.txt'), 'a\n');
+    gitIn(repo, 'add', '.');
+    gitIn(repo, 'commit', '-q', '-m', 'pkg');
+    const base = gitIn(repo, 'rev-parse', 'HEAD');
+    writeFileSync(join(repo, 'pkg', 'a.txt'), 'b\n');
+    mkdirSync(join(repo, '.github', 'workflows'), { recursive: true });
+    writeFileSync(join(repo, '.github', 'workflows', 'x.yml'), 'on: push\n');
+    const summary = summarizeChanges(join(repo, 'pkg'), base)!;
+    expect(summary.changedFiles).toEqual(['pkg/a.txt']);
+    expect(summary.untrackedFiles).toEqual(['.github/workflows/x.yml']);
+    expect(summary.protectedChanges).toEqual(['.github/workflows/x.yml']);
+
+    // End to end: the worktree job mirrors the subdirectory and reports root-relative paths.
+    rmSync(join(repo, '.github'), { recursive: true });
+    gitIn(repo, 'checkout', '--', 'pkg/a.txt');
+    const m = new CopilotRunManager(deps('complete'));
+    const started = m.start({ prompt: 'x', cwd: join(repo, 'pkg') });
+    const done = await m.wait(started.jobId as string, 10_000);
+    expect(resolve(done.workingDirectory as string)).toBe(resolve((started.worktree as { path: string }).path, 'pkg'));
+    expect((done.changes as { untrackedFiles: string[] }).untrackedFiles).toEqual(['pkg/README.md']);
+  });
+});
+
+describe('copilot_run stop paths', () => {
+  it('cancel during a slow client start stops the client and reports cancelled', async () => {
+    const m = new CopilotRunManager(deps('slow-start'));
+    const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(m.status(started.jobId as string)).toMatchObject({ status: 'starting', stopRequested: null });
+    const cancelled = await m.cancel(started.jobId as string);
+    expect(cancelled).toMatchObject({ status: 'cancelled', stopRequested: 'cancelled' });
+    expect(calls.sessions).toHaveLength(0);
+    expect(calls.stops).toBe(1);
+  });
+
+  it('escalates to killing the runtime when start and stop hang', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const kills: number[] = [];
+    const m = new CopilotRunManager(deps('stuck', { isAlive: () => true, killTree: (pid) => { kills.push(pid); } }));
+    const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none' });
+    await vi.advanceTimersByTimeAsync(61_000); // client.start() timeout
+    expect(kills).toEqual([]);
+    await vi.advanceTimersByTimeAsync(16_000); // client.stop() timeout, then the kill
+    await vi.advanceTimersByTimeAsync(1_000);
+    const done = m.status(started.jobId as string);
+    expect(done.status).toBe('failed');
+    expect(done.error).toMatch(/client\.start\(\) timed out/);
+    expect(kills).toContain(4242);
+  });
+
+  it('stopAll cancels live jobs and kills runtimes still alive after the grace period', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const kills: number[] = [];
+    const m = new CopilotRunManager(deps('stuck', { isAlive: () => true, killTree: (pid) => { kills.push(pid); } }));
+    const started = m.start({ prompt: 'x', cwd: repo, isolation: 'none' });
+    await vi.advanceTimersByTimeAsync(10);
+    const stopping = m.stopAll(3_000);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await stopping;
+    expect(kills).toEqual([4242]);
+    expect(m.status(started.jobId as string).stopRequested).toBe('cancelled');
+    // The teardown (client.stop() timeout) finishes later.
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(m.status(started.jobId as string).status).toBe('cancelled');
   });
 });

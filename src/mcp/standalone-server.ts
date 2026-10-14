@@ -19,6 +19,7 @@ import { registerStandaloneShutdownHandlers } from './standalone-shutdown.js';
 import { cleanupOwnedBridgeSessions } from '../tools/python-repl/bridge-manager.js';
 import { buildListToolsResponse, callTool, getEnabledTools } from './tool-registry.js';
 import { disconnectAll as disconnectAllLsp } from '../tools/lsp/index.js';
+import { stopCopilotRunJobs } from '../tools/copilot-run-tools.js';
 
 type StandaloneCallToolHandler = (
   request: CallToolRequest,
@@ -65,6 +66,12 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
   console.error(`OMC MCP Server: received ${signal}, disconnecting LSP servers...`);
 
+  try {
+    // Live copilot_run sessions are billed: cancel them first (bounded, then killed).
+    await stopCopilotRunJobs();
+  } catch {
+    // Best-effort — do not block exit
+  }
   try {
     await cleanupOwnedBridgeSessions();
   } catch {
