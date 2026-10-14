@@ -16,10 +16,13 @@ All notable changes to oh-my-copilot will be documented in this file.
   `git diff --stat` to review. Starting needs `OMG_COPILOT_RUN_ALLOW=1` in
   the server env and passes the budget governor (the spend is recorded as
   `copilot-run:<jobId>`). By default Copilot works in a new git worktree and
-  branch, never in the caller's tree; writes are confined to it and refused
-  on the `omg ship` merge-rule paths; a timeout (15 min default), a credit
-  cap and cancel abort the session; at most 2 jobs run at once; cleanup
-  never removes a worktree with uncommitted or unmerged work.
+  branch, not in the caller's tree; the write tool is confined to it and
+  refused on the `omg ship` merge-rule paths (the shell policy is a denylist,
+  not a sandbox); a timeout (15 min default), a credit cap, cancel and the
+  server's shutdown abort the session; at most 2 jobs run at once; cleanup
+  never removes a worktree with uncommitted or unmerged work (ignored files
+  go with it; links in it are unlinked first, so a junctioned `node_modules`
+  target survives — this guard also covers `omg team` worker worktrees).
   `OMC_DISABLE_TOOLS=copilot-run` hides the tools; sdk team workers and the
   jobs' own sessions do not get them, and the Copilot sessions omg starts
   never inherit the opt-in. See
