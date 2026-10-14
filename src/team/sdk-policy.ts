@@ -8,6 +8,7 @@
 
 import { realpathSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
+import { COPILOT_RUN_TOOL_NAMES } from '../copilot-run/names.js';
 
 /** The subset of the SDK PermissionRequest the policy reads (SDK 1.0.16). */
 export interface SdkPermissionRequest {
@@ -194,12 +195,17 @@ export const SDK_AGENT_FANOUT_TOOLS: readonly string[] = [
 
 /**
  * `excludedTools` for an SDK worker session: the recursion fence (the
- * `<server>-host_smoke` tool and {@link SDK_AGENT_FANOUT_TOOLS}) plus each bare
+ * `<server>-host_smoke` and `<server>-copilot_run_*` tools and
+ * {@link SDK_AGENT_FANOUT_TOOLS}) plus each bare
  * `workerDenyTools` name; `<server>(<tool>)` becomes `<server>-<tool>`, the
  * SDK's MCP tool name. `shell(<prefix>)` entries stay with the handler.
  */
 export function buildSdkExcludedTools(mcpServer: string, denyTools: readonly string[] = []): string[] {
-  const out = new Set<string>([`${mcpServer}-host_smoke`, ...SDK_AGENT_FANOUT_TOOLS]);
+  const out = new Set<string>([
+    `${mcpServer}-host_smoke`,
+    ...COPILOT_RUN_TOOL_NAMES.map((name) => `${mcpServer}-${name}`),
+    ...SDK_AGENT_FANOUT_TOOLS,
+  ]);
   for (const raw of denyTools) {
     const entry = raw.trim();
     if (!entry) continue;
