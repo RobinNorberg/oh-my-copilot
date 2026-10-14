@@ -2,7 +2,15 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
-## [Unreleased]
+# oh-my-copilot v5.11.0
+
+## [5.11.0] - 2026-10-14
+
+Fork **v5.11.0** (from v5.10.0) is a minor release: the standalone MCP server
+gains five `copilot_run_*` tools that delegate a task to a headless Copilot
+session in its own git worktree (opt-in with `OMG_COPILOT_RUN_ALLOW=1`). There
+is no upstream port in this release; upstream `dev` stays ported through
+7cb577e94.
 
 ### Added
 
@@ -27,6 +35,15 @@ All notable changes to oh-my-copilot will be documented in this file.
   jobs' own sessions do not get them, and the Copilot sessions omg starts
   never inherit the opt-in. See
   [REFERENCE.md](docs/REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot).
+
+### Fixed
+
+- **`omg team` worker worktree removal no longer empties a junction target.**
+  `removeWorkerWorktree` unlinks untracked symlinks and junctions (only the
+  link) before `git worktree remove`, which on Windows recursed through a
+  junctioned `node_modules` and emptied its target. A link that cannot be
+  unlinked refuses the removal (`worktree_link_unremovable`), and a registered
+  worktree with initialized submodules is refused before any link is touched.
 
 # oh-my-copilot v5.10.0
 

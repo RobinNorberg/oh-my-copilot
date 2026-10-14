@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "563278fe5e122a6914c05d09b95069c471c6e412",
-    "sourceSha256": "e5bf088681580303bb143f06a4270e582499d9ff7f3e176a0b1297300dce4059",
+    "head": "dbc4379a3cfa91f2a68e12065f9a614cdb026cbf",
+    "sourceSha256": "8126b07e3c63c5c947852a14e908aa0c7923cc10d1642b6a3613cc835f374577",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "563278fe5e122a6914c05d09b95069c471c6e412",
-  "sourceSha256": "e5bf088681580303bb143f06a4270e582499d9ff7f3e176a0b1297300dce4059",
+  "head": "dbc4379a3cfa91f2a68e12065f9a614cdb026cbf",
+  "sourceSha256": "8126b07e3c63c5c947852a14e908aa0c7923cc10d1642b6a3613cc835f374577",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1613
     },
     "generated": {
-      "distFiles": 6111,
+      "distFiles": 6127,
       "bridgeFiles": 9,
-      "total": 6120
+      "total": 6136
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -2757,6 +2757,14 @@
       "dist/constants/names.d.ts.map",
       "dist/constants/names.js",
       "dist/constants/names.js.map",
+      "dist/copilot-run/job.d.ts",
+      "dist/copilot-run/job.d.ts.map",
+      "dist/copilot-run/job.js",
+      "dist/copilot-run/job.js.map",
+      "dist/copilot-run/names.d.ts",
+      "dist/copilot-run/names.d.ts.map",
+      "dist/copilot-run/names.js",
+      "dist/copilot-run/names.js.map",
       "dist/factory/__tests__/check-run.test.d.ts",
       "dist/factory/__tests__/check-run.test.d.ts.map",
       "dist/factory/__tests__/check-run.test.js",
@@ -5235,6 +5243,10 @@
       "dist/lib/worktree-paths.d.ts.map",
       "dist/lib/worktree-paths.js",
       "dist/lib/worktree-paths.js.map",
+      "dist/mcp/__tests__/copilot-run-tool.test.d.ts",
+      "dist/mcp/__tests__/copilot-run-tool.test.d.ts.map",
+      "dist/mcp/__tests__/copilot-run-tool.test.js",
+      "dist/mcp/__tests__/copilot-run-tool.test.js.map",
       "dist/mcp/__tests__/host-smoke-tool.test.d.ts",
       "dist/mcp/__tests__/host-smoke-tool.test.d.ts.map",
       "dist/mcp/__tests__/host-smoke-tool.test.js",
@@ -6707,6 +6719,10 @@
       "dist/tools/ast-tools.d.ts.map",
       "dist/tools/ast-tools.js",
       "dist/tools/ast-tools.js.map",
+      "dist/tools/copilot-run-tools.d.ts",
+      "dist/tools/copilot-run-tools.d.ts.map",
+      "dist/tools/copilot-run-tools.js",
+      "dist/tools/copilot-run-tools.js.map",
       "dist/tools/deepinit-manifest.d.ts",
       "dist/tools/deepinit-manifest.d.ts.map",
       "dist/tools/deepinit-manifest.js",
@@ -17744,6 +17760,46 @@
         "id": "dist/constants/names.js.map",
         "kind": "generated-dist",
         "path": "dist/constants/names.js.map"
+      },
+      {
+        "id": "dist/copilot-run/job.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/job.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/job.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/job.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/job.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/job.js"
+      },
+      {
+        "id": "dist/copilot-run/job.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/job.js.map"
+      },
+      {
+        "id": "dist/copilot-run/names.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/names.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/names.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/names.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/names.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/names.js"
+      },
+      {
+        "id": "dist/copilot-run/names.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/names.js.map"
       },
       {
         "id": "dist/factory/__tests__/check-run.test.d.ts",
@@ -30136,6 +30192,26 @@
         "path": "dist/lib/worktree-paths.js.map"
       },
       {
+        "id": "dist/mcp/__tests__/copilot-run-tool.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/copilot-run-tool.test.d.ts"
+      },
+      {
+        "id": "dist/mcp/__tests__/copilot-run-tool.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/copilot-run-tool.test.d.ts.map"
+      },
+      {
+        "id": "dist/mcp/__tests__/copilot-run-tool.test.js",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/copilot-run-tool.test.js"
+      },
+      {
+        "id": "dist/mcp/__tests__/copilot-run-tool.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/copilot-run-tool.test.js.map"
+      },
+      {
         "id": "dist/mcp/__tests__/host-smoke-tool.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/mcp/__tests__/host-smoke-tool.test.d.ts"
@@ -37494,6 +37570,26 @@
         "id": "dist/tools/ast-tools.js.map",
         "kind": "generated-dist",
         "path": "dist/tools/ast-tools.js.map"
+      },
+      {
+        "id": "dist/tools/copilot-run-tools.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/tools/copilot-run-tools.d.ts"
+      },
+      {
+        "id": "dist/tools/copilot-run-tools.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/copilot-run-tools.d.ts.map"
+      },
+      {
+        "id": "dist/tools/copilot-run-tools.js",
+        "kind": "generated-dist",
+        "path": "dist/tools/copilot-run-tools.js"
+      },
+      {
+        "id": "dist/tools/copilot-run-tools.js.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/copilot-run-tools.js.map"
       },
       {
         "id": "dist/tools/deepinit-manifest.d.ts",
@@ -96214,12 +96310,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8422,
+      "nodeCount": 8438,
       "edgeCount": 9288,
       "importEdgeCount": 7709,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "2eaa172da023a51deac4394935a6b86b264525cd63a51ab9a73fd7f0c620214d",
-  "manifestSha256": "668b61cd95bff3d726078ac78200890acf48b456d81645931ee8ca551fa2c02e"
+  "manifestSha256": "71d0a97a126b75dc8d4d833b19a3033cbedfa9557e6fecf1bbdac24832342724"
 }

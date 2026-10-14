@@ -26,6 +26,7 @@ import { sharedMemoryTools } from '../tools/shared-memory-tools.js';
 import { deepinitManifestTool } from '../tools/deepinit-manifest.js';
 import { wikiTools } from '../tools/wiki-tools.js';
 import { hostSmokeTool } from '../tools/host-smoke-tool.js';
+import { copilotRunTools } from '../tools/copilot-run-tools.js';
 import { skillsTools } from '../tools/skills-tools.js';
 import { TOOL_CATEGORIES } from '../constants/index.js';
 import { filterDisabledTools, tagCategory } from './disable-tools.js';
@@ -44,6 +45,7 @@ export const allTools = [
     ...tagCategory(wikiTools, TOOL_CATEGORIES.WIKI),
     ...tagCategory(skillsTools, TOOL_CATEGORIES.SKILLS),
     { ...hostSmokeTool, category: TOOL_CATEGORIES.SMOKE },
+    ...tagCategory(copilotRunTools, TOOL_CATEGORIES.COPILOT_RUN),
 ];
 /** Tools currently enabled for standalone ListTools after OMC_DISABLE_TOOLS filtering. */
 export function getEnabledTools(envValue) {
