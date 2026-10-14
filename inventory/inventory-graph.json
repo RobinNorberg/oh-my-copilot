@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "5fe574db40f8fe649ddebe4e09fa3dfbdad80d55",
-    "sourceSha256": "8ebdca19d0d6558b35548d1f9210d8084c996d04cac6fa68684ccd691cf214dc",
+    "head": "dbc4379a3cfa91f2a68e12065f9a614cdb026cbf",
+    "sourceSha256": "8126b07e3c63c5c947852a14e908aa0c7923cc10d1642b6a3613cc835f374577",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "5fe574db40f8fe649ddebe4e09fa3dfbdad80d55",
-  "sourceSha256": "8ebdca19d0d6558b35548d1f9210d8084c996d04cac6fa68684ccd691cf214dc",
+  "head": "dbc4379a3cfa91f2a68e12065f9a614cdb026cbf",
+  "sourceSha256": "8126b07e3c63c5c947852a14e908aa0c7923cc10d1642b6a3613cc835f374577",
   "counts": {
     "public": {
       "skills": 63,
@@ -25,16 +25,16 @@
     "internal": {
       "hookFiles": 350,
       "featureFiles": 84,
-      "toolFiles": 65,
+      "toolFiles": 66,
       "libFiles": 48,
       "templateHooks": 23,
-      "srcFiles": 1586,
-      "total": 1609
+      "srcFiles": 1590,
+      "total": 1613
     },
     "generated": {
-      "distFiles": 6111,
+      "distFiles": 6127,
       "bridgeFiles": 9,
-      "total": 6120
+      "total": 6136
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -621,6 +621,7 @@
       "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-working-directory.test.ts",
       "src/tools/ast-tools.ts",
+      "src/tools/copilot-run-tools.ts",
       "src/tools/deepinit-manifest.ts",
       "src/tools/diagnostics/AGENTS.md",
       "src/tools/diagnostics/__tests__/lsp-aggregator.test.ts",
@@ -2756,6 +2757,14 @@
       "dist/constants/names.d.ts.map",
       "dist/constants/names.js",
       "dist/constants/names.js.map",
+      "dist/copilot-run/job.d.ts",
+      "dist/copilot-run/job.d.ts.map",
+      "dist/copilot-run/job.js",
+      "dist/copilot-run/job.js.map",
+      "dist/copilot-run/names.d.ts",
+      "dist/copilot-run/names.d.ts.map",
+      "dist/copilot-run/names.js",
+      "dist/copilot-run/names.js.map",
       "dist/factory/__tests__/check-run.test.d.ts",
       "dist/factory/__tests__/check-run.test.d.ts.map",
       "dist/factory/__tests__/check-run.test.js",
@@ -5234,6 +5243,10 @@
       "dist/lib/worktree-paths.d.ts.map",
       "dist/lib/worktree-paths.js",
       "dist/lib/worktree-paths.js.map",
+      "dist/mcp/__tests__/copilot-run-tool.test.d.ts",
+      "dist/mcp/__tests__/copilot-run-tool.test.d.ts.map",
+      "dist/mcp/__tests__/copilot-run-tool.test.js",
+      "dist/mcp/__tests__/copilot-run-tool.test.js.map",
       "dist/mcp/__tests__/host-smoke-tool.test.d.ts",
       "dist/mcp/__tests__/host-smoke-tool.test.d.ts.map",
       "dist/mcp/__tests__/host-smoke-tool.test.js",
@@ -6706,6 +6719,10 @@
       "dist/tools/ast-tools.d.ts.map",
       "dist/tools/ast-tools.js",
       "dist/tools/ast-tools.js.map",
+      "dist/tools/copilot-run-tools.d.ts",
+      "dist/tools/copilot-run-tools.d.ts.map",
+      "dist/tools/copilot-run-tools.js",
+      "dist/tools/copilot-run-tools.js.map",
       "dist/tools/deepinit-manifest.d.ts",
       "dist/tools/deepinit-manifest.d.ts.map",
       "dist/tools/deepinit-manifest.js",
@@ -7601,6 +7618,7 @@
       "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-working-directory.test.ts",
       "src/tools/ast-tools.ts",
+      "src/tools/copilot-run-tools.ts",
       "src/tools/deepinit-manifest.ts",
       "src/tools/diagnostics/AGENTS.md",
       "src/tools/diagnostics/__tests__/lsp-aggregator.test.ts",
@@ -17742,6 +17760,46 @@
         "id": "dist/constants/names.js.map",
         "kind": "generated-dist",
         "path": "dist/constants/names.js.map"
+      },
+      {
+        "id": "dist/copilot-run/job.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/job.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/job.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/job.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/job.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/job.js"
+      },
+      {
+        "id": "dist/copilot-run/job.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/job.js.map"
+      },
+      {
+        "id": "dist/copilot-run/names.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/names.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/names.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/names.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/names.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/names.js"
+      },
+      {
+        "id": "dist/copilot-run/names.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/names.js.map"
       },
       {
         "id": "dist/factory/__tests__/check-run.test.d.ts",
@@ -30134,6 +30192,26 @@
         "path": "dist/lib/worktree-paths.js.map"
       },
       {
+        "id": "dist/mcp/__tests__/copilot-run-tool.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/copilot-run-tool.test.d.ts"
+      },
+      {
+        "id": "dist/mcp/__tests__/copilot-run-tool.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/copilot-run-tool.test.d.ts.map"
+      },
+      {
+        "id": "dist/mcp/__tests__/copilot-run-tool.test.js",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/copilot-run-tool.test.js"
+      },
+      {
+        "id": "dist/mcp/__tests__/copilot-run-tool.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/copilot-run-tool.test.js.map"
+      },
+      {
         "id": "dist/mcp/__tests__/host-smoke-tool.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/mcp/__tests__/host-smoke-tool.test.d.ts"
@@ -37494,6 +37572,26 @@
         "path": "dist/tools/ast-tools.js.map"
       },
       {
+        "id": "dist/tools/copilot-run-tools.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/tools/copilot-run-tools.d.ts"
+      },
+      {
+        "id": "dist/tools/copilot-run-tools.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/copilot-run-tools.d.ts.map"
+      },
+      {
+        "id": "dist/tools/copilot-run-tools.js",
+        "kind": "generated-dist",
+        "path": "dist/tools/copilot-run-tools.js"
+      },
+      {
+        "id": "dist/tools/copilot-run-tools.js.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/copilot-run-tools.js.map"
+      },
+      {
         "id": "dist/tools/deepinit-manifest.d.ts",
         "kind": "generated-dist",
         "path": "dist/tools/deepinit-manifest.d.ts"
@@ -43714,6 +43812,16 @@
         "path": "src/constants/names.ts"
       },
       {
+        "id": "src/copilot-run/job.ts",
+        "kind": "src",
+        "path": "src/copilot-run/job.ts"
+      },
+      {
+        "id": "src/copilot-run/names.ts",
+        "kind": "src",
+        "path": "src/copilot-run/names.ts"
+      },
+      {
         "id": "src/factory/__tests__/check-run.test.ts",
         "kind": "src",
         "path": "src/factory/__tests__/check-run.test.ts"
@@ -46914,6 +47022,11 @@
         "path": "src/lib/worktree-paths.ts"
       },
       {
+        "id": "src/mcp/__tests__/copilot-run-tool.test.ts",
+        "kind": "src",
+        "path": "src/mcp/__tests__/copilot-run-tool.test.ts"
+      },
+      {
         "id": "src/mcp/__tests__/host-smoke-tool.test.ts",
         "kind": "src",
         "path": "src/mcp/__tests__/host-smoke-tool.test.ts"
@@ -48827,6 +48940,11 @@
         "id": "src/tools/ast-tools.ts",
         "kind": "tool",
         "path": "src/tools/ast-tools.ts"
+      },
+      {
+        "id": "src/tools/copilot-run-tools.ts",
+        "kind": "tool",
+        "path": "src/tools/copilot-run-tools.ts"
       },
       {
         "id": "src/tools/deepinit-manifest.ts",
@@ -64631,6 +64749,116 @@
         "kind": "type-exports"
       },
       {
+        "from": "src/copilot-run/job.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "external:node:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/budget/governor.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/budget/ledger.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/copilot-run/names.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/ship/merge.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/smoke/copilot-binary.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/smoke/copilot-sdk-scenarios.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/smoke/copilot-session-env.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/smoke/copilot-session-eval.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/smoke/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/team/git-worktree.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/team/sdk-policy.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/team/sdk-policy.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/copilot-run/job.ts",
+        "to": "src/utils/config-dir.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/factory/__tests__/check-run.test.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -80251,6 +80479,61 @@
         "kind": "imports"
       },
       {
+        "from": "src/mcp/__tests__/copilot-run-tool.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/copilot-run-tool.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/copilot-run-tool.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/copilot-run-tool.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/copilot-run-tool.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/copilot-run-tool.test.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/copilot-run-tool.test.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/mcp/__tests__/copilot-run-tool.test.ts",
+        "to": "src/copilot-run/names.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/copilot-run-tool.test.ts",
+        "to": "src/mcp/tool-registry.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/copilot-run-tool.test.ts",
+        "to": "src/smoke/copilot-sdk-driver.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/mcp/__tests__/copilot-run-tool.test.ts",
+        "to": "src/tools/copilot-run-tools.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/mcp/__tests__/host-smoke-tool.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -80707,6 +80990,11 @@
       },
       {
         "from": "src/mcp/standalone-server.ts",
+        "to": "src/tools/copilot-run-tools.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/standalone-server.ts",
         "to": "src/tools/lsp/index.ts",
         "kind": "imports"
       },
@@ -80898,6 +81186,11 @@
       {
         "from": "src/mcp/tool-registry.ts",
         "to": "src/tools/ast-tools.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/tool-registry.ts",
+        "to": "src/tools/copilot-run-tools.ts",
         "kind": "imports"
       },
       {
@@ -83683,6 +83976,11 @@
       {
         "from": "src/smoke/copilot-session-env.ts",
         "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-session-env.ts",
+        "to": "src/copilot-run/names.ts",
         "kind": "imports"
       },
       {
@@ -90926,6 +91224,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/sdk-policy.ts",
+        "to": "src/copilot-run/names.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/sdk-transport.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -92294,6 +92597,36 @@
         "from": "src/tools/ast-tools.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/tools/copilot-run-tools.ts",
+        "to": "external:zod",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/copilot-run-tools.ts",
+        "to": "src/constants/names.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/copilot-run-tools.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/copilot-run-tools.ts",
+        "to": "src/copilot-run/job.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/tools/copilot-run-tools.ts",
+        "to": "src/copilot-run/names.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/copilot-run-tools.ts",
+        "to": "src/tools/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/tools/deepinit-manifest.ts",
@@ -95977,12 +96310,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8418,
-      "edgeCount": 9245,
-      "importEdgeCount": 7674,
+      "nodeCount": 8438,
+      "edgeCount": 9288,
+      "importEdgeCount": 7709,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "80bb985a4adb29b5a830f601202efa76669ef61809256f5eb56336e5cf3cfe20",
-  "manifestSha256": "486e2898019ab6d5aefa9bf8bdd7ec254d92fb08bc6056d53060dde5853927fd"
+  "inventorySha256": "2eaa172da023a51deac4394935a6b86b264525cd63a51ab9a73fd7f0c620214d",
+  "manifestSha256": "71d0a97a126b75dc8d4d833b19a3033cbedfa9557e6fecf1bbdac24832342724"
 }

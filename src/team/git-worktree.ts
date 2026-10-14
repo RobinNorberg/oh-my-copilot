@@ -13,7 +13,7 @@
  * worker changes.
  */
 
-import { existsSync, realpathSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, realpathSync, readFileSync, readdirSync, rmdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { atomicWriteJson, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
@@ -331,6 +331,56 @@ function removeRuntimeLeftover(wtPath: string, retryMs = RUNTIME_LEFTOVER_RETRY_
         return;
       }
       sleepSync(500);
+    }
+  }
+}
+
+/**
+ * Unlink the symlinks and junctions git does not track inside a worktree
+ * (`.git` skipped, links not followed) before `git worktree remove`: git
+ * deletes ignored entries with the tree, and on win32 it recurses through a
+ * junction (a linked node_modules) and empties its target. Only the link goes;
+ * the target is untouched. Tracked symlinks are left to git. Throws
+ * `worktree_link_unremovable` when a link cannot be unlinked.
+ */
+function unlinkUntrackedWorktreeLinks(wtPath: string): void {
+  const tracked = new Set(
+    (gitOrNull(['ls-files', '-z', '--stage'], wtPath) ?? '')
+      .split('\0')
+      .filter((entry) => entry.startsWith('120000 '))
+      .map((entry) => resolve(wtPath, entry.slice(entry.indexOf('\t') + 1))),
+  );
+  const pending = [wtPath];
+  while (pending.length > 0) {
+    const dir = pending.pop()!;
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      if (dir === wtPath && entry.name === '.git') continue;
+      let stat;
+      try { stat = lstatSync(path); } catch { continue; }
+      if (stat.isSymbolicLink()) {
+        if (tracked.has(resolve(path))) continue;
+        try {
+          unlinkSync(path);
+        } catch {
+          // A junction or directory symlink on win32: rmdir removes the link itself.
+          try {
+            rmdirSync(path);
+          } catch (err) {
+            const error = new Error(`worktree_link_unremovable: preserving worker worktree at ${wtPath}; cannot unlink ${path}: ${err instanceof Error ? err.message : String(err)}`);
+            (error as Error & { code?: string }).code = 'worktree_link_unremovable';
+            throw error;
+          }
+        }
+      } else if (stat.isDirectory()) {
+        pending.push(path);
+      }
     }
   }
 }
@@ -947,7 +997,16 @@ export function removeWorkerWorktree(
     // runtime state, which git refuses to drop without --force. A worktree with
     // initialized submodules keeps the plain removal, which refuses it.
     const runtimeOnly = existsSync(wtPath) && isWorktreeDirtyExcept(wtPath, ['AGENTS.md']).runtimeState;
-    const force = runtimeOnly && !hasInitializedSubmodules(wtPath);
+    const submodules = existsSync(wtPath) && hasInitializedSubmodules(wtPath);
+    const force = runtimeOnly && !submodules;
+    if (wasRegisteredWorktree && submodules) {
+      // git refuses to remove it: refuse before unlinking, so the kept
+      // worktree keeps its junctioned links.
+      const error = new Error(`worktree_remove_failed: preserving metadata for registered worker worktree at ${wtPath}: initialized submodules`);
+      (error as Error & { code?: string }).code = 'worktree_remove_failed';
+      throw error;
+    }
+    if (existsSync(wtPath)) unlinkUntrackedWorktreeLinks(wtPath);
     try {
       execFileSync('git', ['worktree', 'remove', ...(force ? ['--force'] : []), wtPath], { cwd: repoRoot, stdio: 'pipe', windowsHide: true });
     } catch (err) {

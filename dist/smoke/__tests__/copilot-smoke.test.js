@@ -363,7 +363,7 @@ describe('session env policy', () => {
     it('pins the documented strip/set lists', () => {
         expect(STRIPPED_ENV_EXACT).toEqual([
             'DISABLE_OMC', 'CLAUDECODE', 'CLAUDE_SESSION_ID', 'CLAUDE_PLUGIN_ROOT', 'NODE_OPTIONS',
-            'COPILOT_HOME', 'COPILOT_OFFLINE', 'COPILOT_MODEL',
+            'COPILOT_HOME', 'COPILOT_OFFLINE', 'COPILOT_MODEL', 'OMG_COPILOT_RUN_ALLOW',
         ]);
         expect(STRIPPED_ENV_PREFIXES).toEqual(['OMC_', 'CLAUDE_CODE_', 'COPILOT_PROVIDER_']);
         expect(LOGIN_SHADOWING_TOKENS).toEqual(['GH_TOKEN', 'GITHUB_TOKEN']);

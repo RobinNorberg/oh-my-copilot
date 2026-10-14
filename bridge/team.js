@@ -16616,7 +16616,7 @@ var init_worktree_cleanup_safety = __esm({
 });
 
 // src/team/git-worktree.ts
-import { existsSync as existsSync30, realpathSync as realpathSync7, readFileSync as readFileSync20, readdirSync as readdirSync12, rmSync as rmSync3, unlinkSync as unlinkSync9, writeFileSync as writeFileSync8 } from "node:fs";
+import { existsSync as existsSync30, lstatSync as lstatSync8, realpathSync as realpathSync7, readFileSync as readFileSync20, readdirSync as readdirSync12, rmdirSync, rmSync as rmSync3, unlinkSync as unlinkSync9, writeFileSync as writeFileSync8 } from "node:fs";
 import { basename as basename16, dirname as dirname29, isAbsolute as isAbsolute10, join as join34, relative as relative9, resolve as resolve11, sep as sep5 } from "node:path";
 import { execFileSync as execFileSync5 } from "node:child_process";
 function getWorktreePath(repoRoot, teamName, workerName) {
@@ -16770,6 +16770,47 @@ function removeRuntimeLeftover(wtPath, retryMs = RUNTIME_LEFTOVER_RETRY_MS) {
         return;
       }
       sleepSync(500);
+    }
+  }
+}
+function unlinkUntrackedWorktreeLinks(wtPath) {
+  const tracked = new Set(
+    (gitOrNull(["ls-files", "-z", "--stage"], wtPath) ?? "").split("\0").filter((entry) => entry.startsWith("120000 ")).map((entry) => resolve11(wtPath, entry.slice(entry.indexOf("	") + 1)))
+  );
+  const pending = [wtPath];
+  while (pending.length > 0) {
+    const dir = pending.pop();
+    let entries;
+    try {
+      entries = readdirSync12(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const path5 = join34(dir, entry.name);
+      if (dir === wtPath && entry.name === ".git") continue;
+      let stat2;
+      try {
+        stat2 = lstatSync8(path5);
+      } catch {
+        continue;
+      }
+      if (stat2.isSymbolicLink()) {
+        if (tracked.has(resolve11(path5))) continue;
+        try {
+          unlinkSync9(path5);
+        } catch {
+          try {
+            rmdirSync(path5);
+          } catch (err) {
+            const error = new Error(`worktree_link_unremovable: preserving worker worktree at ${wtPath}; cannot unlink ${path5}: ${err instanceof Error ? err.message : String(err)}`);
+            error.code = "worktree_link_unremovable";
+            throw error;
+          }
+        }
+      } else if (stat2.isDirectory()) {
+        pending.push(path5);
+      }
     }
   }
 }
@@ -17171,7 +17212,14 @@ function removeWorkerWorktree(teamName, workerName, repoRoot) {
       if (commits > 0) throw unmergedCommitsError({ workerName, path: wtPath, branch, commits });
     }
     const runtimeOnly = existsSync30(wtPath) && isWorktreeDirtyExcept(wtPath, ["AGENTS.md"]).runtimeState;
-    const force = runtimeOnly && !hasInitializedSubmodules(wtPath);
+    const submodules = existsSync30(wtPath) && hasInitializedSubmodules(wtPath);
+    const force = runtimeOnly && !submodules;
+    if (wasRegisteredWorktree && submodules) {
+      const error = new Error(`worktree_remove_failed: preserving metadata for registered worker worktree at ${wtPath}: initialized submodules`);
+      error.code = "worktree_remove_failed";
+      throw error;
+    }
+    if (existsSync30(wtPath)) unlinkUntrackedWorktreeLinks(wtPath);
     try {
       execFileSync5("git", ["worktree", "remove", ...force ? ["--force"] : [], wtPath], { cwd: repoRoot, stdio: "pipe", windowsHide: true });
     } catch (err) {
@@ -19269,6 +19317,13 @@ var init_copilot_sdk_driver = __esm({
   }
 });
 
+// src/copilot-run/names.ts
+var init_names = __esm({
+  "src/copilot-run/names.ts"() {
+    "use strict";
+  }
+});
+
 // src/lib/env-vars.ts
 var OMC_PLUGIN_ROOT_ENV;
 var init_env_vars = __esm({
@@ -19319,6 +19374,7 @@ function isPluginRoot(dir) {
 var init_copilot_session_env = __esm({
   "src/smoke/copilot-session-env.ts"() {
     "use strict";
+    init_names();
     init_env_vars();
     init_jsonc();
     init_copilot_sdk_scenarios();
