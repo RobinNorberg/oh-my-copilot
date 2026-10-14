@@ -14,7 +14,10 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = resolve(SCRIPT_DIR, '..');
 const MANIFEST_PATH = join(REPOSITORY_ROOT, '.github', 'generated-artifact-authorizations.json');
-const OWNER = 'Yeachan-Heo';
+// fork: protected identity of RobinNorberg/oh-my-copilot (upstream: Yeachan-Heo).
+// The repository slug itself lives in the manifest and must be owned by OWNER.
+// Keep ours on upstream port conflicts.
+const OWNER = 'RobinNorberg';
 const DEFAULT_BRANCH = 'main';
 const WORKFLOW_PATH = '.github/workflows/generated-artifact-authorization.yml';
 const API_URL = 'https://api.github.com';
