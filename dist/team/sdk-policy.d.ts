@@ -71,7 +71,8 @@ export declare function decideSdkPermission(req: SdkPermissionRequest, ctx: SdkP
 export declare const SDK_AGENT_FANOUT_TOOLS: readonly string[];
 /**
  * `excludedTools` for an SDK worker session: the recursion fence (the
- * `<server>-host_smoke` tool and {@link SDK_AGENT_FANOUT_TOOLS}) plus each bare
+ * `<server>-host_smoke` and `<server>-copilot_run_*` tools and
+ * {@link SDK_AGENT_FANOUT_TOOLS}) plus each bare
  * `workerDenyTools` name; `<server>(<tool>)` becomes `<server>-<tool>`, the
  * SDK's MCP tool name. `shell(<prefix>)` entries stay with the handler.
  */

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "d74378be82fa6b33c1b9807aafc2990f5b7a0a07",
-    "sourceSha256": "8232f14e4036e7d5bc5489b1c357e965cf3f156ed3e57ad302c07c18993a15ee",
+    "head": "dbc4379a3cfa91f2a68e12065f9a614cdb026cbf",
+    "sourceSha256": "8126b07e3c63c5c947852a14e908aa0c7923cc10d1642b6a3613cc835f374577",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "d74378be82fa6b33c1b9807aafc2990f5b7a0a07",
-  "sourceSha256": "8232f14e4036e7d5bc5489b1c357e965cf3f156ed3e57ad302c07c18993a15ee",
+  "head": "dbc4379a3cfa91f2a68e12065f9a614cdb026cbf",
+  "sourceSha256": "8126b07e3c63c5c947852a14e908aa0c7923cc10d1642b6a3613cc835f374577",
   "counts": {
     "public": {
       "skills": 63,
@@ -24,17 +24,17 @@
     },
     "internal": {
       "hookFiles": 350,
-      "featureFiles": 85,
-      "toolFiles": 67,
+      "featureFiles": 84,
+      "toolFiles": 66,
       "libFiles": 48,
       "templateHooks": 23,
-      "srcFiles": 1592,
-      "total": 1615
+      "srcFiles": 1590,
+      "total": 1613
     },
     "generated": {
-      "distFiles": 6111,
+      "distFiles": 6127,
       "bridgeFiles": 9,
-      "total": 6120
+      "total": 6136
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -589,7 +589,6 @@
       "src/features/notepad-wisdom/extractor.ts",
       "src/features/notepad-wisdom/index.ts",
       "src/features/notepad-wisdom/types.ts",
-      "src/features/rate-limit-wait/daemon-state.ts",
       "src/features/rate-limit-wait/daemon.ts",
       "src/features/rate-limit-wait/index.ts",
       "src/features/rate-limit-wait/pane-fresh-capture.ts",
@@ -628,7 +627,6 @@
       "src/tools/diagnostics/__tests__/lsp-aggregator.test.ts",
       "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts",
       "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
-      "src/tools/diagnostics/__tests__/tsc-runner.test.ts",
       "src/tools/diagnostics/index.ts",
       "src/tools/diagnostics/lsp-aggregator.ts",
       "src/tools/diagnostics/tsc-runner.ts",
@@ -880,7 +878,6 @@
       "scripts/lib/pre-tool-enforcer-preflight.mjs",
       "scripts/lib/precompact-publisher.mjs",
       "scripts/lib/precompact-restore.mjs",
-      "scripts/lib/ralph-startup.mjs",
       "scripts/lib/read-budget-preflight.mjs",
       "scripts/lib/run-reaper.mjs",
       "scripts/lib/skill-entitlements.mjs",
@@ -2760,6 +2757,14 @@
       "dist/constants/names.d.ts.map",
       "dist/constants/names.js",
       "dist/constants/names.js.map",
+      "dist/copilot-run/job.d.ts",
+      "dist/copilot-run/job.d.ts.map",
+      "dist/copilot-run/job.js",
+      "dist/copilot-run/job.js.map",
+      "dist/copilot-run/names.d.ts",
+      "dist/copilot-run/names.d.ts.map",
+      "dist/copilot-run/names.js",
+      "dist/copilot-run/names.js.map",
       "dist/factory/__tests__/check-run.test.d.ts",
       "dist/factory/__tests__/check-run.test.d.ts.map",
       "dist/factory/__tests__/check-run.test.js",
@@ -5238,6 +5243,10 @@
       "dist/lib/worktree-paths.d.ts.map",
       "dist/lib/worktree-paths.js",
       "dist/lib/worktree-paths.js.map",
+      "dist/mcp/__tests__/copilot-run-tool.test.d.ts",
+      "dist/mcp/__tests__/copilot-run-tool.test.d.ts.map",
+      "dist/mcp/__tests__/copilot-run-tool.test.js",
+      "dist/mcp/__tests__/copilot-run-tool.test.js.map",
       "dist/mcp/__tests__/host-smoke-tool.test.d.ts",
       "dist/mcp/__tests__/host-smoke-tool.test.d.ts.map",
       "dist/mcp/__tests__/host-smoke-tool.test.js",
@@ -6710,6 +6719,10 @@
       "dist/tools/ast-tools.d.ts.map",
       "dist/tools/ast-tools.js",
       "dist/tools/ast-tools.js.map",
+      "dist/tools/copilot-run-tools.d.ts",
+      "dist/tools/copilot-run-tools.d.ts.map",
+      "dist/tools/copilot-run-tools.js",
+      "dist/tools/copilot-run-tools.js.map",
       "dist/tools/deepinit-manifest.d.ts",
       "dist/tools/deepinit-manifest.d.ts.map",
       "dist/tools/deepinit-manifest.js",
@@ -7573,7 +7586,6 @@
       "src/features/notepad-wisdom/extractor.ts",
       "src/features/notepad-wisdom/index.ts",
       "src/features/notepad-wisdom/types.ts",
-      "src/features/rate-limit-wait/daemon-state.ts",
       "src/features/rate-limit-wait/daemon.ts",
       "src/features/rate-limit-wait/index.ts",
       "src/features/rate-limit-wait/pane-fresh-capture.ts",
@@ -7612,7 +7624,6 @@
       "src/tools/diagnostics/__tests__/lsp-aggregator.test.ts",
       "src/tools/diagnostics/__tests__/tsc-project-failures.test.ts",
       "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
-      "src/tools/diagnostics/__tests__/tsc-runner.test.ts",
       "src/tools/diagnostics/index.ts",
       "src/tools/diagnostics/lsp-aggregator.ts",
       "src/tools/diagnostics/tsc-runner.ts",
@@ -17749,6 +17760,46 @@
         "id": "dist/constants/names.js.map",
         "kind": "generated-dist",
         "path": "dist/constants/names.js.map"
+      },
+      {
+        "id": "dist/copilot-run/job.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/job.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/job.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/job.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/job.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/job.js"
+      },
+      {
+        "id": "dist/copilot-run/job.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/job.js.map"
+      },
+      {
+        "id": "dist/copilot-run/names.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/names.d.ts"
+      },
+      {
+        "id": "dist/copilot-run/names.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/names.d.ts.map"
+      },
+      {
+        "id": "dist/copilot-run/names.js",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/names.js"
+      },
+      {
+        "id": "dist/copilot-run/names.js.map",
+        "kind": "generated-dist",
+        "path": "dist/copilot-run/names.js.map"
       },
       {
         "id": "dist/factory/__tests__/check-run.test.d.ts",
@@ -30141,6 +30192,26 @@
         "path": "dist/lib/worktree-paths.js.map"
       },
       {
+        "id": "dist/mcp/__tests__/copilot-run-tool.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/copilot-run-tool.test.d.ts"
+      },
+      {
+        "id": "dist/mcp/__tests__/copilot-run-tool.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/copilot-run-tool.test.d.ts.map"
+      },
+      {
+        "id": "dist/mcp/__tests__/copilot-run-tool.test.js",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/copilot-run-tool.test.js"
+      },
+      {
+        "id": "dist/mcp/__tests__/copilot-run-tool.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/copilot-run-tool.test.js.map"
+      },
+      {
         "id": "dist/mcp/__tests__/host-smoke-tool.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/mcp/__tests__/host-smoke-tool.test.d.ts"
@@ -37501,6 +37572,26 @@
         "path": "dist/tools/ast-tools.js.map"
       },
       {
+        "id": "dist/tools/copilot-run-tools.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/tools/copilot-run-tools.d.ts"
+      },
+      {
+        "id": "dist/tools/copilot-run-tools.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/copilot-run-tools.d.ts.map"
+      },
+      {
+        "id": "dist/tools/copilot-run-tools.js",
+        "kind": "generated-dist",
+        "path": "dist/tools/copilot-run-tools.js"
+      },
+      {
+        "id": "dist/tools/copilot-run-tools.js.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/copilot-run-tools.js.map"
+      },
+      {
         "id": "dist/tools/deepinit-manifest.d.ts",
         "kind": "generated-dist",
         "path": "dist/tools/deepinit-manifest.d.ts"
@@ -40431,11 +40522,6 @@
         "path": "scripts/lib/precompact-restore.mjs"
       },
       {
-        "id": "scripts/lib/ralph-startup.mjs",
-        "kind": "script",
-        "path": "scripts/lib/ralph-startup.mjs"
-      },
-      {
         "id": "scripts/lib/read-budget-preflight.mjs",
         "kind": "script",
         "path": "scripts/lib/read-budget-preflight.mjs"
@@ -41049,11 +41135,6 @@
         "id": "skills/omc-doctor/SKILL.md",
         "kind": "skill",
         "path": "skills/omc-doctor/SKILL.md"
-      },
-      {
-        "id": "skills/omc-doctor/node-hook-fingerprints.json",
-        "kind": "other",
-        "path": "skills/omc-doctor/node-hook-fingerprints.json"
       },
       {
         "id": "skills/omc-gh-auto-review/SKILL.md",
@@ -42566,11 +42647,6 @@
         "path": "src/__tests__/rate-limit-wait/pane-fresh-capture.test.ts"
       },
       {
-        "id": "src/__tests__/rate-limit-wait/quota-confirmation.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/rate-limit-wait/quota-confirmation.test.ts"
-      },
-      {
         "id": "src/__tests__/rate-limit-wait/rate-limit-monitor.test.ts",
         "kind": "src",
         "path": "src/__tests__/rate-limit-wait/rate-limit-monitor.test.ts"
@@ -43516,11 +43592,6 @@
         "path": "src/cli/commands/__tests__/ultragoal.test.ts"
       },
       {
-        "id": "src/cli/commands/__tests__/wait.test.ts",
-        "kind": "src",
-        "path": "src/cli/commands/__tests__/wait.test.ts"
-      },
-      {
         "id": "src/cli/commands/alias-retirement.ts",
         "kind": "src",
         "path": "src/cli/commands/alias-retirement.ts"
@@ -44144,11 +44215,6 @@
         "id": "src/features/notepad-wisdom/types.ts",
         "kind": "feature",
         "path": "src/features/notepad-wisdom/types.ts"
-      },
-      {
-        "id": "src/features/rate-limit-wait/daemon-state.ts",
-        "kind": "feature",
-        "path": "src/features/rate-limit-wait/daemon-state.ts"
       },
       {
         "id": "src/features/rate-limit-wait/daemon.ts",
@@ -48906,11 +48972,6 @@
         "path": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts"
       },
       {
-        "id": "src/tools/diagnostics/__tests__/tsc-runner.test.ts",
-        "kind": "tool",
-        "path": "src/tools/diagnostics/__tests__/tsc-runner.test.ts"
-      },
-      {
         "id": "src/tools/diagnostics/index.ts",
         "kind": "tool",
         "path": "src/tools/diagnostics/index.ts"
@@ -49301,6 +49362,16 @@
         "path": "src/utils/user-skill-compat.ts"
       },
       {
+        "id": "src/verification/tier-selector.test.ts",
+        "kind": "src",
+        "path": "src/verification/tier-selector.test.ts"
+      },
+      {
+        "id": "src/verification/tier-selector.ts",
+        "kind": "src",
+        "path": "src/verification/tier-selector.ts"
+      },
+      {
         "id": "src/workflow/__tests__/alias-resolver.test.ts",
         "kind": "src",
         "path": "src/workflow/__tests__/alias-resolver.test.ts"
@@ -49574,16 +49645,6 @@
         "id": "tests/integration/git-guardrails-hook.test.ts",
         "kind": "other",
         "path": "tests/integration/git-guardrails-hook.test.ts"
-      },
-      {
-        "id": "tests/integration/issue-4266-jev-temp-cleanup.test.ts",
-        "kind": "other",
-        "path": "tests/integration/issue-4266-jev-temp-cleanup.test.ts"
-      },
-      {
-        "id": "tests/integration/issue-4363-ralph-skill-start.test.ts",
-        "kind": "other",
-        "path": "tests/integration/issue-4363-ralph-skill-start.test.ts"
       },
       {
         "id": "tests/integration/jev-active-mode-repro.test.ts",
@@ -50959,11 +51020,6 @@
       },
       {
         "from": "scripts/jev-resolve.mjs",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/jev-resolve.mjs",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -51030,11 +51086,6 @@
       {
         "from": "scripts/keyword-detector.mjs",
         "to": "scripts/lib/jev-shadow.mjs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/keyword-detector.mjs",
-        "to": "scripts/lib/ralph-startup.mjs",
         "kind": "imports"
       },
       {
@@ -51265,21 +51316,6 @@
       {
         "from": "scripts/lib/precompact-restore.mjs",
         "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/lib/ralph-startup.mjs",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/lib/ralph-startup.mjs",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/lib/ralph-startup.mjs",
-        "to": "external:path",
         "kind": "imports"
       },
       {
@@ -51784,11 +51820,6 @@
       },
       {
         "from": "scripts/post-tool-verifier.mjs",
-        "to": "scripts/lib/ralph-startup.mjs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/post-tool-verifier.mjs",
         "to": "scripts/lib/state-root.mjs",
         "kind": "imports"
       },
@@ -52094,17 +52125,7 @@
       },
       {
         "from": "scripts/run-provider-advisor.js",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/run-provider-advisor.js",
         "to": "external:fs/promises",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/run-provider-advisor.js",
-        "to": "external:os",
         "kind": "imports"
       },
       {
@@ -54255,16 +54276,6 @@
       {
         "from": "src/__tests__/directory-context-injector-registration.test.ts",
         "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/directory-context-injector-registration.test.ts",
-        "to": "src/hooks/directory-readme-injector/constants.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/directory-context-injector-registration.test.ts",
-        "to": "src/hooks/rules-injector/constants.ts",
         "kind": "imports"
       },
       {
@@ -57624,22 +57635,12 @@
       },
       {
         "from": "src/__tests__/post-tool-use-failure.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/post-tool-use-failure.test.ts",
         "to": "external:node:path",
         "kind": "imports"
       },
       {
         "from": "src/__tests__/post-tool-use-failure.test.ts",
         "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/post-tool-use-failure.test.ts",
-        "to": "src/installer/index.ts",
         "kind": "imports"
       },
       {
@@ -58414,11 +58415,6 @@
       },
       {
         "from": "src/__tests__/rate-limit-wait/daemon-bootstrap.test.ts",
-        "to": "src/features/rate-limit-wait/daemon-state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/rate-limit-wait/daemon-bootstrap.test.ts",
         "to": "src/features/rate-limit-wait/daemon.ts",
         "kind": "imports"
       },
@@ -58494,11 +58490,6 @@
       },
       {
         "from": "src/__tests__/rate-limit-wait/daemon.test.ts",
-        "to": "src/features/rate-limit-wait/daemon-state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/rate-limit-wait/daemon.test.ts",
         "to": "src/features/rate-limit-wait/daemon.ts",
         "kind": "imports"
       },
@@ -58566,41 +58557,6 @@
         "from": "src/__tests__/rate-limit-wait/pane-fresh-capture.test.ts",
         "to": "src/features/rate-limit-wait/pane-fresh-capture.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/rate-limit-wait/quota-confirmation.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/rate-limit-wait/quota-confirmation.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/rate-limit-wait/quota-confirmation.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/rate-limit-wait/quota-confirmation.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/rate-limit-wait/quota-confirmation.test.ts",
-        "to": "src/features/rate-limit-wait/daemon-state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/rate-limit-wait/quota-confirmation.test.ts",
-        "to": "src/features/rate-limit-wait/daemon.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/rate-limit-wait/quota-confirmation.test.ts",
-        "to": "src/features/rate-limit-wait/types.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/__tests__/rate-limit-wait/rate-limit-monitor.test.ts",
@@ -59425,11 +59381,6 @@
       {
         "from": "src/__tests__/session-start-script-context.test.ts",
         "to": "external:node:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/session-start-script-context.test.ts",
-        "to": "external:node:crypto",
         "kind": "imports"
       },
       {
@@ -63278,16 +63229,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/cli/commands/__tests__/wait.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/commands/__tests__/wait.test.ts",
-        "to": "src/cli/commands/wait.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/cli/commands/alias-retirement.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -66478,36 +66419,6 @@
         "kind": "type-imports"
       },
       {
-        "from": "src/features/rate-limit-wait/daemon-state.ts",
-        "to": "external:node:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/features/rate-limit-wait/daemon-state.ts",
-        "to": "src/features/rate-limit-wait/pane-fresh-capture.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/features/rate-limit-wait/daemon-state.ts",
-        "to": "src/features/rate-limit-wait/rate-limit-monitor.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/features/rate-limit-wait/daemon-state.ts",
-        "to": "src/features/rate-limit-wait/types.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/features/rate-limit-wait/daemon-state.ts",
-        "to": "src/hud/usage-api.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/features/rate-limit-wait/daemon-state.ts",
-        "to": "src/utils/config-dir.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/features/rate-limit-wait/daemon.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -66529,11 +66440,6 @@
       },
       {
         "from": "src/features/rate-limit-wait/daemon.ts",
-        "to": "src/features/rate-limit-wait/daemon-state.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/features/rate-limit-wait/daemon.ts",
         "to": "src/features/rate-limit-wait/rate-limit-monitor.ts",
         "kind": "imports"
       },
@@ -66545,7 +66451,7 @@
       {
         "from": "src/features/rate-limit-wait/daemon.ts",
         "to": "src/features/rate-limit-wait/types.ts",
-        "kind": "imports"
+        "kind": "type-imports"
       },
       {
         "from": "src/features/rate-limit-wait/daemon.ts",
@@ -79014,11 +78920,6 @@
       },
       {
         "from": "src/installer/__tests__/session-start-template.test.ts",
-        "to": "external:node:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/installer/__tests__/session-start-template.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -79035,16 +78936,6 @@
       {
         "from": "src/installer/__tests__/session-start-template.test.ts",
         "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/installer/__tests__/session-start-template.test.ts",
-        "to": "scripts/lib/cache-occupancy.mjs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/installer/__tests__/session-start-template.test.ts",
-        "to": "src/installer/index.ts",
         "kind": "imports"
       },
       {
@@ -79594,6 +79485,11 @@
       },
       {
         "from": "src/lib/__tests__/atomic-write.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/atomic-write.test.ts",
         "to": "external:crypto",
         "kind": "imports"
       },
@@ -79606,11 +79502,6 @@
         "from": "src/lib/__tests__/atomic-write.test.ts",
         "to": "external:fs/promises",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/lib/__tests__/atomic-write.test.ts",
-        "to": "external:node:child_process",
-        "kind": "imports"
       },
       {
         "from": "src/lib/__tests__/atomic-write.test.ts",
@@ -88229,21 +88120,6 @@
       },
       {
         "from": "src/team/__tests__/tmux-session.pane-env.test.ts",
-        "to": "src/cli/tmux-utils.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/__tests__/tmux-session.pane-env.test.ts",
-        "to": "src/team/runtime-owner-client.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/__tests__/tmux-session.pane-env.test.ts",
-        "to": "src/team/team-owner-epoch.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/team/__tests__/tmux-session.pane-env.test.ts",
         "to": "src/team/tmux-session.ts",
         "kind": "imports"
       },
@@ -92849,11 +92725,6 @@
       },
       {
         "from": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
       },
@@ -92874,31 +92745,6 @@
       },
       {
         "from": "src/tools/diagnostics/__tests__/tsc-runner-resolution.test.ts",
-        "to": "src/tools/diagnostics/tsc-runner.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/tools/diagnostics/__tests__/tsc-runner.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/tools/diagnostics/__tests__/tsc-runner.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/tools/diagnostics/__tests__/tsc-runner.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/tools/diagnostics/__tests__/tsc-runner.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/tools/diagnostics/__tests__/tsc-runner.test.ts",
         "to": "src/tools/diagnostics/tsc-runner.ts",
         "kind": "imports"
       },
@@ -92989,7 +92835,7 @@
       },
       {
         "from": "src/tools/diagnostics/tsc-runner.ts",
-        "to": "src/tools/lsp/servers.ts",
+        "to": "src/platform/executable-resolution.ts",
         "kind": "imports"
       },
       {
@@ -94279,16 +94125,6 @@
       },
       {
         "from": "src/utils/__tests__/cache-occupancy.test.ts",
-        "to": "external:node:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/utils/__tests__/cache-occupancy.test.ts",
-        "to": "external:node:url",
-        "kind": "imports"
-      },
-      {
-        "from": "src/utils/__tests__/cache-occupancy.test.ts",
         "to": "external:os",
         "kind": "imports"
       },
@@ -94561,6 +94397,21 @@
         "from": "src/utils/user-skill-compat.ts",
         "to": "src/utils/config-dir.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/verification/tier-selector.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/verification/tier-selector.test.ts",
+        "to": "src/verification/tier-selector.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/verification/tier-selector.test.ts",
+        "to": "src/verification/tier-selector.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/workflow/__tests__/alias-resolver.test.ts",
@@ -95533,71 +95384,6 @@
         "kind": "imports"
       },
       {
-        "from": "tests/integration/issue-4266-jev-temp-cleanup.test.ts",
-        "to": "external:node:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/issue-4266-jev-temp-cleanup.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/issue-4266-jev-temp-cleanup.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/issue-4266-jev-temp-cleanup.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/issue-4266-jev-temp-cleanup.test.ts",
-        "to": "external:node:url",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/issue-4266-jev-temp-cleanup.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/issue-4363-ralph-skill-start.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/issue-4363-ralph-skill-start.test.ts",
-        "to": "external:node:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/issue-4363-ralph-skill-start.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/issue-4363-ralph-skill-start.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/issue-4363-ralph-skill-start.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/issue-4363-ralph-skill-start.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "tests/integration/issue-4363-ralph-skill-start.test.ts",
-        "to": "src/installer/index.ts",
-        "kind": "imports"
-      },
-      {
         "from": "tests/integration/jev-active-mode-repro.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -96524,12 +96310,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8428,
-      "edgeCount": 9343,
-      "importEdgeCount": 7764,
+      "nodeCount": 8438,
+      "edgeCount": 9288,
+      "importEdgeCount": 7709,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "1eadabbd65652b74e2703cd5a20b9371f00de571b6ec68c23ce2f3ddc9eb2e57",
-  "manifestSha256": "7431a9b22525d853c50b776c39b59c846de6d46d73a22dcfca935379d86156fc"
+  "inventorySha256": "2eaa172da023a51deac4394935a6b86b264525cd63a51ab9a73fd7f0c620214d",
+  "manifestSha256": "71d0a97a126b75dc8d4d833b19a3033cbedfa9557e6fecf1bbdac24832342724"
 }

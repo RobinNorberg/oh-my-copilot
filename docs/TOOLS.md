@@ -2,7 +2,7 @@
 
 > OMC provides MCP tools for state management, code intelligence, and data analysis.
 
-The configured MCP server exposes exactly 56 tools.
+The configured MCP server exposes exactly 61 tools.
 
 Unlike skills that users invoke directly, tools are used internally by agents during task execution.
 
@@ -20,6 +20,7 @@ Unlike skills that users invoke directly, tools are used internally by agents du
 - [Skills](#skills) — Internal skill management tools
 - [Deepinit Manifest](#deepinit-manifest) — Incremental AGENTS.md regeneration manifest
 - [Host Smoke](#host-smoke) — Headless Copilot CLI smoke check of a plugin root
+- [Copilot Run](#copilot-run) — Delegate a task to a headless Copilot session (5 tools)
 
 ---
 
@@ -799,3 +800,15 @@ host_smoke(tier=2, scenarios=[])   # SDK static checks, free
 Tier 2 needs the optional peer `@github/copilot-sdk` next to the package. Without it the `sdk.*` checks fail with an install hint and the report is marked `skipped`.
 
 See [DEVELOPERS.md](./DEVELOPERS.md#headless-smoke-against-a-local-build) for the check list and how to register a local build in Claude Code.
+
+---
+
+## Copilot Run
+
+Delegates a task to a headless `@github/copilot-sdk` session as a background job, by default in a new git worktree and branch. `copilot_run_start` refuses unless `OMG_COPILOT_RUN_ALLOW=1` is set in the server env. `OMC_DISABLE_TOOLS=copilot-run` hides all five.
+
+### Tools
+
+`copilot_run_start`, `copilot_run_status`, `copilot_run_wait`, `copilot_run_cancel`, `copilot_run_cleanup`.
+
+See [REFERENCE.md](./REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot) for arguments, the job report, limits and cleanup rules.

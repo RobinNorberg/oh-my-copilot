@@ -30,6 +30,7 @@ export const TOOL_CATEGORIES = {
     DEEPINIT: 'deepinit',
     WIKI: 'wiki',
     SMOKE: 'smoke',
+    COPILOT_RUN: 'copilot-run',
 };
 // Hook event names
 export const HOOK_EVENTS = {
