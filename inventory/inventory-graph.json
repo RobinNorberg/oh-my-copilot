@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "f839d295c99d8729923dee2ff67c02e488515564",
-    "sourceSha256": "f9bdd19e28fa28de03cecd259129ff9e1169725378c250e266c6c0250cc2286b",
+    "head": "b576fd9b236e9f31fa564d784da4ff4b53ceee1c",
+    "sourceSha256": "1bc75a2de210db2ed8ce9003c38c03b508c906b455f53d757129f9cc95918743",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "f839d295c99d8729923dee2ff67c02e488515564",
-  "sourceSha256": "f9bdd19e28fa28de03cecd259129ff9e1169725378c250e266c6c0250cc2286b",
+  "head": "b576fd9b236e9f31fa564d784da4ff4b53ceee1c",
+  "sourceSha256": "1bc75a2de210db2ed8ce9003c38c03b508c906b455f53d757129f9cc95918743",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1620
     },
     "generated": {
-      "distFiles": 6087,
+      "distFiles": 6119,
       "bridgeFiles": 9,
-      "total": 6096
+      "total": 6128
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -3836,6 +3836,38 @@
       "dist/hooks/learner/writer.d.ts.map",
       "dist/hooks/learner/writer.js",
       "dist/hooks/learner/writer.js.map",
+      "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts",
+      "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts.map",
+      "dist/hooks/merge-readiness/__tests__/runtime.test.js",
+      "dist/hooks/merge-readiness/__tests__/runtime.test.js.map",
+      "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts",
+      "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts.map",
+      "dist/hooks/merge-readiness/__tests__/tool-flow.test.js",
+      "dist/hooks/merge-readiness/__tests__/tool-flow.test.js.map",
+      "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts",
+      "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts.map",
+      "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js",
+      "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js.map",
+      "dist/hooks/merge-readiness/index.d.ts",
+      "dist/hooks/merge-readiness/index.d.ts.map",
+      "dist/hooks/merge-readiness/index.js",
+      "dist/hooks/merge-readiness/index.js.map",
+      "dist/hooks/merge-readiness/mcq.d.ts",
+      "dist/hooks/merge-readiness/mcq.d.ts.map",
+      "dist/hooks/merge-readiness/mcq.js",
+      "dist/hooks/merge-readiness/mcq.js.map",
+      "dist/hooks/merge-readiness/report.d.ts",
+      "dist/hooks/merge-readiness/report.d.ts.map",
+      "dist/hooks/merge-readiness/report.js",
+      "dist/hooks/merge-readiness/report.js.map",
+      "dist/hooks/merge-readiness/runtime.d.ts",
+      "dist/hooks/merge-readiness/runtime.d.ts.map",
+      "dist/hooks/merge-readiness/runtime.js",
+      "dist/hooks/merge-readiness/runtime.js.map",
+      "dist/hooks/merge-readiness/types.d.ts",
+      "dist/hooks/merge-readiness/types.d.ts.map",
+      "dist/hooks/merge-readiness/types.js",
+      "dist/hooks/merge-readiness/types.js.map",
       "dist/hooks/mode-registry/__tests__/session-isolation.test.d.ts",
       "dist/hooks/mode-registry/__tests__/session-isolation.test.d.ts.map",
       "dist/hooks/mode-registry/__tests__/session-isolation.test.js",
@@ -23102,6 +23134,166 @@
         "id": "dist/hooks/learner/writer.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/learner/writer.js.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/__tests__/runtime.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/__tests__/runtime.test.js"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/__tests__/runtime.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/__tests__/runtime.test.js.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/__tests__/tool-flow.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/__tests__/tool-flow.test.js"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/__tests__/tool-flow.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/__tests__/tool-flow.test.js.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/index.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/index.d.ts"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/index.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/index.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/index.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/index.js"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/index.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/index.js.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/mcq.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/mcq.d.ts"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/mcq.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/mcq.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/mcq.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/mcq.js"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/mcq.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/mcq.js.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/report.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/report.d.ts"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/report.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/report.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/report.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/report.js"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/report.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/report.js.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/runtime.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/runtime.d.ts"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/runtime.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/runtime.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/runtime.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/runtime.js"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/runtime.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/runtime.js.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/types.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/types.d.ts"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/types.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/types.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/types.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/types.js"
+      },
+      {
+        "id": "dist/hooks/merge-readiness/types.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/merge-readiness/types.js.map"
       },
       {
         "id": "dist/hooks/mode-registry/__tests__/session-isolation.test.d.ts",
@@ -96657,12 +96849,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8413,
+      "nodeCount": 8445,
       "edgeCount": 9390,
       "importEdgeCount": 7816,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "ce33e9884d96c9483c31425cf7c74aed08084645aa864f694275bc9d8ffad0e5",
-  "manifestSha256": "9998364396dbe09950e5c0ebe78d010e023cc230ac058168c1a06543cffc5628"
+  "manifestSha256": "a22a7e9bb3f5adf371f2b947a6d122d7b713982532007f403e0f9f96080748b4"
 }
