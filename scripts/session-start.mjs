@@ -1140,7 +1140,10 @@ function mergeUpdateCheckCache(fields) {
     if (!locked) return;
 
     const temporaryPath = `${cachePath}.${process.pid}.${Date.now()}.tmp`;
-    writeFileSync(temporaryPath, JSON.stringify({ ...readUpdateCheckCache(), ...fields }));
+    // Sorted keys: the OMC and Claude Code checks race, so insertion order
+    // would make the file's bytes depend on which fetch settled first.
+    const merged = { ...readUpdateCheckCache(), ...fields };
+    writeFileSync(temporaryPath, JSON.stringify(Object.fromEntries(Object.keys(merged).sort().map(key => [key, merged[key]]))));
     try {
       renameSync(temporaryPath, cachePath);
     } catch {

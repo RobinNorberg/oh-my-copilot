@@ -193,6 +193,40 @@ describe('session-start.mjs detached update-cache refresh', () => {
       expect(cached.claudeCodeLatestVersion).toBeUndefined();
     });
 
+    it('writes the same key order whichever registry answer lands first', async () => {
+      // The OMC and Claude Code checks run concurrently and merge into one file;
+      // its bytes must not depend on which fetch settles first.
+      rmSync(cachePath);
+      const keyOrders: string[][] = [];
+      for (const slow of ['/oh-my-copilot/latest', '/@anthropic-ai/claude-code/latest']) {
+        const server = createHttpServer((req, res) => {
+          setTimeout(() => {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ version: '1.0.0' }));
+          }, req.url === slow ? 300 : 0);
+        });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const address = server.address();
+        if (!address || typeof address === 'string') throw new Error('no port');
+        await new Promise<void>((resolve, reject) => {
+          const child = spawn(NODE, [SCRIPT_PATH, '--refresh-update-cache'], {
+            stdio: 'ignore',
+            // A plugin root with a package.json, so the OMC check runs too.
+            env: { ...baseEnv(`http://127.0.0.1:${address.port}`), CLAUDE_PLUGIN_ROOT: join(__dirname, '..', '..') },
+          });
+          child.on('error', reject);
+          child.on('close', () => resolve());
+        });
+        server.close();
+        keyOrders.push(Object.keys(JSON.parse(readFileSync(cachePath, 'utf-8'))));
+        rmSync(cachePath);
+      }
+
+      expect(keyOrders[0]).toContain('latestVersion');
+      expect(keyOrders[0]).toContain('claudeCodeLatestVersion');
+      expect(keyOrders[1]).toEqual(keyOrders[0]);
+    });
+
     it('serializes concurrent refreshes and leaves a complete cache document', async () => {
       const registryBase = await startFakeRegistry('9.9.9');
       const statuses = await Promise.all(
