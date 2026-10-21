@@ -11,10 +11,12 @@
 
 const PATCH_FILE_LINE = /^\*\*\* (?:(?:Add|Update|Delete) File|Move to): (.+?)\s*$/gm;
 
-/** Distinct paths, in input order; [] when the input names none. */
+const MAX_PATHS = 20;
+
+/** Distinct paths, in input order, at most MAX_PATHS; [] when the input names none. */
 export function toolInputPaths(toolInput) {
   if (typeof toolInput === 'string') {
-    return [...new Set([...toolInput.matchAll(PATCH_FILE_LINE)].map((match) => match[1]))];
+    return [...new Set([...toolInput.matchAll(PATCH_FILE_LINE)].map((match) => match[1]))].slice(0, MAX_PATHS);
   }
   if (!toolInput || typeof toolInput !== 'object') return [];
   const path = toolInput.file_path || toolInput.path;

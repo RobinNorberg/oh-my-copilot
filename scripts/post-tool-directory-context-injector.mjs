@@ -21,6 +21,7 @@
 import { isAbsolute, join, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { readStdin } from './lib/stdin.mjs';
+// fork: Copilot apply_patch sends patch text, not a path object; extract its paths.
 import { toolInputPaths } from './lib/tool-input-paths.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -75,6 +76,7 @@ async function main() {
     const sessionId = data.session_id || data.sessionId || 'unknown';
     const cwd = data.cwd || process.cwd();
 
+    // fork: Copilot apply_patch sends patch text; extract every patched path (capped).
     // One path for Read/Write/Edit/MultiEdit; every patched file for Copilot's apply_patch.
     const rawPaths = toolInputPaths(toolInput);
     if (rawPaths.length === 0) {

@@ -43,6 +43,15 @@ describe('toolInputPaths', () => {
     expect(toolInputPaths(text)).toEqual(['a.txt', 'b.txt', 'c.txt']);
     expect(toolInputPaths('plain text, no patch')).toEqual([]);
   });
+
+  it('keeps a delete-only patch and caps the paths at 20', () => {
+    expect(toolInputPaths('*** Begin Patch\n*** Delete File: gone.txt\n*** End Patch')).toEqual(['gone.txt']);
+    const many = Array.from({ length: 30 }, (_, i) => `*** Add File: f${i}.txt\n+x`).join('\n');
+    const paths = toolInputPaths(`*** Begin Patch\n${many}\n*** End Patch`);
+    expect(paths).toHaveLength(20);
+    expect(paths[0]).toBe('f0.txt');
+    expect(paths[19]).toBe('f19.txt');
+  });
 });
 
 describe('PostToolUse injectors on Copilot payloads', () => {
@@ -86,6 +95,30 @@ describe('PostToolUse injectors on Copilot payloads', () => {
 
   it('directory context: a patch text naming no file injects nothing', () => {
     expect(runScript('post-tool-directory-context-injector.mjs', { ...base('patch-none'), tool_name: 'Edit', tool_input: 'no patch here' })).toEqual({ continue: true });
+  });
+
+  it('directory context: a delete-only patch still injects the README of the deleted file directory', () => {
+    const input = '*** Begin Patch\n*** Delete File: filetools/notes.txt\n*** End Patch\n';
+    const out = runScript('post-tool-directory-context-injector.mjs', { ...base('patch-delete'), tool_name: 'Edit', tool_input: input });
+    expect(out.hookSpecificOutput?.additionalContext).toContain('Context marker: read-side');
+  });
+
+  it('directory context: a ../ patch path behaves like an absolute path outside cwd (only the README beside the file, no walk further up)', () => {
+    writeFileSync(join(root, 'README.md'), '# Outside\n\nContext marker: outside-cwd\n');
+    const input = '*** Begin Patch\n*** Update File: ../outside.txt\n@@\n-a\n+b\n*** End Patch\n';
+    const out = runScript('post-tool-directory-context-injector.mjs', { ...base('patch-dotdot'), tool_name: 'Edit', tool_input: input });
+    expect(out.hookSpecificOutput?.additionalContext ?? '').toContain('outside-cwd');
+  });
+
+  it('directory context: a patch of 25 files is capped at the first 20 paths', () => {
+    for (let i = 0; i < 25; i++) {
+      mkdirSync(join(project, `d${i}`));
+      writeFileSync(join(project, `d${i}`, 'README.md'), `# D\n\nContext marker: dir-${i}-end\n`);
+    }
+    const input = `*** Begin Patch\n${Array.from({ length: 25 }, (_, i) => `*** Add File: d${i}/x.txt\n+x`).join('\n')}\n*** End Patch\n`;
+    const text = runScript('post-tool-directory-context-injector.mjs', { ...base('patch-many'), tool_name: 'Edit', tool_input: input }).hookSpecificOutput?.additionalContext ?? '';
+    expect(text).toContain('dir-19-end');
+    expect(text).not.toContain('dir-20-end');
   });
 
   it('rules: an apply_patch payload reaches the rules lookup', () => {
