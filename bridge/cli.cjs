@@ -67666,13 +67666,13 @@ When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
 }
 async function checkPersistentModes(sessionId, directory, stopContext) {
   const result = await resolvePersistentModeBlock(sessionId, directory, stopContext);
-  const guarded3 = applyThinkingOnlyStreakGuard(
+  const guarded4 = applyThinkingOnlyStreakGuard(
     result,
     resolveToWorktreeRoot(directory),
     sessionId,
     stopContext
   );
-  return applyLoopContinuationShadow({ result: guarded3, sessionId });
+  return applyLoopContinuationShadow({ result: guarded4, sessionId });
 }
 async function resolvePersistentModeBlock(sessionId, directory, stopContext) {
   const workingDir = resolveToWorktreeRoot(directory);
@@ -84120,24 +84120,24 @@ async function runGuardedNativeTmuxCommand(identity, nativeCommand) {
       exec: tmuxCmdAsync
     });
   }
-  const guarded3 = tmuxGuardedNativeCommand(identity, nativeCommand);
+  const guarded4 = tmuxGuardedNativeCommand(identity, nativeCommand);
   try {
     const result = await tmuxCmdAsync(
       tmuxArgsForIdentity(identity, [
         "if-shell",
-        guarded3.condition,
-        guarded3.success,
-        guarded3.failure
+        guarded4.condition,
+        guarded4.success,
+        guarded4.failure
       ]),
       { timeout: 5e3, stripTmux: true }
     );
     if (result.stderr.trim()) return { outcome: "unknown", stdout: result.stdout, stderr: result.stderr };
     const outputLines = result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const failureMarker = `OMC_TMUX_GUARD_FAIL_${guarded3.marker}`;
+    const failureMarker = `OMC_TMUX_GUARD_FAIL_${guarded4.marker}`;
     if (outputLines.includes(failureMarker)) {
       return { outcome: "not_executed", stdout: result.stdout, stderr: result.stderr };
     }
-    if (outputLines.includes(guarded3.marker)) {
+    if (outputLines.includes(guarded4.marker)) {
       return { outcome: "executed", stdout: result.stdout, stderr: result.stderr };
     }
     return { outcome: "unknown", stdout: result.stdout, stderr: result.stderr };
@@ -96808,7 +96808,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
     ).catch(logCursorTransitionMarkerFailure);
   };
   const { rename: rename8 } = await import("fs/promises");
-  const { renameSync: renameSync19, readFileSync: readFileSync141, existsSync: fsExistsSync } = await import("fs");
+  const { renameSync: renameSync20, readFileSync: readFileSync141, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   const quarantineNonCursorVerdict = async (outputFile, artifactFingerprint, workerName, taskId, taskVersion, reason) => {
     const stalePath = nonCursorVerdictStalePath(outputFile, artifactFingerprint);
@@ -96881,7 +96881,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
             if (fsExistsSync(outputFile)) {
               const stalePath = `${processingOutputFile}.stale`;
               try {
-                renameSync19(processingOutputFile, stalePath);
+                renameSync20(processingOutputFile, stalePath);
               } catch {
               }
             } else {
@@ -96891,7 +96891,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
           }
           const raw = readFileSync141(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
-          renameSync19(outputFile, processingOutputFile);
+          renameSync20(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
         });
       }
@@ -118658,12 +118658,12 @@ async function parseTranscript(transcriptPath, options) {
     lastToolName: null,
     recentTools: []
   };
-  if (!transcriptPath || !(0, import_fs156.existsSync)(transcriptPath)) {
+  if (!transcriptPath || !(0, import_fs158.existsSync)(transcriptPath)) {
     return result;
   }
   let cacheKey = null;
   try {
-    const stat2 = (0, import_fs156.statSync)(transcriptPath);
+    const stat2 = (0, import_fs158.statSync)(transcriptPath);
     cacheKey = `${transcriptPath}:${stat2.size}:${stat2.mtimeMs}`;
     const cached2 = transcriptCache.get(transcriptPath);
     if (cached2?.cacheKey === cacheKey) {
@@ -118684,7 +118684,7 @@ async function parseTranscript(transcriptPath, options) {
   const observedSessionIds = /* @__PURE__ */ new Set();
   const recentToolMap = /* @__PURE__ */ new Map();
   try {
-    const stat2 = (0, import_fs156.statSync)(transcriptPath);
+    const stat2 = (0, import_fs158.statSync)(transcriptPath);
     const fileSize = stat2.size;
     if (fileSize > MAX_TAIL_BYTES) {
       const lines3 = readTailLines(transcriptPath, fileSize, MAX_TAIL_BYTES);
@@ -118708,7 +118708,7 @@ async function parseTranscript(transcriptPath, options) {
       }
       sessionTotalsReliable = sessionTokenTotals.seenUsage;
     } else {
-      const fileStream = (0, import_fs156.createReadStream)(transcriptPath);
+      const fileStream = (0, import_fs158.createReadStream)(transcriptPath);
       const rl = (0, import_readline5.createInterface)({
         input: fileStream,
         crlfDelay: Infinity
@@ -118833,12 +118833,12 @@ function finalizeTranscriptResult(result, options, pendingPermissions) {
 function readTailLines(filePath, fileSize, maxBytes) {
   const startOffset = Math.max(0, fileSize - maxBytes);
   const bytesToRead = fileSize - startOffset;
-  const fd = (0, import_fs156.openSync)(filePath, "r");
+  const fd = (0, import_fs158.openSync)(filePath, "r");
   const buffer = Buffer.alloc(bytesToRead);
   try {
-    (0, import_fs156.readSync)(fd, buffer, 0, bytesToRead, startOffset);
+    (0, import_fs158.readSync)(fd, buffer, 0, bytesToRead, startOffset);
   } finally {
-    (0, import_fs156.closeSync)(fd);
+    (0, import_fs158.closeSync)(fd);
   }
   const content = buffer.toString("utf8");
   const lines3 = content.split("\n");
@@ -118882,7 +118882,7 @@ function extractTargetSummary(input, toolName) {
   if (toolName.includes("Edit") || toolName.includes("Write")) {
     const filePath = inp.file_path;
     if (filePath) {
-      return (0, import_path187.basename)(filePath) || filePath;
+      return (0, import_path189.basename)(filePath) || filePath;
     }
   }
   if (toolName.includes("Bash")) {
@@ -119149,13 +119149,13 @@ function extractLastRequestTokenUsage(usage) {
 function getNumericUsageValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-var import_fs156, import_readline5, import_path187, MAX_TAIL_BYTES, MAX_AGENT_MAP_SIZE, MAX_RECENT_TOOLS, RECENT_TOOLS_SKIP, PERMISSION_TOOLS, PERMISSION_THRESHOLD_MS, pendingPermissionMap, taskToolStates, TASK_STATUSES, THINKING_PART_TYPES2, THINKING_RECENCY_MS, transcriptCache, TRANSCRIPT_CACHE_MAX_SIZE;
+var import_fs158, import_readline5, import_path189, MAX_TAIL_BYTES, MAX_AGENT_MAP_SIZE, MAX_RECENT_TOOLS, RECENT_TOOLS_SKIP, PERMISSION_TOOLS, PERMISSION_THRESHOLD_MS, pendingPermissionMap, taskToolStates, TASK_STATUSES, THINKING_PART_TYPES2, THINKING_RECENCY_MS, transcriptCache, TRANSCRIPT_CACHE_MAX_SIZE;
 var init_transcript = __esm({
   "src/hud/transcript.ts"() {
     "use strict";
-    import_fs156 = require("fs");
+    import_fs158 = require("fs");
     import_readline5 = require("readline");
-    import_path187 = require("path");
+    import_path189 = require("path");
     init_agent_kind();
     MAX_TAIL_BYTES = 4 * 1024 * 1024;
     MAX_AGENT_MAP_SIZE = 100;
@@ -119197,7 +119197,7 @@ var init_transcript = __esm({
 // src/hud/omc-state.ts
 function isStateFileStale(filePath) {
   try {
-    const stat2 = (0, import_fs157.statSync)(filePath);
+    const stat2 = (0, import_fs159.statSync)(filePath);
     const age = Date.now() - stat2.mtimeMs;
     return age > MAX_STATE_AGE_MS2;
   } catch {
@@ -119207,21 +119207,21 @@ function isStateFileStale(filePath) {
 function resolveStatePath2(directory, filename, sessionId) {
   const omcRoot = getOmcRoot(directory);
   if (sessionId) {
-    const sessionPath = (0, import_path188.join)(omcRoot, "state", "sessions", sessionId, filename);
-    return (0, import_fs157.existsSync)(sessionPath) ? sessionPath : null;
+    const sessionPath = (0, import_path190.join)(omcRoot, "state", "sessions", sessionId, filename);
+    return (0, import_fs159.existsSync)(sessionPath) ? sessionPath : null;
   }
   let bestPath = null;
   let bestMtime = 0;
-  const sessionsDir = (0, import_path188.join)(omcRoot, "state", "sessions");
-  if ((0, import_fs157.existsSync)(sessionsDir)) {
+  const sessionsDir = (0, import_path190.join)(omcRoot, "state", "sessions");
+  if ((0, import_fs159.existsSync)(sessionsDir)) {
     try {
-      const entries = (0, import_fs157.readdirSync)(sessionsDir, { withFileTypes: true });
+      const entries = (0, import_fs159.readdirSync)(sessionsDir, { withFileTypes: true });
       for (const entry2 of entries) {
         if (!entry2.isDirectory()) continue;
-        const sessionFile = (0, import_path188.join)(sessionsDir, entry2.name, filename);
-        if ((0, import_fs157.existsSync)(sessionFile)) {
+        const sessionFile = (0, import_path190.join)(sessionsDir, entry2.name, filename);
+        if ((0, import_fs159.existsSync)(sessionFile)) {
           try {
-            const mtime = (0, import_fs157.statSync)(sessionFile).mtimeMs;
+            const mtime = (0, import_fs159.statSync)(sessionFile).mtimeMs;
             if (mtime > bestMtime) {
               bestMtime = mtime;
               bestPath = sessionFile;
@@ -119233,10 +119233,10 @@ function resolveStatePath2(directory, filename, sessionId) {
     } catch {
     }
   }
-  const newPath = (0, import_path188.join)(omcRoot, "state", filename);
-  if ((0, import_fs157.existsSync)(newPath)) {
+  const newPath = (0, import_path190.join)(omcRoot, "state", filename);
+  if ((0, import_fs159.existsSync)(newPath)) {
     try {
-      const mtime = (0, import_fs157.statSync)(newPath).mtimeMs;
+      const mtime = (0, import_fs159.statSync)(newPath).mtimeMs;
       if (mtime > bestMtime) {
         bestMtime = mtime;
         bestPath = newPath;
@@ -119245,10 +119245,10 @@ function resolveStatePath2(directory, filename, sessionId) {
       if (!bestPath) bestPath = newPath;
     }
   }
-  const legacyPath = (0, import_path188.join)(omcRoot, filename);
-  if ((0, import_fs157.existsSync)(legacyPath)) {
+  const legacyPath = (0, import_path190.join)(omcRoot, filename);
+  if ((0, import_fs159.existsSync)(legacyPath)) {
     try {
-      const mtime = (0, import_fs157.statSync)(legacyPath).mtimeMs;
+      const mtime = (0, import_fs159.statSync)(legacyPath).mtimeMs;
       if (mtime > bestMtime) {
         bestPath = legacyPath;
       }
@@ -119267,7 +119267,7 @@ function readRalphStateForHud(directory, sessionId) {
     return null;
   }
   try {
-    const content = (0, import_fs157.readFileSync)(stateFile, "utf-8");
+    const content = (0, import_fs159.readFileSync)(stateFile, "utf-8");
     const state = JSON.parse(content);
     if (!state.active) {
       return null;
@@ -119284,15 +119284,15 @@ function readRalphStateForHud(directory, sessionId) {
   }
 }
 function readPrdStateForHud(directory) {
-  let prdPath = (0, import_path188.join)(directory, "prd.json");
-  if (!(0, import_fs157.existsSync)(prdPath)) {
-    prdPath = (0, import_path188.join)(getOmcRoot(directory), "prd.json");
-    if (!(0, import_fs157.existsSync)(prdPath)) {
+  let prdPath = (0, import_path190.join)(directory, "prd.json");
+  if (!(0, import_fs159.existsSync)(prdPath)) {
+    prdPath = (0, import_path190.join)(getOmcRoot(directory), "prd.json");
+    if (!(0, import_fs159.existsSync)(prdPath)) {
       return null;
     }
   }
   try {
-    const content = (0, import_fs157.readFileSync)(prdPath, "utf-8");
+    const content = (0, import_fs159.readFileSync)(prdPath, "utf-8");
     const prd = JSON.parse(content);
     if (!prd.userStories || !Array.isArray(prd.userStories)) {
       return null;
@@ -119345,7 +119345,7 @@ function readAutopilotStateForHud(directory, sessionId) {
     return null;
   }
   try {
-    const content = (0, import_fs157.readFileSync)(stateFile, "utf-8");
+    const content = (0, import_fs159.readFileSync)(stateFile, "utf-8");
     const state = JSON.parse(content);
     if (!state.active) {
       return null;
@@ -119368,12 +119368,12 @@ function readAutopilotStateForHud(directory, sessionId) {
     return null;
   }
 }
-var import_fs157, import_path188, MAX_STATE_AGE_MS2;
+var import_fs159, import_path190, MAX_STATE_AGE_MS2;
 var init_omc_state = __esm({
   "src/hud/omc-state.ts"() {
     "use strict";
-    import_fs157 = require("fs");
-    import_path188 = require("path");
+    import_fs159 = require("fs");
+    import_path190 = require("path");
     init_worktree_paths();
     init_named_workflow_resume_validator();
     MAX_STATE_AGE_MS2 = 2 * 60 * 60 * 1e3;
@@ -119382,7 +119382,7 @@ var init_omc_state = __esm({
 
 // src/hud/custom-rate-provider.ts
 function getCachePath2() {
-  return (0, import_path189.join)(
+  return (0, import_path191.join)(
     getCopilotConfigDir(),
     "plugins",
     "oh-my-copilot",
@@ -119392,8 +119392,8 @@ function getCachePath2() {
 function readCache2() {
   try {
     const p = getCachePath2();
-    if (!(0, import_fs158.existsSync)(p)) return null;
-    return JSON.parse((0, import_fs158.readFileSync)(p, "utf-8"));
+    if (!(0, import_fs160.existsSync)(p)) return null;
+    return JSON.parse((0, import_fs160.readFileSync)(p, "utf-8"));
   } catch {
     return null;
   }
@@ -119401,10 +119401,10 @@ function readCache2() {
 function writeCache2(buckets, identity) {
   try {
     const p = getCachePath2();
-    const dir = (0, import_path189.dirname)(p);
-    if (!(0, import_fs158.existsSync)(dir)) (0, import_fs158.mkdirSync)(dir, { recursive: true });
+    const dir = (0, import_path191.dirname)(p);
+    if (!(0, import_fs160.existsSync)(dir)) (0, import_fs160.mkdirSync)(dir, { recursive: true });
     const cache = { timestamp: Date.now(), buckets, identity };
-    (0, import_fs158.writeFileSync)(p, JSON.stringify(cache, null, 2));
+    (0, import_fs160.writeFileSync)(p, JSON.stringify(cache, null, 2));
   } catch {
   }
 }
@@ -119522,14 +119522,14 @@ async function executeCustomProvider(config2) {
     return { buckets: [], stale: false, error: "command failed" };
   }
 }
-var import_child_process54, import_node_crypto18, import_fs158, import_path189, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
+var import_child_process54, import_node_crypto18, import_fs160, import_path191, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
 var init_custom_rate_provider = __esm({
   "src/hud/custom-rate-provider.ts"() {
     "use strict";
     import_child_process54 = require("child_process");
     import_node_crypto18 = require("node:crypto");
-    import_fs158 = require("fs");
-    import_path189 = require("path");
+    import_fs160 = require("fs");
+    import_path191 = require("path");
     init_config_dir();
     CACHE_TTL_MS2 = 3e4;
     DEFAULT_TIMEOUT_MS4 = 800;
@@ -121165,8 +121165,8 @@ var init_effort = __esm({
 // src/hud/elements/api-key-source.ts
 function settingsFileHasApiKey(filePath) {
   try {
-    if (!(0, import_fs159.existsSync)(filePath)) return false;
-    const content = (0, import_fs159.readFileSync)(filePath, "utf-8");
+    if (!(0, import_fs161.existsSync)(filePath)) return false;
+    const content = (0, import_fs161.readFileSync)(filePath, "utf-8");
     const settings = JSON.parse(content);
     const env2 = settings?.env;
     if (typeof env2 !== "object" || env2 === null) return false;
@@ -121177,10 +121177,10 @@ function settingsFileHasApiKey(filePath) {
 }
 function detectApiKeySource(cwd2) {
   if (cwd2) {
-    const projectSettings = (0, import_path190.join)(cwd2, ".copilot", "settings.local.json");
+    const projectSettings = (0, import_path192.join)(cwd2, ".copilot", "settings.local.json");
     if (settingsFileHasApiKey(projectSettings)) return "project";
   }
-  const globalSettings = (0, import_path190.join)(getCopilotConfigDir(), "settings.json");
+  const globalSettings = (0, import_path192.join)(getCopilotConfigDir(), "settings.json");
   if (settingsFileHasApiKey(globalSettings)) return "global";
   if (process.env.ANTHROPIC_API_KEY) return "env";
   return null;
@@ -121189,12 +121189,12 @@ function renderApiKeySource(source) {
   if (!source) return null;
   return `${dim("key:")}${cyan(source)}`;
 }
-var import_fs159, import_path190;
+var import_fs161, import_path192;
 var init_api_key_source = __esm({
   "src/hud/elements/api-key-source.ts"() {
     "use strict";
-    import_fs159 = require("fs");
-    import_path190 = require("path");
+    import_fs161 = require("fs");
+    import_path192 = require("path");
     init_colors();
     init_config_dir();
   }
@@ -121927,7 +121927,7 @@ function findByteBackward(fd, fromExclusive, byte) {
   while (end > 0) {
     const start = Math.max(0, end - SCAN_CHUNK_BYTES);
     const length = end - start;
-    (0, import_fs160.readSync)(fd, buffer, 0, length, start);
+    (0, import_fs162.readSync)(fd, buffer, 0, length, start);
     const index = buffer.subarray(0, length).lastIndexOf(byte);
     if (index !== -1) return start + index;
     end = start;
@@ -121939,7 +121939,7 @@ function findByteForward(fd, fromInclusive, size, byte) {
   const buffer = Buffer.allocUnsafe(SCAN_CHUNK_BYTES);
   while (start < size) {
     const length = Math.min(SCAN_CHUNK_BYTES, size - start);
-    (0, import_fs160.readSync)(fd, buffer, 0, length, start);
+    (0, import_fs162.readSync)(fd, buffer, 0, length, start);
     const index = buffer.subarray(0, length).indexOf(byte);
     if (index !== -1) return start + index;
     start += length;
@@ -121954,19 +121954,19 @@ function readLineContainingOffset(fd, size, offset) {
   const length = endOffset - startOffset;
   if (length <= 0 || length > MAX_BOUNDARY_LINE_BYTES) return null;
   const line = Buffer.allocUnsafe(length);
-  (0, import_fs160.readSync)(fd, line, 0, length, startOffset);
+  (0, import_fs162.readSync)(fd, line, 0, length, startOffset);
   return { line, endOffset };
 }
 function findLastCompactBoundaryEndOffset(transcriptPath, size) {
   if (size <= 0) return null;
-  const fd = (0, import_fs160.openSync)(transcriptPath, "r");
+  const fd = (0, import_fs162.openSync)(transcriptPath, "r");
   try {
     let end = size;
     const buffer = Buffer.allocUnsafe(Math.min(SCAN_CHUNK_BYTES, size));
     while (end > 0) {
       const start = Math.max(0, end - SCAN_CHUNK_BYTES);
       const length = end - start;
-      (0, import_fs160.readSync)(fd, buffer, 0, length, start);
+      (0, import_fs162.readSync)(fd, buffer, 0, length, start);
       const chunk = buffer.subarray(0, length);
       let index = chunk.lastIndexOf(COMPACT_BOUNDARY_MARKER_BYTES);
       while (index !== -1) {
@@ -121981,13 +121981,13 @@ function findLastCompactBoundaryEndOffset(transcriptPath, size) {
       end = start + COMPACT_BOUNDARY_MARKER_BYTES.length - 1;
     }
   } finally {
-    (0, import_fs160.closeSync)(fd);
+    (0, import_fs162.closeSync)(fd);
   }
   return null;
 }
 function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
   if (end <= start) return 0;
-  const fd = (0, import_fs160.openSync)(transcriptPath, "r");
+  const fd = (0, import_fs162.openSync)(transcriptPath, "r");
   try {
     const chunk = Buffer.allocUnsafe(SCAN_CHUNK_BYTES);
     const prefix = Buffer.allocUnsafe(LOCAL_API_REQUEST_PREFIX.length);
@@ -121996,7 +121996,7 @@ function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
     const countLine = (lineEndExclusive) => {
       const lineLength = lineEndExclusive - lineStart;
       if (lineLength >= prefix.length) {
-        const bytesRead = (0, import_fs160.readSync)(fd, prefix, 0, prefix.length, lineStart);
+        const bytesRead = (0, import_fs162.readSync)(fd, prefix, 0, prefix.length, lineStart);
         if (bytesRead === prefix.length && prefix.equals(LOCAL_API_REQUEST_PREFIX)) {
           excludedBytes += lineLength;
         }
@@ -122006,7 +122006,7 @@ function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
     let position = start;
     while (position < end) {
       const length = Math.min(SCAN_CHUNK_BYTES, end - position);
-      (0, import_fs160.readSync)(fd, chunk, 0, length, position);
+      (0, import_fs162.readSync)(fd, chunk, 0, length, position);
       const view = chunk.subarray(0, length);
       let newline = view.indexOf(10);
       while (newline !== -1) {
@@ -122018,7 +122018,7 @@ function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
     if (lineStart < end) countLine(end);
     return excludedBytes;
   } finally {
-    (0, import_fs160.closeSync)(fd);
+    (0, import_fs162.closeSync)(fd);
   }
 }
 function estimateTranscriptPayloadBytes(transcriptPath, size) {
@@ -122033,9 +122033,9 @@ function estimateTranscriptPayloadBytes(transcriptPath, size) {
   );
 }
 function estimatePayloadFromTranscriptPath(transcriptPath) {
-  if (!transcriptPath || !(0, import_fs160.existsSync)(transcriptPath)) return null;
+  if (!transcriptPath || !(0, import_fs162.existsSync)(transcriptPath)) return null;
   try {
-    const stat2 = (0, import_fs160.statSync)(transcriptPath);
+    const stat2 = (0, import_fs162.statSync)(transcriptPath);
     if (!stat2.isFile()) return null;
     return createPayloadEstimate(
       estimateTranscriptPayloadBytes(transcriptPath, stat2.size)
@@ -122044,11 +122044,11 @@ function estimatePayloadFromTranscriptPath(transcriptPath) {
     return null;
   }
 }
-var import_fs160, ANTHROPIC_REQUEST_PAYLOAD_LIMIT_BYTES, PAYLOAD_WARNING_BYTES, PAYLOAD_CRITICAL_BYTES, COMPACT_BOUNDARY_MARKER, COMPACT_BOUNDARY_MARKER_BYTES, LOCAL_API_REQUEST_PREFIX, SCAN_CHUNK_BYTES, MAX_BOUNDARY_LINE_BYTES;
+var import_fs162, ANTHROPIC_REQUEST_PAYLOAD_LIMIT_BYTES, PAYLOAD_WARNING_BYTES, PAYLOAD_CRITICAL_BYTES, COMPACT_BOUNDARY_MARKER, COMPACT_BOUNDARY_MARKER_BYTES, LOCAL_API_REQUEST_PREFIX, SCAN_CHUNK_BYTES, MAX_BOUNDARY_LINE_BYTES;
 var init_payload_estimate = __esm({
   "src/hud/payload-estimate.ts"() {
     "use strict";
-    import_fs160 = require("fs");
+    import_fs162 = require("fs");
     ANTHROPIC_REQUEST_PAYLOAD_LIMIT_BYTES = 32e6;
     PAYLOAD_WARNING_BYTES = 22e6;
     PAYLOAD_CRITICAL_BYTES = 26e6;
@@ -122107,10 +122107,10 @@ function mergeStdinRateLimits(stdinRateLimits, usageResult) {
   };
 }
 function readSessionSummary(stateDir, sessionId) {
-  const statePath = (0, import_path191.join)(stateDir, `session-summary-${sessionId}.json`);
-  if (!(0, import_fs161.existsSync)(statePath)) return null;
+  const statePath = (0, import_path193.join)(stateDir, `session-summary-${sessionId}.json`);
+  if (!(0, import_fs163.existsSync)(statePath)) return null;
   try {
-    return JSON.parse((0, import_fs161.readFileSync)(statePath, "utf-8"));
+    return JSON.parse((0, import_fs163.readFileSync)(statePath, "utf-8"));
   } catch {
     return null;
   }
@@ -122136,15 +122136,15 @@ function spawnSessionSummaryScript(transcriptPath, stateDir, sessionId) {
     return;
   }
   lastSummarySpawnTimestamp = now2;
-  const thisDir = (0, import_path191.dirname)((0, import_url23.fileURLToPath)(importMetaUrl));
-  const scriptPath = (0, import_path191.join)(
+  const thisDir = (0, import_path193.dirname)((0, import_url23.fileURLToPath)(importMetaUrl));
+  const scriptPath = (0, import_path193.join)(
     thisDir,
     "..",
     "..",
     "scripts",
     "session-summary.mjs"
   );
-  if (!(0, import_fs161.existsSync)(scriptPath)) {
+  if (!(0, import_fs163.existsSync)(scriptPath)) {
     if (process.env.OMC_DEBUG) {
       console.error("[HUD] session-summary script not found:", scriptPath);
     }
@@ -122183,12 +122183,12 @@ async function calculateSessionHealth(sessionStart, contextPercent) {
 function showDiagnostic() {
   const version3 = getRuntimePackageVersion();
   const configDir = getCopilotConfigDir();
-  const hudScript = (0, import_path191.join)(configDir, "hud", HUD_SCRIPT_NAMES[0]);
-  const settingsFile = (0, import_path191.join)(configDir, "settings.json");
-  const hudExists = HUD_SCRIPT_NAMES.some((name) => (0, import_fs161.existsSync)((0, import_path191.join)(configDir, "hud", name)));
+  const hudScript = (0, import_path193.join)(configDir, "hud", HUD_SCRIPT_NAMES[0]);
+  const settingsFile = (0, import_path193.join)(configDir, "settings.json");
+  const hudExists = HUD_SCRIPT_NAMES.some((name) => (0, import_fs163.existsSync)((0, import_path193.join)(configDir, "hud", name)));
   let statusLineOk = false;
   try {
-    const settings = JSON.parse((0, import_fs161.readFileSync)(settingsFile, "utf-8"));
+    const settings = JSON.parse((0, import_fs163.readFileSync)(settingsFile, "utf-8"));
     const sl = settings.statusLine;
     const command = sl && typeof sl === "object" && typeof sl.command === "string" ? sl.command : typeof sl === "string" ? sl : null;
     statusLineOk = command !== null && HUD_COMMAND_MARKERS.some((marker) => command.includes(marker));
@@ -122314,7 +122314,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
     let sessionSummary = null;
     const sessionSummaryEnabled = config2.elements.sessionSummary ?? false;
     if (sessionSummaryEnabled && resolvedTranscriptPath && currentSessionId) {
-      const omcStateDir = (0, import_path191.join)(getOmcRoot(cwd2), "state");
+      const omcStateDir = (0, import_path193.join)(getOmcRoot(cwd2), "state");
       sessionSummary = readSessionSummary(omcStateDir, currentSessionId);
       const shouldSpawn = !sessionSummary?.generatedAt || Date.now() - new Date(sessionSummary.generatedAt).getTime() > 6e4;
       if (shouldSpawn) {
@@ -122372,7 +122372,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
       apiKeyMode: detectApiKeySource(cwd2) !== null,
       subscriptionType: subscriptionInfo.subscriptionType,
       rateLimitTier: subscriptionInfo.rateLimitTier,
-      profileName: process.env.COPILOT_HOME ? (0, import_path191.basename)(process.env.COPILOT_HOME).replace(/^\./, "") : null,
+      profileName: process.env.COPILOT_HOME ? (0, import_path193.basename)(process.env.COPILOT_HOME).replace(/^\./, "") : null,
       sessionSummary,
       lastToolName: transcriptData.lastToolName,
       recentTools: transcriptData.recentTools,
@@ -122390,10 +122390,10 @@ async function mainImpl(watchMode = false, skipInit = false) {
     }
     if (config2.contextLimitWarning.autoCompact && context.contextPercent >= config2.contextLimitWarning.threshold) {
       try {
-        const omcStateDir = (0, import_path191.join)(getOmcRoot(cwd2), "state");
-        (0, import_fs161.mkdirSync)(omcStateDir, { recursive: true });
-        const triggerFile = (0, import_path191.join)(omcStateDir, "compact-requested.json");
-        (0, import_fs161.writeFileSync)(
+        const omcStateDir = (0, import_path193.join)(getOmcRoot(cwd2), "state");
+        (0, import_fs163.mkdirSync)(omcStateDir, { recursive: true });
+        const triggerFile = (0, import_path193.join)(omcStateDir, "compact-requested.json");
+        (0, import_fs163.writeFileSync)(
           triggerFile,
           JSON.stringify({
             requestedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -122435,7 +122435,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
 function main2(watchMode = false, skipInit = false) {
   return withWorktreePathRenderScope(() => mainImpl(watchMode, skipInit));
 }
-var import_fs161, import_promises35, import_path191, import_child_process55, import_url23, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
+var import_fs163, import_promises35, import_path193, import_child_process55, import_url23, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
 var init_hud = __esm({
   "src/hud/index.ts"() {
     "use strict";
@@ -122453,9 +122453,9 @@ var init_hud = __esm({
     init_version();
     init_auto_update();
     init_worktree_paths();
-    import_fs161 = require("fs");
+    import_fs163 = require("fs");
     import_promises35 = require("fs/promises");
-    import_path191 = require("path");
+    import_path193 = require("path");
     import_child_process55 = require("child_process");
     import_url23 = require("url");
     init_worktree_paths();
@@ -122478,8 +122478,8 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 init_esm();
 init_source();
-var import_path192 = require("path");
-var import_fs162 = require("fs");
+var import_path194 = require("path");
+var import_fs164 = require("fs");
 init_config_dir();
 init_env_vars();
 init_loader();
@@ -141278,7 +141278,7 @@ Goal: ${context.descriptor.goal}`;
           interrupt: true
         };
       };
-      const collect = async () => {
+      const collect2 = async () => {
         const returned = queryFn({
           prompt,
           options: {
@@ -141317,7 +141317,7 @@ Goal: ${context.descriptor.goal}`;
         }
         return parts.join("\n");
       };
-      const work = collect();
+      const work = collect2();
       try {
         const text = await Promise.race([work, timedOut]);
         if (text.trim().length === 0) {
@@ -142995,6 +142995,382 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig) {
   return cmd;
 }
 
+// src/cli/commands/progress.ts
+init_esm();
+var import_fs157 = require("fs");
+var import_path188 = require("path");
+
+// src/lib/agent-progress.ts
+var import_fs156 = require("fs");
+var import_path187 = require("path");
+init_worktree_paths();
+var PROGRESS_STATUSES = ["start", "ok", "fail", "blocked", "heartbeat", "done"];
+var PROGRESS_FILE_ENV = "OMG_PROGRESS_FILE";
+var PROGRESS_AGENT_ENV = "OMG_PROGRESS_AGENT";
+var PROGRESS_MAX_BYTES = 1024 * 1024;
+var PROGRESS_MAX_NOTE = 500;
+var KEY_RE = /^[A-Za-z][A-Za-z0-9_.-]*$/;
+var BARE_VALUE_RE = /^[A-Za-z0-9._:/@+,%#~-]+$/;
+var RESERVED_KEYS = /* @__PURE__ */ new Set(["phase", "status", "note", "agent"]);
+function isProgressStatus(value) {
+  return PROGRESS_STATUSES.includes(value);
+}
+function quoteValue(value) {
+  if (BARE_VALUE_RE.test(value)) return value;
+  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
+  return `"${escaped}"`;
+}
+function formatProgressEvent(event) {
+  const parts = [event.ts, `phase=${quoteValue(event.phase)}`, `status=${event.status}`];
+  if (event.note !== void 0) parts.push(`note=${quoteValue(event.note)}`);
+  if (event.agent !== void 0) parts.push(`agent=${quoteValue(event.agent)}`);
+  for (const [key, value] of Object.entries(event.fields ?? {})) {
+    if (KEY_RE.test(key) && !RESERVED_KEYS.has(key)) parts.push(`${key}=${quoteValue(value)}`);
+  }
+  return parts.join(" ");
+}
+function parseProgressLine(line) {
+  const text = line.replace(/\r$/, "");
+  const tsMatch = /^(\S+)/.exec(text);
+  if (!tsMatch || !Number.isFinite(Date.parse(tsMatch[1]))) return null;
+  const pairs = [];
+  let i = tsMatch[1].length;
+  while (i < text.length) {
+    while (text[i] === " " || text[i] === "	") i++;
+    if (i >= text.length) break;
+    const keyMatch = /^([A-Za-z][A-Za-z0-9_.-]*)=/.exec(text.slice(i));
+    if (!keyMatch) return null;
+    i += keyMatch[0].length;
+    let value = "";
+    if (text[i] === '"') {
+      i++;
+      let closed = false;
+      while (i < text.length) {
+        const ch = text[i];
+        if (ch === "\\" && i + 1 < text.length) {
+          const next = text[i + 1];
+          value += next === "n" ? "\n" : next === "r" ? "\r" : next === "t" ? "	" : next;
+          i += 2;
+        } else if (ch === '"') {
+          i++;
+          closed = true;
+          break;
+        } else {
+          value += ch;
+          i++;
+        }
+      }
+      if (!closed) return null;
+    } else {
+      const end = text.slice(i).search(/[ \t]/);
+      value = end === -1 ? text.slice(i) : text.slice(i, i + end);
+      i += value.length;
+    }
+    pairs.push([keyMatch[1], value]);
+  }
+  const get = (key) => pairs.find(([k]) => k === key)?.[1];
+  const phase = get("phase");
+  const status = get("status");
+  if (!phase || !status || !(isProgressStatus(status) || status === "stalled")) return null;
+  const fields = {};
+  for (const [k, v] of pairs) if (!RESERVED_KEYS.has(k)) fields[k] = v;
+  const event = { ts: tsMatch[1], phase, status, fields };
+  const note = get("note");
+  const agent = get("agent");
+  if (note !== void 0) event.note = note;
+  if (agent !== void 0) event.agent = agent;
+  return event;
+}
+function progressAgentFileName(agent) {
+  return `${agent.replace(/[^A-Za-z0-9._-]/g, "_").replace(/^\.+/, "_") || "agent"}.log`;
+}
+function agentFromProgressFile(file) {
+  return (0, import_path187.basename)(file).replace(/\.log$/, "");
+}
+function defaultProgressDir(cwd2 = process.cwd()) {
+  return (0, import_path187.join)(getOmcRoot(cwd2), "progress");
+}
+function resolveProgressFile(agent, file, cwd2) {
+  return file || process.env[PROGRESS_FILE_ENV] || (0, import_path187.join)(defaultProgressDir(cwd2), progressAgentFileName(agent));
+}
+function rotateIfNeeded2(path30) {
+  try {
+    if ((0, import_fs156.statSync)(path30).size >= PROGRESS_MAX_BYTES) (0, import_fs156.renameSync)(path30, `${path30}.1`);
+  } catch {
+  }
+}
+function emitProgress(input) {
+  try {
+    if (!input || typeof input.phase !== "string" || input.phase.length === 0 || !isProgressStatus(input.status)) return false;
+    const agent = input.agent || process.env[PROGRESS_AGENT_ENV] || void 0;
+    const path30 = resolveProgressFile(agent ?? "agent", input.file, input.cwd);
+    const fields = {};
+    for (const [k, v] of Object.entries(input.fields ?? {})) fields[k] = String(v);
+    const line = formatProgressEvent({
+      ts: (input.at ?? /* @__PURE__ */ new Date()).toISOString(),
+      phase: input.phase,
+      status: input.status,
+      note: input.note === void 0 ? void 0 : input.note.slice(0, PROGRESS_MAX_NOTE),
+      agent,
+      fields
+    });
+    (0, import_fs156.mkdirSync)((0, import_path187.dirname)(path30), { recursive: true });
+    rotateIfNeeded2(path30);
+    (0, import_fs156.appendFileSync)(path30, `${line}
+`, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+function classifyProgress(last, now2, opts) {
+  const idleMs = Math.max(0, now2.getTime() - Date.parse(last.ts));
+  switch (last.status) {
+    case "done":
+      return { state: "done", idleMs };
+    case "fail":
+      return { state: "failed", idleMs };
+    case "blocked":
+      return { state: "blocked", idleMs };
+    default:
+      return { state: idleMs > opts.stallMs ? "stalled" : "running", idleMs };
+  }
+}
+function summarizeProgress(events, now2, opts) {
+  const latest2 = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    if (event.status === "stalled") continue;
+    const agent = event.agent ?? (event.source ? agentFromProgressFile(event.source) : "agent");
+    const prev = latest2.get(agent);
+    if (!prev || Date.parse(event.ts) >= Date.parse(prev.ts)) latest2.set(agent, event);
+  }
+  return [...latest2.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([agent, last]) => ({ agent, last, ...classifyProgress(last, now2, opts) }));
+}
+function parseProgressDuration(raw, defaultUnit = "m") {
+  const match = /^(\d+(?:\.\d+)?)(ms|s|m|h)?$/.exec(raw.trim());
+  if (!match) return null;
+  const unit = match[2] ?? defaultUnit;
+  const factor = unit === "ms" ? 1 : unit === "s" ? 1e3 : unit === "m" ? 6e4 : 36e5;
+  return Number(match[1]) * factor;
+}
+function formatProgressDuration(ms) {
+  const s = Math.floor(ms / 1e3);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h${m % 60 ? `${m % 60}m` : ""}`;
+}
+
+// src/cli/commands/progress.ts
+var UsageError2 = class extends Error {
+};
+var defaultDeps = {
+  now: () => /* @__PURE__ */ new Date(),
+  sleep: (ms) => new Promise((resolve58) => setTimeout(resolve58, ms)),
+  out: (line) => process.stdout.write(`${line}
+`),
+  err: (line) => process.stderr.write(`${line}
+`),
+  cwd: () => process.cwd()
+};
+function resolveSources(o, cwd2) {
+  if (o.file.length > 0) return { files: o.file, dir: null };
+  if (o.dir) return { files: null, dir: o.dir };
+  const envFile = process.env[PROGRESS_FILE_ENV];
+  if (envFile) return { files: [envFile], dir: null };
+  return { files: null, dir: defaultProgressDir(cwd2) };
+}
+function listSources(sources) {
+  if (sources.files) return sources.files;
+  try {
+    return (0, import_fs157.readdirSync)(sources.dir).filter((name) => name.endsWith(".log")).sort().map((name) => (0, import_path188.join)(sources.dir, name));
+  } catch {
+    return [];
+  }
+}
+function parseStall(raw) {
+  const ms = parseProgressDuration(raw, "m");
+  if (ms === null || ms <= 0) throw new UsageError2(`--stall must be a positive duration like 10m, 90s or 1h, got ${JSON.stringify(raw)}`);
+  return ms;
+}
+function parseInterval(raw) {
+  const ms = parseProgressDuration(raw, "ms");
+  if (ms === null || ms < 50) throw new UsageError2(`--interval must be at least 50ms, got ${JSON.stringify(raw)}`);
+  return ms;
+}
+function readNewLines(path30, tail2, flush) {
+  let size;
+  try {
+    size = (0, import_fs157.statSync)(path30).size;
+  } catch {
+    return [];
+  }
+  if (size < tail2.offset) {
+    tail2.offset = 0;
+    tail2.rest = Buffer.alloc(0);
+  }
+  let chunk = Buffer.alloc(0);
+  if (size > tail2.offset) {
+    let fd;
+    try {
+      fd = (0, import_fs157.openSync)(path30, "r");
+      chunk = Buffer.alloc(size - tail2.offset);
+      const read = (0, import_fs157.readSync)(fd, chunk, 0, chunk.length, tail2.offset);
+      chunk = chunk.subarray(0, read);
+      tail2.offset += read;
+    } catch {
+      return [];
+    } finally {
+      if (fd !== void 0) (0, import_fs157.closeSync)(fd);
+    }
+  }
+  const data = Buffer.concat([tail2.rest, chunk]);
+  const lastNewline = data.lastIndexOf(10);
+  const complete = lastNewline === -1 ? Buffer.alloc(0) : data.subarray(0, lastNewline);
+  tail2.rest = lastNewline === -1 ? data : data.subarray(lastNewline + 1);
+  const lines3 = lastNewline === -1 ? [] : complete.toString("utf8").split("\n");
+  if (flush && tail2.rest.length > 0) {
+    lines3.push(tail2.rest.toString("utf8"));
+    tail2.rest = Buffer.alloc(0);
+  }
+  return lines3;
+}
+function withAgent(event, path30) {
+  return event.agent ? event : { ...event, agent: agentFromProgressFile(path30) };
+}
+function stalledLine(summary, now2) {
+  const idle = formatProgressDuration(summary.idleMs);
+  return formatProgressEvent({
+    ts: now2.toISOString(),
+    phase: summary.last.phase,
+    status: "stalled",
+    note: `no event for ${idle} after status=${summary.last.status}`,
+    agent: summary.agent,
+    fields: { idle, last_ts: summary.last.ts }
+  });
+}
+async function watchProgress(o, deps) {
+  const sources = resolveSources(o, deps.cwd());
+  const tails = /* @__PURE__ */ new Map();
+  const latest2 = /* @__PURE__ */ new Map();
+  const reportedStalls = /* @__PURE__ */ new Set();
+  let first = true;
+  let sawNewEvent = false;
+  for (; ; ) {
+    const paths = listSources(sources);
+    for (const path30 of paths) {
+      let tail2 = tails.get(path30);
+      if (!tail2) {
+        if (!(0, import_fs157.existsSync)(path30)) continue;
+        tail2 = { offset: 0, rest: Buffer.alloc(0) };
+        tails.set(path30, tail2);
+      }
+      for (const line of readNewLines(path30, tail2, o.once)) {
+        const parsed = parseProgressLine(line);
+        if (!parsed || parsed.status === "stalled") continue;
+        const event = withAgent(parsed, path30);
+        const prev = latest2.get(event.agent);
+        if (!prev || Date.parse(event.ts) >= Date.parse(prev.ts)) latest2.set(event.agent, event);
+        if (!first || o.replay) {
+          deps.out(formatProgressEvent(event));
+          sawNewEvent = true;
+        }
+      }
+    }
+    const now2 = deps.now();
+    const summaries = summarizeProgress([...latest2.values()], now2, { stallMs: o.stallMs });
+    for (const s of summaries) {
+      const key = `${s.agent}\0${s.last.ts}\0${s.last.phase}\0${s.last.status}`;
+      if (s.state === "stalled" && !reportedStalls.has(key)) {
+        reportedStalls.add(key);
+        deps.out(stalledLine(s, now2));
+      } else if (first && !o.replay && (s.state === "failed" || s.state === "blocked")) {
+        deps.out(formatProgressEvent(s.last));
+      }
+    }
+    first = false;
+    if (o.once) return 0;
+    const everyFileSeen = sources.files ? sources.files.every((f) => tails.has(f)) : sawNewEvent;
+    if (summaries.length > 0 && everyFileSeen && summaries.every((s) => s.state === "done")) return 0;
+    await deps.sleep(o.intervalMs);
+  }
+}
+function readAllEvents(sources) {
+  const events = [];
+  for (const path30 of listSources(sources)) {
+    const tail2 = { offset: 0, rest: Buffer.alloc(0) };
+    for (const line of readNewLines(path30, tail2, true)) {
+      const parsed = parseProgressLine(line);
+      if (parsed) events.push(withAgent(parsed, path30));
+    }
+  }
+  return events;
+}
+function collect(value, previous) {
+  return [...previous, value];
+}
+async function guarded3(deps, fn) {
+  try {
+    process.exitCode = await fn();
+  } catch (error2) {
+    deps.err(`Error: ${error2 instanceof Error ? error2.message : String(error2)}`);
+    process.exitCode = error2 instanceof UsageError2 ? 2 : 1;
+  }
+}
+function progressCommand(overrides = {}) {
+  const deps = { ...defaultDeps, ...overrides };
+  const cmd = new Command("progress");
+  cmd.description("Agent progress events: emit phase events, watch them (stall detection) for the Monitor tool, show status");
+  cmd.command("emit <phase> <status>").description("Append one event (status: start|ok|fail|blocked|heartbeat|done) to $OMG_PROGRESS_FILE or <state root>/progress/<agent>.log").option("--note <text>", "Short note (quoted and escaped as needed; truncated at 500 chars)").option("--agent <name>", 'Agent name (default $OMG_PROGRESS_AGENT, else "agent")').option("--file <path>", "Log file (wins over $OMG_PROGRESS_FILE)").option("--field <key=value>", "Extra key=value pair (repeatable)", collect, []).action((phase, status, o) => guarded3(deps, () => {
+    if (!isProgressStatus(status)) throw new UsageError2(`status must be one of start|ok|fail|blocked|heartbeat|done, got ${JSON.stringify(status)}`);
+    if (phase.trim().length === 0) throw new UsageError2("phase must not be empty");
+    const fields = {};
+    for (const raw of o.field) {
+      const eq2 = raw.indexOf("=");
+      const key = eq2 === -1 ? "" : raw.slice(0, eq2);
+      if (!/^[A-Za-z][A-Za-z0-9_.-]*$/.test(key) || ["phase", "status", "note", "agent"].includes(key)) {
+        throw new UsageError2(`--field must be key=value with a key like build_id (not phase/status/note/agent), got ${JSON.stringify(raw)}`);
+      }
+      fields[key] = raw.slice(eq2 + 1);
+    }
+    const ok = emitProgress({ phase, status, note: o.note, agent: o.agent, file: o.file, fields, at: deps.now(), cwd: deps.cwd() });
+    if (!ok) deps.err("omg progress: could not write the progress event (continuing)");
+    return 0;
+  }));
+  cmd.command("watch").description("Stream new events and synthesized status=stalled lines (one per line); exits when every watched agent is done").option("--file <path>", "Watch this log (repeatable; may not exist yet)", collect, []).option("--dir <path>", "Watch every *.log in this directory, including files created later").option("--stall <duration>", "Silence after start/heartbeat/ok that counts as a stall (bare number = minutes)", "10m").option("--interval <duration>", "Poll interval (bare number = ms)", "1000").option("--replay", "Also print the events already in the logs").option("--once", "Read what exists, report it, and exit").action((o) => guarded3(deps, () => watchProgress({
+    file: o.file,
+    dir: o.dir,
+    stallMs: parseStall(o.stall),
+    intervalMs: parseInterval(o.interval),
+    once: Boolean(o.once),
+    replay: Boolean(o.replay)
+  }, deps)));
+  cmd.command("status").description("Show each agent's latest event and state (running|stalled|failed|blocked|done)").option("--file <path>", "Read this log (repeatable)", collect, []).option("--dir <path>", "Read every *.log in this directory").option("--stall <duration>", "Stall threshold (bare number = minutes)", "10m").option("--json", "JSON output").action((o) => guarded3(deps, () => {
+    const stallMs = parseStall(o.stall);
+    const summaries = summarizeProgress(readAllEvents(resolveSources(o, deps.cwd())), deps.now(), { stallMs });
+    if (o.json) {
+      deps.out(JSON.stringify(summaries, null, 2));
+      return 0;
+    }
+    if (summaries.length === 0) {
+      deps.out("no progress events");
+      return 0;
+    }
+    const rows = [["AGENT", "STATE", "PHASE", "STATUS", "IDLE", "NOTE"], ...summaries.map((s) => [
+      s.agent,
+      s.state,
+      s.last.phase,
+      s.last.status,
+      formatProgressDuration(s.idleMs),
+      s.last.note ?? ""
+    ])];
+    const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => r[i].length)));
+    for (const r of rows) deps.out(r.map((cell, i) => i === r.length - 1 ? cell : cell.padEnd(widths[i])).join("  ").trimEnd());
+    return 0;
+  }));
+  return cmd;
+}
+
 // src/cli/win32-warning.ts
 init_source();
 init_tmux_utils();
@@ -143228,8 +143604,8 @@ Examples:
     console.log(`  User:    ${paths.user}`);
     console.log(`  Project: ${paths.project}`);
     console.log(source_default.blue("\nFile status:"));
-    console.log(`  User:    ${(0, import_fs162.existsSync)(paths.user) ? source_default.green("exists") : source_default.gray("not found")}`);
-    console.log(`  Project: ${(0, import_fs162.existsSync)(paths.project) ? source_default.green("exists") : source_default.gray("not found")}`);
+    console.log(`  User:    ${(0, import_fs164.existsSync)(paths.user) ? source_default.green("exists") : source_default.gray("not found")}`);
+    console.log(`  Project: ${(0, import_fs164.existsSync)(paths.project) ? source_default.green("exists") : source_default.gray("not found")}`);
     return;
   }
   const config2 = loadConfig();
@@ -143272,7 +143648,7 @@ Profile types (use with --profile):
   webhook      Generic webhook (POST with JSON body)
 
 Examples:
-  $ omg config-stop-callback file --enable --path ${(0, import_path192.join)(getCopilotConfigDir(), "logs/{date}.md")}
+  $ omg config-stop-callback file --enable --path ${(0, import_path194.join)(getCopilotConfigDir(), "logs/{date}.md")}
   $ omg config-stop-callback telegram --enable --token <token> --chat <id>
   $ omg config-stop-callback discord --enable --webhook <url>
   $ omg config-stop-callback file --disable
@@ -143398,7 +143774,7 @@ Examples:
     }
     config3.notificationProfiles[profileName] = profile;
     try {
-      (0, import_fs162.writeFileSync)(CONFIG_FILE, JSON.stringify(config3, null, 2), "utf-8");
+      (0, import_fs164.writeFileSync)(CONFIG_FILE, JSON.stringify(config3, null, 2), "utf-8");
       console.log(source_default.green(`\u2713 Profile "${profileName}" \u2014 ${type} configured`));
       console.log(JSON.stringify(profile[type], null, 2));
     } catch (error2) {
@@ -143457,7 +143833,7 @@ Examples:
       const current = config2.stopHookCallbacks.file;
       config2.stopHookCallbacks.file = {
         enabled: enabled ?? current?.enabled ?? false,
-        path: options.path ?? current?.path ?? (0, import_path192.join)(getCopilotConfigDir(), "session-logs/{session_id}.md"),
+        path: options.path ?? current?.path ?? (0, import_path194.join)(getCopilotConfigDir(), "session-logs/{session_id}.md"),
         format: options.format ?? current?.format ?? "markdown"
       };
       break;
@@ -143511,7 +143887,7 @@ Examples:
     }
   }
   try {
-    (0, import_fs162.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
+    (0, import_fs164.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
     console.log(source_default.green(`\u2713 Stop callback '${type}' configured`));
     console.log(JSON.stringify(config2.stopHookCallbacks[type], null, 2));
   } catch (error2) {
@@ -143573,7 +143949,7 @@ Active profile (OMC_NOTIFY_PROFILE): ${activeProfile}`));
       delete config2.notificationProfiles;
     }
     try {
-      (0, import_fs162.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
+      (0, import_fs164.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
       console.log(source_default.green(`\u2713 Profile "${name}" deleted`));
     } catch (error2) {
       console.error(source_default.red("Failed to write configuration:"), error2);
@@ -144156,6 +144532,7 @@ program2.addCommand(lookoutCommand());
 program2.addCommand(intakeCommand());
 program2.addCommand(factoryCommand());
 program2.addCommand(shipCommand());
+program2.addCommand(progressCommand());
 function buildProgram() {
   return program2;
 }

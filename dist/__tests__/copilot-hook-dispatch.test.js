@@ -501,7 +501,9 @@ describe('stdout parity with the per-hook path (real hooks)', () => {
         // tool-failure stabilizer, which holds a worker lock and the SQLite lock
         // database under .omg/state for 30 s after the hook exits: its files would
         // depend on timing, and on win32 it blocks removing the temp project.
-        const env = cleanEnv({ HOME: home, USERPROFILE: home, COPILOT_HOME: home, CLAUDE_CONFIG_DIR: home, CLAUDE_PLUGIN_ROOT: REPO_ROOT, NODE_ENV: 'test' });
+        // OMC_UPDATE_REGISTRY_BASE is a closed port so the update checks never
+        // reach the real npm registry (refused instantly, deterministic).
+        const env = cleanEnv({ HOME: home, USERPROFILE: home, COPILOT_HOME: home, CLAUDE_CONFIG_DIR: home, CLAUDE_PLUGIN_ROOT: REPO_ROOT, NODE_ENV: 'test', OMC_UPDATE_REGISTRY_BASE: 'http://127.0.0.1:9' });
         const normalise = (text) => text
             .split(cwd).join('<P>').split(cwd.replace(/\\/g, '\\\\')).join('<P>')
             .split(home).join('<H>').split(home.replace(/\\/g, '\\\\')).join('<H>')
