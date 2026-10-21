@@ -375,7 +375,7 @@ function ensureSymlink(target: string, linkPath: string): void {
   } catch {
     // missing path is fine
   }
-  symlinkSync(target, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+  symlinkSync(resolve(target), linkPath, process.platform === 'win32' ? 'junction' : 'dir');
 }
 
 export function prepareAutoresearchSetupCodexHome(repoRoot: string, sessionName: string): string {

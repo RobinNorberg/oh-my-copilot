@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "d4de647825d47a5c1a0fbdc35f09e0f90a897f78",
-    "sourceSha256": "e7f79c0fef17b859cda724d62519670c7072453bdd7810c6ea1e34d8bd9dffcf",
+    "head": "2fa5813fee953d63c7b0c3aaaa1616934925e71a",
+    "sourceSha256": "1e94ed163f7887e963604c1d8b83694aeaa7890a9a7293d664cf2f45832820f9",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "d4de647825d47a5c1a0fbdc35f09e0f90a897f78",
-  "sourceSha256": "e7f79c0fef17b859cda724d62519670c7072453bdd7810c6ea1e34d8bd9dffcf",
+  "head": "2fa5813fee953d63c7b0c3aaaa1616934925e71a",
+  "sourceSha256": "1e94ed163f7887e963604c1d8b83694aeaa7890a9a7293d664cf2f45832820f9",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,8 +28,8 @@
       "toolFiles": 67,
       "libFiles": 48,
       "templateHooks": 24,
-      "srcFiles": 1598,
-      "total": 1622
+      "srcFiles": 1599,
+      "total": 1623
     },
     "generated": {
       "distFiles": 6147,
@@ -48504,6 +48504,11 @@
         "path": "src/team/__tests__/team-name.test.ts"
       },
       {
+        "id": "src/team/__tests__/team-ops-write-atomic.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/team-ops-write-atomic.test.ts"
+      },
+      {
         "id": "src/team/__tests__/team-owner-epoch.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/team-owner-epoch.test.ts"
@@ -54087,6 +54092,11 @@
       },
       {
         "from": "src/__tests__/config-dir.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/config-dir.test.ts",
         "to": "src/hooks/rules-injector/finder.ts",
         "kind": "imports"
       },
@@ -55056,6 +55066,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/hooks-command-escaping.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/hooks.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -55331,6 +55346,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/hud-cache-wrapper-4237.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/hud-cache-wrapper.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -55353,6 +55373,11 @@
       {
         "from": "src/__tests__/hud-cache-wrapper.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud-cache-wrapper.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -57517,6 +57542,11 @@
       },
       {
         "from": "src/__tests__/npm-package-bin-surface.test.ts",
+        "to": "external:node:child_process",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/npm-package-bin-surface.test.ts",
         "to": "external:node:crypto",
         "kind": "imports"
       },
@@ -57559,6 +57589,11 @@
         "from": "src/__tests__/npm-package-bin-surface.test.ts",
         "to": "src/__tests__/npm-package-surface-helpers.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/npm-package-bin-surface.test.ts",
+        "to": "src/cli/tmux-utils.ts",
+        "kind": "imports"
       },
       {
         "from": "src/__tests__/npm-package-hook-surface.test.ts",
@@ -58258,6 +58293,11 @@
       {
         "from": "src/__tests__/project-session-manager-review-worktree.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/project-session-manager-review-worktree.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -62766,6 +62806,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/__tests__/self-improve-paths.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/__tests__/session-search-help.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -63048,6 +63093,11 @@
       {
         "from": "src/cli/__tests__/tmux-env-forward.integration.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/tmux-env-forward.integration.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -69153,6 +69203,11 @@
       {
         "from": "src/hooks/__tests__/workflow-drift-guard-script.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/workflow-drift-guard-script.test.ts",
+        "to": "src/cli/tmux-utils.ts",
         "kind": "imports"
       },
       {
@@ -79251,6 +79306,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/installer/__tests__/hud-cache-wrapper.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/installer/__tests__/hud-wrapper-env.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -79533,6 +79593,11 @@
       {
         "from": "src/installer/__tests__/standalone-hook-reconcile.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/__tests__/standalone-hook-reconcile.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -84987,6 +85052,11 @@
       },
       {
         "from": "src/team/__tests__/api-interop.dispatch.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/api-interop.dispatch.test.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -85857,6 +85927,11 @@
       },
       {
         "from": "src/team/__tests__/issue-4412-cmux-startup.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/issue-4412-cmux-startup.test.ts",
         "to": "src/team/model-contract.ts",
         "kind": "imports"
       },
@@ -85883,6 +85958,11 @@
       {
         "from": "src/team/__tests__/leader-inbox.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/leader-inbox.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -88047,6 +88127,11 @@
       },
       {
         "from": "src/team/__tests__/summary-report.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/summary-report.test.ts",
         "to": "src/team/audit-log.ts",
         "kind": "imports"
       },
@@ -88203,6 +88288,11 @@
       {
         "from": "src/team/__tests__/task-storage-integrity.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/task-storage-integrity.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -88408,6 +88498,31 @@
       {
         "from": "src/team/__tests__/team-name.test.ts",
         "to": "src/team/team-name.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-ops-write-atomic.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-ops-write-atomic.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-ops-write-atomic.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-ops-write-atomic.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/team-ops-write-atomic.test.ts",
+        "to": "src/team/team-ops.ts",
         "kind": "imports"
       },
       {
@@ -88702,6 +88817,11 @@
       },
       {
         "from": "src/team/__tests__/tmux-session.create-team.test.ts",
+        "to": "src/team/psmux-adapter.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.create-team.test.ts",
         "to": "src/team/team-owner-epoch.ts",
         "kind": "imports"
       },
@@ -88948,6 +89068,11 @@
       {
         "from": "src/team/__tests__/tmux-session.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.test.ts",
+        "to": "src/team/psmux-adapter.ts",
         "kind": "imports"
       },
       {
@@ -97117,12 +97242,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8476,
-      "edgeCount": 9407,
-      "importEdgeCount": 7833,
+      "nodeCount": 8477,
+      "edgeCount": 9431,
+      "importEdgeCount": 7856,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "87eb780611a0f44b1334bd18cb68f2df64fd00577689c1e230220ed6e38968fd",
-  "manifestSha256": "b25a82d9bd5d8daa78e4fb03c2eb4bb0f72f1508d78c9a7d6c24ea427ceccd09"
+  "inventorySha256": "215b28efeaaf928c3ff20f4584b5dd249107168c0546f774bdf7a468ab30d255",
+  "manifestSha256": "70de16027226ace3b49bb883e28eda033c02ba47fa04952173f96ff4d1ba2288"
 }

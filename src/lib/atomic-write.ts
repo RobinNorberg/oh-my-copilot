@@ -219,8 +219,8 @@ function descriptorIdentity(fd: number, operations?: AtomicWriteOperations): Fil
 
 /**
  * Restore the prior target without exposing a partially written generation.
- * Callers close the published descriptor first: win32 refuses to rename over a
- * file that is still open (EPERM).
+ * On win32 callers close the published descriptor first: it refuses to rename
+ * over a file that is still open (EPERM). POSIX keeps it open until cleanup.
  */
 function rollbackPriorTarget(
   filePath: string,
@@ -323,8 +323,10 @@ export async function atomicWriteJson(
         hooks?.afterRename?.();
         verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
       } catch (error) {
-        await fd.close().catch(() => undefined);
-        fd = null;
+        if (process.platform === "win32") {
+          await fd.close().catch(() => undefined);
+          fd = null;
+        }
         rollbackPriorTarget(
           filePath,
           backupPath,
@@ -435,12 +437,14 @@ export function atomicWriteFileSync(
       hooks?.afterRename?.();
       verifyPublishedFile(fd, filePath, "atomic write", operations);
     } catch (error) {
-      try {
-        fsSync.closeSync(fd);
-      } catch {
-        // The rollback below does not need the descriptor.
+      if (process.platform === "win32") {
+        try {
+          fsSync.closeSync(fd);
+        } catch {
+          // The rollback below does not need the descriptor.
+        }
+        fd = null;
       }
-      fd = null;
       rollbackPriorTarget(
         filePath,
         backupPath,
@@ -602,12 +606,14 @@ export function atomicWriteBatchSync(
         hooks?.afterRename?.();
         verifyPublishedFile(write.fd, write.path, "atomic batch write");
       } catch (error) {
-        try {
-          fsSync.closeSync(write.fd);
-        } catch {
-          // The rollback below does not need the descriptor.
+        if (process.platform === "win32") {
+          try {
+            fsSync.closeSync(write.fd);
+          } catch {
+            // The rollback below does not need the descriptor.
+          }
+          write.fd = null;
         }
-        write.fd = null;
         rollbackPriorTarget(
           write.path,
           write.backupPath,

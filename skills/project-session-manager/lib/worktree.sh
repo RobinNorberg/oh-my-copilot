@@ -47,7 +47,15 @@ psm_bootstrap_review_dependencies() {
 
     cmp -s "$source_package_json" "$target_package_json" || return 0
 
-    ln -s "$source_node_modules" "$target_node_modules" 2>/dev/null || true
+    case "$(uname -s 2>/dev/null)" in
+        MINGW*|MSYS*)
+            # Git Bash `ln -s` copies the tree; a junction needs no privileges.
+            cmd //c mklink //J "$(cygpath -w "$target_node_modules")" "$(cygpath -w "$source_node_modules")" >/dev/null 2>&1 || true
+            ;;
+        *)
+            ln -s "$source_node_modules" "$target_node_modules" 2>/dev/null || true
+            ;;
+    esac
     return 0
 }
 

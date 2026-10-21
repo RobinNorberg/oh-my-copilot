@@ -12493,8 +12493,10 @@ async function atomicWriteJson(filePath, data, hooks) {
         hooks?.afterRename?.();
         verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
       } catch (error2) {
-        await fd.close().catch(() => void 0);
-        fd = null;
+        if (process.platform === "win32") {
+          await fd.close().catch(() => void 0);
+          fd = null;
+        }
         rollbackPriorTarget(
           filePath,
           backupPath,

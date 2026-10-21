@@ -161,8 +161,8 @@ function descriptorIdentity(fd, operations) {
 }
 /**
  * Restore the prior target without exposing a partially written generation.
- * Callers close the published descriptor first: win32 refuses to rename over a
- * file that is still open (EPERM).
+ * On win32 callers close the published descriptor first: it refuses to rename
+ * over a file that is still open (EPERM). POSIX keeps it open until cleanup.
  */
 function rollbackPriorTarget(filePath, backupPath, expectedIdentity, operations) {
     // Without a positively identified published inode, the target may be a
@@ -252,8 +252,10 @@ export async function atomicWriteJson(filePath, data, hooks) {
                 verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
             }
             catch (error) {
-                await fd.close().catch(() => undefined);
-                fd = null;
+                if (process.platform === "win32") {
+                    await fd.close().catch(() => undefined);
+                    fd = null;
+                }
                 rollbackPriorTarget(filePath, backupPath, publishedIdentity);
                 throw error;
             }
@@ -347,13 +349,15 @@ export function atomicWriteFileSync(filePath, content, hooks, operations) {
             verifyPublishedFile(fd, filePath, "atomic write", operations);
         }
         catch (error) {
-            try {
-                fsSync.closeSync(fd);
+            if (process.platform === "win32") {
+                try {
+                    fsSync.closeSync(fd);
+                }
+                catch {
+                    // The rollback below does not need the descriptor.
+                }
+                fd = null;
             }
-            catch {
-                // The rollback below does not need the descriptor.
-            }
-            fd = null;
             rollbackPriorTarget(filePath, backupPath, publishedIdentity, operations);
             throw error;
         }
@@ -488,13 +492,15 @@ export function atomicWriteBatchSync(writes, hooks) {
                 verifyPublishedFile(write.fd, write.path, "atomic batch write");
             }
             catch (error) {
-                try {
-                    fsSync.closeSync(write.fd);
+                if (process.platform === "win32") {
+                    try {
+                        fsSync.closeSync(write.fd);
+                    }
+                    catch {
+                        // The rollback below does not need the descriptor.
+                    }
+                    write.fd = null;
                 }
-                catch {
-                    // The rollback below does not need the descriptor.
-                }
-                write.fd = null;
                 rollbackPriorTarget(write.path, write.backupPath, publishedIdentity);
                 throw error;
             }

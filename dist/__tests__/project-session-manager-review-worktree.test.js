@@ -3,6 +3,7 @@ import { execFileSync } from 'child_process';
 import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
+import { canCreateJunctions } from './helpers/platform.js';
 const WORKTREE_LIB_PATH = join(process.cwd(), 'skills', 'project-session-manager', 'lib', 'worktree.sh');
 const WORKTREE_LIB = readFileSync(WORKTREE_LIB_PATH, 'utf-8');
 const PR_REVIEW_TEMPLATE = readFileSync(join(process.cwd(), 'skills', 'project-session-manager', 'templates', 'pr-review.md'), 'utf-8');
@@ -13,7 +14,7 @@ describe('project-session-manager review worktree hardening', () => {
             rmSync(tempDirs.pop(), { recursive: true, force: true });
         }
     });
-    it('bootstraps review worktrees with best-effort dependency reuse when package.json matches', () => {
+    it.skipIf(!canCreateJunctions())('bootstraps review worktrees with best-effort dependency reuse when package.json matches', () => {
         const root = mkdtempSync(join(tmpdir(), 'omc-psm-review-'));
         tempDirs.push(root);
         const repo = join(root, 'repo');

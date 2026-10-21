@@ -25,7 +25,7 @@ function makeFresh(path: string): void {
   utimesSync(path, now, now);
 }
 
-describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrapperstale render cleanup', () => {
+describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrapper stale render cleanup', () => {
   it('removes stale render locks and zero-byte temp files without deleting diagnostics', () => {
     const tempRoot = mkdtempSync(join(tmpdir(), 'omg-hud-cache-wrapper-'));
     const cacheDir = join(tempRoot, 'cache');
@@ -76,7 +76,7 @@ describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrapperstale render cleanup', () 
   });
 });
 
-describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrapperlock ownership (issue #3933 defect 1)', () => {
+describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrapper lock ownership (issue #3933 defect 1)', () => {
   // POSIX-only: liveness relies on `kill -0` seeing the test runner's pid,
   // which MSYS bash cannot map to a Windows process id.
   it.skipIf(process.platform === 'win32')('does not evict a live holder whose lock is mtime-stale', () => {
@@ -271,7 +271,7 @@ describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrapperlock ownership (issue #393
   });
 });
 
-describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrappererr reclamation (issue #3933 defect 2)', () => {
+describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrapper err reclamation (issue #3933 defect 2)', () => {
   it('reclaims non-empty stale .err files while retaining a fresh diagnostic', () => {
     const tempRoot = mkdtempSync(join(tmpdir(), 'omc-hud-err-reclaim-'));
     const cacheDir = join(tempRoot, 'cache');
@@ -340,7 +340,7 @@ describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrappererr reclamation (issue #39
   });
 });
 
-describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrapperorphan reclamation (issue #3938)', () => {
+describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrapper orphan reclamation (issue #3938)', () => {
   it('reclaims stale non-empty stdin/statusline tmps while preserving fresh in-flight tmps', () => {
     const tempRoot = mkdtempSync(join(tmpdir(), 'omc-hud-3938-orphan-'));
     const cacheDir = join(tempRoot, 'cache');
@@ -401,7 +401,7 @@ describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrapperorphan reclamation (issue 
   });
 });
 
-describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrapperper-session cache TTL (issue #3938)', () => {
+describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrapper per-session cache TTL (issue #3938)', () => {
   it('reclaims stale per-session json/txt on bounded TTL without touching fresh session caches', () => {
     const tempRoot = mkdtempSync(join(tmpdir(), 'omc-hud-3938-ttl-'));
     const cacheDir = join(tempRoot, 'cache');

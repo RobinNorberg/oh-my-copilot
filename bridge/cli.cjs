@@ -38018,8 +38018,10 @@ async function atomicWriteJson(filePath, data, hooks) {
         hooks?.afterRename?.();
         verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
       } catch (error2) {
-        await fd.close().catch(() => void 0);
-        fd = null;
+        if (process.platform === "win32") {
+          await fd.close().catch(() => void 0);
+          fd = null;
+        }
         rollbackPriorTarget(
           filePath,
           backupPath,
@@ -38074,11 +38076,13 @@ function atomicWriteFileSync(filePath, content, hooks, operations) {
       hooks?.afterRename?.();
       verifyPublishedFile(fd, filePath, "atomic write", operations);
     } catch (error2) {
-      try {
-        fsSync.closeSync(fd);
-      } catch {
+      if (process.platform === "win32") {
+        try {
+          fsSync.closeSync(fd);
+        } catch {
+        }
+        fd = null;
       }
-      fd = null;
       rollbackPriorTarget(
         filePath,
         backupPath,
