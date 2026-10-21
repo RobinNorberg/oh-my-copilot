@@ -657,7 +657,24 @@ function getGitTopLevel(cwd) {
     }
     gitTopLevelCacheMap.delete(key);
   }
+  const negative = gitTopLevelNegativeCacheMap.get(key);
+  if (negative) {
+    if (isStateRootCacheEntryValid(effectiveCwd, negative)) {
+      gitTopLevelNegativeCacheMap.delete(key);
+      gitTopLevelNegativeCacheMap.set(key, negative);
+      return null;
+    }
+    gitTopLevelNegativeCacheMap.delete(key);
+  }
   const probe = probeGitTopLevel(effectiveCwd);
+  if (probe.status === "not_a_repository") {
+    if (gitTopLevelNegativeCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+      const oldest = gitTopLevelNegativeCacheMap.keys().next().value;
+      if (oldest !== void 0) gitTopLevelNegativeCacheMap.delete(oldest);
+    }
+    gitTopLevelNegativeCacheMap.set(key, createStateRootCacheEntry(effectiveCwd, null));
+    return null;
+  }
   if (probe.status !== "ok") return null;
   cacheGitTopLevel(key, probe.root, effectiveCwd);
   return probe.root;
@@ -920,7 +937,7 @@ function redactErrorStack(stack, providedRoot, trustedRoot) {
   const [header, ...frames] = lines;
   return [header, ...frames.map((frame) => redactCanonicalRoots(frame, providedRoot, trustedRoot))].join(newline);
 }
-var WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, superprojectCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, SESSION_ID_REGEX, ForeignWorkingDirectoryError;
+var WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, gitTopLevelCacheMap, gitTopLevelNegativeCacheMap, superprojectCacheMap, canonicalWorkingDirectoryRoots, GIT_PROBE_ENVIRONMENT_KEYS, MAX_GIT_MARKER_BYTES, workspaceCacheMap, SENSITIVE_DIR_BASENAMES, worktreePathRenderScope, projectIdentifierOperationScope, gitShowToplevelProbeForTests, dualDirWarnings, SESSION_ID_REGEX, ForeignWorkingDirectoryError;
 var init_worktree_paths = __esm({
   "src/lib/worktree-paths.ts"() {
     "use strict";
@@ -947,6 +964,7 @@ var init_worktree_paths = __esm({
     MAX_WORKTREE_CACHE_SIZE = 8;
     worktreeCacheMap = /* @__PURE__ */ new Map();
     gitTopLevelCacheMap = /* @__PURE__ */ new Map();
+    gitTopLevelNegativeCacheMap = /* @__PURE__ */ new Map();
     superprojectCacheMap = /* @__PURE__ */ new Map();
     canonicalWorkingDirectoryRoots = /* @__PURE__ */ new WeakMap();
     GIT_PROBE_ENVIRONMENT_KEYS = [
@@ -11492,6 +11510,7 @@ function recoveryOwnerBootstrapCandidatePath(cwd, teamName, expectedEpoch, nonce
   return absPath(cwd, TeamPaths.recoveryOwnerBootstrapCandidate(teamName, expectedEpoch, nonce));
 }
 async function syncParentDirectory(path5) {
+  if (process.platform === "win32") return;
   const directory = await open4(dirname22(path5), "r");
   try {
     await directory.sync();

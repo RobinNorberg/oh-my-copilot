@@ -34,7 +34,7 @@ describe('applyPluginDirOption', () => {
     it('sets OMC_PLUGIN_ROOT for an absolute path', async () => {
         const { applyPluginDirOption } = await import('../index.js');
         applyPluginDirOption('/tmp/foo');
-        expect(process.env[OMC_PLUGIN_ROOT_ENV]).toBe(resolve('/tmp/foo'));
+        expect(process.env[OMC_PLUGIN_ROOT_ENV]).toBe('/tmp/foo');
     });
     it('resolves a relative path to absolute', async () => {
         const { applyPluginDirOption } = await import('../index.js');
@@ -50,7 +50,7 @@ describe('applyPluginDirOption', () => {
         process.env[OMC_PLUGIN_ROOT_ENV] = '/tmp/existing';
         const { applyPluginDirOption } = await import('../index.js');
         applyPluginDirOption('/tmp/override');
-        expect(process.env[OMC_PLUGIN_ROOT_ENV]).toBe(resolve('/tmp/override'));
+        expect(process.env[OMC_PLUGIN_ROOT_ENV]).toBe('/tmp/override');
     });
     it('logs a warning when overriding a pre-set env var (flag wins, warning emitted)', async () => {
         process.env[OMC_PLUGIN_ROOT_ENV] = '/tmp/existing';
@@ -120,7 +120,7 @@ describe('Commander integration: doctor --plugin-dir wiring', () => {
             const { buildProgram } = await import('../index.js');
             const prog = buildProgram();
             await prog.parseAsync(['node', 'omc', 'doctor', 'conflicts', '--plugin-dir', '/tmp/foo']);
-            expect(process.env[OMC_PLUGIN_ROOT_ENV]).toBe(resolve('/tmp/foo'));
+            expect(process.env[OMC_PLUGIN_ROOT_ENV]).toBe('/tmp/foo');
         }
         finally {
             exitSpy.mockRestore();

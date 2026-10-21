@@ -20,6 +20,7 @@ import * as processIdentityLockModule from '../process-identity-lock.js';
 import { resolveRuntimeCliPath } from '../runtime-owner-client.js';
 import { absPath, TeamPaths, teamStateRoot } from '../state-paths.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { IS_WIN } from '../../__tests__/helpers/platform.js';
 import { readShutdownAck } from '../monitor.js';
 
 const TEAM_INSTANCE_ID = '11111111-1111-4111-8111-111111111111';
@@ -447,7 +448,8 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     await shutdownTeamV2(teamName, repoDir, { timeoutMs: 0 });
 
     const inbox = readFileSync(join(teamRoot, 'workers', 'worker-wt', 'inbox.md'), 'utf-8');
-    expect(inbox).toContain('$OMC_TEAM_STATE_ROOT/workers/worker-wt/shutdown-ack.json');
+    // Worker instructions name the absolute team root on win32 (runtime-v2.ts workerInstructionStateRoot).
+    expect(inbox).toContain(`${IS_WIN ? teamRoot : '$OMC_TEAM_STATE_ROOT'}/workers/worker-wt/shutdown-ack.json`);
     expect(inbox).not.toContain(`Write your ack to: .omg/state/team/${teamName}`);
   });
 

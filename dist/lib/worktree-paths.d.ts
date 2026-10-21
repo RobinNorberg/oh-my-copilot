@@ -105,7 +105,8 @@ export declare function setGitShowToplevelProbeForTests(probe?: GitShowToplevelP
 export declare function findGitMetadataDir(start: string): string | null;
 export declare function probeGitTopLevel(cwd: string): GitTopLevelProbe;
 /**
- * Resolve a literal Git top-level with positive, metadata-validated caching.
+ * Resolve a literal Git top-level with metadata-validated caching of roots and
+ * of git's definitive "not a git repository" answer.
  * Security-sensitive containment decisions must call probeGitTopLevel() instead.
  */
 export declare function getGitTopLevel(cwd?: string): string | null;

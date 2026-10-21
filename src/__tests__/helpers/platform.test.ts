@@ -11,6 +11,7 @@ import {
   posixOnly,
   requiresExecutable,
   requiresSymlinks,
+  scaleTiming,
   toFileUrl,
   toPosix,
 } from './platform.js';
@@ -42,6 +43,10 @@ describe('platform test helpers', () => {
   it('reports the host platform', () => {
     expect(IS_WIN).toBe(process.platform === 'win32');
     expect(posixOnly('reason')).toBe(IS_WIN);
+  });
+
+  it('scales wall-clock ceilings only on Windows', () => {
+    expect(scaleTiming(500)).toBe(IS_WIN ? 2000 : 500);
   });
 
   it('normalizes separators and builds file URLs', () => {

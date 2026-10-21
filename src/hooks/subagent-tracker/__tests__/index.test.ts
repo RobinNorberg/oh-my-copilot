@@ -35,6 +35,7 @@ import {
 } from "../../../lib/file-lock.js";
 import { readMissionBoardState } from "../../../hud/mission-board.js";
 import { readReplayEvents, getReplaySummary } from "../session-replay.js";
+import { IS_WIN, toPosix } from "../../../__tests__/helpers/platform.js";
 
 describe("subagent-tracker", () => {
   let testDir: string;
@@ -1404,7 +1405,7 @@ describe("subagent-tracker", () => {
       expect(agent?.worktree_evidence?.kind).toBe("dirty");
       expect(agent?.worktree_evidence?.trackedCount).toBe(1);
       expect(agent?.worktree_evidence?.untrackedCount).toBe(1);
-      expect(agent?.worktree_evidence?.worktreeRoot).toBe(repoDir);
+      expect(toPosix(agent?.worktree_evidence?.worktreeRoot ?? "")).toBe(toPosix(repoDir));
 
       // Replay JSONL carries the bounded record for /trace.
       const events = readReplayEvents(repoDir, "sess-dirty-1");
@@ -1412,8 +1413,8 @@ describe("subagent-tracker", () => {
       expect(stop?.dirty_worktree).toMatchObject({
         tracked: 1,
         untracked: 1,
-        worktree_root: repoDir,
       });
+      expect(toPosix(stop?.dirty_worktree?.worktree_root ?? "")).toBe(toPosix(repoDir));
 
       // The trace summary surfaces the count.
       expect(getReplaySummary(repoDir, "sess-dirty-1").dirty_worktrees).toBe(1);
@@ -1855,7 +1856,8 @@ describe("subagent-tracker", () => {
 
       // (b) Bounded latency: no nested-lock acquisition spin. The 500ms spin
       // cannot hide inside a 300ms allowance over the collector cost.
-      expect(elapsedMs).toBeLessThan(evidenceMs + 300);
+      // Windows spawns are slower, but the allowance stays under the 500ms spin.
+      expect(elapsedMs).toBeLessThan(evidenceMs + (IS_WIN ? 450 : 300));
 
       // (a) Durable on DISK with no caller flush — read the file, not the
       // in-memory pending cache that readTrackingState would serve.

@@ -12,6 +12,10 @@ export declare function hasExecutable(name: string): boolean;
 export declare function toFileUrl(path: string): string;
 /** Forward-slash form of a native path, for separator-agnostic assertions. */
 export declare function toPosix(path: string): string;
+/** Multiplier for wall-clock ceilings tuned on Linux; process spawn and fs calls are several times slower on Windows. */
+export declare const TIMING_SCALE: number;
+/** Scale a Linux-tuned wall-clock ceiling for the host. Identity on Linux and macOS. */
+export declare function scaleTiming(ms: number): number;
 /**
  * Skip on Windows. `reason` names the POSIX-only behavior so the call site
  * documents itself, e.g. `posixOnly('NTFS has no POSIX mode bits')`.

@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync, unlinkSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
+import { toPosix } from '../../../__tests__/helpers/platform.js';
 
 // Import functions to test
 import {
@@ -94,7 +95,7 @@ describe('Session-Scoped State Isolation', () => {
   describe('resolveSessionStatePath', () => {
     it('should return session-scoped path', () => {
       const path = resolveSessionStatePath('ralph', 'session-123', tempDir);
-      expect(path).toContain('.omg/state/sessions/session-123/ralph-state.json');
+      expect(toPosix(path)).toContain('.omg/state/sessions/session-123/ralph-state.json');
     });
 
     it('should normalize state name', () => {
@@ -128,13 +129,13 @@ describe('Session-Scoped State Isolation', () => {
   describe('Session-scoped path resolution', () => {
     it('should return session-scoped path when sessionId provided for autoresearch', () => {
       const path = getStateFilePath(tempDir, 'autoresearch', 'session-123');
-      expect(path).toContain('sessions/session-123');
+      expect(toPosix(path)).toContain('sessions/session-123');
       expect(path).toContain('autoresearch-state.json');
     });
 
     it('should return session-scoped path when sessionId provided', () => {
       const path = getStateFilePath(tempDir, 'ralph', 'session-123');
-      expect(path).toContain('sessions/session-123');
+      expect(toPosix(path)).toContain('sessions/session-123');
     });
 
     it('should return legacy path when no sessionId', () => {
@@ -406,7 +407,7 @@ describe('Session-Scoped State Isolation', () => {
 
     it('should return correct state file path for team mode', () => {
       const path = getStateFilePath(tempDir, 'team', 'session-team-123');
-      expect(path).toContain('sessions/session-team-123');
+      expect(toPosix(path)).toContain('sessions/session-team-123');
       expect(path).toContain('team-state.json');
     });
 

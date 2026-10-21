@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { IS_WIN } from '../../src/__tests__/helpers/platform.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
@@ -74,7 +75,8 @@ function runVerifier(args: string[], cwd = REPO_ROOT, options: { fakeGh?: boolea
   } else if (options.fakeGh === false) {
     env.PATH = '';
   }
-  const result = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8', env });
+  const preload = options.fakeGh !== false && existsSync(fakeGh) ? fakeGhPreload(dirname(fakeGh)) : [];
+  const result = spawnSync(process.execPath, [...preload, SCRIPT, ...args], { cwd, encoding: 'utf8', env });
   const report = JSON.parse(result.stdout);
   return { status: result.status ?? -1, report };
 }
@@ -110,6 +112,24 @@ function gitFixture(root: string, args: string[]) {
   const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
   if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`);
   return result.stdout.trim();
+}
+
+// Windows cannot execute the extensionless shebang fake, so on win32 the scripts get a preload
+// that routes execFileSync('gh') through node.
+const FAKE_GH_PRELOAD = [
+  "const childProcess = require('node:child_process');",
+  "const { syncBuiltinESMExports } = require('node:module');",
+  "const { join } = require('node:path');",
+  'const execFileSync = childProcess.execFileSync;',
+  "childProcess.execFileSync = (file, args, options) => file === 'gh'",
+  "  ? execFileSync(process.execPath, [join(__dirname, 'gh'), ...(args ?? [])], options)",
+  '  : execFileSync(file, args, options);',
+  'syncBuiltinESMExports();',
+  '',
+].join('\n');
+
+function fakeGhPreload(fakeGhDir: string): string[] {
+  return IS_WIN ? ['--require', join(fakeGhDir, 'preload.cjs')] : [];
 }
 
 function installFakeGh(root: string, data: unknown) {
@@ -153,6 +173,7 @@ function installFakeGh(root: string, data: unknown) {
   ].join('\n');
   writeFileSync(join(fakeGhDir, 'gh'), script);
   chmodSync(join(fakeGhDir, 'gh'), 0o755);
+  writeFileSync(join(fakeGhDir, 'preload.cjs'), FAKE_GH_PRELOAD);
 }
 
 function commitFixture(root: string, message: string) {
@@ -339,7 +360,7 @@ describe('epic-3698 closure verifier (#3712)', () => {
     ghFixture.checkRuns['a'.repeat(40)][0].status = 'in_progress';
     ghFixture.checkRuns['a'.repeat(40)][0].conclusion = null;
     writeJson(ghFixturePath, ghFixture);
-    const result = spawnSync(process.execPath, [COLLECTOR, '--all-children', '--out', join(fixture, 'collected.json')], {
+    const result = spawnSync(process.execPath, [...fakeGhPreload(join(fixture, 'fake-gh')), COLLECTOR, '--all-children', '--out', join(fixture, 'collected.json')], {
       cwd: fixture,
       encoding: 'utf8',
       env: {

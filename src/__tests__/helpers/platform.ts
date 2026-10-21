@@ -97,6 +97,14 @@ export function toPosix(path: string): string {
   return path.replace(/\\/g, '/');
 }
 
+/** Multiplier for wall-clock ceilings tuned on Linux; process spawn and fs calls are several times slower on Windows. */
+export const TIMING_SCALE = IS_WIN ? 4 : 1;
+
+/** Scale a Linux-tuned wall-clock ceiling for the host. Identity on Linux and macOS. */
+export function scaleTiming(ms: number): number {
+  return ms * TIMING_SCALE;
+}
+
 /**
  * Skip on Windows. `reason` names the POSIX-only behavior so the call site
  * documents itself, e.g. `posixOnly('NTFS has no POSIX mode bits')`.

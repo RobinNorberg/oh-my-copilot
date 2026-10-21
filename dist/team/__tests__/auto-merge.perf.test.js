@@ -8,6 +8,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createGitFixture, orchestratorEventLogPath, waitForEventInLog, } from './helpers/git-fixture.js';
 import { startMergeOrchestrator, } from '../merge-orchestrator.js';
+import { scaleTiming } from '../../__tests__/helpers/platform.js';
 beforeAll(() => {
     process.env.OMC_RUNTIME_V2 = '1';
 });
@@ -77,7 +78,7 @@ describe.skipIf(process.env.CI === '1')('auto-merge perf: p95 < 2000ms over 50 s
         const max = latencies[latencies.length - 1];
         // Log timing summary for CI artifacts / debugging
         console.log(`[perf] 50 merges: p50=${p50}ms p95=${p95}ms max=${max}ms`);
-        expect(p95).toBeLessThan(2000);
+        expect(p95).toBeLessThan(scaleTiming(2000));
     }, 300000); // allow up to 5 minutes total for 50 merges
 });
 //# sourceMappingURL=auto-merge.perf.test.js.map

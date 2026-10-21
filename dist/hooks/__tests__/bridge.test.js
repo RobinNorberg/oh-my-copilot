@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { processHook, resetSkipHooksCache, sanitizeHookOutputForSerialization, } from '../bridge.js';
+import { scaleTiming } from '../../__tests__/helpers/platform.js';
 describe('processHook - Environment Kill-Switches', () => {
     const originalEnv = process.env;
     beforeEach(() => {
@@ -144,7 +145,7 @@ describe('processHook - Environment Kill-Switches', () => {
             const duration = Date.now() - start;
             // Should complete in under 500ms (generous threshold for CI environments)
             // The actual overhead should be negligible (< 1ms)
-            expect(duration).toBeLessThan(500);
+            expect(duration).toBeLessThan(scaleTiming(500));
         });
         it('should have minimal overhead when DISABLE_OMC=1', async () => {
             process.env.DISABLE_OMC = '1';

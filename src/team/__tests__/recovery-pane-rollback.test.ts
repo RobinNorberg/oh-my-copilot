@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isProcessAlive } from '../../platform/process-utils.js';
 import { currentStrictProcessStartIdentity } from '../team-owner-epoch.js';
+import { posixOnly } from '../../__tests__/helpers/platform.js';
 
 const paneMocks = vi.hoisted(() => {
   const state: {
@@ -776,7 +777,7 @@ describe('recovery pane rollback evidence', () => {
     expect(paneMocks.splitTeamWorkerPaneWithEvidence).toHaveBeenCalledTimes(1);
   });
 
-  it('completes an idle Gemini recovery without requiring fabricated progress evidence', async () => {
+  it.skipIf(posixOnly('recovery activation gate fails closed on win32 before provider spawn'))('completes an idle Gemini recovery without requiring fabricated progress evidence', async () => {
     cwd = mkdtempSync(join(tmpdir(), 'omc-recovery-idle-gemini-'));
     const teamName = 'idle-gemini-team';
     const requestId = 'idle-gemini-request';

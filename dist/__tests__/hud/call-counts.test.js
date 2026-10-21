@@ -1,7 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { afterAll, beforeAll, describe, it, expect, vi } from 'vitest';
 import { renderCallCounts } from '../../hud/elements/call-counts.js';
 import { DEFAULT_HUD_CONFIG, PRESET_CONFIGS } from '../../hud/types.js';
 describe('renderCallCounts', () => {
+    // The 'auto' format renders ASCII on win32 and WSL (covered in windows-platform.test.ts);
+    // these cases pin the emoji form a Linux or macOS host gets.
+    const originalPlatform = process.platform;
+    beforeAll(() => {
+        Object.defineProperty(process, 'platform', { value: 'linux' });
+        vi.stubEnv('WSLENV', undefined);
+    });
+    afterAll(() => {
+        Object.defineProperty(process, 'platform', { value: originalPlatform });
+        vi.unstubAllEnvs();
+    });
     describe('basic rendering', () => {
         it('renders all three counts when all are non-zero', () => {
             const result = renderCallCounts(42, 7, 3);
