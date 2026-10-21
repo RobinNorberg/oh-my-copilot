@@ -4,7 +4,8 @@ resolve_claude_config_dir() {
   configured="${COPILOT_HOME:-$HOME/.copilot}"
   configured="${configured#${configured%%[![:space:]]*}}"
   configured="${configured%${configured##*[![:space:]]}}"
-  [ -n "$configured" ] || configured="$HOME/.copilot"
+  # Match the JS helpers: a blank override means the default directory.
+  configured="${configured:-$HOME/.copilot}"
   if [ "$configured" != "/" ]; then
     configured="${configured%/}"
   fi

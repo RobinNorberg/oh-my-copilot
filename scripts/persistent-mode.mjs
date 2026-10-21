@@ -51,18 +51,19 @@ const LEARNER_EXTRACTION_QUESTIONS = {
   },
 };
 
-function recordLoopContinuationShadow(state, heuristic) {
+function recordLoopContinuationShadow(state, heuristic, permissionMode) {
   recordJevShadow({
     point: "loop-continuation",
     state,
     questions: LOOP_CONTINUATION_NOUL_QUESTIONS,
     heuristic,
+    permissionMode,
   });
 }
 
 async function recordLearnerExtractionShadow(data) {
   const assistantMessage = data.last_assistant_message;
-  if (typeof assistantMessage !== "string" || !assistantMessage.trim() || !isJevShadowOptedIn("learner-extraction")) {
+  if (typeof assistantMessage !== "string" || !assistantMessage.trim() || !isJevShadowOptedIn("learner-extraction", process.env, data.permission_mode)) {
     return;
   }
 
@@ -76,6 +77,7 @@ async function recordLearnerExtractionShadow(data) {
       state: { assistant_message: assistantMessage, user_message: null },
       questions: LEARNER_EXTRACTION_QUESTIONS,
       heuristic,
+      permissionMode: data.permission_mode,
     });
   } catch {
     // Missing optional detector output or resolver plumbing must not affect Stop.
@@ -169,7 +171,9 @@ function readJsonFile(path) {
  * Returns 0 for unlimited (only reachable outside strict mode).
  */
 function getHardMaxIterations() {
-  const configValue = readSecurityConfigValue("hardMaxIterations");
+  const raw = readSecurityConfigValue("hardMaxIterations");
+  // Mirror sanitizeSecurityOverrides(): only non-negative integers are honored.
+  const configValue = typeof raw === "number" && Number.isInteger(raw) && raw >= 0 ? raw : undefined;
   if (process.env.OMC_SECURITY === "strict") {
     return Math.min(200, typeof configValue === "number" && configValue > 0 ? configValue : 200);
   }
@@ -194,7 +198,7 @@ function readSecurityConfigValue(key) {
     try {
       if (!existsSync(p)) continue;
       const parsed = JSON.parse(stripJsoncComments(readFileSync(p, "utf-8")));
-      if (parsed?.security && typeof parsed.security === "object") {
+      if (parsed?.security && typeof parsed.security === "object" && !Array.isArray(parsed.security)) {
         return parsed.security[key];
       }
     } catch {
@@ -1458,7 +1462,7 @@ async function main() {
             should_block: true,
             continuation_excerpt: reason,
           };
-          recordLoopContinuationShadow(judgmentState, heuristic);
+          recordLoopContinuationShadow(judgmentState, heuristic, data.permission_mode);
 
           console.log(
             JSON.stringify({
@@ -1491,7 +1495,7 @@ async function main() {
           shouldBlock: true,
           iteration: ralph.state.iteration,
           maxIterations: ralph.state.max_iterations,
-        });
+        }, data.permission_mode);
         console.log(
           JSON.stringify({
             decision: "block",
@@ -1658,7 +1662,7 @@ async function main() {
               shouldBlock: true,
               iteration: newCount,
               phase,
-            });
+            }, data.permission_mode);
 
             console.log(
               JSON.stringify({

@@ -1064,18 +1064,18 @@ function buildV2TaskInstruction(
   const cursorReviewer = persistentCursor && Boolean(cliOutputContract);
   const lifecycleInstructions = cursorReviewer
     ? [
-      `3. Write the structured verdict from the trusted reviewer contract below when the review is complete.`,
-      `4. ${renderWorkerExitContract(agentType, true)}`,
+      `4. Write the structured verdict from the trusted reviewer contract below when the review is complete.`,
+      `5. ${renderWorkerExitContract(agentType, true)}`,
     ]
     : [
-      `3. On completion (use claim_token from step 1):`,
+      `4. On completion (use claim_token from step 1):`,
       `   ${completeTaskCommand}`,
       `   The result field is required for completion evidence. For broad delegated tasks, include either "Subagent skip reason: <why no nested worker was needed/allowed>" or, only when explicitly allowed by the leader, "Subagent spawn evidence: <child task names/thread ids and integrated findings>".`,
-      `4. On failure (use claim_token from step 1):`,
+      `5. On failure (use claim_token from step 1):`,
       `   ${failTaskCommand}`,
       persistentCursor
-        ? `5. ${renderWorkerExitContract(agentType, false)}`
-        : `5. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`,
+        ? `6. ${renderWorkerExitContract(agentType, false)}`
+        : `6. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`,
     ];
   return [
     `## REQUIRED: Task Lifecycle Commands`,
@@ -1084,7 +1084,9 @@ function buildV2TaskInstruction(
     `1. Claim your task:`,
     `   ${claimTaskCommand}`,
     `   Save the claim_token from the response.`,
-    `2. Do the work described below.`,
+    `   Only after a successful claim may you continue. If the claim fails, do not send the startup ACK or begin work; report the failure to leader-fixed and wait for instructions.`,
+    `2. Send the startup ACK from the worker overlay exactly once before work; do not resend it if already sent.`,
+    `3. Do the work described below.`,
     ...lifecycleInstructions,
     ``,
     `## Task Assignment`,
@@ -5740,6 +5742,9 @@ async function processCliWorkerVerdictsUnderLock(
       targetTaskPath = absPath(cwd, TeamPaths.taskFile(sanitized, nonCursorBinding.task_id));
       targetTaskVersion = nonCursorBinding.task_version;
     }
+    // Canonical read of the Cursor verdict's task: undefined when it could not
+    // be read (I/O or schema failure), null when the task file is missing.
+    let cursorVerdictTask: TeamTask | null | undefined;
     for (const taskId of candidateTaskIds) {
       if (targetTaskId) break;
       if (!TASK_ID_SAFE_PATTERN.test(taskId)) continue;
@@ -5752,6 +5757,7 @@ async function processCliWorkerVerdictsUnderLock(
         // can be considered for a verdict publication.
         continue;
       }
+      if (cursorReviewer) cursorVerdictTask = taskData;
       if (!taskData) continue;
       try {
         const taskRole = typeof taskData.role === 'string'
@@ -5784,56 +5790,62 @@ async function processCliWorkerVerdictsUnderLock(
 
     if (!targetTaskId || !targetTaskPath || targetTaskVersion === null) {
       if (cursorReviewer && verdictFile === processingOutputFile) {
-        const processedTaskPath = absPath(cwd, TeamPaths.taskFile(sanitized, payload.task_id));
-        try {
-          const processedTask = JSON.parse(readFileSync(processedTaskPath, 'utf-8')) as Record<string, unknown>;
-          const metadata = processedTask.metadata && typeof processedTask.metadata === 'object'
-            ? processedTask.metadata as Record<string, unknown>
-            : undefined;
-          const processedTaskRole = typeof processedTask.role === 'string'
-            ? normalizeDelegationRole(processedTask.role)
-            : null;
-          const taskAlreadyRecorded = processedTask.owner === worker.name
-            && (processedTask.status === 'completed' || processedTask.status === 'failed')
-            && (!cursorReviewer || processedTaskRole === workerRole)
-            && metadata?.verdict_source === 'cli_worker_output_contract'
-            && (!cursorReviewer
-              || (metadata.verdict_claim_token === payload.claim_token
-                && metadata.verdict_task_version === payload.task_version))
-            && (worker.launch_attempt_id === undefined
-              || metadata.verdict_worker_launch_attempt_id === worker.launch_attempt_id)
-            && metadata.verdict === payload.verdict;
-          if (taskAlreadyRecorded) {
-            try { await rename(verdictFile, processedOutputFile); } catch { /* best-effort */ }
-            results.push({
-              workerName: worker.name,
-              taskId: payload.task_id,
-              status: 'already_terminal',
-              verdict: payload.verdict,
-            });
-            continue;
-          }
-          const currentClaim = processedTask.claim && typeof processedTask.claim === 'object'
-            ? processedTask.claim as Record<string, unknown>
-            : null;
-          const activeClaimMismatch = processedTask.owner === worker.name
-            && processedTask.status === 'in_progress'
-            && currentClaim?.owner === worker.name
-            && (!cursorReviewer || processedTaskRole === workerRole);
-          if (activeClaimMismatch) {
-            try { await rename(verdictFile, processedOutputFile); } catch { /* best-effort quarantine */ }
-            results.push({
-              workerName: worker.name,
-              taskId: payload.task_id,
-              status: 'skipped',
-              verdict: payload.verdict,
-              reason: 'cursor_verdict_claim_mismatch',
-            });
-            continue;
-          }
-        } catch {
-          // Fall through to the existing no-in-progress warning.
+        const reportCursorVerdictRetained = (error: string) => logCursorTransitionFailure(
+          outputFile,
+          worker.name,
+          payload.task_id,
+          payload.task_version ?? 0,
+          payload.claim_token ?? '',
+          worker.launch_attempt_id ?? payload.launch_attempt_id,
+          error,
+        );
+        if (!cursorVerdictTask) {
+          // Missing or unreadable task state cannot prove the claim stale;
+          // keep the claimed verdict for the next cycle.
+          await reportCursorVerdictRetained('task_unavailable');
+          results.push({
+            workerName: worker.name,
+            taskId: payload.task_id,
+            status: 'skipped',
+            verdict: payload.verdict,
+            reason: 'cursor_verdict_task_unavailable',
+          });
+          continue;
         }
+        const metadata = cursorVerdictTask.metadata;
+        const taskAlreadyRecorded = cursorVerdictTask.owner === worker.name
+          && (cursorVerdictTask.status === 'completed' || cursorVerdictTask.status === 'failed')
+          && typeof cursorVerdictTask.role === 'string'
+          && normalizeDelegationRole(cursorVerdictTask.role) === workerRole
+          && metadata?.verdict_source === 'cli_worker_output_contract'
+          && metadata.verdict_claim_token === payload.claim_token
+          && metadata.verdict_task_version === payload.task_version
+          && (worker.launch_attempt_id === undefined
+            || metadata.verdict_worker_launch_attempt_id === worker.launch_attempt_id)
+          && metadata.verdict === payload.verdict;
+        // The canonical task no longer carries this verdict's claim (requeued,
+        // reassigned, terminal elsewhere, or token/version/attempt changed),
+        // so the verdict can never apply. Quarantine it as processed.
+        let quarantined = true;
+        try { await rename(verdictFile, processedOutputFile); } catch { quarantined = false; }
+        if (taskAlreadyRecorded) {
+          results.push({
+            workerName: worker.name,
+            taskId: payload.task_id,
+            status: 'already_terminal',
+            verdict: payload.verdict,
+          });
+          continue;
+        }
+        if (!quarantined) await reportCursorVerdictRetained('stale_verdict_quarantine_failed');
+        results.push({
+          workerName: worker.name,
+          taskId: payload.task_id,
+          status: 'skipped',
+          verdict: payload.verdict,
+          reason: quarantined ? 'cursor_verdict_claim_mismatch' : 'cursor_verdict_quarantine_failed',
+        });
+        continue;
       }
       await appendTeamEvent(sanitized, {
         type: 'team_leader_nudge',
@@ -6880,7 +6892,9 @@ export async function shutdownTeamV2(
       // Write shutdown inbox
       const shutdownRoot = workerInstructionStateRoot(cwd, sanitized);
       const shutdownAckPath = `${shutdownRoot}/workers/${w.name}/shutdown-ack.json`;
-      const shutdownInbox = `# Shutdown Request\n\nAll tasks are complete. Please wrap up and respond with a shutdown acknowledgement.\n\nWrite your ack to: ${shutdownAckPath}\nFormat: {"status":"accept","reason":"ok","updated_at":"<iso>"}\n\nThen exit your session.\n`;
+      const shutdownInbox = force
+        ? `# Shutdown Request\n\nThe leader requests forced shutdown. Please wrap up if possible and acknowledge promptly.\n\nWrite your ack to: ${shutdownAckPath}\nFormat:\n- Accept: {"status":"accept","reason":"ok","updated_at":"<iso>"}\n\nThis is a forced shutdown: a rejection does not veto termination. After acknowledging, exit your session; do not resume task work.\n`
+        : `# Shutdown Request\n\nThe leader requests shutdown. Please wrap up if possible and respond with your shutdown decision.\n\nWrite your ack to: ${shutdownAckPath}\nFormat:\n- Accept: {"status":"accept","reason":"ok","updated_at":"<iso>"}\n- Reject: {"status":"reject","reason":"still working","updated_at":"<iso>"}\n\nIf you accept, exit your session. If you reject, remain active for task work and mailbox instructions; do not exit because of this request.\n`;
       await writeWorkerInbox(sanitized, w.name, shutdownInbox, cwd);
       // An SDK host acks for its worker and tears its session down: no model turn is spent on shutdown.
       if (isSdkTarget(w.pane_id)) ringDoorbell(teamStateRoot(cwd, sanitized), w.name, { kind: 'shutdown', from: 'leader-fixed' });

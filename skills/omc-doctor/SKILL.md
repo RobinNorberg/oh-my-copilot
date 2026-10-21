@@ -83,6 +83,18 @@ node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_HOME||p.j
 
 ### Step 4: Check CLAUDE.md
 
+First check whether CLAUDE.md management is disabled. Read `${COPILOT_HOME:-~/.copilot}/.omc-config.json`; only an explicit `"claudeMdEnabled": false` disables it (missing file, missing key, or any other value means enabled).
+
+```bash
+# Check if the user opted out of global CLAUDE.md management (cross-platform; expands ~ in COPILOT_HOME like getCopilotConfigDir)
+node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),c=(process.env.COPILOT_HOME||'').trim(),d=!c?p.join(h,'.copilot'):c==='~'?h:/^~[/\x5c]/.test(c)?p.join(h,c.slice(2)):c;let off=false;try{off=JSON.parse(f.readFileSync(p.join(d,'.omc-config.json'),'utf8')).claudeMdEnabled===false}catch{};console.log(off?'CLAUDE.md management disabled by claudeMdEnabled: false':'CLAUDE.md management enabled')"
+```
+
+Continue with the CLAUDE.md checks below only when the probe printed exactly `CLAUDE.md management enabled`.
+
+- If it prints `CLAUDE.md management disabled by claudeMdEnabled: false`, report that line as INFO, skip the rest of this step and the "Fix: Missing/Outdated CLAUDE.md" fix, and never create or overwrite `CLAUDE.md` or `CLAUDE-omc.md`.
+- If it prints neither line, or the command fails (for example `node` is not on `PATH`, which Step 5 diagnoses), report WARN - could not check the `claudeMdEnabled` opt-out, skip the rest of this step and the "Fix: Missing/Outdated CLAUDE.md" fix, and never create or overwrite `CLAUDE.md` or `CLAUDE-omc.md`.
+
 ```bash
 # Presence, OMC marker, companion reference, and every CLAUDE-*.md companion in one
 # pass. The needle is OMC:START, the unique part of the canonical marker.
@@ -179,7 +191,7 @@ After running all checks, output a report:
 | Plugin Version | OK/WARN/CRITICAL | ... |
 | Legacy Hooks (settings.json) | OK/WARN/CRITICAL | ... |
 | Legacy Scripts (~/.claude/hooks/) | OK/WARN | ... |
-| CLAUDE.md | OK/WARN/CRITICAL | ... |
+| CLAUDE.md | OK/INFO/WARN/CRITICAL | ... |
 | Ralph Runtime Prerequisites (Node, config dir) | OK/CRITICAL | ... |
 | Plugin Cache | OK/WARN | ... |
 | Legacy Agents (~/.claude/agents/) | OK/WARN | ... |
@@ -234,6 +246,8 @@ node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=pro
 ```
 
 ### Fix: Missing/Outdated CLAUDE.md
+Skip this fix unless Step 4 printed `CLAUDE.md management enabled`: skip it when Step 4 reported `CLAUDE.md management disabled by claudeMdEnabled: false` or could not check the opt-out.
+
 Fetch latest from GitHub and write to `${COPILOT_HOME:-~/.copilot}/CLAUDE.md`:
 ```
 WebFetch(url: "https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/CLAUDE.md", prompt: "Return the complete raw markdown content exactly as-is")

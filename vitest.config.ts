@@ -7,6 +7,12 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 30000,
     setupFiles: ['src/__tests__/setup/clear-copilot-home.ts'],
+    // Test-only seams (for example the conditional-clear replacement hooks in
+    // src/lib/mode-state-io.ts) run only when NODE_ENV is 'test'. Pin it so an
+    // inherited NODE_ENV=production cannot silently disable them.
+    env: {
+      NODE_ENV: 'test',
+    },
 
     include: [
       'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',

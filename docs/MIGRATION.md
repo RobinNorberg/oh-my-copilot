@@ -7,6 +7,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 ## Table of Contents
 
 - [v5.8.1 → v5.9.0: SDK Team Transport by Default](#v581--v590-sdk-team-transport-by-default)
+- [Unreleased: Rule Glob Brace Alternation](#unreleased-rule-glob-brace-alternation)
 - [Unreleased: Glossary File Rename (CONTEXT.md → GLOSSARY.md)](#unreleased-glossary-file-rename-contextmd--glossarymd)
 - [Unreleased: Shipyard Tracker Artifacts and Audit Contract v2](#unreleased-shipyard-tracker-artifacts-and-audit-contract-v2)
 - [Unreleased: SSRF Guard for IPv6 Literals](#unreleased-ssrf-guard-for-ipv6-literals)
@@ -46,6 +47,21 @@ Under the Copilot CLI host, `omg team` without `--transport` now starts headless
 
 - **Launch concurrency.** SDK hosts start in parallel, 4 at a time by default (`team.sdk.launchConcurrency`, env `OMC_TEAM_SDK_LAUNCH_CONCURRENCY`; 1 restores serial launch).
 - **Worker worktrees.** Team shutdown no longer preserves a worker worktree whose only untracked files are its own `.omg/` runtime state, such as the SessionEnd job records a copilot worker leaves. Any other untracked or modified file still preserves the worktree.
+
+## Unreleased: Rule Glob Brace Alternation
+
+Rule frontmatter `globs` and Claude Code `paths` now treat unescaped `{a,b}`
+as alternation. Existing patterns that used comma-bearing braces to match a
+literal path must escape both braces and keep the pattern as one array item:
+
+```yaml
+globs:
+  - 'fixtures/\{a,b\}.json'
+```
+
+Use a quoted inline or block array item as shown; an unquoted comma-separated
+scalar still treats commas outside brace groups as pattern separators.
+
 ## Unreleased: Glossary File Rename (CONTEXT.md → GLOSSARY.md)
 
 The shipyard glossary surface is now `GLOSSARY.md` at the repository root. It holds the yard's terms and the `documentLanguage` frontmatter tag.
@@ -935,7 +951,7 @@ names no longer resolve. Use the replacement in the table below.
 | `swarm`                | `/oh-my-copilot:team`                 | Declared-only                                                 |
 | `pipeline`             | `/oh-my-copilot:execute`              | Declared-only                                                 |
 | `ultraqa`              | `/oh-my-copilot:verify`               |                                                               |
-| `merge-readiness`      | `/oh-my-copilot:review`               | Advisory review; release hard checks are unchanged            |
+| `merge-readiness`      | `/oh-my-copilot:review`               | MCP tools and runtime are removed; review stays advisory; release hard checks are unchanged |
 | `deep-dive`            | `/oh-my-copilot:research`             |                                                               |
 | `sciomc`               | `/oh-my-copilot:research`             |                                                               |
 | `ccg`                  | `/oh-my-copilot:ask` + `/team`        | Run `/ask codex` and `/ask antigravity`, then synthesize      |

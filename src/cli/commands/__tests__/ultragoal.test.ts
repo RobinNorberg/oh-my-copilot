@@ -62,6 +62,7 @@ describe('omg ultragoal CLI', () => {
     expect(joined).toMatch(/omg ultragoal/);
     expect(joined).toMatch(/Artifacts[^\n]*[\s\S]*\.omg\/ultragoal\/brief\.md/);
     expect(joined).toMatch(/Claude \/goal integration/);
+    expect(joined).toMatch(/Plugin-only installs.*oh-my-copilot\.js/);
     expect(joined).not.toMatch(/\bomx\b/);
   });
 
