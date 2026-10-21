@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "c6a093a2ee4c46f4cda094b87028968dae8e21d0",
-    "sourceSha256": "c4bd14dc707982a948d8bd301d7a37f50e7692d8979fb09aecf4d75432e83007",
+    "head": "4f58ef5f0f568585d9998669a7700da208fa5dcc",
+    "sourceSha256": "2e02c0327bb8e6bc691bfc82ecf707d77d74aefd023fef76eb5f01583efb1e1b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "c6a093a2ee4c46f4cda094b87028968dae8e21d0",
-  "sourceSha256": "c4bd14dc707982a948d8bd301d7a37f50e7692d8979fb09aecf4d75432e83007",
+  "head": "4f58ef5f0f568585d9998669a7700da208fa5dcc",
+  "sourceSha256": "2e02c0327bb8e6bc691bfc82ecf707d77d74aefd023fef76eb5f01583efb1e1b",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 67,
       "libFiles": 51,
       "templateHooks": 24,
-      "srcFiles": 1601,
-      "total": 1625
+      "srcFiles": 1603,
+      "total": 1627
     },
     "generated": {
-      "distFiles": 6159,
+      "distFiles": 6167,
       "bridgeFiles": 9,
-      "total": 6168
+      "total": 6176
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -1198,6 +1198,14 @@
       "dist/__tests__/goal-docs-contract.test.d.ts.map",
       "dist/__tests__/goal-docs-contract.test.js",
       "dist/__tests__/goal-docs-contract.test.js.map",
+      "dist/__tests__/helpers/platform.d.ts",
+      "dist/__tests__/helpers/platform.d.ts.map",
+      "dist/__tests__/helpers/platform.js",
+      "dist/__tests__/helpers/platform.js.map",
+      "dist/__tests__/helpers/platform.test.d.ts",
+      "dist/__tests__/helpers/platform.test.d.ts.map",
+      "dist/__tests__/helpers/platform.test.js",
+      "dist/__tests__/helpers/platform.test.js.map",
       "dist/__tests__/helpers/prompt-test-helpers.d.ts",
       "dist/__tests__/helpers/prompt-test-helpers.d.ts.map",
       "dist/__tests__/helpers/prompt-test-helpers.js",
@@ -7939,6 +7947,11 @@
         "path": ".omc/skills/vitest-windows-defender-tmpdir-expertise.md"
       },
       {
+        "id": ".omc/skills/windows-test-conventions.md",
+        "kind": "other",
+        "path": ".omc/skills/windows-test-conventions.md"
+      },
+      {
         "id": ".omc/skills/zod-v4-migration-expertise.md",
         "kind": "other",
         "path": ".omc/skills/zod-v4-migration-expertise.md"
@@ -9977,6 +9990,46 @@
         "id": "dist/__tests__/goal-docs-contract.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/goal-docs-contract.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.d.ts"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.js"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.js.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.test.js"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.test.js.map"
       },
       {
         "id": "dist/__tests__/helpers/prompt-test-helpers.d.ts",
@@ -42034,6 +42087,16 @@
         "path": "src/__tests__/goal-docs-contract.test.ts"
       },
       {
+        "id": "src/__tests__/helpers/platform.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/helpers/platform.test.ts"
+      },
+      {
+        "id": "src/__tests__/helpers/platform.ts",
+        "kind": "src",
+        "path": "src/__tests__/helpers/platform.ts"
+      },
+      {
         "id": "src/__tests__/helpers/prompt-test-helpers.ts",
         "kind": "src",
         "path": "src/__tests__/helpers/prompt-test-helpers.ts"
@@ -55016,6 +55079,56 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/helpers/platform.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/platform.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/platform.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/platform.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/platform.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/platform.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/platform.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/platform.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/platform.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/helpers/platform.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/helpers/prompt-test-helpers.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -61238,6 +61351,11 @@
       {
         "from": "src/__tests__/workflow-profile-activation-script.test.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/workflow-profile-activation-script.test.ts",
+        "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
       {
@@ -69543,6 +69661,11 @@
       {
         "from": "src/hooks/autopilot/__tests__/cancel.test.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/autopilot/__tests__/cancel.test.ts",
+        "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
       {
@@ -80217,6 +80340,11 @@
       },
       {
         "from": "src/lib/__tests__/atomic-write.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/atomic-write.test.ts",
         "to": "src/lib/atomic-write.ts",
         "kind": "imports"
       },
@@ -80278,6 +80406,11 @@
       {
         "from": "src/lib/__tests__/mode-state-io.test.ts",
         "to": "scripts/lib/atomic-write.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-io.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -85192,6 +85325,11 @@
       },
       {
         "from": "src/team/__tests__/audit-log.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/audit-log.test.ts",
         "to": "src/team/audit-log.ts",
         "kind": "imports"
       },
@@ -85778,6 +85916,11 @@
       {
         "from": "src/team/__tests__/git-worktree.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/git-worktree.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -89218,6 +89361,11 @@
       {
         "from": "src/team/__tests__/usage-tracker.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/usage-tracker.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -97267,12 +97415,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8491,
-      "edgeCount": 9419,
-      "importEdgeCount": 7841,
+      "nodeCount": 8502,
+      "edgeCount": 9436,
+      "importEdgeCount": 7858,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "ea37182bb35c2749083567d6ccf7084d57dbed24bbc3b2a5e47096c64ae60edd",
-  "manifestSha256": "82a3e2592a11e4629a5c8bb8082a4e344d82761862a36c64740b5c862ddd956c"
+  "inventorySha256": "199d6040a6558ab2223b26345a61581cef01c66f2e61b45bd64e97d451083ab1",
+  "manifestSha256": "666add25f37230c6316b14ca5bdc8843ccabfc8aecd7a31ab4541a34b26f24b0"
 }
