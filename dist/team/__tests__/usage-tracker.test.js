@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync, existsSync, readFileSync, statSync 
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { recordTaskUsage, measureCharCounts, generateUsageReport, } from '../usage-tracker.js';
+import { posixOnly } from '../../__tests__/helpers/platform.js';
 describe('usage-tracker', () => {
     let testDir;
     let previousHome;
@@ -63,7 +64,7 @@ describe('usage-tracker', () => {
             const lines = readFileSync(logPath, 'utf-8').trim().split('\n');
             expect(lines).toHaveLength(2);
         });
-        it('creates log with correct permissions', () => {
+        it.skipIf(posixOnly('NTFS has no POSIX mode bits'))('creates log with correct permissions', () => {
             recordTaskUsage(testDir, 'test-team', makeRecord('worker1', 'task1'));
             const logPath = join(testDir, '.omg', 'logs', 'team-usage-test-team.jsonl');
             const stat = statSync(logPath);

@@ -2,6 +2,27 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.12.1
+
+## [5.12.1] - 2026-10-21
+
+Fork **v5.12.1** (from v5.12.0) is a patch release. v5.12.0 was tagged but
+never published to npm: its release job failed on the SessionStart parity
+test. v5.12.1 is therefore the first npm release containing everything listed
+under [5.12.0] below, including the removal of the `merge_readiness_*` MCP
+tools ([migration note](docs/MIGRATION.md#v5110--v5120-merge-readiness-mcp-tools-removed)).
+
+### Fixed
+
+- **Deterministic `update-check.json` key order** (#253). The SessionStart
+  hook (`scripts/session-start.mjs` and `templates/hooks/session-start.mjs`)
+  writes the update-check cache with sorted keys, so concurrent registry
+  fetches no longer produce files that differ only in key order.
+- **Hermetic SessionStart parity test.** The parity test sets
+  `OMC_UPDATE_REGISTRY_BASE` to a closed local port, so update checks never
+  reach the live npm registry; the key-order test now also covers the
+  template writer.
+
 # oh-my-copilot v5.12.0
 
 ## [5.12.0] - 2026-10-21
