@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync, type StdioOptions } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   cpSync,
@@ -24,6 +24,7 @@ import {
   type McpServerConfig,
   type PluginJson,
 } from "./npm-package-surface-helpers.js";
+import { buildHostBinarySpawn } from "../cli/tmux-utils.js";
 // @ts-expect-error The shipping transaction is an ESM maintainer script without declarations.
 import { collectPluginRuntimeClosure } from "../../scripts/plugin-shipping-surface.mjs";
 
@@ -78,6 +79,22 @@ function readPackageJson(): PackageJson {
 
 function sha256(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+// npm is a .cmd shim on win32; buildHostBinarySpawn routes it through cmd.exe
+// with quoted argv instead of a shell.
+function runNpm(args: string[], options: { cwd: string; stdio: StdioOptions }): string {
+  const npm = buildHostBinarySpawn("npm", args);
+  const result = spawnSync(npm.command, npm.args, {
+    ...options,
+    encoding: "utf-8",
+    windowsVerbatimArguments: npm.windowsVerbatimArguments,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`npm ${args[0]} exited with ${result.status}: ${result.stderr ?? ""}`);
+  }
+  return result.stdout;
 }
 
 function createIsolatedPackWorkspace(
@@ -137,15 +154,10 @@ function getPackedPackage(): PackedPackage {
     );
     mkdirSync(packDirCache, { recursive: true });
 
-    const stdout = execFileSync(
-      "npm",
-      ["pack", "--pack-destination", packDirCache, "--silent"],
-      {
-        cwd: packWorkspaceCache,
-        encoding: "utf-8",
-        stdio: ["ignore", "pipe", "inherit"],
-      },
-    );
+    const stdout = runNpm(["pack", "--pack-destination", packDirCache, "--silent"], {
+      cwd: packWorkspaceCache,
+      stdio: ["ignore", "pipe", "inherit"],
+    });
     const expectedTarballName = `${packageJson.name.replace(/^@/, "").replace(/\//g, "-")}-${packageJson.version}.tgz`;
     const tarballName = [...stdout.trim().split(/\r?\n/)]
       .reverse()
@@ -158,7 +170,9 @@ function getPackedPackage(): PackedPackage {
     expect(tarballName).not.toMatch(/[\\/]/);
 
     tarballPathCache = join(packDirCache, tarballName);
-    const files = execFileSync("tar", ["-tzf", tarballPathCache], {
+    // Relative archive names: GNU tar (Git Bash) reads `C:\...` as a remote host.
+    const files = execFileSync("tar", ["-tzf", tarballName], {
+      cwd: packDirCache,
       encoding: "utf-8",
     })
       .trim()
@@ -166,7 +180,7 @@ function getPackedPackage(): PackedPackage {
       .filter(Boolean)
       .map((file) => file.replace(/^package\//, ""));
 
-    execFileSync("tar", ["-xzf", tarballPathCache, "-C", packDirCache]);
+    execFileSync("tar", ["-xzf", tarballName], { cwd: packDirCache });
 
     const extractedPackageRoot = join(packDirCache, "package");
     packedPackageCache = {
@@ -295,8 +309,7 @@ describe("npm package bin surface regression", () => {
     if (!typescriptVersion || !nodeTypesVersion) throw new Error("typecheck fixture dependencies missing");
     mkdirSync(consumerRoot, { recursive: true });
     writeFileSync(join(consumerRoot, "package.json"), JSON.stringify({ type: "module", private: true }));
-    execFileSync(
-      "npm",
+    runNpm(
       [
         "install",
         tarballPathCache!,
@@ -329,7 +342,8 @@ describe("npm package bin surface regression", () => {
       [join(consumerRoot, "node_modules", "typescript", "bin", "tsc"), "-p", join(consumerRoot, "tsconfig.json")],
       { cwd: consumerRoot, stdio: "pipe" },
     )).not.toThrow();
-  });
+    // A real `npm install` from the registry; it took 46 s on a Windows host.
+  }, 120_000);
 
   it("rebuilds recovery CLI surfaces from source without committed bundles", () => {
     expect(packedPackageFixture.startedWithoutGeneratedBundles).toBe(true);

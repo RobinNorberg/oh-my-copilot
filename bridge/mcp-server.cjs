@@ -11540,7 +11540,11 @@ function rollbackPriorTarget(filePath, backupPath, expectedIdentity, operations)
     } else {
       (operations?.rename ?? fsSync.renameSync)(backupPath, filePath);
     }
-  } catch {
+  } catch (error2) {
+    try {
+      console.warn(`[omc] atomic write rollback of ${filePath} failed: ${error2.message}`);
+    } catch {
+    }
   }
 }
 function removeBackup(backupPath, operations) {
@@ -11587,6 +11591,8 @@ async function atomicWriteJson(filePath, data, hooks) {
         hooks?.afterRename?.();
         verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
       } catch (error2) {
+        await fd.close().catch(() => void 0);
+        fd = null;
         rollbackPriorTarget(
           filePath,
           backupPath,
@@ -11595,7 +11601,7 @@ async function atomicWriteJson(filePath, data, hooks) {
         throw error2;
       }
     } finally {
-      await fd.close();
+      await fd?.close();
       fd = null;
     }
     success = true;
@@ -11641,6 +11647,11 @@ function atomicWriteFileSync(filePath, content, hooks, operations) {
       hooks?.afterRename?.();
       verifyPublishedFile(fd, filePath, "atomic write", operations);
     } catch (error2) {
+      try {
+        fsSync.closeSync(fd);
+      } catch {
+      }
+      fd = null;
       rollbackPriorTarget(
         filePath,
         backupPath,

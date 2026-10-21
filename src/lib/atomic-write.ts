@@ -217,7 +217,11 @@ function descriptorIdentity(fd: number, operations?: AtomicWriteOperations): Fil
   }
 }
 
-/** Restore the prior target without exposing a partially written generation. */
+/**
+ * Restore the prior target without exposing a partially written generation.
+ * Callers close the published descriptor first: win32 refuses to rename over a
+ * file that is still open (EPERM).
+ */
 function rollbackPriorTarget(
   filePath: string,
   backupPath: string | null,
@@ -239,8 +243,14 @@ function rollbackPriorTarget(
     } else {
       (operations?.rename ?? fsSync.renameSync)(backupPath, filePath);
     }
-  } catch {
-    // The caller still fails closed; retain whichever durable target remains.
+  } catch (error) {
+    // The caller still fails closed with its own error; retain whichever
+    // durable target remains, but do not hide that the rollback did not happen.
+    try {
+      console.warn(`[omc] atomic write rollback of ${filePath} failed: ${(error as Error).message}`);
+    } catch {
+      // Never let logging a rollback failure throw.
+    }
   }
 }
 
@@ -313,6 +323,8 @@ export async function atomicWriteJson(
         hooks?.afterRename?.();
         verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
       } catch (error) {
+        await fd.close().catch(() => undefined);
+        fd = null;
         rollbackPriorTarget(
           filePath,
           backupPath,
@@ -321,7 +333,7 @@ export async function atomicWriteJson(
         throw error;
       }
     } finally {
-      await fd.close();
+      await fd?.close();
       fd = null;
     }
 
@@ -423,6 +435,12 @@ export function atomicWriteFileSync(
       hooks?.afterRename?.();
       verifyPublishedFile(fd, filePath, "atomic write", operations);
     } catch (error) {
+      try {
+        fsSync.closeSync(fd);
+      } catch {
+        // The rollback below does not need the descriptor.
+      }
+      fd = null;
       rollbackPriorTarget(
         filePath,
         backupPath,
@@ -584,6 +602,12 @@ export function atomicWriteBatchSync(
         hooks?.afterRename?.();
         verifyPublishedFile(write.fd, write.path, "atomic batch write");
       } catch (error) {
+        try {
+          fsSync.closeSync(write.fd);
+        } catch {
+          // The rollback below does not need the descriptor.
+        }
+        write.fd = null;
         rollbackPriorTarget(
           write.path,
           write.backupPath,

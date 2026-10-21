@@ -159,7 +159,11 @@ function descriptorIdentity(fd, operations) {
         return null;
     }
 }
-/** Restore the prior target without exposing a partially written generation. */
+/**
+ * Restore the prior target without exposing a partially written generation.
+ * Callers close the published descriptor first: win32 refuses to rename over a
+ * file that is still open (EPERM).
+ */
 function rollbackPriorTarget(filePath, backupPath, expectedIdentity, operations) {
     // Without a positively identified published inode, the target may be a
     // concurrent foreign replacement. Leave it untouched and fail closed.
@@ -180,8 +184,15 @@ function rollbackPriorTarget(filePath, backupPath, expectedIdentity, operations)
             (operations?.rename ?? fsSync.renameSync)(backupPath, filePath);
         }
     }
-    catch {
-        // The caller still fails closed; retain whichever durable target remains.
+    catch (error) {
+        // The caller still fails closed with its own error; retain whichever
+        // durable target remains, but do not hide that the rollback did not happen.
+        try {
+            console.warn(`[omc] atomic write rollback of ${filePath} failed: ${error.message}`);
+        }
+        catch {
+            // Never let logging a rollback failure throw.
+        }
     }
 }
 function removeBackup(backupPath, operations) {
@@ -241,12 +252,14 @@ export async function atomicWriteJson(filePath, data, hooks) {
                 verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
             }
             catch (error) {
+                await fd.close().catch(() => undefined);
+                fd = null;
                 rollbackPriorTarget(filePath, backupPath, publishedIdentity);
                 throw error;
             }
         }
         finally {
-            await fd.close();
+            await fd?.close();
             fd = null;
         }
         success = true;
@@ -334,6 +347,13 @@ export function atomicWriteFileSync(filePath, content, hooks, operations) {
             verifyPublishedFile(fd, filePath, "atomic write", operations);
         }
         catch (error) {
+            try {
+                fsSync.closeSync(fd);
+            }
+            catch {
+                // The rollback below does not need the descriptor.
+            }
+            fd = null;
             rollbackPriorTarget(filePath, backupPath, publishedIdentity, operations);
             throw error;
         }
@@ -468,6 +488,13 @@ export function atomicWriteBatchSync(writes, hooks) {
                 verifyPublishedFile(write.fd, write.path, "atomic batch write");
             }
             catch (error) {
+                try {
+                    fsSync.closeSync(write.fd);
+                }
+                catch {
+                    // The rollback below does not need the descriptor.
+                }
+                write.fd = null;
                 rollbackPriorTarget(write.path, write.backupPath, publishedIdentity);
                 throw error;
             }

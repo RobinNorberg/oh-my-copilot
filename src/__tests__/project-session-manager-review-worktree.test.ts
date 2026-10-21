@@ -3,6 +3,7 @@ import { execFileSync } from 'child_process';
 import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
+import { posixOnly } from './helpers/platform.js';
 
 const WORKTREE_LIB_PATH = join(process.cwd(), 'skills', 'project-session-manager', 'lib', 'worktree.sh');
 const WORKTREE_LIB = readFileSync(
@@ -23,7 +24,7 @@ describe('project-session-manager review worktree hardening', () => {
     }
   });
 
-  it('bootstraps review worktrees with best-effort dependency reuse when package.json matches', () => {
+  it.skipIf(posixOnly('Git Bash `ln -s` copies the directory instead of linking unless MSYS=winsymlinks:nativestrict'))('bootstraps review worktrees with best-effort dependency reuse when package.json matches', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-psm-review-'));
     tempDirs.push(root);
 

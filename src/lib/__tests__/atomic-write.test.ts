@@ -304,6 +304,43 @@ describe('atomicWriteJson', () => {
     },
   );
 
+  it('rolls back the prior target when async publication loses its ownership hook', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-async-boundary-'));
+    directories.push(directory);
+    const filePath = join(directory, 'state.json');
+    writeFileSync(filePath, '"old"', 'utf8');
+    const hooks = { afterRename: () => { throw new Error('publication fenced'); } };
+
+    await expect(atomicWriteJson(filePath, 'new', hooks)).rejects.toThrow('publication fenced');
+
+    expect(readFileSync(filePath, 'utf8')).toBe('"old"');
+    expect(readdirSync(directory)).toEqual(['state.json']);
+  });
+
+  it('reports a rollback that cannot restore the prior target instead of swallowing it', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-rollback-failure-'));
+    directories.push(directory);
+    const filePath = join(directory, 'state.json');
+    writeFileSync(filePath, 'old', 'utf8');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const hooks = {
+      afterRename: () => {
+        // Take the backup away so the rollback rename has nothing to restore.
+        for (const entry of readdirSync(directory).filter(name => name.includes('.rollback.'))) {
+          unlinkSync(join(directory, entry));
+        }
+        throw new Error('publication fenced');
+      },
+    };
+
+    try {
+      expect(() => atomicWriteFileSync(filePath, 'new', hooks)).toThrow('publication fenced');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`atomic write rollback of ${filePath} failed`));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it('propagates temp write failures without publishing a target', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'atomic-write-write-error-'));
     directories.push(directory);
