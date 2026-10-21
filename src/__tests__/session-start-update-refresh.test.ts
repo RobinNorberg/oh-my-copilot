@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const SCRIPT_PATH = join(__dirname, '..', '..', 'scripts', 'session-start.mjs');
+const TEMPLATE_SCRIPT_PATH = join(__dirname, '..', '..', 'templates', 'hooks', 'session-start.mjs');
 const NODE = process.execPath;
 /** Closed port: connections are refused immediately, so fetch fails offline. */
 const UNREACHABLE_REGISTRY = 'http://127.0.0.1:9';
@@ -193,10 +194,13 @@ describe('session-start.mjs detached update-cache refresh', () => {
       expect(cached.claudeCodeLatestVersion).toBeUndefined();
     });
 
-    it('writes the same key order whichever registry answer lands first', async () => {
+    it.each([
+      ['scripts/session-start.mjs', SCRIPT_PATH],
+      ['templates/hooks/session-start.mjs', TEMPLATE_SCRIPT_PATH],
+    ])('writes the same key order whichever registry answer lands first (%s)', async (_label, scriptPath) => {
       // The OMC and Claude Code checks run concurrently and merge into one file;
       // its bytes must not depend on which fetch settles first.
-      rmSync(cachePath);
+      rmSync(cachePath, { force: true });
       const keyOrders: string[][] = [];
       for (const slow of ['/oh-my-copilot/latest', '/@anthropic-ai/claude-code/latest']) {
         const server = createHttpServer((req, res) => {
@@ -205,11 +209,12 @@ describe('session-start.mjs detached update-cache refresh', () => {
             res.end(JSON.stringify({ version: '1.0.0' }));
           }, req.url === slow ? 300 : 0);
         });
+        fakeRegistry = server;
         await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
         const address = server.address();
         if (!address || typeof address === 'string') throw new Error('no port');
         await new Promise<void>((resolve, reject) => {
-          const child = spawn(NODE, [SCRIPT_PATH, '--refresh-update-cache'], {
+          const child = spawn(NODE, [scriptPath, '--refresh-update-cache'], {
             stdio: 'ignore',
             // A plugin root with a package.json, so the OMC check runs too.
             env: { ...baseEnv(`http://127.0.0.1:${address.port}`), CLAUDE_PLUGIN_ROOT: join(__dirname, '..', '..') },
@@ -218,8 +223,9 @@ describe('session-start.mjs detached update-cache refresh', () => {
           child.on('close', () => resolve());
         });
         server.close();
+        fakeRegistry = null;
         keyOrders.push(Object.keys(JSON.parse(readFileSync(cachePath, 'utf-8'))));
-        rmSync(cachePath);
+        rmSync(cachePath, { force: true });
       }
 
       expect(keyOrders[0]).toContain('latestVersion');
