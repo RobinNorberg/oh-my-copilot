@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "5ad400495aaf8a782399ae8043c17338a9ca4062",
-    "sourceSha256": "39c702d46a6e79a1d76f638269fa032471c14d5825a4b4150fc848a2678e07d5",
+    "head": "5ec81738adeee01736019d0a0c7f345d92e88db8",
+    "sourceSha256": "73e887c00913631dc8015e4f6599c1db57ecfc8e3cc983dea8e1d41585dadb73",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "5ad400495aaf8a782399ae8043c17338a9ca4062",
-  "sourceSha256": "39c702d46a6e79a1d76f638269fa032471c14d5825a4b4150fc848a2678e07d5",
+  "head": "5ec81738adeee01736019d0a0c7f345d92e88db8",
+  "sourceSha256": "73e887c00913631dc8015e4f6599c1db57ecfc8e3cc983dea8e1d41585dadb73",
   "counts": {
     "public": {
       "skills": 63,
@@ -26,15 +26,15 @@
       "hookFiles": 344,
       "featureFiles": 88,
       "toolFiles": 67,
-      "libFiles": 50,
+      "libFiles": 51,
       "templateHooks": 24,
-      "srcFiles": 1600,
-      "total": 1624
+      "srcFiles": 1601,
+      "total": 1625
     },
     "generated": {
-      "distFiles": 6155,
+      "distFiles": 6159,
       "bridgeFiles": 9,
-      "total": 6164
+      "total": 6168
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -676,6 +676,7 @@
       "src/tools/wiki-tools.ts"
     ],
     "libFiles": [
+      "src/lib/__tests__/agent-progress-rotation.test.ts",
       "src/lib/__tests__/agent-progress.test.ts",
       "src/lib/__tests__/atomic-write.test.ts",
       "src/lib/__tests__/host-load-gate.test.ts",
@@ -5076,6 +5077,10 @@
       "dist/interop/shared-state.d.ts.map",
       "dist/interop/shared-state.js",
       "dist/interop/shared-state.js.map",
+      "dist/lib/__tests__/agent-progress-rotation.test.d.ts",
+      "dist/lib/__tests__/agent-progress-rotation.test.d.ts.map",
+      "dist/lib/__tests__/agent-progress-rotation.test.js",
+      "dist/lib/__tests__/agent-progress-rotation.test.js.map",
       "dist/lib/__tests__/agent-progress.test.d.ts",
       "dist/lib/__tests__/agent-progress.test.d.ts.map",
       "dist/lib/__tests__/agent-progress.test.js",
@@ -29369,6 +29374,26 @@
         "path": "dist/interop/shared-state.js.map"
       },
       {
+        "id": "dist/lib/__tests__/agent-progress-rotation.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress-rotation.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/agent-progress-rotation.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress-rotation.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/agent-progress-rotation.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress-rotation.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/agent-progress-rotation.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress-rotation.test.js.map"
+      },
+      {
         "id": "dist/lib/__tests__/agent-progress.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/agent-progress.test.d.ts"
@@ -47009,6 +47034,11 @@
         "path": "src/interop/shared-state.ts"
       },
       {
+        "id": "src/lib/__tests__/agent-progress-rotation.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/agent-progress-rotation.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/agent-progress.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/agent-progress.test.ts"
@@ -64042,6 +64072,11 @@
       },
       {
         "from": "src/cli/commands/progress.ts",
+        "to": "external:fs",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/progress.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -80079,6 +80114,31 @@
         "from": "src/interop/shared-state.ts",
         "to": "src/shared/artifact-descriptor.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress-rotation.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress-rotation.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress-rotation.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress-rotation.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress-rotation.test.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
       },
       {
         "from": "src/lib/__tests__/agent-progress.test.ts",
@@ -97207,12 +97267,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8486,
-      "edgeCount": 9413,
-      "importEdgeCount": 7836,
+      "nodeCount": 8491,
+      "edgeCount": 9419,
+      "importEdgeCount": 7841,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "c7de5652bab7a8fc7b824ded98764ebeae37f3f6cc9cf9fad1764854757817b4",
-  "manifestSha256": "dda53c952a0d643ef35fac53fa9c2b74a5afdfd4a4d82078bcbff53a54244aef"
+  "inventorySha256": "ea37182bb35c2749083567d6ccf7084d57dbed24bbc3b2a5e47096c64ae60edd",
+  "manifestSha256": "3bbc99bdc4e688fd0df3c1bc79cc326aac041b1fd37da2ff20c3e3cfe70b2350"
 }
