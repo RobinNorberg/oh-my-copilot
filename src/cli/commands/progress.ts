@@ -3,7 +3,7 @@
  *   emit    append one event to the agent's log (never fails the caller's chain)
  *   watch   stream new events plus synthesized `status=stalled` lines, one
  *           line per event, for Claude Code's Monitor tool; exits when every
- *           watched agent is `done`
+ *           tracked agent is `done` (or settled, with `--until settled`)
  *   status  table of each agent's latest event and state
  *
  * Sources for watch / status: every `--file`, else `--dir` (each `*.log`),
@@ -14,7 +14,7 @@
  */
 
 import { Command } from 'commander';
-import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from 'fs';
+import { closeSync, existsSync, openSync, readdirSync, readSync, statSync, type Stats } from 'fs';
 import { join } from 'path';
 import {
   PROGRESS_FILE_ENV,
@@ -90,43 +90,97 @@ function parseInterval(raw: string): number {
   return ms;
 }
 
+function parseUntil(raw: string): WatchUntil {
+  if (raw !== 'done' && raw !== 'settled') throw new UsageError(`--until must be done or settled, got ${JSON.stringify(raw)}`);
+  return raw;
+}
+
+/** An ISO-8601 time, or a duration back from now (`2h`; bare number = minutes). */
+function parseSince(raw: string, now: Date): number {
+  const ms = parseProgressDuration(raw, 'm');
+  if (ms !== null) return now.getTime() - ms;
+  const at = /^\d{4}-\d{2}-\d{2}T/.test(raw) ? Date.parse(raw) : NaN;
+  if (!Number.isFinite(at)) throw new UsageError(`--since must be an ISO-8601 time or a duration like 2h, got ${JSON.stringify(raw)}`);
+  return at;
+}
+
+function parseAgents(raw: string): string[] {
+  const agents = raw.split(',').map((a) => a.trim()).filter(Boolean);
+  if (agents.length === 0) throw new UsageError(`--agents must list agent names like lane-1,lane-2, got ${JSON.stringify(raw)}`);
+  return agents;
+}
+
 interface Tail {
   offset: number;
   rest: Buffer;
+  /** Identity of the file last read (0 = unknown), to notice a rotation even when the new file is already as large. */
+  ino: number;
+  birthtimeMs: number;
 }
 
-/** New complete lines since the last read; a shrunken file (rotation, truncation) is reread from the start. */
-function readNewLines(path: string, tail: Tail, flush: boolean): string[] {
-  let size: number;
+const newTail = (): Tail => ({ offset: 0, rest: Buffer.alloc(0), ino: 0, birthtimeMs: 0 });
+
+/** Bytes from offset to the current end; throws when unreadable. */
+function readFrom(path: string, offset: number, size: number): Buffer {
+  if (size <= offset) return Buffer.alloc(0);
+  const fd = openSync(path, 'r');
   try {
-    size = statSync(path).size;
-  } catch {
-    return [];
+    const chunk = Buffer.alloc(size - offset);
+    return chunk.subarray(0, readSync(fd, chunk, 0, chunk.length, offset));
+  } finally {
+    closeSync(fd);
   }
-  if (size < tail.offset) {
+}
+
+function tryStat(path: string): Stats | null {
+  try {
+    return statSync(path);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * New complete lines since the last read. A rotated file (new identity, or
+ * shrunk when the platform reports none) is finished from `<file>.1` at the
+ * old offset, then read from the start; a file truncated in place is reread
+ * from the start.
+ */
+function readNewLines(path: string, tail: Tail, flush: boolean): string[] {
+  const st = tryStat(path);
+  if (!st) return [];
+  const lines: string[] = [];
+  const known = tail.ino !== 0 || tail.birthtimeMs !== 0;
+  const replaced = known && (tail.ino !== 0 && st.ino !== 0 ? st.ino !== tail.ino : st.birthtimeMs !== tail.birthtimeMs);
+  if (replaced || st.size < tail.offset) {
+    const old = tryStat(`${path}.1`);
+    const isOldFile = old !== null && (known
+      ? replaced && (tail.ino !== 0 ? old.ino === tail.ino : old.birthtimeMs === tail.birthtimeMs)
+      : old.size >= tail.offset);
+    if (isOldFile) {
+      try {
+        lines.push(...Buffer.concat([tail.rest, readFrom(`${path}.1`, tail.offset, old.size)]).toString('utf8').split('\n'));
+      } catch {
+        // the backup vanished (rotated again): its unread tail is lost
+      }
+    }
     tail.offset = 0;
     tail.rest = Buffer.alloc(0);
   }
-  let chunk = Buffer.alloc(0);
-  if (size > tail.offset) {
-    let fd: number | undefined;
-    try {
-      fd = openSync(path, 'r');
-      chunk = Buffer.alloc(size - tail.offset);
-      const read = readSync(fd, chunk, 0, chunk.length, tail.offset);
-      chunk = chunk.subarray(0, read);
-      tail.offset += read;
-    } catch {
-      return [];
-    } finally {
-      if (fd !== undefined) closeSync(fd);
-    }
+  tail.ino = st.ino;
+  tail.birthtimeMs = st.birthtimeMs;
+  let chunk: Buffer;
+  try {
+    chunk = readFrom(path, tail.offset, st.size);
+  } catch {
+    return lines;
   }
+  tail.offset += chunk.length;
   const data = Buffer.concat([tail.rest, chunk]);
   const lastNewline = data.lastIndexOf(0x0a);
   const complete = lastNewline === -1 ? Buffer.alloc(0) : data.subarray(0, lastNewline);
   tail.rest = lastNewline === -1 ? data : data.subarray(lastNewline + 1);
-  const lines = lastNewline === -1 ? [] : complete.toString('utf8').split('\n');
+  if (lastNewline !== -1) lines.push(...complete.toString('utf8').split('\n'));
   if (flush && tail.rest.length > 0) {
     lines.push(tail.rest.toString('utf8'));
     tail.rest = Buffer.alloc(0);
@@ -150,32 +204,63 @@ function stalledLine(summary: AgentProgressSummary, now: Date): string {
   });
 }
 
+function pendingLine(agent: string, idleMs: number, now: Date): string {
+  const idle = formatProgressDuration(idleMs);
+  return formatProgressEvent({
+    ts: now.toISOString(),
+    phase: 'pending',
+    status: 'stalled',
+    note: `no event for ${idle} since the watch started`,
+    agent,
+    fields: { idle },
+  });
+}
+
+export type WatchUntil = 'done' | 'settled';
+
 export interface WatchOptions extends SourceOptions {
   stallMs: number;
   intervalMs: number;
   once: boolean;
   replay: boolean;
+  /** `done`: every tracked agent's latest event is `done`; `settled`: `done`, `fail` or `blocked`. */
+  until: WatchUntil;
+  /** Existing events at or after this time (epoch ms) count as new for exiting. */
+  sinceMs?: number;
+  /** Agents the watch waits for, even before their logs exist. */
+  agents: string[];
 }
 
 /**
  * The watch loop. Existing lines feed the state silently (except with
  * `replay`); agents already failed / blocked / stalled at startup are
  * reported once. Later lines, and files that appear later, are streamed.
+ *
+ * Only new events count towards exiting (written after the watch started,
+ * or at or after `sinceMs`, or every event with `replay`): the tracked
+ * agents are those with a new event plus `agents`, and every `--file` needs
+ * one new event, so a reused or stale log neither ends the watch early nor
+ * keeps it open forever.
  */
 export async function watchProgress(o: WatchOptions, deps: ProgressDeps): Promise<number> {
   const sources = resolveSources(o, deps.cwd());
   const tails = new Map<string, Tail>();
   const latest = new Map<string, ProgressEvent>();
+  const fresh = new Set<string>();
+  const freshFiles = new Set<string>();
   const reportedStalls = new Set<string>();
+  const reportedPending = new Set<string>();
+  const pendingSince = o.sinceMs ?? deps.now().getTime();
+  const reached = (s: AgentProgressSummary | undefined): boolean =>
+    s !== undefined && (s.state === 'done' || (o.until === 'settled' && (s.state === 'failed' || s.state === 'blocked')));
   let first = true;
-  let sawNewEvent = false;
   for (;;) {
     const paths = listSources(sources);
     for (const path of paths) {
       let tail = tails.get(path);
       if (!tail) {
         if (!existsSync(path)) continue;
-        tail = { offset: 0, rest: Buffer.alloc(0) };
+        tail = newTail();
         tails.set(path, tail);
       }
       for (const line of readNewLines(path, tail, o.once)) {
@@ -184,28 +269,39 @@ export async function watchProgress(o: WatchOptions, deps: ProgressDeps): Promis
         const event = withAgent(parsed, path);
         const prev = latest.get(event.agent!);
         if (!prev || Date.parse(event.ts) >= Date.parse(prev.ts)) latest.set(event.agent!, event);
-        if (!first || o.replay) {
-          deps.out(formatProgressEvent(event));
-          sawNewEvent = true;
+        if (!first || o.replay || (o.sinceMs !== undefined && Date.parse(event.ts) >= o.sinceMs)) {
+          fresh.add(event.agent!);
+          freshFiles.add(path);
         }
+        if (!first || o.replay) deps.out(formatProgressEvent(event));
       }
     }
     const now = deps.now();
-    const summaries = summarizeProgress([...latest.values()], now, { stallMs: o.stallMs });
-    for (const s of summaries) {
+    const summaries = new Map(summarizeProgress([...latest.values()], now, { stallMs: o.stallMs }).map((s) => [s.agent, s]));
+    for (const s of summaries.values()) {
       const key = `${s.agent}\0${s.last.ts}\0${s.last.phase}\0${s.last.status}`;
-      if (s.state === 'stalled' && !reportedStalls.has(key)) {
+      // After startup only tracked agents are reported, so a stale log from an earlier run is reported once at most.
+      const tracked = first || fresh.has(s.agent) || o.agents.includes(s.agent);
+      if (s.state === 'stalled' && tracked && !reportedStalls.has(key)) {
         reportedStalls.add(key);
         deps.out(stalledLine(s, now));
       } else if (first && !o.replay && (s.state === 'failed' || s.state === 'blocked')) {
         deps.out(formatProgressEvent(s.last));
       }
     }
+    for (const agent of o.agents) {
+      if (fresh.has(agent) || reportedPending.has(agent) || summaries.get(agent)?.state === 'stalled') continue;
+      const idleMs = Math.max(0, now.getTime() - pendingSince);
+      if (idleMs > o.stallMs) {
+        reportedPending.add(agent);
+        deps.out(pendingLine(agent, idleMs, now));
+      }
+    }
     first = false;
     if (o.once) return 0;
-    // A fixed file list waits for every file; a directory needs fresh activity, so old finished logs do not end a new watch.
-    const everyFileSeen = sources.files ? sources.files.every((f) => tails.has(f)) : sawNewEvent;
-    if (summaries.length > 0 && everyFileSeen && summaries.every((s) => s.state === 'done')) return 0;
+    const tracked = new Set([...fresh, ...o.agents]);
+    const filesReady = !sources.files || sources.files.every((f) => freshFiles.has(f));
+    if (tracked.size > 0 && filesReady && [...tracked].every((a) => fresh.has(a) && reached(summaries.get(a)))) return 0;
     await deps.sleep(o.intervalMs);
   }
 }
@@ -213,8 +309,7 @@ export async function watchProgress(o: WatchOptions, deps: ProgressDeps): Promis
 function readAllEvents(sources: Sources): ProgressEvent[] {
   const events: ProgressEvent[] = [];
   for (const path of listSources(sources)) {
-    const tail: Tail = { offset: 0, rest: Buffer.alloc(0) };
-    for (const line of readNewLines(path, tail, true)) {
+    for (const line of readNewLines(path, newTail(), true)) {
       const parsed = parseProgressLine(line);
       if (parsed) events.push(withAgent(parsed, path));
     }
@@ -243,7 +338,7 @@ export function progressCommand(overrides: Partial<ProgressDeps> = {}): Command 
   cmd
     .command('emit <phase> <status>')
     .description('Append one event (status: start|ok|fail|blocked|heartbeat|done) to $OMG_PROGRESS_FILE or <state root>/progress/<agent>.log')
-    .option('--note <text>', 'Short note (quoted and escaped as needed; truncated at 500 chars)')
+    .option('--note <text>', 'Short note (quoted and escaped as needed; truncated at 500 code points)')
     .option('--agent <name>', 'Agent name (default $OMG_PROGRESS_AGENT, else "agent")')
     .option('--file <path>', 'Log file (wins over $OMG_PROGRESS_FILE)')
     .option('--field <key=value>', 'Extra key=value pair (repeatable)', collect, [])
@@ -267,14 +362,17 @@ export function progressCommand(overrides: Partial<ProgressDeps> = {}): Command 
 
   cmd
     .command('watch')
-    .description('Stream new events and synthesized status=stalled lines (one per line); exits when every watched agent is done')
-    .option('--file <path>', 'Watch this log (repeatable; may not exist yet)', collect, [])
+    .description('Stream new events and synthesized status=stalled lines (one per line); exits when every agent with a new event (and every --agents name) is done')
+    .option('--file <path>', 'Watch this log (repeatable; may not exist yet; each needs one new event before the watch can exit)', collect, [])
     .option('--dir <path>', 'Watch every *.log in this directory, including files created later')
+    .option('--agents <names>', 'Comma-separated agents to wait for, even before their logs exist (stalled after --stall without an event)')
+    .option('--until <state>', 'Exit when every tracked agent is done, or settled (done, failed or blocked)', 'done')
+    .option('--since <time>', 'Existing events at or after this ISO time or duration ago (e.g. 2h) count as new for exiting')
     .option('--stall <duration>', 'Silence after start/heartbeat/ok that counts as a stall (bare number = minutes)', '10m')
     .option('--interval <duration>', 'Poll interval (bare number = ms)', '1000')
-    .option('--replay', 'Also print the events already in the logs')
+    .option('--replay', 'Also print the events already in the logs (and count them as new)')
     .option('--once', 'Read what exists, report it, and exit')
-    .action((o: { file: string[]; dir?: string; stall: string; interval: string; replay?: boolean; once?: boolean }) =>
+    .action((o: { file: string[]; dir?: string; agents?: string; until: string; since?: string; stall: string; interval: string; replay?: boolean; once?: boolean }) =>
       guarded(deps, () => watchProgress({
         file: o.file,
         dir: o.dir,
@@ -282,6 +380,9 @@ export function progressCommand(overrides: Partial<ProgressDeps> = {}): Command 
         intervalMs: parseInterval(o.interval),
         once: Boolean(o.once),
         replay: Boolean(o.replay),
+        until: parseUntil(o.until),
+        sinceMs: o.since === undefined ? undefined : parseSince(o.since, deps.now()),
+        agents: o.agents === undefined ? [] : parseAgents(o.agents),
       }, deps)));
 
   cmd

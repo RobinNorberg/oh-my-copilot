@@ -21,7 +21,7 @@
  * caller; a broken progress log must never break the work it reports on.
  */
 
-import { appendFileSync, mkdirSync, renameSync, statSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { getOmcRoot } from './worktree-paths.js';
 
@@ -32,10 +32,12 @@ export type ProgressEventStatus = ProgressStatus | 'stalled';
 
 export const PROGRESS_FILE_ENV = 'OMG_PROGRESS_FILE';
 export const PROGRESS_AGENT_ENV = 'OMG_PROGRESS_AGENT';
-/** A log above this size is renamed to `<file>.1` (replacing the previous one) before the next append. */
+/** A log above this size is renamed to `<file>.1` (replacing the previous one) before the next append (best effort under concurrent writers). */
 export const PROGRESS_MAX_BYTES = 1024 * 1024;
-/** Notes are truncated to this many characters so one event stays one small write. */
+/** Notes are truncated to this many code points so one event stays one small write. */
 export const PROGRESS_MAX_NOTE = 500;
+/** Phases and extra field values are truncated to this many code points. */
+export const PROGRESS_MAX_VALUE = 200;
 
 const KEY_RE = /^[A-Za-z][A-Za-z0-9_.-]*$/;
 const BARE_VALUE_RE = /^[A-Za-z0-9._:/@+,%#~-]+$/;
@@ -95,7 +97,7 @@ export function formatProgressEvent(event: Omit<ProgressEvent, 'fields'> & { fie
 /** Parse one line; null for blank, malformed, or unknown-status lines. */
 export function parseProgressLine(line: string): ProgressEvent | null {
   const text = line.replace(/\r$/, '');
-  const tsMatch = /^(\S+)/.exec(text);
+  const tsMatch = /^(\d{4}-\d{2}-\d{2}T\S*)/.exec(text);
   if (!tsMatch || !Number.isFinite(Date.parse(tsMatch[1]))) return null;
   const pairs: Array<[string, string]> = [];
   let i = tsMatch[1].length;
@@ -124,7 +126,7 @@ export function parseProgressLine(line: string): ProgressEvent | null {
           i++;
         }
       }
-      if (!closed) return null;
+      if (!closed || (i < text.length && text[i] !== ' ' && text[i] !== '\t')) return null;
     } else {
       const end = text.slice(i).search(/[ \t]/);
       value = end === -1 ? text.slice(i) : text.slice(i, i + end);
@@ -176,9 +178,30 @@ export function resolveProgressFile(agent: string, file?: string, cwd?: string):
   return file || process.env[PROGRESS_FILE_ENV] || join(defaultProgressDir(cwd), progressAgentFileName(agent));
 }
 
+/** At most `max` code points, so a cut never splits a surrogate pair. */
+function truncate(value: string, max: number): string {
+  return value.length <= max ? value : Array.from(value).slice(0, max).join('');
+}
+
+/**
+ * Best effort against concurrent writers: the full log is first claimed under
+ * a unique name, so a writer that lost the race (and claimed the winner's
+ * fresh small log instead) puts it back rather than clobbering `<file>.1`.
+ * A lost race can still reorder lines; it never drops them.
+ */
 function rotateIfNeeded(path: string): void {
   try {
-    if (statSync(path).size >= PROGRESS_MAX_BYTES) renameSync(path, `${path}.1`);
+    if (statSync(path).size < PROGRESS_MAX_BYTES) return;
+    const claimed = `${path}.${process.pid}.${Date.now()}.rotating`;
+    renameSync(path, claimed);
+    if (statSync(claimed).size >= PROGRESS_MAX_BYTES) {
+      renameSync(claimed, `${path}.1`);
+    } else if (!existsSync(path)) {
+      renameSync(claimed, path);
+    } else {
+      appendFileSync(path, readFileSync(claimed));
+      unlinkSync(claimed);
+    }
   } catch {
     // missing file or a racing rotation: the append below still works
   }
@@ -195,12 +218,12 @@ export function emitProgress(input: EmitProgressInput): boolean {
     const agent = input.agent || process.env[PROGRESS_AGENT_ENV] || undefined;
     const path = resolveProgressFile(agent ?? 'agent', input.file, input.cwd);
     const fields: Record<string, string> = {};
-    for (const [k, v] of Object.entries(input.fields ?? {})) fields[k] = String(v);
+    for (const [k, v] of Object.entries(input.fields ?? {})) fields[k] = truncate(String(v), PROGRESS_MAX_VALUE);
     const line = formatProgressEvent({
       ts: (input.at ?? new Date()).toISOString(),
-      phase: input.phase,
+      phase: truncate(input.phase, PROGRESS_MAX_VALUE),
       status: input.status,
-      note: input.note === undefined ? undefined : input.note.slice(0, PROGRESS_MAX_NOTE),
+      note: input.note === undefined ? undefined : truncate(input.note, PROGRESS_MAX_NOTE),
       agent,
       fields,
     });

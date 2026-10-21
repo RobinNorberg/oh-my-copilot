@@ -21,8 +21,8 @@ command reference.
 Lanes run in their own worktrees, so each one's default
 `<worktree>/.omg/progress/` is invisible to the lead. Use one directory all
 lanes can write, e.g. `<scratchpad>/progress/`, and a fresh one per session
-(old `done` logs are harmless, but yesterday's crashed lane would be
-reported as stalled once). With `OMC_STATE_DIR` set, the default location
+(old logs never end or block a watch, but yesterday's crashed lane would be
+reported once at startup). With `OMC_STATE_DIR` set, the default location
 is already shared across worktrees of one repo.
 
 ## 2. Brief snippet (paste into every lane brief, fill `<dir>` and `<lane>`)
@@ -30,26 +30,34 @@ is already shared across worktrees of one repo.
 PROGRESS: at each phase boundary, and at least every ~10 min during long
 steps, run
   omg progress emit <phase> <start|ok|fail|blocked|heartbeat> --note "<short>" --agent <lane> --file <dir>/<lane>.log
-and finish with `omg progress emit report done --agent <lane> --file <dir>/<lane>.log`.
-Use `blocked` (with the reason in --note) when you need the lead, `fail`
-when a gate failed and you are stopping. If `omg` is not on PATH, append
+and finish with `omg progress emit report done --agent <lane> --file <dir>/<lane>.log`,
+also after a final `fail`. Use `blocked` (with the reason in --note) when
+you need the lead, `fail` when a gate failed. If `omg` is not on PATH, append
 the same line yourself:
   <ISO-8601 UTC> phase=<id> status=<status> note=<no-spaces-or-"quoted">
 ```
 `emit` exits 0 even when the write fails (it warns on stderr), so it is
 safe inside `&&` chains.
 
-## 3. Arm the Monitor (one per session, before or after spawning lanes)
+## 3. Arm the Monitor (one per batch, before spawning its lanes)
 ```
-omg progress watch --dir <dir> --stall 10m
+omg progress watch --dir <dir> --agents <lane-1>,<lane-2> --stall 10m
 ```
+- Pass `--agents` with every lane of the batch: without it the watch can
+  exit when the fast lanes are done before a slow lane has written its
+  first line. A named lane with no event yet gets one `phase=pending
+  status=stalled` line after `--stall`.
+- Only events written after the watch started count towards exiting, so a
+  lane that finished before the watch was armed needs `--since <ISO time
+  or duration ago>`, e.g. `--since 30m`.
 - Streams every new line, and one `status=stalled` line when a lane's last
   `start` / `heartbeat` / `ok` is older than `--stall` (`note="no event for
   12m after status=start"`, `idle=`, `last_ts=`).
 - At startup it reports lanes already failed / blocked / stalled; add
   `--replay` to also print the existing history.
-- Exits 0 once every lane seen has emitted `done` (in `--dir` mode only
-  after at least one new event, so old finished logs do not end it). Re-arm
+- Exits 0 once every `--agents` lane and every lane with a new event has
+  `done` as its latest event; `--until settled` also accepts a final `fail`
+  or `blocked`. Older logs in the directory never end or block it. Re-arm
   for the next batch of lanes.
 - `omg progress status --dir <dir>` is the one-shot table when a summary is
   wanted; `omg progress watch --dir <dir> --once` prints only what needs

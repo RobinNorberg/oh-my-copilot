@@ -7,6 +7,7 @@ import {
   PROGRESS_FILE_ENV,
   PROGRESS_MAX_BYTES,
   PROGRESS_MAX_NOTE,
+  PROGRESS_MAX_VALUE,
   classifyProgress,
   emitProgress,
   formatProgressDuration,
@@ -55,6 +56,10 @@ describe('agent progress line format', () => {
       `${T0} phase=a status=finished`,
       `${T0} phase=a status=ok note="unterminated`,
       `${T0} phase=a status=ok stray`,
+      '12345 phase=a status=ok',
+      'Mon phase=a status=ok',
+      `${T0} phase=a status=ok note="x"y`,
+      `${T0} phase=a status=ok note="x"phase=b`,
     ]) {
       expect(parseProgressLine(line), line).toBeNull();
     }
@@ -131,6 +136,16 @@ describe('emitProgress', () => {
     expect(readFileSync(`${file}.1`, 'utf8').length).toBe(PROGRESS_MAX_BYTES);
     const [event] = parseProgressLog(readFileSync(file, 'utf8'));
     expect(event.note).toHaveLength(PROGRESS_MAX_NOTE);
+  });
+
+  it('caps phase and field values, and cuts by code points so no surrogate pair is split', () => {
+    const file = join(dir, 'cap.log');
+    const note = `${'n'.repeat(PROGRESS_MAX_NOTE - 1)}😀😀`;
+    expect(emitProgress({ phase: 'p'.repeat(PROGRESS_MAX_VALUE + 5), status: 'ok', note, file, fields: { long: 'v'.repeat(PROGRESS_MAX_VALUE + 5) } })).toBe(true);
+    const [event] = parseProgressLog(readFileSync(file, 'utf8'));
+    expect(event.phase).toHaveLength(PROGRESS_MAX_VALUE);
+    expect(event.fields.long).toHaveLength(PROGRESS_MAX_VALUE);
+    expect(event.note).toBe(`${'n'.repeat(PROGRESS_MAX_NOTE - 1)}😀`);
   });
 });
 
