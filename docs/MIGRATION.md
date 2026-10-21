@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [v5.11.0 → v5.12.0: Merge-readiness MCP Tools Removed](#v5110--v5120-merge-readiness-mcp-tools-removed)
 - [v5.8.1 → v5.9.0: SDK Team Transport by Default](#v581--v590-sdk-team-transport-by-default)
 - [Unreleased: Rule Glob Brace Alternation](#unreleased-rule-glob-brace-alternation)
 - [Unreleased: Glossary File Rename (CONTEXT.md → GLOSSARY.md)](#unreleased-glossary-file-rename-contextmd--glossarymd)
@@ -31,6 +32,13 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
 
 ---
+
+## v5.11.0 → v5.12.0: Merge-readiness MCP Tools Removed
+
+The configured MCP server no longer registers the five retired merge-readiness tools (upstream #4422), so it now exposes 56 tools.
+
+- **Removed tools:** `merge_readiness_start`, `merge_readiness_set_content`, `merge_readiness_record_answer`, `merge_readiness_report` and `merge_readiness_cancel`, together with their runtime (`src/hooks/merge-readiness/`). A client, script or tool allowlist that still names one gets an unknown-tool error; remove those names.
+- **What to use instead:** `/oh-my-copilot:review` for an advisory review, and `omg ship gates <pr>` for the mechanical merge rule. The `merge-readiness` skill was already retired in v5.0.0 (see the removed-skills table under v4.x → v5.0). Release hard checks are unchanged.
 
 ## v5.8.1 → v5.9.0: SDK Team Transport by Default
 

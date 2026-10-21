@@ -60,7 +60,10 @@ describe('detached daemon HUD cache context', () => {
         delete process.env.CLAUDECODE_SESSION_ID;
         expect(readStdinCache()?.version).toBe('2.1.232');
         await checkRateLimitStatus();
-        expect(getUsageMock).toHaveBeenCalledWith({ clientVersion: '2.1.232' });
+        expect(getUsageMock).toHaveBeenCalledWith({
+            clientVersion: '2.1.232',
+            skipWarmCache: true,
+        });
     });
 });
 //# sourceMappingURL=daemon-cache-context.test.js.map

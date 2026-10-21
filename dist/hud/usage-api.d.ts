@@ -174,6 +174,8 @@ interface MinimaxCodingPlanResponse {
         status_msg: string;
     };
 }
+/** Return a non-reversible identity for the source and credential used by getUsage. */
+export declare function getUsageCredentialIdentity(includeEnvironmentCredentials?: boolean, refreshStoredCredentials?: boolean): string | null;
 /**
  * Get subscription info from OAuth credentials.
  * Returns subscriptionType and rateLimitTier (null when unavailable; never throws).
@@ -260,9 +262,12 @@ export declare function parseKimiResponse(response: KimiUsageResponse): RateLimi
  * @param opts.clientVersion Claude Code version for the usage API User-Agent
  *   (see buildUserAgent). Optional: callers without a statusline payload omit it
  *   and the header is left off rather than guessed.
+ * @param opts.skipWarmCache Skip metadata-only cache hits when credential identity
+ *   must be verified before using the returned usage data.
  */
 export declare function getUsage(opts?: {
     clientVersion?: string;
+    skipWarmCache?: boolean;
 }): Promise<UsageResult>;
 export {};
 //# sourceMappingURL=usage-api.d.ts.map

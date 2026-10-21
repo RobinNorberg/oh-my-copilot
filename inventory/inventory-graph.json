@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "b576fd9b236e9f31fa564d784da4ff4b53ceee1c",
-    "sourceSha256": "1bc75a2de210db2ed8ce9003c38c03b508c906b455f53d757129f9cc95918743",
+    "head": "58ea1e9c792162e154f144474ed54cc91baebfc6",
+    "sourceSha256": "f5295f954031336ca3c3e436da947f92239bab52cf0a02d75be86f4e5fe56fae",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "b576fd9b236e9f31fa564d784da4ff4b53ceee1c",
-  "sourceSha256": "1bc75a2de210db2ed8ce9003c38c03b508c906b455f53d757129f9cc95918743",
+  "head": "58ea1e9c792162e154f144474ed54cc91baebfc6",
+  "sourceSha256": "f5295f954031336ca3c3e436da947f92239bab52cf0a02d75be86f4e5fe56fae",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1620
     },
     "generated": {
-      "distFiles": 6119,
+      "distFiles": 6139,
       "bridgeFiles": 9,
-      "total": 6128
+      "total": 6148
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -1059,6 +1059,10 @@
       "dist/__tests__/cli-win32-warning.test.d.ts.map",
       "dist/__tests__/cli-win32-warning.test.js",
       "dist/__tests__/cli-win32-warning.test.js.map",
+      "dist/__tests__/commands-frontmatter-crlf.test.d.ts",
+      "dist/__tests__/commands-frontmatter-crlf.test.d.ts.map",
+      "dist/__tests__/commands-frontmatter-crlf.test.js",
+      "dist/__tests__/commands-frontmatter-crlf.test.js.map",
       "dist/__tests__/compact-denylist.test.d.ts",
       "dist/__tests__/compact-denylist.test.d.ts.map",
       "dist/__tests__/compact-denylist.test.js",
@@ -1847,6 +1851,10 @@
       "dist/__tests__/rate-limit-wait/pane-fresh-capture.test.d.ts.map",
       "dist/__tests__/rate-limit-wait/pane-fresh-capture.test.js",
       "dist/__tests__/rate-limit-wait/pane-fresh-capture.test.js.map",
+      "dist/__tests__/rate-limit-wait/quota-confirmation.test.d.ts",
+      "dist/__tests__/rate-limit-wait/quota-confirmation.test.d.ts.map",
+      "dist/__tests__/rate-limit-wait/quota-confirmation.test.js",
+      "dist/__tests__/rate-limit-wait/quota-confirmation.test.js.map",
       "dist/__tests__/rate-limit-wait/rate-limit-monitor.test.d.ts",
       "dist/__tests__/rate-limit-wait/rate-limit-monitor.test.d.ts.map",
       "dist/__tests__/rate-limit-wait/rate-limit-monitor.test.js",
@@ -1923,10 +1931,6 @@
       "dist/__tests__/runtime-guidance-plan-ralph.test.d.ts.map",
       "dist/__tests__/runtime-guidance-plan-ralph.test.js",
       "dist/__tests__/runtime-guidance-plan-ralph.test.js.map",
-      "dist/__tests__/runtime-task-orphan.test.d.ts",
-      "dist/__tests__/runtime-task-orphan.test.d.ts.map",
-      "dist/__tests__/runtime-task-orphan.test.js",
-      "dist/__tests__/runtime-task-orphan.test.js.map",
       "dist/__tests__/security-config.test.d.ts",
       "dist/__tests__/security-config.test.d.ts.map",
       "dist/__tests__/security-config.test.js",
@@ -2423,6 +2427,10 @@
       "dist/cli/__tests__/hud-watch.test.d.ts.map",
       "dist/cli/__tests__/hud-watch.test.js",
       "dist/cli/__tests__/hud-watch.test.js.map",
+      "dist/cli/__tests__/integer-option.test.d.ts",
+      "dist/cli/__tests__/integer-option.test.d.ts.map",
+      "dist/cli/__tests__/integer-option.test.js",
+      "dist/cli/__tests__/integer-option.test.js.map",
       "dist/cli/__tests__/launch-secure-transport.test.d.ts",
       "dist/cli/__tests__/launch-secure-transport.test.d.ts.map",
       "dist/cli/__tests__/launch-secure-transport.test.js",
@@ -2547,6 +2555,10 @@
       "dist/cli/commands/__tests__/factory-init.test.d.ts.map",
       "dist/cli/commands/__tests__/factory-init.test.js",
       "dist/cli/commands/__tests__/factory-init.test.js.map",
+      "dist/cli/commands/__tests__/factory-listen-port.test.d.ts",
+      "dist/cli/commands/__tests__/factory-listen-port.test.d.ts.map",
+      "dist/cli/commands/__tests__/factory-listen-port.test.js",
+      "dist/cli/commands/__tests__/factory-listen-port.test.js.map",
       "dist/cli/commands/__tests__/intake-headless-flag.test.d.ts",
       "dist/cli/commands/__tests__/intake-headless-flag.test.d.ts.map",
       "dist/cli/commands/__tests__/intake-headless-flag.test.js",
@@ -2587,6 +2599,10 @@
       "dist/cli/commands/__tests__/ultragoal.test.d.ts.map",
       "dist/cli/commands/__tests__/ultragoal.test.js",
       "dist/cli/commands/__tests__/ultragoal.test.js.map",
+      "dist/cli/commands/__tests__/wait.test.d.ts",
+      "dist/cli/commands/__tests__/wait.test.d.ts.map",
+      "dist/cli/commands/__tests__/wait.test.js",
+      "dist/cli/commands/__tests__/wait.test.js.map",
       "dist/cli/commands/alias-retirement.d.ts",
       "dist/cli/commands/alias-retirement.d.ts.map",
       "dist/cli/commands/alias-retirement.js",
@@ -2695,6 +2711,10 @@
       "dist/cli/utils/formatting.d.ts.map",
       "dist/cli/utils/formatting.js",
       "dist/cli/utils/formatting.js.map",
+      "dist/cli/utils/integer-option.d.ts",
+      "dist/cli/utils/integer-option.d.ts.map",
+      "dist/cli/utils/integer-option.js",
+      "dist/cli/utils/integer-option.js.map",
       "dist/cli/win32-warning.d.ts",
       "dist/cli/win32-warning.d.ts.map",
       "dist/cli/win32-warning.js",
@@ -3072,6 +3092,10 @@
       "dist/features/notepad-wisdom/types.d.ts.map",
       "dist/features/notepad-wisdom/types.js",
       "dist/features/notepad-wisdom/types.js.map",
+      "dist/features/rate-limit-wait/daemon-state.d.ts",
+      "dist/features/rate-limit-wait/daemon-state.d.ts.map",
+      "dist/features/rate-limit-wait/daemon-state.js",
+      "dist/features/rate-limit-wait/daemon-state.js.map",
       "dist/features/rate-limit-wait/daemon.d.ts",
       "dist/features/rate-limit-wait/daemon.d.ts.map",
       "dist/features/rate-limit-wait/daemon.js",
@@ -3116,10 +3140,22 @@
       "dist/features/state-manager/__tests__/cache.test.d.ts.map",
       "dist/features/state-manager/__tests__/cache.test.js",
       "dist/features/state-manager/__tests__/cache.test.js.map",
+      "dist/features/state-manager/__tests__/glob-patterns.test.d.ts",
+      "dist/features/state-manager/__tests__/glob-patterns.test.d.ts.map",
+      "dist/features/state-manager/__tests__/glob-patterns.test.js",
+      "dist/features/state-manager/__tests__/glob-patterns.test.js.map",
       "dist/features/state-manager/index.d.ts",
       "dist/features/state-manager/index.d.ts.map",
       "dist/features/state-manager/index.js",
       "dist/features/state-manager/index.js.map",
+      "dist/features/state-manager/list-cleanup.d.ts",
+      "dist/features/state-manager/list-cleanup.d.ts.map",
+      "dist/features/state-manager/list-cleanup.js",
+      "dist/features/state-manager/list-cleanup.js.map",
+      "dist/features/state-manager/state-paths.d.ts",
+      "dist/features/state-manager/state-paths.d.ts.map",
+      "dist/features/state-manager/state-paths.js",
+      "dist/features/state-manager/state-paths.js.map",
       "dist/features/state-manager/types.d.ts",
       "dist/features/state-manager/types.d.ts.map",
       "dist/features/state-manager/types.js",
@@ -3308,6 +3344,10 @@
       "dist/hooks/__tests__/askuserquestion-lifecycle.test.d.ts.map",
       "dist/hooks/__tests__/askuserquestion-lifecycle.test.js",
       "dist/hooks/__tests__/askuserquestion-lifecycle.test.js.map",
+      "dist/hooks/__tests__/auto-slash-namespaced.test.d.ts",
+      "dist/hooks/__tests__/auto-slash-namespaced.test.d.ts.map",
+      "dist/hooks/__tests__/auto-slash-namespaced.test.js",
+      "dist/hooks/__tests__/auto-slash-namespaced.test.js.map",
       "dist/hooks/__tests__/background-notifications.test.d.ts",
       "dist/hooks/__tests__/background-notifications.test.d.ts.map",
       "dist/hooks/__tests__/background-notifications.test.js",
@@ -3680,6 +3720,10 @@
       "dist/hooks/factcheck/__tests__/sentinel.test.d.ts.map",
       "dist/hooks/factcheck/__tests__/sentinel.test.js",
       "dist/hooks/factcheck/__tests__/sentinel.test.js.map",
+      "dist/hooks/factcheck/__tests__/strict-mode-glob.test.d.ts",
+      "dist/hooks/factcheck/__tests__/strict-mode-glob.test.d.ts.map",
+      "dist/hooks/factcheck/__tests__/strict-mode-glob.test.js",
+      "dist/hooks/factcheck/__tests__/strict-mode-glob.test.js.map",
       "dist/hooks/factcheck/checks.d.ts",
       "dist/hooks/factcheck/checks.d.ts.map",
       "dist/hooks/factcheck/checks.js",
@@ -3836,38 +3880,6 @@
       "dist/hooks/learner/writer.d.ts.map",
       "dist/hooks/learner/writer.js",
       "dist/hooks/learner/writer.js.map",
-      "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts",
-      "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts.map",
-      "dist/hooks/merge-readiness/__tests__/runtime.test.js",
-      "dist/hooks/merge-readiness/__tests__/runtime.test.js.map",
-      "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts",
-      "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts.map",
-      "dist/hooks/merge-readiness/__tests__/tool-flow.test.js",
-      "dist/hooks/merge-readiness/__tests__/tool-flow.test.js.map",
-      "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts",
-      "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts.map",
-      "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js",
-      "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js.map",
-      "dist/hooks/merge-readiness/index.d.ts",
-      "dist/hooks/merge-readiness/index.d.ts.map",
-      "dist/hooks/merge-readiness/index.js",
-      "dist/hooks/merge-readiness/index.js.map",
-      "dist/hooks/merge-readiness/mcq.d.ts",
-      "dist/hooks/merge-readiness/mcq.d.ts.map",
-      "dist/hooks/merge-readiness/mcq.js",
-      "dist/hooks/merge-readiness/mcq.js.map",
-      "dist/hooks/merge-readiness/report.d.ts",
-      "dist/hooks/merge-readiness/report.d.ts.map",
-      "dist/hooks/merge-readiness/report.js",
-      "dist/hooks/merge-readiness/report.js.map",
-      "dist/hooks/merge-readiness/runtime.d.ts",
-      "dist/hooks/merge-readiness/runtime.d.ts.map",
-      "dist/hooks/merge-readiness/runtime.js",
-      "dist/hooks/merge-readiness/runtime.js.map",
-      "dist/hooks/merge-readiness/types.d.ts",
-      "dist/hooks/merge-readiness/types.d.ts.map",
-      "dist/hooks/merge-readiness/types.js",
-      "dist/hooks/merge-readiness/types.js.map",
       "dist/hooks/mode-registry/__tests__/session-isolation.test.d.ts",
       "dist/hooks/mode-registry/__tests__/session-isolation.test.d.ts.map",
       "dist/hooks/mode-registry/__tests__/session-isolation.test.js",
@@ -5254,6 +5266,10 @@
       "dist/mcp/__tests__/host-smoke-tool.test.d.ts.map",
       "dist/mcp/__tests__/host-smoke-tool.test.js",
       "dist/mcp/__tests__/host-smoke-tool.test.js.map",
+      "dist/mcp/__tests__/omc-tools-server.test.d.ts",
+      "dist/mcp/__tests__/omc-tools-server.test.d.ts.map",
+      "dist/mcp/__tests__/omc-tools-server.test.js",
+      "dist/mcp/__tests__/omc-tools-server.test.js.map",
       "dist/mcp/__tests__/prompt-injection.test.d.ts",
       "dist/mcp/__tests__/prompt-injection.test.d.ts.map",
       "dist/mcp/__tests__/prompt-injection.test.js",
@@ -5718,6 +5734,10 @@
       "dist/skills/__tests__/omc-doctor-skill.test.d.ts.map",
       "dist/skills/__tests__/omc-doctor-skill.test.js",
       "dist/skills/__tests__/omc-doctor-skill.test.js.map",
+      "dist/skills/__tests__/omc-setup-optout.test.d.ts",
+      "dist/skills/__tests__/omc-setup-optout.test.d.ts.map",
+      "dist/skills/__tests__/omc-setup-optout.test.js",
+      "dist/skills/__tests__/omc-setup-optout.test.js.map",
       "dist/skills/__tests__/skill-config-dir.test.d.ts",
       "dist/skills/__tests__/skill-config-dir.test.d.ts.map",
       "dist/skills/__tests__/skill-config-dir.test.js",
@@ -5934,6 +5954,10 @@
       "dist/team/__tests__/issue-4261-cmux-team-failures.test.d.ts.map",
       "dist/team/__tests__/issue-4261-cmux-team-failures.test.js",
       "dist/team/__tests__/issue-4261-cmux-team-failures.test.js.map",
+      "dist/team/__tests__/issue-4412-cmux-startup.test.d.ts",
+      "dist/team/__tests__/issue-4412-cmux-startup.test.d.ts.map",
+      "dist/team/__tests__/issue-4412-cmux-startup.test.js",
+      "dist/team/__tests__/issue-4412-cmux-startup.test.js.map",
       "dist/team/__tests__/leader-inbox.test.d.ts",
       "dist/team/__tests__/leader-inbox.test.d.ts.map",
       "dist/team/__tests__/leader-inbox.test.js",
@@ -6054,10 +6078,6 @@
       "dist/team/__tests__/role-router.test.d.ts.map",
       "dist/team/__tests__/role-router.test.js",
       "dist/team/__tests__/role-router.test.js.map",
-      "dist/team/__tests__/runtime-assign.test.d.ts",
-      "dist/team/__tests__/runtime-assign.test.d.ts.map",
-      "dist/team/__tests__/runtime-assign.test.js",
-      "dist/team/__tests__/runtime-assign.test.js.map",
       "dist/team/__tests__/runtime-cli.test.d.ts",
       "dist/team/__tests__/runtime-cli.test.d.ts.map",
       "dist/team/__tests__/runtime-cli.test.js",
@@ -6074,10 +6094,6 @@
       "dist/team/__tests__/runtime-owner-client.test.d.ts.map",
       "dist/team/__tests__/runtime-owner-client.test.js",
       "dist/team/__tests__/runtime-owner-client.test.js.map",
-      "dist/team/__tests__/runtime-prompt-mode.test.d.ts",
-      "dist/team/__tests__/runtime-prompt-mode.test.d.ts.map",
-      "dist/team/__tests__/runtime-prompt-mode.test.js",
-      "dist/team/__tests__/runtime-prompt-mode.test.js.map",
       "dist/team/__tests__/runtime-storage-boundary.test.d.ts",
       "dist/team/__tests__/runtime-storage-boundary.test.d.ts.map",
       "dist/team/__tests__/runtime-storage-boundary.test.js",
@@ -6742,6 +6758,10 @@
       "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.d.ts.map",
       "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.js",
       "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.js.map",
+      "dist/tools/diagnostics/__tests__/tsc-runner.test.d.ts",
+      "dist/tools/diagnostics/__tests__/tsc-runner.test.d.ts.map",
+      "dist/tools/diagnostics/__tests__/tsc-runner.test.js",
+      "dist/tools/diagnostics/__tests__/tsc-runner.test.js.map",
       "dist/tools/diagnostics/index.d.ts",
       "dist/tools/diagnostics/index.d.ts.map",
       "dist/tools/diagnostics/index.js",
@@ -9249,6 +9269,26 @@
         "id": "dist/__tests__/cli-win32-warning.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/cli-win32-warning.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/commands-frontmatter-crlf.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/commands-frontmatter-crlf.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/commands-frontmatter-crlf.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/commands-frontmatter-crlf.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/commands-frontmatter-crlf.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/commands-frontmatter-crlf.test.js"
+      },
+      {
+        "id": "dist/__tests__/commands-frontmatter-crlf.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/commands-frontmatter-crlf.test.js.map"
       },
       {
         "id": "dist/__tests__/compact-denylist.test.d.ts",
@@ -13191,6 +13231,26 @@
         "path": "dist/__tests__/rate-limit-wait/pane-fresh-capture.test.js.map"
       },
       {
+        "id": "dist/__tests__/rate-limit-wait/quota-confirmation.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/rate-limit-wait/quota-confirmation.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/rate-limit-wait/quota-confirmation.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/rate-limit-wait/quota-confirmation.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/rate-limit-wait/quota-confirmation.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/rate-limit-wait/quota-confirmation.test.js"
+      },
+      {
+        "id": "dist/__tests__/rate-limit-wait/quota-confirmation.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/rate-limit-wait/quota-confirmation.test.js.map"
+      },
+      {
         "id": "dist/__tests__/rate-limit-wait/rate-limit-monitor.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/rate-limit-wait/rate-limit-monitor.test.d.ts"
@@ -13569,26 +13629,6 @@
         "id": "dist/__tests__/runtime-guidance-plan-ralph.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/runtime-guidance-plan-ralph.test.js.map"
-      },
-      {
-        "id": "dist/__tests__/runtime-task-orphan.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/runtime-task-orphan.test.d.ts"
-      },
-      {
-        "id": "dist/__tests__/runtime-task-orphan.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/runtime-task-orphan.test.d.ts.map"
-      },
-      {
-        "id": "dist/__tests__/runtime-task-orphan.test.js",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/runtime-task-orphan.test.js"
-      },
-      {
-        "id": "dist/__tests__/runtime-task-orphan.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/runtime-task-orphan.test.js.map"
       },
       {
         "id": "dist/__tests__/security-config.test.d.ts",
@@ -16071,6 +16111,26 @@
         "path": "dist/cli/__tests__/hud-watch.test.js.map"
       },
       {
+        "id": "dist/cli/__tests__/integer-option.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/integer-option.test.d.ts"
+      },
+      {
+        "id": "dist/cli/__tests__/integer-option.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/integer-option.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/__tests__/integer-option.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/integer-option.test.js"
+      },
+      {
+        "id": "dist/cli/__tests__/integer-option.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/__tests__/integer-option.test.js.map"
+      },
+      {
         "id": "dist/cli/__tests__/launch-secure-transport.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/__tests__/launch-secure-transport.test.d.ts"
@@ -16691,6 +16751,26 @@
         "path": "dist/cli/commands/__tests__/factory-init.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/factory-listen-port.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-listen-port.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-listen-port.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-listen-port.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-listen-port.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-listen-port.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/factory-listen-port.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/factory-listen-port.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/intake-headless-flag.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/intake-headless-flag.test.d.ts"
@@ -16889,6 +16969,26 @@
         "id": "dist/cli/commands/__tests__/ultragoal.test.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/ultragoal.test.js.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/wait.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/wait.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/wait.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/wait.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/wait.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/wait.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/wait.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/wait.test.js.map"
       },
       {
         "id": "dist/cli/commands/alias-retirement.d.ts",
@@ -17429,6 +17529,26 @@
         "id": "dist/cli/utils/formatting.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/utils/formatting.js.map"
+      },
+      {
+        "id": "dist/cli/utils/integer-option.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/utils/integer-option.d.ts"
+      },
+      {
+        "id": "dist/cli/utils/integer-option.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/utils/integer-option.d.ts.map"
+      },
+      {
+        "id": "dist/cli/utils/integer-option.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/utils/integer-option.js"
+      },
+      {
+        "id": "dist/cli/utils/integer-option.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/utils/integer-option.js.map"
       },
       {
         "id": "dist/cli/win32-warning.d.ts",
@@ -19316,6 +19436,26 @@
         "path": "dist/features/notepad-wisdom/types.js.map"
       },
       {
+        "id": "dist/features/rate-limit-wait/daemon-state.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/rate-limit-wait/daemon-state.d.ts"
+      },
+      {
+        "id": "dist/features/rate-limit-wait/daemon-state.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/rate-limit-wait/daemon-state.d.ts.map"
+      },
+      {
+        "id": "dist/features/rate-limit-wait/daemon-state.js",
+        "kind": "generated-dist",
+        "path": "dist/features/rate-limit-wait/daemon-state.js"
+      },
+      {
+        "id": "dist/features/rate-limit-wait/daemon-state.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/rate-limit-wait/daemon-state.js.map"
+      },
+      {
         "id": "dist/features/rate-limit-wait/daemon.d.ts",
         "kind": "generated-dist",
         "path": "dist/features/rate-limit-wait/daemon.d.ts"
@@ -19536,6 +19676,26 @@
         "path": "dist/features/state-manager/__tests__/cache.test.js.map"
       },
       {
+        "id": "dist/features/state-manager/__tests__/glob-patterns.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/state-manager/__tests__/glob-patterns.test.d.ts"
+      },
+      {
+        "id": "dist/features/state-manager/__tests__/glob-patterns.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/state-manager/__tests__/glob-patterns.test.d.ts.map"
+      },
+      {
+        "id": "dist/features/state-manager/__tests__/glob-patterns.test.js",
+        "kind": "generated-dist",
+        "path": "dist/features/state-manager/__tests__/glob-patterns.test.js"
+      },
+      {
+        "id": "dist/features/state-manager/__tests__/glob-patterns.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/state-manager/__tests__/glob-patterns.test.js.map"
+      },
+      {
         "id": "dist/features/state-manager/index.d.ts",
         "kind": "generated-dist",
         "path": "dist/features/state-manager/index.d.ts"
@@ -19554,6 +19714,46 @@
         "id": "dist/features/state-manager/index.js.map",
         "kind": "generated-dist",
         "path": "dist/features/state-manager/index.js.map"
+      },
+      {
+        "id": "dist/features/state-manager/list-cleanup.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/state-manager/list-cleanup.d.ts"
+      },
+      {
+        "id": "dist/features/state-manager/list-cleanup.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/state-manager/list-cleanup.d.ts.map"
+      },
+      {
+        "id": "dist/features/state-manager/list-cleanup.js",
+        "kind": "generated-dist",
+        "path": "dist/features/state-manager/list-cleanup.js"
+      },
+      {
+        "id": "dist/features/state-manager/list-cleanup.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/state-manager/list-cleanup.js.map"
+      },
+      {
+        "id": "dist/features/state-manager/state-paths.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/features/state-manager/state-paths.d.ts"
+      },
+      {
+        "id": "dist/features/state-manager/state-paths.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/features/state-manager/state-paths.d.ts.map"
+      },
+      {
+        "id": "dist/features/state-manager/state-paths.js",
+        "kind": "generated-dist",
+        "path": "dist/features/state-manager/state-paths.js"
+      },
+      {
+        "id": "dist/features/state-manager/state-paths.js.map",
+        "kind": "generated-dist",
+        "path": "dist/features/state-manager/state-paths.js.map"
       },
       {
         "id": "dist/features/state-manager/types.d.ts",
@@ -20494,6 +20694,26 @@
         "id": "dist/hooks/__tests__/askuserquestion-lifecycle.test.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/__tests__/askuserquestion-lifecycle.test.js.map"
+      },
+      {
+        "id": "dist/hooks/__tests__/auto-slash-namespaced.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/__tests__/auto-slash-namespaced.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/__tests__/auto-slash-namespaced.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/__tests__/auto-slash-namespaced.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/__tests__/auto-slash-namespaced.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/__tests__/auto-slash-namespaced.test.js"
+      },
+      {
+        "id": "dist/hooks/__tests__/auto-slash-namespaced.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/__tests__/auto-slash-namespaced.test.js.map"
       },
       {
         "id": "dist/hooks/__tests__/background-notifications.test.d.ts",
@@ -22356,6 +22576,26 @@
         "path": "dist/hooks/factcheck/__tests__/sentinel.test.js.map"
       },
       {
+        "id": "dist/hooks/factcheck/__tests__/strict-mode-glob.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/factcheck/__tests__/strict-mode-glob.test.d.ts"
+      },
+      {
+        "id": "dist/hooks/factcheck/__tests__/strict-mode-glob.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/factcheck/__tests__/strict-mode-glob.test.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/factcheck/__tests__/strict-mode-glob.test.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/factcheck/__tests__/strict-mode-glob.test.js"
+      },
+      {
+        "id": "dist/hooks/factcheck/__tests__/strict-mode-glob.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/factcheck/__tests__/strict-mode-glob.test.js.map"
+      },
+      {
         "id": "dist/hooks/factcheck/checks.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/factcheck/checks.d.ts"
@@ -23134,166 +23374,6 @@
         "id": "dist/hooks/learner/writer.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/learner/writer.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/runtime.test.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/runtime.test.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/runtime.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/runtime.test.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/tool-flow.test.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/tool-flow.test.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/tool-flow.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/tool-flow.test.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/index.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/index.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/index.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/index.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/index.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/index.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/index.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/index.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/mcq.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/mcq.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/mcq.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/mcq.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/mcq.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/mcq.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/mcq.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/mcq.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/report.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/report.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/report.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/report.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/report.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/report.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/report.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/report.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/runtime.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/runtime.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/runtime.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/runtime.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/runtime.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/runtime.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/runtime.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/runtime.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/types.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/types.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/types.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/types.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/types.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/types.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/types.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/types.js.map"
       },
       {
         "id": "dist/hooks/mode-registry/__tests__/session-isolation.test.d.ts",
@@ -30226,6 +30306,26 @@
         "path": "dist/mcp/__tests__/host-smoke-tool.test.js.map"
       },
       {
+        "id": "dist/mcp/__tests__/omc-tools-server.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/omc-tools-server.test.d.ts"
+      },
+      {
+        "id": "dist/mcp/__tests__/omc-tools-server.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/omc-tools-server.test.d.ts.map"
+      },
+      {
+        "id": "dist/mcp/__tests__/omc-tools-server.test.js",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/omc-tools-server.test.js"
+      },
+      {
+        "id": "dist/mcp/__tests__/omc-tools-server.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/mcp/__tests__/omc-tools-server.test.js.map"
+      },
+      {
         "id": "dist/mcp/__tests__/prompt-injection.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/mcp/__tests__/prompt-injection.test.d.ts"
@@ -32546,6 +32646,26 @@
         "path": "dist/skills/__tests__/omc-doctor-skill.test.js.map"
       },
       {
+        "id": "dist/skills/__tests__/omc-setup-optout.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/skills/__tests__/omc-setup-optout.test.d.ts"
+      },
+      {
+        "id": "dist/skills/__tests__/omc-setup-optout.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/skills/__tests__/omc-setup-optout.test.d.ts.map"
+      },
+      {
+        "id": "dist/skills/__tests__/omc-setup-optout.test.js",
+        "kind": "generated-dist",
+        "path": "dist/skills/__tests__/omc-setup-optout.test.js"
+      },
+      {
+        "id": "dist/skills/__tests__/omc-setup-optout.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/skills/__tests__/omc-setup-optout.test.js.map"
+      },
+      {
         "id": "dist/skills/__tests__/skill-config-dir.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/skills/__tests__/skill-config-dir.test.d.ts"
@@ -33626,6 +33746,26 @@
         "path": "dist/team/__tests__/issue-4261-cmux-team-failures.test.js.map"
       },
       {
+        "id": "dist/team/__tests__/issue-4412-cmux-startup.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/issue-4412-cmux-startup.test.d.ts"
+      },
+      {
+        "id": "dist/team/__tests__/issue-4412-cmux-startup.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/issue-4412-cmux-startup.test.d.ts.map"
+      },
+      {
+        "id": "dist/team/__tests__/issue-4412-cmux-startup.test.js",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/issue-4412-cmux-startup.test.js"
+      },
+      {
+        "id": "dist/team/__tests__/issue-4412-cmux-startup.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/team/__tests__/issue-4412-cmux-startup.test.js.map"
+      },
+      {
         "id": "dist/team/__tests__/leader-inbox.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/leader-inbox.test.d.ts"
@@ -34226,26 +34366,6 @@
         "path": "dist/team/__tests__/role-router.test.js.map"
       },
       {
-        "id": "dist/team/__tests__/runtime-assign.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/team/__tests__/runtime-assign.test.d.ts"
-      },
-      {
-        "id": "dist/team/__tests__/runtime-assign.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/team/__tests__/runtime-assign.test.d.ts.map"
-      },
-      {
-        "id": "dist/team/__tests__/runtime-assign.test.js",
-        "kind": "generated-dist",
-        "path": "dist/team/__tests__/runtime-assign.test.js"
-      },
-      {
-        "id": "dist/team/__tests__/runtime-assign.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/team/__tests__/runtime-assign.test.js.map"
-      },
-      {
         "id": "dist/team/__tests__/runtime-cli.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/runtime-cli.test.d.ts"
@@ -34324,26 +34444,6 @@
         "id": "dist/team/__tests__/runtime-owner-client.test.js.map",
         "kind": "generated-dist",
         "path": "dist/team/__tests__/runtime-owner-client.test.js.map"
-      },
-      {
-        "id": "dist/team/__tests__/runtime-prompt-mode.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/team/__tests__/runtime-prompt-mode.test.d.ts"
-      },
-      {
-        "id": "dist/team/__tests__/runtime-prompt-mode.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/team/__tests__/runtime-prompt-mode.test.d.ts.map"
-      },
-      {
-        "id": "dist/team/__tests__/runtime-prompt-mode.test.js",
-        "kind": "generated-dist",
-        "path": "dist/team/__tests__/runtime-prompt-mode.test.js"
-      },
-      {
-        "id": "dist/team/__tests__/runtime-prompt-mode.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/team/__tests__/runtime-prompt-mode.test.js.map"
       },
       {
         "id": "dist/team/__tests__/runtime-storage-boundary.test.d.ts",
@@ -37664,6 +37764,26 @@
         "id": "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.js.map",
         "kind": "generated-dist",
         "path": "dist/tools/diagnostics/__tests__/tsc-runner-resolution.test.js.map"
+      },
+      {
+        "id": "dist/tools/diagnostics/__tests__/tsc-runner.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/tools/diagnostics/__tests__/tsc-runner.test.d.ts"
+      },
+      {
+        "id": "dist/tools/diagnostics/__tests__/tsc-runner.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/diagnostics/__tests__/tsc-runner.test.d.ts.map"
+      },
+      {
+        "id": "dist/tools/diagnostics/__tests__/tsc-runner.test.js",
+        "kind": "generated-dist",
+        "path": "dist/tools/diagnostics/__tests__/tsc-runner.test.js"
+      },
+      {
+        "id": "dist/tools/diagnostics/__tests__/tsc-runner.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/diagnostics/__tests__/tsc-runner.test.js.map"
       },
       {
         "id": "dist/tools/diagnostics/index.d.ts",
@@ -96849,12 +96969,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8445,
+      "nodeCount": 8465,
       "edgeCount": 9390,
       "importEdgeCount": 7816,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "ce33e9884d96c9483c31425cf7c74aed08084645aa864f694275bc9d8ffad0e5",
-  "manifestSha256": "a22a7e9bb3f5adf371f2b947a6d122d7b713982532007f403e0f9f96080748b4"
+  "manifestSha256": "59d8a34efca35ce960a60c9ebef4f09470618f28551417e7c6994312d0257f17"
 }

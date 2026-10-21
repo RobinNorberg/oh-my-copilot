@@ -114,6 +114,29 @@ describe.each([
             expect(state.active).toBe(false);
         }
     });
+    it('ignores malformed hardMaxIterations values outside strict mode', () => {
+        for (const value of [-1, 2.5, 'abc', null]) {
+            const { output, state } = runStopHook(hookPath(), {
+                iteration: 500,
+                maxIterations: 1000,
+                userConfig: JSON.stringify({ security: { hardMaxIterations: value } }),
+            });
+            expect(output.reason).toContain('HARD LIMIT');
+            expect(output.reason).toContain('(500)');
+            expect(state.active).toBe(false);
+        }
+    });
+    it('skips an array security section and reads the next config file', () => {
+        const { output, state } = runStopHook(hookPath(), {
+            iteration: 50,
+            maxIterations: 60,
+            projectCanonicalConfig: '{"security":[]}',
+            userConfig: JSON.stringify({ security: { hardMaxIterations: 50 } }),
+        });
+        expect(output.reason).toContain('HARD LIMIT');
+        expect(output.reason).toContain('(50)');
+        expect(state.active).toBe(false);
+    });
     it('applies the default hard max of 500 outside strict mode', () => {
         const { output, state } = runStopHook(hookPath(), { iteration: 500, maxIterations: 500 });
         expect(output.reason).toContain('HARD LIMIT');

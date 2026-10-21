@@ -110,7 +110,9 @@ export function validateRegistryAgainstHooksJson(hooksJson) {
 export function selectApplicableEntries(registry, event, matcherInput) {
     return registry
         .filter((e) => e.event === event &&
-        (e.matcher === '*' || e.matcher === matcherInput))
+        (e.matcher === '*' ||
+            (matcherInput !== undefined &&
+                e.matcher.split('|').includes(matcherInput))))
         .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
 }
 //# sourceMappingURL=registry.js.map

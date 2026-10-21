@@ -1545,9 +1545,16 @@ export function resolveSessionStatePath(stateName, sessionId, worktreeRoot) {
  * single-string variant) remain for back-compat but new code should prefer
  * this helper.
  */
-export function resolveSessionStatePaths(stateName, sessionId, worktreeRoot, _opts) {
+export function resolveSessionStatePaths(stateName, sessionId, worktreeRoot, opts) {
     const normalizedName = stateName.endsWith('-state') ? stateName : `${stateName}-state`;
-    const legacy = resolveStatePath(stateName, worktreeRoot);
+    const fileName = opts?.fileName ?? `${normalizedName}.json`;
+    if (opts?.fileName !== undefined
+        && (fileName.trim() !== fileName || !/^[A-Za-z0-9][A-Za-z0-9_-]*\.json$/.test(fileName))) {
+        throw new Error(`Invalid session state filename: ${fileName}`);
+    }
+    const legacy = opts?.fileName
+        ? resolveOmcPath(`state/${fileName}`, worktreeRoot)
+        : resolveStatePath(stateName, worktreeRoot);
     if (!sessionId) {
         return {
             sessionScoped: '',
@@ -1557,7 +1564,7 @@ export function resolveSessionStatePaths(stateName, sessionId, worktreeRoot, _op
         };
     }
     validateSessionId(sessionId);
-    const sessionScoped = resolveOmcPath(`state/sessions/${sessionId}/${normalizedName}.json`, worktreeRoot);
+    const sessionScoped = resolveOmcPath(`state/sessions/${sessionId}/${fileName}`, worktreeRoot);
     // effectiveRead probes session-scoped first; fall back to legacy when the
     // session-scoped file does not yet exist (first-read back-compat).
     const effectiveRead = (existsSync(sessionScoped) ? sessionScoped : legacy);

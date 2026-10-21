@@ -9,6 +9,7 @@
 import { readFileSync } from 'fs';
 import { join, dirname, basename, resolve, relative, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
+import { parseFrontmatter } from '../utils/frontmatter.js';
 /**
  * Get the package root directory (where agents/ folder lives).
  * Handles both ESM (import.meta.url) and CJS bundle (__dirname) contexts.
@@ -49,9 +50,8 @@ function getPackageDir() {
 /**
  * Strip YAML frontmatter from markdown content.
  */
-function stripFrontmatter(content) {
-    const match = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
-    return match ? match[1].trim() : content.trim();
+export function stripFrontmatter(content) {
+    return parseFrontmatter(content).body.trim();
 }
 /**
  * Load an agent prompt from /agents/{agentName}.md
@@ -250,20 +250,20 @@ export function parseDisallowedTools(agentName) {
             return undefined;
         }
         const content = readFileSync(agentPath, 'utf-8');
-        // Extract frontmatter
-        const match = content.match(/^---[\s\S]*?---/);
-        if (!match)
-            return undefined;
-        // Look for disallowedTools line
-        const disallowedMatch = match[0].match(/^disallowedTools:\s*(.+)/m);
-        if (!disallowedMatch)
-            return undefined;
-        // Parse comma-separated list
-        return disallowedMatch[1].split(',').map(t => t.trim()).filter(Boolean);
+        return extractDisallowedTools(content);
     }
     catch {
         return undefined;
     }
+}
+/**
+ * Read the comma-separated disallowedTools list from agent frontmatter.
+ */
+export function extractDisallowedTools(content) {
+    const value = parseFrontmatter(content).metadata.disallowedTools;
+    if (!value)
+        return undefined;
+    return value.split(',').map(t => t.trim()).filter(Boolean);
 }
 /**
  * Standard path for open questions file

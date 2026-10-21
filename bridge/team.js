@@ -3157,9 +3157,11 @@ async function readShutdownAck(teamName, workerName, cwd, requestedAfter) {
   const ack = await readJsonSafe(
     absPath(cwd, TeamPaths.shutdownAck(teamName, workerName))
   );
-  if (!ack) return null;
-  if (requestedAfter && ack.updated_at) {
-    if (new Date(ack.updated_at).getTime() < new Date(requestedAfter).getTime()) {
+  if (!isRecord2(ack) || ack.status !== "accept" && ack.status !== "reject") return null;
+  if (ack.reason !== void 0 && typeof ack.reason !== "string" || ack.updated_at !== void 0 && !isTimestamp2(ack.updated_at)) return null;
+  if (requestedAfter !== void 0) {
+    if (!isTimestamp2(requestedAfter) || ack.updated_at === void 0) return null;
+    if (Date.parse(ack.updated_at) < Date.parse(requestedAfter)) {
       return null;
     }
   }
@@ -5662,6 +5664,217 @@ var init_executable_resolution = __esm({
   }
 });
 
+// scripts/lib/utf8-bom.mjs
+function stripLeadingUtf8Bom(content) {
+  return content.startsWith("\uFEFF") ? content.slice(1) : content;
+}
+var init_utf8_bom = __esm({
+  "scripts/lib/utf8-bom.mjs"() {
+    "use strict";
+  }
+});
+
+// src/utils/frontmatter.ts
+function unquoteYamlScalar(value) {
+  if (value.startsWith('"') && value.endsWith('"')) return value.slice(1, -1);
+  if (value.startsWith("'") && value.endsWith("'"))
+    return value.slice(1, -1).replace(/''/g, "'");
+  return value;
+}
+function stripOptionalQuotes(value) {
+  const trimmed = value.trim();
+  return unquoteYamlScalar(trimmed).trim();
+}
+function parseBlockScalarHeader(rawValue) {
+  const match = BLOCK_SCALAR_HEADER.exec(rawValue);
+  if (!match) return null;
+  const chompingIndicator = match[2] ?? match[5];
+  const indentIndicator = match[3] ?? match[4];
+  return {
+    folded: match[1] === ">",
+    chomping: chompingIndicator === "+" ? "keep" : chompingIndicator === "-" ? "strip" : "clip",
+    ...indentIndicator ? { indentIndicator: Number(indentIndicator) } : {}
+  };
+}
+function countLeadingYamlSpaces(line) {
+  let count = 0;
+  while (line[count] === " ") count++;
+  return count;
+}
+function isBlankBlockScalarLine(line) {
+  return countLeadingYamlSpaces(line) === line.length;
+}
+function getBlockScalarContentIndent(lines, startIndex, parentIndent, header) {
+  if (header.indentIndicator !== void 0) {
+    return { value: parentIndent + header.indentIndicator, isDetermined: true };
+  }
+  let leadingBlankIndent = parentIndent;
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i];
+    const indent = countLeadingYamlSpaces(line);
+    if (isBlankBlockScalarLine(line)) {
+      leadingBlankIndent = Math.max(leadingBlankIndent, indent);
+      continue;
+    }
+    if (indent > parentIndent) {
+      if (line[indent] === "#" && indent < leadingBlankIndent) {
+        return { value: leadingBlankIndent, isDetermined: false };
+      }
+      return { value: indent, isDetermined: true };
+    }
+    break;
+  }
+  return { value: parentIndent + 1, isDetermined: false };
+}
+function readBlockScalar(blockLines, header, contentIndent) {
+  const rows = blockLines.map((line) => {
+    const indent = countLeadingYamlSpaces(line);
+    if (isBlankBlockScalarLine(line) && !contentIndent.isDetermined)
+      return { text: "", moreIndented: false };
+    const moreIndented = indent > contentIndent.value || line[contentIndent.value] === "	";
+    return {
+      text: line.slice(Math.min(contentIndent.value, indent)),
+      moreIndented
+    };
+  });
+  let value;
+  if (header.folded) {
+    value = foldBlockScalarRows(rows);
+  } else {
+    value = rows.map((row) => row.text).join("\n") + (rows.length > 0 ? "\n" : "");
+  }
+  if (header.chomping === "keep") return value;
+  const withoutTrailingBreaks = value.replace(/\n+$/, "");
+  if (header.chomping === "strip" || !rows.some((row) => row.text !== ""))
+    return withoutTrailingBreaks;
+  return `${withoutTrailingBreaks}
+`;
+}
+function foldBlockScalarRows(rows) {
+  let value = "";
+  let previous;
+  let pendingEmptyLines = 0;
+  for (const row of rows) {
+    if (row.text === "") {
+      pendingEmptyLines++;
+      continue;
+    }
+    if (!previous) {
+      value += "\n".repeat(pendingEmptyLines);
+    } else if (pendingEmptyLines > 0) {
+      const preservedBreak = previous.moreIndented || row.moreIndented ? 1 : 0;
+      value += "\n".repeat(pendingEmptyLines + preservedBreak);
+    } else {
+      value += previous.moreIndented || row.moreIndented ? "\n" : " ";
+    }
+    value += row.text;
+    previous = row;
+    pendingEmptyLines = 0;
+  }
+  return value + "\n".repeat(previous ? pendingEmptyLines + 1 : pendingEmptyLines);
+}
+function parseFrontmatter(content) {
+  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/;
+  const match = stripLeadingUtf8Bom(content).match(frontmatterRegex);
+  if (!match) {
+    return { metadata: {}, body: content };
+  }
+  const [, yamlContent, body] = match;
+  const metadata = {};
+  const lines = yamlContent.split(/\r?\n/);
+  const rootLine = lines.find((line) => {
+    const trimmed = line.trimStart();
+    return trimmed.length > 0 && !trimmed.startsWith("#") && trimmed.includes(":");
+  });
+  const rootIndent = rootLine === void 0 ? void 0 : rootLine.length - rootLine.trimStart().length;
+  let flowDepth = 0;
+  let quote = null;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex];
+    const trimmed = line.trimStart();
+    const indent = line.length - trimmed.length;
+    if (flowDepth === 0) {
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      if (indent !== rootIndent) continue;
+      const colonIndex = line.indexOf(":");
+      if (colonIndex === -1) continue;
+      const key = line.slice(0, colonIndex).trim();
+      const rawValue = line.slice(colonIndex + 1).trim();
+      const blockHeader = parseBlockScalarHeader(rawValue);
+      if (blockHeader) {
+        const contentIndent = getBlockScalarContentIndent(
+          lines,
+          lineIndex + 1,
+          rootIndent,
+          blockHeader
+        );
+        const blockLines = [];
+        while (lineIndex + 1 < lines.length) {
+          const nextLine = lines[lineIndex + 1];
+          const nextIndent = countLeadingYamlSpaces(nextLine);
+          if (!isBlankBlockScalarLine(nextLine) && nextIndent < contentIndent.value)
+            break;
+          blockLines.push(lines[++lineIndex]);
+        }
+        metadata[key] = readBlockScalar(blockLines, blockHeader, contentIndent);
+        continue;
+      }
+      metadata[key] = stripOptionalQuotes(rawValue);
+    } else {
+    }
+    let scanFrom = 0;
+    if (flowDepth === 0) {
+      const colonIndex = line.indexOf(":");
+      const valueStart = colonIndex === -1 ? -1 : line.slice(colonIndex + 1).search(/\S/);
+      if (colonIndex !== -1 && valueStart !== -1) {
+        const firstValueChar = line[colonIndex + 1 + valueStart];
+        if (firstValueChar === "{" || firstValueChar === "[") {
+          scanFrom = colonIndex + 1 + valueStart;
+        }
+      }
+      if (scanFrom === 0) continue;
+    }
+    for (let i = scanFrom; i < line.length; i++) {
+      const char = line[i];
+      if (quote) {
+        if (quote === '"' && char === "\\") {
+          i++;
+          continue;
+        }
+        if (char === quote) {
+          if (quote === "'" && line[i + 1] === "'") {
+            i++;
+            continue;
+          }
+          quote = null;
+        }
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        continue;
+      }
+      if (char === "#" && (i === 0 || line[i - 1] === " " || line[i - 1] === "	")) {
+        break;
+      }
+      if (char === "{" || char === "[") {
+        flowDepth++;
+      } else if ((char === "}" || char === "]") && flowDepth > 0) {
+        flowDepth--;
+      }
+    }
+  }
+  return { metadata, body };
+}
+var BLOCK_SCALAR_HEADER;
+var init_frontmatter = __esm({
+  "src/utils/frontmatter.ts"() {
+    "use strict";
+    init_utf8_bom();
+    BLOCK_SCALAR_HEADER = /^([|>])(?:(?:([+-])([1-9])?)|(?:([1-9])([+-])?))?(?:[ \t]+#.*)?$/;
+  }
+});
+
 // src/agents/utils.ts
 import { readFileSync as readFileSync5 } from "fs";
 import { join as join11, dirname as dirname12, basename as basename6, resolve as resolve5, relative as relative4, isAbsolute as isAbsolute3 } from "path";
@@ -5690,8 +5903,7 @@ function getPackageDir() {
   return process.cwd();
 }
 function stripFrontmatter(content) {
-  const match = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
-  return match ? match[1].trim() : content.trim();
+  return parseFrontmatter(content).body.trim();
 }
 function loadAgentPrompt(agentName) {
   if (!/^[a-z0-9-]+$/i.test(agentName)) {
@@ -5726,6 +5938,7 @@ Prompt unavailable.`;
 var init_utils = __esm({
   "src/agents/utils.ts"() {
     "use strict";
+    init_frontmatter();
   }
 });
 
@@ -6962,7 +7175,6 @@ var init_loader = __esm({
       "qa",
       "autoresearch",
       "ultraqa",
-      "merge-readiness",
       "self-improve",
       "ultrawork",
       "ultrapilot",
@@ -7614,13 +7826,6 @@ var init_definitions = __esm({
   }
 });
 
-// src/utils/frontmatter.ts
-var init_frontmatter = __esm({
-  "src/utils/frontmatter.ts"() {
-    "use strict";
-  }
-});
-
 // src/utils/omc-cli-rendering.ts
 import { spawnSync as spawnSync2 } from "child_process";
 function commandExists(command, env) {
@@ -8048,6 +8253,20 @@ var init_delegation_enforcer = __esm({
 // src/lib/security-config.ts
 import { existsSync as existsSync18, readFileSync as readFileSync13 } from "fs";
 import { join as join20 } from "path";
+function sanitizeSecurityOverrides(raw) {
+  const result = {};
+  if (typeof raw.restrictToolPaths === "boolean") result.restrictToolPaths = raw.restrictToolPaths;
+  if (typeof raw.pythonSandbox === "boolean") result.pythonSandbox = raw.pythonSandbox;
+  if (typeof raw.disableProjectSkills === "boolean") result.disableProjectSkills = raw.disableProjectSkills;
+  if (typeof raw.disableAutoUpdate === "boolean") result.disableAutoUpdate = raw.disableAutoUpdate;
+  if (typeof raw.disableRemoteMcp === "boolean") result.disableRemoteMcp = raw.disableRemoteMcp;
+  if (typeof raw.disableExternalLLM === "boolean") result.disableExternalLLM = raw.disableExternalLLM;
+  const hardMaxIterations = raw.hardMaxIterations;
+  if (typeof hardMaxIterations === "number" && Number.isInteger(hardMaxIterations) && hardMaxIterations >= 0) {
+    result.hardMaxIterations = hardMaxIterations;
+  }
+  return result;
+}
 function loadSecurityFromConfigFiles() {
   const paths = [
     resolveProjectConfigPath(process.cwd()),
@@ -8058,8 +8277,8 @@ function loadSecurityFromConfigFiles() {
     try {
       const content = readFileSync13(configPath, "utf-8");
       const parsed = parseJsonc(content);
-      if (parsed?.security && typeof parsed.security === "object") {
-        return parsed.security;
+      if (parsed?.security && typeof parsed.security === "object" && !Array.isArray(parsed.security)) {
+        return sanitizeSecurityOverrides(parsed.security);
       }
     } catch {
     }
@@ -8636,6 +8855,7 @@ var init_model_contract = __esm({
     ];
     CLAUDE_WORKER_ENV_ALLOWLIST = [
       "CLAUDE_CONFIG_DIR",
+      "CLAUDE_SECURESTORAGE_CONFIG_DIR",
       "CLAUDE_CODE_EFFORT_LEVEL"
     ];
   }
@@ -10783,7 +11003,7 @@ var init_worker_launch_ack = __esm({
     WORKER_LAUNCH_AUTHORITY_PROTOCOL = "worker-launch-authority-v1";
     WINDOWS_SUPERVISOR_PROTOCOL = "worker-launch-windows-supervisor-v1";
     WINDOWS_RESERVED_ENV_KEYS = new Set([...WORKER_LAUNCH_INTERNAL_ENV_KEYS, "SystemRoot"].map((key) => key.toUpperCase()));
-    SAFE_BASELINE_ENV_KEYS = ["PATH", "TEMP", "TMP"];
+    SAFE_BASELINE_ENV_KEYS = ["PATH", "TEMP", "TMP", "TERM", "COLORTERM"];
     WINDOWS_BASELINE_ENV_KEYS = [
       "SystemDrive",
       "windir",
@@ -12395,6 +12615,11 @@ async function cmuxSendSurface(surfaceId, text) {
 function normalizeCmuxKey(key) {
   const normalized = key.trim();
   const lower = normalized.toLowerCase();
+  const controlKey = normalized.match(/^[Cc]-([A-Za-z])$/);
+  if (controlKey?.[1]) {
+    const character = controlKey[1].toLowerCase();
+    return character === "m" ? "enter" : `ctrl+${character}`;
+  }
   switch (lower) {
     case "enter":
     case "return":
@@ -12416,7 +12641,7 @@ async function cmuxSendSurfaceKey(surfaceId, key) {
   const normalizedKey = normalizeCmuxKey(key);
   await cmuxExecPrimaryWithLegacyFallback(
     ["send-key-surface", "--surface", surfaceId, normalizedKey],
-    ["send-key", "--surface", surfaceId, key]
+    ["send-key", "--surface", surfaceId, normalizedKey]
   );
 }
 async function cmuxCaptureSurface(surfaceId) {
@@ -12578,6 +12803,16 @@ async function verifyTeamTargetOwnership(target, dependencies = defaultMailboxTa
   } catch {
     return { kind: "unavailable" };
   }
+}
+async function verifyCmuxTargetOwnershipWithRetry(target, dependencies) {
+  let membership = await verifyTeamTargetOwnership(target, dependencies);
+  if (membership.kind === "owned" || membership.kind === "provider_mismatch") return membership;
+  for (let attempt = 1; attempt < CMUX_MEMBERSHIP_RETRY_ATTEMPTS; attempt++) {
+    await sleep3(CMUX_MEMBERSHIP_RETRY_INTERVAL_MS);
+    membership = await verifyTeamTargetOwnership(target, dependencies);
+    if (membership.kind === "owned" || membership.kind === "provider_mismatch") return membership;
+  }
+  return membership;
 }
 async function invokeDirectMailboxEffect(target, message, dependencies = defaultDirectMailboxEffectDependencies) {
   if (!target.paneId || !message) return { kind: "not_attempted", reason: "mailbox_target_missing" };
@@ -12872,7 +13107,7 @@ function workerPaneShellCommand() {
   const passthrough = Object.fromEntries(
     Object.entries(baseline).filter(([key, value]) => inline[key] !== value)
   );
-  const inheritedPaneEnvironment = ["TERM", "TMUX", "TMUX_PANE", "TMUX_TMPDIR", "LANG", "LC_ALL", "LC_CTYPE"].map((key) => `${key}="$${key}"`);
+  const inheritedPaneEnvironment = ["TERM", "COLORTERM", "TMUX", "TMUX_PANE", "TMUX_TMPDIR", "LANG", "LC_ALL", "LC_CTYPE"].map((key) => `${key}="$${key}"`);
   const inlineAssignments = Object.entries(inline).map(([key, value]) => `${key}=${shellQuote(value)}`);
   if (Object.keys(passthrough).length === 0) {
     const command2 = [
@@ -13131,14 +13366,15 @@ async function adoptWorkerPaneOwnership(input) {
     ...membershipDependencies,
     serverIdentityDependencies: input.serverIdentityDependencies
   } : membershipDependencies;
-  const membership = await verifyTeamTargetOwnership({
+  const target = {
     provider: input.provider,
     providerTarget: input.providerTarget,
     recipient: "worker",
     recipientRole: "worker",
     paneId: input.paneId,
     ...input.provider === "tmux" ? { tmuxServerIdentity: input.tmuxServerIdentity } : {}
-  }, dependenciesWithIdentityProbe);
+  };
+  const membership = input.provider === "cmux" ? await verifyCmuxTargetOwnershipWithRetry(target, dependenciesWithIdentityProbe) : await verifyTeamTargetOwnership(target, dependenciesWithIdentityProbe);
   if (membership.kind === "foreign") return { ok: false, reason: "pane_foreign" };
   if (membership.kind !== "owned") return { ok: false, reason: "pane_membership_unavailable" };
   return {
@@ -13147,14 +13383,15 @@ async function adoptWorkerPaneOwnership(input) {
   };
 }
 async function workerPaneBelongsToProviderTarget(input, dependencies = input.dependencies ?? defaultMailboxTargetOwnershipDependencies) {
-  const membership = await verifyTeamTargetOwnership({
+  const target = {
     provider: input.provider,
     providerTarget: input.providerTarget,
     recipient: "worker",
     recipientRole: "worker",
     paneId: input.paneId,
     ...input.provider === "tmux" ? { tmuxServerIdentity: input.tmuxServerIdentity } : {}
-  }, dependencies);
+  };
+  const membership = input.provider === "cmux" ? await verifyCmuxTargetOwnershipWithRetry(target, dependencies) : await verifyTeamTargetOwnership(target, dependencies);
   return membership.kind === "owned";
 }
 async function workerPaneBelongsToOwnedProviderTarget(input) {
@@ -15064,7 +15301,7 @@ async function killTeamSession(sessionName2, workerPaneIds, leaderPaneId, option
   if (result.outcome === "executed") return true;
   return await observeTmuxServerIdentity(identity) === "dead";
 }
-var sleep3, execFileAsync2, TMUX_SESSION_PREFIX, TMUX_LIVENESS_SERVER_RECHECK_ATTEMPTS, TMUX_LIVENESS_SERVER_RECHECK_DELAY_MS, defaultTmuxServerIdentityDependencies, guardMarkerCounter, TMUX_MAILBOX_PANE_ID, TMUX_MAILBOX_TARGET, defaultMailboxTargetOwnershipDependencies, defaultDirectMailboxEffectDependencies, TeamSessionCreationError, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DANGEROUS_LAUNCH_BINARY_CHARS;
+var sleep3, execFileAsync2, TMUX_SESSION_PREFIX, TMUX_LIVENESS_SERVER_RECHECK_ATTEMPTS, TMUX_LIVENESS_SERVER_RECHECK_DELAY_MS, CMUX_MEMBERSHIP_RETRY_ATTEMPTS, CMUX_MEMBERSHIP_RETRY_INTERVAL_MS, defaultTmuxServerIdentityDependencies, guardMarkerCounter, TMUX_MAILBOX_PANE_ID, TMUX_MAILBOX_TARGET, defaultMailboxTargetOwnershipDependencies, defaultDirectMailboxEffectDependencies, TeamSessionCreationError, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DANGEROUS_LAUNCH_BINARY_CHARS;
 var init_tmux_session = __esm({
   "src/team/tmux-session.ts"() {
     "use strict";
@@ -15082,6 +15319,8 @@ var init_tmux_session = __esm({
     TMUX_SESSION_PREFIX = "omc-team";
     TMUX_LIVENESS_SERVER_RECHECK_ATTEMPTS = 3;
     TMUX_LIVENESS_SERVER_RECHECK_DELAY_MS = 20;
+    CMUX_MEMBERSHIP_RETRY_ATTEMPTS = 20;
+    CMUX_MEMBERSHIP_RETRY_INTERVAL_MS = 50;
     defaultTmuxServerIdentityDependencies = {
       tmuxQuery: (args, options) => tmuxCmdAsync(args, options),
       processIdentity: currentStrictProcessStartIdentity,
@@ -15735,7 +15974,7 @@ function renderRecoveryContinuationInstruction(instruction) {
 function renderWorkerExitContract(agentType, reviewerRole = false) {
   const transitionTaskStatusCommand = formatOmcCliInvocation("team api transition-task-status");
   if (agentType === "cursor" && reviewerRole) {
-    return "Write the trusted structured verdict, ACK the leader, and keep waiting for mailbox instructions. Do not call transition-task-status or exit solely because the verdict was written.";
+    return "Write the trusted structured verdict, send a review completion report to the leader, and keep waiting for mailbox instructions. Do not call transition-task-status or exit solely because the verdict was written.";
   }
   if (agentType === "cursor") {
     return `Run \`${transitionTaskStatusCommand}\` when the assigned task is done, then keep waiting for the next mailbox message. Exit only when the leader sends an explicit shutdown.`;
@@ -15835,25 +16074,31 @@ function generateWorkerOverlay(params) {
   const cursorReviewer = agentType === "cursor" && reviewerRole === true;
   const persistentCursor = agentType === "cursor" && !cursorReviewer;
   const mandatoryWorkflow = cursorReviewer ? [
-    "You MUST complete the reviewer steps below. Do NOT skip any step.",
+    "For an owner-adopted recovery task, follow Recovery Continuation in place of steps 1 and 2 only: do not claim the task again or send the startup ACK. Steps 3 onward still apply: resume the read-only review and write the structured verdict; leave the task transition to the leader.",
+    "If no task is assigned, wait for an assignment without inventing a task; skip all numbered steps until a task is assigned.",
+    "Subject to the recovery and idle exceptions above, you MUST complete every applicable reviewer step below.",
     "",
     "1. **Claim** your task (run this command first):",
     `   \`${claimTaskCommand}\``,
     "   Save the `claim_token` from the response.",
-    "2. **Do the read-only review** described in your task assignment below.",
-    "3. **Send ACK** to the leader:",
+    "   For ordinary new tasks only: Only after a successful claim may you continue. If the claim fails, do not send the startup ACK or begin work; report the failure to leader-fixed and wait for instructions.",
+    "2. **Send exactly one startup ACK** to the leader before review; do not repeat it for later tasks:",
     `   \`${sendAckCommand}\``,
+    "3. **Do the read-only review** described in your task assignment below.",
     "4. **Write the structured verdict** required by the trusted reviewer contract.",
     "5. **Keep the Cursor session alive** after writing the verdict; the leader consumes it and transitions the task."
   ].join("\n") : [
-    persistentCursor ? "You MUST complete ALL of these steps. Transitioning the task does not end the session." : "You MUST complete ALL of these steps. Do NOT skip any step. Do NOT exit without step 4.",
+    "For an owner-adopted recovery task, follow Recovery Continuation in place of steps 1 and 2 only: do not claim the task again or send the startup ACK. Steps 3 onward still apply: resume the work, then transition the task with the adopted `claim_token` from Recovery Continuation as `<claim_token>`.",
+    "If no task is assigned, wait for an assignment without inventing a task; skip all numbered steps until a task is assigned.",
+    persistentCursor ? "Subject to the recovery and idle exceptions above, you MUST complete every applicable step. Transitioning the task does not end the session." : "Subject to the recovery and idle exceptions above, you MUST complete every applicable step. For an assigned task, do NOT exit without step 4.",
     "",
     "1. **Claim** your task (run this command first):",
     `   \`${claimTaskCommand}\``,
     "   Save the `claim_token` from the response \u2014 you need it for step 4.",
-    "2. **Do the work** described in your task assignment below.",
-    "3. **Send ACK** to the leader:",
+    "   For ordinary new tasks only: Only after a successful claim may you continue. If the claim fails, do not send the startup ACK or begin work; report the failure to leader-fixed and wait for instructions.",
+    "2. **Send exactly one startup ACK** to the leader before work; do not repeat it for later tasks:",
     `   \`${sendAckCommand}\``,
+    "3. **Do the work** described in your task assignment below.",
     persistentCursor ? "4. **Transition** the task status when that task is done:" : "4. **Transition** the task status (REQUIRED before exit):",
     `   - On success: \`${completeTaskCommand}\``,
     `   - On failure: \`${failTaskCommand}\``,
@@ -15926,17 +16171,15 @@ Send messages via CLI API:
 - Check mailbox: \`${mailboxListCommand}\`
 - Mark delivered: \`${mailboxDeliveredCommand}\`
 
-## Startup Handshake (Required)
-Before doing any task work, send exactly one startup ACK to the leader:
-\`${sendAckCommand}\`
-
 ## Shutdown Protocol
 When you see a shutdown request in your inbox:
+For forced shutdown, follow the inbox instructions instead of the normal decision flow below: a rejection does not veto termination; do not resume task work.
+For normal shutdown requests only:
 1. Write your decision to: ${shutdownAckPath}
 2. Format:
    - Accept: {"status":"accept","reason":"ok","updated_at":"<iso>"}
    - Reject: {"status":"reject","reason":"still working","updated_at":"<iso>"}
-3. Exit your session
+3. If you accept, exit your session. If you reject, remain active for task work and mailbox instructions; do not exit because of this request.
 
 ## Rules
 - You are NOT the leader. Never run leader orchestration workflows.
@@ -19926,15 +20169,15 @@ function buildV2TaskInstruction(teamName, workerName, task, taskId, agentType, c
   const persistentCursor = agentType === "cursor";
   const cursorReviewer = persistentCursor && Boolean(cliOutputContract);
   const lifecycleInstructions = cursorReviewer ? [
-    `3. Write the structured verdict from the trusted reviewer contract below when the review is complete.`,
-    `4. ${renderWorkerExitContract(agentType, true)}`
+    `4. Write the structured verdict from the trusted reviewer contract below when the review is complete.`,
+    `5. ${renderWorkerExitContract(agentType, true)}`
   ] : [
-    `3. On completion (use claim_token from step 1):`,
+    `4. On completion (use claim_token from step 1):`,
     `   ${completeTaskCommand}`,
     `   The result field is required for completion evidence. For broad delegated tasks, include either "Subagent skip reason: <why no nested worker was needed/allowed>" or, only when explicitly allowed by the leader, "Subagent spawn evidence: <child task names/thread ids and integrated findings>".`,
-    `4. On failure (use claim_token from step 1):`,
+    `5. On failure (use claim_token from step 1):`,
     `   ${failTaskCommand}`,
-    persistentCursor ? `5. ${renderWorkerExitContract(agentType, false)}` : `5. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`
+    persistentCursor ? `6. ${renderWorkerExitContract(agentType, false)}` : `6. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`
   ];
   return [
     `## REQUIRED: Task Lifecycle Commands`,
@@ -19943,7 +20186,9 @@ function buildV2TaskInstruction(teamName, workerName, task, taskId, agentType, c
     `1. Claim your task:`,
     `   ${claimTaskCommand}`,
     `   Save the claim_token from the response.`,
-    `2. Do the work described below.`,
+    `   Only after a successful claim may you continue. If the claim fails, do not send the startup ACK or begin work; report the failure to leader-fixed and wait for instructions.`,
+    `2. Send the startup ACK from the worker overlay exactly once before work; do not resend it if already sent.`,
+    `3. Do the work described below.`,
     ...lifecycleInstructions,
     ``,
     `## Task Assignment`,
@@ -23428,6 +23673,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
       targetTaskPath = absPath(cwd, TeamPaths.taskFile(sanitized, nonCursorBinding.task_id));
       targetTaskVersion = nonCursorBinding.task_version;
     }
+    let cursorVerdictTask;
     for (const taskId of candidateTaskIds) {
       if (targetTaskId) break;
       if (!TASK_ID_SAFE_PATTERN.test(taskId)) continue;
@@ -23438,6 +23684,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
       } catch {
         continue;
       }
+      if (cursorReviewer) cursorVerdictTask = taskData;
       if (!taskData) continue;
       try {
         const taskRole = typeof taskData.role === "string" ? normalizeDelegationRole(taskData.role) : null;
@@ -23455,43 +23702,52 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd, expectedInstance
     }
     if (!targetTaskId || !targetTaskPath || targetTaskVersion === null) {
       if (cursorReviewer && verdictFile === processingOutputFile) {
-        const processedTaskPath = absPath(cwd, TeamPaths.taskFile(sanitized, payload.task_id));
-        try {
-          const processedTask = JSON.parse(readFileSync27(processedTaskPath, "utf-8"));
-          const metadata = processedTask.metadata && typeof processedTask.metadata === "object" ? processedTask.metadata : void 0;
-          const processedTaskRole = typeof processedTask.role === "string" ? normalizeDelegationRole(processedTask.role) : null;
-          const taskAlreadyRecorded = processedTask.owner === worker.name && (processedTask.status === "completed" || processedTask.status === "failed") && (!cursorReviewer || processedTaskRole === workerRole) && metadata?.verdict_source === "cli_worker_output_contract" && (!cursorReviewer || metadata.verdict_claim_token === payload.claim_token && metadata.verdict_task_version === payload.task_version) && (worker.launch_attempt_id === void 0 || metadata.verdict_worker_launch_attempt_id === worker.launch_attempt_id) && metadata.verdict === payload.verdict;
-          if (taskAlreadyRecorded) {
-            try {
-              await rename7(verdictFile, processedOutputFile);
-            } catch {
-            }
-            results.push({
-              workerName: worker.name,
-              taskId: payload.task_id,
-              status: "already_terminal",
-              verdict: payload.verdict
-            });
-            continue;
-          }
-          const currentClaim = processedTask.claim && typeof processedTask.claim === "object" ? processedTask.claim : null;
-          const activeClaimMismatch = processedTask.owner === worker.name && processedTask.status === "in_progress" && currentClaim?.owner === worker.name && (!cursorReviewer || processedTaskRole === workerRole);
-          if (activeClaimMismatch) {
-            try {
-              await rename7(verdictFile, processedOutputFile);
-            } catch {
-            }
-            results.push({
-              workerName: worker.name,
-              taskId: payload.task_id,
-              status: "skipped",
-              verdict: payload.verdict,
-              reason: "cursor_verdict_claim_mismatch"
-            });
-            continue;
-          }
-        } catch {
+        const reportCursorVerdictRetained = (error) => logCursorTransitionFailure(
+          outputFile,
+          worker.name,
+          payload.task_id,
+          payload.task_version ?? 0,
+          payload.claim_token ?? "",
+          worker.launch_attempt_id ?? payload.launch_attempt_id,
+          error
+        );
+        if (!cursorVerdictTask) {
+          await reportCursorVerdictRetained("task_unavailable");
+          results.push({
+            workerName: worker.name,
+            taskId: payload.task_id,
+            status: "skipped",
+            verdict: payload.verdict,
+            reason: "cursor_verdict_task_unavailable"
+          });
+          continue;
         }
+        const metadata = cursorVerdictTask.metadata;
+        const taskAlreadyRecorded = cursorVerdictTask.owner === worker.name && (cursorVerdictTask.status === "completed" || cursorVerdictTask.status === "failed") && typeof cursorVerdictTask.role === "string" && normalizeDelegationRole(cursorVerdictTask.role) === workerRole && metadata?.verdict_source === "cli_worker_output_contract" && metadata.verdict_claim_token === payload.claim_token && metadata.verdict_task_version === payload.task_version && (worker.launch_attempt_id === void 0 || metadata.verdict_worker_launch_attempt_id === worker.launch_attempt_id) && metadata.verdict === payload.verdict;
+        let quarantined = true;
+        try {
+          await rename7(verdictFile, processedOutputFile);
+        } catch {
+          quarantined = false;
+        }
+        if (taskAlreadyRecorded) {
+          results.push({
+            workerName: worker.name,
+            taskId: payload.task_id,
+            status: "already_terminal",
+            verdict: payload.verdict
+          });
+          continue;
+        }
+        if (!quarantined) await reportCursorVerdictRetained("stale_verdict_quarantine_failed");
+        results.push({
+          workerName: worker.name,
+          taskId: payload.task_id,
+          status: "skipped",
+          verdict: payload.verdict,
+          reason: quarantined ? "cursor_verdict_claim_mismatch" : "cursor_verdict_quarantine_failed"
+        });
+        continue;
       }
       await appendTeamEvent(sanitized, {
         type: "team_leader_nudge",
@@ -24312,14 +24568,25 @@ async function shutdownTeamV2(teamName, cwd, options = {}) {
       shutdownRequestTimes.set(w.name, requestedAt);
       const shutdownRoot = workerInstructionStateRoot(cwd, sanitized);
       const shutdownAckPath = `${shutdownRoot}/workers/${w.name}/shutdown-ack.json`;
-      const shutdownInbox = `# Shutdown Request
+      const shutdownInbox = force ? `# Shutdown Request
 
-All tasks are complete. Please wrap up and respond with a shutdown acknowledgement.
+The leader requests forced shutdown. Please wrap up if possible and acknowledge promptly.
 
 Write your ack to: ${shutdownAckPath}
-Format: {"status":"accept","reason":"ok","updated_at":"<iso>"}
+Format:
+- Accept: {"status":"accept","reason":"ok","updated_at":"<iso>"}
 
-Then exit your session.
+This is a forced shutdown: a rejection does not veto termination. After acknowledging, exit your session; do not resume task work.
+` : `# Shutdown Request
+
+The leader requests shutdown. Please wrap up if possible and respond with your shutdown decision.
+
+Write your ack to: ${shutdownAckPath}
+Format:
+- Accept: {"status":"accept","reason":"ok","updated_at":"<iso>"}
+- Reject: {"status":"reject","reason":"still working","updated_at":"<iso>"}
+
+If you accept, exit your session. If you reject, remain active for task work and mailbox instructions; do not exit because of this request.
 `;
       await writeWorkerInbox(sanitized, w.name, shutdownInbox, cwd);
       if (isSdkTarget(w.pane_id)) ringDoorbell(teamStateRoot(cwd, sanitized), w.name, { kind: "shutdown", from: "leader-fixed" });
@@ -26703,8 +26970,9 @@ function output(value, asJson) {
   console.log(value);
 }
 function toInt(value, flag) {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) {
+  const trimmed = value.trim();
+  const parsed = Number(trimmed);
+  if (!/^[+-]?\d+$/.test(trimmed) || !Number.isSafeInteger(parsed)) {
     throw new Error(`Invalid ${flag} value: ${value}`);
   }
   return parsed;

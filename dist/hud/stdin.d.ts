@@ -8,6 +8,11 @@ import type { RateLimits, StatuslineStdin } from './types.js';
 /**
  * Persist the last successful stdin read to disk.
  * Used by --watch mode to recover data when stdin is a TTY.
+ *
+ * Uses stdin.session_id as a fallback session identifier when env vars are
+ * absent, so concurrent sessions without env context do not overwrite each
+ * other's cache. Unchanged payloads refresh mtime because env-less readers use
+ * recency to identify the most recently active session.
  */
 export declare function writeStdinCache(stdin: StatuslineStdin): void;
 /**

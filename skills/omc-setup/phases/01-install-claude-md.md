@@ -98,7 +98,7 @@ OMC Global Configuration Complete
 - CLAUDE.md: Updated at ${COPILOT_HOME:-~/.copilot}/CLAUDE.md, or preserved with explicit preserve mode
 - Companion: May install ${COPILOT_HOME:-~/.copilot}/CLAUDE-omc.md when preserve mode is chosen
 - Backup: Coordinator reported byte-identical backups only for global files that required mutation
-- Scope: GLOBAL - applies to all Claude Code sessions
+- Scope: GLOBAL - applies to all Copilot CLI sessions
 - Hooks: Provided by plugin (no manual installation needed)
 - Agents: 28+ available (base + tiered variants)
 - Model routing: Haiku/Sonnet/Opus based on task complexity

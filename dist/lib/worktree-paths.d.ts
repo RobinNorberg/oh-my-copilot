@@ -339,6 +339,8 @@ export interface SessionStatePaths {
  */
 export interface ResolveSessionStatePathsOptions {
     migrate?: boolean;
+    /** Exact JSON filename for transient state files outside the `*-state.json` naming scheme. */
+    fileName?: string;
 }
 /**
  * Canonical session-scoped state path resolver. Returns a branded struct so
@@ -354,7 +356,7 @@ export interface ResolveSessionStatePathsOptions {
  * single-string variant) remain for back-compat but new code should prefer
  * this helper.
  */
-export declare function resolveSessionStatePaths(stateName: string, sessionId?: string, worktreeRoot?: string, _opts?: ResolveSessionStatePathsOptions): SessionStatePaths;
+export declare function resolveSessionStatePaths(stateName: string, sessionId?: string, worktreeRoot?: string, opts?: ResolveSessionStatePathsOptions): SessionStatePaths;
 /**
  * Whether opt-in legacy→session migration is enabled for this process.
  * Checked by writers that wrap migration around their write step.
