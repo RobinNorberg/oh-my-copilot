@@ -9,7 +9,7 @@
  */
 import { accessSync, constants, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { delimiter, join } from 'path';
+import { delimiter, isAbsolute, join } from 'path';
 import { pathToFileURL } from 'url';
 
 export const IS_WIN = process.platform === 'win32';
@@ -19,14 +19,15 @@ let junctionProbe: boolean | undefined;
 const executableCache = new Map<string, boolean>();
 
 function probe(create: (dir: string) => void): boolean {
-  const dir = mkdtempSync(join(tmpdir(), 'omc-platform-probe-'));
+  let dir: string | undefined;
   try {
+    dir = mkdtempSync(join(tmpdir(), 'omc-platform-probe-'));
     create(dir);
     return true;
   } catch {
     return false;
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    if (dir) rmSync(dir, { recursive: true, force: true });
   }
 }
 
@@ -62,19 +63,26 @@ export function hasExecutable(name: string): boolean {
   const cached = executableCache.get(key);
   if (cached !== undefined) return cached;
 
-  const extensions = IS_WIN && !/\.[^\\/]+$/.test(name) ? pathExt.split(';').filter(Boolean) : [''];
-  const found = path.split(delimiter).filter(Boolean).some(dir => extensions.some(ext => {
-    const candidate = `${name}${ext}`;
-    if (IS_WIN && isWindowsAppsPythonStub(dir, candidate)) return false;
+  const pathExts = pathExt.split(';').filter(Boolean);
+  const ownExt = /\.[^\\/.]+$/.exec(name)?.[0].toLowerCase();
+  const hasPathExt = ownExt !== undefined && pathExts.some(ext => ext.toLowerCase() === ownExt);
+  const extensions = IS_WIN && !hasPathExt ? ['', ...pathExts] : [''];
+  const isRunnable = (file: string): boolean => {
     try {
-      const file = join(dir, candidate);
       if (!statSync(file).isFile()) return false;
       if (!IS_WIN) accessSync(file, constants.X_OK);
       return true;
     } catch {
       return false;
     }
-  }));
+  };
+  const found = isAbsolute(name)
+    ? extensions.some(ext => isRunnable(`${name}${ext}`))
+    : path.split(delimiter).filter(Boolean).some(dir => extensions.some(ext => {
+      const candidate = `${name}${ext}`;
+      if (IS_WIN && isWindowsAppsPythonStub(dir, candidate)) return false;
+      return isRunnable(join(dir, candidate));
+    }));
   executableCache.set(key, found);
   return found;
 }
