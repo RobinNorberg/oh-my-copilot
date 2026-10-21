@@ -73,6 +73,7 @@ import { intakeCommand } from './commands/intake.js';
 import { factoryCommand } from './commands/factory.js';
 import { shipCommand } from './commands/ship.js';
 import { releaseCommand } from './commands/release.js';
+import { progressCommand } from './commands/progress.js';
 import { warnIfWin32 } from './win32-warning.js';
 import { autoresearchCommand } from './autoresearch.js';
 import { parseHudWatchInterval, runHudWatchLoop } from './hud-watch.js';
@@ -1646,6 +1647,7 @@ program.addCommand(intakeCommand());
 program.addCommand(factoryCommand());
 program.addCommand(shipCommand());
 program.addCommand(releaseCommand());
+program.addCommand(progressCommand());
 
 /**
  * Returns the fully-configured commander program.
