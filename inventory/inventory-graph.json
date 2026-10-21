@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "1602384dbf46dbb92358294bf7330b30f9f26fcf",
-    "sourceSha256": "33c5690731054afca7b57ff65855f01e60e04af23abc05e5c9652a1ad03d738e",
+    "head": "f839d295c99d8729923dee2ff67c02e488515564",
+    "sourceSha256": "f9bdd19e28fa28de03cecd259129ff9e1169725378c250e266c6c0250cc2286b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "1602384dbf46dbb92358294bf7330b30f9f26fcf",
-  "sourceSha256": "33c5690731054afca7b57ff65855f01e60e04af23abc05e5c9652a1ad03d738e",
+  "head": "f839d295c99d8729923dee2ff67c02e488515564",
+  "sourceSha256": "f9bdd19e28fa28de03cecd259129ff9e1169725378c250e266c6c0250cc2286b",
   "counts": {
     "public": {
       "skills": 63,
@@ -23,25 +23,25 @@
       "total": 113
     },
     "internal": {
-      "hookFiles": 350,
-      "featureFiles": 85,
+      "hookFiles": 344,
+      "featureFiles": 88,
       "toolFiles": 67,
       "libFiles": 48,
-      "templateHooks": 23,
-      "srcFiles": 1592,
-      "total": 1615
+      "templateHooks": 24,
+      "srcFiles": 1596,
+      "total": 1620
     },
     "generated": {
-      "distFiles": 6119,
+      "distFiles": 6087,
       "bridgeFiles": 9,
-      "total": 6128
+      "total": 6096
     },
     "prompt": {
       "promptLikeFiles": 61
     },
     "skills": 63,
     "commands": 21,
-    "hookFiles": 350,
+    "hookFiles": 344,
     "workflows": 9,
     "agentDefinitions": 18,
     "promptLikeFiles": 61
@@ -173,6 +173,7 @@
     "hookFiles": [
       "src/hooks/AGENTS.md",
       "src/hooks/__tests__/askuserquestion-lifecycle.test.ts",
+      "src/hooks/__tests__/auto-slash-namespaced.test.ts",
       "src/hooks/__tests__/background-notifications.test.ts",
       "src/hooks/__tests__/background-process-guard.test.ts",
       "src/hooks/__tests__/bridge-openclaw.test.ts",
@@ -266,6 +267,7 @@
       "src/hooks/factcheck/__tests__/factcheck.test.ts",
       "src/hooks/factcheck/__tests__/sentinel-gate.test.ts",
       "src/hooks/factcheck/__tests__/sentinel.test.ts",
+      "src/hooks/factcheck/__tests__/strict-mode-glob.test.ts",
       "src/hooks/factcheck/checks.ts",
       "src/hooks/factcheck/config.ts",
       "src/hooks/factcheck/index.ts",
@@ -305,14 +307,6 @@
       "src/hooks/learner/types.ts",
       "src/hooks/learner/validator.ts",
       "src/hooks/learner/writer.ts",
-      "src/hooks/merge-readiness/__tests__/runtime.test.ts",
-      "src/hooks/merge-readiness/__tests__/tool-flow.test.ts",
-      "src/hooks/merge-readiness/__tests__/win-cross-platform.test.ts",
-      "src/hooks/merge-readiness/index.ts",
-      "src/hooks/merge-readiness/mcq.ts",
-      "src/hooks/merge-readiness/report.ts",
-      "src/hooks/merge-readiness/runtime.ts",
-      "src/hooks/merge-readiness/types.ts",
       "src/hooks/mode-registry/__tests__/session-isolation.test.ts",
       "src/hooks/mode-registry/index.ts",
       "src/hooks/mode-registry/types.ts",
@@ -601,7 +595,10 @@
       "src/features/session-history-search/index.ts",
       "src/features/session-history-search/types.ts",
       "src/features/state-manager/__tests__/cache.test.ts",
+      "src/features/state-manager/__tests__/glob-patterns.test.ts",
       "src/features/state-manager/index.ts",
+      "src/features/state-manager/list-cleanup.ts",
+      "src/features/state-manager/state-paths.ts",
       "src/features/state-manager/types.ts",
       "src/features/task-decomposer/index.ts",
       "src/features/task-decomposer/types.ts",
@@ -742,6 +739,7 @@
       "templates/hooks/lib/state-lock.mjs",
       "templates/hooks/lib/state-root.mjs",
       "templates/hooks/lib/stdin.mjs",
+      "templates/hooks/lib/utf8-bom.mjs",
       "templates/hooks/lib/workflow-profile-runtime.mjs",
       "templates/hooks/lib/workflow-stage-prompts.mjs",
       "templates/hooks/persistent-mode.mjs",
@@ -888,6 +886,8 @@
       "scripts/lib/state-root.cjs",
       "scripts/lib/state-root.mjs",
       "scripts/lib/stdin.mjs",
+      "scripts/lib/utf8-bom.d.mts",
+      "scripts/lib/utf8-bom.mjs",
       "scripts/lib/workflow-profile-runtime.mjs",
       "scripts/lib/workflow-stage-prompts.mjs",
       "scripts/measure-prompt-ssot.ts",
@@ -3836,38 +3836,6 @@
       "dist/hooks/learner/writer.d.ts.map",
       "dist/hooks/learner/writer.js",
       "dist/hooks/learner/writer.js.map",
-      "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts",
-      "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts.map",
-      "dist/hooks/merge-readiness/__tests__/runtime.test.js",
-      "dist/hooks/merge-readiness/__tests__/runtime.test.js.map",
-      "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts",
-      "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts.map",
-      "dist/hooks/merge-readiness/__tests__/tool-flow.test.js",
-      "dist/hooks/merge-readiness/__tests__/tool-flow.test.js.map",
-      "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts",
-      "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts.map",
-      "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js",
-      "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js.map",
-      "dist/hooks/merge-readiness/index.d.ts",
-      "dist/hooks/merge-readiness/index.d.ts.map",
-      "dist/hooks/merge-readiness/index.js",
-      "dist/hooks/merge-readiness/index.js.map",
-      "dist/hooks/merge-readiness/mcq.d.ts",
-      "dist/hooks/merge-readiness/mcq.d.ts.map",
-      "dist/hooks/merge-readiness/mcq.js",
-      "dist/hooks/merge-readiness/mcq.js.map",
-      "dist/hooks/merge-readiness/report.d.ts",
-      "dist/hooks/merge-readiness/report.d.ts.map",
-      "dist/hooks/merge-readiness/report.js",
-      "dist/hooks/merge-readiness/report.js.map",
-      "dist/hooks/merge-readiness/runtime.d.ts",
-      "dist/hooks/merge-readiness/runtime.d.ts.map",
-      "dist/hooks/merge-readiness/runtime.js",
-      "dist/hooks/merge-readiness/runtime.js.map",
-      "dist/hooks/merge-readiness/types.d.ts",
-      "dist/hooks/merge-readiness/types.d.ts.map",
-      "dist/hooks/merge-readiness/types.js",
-      "dist/hooks/merge-readiness/types.js.map",
       "dist/hooks/mode-registry/__tests__/session-isolation.test.d.ts",
       "dist/hooks/mode-registry/__tests__/session-isolation.test.d.ts.map",
       "dist/hooks/mode-registry/__tests__/session-isolation.test.js",
@@ -7091,6 +7059,7 @@
     "hookFiles": [
       "src/hooks/AGENTS.md",
       "src/hooks/__tests__/askuserquestion-lifecycle.test.ts",
+      "src/hooks/__tests__/auto-slash-namespaced.test.ts",
       "src/hooks/__tests__/background-notifications.test.ts",
       "src/hooks/__tests__/background-process-guard.test.ts",
       "src/hooks/__tests__/bridge-openclaw.test.ts",
@@ -7184,6 +7153,7 @@
       "src/hooks/factcheck/__tests__/factcheck.test.ts",
       "src/hooks/factcheck/__tests__/sentinel-gate.test.ts",
       "src/hooks/factcheck/__tests__/sentinel.test.ts",
+      "src/hooks/factcheck/__tests__/strict-mode-glob.test.ts",
       "src/hooks/factcheck/checks.ts",
       "src/hooks/factcheck/config.ts",
       "src/hooks/factcheck/index.ts",
@@ -7223,14 +7193,6 @@
       "src/hooks/learner/types.ts",
       "src/hooks/learner/validator.ts",
       "src/hooks/learner/writer.ts",
-      "src/hooks/merge-readiness/__tests__/runtime.test.ts",
-      "src/hooks/merge-readiness/__tests__/tool-flow.test.ts",
-      "src/hooks/merge-readiness/__tests__/win-cross-platform.test.ts",
-      "src/hooks/merge-readiness/index.ts",
-      "src/hooks/merge-readiness/mcq.ts",
-      "src/hooks/merge-readiness/report.ts",
-      "src/hooks/merge-readiness/runtime.ts",
-      "src/hooks/merge-readiness/types.ts",
       "src/hooks/mode-registry/__tests__/session-isolation.test.ts",
       "src/hooks/mode-registry/index.ts",
       "src/hooks/mode-registry/types.ts",
@@ -7593,7 +7555,10 @@
       "src/features/session-history-search/index.ts",
       "src/features/session-history-search/types.ts",
       "src/features/state-manager/__tests__/cache.test.ts",
+      "src/features/state-manager/__tests__/glob-patterns.test.ts",
       "src/features/state-manager/index.ts",
+      "src/features/state-manager/list-cleanup.ts",
+      "src/features/state-manager/state-paths.ts",
       "src/features/state-manager/types.ts",
       "src/features/task-decomposer/index.ts",
       "src/features/task-decomposer/types.ts",
@@ -23137,166 +23102,6 @@
         "id": "dist/hooks/learner/writer.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/learner/writer.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/runtime.test.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/runtime.test.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/runtime.test.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/runtime.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/runtime.test.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/tool-flow.test.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/tool-flow.test.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/tool-flow.test.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/tool-flow.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/tool-flow.test.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/__tests__/win-cross-platform.test.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/index.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/index.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/index.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/index.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/index.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/index.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/index.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/index.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/mcq.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/mcq.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/mcq.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/mcq.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/mcq.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/mcq.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/mcq.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/mcq.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/report.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/report.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/report.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/report.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/report.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/report.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/report.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/report.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/runtime.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/runtime.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/runtime.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/runtime.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/runtime.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/runtime.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/runtime.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/runtime.js.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/types.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/types.d.ts"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/types.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/types.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/types.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/types.js"
-      },
-      {
-        "id": "dist/hooks/merge-readiness/types.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/merge-readiness/types.js.map"
       },
       {
         "id": "dist/hooks/mode-registry/__tests__/session-isolation.test.d.ts",
@@ -40519,6 +40324,16 @@
         "path": "scripts/lib/stdin.mjs"
       },
       {
+        "id": "scripts/lib/utf8-bom.d.mts",
+        "kind": "script",
+        "path": "scripts/lib/utf8-bom.d.mts"
+      },
+      {
+        "id": "scripts/lib/utf8-bom.mjs",
+        "kind": "script",
+        "path": "scripts/lib/utf8-bom.mjs"
+      },
+      {
         "id": "scripts/lib/workflow-profile-runtime.mjs",
         "kind": "script",
         "path": "scripts/lib/workflow-profile-runtime.mjs"
@@ -41557,6 +41372,11 @@
         "id": "src/__tests__/cli-win32-warning.test.ts",
         "kind": "src",
         "path": "src/__tests__/cli-win32-warning.test.ts"
+      },
+      {
+        "id": "src/__tests__/commands-frontmatter-crlf.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/commands-frontmatter-crlf.test.ts"
       },
       {
         "id": "src/__tests__/compact-denylist.test.ts",
@@ -43359,6 +43179,11 @@
         "path": "src/cli/__tests__/hud-watch.test.ts"
       },
       {
+        "id": "src/cli/__tests__/integer-option.test.ts",
+        "kind": "src",
+        "path": "src/cli/__tests__/integer-option.test.ts"
+      },
+      {
         "id": "src/cli/__tests__/launch-secure-transport.test.ts",
         "kind": "src",
         "path": "src/cli/__tests__/launch-secure-transport.test.ts"
@@ -43512,6 +43337,11 @@
         "id": "src/cli/commands/__tests__/factory-init.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/factory-init.test.ts"
+      },
+      {
+        "id": "src/cli/commands/__tests__/factory-listen-port.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/factory-listen-port.test.ts"
       },
       {
         "id": "src/cli/commands/__tests__/intake-headless-flag.test.ts",
@@ -43702,6 +43532,11 @@
         "id": "src/cli/utils/formatting.ts",
         "kind": "src",
         "path": "src/cli/utils/formatting.ts"
+      },
+      {
+        "id": "src/cli/utils/integer-option.ts",
+        "kind": "src",
+        "path": "src/cli/utils/integer-option.ts"
       },
       {
         "id": "src/cli/win32-warning.ts",
@@ -44254,9 +44089,24 @@
         "path": "src/features/state-manager/__tests__/cache.test.ts"
       },
       {
+        "id": "src/features/state-manager/__tests__/glob-patterns.test.ts",
+        "kind": "feature",
+        "path": "src/features/state-manager/__tests__/glob-patterns.test.ts"
+      },
+      {
         "id": "src/features/state-manager/index.ts",
         "kind": "feature",
         "path": "src/features/state-manager/index.ts"
+      },
+      {
+        "id": "src/features/state-manager/list-cleanup.ts",
+        "kind": "feature",
+        "path": "src/features/state-manager/list-cleanup.ts"
+      },
+      {
+        "id": "src/features/state-manager/state-paths.ts",
+        "kind": "feature",
+        "path": "src/features/state-manager/state-paths.ts"
       },
       {
         "id": "src/features/state-manager/types.ts",
@@ -44517,6 +44367,11 @@
         "id": "src/hooks/__tests__/askuserquestion-lifecycle.test.ts",
         "kind": "hook",
         "path": "src/hooks/__tests__/askuserquestion-lifecycle.test.ts"
+      },
+      {
+        "id": "src/hooks/__tests__/auto-slash-namespaced.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/__tests__/auto-slash-namespaced.test.ts"
       },
       {
         "id": "src/hooks/__tests__/background-notifications.test.ts",
@@ -44984,6 +44839,11 @@
         "path": "src/hooks/factcheck/__tests__/sentinel.test.ts"
       },
       {
+        "id": "src/hooks/factcheck/__tests__/strict-mode-glob.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/factcheck/__tests__/strict-mode-glob.test.ts"
+      },
+      {
         "id": "src/hooks/factcheck/checks.ts",
         "kind": "hook",
         "path": "src/hooks/factcheck/checks.ts"
@@ -45177,46 +45037,6 @@
         "id": "src/hooks/learner/writer.ts",
         "kind": "hook",
         "path": "src/hooks/learner/writer.ts"
-      },
-      {
-        "id": "src/hooks/merge-readiness/__tests__/runtime.test.ts",
-        "kind": "hook",
-        "path": "src/hooks/merge-readiness/__tests__/runtime.test.ts"
-      },
-      {
-        "id": "src/hooks/merge-readiness/__tests__/tool-flow.test.ts",
-        "kind": "hook",
-        "path": "src/hooks/merge-readiness/__tests__/tool-flow.test.ts"
-      },
-      {
-        "id": "src/hooks/merge-readiness/__tests__/win-cross-platform.test.ts",
-        "kind": "hook",
-        "path": "src/hooks/merge-readiness/__tests__/win-cross-platform.test.ts"
-      },
-      {
-        "id": "src/hooks/merge-readiness/index.ts",
-        "kind": "hook",
-        "path": "src/hooks/merge-readiness/index.ts"
-      },
-      {
-        "id": "src/hooks/merge-readiness/mcq.ts",
-        "kind": "hook",
-        "path": "src/hooks/merge-readiness/mcq.ts"
-      },
-      {
-        "id": "src/hooks/merge-readiness/report.ts",
-        "kind": "hook",
-        "path": "src/hooks/merge-readiness/report.ts"
-      },
-      {
-        "id": "src/hooks/merge-readiness/runtime.ts",
-        "kind": "hook",
-        "path": "src/hooks/merge-readiness/runtime.ts"
-      },
-      {
-        "id": "src/hooks/merge-readiness/types.ts",
-        "kind": "hook",
-        "path": "src/hooks/merge-readiness/types.ts"
       },
       {
         "id": "src/hooks/mode-registry/__tests__/session-isolation.test.ts",
@@ -47014,6 +46834,11 @@
         "path": "src/mcp/__tests__/host-smoke-tool.test.ts"
       },
       {
+        "id": "src/mcp/__tests__/omc-tools-server.test.ts",
+        "kind": "src",
+        "path": "src/mcp/__tests__/omc-tools-server.test.ts"
+      },
+      {
         "id": "src/mcp/__tests__/prompt-injection.test.ts",
         "kind": "src",
         "path": "src/mcp/__tests__/prompt-injection.test.ts"
@@ -47614,6 +47439,11 @@
         "path": "src/skills/__tests__/omc-doctor-skill.test.ts"
       },
       {
+        "id": "src/skills/__tests__/omc-setup-optout.test.ts",
+        "kind": "src",
+        "path": "src/skills/__tests__/omc-setup-optout.test.ts"
+      },
+      {
         "id": "src/skills/__tests__/skill-config-dir.test.ts",
         "kind": "src",
         "path": "src/skills/__tests__/skill-config-dir.test.ts"
@@ -47942,6 +47772,11 @@
         "id": "src/team/__tests__/issue-4261-cmux-team-failures.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/issue-4261-cmux-team-failures.test.ts"
+      },
+      {
+        "id": "src/team/__tests__/issue-4412-cmux-startup.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/issue-4412-cmux-startup.test.ts"
       },
       {
         "id": "src/team/__tests__/leader-inbox.test.ts",
@@ -49454,6 +49289,11 @@
         "path": "templates/hooks/lib/stdin.mjs"
       },
       {
+        "id": "templates/hooks/lib/utf8-bom.mjs",
+        "kind": "template-hook",
+        "path": "templates/hooks/lib/utf8-bom.mjs"
+      },
+      {
         "id": "templates/hooks/lib/workflow-profile-runtime.mjs",
         "kind": "template-hook",
         "path": "templates/hooks/lib/workflow-profile-runtime.mjs"
@@ -49644,6 +49484,11 @@
         "path": "tests/integration/multirepo-workspace.test.ts"
       },
       {
+        "id": "tests/integration/plugin-hud-node-modules-free.test.ts",
+        "kind": "other",
+        "path": "tests/integration/plugin-hud-node-modules-free.test.ts"
+      },
+      {
         "id": "tests/integration/runs-reconciler.test.ts",
         "kind": "other",
         "path": "tests/integration/runs-reconciler.test.ts"
@@ -49767,6 +49612,11 @@
         "id": "tests/lint/setup-phases-drift.test.ts",
         "kind": "other",
         "path": "tests/lint/setup-phases-drift.test.ts"
+      },
+      {
+        "id": "tests/lint/skill-argument-hints.test.ts",
+        "kind": "other",
+        "path": "tests/lint/skill-argument-hints.test.ts"
       },
       {
         "id": "tests/lint/skill-parallel-caveats.test.ts",
@@ -51971,6 +51821,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/pre-tool-enforcer.mjs",
+        "to": "scripts/lib/utf8-bom.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/premium-budget.mjs",
         "to": "dist/budget/governor.js",
         "kind": "imports"
@@ -52431,6 +52286,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/shipyard-audit.mjs",
+        "to": "scripts/lib/utf8-bom.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/skill-injector.mjs",
         "to": "dist/hooks/skill-bridge.cjs",
         "kind": "imports"
@@ -52473,6 +52333,11 @@
       {
         "from": "scripts/skill-injector.mjs",
         "to": "scripts/lib/stdin.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/skill-injector.mjs",
+        "to": "scripts/lib/utf8-bom.mjs",
         "kind": "imports"
       },
       {
@@ -53427,7 +53292,27 @@
       },
       {
         "from": "src/__tests__/auto-upgrade-prompt.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/auto-upgrade-prompt.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/auto-upgrade-prompt.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/auto-upgrade-prompt.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/auto-upgrade-prompt.test.ts",
+        "to": "src/cli/index.ts",
         "kind": "imports"
       },
       {
@@ -53758,6 +53643,31 @@
       {
         "from": "src/__tests__/cli-win32-warning.test.ts",
         "to": "src/cli/win32-warning.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/commands-frontmatter-crlf.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/commands-frontmatter-crlf.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/commands-frontmatter-crlf.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/commands-frontmatter-crlf.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/commands-frontmatter-crlf.test.ts",
+        "to": "src/commands/index.ts",
         "kind": "imports"
       },
       {
@@ -54829,6 +54739,11 @@
         "from": "src/__tests__/hooks/learner/parser.test.ts",
         "to": "src/hooks/learner/parser.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hooks/learner/parser.test.ts",
+        "to": "src/hooks/learner/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/__tests__/hooks/learner/transliteration-map.test.ts",
@@ -57023,6 +56938,11 @@
       {
         "from": "src/__tests__/mode-names-ralplan.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/mode-names-ralplan.test.ts",
+        "to": "src/hooks/mode-registry/index.ts",
         "kind": "imports"
       },
       {
@@ -59501,6 +59421,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/session-start-script-context.test.ts",
+        "to": "scripts/lib/cache-occupancy.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/session-start-timeout-cleanup.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -61411,6 +61336,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/agents/utils.ts",
+        "to": "src/utils/frontmatter.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/agents/writer.ts",
         "to": "src/agents/types.ts",
         "kind": "type-imports"
@@ -61753,6 +61683,11 @@
       {
         "from": "src/autoresearch/contracts.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/autoresearch/contracts.ts",
+        "to": "src/utils/frontmatter.ts",
         "kind": "imports"
       },
       {
@@ -62194,6 +62129,26 @@
         "from": "src/cli/__tests__/hud-watch.test.ts",
         "to": "src/mcp/standalone-shutdown.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/__tests__/integer-option.test.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/integer-option.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/integer-option.test.ts",
+        "to": "src/cli/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/integer-option.test.ts",
+        "to": "src/cli/utils/integer-option.ts",
+        "kind": "imports"
       },
       {
         "from": "src/cli/__tests__/launch-secure-transport.test.ts",
@@ -63041,6 +62996,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/commands/__tests__/factory-listen-port.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/factory-listen-port.test.ts",
+        "to": "src/cli/commands/factory.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/intake-headless-flag.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -63452,6 +63417,11 @@
       },
       {
         "from": "src/cli/commands/doctor-conflicts.ts",
+        "to": "src/installer/claude-md-transaction.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/doctor-conflicts.ts",
         "to": "src/installer/index.ts",
         "kind": "imports"
       },
@@ -63518,6 +63488,11 @@
       {
         "from": "src/cli/commands/factory.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/factory.ts",
+        "to": "src/cli/utils/integer-option.ts",
         "kind": "imports"
       },
       {
@@ -63668,6 +63643,11 @@
       {
         "from": "src/cli/commands/ralphthon.ts",
         "to": "src/cli/tmux-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/ralphthon.ts",
+        "to": "src/cli/utils/integer-option.ts",
         "kind": "imports"
       },
       {
@@ -64292,6 +64272,11 @@
       },
       {
         "from": "src/cli/index.ts",
+        "to": "src/cli/utils/integer-option.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
         "to": "src/cli/win32-warning.ts",
         "kind": "imports"
       },
@@ -64606,6 +64591,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/cli/utils/integer-option.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/win32-warning.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -64633,6 +64623,11 @@
       {
         "from": "src/commands/index.ts",
         "to": "src/utils/config-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/commands/index.ts",
+        "to": "src/utils/frontmatter.ts",
         "kind": "imports"
       },
       {
@@ -66806,6 +66801,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/features/state-manager/__tests__/glob-patterns.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/state-manager/__tests__/glob-patterns.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/state-manager/__tests__/glob-patterns.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/state-manager/__tests__/glob-patterns.test.ts",
+        "to": "src/features/state-manager/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/state-manager/__tests__/glob-patterns.test.ts",
+        "to": "src/features/state-manager/types.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/features/state-manager/index.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -66813,6 +66833,16 @@
       {
         "from": "src/features/state-manager/index.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/state-manager/index.ts",
+        "to": "src/features/state-manager/list-cleanup.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/features/state-manager/index.ts",
+        "to": "src/features/state-manager/state-paths.ts",
         "kind": "imports"
       },
       {
@@ -66837,6 +66867,46 @@
       },
       {
         "from": "src/features/state-manager/index.ts",
+        "to": "src/utils/paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/state-manager/list-cleanup.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/state-manager/list-cleanup.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/state-manager/list-cleanup.ts",
+        "to": "src/features/state-manager/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/state-manager/list-cleanup.ts",
+        "to": "src/features/state-manager/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/state-manager/list-cleanup.ts",
+        "to": "src/features/state-manager/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/features/state-manager/state-paths.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/state-manager/state-paths.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/state-manager/state-paths.ts",
         "to": "src/utils/paths.ts",
         "kind": "imports"
       },
@@ -68074,6 +68144,16 @@
         "from": "src/hooks/__tests__/askuserquestion-lifecycle.test.ts",
         "to": "src/hooks/bridge.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/__tests__/auto-slash-namespaced.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/auto-slash-namespaced.test.ts",
+        "to": "src/hooks/auto-slash-command/detector.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/__tests__/background-notifications.test.ts",
@@ -70486,6 +70566,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/factcheck/__tests__/strict-mode-glob.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/factcheck/__tests__/strict-mode-glob.test.ts",
+        "to": "src/hooks/factcheck/config.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/factcheck/checks.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -71281,6 +71371,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/learner/bridge.ts",
+        "to": "src/utils/frontmatter.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/learner/config.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -71521,6 +71616,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/learner/parser.ts",
+        "to": "src/utils/frontmatter.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/learner/promotion.ts",
         "to": "src/hooks/learner/types.ts",
         "kind": "type-imports"
@@ -71594,191 +71694,6 @@
         "from": "src/hooks/learner/writer.ts",
         "to": "src/utils/user-skill-compat.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/runtime.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/runtime.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/runtime.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/runtime.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/runtime.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/runtime.test.ts",
-        "to": "src/hooks/merge-readiness/index.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/runtime.test.ts",
-        "to": "src/hooks/merge-readiness/mcq.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/tool-flow.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/tool-flow.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/tool-flow.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/tool-flow.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/tool-flow.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/tool-flow.test.ts",
-        "to": "src/hooks/merge-readiness/runtime.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/tool-flow.test.ts",
-        "to": "src/tools/state-tools.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/win-cross-platform.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/win-cross-platform.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/win-cross-platform.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/win-cross-platform.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/win-cross-platform.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/win-cross-platform.test.ts",
-        "to": "src/hooks/merge-readiness/index.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/__tests__/win-cross-platform.test.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/index.ts",
-        "to": "src/hooks/merge-readiness/report.ts",
-        "kind": "exports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/index.ts",
-        "to": "src/hooks/merge-readiness/runtime.ts",
-        "kind": "exports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/index.ts",
-        "to": "src/hooks/merge-readiness/types.ts",
-        "kind": "exports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/report.ts",
-        "to": "src/hooks/merge-readiness/types.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/runtime.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/runtime.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/runtime.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/runtime.ts",
-        "to": "src/hooks/merge-readiness/mcq.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/runtime.ts",
-        "to": "src/hooks/merge-readiness/mcq.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/runtime.ts",
-        "to": "src/hooks/merge-readiness/types.ts",
-        "kind": "type-exports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/runtime.ts",
-        "to": "src/hooks/merge-readiness/types.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/runtime.ts",
-        "to": "src/lib/mode-names.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/runtime.ts",
-        "to": "src/lib/mode-state-io.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/runtime.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/types.ts",
-        "to": "src/hooks/merge-readiness/mcq.ts",
-        "kind": "type-exports"
-      },
-      {
-        "from": "src/hooks/merge-readiness/types.ts",
-        "to": "src/hooks/merge-readiness/mcq.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/hooks/mode-registry/__tests__/session-isolation.test.ts",
@@ -74581,6 +74496,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/rules-injector/parser.ts",
+        "to": "src/utils/frontmatter.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/rules-injector/storage.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -77196,6 +77116,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/wiki/storage.ts",
+        "to": "src/utils/frontmatter.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hud/__tests__/autopilot-profile.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -78926,6 +78851,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/installer/__tests__/hud-wrapper-env.test.ts",
+        "to": "src/lib/hud-wrapper-template.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/installer/__tests__/mcp-registry.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -79273,6 +79203,11 @@
       {
         "from": "src/installer/claude-md-transaction.ts",
         "to": "src/installer/claude-md-analysis.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/claude-md-transaction.ts",
+        "to": "src/lib/paths.ts",
         "kind": "imports"
       },
       {
@@ -80718,6 +80653,16 @@
       {
         "from": "src/mcp/__tests__/host-smoke-tool.test.ts",
         "to": "src/tools/host-smoke-tool.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/omc-tools-server.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/omc-tools-server.test.ts",
+        "to": "src/mcp/omc-tools-server.ts",
         "kind": "imports"
       },
       {
@@ -83602,7 +83547,17 @@
       },
       {
         "from": "src/skills/__tests__/omc-doctor-skill.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/skills/__tests__/omc-doctor-skill.test.ts",
         "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/skills/__tests__/omc-doctor-skill.test.ts",
+        "to": "external:node:os",
         "kind": "imports"
       },
       {
@@ -83612,6 +83567,31 @@
       },
       {
         "from": "src/skills/__tests__/omc-doctor-skill.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/skills/__tests__/omc-setup-optout.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/skills/__tests__/omc-setup-optout.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/skills/__tests__/omc-setup-optout.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/skills/__tests__/omc-setup-optout.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/skills/__tests__/omc-setup-optout.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -85401,6 +85381,36 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/team/__tests__/issue-4412-cmux-startup.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/issue-4412-cmux-startup.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/issue-4412-cmux-startup.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/issue-4412-cmux-startup.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/issue-4412-cmux-startup.test.ts",
+        "to": "src/team/model-contract.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/issue-4412-cmux-startup.test.ts",
+        "to": "src/team/tmux-session.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/team/__tests__/leader-inbox.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -87083,6 +87093,16 @@
       {
         "from": "src/team/__tests__/runtime-v2.shutdown.test.ts",
         "to": "src/team/git-worktree.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown.test.ts",
+        "to": "src/team/monitor.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown.test.ts",
+        "to": "src/team/process-identity-lock.ts",
         "kind": "imports"
       },
       {
@@ -88818,6 +88838,11 @@
       {
         "from": "src/team/__tests__/worker-launch-ack.test.ts",
         "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-ack.test.ts",
+        "to": "src/team/model-contract.ts",
         "kind": "imports"
       },
       {
@@ -94057,16 +94082,6 @@
       },
       {
         "from": "src/tools/state-tools.ts",
-        "to": "src/hooks/merge-readiness/report.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/tools/state-tools.ts",
-        "to": "src/hooks/merge-readiness/runtime.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/tools/state-tools.ts",
         "to": "src/hooks/mode-registry/index.ts",
         "kind": "imports"
       },
@@ -94468,6 +94483,11 @@
       {
         "from": "src/utils/daemon-module-path.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/utils/frontmatter.ts",
+        "to": "scripts/lib/utf8-bom.mjs",
         "kind": "imports"
       },
       {
@@ -95046,6 +95066,16 @@
         "kind": "projects"
       },
       {
+        "from": "templates/hooks/lib/utf8-bom.mjs",
+        "to": "hooks/hooks.json",
+        "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/lib/utf8-bom.mjs",
+        "to": "src/hooks/bridge.ts",
+        "kind": "projects"
+      },
+      {
         "from": "templates/hooks/lib/workflow-profile-runtime.mjs",
         "to": "external:child_process",
         "kind": "imports"
@@ -95243,6 +95273,11 @@
       {
         "from": "templates/hooks/pre-tool-use.mjs",
         "to": "templates/hooks/lib/skill-entitlements.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/pre-tool-use.mjs",
+        "to": "templates/hooks/lib/utf8-bom.mjs",
         "kind": "imports"
       },
       {
@@ -95711,6 +95746,36 @@
         "kind": "imports"
       },
       {
+        "from": "tests/integration/plugin-hud-node-modules-free.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/plugin-hud-node-modules-free.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/plugin-hud-node-modules-free.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/plugin-hud-node-modules-free.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/plugin-hud-node-modules-free.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/plugin-hud-node-modules-free.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/integration/runs-reconciler.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -96013,6 +96078,11 @@
       {
         "from": "tests/integration/workflow-profile-stop-transition.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/workflow-profile-stop-transition.test.ts",
+        "to": "scripts/lib/workflow-profile-runtime.mjs",
         "kind": "imports"
       },
       {
@@ -96331,6 +96401,21 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/skill-argument-hints.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/skill-argument-hints.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/skill-argument-hints.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/skill-parallel-caveats.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -96572,12 +96657,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8436,
-      "edgeCount": 9343,
-      "importEdgeCount": 7764,
+      "nodeCount": 8413,
+      "edgeCount": 9390,
+      "importEdgeCount": 7816,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "1eadabbd65652b74e2703cd5a20b9371f00de571b6ec68c23ce2f3ddc9eb2e57",
-  "manifestSha256": "f5221ed56788885a011ffecd673b614766bd070caa0a057d16e49f9c1c6495db"
+  "inventorySha256": "ce33e9884d96c9483c31425cf7c74aed08084645aa864f694275bc9d8ffad0e5",
+  "manifestSha256": "9998364396dbe09950e5c0ebe78d010e023cc230ac058168c1a06543cffc5628"
 }
