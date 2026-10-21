@@ -100,6 +100,37 @@ function detectExistingPythonEnv(projectRoot) {
     }
     return null;
 }
+const runPythonProbe = async (command, args) => (await execFileAsync(command, args, { timeout: 10000, windowsHide: true })).stdout;
+/**
+ * Find a system Python 3 when the project has no .venv.
+ *
+ * Windows installs usually provide `python` or the `py` launcher rather than
+ * `python3`. Each candidate must run and report its own interpreter path, so
+ * the Microsoft Store alias stub (which exits non-zero when Python is not
+ * installed) and a Python 2 `python` are skipped. Returns the absolute
+ * interpreter path, or null when no candidate works.
+ */
+export async function resolveSystemPython(platform = process.platform, probe = runPythonProbe) {
+    const candidates = platform === 'win32'
+        ? [['python3'], ['python'], ['py', '-3']]
+        : [['python3']];
+    for (const [command, ...args] of candidates) {
+        try {
+            const stdout = await probe(command, [
+                ...args,
+                '-c',
+                'import sys; assert sys.version_info >= (3,); print(sys.executable)',
+            ]);
+            const executable = stdout.trim();
+            if (executable)
+                return executable;
+        }
+        catch {
+            // Candidate missing, a stub, or not Python 3.
+        }
+    }
+    return null;
+}
 /**
  * Ensure a Python environment is available for the project.
  * Currently requires an existing .venv - does not auto-create.
@@ -109,14 +140,10 @@ async function ensurePythonEnvironment(projectRoot) {
     if (existing) {
         return existing;
     }
-    // Fallback: try system python3
-    try {
-        await execFileAsync('python3', ['--version']);
+    const systemPython = await resolveSystemPython();
+    if (systemPython) {
         // type is 'venv' because PythonEnvInfo only supports 'venv'; this is a system fallback
-        return { pythonPath: 'python3', type: 'venv' };
-    }
-    catch {
-        // python3 not available
+        return { pythonPath: systemPython, type: 'venv' };
     }
     throw new Error('No Python environment found. Create a virtual environment first:\n' +
         '  python -m venv .venv');

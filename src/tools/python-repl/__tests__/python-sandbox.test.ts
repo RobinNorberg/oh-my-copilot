@@ -3,6 +3,8 @@ import { execSync } from 'child_process';
 import { writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { fileURLToPath } from 'url';
+import { requiresExecutable } from '../../../__tests__/helpers/platform.js';
 import { isPythonSandboxEnabled, clearSecurityConfigCache } from '../../../lib/security-config.js';
 
 describe('python-repl sandbox env propagation', () => {
@@ -31,7 +33,7 @@ describe('python-repl sandbox env propagation', () => {
 });
 
 function executeBridgeCode(code: string, sandboxEnv = false): { success: boolean; stdout: string; error?: { type: string; message: string } } {
-  const bridgePath = new URL('../../../../bridge/gyoshu_bridge.py', import.meta.url).pathname;
+  const bridgePath = fileURLToPath(new URL('../../../../bridge/gyoshu_bridge.py', import.meta.url));
   const tmpScript = join(tmpdir(), `omc-bridge-exec-test-${process.pid}-${Date.now()}.py`);
   const script = [
     'import importlib.util, json, os',
@@ -51,7 +53,7 @@ function executeBridgeCode(code: string, sandboxEnv = false): { success: boolean
   }
 }
 
-describe('gyoshu bridge execution builtins hardening', () => {
+describe.skipIf(requiresExecutable('python3'))('gyoshu bridge execution builtins hardening', () => {
   it('allows normal calculation, printing, and persistent variables', () => {
     const result = executeBridgeCode('x = sum(range(5))\nprint(f"x={x}")');
     expect(result.success).toBe(true);
@@ -181,7 +183,7 @@ interface BridgeLifecycleResult {
 // and runs identically on macOS, Linux, and Windows; the Windows-specific TCP
 // socket fallback is covered separately by tcp-fallback.test.ts.
 function runBridgeLifecycle(seedCode: string): BridgeLifecycleResult {
-  const bridgePath = new URL('../../../../bridge/gyoshu_bridge.py', import.meta.url).pathname;
+  const bridgePath = fileURLToPath(new URL('../../../../bridge/gyoshu_bridge.py', import.meta.url));
   const tmpScript = join(tmpdir(), `omc-bridge-lifecycle-${process.pid}-${Date.now()}.py`);
   const script = [
     'import importlib.util, json',
@@ -227,7 +229,7 @@ function runBridgeLifecycle(seedCode: string): BridgeLifecycleResult {
   }
 }
 
-describe('gyoshu bridge advertised scientific modules (#3682)', () => {
+describe.skipIf(requiresExecutable('python3'))('gyoshu bridge advertised scientific modules (#3682)', () => {
   it('never prebinds numpy, pandas, or matplotlib in the execution namespace', () => {
     const result = runBridgeLifecycle('total = sum([1, 2, 3])');
     expect(result.initialScientific).toEqual([]);

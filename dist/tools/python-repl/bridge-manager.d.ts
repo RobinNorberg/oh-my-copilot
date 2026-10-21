@@ -38,6 +38,17 @@ export interface StaleBridgeCleanupResult {
     errors: string[];
 }
 export declare function trackOwnedBridgeSession(sessionId: string): void;
+type PythonProbe = (command: string, args: string[]) => Promise<string>;
+/**
+ * Find a system Python 3 when the project has no .venv.
+ *
+ * Windows installs usually provide `python` or the `py` launcher rather than
+ * `python3`. Each candidate must run and report its own interpreter path, so
+ * the Microsoft Store alias stub (which exits non-zero when Python is not
+ * installed) and a Python 2 `python` are skipped. Returns the absolute
+ * interpreter path, or null when no candidate works.
+ */
+export declare function resolveSystemPython(platform?: NodeJS.Platform, probe?: PythonProbe): Promise<string | null>;
 /**
  * Verify that a bridge process is still running and is the same process
  * that was originally spawned (guards against PID reuse).
@@ -96,4 +107,5 @@ export declare function cleanupOwnedBridgeSessions(options?: BridgeSessionCleanu
  * "Stale" means metadata is invalid OR process is no longer alive.
  */
 export declare function cleanupStaleBridges(): Promise<StaleBridgeCleanupResult>;
+export {};
 //# sourceMappingURL=bridge-manager.d.ts.map
