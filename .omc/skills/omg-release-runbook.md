@@ -17,6 +17,46 @@ Discovered during the v5.0.0 release (2026-08-31 → 09-01): the tag-triggered
 pipeline enforces ~15 contracts, and each unmet one costs a full ~10-minute
 run plus a retag cycle. Work through pre-flight completely BEFORE tagging.
 
+## Primary path: `omg release <X.Y.Z>`
+
+The pre-flight, ship sequence and verification below are scripted as ten
+resumable phases. Run the script; use an agent only to triage the phase it
+stops at. The manual steps in the rest of this file are the fallback and the
+reference for what each phase asserts.
+
+1. Write the prose first; the script checks it but never writes it:
+   `CHANGELOG.md` (`# oh-my-copilot vX.Y.Z` H1 and `## [X.Y.Z] - date`),
+   `.github/release-body.md` naming X.Y.Z, README / `docs/REFERENCE.md` /
+   `docs/MIGRATION.md` as needed. Uncommitted edits to those five files are
+   allowed by preflight and land in the release commit.
+2. `git checkout -b release/vX.Y.Z origin/dev`, then
+   `omg release X.Y.Z --dry-run` to see the plan, then run it:
+
+   ```bash
+   omg release X.Y.Z --to gates --suite full --baseline <last good report>   # preflight..gates, no premium requests
+   omg release X.Y.Z --live-smoke    # resumes at smoke (~2 premium requests): commit, pr, promote, tag (asks), verify
+   ```
+
+   Phases: preflight, bump, build, gates, smoke, commit, pr, promote, tag,
+   verify. State is `.omg/release/X.Y.Z.json`; a run without `--from`
+   resumes at the first phase not yet ok; `--from <phase>` re-runs one.
+   Progress lines go to `$OMG_PROGRESS_FILE` or `.omg/progress/release.log`.
+3. Exit 1 = a phase failed or is blocked; the output names the cause (failed
+   checks with failing test titles, orphan dist files, missing stamps).
+   Fix it, then re-run the same command. Common stops:
+   - `build`: orphan dist outputs → re-run with `--fix-orphans`.
+   - `pr` / `promote` blocked with a `gh pr merge … --admin` line:
+     `ship.allowAdminMerge` is off (owner-only key), so run the printed merge
+     yourself and re-run. CI is judged by the `omg ship` merge rule: every
+     check outside `ship.advisoryChecks` SUCCESS/SKIPPED; each failed run is
+     rerun once automatically, the second failure stops with the test names.
+   - `tag` blocked: no `--yes` and the confirmation was declined (or no TTY).
+   - `verify` blocked: the tag run or npm propagation is still going; re-run
+     `--from verify`.
+4. The script never deletes `.git/index.lock`, never force-pushes, rebases or
+   deletes tags; a local tag that peels elsewhere (an upstream tag) stops the
+   `tag` phase for you to remove by hand.
+
 ## Where publishing actually happens
 
 - **ci.yml** → "Create GitHub Release" job, triggered by pushing a `v*` tag.

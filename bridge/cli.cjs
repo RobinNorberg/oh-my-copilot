@@ -6361,7 +6361,7 @@ function parseFrontmatter(content) {
   });
   const rootIndent = rootLine === void 0 ? void 0 : rootLine.length - rootLine.trimStart().length;
   let flowDepth = 0;
-  let quote2 = null;
+  let quote3 = null;
   for (let lineIndex = 0; lineIndex < lines3.length; lineIndex++) {
     const line = lines3[lineIndex];
     const trimmed = line.trimStart();
@@ -6409,22 +6409,22 @@ function parseFrontmatter(content) {
     }
     for (let i = scanFrom; i < line.length; i++) {
       const char = line[i];
-      if (quote2) {
-        if (quote2 === '"' && char === "\\") {
+      if (quote3) {
+        if (quote3 === '"' && char === "\\") {
           i++;
           continue;
         }
-        if (char === quote2) {
-          if (quote2 === "'" && line[i + 1] === "'") {
+        if (char === quote3) {
+          if (quote3 === "'" && line[i + 1] === "'") {
             i++;
             continue;
           }
-          quote2 = null;
+          quote3 = null;
         }
         continue;
       }
       if (char === '"' || char === "'") {
-        quote2 = char;
+        quote3 = char;
         continue;
       }
       if (char === "#" && (i === 0 || line[i - 1] === " " || line[i - 1] === "	")) {
@@ -6445,20 +6445,20 @@ function parseFrontmatterAliases(rawAliases) {
 function splitFlowSequenceItems(inner) {
   const items = [];
   let current = "";
-  let quote2 = null;
+  let quote3 = null;
   for (let i = 0; i < inner.length; i++) {
     const char = inner[i];
-    if (quote2) {
+    if (quote3) {
       current += char;
-      if (quote2 === '"' && char === "\\" && i + 1 < inner.length) {
+      if (quote3 === '"' && char === "\\" && i + 1 < inner.length) {
         current += inner[++i];
-      } else if (quote2 === "'" && char === "'" && inner[i + 1] === "'") {
+      } else if (quote3 === "'" && char === "'" && inner[i + 1] === "'") {
         current += inner[++i];
-      } else if (char === quote2) {
-        quote2 = null;
+      } else if (char === quote3) {
+        quote3 = null;
       }
     } else if ((char === '"' || char === "'") && current.trim() === "") {
-      quote2 = char;
+      quote3 = char;
       current += char;
     } else if (char === ",") {
       items.push(current);
@@ -11381,14 +11381,14 @@ var init_sdk = __esm({
     __callDispose = (stack, error2, hasError) => {
       var E = typeof SuppressedError === "function" ? SuppressedError : function(e, s, m, _) {
         return _ = Error(m), _.name = "SuppressedError", _.error = e, _.suppressed = s, _;
-      }, fail6 = (e) => error2 = hasError ? new E(e, error2, "An error was suppressed during disposal") : (hasError = true, e), next = (it) => {
+      }, fail7 = (e) => error2 = hasError ? new E(e, error2, "An error was suppressed during disposal") : (hasError = true, e), next = (it) => {
         while (it = stack.pop()) {
           try {
             var result = it[1] && it[1].call(it[2]);
             if (it[0])
-              return Promise.resolve(result).then(next, (e) => (fail6(e), next()));
+              return Promise.resolve(result).then(next, (e) => (fail7(e), next()));
           } catch (e) {
-            fail6(e);
+            fail7(e);
           }
         }
         if (hasError)
@@ -33112,11 +33112,11 @@ function runBatchCommand(resolvedPath, args, timeoutMs) {
   const comspec = validatedComspec();
   if (!comspec) return void 0;
   if (!args.every((arg) => SAFE_BATCH_ARG.test(arg))) return void 0;
-  const tail2 = [`"${resolvedPath}"`, ...args].join(" ");
+  const tail3 = [`"${resolvedPath}"`, ...args].join(" ");
   try {
     return (0, import_child_process3.spawnSync)(
       comspec,
-      ["/d", "/v:off", "/s", "/c", `"${tail2}"`],
+      ["/d", "/v:off", "/s", "/c", `"${tail3}"`],
       {
         timeout: timeoutMs,
         encoding: "utf8",
@@ -34147,8 +34147,8 @@ ${content}`;
         const current = new Promise((resolveCurrent) => {
           release = resolveCurrent;
         });
-        const tail2 = previous.catch(() => void 0).then(() => current);
-        this.documentOperationTails.set(hostUri, tail2);
+        const tail3 = previous.catch(() => void 0).then(() => current);
+        this.documentOperationTails.set(hostUri, tail3);
         const predecessorCompleted = await Promise.race([
           previous.then(() => true, () => true),
           cancellation.then(() => false)
@@ -34161,7 +34161,7 @@ ${content}`;
           return await operation();
         } finally {
           release();
-          if (this.documentOperationTails.get(hostUri) === tail2) {
+          if (this.documentOperationTails.get(hostUri) === tail3) {
             this.documentOperationTails.delete(hostUri);
           }
         }
@@ -51110,13 +51110,13 @@ var init_directive_detector = __esm({
 function withMutex(projectRoot, fn) {
   const prev = writeMutexes.get(projectRoot) ?? Promise.resolve();
   const next = prev.then(() => fn()).catch(() => fn());
-  const tail2 = next.then(
+  const tail3 = next.then(
     () => {
     },
     () => {
     }
   );
-  writeMutexes.set(projectRoot, tail2);
+  writeMutexes.set(projectRoot, tail3);
   return next;
 }
 async function addCustomNote(projectRoot, category, content) {
@@ -55391,12 +55391,12 @@ function parseTomlStringArrayFallback(value) {
       }
       return result;
     }
-    const quote2 = value[i];
-    if (quote2 !== '"' && quote2 !== "'") {
+    const quote3 = value[i];
+    if (quote3 !== '"' && quote3 !== "'") {
       return void 0;
     }
     let member;
-    if (quote2 === "'") {
+    if (quote3 === "'") {
       i++;
       const start = i;
       while (i < value.length && value[i] !== "'") {
@@ -55513,8 +55513,8 @@ function parseTomlDottedKey(value) {
   skipWhitespace();
   while (index < value.length) {
     const start = index;
-    const quote2 = value[index];
-    if (quote2 === '"') {
+    const quote3 = value[index];
+    if (quote3 === '"') {
       index++;
       let closed = false;
       while (index < value.length) {
@@ -55528,7 +55528,7 @@ function parseTomlDottedKey(value) {
       if (!closed) {
         return void 0;
       }
-    } else if (quote2 === "'") {
+    } else if (quote3 === "'") {
       index++;
       while (index < value.length && value[index] !== "'") {
         index++;
@@ -55567,29 +55567,29 @@ function parseTomlTableHeader(line) {
   if (!trimmed.startsWith("[") || trimmed.startsWith("[[")) {
     return void 0;
   }
-  let quote2;
+  let quote3;
   let escaped = false;
   let closingBracket = -1;
   for (let index = 1; index < trimmed.length; index++) {
     const character = trimmed[index];
-    if (quote2 === '"') {
+    if (quote3 === '"') {
       if (escaped) {
         escaped = false;
       } else if (character === "\\") {
         escaped = true;
       } else if (character === '"') {
-        quote2 = void 0;
+        quote3 = void 0;
       }
       continue;
     }
-    if (quote2 === "'") {
+    if (quote3 === "'") {
       if (character === "'") {
-        quote2 = void 0;
+        quote3 = void 0;
       }
       continue;
     }
     if (character === '"' || character === "'") {
-      quote2 = character;
+      quote3 = character;
     } else if (character === "]") {
       closingBracket = index;
       break;
@@ -65355,18 +65355,18 @@ function getBackgroundBashPermissionFallback(directory, command) {
 function tokenizeShellCommand(command) {
   const tokens = [];
   let current = "";
-  let quote2 = null;
+  let quote3 = null;
   for (const char of command.trim()) {
-    if (quote2) {
-      if (char === quote2) {
-        quote2 = null;
+    if (quote3) {
+      if (char === quote3) {
+        quote3 = null;
       } else {
         current += char;
       }
       continue;
     }
     if (char === '"' || char === "'") {
-      quote2 = char;
+      quote3 = char;
       continue;
     }
     if (/\s/.test(char)) {
@@ -65378,7 +65378,7 @@ function tokenizeShellCommand(command) {
     }
     current += char;
   }
-  if (quote2) {
+  if (quote3) {
     return null;
   }
   if (current) {
@@ -71939,9 +71939,9 @@ function createTelegramProxyConnection(proxyUrl) {
     let tlsSocket;
     let settled = false;
     const handshakeTimer = setTimeout(() => {
-      fail6(new Error("Proxy CONNECT timeout"));
+      fail7(new Error("Proxy CONNECT timeout"));
     }, SEND_TIMEOUT_MS);
-    const fail6 = (error2) => {
+    const fail7 = (error2) => {
       if (settled) return;
       settled = true;
       clearTimeout(handshakeTimer);
@@ -71949,7 +71949,7 @@ function createTelegramProxyConnection(proxyUrl) {
       tlsSocket?.destroy();
       callback(error2);
     };
-    connectSocket.once("error", fail6);
+    connectSocket.once("error", fail7);
     connectSocket.once(proxyUrl.protocol === "https:" ? "secureConnect" : "connect", () => {
       const auth = proxyUrl.username || proxyUrl.password ? `Proxy-Authorization: Basic ${Buffer.from(
         `${decodeURIComponent(proxyUrl.username)}:${decodeURIComponent(proxyUrl.password)}`
@@ -71969,11 +71969,11 @@ Host: ${TELEGRAM_API_HOST}:${TELEGRAM_API_PORT}\r
       const statusLine = response.toString("ascii", 0, headerEnd).split("\r\n")[0] || "";
       const status = /^HTTP\/\d(?:\.\d)?\s+(\d{3})/.exec(statusLine)?.[1];
       if (!status || !status.startsWith("2")) {
-        fail6(new Error(`Proxy CONNECT failed: ${status || "unknown"}`));
+        fail7(new Error(`Proxy CONNECT failed: ${status || "unknown"}`));
         return;
       }
       connectSocket.removeAllListeners("data");
-      connectSocket.removeListener("error", fail6);
+      connectSocket.removeListener("error", fail7);
       tlsSocket = (0, import_tls.connect)(
         { socket: connectSocket, servername: TELEGRAM_API_HOST },
         () => {
@@ -71983,7 +71983,7 @@ Host: ${TELEGRAM_API_HOST}:${TELEGRAM_API_PORT}\r
           callback(null, tlsSocket);
         }
       );
-      tlsSocket.once("error", fail6);
+      tlsSocket.once("error", fail7);
     });
     return void 0;
   });
@@ -75285,7 +75285,7 @@ function analyzePaneContent(content) {
 }
 function scanForBlockedPanes(lines3 = 15, stateDir) {
   const panes = listTmuxPanes();
-  const blocked = [];
+  const blocked2 = [];
   for (const pane of panes) {
     let content;
     if (stateDir) {
@@ -75296,7 +75296,7 @@ function scanForBlockedPanes(lines3 = 15, stateDir) {
     }
     const analysis = analyzePaneContent(content);
     if (analysis.isBlocked) {
-      blocked.push({
+      blocked2.push({
         ...pane,
         analysis,
         firstDetectedAt: /* @__PURE__ */ new Date(),
@@ -75304,7 +75304,7 @@ function scanForBlockedPanes(lines3 = 15, stateDir) {
       });
     }
   }
-  return blocked;
+  return blocked2;
 }
 function revalidateBlockedPanes(trackedPanes, lines3 = 15) {
   if (trackedPanes.length === 0) return [];
@@ -86173,31 +86173,31 @@ async function killOwnedWorkerPane(ownership) {
 }
 function detectPaneTrustPromptKind(captured, provider) {
   const lines3 = captured.split("\n").map((l) => l.replace(/\r/g, "").trim()).filter((l) => l.length > 0);
-  const tail2 = lines3.slice(-12);
-  const hasCursorTrustBanner = tail2.some((l) => /Workspace Trust Required/i.test(l));
-  const hasCursorTrustHint = tail2.some((l) => /Pass\s+--trust,\s*--yolo,\s*or\s+-f/i.test(l));
-  if ((provider === void 0 || provider === "cursor") && hasCursorTrustBanner && (hasCursorTrustHint || tail2.some((l) => /Do you trust the contents of this directory\?/i.test(l)))) {
+  const tail3 = lines3.slice(-12);
+  const hasCursorTrustBanner = tail3.some((l) => /Workspace Trust Required/i.test(l));
+  const hasCursorTrustHint = tail3.some((l) => /Pass\s+--trust,\s*--yolo,\s*or\s+-f/i.test(l));
+  if ((provider === void 0 || provider === "cursor") && hasCursorTrustBanner && (hasCursorTrustHint || tail3.some((l) => /Do you trust the contents of this directory\?/i.test(l)))) {
     return "cursor_workspace_trust";
   }
-  const hasClaudeDirectoryQuestion = tail2.some(
+  const hasClaudeDirectoryQuestion = tail3.some(
     (l) => /(?:Do you trust the files in this folder|Quick safety check:\s*Is this a project you created or one you trust)\?/i.test(l)
   );
-  const hasClaudeDirectoryNoChoice = tail2.some((l) => /\bNo,\s*exit\b/i.test(l));
-  const hasClaudeDirectoryYesChoice = tail2.some((l) => /\bYes,\s*(?:proceed|I trust this folder)\b/i.test(l));
+  const hasClaudeDirectoryNoChoice = tail3.some((l) => /\bNo,\s*exit\b/i.test(l));
+  const hasClaudeDirectoryYesChoice = tail3.some((l) => /\bYes,\s*(?:proceed|I trust this folder)\b/i.test(l));
   if (provider === "claude" && hasClaudeDirectoryQuestion && hasClaudeDirectoryNoChoice && hasClaudeDirectoryYesChoice) {
     return "claude_directory";
   }
-  const hasCopilotYesChoice = tail2.some((l) => /\b1\.\s*Yes\s*(?:│|$)/.test(l));
-  const hasCopilotNoChoice = tail2.some((l) => /\b3\.\s*No\s*\(Esc\)/i.test(l));
+  const hasCopilotYesChoice = tail3.some((l) => /\b1\.\s*Yes\s*(?:│|$)/.test(l));
+  const hasCopilotNoChoice = tail3.some((l) => /\b3\.\s*No\s*\(Esc\)/i.test(l));
   if (provider === "copilot" && hasClaudeDirectoryQuestion && hasCopilotYesChoice && hasCopilotNoChoice) {
     return "copilot_folder";
   }
-  const hasDirectoryQuestion = tail2.some((l) => /Do you trust the contents of this directory\?/i.test(l));
-  const hasDirectoryChoices = tail2.some((l) => /Yes,\s*continue|No,\s*quit|Press enter to continue/i.test(l));
+  const hasDirectoryQuestion = tail3.some((l) => /Do you trust the contents of this directory\?/i.test(l));
+  const hasDirectoryChoices = tail3.some((l) => /Yes,\s*continue|No,\s*quit|Press enter to continue/i.test(l));
   if (hasDirectoryQuestion && hasDirectoryChoices) return "directory";
-  const hasHookReview = tail2.some((l) => /Hooks need review/i.test(l));
-  const hasHookTrustChoice = tail2.some((l) => /Continue without trusting/i.test(l));
-  const hasHookConfirm = tail2.some((l) => /Press enter to confirm or esc to go back/i.test(l));
+  const hasHookReview = tail3.some((l) => /Hooks need review/i.test(l));
+  const hasHookTrustChoice = tail3.some((l) => /Continue without trusting/i.test(l));
+  const hasHookConfirm = tail3.some((l) => /Press enter to confirm or esc to go back/i.test(l));
   if (hasHookReview && hasHookTrustChoice && hasHookConfirm) return "codex_hooks";
   return null;
 }
@@ -86225,13 +86225,13 @@ function paneIsBootstrapping(captured, provider) {
 }
 function paneHasActiveTask(captured, provider) {
   const lines3 = captured.split("\n").map((l) => l.replace(/\r/g, "").trim()).filter((l) => l.length > 0);
-  const tail2 = lines3.slice(-40);
-  if (provider === "cursor" && tail2.some((l) => /ctrl\+c\s+to\s+stop/i.test(l))) return true;
-  if (provider === "copilot" && tail2.some((l) => /^\S?\s*Working\b.*\besc\b/u.test(l))) return true;
-  if (tail2.some((l) => /\b\d+\s+background terminal running\b/i.test(l))) return true;
-  if (tail2.some((l) => /esc to interrupt/i.test(l))) return true;
-  if (tail2.some((l) => /\bbackground terminal running\b/i.test(l))) return true;
-  if (tail2.some((l) => /^[·✻✢✳✶✽✺✹✸✷*]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})(?:\s*\(.*\))?$/u.test(l))) return true;
+  const tail3 = lines3.slice(-40);
+  if (provider === "cursor" && tail3.some((l) => /ctrl\+c\s+to\s+stop/i.test(l))) return true;
+  if (provider === "copilot" && tail3.some((l) => /^\S?\s*Working\b.*\besc\b/u.test(l))) return true;
+  if (tail3.some((l) => /\b\d+\s+background terminal running\b/i.test(l))) return true;
+  if (tail3.some((l) => /esc to interrupt/i.test(l))) return true;
+  if (tail3.some((l) => /\bbackground terminal running\b/i.test(l))) return true;
+  if (tail3.some((l) => /^[·✻✢✳✶✽✺✹✸✷*]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})(?:\s*\(.*\))?$/u.test(l))) return true;
   return false;
 }
 function paneLooksReady(captured, provider) {
@@ -90479,8 +90479,8 @@ async function startMergeOrchestrator(config2) {
   let persisted = { lastShas: {} };
   if ((0, import_node_fs17.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync141 } = await import("node:fs");
-      persisted = JSON.parse(readFileSync141(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync142 } = await import("node:fs");
+      persisted = JSON.parse(readFileSync142(persistedPath, "utf-8"));
     } catch {
       persisted = { lastShas: {} };
     }
@@ -90925,8 +90925,8 @@ async function recoverFromRestart(config2) {
   let persistedShasLoaded = 0;
   if ((0, import_node_fs17.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync141 } = await import("node:fs");
-      const persisted = JSON.parse(readFileSync141(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync142 } = await import("node:fs");
+      const persisted = JSON.parse(readFileSync142(persistedPath, "utf-8"));
       persistedShasLoaded = Object.keys(persisted.lastShas ?? {}).length;
     } catch {
       persistedShasLoaded = 0;
@@ -92386,8 +92386,8 @@ function exportPath(target, condition) {
   if (typeof cond === "string") return cond;
   return typeof cond?.default === "string" ? cond.default : void 0;
 }
-function npmRootG(env2, spawnSync17) {
-  const res = process.platform === "win32" ? spawnSync17("npm root -g", { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true, shell: true }) : spawnSync17("npm", ["root", "-g"], { env: env2, encoding: "utf8", timeout: 15e3 });
+function npmRootG(env2, spawnSync18) {
+  const res = process.platform === "win32" ? spawnSync18("npm root -g", { env: env2, encoding: "utf8", timeout: 15e3, windowsHide: true, shell: true }) : spawnSync18("npm", ["root", "-g"], { env: env2, encoding: "utf8", timeout: 15e3 });
   const out = String(res.stdout ?? "").trim();
   return res.status === 0 && out ? out : null;
 }
@@ -92427,7 +92427,7 @@ function resolveShimTarget(shim, read = (p) => (0, import_fs93.readFileSync)(p, 
   }
   return null;
 }
-async function loadCopilotSdk(env2 = process.env, spawnSync17 = import_child_process28.spawnSync) {
+async function loadCopilotSdk(env2 = process.env, spawnSync18 = import_child_process28.spawnSync) {
   const spec = SDK_PACKAGE;
   try {
     const mod = await import(spec);
@@ -92450,7 +92450,7 @@ async function loadCopilotSdk(env2 = process.env, spawnSync17 = import_child_pro
     const hit = await tryRoot(root2);
     if (hit) return hit;
   }
-  return tryRoot(npmRootG(env2, spawnSync17));
+  return tryRoot(npmRootG(env2, spawnSync18));
 }
 function withTimeout(promise, ms, label) {
   let timer;
@@ -92499,8 +92499,8 @@ function pidAlive(pid) {
     return err.code === "EPERM";
   }
 }
-function prepareSdkProject(spawnSync17, projectDir, remoteDir, env2) {
-  const git5 = (args, cwd2) => spawnSync17("git", args, { cwd: cwd2, env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
+function prepareSdkProject(spawnSync18, projectDir, remoteDir, env2) {
+  const git5 = (args, cwd2) => spawnSync18("git", args, { cwd: cwd2, env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
   (0, import_fs93.mkdirSync)(projectDir, { recursive: true });
   (0, import_fs93.writeFileSync)((0, import_path116.join)(projectDir, "hello.txt"), "omg smoke fixture\n");
   const steps = [
@@ -92517,8 +92517,8 @@ function prepareSdkProject(spawnSync17, projectDir, remoteDir, env2) {
   }
   return null;
 }
-function remoteRefs(spawnSync17, remoteDir, env2) {
-  const res = spawnSync17("git", ["--git-dir", remoteDir, "for-each-ref"], { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
+function remoteRefs(spawnSync18, remoteDir, env2) {
+  const res = spawnSync18("git", ["--git-dir", remoteDir, "for-each-ref"], { env: env2, encoding: "utf8", timeout: 3e4, windowsHide: true });
   return res.status === 0 ? String(res.stdout ?? "") : null;
 }
 function runtimeCreditCap(maxCredits) {
@@ -96808,7 +96808,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
     ).catch(logCursorTransitionMarkerFailure);
   };
   const { rename: rename8 } = await import("fs/promises");
-  const { renameSync: renameSync19, readFileSync: readFileSync141, existsSync: fsExistsSync } = await import("fs");
+  const { renameSync: renameSync19, readFileSync: readFileSync142, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   const quarantineNonCursorVerdict = async (outputFile, artifactFingerprint, workerName, taskId, taskVersion, reason) => {
     const stalePath = nonCursorVerdictStalePath(outputFile, artifactFingerprint);
@@ -96889,7 +96889,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
               return;
             }
           }
-          const raw = readFileSync141(outputFile, "utf-8");
+          const raw = readFileSync142(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
           renameSync19(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
@@ -110554,12 +110554,12 @@ function readTailTotals(path30, size) {
   scanLines(text, scan);
   return scan.totals ? { ...scan.totals, ...scan.model ? { model: scan.model } : {} } : null;
 }
-function toRecord(scan, partial2, now2, tail2 = null) {
-  const model = tail2?.model ?? scan.model;
+function toRecord(scan, partial2, now2, tail3 = null) {
+  const model = tail3?.model ?? scan.model;
   const base = { updatedAt: now2.toISOString(), ...model ? { model } : {}, scan };
-  const totals = tail2 ?? scan.totals;
+  const totals = tail3 ?? scan.totals;
   if (totals) {
-    return { ...base, premiumRequests: totals.premium, credits: totals.nano / NANO2, source: "measured", detail: `${totals.type}${tail2 ? " (events tail)" : ""}` };
+    return { ...base, premiumRequests: totals.premium, credits: totals.nano / NANO2, source: "measured", detail: `${totals.type}${tail3 ? " (events tail)" : ""}` };
   }
   if (scan.prompts === 0 && !partial2) return null;
   return {
@@ -110593,8 +110593,8 @@ function readCopilotSessionUsage(eventsPath, now2 = /* @__PURE__ */ new Date(), 
     scan.offset = end;
   }
   const partial2 = end < size;
-  const tail2 = partial2 ? readTailTotals(eventsPath, size) : null;
-  return toRecord(scan, partial2, now2, tail2);
+  const tail3 = partial2 ? readTailTotals(eventsPath, size) : null;
+  return toRecord(scan, partial2, now2, tail3);
 }
 var import_node_fs21, import_node_os6, import_node_path28, NANO2, MAX_SCAN_BYTES, TAIL_BYTES, HOOK_LOCK_TIMEOUT_MS, SAFE_KEY, isObject3, EPOCH, baselineKey;
 var init_ledger = __esm({
@@ -110817,8 +110817,8 @@ function refreshEstimates(path30, now2, lock = {}, deadlineMs = REFRESH_DEADLINE
     const mtimeMs = Math.floor(stat2.mtimeMs);
     if (scan.checkedSize === stat2.size && scan.checkedMtimeMs === mtimeMs) continue;
     const checked = { ...scan, checkedSize: stat2.size, checkedMtimeMs: mtimeMs };
-    const tail2 = readTailTotals(events, stat2.size);
-    const usage = tail2 ? { premiumRequests: tail2.premium, credits: tail2.nano / 1e9, source: "measured", detail: `${tail2.type} (events tail)`, ...tail2.model ? { model: tail2.model } : {}, updatedAt: now2.toISOString(), scan: checked } : { ...record2, scan: checked };
+    const tail3 = readTailTotals(events, stat2.size);
+    const usage = tail3 ? { premiumRequests: tail3.premium, credits: tail3.nano / 1e9, source: "measured", detail: `${tail3.type} (events tail)`, ...tail3.model ? { model: tail3.model } : {}, updatedAt: now2.toISOString(), scan: checked } : { ...record2, scan: checked };
     updates.push({ key, team, usage });
   }
   const cursor = (start + visited) % stale.length;
@@ -111220,9 +111220,9 @@ function startListener(config2, deps = {}) {
   }
   const startedAt = (/* @__PURE__ */ new Date()).toISOString();
   const host = config2.host || "127.0.0.1";
-  let tail2 = Promise.resolve();
+  let tail3 = Promise.resolve();
   const server = (0, import_http.createServer)((req, res) => {
-    tail2 = tail2.then(() => handleRequest(req, res, config2, deps, startedAt)).catch(() => {
+    tail3 = tail3.then(() => handleRequest(req, res, config2, deps, startedAt)).catch(() => {
       try {
         res.writeHead(500).end();
       } catch {
@@ -112625,8 +112625,8 @@ function recordVerdict(state, verdict) {
   }
   const fixRounds = state.fixRounds + 1;
   if (fixRounds > state.maxFixRounds) {
-    const blocked = transition({ ...withVerdict, fixRounds }, "blocked", `fix round ${fixRounds} exceeds max ${state.maxFixRounds}`, verdict.at);
-    return { ...blocked, blockedReason: `fix-round budget spent (${state.maxFixRounds}); escalate to a human` };
+    const blocked2 = transition({ ...withVerdict, fixRounds }, "blocked", `fix round ${fixRounds} exceeds max ${state.maxFixRounds}`, verdict.at);
+    return { ...blocked2, blockedReason: `fix-round budget spent (${state.maxFixRounds}); escalate to a human` };
   }
   return transition({ ...withVerdict, fixRounds }, "fix", `changes requested by ${verdict.reviewer} (round ${fixRounds}/${state.maxFixRounds})`, verdict.at);
 }
@@ -114723,7 +114723,7 @@ async function runSdkHost(spec, deps) {
       }).catch(() => false);
     }
   };
-  const fail6 = async (outcome2, error2) => {
+  const fail7 = async (outcome2, error2) => {
     session.state = "failed";
     session.last_error = error2;
     mark("closed_at");
@@ -114737,10 +114737,10 @@ async function runSdkHost(spec, deps) {
   mark("ack_at");
   const decision = await waitForDecision(attempt, DECISION_TIMEOUT_MS);
   if (decision !== "accepted") {
-    return fail6(decision === "revoked" ? "decision_revoked" : "decision_timeout", `launch decision ${decision}`);
+    return fail7(decision === "revoked" ? "decision_revoked" : "decision_timeout", `launch decision ${decision}`);
   }
   mark("accepted_at");
-  if (!startIdentity) return fail6("start_failed", "host process start identity unavailable");
+  if (!startIdentity) return fail7("start_failed", "host process start identity unavailable");
   await writeExclusive(attempt.startedPath, {
     ...identity,
     kind: "worker_launch_provider_started",
@@ -114756,7 +114756,7 @@ async function runSdkHost(spec, deps) {
   } catch {
     loaded2 = null;
   }
-  if (!loaded2) return fail6("sdk_missing", "@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)");
+  if (!loaded2) return fail7("sdk_missing", "@github/copilot-sdk is not installed (npm i -g @github/copilot-sdk --omit=optional --ignore-scripts)");
   (0, import_node_fs25.mkdirSync)(files.home, { recursive: true });
   const homeConfig = (0, import_node_path32.join)(files.home, "config.json");
   const ident = loginIdentity(spec.user_config_dir);
@@ -114958,7 +114958,7 @@ async function runSdkHost(spec, deps) {
     } catch {
     }
     removeGuards();
-    return fail6("start_failed", errText3(err));
+    return fail7("start_failed", errText3(err));
   }
   const queue = [];
   let offset = 0;
@@ -115086,7 +115086,7 @@ async function runSdkHost(spec, deps) {
   return outcome;
 }
 async function runSdkHostMain(specPath, loadInProcessTools) {
-  const { spawnSync: spawnSync17 } = await import("node:child_process");
+  const { spawnSync: spawnSync18 } = await import("node:child_process");
   const { loadCopilotSdk: loadCopilotSdk2 } = await Promise.resolve().then(() => (init_copilot_sdk_driver(), copilot_sdk_driver_exports));
   const { killProcessTree: killProcessTree3 } = await Promise.resolve().then(() => (init_process_utils2(), process_utils_exports2));
   const { getProcessStartIdentitySync: getProcessStartIdentitySync2, isProcessAlive: isProcessAlive3 } = await Promise.resolve().then(() => (init_process_utils(), process_utils_exports));
@@ -115100,11 +115100,11 @@ async function runSdkHostMain(specPath, loadInProcessTools) {
     if (spec?.schema_version !== 1 || !spec.worker_name || !spec.state_root) throw new Error("invalid sdk host spec");
     log3(`start team=${spec.team_name} worker=${spec.worker_name} attempt=${spec.attempt_id}`);
     const outcome = await runSdkHost(spec, {
-      loadSdk: () => loadCopilotSdk2(process.env, spawnSync17),
+      loadSdk: () => loadCopilotSdk2(process.env, spawnSync18),
       pid: process.pid,
       startIdentity: (pid) => getProcessStartIdentitySync2(pid),
       isAlive: (pid) => isProcessAlive3(pid),
-      killTree: (pid) => killProcessTree3(pid, spawnSync17),
+      killTree: (pid) => killProcessTree3(pid, spawnSync18),
       platform: process.platform,
       pollMs: 250,
       env: process.env,
@@ -118658,12 +118658,12 @@ async function parseTranscript(transcriptPath, options) {
     lastToolName: null,
     recentTools: []
   };
-  if (!transcriptPath || !(0, import_fs156.existsSync)(transcriptPath)) {
+  if (!transcriptPath || !(0, import_fs158.existsSync)(transcriptPath)) {
     return result;
   }
   let cacheKey = null;
   try {
-    const stat2 = (0, import_fs156.statSync)(transcriptPath);
+    const stat2 = (0, import_fs158.statSync)(transcriptPath);
     cacheKey = `${transcriptPath}:${stat2.size}:${stat2.mtimeMs}`;
     const cached2 = transcriptCache.get(transcriptPath);
     if (cached2?.cacheKey === cacheKey) {
@@ -118684,7 +118684,7 @@ async function parseTranscript(transcriptPath, options) {
   const observedSessionIds = /* @__PURE__ */ new Set();
   const recentToolMap = /* @__PURE__ */ new Map();
   try {
-    const stat2 = (0, import_fs156.statSync)(transcriptPath);
+    const stat2 = (0, import_fs158.statSync)(transcriptPath);
     const fileSize = stat2.size;
     if (fileSize > MAX_TAIL_BYTES) {
       const lines3 = readTailLines(transcriptPath, fileSize, MAX_TAIL_BYTES);
@@ -118708,7 +118708,7 @@ async function parseTranscript(transcriptPath, options) {
       }
       sessionTotalsReliable = sessionTokenTotals.seenUsage;
     } else {
-      const fileStream = (0, import_fs156.createReadStream)(transcriptPath);
+      const fileStream = (0, import_fs158.createReadStream)(transcriptPath);
       const rl = (0, import_readline5.createInterface)({
         input: fileStream,
         crlfDelay: Infinity
@@ -118833,12 +118833,12 @@ function finalizeTranscriptResult(result, options, pendingPermissions) {
 function readTailLines(filePath, fileSize, maxBytes) {
   const startOffset = Math.max(0, fileSize - maxBytes);
   const bytesToRead = fileSize - startOffset;
-  const fd = (0, import_fs156.openSync)(filePath, "r");
+  const fd = (0, import_fs158.openSync)(filePath, "r");
   const buffer = Buffer.alloc(bytesToRead);
   try {
-    (0, import_fs156.readSync)(fd, buffer, 0, bytesToRead, startOffset);
+    (0, import_fs158.readSync)(fd, buffer, 0, bytesToRead, startOffset);
   } finally {
-    (0, import_fs156.closeSync)(fd);
+    (0, import_fs158.closeSync)(fd);
   }
   const content = buffer.toString("utf8");
   const lines3 = content.split("\n");
@@ -118882,7 +118882,7 @@ function extractTargetSummary(input, toolName) {
   if (toolName.includes("Edit") || toolName.includes("Write")) {
     const filePath = inp.file_path;
     if (filePath) {
-      return (0, import_path187.basename)(filePath) || filePath;
+      return (0, import_path189.basename)(filePath) || filePath;
     }
   }
   if (toolName.includes("Bash")) {
@@ -119149,13 +119149,13 @@ function extractLastRequestTokenUsage(usage) {
 function getNumericUsageValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-var import_fs156, import_readline5, import_path187, MAX_TAIL_BYTES, MAX_AGENT_MAP_SIZE, MAX_RECENT_TOOLS, RECENT_TOOLS_SKIP, PERMISSION_TOOLS, PERMISSION_THRESHOLD_MS, pendingPermissionMap, taskToolStates, TASK_STATUSES, THINKING_PART_TYPES2, THINKING_RECENCY_MS, transcriptCache, TRANSCRIPT_CACHE_MAX_SIZE;
+var import_fs158, import_readline5, import_path189, MAX_TAIL_BYTES, MAX_AGENT_MAP_SIZE, MAX_RECENT_TOOLS, RECENT_TOOLS_SKIP, PERMISSION_TOOLS, PERMISSION_THRESHOLD_MS, pendingPermissionMap, taskToolStates, TASK_STATUSES, THINKING_PART_TYPES2, THINKING_RECENCY_MS, transcriptCache, TRANSCRIPT_CACHE_MAX_SIZE;
 var init_transcript = __esm({
   "src/hud/transcript.ts"() {
     "use strict";
-    import_fs156 = require("fs");
+    import_fs158 = require("fs");
     import_readline5 = require("readline");
-    import_path187 = require("path");
+    import_path189 = require("path");
     init_agent_kind();
     MAX_TAIL_BYTES = 4 * 1024 * 1024;
     MAX_AGENT_MAP_SIZE = 100;
@@ -119197,7 +119197,7 @@ var init_transcript = __esm({
 // src/hud/omc-state.ts
 function isStateFileStale(filePath) {
   try {
-    const stat2 = (0, import_fs157.statSync)(filePath);
+    const stat2 = (0, import_fs159.statSync)(filePath);
     const age = Date.now() - stat2.mtimeMs;
     return age > MAX_STATE_AGE_MS2;
   } catch {
@@ -119207,21 +119207,21 @@ function isStateFileStale(filePath) {
 function resolveStatePath2(directory, filename, sessionId) {
   const omcRoot = getOmcRoot(directory);
   if (sessionId) {
-    const sessionPath = (0, import_path188.join)(omcRoot, "state", "sessions", sessionId, filename);
-    return (0, import_fs157.existsSync)(sessionPath) ? sessionPath : null;
+    const sessionPath = (0, import_path190.join)(omcRoot, "state", "sessions", sessionId, filename);
+    return (0, import_fs159.existsSync)(sessionPath) ? sessionPath : null;
   }
   let bestPath = null;
   let bestMtime = 0;
-  const sessionsDir = (0, import_path188.join)(omcRoot, "state", "sessions");
-  if ((0, import_fs157.existsSync)(sessionsDir)) {
+  const sessionsDir = (0, import_path190.join)(omcRoot, "state", "sessions");
+  if ((0, import_fs159.existsSync)(sessionsDir)) {
     try {
-      const entries = (0, import_fs157.readdirSync)(sessionsDir, { withFileTypes: true });
+      const entries = (0, import_fs159.readdirSync)(sessionsDir, { withFileTypes: true });
       for (const entry2 of entries) {
         if (!entry2.isDirectory()) continue;
-        const sessionFile = (0, import_path188.join)(sessionsDir, entry2.name, filename);
-        if ((0, import_fs157.existsSync)(sessionFile)) {
+        const sessionFile = (0, import_path190.join)(sessionsDir, entry2.name, filename);
+        if ((0, import_fs159.existsSync)(sessionFile)) {
           try {
-            const mtime = (0, import_fs157.statSync)(sessionFile).mtimeMs;
+            const mtime = (0, import_fs159.statSync)(sessionFile).mtimeMs;
             if (mtime > bestMtime) {
               bestMtime = mtime;
               bestPath = sessionFile;
@@ -119233,10 +119233,10 @@ function resolveStatePath2(directory, filename, sessionId) {
     } catch {
     }
   }
-  const newPath = (0, import_path188.join)(omcRoot, "state", filename);
-  if ((0, import_fs157.existsSync)(newPath)) {
+  const newPath = (0, import_path190.join)(omcRoot, "state", filename);
+  if ((0, import_fs159.existsSync)(newPath)) {
     try {
-      const mtime = (0, import_fs157.statSync)(newPath).mtimeMs;
+      const mtime = (0, import_fs159.statSync)(newPath).mtimeMs;
       if (mtime > bestMtime) {
         bestMtime = mtime;
         bestPath = newPath;
@@ -119245,10 +119245,10 @@ function resolveStatePath2(directory, filename, sessionId) {
       if (!bestPath) bestPath = newPath;
     }
   }
-  const legacyPath = (0, import_path188.join)(omcRoot, filename);
-  if ((0, import_fs157.existsSync)(legacyPath)) {
+  const legacyPath = (0, import_path190.join)(omcRoot, filename);
+  if ((0, import_fs159.existsSync)(legacyPath)) {
     try {
-      const mtime = (0, import_fs157.statSync)(legacyPath).mtimeMs;
+      const mtime = (0, import_fs159.statSync)(legacyPath).mtimeMs;
       if (mtime > bestMtime) {
         bestPath = legacyPath;
       }
@@ -119267,7 +119267,7 @@ function readRalphStateForHud(directory, sessionId) {
     return null;
   }
   try {
-    const content = (0, import_fs157.readFileSync)(stateFile, "utf-8");
+    const content = (0, import_fs159.readFileSync)(stateFile, "utf-8");
     const state = JSON.parse(content);
     if (!state.active) {
       return null;
@@ -119284,15 +119284,15 @@ function readRalphStateForHud(directory, sessionId) {
   }
 }
 function readPrdStateForHud(directory) {
-  let prdPath = (0, import_path188.join)(directory, "prd.json");
-  if (!(0, import_fs157.existsSync)(prdPath)) {
-    prdPath = (0, import_path188.join)(getOmcRoot(directory), "prd.json");
-    if (!(0, import_fs157.existsSync)(prdPath)) {
+  let prdPath = (0, import_path190.join)(directory, "prd.json");
+  if (!(0, import_fs159.existsSync)(prdPath)) {
+    prdPath = (0, import_path190.join)(getOmcRoot(directory), "prd.json");
+    if (!(0, import_fs159.existsSync)(prdPath)) {
       return null;
     }
   }
   try {
-    const content = (0, import_fs157.readFileSync)(prdPath, "utf-8");
+    const content = (0, import_fs159.readFileSync)(prdPath, "utf-8");
     const prd = JSON.parse(content);
     if (!prd.userStories || !Array.isArray(prd.userStories)) {
       return null;
@@ -119345,7 +119345,7 @@ function readAutopilotStateForHud(directory, sessionId) {
     return null;
   }
   try {
-    const content = (0, import_fs157.readFileSync)(stateFile, "utf-8");
+    const content = (0, import_fs159.readFileSync)(stateFile, "utf-8");
     const state = JSON.parse(content);
     if (!state.active) {
       return null;
@@ -119368,12 +119368,12 @@ function readAutopilotStateForHud(directory, sessionId) {
     return null;
   }
 }
-var import_fs157, import_path188, MAX_STATE_AGE_MS2;
+var import_fs159, import_path190, MAX_STATE_AGE_MS2;
 var init_omc_state = __esm({
   "src/hud/omc-state.ts"() {
     "use strict";
-    import_fs157 = require("fs");
-    import_path188 = require("path");
+    import_fs159 = require("fs");
+    import_path190 = require("path");
     init_worktree_paths();
     init_named_workflow_resume_validator();
     MAX_STATE_AGE_MS2 = 2 * 60 * 60 * 1e3;
@@ -119382,7 +119382,7 @@ var init_omc_state = __esm({
 
 // src/hud/custom-rate-provider.ts
 function getCachePath2() {
-  return (0, import_path189.join)(
+  return (0, import_path191.join)(
     getCopilotConfigDir(),
     "plugins",
     "oh-my-copilot",
@@ -119392,8 +119392,8 @@ function getCachePath2() {
 function readCache2() {
   try {
     const p = getCachePath2();
-    if (!(0, import_fs158.existsSync)(p)) return null;
-    return JSON.parse((0, import_fs158.readFileSync)(p, "utf-8"));
+    if (!(0, import_fs160.existsSync)(p)) return null;
+    return JSON.parse((0, import_fs160.readFileSync)(p, "utf-8"));
   } catch {
     return null;
   }
@@ -119401,10 +119401,10 @@ function readCache2() {
 function writeCache2(buckets, identity) {
   try {
     const p = getCachePath2();
-    const dir = (0, import_path189.dirname)(p);
-    if (!(0, import_fs158.existsSync)(dir)) (0, import_fs158.mkdirSync)(dir, { recursive: true });
+    const dir = (0, import_path191.dirname)(p);
+    if (!(0, import_fs160.existsSync)(dir)) (0, import_fs160.mkdirSync)(dir, { recursive: true });
     const cache = { timestamp: Date.now(), buckets, identity };
-    (0, import_fs158.writeFileSync)(p, JSON.stringify(cache, null, 2));
+    (0, import_fs160.writeFileSync)(p, JSON.stringify(cache, null, 2));
   } catch {
   }
 }
@@ -119414,7 +119414,7 @@ function isCacheValid2(cache) {
 function spawnWithTimeout(cmd, timeoutMs) {
   return new Promise((resolve58, reject2) => {
     const [executable, ...args] = Array.isArray(cmd) ? cmd : ["sh", "-c", cmd];
-    const child = (0, import_child_process54.spawn)(executable, args, {
+    const child = (0, import_child_process55.spawn)(executable, args, {
       stdio: ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32"
     });
@@ -119522,14 +119522,14 @@ async function executeCustomProvider(config2) {
     return { buckets: [], stale: false, error: "command failed" };
   }
 }
-var import_child_process54, import_node_crypto18, import_fs158, import_path189, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
+var import_child_process55, import_node_crypto18, import_fs160, import_path191, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS4;
 var init_custom_rate_provider = __esm({
   "src/hud/custom-rate-provider.ts"() {
     "use strict";
-    import_child_process54 = require("child_process");
+    import_child_process55 = require("child_process");
     import_node_crypto18 = require("node:crypto");
-    import_fs158 = require("fs");
-    import_path189 = require("path");
+    import_fs160 = require("fs");
+    import_path191 = require("path");
     init_config_dir();
     CACHE_TTL_MS2 = 3e4;
     DEFAULT_TIMEOUT_MS4 = 800;
@@ -121165,8 +121165,8 @@ var init_effort = __esm({
 // src/hud/elements/api-key-source.ts
 function settingsFileHasApiKey(filePath) {
   try {
-    if (!(0, import_fs159.existsSync)(filePath)) return false;
-    const content = (0, import_fs159.readFileSync)(filePath, "utf-8");
+    if (!(0, import_fs161.existsSync)(filePath)) return false;
+    const content = (0, import_fs161.readFileSync)(filePath, "utf-8");
     const settings = JSON.parse(content);
     const env2 = settings?.env;
     if (typeof env2 !== "object" || env2 === null) return false;
@@ -121177,10 +121177,10 @@ function settingsFileHasApiKey(filePath) {
 }
 function detectApiKeySource(cwd2) {
   if (cwd2) {
-    const projectSettings = (0, import_path190.join)(cwd2, ".copilot", "settings.local.json");
+    const projectSettings = (0, import_path192.join)(cwd2, ".copilot", "settings.local.json");
     if (settingsFileHasApiKey(projectSettings)) return "project";
   }
-  const globalSettings = (0, import_path190.join)(getCopilotConfigDir(), "settings.json");
+  const globalSettings = (0, import_path192.join)(getCopilotConfigDir(), "settings.json");
   if (settingsFileHasApiKey(globalSettings)) return "global";
   if (process.env.ANTHROPIC_API_KEY) return "env";
   return null;
@@ -121189,12 +121189,12 @@ function renderApiKeySource(source) {
   if (!source) return null;
   return `${dim("key:")}${cyan(source)}`;
 }
-var import_fs159, import_path190;
+var import_fs161, import_path192;
 var init_api_key_source = __esm({
   "src/hud/elements/api-key-source.ts"() {
     "use strict";
-    import_fs159 = require("fs");
-    import_path190 = require("path");
+    import_fs161 = require("fs");
+    import_path192 = require("path");
     init_colors();
     init_config_dir();
   }
@@ -121927,7 +121927,7 @@ function findByteBackward(fd, fromExclusive, byte) {
   while (end > 0) {
     const start = Math.max(0, end - SCAN_CHUNK_BYTES);
     const length = end - start;
-    (0, import_fs160.readSync)(fd, buffer, 0, length, start);
+    (0, import_fs162.readSync)(fd, buffer, 0, length, start);
     const index = buffer.subarray(0, length).lastIndexOf(byte);
     if (index !== -1) return start + index;
     end = start;
@@ -121939,7 +121939,7 @@ function findByteForward(fd, fromInclusive, size, byte) {
   const buffer = Buffer.allocUnsafe(SCAN_CHUNK_BYTES);
   while (start < size) {
     const length = Math.min(SCAN_CHUNK_BYTES, size - start);
-    (0, import_fs160.readSync)(fd, buffer, 0, length, start);
+    (0, import_fs162.readSync)(fd, buffer, 0, length, start);
     const index = buffer.subarray(0, length).indexOf(byte);
     if (index !== -1) return start + index;
     start += length;
@@ -121954,19 +121954,19 @@ function readLineContainingOffset(fd, size, offset) {
   const length = endOffset - startOffset;
   if (length <= 0 || length > MAX_BOUNDARY_LINE_BYTES) return null;
   const line = Buffer.allocUnsafe(length);
-  (0, import_fs160.readSync)(fd, line, 0, length, startOffset);
+  (0, import_fs162.readSync)(fd, line, 0, length, startOffset);
   return { line, endOffset };
 }
 function findLastCompactBoundaryEndOffset(transcriptPath, size) {
   if (size <= 0) return null;
-  const fd = (0, import_fs160.openSync)(transcriptPath, "r");
+  const fd = (0, import_fs162.openSync)(transcriptPath, "r");
   try {
     let end = size;
     const buffer = Buffer.allocUnsafe(Math.min(SCAN_CHUNK_BYTES, size));
     while (end > 0) {
       const start = Math.max(0, end - SCAN_CHUNK_BYTES);
       const length = end - start;
-      (0, import_fs160.readSync)(fd, buffer, 0, length, start);
+      (0, import_fs162.readSync)(fd, buffer, 0, length, start);
       const chunk = buffer.subarray(0, length);
       let index = chunk.lastIndexOf(COMPACT_BOUNDARY_MARKER_BYTES);
       while (index !== -1) {
@@ -121981,13 +121981,13 @@ function findLastCompactBoundaryEndOffset(transcriptPath, size) {
       end = start + COMPACT_BOUNDARY_MARKER_BYTES.length - 1;
     }
   } finally {
-    (0, import_fs160.closeSync)(fd);
+    (0, import_fs162.closeSync)(fd);
   }
   return null;
 }
 function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
   if (end <= start) return 0;
-  const fd = (0, import_fs160.openSync)(transcriptPath, "r");
+  const fd = (0, import_fs162.openSync)(transcriptPath, "r");
   try {
     const chunk = Buffer.allocUnsafe(SCAN_CHUNK_BYTES);
     const prefix = Buffer.allocUnsafe(LOCAL_API_REQUEST_PREFIX.length);
@@ -121996,7 +121996,7 @@ function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
     const countLine = (lineEndExclusive) => {
       const lineLength = lineEndExclusive - lineStart;
       if (lineLength >= prefix.length) {
-        const bytesRead = (0, import_fs160.readSync)(fd, prefix, 0, prefix.length, lineStart);
+        const bytesRead = (0, import_fs162.readSync)(fd, prefix, 0, prefix.length, lineStart);
         if (bytesRead === prefix.length && prefix.equals(LOCAL_API_REQUEST_PREFIX)) {
           excludedBytes += lineLength;
         }
@@ -122006,7 +122006,7 @@ function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
     let position = start;
     while (position < end) {
       const length = Math.min(SCAN_CHUNK_BYTES, end - position);
-      (0, import_fs160.readSync)(fd, chunk, 0, length, position);
+      (0, import_fs162.readSync)(fd, chunk, 0, length, position);
       const view = chunk.subarray(0, length);
       let newline = view.indexOf(10);
       while (newline !== -1) {
@@ -122018,7 +122018,7 @@ function countLocalApiRequestRecordBytes(transcriptPath, start, end) {
     if (lineStart < end) countLine(end);
     return excludedBytes;
   } finally {
-    (0, import_fs160.closeSync)(fd);
+    (0, import_fs162.closeSync)(fd);
   }
 }
 function estimateTranscriptPayloadBytes(transcriptPath, size) {
@@ -122033,9 +122033,9 @@ function estimateTranscriptPayloadBytes(transcriptPath, size) {
   );
 }
 function estimatePayloadFromTranscriptPath(transcriptPath) {
-  if (!transcriptPath || !(0, import_fs160.existsSync)(transcriptPath)) return null;
+  if (!transcriptPath || !(0, import_fs162.existsSync)(transcriptPath)) return null;
   try {
-    const stat2 = (0, import_fs160.statSync)(transcriptPath);
+    const stat2 = (0, import_fs162.statSync)(transcriptPath);
     if (!stat2.isFile()) return null;
     return createPayloadEstimate(
       estimateTranscriptPayloadBytes(transcriptPath, stat2.size)
@@ -122044,11 +122044,11 @@ function estimatePayloadFromTranscriptPath(transcriptPath) {
     return null;
   }
 }
-var import_fs160, ANTHROPIC_REQUEST_PAYLOAD_LIMIT_BYTES, PAYLOAD_WARNING_BYTES, PAYLOAD_CRITICAL_BYTES, COMPACT_BOUNDARY_MARKER, COMPACT_BOUNDARY_MARKER_BYTES, LOCAL_API_REQUEST_PREFIX, SCAN_CHUNK_BYTES, MAX_BOUNDARY_LINE_BYTES;
+var import_fs162, ANTHROPIC_REQUEST_PAYLOAD_LIMIT_BYTES, PAYLOAD_WARNING_BYTES, PAYLOAD_CRITICAL_BYTES, COMPACT_BOUNDARY_MARKER, COMPACT_BOUNDARY_MARKER_BYTES, LOCAL_API_REQUEST_PREFIX, SCAN_CHUNK_BYTES, MAX_BOUNDARY_LINE_BYTES;
 var init_payload_estimate = __esm({
   "src/hud/payload-estimate.ts"() {
     "use strict";
-    import_fs160 = require("fs");
+    import_fs162 = require("fs");
     ANTHROPIC_REQUEST_PAYLOAD_LIMIT_BYTES = 32e6;
     PAYLOAD_WARNING_BYTES = 22e6;
     PAYLOAD_CRITICAL_BYTES = 26e6;
@@ -122107,10 +122107,10 @@ function mergeStdinRateLimits(stdinRateLimits, usageResult) {
   };
 }
 function readSessionSummary(stateDir, sessionId) {
-  const statePath = (0, import_path191.join)(stateDir, `session-summary-${sessionId}.json`);
-  if (!(0, import_fs161.existsSync)(statePath)) return null;
+  const statePath = (0, import_path193.join)(stateDir, `session-summary-${sessionId}.json`);
+  if (!(0, import_fs163.existsSync)(statePath)) return null;
   try {
-    return JSON.parse((0, import_fs161.readFileSync)(statePath, "utf-8"));
+    return JSON.parse((0, import_fs163.readFileSync)(statePath, "utf-8"));
   } catch {
     return null;
   }
@@ -122136,22 +122136,22 @@ function spawnSessionSummaryScript(transcriptPath, stateDir, sessionId) {
     return;
   }
   lastSummarySpawnTimestamp = now2;
-  const thisDir = (0, import_path191.dirname)((0, import_url23.fileURLToPath)(importMetaUrl));
-  const scriptPath = (0, import_path191.join)(
+  const thisDir = (0, import_path193.dirname)((0, import_url24.fileURLToPath)(importMetaUrl));
+  const scriptPath = (0, import_path193.join)(
     thisDir,
     "..",
     "..",
     "scripts",
     "session-summary.mjs"
   );
-  if (!(0, import_fs161.existsSync)(scriptPath)) {
+  if (!(0, import_fs163.existsSync)(scriptPath)) {
     if (process.env.OMC_DEBUG) {
       console.error("[HUD] session-summary script not found:", scriptPath);
     }
     return;
   }
   try {
-    const child = (0, import_child_process55.spawn)(
+    const child = (0, import_child_process56.spawn)(
       "node",
       [scriptPath, transcriptPath, stateDir, sessionId],
       {
@@ -122183,12 +122183,12 @@ async function calculateSessionHealth(sessionStart, contextPercent) {
 function showDiagnostic() {
   const version3 = getRuntimePackageVersion();
   const configDir = getCopilotConfigDir();
-  const hudScript = (0, import_path191.join)(configDir, "hud", HUD_SCRIPT_NAMES[0]);
-  const settingsFile = (0, import_path191.join)(configDir, "settings.json");
-  const hudExists = HUD_SCRIPT_NAMES.some((name) => (0, import_fs161.existsSync)((0, import_path191.join)(configDir, "hud", name)));
+  const hudScript = (0, import_path193.join)(configDir, "hud", HUD_SCRIPT_NAMES[0]);
+  const settingsFile = (0, import_path193.join)(configDir, "settings.json");
+  const hudExists = HUD_SCRIPT_NAMES.some((name) => (0, import_fs163.existsSync)((0, import_path193.join)(configDir, "hud", name)));
   let statusLineOk = false;
   try {
-    const settings = JSON.parse((0, import_fs161.readFileSync)(settingsFile, "utf-8"));
+    const settings = JSON.parse((0, import_fs163.readFileSync)(settingsFile, "utf-8"));
     const sl = settings.statusLine;
     const command = sl && typeof sl === "object" && typeof sl.command === "string" ? sl.command : typeof sl === "string" ? sl : null;
     statusLineOk = command !== null && HUD_COMMAND_MARKERS.some((marker) => command.includes(marker));
@@ -122291,8 +122291,8 @@ async function mainImpl(watchMode = false, skipInit = false) {
     }
     try {
       const updateCacheFile = getUpdateCheckCachePath();
-      await (0, import_promises35.access)(updateCacheFile);
-      const content = await (0, import_promises35.readFile)(updateCacheFile, "utf-8");
+      await (0, import_promises36.access)(updateCacheFile);
+      const content = await (0, import_promises36.readFile)(updateCacheFile, "utf-8");
       const cached2 = JSON.parse(content);
       if (cached2?.latestVersion && omcVersion && compareVersions2(omcVersion, cached2.latestVersion) < 0) {
         updateAvailable = cached2.latestVersion;
@@ -122314,7 +122314,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
     let sessionSummary = null;
     const sessionSummaryEnabled = config2.elements.sessionSummary ?? false;
     if (sessionSummaryEnabled && resolvedTranscriptPath && currentSessionId) {
-      const omcStateDir = (0, import_path191.join)(getOmcRoot(cwd2), "state");
+      const omcStateDir = (0, import_path193.join)(getOmcRoot(cwd2), "state");
       sessionSummary = readSessionSummary(omcStateDir, currentSessionId);
       const shouldSpawn = !sessionSummary?.generatedAt || Date.now() - new Date(sessionSummary.generatedAt).getTime() > 6e4;
       if (shouldSpawn) {
@@ -122372,7 +122372,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
       apiKeyMode: detectApiKeySource(cwd2) !== null,
       subscriptionType: subscriptionInfo.subscriptionType,
       rateLimitTier: subscriptionInfo.rateLimitTier,
-      profileName: process.env.COPILOT_HOME ? (0, import_path191.basename)(process.env.COPILOT_HOME).replace(/^\./, "") : null,
+      profileName: process.env.COPILOT_HOME ? (0, import_path193.basename)(process.env.COPILOT_HOME).replace(/^\./, "") : null,
       sessionSummary,
       lastToolName: transcriptData.lastToolName,
       recentTools: transcriptData.recentTools,
@@ -122390,10 +122390,10 @@ async function mainImpl(watchMode = false, skipInit = false) {
     }
     if (config2.contextLimitWarning.autoCompact && context.contextPercent >= config2.contextLimitWarning.threshold) {
       try {
-        const omcStateDir = (0, import_path191.join)(getOmcRoot(cwd2), "state");
-        (0, import_fs161.mkdirSync)(omcStateDir, { recursive: true });
-        const triggerFile = (0, import_path191.join)(omcStateDir, "compact-requested.json");
-        (0, import_fs161.writeFileSync)(
+        const omcStateDir = (0, import_path193.join)(getOmcRoot(cwd2), "state");
+        (0, import_fs163.mkdirSync)(omcStateDir, { recursive: true });
+        const triggerFile = (0, import_path193.join)(omcStateDir, "compact-requested.json");
+        (0, import_fs163.writeFileSync)(
           triggerFile,
           JSON.stringify({
             requestedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -122435,7 +122435,7 @@ async function mainImpl(watchMode = false, skipInit = false) {
 function main2(watchMode = false, skipInit = false) {
   return withWorktreePathRenderScope(() => mainImpl(watchMode, skipInit));
 }
-var import_fs161, import_promises35, import_path191, import_child_process55, import_url23, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
+var import_fs163, import_promises36, import_path193, import_child_process56, import_url24, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, SAME_WINDOW_TOLERANCE_MS, lastSummarySpawnTimestamp, summaryProcessPid;
 var init_hud = __esm({
   "src/hud/index.ts"() {
     "use strict";
@@ -122453,11 +122453,11 @@ var init_hud = __esm({
     init_version();
     init_auto_update();
     init_worktree_paths();
-    import_fs161 = require("fs");
-    import_promises35 = require("fs/promises");
-    import_path191 = require("path");
-    import_child_process55 = require("child_process");
-    import_url23 = require("url");
+    import_fs163 = require("fs");
+    import_promises36 = require("fs/promises");
+    import_path193 = require("path");
+    import_child_process56 = require("child_process");
+    import_url24 = require("url");
     init_worktree_paths();
     init_config_dir();
     HUD_SCRIPT_NAMES = ["omg-hud.mjs", "omcp-hud.mjs", "omcp-hud.js"];
@@ -122478,8 +122478,8 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 init_esm();
 init_source();
-var import_path192 = require("path");
-var import_fs162 = require("fs");
+var import_path194 = require("path");
+var import_fs164 = require("fs");
 init_config_dir();
 init_env_vars();
 init_loader();
@@ -124296,22 +124296,22 @@ function isEscapedByOddBackslashes(text, index) {
 }
 function findSubstitutionEnd(text, start) {
   let depth = 1;
-  let quote2 = null;
+  let quote3 = null;
   let sawCase = false;
   let casePatternPending = false;
   let word = "";
   for (let index = start + 2; index < text.length; index += 1) {
     const character = text[index] ?? "";
-    if (quote2 === "'") {
-      if (character === "'") quote2 = null;
+    if (quote3 === "'") {
+      if (character === "'") quote3 = null;
       continue;
     }
-    if (quote2 === '"') {
+    if (quote3 === '"') {
       if (character === "\\") {
         index += 1;
         continue;
       }
-      if (character === '"') quote2 = null;
+      if (character === '"') quote3 = null;
       continue;
     }
     if (character === "\\") {
@@ -124330,7 +124330,7 @@ function findSubstitutionEnd(text, start) {
       continue;
     }
     if (character === "'" || character === '"') {
-      quote2 = character;
+      quote3 = character;
       continue;
     }
     if (/[A-Za-z]/.test(character)) {
@@ -124361,25 +124361,25 @@ function findSubstitutionEnd(text, start) {
 function findNestedSubstitutions(clauses) {
   const nested = [];
   for (const clause of clauses) {
-    let quote2 = null;
+    let quote3 = null;
     for (let index = 0; index < clause.text.length; index += 1) {
       const character = clause.text[index] ?? "";
-      if (quote2 === "'") {
-        if (character === "'") quote2 = null;
+      if (quote3 === "'") {
+        if (character === "'") quote3 = null;
         continue;
       }
-      if (quote2 === '"') {
+      if (quote3 === '"') {
         if (character === "\\") {
           index += 1;
           continue;
         }
-        if (character === '"' && !isEscapedByOddBackslashes(clause.text, index)) quote2 = null;
+        if (character === '"' && !isEscapedByOddBackslashes(clause.text, index)) quote3 = null;
       } else if (character === "'") {
-        quote2 = "'";
+        quote3 = "'";
       } else if (character === '"') {
-        quote2 = '"';
+        quote3 = '"';
       }
-      if (quote2 === "'") continue;
+      if (quote3 === "'") continue;
       if (character === "\\") {
         index += 1;
         continue;
@@ -124394,7 +124394,7 @@ function findNestedSubstitutions(clauses) {
           nested.push({ text: clause.text.slice(index + 2, end), index: clause.index + index + 2 });
           index = end;
         }
-      } else if (quote2 === null && (clause.text.startsWith("<(", index) || clause.text.startsWith(">(", index))) {
+      } else if (quote3 === null && (clause.text.startsWith("<(", index) || clause.text.startsWith(">(", index))) {
         const end = findSubstitutionEnd(clause.text, index);
         if (end >= 0) {
           nested.push({ text: clause.text.slice(index + 2, end), index: clause.index + index + 2 });
@@ -124505,22 +124505,22 @@ function tokenizeCommand(segment) {
     while (index < segment.length && /\s/.test(segment[index] ?? "")) index += 1;
     if (index >= segment.length) break;
     const start = index;
-    let quote2 = null;
+    let quote3 = null;
     let raw = "";
     while (index < segment.length) {
       const character = segment[index] ?? "";
-      if (quote2 !== null) {
+      if (quote3 !== null) {
         raw += character;
-        if (quote2 === "'") {
-          if (character === "'") quote2 = null;
+        if (quote3 === "'") {
+          if (character === "'") quote3 = null;
         } else if (character === '"' && !isEscapedByOddBackslashes2(segment, index)) {
-          quote2 = null;
+          quote3 = null;
         }
         index += 1;
         continue;
       }
       if ((character === '"' || raw.length === 0 || segment.indexOf(character, index + 1) >= 0) && (character === "'" || character === '"')) {
-        quote2 = character;
+        quote3 = character;
         raw += character;
         index += 1;
         continue;
@@ -124545,15 +124545,15 @@ function tokenizeCommand(segment) {
 function splitCommandClauses(line) {
   const clauses = [];
   let start = 0;
-  let quote2 = null;
+  let quote3 = null;
   let index = 0;
   while (index < line.length) {
     const character = line[index] ?? "";
-    if (quote2 !== null) {
-      if (quote2 === "'") {
-        if (character === "'") quote2 = null;
+    if (quote3 !== null) {
+      if (quote3 === "'") {
+        if (character === "'") quote3 = null;
       } else if (character === '"' && !isEscapedByOddBackslashes2(line, index)) {
-        quote2 = null;
+        quote3 = null;
       }
       index += 1;
       continue;
@@ -124563,7 +124563,7 @@ function splitCommandClauses(line) {
       continue;
     }
     if (character === "'" || character === '"') {
-      quote2 = character;
+      quote3 = character;
       index += 1;
       continue;
     }
@@ -125309,24 +125309,24 @@ function isExplicitSqlContext(line, end, start) {
   );
 }
 function hasOpenShellQuote(text) {
-  let quote2 = null;
+  let quote3 = null;
   for (let index = 0; index < text.length; index += 1) {
     const character = text[index] ?? "";
-    if (quote2 === "'") {
-      if (character === "'") quote2 = null;
+    if (quote3 === "'") {
+      if (character === "'") quote3 = null;
       continue;
     }
-    if (quote2 === '"') {
+    if (quote3 === '"') {
       if (character === "\\") {
         index += 1;
         continue;
       }
-      if (character === '"') quote2 = null;
+      if (character === '"') quote3 = null;
       continue;
     }
-    if (character === "'" || character === '"') quote2 = character;
+    if (character === "'" || character === '"') quote3 = character;
   }
-  return quote2 !== null;
+  return quote3 !== null;
 }
 function hasSqlClientCommandContext(before) {
   const lastNewline = before.lastIndexOf("\n");
@@ -125488,19 +125488,19 @@ function isDocumentationSqlExample(line, index) {
 var HEREDOC_INTERPRETER = /^(?:[\w./@-]+\/)?(?:bash|sh|dash|zsh|ksh|sqlite3|psql|mysql|mariadb|sqlcmd)$/i;
 function findHereDocMarkers(line) {
   const markers = [];
-  let quote2 = null;
+  let quote3 = null;
   for (let index = 0; index < line.length; index += 1) {
     const character = line[index] ?? "";
-    if (quote2 === "'") {
-      if (character === "'") quote2 = null;
+    if (quote3 === "'") {
+      if (character === "'") quote3 = null;
       continue;
     }
-    if (quote2 === '"') {
+    if (quote3 === '"') {
       if (character === "\\") {
         index += 1;
         continue;
       }
-      if (character === '"') quote2 = null;
+      if (character === '"') quote3 = null;
       continue;
     }
     if (character === "\\") {
@@ -125508,11 +125508,11 @@ function findHereDocMarkers(line) {
       continue;
     }
     if (character === "'") {
-      quote2 = "'";
+      quote3 = "'";
       continue;
     }
     if (character === '"') {
-      quote2 = '"';
+      quote3 = '"';
       continue;
     }
     if (character === "#" && (index === 0 || /\s/.test(line[index - 1] ?? ""))) return [];
@@ -127405,8 +127405,8 @@ function isConsecutiveCanonicalShareMet(history, threshold = RETIREMENT_POLICY.m
       reason: `insufficient releases: have ${history.length}, need ${requiredConsecutive}`
     };
   }
-  const tail2 = history.slice(-requiredConsecutive);
-  const evaluated = tail2.map((h) => {
+  const tail3 = history.slice(-requiredConsecutive);
+  const evaluated = tail3.map((h) => {
     const r = isCanonicalShareMet(h.aliasCount, h.canonicalCount, threshold);
     return { share: r.share, met: r.met };
   });
@@ -127568,8 +127568,8 @@ var ENTRYPOINT_RE = /scripts\/([A-Za-z0-9._-]+\.mjs)((?:"|\s)[^"]*)?$/;
 function parseEntrypointCommand(command) {
   const m = ENTRYPOINT_RE.exec(command);
   if (!m) return null;
-  const tail2 = (m[2] ?? "").trim();
-  const args = tail2.length > 0 ? tail2.split(/\s+/) : [];
+  const tail3 = (m[2] ?? "").trim();
+  const args = tail3.length > 0 ? tail3.split(/\s+/) : [];
   return { entrypoint: m[1], args };
 }
 function riskClassForEntrypoint(entrypoint) {
@@ -134239,8 +134239,8 @@ function enumerateFrontier(mapNumber, records2) {
     if (record2.assignees > 0) continue;
     const parsed = parseBlocked(record2.body);
     const blockers = [...record2.nativeBlockedBy ?? [], ...parsed.blockers];
-    const blocked = blockers.some((blocker) => (stateByNumber.get(blocker) ?? "OPEN") !== "CLOSED");
-    if (blocked) continue;
+    const blocked2 = blockers.some((blocker) => (stateByNumber.get(blocker) ?? "OPEN") !== "CLOSED");
+    if (blocked2) continue;
     const type = ticketType(record2.labels);
     const ticket = {
       number: record2.number,
@@ -134491,15 +134491,15 @@ function storiesFromPlan(plan, records2) {
   return stories;
 }
 function launchGate(outcomes, records2) {
-  const blocked = [];
+  const blocked2 = [];
   for (const outcome of outcomes) {
     if (outcome.action !== "drafted-then-stopped") continue;
     const record2 = records2.find((r) => r.number === outcome.ticket);
     if (criteriaItems(record2?.body ?? "").length === 0) {
-      blocked.push({ ticket: outcome.ticket, reason: "drafted criteria not yet accepted (no criteria section on the ticket)" });
+      blocked2.push({ ticket: outcome.ticket, reason: "drafted criteria not yet accepted (no criteria section on the ticket)" });
     }
   }
-  return { ok: blocked.length === 0, blocked };
+  return { ok: blocked2.length === 0, blocked: blocked2 };
 }
 function currentBranch2(directory) {
   try {
@@ -142582,45 +142582,45 @@ function runPrepare(opts) {
   const steps = [];
   const housekeepingCommits = [];
   const git5 = (...args) => exec3("git", args, { cwd: cwd2 });
-  const fail6 = (name, detail, extra = {}) => {
+  const fail7 = (name, detail, extra = {}) => {
     steps.push({ name, status: "failed", detail });
     return { ok: false, steps, housekeepingCommits, blockedReason: `${name}: ${detail.split("\n")[0]}`, ...extra };
   };
   const head = () => git5("rev-parse", "HEAD").stdout.trim();
   for (const [label, name] of [["base", base], ["branch", opts.branch]]) {
     if (!isPlainBranchName(name) || git5("check-ref-format", "--branch", name).status !== 0) {
-      return fail6("preflight", `${label} ${JSON.stringify(name)} is not a valid branch name`);
+      return fail7("preflight", `${label} ${JSON.stringify(name)} is not a valid branch name`);
     }
   }
-  if (!/^[\w][\w.-]*$/.test(remote)) return fail6("preflight", `remote ${JSON.stringify(remote)} is not a valid remote name`);
-  if (!/^[0-9a-f]{40}$/.test(opts.reviewedSha)) return fail6("preflight", `reviewed sha ${JSON.stringify(opts.reviewedSha)} is not a full commit id`);
-  if (!/^[0-9a-f]{40}$/.test(baseSha)) return fail6("preflight", `GitHub's base sha ${JSON.stringify(baseSha)} is not a full commit id`);
+  if (!/^[\w][\w.-]*$/.test(remote)) return fail7("preflight", `remote ${JSON.stringify(remote)} is not a valid remote name`);
+  if (!/^[0-9a-f]{40}$/.test(opts.reviewedSha)) return fail7("preflight", `reviewed sha ${JSON.stringify(opts.reviewedSha)} is not a full commit id`);
+  if (!/^[0-9a-f]{40}$/.test(baseSha)) return fail7("preflight", `GitHub's base sha ${JSON.stringify(baseSha)} is not a full commit id`);
   const branch = git5("rev-parse", "--abbrev-ref", "HEAD").stdout.trim();
-  if (!branch || branch === "HEAD") return fail6("preflight", "detached HEAD; check out the PR branch");
-  if (branch === base || branch === "main" || branch === "master") return fail6("preflight", `refusing to prepare on ${branch}; use the PR branch`);
-  if (branch !== opts.branch) return fail6("preflight", `checked out ${branch}, but the ship run is for ${opts.branch}; check out the PR branch`);
+  if (!branch || branch === "HEAD") return fail7("preflight", "detached HEAD; check out the PR branch");
+  if (branch === base || branch === "main" || branch === "master") return fail7("preflight", `refusing to prepare on ${branch}; use the PR branch`);
+  if (branch !== opts.branch) return fail7("preflight", `checked out ${branch}, but the ship run is for ${opts.branch}; check out the PR branch`);
   if (git5("merge-base", "--is-ancestor", opts.reviewedSha, "HEAD").status !== 0) {
-    return fail6("preflight", `HEAD does not contain the reviewed commit ${opts.reviewedSha.slice(0, 12)}; pull the PR branch (merge, never rebase) or re-review`);
+    return fail7("preflight", `HEAD does not contain the reviewed commit ${opts.reviewedSha.slice(0, 12)}; pull the PR branch (merge, never rebase) or re-review`);
   }
   for (const [ref, what] of [["MERGE_HEAD", "a merge"], ["CHERRY_PICK_HEAD", "a cherry-pick"], ["REVERT_HEAD", "a revert"]]) {
-    if (git5("rev-parse", "-q", "--verify", ref).status === 0) return fail6("preflight", `${what} is in progress; commit or abort it first`);
+    if (git5("rev-parse", "-q", "--verify", ref).status === 0) return fail7("preflight", `${what} is in progress; commit or abort it first`);
   }
   for (const marker of ["rebase-merge", "rebase-apply"]) {
     const p = git5("rev-parse", "--git-path", marker).stdout.trim();
-    if (p && exists((0, import_path186.isAbsolute)(p) ? p : (0, import_path186.join)(cwd2, p))) return fail6("preflight", "a rebase is in progress; finish or abort it (ship never rebases)");
+    if (p && exists((0, import_path186.isAbsolute)(p) ? p : (0, import_path186.join)(cwd2, p))) return fail7("preflight", "a rebase is in progress; finish or abort it (ship never rebases)");
   }
   const dirty = git5("status", "--porcelain", "--untracked-files=no").stdout.trim();
-  if (dirty) return fail6("preflight", `working tree has uncommitted changes:
+  if (dirty) return fail7("preflight", `working tree has uncommitted changes:
 ${dirty}`);
-  if (git5("diff", "--cached", "--quiet").status !== 0) return fail6("preflight", "the index has staged changes; commit or unstage them first");
+  if (git5("diff", "--cached", "--quiet").status !== 0) return fail7("preflight", "the index has staged changes; commit or unstage them first");
   steps.push({ name: "preflight", status: "ok", detail: branch });
   const mismatch = remoteRepoMismatch(exec3, cwd2, remote, opts.repoUrl);
-  if (mismatch) return fail6("remote", `${mismatch}; refusing to fetch (fail closed)`);
+  if (mismatch) return fail7("remote", `${mismatch}; refusing to fetch (fail closed)`);
   const fetched = git5("fetch", remote, base);
-  if (fetched.status !== 0) return fail6("fetch", tail(fetched.stderr));
+  if (fetched.status !== 0) return fail7("fetch", tail(fetched.stderr));
   const local = git5("rev-parse", "--verify", upstream);
   if (local.status !== 0 || local.stdout.trim() !== baseSha) {
-    return fail6("fetch", `${upstream} is ${local.stdout.trim() || "missing"}, but GitHub reports ${base} at ${baseSha}; refusing (fail closed; re-run if ${base} just moved)`);
+    return fail7("fetch", `${upstream} is ${local.stdout.trim() || "missing"}, but GitHub reports ${base} at ${baseSha}; refusing (fail closed; re-run if ${base} just moved)`);
   }
   steps.push({ name: "fetch", status: "ok", detail: `${upstream} = ${baseSha}` });
   if (git5("merge-base", "--is-ancestor", baseSha, "HEAD").status === 0) {
@@ -142631,11 +142631,11 @@ ${dirty}`);
       const conflicts = lines2(git5("diff", "--name-only", "--diff-filter=U").stdout);
       const inventoryOnly = conflicts.length > 0 && conflicts.every((f) => f.startsWith(`${INVENTORY_DIR}/`));
       if (!inventoryOnly) {
-        return fail6("merge-base", conflicts.length > 0 ? `conflicts outside ${INVENTORY_DIR}/ need a human or a fix lane: ${conflicts.join(", ")} (resolve and commit, or git merge --abort)` : tail(merged.stderr || merged.stdout), { conflicts });
+        return fail7("merge-base", conflicts.length > 0 ? `conflicts outside ${INVENTORY_DIR}/ need a human or a fix lane: ${conflicts.join(", ")} (resolve and commit, or git merge --abort)` : tail(merged.stderr || merged.stdout), { conflicts });
       }
       for (const args of [["checkout", "--theirs", "--", INVENTORY_DIR], ["add", "--", INVENTORY_DIR], ["commit", "--no-edit", "--no-verify"]]) {
         const r = git5(...args);
-        if (r.status !== 0) return fail6("merge-base", `git ${args.join(" ")}: ${tail(r.stderr || r.stdout)}`, { conflicts });
+        if (r.status !== 0) return fail7("merge-base", `git ${args.join(" ")}: ${tail(r.stderr || r.stdout)}`, { conflicts });
       }
       steps.push({ name: "merge-base", status: "ok", detail: `merged ${base} ${baseSha.slice(0, 12)}; inventory conflict resolved with --theirs` });
     } else {
@@ -142659,7 +142659,7 @@ ${dirty}`);
         continue;
       }
       const r = exec3(node, args, { cwd: cwd2 });
-      if (r.status !== 0) return fail6(name, tail(`${r.stdout}
+      if (r.status !== 0) return fail7(name, tail(`${r.stdout}
 ${r.stderr}`));
       steps.push({ name, status: "ok", detail: args.slice(1).join(" ").slice(0, 300) });
     }
@@ -142670,22 +142670,22 @@ ${r.stderr}`));
     steps.push({ name: "inventory", status: "skipped", detail: "baseline is current" });
   } else {
     const written = exec3(node, [INVENTORY_SCRIPT, "--write"], { cwd: cwd2 });
-    if (written.status !== 0) return fail6("inventory", tail(written.stderr || written.stdout));
+    if (written.status !== 0) return fail7("inventory", tail(written.stderr || written.stdout));
     const added = git5("add", "--", INVENTORY_DIR);
-    if (added.status !== 0) return fail6("inventory", `git add -- ${INVENTORY_DIR}: ${tail(added.stderr || added.stdout)}`);
+    if (added.status !== 0) return fail7("inventory", `git add -- ${INVENTORY_DIR}: ${tail(added.stderr || added.stdout)}`);
     if (git5("diff", "--cached", "--quiet", "--", INVENTORY_DIR).status !== 0) {
       const committed = git5("commit", "--no-verify", "-m", INVENTORY_COMMIT_MESSAGE, "--", INVENTORY_DIR);
-      if (committed.status !== 0) return fail6("inventory", tail(committed.stderr || committed.stdout));
+      if (committed.status !== 0) return fail7("inventory", tail(committed.stderr || committed.stdout));
       housekeepingCommits.push(head());
     }
     const verified = exec3(node, [INVENTORY_SCRIPT, "--verify"], { cwd: cwd2 });
-    if (verified.status !== 0) return fail6("inventory", `regenerated baseline still fails --verify:
+    if (verified.status !== 0) return fail7("inventory", `regenerated baseline still fails --verify:
 ${tail(verified.stderr || verified.stdout)}`);
     steps.push({ name: "inventory", status: "ok", detail: "regenerated as the last commit" });
   }
   if (opts.push) {
     const pushed = git5("push", remote, `HEAD:refs/heads/${opts.branch}`);
-    if (pushed.status !== 0) return fail6("push", tail(pushed.stderr));
+    if (pushed.status !== 0) return fail7("push", tail(pushed.stderr));
     steps.push({ name: "push", status: "ok", detail: `${remote} ${opts.branch}` });
   }
   return { ok: true, steps, housekeepingCommits };
@@ -142995,6 +142995,1010 @@ function shipCommand(execImpl = defaultExec, loadShipConfig = shipConfig) {
   return cmd;
 }
 
+// src/cli/commands/release.ts
+init_esm();
+init_source();
+var import_promises35 = require("readline/promises");
+init_config4();
+init_worktree_paths();
+
+// src/release/checks.ts
+var VERSION_RE = /^\d+\.\d+\.\d+$/;
+function parseReleaseVersion(raw) {
+  const v = raw.trim().replace(/^v/, "");
+  if (!VERSION_RE.test(v)) throw new Error(`version must be X.Y.Z, got ${JSON.stringify(raw)}`);
+  return v;
+}
+function compareVersions3(a, b) {
+  const pa = parseReleaseVersion(a).split(".").map(Number);
+  const pb = parseReleaseVersion(b).split(".").map(Number);
+  for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i] - pb[i];
+  return 0;
+}
+var escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function releaseProseProblems(version3, changelog, releaseBody) {
+  const problems = [];
+  const v = escapeRe(version3);
+  if (changelog === null) problems.push("CHANGELOG.md is missing");
+  else {
+    if (!new RegExp(`^## \\[${v}\\]`, "m").test(changelog)) problems.push(`CHANGELOG.md has no "## [${version3}] - YYYY-MM-DD" section`);
+    if (!new RegExp(`^# .+ v${v}(?:[:\\s]|$)`, "m").test(changelog)) problems.push(`CHANGELOG.md has no "# oh-my-copilot v${version3}" heading (the release boundary greps for it)`);
+  }
+  if (releaseBody === null || releaseBody.trim() === "") problems.push(".github/release-body.md is missing or empty");
+  else if (!releaseBody.includes(version3)) problems.push(`.github/release-body.md does not mention ${version3}`);
+  return problems;
+}
+var VERSION_STAMPS = [
+  { file: ".claude-plugin/plugin.json", pattern: /"version": "[^"]*"/, replace: (v) => `"version": "${v}"` },
+  { file: "plugin.json", pattern: /"version": "[^"]*"/, replace: (v) => `"version": "${v}"` },
+  { file: ".claude-plugin/marketplace.json", pattern: /"version": "[^"]*"/g, replace: (v) => `"version": "${v}"` },
+  { file: "docs/CLAUDE.md", pattern: /<!-- OMC:VERSION:[^ ]* -->/g, replace: (v) => `<!-- OMC:VERSION:${v} -->` },
+  { file: "CLAUDE.md", pattern: /<!-- OMC:VERSION:[^ ]* -->/g, replace: (v) => `<!-- OMC:VERSION:${v} -->` },
+  { file: ".github/CLAUDE.md", pattern: /<!-- OMC:VERSION:[^ ]* -->/g, replace: (v) => `<!-- OMC:VERSION:${v} -->` },
+  { file: "tests/fixtures/prompt-projection/claude-managed-block.golden", pattern: /<!-- OMC:VERSION:[^ ]* -->/g, replace: (v) => `<!-- OMC:VERSION:${v} -->` },
+  { file: ".github/upstream-port.json", pattern: /"fork_version": "[^"]*"/g, replace: (v) => `"fork_version": "${v}"` }
+];
+function stampVersion(content, stamp, version3) {
+  const pattern = new RegExp(stamp.pattern.source, stamp.pattern.flags);
+  if (!pattern.test(content)) return null;
+  return content.replace(new RegExp(stamp.pattern.source, stamp.pattern.flags), stamp.replace(version3));
+}
+var DIST_OUTPUT = /^dist\/(.+?)\.(?:d\.ts\.map|d\.ts|js\.map|js)$/;
+var SOURCE_EXTS = [".ts", ".tsx", ".js", ".jsx"];
+function findDistOrphans(trackedDist, exists) {
+  const orphans = [];
+  for (const raw of trackedDist) {
+    const file = raw.replace(/\\/g, "/");
+    const m = DIST_OUTPUT.exec(file);
+    if (!m) continue;
+    if (!SOURCE_EXTS.some((ext) => exists(`src/${m[1]}${ext}`))) orphans.push(file);
+  }
+  return orphans;
+}
+var REPO_DIRS = /(?:^|\/)((?:src|tests|scripts|benchmark|bridge|skills|hooks)\/.+)$/;
+function repoRelativeTestPath(file) {
+  const norm = file.replace(/\\/g, "/");
+  return REPO_DIRS.exec(norm)?.[1] ?? norm;
+}
+function failingTitlesFromVitestJson(text) {
+  const report = JSON.parse(text);
+  if (!Array.isArray(report?.testResults)) throw new Error("not a vitest JSON report (no testResults)");
+  const out = /* @__PURE__ */ new Set();
+  for (const file of report.testResults) {
+    const rel = repoRelativeTestPath(file.name ?? "");
+    const failed2 = (file.assertionResults ?? []).filter((a) => a.status === "failed");
+    for (const a of failed2) out.add(`${rel} > ${a.fullName ?? a.title ?? ""}`);
+    if (failed2.length === 0 && file.status === "failed") out.add(rel);
+  }
+  return [...out].sort();
+}
+function parseBaselineTitles(text) {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{")) return failingTitlesFromVitestJson(trimmed);
+  return trimmed.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#")).map((l) => {
+    const [file, ...rest] = l.split(" > ");
+    return rest.length > 0 ? `${repoRelativeTestPath(file)} > ${rest.join(" > ")}` : repoRelativeTestPath(file);
+  });
+}
+function newFailures(failing, baseline) {
+  const known = new Set(baseline);
+  return failing.filter((t) => !known.has(t));
+}
+function smokeProblems(stdout) {
+  const start = stdout.indexOf("{");
+  let report;
+  try {
+    report = JSON.parse(start >= 0 ? stdout.slice(start) : stdout);
+  } catch {
+    return ["smoke did not print a JSON report"];
+  }
+  const problems = [];
+  if (typeof report.skipped === "string" && report.skipped) problems.push(`smoke skipped: ${report.skipped}`);
+  const checks = Array.isArray(report.checks) ? report.checks : [];
+  if (checks.length === 0) problems.push("smoke reported no checks");
+  for (const c of checks) if (c.ok !== true) problems.push(`${String(c.id)}: ${String(c.detail ?? "failed")}`);
+  if (report.ok !== true && problems.length === 0) problems.push("smoke report ok=false");
+  return problems;
+}
+function remoteTagTarget(lsRemote, tag) {
+  let object3;
+  let peeled;
+  for (const line of lsRemote.split(/\r?\n/)) {
+    const [sha, ref] = line.trim().split(/\s+/);
+    if (ref === `refs/tags/${tag}`) object3 = sha;
+    else if (ref === `refs/tags/${tag}^{}`) peeled = sha;
+  }
+  if (!object3) return null;
+  return { object: object3, commit: peeled ?? object3, annotated: peeled !== void 0 };
+}
+function tagTargetProblem(tag, objectType3, peeled, expected) {
+  if (objectType3.trim() !== "tag") return `${tag} is a ${objectType3.trim() || "missing"} object, not an annotated tag`;
+  if (peeled.trim() !== expected) return `${tag}^{} is ${peeled.trim().slice(0, 12) || "unresolved"}, not the main merge commit ${expected.slice(0, 12)}`;
+  return null;
+}
+
+// src/release/engine.ts
+var import_child_process54 = require("child_process");
+var import_fs156 = require("fs");
+var import_path187 = require("path");
+var import_url23 = require("url");
+init_atomic_write();
+init_config4();
+init_exec();
+var PHASES2 = ["preflight", "bump", "build", "gates", "smoke", "commit", "pr", "promote", "tag", "verify"];
+function isPhaseId(value) {
+  return PHASES2.includes(value);
+}
+var PROSE_FILES = ["CHANGELOG.md", ".github/release-body.md", "README.md", "docs/REFERENCE.md", "docs/MIGRATION.md"];
+var SHELL_SAFE_ARG = /^[\w@./:=-]+$/;
+var defaultReleaseExec = (cmd, args, opts) => {
+  const shell = process.platform === "win32" && cmd === "npm";
+  if (shell && !args.every((a) => SHELL_SAFE_ARG.test(a))) {
+    return { status: 1, stdout: "", stderr: `refusing to pass ${JSON.stringify(args)} to npm through cmd.exe` };
+  }
+  const result = (0, import_child_process54.spawnSync)(shell ? ["npm", ...args].join(" ") : cmd, shell ? [] : args, {
+    cwd: opts?.cwd,
+    env: { ...scrubShipEnv(process.env), ...opts?.env },
+    encoding: "utf8",
+    windowsHide: true,
+    maxBuffer: 512 * 1024 * 1024,
+    shell,
+    timeout: opts?.timeoutMs
+  });
+  return {
+    status: result.status ?? 1,
+    stdout: result.stdout ?? "",
+    stderr: `${result.stderr ?? ""}${result.error ? result.error.message : ""}`
+  };
+};
+var PhaseStop = class extends Error {
+  constructor(outcome) {
+    super(outcome.note);
+    this.outcome = outcome;
+  }
+};
+var fail6 = (note, details) => {
+  throw new PhaseStop({ status: "fail", note, details });
+};
+var blocked = (note, details) => {
+  throw new PhaseStop({ status: "blocked", note, details });
+};
+function releaseStatePath(stateRoot2, version3) {
+  return (0, import_path187.join)(stateRoot2, "release", `${version3}.json`);
+}
+function readReleaseState(stateRoot2, version3) {
+  const path30 = releaseStatePath(stateRoot2, version3);
+  if (!(0, import_fs156.existsSync)(path30)) return null;
+  const parsed = JSON.parse((0, import_fs156.readFileSync)(path30, "utf8"));
+  if (parsed?.version !== 1 || parsed.release !== version3 || typeof parsed.phases !== "object") {
+    throw new Error(`${path30} is not a release state for ${version3}`);
+  }
+  return { ...parsed, reruns: parsed.reruns ?? {} };
+}
+function tail2(text, lines3 = 30) {
+  return text.trim().split(/\r?\n/).slice(-lines3);
+}
+var FULL_SHA3 = /^[0-9a-f]{40}$/;
+var RERUN_START_POLLS = 40;
+var LAND_ROUNDS = 500;
+function phasePlan(id, v, opts) {
+  const branch = `release/v${v}`;
+  switch (id) {
+    case "preflight":
+      return [
+        `git status --porcelain is empty apart from ${PROSE_FILES.join(", ")}`,
+        `HEAD is ${branch}; git fetch origin dev; origin/dev is an ancestor of HEAD`,
+        `${v} > package.json version on origin/dev and > npm dist-tags.latest`,
+        "gh auth status; no .git/index.lock (holder reported, never deleted)",
+        `tag v${v} absent on origin (git ls-remote --tags origin)`
+      ];
+    case "bump":
+      return [
+        `refuse unless CHANGELOG.md has "## [${v}]" and "# oh-my-copilot v${v}", and .github/release-body.md mentions ${v}`,
+        `npm version ${v} --no-git-tag-version --ignore-scripts --allow-same-version`,
+        `stamp ${v}: ${VERSION_STAMPS.map((s) => s.file).join(", ")}`,
+        "node scripts/generate-prompt-projections.mjs"
+      ];
+    case "build":
+      return [
+        "npm run build",
+        "git add -f dist bridge",
+        `tracked dist .js/.d.ts/.map without a src source -> ${opts.fixOrphans ? "git rm (--fix-orphans)" : "fail (pass --fix-orphans to remove)"}`,
+        "git ls-files --others dist bridge is empty",
+        `probes: import dist/index.js; dist/cli/index.js --version == ${v}; bridge/cli.cjs --version == ${v}; dist/mcp/standalone-server.js starts and exits`
+      ];
+    case "gates":
+      return [
+        "tsc --noEmit",
+        "generate-prompt-projections.mjs --verify; copilot build-hooks.mjs / build-agents.mjs --verify",
+        "node scripts/ci/check-multirepo-paths.mjs",
+        opts.suite === "full" ? `vitest run --reporter=json; fail only on titles not in ${opts.baseline ?? "(no baseline: any failure fails)"}` : opts.suite === "targeted" ? "vitest related --run <src files changed since the last v* tag>" : "suite: none (pass --suite targeted|full)"
+      ];
+    case "smoke":
+      return opts.liveSmoke ? ["OMC_LIVE_SMOKE=2 node bridge/cli.cjs smoke copilot --tier 2 --json (about 2 premium requests); every check must pass"] : ["SKIPPED: live Tier 2 smoke not requested (pass --live-smoke; about 2 premium requests)"];
+    case "commit":
+      return [
+        `git add -f dist bridge; git add -A; git commit -m "chore(release): v${v}"`,
+        "node scripts/generate-inventory-graph.mjs --write; commit inventory/ if changed; --verify",
+        "git status --porcelain is empty"
+      ];
+    case "pr":
+      return [
+        `git push origin HEAD:refs/heads/${branch} until the PR is merged (plain, never forced; a refused push blocks)`,
+        `gh pr create --base dev --head ${branch} (an open one is reused; a merged one when its merge contains HEAD, or the dev tip once a follow-up PR into dev carried HEAD; else blocks)`,
+        "wait for CI under the ship merge rule (ship.advisoryChecks never block); one rerun of failed jobs, awaited until its new attempt starts",
+        "gh pr merge --admin --merge --match-head-commit <head> when the PR head is local HEAD, ship.allowAdminMerge and dev is a trusted base, else print it"
+      ];
+    case "promote":
+      return [
+        "require the release PR merged into dev (gh pr view); use the dev merge recorded by pr",
+        "gh pr create --base main --head dev (reused when one is open)",
+        "same CI gate and merge as pr, merged only when the PR head contains the dev merge; the main merge must contain it too; record it"
+      ];
+    case "tag":
+      return [
+        `the main merge commit contains the dev merge and its package.json is ${v}`,
+        `confirm (${opts.yes ? "--yes given" : "interactive; --yes skips"})`,
+        `git tag -a v${v} -m v${v} <main merge sha>; v${v}^{} must equal it and be an annotated tag`,
+        `git push origin refs/tags/v${v}; git ls-remote confirms the peeled sha`
+      ];
+    case "verify":
+      return [
+        `find the ci.yml push run of v${v} on the main merge commit; wait; one rerun of failed jobs unless ${v} is already on npm, failing test titles printed`,
+        `npm view oh-my-copilot@${v} version dist-tags.latest dist.attestations`,
+        `gh release view v${v}: published, not a draft; the Copilot smoke (tier 2) job succeeded`
+      ];
+  }
+}
+var Release = class {
+  constructor(deps, opts, existing) {
+    this.deps = deps;
+    this.opts = opts;
+    this.v = opts.version;
+    const at = new Date(deps.now()).toISOString();
+    this.state = existing ?? { version: 1, release: this.v, createdAt: at, updatedAt: at, phases: {}, reruns: {} };
+    this.deadline = deps.now() + (opts.timeoutMinutes ?? 60) * 6e4;
+  }
+  state;
+  v;
+  deadline;
+  pkgName = "oh-my-copilot";
+  get current() {
+    return this.state;
+  }
+  save(patch) {
+    this.state = { ...this.state, ...patch, updatedAt: new Date(this.deps.now()).toISOString() };
+    const path30 = releaseStatePath(this.deps.stateRoot, this.v);
+    (0, import_fs156.mkdirSync)((0, import_path187.join)(this.deps.stateRoot, "release"), { recursive: true });
+    atomicWriteJsonSync(path30, this.state);
+  }
+  run(cmd, args, opts) {
+    return this.deps.exec(cmd, args, { cwd: this.deps.root, ...opts });
+  }
+  /** Run and require exit 0; the phase fails with the output tail otherwise. */
+  must(cmd, args, what, opts) {
+    const r = this.run(cmd, args, opts);
+    if (r.status !== 0) fail6(`${what ?? `${cmd} ${args.join(" ")}`} failed (exit ${r.status})`, tail2(`${r.stdout}
+${r.stderr}`));
+    return r.stdout;
+  }
+  git(...args) {
+    return this.must("git", args).trim();
+  }
+  script(script, ...args) {
+    this.deps.log(`  node ${[script, ...args].join(" ")}`);
+    this.must(this.deps.node, [script, ...args], `node ${[script, ...args].join(" ")}`);
+  }
+  file(rel) {
+    const path30 = (0, import_path187.join)(this.deps.root, rel);
+    return (0, import_fs156.existsSync)(path30) ? (0, import_fs156.readFileSync)(path30, "utf8") : null;
+  }
+  readPkgName() {
+    const pkg = this.file("package.json");
+    if (pkg) this.pkgName = JSON.parse(pkg).name ?? this.pkgName;
+  }
+  async phase(id) {
+    this.readPkgName();
+    try {
+      switch (id) {
+        case "preflight":
+          return this.preflight();
+        case "bump":
+          return this.bump();
+        case "build":
+          return this.build();
+        case "gates":
+          return this.gates();
+        case "smoke":
+          return this.smoke();
+        case "commit":
+          return this.commit();
+        case "pr":
+          return await this.pr();
+        case "promote":
+          return await this.promote();
+        case "tag":
+          return await this.tag();
+        case "verify":
+          return await this.verify();
+      }
+    } catch (error2) {
+      if (error2 instanceof PhaseStop) return error2.outcome;
+      return { status: "fail", note: error2 instanceof Error ? error2.message : String(error2) };
+    }
+  }
+  preflight() {
+    const v = this.v;
+    const problems = [];
+    const dirty = this.must("git", ["status", "--porcelain"]).split(/\r?\n/).filter(Boolean).map((l) => l.slice(3)).filter((entry2) => !entry2.split(" -> ").every((p) => PROSE_FILES.includes(p.replace(/^"|"$/g, ""))));
+    if (dirty.length > 0) problems.push(`working tree is not clean: ${dirty.join(", ")}`);
+    const branch = this.git("rev-parse", "--abbrev-ref", "HEAD");
+    if (branch !== `release/v${v}`) problems.push(`HEAD is ${branch}, expected release/v${v} (git checkout -b release/v${v} origin/dev)`);
+    this.must("git", ["fetch", "origin", "dev"]);
+    if (this.run("git", ["merge-base", "--is-ancestor", "refs/remotes/origin/dev", "HEAD"]).status !== 0) {
+      problems.push("HEAD does not contain origin/dev (git merge origin/dev; never rebase)");
+    }
+    const devPkg = this.run("git", ["show", "refs/remotes/origin/dev:package.json"]);
+    const devVersion = devPkg.status === 0 ? JSON.parse(devPkg.stdout).version : void 0;
+    if (!devVersion) problems.push("could not read package.json on origin/dev");
+    else if (compareVersions3(v, devVersion) <= 0) problems.push(`${v} is not above origin/dev's version ${devVersion}`);
+    const latest2 = this.run("npm", ["view", this.pkgName, "dist-tags.latest"]);
+    if (latest2.status === 0) {
+      const published = latest2.stdout.trim();
+      if (published && compareVersions3(v, published) <= 0) problems.push(`${v} is not above npm latest ${published}`);
+    } else if (!/E404/.test(latest2.stderr)) problems.push(`npm view ${this.pkgName} failed: ${tail2(latest2.stderr, 1).join("")}`);
+    if (this.run("gh", ["auth", "status"]).status !== 0) problems.push("gh is not authenticated (gh auth login)");
+    const lockRel = this.git("rev-parse", "--git-path", "index.lock");
+    const lock = (0, import_path187.isAbsolute)(lockRel) ? lockRel : (0, import_path187.join)(this.deps.root, lockRel);
+    if ((0, import_fs156.existsSync)(lock)) {
+      problems.push(`${lock} exists; another git process may hold it (not deleted; remove it only when no git process runs): ${this.gitProcesses()}`);
+    }
+    const remoteTag = this.run("git", ["ls-remote", "--tags", "origin", `refs/tags/v${v}`]);
+    if (remoteTag.status !== 0) problems.push(`git ls-remote --tags origin failed: ${tail2(remoteTag.stderr, 1).join("")}`);
+    else if (remoteTag.stdout.trim()) problems.push(`tag v${v} already exists on origin`);
+    if (problems.length > 0) fail6(`${problems.length} preflight problem(s)`, problems);
+    this.save({ branch, headSha: void 0, devPr: void 0, devMergeSha: void 0, mainPr: void 0, mainMergeSha: void 0, tagRunId: void 0 });
+    return { status: "ok", note: `on release/v${v} over origin/dev ${devVersion}` };
+  }
+  gitProcesses() {
+    const r = process.platform === "win32" ? this.run("tasklist", ["/FI", "IMAGENAME eq git.exe", "/FO", "CSV", "/NH"]) : this.run("ps", ["-eo", "pid,args"]);
+    const lines3 = r.stdout.split(/\r?\n/).filter((l) => /git(?:\.exe)?\b/i.test(l) && !/INFO:/.test(l));
+    return lines3.length > 0 ? lines3.slice(0, 5).join(" | ") : "no running git process found";
+  }
+  bump() {
+    const v = this.v;
+    const prose = releaseProseProblems(v, this.file("CHANGELOG.md"), this.file(".github/release-body.md"));
+    if (prose.length > 0) fail6("release prose is missing (write it, then re-run)", prose);
+    const pkg = JSON.parse(this.file("package.json") ?? "{}");
+    if (pkg.version !== v) this.must("npm", ["version", v, "--no-git-tag-version", "--ignore-scripts", "--allow-same-version"]);
+    const missing = [];
+    for (const stamp of VERSION_STAMPS) {
+      const content = this.file(stamp.file);
+      const next = content === null ? null : stampVersion(content, stamp, v);
+      if (next === null) missing.push(`${stamp.file}: no version stamp`);
+      else if (next !== content) (0, import_fs156.writeFileSync)((0, import_path187.join)(this.deps.root, stamp.file), next);
+    }
+    if (missing.length > 0) fail6("version stamps missing", missing);
+    this.script("scripts/generate-prompt-projections.mjs");
+    return { status: "ok", note: `version ${v} stamped in package.json and ${VERSION_STAMPS.length} files` };
+  }
+  build() {
+    const v = this.v;
+    this.deps.log("  npm run build");
+    this.must("npm", ["run", "build"], "npm run build");
+    this.git("add", "-f", "dist", "bridge");
+    const tracked = this.git("ls-files", "dist").split(/\r?\n/).filter(Boolean);
+    const orphans = findDistOrphans(tracked, (p) => (0, import_fs156.existsSync)((0, import_path187.join)(this.deps.root, p)));
+    if (orphans.length > 0) {
+      if (!this.opts.fixOrphans) fail6(`${orphans.length} dist file(s) without a src source (re-run with --fix-orphans to remove them)`, orphans);
+      for (let i = 0; i < orphans.length; i += 100) this.git("rm", "-q", "--", ...orphans.slice(i, i + 100));
+    }
+    const untracked = this.git("ls-files", "--others", "dist", "bridge");
+    if (untracked) fail6("untracked files under dist/ or bridge/ after git add -f", untracked.split(/\r?\n/));
+    const probes = [];
+    const importProbe = this.run(this.deps.node, ["--input-type=module", "-e", "await import(process.argv[1])", (0, import_url23.pathToFileURL)((0, import_path187.join)(this.deps.root, "dist", "index.js")).href]);
+    if (importProbe.status !== 0) probes.push(`import dist/index.js failed: ${tail2(importProbe.stderr, 3).join(" ")}`);
+    for (const entry2 of ["dist/cli/index.js", "bridge/cli.cjs"]) {
+      const r = this.run(this.deps.node, [entry2, "--version"]);
+      if (r.status !== 0 || r.stdout.trim() !== v) probes.push(`${entry2} --version printed ${JSON.stringify(r.stdout.trim())} (exit ${r.status}), expected ${v}`);
+    }
+    const mcp = this.run(this.deps.node, ["dist/mcp/standalone-server.js"], { timeoutMs: 3e4 });
+    if (mcp.status !== 0) probes.push(`dist/mcp/standalone-server.js did not start and exit cleanly (exit ${mcp.status}): ${tail2(mcp.stderr, 3).join(" ")}`);
+    if (probes.length > 0) fail6("build probes failed", probes);
+    return { status: "ok", note: `built and staged${orphans.length > 0 ? `; removed ${orphans.length} orphan(s)` : ""}` };
+  }
+  gates() {
+    this.script("node_modules/typescript/bin/tsc", "--noEmit");
+    this.script("scripts/generate-prompt-projections.mjs", "--verify");
+    this.script("scripts/copilot/build-hooks.mjs", "--verify");
+    this.script("scripts/copilot/build-agents.mjs", "--verify");
+    this.script("scripts/ci/check-multirepo-paths.mjs");
+    const suite = this.opts.suite ?? "none";
+    if (suite === "targeted") {
+      const tag = this.run("git", ["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD"]);
+      if (tag.status !== 0) fail6("no v* tag reachable from HEAD for --suite targeted", tail2(tag.stderr, 2));
+      const changed = this.git("diff", "--name-only", `${tag.stdout.trim()}...HEAD`, "--", "src").split(/\r?\n/).filter((f) => /\.(?:ts|tsx|mts)$/.test(f) && !f.endsWith(".d.ts") && (0, import_fs156.existsSync)((0, import_path187.join)(this.deps.root, f)));
+      if (changed.length === 0) return { status: "ok", note: `gates green; no src changes since ${tag.stdout.trim()} for the targeted suite` };
+      this.script("node_modules/vitest/vitest.mjs", "related", "--run", "--exclude", "tests/perf/**", ...changed);
+      return { status: "ok", note: `gates green; targeted suite over ${changed.length} changed src file(s)` };
+    }
+    if (suite === "full") {
+      const out = (0, import_path187.join)(this.deps.stateRoot, "release", `${this.v}-vitest.json`);
+      (0, import_fs156.mkdirSync)((0, import_path187.join)(this.deps.stateRoot, "release"), { recursive: true });
+      (0, import_fs156.rmSync)(out, { force: true });
+      this.deps.log(`  node node_modules/vitest/vitest.mjs run --reporter=json --outputFile=${out}`);
+      const r = this.run(this.deps.node, ["node_modules/vitest/vitest.mjs", "run", "--exclude", "tests/perf/**", "--reporter=json", `--outputFile=${out}`]);
+      if (!(0, import_fs156.existsSync)(out)) fail6(`vitest wrote no JSON report (exit ${r.status})`, tail2(r.stderr));
+      const failing = failingTitlesFromVitestJson((0, import_fs156.readFileSync)(out, "utf8"));
+      const baseline = this.opts.baseline ? parseBaselineTitles((0, import_fs156.readFileSync)(this.opts.baseline, "utf8")) : [];
+      const fresh = newFailures(failing, baseline);
+      if (fresh.length > 0) fail6(`${fresh.length} failing test(s) not in the baseline (report: ${out})`, fresh);
+      return { status: "ok", note: `gates green; full suite: ${failing.length} failing, all in the baseline` };
+    }
+    return { status: "ok", note: "gates green; no vitest suite (--suite none)" };
+  }
+  smoke() {
+    if (!this.opts.liveSmoke) {
+      this.deps.log("  !! SKIPPED the live Tier 2 smoke. The runbook requires it green before tagging: re-run with --from smoke --live-smoke (about 2 premium requests).");
+      return { status: "skipped", note: "live Tier 2 smoke not run (pass --live-smoke)" };
+    }
+    this.deps.log("  OMC_LIVE_SMOKE=2 node bridge/cli.cjs smoke copilot --tier 2 --json");
+    const r = this.run(this.deps.node, ["bridge/cli.cjs", "smoke", "copilot", "--tier", "2", "--json"], { env: { OMC_LIVE_SMOKE: "2" } });
+    const problems = smokeProblems(r.stdout);
+    if (r.status !== 0 && problems.length === 0) problems.push(`smoke exited ${r.status}${r.status === 2 ? " (copilot binary or SDK missing: not a pass)" : ""}`);
+    if (problems.length > 0) fail6("Tier 2 smoke is not green", problems);
+    return { status: "ok", note: "Tier 2 smoke green" };
+  }
+  staged(paths = []) {
+    return this.run("git", ["diff", "--cached", "--quiet", ...paths.length ? ["--", ...paths] : []]).status !== 0;
+  }
+  commit() {
+    const v = this.v;
+    this.git("add", "-f", "dist", "bridge");
+    this.git("add", "-A");
+    const notes = [];
+    if (this.staged()) {
+      this.git("commit", "-m", `chore(release): v${v}`);
+      notes.push("release commit");
+    }
+    this.script("scripts/generate-inventory-graph.mjs", "--write");
+    this.git("add", "-A", "--", "inventory");
+    if (this.staged(["inventory"])) {
+      this.git("commit", "-m", `chore(release): regenerate inventory for v${v}`, "--", "inventory");
+      notes.push("inventory commit");
+    }
+    this.script("scripts/generate-inventory-graph.mjs", "--verify");
+    const left = this.git("status", "--porcelain");
+    if (left) fail6("working tree is not clean after the release commits", left.split(/\r?\n/));
+    const head = this.git("rev-parse", "HEAD");
+    this.save({ headSha: head });
+    return { status: "ok", note: notes.length > 0 ? `${notes.join(" + ")} at ${head.slice(0, 12)}` : "nothing new to commit" };
+  }
+  /** Exit 1 is "no"; any other non-zero exit (missing object, bad ref) is a git error, never a yes. */
+  isAncestor(ancestor, descendant) {
+    const r = this.run("git", ["merge-base", "--is-ancestor", ancestor, descendant]);
+    if (r.status === 0) return true;
+    if (r.status === 1) return false;
+    return fail6(`git merge-base --is-ancestor ${ancestor} ${descendant} failed (exit ${r.status}): ${r.stderr.trim() || "(no stderr)"}`);
+  }
+  viewPr(pr) {
+    return JSON.parse(this.must("gh", ["pr", "view", String(pr), "--json", "number,state,isDraft,baseRefName,baseRefOid,headRefOid,url,mergeCommit"]));
+  }
+  /** The merge commit of a merged PR, else null. */
+  mergedSha(pr) {
+    const view = this.viewPr(pr);
+    const sha = view.state === "MERGED" ? view.mergeCommit?.oid : void 0;
+    return sha && FULL_SHA3.test(sha) ? sha : null;
+  }
+  /** Why the phases before `start` may not be skipped (empty = they may): the state's checkout, then each phase's postconditions. */
+  skipProblems(start) {
+    const problems = [];
+    const released = !!this.state.mainMergeSha && PHASES2.indexOf(start) >= PHASES2.indexOf("tag");
+    const checks = [
+      ["state", () => released ? null : this.provenanceProblem()],
+      ...PHASES2.slice(0, PHASES2.indexOf(start)).map((id) => [id, () => this.postconditionProblem(id, released)])
+    ];
+    for (const [what, check2] of checks) {
+      try {
+        const problem = check2();
+        if (problem) problems.push(`${what}: ${problem}`);
+      } catch (error2) {
+        problems.push(`${what}: ${error2 instanceof PhaseStop ? error2.outcome.note : error2 instanceof Error ? error2.message : String(error2)}`);
+      }
+    }
+    return problems;
+  }
+  /** Why the recorded state does not belong to this checkout (null = it does). */
+  provenanceProblem() {
+    const { branch, headSha } = this.state;
+    if (branch) {
+      const current = this.run("git", ["rev-parse", "--abbrev-ref", "HEAD"]).stdout.trim();
+      if (current !== branch) return `HEAD is ${current || "(unknown)"}, but this release state was recorded on ${branch}`;
+    }
+    if (headSha && !this.isAncestor(headSha, "HEAD")) return `HEAD does not descend from the recorded release commit ${headSha.slice(0, 12)}`;
+    return null;
+  }
+  /**
+   * Why a phase may not be skipped (null = its recorded result still holds):
+   * it must have passed, and the facts later phases build on are re-checked
+   * cheaply (read-only git / gh).
+   */
+  postconditionProblem(id, released = false) {
+    const s = this.state;
+    const status = s.phases[id]?.status;
+    if (status !== "ok" && status !== "skipped") return `has not passed (run it: --from ${id})`;
+    switch (id) {
+      case "bump": {
+        if (released) return null;
+        const version3 = JSON.parse(this.file("package.json") ?? "{}").version;
+        return version3 === this.v ? null : `package.json version is ${version3 ?? "missing"}, not ${this.v} (--from bump)`;
+      }
+      case "commit": {
+        if (!s.headSha || !FULL_SHA3.test(s.headSha)) return "no release commit recorded (--from commit)";
+        if (released) return null;
+        const head = this.git("rev-parse", "HEAD");
+        return head === s.headSha ? null : `HEAD ${head.slice(0, 12)} is not the recorded release commit ${s.headSha.slice(0, 12)}; new local commits must go back through the gates (--from gates)`;
+      }
+      case "pr": {
+        if (s.devPr === void 0 || !s.devMergeSha) return "no merged release PR into dev recorded (--from pr)";
+        const sha = this.mergedSha(s.devPr);
+        if (!sha) return `PR #${s.devPr} is not merged, not at the recorded ${s.devMergeSha.slice(0, 12)} (--from pr)`;
+        if (!s.headSha) return "no release commit recorded (--from commit)";
+        this.must("git", ["fetch", "origin", "dev"]);
+        if (sha !== s.devMergeSha && !this.isAncestor(sha, s.devMergeSha)) return `PR #${s.devPr} is merged at ${sha.slice(0, 12)}, which the recorded dev merge ${s.devMergeSha.slice(0, 12)} does not contain (--from pr)`;
+        return this.isAncestor(s.headSha, s.devMergeSha) ? null : `the dev merge ${s.devMergeSha.slice(0, 12)} does not contain the release commit ${s.headSha.slice(0, 12)} (--from pr)`;
+      }
+      case "promote": {
+        if (s.mainPr === void 0 || !s.mainMergeSha || !s.devMergeSha) return "no main merge commit recorded (--from promote)";
+        const sha = this.mergedSha(s.mainPr);
+        if (sha !== s.mainMergeSha) return `PR #${s.mainPr} is ${sha ? `merged at ${sha.slice(0, 12)}` : "not merged"}, not at the recorded ${s.mainMergeSha.slice(0, 12)} (--from promote)`;
+        this.must("git", ["fetch", "origin", "dev", "main"]);
+        return this.isAncestor(s.devMergeSha, s.mainMergeSha) ? null : `the main merge ${s.mainMergeSha.slice(0, 12)} does not contain the dev merge ${s.devMergeSha.slice(0, 12)}`;
+      }
+      case "tag": {
+        const remote = remoteTagTarget(this.git("ls-remote", "--tags", "origin", `refs/tags/v${this.v}`, `refs/tags/v${this.v}^{}`), `v${this.v}`);
+        return remote?.annotated && remote.commit === s.mainMergeSha ? null : `v${this.v} on origin does not peel to the main merge commit (--from tag)`;
+      }
+      default:
+        return null;
+    }
+  }
+  findPr(head, base, states) {
+    const out = this.must("gh", ["pr", "list", "--head", head, "--base", base, "--state", states, "--json", "number,state,headRefOid,mergeCommit", "--limit", "10"]);
+    const prs = JSON.parse(out || "[]");
+    const open9 = prs.find((p) => p.state === "OPEN");
+    if (open9) return open9.number;
+    const merged = prs.filter((p) => p.state === "MERGED" && FULL_SHA3.test(p.mergeCommit?.oid ?? ""));
+    if (merged.length === 0) return void 0;
+    this.must("git", ["fetch", "origin", base]);
+    return (merged.find((p) => this.isAncestor("HEAD", p.mergeCommit.oid)) ?? merged[0]).number;
+  }
+  createPr(base, head, title) {
+    const out = this.must("gh", ["pr", "create", "--base", base, "--head", head, "--title", title, "--body-file", ".github/release-body.md"]);
+    const m = /\/pull\/(\d+)/.exec(out);
+    if (!m) fail6(`gh pr create printed no PR url: ${out.trim()}`);
+    return Number(m[1]);
+  }
+  async pr() {
+    const branch = `release/v${this.v}`;
+    if (this.state.devPr === void 0 || this.viewPr(this.state.devPr).state !== "MERGED") {
+      const push = this.run("git", ["push", "origin", `HEAD:refs/heads/${branch}`]);
+      if (push.status !== 0) {
+        blocked(`git push origin HEAD:refs/heads/${branch} was refused; never force: git fetch origin ${branch} && git merge origin/${branch}, then re-run omg release ${this.v} --from pr`, tail2(push.stderr, 5));
+      }
+      if (this.state.devPr === void 0) {
+        const pr = this.findPr(branch, "dev", "all") ?? this.createPr("dev", branch, `chore(release): v${this.v}`);
+        this.save({ devPr: pr });
+      }
+    }
+    const sha = await this.land(this.state.devPr, "dev", "pr", this.git("rev-parse", "HEAD"));
+    this.save({ devMergeSha: sha });
+    return { status: "ok", note: `PR #${this.state.devPr} merged into dev at ${sha.slice(0, 12)}` };
+  }
+  async promote() {
+    const devPr = this.state.devPr;
+    if (devPr === void 0) fail6("no release PR into dev recorded; run the pr phase first");
+    if (!this.mergedSha(devPr)) fail6(`release PR #${devPr} is not merged into dev; re-run omg release ${this.v} --from pr`);
+    const devMerge = this.state.devMergeSha;
+    if (!devMerge || !FULL_SHA3.test(devMerge)) fail6(`no dev merge commit recorded; re-run omg release ${this.v} --from pr`);
+    if (this.state.mainPr === void 0) {
+      const pr = this.findPr("dev", "main", "open") ?? this.createPr("main", "dev", `Release v${this.v}`);
+      this.save({ mainPr: pr });
+    }
+    const sha = await this.land(this.state.mainPr, "main", "promote", void 0, devMerge);
+    this.must("git", ["fetch", "origin", "dev", "main"]);
+    if (!this.isAncestor(devMerge, sha)) fail6(`PR #${this.state.mainPr} merged into main at ${sha.slice(0, 12)}, which does not contain the dev merge ${devMerge.slice(0, 12)}`);
+    this.save({ mainMergeSha: sha });
+    return { status: "ok", note: `PR #${this.state.mainPr} merged into main at ${sha.slice(0, 12)}` };
+  }
+  rerunBudget = {
+    count: (id) => this.state.reruns[id] ?? 0,
+    record: (id) => this.save({ reruns: { ...this.state.reruns, [id]: (this.state.reruns[id] ?? 0) + 1 } })
+  };
+  runAttempt(runId) {
+    return JSON.parse(this.must("gh", ["run", "view", runId, "--json", "attempt"]) || "{}").attempt ?? 0;
+  }
+  /**
+   * Rerun each failed run once (budget spent first) and wait until its new
+   * attempt exists: right after `gh run rerun` the run still reads as the old
+   * failed attempt. True when any rerun was issued.
+   */
+  async rerunOnce(runIds, phase, pollMs) {
+    const ready = runIds.filter((id) => this.rerunBudget.count(id) < 1);
+    for (const id of ready) {
+      const before = this.runAttempt(id);
+      this.rerunBudget.record(id);
+      this.deps.log(`  gh run rerun ${id} --failed (the one automatic rerun)`);
+      this.must("gh", ["run", "rerun", id, "--failed"]);
+      for (let polls = 0; this.runAttempt(id) <= before; polls++) {
+        if (polls >= RERUN_START_POLLS || this.deps.now() >= this.deadline) {
+          blocked(`run ${id} was rerun but attempt ${before + 1} has not started; re-run omg release ${this.v} --from ${phase}`);
+        }
+        await this.deps.sleep(pollMs);
+      }
+    }
+    return ready.length > 0;
+  }
+  failingTestsOfJob(jobId) {
+    const log3 = this.run("gh", ["run", "view", "--job", jobId, "--log"]);
+    return log3.status === 0 ? parseFailingTests(log3.stdout).map((t) => t.title ? `${t.file} > ${t.title}` : t.file) : [];
+  }
+  gateDetails(report) {
+    const details = report.failed.map((name) => `failed: ${name}`);
+    for (const check2 of report.checks) {
+      if (check2.class !== "failed" || !check2.jobId) continue;
+      for (const t of this.failingTestsOfJob(check2.jobId)) details.push(`  ${check2.name}: ${t}`);
+    }
+    return details;
+  }
+  /**
+   * Wait for the PR's checks under the ship merge rule (advisoryChecks never
+   * block; config from loadShipConfig: user config + the base's committed
+   * config), rerun failed runs once, then admin-merge when the owner allows
+   * it; with `expectedHead`, only when the PR head is that commit (an
+   * already-merged PR only when its merge, or the base tip after a follow-up
+   * PR, contains it), with
+   * `requireAncestor`, only when the PR head contains that commit. Returns
+   * the merge commit sha.
+   */
+  async land(pr, base, phase, expectedHead, requireAncestor) {
+    for (let round = 0; ; round++) {
+      if (round >= LAND_ROUNDS) blocked(`PR #${pr} is still not merged after ${LAND_ROUNDS} rounds of waiting and merging; check it on GitHub, then re-run omg release ${this.v} --from ${phase}`);
+      const view = this.viewPr(pr);
+      if (view.state === "MERGED") {
+        const sha = view.mergeCommit?.oid;
+        if (!sha || !FULL_SHA3.test(sha)) fail6(`PR #${pr} is merged but gh reported no merge commit`);
+        if (expectedHead) {
+          this.must("git", ["fetch", "origin", base]);
+          if (!this.isAncestor(expectedHead, sha)) {
+            const tip = `refs/remotes/origin/${base}`;
+            if (this.isAncestor(expectedHead, tip) && this.isAncestor(sha, tip)) return this.git("rev-parse", tip);
+            blocked(`The release PR #${pr} is merged at ${sha.slice(0, 12)} without commit(s) up to ${expectedHead.slice(0, 12)}. Open a follow-up PR into ${base} for the extra commits and re-run omg release ${this.v} --from ${phase} after it merges (the release then proceeds from the ${base} commit that contains HEAD).`);
+          }
+        }
+        return sha;
+      }
+      if (view.state !== "OPEN") fail6(`PR #${pr} is ${view.state}`);
+      if (view.baseRefName !== base) fail6(`PR #${pr} targets ${view.baseRefName}, expected ${base}`);
+      if (view.isDraft) fail6(`PR #${pr} is a draft`);
+      const config2 = this.deps.loadShipConfig({ exec: this.deps.exec, root: this.deps.root, base, baseSha: view.baseRefOid, repoUrl: prRepoUrl(view.url) });
+      const remainingMin = Math.max(0, (this.deadline - this.deps.now()) / 6e4);
+      if (remainingMin <= 0) blocked(`PR #${pr}: CI still pending at the --timeout; re-run omg release ${this.v} --from ${phase}`);
+      const { report, timedOut } = await watchGates({
+        exec: this.deps.exec,
+        pr,
+        config: { ...config2, watchTimeoutMinutes: Math.min(config2.watchTimeoutMinutes || remainingMin, remainingMin) },
+        known: loadBaseKnownFlaky(this.deps.exec, this.deps.root, config2.trustedBaseCommit, config2.knownFlakyFile),
+        cwd: this.deps.root,
+        headSha: view.headRefOid,
+        watch: true,
+        reruns: this.rerunBudget,
+        sleep: this.deps.sleep,
+        now: this.deps.now,
+        onReport: (r) => this.deps.progress({ phase, status: "heartbeat", note: `PR #${pr} gates ${r.verdict}: ${r.pending.length} pending, ${r.failed.length} failed` })
+      });
+      if (report.verdict === "green") {
+        if (expectedHead && view.headRefOid !== expectedHead) {
+          blocked(`PR #${pr} head is ${view.headRefOid.slice(0, 12)}, not local HEAD ${expectedHead.slice(0, 12)}; push or merge until they match, then re-run omg release ${this.v} --from ${phase}`);
+        }
+        if (requireAncestor) {
+          this.must("git", ["fetch", "origin", "dev", base]);
+          if (!this.isAncestor(requireAncestor, view.headRefOid)) {
+            blocked(`PR #${pr} head ${view.headRefOid.slice(0, 12)} does not contain ${requireAncestor.slice(0, 12)}; update the PR, then re-run omg release ${this.v} --from ${phase}`);
+          }
+        }
+        const command = ["pr", "merge", String(pr), "--admin", "--merge", "--match-head-commit", view.headRefOid];
+        if (!config2.allowAdminMerge || !config2.trustedBases.includes(base)) {
+          blocked(`PR #${pr} is green; ship.allowAdminMerge is off or ${base} is not a trusted base, so run the merge yourself, then re-run omg release ${this.v} --from ${phase}`, [`gh ${command.join(" ")}`]);
+        }
+        this.deps.log(`  gh ${command.join(" ")}`);
+        this.must("gh", command);
+        continue;
+      }
+      if (report.verdict === "pending" || timedOut) continue;
+      const failedRuns = [...new Set(report.checks.filter((c) => c.class === "failed" && c.runId).map((c) => c.runId))];
+      const finished = failedRuns.filter((id) => !report.checks.some((c) => c.runId === id && c.class === "pending"));
+      if (finished.length < failedRuns.length) {
+        await this.deps.sleep(config2.pollIntervalSeconds * 1e3);
+        continue;
+      }
+      if (await this.rerunOnce(finished, phase, config2.pollIntervalSeconds * 1e3)) continue;
+      fail6(`PR #${pr}: CI failed after the one automatic rerun`, this.gateDetails(report));
+    }
+  }
+  async tag() {
+    const v = this.v;
+    const tag = `v${v}`;
+    const sha = this.state.mainMergeSha;
+    if (!sha || !FULL_SHA3.test(sha)) fail6("no main merge commit recorded; run the promote phase first");
+    const remote = remoteTagTarget(this.git("ls-remote", "--tags", "origin", `refs/tags/${tag}`, `refs/tags/${tag}^{}`), tag);
+    if (remote) {
+      if (remote.annotated && remote.commit === sha) return { status: "ok", note: `${tag} already on origin at ${sha.slice(0, 12)}` };
+      fail6(`${tag} exists on origin at ${remote.commit.slice(0, 12)}${remote.annotated ? "" : " (lightweight)"}, not the main merge commit ${sha.slice(0, 12)}`);
+    }
+    const devMerge = this.state.devMergeSha;
+    if (!devMerge || !FULL_SHA3.test(devMerge)) fail6("no dev merge commit recorded; run the pr phase first");
+    this.must("git", ["fetch", "origin", "dev", "main"]);
+    if (!this.isAncestor(sha, "refs/remotes/origin/main")) fail6(`${sha.slice(0, 12)} is not on origin/main`);
+    if (!this.isAncestor(devMerge, sha)) fail6(`the main merge ${sha.slice(0, 12)} does not contain the dev merge ${devMerge.slice(0, 12)}`);
+    const pkg = this.run("git", ["show", `${sha}:package.json`]);
+    let tagged;
+    try {
+      tagged = JSON.parse(pkg.stdout).version;
+    } catch {
+      tagged = void 0;
+    }
+    if (pkg.status !== 0 || tagged !== v) fail6(`package.json on the main merge ${sha.slice(0, 12)} is ${tagged ?? "unreadable"}, not ${v}`);
+    const local = this.run("git", ["rev-parse", "-q", "--verify", `refs/tags/${tag}`]);
+    if (local.status === 0) {
+      const problem = tagTargetProblem(tag, this.git("cat-file", "-t", `refs/tags/${tag}`), this.git("rev-parse", `refs/tags/${tag}^{}`), sha);
+      if (problem) fail6(`a local ${tag} already exists and ${problem} (an upstream tag fetched by name?); delete it yourself (git tag -d ${tag}) and re-run`);
+    }
+    const smoke = this.state.phases.smoke?.status;
+    const warn = smoke === "ok" ? "" : ` WARNING: the live Tier 2 smoke ${smoke === "skipped" ? "was skipped" : "has not passed"}.`;
+    const action = local.status === 0 ? "Push the existing local" : "Create and push";
+    if (!this.opts.yes && !await this.deps.confirm(`${action} annotated tag ${tag} on main ${sha.slice(0, 12)}? This publishes ${this.pkgName}@${v} to npm.${warn}`)) {
+      blocked(`${tag} not pushed (confirm, or pass --yes)`);
+    }
+    if (local.status !== 0) {
+      this.git("tag", "-a", tag, "-m", tag, sha);
+      const problem = tagTargetProblem(tag, this.git("cat-file", "-t", `refs/tags/${tag}`), this.git("rev-parse", `refs/tags/${tag}^{}`), sha);
+      if (problem) fail6(problem);
+    }
+    this.git("push", "origin", `refs/tags/${tag}:refs/tags/${tag}`);
+    const pushed = remoteTagTarget(this.git("ls-remote", "--tags", "origin", `refs/tags/${tag}`, `refs/tags/${tag}^{}`), tag);
+    if (!pushed?.annotated || pushed.commit !== sha) fail6(`origin's ${tag} does not peel to ${sha.slice(0, 12)} after the push`);
+    return { status: "ok", note: `${tag} pushed on ${sha.slice(0, 12)}` };
+  }
+  async verify() {
+    const v = this.v;
+    const tag = `v${v}`;
+    const sha = this.state.mainMergeSha;
+    if (!sha || !FULL_SHA3.test(sha)) fail6("no main merge commit recorded; run the promote phase first");
+    let run;
+    for (; ; ) {
+      const runs = JSON.parse(this.must("gh", ["run", "list", "--workflow", "ci.yml", "--event", "push", "--commit", sha, "--json", "databaseId,headBranch,headSha,event,status,conclusion", "--limit", "50"]) || "[]");
+      run = runs.filter((r) => r.headBranch === tag && r.headSha === sha && (r.event ?? "push") === "push").sort((a, b) => b.databaseId - a.databaseId)[0];
+      if (run) this.save({ tagRunId: run.databaseId });
+      if (run?.status === "completed") {
+        if (run.conclusion === "success") break;
+        const jobs2 = JSON.parse(this.must("gh", ["run", "view", String(run.databaseId), "--json", "jobs"])).jobs ?? [];
+        const failedJobs = jobs2.filter((j) => j.conclusion && !["success", "skipped"].includes(j.conclusion));
+        const details = () => failedJobs.flatMap((j) => [`failed job: ${j.name}`, ...this.failingTestsOfJob(String(j.databaseId)).map((t) => `  ${t}`)]);
+        if (this.run("npm", ["view", `${this.pkgName}@${v}`, "version"]).stdout.trim() === v) {
+          fail6(`tag run ${run.databaseId} ${run.conclusion}, but ${this.pkgName}@${v} is already on npm: not rerun`, [
+            `npm view ${this.pkgName}@${v} version dist-tags dist.attestations: if live with provenance, do NOT rerun the run`,
+            `create the GitHub Release with the Release Recovery workflow (release.yml, workflow_dispatch: tag=${tag} sha=${sha}) or gh release create ${tag} --title ${tag} --notes-file .github/release-body.md`,
+            `then re-run omg release ${v} --from verify`,
+            ...details()
+          ]);
+        }
+        if (await this.rerunOnce([String(run.databaseId)], "verify", 3e4)) continue;
+        fail6(`tag run ${run.databaseId} ${run.conclusion} after the one automatic rerun`, details());
+      }
+      if (this.deps.now() >= this.deadline) blocked(`tag run for ${tag} ${run ? `still ${run.status}` : "not found yet"}; re-run omg release ${v} --from verify`);
+      this.deps.progress({ phase: "verify", status: "heartbeat", note: run ? `tag run ${run.databaseId} ${run.status}` : `waiting for the ${tag} tag run` });
+      await this.deps.sleep(3e4);
+    }
+    const runId = run.databaseId;
+    const problems = [];
+    const jobs = JSON.parse(this.must("gh", ["run", "view", String(runId), "--json", "jobs"])).jobs ?? [];
+    const smokeJob = jobs.find((j) => j.name === "Copilot smoke (tier 2)");
+    if (smokeJob?.conclusion !== "success") problems.push(`Copilot smoke (tier 2) job: ${smokeJob?.conclusion ?? "not in the tag run"}`);
+    const npm = this.run("npm", ["view", `${this.pkgName}@${v}`, "version", "dist-tags.latest", "dist.attestations", "--json"]);
+    let info = {};
+    try {
+      info = JSON.parse(npm.stdout || "{}");
+    } catch {
+      info = {};
+    }
+    if (npm.status !== 0 || info.version !== v) problems.push(`npm has no ${this.pkgName}@${v} yet (registry propagation can take ~30 min; re-run --from verify)`);
+    if (info["dist-tags.latest"] !== v) problems.push(`npm dist-tags.latest is ${JSON.stringify(info["dist-tags.latest"])}, not ${v}`);
+    if (!info["dist.attestations"]) problems.push("npm reports no dist.attestations (SLSA provenance)");
+    const rel = this.run("gh", ["release", "view", tag, "--json", "tagName,isDraft"]);
+    const relInfo = rel.status === 0 ? JSON.parse(rel.stdout) : null;
+    if (!relInfo || relInfo.tagName !== tag) problems.push(`gh release view ${tag} found no release`);
+    else if (relInfo.isDraft) problems.push(`GitHub Release ${tag} is a draft`);
+    if (problems.length > 0) fail6(`tag run ${runId} is green, but the release is incomplete`, problems);
+    return { status: "ok", note: `${this.pkgName}@${v} is latest with provenance; GitHub Release ${tag} published` };
+  }
+};
+function resumePoint(state, from) {
+  if (from) return from;
+  for (const id of PHASES2) {
+    const s = state?.phases[id]?.status;
+    if (s !== "ok" && s !== "skipped") return id;
+  }
+  return null;
+}
+async function runRelease(deps, opts) {
+  const v = opts.version;
+  const statePath = releaseStatePath(deps.stateRoot, v);
+  const existing = readReleaseState(deps.stateRoot, v);
+  const start = resumePoint(existing, opts.from);
+  const last = PHASES2.indexOf(opts.to ?? "verify");
+  if (opts.from && PHASES2.indexOf(opts.from) > last) throw new Error(`--from ${opts.from} comes after --to ${opts.to}`);
+  const selected = start === null ? [] : PHASES2.slice(PHASES2.indexOf(start), last + 1);
+  if (opts.dryRun) {
+    return { ok: true, version: v, dryRun: true, statePath, phases: selected.map((id) => ({ id, status: "planned", note: "", steps: phasePlan(id, v, opts) })) };
+  }
+  const release = new Release(deps, opts, existing);
+  const results = [];
+  if (selected.length === 0) {
+    deps.log(`release ${v}: every selected phase is already ok (state ${statePath}); pass --from <phase> to re-run one`);
+    return { ok: true, version: v, dryRun: false, statePath, phases: [] };
+  }
+  const skip = selected[0] === "preflight" ? [] : release.skipProblems(selected[0]);
+  if (skip.length > 0) {
+    const note = `cannot start at ${selected[0]}: ${skip[0]}${skip.length > 1 ? ` (+${skip.length - 1} more)` : ""}; fix it, or re-run the phase with --from (--from preflight starts over)`;
+    deps.progress({ phase: selected[0], status: "blocked", note });
+    deps.log(`[${selected[0]}] blocked: ${note}`);
+    for (const d of skip) deps.log(`    ${d}`);
+    return { ok: false, version: v, dryRun: false, statePath, phases: [{ id: selected[0], status: "blocked", note, details: skip }] };
+  }
+  for (const id of selected) {
+    deps.log(`[${id}] ${phasePlan(id, v, opts)[0]}`);
+    deps.progress({ phase: id, status: "start" });
+    const outcome = await release.phase(id);
+    const record2 = { ...outcome, at: new Date(deps.now()).toISOString() };
+    release.save({ phases: { ...release.current.phases, [id]: record2 } });
+    results.push({ id, ...outcome });
+    deps.progress({ phase: id, status: outcome.status === "skipped" ? "ok" : outcome.status, note: outcome.note });
+    deps.log(`[${id}] ${outcome.status}: ${outcome.note}`);
+    for (const d of outcome.details ?? []) deps.log(`    ${d}`);
+    if (outcome.status === "fail" || outcome.status === "blocked") {
+      return { ok: false, version: v, dryRun: false, statePath, phases: results };
+    }
+  }
+  deps.progress({ phase: "release", status: "done", note: `${v}: ${selected[0]}..${selected[selected.length - 1]} ok` });
+  return { ok: true, version: v, dryRun: false, statePath, phases: results };
+}
+
+// src/release/progress.ts
+var import_fs157 = require("fs");
+var import_path188 = require("path");
+var BARE_VALUE = /^[A-Za-z0-9._:/@+,%#~-]+$/;
+var MAX_NOTE = 500;
+function quote2(value) {
+  if (BARE_VALUE.test(value)) return value;
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t")}"`;
+}
+function formatReleaseProgress(input, at = /* @__PURE__ */ new Date()) {
+  const parts = [at.toISOString(), `phase=${quote2(input.phase)}`, `status=${input.status}`];
+  if (input.note !== void 0) parts.push(`note=${quote2(input.note.slice(0, MAX_NOTE))}`);
+  if (input.agent !== void 0) parts.push(`agent=${quote2(input.agent)}`);
+  return parts.join(" ");
+}
+function releaseProgressFile(stateRoot2) {
+  return process.env.OMG_PROGRESS_FILE || (0, import_path188.join)(stateRoot2, "progress", "release.log");
+}
+function emitReleaseProgress(input, stateRoot2) {
+  try {
+    const path30 = input.file || releaseProgressFile(stateRoot2);
+    (0, import_fs157.mkdirSync)((0, import_path188.dirname)(path30), { recursive: true });
+    (0, import_fs157.appendFileSync)(path30, `${formatReleaseProgress(input)}
+`, "utf8");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// src/cli/commands/release.ts
+var UsageError2 = class extends Error {
+};
+function phaseOption(raw, flag) {
+  if (raw === void 0) return void 0;
+  if (!isPhaseId(raw)) throw new UsageError2(`${flag} must be one of ${PHASES2.join(", ")}, got ${JSON.stringify(raw)}`);
+  return raw;
+}
+async function ttyConfirm(question) {
+  if (!process.stdin.isTTY) return false;
+  const rl = (0, import_promises35.createInterface)({ input: process.stdin, output: process.stderr });
+  try {
+    return /^y(?:es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());
+  } finally {
+    rl.close();
+  }
+}
+function printResult(result) {
+  if (result.dryRun) {
+    console.log(source_default.bold(`omg release ${result.version} --dry-run: plan only, nothing runs (state ${result.statePath})`));
+    for (const p of result.phases) {
+      console.log(`${source_default.cyan(String(PHASES2.indexOf(p.id) + 1).padStart(2))} ${source_default.bold(p.id)}`);
+      for (const s of p.steps ?? []) console.log(`     - ${s}`);
+    }
+    return;
+  }
+  const color = result.ok ? source_default.green : source_default.red;
+  console.log(color(`release ${result.version}: ${result.ok ? "ok" : "stopped"} (state ${result.statePath})`));
+}
+function releaseCommand(overrides = {}) {
+  const cmd = new Command("release");
+  cmd.description("Maintainer-only release: preflight, bump, build, gates, smoke, commit, PR to dev, promote to main, tag, verify (resumable)").argument("<version>", "Release version X.Y.Z").option("--from <phase>", `Start at this phase (${PHASES2.join(", ")}); default: the first phase not yet ok`).option("--to <phase>", "Stop after this phase").option("--dry-run", "Print the plan for the selected phases without running anything").option("--json", "JSON output").option("--yes", "Create and push the tag without the interactive confirmation").option("--suite <suite>", "gates vitest suite: none, targeted (related to src changed since the last tag) or full", "none").option("--baseline <file>", 'Full-suite baseline (vitest JSON report or one "<file> > <title>" per line); only new failing titles fail').option("--live-smoke", "Run the live Tier 2 smoke (about 2 premium requests); skipped otherwise").option("--fix-orphans", "Remove tracked dist outputs whose src source is gone").option("--timeout <minutes>", "Minutes the pr / promote / verify phases wait on CI per run", "60").action(async (versionRaw, o) => {
+    const json = Boolean(o.json);
+    try {
+      let version3;
+      try {
+        version3 = parseReleaseVersion(versionRaw);
+      } catch (error2) {
+        throw new UsageError2(error2.message);
+      }
+      if (!["none", "targeted", "full"].includes(o.suite)) throw new UsageError2(`--suite must be none, targeted or full, got ${JSON.stringify(o.suite)}`);
+      if (o.baseline && o.suite !== "full") throw new UsageError2("--baseline needs --suite full");
+      const timeoutMinutes = Number(o.timeout);
+      if (!Number.isFinite(timeoutMinutes) || timeoutMinutes <= 0) throw new UsageError2("--timeout must be a positive number of minutes");
+      const from = phaseOption(o.from, "--from");
+      const to = phaseOption(o.to, "--to");
+      if (from && to && PHASES2.indexOf(from) > PHASES2.indexOf(to)) throw new UsageError2(`--from ${from} comes after --to ${to}`);
+      const exec3 = overrides.exec ?? defaultReleaseExec;
+      const root2 = overrides.root ?? (() => {
+        const r = exec3("git", ["rev-parse", "--show-toplevel"]);
+        if (r.status !== 0) throw new UsageError2("omg release must run inside a git repository");
+        return r.stdout.trim();
+      })();
+      const stateRoot2 = overrides.stateRoot ?? getOmcRoot(root2);
+      const deps = {
+        exec: exec3,
+        root: root2,
+        stateRoot: stateRoot2,
+        node: overrides.node ?? process.execPath,
+        loadShipConfig: overrides.loadShipConfig ?? ((ctx) => loadTrustedShipConfig({ ...ctx, ...userConfigLayers() })),
+        progress: overrides.progress ?? ((event) => {
+          emitReleaseProgress({ agent: "release", ...event }, stateRoot2);
+        }),
+        log: overrides.log ?? ((line) => {
+          if (!json) console.error(line);
+        }),
+        confirm: overrides.confirm ?? ttyConfirm,
+        sleep: overrides.sleep ?? ((ms) => new Promise((resolve58) => setTimeout(resolve58, ms))),
+        now: overrides.now ?? (() => Date.now())
+      };
+      const result = await runRelease(deps, {
+        version: version3,
+        from,
+        to,
+        dryRun: o.dryRun,
+        yes: o.yes,
+        suite: o.suite,
+        baseline: o.baseline,
+        liveSmoke: o.liveSmoke,
+        fixOrphans: o.fixOrphans,
+        timeoutMinutes
+      });
+      if (json) console.log(JSON.stringify(result, null, 2));
+      else printResult(result);
+      process.exitCode = result.ok ? 0 : 1;
+    } catch (error2) {
+      const message2 = error2 instanceof Error ? error2.message : String(error2);
+      if (json) console.log(JSON.stringify({ ok: false, error: message2 }, null, 2));
+      else console.error(source_default.red(`Error: ${message2}`));
+      process.exitCode = error2 instanceof UsageError2 ? 2 : 1;
+    }
+  });
+  return cmd;
+}
+
 // src/cli/win32-warning.ts
 init_source();
 init_tmux_utils();
@@ -143228,8 +144232,8 @@ Examples:
     console.log(`  User:    ${paths.user}`);
     console.log(`  Project: ${paths.project}`);
     console.log(source_default.blue("\nFile status:"));
-    console.log(`  User:    ${(0, import_fs162.existsSync)(paths.user) ? source_default.green("exists") : source_default.gray("not found")}`);
-    console.log(`  Project: ${(0, import_fs162.existsSync)(paths.project) ? source_default.green("exists") : source_default.gray("not found")}`);
+    console.log(`  User:    ${(0, import_fs164.existsSync)(paths.user) ? source_default.green("exists") : source_default.gray("not found")}`);
+    console.log(`  Project: ${(0, import_fs164.existsSync)(paths.project) ? source_default.green("exists") : source_default.gray("not found")}`);
     return;
   }
   const config2 = loadConfig();
@@ -143272,7 +144276,7 @@ Profile types (use with --profile):
   webhook      Generic webhook (POST with JSON body)
 
 Examples:
-  $ omg config-stop-callback file --enable --path ${(0, import_path192.join)(getCopilotConfigDir(), "logs/{date}.md")}
+  $ omg config-stop-callback file --enable --path ${(0, import_path194.join)(getCopilotConfigDir(), "logs/{date}.md")}
   $ omg config-stop-callback telegram --enable --token <token> --chat <id>
   $ omg config-stop-callback discord --enable --webhook <url>
   $ omg config-stop-callback file --disable
@@ -143398,7 +144402,7 @@ Examples:
     }
     config3.notificationProfiles[profileName] = profile;
     try {
-      (0, import_fs162.writeFileSync)(CONFIG_FILE, JSON.stringify(config3, null, 2), "utf-8");
+      (0, import_fs164.writeFileSync)(CONFIG_FILE, JSON.stringify(config3, null, 2), "utf-8");
       console.log(source_default.green(`\u2713 Profile "${profileName}" \u2014 ${type} configured`));
       console.log(JSON.stringify(profile[type], null, 2));
     } catch (error2) {
@@ -143457,7 +144461,7 @@ Examples:
       const current = config2.stopHookCallbacks.file;
       config2.stopHookCallbacks.file = {
         enabled: enabled ?? current?.enabled ?? false,
-        path: options.path ?? current?.path ?? (0, import_path192.join)(getCopilotConfigDir(), "session-logs/{session_id}.md"),
+        path: options.path ?? current?.path ?? (0, import_path194.join)(getCopilotConfigDir(), "session-logs/{session_id}.md"),
         format: options.format ?? current?.format ?? "markdown"
       };
       break;
@@ -143511,7 +144515,7 @@ Examples:
     }
   }
   try {
-    (0, import_fs162.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
+    (0, import_fs164.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
     console.log(source_default.green(`\u2713 Stop callback '${type}' configured`));
     console.log(JSON.stringify(config2.stopHookCallbacks[type], null, 2));
   } catch (error2) {
@@ -143573,7 +144577,7 @@ Active profile (OMC_NOTIFY_PROFILE): ${activeProfile}`));
       delete config2.notificationProfiles;
     }
     try {
-      (0, import_fs162.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
+      (0, import_fs164.writeFileSync)(CONFIG_FILE, JSON.stringify(config2, null, 2), "utf-8");
       console.log(source_default.green(`\u2713 Profile "${name}" deleted`));
     } catch (error2) {
       console.error(source_default.red("Failed to write configuration:"), error2);
@@ -144156,6 +145160,7 @@ program2.addCommand(lookoutCommand());
 program2.addCommand(intakeCommand());
 program2.addCommand(factoryCommand());
 program2.addCommand(shipCommand());
+program2.addCommand(releaseCommand());
 function buildProgram() {
   return program2;
 }
