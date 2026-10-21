@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "40ce1249d7602b56a8fe55f6a808bcaaf7b18754",
-    "sourceSha256": "4ab3da1b98762f0c65b08c29818f5a597accac10ca72759d478329f9d1e2b696",
+    "head": "ed3c2e8a86572e9d5d9b991aceefe7cf54ea355f",
+    "sourceSha256": "a3f44e4f8a9ac6e6e265c9075de00a90a8218f5d76fbbcfb13183e691180871a",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "40ce1249d7602b56a8fe55f6a808bcaaf7b18754",
-  "sourceSha256": "4ab3da1b98762f0c65b08c29818f5a597accac10ca72759d478329f9d1e2b696",
+  "head": "ed3c2e8a86572e9d5d9b991aceefe7cf54ea355f",
+  "sourceSha256": "a3f44e4f8a9ac6e6e265c9075de00a90a8218f5d76fbbcfb13183e691180871a",
   "counts": {
     "public": {
       "skills": 63,
@@ -25,16 +25,16 @@
     "internal": {
       "hookFiles": 344,
       "featureFiles": 88,
-      "toolFiles": 67,
-      "libFiles": 48,
+      "toolFiles": 68,
+      "libFiles": 51,
       "templateHooks": 24,
-      "srcFiles": 1605,
-      "total": 1629
+      "srcFiles": 1616,
+      "total": 1640
     },
     "generated": {
-      "distFiles": 6175,
+      "distFiles": 6199,
       "bridgeFiles": 9,
-      "total": 6184
+      "total": 6208
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -657,6 +657,7 @@
       "src/tools/python-repl/__tests__/python-sandbox.test.ts",
       "src/tools/python-repl/__tests__/sandbox-guidance-parity.test.ts",
       "src/tools/python-repl/__tests__/shipped-artifact-parity.test.ts",
+      "src/tools/python-repl/__tests__/system-python.test.ts",
       "src/tools/python-repl/__tests__/tcp-fallback.test.ts",
       "src/tools/python-repl/bridge-manager.ts",
       "src/tools/python-repl/index.ts",
@@ -676,6 +677,8 @@
       "src/tools/wiki-tools.ts"
     ],
     "libFiles": [
+      "src/lib/__tests__/agent-progress-rotation.test.ts",
+      "src/lib/__tests__/agent-progress.test.ts",
       "src/lib/__tests__/atomic-write.test.ts",
       "src/lib/__tests__/host-load-gate.test.ts",
       "src/lib/__tests__/mode-state-io.test.ts",
@@ -700,6 +703,7 @@
       "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
       "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
       "src/lib/__tests__/worktree-paths.test.ts",
+      "src/lib/agent-progress.ts",
       "src/lib/atomic-write.ts",
       "src/lib/env-vars.ts",
       "src/lib/featured-contributors.ts",
@@ -886,6 +890,7 @@
       "scripts/lib/state-root.cjs",
       "scripts/lib/state-root.mjs",
       "scripts/lib/stdin.mjs",
+      "scripts/lib/tool-input-paths.mjs",
       "scripts/lib/utf8-bom.d.mts",
       "scripts/lib/utf8-bom.mjs",
       "scripts/lib/workflow-profile-runtime.mjs",
@@ -2575,6 +2580,10 @@
       "dist/cli/commands/__tests__/intake.test.d.ts.map",
       "dist/cli/commands/__tests__/intake.test.js",
       "dist/cli/commands/__tests__/intake.test.js.map",
+      "dist/cli/commands/__tests__/progress-cli.test.d.ts",
+      "dist/cli/commands/__tests__/progress-cli.test.d.ts.map",
+      "dist/cli/commands/__tests__/progress-cli.test.js",
+      "dist/cli/commands/__tests__/progress-cli.test.js.map",
       "dist/cli/commands/__tests__/release-cli.test.d.ts",
       "dist/cli/commands/__tests__/release-cli.test.d.ts.map",
       "dist/cli/commands/__tests__/release-cli.test.js",
@@ -2643,6 +2652,10 @@
       "dist/cli/commands/intake.d.ts.map",
       "dist/cli/commands/intake.js",
       "dist/cli/commands/intake.js.map",
+      "dist/cli/commands/progress.d.ts",
+      "dist/cli/commands/progress.d.ts.map",
+      "dist/cli/commands/progress.js",
+      "dist/cli/commands/progress.js.map",
       "dist/cli/commands/ralph.d.ts",
       "dist/cli/commands/ralph.d.ts.map",
       "dist/cli/commands/ralph.js",
@@ -5082,6 +5095,14 @@
       "dist/interop/shared-state.d.ts.map",
       "dist/interop/shared-state.js",
       "dist/interop/shared-state.js.map",
+      "dist/lib/__tests__/agent-progress-rotation.test.d.ts",
+      "dist/lib/__tests__/agent-progress-rotation.test.d.ts.map",
+      "dist/lib/__tests__/agent-progress-rotation.test.js",
+      "dist/lib/__tests__/agent-progress-rotation.test.js.map",
+      "dist/lib/__tests__/agent-progress.test.d.ts",
+      "dist/lib/__tests__/agent-progress.test.d.ts.map",
+      "dist/lib/__tests__/agent-progress.test.js",
+      "dist/lib/__tests__/agent-progress.test.js.map",
       "dist/lib/__tests__/atomic-write.test.d.ts",
       "dist/lib/__tests__/atomic-write.test.d.ts.map",
       "dist/lib/__tests__/atomic-write.test.js",
@@ -5178,6 +5199,10 @@
       "dist/lib/__tests__/worktree-paths.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths.test.js",
       "dist/lib/__tests__/worktree-paths.test.js.map",
+      "dist/lib/agent-progress.d.ts",
+      "dist/lib/agent-progress.d.ts.map",
+      "dist/lib/agent-progress.js",
+      "dist/lib/agent-progress.js.map",
       "dist/lib/atomic-write.d.ts",
       "dist/lib/atomic-write.d.ts.map",
       "dist/lib/atomic-write.js",
@@ -6918,6 +6943,10 @@
       "dist/tools/python-repl/__tests__/shipped-artifact-parity.test.d.ts.map",
       "dist/tools/python-repl/__tests__/shipped-artifact-parity.test.js",
       "dist/tools/python-repl/__tests__/shipped-artifact-parity.test.js.map",
+      "dist/tools/python-repl/__tests__/system-python.test.d.ts",
+      "dist/tools/python-repl/__tests__/system-python.test.d.ts.map",
+      "dist/tools/python-repl/__tests__/system-python.test.js",
+      "dist/tools/python-repl/__tests__/system-python.test.js.map",
       "dist/tools/python-repl/__tests__/tcp-fallback.test.d.ts",
       "dist/tools/python-repl/__tests__/tcp-fallback.test.d.ts.map",
       "dist/tools/python-repl/__tests__/tcp-fallback.test.js",
@@ -7705,6 +7734,7 @@
       "src/tools/python-repl/__tests__/python-sandbox.test.ts",
       "src/tools/python-repl/__tests__/sandbox-guidance-parity.test.ts",
       "src/tools/python-repl/__tests__/shipped-artifact-parity.test.ts",
+      "src/tools/python-repl/__tests__/system-python.test.ts",
       "src/tools/python-repl/__tests__/tcp-fallback.test.ts",
       "src/tools/python-repl/bridge-manager.ts",
       "src/tools/python-repl/index.ts",
@@ -7855,6 +7885,11 @@
         "id": ".omc/skills/README.md",
         "kind": "other",
         "path": ".omc/skills/README.md"
+      },
+      {
+        "id": ".omc/skills/agent-progress-events.md",
+        "kind": "other",
+        "path": ".omc/skills/agent-progress-events.md"
       },
       {
         "id": ".omc/skills/branching-strategy-expertise.md",
@@ -16892,6 +16927,26 @@
         "path": "dist/cli/commands/__tests__/intake.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/progress-cli.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/progress-cli.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/progress-cli.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/progress-cli.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/progress-cli.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/progress-cli.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/progress-cli.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/progress-cli.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/release-cli.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/release-cli.test.d.ts"
@@ -17230,6 +17285,26 @@
         "id": "dist/cli/commands/intake.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/intake.js.map"
+      },
+      {
+        "id": "dist/cli/commands/progress.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/progress.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/progress.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/progress.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/progress.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/progress.js"
+      },
+      {
+        "id": "dist/cli/commands/progress.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/progress.js.map"
       },
       {
         "id": "dist/cli/commands/ralph.d.ts",
@@ -29427,6 +29502,46 @@
         "path": "dist/interop/shared-state.js.map"
       },
       {
+        "id": "dist/lib/__tests__/agent-progress-rotation.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress-rotation.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/agent-progress-rotation.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress-rotation.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/agent-progress-rotation.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress-rotation.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/agent-progress-rotation.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress-rotation.test.js.map"
+      },
+      {
+        "id": "dist/lib/__tests__/agent-progress.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/agent-progress.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/agent-progress.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/agent-progress.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress.test.js.map"
+      },
+      {
         "id": "dist/lib/__tests__/atomic-write.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/atomic-write.test.d.ts"
@@ -29905,6 +30020,26 @@
         "id": "dist/lib/__tests__/worktree-paths.test.js.map",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/worktree-paths.test.js.map"
+      },
+      {
+        "id": "dist/lib/agent-progress.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/agent-progress.d.ts"
+      },
+      {
+        "id": "dist/lib/agent-progress.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/agent-progress.d.ts.map"
+      },
+      {
+        "id": "dist/lib/agent-progress.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/agent-progress.js"
+      },
+      {
+        "id": "dist/lib/agent-progress.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/agent-progress.js.map"
       },
       {
         "id": "dist/lib/atomic-write.d.ts",
@@ -38607,6 +38742,26 @@
         "path": "dist/tools/python-repl/__tests__/shipped-artifact-parity.test.js.map"
       },
       {
+        "id": "dist/tools/python-repl/__tests__/system-python.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/tools/python-repl/__tests__/system-python.test.d.ts"
+      },
+      {
+        "id": "dist/tools/python-repl/__tests__/system-python.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/python-repl/__tests__/system-python.test.d.ts.map"
+      },
+      {
+        "id": "dist/tools/python-repl/__tests__/system-python.test.js",
+        "kind": "generated-dist",
+        "path": "dist/tools/python-repl/__tests__/system-python.test.js"
+      },
+      {
+        "id": "dist/tools/python-repl/__tests__/system-python.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/python-repl/__tests__/system-python.test.js.map"
+      },
+      {
         "id": "dist/tools/python-repl/__tests__/tcp-fallback.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/tools/python-repl/__tests__/tcp-fallback.test.d.ts"
@@ -40857,6 +41012,11 @@
         "path": "scripts/lib/stdin.mjs"
       },
       {
+        "id": "scripts/lib/tool-input-paths.mjs",
+        "kind": "script",
+        "path": "scripts/lib/tool-input-paths.mjs"
+      },
+      {
         "id": "scripts/lib/utf8-bom.d.mts",
         "kind": "script",
         "path": "scripts/lib/utf8-bom.d.mts"
@@ -41970,6 +42130,11 @@
         "id": "src/__tests__/copilot-config-dir-alias.test.ts",
         "kind": "src",
         "path": "src/__tests__/copilot-config-dir-alias.test.ts"
+      },
+      {
+        "id": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/copilot-file-tool-injection.test.ts"
       },
       {
         "id": "src/__tests__/copilot-hook-adapter.test.ts",
@@ -43897,6 +44062,11 @@
         "path": "src/cli/commands/__tests__/intake.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/progress-cli.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/release-cli.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/release-cli.test.ts"
@@ -43980,6 +44150,11 @@
         "id": "src/cli/commands/intake.ts",
         "kind": "src",
         "path": "src/cli/commands/intake.ts"
+      },
+      {
+        "id": "src/cli/commands/progress.ts",
+        "kind": "src",
+        "path": "src/cli/commands/progress.ts"
       },
       {
         "id": "src/cli/commands/ralph.ts",
@@ -47137,6 +47312,16 @@
         "path": "src/interop/shared-state.ts"
       },
       {
+        "id": "src/lib/__tests__/agent-progress-rotation.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/agent-progress-rotation.test.ts"
+      },
+      {
+        "id": "src/lib/__tests__/agent-progress.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/agent-progress.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/atomic-write.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/atomic-write.test.ts"
@@ -47255,6 +47440,11 @@
         "id": "src/lib/__tests__/worktree-paths.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/worktree-paths.test.ts"
+      },
+      {
+        "id": "src/lib/agent-progress.ts",
+        "kind": "lib",
+        "path": "src/lib/agent-progress.ts"
       },
       {
         "id": "src/lib/atomic-write.ts",
@@ -48095,6 +48285,26 @@
         "id": "src/smoke/__tests__/fixtures/tier2-delegate-events.jsonl",
         "kind": "src",
         "path": "src/smoke/__tests__/fixtures/tier2-delegate-events.jsonl"
+      },
+      {
+        "id": "src/smoke/__tests__/fixtures/tier2-filetools-events.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-filetools-events.jsonl"
+      },
+      {
+        "id": "src/smoke/__tests__/fixtures/tier2-filetools-patch-events.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-filetools-patch-events.jsonl"
+      },
+      {
+        "id": "src/smoke/__tests__/fixtures/tier2-filetools-patch-probe.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-filetools-patch-probe.jsonl"
+      },
+      {
+        "id": "src/smoke/__tests__/fixtures/tier2-filetools-probe.jsonl",
+        "kind": "src",
+        "path": "src/smoke/__tests__/fixtures/tier2-filetools-probe.jsonl"
       },
       {
         "id": "src/smoke/__tests__/fixtures/tier2-guardrail-events.jsonl",
@@ -49525,6 +49735,11 @@
         "id": "src/tools/python-repl/__tests__/shipped-artifact-parity.test.ts",
         "kind": "tool",
         "path": "src/tools/python-repl/__tests__/shipped-artifact-parity.test.ts"
+      },
+      {
+        "id": "src/tools/python-repl/__tests__/system-python.test.ts",
+        "kind": "tool",
+        "path": "src/tools/python-repl/__tests__/system-python.test.ts"
       },
       {
         "id": "src/tools/python-repl/__tests__/tcp-fallback.test.ts",
@@ -52164,6 +52379,11 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/post-tool-directory-context-injector.mjs",
+        "to": "scripts/lib/tool-input-paths.mjs",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/post-tool-rules-injector.mjs",
         "to": "external:path",
         "kind": "imports"
@@ -52176,6 +52396,11 @@
       {
         "from": "scripts/post-tool-rules-injector.mjs",
         "to": "scripts/lib/stdin.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/post-tool-rules-injector.mjs",
+        "to": "scripts/lib/tool-input-paths.mjs",
         "kind": "imports"
       },
       {
@@ -54516,6 +54741,36 @@
       {
         "from": "src/__tests__/copilot-config-dir-alias.test.ts",
         "to": "src/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/copilot-file-tool-injection.test.ts",
+        "to": "scripts/lib/tool-input-paths.mjs",
         "kind": "imports"
       },
       {
@@ -63669,6 +63924,46 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "src/cli/commands/progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "src/cli/commands/progress.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/release-cli.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -64217,6 +64512,36 @@
         "from": "src/cli/commands/intake.ts",
         "to": "src/utils/host-detection.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/progress.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/progress.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/progress.ts",
+        "to": "external:fs",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/progress.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/progress.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/progress.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/cli/commands/ralph.ts",
@@ -64901,6 +65226,11 @@
       {
         "from": "src/cli/index.ts",
         "to": "src/cli/commands/intake.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
+        "to": "src/cli/commands/progress.ts",
         "kind": "imports"
       },
       {
@@ -67765,6 +68095,11 @@
       },
       {
         "from": "src/graph/__tests__/runtime/cli.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/cli.test.ts",
         "to": "src/cli/graph.ts",
         "kind": "imports"
       },
@@ -67821,6 +68156,11 @@
       {
         "from": "src/graph/__tests__/runtime/e2e-crash-recovery.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/e2e-crash-recovery.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -67910,6 +68250,11 @@
       },
       {
         "from": "src/graph/__tests__/runtime/fence.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/fence.test.ts",
         "to": "src/graph/runtime/fence.ts",
         "kind": "imports"
       },
@@ -67951,6 +68296,11 @@
       {
         "from": "src/graph/__tests__/runtime/journal-epoch.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/journal-epoch.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -68001,6 +68351,11 @@
       {
         "from": "src/graph/__tests__/runtime/journal.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/journal.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -68095,6 +68450,11 @@
       },
       {
         "from": "src/graph/__tests__/runtime/regression-matrix.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/regression-matrix.test.ts",
         "to": "src/graph/descriptor.ts",
         "kind": "imports"
       },
@@ -68155,6 +68515,11 @@
       },
       {
         "from": "src/graph/__tests__/runtime/remote-approval.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/remote-approval.test.ts",
         "to": "src/graph/runtime/remote-approval.ts",
         "kind": "imports"
       },
@@ -68181,6 +68546,11 @@
       {
         "from": "src/graph/__tests__/runtime/run-dir.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/run-dir.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -68226,6 +68596,11 @@
       {
         "from": "src/graph/__tests__/runtime/runner.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/runner.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -68300,6 +68675,11 @@
       },
       {
         "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
         "to": "src/graph/runtime/contained-fd.ts",
         "kind": "type-imports"
       },
@@ -68336,6 +68716,11 @@
       {
         "from": "src/graph/__tests__/runtime/store.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/store.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -80294,6 +80679,61 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/lib/__tests__/agent-progress-rotation.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress-rotation.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress-rotation.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress-rotation.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress-rotation.test.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress.test.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress.test.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/lib/__tests__/atomic-write.test.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -80980,6 +81420,21 @@
       },
       {
         "from": "src/lib/__tests__/worktree-paths.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/agent-progress.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/agent-progress.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/agent-progress.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -82100,6 +82555,11 @@
       },
       {
         "from": "src/notifications/__tests__/approval-reply.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/approval-reply.test.ts",
         "to": "src/notifications/reply-listener.ts",
         "kind": "imports"
       },
@@ -82471,6 +82931,11 @@
       {
         "from": "src/notifications/__tests__/session-registry.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/session-registry.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -84555,6 +85020,11 @@
       },
       {
         "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/__tests__/copilot-sdk-driver.test.ts",
         "to": "external:events",
         "kind": "imports"
       },
@@ -84901,6 +85371,11 @@
       {
         "from": "src/smoke/copilot-sdk-driver.ts",
         "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/smoke/copilot-sdk-driver.ts",
+        "to": "external:crypto",
         "kind": "imports"
       },
       {
@@ -94530,12 +95005,22 @@
       },
       {
         "from": "src/tools/python-repl/__tests__/python-sandbox.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/python-repl/__tests__/python-sandbox.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
       {
         "from": "src/tools/python-repl/__tests__/python-sandbox.test.ts",
         "to": "src/lib/security-config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/python-repl/__tests__/python-sandbox.test.ts",
+        "to": "src/tools/python-repl/bridge-manager.ts",
         "kind": "imports"
       },
       {
@@ -94616,6 +95101,26 @@
       {
         "from": "src/tools/python-repl/__tests__/shipped-artifact-parity.test.ts",
         "to": "src/tools/python-repl/tool.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/python-repl/__tests__/system-python.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/python-repl/__tests__/system-python.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/python-repl/__tests__/system-python.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/python-repl/__tests__/system-python.test.ts",
+        "to": "src/tools/python-repl/bridge-manager.ts",
         "kind": "imports"
       },
       {
@@ -97555,12 +98060,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8511,
-      "edgeCount": 9454,
-      "importEdgeCount": 7871,
+      "nodeCount": 8548,
+      "edgeCount": 9512,
+      "importEdgeCount": 7925,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "99be91bd205b80132d65c0e81c67d734d526cba1d0e2ee027c5289c5fc844c3c",
-  "manifestSha256": "660678dc35a6d8b7fd525a244ff5ed057793d45fa14c868de50820c0504fe34d"
+  "inventorySha256": "5d7ada40dcbd96e8d6e67c54e1e1cf589254f32b9b57108fe1081f93a25b847f",
+  "manifestSha256": "9971113e0f8d2dec35c999be6dfd2cc50fef9fe878933f1a0c671989296912a2"
 }
