@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "bb9cd122d27145f2dbe830479b7580f034c6190d",
-    "sourceSha256": "ff08a5dbee6b442ee6066d6cc10379a7466269bc56dec063711778aa0dc9edd8",
+    "head": "ba80b7fdeb1aded77042c479b01a5caf8e5474a2",
+    "sourceSha256": "fb1e56a5fe3c4f3c9a276530ede4829c3c3dd09f57961c996d91ca26212f1d0a",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "bb9cd122d27145f2dbe830479b7580f034c6190d",
-  "sourceSha256": "ff08a5dbee6b442ee6066d6cc10379a7466269bc56dec063711778aa0dc9edd8",
+  "head": "ba80b7fdeb1aded77042c479b01a5caf8e5474a2",
+  "sourceSha256": "fb1e56a5fe3c4f3c9a276530ede4829c3c3dd09f57961c996d91ca26212f1d0a",
   "counts": {
     "public": {
       "skills": 63,
@@ -61088,6 +61088,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/workflow-profile-activation-script.test.ts",
+        "to": "src/platform/process-utils.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/workflow-profile-runtime.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -69315,6 +69320,11 @@
       {
         "from": "src/hooks/autopilot/__tests__/cancel.test.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/autopilot/__tests__/cancel.test.ts",
+        "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
       {
@@ -79934,6 +79944,11 @@
       },
       {
         "from": "src/lib/__tests__/atomic-write.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/atomic-write.test.ts",
         "to": "src/lib/atomic-write.ts",
         "kind": "imports"
       },
@@ -79995,6 +80010,11 @@
       {
         "from": "src/lib/__tests__/mode-state-io.test.ts",
         "to": "scripts/lib/atomic-write.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/mode-state-io.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -84894,6 +84914,11 @@
       },
       {
         "from": "src/team/__tests__/audit-log.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/audit-log.test.ts",
         "to": "src/team/audit-log.ts",
         "kind": "imports"
       },
@@ -85480,6 +85505,11 @@
       {
         "from": "src/team/__tests__/git-worktree.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/git-worktree.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -88920,6 +88950,11 @@
       {
         "from": "src/team/__tests__/usage-tracker.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/usage-tracker.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -96970,11 +97005,11 @@
     ],
     "stats": {
       "nodeCount": 8465,
-      "edgeCount": 9390,
-      "importEdgeCount": 7816,
+      "edgeCount": 9397,
+      "importEdgeCount": 7823,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "ce33e9884d96c9483c31425cf7c74aed08084645aa864f694275bc9d8ffad0e5",
-  "manifestSha256": "a344cca106ba85e916990d619c299dc12521cea004ddcc242e41d0a6cd4996cb"
+  "manifestSha256": "13cf03e035812b244f656f2d976e0df1afe99e9b8d081e8032883d6636fb03bc"
 }
