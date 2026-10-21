@@ -305,7 +305,7 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
     );
     expectPromptExit(result);
     const manifestPath = join(getOmcRoot(cwd), 'state', 'session-end-jobs', 'configured-network-routing.json');
-    const publicationDeadline = Date.now() + 2_000;
+    const publicationDeadline = Date.now() + scaleTiming(2_000);
     while (!existsSync(manifestPath) && Date.now() < publicationDeadline) {
       await new Promise(resolve => setTimeout(resolve, 10));
     }

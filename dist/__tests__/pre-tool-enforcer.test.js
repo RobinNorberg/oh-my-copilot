@@ -1843,7 +1843,9 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
         writeFileSync(join(dir, 'omg.jsonc'), jsonc);
     }
     function run(input, env = {}) {
-        return runPreToolEnforcerWithEnv({ cwd: tempDir, ...input }, { XDG_CONFIG_HOME: xdgConfigHome, OMC_ROUTING_FORCE_INHERIT: 'false', ...env });
+        return runPreToolEnforcerWithEnv({ cwd: tempDir, ...input }, 
+        // getConfigDir() reads APPDATA on win32 and XDG_CONFIG_HOME elsewhere.
+        { XDG_CONFIG_HOME: xdgConfigHome, APPDATA: xdgConfigHome, OMC_ROUTING_FORCE_INHERIT: 'false', ...env });
     }
     function updatedModel(output) {
         const hookOutput = output.hookSpecificOutput;

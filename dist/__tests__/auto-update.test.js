@@ -32,6 +32,7 @@ vi.mock('fs', async () => {
 import { execSync, execFileSync } from 'child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
+import { toPosix } from './helpers/platform.js';
 import { install, isProjectScopedPlugin, checkNodeVersion, COPILOT_HOME } from '../installer/index.js';
 import { reconcileUpdateRuntime, performUpdate, shouldBlockStandaloneUpdateInCurrentSession, syncPluginCache, fetchLatestRelease, } from '../features/auto-update.js';
 const mockedExecSync = vi.mocked(execSync);
@@ -324,9 +325,9 @@ describe('auto-update reconciliation', () => {
         });
         const result = reconcileUpdateRuntime({ verbose: false });
         expect(result.success).toBe(true);
-        expect(mockedCpSync).toHaveBeenCalledWith(expect.stringContaining('/dist'), `${activeRoot}/dist`, expect.objectContaining({ recursive: true, force: true }));
-        expect(mockedCpSync).toHaveBeenCalledWith(expect.stringContaining('/package.json'), `${activeRoot}/package.json`, expect.objectContaining({ recursive: true, force: true }));
-        expect(mockedCpSync).not.toHaveBeenCalledWith(expect.stringContaining('/node_modules'), expect.anything(), expect.anything());
+        expect(mockedCpSync).toHaveBeenCalledWith(expect.stringMatching(/[\\/]dist$/), join(activeRoot, 'dist'), expect.objectContaining({ recursive: true, force: true }));
+        expect(mockedCpSync).toHaveBeenCalledWith(expect.stringMatching(/[\\/]package\.json$/), join(activeRoot, 'package.json'), expect.objectContaining({ recursive: true, force: true }));
+        expect(mockedCpSync).not.toHaveBeenCalledWith(expect.stringMatching(/[\\/]node_modules/), expect.anything(), expect.anything());
         expect(consoleLogSpy).toHaveBeenCalledWith('[omc update] Synced plugin cache');
     });
     it('fails reconciliation when active plugin cache repair reports validation errors', () => {
@@ -561,7 +562,7 @@ describe('auto-update reconciliation', () => {
     it('syncs the plugin cache directory when cache root exists', () => {
         const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => { });
         const cacheRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot');
-        const versionedCacheRoot = `${cacheRoot}/4.9.0`;
+        const versionedCacheRoot = join(cacheRoot, '4.9.0');
         mockedExecSync.mockImplementation((command) => {
             if (command === 'npm root -g') {
                 return '/usr/lib/node_modules\n';
@@ -590,7 +591,7 @@ describe('auto-update reconciliation', () => {
             if (normalized.endsWith('/.claude-plugin/plugin.json')) {
                 return true;
             }
-            if (normalized === cacheRoot) {
+            if (normalized === toPosix(cacheRoot)) {
                 return true;
             }
             if (normalized.startsWith('/usr/lib/node_modules/oh-my-copilot/')) {
@@ -617,9 +618,9 @@ describe('auto-update reconciliation', () => {
             timeout: 10000,
         }));
         expect(mockedMkdirSync).toHaveBeenCalledWith(versionedCacheRoot, { recursive: true });
-        expect(mockedCpSync).toHaveBeenCalledWith('/usr/lib/node_modules/oh-my-copilot/dist', `${versionedCacheRoot}/dist`, expect.objectContaining({ recursive: true, force: true }));
-        expect(mockedCpSync).toHaveBeenCalledWith('/usr/lib/node_modules/oh-my-copilot/package.json', `${versionedCacheRoot}/package.json`, expect.objectContaining({ recursive: true, force: true }));
-        expect(mockedCpSync).toHaveBeenCalledWith('/usr/lib/node_modules/oh-my-copilot/bridge', `${versionedCacheRoot}/bridge`, expect.objectContaining({ recursive: true, force: true }));
+        expect(mockedCpSync).toHaveBeenCalledWith(join('/usr/lib/node_modules/oh-my-copilot', 'dist'), join(versionedCacheRoot, 'dist'), expect.objectContaining({ recursive: true, force: true }));
+        expect(mockedCpSync).toHaveBeenCalledWith(join('/usr/lib/node_modules/oh-my-copilot', 'package.json'), join(versionedCacheRoot, 'package.json'), expect.objectContaining({ recursive: true, force: true }));
+        expect(mockedCpSync).toHaveBeenCalledWith(join('/usr/lib/node_modules/oh-my-copilot', 'bridge'), join(versionedCacheRoot, 'bridge'), expect.objectContaining({ recursive: true, force: true }));
         expect(consoleLogSpy).toHaveBeenCalledWith('[omc update] Plugin cache synced');
     });
     it('skips plugin cache sync gracefully when cache dir does not exist', () => {
@@ -629,7 +630,7 @@ describe('auto-update reconciliation', () => {
             if (normalized.endsWith('/.claude-plugin/plugin.json')) {
                 return true;
             }
-            if (normalized === cacheRoot) {
+            if (normalized === toPosix(cacheRoot)) {
                 return false;
             }
             return true;
@@ -642,7 +643,7 @@ describe('auto-update reconciliation', () => {
     it('handles plugin cache sync errors non-fatally', () => {
         const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
         const cacheRoot = join(COPILOT_HOME, 'plugins', 'cache', 'omc', 'oh-my-copilot');
-        const versionedCacheRoot = `${cacheRoot}/4.9.0`;
+        const versionedCacheRoot = join(cacheRoot, '4.9.0');
         mockedExecSync.mockImplementation((command) => {
             if (command === 'npm root -g') {
                 return '/usr/lib/node_modules\n';
@@ -671,7 +672,7 @@ describe('auto-update reconciliation', () => {
             if (normalized.endsWith('/.claude-plugin/plugin.json')) {
                 return true;
             }
-            if (normalized === cacheRoot) {
+            if (normalized === toPosix(cacheRoot)) {
                 return true;
             }
             if (normalized.startsWith('/usr/lib/node_modules/oh-my-copilot/')) {
@@ -822,6 +823,8 @@ describe('auto-update reconciliation', () => {
         expect(mockedExecSync).toHaveBeenCalledWith('npm install -g oh-my-copilot@latest', expect.any(Object));
     });
     it('restores global Claude Code when npm removes an existing global install during update', async () => {
+        // The npm execFileSync restore path; the win32 execSync path has its own test below.
+        mockPlatform('linux');
         const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => { });
         process.env.OMC_UPDATE_RECONCILE = '1';
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
@@ -987,6 +990,7 @@ describe('auto-update reconciliation', () => {
         expect(mockedExecFileSync).not.toHaveBeenCalledWith('npm', ['install', '-g', expect.stringContaining('@anthropic-ai/claude-code@')], expect.any(Object));
     });
     it('restores global Claude Code when post-update detection is unknown after a known pre-update install', async () => {
+        mockPlatform('linux');
         process.env.OMC_UPDATE_RECONCILE = '1';
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
@@ -1335,7 +1339,7 @@ describe('auto-update reconciliation', () => {
         });
         const result = await performUpdate({ verbose: false });
         expect(result.success).toBe(true);
-        expect(mockedExecFileSync).toHaveBeenCalledWith('git', ['-C', expect.stringContaining('/plugins/marketplaces/omc'), 'status', '--porcelain', '--untracked-files=normal'], expect.any(Object));
+        expect(mockedExecFileSync).toHaveBeenCalledWith('git', ['-C', expect.stringMatching(/[\\/]plugins[\\/]marketplaces[\\/]omc/), 'status', '--porcelain', '--untracked-files=normal'], expect.any(Object));
         expect(mockedExecFileSync).not.toHaveBeenCalledWith('git', expect.arrayContaining(['rev-list', '--left-right', '--count', 'HEAD...origin/main']), expect.any(Object));
         expect(mockedExecFileSync).not.toHaveBeenCalledWith('git', expect.arrayContaining(['merge', '--ff-only', 'origin/main']), expect.any(Object));
         delete process.env.OMC_UPDATE_RECONCILE;
@@ -1375,7 +1379,7 @@ describe('auto-update reconciliation', () => {
         });
         const result = await performUpdate({ verbose: false });
         expect(result.success).toBe(true);
-        expect(mockedExecFileSync).toHaveBeenCalledWith('git', ['-C', expect.stringContaining('/plugins/marketplaces/omc'), 'rev-list', '--left-right', '--count', 'HEAD...origin/main'], expect.any(Object));
+        expect(mockedExecFileSync).toHaveBeenCalledWith('git', ['-C', expect.stringMatching(/[\\/]plugins[\\/]marketplaces[\\/]omc/), 'rev-list', '--left-right', '--count', 'HEAD...origin/main'], expect.any(Object));
         expect(mockedExecFileSync).not.toHaveBeenCalledWith('git', expect.arrayContaining(['merge', '--ff-only', 'origin/main']), expect.any(Object));
         delete process.env.OMC_UPDATE_RECONCILE;
     });
@@ -1414,7 +1418,7 @@ describe('auto-update reconciliation', () => {
         });
         const result = await performUpdate({ verbose: false });
         expect(result.success).toBe(true);
-        expect(mockedExecFileSync).toHaveBeenCalledWith('git', ['-C', expect.stringContaining('/plugins/marketplaces/omc'), 'merge', '--ff-only', 'origin/main'], expect.any(Object));
+        expect(mockedExecFileSync).toHaveBeenCalledWith('git', ['-C', expect.stringMatching(/[\\/]plugins[\\/]marketplaces[\\/]omc/), 'merge', '--ff-only', 'origin/main'], expect.any(Object));
         expect(mockedExecFileSync).not.toHaveBeenCalledWith('git', expect.arrayContaining(['reset', '--hard', 'origin/main']), expect.any(Object));
         delete process.env.OMC_UPDATE_RECONCILE;
     });

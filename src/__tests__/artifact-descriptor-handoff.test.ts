@@ -56,7 +56,7 @@ describe('artifact descriptor contract', () => {
   it('defines the canonical descriptor fields in the shared artifact module', () => {
     const source = getExistingArtifactSource();
 
-    expect(ARTIFACT_DESCRIPTOR_SOURCE_PATH).toMatch(/src\/shared\//);
+    expect(ARTIFACT_DESCRIPTOR_SOURCE_PATH).toMatch(/src[\\/]shared[\\/]/);
     expect(source).toMatch(/ArtifactDescriptor/);
 
     for (const field of ['kind', 'path', 'createdAt', 'producer', 'retention']) {

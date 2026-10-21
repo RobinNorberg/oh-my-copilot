@@ -3,6 +3,7 @@
  */
 import { createHash } from 'crypto';
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import { toPosix } from '../helpers/platform.js';
 import * as fs from 'fs';
 import * as childProcess from 'child_process';
 import * as os from 'os';
@@ -416,7 +417,7 @@ describe('getUsage routing', () => {
     it('does not reuse Anthropic usage cache data across env OAuth tokens', async () => {
         const cachePath = '/tmp/test-claude/plugins/oh-my-copilot/.usage-cache-anthropic.json';
         // The implementation builds the path with path.join, so normalize Windows separators.
-        const isCachePath = (path) => String(path).replace(/\\/g, '/') === cachePath;
+        const isCachePath = (path) => toPosix(String(path)) === cachePath;
         let cacheContent = '{}';
         const capturedAuth = [];
         vi.mocked(fs.existsSync).mockImplementation(path => isCachePath(path));
@@ -470,16 +471,16 @@ describe('getUsage routing', () => {
         });
         const capturedAuth = [];
         process.env.COPILOT_HOME = '/tmp/test-claude';
-        vi.mocked(fs.existsSync).mockImplementation(path => String(path) === cachePath || String(path) === credentialsPath);
+        vi.mocked(fs.existsSync).mockImplementation(path => toPosix(String(path)) === cachePath || toPosix(String(path)) === credentialsPath);
         vi.mocked(fs.readFileSync).mockImplementation(path => {
-            if (String(path) === cachePath)
+            if (toPosix(String(path)) === cachePath)
                 return cacheContent;
-            if (String(path) === credentialsPath)
+            if (toPosix(String(path)) === credentialsPath)
                 return credentialsContent;
             return '{}';
         });
         vi.mocked(fs.writeFileSync).mockImplementation((path, content) => {
-            if (String(path) === cachePath)
+            if (toPosix(String(path)) === cachePath)
                 cacheContent = String(content);
         });
         const mockUsageResponse = (fiveHourPercent) => {
@@ -536,11 +537,11 @@ describe('getUsage routing', () => {
             },
         });
         process.env.COPILOT_HOME = '/tmp/test-claude';
-        vi.mocked(fs.existsSync).mockImplementation(path => String(path) === credentialsPath || String(path) === claudeJsonPath);
+        vi.mocked(fs.existsSync).mockImplementation(path => toPosix(String(path)) === credentialsPath || toPosix(String(path)) === claudeJsonPath);
         vi.mocked(fs.readFileSync).mockImplementation(path => {
-            if (String(path) === credentialsPath)
+            if (toPosix(String(path)) === credentialsPath)
                 return credentialsContent;
-            if (String(path) === claudeJsonPath)
+            if (toPosix(String(path)) === claudeJsonPath)
                 return claudeJsonContent;
             return '{}';
         });
@@ -582,13 +583,13 @@ describe('getUsage routing', () => {
             },
         });
         process.env.COPILOT_HOME = configDir;
-        vi.mocked(fs.existsSync).mockImplementation(path => [credentialsPath, runtimeClaudeJsonPath, adjacentClaudeJsonPath].includes(String(path)));
+        vi.mocked(fs.existsSync).mockImplementation(path => [credentialsPath, runtimeClaudeJsonPath, adjacentClaudeJsonPath].includes(toPosix(String(path))));
         vi.mocked(fs.readFileSync).mockImplementation(path => {
-            if (String(path) === credentialsPath)
+            if (toPosix(String(path)) === credentialsPath)
                 return credentialsContent;
-            if (String(path) === runtimeClaudeJsonPath)
+            if (toPosix(String(path)) === runtimeClaudeJsonPath)
                 return runtimeClaudeJsonContent;
-            if (String(path) === adjacentClaudeJsonPath)
+            if (toPosix(String(path)) === adjacentClaudeJsonPath)
                 return adjacentClaudeJsonContent;
             return '{}';
         });
@@ -614,11 +615,11 @@ describe('getUsage routing', () => {
             },
         });
         process.env.COPILOT_HOME = configDir;
-        vi.mocked(fs.existsSync).mockImplementation(path => String(path) === credentialsPath || String(path) === runtimeClaudeJsonPath);
+        vi.mocked(fs.existsSync).mockImplementation(path => toPosix(String(path)) === credentialsPath || toPosix(String(path)) === runtimeClaudeJsonPath);
         vi.mocked(fs.readFileSync).mockImplementation(path => {
-            if (String(path) === credentialsPath)
+            if (toPosix(String(path)) === credentialsPath)
                 return credentialsContent;
-            if (String(path) === runtimeClaudeJsonPath) {
+            if (toPosix(String(path)) === runtimeClaudeJsonPath) {
                 return JSON.stringify({ oauthAccount: runtimeAccount });
             }
             return '{}';
@@ -653,13 +654,13 @@ describe('getUsage routing', () => {
             },
         });
         process.env.COPILOT_HOME = configDir;
-        vi.mocked(fs.existsSync).mockImplementation(path => [credentialsPath, runtimeClaudeJsonPath, adjacentClaudeJsonPath].includes(String(path)));
+        vi.mocked(fs.existsSync).mockImplementation(path => [credentialsPath, runtimeClaudeJsonPath, adjacentClaudeJsonPath].includes(toPosix(String(path))));
         vi.mocked(fs.readFileSync).mockImplementation(path => {
-            if (String(path) === credentialsPath)
+            if (toPosix(String(path)) === credentialsPath)
                 return credentialsContent;
-            if (String(path) === runtimeClaudeJsonPath)
+            if (toPosix(String(path)) === runtimeClaudeJsonPath)
                 throw new Error('mock: transient metadata read failure');
-            if (String(path) === adjacentClaudeJsonPath) {
+            if (toPosix(String(path)) === adjacentClaudeJsonPath) {
                 return JSON.stringify({ oauthAccount: { accountUuid: 'different-account' } });
             }
             return '{}';
@@ -676,11 +677,11 @@ describe('getUsage routing', () => {
             },
         });
         process.env.COPILOT_HOME = '/tmp/test-claude';
-        vi.mocked(fs.existsSync).mockImplementation(path => String(path) === credentialsPath || String(path) === claudeJsonPath);
+        vi.mocked(fs.existsSync).mockImplementation(path => toPosix(String(path)) === credentialsPath || toPosix(String(path)) === claudeJsonPath);
         vi.mocked(fs.readFileSync).mockImplementation(path => {
-            if (String(path) === credentialsPath)
+            if (toPosix(String(path)) === credentialsPath)
                 return credentialsContent;
-            if (String(path) === claudeJsonPath) {
+            if (toPosix(String(path)) === claudeJsonPath) {
                 return JSON.stringify({ oauthAccount: { accountUuid: 'account-a' } });
             }
             return '{}';
@@ -704,8 +705,8 @@ describe('getUsage routing', () => {
             },
         });
         process.env.COPILOT_HOME = '/tmp/test-claude';
-        vi.mocked(fs.existsSync).mockImplementation(path => String(path) === credentialsPath);
-        vi.mocked(fs.readFileSync).mockImplementation(path => String(path) === credentialsPath ? credentialsContent : '{}');
+        vi.mocked(fs.existsSync).mockImplementation(path => toPosix(String(path)) === credentialsPath);
+        vi.mocked(fs.readFileSync).mockImplementation(path => toPosix(String(path)) === credentialsPath ? credentialsContent : '{}');
         const originalIdentity = getUsageCredentialIdentity(false, true);
         credentialsContent = JSON.stringify({
             claudeAiOauth: {
@@ -736,8 +737,8 @@ describe('getUsage routing', () => {
             },
         });
         process.env.COPILOT_HOME = '/tmp/test-claude';
-        vi.mocked(fs.existsSync).mockImplementation(path => String(path) === credentialsPath);
-        vi.mocked(fs.readFileSync).mockImplementation(path => String(path) === credentialsPath ? credentialsContent : '{}');
+        vi.mocked(fs.existsSync).mockImplementation(path => toPosix(String(path)) === credentialsPath);
+        vi.mocked(fs.readFileSync).mockImplementation(path => toPosix(String(path)) === credentialsPath ? credentialsContent : '{}');
         const originalIdentity = getUsageCredentialIdentity(false, true);
         credentialsContent = JSON.stringify({
             claudeAiOauth: {
@@ -782,11 +783,11 @@ describe('getUsage routing', () => {
         });
         let cacheContent = '{}';
         process.env.COPILOT_HOME = '/tmp/test-claude';
-        vi.mocked(fs.existsSync).mockImplementation(path => String(path) === cachePath || String(path) === credentialsPath);
+        vi.mocked(fs.existsSync).mockImplementation(path => toPosix(String(path)) === cachePath || toPosix(String(path)) === credentialsPath);
         vi.mocked(fs.readFileSync).mockImplementation(path => {
-            if (String(path) === cachePath)
+            if (toPosix(String(path)) === cachePath)
                 return cacheContent;
-            if (String(path) === credentialsPath)
+            if (toPosix(String(path)) === credentialsPath)
                 return credentialsContent;
             return '{}';
         });
@@ -821,11 +822,11 @@ describe('getUsage routing', () => {
         let storedCredentials = cacheAccountA;
         let cacheContent = '{}';
         process.env.COPILOT_HOME = configDir;
-        vi.mocked(fs.existsSync).mockImplementation(path => String(path) === cachePath || String(path) === claudeJsonPath);
+        vi.mocked(fs.existsSync).mockImplementation(path => toPosix(String(path)) === cachePath || toPosix(String(path)) === claudeJsonPath);
         vi.mocked(fs.readFileSync).mockImplementation(path => {
-            if (String(path) === cachePath)
+            if (toPosix(String(path)) === cachePath)
                 return cacheContent;
-            if (String(path) === claudeJsonPath) {
+            if (toPosix(String(path)) === claudeJsonPath) {
                 return JSON.stringify({ oauthAccount: { accountUuid: 'account-a' } });
             }
             return '{}';
@@ -884,8 +885,8 @@ describe('getUsage routing', () => {
             oauthAccount: { accountUuid: 'warm-keychain-account' },
         });
         process.env.COPILOT_HOME = configDir;
-        vi.mocked(fs.existsSync).mockImplementation(path => String(path) === claudeJsonPath);
-        vi.mocked(fs.readFileSync).mockImplementation(path => String(path) === claudeJsonPath ? claudeJsonContent : '{}');
+        vi.mocked(fs.existsSync).mockImplementation(path => toPosix(String(path)) === claudeJsonPath);
+        vi.mocked(fs.readFileSync).mockImplementation(path => toPosix(String(path)) === claudeJsonPath ? claudeJsonContent : '{}');
         vi.mocked(childProcess.execFileSync).mockImplementation((_file, args) => {
             const argsArray = args;
             if (argsArray.includes('find-generic-password') && argsArray.includes('-a')) {
@@ -901,11 +902,11 @@ describe('getUsage routing', () => {
             credentialIdentity,
             data: { fiveHourPercent: 25, weeklyPercent: 50 },
         });
-        vi.mocked(fs.existsSync).mockImplementation(path => String(path) === cachePath || String(path) === claudeJsonPath);
+        vi.mocked(fs.existsSync).mockImplementation(path => toPosix(String(path)) === cachePath || toPosix(String(path)) === claudeJsonPath);
         vi.mocked(fs.readFileSync).mockImplementation(path => {
-            if (String(path) === cachePath)
+            if (toPosix(String(path)) === cachePath)
                 return cacheContent;
-            if (String(path) === claudeJsonPath)
+            if (toPosix(String(path)) === claudeJsonPath)
                 return claudeJsonContent;
             return '{}';
         });
@@ -913,11 +914,11 @@ describe('getUsage routing', () => {
         const freshFs = await import('fs');
         const freshChildProcess = await import('child_process');
         const freshHttps = await import('https');
-        vi.mocked(freshFs.existsSync).mockImplementation(path => String(path) === cachePath || String(path) === claudeJsonPath);
+        vi.mocked(freshFs.existsSync).mockImplementation(path => toPosix(String(path)) === cachePath || toPosix(String(path)) === claudeJsonPath);
         vi.mocked(freshFs.readFileSync).mockImplementation(path => {
-            if (String(path) === cachePath)
+            if (toPosix(String(path)) === cachePath)
                 return cacheContent;
-            if (String(path) === claudeJsonPath)
+            if (toPosix(String(path)) === claudeJsonPath)
                 return claudeJsonContent;
             return '{}';
         });
@@ -952,8 +953,8 @@ describe('getUsage routing', () => {
             },
         });
         process.env.COPILOT_HOME = configDir;
-        vi.mocked(fs.existsSync).mockImplementation((path) => String(path) === claudeJsonPath);
-        vi.mocked(fs.readFileSync).mockImplementation((path) => String(path) === claudeJsonPath
+        vi.mocked(fs.existsSync).mockImplementation((path) => toPosix(String(path)) === claudeJsonPath);
+        vi.mocked(fs.readFileSync).mockImplementation((path) => toPosix(String(path)) === claudeJsonPath
             ? JSON.stringify({ oauthAccount: { accountUuid: 'warm-keychain-account' } })
             : '{}');
         vi.mocked(childProcess.execFileSync).mockImplementation((_file, args) => {
@@ -995,20 +996,20 @@ describe('getUsage routing', () => {
                     },
                 },
             });
-        vi.mocked(fs.existsSync).mockImplementation((path) => String(path) === cachePath || String(path) === claudeJsonPath);
-        vi.mocked(fs.readFileSync).mockImplementation((path) => String(path) === cachePath
+        vi.mocked(fs.existsSync).mockImplementation((path) => toPosix(String(path)) === cachePath || toPosix(String(path)) === claudeJsonPath);
+        vi.mocked(fs.readFileSync).mockImplementation((path) => toPosix(String(path)) === cachePath
             ? cacheContent
-            : String(path) === claudeJsonPath
+            : toPosix(String(path)) === claudeJsonPath
                 ? JSON.stringify({ oauthAccount: { accountUuid: 'warm-keychain-account' } })
                 : '{}');
         vi.resetModules();
         const freshFs = await import('fs');
         const freshChildProcess = await import('child_process');
         const freshHttps = (await import('https'));
-        vi.mocked(freshFs.existsSync).mockImplementation((path) => String(path) === cachePath || String(path) === claudeJsonPath);
-        vi.mocked(freshFs.readFileSync).mockImplementation((path) => String(path) === cachePath
+        vi.mocked(freshFs.existsSync).mockImplementation((path) => toPosix(String(path)) === cachePath || toPosix(String(path)) === claudeJsonPath);
+        vi.mocked(freshFs.readFileSync).mockImplementation((path) => toPosix(String(path)) === cachePath
             ? cacheContent
-            : String(path) === claudeJsonPath
+            : toPosix(String(path)) === claudeJsonPath
                 ? JSON.stringify({ oauthAccount: { accountUuid: 'warm-keychain-account' } })
                 : '{}');
         vi.mocked(freshChildProcess.execFileSync).mockClear();
@@ -1529,9 +1530,9 @@ describe('getUsage routing', () => {
     it('passes OAuth subscription metadata so Max used_credits overage stays extra usage', async () => {
         const mockedExistsSync = vi.mocked(fs.existsSync);
         const mockedReadFileSync = vi.mocked(fs.readFileSync);
-        mockedExistsSync.mockImplementation((path) => String(path).endsWith('.credentials.json'));
+        mockedExistsSync.mockImplementation((path) => toPosix(String(path)).endsWith('.credentials.json'));
         mockedReadFileSync.mockImplementation((path) => {
-            if (String(path).endsWith('.credentials.json')) {
+            if (toPosix(String(path)).endsWith('.credentials.json')) {
                 return JSON.stringify({
                     claudeAiOauth: {
                         accessToken: 'valid-token',
@@ -1582,9 +1583,9 @@ describe('getUsage routing', () => {
     it('returns getUsage rateLimits when OAuth credentials lack subscription metadata', async () => {
         const mockedExistsSync = vi.mocked(fs.existsSync);
         const mockedReadFileSync = vi.mocked(fs.readFileSync);
-        mockedExistsSync.mockImplementation((path) => String(path).endsWith('.credentials.json'));
+        mockedExistsSync.mockImplementation((path) => toPosix(String(path)).endsWith('.credentials.json'));
         mockedReadFileSync.mockImplementation((path) => {
-            if (String(path).endsWith('.credentials.json')) {
+            if (toPosix(String(path)).endsWith('.credentials.json')) {
                 return JSON.stringify({
                     claudeAiOauth: {
                         accessToken: 'valid-token',
@@ -1663,9 +1664,9 @@ describe('getUsage routing', () => {
         const credentialIdentity = getUsageCredentialIdentity(true, true);
         const mockedExistsSync = vi.mocked(fs.existsSync);
         const mockedReadFileSync = vi.mocked(fs.readFileSync);
-        mockedExistsSync.mockImplementation((path) => String(path).endsWith('.usage-cache-anthropic.json'));
+        mockedExistsSync.mockImplementation((path) => toPosix(String(path)).endsWith('.usage-cache-anthropic.json'));
         mockedReadFileSync.mockImplementation((path) => {
-            if (String(path).endsWith('.usage-cache-anthropic.json')) {
+            if (toPosix(String(path)).endsWith('.usage-cache-anthropic.json')) {
                 return JSON.stringify({
                     timestamp: Date.now() - 60_000,
                     source: 'anthropic',
@@ -1699,9 +1700,9 @@ describe('getUsage routing', () => {
         const mockedExistsSync = vi.mocked(fs.existsSync);
         const mockedReadFileSync = vi.mocked(fs.readFileSync);
         const resetsAt = new Date(Date.now() + 3_600_000).toISOString();
-        mockedExistsSync.mockImplementation((path) => String(path).endsWith('.usage-cache-anthropic.json'));
+        mockedExistsSync.mockImplementation((path) => toPosix(String(path)).endsWith('.usage-cache-anthropic.json'));
         mockedReadFileSync.mockImplementation((path) => {
-            if (String(path).endsWith('.usage-cache-anthropic.json')) {
+            if (toPosix(String(path)).endsWith('.usage-cache-anthropic.json')) {
                 return JSON.stringify({
                     timestamp: Date.now() - 60_000,
                     source: 'anthropic',
@@ -1730,11 +1731,11 @@ describe('getUsage routing', () => {
         const mockedExistsSync = vi.mocked(fs.existsSync);
         const mockedReadFileSync = vi.mocked(fs.readFileSync);
         mockedExistsSync.mockImplementation((path) => {
-            const file = String(path);
+            const file = toPosix(String(path));
             return file.endsWith('settings.json') || file.endsWith('.usage-cache-anthropic.json');
         });
         mockedReadFileSync.mockImplementation((path) => {
-            const file = String(path);
+            const file = toPosix(String(path));
             if (file.endsWith('settings.json')) {
                 return JSON.stringify({
                     omcHud: {
@@ -1778,9 +1779,9 @@ describe('getUsage routing', () => {
         const mockedExistsSync = vi.mocked(fs.existsSync);
         const mockedReadFileSync = vi.mocked(fs.readFileSync);
         const mockedWriteFileSync = vi.mocked(fs.writeFileSync);
-        mockedExistsSync.mockImplementation((path) => String(path).endsWith('settings.json'));
+        mockedExistsSync.mockImplementation((path) => toPosix(String(path)).endsWith('settings.json'));
         mockedReadFileSync.mockImplementation((path) => {
-            const file = String(path);
+            const file = toPosix(String(path));
             if (file.endsWith('settings.json')) {
                 return JSON.stringify({
                     omcHud: {
@@ -1825,11 +1826,11 @@ describe('getUsage routing', () => {
         const mockedReadFileSync = vi.mocked(fs.readFileSync);
         const mockedWriteFileSync = vi.mocked(fs.writeFileSync);
         mockedExistsSync.mockImplementation((path) => {
-            const file = String(path);
+            const file = toPosix(String(path));
             return file.endsWith('settings.json') || file.endsWith('.usage-cache-zai.json');
         });
         mockedReadFileSync.mockImplementation((path) => {
-            const file = String(path);
+            const file = toPosix(String(path));
             if (file.endsWith('settings.json')) {
                 return JSON.stringify({
                     omcHud: {
@@ -1877,11 +1878,11 @@ describe('getUsage routing', () => {
         const mockedExistsSync = vi.mocked(fs.existsSync);
         const mockedReadFileSync = vi.mocked(fs.readFileSync);
         mockedExistsSync.mockImplementation((path) => {
-            const file = String(path);
+            const file = toPosix(String(path));
             return file.endsWith('settings.json') || file.endsWith('.usage-cache-zai.json');
         });
         mockedReadFileSync.mockImplementation((path) => {
-            const file = String(path);
+            const file = toPosix(String(path));
             if (file.endsWith('settings.json')) {
                 return JSON.stringify({
                     omcHud: {
@@ -2409,9 +2410,9 @@ describe('writeBackCredentials — Keychain vs file refresh', () => {
                 stderr: Buffer.from('The specified item could not be found in the keychain.'),
             });
         });
-        mockedExistsSync.mockImplementation(path => String(path).endsWith('.credentials.json'));
+        mockedExistsSync.mockImplementation(path => toPosix(String(path)).endsWith('.credentials.json'));
         mockedReadFileSync.mockImplementation((path) => {
-            if (String(path).endsWith('.credentials.json')) {
+            if (toPosix(String(path)).endsWith('.credentials.json')) {
                 return credentialsContent;
             }
             return '{}';

@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { delimiter, join } from 'path';
 import { pathToFileURL } from 'url';
-import { IS_WIN, canCreateJunctions, canCreateSymlinks, hasExecutable, posixOnly, requiresExecutable, requiresSymlinks, toFileUrl, toPosix, } from './platform.js';
+import { IS_WIN, canCreateJunctions, canCreateSymlinks, hasExecutable, posixOnly, requiresExecutable, requiresSymlinks, scaleTiming, toFileUrl, toPosix, } from './platform.js';
 describe('platform test helpers', () => {
     const originalPath = process.env.PATH;
     const directories = [];
@@ -29,6 +29,9 @@ describe('platform test helpers', () => {
     it('reports the host platform', () => {
         expect(IS_WIN).toBe(process.platform === 'win32');
         expect(posixOnly('reason')).toBe(IS_WIN);
+    });
+    it('scales wall-clock ceilings only on Windows', () => {
+        expect(scaleTiming(500)).toBe(IS_WIN ? 2000 : 500);
     });
     it('normalizes separators and builds file URLs', () => {
         expect(toPosix('a\\b\\c')).toBe('a/b/c');

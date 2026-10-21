@@ -9,6 +9,8 @@ describe('recovery storage issue #1386 regression', () => {
     beforeEach(() => {
         dataDir = mkdtempSync(join(tmpdir(), 'issue-1386-recovery-'));
         process.env.XDG_DATA_HOME = dataDir;
+        // getDataDir() reads LOCALAPPDATA on win32.
+        vi.stubEnv('LOCALAPPDATA', dataDir);
         vi.resetModules();
     });
     afterEach(() => {
@@ -18,6 +20,7 @@ describe('recovery storage issue #1386 regression', () => {
         else {
             process.env.XDG_DATA_HOME = originalXdgDataHome;
         }
+        vi.unstubAllEnvs();
         vi.resetModules();
     });
     it('prepends generic synthetic thinking instead of reusing prior assistant thinking', async () => {

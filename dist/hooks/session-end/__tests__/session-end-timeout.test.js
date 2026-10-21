@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { execFileSync } from 'node:child_process';
 import * as os from 'os';
 import * as path from 'path';
+import { scaleTiming } from '../../../__tests__/helpers/platform.js';
 const workerMocks = vi.hoisted(() => ({
     spawnSessionEndWorker: vi.fn(),
 }));
@@ -60,7 +61,7 @@ describe('SessionEnd foreground manifest handoff (issue #1700)', () => {
             hook_event_name: 'SessionEnd',
             reason: 'clear',
         })).resolves.toEqual({ continue: true });
-        expect(Date.now() - startedAt).toBeLessThanOrEqual(500);
+        expect(Date.now() - startedAt).toBeLessThanOrEqual(scaleTiming(500));
         expect(workerMocks.spawnSessionEndWorker).toHaveBeenCalledWith({ directory: repoRoot, sessionId });
         const manifest = readSessionEndJob(repoRoot, sessionId);
         expect(manifest).toEqual(expect.objectContaining({
