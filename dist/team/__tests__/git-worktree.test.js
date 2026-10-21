@@ -4,6 +4,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { execFileSync, spawn } from 'child_process';
 import { createWorkerWorktree, removeWorkerWorktree, listTeamWorktrees, cleanupTeamWorktrees, ensureWorkerWorktree, installWorktreeRootAgents, restoreWorktreeRootAgents, prepareWorkerWorktreeForRemoval, writePreservedWorktreesRecord, readPreservedWorktreesRecord, deleteWorkerBranchAt, } from '../git-worktree.js';
+import { requiresSymlinks } from '../../__tests__/helpers/platform.js';
 /**
  * Compare paths by segments rather than by separator. The production code
  * correctly returns native paths (backslashes on Windows) and git reports
@@ -12,25 +13,6 @@ import { createWorkerWorktree, removeWorkerWorktree, listTeamWorktrees, cleanupT
 function toPosixPath(value) {
     return value.replace(/\\/g, '/');
 }
-/**
- * Windows only permits directory symlinks with Developer Mode or elevation.
- * Where it does not, the symlink guard cannot be exercised at all — skip rather
- * than report the missing privilege as a product failure.
- */
-function canCreateDirectorySymlinks() {
-    const probeDir = mkdtempSync(join(tmpdir(), 'omc-symlink-probe-'));
-    try {
-        symlinkSync(probeDir, join(probeDir, 'link'), 'dir');
-        return true;
-    }
-    catch {
-        return false;
-    }
-    finally {
-        rmSync(probeDir, { recursive: true, force: true });
-    }
-}
-const SYMLINKS_AVAILABLE = canCreateDirectorySymlinks();
 describe('git-worktree', () => {
     let repoDir;
     const teamName = 'test-wt';
@@ -468,7 +450,7 @@ describe('git-worktree', () => {
             expect(thrown?.code).toBe('worktree_commit_check_failed');
             expect(existsSync(join(refDir, 'empty-ref-worker'))).toBe(true);
         });
-        it.skipIf(!SYMLINKS_AVAILABLE)('matches a deleted detached worktree through an aliased repo root and keeps its unmerged commits', () => {
+        it.skipIf(requiresSymlinks())('matches a deleted detached worktree through an aliased repo root and keeps its unmerged commits', () => {
             const info = ensureWorkerWorktree(teamName, 'alias-deleted-worker', repoDir, { mode: 'detached', requireCleanLeader: false });
             writeFileSync(join(info.path, 'work.txt'), 'worker output\n');
             execFileSync('git', ['add', 'work.txt'], { cwd: info.path, stdio: 'pipe' });
@@ -538,7 +520,7 @@ describe('git-worktree', () => {
         it('does not throw for non-existent worktree', () => {
             expect(() => removeWorkerWorktree(teamName, 'nonexistent', repoDir)).not.toThrow();
         });
-        it.skipIf(!SYMLINKS_AVAILABLE)('refuses a symlink at the canonical worker worktree path', () => {
+        it.skipIf(requiresSymlinks())('refuses a symlink at the canonical worker worktree path', () => {
             const workerName = 'worker-symlink';
             const worktreePath = join(repoDir, '.omg', 'team', teamName, 'worktrees', workerName);
             mkdirSync(join(repoDir, '.omg', 'team', teamName, 'worktrees'), { recursive: true });
