@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { IS_WIN, requiresSymlinks } from '../../__tests__/helpers/platform.js';
 const originalClaudeConfigDir = process.env.COPILOT_HOME;
 const originalPluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
 const originalHome = process.env.HOME;
@@ -98,8 +99,15 @@ describe('install() standalone hook reconciliation', () => {
         expect(writtenSettings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toBe(`node "${join(testClaudeDir, 'hooks', 'keyword-detector.mjs').replace(/\\/g, '/')}"`);
         expect(writtenSettings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toBe(`node "${join(testClaudeDir, 'hooks', 'session-start.mjs').replace(/\\/g, '/')}"`);
         expect(writtenSettings.statusLine?.command).toContain(`${join(testClaudeDir, 'hud', 'omg-hud.mjs').replace(/\\/g, '/')}`);
-        expect(writtenSettings.statusLine?.command).toContain('omg-hud-cache.sh');
-        expect(readFileSync(join(testClaudeDir, 'hud', 'omg-hud-cache.sh'), 'utf-8')).toContain('HUD cached statusLine launcher');
+        if (IS_WIN) {
+            // win32 gets a direct node statusLine; the sh cache wrapper is not installed there.
+            expect(writtenSettings.statusLine?.command).not.toContain('omg-hud-cache.sh');
+            expect(existsSync(join(testClaudeDir, 'hud', 'omg-hud-cache.sh'))).toBe(false);
+        }
+        else {
+            expect(writtenSettings.statusLine?.command).toContain('omg-hud-cache.sh');
+            expect(readFileSync(join(testClaudeDir, 'hud', 'omg-hud-cache.sh'), 'utf-8')).toContain('HUD cached statusLine launcher');
+        }
         expect(readFileSync(join(testClaudeDir, 'hud', 'omg-hud.mjs'), 'utf-8')).toContain('const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, "lib", "config-dir.mjs")).href);');
         expect(readFileSync(join(testClaudeDir, 'hud', 'lib', 'config-dir.mjs'), 'utf-8')).toContain('export function getCopilotConfigDir()');
         expect(readFileSync(join(testClaudeDir, 'hooks', 'lib', 'config-dir.mjs'), 'utf-8')).toContain('export function getCopilotConfigDir()');
@@ -296,7 +304,7 @@ describe('install() standalone hook reconciliation', () => {
         expect(readFileSync(join(hooksLibDir, 'workflow-profile-runtime.mjs'), 'utf-8')).toBe(shipped);
         expect(readFileSync(join(testClaudeDir, 'hooks', 'persistent-mode.mjs'), 'utf-8')).toContain('workflow-profile-runtime.mjs');
     });
-    it('rejects symlinked package manifests during bridge provisioning', async () => {
+    it.skipIf(requiresSymlinks())('rejects symlinked package manifests during bridge provisioning', async () => {
         const { provisionStandaloneStateLockBridge } = await loadInstaller();
         const external = mkdtempSync(join(tmpdir(), 'omc-external-package-'));
         const packageDir = mkdtempSync(join(tmpdir(), 'omc-package-root-'));

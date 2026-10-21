@@ -3,6 +3,7 @@ import { execFileSync } from 'child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { posixOnly } from './helpers/platform.js';
 const hooksJsonPath = join(__dirname, '..', '..', 'hooks', 'hooks.json');
 function expandHookCommandArgv(command, pluginRoot) {
     const shellScript = `eval "set -- $HOOK_COMMAND"; ` +
@@ -13,6 +14,8 @@ function expandHookCommandArgv(command, pluginRoot) {
             ...process.env,
             HOOK_COMMAND: command,
             CLAUDE_PLUGIN_ROOT: pluginRoot,
+            // Git Bash would rewrite /c/... argv into C:/... for the native node; keep argv raw.
+            MSYS2_ARG_CONV_EXCL: '*',
         },
     }).trim());
 }
@@ -47,7 +50,7 @@ describe('hooks.json command escaping', () => {
             expect(argv).not.toContain('Last/.claude/plugins/cache/omc/oh-my-copilot/4.7.10/scripts/run.cjs');
         }
     });
-    it('find-node bootstrap can execute when node is absent from PATH', () => {
+    it.skipIf(posixOnly('find-node.sh runs under /bin/sh with a POSIX PATH; win32 installs a direct node command'))('find-node bootstrap can execute when node is absent from PATH', () => {
         const homeDir = mkdtempSync(join(tmpdir(), 'omc-hook-node-path-'));
         const configDir = join(homeDir, '.claude');
         try {

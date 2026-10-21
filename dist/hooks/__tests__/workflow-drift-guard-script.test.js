@@ -1,8 +1,9 @@
-import { execFileSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { describe, expect, it } from 'vitest';
+import { buildHostBinarySpawn } from '../../cli/tmux-utils.js';
 const ROOT = process.cwd();
 const SCRIPT = join(ROOT, 'scripts', 'workflow-drift-guard.mjs');
 const TEMPLATE = join(ROOT, 'templates', 'hooks', 'workflow-drift-guard.mjs');
@@ -273,7 +274,10 @@ describe('workflow-drift-guard Stop hook', () => {
         const cleanEnv = { ...process.env };
         delete cleanEnv.DISABLE_OMC;
         delete cleanEnv.OMC_SKIP_HOOKS;
-        expect(() => execFileSync('npm', ['exec', 'vitest', '--', 'run', 'src/hooks/__tests__/workflow-drift-guard-script.test.ts'], {
+        // npm is a .cmd shim on win32; buildHostBinarySpawn routes it through cmd.exe with quoted argv.
+        const npm = buildHostBinarySpawn('npm', ['exec', 'vitest', '--', 'run', 'src/hooks/__tests__/workflow-drift-guard-script.test.ts']);
+        const result = spawnSync(npm.command, npm.args, {
+            windowsVerbatimArguments: npm.windowsVerbatimArguments,
             cwd: ROOT,
             env: {
                 ...cleanEnv,
@@ -281,8 +285,11 @@ describe('workflow-drift-guard Stop hook', () => {
                 OMC_SKIP_HOOKS: 'workflow-drift-guard',
                 [AMBIENT_PARENT_LANE_SENTINEL]: '1',
             },
+            encoding: 'utf8',
             stdio: 'pipe',
-        })).not.toThrow();
+        });
+        expect(result.error).toBeUndefined();
+        expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     });
     it('blocks completion claims when changed code adds skipped tests', () => {
         const cwd = makeRepo();

@@ -37970,7 +37970,11 @@ function rollbackPriorTarget(filePath, backupPath, expectedIdentity, operations)
     } else {
       (operations?.rename ?? fsSync.renameSync)(backupPath, filePath);
     }
-  } catch {
+  } catch (error2) {
+    try {
+      console.warn(`[omc] atomic write rollback of ${filePath} failed: ${error2.message}`);
+    } catch {
+    }
   }
 }
 function removeBackup(backupPath, operations) {
@@ -38017,6 +38021,10 @@ async function atomicWriteJson(filePath, data, hooks) {
         hooks?.afterRename?.();
         verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
       } catch (error2) {
+        if (process.platform === "win32") {
+          await fd.close().catch(() => void 0);
+          fd = null;
+        }
         rollbackPriorTarget(
           filePath,
           backupPath,
@@ -38025,7 +38033,7 @@ async function atomicWriteJson(filePath, data, hooks) {
         throw error2;
       }
     } finally {
-      await fd.close();
+      await fd?.close();
       fd = null;
     }
     success = true;
@@ -38071,6 +38079,13 @@ function atomicWriteFileSync(filePath, content, hooks, operations) {
       hooks?.afterRename?.();
       verifyPublishedFile(fd, filePath, "atomic write", operations);
     } catch (error2) {
+      if (process.platform === "win32") {
+        try {
+          fsSync.closeSync(fd);
+        } catch {
+        }
+        fd = null;
+      }
       rollbackPriorTarget(
         filePath,
         backupPath,
@@ -80450,7 +80465,17 @@ async function writeAtomic3(path30, data) {
   try {
     await (0, import_promises14.writeFile)(tmp, data, "utf8");
     const { rename: rename8 } = await import("node:fs/promises");
-    await rename8(tmp, path30);
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await rename8(tmp, path30);
+        break;
+      } catch (error2) {
+        const delay = WIN32_RENAME_RETRY_DELAYS_MS[attempt];
+        const code = error2.code ?? "";
+        if (process.platform !== "win32" || delay === void 0 || !WIN32_RENAME_RETRY_CODES.has(code)) throw error2;
+        await new Promise((resolve58) => setTimeout(resolve58, delay));
+      }
+    }
   } finally {
     await (0, import_promises14.rm)(tmp, { force: true }).catch(() => void 0);
   }
@@ -81287,7 +81312,7 @@ async function teamMarkTaskCompleted(teamName, taskId, cwd2) {
     await writeAtomic3(p, JSON.stringify(next, null, 2));
   }, 5e3);
 }
-var import_node_crypto7, import_node_fs10, import_promises14, import_node_path15;
+var import_node_crypto7, import_node_fs10, import_promises14, import_node_path15, WIN32_RENAME_RETRY_CODES, WIN32_RENAME_RETRY_DELAYS_MS;
 var init_team_ops = __esm({
   "src/team/team-ops.ts"() {
     "use strict";
@@ -81304,6 +81329,8 @@ var init_team_ops = __esm({
     init_tasks();
     init_task_recovery_checkpoint();
     init_worker_canonicalization();
+    WIN32_RENAME_RETRY_CODES = /* @__PURE__ */ new Set(["EPERM", "EACCES", "EBUSY"]);
+    WIN32_RENAME_RETRY_DELAYS_MS = [5, 10, 20, 40, 80, 160, 320];
   }
 });
 

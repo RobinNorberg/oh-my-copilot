@@ -23,6 +23,7 @@ const environmentIsolation = await vi.hoisted(async () => {
 });
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { teamClaimTask, teamCreateTask, teamListTasks, teamReadMonitorSnapshot, teamReadTask, teamMarkTaskCompleted, teamTransitionTaskStatus, teamUpdateTask, teamWriteMonitorSnapshot, withTaskClaimLock, writeAtomic, } from '../team-ops.js';
+import { requiresSymlinks } from '../../__tests__/helpers/platform.js';
 const teamName = 'storage-integrity-team';
 const timestamp = '2026-09-10T00:00:00.000Z';
 function teamRoot(cwd) {
@@ -529,7 +530,7 @@ describe('team task storage integrity', () => {
         await expect(teamReadTask(teamName, '1', cwd)).rejects.toThrow('invalid_persisted_state');
         await expect(teamListTasks(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
     });
-    it('rejects selected task symlinks consistently without following them', async () => {
+    it.skipIf(requiresSymlinks())('rejects selected task symlinks consistently without following them', async () => {
         const targetPath = join(cwd, 'outside-task.json');
         await writeFile(targetPath, JSON.stringify(task('1')), 'utf8');
         const canonicalPath = taskPath(cwd, '1');
@@ -538,7 +539,7 @@ describe('team task storage integrity', () => {
         await expect(teamReadTask(teamName, '1', cwd)).rejects.toThrow('invalid_persisted_state');
         await expect(teamListTasks(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
     });
-    it('rejects a selected legacy task symlink when canonical is absent', async () => {
+    it.skipIf(requiresSymlinks())('rejects a selected legacy task symlink when canonical is absent', async () => {
         const targetPath = join(cwd, 'outside-task.json');
         await writeFile(targetPath, JSON.stringify(task('1')), 'utf8');
         await symlink(targetPath, join(teamRoot(cwd), 'tasks', '1.json'));

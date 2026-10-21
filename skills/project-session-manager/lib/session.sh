@@ -176,6 +176,8 @@ psm_get_session_id_for_tmux() {
     local target="$1"
     local id
     while IFS= read -r id; do
+        # A native Windows jq.exe ends lines with CRLF under Git Bash.
+        id="${id%$'\r'}"
         [[ -z "$id" ]] && continue
         if [[ "$(psm_tmux_name_from_id "$id")" == "$target" ]]; then
             printf '%s\n' "$id"

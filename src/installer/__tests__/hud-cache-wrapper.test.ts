@@ -3,9 +3,12 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { posixOnly } from '../../__tests__/helpers/platform.js';
 
 const root = resolve(__dirname, '..', '..', '..');
 const wrapperSource = join(root, 'scripts', 'lib', 'hud-cache-wrapper.sh');
+// buildStatusLineCommand installs a direct node command on win32, never this sh wrapper.
+const WRAPPER_POSIX_ONLY = posixOnly('the sh HUD cache wrapper is not installed on win32');
 
 function stageWrapper() {
   const dir = mkdtempSync(join(tmpdir(), 'omg-hud-cache-wrapper-'));
@@ -21,7 +24,7 @@ function stageWrapper() {
 
 const stdinPayload = JSON.stringify({ session_id: 'session-123', cwd: '/tmp', transcript_path: '/tmp/session.jsonl', model: { id: 'claude' } });
 
-describe('HUD cached statusLine launcher', () => {
+describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cached statusLine launcher', () => {
   it.each([
     ['the shipped hud/lib/config-dir.sh helper', true],
     ['the inline fallback resolver', false],

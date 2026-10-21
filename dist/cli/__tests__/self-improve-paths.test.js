@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, normalize } from 'node:path';
+import { basename, join, normalize } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { IS_WIN, toPosix } from '../../__tests__/helpers/platform.js';
 function canonical(path) {
     return realpathSync(path);
 }
@@ -55,9 +56,15 @@ describe('self-improve path scoping helpers', () => {
             cwd: root,
             encoding: 'utf-8',
         });
-        const expectedSettings = normalize(join(scopedConfigDir, 'settings.json')).replace(/^\/private(?=\/var\/)/, '');
-        const normalizedOutput = normalize(output).replace(/^Settings: \/private(?=\/var\/)/m, 'Settings: ');
-        expect(normalizedOutput).toContain(`Settings: ${expectedSettings}`);
+        if (IS_WIN) {
+            // Git Bash prints its cwd as a POSIX path (/tmp/...), so compare from the temp root's basename on.
+            expect(toPosix(output)).toContain(`${basename(root)}/.omg/self-improve/topics/perf-track/config/settings.json`);
+        }
+        else {
+            const expectedSettings = normalize(join(scopedConfigDir, 'settings.json')).replace(/^\/private(?=\/var\/)/, '');
+            const normalizedOutput = normalize(output).replace(/^Settings: \/private(?=\/var\/)/m, 'Settings: ');
+            expect(normalizedOutput).toContain(`Settings: ${expectedSettings}`);
+        }
         expect(output).toContain('All checks passed');
     });
     it('validate.sh errors when multiple scoped topics exist without an explicit selector', () => {

@@ -7,7 +7,7 @@
  * - sanitizeTmuxToken
  * - createHudWatchPane login shell wrapping
  */
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { exec, execFile, execFileSync, spawnSync } from 'child_process';
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal();
@@ -537,6 +537,14 @@ describe('isNativeWindowsShell', () => {
 // wrapWithLoginShell
 // ---------------------------------------------------------------------------
 describe('wrapWithLoginShell', () => {
+    // Hermetic shell detection: a Git Bash test runner exports MSYSTEM/MINGW_PREFIX
+    // (MSYS on win32), and a pwsh runner is a native Windows shell. Tests default to
+    // a POSIX host and opt into win32 or MSYS explicitly.
+    beforeEach(() => {
+        Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+        vi.stubEnv('MSYSTEM', '');
+        vi.stubEnv('MINGW_PREFIX', '');
+    });
     it('uses COMSPEC wrapping instead of Unix exec syntax on native Windows shells', () => {
         const originalPlatform = process.platform;
         Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
