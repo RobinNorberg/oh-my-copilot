@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { PROGRESS_AGENT_ENV, PROGRESS_FILE_ENV, PROGRESS_MAX_BYTES, PROGRESS_MAX_NOTE, classifyProgress, emitProgress, formatProgressDuration, formatProgressEvent, parseProgressDuration, parseProgressLine, parseProgressLog, progressAgentFileName, resolveProgressFile, summarizeProgress, } from '../agent-progress.js';
+import { PROGRESS_AGENT_ENV, PROGRESS_FILE_ENV, PROGRESS_MAX_BYTES, PROGRESS_MAX_NOTE, PROGRESS_MAX_VALUE, classifyProgress, emitProgress, formatProgressDuration, formatProgressEvent, parseProgressDuration, parseProgressLine, parseProgressLog, progressAgentFileName, resolveProgressFile, summarizeProgress, } from '../agent-progress.js';
 const T0 = '2026-10-21T10:00:00.000Z';
 const ev = (over) => ({ ts: T0, phase: 'build', status: 'start', fields: {}, ...over });
 const at = (minutes) => new Date(Date.parse(T0) + minutes * 60_000);
@@ -34,6 +34,10 @@ describe('agent progress line format', () => {
             `${T0} phase=a status=finished`,
             `${T0} phase=a status=ok note="unterminated`,
             `${T0} phase=a status=ok stray`,
+            '12345 phase=a status=ok',
+            'Mon phase=a status=ok',
+            `${T0} phase=a status=ok note="x"y`,
+            `${T0} phase=a status=ok note="x"phase=b`,
         ]) {
             expect(parseProgressLine(line), line).toBeNull();
         }
@@ -104,6 +108,15 @@ describe('emitProgress', () => {
         expect(readFileSync(`${file}.1`, 'utf8').length).toBe(PROGRESS_MAX_BYTES);
         const [event] = parseProgressLog(readFileSync(file, 'utf8'));
         expect(event.note).toHaveLength(PROGRESS_MAX_NOTE);
+    });
+    it('caps phase and field values, and cuts by code points so no surrogate pair is split', () => {
+        const file = join(dir, 'cap.log');
+        const note = `${'n'.repeat(PROGRESS_MAX_NOTE - 1)}😀😀`;
+        expect(emitProgress({ phase: 'p'.repeat(PROGRESS_MAX_VALUE + 5), status: 'ok', note, file, fields: { long: 'v'.repeat(PROGRESS_MAX_VALUE + 5) } })).toBe(true);
+        const [event] = parseProgressLog(readFileSync(file, 'utf8'));
+        expect(event.phase).toHaveLength(PROGRESS_MAX_VALUE);
+        expect(event.fields.long).toHaveLength(PROGRESS_MAX_VALUE);
+        expect(event.note).toBe(`${'n'.repeat(PROGRESS_MAX_NOTE - 1)}😀`);
     });
 });
 describe('stall detection', () => {

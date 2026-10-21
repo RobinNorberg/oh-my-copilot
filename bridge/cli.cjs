@@ -90479,8 +90479,8 @@ async function startMergeOrchestrator(config2) {
   let persisted = { lastShas: {} };
   if ((0, import_node_fs17.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync141 } = await import("node:fs");
-      persisted = JSON.parse(readFileSync141(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync142 } = await import("node:fs");
+      persisted = JSON.parse(readFileSync142(persistedPath, "utf-8"));
     } catch {
       persisted = { lastShas: {} };
     }
@@ -90925,8 +90925,8 @@ async function recoverFromRestart(config2) {
   let persistedShasLoaded = 0;
   if ((0, import_node_fs17.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync141 } = await import("node:fs");
-      const persisted = JSON.parse(readFileSync141(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync142 } = await import("node:fs");
+      const persisted = JSON.parse(readFileSync142(persistedPath, "utf-8"));
       persistedShasLoaded = Object.keys(persisted.lastShas ?? {}).length;
     } catch {
       persistedShasLoaded = 0;
@@ -96808,7 +96808,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
     ).catch(logCursorTransitionMarkerFailure);
   };
   const { rename: rename8 } = await import("fs/promises");
-  const { renameSync: renameSync20, readFileSync: readFileSync141, existsSync: fsExistsSync } = await import("fs");
+  const { renameSync: renameSync20, readFileSync: readFileSync142, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   const quarantineNonCursorVerdict = async (outputFile, artifactFingerprint, workerName, taskId, taskVersion, reason) => {
     const stalePath = nonCursorVerdictStalePath(outputFile, artifactFingerprint);
@@ -96889,7 +96889,7 @@ async function processCliWorkerVerdictsUnderLock(teamName, cwd2, expectedInstanc
               return;
             }
           }
-          const raw = readFileSync141(outputFile, "utf-8");
+          const raw = readFileSync142(outputFile, "utf-8");
           parseCliWorkerVerdict(raw);
           renameSync20(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
@@ -120057,7 +120057,7 @@ var init_todos = __esm({
 });
 
 // src/hud/elements/skills.ts
-function truncate2(str4, maxWidth) {
+function truncate3(str4, maxWidth) {
   return truncateToWidth(str4, maxWidth);
 }
 function getSkillDisplayName(skillName) {
@@ -120079,7 +120079,7 @@ function renderSkills(ultrawork, ralph, lastSkill) {
     parts.push(`${MAGENTA2}ralph${RESET}`);
   }
   if (lastSkill && !isActiveMode(lastSkill.name, ultrawork, ralph)) {
-    const argsDisplay = lastSkill.args ? `(${truncate2(lastSkill.args, 15)})` : "";
+    const argsDisplay = lastSkill.args ? `(${truncate3(lastSkill.args, 15)})` : "";
     const displayName = getSkillDisplayName(lastSkill.name);
     parts.push(cyan(`skill:${displayName}${argsDisplay}`));
   }
@@ -120087,7 +120087,7 @@ function renderSkills(ultrawork, ralph, lastSkill) {
 }
 function renderLastSkill(lastSkill) {
   if (!lastSkill) return null;
-  const argsDisplay = lastSkill.args ? `(${truncate2(lastSkill.args, 15)})` : "";
+  const argsDisplay = lastSkill.args ? `(${truncate3(lastSkill.args, 15)})` : "";
   const displayName = getSkillDisplayName(lastSkill.name);
   return cyan(`skill:${displayName}${argsDisplay}`);
 }
@@ -143009,6 +143009,7 @@ var PROGRESS_FILE_ENV = "OMG_PROGRESS_FILE";
 var PROGRESS_AGENT_ENV = "OMG_PROGRESS_AGENT";
 var PROGRESS_MAX_BYTES = 1024 * 1024;
 var PROGRESS_MAX_NOTE = 500;
+var PROGRESS_MAX_VALUE = 200;
 var KEY_RE = /^[A-Za-z][A-Za-z0-9_.-]*$/;
 var BARE_VALUE_RE = /^[A-Za-z0-9._:/@+,%#~-]+$/;
 var RESERVED_KEYS = /* @__PURE__ */ new Set(["phase", "status", "note", "agent"]);
@@ -143031,7 +143032,7 @@ function formatProgressEvent(event) {
 }
 function parseProgressLine(line) {
   const text = line.replace(/\r$/, "");
-  const tsMatch = /^(\S+)/.exec(text);
+  const tsMatch = /^(\d{4}-\d{2}-\d{2}T\S*)/.exec(text);
   if (!tsMatch || !Number.isFinite(Date.parse(tsMatch[1]))) return null;
   const pairs = [];
   let i = tsMatch[1].length;
@@ -143060,7 +143061,7 @@ function parseProgressLine(line) {
           i++;
         }
       }
-      if (!closed) return null;
+      if (!closed || i < text.length && text[i] !== " " && text[i] !== "	") return null;
     } else {
       const end = text.slice(i).search(/[ \t]/);
       value = end === -1 ? text.slice(i) : text.slice(i, i + end);
@@ -143093,9 +143094,22 @@ function defaultProgressDir(cwd2 = process.cwd()) {
 function resolveProgressFile(agent, file, cwd2) {
   return file || process.env[PROGRESS_FILE_ENV] || (0, import_path187.join)(defaultProgressDir(cwd2), progressAgentFileName(agent));
 }
+function truncate2(value, max) {
+  return value.length <= max ? value : Array.from(value).slice(0, max).join("");
+}
 function rotateIfNeeded2(path30) {
   try {
-    if ((0, import_fs156.statSync)(path30).size >= PROGRESS_MAX_BYTES) (0, import_fs156.renameSync)(path30, `${path30}.1`);
+    if ((0, import_fs156.statSync)(path30).size < PROGRESS_MAX_BYTES) return;
+    const claimed = `${path30}.${process.pid}.${Date.now()}.rotating`;
+    (0, import_fs156.renameSync)(path30, claimed);
+    if ((0, import_fs156.statSync)(claimed).size >= PROGRESS_MAX_BYTES) {
+      (0, import_fs156.renameSync)(claimed, `${path30}.1`);
+    } else if (!(0, import_fs156.existsSync)(path30)) {
+      (0, import_fs156.renameSync)(claimed, path30);
+    } else {
+      (0, import_fs156.appendFileSync)(path30, (0, import_fs156.readFileSync)(claimed));
+      (0, import_fs156.unlinkSync)(claimed);
+    }
   } catch {
   }
 }
@@ -143105,12 +143119,12 @@ function emitProgress(input) {
     const agent = input.agent || process.env[PROGRESS_AGENT_ENV] || void 0;
     const path30 = resolveProgressFile(agent ?? "agent", input.file, input.cwd);
     const fields = {};
-    for (const [k, v] of Object.entries(input.fields ?? {})) fields[k] = String(v);
+    for (const [k, v] of Object.entries(input.fields ?? {})) fields[k] = truncate2(String(v), PROGRESS_MAX_VALUE);
     const line = formatProgressEvent({
       ts: (input.at ?? /* @__PURE__ */ new Date()).toISOString(),
-      phase: input.phase,
+      phase: truncate2(input.phase, PROGRESS_MAX_VALUE),
       status: input.status,
-      note: input.note === void 0 ? void 0 : input.note.slice(0, PROGRESS_MAX_NOTE),
+      note: input.note === void 0 ? void 0 : truncate2(input.note, PROGRESS_MAX_NOTE),
       agent,
       fields
     });
@@ -143198,37 +143212,72 @@ function parseInterval(raw) {
   if (ms === null || ms < 50) throw new UsageError2(`--interval must be at least 50ms, got ${JSON.stringify(raw)}`);
   return ms;
 }
-function readNewLines(path30, tail2, flush) {
-  let size;
+function parseUntil(raw) {
+  if (raw !== "done" && raw !== "settled") throw new UsageError2(`--until must be done or settled, got ${JSON.stringify(raw)}`);
+  return raw;
+}
+function parseSince(raw, now2) {
+  const ms = parseProgressDuration(raw, "m");
+  if (ms !== null) return now2.getTime() - ms;
+  const at = /^\d{4}-\d{2}-\d{2}T/.test(raw) ? Date.parse(raw) : NaN;
+  if (!Number.isFinite(at)) throw new UsageError2(`--since must be an ISO-8601 time or a duration like 2h, got ${JSON.stringify(raw)}`);
+  return at;
+}
+function parseAgents(raw) {
+  const agents = raw.split(",").map((a) => a.trim()).filter(Boolean);
+  if (agents.length === 0) throw new UsageError2(`--agents must list agent names like lane-1,lane-2, got ${JSON.stringify(raw)}`);
+  return agents;
+}
+var newTail = () => ({ offset: 0, rest: Buffer.alloc(0), ino: 0, birthtimeMs: 0 });
+function readFrom(path30, offset, size) {
+  if (size <= offset) return Buffer.alloc(0);
+  const fd = (0, import_fs157.openSync)(path30, "r");
   try {
-    size = (0, import_fs157.statSync)(path30).size;
-  } catch {
-    return [];
+    const chunk = Buffer.alloc(size - offset);
+    return chunk.subarray(0, (0, import_fs157.readSync)(fd, chunk, 0, chunk.length, offset));
+  } finally {
+    (0, import_fs157.closeSync)(fd);
   }
-  if (size < tail2.offset) {
+}
+function tryStat(path30) {
+  try {
+    return (0, import_fs157.statSync)(path30);
+  } catch {
+    return null;
+  }
+}
+function readNewLines(path30, tail2, flush) {
+  const st = tryStat(path30);
+  if (!st) return [];
+  const lines3 = [];
+  const known = tail2.ino !== 0 || tail2.birthtimeMs !== 0;
+  const replaced = known && (tail2.ino !== 0 && st.ino !== 0 ? st.ino !== tail2.ino : st.birthtimeMs !== tail2.birthtimeMs);
+  if (replaced || st.size < tail2.offset) {
+    const old = tryStat(`${path30}.1`);
+    const isOldFile = old !== null && (known ? replaced && (tail2.ino !== 0 ? old.ino === tail2.ino : old.birthtimeMs === tail2.birthtimeMs) : old.size >= tail2.offset);
+    if (isOldFile) {
+      try {
+        lines3.push(...Buffer.concat([tail2.rest, readFrom(`${path30}.1`, tail2.offset, old.size)]).toString("utf8").split("\n"));
+      } catch {
+      }
+    }
     tail2.offset = 0;
     tail2.rest = Buffer.alloc(0);
   }
-  let chunk = Buffer.alloc(0);
-  if (size > tail2.offset) {
-    let fd;
-    try {
-      fd = (0, import_fs157.openSync)(path30, "r");
-      chunk = Buffer.alloc(size - tail2.offset);
-      const read = (0, import_fs157.readSync)(fd, chunk, 0, chunk.length, tail2.offset);
-      chunk = chunk.subarray(0, read);
-      tail2.offset += read;
-    } catch {
-      return [];
-    } finally {
-      if (fd !== void 0) (0, import_fs157.closeSync)(fd);
-    }
+  tail2.ino = st.ino;
+  tail2.birthtimeMs = st.birthtimeMs;
+  let chunk;
+  try {
+    chunk = readFrom(path30, tail2.offset, st.size);
+  } catch {
+    return lines3;
   }
+  tail2.offset += chunk.length;
   const data = Buffer.concat([tail2.rest, chunk]);
   const lastNewline = data.lastIndexOf(10);
   const complete = lastNewline === -1 ? Buffer.alloc(0) : data.subarray(0, lastNewline);
   tail2.rest = lastNewline === -1 ? data : data.subarray(lastNewline + 1);
-  const lines3 = lastNewline === -1 ? [] : complete.toString("utf8").split("\n");
+  if (lastNewline !== -1) lines3.push(...complete.toString("utf8").split("\n"));
   if (flush && tail2.rest.length > 0) {
     lines3.push(tail2.rest.toString("utf8"));
     tail2.rest = Buffer.alloc(0);
@@ -143249,20 +143298,35 @@ function stalledLine(summary, now2) {
     fields: { idle, last_ts: summary.last.ts }
   });
 }
+function pendingLine(agent, idleMs, now2) {
+  const idle = formatProgressDuration(idleMs);
+  return formatProgressEvent({
+    ts: now2.toISOString(),
+    phase: "pending",
+    status: "stalled",
+    note: `no event for ${idle} since the watch started`,
+    agent,
+    fields: { idle }
+  });
+}
 async function watchProgress(o, deps) {
   const sources = resolveSources(o, deps.cwd());
   const tails = /* @__PURE__ */ new Map();
   const latest2 = /* @__PURE__ */ new Map();
+  const fresh = /* @__PURE__ */ new Set();
+  const freshFiles = /* @__PURE__ */ new Set();
   const reportedStalls = /* @__PURE__ */ new Set();
+  const reportedPending = /* @__PURE__ */ new Set();
+  const pendingSince = o.sinceMs ?? deps.now().getTime();
+  const reached = (s) => s !== void 0 && (s.state === "done" || o.until === "settled" && (s.state === "failed" || s.state === "blocked"));
   let first = true;
-  let sawNewEvent = false;
   for (; ; ) {
     const paths = listSources(sources);
     for (const path30 of paths) {
       let tail2 = tails.get(path30);
       if (!tail2) {
         if (!(0, import_fs157.existsSync)(path30)) continue;
-        tail2 = { offset: 0, rest: Buffer.alloc(0) };
+        tail2 = newTail();
         tails.set(path30, tail2);
       }
       for (const line of readNewLines(path30, tail2, o.once)) {
@@ -143271,35 +143335,45 @@ async function watchProgress(o, deps) {
         const event = withAgent(parsed, path30);
         const prev = latest2.get(event.agent);
         if (!prev || Date.parse(event.ts) >= Date.parse(prev.ts)) latest2.set(event.agent, event);
-        if (!first || o.replay) {
-          deps.out(formatProgressEvent(event));
-          sawNewEvent = true;
+        if (!first || o.replay || o.sinceMs !== void 0 && Date.parse(event.ts) >= o.sinceMs) {
+          fresh.add(event.agent);
+          freshFiles.add(path30);
         }
+        if (!first || o.replay) deps.out(formatProgressEvent(event));
       }
     }
     const now2 = deps.now();
-    const summaries = summarizeProgress([...latest2.values()], now2, { stallMs: o.stallMs });
-    for (const s of summaries) {
+    const summaries = new Map(summarizeProgress([...latest2.values()], now2, { stallMs: o.stallMs }).map((s) => [s.agent, s]));
+    for (const s of summaries.values()) {
       const key = `${s.agent}\0${s.last.ts}\0${s.last.phase}\0${s.last.status}`;
-      if (s.state === "stalled" && !reportedStalls.has(key)) {
+      const tracked2 = first || fresh.has(s.agent) || o.agents.includes(s.agent);
+      if (s.state === "stalled" && tracked2 && !reportedStalls.has(key)) {
         reportedStalls.add(key);
         deps.out(stalledLine(s, now2));
       } else if (first && !o.replay && (s.state === "failed" || s.state === "blocked")) {
         deps.out(formatProgressEvent(s.last));
       }
     }
+    for (const agent of o.agents) {
+      if (fresh.has(agent) || reportedPending.has(agent) || summaries.get(agent)?.state === "stalled") continue;
+      const idleMs = Math.max(0, now2.getTime() - pendingSince);
+      if (idleMs > o.stallMs) {
+        reportedPending.add(agent);
+        deps.out(pendingLine(agent, idleMs, now2));
+      }
+    }
     first = false;
     if (o.once) return 0;
-    const everyFileSeen = sources.files ? sources.files.every((f) => tails.has(f)) : sawNewEvent;
-    if (summaries.length > 0 && everyFileSeen && summaries.every((s) => s.state === "done")) return 0;
+    const tracked = /* @__PURE__ */ new Set([...fresh, ...o.agents]);
+    const filesReady = !sources.files || sources.files.every((f) => freshFiles.has(f));
+    if (tracked.size > 0 && filesReady && [...tracked].every((a) => fresh.has(a) && reached(summaries.get(a)))) return 0;
     await deps.sleep(o.intervalMs);
   }
 }
 function readAllEvents(sources) {
   const events = [];
   for (const path30 of listSources(sources)) {
-    const tail2 = { offset: 0, rest: Buffer.alloc(0) };
-    for (const line of readNewLines(path30, tail2, true)) {
+    for (const line of readNewLines(path30, newTail(), true)) {
       const parsed = parseProgressLine(line);
       if (parsed) events.push(withAgent(parsed, path30));
     }
@@ -143321,7 +143395,7 @@ function progressCommand(overrides = {}) {
   const deps = { ...defaultDeps, ...overrides };
   const cmd = new Command("progress");
   cmd.description("Agent progress events: emit phase events, watch them (stall detection) for the Monitor tool, show status");
-  cmd.command("emit <phase> <status>").description("Append one event (status: start|ok|fail|blocked|heartbeat|done) to $OMG_PROGRESS_FILE or <state root>/progress/<agent>.log").option("--note <text>", "Short note (quoted and escaped as needed; truncated at 500 chars)").option("--agent <name>", 'Agent name (default $OMG_PROGRESS_AGENT, else "agent")').option("--file <path>", "Log file (wins over $OMG_PROGRESS_FILE)").option("--field <key=value>", "Extra key=value pair (repeatable)", collect, []).action((phase, status, o) => guarded3(deps, () => {
+  cmd.command("emit <phase> <status>").description("Append one event (status: start|ok|fail|blocked|heartbeat|done) to $OMG_PROGRESS_FILE or <state root>/progress/<agent>.log").option("--note <text>", "Short note (quoted and escaped as needed; truncated at 500 code points)").option("--agent <name>", 'Agent name (default $OMG_PROGRESS_AGENT, else "agent")').option("--file <path>", "Log file (wins over $OMG_PROGRESS_FILE)").option("--field <key=value>", "Extra key=value pair (repeatable)", collect, []).action((phase, status, o) => guarded3(deps, () => {
     if (!isProgressStatus(status)) throw new UsageError2(`status must be one of start|ok|fail|blocked|heartbeat|done, got ${JSON.stringify(status)}`);
     if (phase.trim().length === 0) throw new UsageError2("phase must not be empty");
     const fields = {};
@@ -143337,13 +143411,16 @@ function progressCommand(overrides = {}) {
     if (!ok) deps.err("omg progress: could not write the progress event (continuing)");
     return 0;
   }));
-  cmd.command("watch").description("Stream new events and synthesized status=stalled lines (one per line); exits when every watched agent is done").option("--file <path>", "Watch this log (repeatable; may not exist yet)", collect, []).option("--dir <path>", "Watch every *.log in this directory, including files created later").option("--stall <duration>", "Silence after start/heartbeat/ok that counts as a stall (bare number = minutes)", "10m").option("--interval <duration>", "Poll interval (bare number = ms)", "1000").option("--replay", "Also print the events already in the logs").option("--once", "Read what exists, report it, and exit").action((o) => guarded3(deps, () => watchProgress({
+  cmd.command("watch").description("Stream new events and synthesized status=stalled lines (one per line); exits when every agent with a new event (and every --agents name) is done").option("--file <path>", "Watch this log (repeatable; may not exist yet; each needs one new event before the watch can exit)", collect, []).option("--dir <path>", "Watch every *.log in this directory, including files created later").option("--agents <names>", "Comma-separated agents to wait for, even before their logs exist (stalled after --stall without an event)").option("--until <state>", "Exit when every tracked agent is done, or settled (done, failed or blocked)", "done").option("--since <time>", "Existing events at or after this ISO time or duration ago (e.g. 2h) count as new for exiting").option("--stall <duration>", "Silence after start/heartbeat/ok that counts as a stall (bare number = minutes)", "10m").option("--interval <duration>", "Poll interval (bare number = ms)", "1000").option("--replay", "Also print the events already in the logs (and count them as new)").option("--once", "Read what exists, report it, and exit").action((o) => guarded3(deps, () => watchProgress({
     file: o.file,
     dir: o.dir,
     stallMs: parseStall(o.stall),
     intervalMs: parseInterval(o.interval),
     once: Boolean(o.once),
-    replay: Boolean(o.replay)
+    replay: Boolean(o.replay),
+    until: parseUntil(o.until),
+    sinceMs: o.since === void 0 ? void 0 : parseSince(o.since, deps.now()),
+    agents: o.agents === void 0 ? [] : parseAgents(o.agents)
   }, deps)));
   cmd.command("status").description("Show each agent's latest event and state (running|stalled|failed|blocked|done)").option("--file <path>", "Read this log (repeatable)", collect, []).option("--dir <path>", "Read every *.log in this directory").option("--stall <duration>", "Stall threshold (bare number = minutes)", "10m").option("--json", "JSON output").action((o) => guarded3(deps, () => {
     const stallMs = parseStall(o.stall);

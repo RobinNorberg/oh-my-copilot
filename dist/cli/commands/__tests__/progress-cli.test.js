@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'child_process';
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { appendFileSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { progressCommand } from '../progress.js';
@@ -169,6 +169,87 @@ describe('omg progress CLI', () => {
             };
             expect(await run('watch', '--dir', dir)).toBe(0);
             expect(out).toEqual([`${iso(2)} phase=y status=start agent=new`, `${iso(3)} phase=y status=done agent=new`]);
+        });
+        it('in directory mode a stale unfinished log is reported once but does not keep the watch open', async () => {
+            write('crashed.log', `${iso(-90)} phase=x status=start`);
+            onSleep = (n) => {
+                if (n === 1)
+                    write('new.log', `${iso(1)} phase=y status=start`);
+                if (n === 2)
+                    appendFileSync(join(dir, 'new.log'), `${iso(2)} phase=y status=done\n`);
+            };
+            expect(await run('watch', '--dir', dir)).toBe(0);
+            expect(out.map((l) => parseProgressLine(l)).map((e) => `${e.agent}:${e.status}`)).toEqual(['crashed:stalled', 'new:start', 'new:done']);
+            expect(polls).toBe(2);
+        });
+        it('a lane that fails and is recycled ends the watch with a final done, or with --until settled', async () => {
+            onSleep = (n) => {
+                if (n === 1)
+                    write('lane.log', `${iso(1)} phase=build status=fail`);
+                if (n === 2)
+                    appendFileSync(join(dir, 'lane.log'), `${iso(2)} phase=report status=done\n`);
+            };
+            expect(await run('watch', '--dir', dir)).toBe(0);
+            expect(polls).toBe(2);
+            rmSync(join(dir, 'lane.log'));
+            polls = 0;
+            expect(await run('watch', '--dir', dir, '--until', 'settled')).toBe(0);
+            expect(polls).toBe(1);
+        });
+        it('--since counts existing events as new', async () => {
+            write('lane.log', `${iso(-5)} phase=a status=start`, `${iso(-4)} phase=a status=done`);
+            expect(await run('watch', '--dir', dir, '--since', '10m')).toBe(0);
+            expect(polls).toBe(0);
+            expect(await run('watch', '--dir', dir, '--since', iso(-6))).toBe(0);
+            expect(polls).toBe(0);
+        });
+        it('a reused --file ending in done needs a new event before the watch can exit', async () => {
+            const file = write('lane.log', `${iso(-60)} phase=old status=done`);
+            onSleep = (n) => {
+                if (n === 2)
+                    appendFileSync(file, `${iso(2)} phase=a status=start\n`);
+                if (n === 3)
+                    appendFileSync(file, `${iso(3)} phase=a status=done\n`);
+            };
+            expect(await run('watch', '--file', file)).toBe(0);
+            expect(polls).toBe(3);
+            expect(out).toEqual([`${iso(2)} phase=a status=start agent=lane`, `${iso(3)} phase=a status=done agent=lane`]);
+        });
+        it('--agents waits for slower lanes and reports one without a log as stalled', async () => {
+            onSleep = (n) => {
+                if (n === 1)
+                    write('a.log', `${iso(1)} phase=x status=start`, `${iso(1)} phase=x status=done`);
+                if (n === 4)
+                    write('b.log', `${iso(4)} phase=y status=start`);
+                if (n === 5)
+                    appendFileSync(join(dir, 'b.log'), `${iso(5)} phase=y status=done\n`);
+            };
+            expect(await run('watch', '--dir', dir, '--agents', 'a, b', '--stall', '2m')).toBe(0);
+            expect(polls).toBe(5);
+            expect(out).toEqual([
+                `${iso(1)} phase=x status=start agent=a`,
+                `${iso(1)} phase=x status=done agent=a`,
+                `${iso(3)} phase=pending status=stalled note="no event for 3m since the watch started" agent=b idle=3m`,
+                `${iso(4)} phase=y status=start agent=b`,
+                `${iso(5)} phase=y status=done agent=b`,
+            ]);
+        });
+        it('rejects a bad --until, --since or --agents with exit 2', async () => {
+            expect(await run('watch', '--dir', dir, '--until', 'never')).toBe(2);
+            expect(await run('watch', '--dir', dir, '--since', 'yesterday')).toBe(2);
+            expect(await run('watch', '--dir', dir, '--agents', ' , ')).toBe(2);
+        });
+        it('finishes a rotated file from <file>.1 before reading a new file that already regrew', async () => {
+            const file = write('lane.log', `${iso(0)} phase=a status=start`);
+            onSleep = (n) => {
+                if (n === 1) {
+                    appendFileSync(file, `${iso(1)} phase=a status=ok\n`);
+                    renameSync(file, `${file}.1`);
+                    write('lane.log', `${iso(1)} phase=b status=done note=${'x'.repeat(200)}`);
+                }
+            };
+            expect(await run('watch', '--file', file)).toBe(0);
+            expect(out.map((l) => parseProgressLine(l)).map((e) => `${e.phase}:${e.status}`)).toEqual(['a:ok', 'b:done']);
         });
         it('rereads a rotated (shrunken) file from the start', async () => {
             const file = write('lane.log', `${iso(0)} phase=a status=start note=${'x'.repeat(200)}`);

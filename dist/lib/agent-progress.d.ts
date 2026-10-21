@@ -26,10 +26,12 @@ export type ProgressStatus = (typeof PROGRESS_STATUSES)[number];
 export type ProgressEventStatus = ProgressStatus | 'stalled';
 export declare const PROGRESS_FILE_ENV = "OMG_PROGRESS_FILE";
 export declare const PROGRESS_AGENT_ENV = "OMG_PROGRESS_AGENT";
-/** A log above this size is renamed to `<file>.1` (replacing the previous one) before the next append. */
+/** A log above this size is renamed to `<file>.1` (replacing the previous one) before the next append (best effort under concurrent writers). */
 export declare const PROGRESS_MAX_BYTES: number;
-/** Notes are truncated to this many characters so one event stays one small write. */
+/** Notes are truncated to this many code points so one event stays one small write. */
 export declare const PROGRESS_MAX_NOTE = 500;
+/** Phases and extra field values are truncated to this many code points. */
+export declare const PROGRESS_MAX_VALUE = 200;
 export interface ProgressEvent {
     /** ISO-8601 UTC timestamp as written. */
     ts: string;

@@ -3,7 +3,7 @@
  *   emit    append one event to the agent's log (never fails the caller's chain)
  *   watch   stream new events plus synthesized `status=stalled` lines, one
  *           line per event, for Claude Code's Monitor tool; exits when every
- *           watched agent is `done`
+ *           tracked agent is `done` (or settled, with `--until settled`)
  *   status  table of each agent's latest event and state
  *
  * Sources for watch / status: every `--file`, else `--dir` (each `*.log`),
@@ -25,16 +25,29 @@ interface SourceOptions {
     file: string[];
     dir?: string;
 }
+export type WatchUntil = 'done' | 'settled';
 export interface WatchOptions extends SourceOptions {
     stallMs: number;
     intervalMs: number;
     once: boolean;
     replay: boolean;
+    /** `done`: every tracked agent's latest event is `done`; `settled`: `done`, `fail` or `blocked`. */
+    until: WatchUntil;
+    /** Existing events at or after this time (epoch ms) count as new for exiting. */
+    sinceMs?: number;
+    /** Agents the watch waits for, even before their logs exist. */
+    agents: string[];
 }
 /**
  * The watch loop. Existing lines feed the state silently (except with
  * `replay`); agents already failed / blocked / stalled at startup are
  * reported once. Later lines, and files that appear later, are streamed.
+ *
+ * Only new events count towards exiting (written after the watch started,
+ * or at or after `sinceMs`, or every event with `replay`): the tracked
+ * agents are those with a new event plus `agents`, and every `--file` needs
+ * one new event, so a reused or stale log neither ends the watch early nor
+ * keeps it open forever.
  */
 export declare function watchProgress(o: WatchOptions, deps: ProgressDeps): Promise<number>;
 export declare function progressCommand(overrides?: Partial<ProgressDeps>): Command;
