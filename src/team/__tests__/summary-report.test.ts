@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { generateTeamReport, saveTeamReport } from '../summary-report.js';
 import { logAuditEvent } from '../audit-log.js';
 import { recordTaskUsage } from '../usage-tracker.js';
+import { posixOnly, toPosix } from '../../__tests__/helpers/platform.js';
 
 describe('summary-report', () => {
   let testDir: string;
@@ -164,8 +165,9 @@ describe('summary-report', () => {
       expect(report).toContain('## Worker Performance');
       expect(report).toContain('worker1');
       expect(report).toContain('120s');
-      expect(report).toContain('1,000');
-      expect(report).toContain('2,000');
+      // The report formats counts in the host locale (1,000 / 1 000 / 1.000).
+      expect(report).toContain((1000).toLocaleString());
+      expect(report).toContain((2000).toLocaleString());
     });
 
     it('limits activity timeline to last 50 entries', () => {
@@ -204,14 +206,16 @@ describe('summary-report', () => {
 
       const filePath = saveTeamReport(testDir, teamName);
       expect(existsSync(filePath)).toBe(true);
-      expect(filePath).toContain('.omg/reports/');
+      expect(toPosix(filePath)).toContain('.omg/reports/');
       expect(filePath).toContain(teamName);
-
-      const stat = statSync(filePath);
-      expect(stat.mode & 0o777).toBe(0o600);
 
       const content = readFileSync(filePath, 'utf-8');
       expect(content).toContain('# Team Report');
+    });
+
+    it.skipIf(posixOnly('NTFS has no POSIX mode bits'))('saves the report owner-only', () => {
+      const filePath = saveTeamReport(testDir, teamName);
+      expect(statSync(filePath).mode & 0o777).toBe(0o600);
     });
 
     it('creates unique filenames with timestamps', async () => {

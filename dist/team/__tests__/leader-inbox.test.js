@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, rmSync, existsSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { leaderInboxPath, ensureLeaderInbox, appendToLeaderInbox, extendLeaderBootstrapPrompt, } from '../leader-inbox.js';
+import { toPosix } from '../../__tests__/helpers/platform.js';
 const TEST_CWD = join(tmpdir(), `omc-test-leader-inbox-${process.pid}`);
 const TEST_TEAM = 'my-team';
 let previousHome;
@@ -45,7 +46,7 @@ describe('leaderInboxPath', () => {
         const p = leaderInboxPath('my team!', TEST_CWD);
         expect(p).not.toContain('!');
         expect(p).not.toContain(' ');
-        expect(p).toContain('leader/inbox.md');
+        expect(toPosix(p)).toContain('leader/inbox.md');
     });
     it('prevents traversal via team name: dots and slashes stripped', () => {
         // sanitizeName turns '../../../etc' into 'etc', so path stays under cwd
@@ -165,7 +166,7 @@ describe('extendLeaderBootstrapPrompt', () => {
         const fullPath = leaderInboxPath(TEST_TEAM, TEST_CWD);
         // The prompt uses relative path; fullPath has cwd prefix
         const relSegment = `.omg/state/team/my-team/leader/inbox.md`;
-        expect(fullPath).toContain(relSegment);
+        expect(toPosix(fullPath)).toContain(relSegment);
         expect(prompt).toContain(relSegment);
     });
 });

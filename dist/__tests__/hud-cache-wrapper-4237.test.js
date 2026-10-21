@@ -3,8 +3,11 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { posixOnly } from './helpers/platform.js';
 const root = resolve(__dirname, '..', '..');
 const wrapperPath = join(root, 'scripts', 'lib', 'hud-cache-wrapper.sh');
+// buildStatusLineCommand installs a direct node command on win32, never this sh wrapper.
+const WRAPPER_POSIX_ONLY = posixOnly('the sh HUD cache wrapper is not installed on win32');
 function makeOld(path) {
     const old = new Date(Date.now() - 30_000);
     utimesSync(path, old, old);
@@ -13,7 +16,7 @@ function makeFresh(path) {
     const now = new Date();
     utimesSync(path, now, now);
 }
-describe('HUD cache wrapper fast path (issue #4237)', () => {
+describe.skipIf(WRAPPER_POSIX_ONLY)('HUD cache wrapperfast path (issue #4237)', () => {
     it('fast path: fresh cache younger than floor => no render started', () => {
         const tempRoot = mkdtempSync(join(tmpdir(), 'omc-hud-4237-fastpath-'));
         const cacheDir = join(tempRoot, 'cache');

@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync
 import { join } from 'path';
 import { tmpdir } from 'os';
 import * as fs from 'fs';
+import { canCreateSymlinks, requiresSymlinks } from '../../../__tests__/helpers/platform.js';
 // We need to test the actual behavior, so we mock at the module level
 vi.mock('fs', async () => {
     const actual = await vi.importActual('fs');
@@ -53,14 +54,14 @@ describe('ensureStdinSymlink', () => {
         ensureStdinSymlink(pluginRoot);
         expect(existsSync(hooksLibDir)).toBe(true);
     });
-    it('creates a symlink from hooks/lib/stdin.mjs to the plugin source', () => {
+    it.skipIf(requiresSymlinks())('creates a symlink from hooks/lib/stdin.mjs to the plugin source', () => {
         ensureStdinSymlink(pluginRoot);
         const stdinDst = join(hooksLibDir, 'stdin.mjs');
         expect(existsSync(stdinDst)).toBe(true);
         expect(lstatSync(stdinDst).isSymbolicLink()).toBe(true);
         expect(readlinkSync(stdinDst)).toBe(stdinSrcPath);
     });
-    it('heals an existing symlink that points to a different location', () => {
+    it.skipIf(requiresSymlinks())('heals an existing symlink that points to a different location', () => {
         // Create the directory and a stale symlink pointing elsewhere
         mkdirSync(hooksLibDir, { recursive: true });
         const staleTarget = mkdtempSync(join(tmpdir(), 'stale-stdin-'));
@@ -101,7 +102,7 @@ describe('ensureStdinSymlink', () => {
         expect(existsSync(stdinDst)).toBe(true);
         expect(readFileSync(stdinDst, 'utf-8')).toBe('// fake stdin.mjs content\n');
     });
-    it('removes stale .tmp file before creating new symlink', () => {
+    it.skipIf(requiresSymlinks())('removes stale .tmp file before creating new symlink', () => {
         mkdirSync(hooksLibDir, { recursive: true });
         const stdinDst = join(hooksLibDir, 'stdin.mjs');
         const tmpDst = stdinDst + '.tmp';
@@ -116,7 +117,7 @@ describe('ensureStdinSymlink', () => {
         // Old tmp should be gone
         expect(existsSync(tmpDst)).toBe(false);
     });
-    it('heals dangling symlink that points to non-existent target', () => {
+    it.skipIf(requiresSymlinks())('heals dangling symlink that points to non-existent target', () => {
         // Create the directory and a dangling symlink (symlink exists but target doesn't)
         mkdirSync(hooksLibDir, { recursive: true });
         const stdinDst = join(hooksLibDir, 'stdin.mjs');
@@ -132,7 +133,7 @@ describe('ensureStdinSymlink', () => {
         expect(lstatSync(stdinDst).isSymbolicLink()).toBe(true);
         expect(readlinkSync(stdinDst)).toBe(stdinSrcPath);
     });
-    it('removes dangling symlink and copies when symlink creation fails', () => {
+    it.skipIf(requiresSymlinks())('removes dangling symlink and copies when symlink creation fails', () => {
         mkdirSync(hooksLibDir, { recursive: true });
         const stdinDst = join(hooksLibDir, 'stdin.mjs');
         // Create a dangling symlink (points to non-existent target)
@@ -174,7 +175,11 @@ describe('ensureStdinSymlink', () => {
             ensureStdinSymlink(pluginRoot);
             const stdinDst = join(customHooksLib, 'stdin.mjs');
             expect(existsSync(stdinDst)).toBe(true);
-            expect(readlinkSync(stdinDst)).toBe(stdinSrcPath);
+            // Without symlink privilege the helper copies, so check content instead.
+            if (canCreateSymlinks())
+                expect(readlinkSync(stdinDst)).toBe(stdinSrcPath);
+            else
+                expect(readFileSync(stdinDst, 'utf-8')).toBe('// fake stdin.mjs content\n');
         }
         finally {
             rmSync(customConfigDir, { recursive: true, force: true });

@@ -7743,7 +7743,11 @@ function rollbackPriorTarget(filePath, backupPath, expectedIdentity, operations)
     } else {
       (operations?.rename ?? fsSync.renameSync)(backupPath, filePath);
     }
-  } catch {
+  } catch (error) {
+    try {
+      console.warn(`[omc] atomic write rollback of ${filePath} failed: ${error.message}`);
+    } catch {
+    }
   }
 }
 function removeBackup(backupPath, operations) {
@@ -7790,6 +7794,10 @@ async function atomicWriteJson(filePath, data, hooks) {
         hooks?.afterRename?.();
         verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
       } catch (error) {
+        if (process.platform === "win32") {
+          await fd.close().catch(() => void 0);
+          fd = null;
+        }
         rollbackPriorTarget(
           filePath,
           backupPath,
@@ -7798,7 +7806,7 @@ async function atomicWriteJson(filePath, data, hooks) {
         throw error;
       }
     } finally {
-      await fd.close();
+      await fd?.close();
       fd = null;
     }
     success = true;
@@ -14894,7 +14902,17 @@ async function writeAtomic2(path5, data) {
   try {
     await (0, import_promises13.writeFile)(tmp, data, "utf8");
     const { rename: rename8 } = await import("node:fs/promises");
-    await rename8(tmp, path5);
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await rename8(tmp, path5);
+        break;
+      } catch (error) {
+        const delay = WIN32_RENAME_RETRY_DELAYS_MS[attempt];
+        const code = error.code ?? "";
+        if (process.platform !== "win32" || delay === void 0 || !WIN32_RENAME_RETRY_CODES.has(code)) throw error;
+        await new Promise((resolve18) => setTimeout(resolve18, delay));
+      }
+    }
   } finally {
     await (0, import_promises13.rm)(tmp, { force: true }).catch(() => void 0);
   }
@@ -15249,7 +15267,7 @@ async function teamMarkTaskCompleted(teamName, taskId, cwd) {
     await writeAtomic2(p, JSON.stringify(next, null, 2));
   }, 5e3);
 }
-var import_node_crypto7, import_node_fs6, import_promises13, import_node_path7;
+var import_node_crypto7, import_node_fs6, import_promises13, import_node_path7, WIN32_RENAME_RETRY_CODES, WIN32_RENAME_RETRY_DELAYS_MS;
 var init_team_ops = __esm({
   "src/team/team-ops.ts"() {
     "use strict";
@@ -15266,6 +15284,8 @@ var init_team_ops = __esm({
     init_tasks();
     init_task_recovery_checkpoint();
     init_worker_canonicalization();
+    WIN32_RENAME_RETRY_CODES = /* @__PURE__ */ new Set(["EPERM", "EACCES", "EBUSY"]);
+    WIN32_RENAME_RETRY_DELAYS_MS = [5, 10, 20, 40, 80, 160, 320];
   }
 });
 

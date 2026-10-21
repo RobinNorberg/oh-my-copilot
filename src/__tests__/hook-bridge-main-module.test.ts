@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isSameEntryRealpath } from '../hooks/bridge.js';
+import { requiresSymlinks } from './helpers/platform.js';
 
 /**
  * B7 regression: when OMC is installed via a symlink
@@ -11,7 +12,7 @@ import { isSameEntryRealpath } from '../hooks/bridge.js';
  * main-module check must dispatch instead of exiting silently.
  */
 describe('isSameEntryRealpath (bridge main-module check)', () => {
-  it('treats a symlinked entry as the main module (B7)', () => {
+  it.skipIf(requiresSymlinks())('treats a symlinked entry as the main module (B7)', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omc-bridge-entry-'));
     const realFile = join(dir, 'cli.cjs');
     writeFileSync(realFile, '// entry\n');

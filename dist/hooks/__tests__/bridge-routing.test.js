@@ -14,6 +14,7 @@ import { processHook, resetSkipHooksCache, requiredKeysForHook, } from '../bridg
 import { flushPendingWrites } from '../subagent-tracker/index.js';
 import { readDispatchTelemetryTail } from '../registry/cutover.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { closeAllJobDbs } from '../../lib/job-state-db.js';
 function writeCanonicalTeamState(tempDir, sessionId, teamName, phase) {
     const canonicalTeamDir = join(tempDir, '.omg', 'state', 'team', teamName);
     mkdirSync(canonicalTeamDir, { recursive: true });
@@ -1955,6 +1956,8 @@ $ ultrawork search the codebase`,
                 expect(existsSync(checkpointDir)).toBe(true);
             }
             finally {
+                // The checkpoint keeps jobs.db open; Windows cannot delete an open file.
+                closeAllJobDbs();
                 rmSync(tempDir, { recursive: true, force: true });
             }
         });

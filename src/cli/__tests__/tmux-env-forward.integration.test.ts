@@ -17,6 +17,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { wrapWithLoginShell, quoteShellArg } from '../tmux-utils.js';
 import { buildEnvExportPrefix, buildSensitiveEnvFilePrefix } from '../launch.js';
+import { posixOnly } from '../../__tests__/helpers/platform.js';
 
 function isTmuxAvailable(): boolean {
   try {
@@ -29,7 +30,7 @@ function isTmuxAvailable(): boolean {
 
 const HAS_TMUX = isTmuxAvailable();
 
-describe.skipIf(!HAS_TMUX)('tmux env forwarding — integration', () => {
+describe.skipIf(!HAS_TMUX || posixOnly('pane commands are POSIX sh (export, printenv); psmux panes on win32 run cmd/pwsh'))('tmux env forwarding — integration', () => {
   const SESSION_NAME = `omc-env-test-${Date.now()}`;
   let tempDir: string;
   let outFile: string;

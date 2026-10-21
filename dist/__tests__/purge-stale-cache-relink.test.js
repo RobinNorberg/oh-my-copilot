@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { join } from 'path';
+import { basename, join, sep } from 'path';
 vi.mock('fs', async () => {
     const actual = await vi.importActual('fs');
     return {
@@ -20,6 +20,9 @@ vi.mock('../utils/config-dir.js', () => ({
 }));
 import { existsSync, readFileSync, readdirSync, statSync, lstatSync, realpathSync, rmSync, renameSync, symlinkSync, } from 'fs';
 import { purgeStalePluginCacheVersions } from '../utils/paths.js';
+import { IS_WIN } from './helpers/platform.js';
+/** The product links version dirs with junctions on win32 (no symlink privilege). */
+const SYMLINK_TYPE = IS_WIN ? 'junction' : 'dir';
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
 const mockedReaddirSync = vi.mocked(readdirSync);
@@ -95,7 +98,7 @@ describe('purgeStalePluginCacheVersions relink and recovery', () => {
     it('replaces stale version dir with symlink to active version in same namespace', () => {
         // Scenario: CLAUDE_PLUGIN_ROOT=4.14.4 in a running session; 4.14.5 installed;
         // purge runs after grace period.  4.14.4 must become a symlink, not disappear.
-        const cacheDir = '/mock/.claude/plugins/cache';
+        const cacheDir = join('/mock/.claude', 'plugins', 'cache');
         const activeVersion = join(cacheDir, 'omc/oh-my-copilot/4.14.5');
         const staleVersion = join(cacheDir, 'omc/oh-my-copilot/4.14.4');
         mockedExistsSync.mockImplementation((p) => {
@@ -104,7 +107,7 @@ describe('purgeStalePluginCacheVersions relink and recovery', () => {
                 return true;
             if (ps === cacheDir)
                 return true;
-            if (ps === staleVersion || ps === activeVersion || ps.startsWith(activeVersion + '/'))
+            if (ps === staleVersion || ps === activeVersion || ps.startsWith(activeVersion + sep))
                 return true;
             return false;
         });
@@ -130,7 +133,7 @@ describe('purgeStalePluginCacheVersions relink and recovery', () => {
         expect(result.symlinkPaths).toEqual([staleVersion]);
         // Real dir moved aside first, then symlink created in its place
         expect(mockedRenameSync).toHaveBeenCalledWith(staleVersion, expect.stringContaining(`${staleVersion}.omc-stale-`));
-        expect(mockedSymlinkSync).toHaveBeenCalledWith(activeVersion, staleVersion, 'dir');
+        expect(mockedSymlinkSync).toHaveBeenCalledWith(activeVersion, staleVersion, SYMLINK_TYPE);
         // Active version untouched
         expect(mockedRmSync).not.toHaveBeenCalledWith(activeVersion, expect.anything());
         expect(mockedSymlinkSync).not.toHaveBeenCalledWith(expect.anything(), activeVersion, expect.anything());
@@ -138,7 +141,7 @@ describe('purgeStalePluginCacheVersions relink and recovery', () => {
     // --- regression: the relink must never leave the path missing ---
     /** Single stale version alongside one active version in the same namespace. */
     function setupRelinkScenario() {
-        const cacheDir = '/mock/.claude/plugins/cache';
+        const cacheDir = join('/mock/.claude', 'plugins', 'cache');
         const activeVersion = join(cacheDir, 'omc/oh-my-copilot/4.15.10');
         const staleVersion = join(cacheDir, 'omc/oh-my-copilot/4.15.6');
         mockedExistsSync.mockImplementation((p) => {
@@ -150,7 +153,7 @@ describe('purgeStalePluginCacheVersions relink and recovery', () => {
             if (ps === staleVersion || ps === activeVersion)
                 return true;
             // isUsableVersionPath probes plugin-root markers; both real versions have them
-            if (ps.startsWith(`${staleVersion}/`) || ps.startsWith(`${activeVersion}/`))
+            if (ps.startsWith(`${staleVersion}${sep}`) || ps.startsWith(`${activeVersion}${sep}`))
                 return true;
             // A fresh relink starts with no aside path — if one appeared to exist and
             // to carry markers, relinkStaleVersionDir would refuse to overwrite it.
@@ -199,7 +202,7 @@ describe('purgeStalePluginCacheVersions relink and recovery', () => {
             recursive: true,
             force: true,
         });
-        expect(mockedSymlinkSync).toHaveBeenLastCalledWith(activeVersion, staleVersion, 'dir');
+        expect(mockedSymlinkSync).toHaveBeenLastCalledWith(activeVersion, staleVersion, SYMLINK_TYPE);
     });
     it('restores the stale dir when the symlink can never be placed', () => {
         // Worst case: every attempt loses the race.  The original directory must be
@@ -264,10 +267,11 @@ describe('purgeStalePluginCacheVersions relink and recovery', () => {
         expect(result.errors[0]).toContain('.omc-stale-');
     });
     it('restores the stale dir when symlink fails with a non-EEXIST error', () => {
-        // EPERM/EACCES must not be retried, but must still roll back.
+        // EPERM/EACCES must not be retried, but must still roll back. On win32 the
+        // product reads EPERM/EACCES as an occupied path and retries, so use EIO there.
         const { staleVersion } = setupRelinkScenario();
         mockedSymlinkSync.mockImplementation(() => {
-            throw fsError('EPERM');
+            throw fsError(IS_WIN ? 'EIO' : 'EPERM');
         });
         const result = purgeStalePluginCacheVersions();
         expect(result.symlinked).toBe(0);
@@ -286,7 +290,7 @@ describe('purgeStalePluginCacheVersions relink and recovery', () => {
      *   'payload'  — a real reinstalled version directory
      */
     function setupInterruptedRelink(occupant) {
-        const cacheDir = '/mock/.claude/plugins/cache';
+        const cacheDir = join('/mock/.claude', 'plugins', 'cache');
         const activeVersion = join(cacheDir, 'omc/oh-my-copilot/4.15.10');
         const originalDir = join(cacheDir, 'omc/oh-my-copilot/4.15.6');
         const asideDir = `${originalDir}.omc-stale-${DEAD_OWNER_PID}`;
@@ -312,12 +316,12 @@ describe('purgeStalePluginCacheVersions relink and recovery', () => {
             // Plugin-root markers: only a real payload directory carries them.  The
             // squatter cases deliberately do not, which is the whole point of the
             // marker check replacing the old "any non-dotfile" heuristic.
-            if (ps.startsWith(`${activeVersion}/`) || ps.startsWith(`${asideDir}/`))
+            if (ps.startsWith(`${activeVersion}${sep}`) || ps.startsWith(`${asideDir}${sep}`))
                 return true;
             // Marker probes under the version path.  existsSync follows symlinks, so a
             // completed redirect resolves to the active version and shows its markers;
             // a squatter or a dangling link shows nothing.
-            if (ps.startsWith(`${originalDir}/`))
+            if (ps.startsWith(`${originalDir}${sep}`))
                 return occupant === 'payload' || occupant === 'redirect';
             return false;
         });
@@ -414,7 +418,7 @@ describe('purgeStalePluginCacheVersions relink and recovery', () => {
     it('reconciles aside entries before relinking a squatter that shares their name', () => {
         // Filesystem order can put the squatter first.  Relinking it first would
         // clear the aside backup before anyone knows the symlink can be placed.
-        const cacheDir = '/mock/.claude/plugins/cache';
+        const cacheDir = join('/mock/.claude', 'plugins', 'cache');
         const activeVersion = join(cacheDir, 'omc/oh-my-copilot/4.15.10');
         const originalDir = join(cacheDir, 'omc/oh-my-copilot/4.15.6');
         const asideDir = `${originalDir}.omc-stale-${DEAD_OWNER_PID}`;
@@ -447,11 +451,11 @@ describe('purgeStalePluginCacheVersions relink and recovery', () => {
         });
         const order = [];
         mockedRenameSync.mockImplementation(((from, to) => {
-            order.push(`rename ${String(from).split('/').pop()} -> ${String(to).split('/').pop()}`);
+            order.push(`rename ${basename(String(from))} -> ${basename(String(to))}`);
             return undefined;
         }));
         mockedSymlinkSync.mockImplementation(((_t, at) => {
-            order.push(`symlink at ${String(at).split('/').pop()}`);
+            order.push(`symlink at ${basename(String(at))}`);
             return undefined;
         }));
         const result = purgeStalePluginCacheVersions();

@@ -47,13 +47,30 @@ function taskFileCandidates(teamName, taskId, cwd) {
     const legacy = legacyTaskFilePath(teamName, taskId, cwd);
     return canonical === legacy ? [canonical] : [canonical, legacy];
 }
+// win32 refuses a rename over a target that a concurrent writer is replacing or
+// a reader holds open (EPERM/EACCES/EBUSY). The condition clears in
+// milliseconds, so retry with a bounded backoff (about 0.6 s in total).
+const WIN32_RENAME_RETRY_CODES = new Set(['EPERM', 'EACCES', 'EBUSY']);
+const WIN32_RENAME_RETRY_DELAYS_MS = [5, 10, 20, 40, 80, 160, 320];
 async function writeAtomic(path, data) {
     const tmp = `${path}.${process.pid}.${randomUUID()}.tmp`;
     await mkdir(dirname(path), { recursive: true });
     try {
         await writeFile(tmp, data, 'utf8');
         const { rename } = await import('node:fs/promises');
-        await rename(tmp, path);
+        for (let attempt = 0;; attempt += 1) {
+            try {
+                await rename(tmp, path);
+                break;
+            }
+            catch (error) {
+                const delay = WIN32_RENAME_RETRY_DELAYS_MS[attempt];
+                const code = error.code ?? '';
+                if (process.platform !== 'win32' || delay === undefined || !WIN32_RENAME_RETRY_CODES.has(code))
+                    throw error;
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
     }
     finally {
         await rm(tmp, { force: true }).catch(() => undefined);

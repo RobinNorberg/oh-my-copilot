@@ -6,6 +6,7 @@ import { basename, join, normalize } from 'path';
 import { getCopilotConfigDir } from '../utils/config-dir.js'
 import { isValidTranscriptPath } from '../lib/worktree-paths.js';
 import { findRuleFiles } from '../hooks/rules-injector/finder.js';
+import { IS_WIN, posixOnly } from './helpers/platform.js';
 
 const originalConfigDir = process.env.COPILOT_HOME;
 
@@ -117,7 +118,7 @@ describe('getCopilotConfigDir', () => {
     expect(output).toBe(normalize(join(homedir(), '.claude-alt')));
   });
 
-  it('find-node.sh resolves a ~-prefixed COPILOT_HOME before reading .omc-config.json', () => {
+  it.skipIf(posixOnly('find-node.sh runs under /bin/sh with a POSIX PATH; win32 installs a direct node command'))('find-node.sh resolves a ~-prefixed COPILOT_HOME before reading .omc-config.json', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-find-node-home-'));
     const configDir = join(homeDir, '.claude-alt');
     mkdirSync(configDir, { recursive: true });
@@ -175,7 +176,9 @@ describe('getCopilotConfigDir', () => {
       encoding: 'utf-8',
     });
 
-    expect(output.trim()).toBe(join(homeDir, '.claude-alt'));
+    // Git Bash rewrites HOME to a POSIX path, so compare the tail only there.
+    if (IS_WIN) expect(output.trim().endsWith(`${basename(homeDir)}/.claude-alt`)).toBe(true);
+    else expect(output.trim()).toBe(join(homeDir, '.claude-alt'));
   });
 
   it('shared shell helper expands a backslash-tilde-prefixed COPILOT_HOME', () => {
@@ -190,7 +193,9 @@ describe('getCopilotConfigDir', () => {
       encoding: 'utf-8',
     });
 
-    expect(output.trim()).toBe(join(homeDir, '.claude-alt'));
+    // Git Bash rewrites HOME to a POSIX path, so compare the tail only there.
+    if (IS_WIN) expect(output.trim().endsWith(`${basename(homeDir)}/.claude-alt`)).toBe(true);
+    else expect(output.trim()).toBe(join(homeDir, '.claude-alt'));
   });
 
   it('ignores the retired COPILOT_CONFIG_DIR on every surface', () => {

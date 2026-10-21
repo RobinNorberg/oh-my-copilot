@@ -5,6 +5,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { currentStrictProcessStartIdentity } from '../team-owner-epoch.js';
+import { IS_WIN, toPosix } from '../../__tests__/helpers/platform.js';
 const tmuxServerSocket = '/tmp/dispatch-session.sock';
 // This suite cannot inject the native process probe through the public API.
 // Keep tmux authority absent on unsupported platforms instead of inventing it.
@@ -199,7 +200,10 @@ describe('team api dispatch-aware messaging', () => {
         expect(sendResult.ok).toBe(true);
         const requests = await listDispatchRequests(teamName, cwd, { kind: 'mailbox', to_worker: 'worker-1' });
         expect(requests).toHaveLength(1);
-        expect(requests[0]?.trigger_message).toContain('$OMC_TEAM_STATE_ROOT/mailbox/worker-1.json');
+        // On win32 the product writes the absolute state root instead of the
+        // placeholder (resolveInstructionStateRoot).
+        const stateRoot = IS_WIN ? toPosix(teamStatePath(cwd, teamName)) : '$OMC_TEAM_STATE_ROOT';
+        expect(requests[0]?.trigger_message).toContain(`${stateRoot}/mailbox/worker-1.json`);
         expect(requests[0]?.trigger_message).toContain('report progress');
     });
     it('routes mailbox notifications using config workers when manifest workers are stale', async () => {

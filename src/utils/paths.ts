@@ -6,7 +6,7 @@
  * (which work universally) and handle platform-specific directory conventions.
  */
 
-import { join, dirname } from 'path';
+import { join, dirname, basename } from 'path';
 import { existsSync, readFileSync, readdirSync, statSync, lstatSync, realpathSync, unlinkSync, rmSync, renameSync, symlinkSync } from 'fs';
 import { homedir } from 'os';
 import { getCopilotConfigDir } from './config-dir.js';
@@ -458,6 +458,11 @@ function compareSemverDesc(a: string, b: string): number {
   return 0;
 }
 
+/** Highest-version directory by its last path segment; `base` lets tests pass `path.win32.basename`. */
+export function pickHighestVersionDir(dirs: string[], base: (p: string) => string = basename): string {
+  return [...dirs].sort((a, b) => compareSemverDesc(base(a), base(b)))[0];
+}
+
 export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: boolean }): PurgeCacheResult {
   const result: PurgeCacheResult = {
     removed: 0, removedPaths: [], symlinked: 0, symlinkPaths: [],
@@ -634,12 +639,8 @@ export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: bool
         // stale directory with a symlink rather than deleting it.  This keeps any
         // running session whose CLAUDE_PLUGIN_ROOT still points to this path working.
         if (activeVersionDirsHere.length > 0) {
-          const target = [...activeVersionDirsHere].sort((a, b) =>
-            compareSemverDesc(
-              a.split('/').pop() ?? a,
-              b.split('/').pop() ?? b,
-            ),
-          )[0];
+          // Native paths (backslashes on win32): the helper uses basename, not split('/').
+          const target = pickHighestVersionDir(activeVersionDirsHere);
           try {
             const targetStats = statSync(target);
             if (!targetStats.isDirectory()) {
