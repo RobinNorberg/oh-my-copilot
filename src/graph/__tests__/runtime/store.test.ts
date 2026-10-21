@@ -17,6 +17,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { posixOnly } from "../../../__tests__/helpers/platform.js";
 
 import { FileProjectionStore } from "../../runtime/store.js";
 import { FileOwnershipFence } from "../../runtime/fence.js";
@@ -55,7 +56,7 @@ function makeEnvelope(
   };
 }
 
-describe("FileProjectionStore", () => {
+describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"))("FileProjectionStore", () => {
   let runsRoot: string;
 
   beforeEach(() => {

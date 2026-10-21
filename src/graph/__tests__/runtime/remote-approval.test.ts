@@ -15,6 +15,10 @@ import {
   writeApprovalDecision,
 } from "../../runtime/remote-approval.js";
 import type { ApprovalRequest } from "../../runtime/types.js";
+import { posixOnly } from "../../../__tests__/helpers/platform.js";
+
+// Approval artifacts live in a contained run directory, which win32 refuses by design.
+const NO_CONTAINED_FS = posixOnly("graph runtime refuses the pathname fallback on win32");
 
 const REQUEST: ApprovalRequest = {
   run_id: "run-1",
@@ -60,7 +64,7 @@ function decisionAfter(
 }
 
 describe("createRemoteApprovalGate", () => {
-  it("persists a pending artifact and resolves an approved decision", async () => {
+  it.skipIf(NO_CONTAINED_FS)("persists a pending artifact and resolves an approved decision", async () => {
     const runsRoot = makeRunsRoot();
     const gate = createRemoteApprovalGate({
       runsRoot,
@@ -76,7 +80,7 @@ describe("createRemoteApprovalGate", () => {
     expect(existsSync(pendingPath)).toBe(false);
   });
 
-  it("resolves denied and keeps a well-formed decision record", async () => {
+  it.skipIf(NO_CONTAINED_FS)("resolves denied and keeps a well-formed decision record", async () => {
     const runsRoot = makeRunsRoot();
     const gate = createRemoteApprovalGate({
       runsRoot,
@@ -87,7 +91,7 @@ describe("createRemoteApprovalGate", () => {
     expect(await gate.prompt(REQUEST)).toBe("denied");
   });
 
-  it("ignores malformed decision files and keeps waiting", async () => {
+  it.skipIf(NO_CONTAINED_FS)("ignores malformed decision files and keeps waiting", async () => {
     const runsRoot = makeRunsRoot();
     // Poll 1: garbage JSON. Poll 2: unknown decision value. Poll 3: valid.
     let calls = 0;
@@ -107,7 +111,7 @@ describe("createRemoteApprovalGate", () => {
     expect(await gate.prompt(REQUEST)).toBe("approved");
   });
 
-  it("fires the notifier once with the pending record", async () => {
+  it.skipIf(NO_CONTAINED_FS)("fires the notifier once with the pending record", async () => {
     const runsRoot = makeRunsRoot();
     const seen: unknown[] = [];
     const gate = createRemoteApprovalGate({
@@ -126,7 +130,7 @@ describe("createRemoteApprovalGate", () => {
     expect(record.prompt_text).toBe("Deploy to staging?");
   });
 
-  it("swallows notifier errors", async () => {
+  it.skipIf(NO_CONTAINED_FS)("swallows notifier errors", async () => {
     const runsRoot = makeRunsRoot();
     const gate = createRemoteApprovalGate({
       runsRoot,
@@ -140,7 +144,7 @@ describe("createRemoteApprovalGate", () => {
     expect(await gate.prompt(REQUEST)).toBe("denied");
   });
 
-  it("applies the default timeout policy (deny, fail closed)", async () => {
+  it.skipIf(NO_CONTAINED_FS)("applies the default timeout policy (deny, fail closed)", async () => {
     const runsRoot = makeRunsRoot();
     let clock = 0;
     const gate = createRemoteApprovalGate({
@@ -157,7 +161,7 @@ describe("createRemoteApprovalGate", () => {
     expect(await gate.prompt(REQUEST)).toBe("denied");
   });
 
-  it("applies an explicit approve timeout policy", async () => {
+  it.skipIf(NO_CONTAINED_FS)("applies an explicit approve timeout policy", async () => {
     const runsRoot = makeRunsRoot();
     let clock = 0;
     const gate = createRemoteApprovalGate({
@@ -201,7 +205,7 @@ describe("parseDecisionArtifact", () => {
 });
 
 describe("listPendingApprovals / writeApprovalDecision", () => {
-  it("round-trips a pending request through decide", async () => {
+  it.skipIf(NO_CONTAINED_FS)("round-trips a pending request through decide", async () => {
     const runsRoot = makeRunsRoot();
     const gate = createRemoteApprovalGate({
       runsRoot,
@@ -252,7 +256,7 @@ describe("writeApprovalDecision fail-closed", () => {
 });
 
 describe("createRemoteApprovalGate abort", () => {
-  it("resolves denied when the signal is already aborted", async () => {
+  it.skipIf(NO_CONTAINED_FS)("resolves denied when the signal is already aborted", async () => {
     const runsRoot = makeRunsRoot();
     const controller = new AbortController();
     controller.abort();
@@ -270,7 +274,7 @@ describe("createRemoteApprovalGate abort", () => {
   });
 });
 
-describe("approval artifact containment (#4011 follow-up)", () => {
+describe.skipIf(NO_CONTAINED_FS)("approval artifact containment (#4011 follow-up)", () => {
   /**
    * The approval artifacts live two components below the run directory, so the
    * nested traversal is the boundary that matters: if `approvals` or its child
