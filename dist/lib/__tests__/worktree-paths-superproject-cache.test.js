@@ -27,7 +27,8 @@ describe("resolveSuperprojectRoot cache", () => {
         });
         expect(getOmcRoot(relativeRoot)).toBe(canonicalRoot);
         expect(getOmcRoot(relativeRoot)).toBe(canonicalRoot);
-        expect(mockedExecFileSync).toHaveBeenCalledTimes(3);
+        // One superproject probe plus one top-level probe; both null answers are cached.
+        expect(mockedExecFileSync).toHaveBeenCalledTimes(2);
     });
     it("does not cache transient superproject probe errors", () => {
         const transientRoot = resolve("repos", "transient-superproject-error");

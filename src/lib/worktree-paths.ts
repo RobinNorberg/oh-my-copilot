@@ -75,6 +75,11 @@ const worktreeCacheMap = new Map<string, StateRootCacheEntry>();
 
 /** Positive Git roots used by state/path construction; security callers probe fresh. */
 const gitTopLevelCacheMap = new Map<string, GitTopLevelCacheEntry>();
+/**
+ * Non-repository answers for getGitTopLevel(), validated by the .git topology
+ * above cwd so a later `git init` (or a Git environment change) re-probes.
+ */
+const gitTopLevelNegativeCacheMap = new Map<string, StateRootCacheEntry>();
 /** LRU cache for outermost superproject root lookups, including negative results. */
 const superprojectCacheMap = new Map<string, StateRootCacheEntry>();
 const canonicalWorkingDirectoryRoots = new WeakMap<object, { providedRoot: string; trustedRoot: string }>();
@@ -420,6 +425,7 @@ let gitShowToplevelProbeForTests: GitShowToplevelProbe | undefined;
 export function setGitShowToplevelProbeForTests(probe?: GitShowToplevelProbe): void {
   gitShowToplevelProbeForTests = probe;
   gitTopLevelCacheMap.clear();
+  gitTopLevelNegativeCacheMap.clear();
 }
 
 function gitErrorStderr(error: unknown): string {
@@ -896,7 +902,8 @@ function cacheGitTopLevel(key: string, root: string, cwd: string): void {
 }
 
 /**
- * Resolve a literal Git top-level with positive, metadata-validated caching.
+ * Resolve a literal Git top-level with metadata-validated caching of roots and
+ * of git's definitive "not a git repository" answer.
  * Security-sensitive containment decisions must call probeGitTopLevel() instead.
  */
 export function getGitTopLevel(cwd?: string): string | null {
@@ -911,8 +918,26 @@ export function getGitTopLevel(cwd?: string): string | null {
     }
     gitTopLevelCacheMap.delete(key);
   }
+  const negative = gitTopLevelNegativeCacheMap.get(key);
+  if (negative) {
+    if (isStateRootCacheEntryValid(effectiveCwd, negative)) {
+      gitTopLevelNegativeCacheMap.delete(key);
+      gitTopLevelNegativeCacheMap.set(key, negative);
+      return null;
+    }
+    gitTopLevelNegativeCacheMap.delete(key);
+  }
 
   const probe = probeGitTopLevel(effectiveCwd);
+  if (probe.status === 'not_a_repository') {
+    // Only git's definitive answer is cached; git_missing and probe_failed re-probe.
+    if (gitTopLevelNegativeCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+      const oldest = gitTopLevelNegativeCacheMap.keys().next().value;
+      if (oldest !== undefined) gitTopLevelNegativeCacheMap.delete(oldest);
+    }
+    gitTopLevelNegativeCacheMap.set(key, createStateRootCacheEntry(effectiveCwd, null));
+    return null;
+  }
   if (probe.status !== 'ok') return null;
   cacheGitTopLevel(key, probe.root, effectiveCwd);
   return probe.root;
@@ -1500,6 +1525,7 @@ export function ensureAllOmcDirs(worktreeRoot?: string): void {
 export function clearWorktreeCache(): void {
   worktreeCacheMap.clear();
   gitTopLevelCacheMap.clear();
+  gitTopLevelNegativeCacheMap.clear();
   superprojectCacheMap.clear();
   workspaceCacheMap.clear();
 }
