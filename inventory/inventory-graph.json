@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "bb9cd122d27145f2dbe830479b7580f034c6190d",
-    "sourceSha256": "ff08a5dbee6b442ee6066d6cc10379a7466269bc56dec063711778aa0dc9edd8",
+    "head": "45331d401670c4530f406bd9ed7610de28c980be",
+    "sourceSha256": "246e6b73a83daeb2e7f36354b9f4b3d01f0d2ee29061840a588161893808cc46",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "bb9cd122d27145f2dbe830479b7580f034c6190d",
-  "sourceSha256": "ff08a5dbee6b442ee6066d6cc10379a7466269bc56dec063711778aa0dc9edd8",
+  "head": "45331d401670c4530f406bd9ed7610de28c980be",
+  "sourceSha256": "246e6b73a83daeb2e7f36354b9f4b3d01f0d2ee29061840a588161893808cc46",
   "counts": {
     "public": {
       "skills": 63,
@@ -28,13 +28,13 @@
       "toolFiles": 67,
       "libFiles": 48,
       "templateHooks": 24,
-      "srcFiles": 1596,
-      "total": 1620
+      "srcFiles": 1603,
+      "total": 1627
     },
     "generated": {
-      "distFiles": 6139,
+      "distFiles": 6167,
       "bridgeFiles": 9,
-      "total": 6148
+      "total": 6176
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -2567,6 +2567,10 @@
       "dist/cli/commands/__tests__/intake.test.d.ts.map",
       "dist/cli/commands/__tests__/intake.test.js",
       "dist/cli/commands/__tests__/intake.test.js.map",
+      "dist/cli/commands/__tests__/release-cli.test.d.ts",
+      "dist/cli/commands/__tests__/release-cli.test.d.ts.map",
+      "dist/cli/commands/__tests__/release-cli.test.js",
+      "dist/cli/commands/__tests__/release-cli.test.js.map",
       "dist/cli/commands/__tests__/ship-cli.test.d.ts",
       "dist/cli/commands/__tests__/ship-cli.test.d.ts.map",
       "dist/cli/commands/__tests__/ship-cli.test.js",
@@ -2639,6 +2643,10 @@
       "dist/cli/commands/ralphthon.d.ts.map",
       "dist/cli/commands/ralphthon.js",
       "dist/cli/commands/ralphthon.js.map",
+      "dist/cli/commands/release.d.ts",
+      "dist/cli/commands/release.d.ts.map",
+      "dist/cli/commands/release.js",
+      "dist/cli/commands/release.js.map",
       "dist/cli/commands/session-friction-report.d.ts",
       "dist/cli/commands/session-friction-report.d.ts.map",
       "dist/cli/commands/session-friction-report.js",
@@ -5670,6 +5678,26 @@
       "dist/ralphthon/types.d.ts.map",
       "dist/ralphthon/types.js",
       "dist/ralphthon/types.js.map",
+      "dist/release/__tests__/checks.test.d.ts",
+      "dist/release/__tests__/checks.test.d.ts.map",
+      "dist/release/__tests__/checks.test.js",
+      "dist/release/__tests__/checks.test.js.map",
+      "dist/release/__tests__/engine.test.d.ts",
+      "dist/release/__tests__/engine.test.d.ts.map",
+      "dist/release/__tests__/engine.test.js",
+      "dist/release/__tests__/engine.test.js.map",
+      "dist/release/checks.d.ts",
+      "dist/release/checks.d.ts.map",
+      "dist/release/checks.js",
+      "dist/release/checks.js.map",
+      "dist/release/engine.d.ts",
+      "dist/release/engine.d.ts.map",
+      "dist/release/engine.js",
+      "dist/release/engine.js.map",
+      "dist/release/progress.d.ts",
+      "dist/release/progress.d.ts.map",
+      "dist/release/progress.js",
+      "dist/release/progress.js.map",
       "dist/shared/artifact-descriptor.d.ts",
       "dist/shared/artifact-descriptor.d.ts.map",
       "dist/shared/artifact-descriptor.js",
@@ -16811,6 +16839,26 @@
         "path": "dist/cli/commands/__tests__/intake.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/release-cli.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/release-cli.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/release-cli.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/release-cli.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/release-cli.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/release-cli.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/release-cli.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/release-cli.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/ship-cli.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/ship-cli.test.d.ts"
@@ -17169,6 +17217,26 @@
         "id": "dist/cli/commands/ralphthon.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/ralphthon.js.map"
+      },
+      {
+        "id": "dist/cli/commands/release.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/release.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/release.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/release.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/release.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/release.js"
+      },
+      {
+        "id": "dist/cli/commands/release.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/release.js.map"
       },
       {
         "id": "dist/cli/commands/session-friction-report.d.ts",
@@ -32326,6 +32394,106 @@
         "path": "dist/ralphthon/types.js.map"
       },
       {
+        "id": "dist/release/__tests__/checks.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/release/__tests__/checks.test.d.ts"
+      },
+      {
+        "id": "dist/release/__tests__/checks.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/release/__tests__/checks.test.d.ts.map"
+      },
+      {
+        "id": "dist/release/__tests__/checks.test.js",
+        "kind": "generated-dist",
+        "path": "dist/release/__tests__/checks.test.js"
+      },
+      {
+        "id": "dist/release/__tests__/checks.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/release/__tests__/checks.test.js.map"
+      },
+      {
+        "id": "dist/release/__tests__/engine.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/release/__tests__/engine.test.d.ts"
+      },
+      {
+        "id": "dist/release/__tests__/engine.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/release/__tests__/engine.test.d.ts.map"
+      },
+      {
+        "id": "dist/release/__tests__/engine.test.js",
+        "kind": "generated-dist",
+        "path": "dist/release/__tests__/engine.test.js"
+      },
+      {
+        "id": "dist/release/__tests__/engine.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/release/__tests__/engine.test.js.map"
+      },
+      {
+        "id": "dist/release/checks.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/release/checks.d.ts"
+      },
+      {
+        "id": "dist/release/checks.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/release/checks.d.ts.map"
+      },
+      {
+        "id": "dist/release/checks.js",
+        "kind": "generated-dist",
+        "path": "dist/release/checks.js"
+      },
+      {
+        "id": "dist/release/checks.js.map",
+        "kind": "generated-dist",
+        "path": "dist/release/checks.js.map"
+      },
+      {
+        "id": "dist/release/engine.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/release/engine.d.ts"
+      },
+      {
+        "id": "dist/release/engine.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/release/engine.d.ts.map"
+      },
+      {
+        "id": "dist/release/engine.js",
+        "kind": "generated-dist",
+        "path": "dist/release/engine.js"
+      },
+      {
+        "id": "dist/release/engine.js.map",
+        "kind": "generated-dist",
+        "path": "dist/release/engine.js.map"
+      },
+      {
+        "id": "dist/release/progress.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/release/progress.d.ts"
+      },
+      {
+        "id": "dist/release/progress.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/release/progress.d.ts.map"
+      },
+      {
+        "id": "dist/release/progress.js",
+        "kind": "generated-dist",
+        "path": "dist/release/progress.js"
+      },
+      {
+        "id": "dist/release/progress.js.map",
+        "kind": "generated-dist",
+        "path": "dist/release/progress.js.map"
+      },
+      {
         "id": "dist/shared/artifact-descriptor.d.ts",
         "kind": "generated-dist",
         "path": "dist/shared/artifact-descriptor.d.ts"
@@ -43666,6 +43834,11 @@
         "path": "src/cli/commands/__tests__/intake.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/release-cli.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/release-cli.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/ship-cli.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/ship-cli.test.ts"
@@ -43754,6 +43927,11 @@
         "id": "src/cli/commands/ralphthon.ts",
         "kind": "src",
         "path": "src/cli/commands/ralphthon.ts"
+      },
+      {
+        "id": "src/cli/commands/release.ts",
+        "kind": "src",
+        "path": "src/cli/commands/release.ts"
       },
       {
         "id": "src/cli/commands/session-friction-report.ts",
@@ -47649,6 +47827,31 @@
         "id": "src/ralphthon/types.ts",
         "kind": "src",
         "path": "src/ralphthon/types.ts"
+      },
+      {
+        "id": "src/release/__tests__/checks.test.ts",
+        "kind": "src",
+        "path": "src/release/__tests__/checks.test.ts"
+      },
+      {
+        "id": "src/release/__tests__/engine.test.ts",
+        "kind": "src",
+        "path": "src/release/__tests__/engine.test.ts"
+      },
+      {
+        "id": "src/release/checks.ts",
+        "kind": "src",
+        "path": "src/release/checks.ts"
+      },
+      {
+        "id": "src/release/engine.ts",
+        "kind": "src",
+        "path": "src/release/engine.ts"
+      },
+      {
+        "id": "src/release/progress.ts",
+        "kind": "src",
+        "path": "src/release/progress.ts"
       },
       {
         "id": "src/shared/artifact-descriptor.ts",
@@ -63348,6 +63551,36 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/__tests__/release-cli.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/release-cli.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/release-cli.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/release-cli.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/release-cli.test.ts",
+        "to": "src/cli/commands/release.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/release-cli.test.ts",
+        "to": "src/release/engine.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/ship-cli.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -63978,6 +64211,51 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/release.ts",
+        "to": "external:chalk",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/release.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/release.ts",
+        "to": "external:readline/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/release.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/release.ts",
+        "to": "src/release/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/release.ts",
+        "to": "src/release/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/release.ts",
+        "to": "src/release/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/release.ts",
+        "to": "src/release/progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/release.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/session-friction-report.ts",
         "to": "external:chalk",
         "kind": "imports"
@@ -64515,6 +64793,11 @@
       {
         "from": "src/cli/index.ts",
         "to": "src/cli/commands/ralphthon.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
+        "to": "src/cli/commands/release.ts",
         "kind": "imports"
       },
       {
@@ -83428,6 +83711,161 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/release/__tests__/checks.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/checks.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/checks.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/checks.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/checks.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/checks.test.ts",
+        "to": "src/release/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/checks.test.ts",
+        "to": "src/release/progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/engine.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/engine.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/engine.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/engine.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/engine.test.ts",
+        "to": "src/release/engine.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/engine.test.ts",
+        "to": "src/release/engine.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/release/__tests__/engine.test.ts",
+        "to": "src/release/progress.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/release/__tests__/engine.test.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/__tests__/engine.test.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "src/release/checks.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "src/release/progress.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "src/ship/config.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "src/ship/config.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "src/ship/exec.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/engine.ts",
+        "to": "src/ship/gates.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/release/progress.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/release/progress.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
         "from": "src/shared/artifact-descriptor.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -96969,12 +97407,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8465,
-      "edgeCount": 9390,
-      "importEdgeCount": 7816,
+      "nodeCount": 8500,
+      "edgeCount": 9437,
+      "importEdgeCount": 7854,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "ce33e9884d96c9483c31425cf7c74aed08084645aa864f694275bc9d8ffad0e5",
-  "manifestSha256": "a344cca106ba85e916990d619c299dc12521cea004ddcc242e41d0a6cd4996cb"
+  "inventorySha256": "30e293311f30f0424d2940ba48834a2cb4682600bf7fe5e21a4d5189aec1f42e",
+  "manifestSha256": "9194c39ea278fbc27316b78f245ba4961ebf420a219e2ecaca13d18bfd45645f"
 }
