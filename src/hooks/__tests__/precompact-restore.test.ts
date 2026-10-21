@@ -33,6 +33,7 @@ import { homedir } from 'os';
 import { pathToFileURL } from 'url';
 import { createHash } from 'crypto';
 import { execFileSync } from 'child_process';
+import { requiresSymlinks } from '../../__tests__/helpers/platform.js';
 
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
@@ -398,7 +399,7 @@ describe('PreCompact restore (issue #3730)', () => {
     expect(candidate.ok).toBe(false);
   });
 
-  it('rejects an in-directory symlink to external JSON without restoring or marking it', async () => {
+  it.skipIf(requiresSymlinks())('rejects an in-directory symlink to external JSON without restoring or marking it', async () => {
     const checkpointDir = join(getOmcRootForTest(tempDir), 'state', 'checkpoints');
     mkdirSync(checkpointDir, { recursive: true });
     const marker = 'EXTERNAL_SYMLINK_CHECKPOINT_MARKER';
@@ -483,7 +484,7 @@ describe('PreCompact restore (issue #3730)', () => {
       }),
       'utf-8',
     );
-    symlinkSync(externalState, statePath, 'dir');
+    symlinkSync(externalState, statePath, 'junction');
 
     const candidate = await findLatestCheckpointForRestore(tempDir, 'test-session');
     expect(candidate.ok).toBe(false);
@@ -499,7 +500,7 @@ describe('PreCompact restore (issue #3730)', () => {
     const markerRoot = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored');
     const externalMarkerRoot = join(tempDir, 'external-marker-root');
     mkdirSync(externalMarkerRoot, { recursive: true });
-    symlinkSync(externalMarkerRoot, markerRoot, 'dir');
+    symlinkSync(externalMarkerRoot, markerRoot, 'junction');
 
     const first = await findLatestCheckpointForRestore(tempDir, 'marker-parent-symlink');
     expect(first.ok).toBe(true);
@@ -521,7 +522,7 @@ describe('PreCompact restore (issue #3730)', () => {
     const markerRoot = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored');
     const externalMarkerRoot = join(tempDir, 'external-unsupported-marker-root');
     mkdirSync(externalMarkerRoot, { recursive: true });
-    symlinkSync(externalMarkerRoot, markerRoot, 'dir');
+    symlinkSync(externalMarkerRoot, markerRoot, 'junction');
 
     expect(restorePreCompactCheckpoint(tempDir, 'unsupported-marker-session')).toBeNull();
     expect(restorePreCompactCheckpoint(tempDir, 'unsupported-marker-session')).toBeNull();
@@ -530,7 +531,7 @@ describe('PreCompact restore (issue #3730)', () => {
     ).toBe(false);
   });
 
-  it('rejects a symlinked replay marker file without reading or overwriting the target', async () => {
+  it.skipIf(requiresSymlinks())('rejects a symlinked replay marker file without reading or overwriting the target', async () => {
     const checkpointPath = writeCheckpoint(tempDir, new Date().toISOString(), { session_id: 'marker-file-symlink' });
     const markerParent = join(
       getOmcRootForTest(tempDir),
@@ -690,7 +691,7 @@ syncBuiltinESMExports();
       if (!redirected && String(path) === checkpointPath) {
         redirected = true;
         renameSync(statePath, stateBackupPath);
-        symlinkSync(externalState, statePath, 'dir');
+        symlinkSync(externalState, statePath, 'junction');
         try {
           return originalOpenSync(path, flags, mode);
         } finally {

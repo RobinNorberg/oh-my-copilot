@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { requiresSymlinks } from '../../../__tests__/helpers/platform.js';
 import { tmpdir } from 'os';
 import { execFileSync } from 'child_process';
 const persistentModeScript = join(process.cwd(), 'scripts', 'persistent-mode.mjs');
@@ -417,7 +418,7 @@ describe('ultragoal persistence and Claude /goal enforcement', () => {
         });
         expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');
     });
-    it('rejects a symlinked session transcript (#3466 blocker 2)', () => {
+    it.skipIf(requiresSymlinks())('rejects a symlinked session transcript (#3466 blocker 2)', () => {
         const cwd = makeTempProject('omc-ultragoal-symlink-');
         writeUltragoalState(cwd);
         const realPath = join(cwd, 'real-transcript.jsonl');

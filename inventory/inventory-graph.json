@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "d4de647825d47a5c1a0fbdc35f09e0f90a897f78",
-    "sourceSha256": "e7f79c0fef17b859cda724d62519670c7072453bdd7810c6ea1e34d8bd9dffcf",
+    "head": "68de4319f4a6f0a1ff4b6d72cc306c65bcef89fb",
+    "sourceSha256": "4b538b095e316fd47271c96de4f4dadfbf0166f1838d1326565051443d9b87f4",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "d4de647825d47a5c1a0fbdc35f09e0f90a897f78",
-  "sourceSha256": "e7f79c0fef17b859cda724d62519670c7072453bdd7810c6ea1e34d8bd9dffcf",
+  "head": "68de4319f4a6f0a1ff4b6d72cc306c65bcef89fb",
+  "sourceSha256": "4b538b095e316fd47271c96de4f4dadfbf0166f1838d1326565051443d9b87f4",
   "counts": {
     "public": {
       "skills": 63,
@@ -54667,6 +54667,11 @@
       },
       {
         "from": "src/__tests__/doctor-conflicts.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/doctor-conflicts.test.ts",
         "to": "src/cli/commands/doctor-conflicts.ts",
         "kind": "imports"
       },
@@ -55003,6 +55008,11 @@
       {
         "from": "src/__tests__/hook-bridge-main-module.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hook-bridge-main-module.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -57891,6 +57901,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/plugin-setup-deps.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/plugin-setup-devpaths.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -57943,6 +57958,11 @@
       {
         "from": "src/__tests__/plugin-shipping-surface.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/plugin-shipping-surface.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -58502,6 +58522,11 @@
       },
       {
         "from": "src/__tests__/purge-stale-cache-relink.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-relink.test.ts",
         "to": "src/utils/paths.ts",
         "kind": "imports"
       },
@@ -58532,6 +58557,11 @@
       },
       {
         "from": "src/__tests__/purge-stale-cache-symlink.integration.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-symlink.integration.test.ts",
         "to": "src/utils/paths.ts",
         "kind": "imports"
       },
@@ -58548,6 +58578,11 @@
       {
         "from": "src/__tests__/purge-stale-cache-validation.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache-validation.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -58603,6 +58638,11 @@
       {
         "from": "src/__tests__/purge-stale-cache.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/purge-stale-cache.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -59196,6 +59236,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/repair-plugin-cache-script.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/repo-slug-dots.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -59702,6 +59747,11 @@
       },
       {
         "from": "src/__tests__/session-start-background-output.test.ts",
+        "to": "external:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-background-output.test.ts",
         "to": "external:os",
         "kind": "imports"
       },
@@ -59738,6 +59788,11 @@
       {
         "from": "src/__tests__/session-start-cache-cleanup.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-cache-cleanup.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -59797,6 +59852,11 @@
       },
       {
         "from": "src/__tests__/session-start-precompact-restore.test.ts",
+        "to": "external:node:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-precompact-restore.test.ts",
         "to": "external:node:os",
         "kind": "imports"
       },
@@ -59813,6 +59873,11 @@
       {
         "from": "src/__tests__/session-start-precompact-restore.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-precompact-restore.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -59848,6 +59913,11 @@
       {
         "from": "src/__tests__/session-start-script-context.test.ts",
         "to": "scripts/lib/cache-occupancy.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-script-context.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -59986,6 +60056,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/setup-claude-md-script.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/setup-contracts-regression.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -60073,6 +60148,11 @@
       {
         "from": "src/__tests__/setup-progress-script.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/setup-progress-script.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -61188,6 +61268,11 @@
       {
         "from": "src/__tests__/workflow-profile-activation-script.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/workflow-profile-activation-script.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -62628,6 +62713,11 @@
       {
         "from": "src/cli/__tests__/launch.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/launch.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -68702,6 +68792,11 @@
       },
       {
         "from": "src/hooks/__tests__/bridge-routing.test.ts",
+        "to": "src/lib/job-state-db.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/bridge-routing.test.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -68913,6 +69008,11 @@
       {
         "from": "src/hooks/__tests__/precompact-restore.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/precompact-restore.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -69393,6 +69493,11 @@
       {
         "from": "src/hooks/autopilot/__tests__/cancel.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/autopilot/__tests__/cancel.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -73011,6 +73116,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/persistent-mode/__tests__/ultragoal-persistence.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/persistent-mode/__tests__/workflow-gating.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -76252,6 +76362,11 @@
       },
       {
         "from": "src/hooks/setup/__tests__/stdin-symlink.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/setup/__tests__/stdin-symlink.test.ts",
         "to": "src/hooks/setup/index.ts",
         "kind": "imports"
       },
@@ -79117,6 +79232,11 @@
       },
       {
         "from": "src/installer/__tests__/claude-md-transaction.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/__tests__/claude-md-transaction.test.ts",
         "to": "src/cli/claude-md-coordinator.ts",
         "kind": "imports"
       },
@@ -79457,6 +79577,11 @@
       },
       {
         "from": "src/installer/__tests__/session-start-template.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/__tests__/session-start-template.test.ts",
         "to": "src/installer/index.ts",
         "kind": "imports"
       },
@@ -79503,6 +79628,11 @@
       {
         "from": "src/installer/__tests__/stale-cleanup.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/installer/__tests__/stale-cleanup.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
         "kind": "imports"
       },
       {
@@ -97118,11 +97248,11 @@
     ],
     "stats": {
       "nodeCount": 8476,
-      "edgeCount": 9407,
-      "importEdgeCount": 7833,
+      "edgeCount": 9433,
+      "importEdgeCount": 7859,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "87eb780611a0f44b1334bd18cb68f2df64fd00577689c1e230220ed6e38968fd",
-  "manifestSha256": "b25a82d9bd5d8daa78e4fb03c2eb4bb0f72f1508d78c9a7d6c24ea427ceccd09"
+  "manifestSha256": "2b41868d688e3e10ffcacaab710f9cf2bdaa0dfb8f852cbc4de9310249ed12d2"
 }

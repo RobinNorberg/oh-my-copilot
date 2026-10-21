@@ -10,6 +10,7 @@ import { execFileSync, spawnSync } from 'child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { canCreateSymlinks, requiresSymlinks } from '../../__tests__/helpers/platform.js';
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal();
     const execFileSync = vi.fn();
@@ -1086,6 +1087,7 @@ describe('launchCommand — env var propagation', () => {
 describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () => {
     const originalClaudeConfigDir = process.env.COPILOT_HOME;
     const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
     let tempRoot = null;
     const originalClaudecode = process.env.CLAUDECODE;
     beforeEach(() => {
@@ -1093,6 +1095,8 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         delete process.env.CLAUDECODE;
         tempRoot = mkdtempSync(join(tmpdir(), 'omc-launch-profile-'));
         process.env.HOME = join(tempRoot, 'home');
+        // os.homedir() reads USERPROFILE, not HOME, on win32.
+        process.env.USERPROFILE = join(tempRoot, 'home');
         execFileSync.mockReturnValue(Buffer.from(''));
         resolveLaunchPolicy.mockReturnValue('direct');
         // Clear CLAUDECODE to avoid "already inside CC session" exit
@@ -1108,6 +1112,12 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         }
         else {
             process.env.HOME = originalHome;
+        }
+        if (originalUserProfile === undefined) {
+            delete process.env.USERPROFILE;
+        }
+        else {
+            process.env.USERPROFILE = originalUserProfile;
         }
         if (originalClaudeConfigDir === undefined) {
             delete process.env.COPILOT_HOME;
@@ -1176,7 +1186,7 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         expect(existsSync(join(runtimeDir, 'themes'))).toBe(true);
         expect(readFileSync(join(runtimeDir, 'themes', 'custom-theme.json'), 'utf-8')).toBe('{"name":"custom"}');
     });
-    it('mirrors Linux credential file as a symlink without copying credential content', () => {
+    it.skipIf(requiresSymlinks())('mirrors Linux credential file as a symlink without copying credential content', () => {
         const configDir = join(tempRoot, '.claude');
         mkdirSync(configDir, { recursive: true });
         const credentialsPath = join(configDir, '.credentials.json');
@@ -1406,8 +1416,11 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         const runtimeCredentialsPath = join(rebuiltRuntimeDir, '.credentials.json');
         expect(baseCredentials.claudeAiOauth.accessToken).toBe('runtime-token');
         expect(baseCredentials.unrelated).toBe('preserve-me');
-        expect(lstatSync(runtimeCredentialsPath).isSymbolicLink()).toBe(true);
-        expect(readlinkSync(runtimeCredentialsPath)).toBe(credentialsPath);
+        // Without symlink privilege (Windows) the mirror falls back to a hard link or copy.
+        if (canCreateSymlinks()) {
+            expect(lstatSync(runtimeCredentialsPath).isSymbolicLink()).toBe(true);
+            expect(readlinkSync(runtimeCredentialsPath)).toBe(credentialsPath);
+        }
     });
     it('promotes a fresher credential when UUID matches despite stale email metadata', () => {
         const configDir = join(tempRoot, '.claude');
@@ -1674,7 +1687,7 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         const runtimeClaudeJson = JSON.parse(readFileSync(join(rebuilt, '.claude.json'), 'utf-8'));
         expect(runtimeClaudeJson.lastOnboardingVersion).toBe('2.10.0');
     });
-    it('updates a symlink target during credential promotion without replacing the symlink', () => {
+    it.skipIf(requiresSymlinks())('updates a symlink target during credential promotion without replacing the symlink', () => {
         const configDir = join(tempRoot, '.claude');
         mkdirSync(configDir, { recursive: true });
         writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');

@@ -6,7 +6,7 @@
  * (which work universally) and handle platform-specific directory conventions.
  */
 
-import { join, dirname } from 'path';
+import { join, dirname, basename } from 'path';
 import { existsSync, readFileSync, readdirSync, statSync, lstatSync, realpathSync, unlinkSync, rmSync, renameSync, symlinkSync } from 'fs';
 import { homedir } from 'os';
 import { getCopilotConfigDir } from './config-dir.js';
@@ -635,10 +635,8 @@ export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: bool
         // running session whose CLAUDE_PLUGIN_ROOT still points to this path working.
         if (activeVersionDirsHere.length > 0) {
           const target = [...activeVersionDirsHere].sort((a, b) =>
-            compareSemverDesc(
-              a.split('/').pop() ?? a,
-              b.split('/').pop() ?? b,
-            ),
+            // basename, not split('/'): these are native paths (backslashes on win32).
+            compareSemverDesc(basename(a), basename(b)),
           )[0];
           try {
             const targetStats = statSync(target);

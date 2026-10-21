@@ -14,6 +14,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { IS_WIN } from './helpers/platform.js';
 
 const REPO_ROOT = join(__dirname, '..', '..');
 const SCRIPT_PATH = join(REPO_ROOT, 'scripts', 'repair-plugin-cache.mjs');
@@ -80,7 +81,8 @@ describe('repair-plugin-cache.mjs', () => {
     });
     expect(existsSync(oldRoot)).toBe(true);
     expect(lstatSync(oldRoot).isSymbolicLink()).toBe(true);
-    expect(readlinkSync(oldRoot)).toBe('4.14.1');
+    // The script links an absolute junction on win32, a relative symlink elsewhere.
+    expect(readlinkSync(oldRoot)).toBe(IS_WIN ? newRoot : '4.14.1');
     expect(existsSync(join(oldRoot, 'hooks', 'hooks.json'))).toBe(true);
   });
 
@@ -106,7 +108,8 @@ describe('repair-plugin-cache.mjs', () => {
     expect(result.status).toBe(0);
     expect(existsSync(oldRoot)).toBe(true);
     expect(lstatSync(oldRoot).isSymbolicLink()).toBe(true);
-    expect(readlinkSync(oldRoot)).toBe('4.14.1');
+    // The script links an absolute junction on win32, a relative symlink elsewhere.
+    expect(readlinkSync(oldRoot)).toBe(IS_WIN ? newRoot : '4.14.1');
     expect(existsSync(join(oldRoot, 'hooks', 'hooks.json'))).toBe(true);
     const registry = JSON.parse(readFileSync(join(configDir, 'plugins', 'installed_plugins.json'), 'utf-8'));
     expect(registry['oh-my-copilot@omc'][0]).toMatchObject({

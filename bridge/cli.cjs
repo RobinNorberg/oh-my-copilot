@@ -4361,9 +4361,9 @@ function purgeStalePluginCacheVersions(options) {
         }
         if (activeVersionDirsHere.length > 0) {
           const target = [...activeVersionDirsHere].sort(
-            (a, b) => compareSemverDesc(
-              a.split("/").pop() ?? a,
-              b.split("/").pop() ?? b
+            (a, b) => (
+              // basename, not split('/'): these are native paths (backslashes on win32).
+              compareSemverDesc((0, import_path4.basename)(a), (0, import_path4.basename)(b))
             )
           )[0];
           try {

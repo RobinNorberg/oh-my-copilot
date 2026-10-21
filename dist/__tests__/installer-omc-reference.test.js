@@ -217,7 +217,8 @@ describe('installer bundled + standalone skill sync', () => {
         rmSync(claudeConfigDir, { recursive: true, force: true });
         mkdirSync(canonicalConfigDir, { recursive: true });
         writeFileSync(join(canonicalConfigDir, 'CLAUDE.md'), 'existing user content\n');
-        symlinkSync(canonicalConfigDir, claudeConfigDir);
+        // A junction on Windows (no symlink privilege needed); a dir symlink elsewhere.
+        symlinkSync(canonicalConfigDir, claudeConfigDir, 'junction');
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => { });
         try {
             const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);

@@ -5966,7 +5966,7 @@ var init_plugin_cache_validation = __esm({
 });
 
 // src/utils/paths.ts
-import { join as join14, dirname as dirname14 } from "path";
+import { join as join14, dirname as dirname14, basename as basename8 } from "path";
 import { existsSync as existsSync11, readFileSync as readFileSync8, readdirSync as readdirSync5, statSync as statSync3, lstatSync as lstatSync5, realpathSync as realpathSync4, unlinkSync as unlinkSync5, rmSync, renameSync as renameSync2, symlinkSync } from "fs";
 import { homedir as homedir3 } from "os";
 function getConfigDir() {
@@ -7910,13 +7910,13 @@ var init_builtin_skill_entitlements = __esm({
 
 // src/features/builtin-skills/skills.ts
 import { existsSync as existsSync16, readdirSync as readdirSync7, readFileSync as readFileSync11 } from "fs";
-import { join as join18, dirname as dirname17, basename as basename8, resolve as resolve8, relative as relative6, isAbsolute as isAbsolute5, win32 } from "path";
+import { join as join18, dirname as dirname17, basename as basename9, resolve as resolve8, relative as relative6, isAbsolute as isAbsolute5, win32 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 function getPackageDir2() {
   if (typeof __dirname !== "undefined" && __dirname) {
-    const currentDirName = basename8(__dirname);
-    const parentDirName = basename8(dirname17(__dirname));
-    const grandparentDirName = basename8(dirname17(dirname17(__dirname)));
+    const currentDirName = basename9(__dirname);
+    const parentDirName = basename9(dirname17(__dirname));
+    const grandparentDirName = basename9(dirname17(dirname17(__dirname)));
     if (currentDirName === "bridge") {
       return join18(__dirname, "..");
     }
@@ -9027,7 +9027,7 @@ import {
   execFileSync as execFileSync3,
   spawnSync as spawnSync4
 } from "child_process";
-import { basename as basename9 } from "path";
+import { basename as basename10 } from "path";
 import { promisify } from "util";
 function tmuxEnv() {
   const { TMUX: _, PSMUX_SESSION: __, ...env } = process.env;
@@ -9697,7 +9697,7 @@ var init_atomic_write = __esm({
 
 // src/platform/posix-shell.ts
 import { existsSync as existsSync20 } from "fs";
-import { basename as basename11, join as join22 } from "path";
+import { basename as basename12, join as join22 } from "path";
 var WINDOWS_SHELL_INSTALL_SUFFIXES;
 var init_posix_shell = __esm({
   "src/platform/posix-shell.ts"() {
@@ -11396,7 +11396,7 @@ import { spawn } from "node:child_process";
 import { createHash as createHash9, randomUUID as randomUUID13 } from "node:crypto";
 import { existsSync as existsSync24, readdirSync as readdirSync10, readFileSync as readFileSync18 } from "node:fs";
 import { link as link3, mkdir as mkdir8, open as open4, readFile as readFile10, unlink as unlink5 } from "node:fs/promises";
-import { basename as basename12, dirname as dirname22, join as join26 } from "node:path";
+import { basename as basename13, dirname as dirname22, join as join26 } from "node:path";
 function workspaceHash(cwd) {
   return createHash9("sha256").update(cwd).digest("hex");
 }
@@ -11723,10 +11723,10 @@ function ownerAvailability(cwd, teamName) {
 function resolveRuntimeCliPath() {
   if (process.env.OMC_RUNTIME_CLI_PATH) return process.env.OMC_RUNTIME_CLI_PATH;
   if (typeof __dirname !== "undefined" && __dirname) {
-    return basename12(__dirname) === "bridge" ? join26(__dirname, "runtime-cli.cjs") : join26(__dirname, "../../bridge/runtime-cli.cjs");
+    return basename13(__dirname) === "bridge" ? join26(__dirname, "runtime-cli.cjs") : join26(__dirname, "../../bridge/runtime-cli.cjs");
   }
   const entry = process.argv[1];
-  if (entry && basename12(entry) === "runtime-cli.cjs") return entry;
+  if (entry && basename13(entry) === "runtime-cli.cjs") return entry;
   throw new Error("runtime_owner_bootstrap_path_unavailable");
 }
 function isExpectedRecoveryOwnerSuccessor(owner, expectedEpoch, childPid, childProcessStartedAt, fenceOk, expectedNonce) {
@@ -12109,7 +12109,7 @@ import { existsSync as existsSync25, mkdtempSync, rmSync as rmSync2, statSync as
 import { createHash as createHash10, randomUUID as randomUUID14 } from "crypto";
 import { execFile as execFile3 } from "child_process";
 import { promisify as promisify3 } from "util";
-import { join as join27, basename as basename13, dirname as dirname23, isAbsolute as isAbsolute8, win32 as win323 } from "path";
+import { join as join27, basename as basename14, dirname as dirname23, isAbsolute as isAbsolute8, win32 as win323 } from "path";
 import { tmpdir as tmpdir3 } from "os";
 function tmuxArgsForIdentity(identity, args) {
   return ["-S", identity.socket_path, ...args];
@@ -12904,7 +12904,7 @@ function getDefaultShell() {
     return process.env.COMSPEC || "cmd.exe";
   }
   const shell = process.env.SHELL || "/bin/bash";
-  const name = basename13(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
+  const name = basename14(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (!SUPPORTED_POSIX_SHELLS.has(name)) {
     return "/bin/sh";
   }
@@ -12914,7 +12914,7 @@ function pathEntries(envPath) {
   return (envPath ?? "").split(process.platform === "win32" ? ";" : ":").map((entry) => entry.trim()).filter(Boolean);
 }
 function pathCandidateNames(candidatePath) {
-  const base = basename13(candidatePath.replace(/\\/g, "/"));
+  const base = basename14(candidatePath.replace(/\\/g, "/"));
   const bare = base.replace(/\.(exe|cmd|bat)$/i, "");
   if (process.platform === "win32") {
     return Array.from(/* @__PURE__ */ new Set([`${bare}.exe`, `${bare}.cmd`, `${bare}.bat`, bare]));
@@ -12940,7 +12940,7 @@ function resolveShellFromCandidates(paths, rcFile) {
 }
 function resolveSupportedShellAffinity(shellPath2) {
   if (!shellPath2) return null;
-  const name = basename13(shellPath2.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
+  const name = basename14(shellPath2.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (name !== "zsh" && name !== "bash") return null;
   if (!existsSync25(shellPath2)) return null;
   const home = process.env.HOME ?? "";
@@ -12975,7 +12975,7 @@ function logWorkerSpawnDiagnostic(message) {
 `);
 }
 function paneCurrentCommandLooksReady(command) {
-  const normalized = basename13(command.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "").toLowerCase();
+  const normalized = basename14(command.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "").toLowerCase();
   return SUPPORTED_POSIX_SHELLS.has(normalized) || ["cmd", "powershell", "pwsh", "nu", "elvish"].includes(normalized);
 }
 async function getPaneCurrentCommandStatus(paneId, tmuxServerIdentity) {
@@ -13152,7 +13152,7 @@ function assertSafeCmdValue2(value) {
   if (/[\r\n\0]/.test(value)) throw new Error("Invalid Windows command value: contains CR, LF, or NUL");
 }
 function shellNameFromPath(shellPath2) {
-  const shellName = basename13(shellPath2.replace(/\\/g, "/"));
+  const shellName = basename14(shellPath2.replace(/\\/g, "/"));
   return shellName.replace(/\.(exe|cmd|bat)$/i, "");
 }
 function shellEscape(value) {
@@ -15370,7 +15370,7 @@ var init_tmux_session = __esm({
 
 // src/team/mcp-comm.ts
 import { realpathSync as realpathSync5 } from "node:fs";
-import { basename as basename14, dirname as dirname24, join as join28 } from "node:path";
+import { basename as basename15, dirname as dirname24, join as join28 } from "node:path";
 function isConfirmedNotification(outcome) {
   if (!outcome.ok) return false;
   if (outcome.transport !== "hook") return true;
@@ -15396,7 +15396,7 @@ function canonicalNotificationLockIdentity(lockPath) {
     return realpathSync5(lockPath);
   } catch {
     try {
-      return join28(realpathSync5(dirname24(lockPath)), basename14(lockPath));
+      return join28(realpathSync5(dirname24(lockPath)), basename15(lockPath));
     } catch {
       return lockPath;
     }
@@ -15862,12 +15862,12 @@ var init_mcp_comm = __esm({
 
 // src/agents/prompt-helpers.ts
 import { readdirSync as readdirSync11 } from "fs";
-import { join as join29, dirname as dirname25, basename as basename15 } from "path";
+import { join as join29, dirname as dirname25, basename as basename16 } from "path";
 import { fileURLToPath as fileURLToPath4 } from "url";
 function getPackageDir3() {
   if (typeof __dirname !== "undefined" && __dirname) {
-    const currentDirName = basename15(__dirname);
-    const parentDirName = basename15(dirname25(__dirname));
+    const currentDirName = basename16(__dirname);
+    const parentDirName = basename16(dirname25(__dirname));
     if (currentDirName === "bridge") {
       return join29(__dirname, "..");
     }
@@ -15878,7 +15878,7 @@ function getPackageDir3() {
   try {
     const __filename2 = fileURLToPath4(import.meta.url);
     const __dirname2 = dirname25(__filename2);
-    const currentDirName = basename15(__dirname2);
+    const currentDirName = basename16(__dirname2);
     if (currentDirName === "bridge") {
       return join29(__dirname2, "..");
     }
@@ -15899,7 +15899,7 @@ function getValidAgentRoles() {
   try {
     const agentsDir = join29(getPackageDir3(), "agents");
     const files = readdirSync11(agentsDir);
-    _cachedRoles = files.filter((f) => f.endsWith(".md")).map((f) => basename15(f, ".md")).sort();
+    _cachedRoles = files.filter((f) => f.endsWith(".md")).map((f) => basename16(f, ".md")).sort();
   } catch (err) {
     console.error("[prompt-injection] CRITICAL: Could not scan agents/ directory for role discovery:", err);
     _cachedRoles = [];
@@ -16860,7 +16860,7 @@ var init_worktree_cleanup_safety = __esm({
 
 // src/team/git-worktree.ts
 import { existsSync as existsSync30, lstatSync as lstatSync8, realpathSync as realpathSync7, readFileSync as readFileSync20, readdirSync as readdirSync12, rmdirSync, rmSync as rmSync3, unlinkSync as unlinkSync9, writeFileSync as writeFileSync8 } from "node:fs";
-import { basename as basename16, dirname as dirname29, isAbsolute as isAbsolute10, join as join34, relative as relative9, resolve as resolve11, sep as sep5 } from "node:path";
+import { basename as basename17, dirname as dirname29, isAbsolute as isAbsolute10, join as join34, relative as relative9, resolve as resolve11, sep as sep5 } from "node:path";
 import { execFileSync as execFileSync5 } from "node:child_process";
 function getWorktreePath(repoRoot, teamName, workerName) {
   return join34(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees", sanitizeName(workerName));
@@ -16901,7 +16901,7 @@ function canonicalPathForComparison(path5) {
         canonical = resolve11(path5);
         break;
       }
-      missingTail.unshift(basename16(existing));
+      missingTail.unshift(basename17(existing));
       existing = parent;
     }
   }
@@ -19298,7 +19298,7 @@ var init_copilot_session_eval = __esm({
 
 // src/smoke/copilot-sdk-scenarios.ts
 import { realpathSync as realpathSync8 } from "fs";
-import { basename as basename17, join as join41, resolve as resolve13, sep as sep6 } from "path";
+import { basename as basename18, join as join41, resolve as resolve13, sep as sep6 } from "path";
 function samePathKey(p, platform) {
   let out = resolve13(p);
   try {
@@ -26340,10 +26340,10 @@ import { readdirSync as readdirSync15, readFileSync as readFileSync25, existsSyn
 import { join as join47 } from "path";
 
 // src/planning/artifact-names.ts
-import { basename as basename18 } from "path";
+import { basename as basename19 } from "path";
 var PLANNING_ARTIFACT_TIMESTAMP_PATTERN = /^\d{8}T\d{6}Z$/;
 function legacyTestSpecSlug(fileNameOrPath) {
-  const match = basename18(fileNameOrPath).match(/^test-?spec-(?<slug>.+)\.md$/i);
+  const match = basename19(fileNameOrPath).match(/^test-?spec-(?<slug>.+)\.md$/i);
   return match?.groups?.slug ?? null;
 }
 function requiredTimestampedTestSpecFileName(prdArtifact) {
@@ -26364,7 +26364,7 @@ function splitTimestampPrefix(rawSlug) {
   };
 }
 function parsePlanningArtifactFileName(fileNameOrPath) {
-  const fileName = basename18(fileNameOrPath);
+  const fileName = basename19(fileNameOrPath);
   const autoresearchDeepInterviewMatch = fileName.match(
     /^deep-interview-autoresearch-(?<slug>.+)\.md$/i
   );
@@ -26428,7 +26428,7 @@ function selectMatchingTestSpecsForPrd(prdPath, testSpecPaths) {
     return [];
   }
   const requiredTimestampedFileName = requiredTimestampedTestSpecFileName(prdArtifact);
-  return (requiredTimestampedFileName ? testSpecPaths.filter((path5) => basename18(path5) === requiredTimestampedFileName) : testSpecPaths.filter((path5) => legacyTestSpecSlug(path5) === prdArtifact.slug)).sort(comparePlanningArtifactPaths);
+  return (requiredTimestampedFileName ? testSpecPaths.filter((path5) => basename19(path5) === requiredTimestampedFileName) : testSpecPaths.filter((path5) => legacyTestSpecSlug(path5) === prdArtifact.slug)).sort(comparePlanningArtifactPaths);
 }
 function selectLatestPlanningArtifactPath(paths) {
   return [...paths].sort(comparePlanningArtifactPaths).at(-1) ?? null;

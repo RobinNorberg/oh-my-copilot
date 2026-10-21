@@ -21,6 +21,7 @@ import {
 import { flushPendingWrites } from '../subagent-tracker/index.js';
 import { readDispatchTelemetryTail } from '../registry/cutover.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { closeAllJobDbs } from '../../lib/job-state-db.js';
 
 function writeCanonicalTeamState(tempDir: string, sessionId: string, teamName: string, phase: string): void {
   const canonicalTeamDir = join(tempDir, '.omg', 'state', 'team', teamName);
@@ -2384,6 +2385,8 @@ $ ultrawork search the codebase`,
         const checkpointDir = join(tempDir, '.omg', 'state', 'checkpoints');
         expect(existsSync(checkpointDir)).toBe(true);
       } finally {
+        // The checkpoint keeps jobs.db open; Windows cannot delete an open file.
+        closeAllJobDbs();
         rmSync(tempDir, { recursive: true, force: true });
       }
     });

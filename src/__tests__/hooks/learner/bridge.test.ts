@@ -158,7 +158,8 @@ describe("Skill Bridge Module", () => {
       );
 
       try {
-        symlinkSync(testProjectRoot, linkedProjectRoot, "dir");
+        // A junction on Windows (no symlink privilege needed); a dir symlink elsewhere.
+        symlinkSync(testProjectRoot, linkedProjectRoot, "junction");
 
         const files = findSkillFiles(linkedProjectRoot);
         const projectFiles = files.filter((f) => f.scope === "project");

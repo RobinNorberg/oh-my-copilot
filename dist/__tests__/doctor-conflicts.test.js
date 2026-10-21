@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, writeFileSync, rmSync, mkdtempSync, symlinkSync 
 import { join } from 'path';
 import { tmpdir } from 'os';
 import corpus from '../installer/__tests__/fixtures/legacy-guides.json' with { type: 'json' };
+import { requiresSymlinks } from './helpers/platform.js';
 // vi.hoisted runs before vi.mock hoisting — safe to reference in mock factories
 const { TEST_DIRS } = vi.hoisted(() => {
     const TEST_DIRS = { claudeDir: '', projectDir: '', projectClaudeDir: '', builtinSkillsDir: '' };
@@ -633,7 +634,7 @@ describe('doctor-conflicts: CLAUDE.md companion file detection (issue #1101)', (
         expect(formatReport(report, false)).toContain('never deleted automatically');
         expect(report.hasConflicts).toBe(true);
     });
-    it('records symlink and invalid UTF-8 companions without following them', () => {
+    it.skipIf(requiresSymlinks())('records symlink and invalid UTF-8 companions without following them', () => {
         const mainPath = join(TEST_CLAUDE_DIR, 'CLAUDE.md');
         const symlinkPath = join(TEST_CLAUDE_DIR, 'CLAUDE-link.md');
         const invalidPath = join(TEST_CLAUDE_DIR, 'CLAUDE-invalid.md');

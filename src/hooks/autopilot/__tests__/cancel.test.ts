@@ -36,6 +36,7 @@ vi.mock('../../ralph/index.js', () => ({
 import * as ralphLoop from '../../ralph/index.js';
 import { readModeState } from '../../../lib/mode-state-io.js';
 import { getProcessStartIdentitySync } from '../../../platform/process-utils.js';
+import { canCreateSymlinks } from '../../../__tests__/helpers/platform.js';
 
 describe('AutopilotCancel', () => {
   let testDir: string;
@@ -773,15 +774,19 @@ describe('AutopilotCancel', () => {
       expect(resumeAutopilot(testDir, sessionId)).toMatchObject({ success: false, message: 'workflow_descriptor_integrity_failed' });
       expect(require('fs').readFileSync(stateFile)).toEqual(before);
 
-      state.pipelineTracking!.activationBoundary!.transcriptPath = transcript;
-      writeAutopilotState(testDir, state, sessionId);
-      const target = join(encodedProject, 'target.jsonl');
-      writeFileSync(target, '');
-      rmSync(transcript);
-      symlinkSync(target, transcript);
-      const symlinkBytes = require('fs').readFileSync(stateFile);
-      expect(resumeAutopilot(testDir, sessionId)).toMatchObject({ success: false, message: 'workflow_descriptor_integrity_failed' });
-      expect(require('fs').readFileSync(stateFile)).toEqual(symlinkBytes);
+      // The final-symlink case needs a file symlink; Windows without
+      // Developer Mode cannot create one, so only that case is skipped.
+      if (canCreateSymlinks()) {
+        state.pipelineTracking!.activationBoundary!.transcriptPath = transcript;
+        writeAutopilotState(testDir, state, sessionId);
+        const target = join(encodedProject, 'target.jsonl');
+        writeFileSync(target, '');
+        rmSync(transcript);
+        symlinkSync(target, transcript);
+        const symlinkBytes = require('fs').readFileSync(stateFile);
+        expect(resumeAutopilot(testDir, sessionId)).toMatchObject({ success: false, message: 'workflow_descriptor_integrity_failed' });
+        expect(require('fs').readFileSync(stateFile)).toEqual(symlinkBytes);
+      }
 
       rmSync(transcript);
       writeFileSync(transcript, '');

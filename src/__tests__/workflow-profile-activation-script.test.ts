@@ -8,6 +8,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { provisionStandaloneStateLockBridge } from '../installer/index.js';
 import { clearWorktreeCache, getOmcRoot } from '../lib/worktree-paths.js';
 import { getProcessStartIdentitySync } from '../platform/process-utils.js';
+import { canCreateSymlinks } from './helpers/platform.js';
 
 const ROOT = process.cwd();
 const NODE = process.execPath;
@@ -729,7 +730,8 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
       }, false],
       ['ancestor symlink', (state, projects) => {
         const alias = join(projects, 'alias');
-        symlinkSync(projects, alias);
+        // A junction on Windows (no symlink privilege needed); a dir symlink elsewhere.
+        symlinkSync(projects, alias, 'junction');
         state.pipelineTracking.activationBoundary.transcriptPath = join(alias, 'workflow-activation-fixture.jsonl');
       }, false],
       ['spoofed basename', (state, projects, transcriptPath) => {
@@ -739,7 +741,8 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
       }, false],
       ['valid boundary', () => {}, true],
     ];
-    for (const [name, mutate, resumes] of cases) {
+    // A final file symlink needs Developer Mode on Windows; skip only that case.
+    for (const [name, mutate, resumes] of cases.filter(([name]) => name !== 'final symlink' || canCreateSymlinks())) {
       const { cwd, configHome } = createFixture();
       const projects = join(cwd, 'claude-config', 'projects');
       const statePath = statePathFor(cwd);
@@ -822,7 +825,8 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
       const before = readFileSync(statePath);
       writeFileSync(target, '');
       rmSync(canonical);
-      symlinkSync(target, canonical);
+      // Without file-symlink privilege (Windows) the canonical path stays absent instead.
+      if (canCreateSymlinks()) symlinkSync(target, canonical);
       for (const transcriptPath of [join(cwd, 'claude-config', 'projects', 'missing.jsonl'), join(cwd, 'claude-config', 'projects'), canonical]) {
         const output = runHook(script, '/autopilot --workflow release-flow ship it', cwd, configHome, transcriptPath);
         expect(output.hookSpecificOutput?.additionalContext).toContain('[AUTOPILOT WORKFLOW ERROR]');
