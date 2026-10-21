@@ -4228,6 +4228,9 @@ function compareSemverDesc(a, b) {
   }
   return 0;
 }
+function pickHighestVersionDir(dirs, base = import_path4.basename) {
+  return [...dirs].sort((a, b) => compareSemverDesc(base(a), base(b)))[0];
+}
 function purgeStalePluginCacheVersions(options) {
   const result = {
     removed: 0,
@@ -4360,12 +4363,7 @@ function purgeStalePluginCacheVersions(options) {
           }
         }
         if (activeVersionDirsHere.length > 0) {
-          const target = [...activeVersionDirsHere].sort(
-            (a, b) => (
-              // basename, not split('/'): these are native paths (backslashes on win32).
-              compareSemverDesc((0, import_path4.basename)(a), (0, import_path4.basename)(b))
-            )
-          )[0];
+          const target = pickHighestVersionDir(activeVersionDirsHere);
           try {
             const targetStats = (0, import_fs3.statSync)(target);
             if (!targetStats.isDirectory()) {

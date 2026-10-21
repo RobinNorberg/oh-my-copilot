@@ -392,7 +392,7 @@ describe('session-start template retired-state handling', () => {
   // on host load. Inside the hook's bounded probe budget the holder then reads as
   // unverifiable rather than contended, and no deferred retry is scheduled, so the
   // outcome depends on machine load rather than on the code under test.
-  it.skipIf(posixOnly('PowerShell owner probe outlasts the bounded lock wait'))('retries deferred cleanup after its own lock wait expires', async () => {
+  it.skipIf(posixOnly('KNOWN PRODUCT GAP on win32: PowerShell owner probe outlasts the probe budget, holder reads unverifiable, no deferred retry; see windows-test-conventions.md'))('retries deferred cleanup after its own lock wait expires', async () => {
     const stateDir = join(fakeProject, '.omg', 'state');
     const legacyPath = join(stateDir, 'last-tool-error.json');
     const holder = startPostToolFailureLockHolder(legacyPath);

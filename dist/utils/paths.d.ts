@@ -93,6 +93,8 @@ export interface PurgeCacheResult {
     /** Errors encountered (non-fatal) */
     errors: string[];
 }
+/** Highest-version directory by its last path segment; `base` lets tests pass `path.win32.basename`. */
+export declare function pickHighestVersionDir(dirs: string[], base?: (p: string) => string): string;
 export declare function purgeStalePluginCacheVersions(options?: {
     skipGracePeriod?: boolean;
 }): PurgeCacheResult;

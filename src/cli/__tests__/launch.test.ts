@@ -1664,6 +1664,9 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
     if (canCreateSymlinks()) {
       expect(lstatSync(runtimeCredentialsPath).isSymbolicLink()).toBe(true);
       expect(readlinkSync(runtimeCredentialsPath)).toBe(credentialsPath);
+    } else {
+      const mirrored = JSON.parse(readFileSync(runtimeCredentialsPath, 'utf-8')) as Record<string, unknown>;
+      expect((mirrored.claudeAiOauth as Record<string, unknown>).accessToken).toBe('runtime-token');
     }
   });
 

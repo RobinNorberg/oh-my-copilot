@@ -1421,6 +1421,10 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
             expect(lstatSync(runtimeCredentialsPath).isSymbolicLink()).toBe(true);
             expect(readlinkSync(runtimeCredentialsPath)).toBe(credentialsPath);
         }
+        else {
+            const mirrored = JSON.parse(readFileSync(runtimeCredentialsPath, 'utf-8'));
+            expect(mirrored.claudeAiOauth.accessToken).toBe('runtime-token');
+        }
     });
     it('promotes a fresher credential when UUID matches despite stale email metadata', () => {
         const configDir = join(tempRoot, '.claude');

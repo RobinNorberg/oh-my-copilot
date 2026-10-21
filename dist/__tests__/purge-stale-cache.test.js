@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { join, sep } from 'path';
+import { join, sep, win32 } from 'path';
 vi.mock('fs', async () => {
     const actual = await vi.importActual('fs');
     return {
@@ -20,7 +20,7 @@ vi.mock('../utils/config-dir.js', () => ({
     getCopilotConfigDir: vi.fn(() => '/mock/.claude'),
 }));
 import { existsSync, readFileSync, readdirSync, statSync, lstatSync, realpathSync, rmSync, renameSync, symlinkSync, unlinkSync, } from 'fs';
-import { purgeStalePluginCacheVersions } from '../utils/paths.js';
+import { purgeStalePluginCacheVersions, pickHighestVersionDir } from '../utils/paths.js';
 import { IS_WIN } from './helpers/platform.js';
 /** The product links version dirs with junctions on win32 (no symlink privilege). */
 const SYMLINK_TYPE = IS_WIN ? 'junction' : 'dir';
@@ -166,6 +166,14 @@ describe('purgeStalePluginCacheVersions', () => {
         expect(mockedSymlinkSync).toHaveBeenCalledWith(activeVersion, staleVersion, SYMLINK_TYPE);
         // Active version should NOT be removed
         expect(mockedRmSync).not.toHaveBeenCalledWith(activeVersion, expect.anything());
+    });
+    it('picks the highest version from win32 backslash paths on any host', () => {
+        const dirs = [
+            'C:\\cfg\\plugins\\cache\\omc\\p\\4.15.10',
+            'C:\\cfg\\plugins\\cache\\omc\\p\\5.0.0',
+            'C:\\cfg\\plugins\\cache\\omc\\p\\1.0.0',
+        ];
+        expect(pickHighestVersionDir(dirs, win32.basename)).toBe(dirs[1]);
     });
     it('links a stale version to the highest active version by version name', () => {
         // On win32 these are backslash paths; ordering by a '/'-split full path

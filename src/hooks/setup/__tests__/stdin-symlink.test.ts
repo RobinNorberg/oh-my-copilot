@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync
 import { join } from 'path';
 import { tmpdir } from 'os';
 import * as fs from 'fs';
-import { requiresSymlinks } from '../../../__tests__/helpers/platform.js';
+import { canCreateSymlinks, requiresSymlinks } from '../../../__tests__/helpers/platform.js';
 
 // We need to test the actual behavior, so we mock at the module level
 vi.mock('fs', async () => {
@@ -218,8 +218,9 @@ describe('ensureStdinSymlink', () => {
       ensureStdinSymlink(pluginRoot);
       const stdinDst = join(customHooksLib, 'stdin.mjs');
       expect(existsSync(stdinDst)).toBe(true);
-      // Content, not readlink: without symlink privilege the helper copies.
-      expect(readFileSync(stdinDst, 'utf-8')).toBe('// fake stdin.mjs content\n');
+      // Without symlink privilege the helper copies, so check content instead.
+      if (canCreateSymlinks()) expect(readlinkSync(stdinDst)).toBe(stdinSrcPath);
+      else expect(readFileSync(stdinDst, 'utf-8')).toBe('// fake stdin.mjs content\n');
     } finally {
       rmSync(customConfigDir, { recursive: true, force: true });
     }
