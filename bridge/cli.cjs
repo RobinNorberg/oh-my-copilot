@@ -32788,7 +32788,12 @@ function containerUriToHostUri(uri, context) {
   if (!context || !uri.startsWith("file://")) {
     return uri;
   }
-  return (0, import_url4.pathToFileURL)(containerPathToHostPath((0, import_url4.fileURLToPath)(uri), context)).href;
+  const url = new URL(uri);
+  if (url.host !== "" || /%2f/i.test(url.pathname)) {
+    throw new TypeError(`Invalid container file URI: ${uri}`);
+  }
+  const containerPath = decodeURIComponent(url.pathname);
+  return (0, import_url4.pathToFileURL)(containerPathToHostPath(containerPath, context)).href;
 }
 function resolveDevContainerConfigPath(workspaceRoot) {
   let dir = workspaceRoot;
@@ -39214,18 +39219,41 @@ function detectExistingPythonEnv(projectRoot) {
   }
   return null;
 }
+async function resolveSystemPython(platform = process.platform, probe = runPythonProbe) {
+  const useCache = platform === process.platform && probe === runPythonProbe;
+  if (useCache && systemPythonCache !== void 0) return systemPythonCache;
+  const resolved = await probeSystemPython(platform, probe);
+  if (useCache) systemPythonCache = resolved;
+  return resolved;
+}
+async function probeSystemPython(platform, probe) {
+  const candidates = platform === "win32" ? [["python3"], ["python"], ["py", "-3"]] : [["python3"]];
+  for (const [command, ...args] of candidates) {
+    try {
+      const stdout = await probe(command, [
+        ...args,
+        "-c",
+        "import sys; assert sys.version_info >= (3,); print(sys.executable)"
+      ]);
+      const executable = stdout.trim();
+      if (executable) return executable;
+    } catch {
+    }
+  }
+  return null;
+}
 async function ensurePythonEnvironment(projectRoot) {
   const existing = detectExistingPythonEnv(projectRoot);
   if (existing) {
     return existing;
   }
-  try {
-    await execFileAsync3("python3", ["--version"]);
-    return { pythonPath: "python3", type: "venv" };
-  } catch {
+  const systemPython = await resolveSystemPython();
+  if (systemPython) {
+    return { pythonPath: systemPython, type: "venv" };
   }
   throw new Error(
-    "No Python environment found. Create a virtual environment first:\n  python -m venv .venv"
+    `No Python environment found (probed: ${process.platform === "win32" ? "python3, python, py -3" : "python3"}). Create a virtual environment first:
+  python -m venv .venv`
   );
 }
 async function verifyProcessIdentity(meta) {
@@ -39577,7 +39605,7 @@ async function removeFileIfExists(filePath) {
 function sleep2(ms) {
   return new Promise((resolve58) => setTimeout(resolve58, ms));
 }
-var import_child_process9, fs5, fsPromises2, path6, import_url7, import_child_process10, import_util6, execFileAsync3, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, USE_TCP_FALLBACK;
+var import_child_process9, fs5, fsPromises2, path6, import_url7, import_child_process10, import_util6, execFileAsync3, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, runPythonProbe, systemPythonCache, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
   "src/tools/python-repl/bridge-manager.ts"() {
     "use strict";
@@ -39597,6 +39625,7 @@ var init_bridge_manager = __esm({
     DEFAULT_GRACE_PERIOD_MS = 5e3;
     SIGTERM_GRACE_MS = 2500;
     ownedBridgeSessionIds = /* @__PURE__ */ new Set();
+    runPythonProbe = async (command, args) => (await execFileAsync3(command, args, { timeout: 1e4, windowsHide: true })).stdout;
     USE_TCP_FALLBACK = process.platform === "win32";
   }
 });

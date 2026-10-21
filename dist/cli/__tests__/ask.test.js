@@ -9,7 +9,8 @@ import { parseAskArgs, resolveAskAdvisorScriptPath } from '../ask.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..', '..');
 const CLI_ENTRY = join(REPO_ROOT, 'src', 'cli', 'index.ts');
-const TSX_LOADER = join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'loader.mjs');
+// --import takes a URL specifier; a bare C: path fails with ERR_UNSUPPORTED_ESM_URL_SCHEME.
+const TSX_LOADER = pathToFileURL(join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'loader.mjs')).href;
 const ADVISOR_SCRIPT = join(REPO_ROOT, 'scripts', 'run-provider-advisor.js');
 function buildChildEnv(envOverrides = {}, options = {}) {
     if (options.preserveClaudeSessionEnv) {

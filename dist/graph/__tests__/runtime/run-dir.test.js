@@ -30,6 +30,9 @@ import { resolveRunDir } from "../../runtime/run-dir.js";
 import { FileOwnershipFence } from "../../runtime/fence.js";
 import { computeJournalFingerprint, FileJournal, } from "../../runtime/journal.js";
 import { FileProjectionStore } from "../../runtime/store.js";
+import { IS_WIN, posixOnly } from "../../../__tests__/helpers/platform.js";
+// Contained directory-FD traversal is refused on win32 by design (contained-fd.ts).
+const NO_CONTAINED_FS = posixOnly("graph runtime refuses the pathname fallback on win32");
 const HASH = "a".repeat(64);
 function makeRecord(seq) {
     const record = {
@@ -76,7 +79,12 @@ describe("resolveRunDir containment [P1-3]", () => {
             expect(() => resolveRunDir(runsRoot, bad), JSON.stringify(bad)).toThrow("invalid run_id");
         }
     });
-    it("creates the run directory inside the runs root and returns the joined path", () => {
+    it.runIf(IS_WIN)("refuses to create a run directory on win32 instead of falling back to pathnames", () => {
+        const runsRoot = makeRunsRoot();
+        expect(() => resolveRunDir(runsRoot, "run-win32")).toThrow("refusing pathname fallback");
+        expect(existsSync(join(runsRoot, "run-win32"))).toBe(false);
+    });
+    it.skipIf(NO_CONTAINED_FS)("creates the run directory inside the runs root and returns the joined path", () => {
         // Arrange
         const runsRoot = makeRunsRoot();
         // Act
@@ -88,7 +96,7 @@ describe("resolveRunDir containment [P1-3]", () => {
         expect(resolved.toLowerCase().startsWith(`${runsRootReal.toLowerCase()}\\`) ||
             resolved.startsWith(`${runsRootReal}/`)).toBe(true);
     });
-    it("fails closed on a symlinked run directory and writes nothing outside the root", async () => {
+    it.skipIf(NO_CONTAINED_FS)("fails closed on a symlinked run directory and writes nothing outside the root", async () => {
         // Arrange
         const runsRoot = makeRunsRoot();
         const outside = makeRunsRoot();
@@ -106,7 +114,7 @@ describe("resolveRunDir containment [P1-3]", () => {
         expect(existsSync(join(outside, "escape-target", "owner.lock"))).toBe(false);
         expect(existsSync(join(outside, "escape-target", "projection.json"))).toBe(false);
     });
-    it("anchors target creation to the original root when its pathname is replaced", () => {
+    it.skipIf(NO_CONTAINED_FS)("anchors target creation to the original root when its pathname is replaced", () => {
         // Arrange: replace the root pathname immediately before the target mkdir.
         const runsRoot = makeRunsRoot();
         const outside = makeRunsRoot();
@@ -138,7 +146,7 @@ describe("resolveRunDir containment [P1-3]", () => {
         expect(existsSync(join(outside, runId))).toBe(false);
         expect(existsSync(target)).toBe(true);
     });
-    it("does not follow a target symlink installed during creation", () => {
+    it.skipIf(NO_CONTAINED_FS)("does not follow a target symlink installed during creation", () => {
         // Arrange: install a symlink between the absent check and mkdir attempt.
         const runsRoot = makeRunsRoot();
         const outside = makeRunsRoot();
@@ -164,7 +172,7 @@ describe("resolveRunDir containment [P1-3]", () => {
         expect(swapped).toBe(true);
         expect(existsSync(escaped)).toBe(false);
     });
-    it("keeps component writes inside the runs root for a legitimate run id", async () => {
+    it.skipIf(NO_CONTAINED_FS)("keeps component writes inside the runs root for a legitimate run id", async () => {
         // Arrange
         const runsRoot = makeRunsRoot();
         // Act

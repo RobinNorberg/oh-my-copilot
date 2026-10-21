@@ -6,6 +6,7 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, readF
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
+import { posixOnly } from "../../../__tests__/helpers/platform.js";
 import { canonicalJson, sealGraphDescriptor } from "../../descriptor.js";
 import { isGraphSucceeded } from "../../scheduler.js";
 import { runGraph } from "../../runtime/runner.js";
@@ -78,7 +79,7 @@ function linearDescriptor() {
         terminal_verification_node_id: "term",
     };
 }
-describe("runGraph", () => {
+describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"))("runGraph", () => {
     it("runs a linear 3-command graph to success with journal + snapshot", async () => {
         // Arrange
         const runsRoot = makeRunsRoot();

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
-import { dirname, join } from 'path';
+import { basename, dirname, join } from 'path';
 import { pathToFileURL } from 'url';
 import { tmpdir } from 'os';
 import { spawnSync } from 'child_process';
@@ -74,6 +74,11 @@ describe('devcontainer LSP helpers', () => {
     expect(mod.containerPathToHostPath('/workspaces/app/src/index.ts', context)).toBe(hostFile);
     expect(mod.hostUriToContainerUri(pathToFileURL(hostFile).href, context)).toBe('file:///workspaces/app/src/index.ts');
     expect(mod.containerUriToHostUri('file:///workspaces/app/src/index.ts', context)).toBe(pathToFileURL(hostFile).href);
+    expect(mod.containerUriToHostUri('file:///workspaces/app/src/my%20file.ts', context))
+      .toBe(pathToFileURL(join(workspaceRoot, 'src', 'my file.ts')).href);
+    expect(() => mod.containerUriToHostUri('file://remote/workspaces/app/src/index.ts', context)).toThrow();
+    expect(() => mod.containerUriToHostUri('file:///workspaces/app/src%2Findex.ts', context)).toThrow();
+    expect(() => mod.containerUriToHostUri('file:///workspaces/app/src%2findex.ts', context)).toThrow();
   });
 
   it('matches running devcontainer by labels and nested mount', async () => {
@@ -110,7 +115,7 @@ describe('devcontainer LSP helpers', () => {
     const context = mod.resolveDevContainerContext(workspaceRoot);
 
     expect(context?.containerId).toBe('abc123');
-    expect(context?.containerWorkspaceRoot).toBe(`/workspaces/${workspaceRoot.split('/').pop()}`);
+    expect(context?.containerWorkspaceRoot).toBe(`/workspaces/${basename(workspaceRoot)}`);
     expect(context?.configFilePath).toBe(configFilePath);
   });
 

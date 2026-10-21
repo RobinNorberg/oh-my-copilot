@@ -15,6 +15,10 @@ import type { SealedGraphDescriptor } from '../../types.js';
 import { EXIT_CODES } from '../../runtime/types.js';
 import type { RunResult, RunOptions } from '../../runtime/types.js';
 import { graphCommand } from '../../../cli/graph.js';
+import { IS_WIN, posixOnly } from '../../../__tests__/helpers/platform.js';
+
+// The CLI preflight refuses win32 before reading the descriptor (contained-fd.ts).
+const NO_CONTAINED_FS = posixOnly('graph runtime refuses the pathname fallback on win32');
 
 const mocks = vi.hoisted(() => ({
   runGraph: vi.fn(),
@@ -81,7 +85,7 @@ describe('graphCommand run subcommand', () => {
     await graphCommand().parseAsync([...argv], { from: 'user' });
   }
 
-  it('runs a fresh descriptor end to end with exit code 0', async () => {
+  it.skipIf(NO_CONTAINED_FS)('runs a fresh descriptor end to end with exit code 0', async () => {
     // Arrange
     const runsRoot = join(workDir, '.omg', 'graph-runs');
     const fixturePath = join(workDir, 'descriptor.json');
@@ -105,7 +109,7 @@ describe('graphCommand run subcommand', () => {
     expect(typeof optionsArg.reporter?.onEvent).toBe('function');
   });
 
-  it('accepts resume when stored descriptor matches the requested revision', async () => {
+  it.skipIf(NO_CONTAINED_FS)('accepts resume when stored descriptor matches the requested revision', async () => {
     // Arrange
     const input = descriptorInput('run-cli-resume', 'resume identity');
     const sealed = sealGraphDescriptor(input);
@@ -125,7 +129,7 @@ describe('graphCommand run subcommand', () => {
     expect(sealedArg.descriptor_hash).toBe(sealed.descriptor_hash);
   });
 
-  it('fails with exit code 21 when stored revision differs from the user file', async () => {
+  it.skipIf(NO_CONTAINED_FS)('fails with exit code 21 when stored revision differs from the user file', async () => {
     // Arrange
     const input = descriptorInput('run-cli-mismatch', 'first revision');
     const tampered = { ...input, goal: 'second revision' };
@@ -148,7 +152,7 @@ describe('graphCommand run subcommand', () => {
     expect(mocks.runGraph).not.toHaveBeenCalled();
   });
 
-  it('maps unmapped runtime crashes to exit code 70 with a [crash] message', async () => {
+  it.skipIf(NO_CONTAINED_FS)('maps unmapped runtime crashes to exit code 70 with a [crash] message', async () => {
     // Arrange
     const runsRoot = join(workDir, '.omg', 'graph-runs');
     const fixturePath = join(workDir, 'descriptor.json');
@@ -165,7 +169,7 @@ describe('graphCommand run subcommand', () => {
     expect(stderr).toContain('scheduler contract violated');
   });
 
-  it('reports a clean nonzero failure for a missing descriptor file', async () => {
+  it.skipIf(NO_CONTAINED_FS)('reports a clean nonzero failure for a missing descriptor file', async () => {
     // Arrange
     const missingPath = join(workDir, 'nope.json');
 
@@ -195,5 +199,20 @@ describe('graphCommand run subcommand', () => {
     expect(process.exitCode).toBe(EXIT_CODES.OK);
     expect(mocks.runGraph).toHaveBeenCalledOnce();
     expect(existsSync(runsRoot)).toBe(true);
+  });
+
+  it.runIf(IS_WIN)('refuses to run on win32 before touching the descriptor or runs root', async () => {
+    const runsRoot = join(workDir, '.omg', 'graph-runs');
+    const fixturePath = join(workDir, 'descriptor.json');
+    writeFileSync(fixturePath, JSON.stringify(descriptorInput('run-win32', 'win32 refusal')));
+
+    await parseCli(['run', fixturePath, '--runs-root', runsRoot]);
+
+    expect(process.exitCode).toBe(1);
+    const stderr = errorSpy.mock.calls.map((args) => args.join(' ')).join('\n');
+    expect(stderr).toContain('graph runtime is unavailable on win32');
+    expect(stderr).toContain('refusing pathname fallback');
+    expect(mocks.runGraph).not.toHaveBeenCalled();
+    expect(existsSync(runsRoot)).toBe(false);
   });
 });

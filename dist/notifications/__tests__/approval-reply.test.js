@@ -7,6 +7,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { handleApprovalReply, parseApprovalReply } from "../reply-listener.js";
+import { posixOnly } from "../../__tests__/helpers/platform.js";
 const tempDirs = [];
 function makeRunsRoot() {
     const dir = mkdtempSync(join(tmpdir(), "omc-approval-reply-"));
@@ -40,7 +41,7 @@ describe("parseApprovalReply", () => {
     });
 });
 describe("handleApprovalReply", () => {
-    it("writes a decision file attributed to the reply channel", () => {
+    it.skipIf(posixOnly("graph approval decisions need the contained run directory win32 refuses"))("writes a decision file attributed to the reply channel", () => {
         const runsRoot = makeRunsRoot();
         // The gate creates the run directory when it persists the pending record;
         // decisions are only accepted for runs that exist.

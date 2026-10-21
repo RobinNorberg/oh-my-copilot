@@ -15,6 +15,7 @@ import {
 import { join } from "path";
 import { tmpdir } from "os";
 import { spawn } from "child_process";
+import { toFileUrl } from "../../__tests__/helpers/platform.js";
 import {
   registerMessage,
   lookupByMessageId,
@@ -27,7 +28,7 @@ import {
   type SessionMapping,
 } from "../session-registry.js";
 
-const SESSION_REGISTRY_MODULE_PATH = join(process.cwd(), "src", "notifications", "session-registry.ts");
+const SESSION_REGISTRY_MODULE_URL = toFileUrl(join(process.cwd(), "src", "notifications", "session-registry.ts"));
 
 let testDir: string;
 let REGISTRY_PATH: string;
@@ -36,7 +37,7 @@ let LOCK_PATH: string;
 function registerMessageInChildProcess(mapping: SessionMapping): Promise<void> {
   return new Promise((resolve, reject) => {
     const script = `
-import { registerMessage } from ${JSON.stringify(SESSION_REGISTRY_MODULE_PATH)};
+import { registerMessage } from ${JSON.stringify(SESSION_REGISTRY_MODULE_URL)};
 const mapping = JSON.parse(process.env.TEST_MAPPING_JSON ?? "{}");
 registerMessage(mapping);
 `;
