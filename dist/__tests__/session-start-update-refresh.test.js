@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const SCRIPT_PATH = join(__dirname, '..', '..', 'scripts', 'session-start.mjs');
+const TEMPLATE_SCRIPT_PATH = join(__dirname, '..', '..', 'templates', 'hooks', 'session-start.mjs');
 const NODE = process.execPath;
 /** Closed port: connections are refused immediately, so fetch fails offline. */
 const UNREACHABLE_REGISTRY = 'http://127.0.0.1:9';
@@ -164,6 +165,44 @@ describe('session-start.mjs detached update-cache refresh', () => {
             const cached = JSON.parse(readFileSync(cachePath, 'utf-8'));
             expect(cached.latestVersion).toBe('1.0.0');
             expect(cached.claudeCodeLatestVersion).toBeUndefined();
+        });
+        it.each([
+            ['scripts/session-start.mjs', SCRIPT_PATH],
+            ['templates/hooks/session-start.mjs', TEMPLATE_SCRIPT_PATH],
+        ])('writes the same key order whichever registry answer lands first (%s)', async (_label, scriptPath) => {
+            // The OMC and Claude Code checks run concurrently and merge into one file;
+            // its bytes must not depend on which fetch settles first.
+            rmSync(cachePath, { force: true });
+            const keyOrders = [];
+            for (const slow of ['/oh-my-copilot/latest', '/@anthropic-ai/claude-code/latest']) {
+                const server = createHttpServer((req, res) => {
+                    setTimeout(() => {
+                        res.writeHead(200, { 'content-type': 'application/json' });
+                        res.end(JSON.stringify({ version: '1.0.0' }));
+                    }, req.url === slow ? 300 : 0);
+                });
+                fakeRegistry = server;
+                await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+                const address = server.address();
+                if (!address || typeof address === 'string')
+                    throw new Error('no port');
+                await new Promise((resolve, reject) => {
+                    const child = spawn(NODE, [scriptPath, '--refresh-update-cache'], {
+                        stdio: 'ignore',
+                        // A plugin root with a package.json, so the OMC check runs too.
+                        env: { ...baseEnv(`http://127.0.0.1:${address.port}`), CLAUDE_PLUGIN_ROOT: join(__dirname, '..', '..') },
+                    });
+                    child.on('error', reject);
+                    child.on('close', () => resolve());
+                });
+                server.close();
+                fakeRegistry = null;
+                keyOrders.push(Object.keys(JSON.parse(readFileSync(cachePath, 'utf-8'))));
+                rmSync(cachePath, { force: true });
+            }
+            expect(keyOrders[0]).toContain('latestVersion');
+            expect(keyOrders[0]).toContain('claudeCodeLatestVersion');
+            expect(keyOrders[1]).toEqual(keyOrders[0]);
         });
         it('serializes concurrent refreshes and leaves a complete cache document', async () => {
             const registryBase = await startFakeRegistry('9.9.9');

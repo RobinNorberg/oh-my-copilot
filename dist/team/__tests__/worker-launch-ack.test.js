@@ -10,6 +10,7 @@ import { awaitWorkerLaunchAcknowledgement, awaitWorkerLaunchProviderStarted, bui
 import { captureOwnedProcessGroup, getProcessStartIdentity, isProcessAlive, terminateOwnedProcessGroup, terminateOwnedProcessTree, } from '../../platform/process-utils.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { getWorkerEnv } from '../model-contract.js';
+import { IS_WIN, posixOnly, requiresSymlinks } from '../../__tests__/helpers/platform.js';
 let cwd = '';
 const disposableProviders = new Set();
 // These waits poll for a condition produced by a spawned process, so they
@@ -573,7 +574,7 @@ describe('worker launch acknowledgement', () => {
             await bootstrap;
         }
     });
-    it('kills provider descendants when the provider exits after start publication', async () => {
+    it.skipIf(posixOnly('provider containment proof needs POSIX process groups; win32 reports provider_cleanup_unverified'))('kills provider descendants when the provider exits after start publication', async () => {
         const launchAttempt = await attempt();
         const childPidPath = join(cwd, 'early-exit-child-pid');
         const providerReadyPath = join(cwd, 'early-exit-provider-ready');
@@ -785,7 +786,7 @@ describe('worker launch acknowledgement', () => {
         await expect(retireAndCleanupCurrentWorkerLaunchAttempt(launchAttempt, 'partial_shutdown_retry', retryCleanup)).resolves.toBe(true);
         expect(retryCleanup).not.toHaveBeenCalled();
     });
-    it('retries cleanup-complete retirement after a current-pointer unlink failure', async () => {
+    it.skipIf(posixOnly('provider containment proof needs POSIX process groups; win32 reports provider_cleanup_unverified'))('retries cleanup-complete retirement after a current-pointer unlink failure', async () => {
         const launchAttempt = await attempt();
         const expected = await acceptFixtureAttempt(launchAttempt);
         const processStartIdentity = await getProcessStartIdentity(process.pid);
@@ -882,7 +883,7 @@ describe('worker launch acknowledgement', () => {
         await expect(terminateWorkerLaunchProvider(launchAttempt, 100)).resolves.toBe(false);
         await expect(readFile(`${launchAttempt.startedPath}.termination-complete`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
     });
-    it('does not treat a reused provider PID as cleaned without terminal descendant proof', async () => {
+    it.skipIf(posixOnly('provider containment proof needs POSIX process groups; win32 reports provider_cleanup_unverified'))('does not treat a reused provider PID as cleaned without terminal descendant proof', async () => {
         const launchAttempt = await attempt();
         const expected = JSON.parse(await readFile(launchAttempt.expectedPath, 'utf8'));
         const currentIdentity = await getProcessStartIdentity(process.pid);
@@ -1385,7 +1386,7 @@ describe('worker launch acknowledgement', () => {
         await expect(first).resolves.toMatchObject({ outcome: 'ran', exitCode: 0 });
         await expect(runWorkerLaunchBootstrap(spec)).resolves.toEqual({ outcome: 'ack_conflict' });
     });
-    it('reports provider spawn failure after acknowledgement without hanging the bootstrap', async () => {
+    it.skipIf(posixOnly('provider containment proof needs POSIX process groups; win32 reports provider_cleanup_unverified'))('reports provider spawn failure after acknowledgement without hanging the bootstrap', async () => {
         const launchAttempt = await attempt();
         const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, [join(cwd, 'definitely-missing-provider')], cwd);
         const bootstrap = runWorkerLaunchBootstrap(spec);
@@ -1800,7 +1801,7 @@ describe('worker launch acknowledgement', () => {
             vi.resetModules();
         }
     });
-    it('terminates the exact started provider process group before failed-startup pane cleanup', async () => {
+    it.skipIf(posixOnly('provider containment proof needs POSIX process groups; win32 reports provider_cleanup_unverified'))('terminates the exact started provider process group before failed-startup pane cleanup', async () => {
         const launchAttempt = await attempt();
         const pidMarker = join(cwd, 'started-provider-tree-pids.json');
         const providerScript = [
@@ -2337,13 +2338,20 @@ describe('worker launch acknowledgement', () => {
         expect(() => buildWorkerLaunchBootstrapSpec(launchAttempt, ['codex'], cwd, {
             providerEnv: { VALID_KEY: undefined },
         })).toThrow('worker_launch_provider_env_value_invalid');
+        const internalEnv = { OMC_WORKER_LAUNCH_SPEC_FILE: 'must-be-filtered' };
+        // win32 rejects internal launch keys outright instead of filtering them.
+        if (IS_WIN) {
+            expect(() => buildWorkerLaunchBootstrapSpec(launchAttempt, ['codex'], cwd, {
+                providerEnv: internalEnv,
+            })).toThrow('worker_launch_provider_env_reserved');
+        }
         const marker = join(cwd, 'provider-env.json');
         const providerScript = `require('node:fs').writeFileSync(${JSON.stringify(marker)},JSON.stringify({value:process.env.OMC_TEST_PROVIDER_VALUE,attempt:process.env.OMC_WORKER_LAUNCH_ATTEMPT_ID,internal:process.env.OMC_WORKER_LAUNCH_SPEC_FILE}));setTimeout(()=>process.exit(0),200)`;
         const bootstrap = runWorkerLaunchBootstrap(buildWorkerLaunchBootstrapSpec(launchAttempt, [process.execPath, '-e', providerScript], cwd, {
             providerEnv: {
                 OMC_TEST_PROVIDER_VALUE: 'provider-value',
                 OMC_WORKER_LAUNCH_ATTEMPT_ID: launchAttempt.attempt_id,
-                OMC_WORKER_LAUNCH_SPEC_FILE: 'must-be-filtered',
+                ...(IS_WIN ? {} : internalEnv),
             },
             releaseAfterSpawn: true,
         }));
@@ -2730,13 +2738,17 @@ describe('worker launch acknowledgement', () => {
         expect(quoteWindowsCreateProcessArgument('say "hello"')).toBe('"say \\"hello\\""');
         expect(() => quoteWindowsCreateProcessArgument('bad\r\narg')).toThrow('worker_launch_provider_argv_invalid');
     });
-    it('rejects substituted authority fields and descriptor symlinks', async () => {
+    it('rejects substituted authority fields', async () => {
         const launchAttempt = await attempt();
         const materialized = await materializeWorkerLaunchTransport({ attempt: launchAttempt, providerArgv: ['codex'], cwd });
         const descriptor = JSON.parse(await readFile(materialized.bootstrapDescriptorPath, 'utf8'));
         descriptor.provider_argv = ['tampered'];
         await writeFile(materialized.bootstrapDescriptorPath, JSON.stringify(descriptor), 'utf8');
         await expect(readAndConsumeWorkerLaunchDescriptor(materialized.bootstrapDescriptorPath)).rejects.toThrow('worker_launch_descriptor_invalid');
+    });
+    it.skipIf(requiresSymlinks())('rejects descriptor symlinks', async () => {
+        const launchAttempt = await attempt();
+        const materialized = await materializeWorkerLaunchTransport({ attempt: launchAttempt, providerArgv: ['codex'], cwd });
         await rm(materialized.bootstrapDescriptorPath, { force: true });
         await symlink(materialized.wrapperPath, materialized.bootstrapDescriptorPath);
         await expect(readAndConsumeWorkerLaunchDescriptor(materialized.bootstrapDescriptorPath)).rejects.toThrow();

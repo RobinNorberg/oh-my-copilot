@@ -287,12 +287,69 @@ describe("git top-level memoization", () => {
         expect(getGitTopLevel(repo)).toBe(canonical(repo));
         expect(showToplevelCalls()).toBe(2);
     });
-    it("does not cache a non-repository result before git init", () => {
+    it("re-probes a cached non-repository result after git init", () => {
         const repo = join(tempDir, "repo");
         expect(getGitTopLevel(repo)).toBeNull();
         initRepo(repo);
         expect(getGitTopLevel(repo)).toBe(canonical(repo));
         expect(showToplevelCalls()).toBe(2);
+    });
+    it("memoizes a non-repository answer across OMC_STATE_DIR state-root lookups", () => {
+        const plain = join(tempDir, "plain");
+        mkdirSync(plain, { recursive: true });
+        const previousStateDir = process.env.OMC_STATE_DIR;
+        process.env.OMC_STATE_DIR = join(tempDir, "state");
+        try {
+            const first = getOmcRoot(plain);
+            for (let call = 0; call < 50; call++) {
+                expect(getOmcRoot(plain)).toBe(first);
+            }
+            expect(getGitTopLevel(plain)).toBeNull();
+            expect(showToplevelCalls()).toBe(1);
+        }
+        finally {
+            if (previousStateDir === undefined)
+                delete process.env.OMC_STATE_DIR;
+            else
+                process.env.OMC_STATE_DIR = previousStateDir;
+        }
+    });
+    it("re-probes a cached non-repository result when Git discovery environment changes", () => {
+        const plain = join(tempDir, "plain");
+        mkdirSync(plain, { recursive: true });
+        const previousCeiling = process.env.GIT_CEILING_DIRECTORIES;
+        try {
+            expect(getGitTopLevel(plain)).toBeNull();
+            expect(getGitTopLevel(plain)).toBeNull();
+            process.env.GIT_CEILING_DIRECTORIES = tempDir;
+            expect(getGitTopLevel(plain)).toBeNull();
+            expect(showToplevelCalls()).toBe(2);
+        }
+        finally {
+            if (previousCeiling === undefined)
+                delete process.env.GIT_CEILING_DIRECTORIES;
+            else
+                process.env.GIT_CEILING_DIRECTORIES = previousCeiling;
+        }
+    });
+    it("does not cache git-missing or failed probes", () => {
+        const plain = join(tempDir, "plain");
+        mkdirSync(plain, { recursive: true });
+        let probeCalls = 0;
+        setGitShowToplevelProbeForTests(() => {
+            probeCalls++;
+            throw Object.assign(new Error("spawn git ENOENT"), { code: "ENOENT" });
+        });
+        expect(getGitTopLevel(plain)).toBeNull();
+        expect(getGitTopLevel(plain)).toBeNull();
+        expect(probeCalls).toBe(2);
+        setGitShowToplevelProbeForTests(() => {
+            probeCalls++;
+            return "not-an-absolute-root\n";
+        });
+        expect(getGitTopLevel(plain)).toBeNull();
+        expect(getGitTopLevel(plain)).toBeNull();
+        expect(probeCalls).toBe(4);
     });
     it("keeps direct boundary probes uncached", () => {
         const repo = join(tempDir, "repo");
