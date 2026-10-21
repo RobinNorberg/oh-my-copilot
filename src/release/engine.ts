@@ -24,7 +24,8 @@
  * --from resumes at the first phase not yet ok. Before skipping a phase (a
  * resume or --from) its recorded postconditions are re-checked, and a state
  * recorded on another branch or an unrelated HEAD is refused unless --from
- * preflight. Every external command goes through one injectable runner (ReleaseExec).
+ * preflight (tag / verify after the main merge need no release checkout).
+ * Every external command goes through one injectable runner (ReleaseExec).
  */
 
 import { spawnSync } from 'child_process';
@@ -197,6 +198,9 @@ const FULL_SHA = /^[0-9a-f]{40}$/;
 /** Polls for a rerun's new attempt to appear before giving up (bounded even when the clock does not move). */
 const RERUN_START_POLLS = 40;
 
+/** Rounds of land()'s wait / merge loop before giving up (bounded even when the clock does not move). */
+const LAND_ROUNDS = 500;
+
 type PrView = {
   state: string; isDraft?: boolean; baseRefName: string; baseRefOid: string; headRefOid: string; url?: string; mergeCommit?: { oid?: string } | null;
 };
@@ -250,7 +254,7 @@ export function phasePlan(id: PhaseId, v: string, opts: ReleaseOptions): string[
     case 'pr':
       return [
         `git push origin HEAD:refs/heads/${branch} until the PR is merged (plain, never forced; a refused push blocks)`,
-        `gh pr create --base dev --head ${branch} (reused when one exists)`,
+        `gh pr create --base dev --head ${branch} (an open one is reused; a merged one only when its merge contains HEAD)`,
         'wait for CI under the ship merge rule (ship.advisoryChecks never block); one rerun of failed jobs, awaited until its new attempt starts',
         'gh pr merge --admin --merge --match-head-commit <head> when the PR head is local HEAD, ship.allowAdminMerge and dev is a trusted base, else print it',
       ];
@@ -258,7 +262,7 @@ export function phasePlan(id: PhaseId, v: string, opts: ReleaseOptions): string[
       return [
         'require the release PR merged into dev (gh pr view); record its merge commit',
         'gh pr create --base main --head dev (reused when one is open)',
-        'same CI gate and merge as pr; the main merge must contain the dev merge; record it',
+        'same CI gate and merge as pr, merged only when the PR head contains the dev merge; the main merge must contain it too; record it',
       ];
     case 'tag':
       return [
@@ -385,7 +389,8 @@ class Release {
     if (remoteTag.status !== 0) problems.push(`git ls-remote --tags origin failed: ${tail(remoteTag.stderr, 1).join('')}`);
     else if (remoteTag.stdout.trim()) problems.push(`tag v${v} already exists on origin`);
     if (problems.length > 0) fail(`${problems.length} preflight problem(s)`, problems);
-    this.save({ branch, headSha: undefined });
+    // A fresh start never reuses the PRs, merges or tag run of an earlier attempt.
+    this.save({ branch, headSha: undefined, devPr: undefined, devMergeSha: undefined, mainPr: undefined, mainMergeSha: undefined, tagRunId: undefined });
     return { status: 'ok', note: `on release/v${v} over origin/dev ${devVersion}` };
   }
 
@@ -533,9 +538,11 @@ class Release {
   /** Why the phases before `start` may not be skipped (empty = they may): the state's checkout, then each phase's postconditions. */
   skipProblems(start: PhaseId): string[] {
     const problems: string[] = [];
+    // Once main is merged, tag / verify no longer need the release checkout: the merge and tag checks carry them.
+    const released = !!this.state.mainMergeSha && PHASES.indexOf(start) >= PHASES.indexOf('tag');
     const checks: Array<[string, () => string | null]> = [
-      ['state', () => this.provenanceProblem()],
-      ...PHASES.slice(0, PHASES.indexOf(start)).map((id): [string, () => string | null] => [id, () => this.postconditionProblem(id)]),
+      ['state', () => (released ? null : this.provenanceProblem())],
+      ...PHASES.slice(0, PHASES.indexOf(start)).map((id): [string, () => string | null] => [id, () => this.postconditionProblem(id, released)]),
     ];
     for (const [what, check] of checks) {
       try {
@@ -564,7 +571,7 @@ class Release {
    * it must have passed, and the facts later phases build on are re-checked
    * cheaply (read-only git / gh).
    */
-  postconditionProblem(id: PhaseId): string | null {
+  postconditionProblem(id: PhaseId, released = false): string | null {
     const s = this.state;
     const status = s.phases[id]?.status;
     if (status !== 'ok' && status !== 'skipped') return `has not passed (run it: --from ${id})`;
@@ -573,12 +580,19 @@ class Release {
         const version = (JSON.parse(this.file('package.json') ?? '{}') as { version?: string }).version;
         return version === this.v ? null : `package.json version is ${version ?? 'missing'}, not ${this.v} (--from bump)`;
       }
-      case 'commit':
-        return s.headSha && FULL_SHA.test(s.headSha) ? null : 'no release commit recorded (--from commit)';
+      case 'commit': {
+        if (!s.headSha || !FULL_SHA.test(s.headSha)) return 'no release commit recorded (--from commit)';
+        if (released) return null;
+        const head = this.git('rev-parse', 'HEAD');
+        return head === s.headSha ? null : `HEAD ${head.slice(0, 12)} is not the recorded release commit ${s.headSha.slice(0, 12)}; new local commits must go back through the gates (--from gates)`;
+      }
       case 'pr': {
         if (s.devPr === undefined || !s.devMergeSha) return 'no merged release PR into dev recorded (--from pr)';
         const sha = this.mergedSha(s.devPr);
-        return sha === s.devMergeSha ? null : `PR #${s.devPr} is ${sha ? `merged at ${sha.slice(0, 12)}` : 'not merged'}, not at the recorded ${s.devMergeSha.slice(0, 12)} (--from pr)`;
+        if (sha !== s.devMergeSha) return `PR #${s.devPr} is ${sha ? `merged at ${sha.slice(0, 12)}` : 'not merged'}, not at the recorded ${s.devMergeSha.slice(0, 12)} (--from pr)`;
+        if (!s.headSha) return 'no release commit recorded (--from commit)';
+        this.must('git', ['fetch', 'origin', 'dev']);
+        return this.isAncestor(s.headSha, s.devMergeSha) ? null : `the dev merge ${s.devMergeSha.slice(0, 12)} does not contain the release commit ${s.headSha.slice(0, 12)} (--from pr)`;
       }
       case 'promote': {
         if (s.mainPr === undefined || !s.mainMergeSha || !s.devMergeSha) return 'no main merge commit recorded (--from promote)';
@@ -597,9 +611,11 @@ class Release {
   }
 
   private findPr(head: string, base: string, states: string): number | undefined {
-    const out = this.must('gh', ['pr', 'list', '--head', head, '--base', base, '--state', states, '--json', 'number,state', '--limit', '10']);
-    const prs = JSON.parse(out || '[]') as Array<{ number: number; state: string }>;
-    return (prs.find((p) => p.state === 'OPEN') ?? prs.find((p) => p.state === 'MERGED'))?.number;
+    const out = this.must('gh', ['pr', 'list', '--head', head, '--base', base, '--state', states, '--json', 'number,state,headRefOid', '--limit', '10']);
+    const prs = JSON.parse(out || '[]') as Array<{ number: number; state: string; headRefOid?: string }>;
+    // A merged PR counts only when its head is in local HEAD (an earlier attempt's PR on the same branch name does not).
+    return (prs.find((p) => p.state === 'OPEN')
+      ?? prs.find((p) => p.state === 'MERGED' && !!p.headRefOid && this.isAncestor(p.headRefOid, 'HEAD')))?.number;
   }
 
   private createPr(base: string, head: string, title: string): number {
@@ -637,7 +653,7 @@ class Release {
       const pr = this.findPr('dev', 'main', 'open') ?? this.createPr('main', 'dev', `Release v${this.v}`);
       this.save({ mainPr: pr });
     }
-    const sha = await this.land(this.state.mainPr!, 'main', 'promote');
+    const sha = await this.land(this.state.mainPr!, 'main', 'promote', undefined, devMerge!);
     this.must('git', ['fetch', 'origin', 'dev', 'main']);
     if (!this.isAncestor(devMerge!, sha)) fail(`PR #${this.state.mainPr} merged into main at ${sha.slice(0, 12)}, which does not contain the dev merge ${devMerge!.slice(0, 12)}`);
     this.save({ mainMergeSha: sha });
@@ -693,15 +709,24 @@ class Release {
    * Wait for the PR's checks under the ship merge rule (advisoryChecks never
    * block; config from loadShipConfig: user config + the base's committed
    * config), rerun failed runs once, then admin-merge when the owner allows
-   * it; with `expectedHead`, only when the PR head is that commit. Returns
+   * it; with `expectedHead`, only when the PR head is that commit (an
+   * already-merged PR only when its merge contains it), with
+   * `requireAncestor`, only when the PR head contains that commit. Returns
    * the merge commit sha.
    */
-  private async land(pr: number, base: string, phase: PhaseId, expectedHead?: string): Promise<string> {
-    for (;;) {
+  private async land(pr: number, base: string, phase: PhaseId, expectedHead?: string, requireAncestor?: string): Promise<string> {
+    for (let round = 0; ; round++) {
+      if (round >= LAND_ROUNDS) blocked(`PR #${pr} is still not merged after ${LAND_ROUNDS} rounds of waiting and merging; check it on GitHub, then re-run omg release ${this.v} --from ${phase}`);
       const view = this.viewPr(pr);
       if (view.state === 'MERGED') {
         const sha = view.mergeCommit?.oid;
         if (!sha || !FULL_SHA.test(sha)) fail(`PR #${pr} is merged but gh reported no merge commit`);
+        if (expectedHead) {
+          this.must('git', ['fetch', 'origin', base]);
+          if (!this.isAncestor(expectedHead, sha!)) {
+            blocked(`PR #${pr} was merged at ${sha!.slice(0, 12)}, which does not contain local HEAD ${expectedHead.slice(0, 12)}; open a new release PR for HEAD (--from preflight starts over)`);
+          }
+        }
         return sha!;
       }
       if (view.state !== 'OPEN') fail(`PR #${pr} is ${view.state}`);
@@ -726,6 +751,12 @@ class Release {
       if (report.verdict === 'green') {
         if (expectedHead && view.headRefOid !== expectedHead) {
           blocked(`PR #${pr} head is ${view.headRefOid.slice(0, 12)}, not local HEAD ${expectedHead.slice(0, 12)}; push or merge until they match, then re-run omg release ${this.v} --from ${phase}`);
+        }
+        if (requireAncestor) {
+          this.must('git', ['fetch', 'origin', 'dev', base]);
+          if (!this.isAncestor(requireAncestor, view.headRefOid)) {
+            blocked(`PR #${pr} head ${view.headRefOid.slice(0, 12)} does not contain ${requireAncestor.slice(0, 12)}; update the PR, then re-run omg release ${this.v} --from ${phase}`);
+          }
         }
         const command = ['pr', 'merge', String(pr), '--admin', '--merge', '--match-head-commit', view.headRefOid];
         if (!config.allowAdminMerge || !config.trustedBases.includes(base)) {

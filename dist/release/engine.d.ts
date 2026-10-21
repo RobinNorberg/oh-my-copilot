@@ -24,7 +24,8 @@
  * --from resumes at the first phase not yet ok. Before skipping a phase (a
  * resume or --from) its recorded postconditions are re-checked, and a state
  * recorded on another branch or an unrelated HEAD is refused unless --from
- * preflight. Every external command goes through one injectable runner (ReleaseExec).
+ * preflight (tag / verify after the main merge need no release checkout).
+ * Every external command goes through one injectable runner (ReleaseExec).
  */
 import { type LoadedShipConfig } from '../ship/config.js';
 import { type Exec, type ExecOptions, type ExecResult } from '../ship/exec.js';
