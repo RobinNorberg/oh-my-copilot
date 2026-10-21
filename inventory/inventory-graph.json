@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "851cafa1f7e35ac8d6e240ec82ad788051ed44b2",
-    "sourceSha256": "467f78ac0e2e9b7b35bdc720ce17d45a87d6dbd8e1d1f4fb0b09c33bcb3f46d4",
+    "head": "3a3d6648424eb6cf27ef1b89aee243077bd2502e",
+    "sourceSha256": "992fb7e43cb23b96505b67d4a562c5d8224358fd8d9e7e458fab2d4f559536cd",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "851cafa1f7e35ac8d6e240ec82ad788051ed44b2",
-  "sourceSha256": "467f78ac0e2e9b7b35bdc720ce17d45a87d6dbd8e1d1f4fb0b09c33bcb3f46d4",
+  "head": "3a3d6648424eb6cf27ef1b89aee243077bd2502e",
+  "sourceSha256": "992fb7e43cb23b96505b67d4a562c5d8224358fd8d9e7e458fab2d4f559536cd",
   "counts": {
     "public": {
       "skills": 63,
@@ -25,11 +25,11 @@
     "internal": {
       "hookFiles": 344,
       "featureFiles": 88,
-      "toolFiles": 67,
+      "toolFiles": 68,
       "libFiles": 48,
       "templateHooks": 24,
-      "srcFiles": 1598,
-      "total": 1622
+      "srcFiles": 1599,
+      "total": 1623
     },
     "generated": {
       "distFiles": 6139,
@@ -657,6 +657,7 @@
       "src/tools/python-repl/__tests__/python-sandbox.test.ts",
       "src/tools/python-repl/__tests__/sandbox-guidance-parity.test.ts",
       "src/tools/python-repl/__tests__/shipped-artifact-parity.test.ts",
+      "src/tools/python-repl/__tests__/system-python.test.ts",
       "src/tools/python-repl/__tests__/tcp-fallback.test.ts",
       "src/tools/python-repl/bridge-manager.ts",
       "src/tools/python-repl/index.ts",
@@ -7669,6 +7670,7 @@
       "src/tools/python-repl/__tests__/python-sandbox.test.ts",
       "src/tools/python-repl/__tests__/sandbox-guidance-parity.test.ts",
       "src/tools/python-repl/__tests__/shipped-artifact-parity.test.ts",
+      "src/tools/python-repl/__tests__/system-python.test.ts",
       "src/tools/python-repl/__tests__/tcp-fallback.test.ts",
       "src/tools/python-repl/bridge-manager.ts",
       "src/tools/python-repl/index.ts",
@@ -49274,6 +49276,11 @@
         "id": "src/tools/python-repl/__tests__/shipped-artifact-parity.test.ts",
         "kind": "tool",
         "path": "src/tools/python-repl/__tests__/shipped-artifact-parity.test.ts"
+      },
+      {
+        "id": "src/tools/python-repl/__tests__/system-python.test.ts",
+        "kind": "tool",
+        "path": "src/tools/python-repl/__tests__/system-python.test.ts"
       },
       {
         "id": "src/tools/python-repl/__tests__/tcp-fallback.test.ts",
@@ -94208,6 +94215,26 @@
         "kind": "imports"
       },
       {
+        "from": "src/tools/python-repl/__tests__/system-python.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/python-repl/__tests__/system-python.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/python-repl/__tests__/system-python.test.ts",
+        "to": "src/__tests__/helpers/platform.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/python-repl/__tests__/system-python.test.ts",
+        "to": "src/tools/python-repl/bridge-manager.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/tools/python-repl/__tests__/tcp-fallback.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -97144,12 +97171,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8468,
-      "edgeCount": 9422,
-      "importEdgeCount": 7848,
+      "nodeCount": 8469,
+      "edgeCount": 9426,
+      "importEdgeCount": 7852,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "87eb780611a0f44b1334bd18cb68f2df64fd00577689c1e230220ed6e38968fd",
-  "manifestSha256": "b65f211ecd5046a4569c4150a90ffd54965bcc766d1b5f76477f6583ee06fba9"
+  "inventorySha256": "8bc3fc1ff3f54e03cc9257ee0b60ba0358aea6d2d79c6946c91a3a3b2498bad6",
+  "manifestSha256": "c26e66745058c50d8ba44f6ed7b7d2b06907ba28477c0fb3fcfb67bd45ed0de1"
 }
