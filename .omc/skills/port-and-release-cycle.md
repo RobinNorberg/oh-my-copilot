@@ -16,7 +16,9 @@ map, fork-owned logic) and `omg-release-runbook.md` (pre-flight, ship, verify).
 This skill is the order and the delegation that made four cycles in two days
 (v5.6.1 → v5.8.1) land without a bad tag. Robin's standing rules apply:
 delegate implementation to subagents; no force-pushes anywhere; recycle agents
-when their report is processed.
+when their report is processed. Every lane brief carries the progress snippet
+from `agent-progress-events.md`, and the lead arms one Monitor on
+`omg progress watch --dir <dir> --stall 10m` instead of polling lanes.
 
 ## Inputs
 - Last ported upstream sha (memory `omc-upstream-porting`), `origin/dev`, a
