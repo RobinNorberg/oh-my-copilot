@@ -19,6 +19,7 @@ import {
   type OrchestratorConfig,
   type OrchestratorHandle,
 } from '../merge-orchestrator.js';
+import { scaleTiming } from '../../__tests__/helpers/platform.js';
 
 beforeAll(() => {
   process.env.OMC_RUNTIME_V2 = '1';
@@ -109,7 +110,7 @@ describe.skipIf(process.env.CI === '1')(
         `[perf] 50 merges: p50=${p50}ms p95=${p95}ms max=${max}ms`,
       );
 
-      expect(p95).toBeLessThan(2000);
+      expect(p95).toBeLessThan(scaleTiming(2000));
     }, 300000); // allow up to 5 minutes total for 50 merges
   },
 );
