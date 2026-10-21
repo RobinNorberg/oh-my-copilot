@@ -36,7 +36,10 @@ export async function checkRateLimitStatus(): Promise<RateLimitStatus | null> {
     // throttles requests whose User-Agent does not name a Claude Code version
     // (see buildUserAgent in usage-api.ts). Reuse the version the HUD last
     // observed on stdin and cached; undefined when OMC has never seen one.
-    const result = await getUsage({ clientVersion: readCachedClientVersion() });
+    const result = await getUsage({
+      clientVersion: readCachedClientVersion(),
+      skipWarmCache: true,
+    });
 
     if (!result.rateLimits) {
       // No OAuth credentials or API unavailable
@@ -48,7 +51,7 @@ export async function checkRateLimitStatus(): Promise<RateLimitStatus | null> {
     const weeklyLimited = (usage.weeklyPercent ?? 0) >= RATE_LIMIT_THRESHOLD;
     const monthlyLimited = (usage.monthlyPercent ?? 0) >= RATE_LIMIT_THRESHOLD;
     const isLimited = fiveHourLimited || weeklyLimited || monthlyLimited;
-    const usingStaleData = result.error === 'rate_limited' && !!result.rateLimits;
+    const usingStaleData = result.stale === true;
 
     // Determine next reset time
     let nextResetAt: Date | null = null;
@@ -125,8 +128,13 @@ export function formatTimeUntilReset(ms: number): string {
  * Get a human-readable rate limit status message
  */
 export function formatRateLimitStatus(status: RateLimitStatus): string {
-  if (status.apiErrorReason === 'rate_limited' && !status.isLimited) {
+  if (isRateLimitStatusDegraded(status) && !status.isLimited) {
     const cachedUsageParts: string[] = [];
+    const errorMessage = status.apiErrorReason === 'rate_limited'
+      ? 'Usage API rate limited'
+      : status.apiErrorReason
+        ? `Usage API ${status.apiErrorReason} error`
+        : 'Usage data stale';
 
     if (typeof status.fiveHourPercent === 'number') {
       cachedUsageParts.push(`5-hour ${status.fiveHourPercent}%`);
@@ -139,9 +147,9 @@ export function formatRateLimitStatus(status: RateLimitStatus): string {
     }
 
     if (cachedUsageParts.length > 0) {
-      return `Usage API rate limited; showing stale cached usage (${cachedUsageParts.join(', ')})`;
+      return `${errorMessage}; showing stale cached usage (${cachedUsageParts.join(', ')})`;
     }
-    return 'Usage API rate limited; current limit status unavailable';
+    return `${errorMessage}; current limit status unavailable`;
   }
 
   if (!status.isLimited) {
@@ -168,23 +176,24 @@ export function formatRateLimitStatus(status: RateLimitStatus): string {
 
   if (status.apiErrorReason === 'rate_limited') {
     message += ' [usage API 429; cached data]';
+  } else if (status.usingStaleData) {
+    message += ` [${status.apiErrorReason ? `usage API ${status.apiErrorReason} error` : 'stale usage'}; cached data]`;
   }
 
   return message;
 }
 
 /**
- * Whether the underlying usage API is currently degraded by 429/stale-cache behavior.
+ * Whether the latest usage sample is stale or otherwise cannot confirm recovery.
  */
 export function isRateLimitStatusDegraded(status: RateLimitStatus | null): boolean {
-  return status?.apiErrorReason === 'rate_limited';
+  return !!status && (status.usingStaleData === true || status.apiErrorReason !== undefined);
 }
 
 /**
  * Whether the daemon should actively scan for blocked panes.
- * Only confirmed quota exhaustion should enter the pane wait/resume path.
- * Degraded usage-api 429/stale-cache states remain visible to the user, but
- * they are intentionally excluded from daemon pane blocking behavior.
+ * A stale limited value carries the last known exhausted state; only a fresh
+ * all-clear can authorize resuming panes.
  */
 export function shouldMonitorBlockedPanes(status: RateLimitStatus | null): boolean {
   return !!status?.isLimited;

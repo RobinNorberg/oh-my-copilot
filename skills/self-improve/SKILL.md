@@ -218,7 +218,7 @@ Expected output: Plan Document JSON → `<self-improve-root>/plans/round_{n}/pla
 
 ### Step 6 — Review
 
-For each plan, **sequentially** (architect before critic):
+For each plan, **launch architect and critic in parallel** (both are Claude agents):
 
 **6a. Architecture Review**: Spawn `oh-my-copilot:architect` with the plan + 6-point checklist:
 1. Testability — is the hypothesis testable?

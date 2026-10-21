@@ -82,7 +82,7 @@ describe.skip('delegation-enforcer integration', () => {
         toolInput: {
           description: 'Test task',
           prompt: 'Do something',
-          subagent_type: 'executor-low'
+          subagent_type: 'executor'
         }
       };
 
@@ -94,7 +94,7 @@ describe.skip('delegation-enforcer integration', () => {
         model?: string;
       };
 
-      expect(modifiedInput.model).toBe('haiku');
+      expect(modifiedInput.model).toBe('sonnet');
     });
 
     it('does not modify non-agent tools', async () => {
@@ -117,13 +117,13 @@ describe.skip('delegation-enforcer integration', () => {
       expect(modifiedInput).not.toHaveProperty('model');
     });
 
-    it('works with all agent tiers', async () => {
+    it('works with all agents', async () => {
       const testCases = [
         { agent: 'architect', expectedModel: 'opus' },
-        { agent: 'architect-low', expectedModel: 'haiku' },
-        { agent: 'executor-high', expectedModel: 'opus' },
-        { agent: 'executor-low', expectedModel: 'haiku' },
-        { agent: 'designer-high', expectedModel: 'opus' }
+        { agent: 'executor', expectedModel: 'sonnet' },
+        { agent: 'designer', expectedModel: 'sonnet' },
+        { agent: 'planner', expectedModel: 'opus' },
+        { agent: 'critic', expectedModel: 'opus' }
       ];
 
       for (const testCase of testCases) {

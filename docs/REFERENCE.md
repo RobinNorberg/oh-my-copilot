@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.11.0, the plugin ships 20 agents, 63 skills, 21 command files, and one configured MCP server exposing exactly 61 tools.
+For v5.12.0, the plugin ships 20 agents, 63 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
 
 ---
 
@@ -96,6 +96,21 @@ Configure omc for all Claude Code sessions:
 - Configuration applies to all projects
 - **Default**: explicitly overwrites existing `~/.claude/CLAUDE.md`
 - **Optional preserve mode**: keeps the base file, writes OMC to `~/.claude/CLAUDE-omc.md`, and lets `omg` force-load that companion config at launch while plain `claude` stays unchanged
+
+#### Opt out of global CLAUDE.md management
+
+If you maintain your own `~/.copilot/CLAUDE.md` and do not want installs or updates to merge the OMC block into it, set `claudeMdEnabled` to `false` in `~/.copilot/.omc-config.json`:
+
+```json
+{ "claudeMdEnabled": false }
+```
+
+- Default is `true`; only an explicit `false` opts out
+- `omg install`, `omg update` and the global `/oh-my-copilot:omc-setup` step then leave `~/.copilot/CLAUDE.md` and `~/.copilot/CLAUDE-omc.md` untouched and log a skip line
+- `omg doctor` reports missing OMC markers as informational (legacy-guide and marker-structure warnings remain); SessionStart omits CLAUDE.md from its drift check, while other component drift notices still apply
+- A `CLAUDE-omc.md` left by an earlier preserve-mode install is still loaded by `omg` launch; delete it if you no longer want it
+- Project-scoped setup (`--local`) is unaffected
+- Removing the key (or setting it to `true`) restores the default merge behavior on the next install, update or setup
 
 ### What Configuration Enables
 
@@ -602,14 +617,16 @@ omg ask codex "review this patch from a security perspective"
 omg ask gemini --prompt "suggest UX improvements"
 omg ask antigravity --prompt "suggest UX improvements"
 omg ask cursor --prompt "apply this implementation plan"
+omg ask muse --agent-prompt critic --prompt "review this plan"
 omg ask claude --agent-prompt executor --prompt "create an implementation plan"
 ```
 
-- Provider matrix: `claude | codex | gemini | antigravity | grok | cursor`
+- Provider matrix: `claude | codex | gemini | antigravity | grok | cursor | muse`
 - Artifacts: `.omg/artifacts/ask/{provider}-{slug}-{timestamp}.md`
 - Canonical env vars: `OMC_ASK_ADVISOR_SCRIPT`, `OMC_ASK_ORIGINAL_TASK`
 - Phase-1 aliases (deprecated warning): `OMX_ASK_ADVISOR_SCRIPT`, `OMX_ASK_ORIGINAL_TASK`
-- Skill entrypoint: `/oh-my-copilot:ask <claude|codex|gemini|antigravity|grok|cursor> <prompt>` routes to this command
+- Skill entrypoint: `/oh-my-copilot:ask <claude|codex|gemini|antigravity|grok|cursor|muse> <prompt>` routes to this command
+- Muse and Grok require CLI versions supporting `--prompt-file`; role prompts are passed through a private temporary file. Muse disables approval prompts while preserving its configured sandbox behavior.
 
 ### `omg team` (CLI runtime surface)
 
@@ -975,6 +992,7 @@ Use OMC's terminal and library surfaces in non-interactive environments:
 
 - Run CLI commands that have deterministic exit codes, for example `omg setup`, `omg ask ...`, `omg session search ... --json`, or repo-owned verification scripts such as `npm run sync-metadata:verify`.
 - Provide authentication through runner environment variables (`ANTHROPIC_API_KEY`) or pre-authenticated provider CLIs for `codex`, `gemini`, `antigravity`, `grok`, or `cursor` when using `omg ask` / `omg team`.
+- For `omg ask muse`, install and authenticate the Muse CLI before running automation.
 - Keep state explicit for ephemeral runners by setting `OMC_STATE_DIR` when state must survive worktree deletion or checkout replacement.
 - Avoid interactive slash skills (`/oh-my-copilot:autopilot`, `/oh-my-copilot:ralph`, `/oh-my-copilot:execute`, `/oh-my-copilot:deep-interview`, `/oh-my-copilot:team`) in CI jobs; they require an active Claude Code session and user-visible conversation loop.
 - OMC does not currently provide a VS Code extension or VS Code-specific automation contract. The documented IDE path is to use Claude Code's own integrations, then install OMC through the Claude Code plugin surface.
@@ -1057,31 +1075,29 @@ Model-tier aliases are shown in the table below; the shipped agent catalog conta
 
 Always use `oh-my-copilot:` prefix when calling via Task tool.
 
-### By Domain and Tier
+### By Domain
 
-| Domain             | LOW (Haiku)             | MEDIUM (Sonnet)       | HIGH (Opus)         |
-| ------------------ | ----------------------- | --------------------- | ------------------- |
-| **Analysis**       | `architect-low`         | `architect-medium`    | `architect`         |
-| **Execution**      | `executor-low`          | `executor`            | `executor-high`     |
-| **Search**         | `explore`               | -                     | `explore-high`      |
-| **Research**       | -                       | `document-specialist` | -                   |
-| **Frontend**       | `designer-low`          | `designer`            | `designer-high`     |
-| **Docs**           | `writer`                | -                     | -                   |
-| **Visual**         | -                       | `vision`              | -                   |
-| **Planning**       | -                       | -                     | `planner`           |
-| **Critique**       | -                       | -                     | `critic`            |
-| **Pre-Planning**   | -                       | -                     | `analyst`           |
-| **Testing**        | -                       | `qa-tester`           | -                   |
-| **Tracing**        | -                       | `tracer`              | -                   |
-| **Security**       | `security-reviewer-low` | -                     | `security-reviewer` |
-| **Build**          | -                       | `debugger`            | -                   |
-| **TDD**            | -                       | `test-engineer`       | -                   |
-| **Code Review**    | -                       | -                     | `code-reviewer`     |
-| **Data Analysis** | -                       | `scientist`           | `scientist-high`    |
-| **Git**            | -                       | `git-master`          | -                   |
-| **Simplification** | -                       | -                     | `code-simplifier`   |
-| **Verification**   | -                       | `verifier`            | -                   |
-| **Pre-Push Critique** | -                    | -                     | `devils-advocate`   |
+| Domain             | Agent                   | Default Model | Alternative Models      |
+| ------------------ | ----------------------- | ------------- | ----------------------- |
+| **Analysis**       | `architect`             | sonnet        | haiku (simple), opus (complex) |
+| **Execution**      | `executor`              | sonnet        | haiku (trivial), opus (complex) |
+| **Search**         | `explore`               | haiku         | -                       |
+| **Research**       | `document-specialist`   | sonnet        | -                       |
+| **Frontend**       | `designer`              | sonnet        | haiku (simple), opus (complex) |
+| **Docs**           | `writer`                | haiku         | -                       |
+| **Visual**         | `vision`                | sonnet        | -                       |
+| **Planning**       | `planner`               | opus          | -                       |
+| **Critique**       | `critic`                | opus          | -                       |
+| **Pre-Planning**   | `analyst`               | opus          | -                       |
+| **Testing**        | `qa-tester`             | sonnet        | -                       |
+| **Tracing**        | `tracer`                | sonnet        | -                       |
+| **Security**       | `security-reviewer`     | sonnet        | opus (complex audit)    |
+| **Build**          | `debugger`              | sonnet        | -                       |
+| **TDD**            | `test-engineer`         | sonnet        | -                       |
+| **Code Review**    | `code-reviewer`         | sonnet        | -                       |
+| **Data Analysis**  | `scientist`             | sonnet        | opus (complex analysis) |
+| **Git**            | `git-master`            | sonnet        | -                       |
+| **Simplification** | `code-simplifier`       | sonnet        | -                       |
 
 ### Agent Selection Guide
 
@@ -1089,14 +1105,14 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 | ------------------------------ | ---------------------------------------------------------------------- | ------ |
 | Quick code lookup              | `explore`                                                              | haiku  |
 | Find files/patterns            | `explore`                                                              | haiku  |
-| Complex architectural search   | `explore-high`                                                         | opus   |
-| Simple code change             | `executor-low`                                                         | haiku  |
+| Complex architectural search   | `architect`                                                            | opus   |
+| Simple code change             | `executor` (model="haiku")                                             | haiku  |
 | Feature implementation         | `executor`                                                             | sonnet |
-| Complex refactoring            | `executor-high`                                                        | opus   |
-| Debug simple issue             | `architect-low`                                                        | haiku  |
+| Complex refactoring            | `executor` (model="opus")                                              | opus   |
+| Debug simple issue             | `architect` (model="haiku")                                            | haiku  |
 | Debug complex issue            | `architect`                                                            | opus   |
 | UI component                   | `designer`                                                             | sonnet |
-| Complex UI system              | `designer-high`                                                        | opus   |
+| Complex UI system              | `designer` (model="opus")                                              | opus   |
 | Write docs/comments            | `writer`                                                               | haiku  |
 | Research docs/APIs             | `document-specialist` (repo docs first; optional Context Hub / `chub`) | sonnet |
 | Analyze images/diagrams        | `vision`                                                               | sonnet |
@@ -1106,7 +1122,7 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 | Test CLI interactively         | `qa-tester`                                                            | sonnet |
 | Evidence-driven causal tracing | `tracer`                                                               | sonnet |
 | Security review                | `security-reviewer`                                                    | sonnet |
-| Quick security scan            | `security-reviewer-low`                                                | haiku  |
+| Quick security scan            | `security-reviewer` (model="haiku")                                     | haiku  |
 | Fix build errors               | `debugger`                                                             | sonnet |
 | Simple build fix               | `debugger` (model=haiku)                                               | haiku  |
 | TDD workflow                   | `test-engineer`                                                        | sonnet |
@@ -1115,7 +1131,7 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 | Quick code check               | `code-reviewer` (model=haiku)                                          | haiku  |
 | Data analysis/stats            | `scientist`                                                            | sonnet |
 | Quick data inspection          | `scientist` (model=haiku)                                              | haiku  |
-| Deep data analysis            | `scientist-high`                                                       | opus   |
+| Deep data analysis            | `scientist` (model="opus")                                             | opus   |
 | Git operations                 | `git-master`                                                           | sonnet |
 | Code simplification            | `code-simplifier`                                                      | opus   |
 | Completion verification        | `verifier`                                                             | sonnet |
@@ -1302,7 +1318,7 @@ Most installed skills are exposed as `/oh-my-copilot:<registered-name>`. The plu
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `/oh-my-copilot:ai-slop-cleaner <target>`             | Run the anti-slop cleanup workflow (`--review` for reviewer-only pass)                        |
 | `/oh-my-copilot:agent-doc-discipline`                 | Apply the writing-time discipline for agent-facing documents                                   |
-| `/oh-my-copilot:ask <claude\|codex\|gemini\|antigravity\|grok\|cursor> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact                   |
+| `/oh-my-copilot:ask <claude\|codex\|gemini\|antigravity\|grok\|cursor\|muse> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact                   |
 | `/oh-my-copilot:architecture-survey [area]`           | Survey the repo for architecture-deepening candidates with evidence; reports only, never edits  |
 | `/oh-my-copilot:ask-navigator <idea\|map>`            | Chart a foggy effort into a map of decision tickets (or work the open map), then hand off to launch |
 | `/oh-my-copilot:autopilot <task>`                     | Full autonomous execution                                                                     |
@@ -1399,7 +1415,7 @@ OMC registers 21 hook scripts across 11 Claude Code lifecycle events. For detail
 | **SessionStart**       | `session-start.mjs`, `project-memory-session.mjs`, `premium-budget.mjs start`, `setup-init.mjs` (init), `setup-maintenance.mjs` (maintenance) | 5s, 5s, 5s, 30s, 60s |
 | **PreToolUse**         | `pre-tool-enforcer.mjs`                                                                                           | 5s trusted Worker |
 | **PermissionRequest**  | `permission-handler.mjs` (Bash only)                                                                              | 5s               |
-| **PostToolUse**        | `post-tool-verifier.mjs`, `project-memory-posttool.mjs`, `post-tool-rules-injector.mjs`                          | 5s, 3s, 3s trusted Workers |
+| **PostToolUse**        | `post-tool-verifier.mjs`, `project-memory-posttool.mjs`, `post-tool-rules-injector.mjs`, `post-tool-directory-context-injector.mjs` | 5s, 3s, 3s, 3s trusted Workers |
 | **PostToolUseFailure** | `post-tool-use-failure.mjs`                                                                                       | 3s               |
 | **SubagentStart**      | `subagent-tracker.mjs start`                                                                                      | 3s               |
 | **SubagentStop**       | `subagent-tracker.mjs stop`, `verify-deliverables.mjs`                                                            | 5s, 5s           |

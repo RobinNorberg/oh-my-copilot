@@ -77,8 +77,8 @@ Sequential agent chaining with data passing between stages.
 | `implement` | planner -> executor -> test-engineer |
 | `debug` | explore -> architect -> debugger |
 | `research` | parallel(document-specialist, explore) -> architect -> writer |
-| `refactor` | explore -> architect-medium -> executor-high -> qa-tester |
-| `security` | explore -> security-reviewer -> executor -> security-reviewer-low |
+| `refactor` | explore -> architect -> executor (with model="opus") -> qa-tester |
+| `security` | explore -> security-reviewer -> executor |
 
 **Custom pipelines:** `/pipeline explore:haiku -> architect:opus -> executor:sonnet`
 
@@ -88,7 +88,7 @@ Smart cancellation that auto-detects active mode.
 
 **Usage:** `/cancel` or just say "cancelomc", "stopomc"
 
-Auto-detects and cancels: autopilot, ralph, ultrawork, pipeline, team
+Auto-detects and cancels: autopilot, ralph, pipeline, team
 Use `--force` to skip graceful waits in the current session without widening scope.
 Use `--all` to cancel across sessions; combine `--force --all` for forced cancellation across sessions.
 Neither flag bypasses state locks or ownership checks.
@@ -111,12 +111,10 @@ Standardized state file locations.
 
 **Mode State Files:**
 | Mode | State File |
-|------|-----------|
+|------|----------|
 | ralph | `ralph-state.json` |
 | ultragoal | `ultragoal-state.json` |
 | autopilot | `autopilot-state.json` |
-| ultrawork | `ultrawork-state.json` |
-|  | `-state.json` |
 | pipeline | `pipeline-state.json` |
 
 **Important:** Never store OMC state in `~/.claude/` - that directory is reserved for Claude Code itself.

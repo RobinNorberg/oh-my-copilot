@@ -115,6 +115,7 @@ describe('Rate Limit Wait Integration Tests', () => {
                     monthlyResetsAt: null,
                 },
                 error: 'rate_limited',
+                stale: true,
             });
             const status = await checkRateLimitStatus();
             expect(status).not.toBeNull();
@@ -134,6 +135,7 @@ describe('Rate Limit Wait Integration Tests', () => {
                     monthlyResetsAt: null,
                 },
                 error: 'rate_limited',
+                stale: true,
             });
             const status = await checkRateLimitStatus();
             expect(status).not.toBeNull();

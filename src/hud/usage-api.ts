@@ -49,6 +49,8 @@ const MAX_STALE_DATA_MS = 15 * 60 * 1000; // 15 minutes — discard stale data a
 const TOKEN_REFRESH_URL_HOSTNAME = 'platform.claude.com';
 const USAGE_CACHE_LOCK_OPTS: FileLockOptions = { staleLockMs: API_TIMEOUT_MS + 5000 };
 const TOKEN_REFRESH_URL_PATH = '/v1/oauth/token';
+const OMC_USAGE_PROFILE_ID_FIELD = 'omcUsageProfileId';
+const OMC_USAGE_PROFILE_TOKEN_HASH_FIELD = 'omcUsageProfileTokenHash';
 
 /**
  * OAuth client_id for Claude Code (public client).
@@ -80,7 +82,7 @@ interface UsageCache {
   lastSuccessAt?: number;
   /** User-Agent identity that received a rate-limit response (Anthropic only) */
   rateLimitIdentity?: string;
-  /** Non-reversible OAuth credential identity (env-token sessions only) */
+  /** Non-reversible identity of the selected usage provider's credential. */
   credentialIdentity?: string;
   /** Active Anthropic rate-limit backoffs keyed by User-Agent identity */
   rateLimitBackoffs?: Record<string, RateLimitBackoff>;
@@ -90,6 +92,10 @@ interface OAuthCredentials {
   accessToken: string;
   expiresAt?: number;
   refreshToken?: string;
+  /** Hash of stable account metadata or a persisted legacy credential identity. */
+  profileIdentity?: string;
+  /** True when account metadata could not be read, so profile scoping is inconclusive. */
+  profileIdentityUnavailable?: boolean;
   /** Where the credentials were read from, needed for write-back */
   source?: 'keychain' | 'file' | 'env';
   /** Keychain account name used when reading (null = service-only lookup) */
@@ -99,6 +105,25 @@ interface OAuthCredentials {
   /** Rate limit tier from OAuth credentials (e.g. 'default_claude_zero') */
   rateLimitTier?: string;
 }
+
+interface ResolvedUsageProfile {
+  currentSource: UsageSource;
+  authToken: string | undefined;
+  minimaxApiKey: string | undefined;
+  kimiApiKey: string | undefined;
+  credentials: OAuthCredentials | null;
+  credentialIdentity: string | undefined;
+  storedCredentialsRead: boolean;
+}
+
+interface StoredCredentialCache {
+  configKey: string;
+  checkedAt: number;
+  credentials: OAuthCredentials | null;
+}
+
+let storedCredentialCache: StoredCredentialCache | undefined;
+let storedCredentialLookupGeneration = 0;
 
 interface UsageApiResponse {
   five_hour?: { utilization?: number; resets_at?: string };
@@ -414,7 +439,7 @@ interface WriteCacheOptions {
   lastSuccessAt?: number;
   /** User-Agent identity associated with an Anthropic rate-limit response */
   rateLimitIdentity?: string;
-  /** Non-reversible OAuth credential identity (env-token sessions only) */
+  /** Non-reversible identity of the selected usage provider's credential. */
   credentialIdentity?: string;
   /** Active Anthropic rate-limit backoffs keyed by User-Agent identity */
   rateLimitBackoffs?: Record<string, RateLimitBackoff>;
@@ -531,16 +556,148 @@ function clearRateLimitBackoff(
   return Object.keys(backoffs).length > 0 ? backoffs : undefined;
 }
 
-/**
- * Derive a cache-only identity for an environment-provided OAuth token.
- * The token itself must never be persisted alongside usage data.
- */
-function getCredentialCacheIdentity(accessToken: string): string {
-  return createHash('sha256').update(accessToken).digest('hex');
+/** Hash credential identity material before persisting it in caches or markers. */
+function hashCredentialIdentity(identity: string): string {
+  return createHash('sha256').update(identity).digest('hex');
+}
+
+function getOAuthAccountProfileIdentity(credentials: Record<string, unknown>): string | null {
+  const nestedAccount = credentials.oauthAccount;
+  const account = typeof nestedAccount === 'object' && nestedAccount !== null && !Array.isArray(nestedAccount)
+    ? nestedAccount as Record<string, unknown>
+    : {};
+  const firstString = (...values: unknown[]): string | undefined => {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return undefined;
+  };
+  const credentialUuid = firstString(
+    credentials.accountUuid,
+    credentials.accountUUID,
+    account.accountUuid,
+    account.accountUUID,
+    account.uuid,
+  );
+  if (credentialUuid) {
+    return hashCredentialIdentity(JSON.stringify(['oauth-account-uuid', credentialUuid.toLowerCase()]));
+  }
+  const credentialAccountId = firstString(
+    credentials.accountId,
+    credentials.userId,
+    credentials.userID,
+    account.accountId,
+    account.userId,
+    account.userID,
+  );
+  const credentialEmail = firstString(
+    credentials.emailAddress,
+    credentials.email,
+    account.emailAddress,
+    account.email,
+  );
+
+  // Managed OMC launches copy account metadata into the active config directory;
+  // the standard Claude layout keeps it beside that directory instead.
+  let claudeJsonAccount: Record<string, unknown> = {};
+  const configDir = getCopilotConfigDir();
+  const claudeJsonPaths = new Set([
+    join(configDir, '.claude.json'),
+    join(dirname(configDir), '.claude.json'),
+  ]);
+  for (const claudeJsonPath of claudeJsonPaths) {
+    let parsed: unknown;
+    try {
+      if (!existsSync(claudeJsonPath)) continue;
+      parsed = JSON.parse(readFileSync(claudeJsonPath, 'utf-8'));
+    } catch {
+      // Do not substitute a different account identity when an existing file is unreadable.
+      return null;
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+    const accountMetadata = (parsed as Record<string, unknown>).oauthAccount;
+    if (accountMetadata == null) continue;
+    if (
+      typeof accountMetadata === 'object' &&
+      !Array.isArray(accountMetadata)
+    ) {
+      const candidate = accountMetadata as Record<string, unknown>;
+      if (firstString(
+        candidate.accountUuid,
+        candidate.accountUUID,
+        candidate.uuid,
+        candidate.accountId,
+        candidate.userId,
+        candidate.userID,
+        candidate.emailAddress,
+        candidate.email,
+      )) {
+        claudeJsonAccount = candidate;
+        break;
+      }
+    } else {
+      return null;
+    }
+  }
+  const accountUuid = firstString(
+    claudeJsonAccount.accountUuid,
+    claudeJsonAccount.accountUUID,
+    claudeJsonAccount.uuid,
+  );
+  const claudeJsonAccountId = firstString(
+    claudeJsonAccount.accountId,
+    claudeJsonAccount.userId,
+    claudeJsonAccount.userID,
+  );
+  const claudeJsonEmail = firstString(claudeJsonAccount.emailAddress, claudeJsonAccount.email);
+  if (accountUuid) {
+    // A config UUID cannot safely stand in for a credential with a different identifier shape.
+    if (credentialAccountId) return null;
+    if (
+      credentialEmail &&
+      (!claudeJsonEmail || credentialEmail.toLowerCase() !== claudeJsonEmail.toLowerCase())
+    ) {
+      return null;
+    }
+    return hashCredentialIdentity(JSON.stringify(['oauth-account-uuid', accountUuid.toLowerCase()]));
+  }
+
+  if (claudeJsonAccountId && credentialAccountId) {
+    if (claudeJsonAccountId !== credentialAccountId) return null;
+    return hashCredentialIdentity(JSON.stringify(['oauth-account', credentialAccountId]));
+  }
+  if ((claudeJsonAccountId && credentialEmail) || (credentialAccountId && claudeJsonEmail)) {
+    return null;
+  }
+  const accountId = credentialAccountId ?? claudeJsonAccountId;
+  if (accountId) return hashCredentialIdentity(JSON.stringify(['oauth-account', accountId]));
+
+  if (
+    credentialEmail && claudeJsonEmail &&
+    credentialEmail.toLowerCase() !== claudeJsonEmail.toLowerCase()
+  ) {
+    return null;
+  }
+
+  const tokenMaterial = firstString(credentials.refreshToken, credentials.accessToken);
+  const tokenHash = tokenMaterial ? hashCredentialIdentity(tokenMaterial) : undefined;
+  const storedProfileIdentity = firstString(credentials[OMC_USAGE_PROFILE_ID_FIELD]);
+  const storedTokenHash = firstString(credentials[OMC_USAGE_PROFILE_TOKEN_HASH_FIELD]);
+  if (storedProfileIdentity && tokenHash && storedTokenHash === tokenHash) {
+    return storedProfileIdentity;
+  }
+
+  const emailAddress = credentialEmail ?? claudeJsonEmail;
+  if (emailAddress) {
+    return hashCredentialIdentity(JSON.stringify(['oauth-email', emailAddress.toLowerCase()]));
+  }
+  return tokenHash ?? null;
 }
 
 function isCacheForCredential(cache: UsageCache | null, credentialIdentity?: string): boolean {
-  return cache?.credentialIdentity === credentialIdentity;
+  if (!cache) return false;
+  if (credentialIdentity !== undefined) return cache.credentialIdentity === credentialIdentity;
+  return cache.credentialIdentity === undefined && cache.data === null;
 }
 
 function isCacheValid(cache: UsageCache, pollIntervalMs: number, rateLimitIdentity?: string): boolean {
@@ -670,7 +827,20 @@ function isCredentialExpired(creds: OAuthCredentials): boolean {
   return creds.expiresAt != null && creds.expiresAt <= Date.now();
 }
 
-function readKeychainCredential(serviceName: string, account?: string): OAuthCredentials | null {
+type KeychainCredentialLookup =
+  | { status: 'found'; credentials: OAuthCredentials }
+  | { status: 'missing' }
+  | { status: 'unavailable' };
+
+function isMissingKeychainItem(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const details = error as { message?: unknown; stderr?: unknown };
+  return /the specified item could not be found in the keychain/i.test(
+    `${String(details.message ?? '')}\n${String(details.stderr ?? '')}`,
+  );
+}
+
+function readKeychainCredential(serviceName: string, account?: string): KeychainCredentialLookup {
   try {
     const args = account
       ? ['find-generic-password', '-s', serviceName, '-a', account, '-w']
@@ -681,34 +851,40 @@ function readKeychainCredential(serviceName: string, account?: string): OAuthCre
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
 
-    if (!result) return null;
+    if (!result) return { status: 'unavailable' };
 
     const parsed = JSON.parse(result);
 
     // Handle nested structure (claudeAiOauth wrapper)
     const creds = parsed.claudeAiOauth || parsed;
 
-    if (!creds.accessToken) return null;
+    if (!creds.accessToken) return { status: 'unavailable' };
+    const profileIdentity = getOAuthAccountProfileIdentity(creds);
 
     return {
-      accessToken: creds.accessToken,
-      expiresAt: creds.expiresAt,
-      refreshToken: creds.refreshToken,
-      source: 'keychain' as const,
-      keychainAccount: account ?? null,
-      subscriptionType: creds.subscriptionType,
-      rateLimitTier: creds.rateLimitTier,
+      status: 'found',
+      credentials: {
+        accessToken: creds.accessToken,
+        expiresAt: creds.expiresAt,
+        refreshToken: creds.refreshToken,
+        profileIdentity: profileIdentity ?? undefined,
+        profileIdentityUnavailable: profileIdentity === null,
+        source: 'keychain',
+        keychainAccount: account ?? null,
+        subscriptionType: creds.subscriptionType,
+        rateLimitTier: creds.rateLimitTier,
+      },
     };
-  } catch {
-    return null;
+  } catch (error) {
+    return isMissingKeychainItem(error) ? { status: 'missing' } : { status: 'unavailable' };
   }
 }
 
 /**
  * Read OAuth credentials from macOS Keychain
  */
-function readKeychainCredentials(): OAuthCredentials | null {
-  if (process.platform !== 'darwin') return null;
+function readKeychainCredentials(): KeychainCredentialLookup {
+  if (process.platform !== 'darwin') return { status: 'missing' };
 
   const serviceName = getKeychainServiceName();
   const candidateAccounts: Array<string | undefined> = [];
@@ -727,17 +903,23 @@ function readKeychainCredentials(): OAuthCredentials | null {
   let expiredFallback: OAuthCredentials | null = null;
 
   for (const account of candidateAccounts) {
-    const creds = readKeychainCredential(serviceName, account);
-    if (!creds) continue;
+    const result = readKeychainCredential(serviceName, account);
+    if (result.status === 'unavailable') {
+      if (expiredFallback) return { status: 'found', credentials: expiredFallback };
+      return result;
+    }
+    if (result.status === 'missing') continue;
+    const creds = result.credentials;
 
     if (!isCredentialExpired(creds)) {
-      return creds;
+      return result;
     }
 
     expiredFallback ??= creds;
   }
 
-  return expiredFallback;
+  if (expiredFallback) return { status: 'found', credentials: expiredFallback };
+  return { status: 'missing' };
 }
 
 /**
@@ -755,10 +937,13 @@ function readFileCredentials(): OAuthCredentials | null {
     const creds = parsed.claudeAiOauth || parsed;
 
     if (creds.accessToken) {
+      const profileIdentity = getOAuthAccountProfileIdentity(creds);
       return {
         accessToken: creds.accessToken,
         expiresAt: creds.expiresAt,
         refreshToken: creds.refreshToken,
+        profileIdentity: profileIdentity ?? undefined,
+        profileIdentityUnavailable: profileIdentity === null,
         source: 'file' as const,
         subscriptionType: creds.subscriptionType,
         rateLimitTier: creds.rateLimitTier,
@@ -771,27 +956,121 @@ function readFileCredentials(): OAuthCredentials | null {
   return null;
 }
 
-/**
- * Get OAuth credentials (Keychain first, then file fallback)
- */
-function getCredentials(): OAuthCredentials | null {
+function getStoredCredentialCacheKey(): string {
+  return JSON.stringify([process.env.COPILOT_HOME ?? null, getCopilotConfigDir()]);
+}
+
+/** Use the file fallback only after Keychain confirms there is no matching item. */
+function getStoredCredentials(refresh = false): OAuthCredentials | null {
+  const configKey = getStoredCredentialCacheKey();
+  if (
+    !refresh &&
+    storedCredentialCache?.configKey === configKey &&
+    Date.now() - storedCredentialCache.checkedAt < getUsagePollIntervalMs() + CACHE_TTL_FAILURE_MS
+  ) {
+    return storedCredentialCache.credentials;
+  }
+
+  // Do not treat a failed Keychain read as an absent entry: the file may belong to another account.
+  const keychainLookup = readKeychainCredentials();
+  let credentials: OAuthCredentials | null = null;
+  if (keychainLookup.status === 'found') {
+    credentials = keychainLookup.credentials;
+  } else if (keychainLookup.status === 'missing') {
+    credentials = readFileCredentials();
+  }
+  storedCredentialCache = { configKey, checkedAt: Date.now(), credentials };
+  storedCredentialLookupGeneration++;
+  return credentials;
+}
+
+function rememberStoredCredentials(credentials: OAuthCredentials): void {
+  storedCredentialCache = {
+    configKey: getStoredCredentialCacheKey(),
+    checkedAt: Date.now(),
+    credentials,
+  };
+}
+
+function getCredentials(
+  includeDirectOAuthToken = true,
+  refreshStoredCredentials = false,
+): OAuthCredentials | null {
   // Respect an explicit CLAUDE_CODE_OAUTH_TOKEN override, matching how Claude Code itself
   // authenticates. Multi-account setups launch each session with a per-account token via this
   // env var; without honoring it here the HUD always reads the default Keychain login and shows
   // the wrong account's usage. Setup-tokens are long-lived and carry no refresh token, so leave
   // expiresAt/refreshToken unset — isCredentialExpired() then treats them as non-expiring and no
   // token refresh or Keychain write-back is attempted.
-  const envToken = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
+  const envToken = includeDirectOAuthToken ? process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim() : undefined;
   if (envToken) {
     return { accessToken: envToken, source: 'env' };
   }
 
-  // Try Keychain first (macOS)
-  const keychainCreds = readKeychainCredentials();
-  if (keychainCreds) return keychainCreds;
+  return getStoredCredentials(refreshStoredCredentials);
+}
 
-  // Fall back to file
-  return readFileCredentials();
+function resolveUsageProfile(
+  includeEnvironmentCredentials = true,
+  refreshStoredCredentials = false,
+): ResolvedUsageProfile {
+  const baseUrl = includeEnvironmentCredentials ? process.env.ANTHROPIC_BASE_URL : undefined;
+  const authToken = includeEnvironmentCredentials ? process.env.ANTHROPIC_AUTH_TOKEN : undefined;
+  const isMinimax = baseUrl != null && isMinimaxHost(baseUrl);
+  const isKimi = baseUrl != null && isKimiHost(baseUrl);
+  const isZai = baseUrl != null && isZaiHost(baseUrl);
+  const minimaxApiKey = includeEnvironmentCredentials
+    ? process.env.MINIMAX_API_KEY || authToken
+    : undefined;
+  // Preserve Kimi's documented credential precedence: provider key, Anthropic
+  // API key, then auth token. A leftover auth token must not mask the Kimi key.
+  const kimiApiKey = includeEnvironmentCredentials
+    ? process.env.KIMI_API_KEY || process.env.ANTHROPIC_API_KEY || authToken
+    : undefined;
+  const currentSource: UsageSource =
+    isMinimax ? 'minimax' : isKimi ? 'kimi' : isZai && authToken ? 'zai' : 'anthropic';
+  const previousLookupGeneration = storedCredentialLookupGeneration;
+  const credentials = currentSource === 'anthropic'
+    ? getCredentials(includeEnvironmentCredentials, refreshStoredCredentials)
+    : null;
+  const providerCredential = currentSource === 'minimax'
+    ? minimaxApiKey
+    : currentSource === 'kimi'
+      ? kimiApiKey
+      : currentSource === 'zai'
+        ? authToken
+        : undefined;
+  const credentialIdentity = credentials
+    ? credentials.profileIdentityUnavailable
+      ? undefined
+      : hashCredentialIdentity(JSON.stringify([
+      currentSource,
+      baseUrl ?? null,
+      credentials.profileIdentity ?? hashCredentialIdentity(
+        credentials.refreshToken ?? credentials.accessToken,
+      ),
+      ]))
+    : providerCredential
+      ? hashCredentialIdentity(JSON.stringify([currentSource, baseUrl ?? null, providerCredential]))
+      : undefined;
+
+  return {
+    currentSource,
+    authToken,
+    minimaxApiKey,
+    kimiApiKey,
+    credentials,
+    credentialIdentity,
+    storedCredentialsRead: storedCredentialLookupGeneration !== previousLookupGeneration,
+  };
+}
+
+/** Return a non-reversible identity for the source and credential used by getUsage. */
+export function getUsageCredentialIdentity(
+  includeEnvironmentCredentials = true,
+  refreshStoredCredentials = false,
+): string | null {
+  return resolveUsageProfile(includeEnvironmentCredentials, refreshStoredCredentials).credentialIdentity ?? null;
 }
 
 /**
@@ -1190,14 +1469,10 @@ function writeKeychainCredentials(creds: OAuthCredentials): void {
     // Merge into the correct structure
     if (existing.claudeAiOauth && typeof existing.claudeAiOauth === 'object') {
       const inner = existing.claudeAiOauth as Record<string, unknown>;
-      inner.accessToken = creds.accessToken;
-      if (creds.expiresAt != null) inner.expiresAt = creds.expiresAt;
-      if (creds.refreshToken) inner.refreshToken = creds.refreshToken;
+      updateStoredOAuthCredentialFields(inner, creds);
     } else {
       // Flat structure or empty
-      (existing as Record<string, unknown>).accessToken = creds.accessToken;
-      if (creds.expiresAt != null) (existing as Record<string, unknown>).expiresAt = creds.expiresAt;
-      if (creds.refreshToken) (existing as Record<string, unknown>).refreshToken = creds.refreshToken;
+      updateStoredOAuthCredentialFields(existing, creds);
     }
 
     const newJson = JSON.stringify(existing);
@@ -1218,12 +1493,26 @@ function writeKeychainCredentials(creds: OAuthCredentials): void {
   }
 }
 
+function updateStoredOAuthCredentialFields(record: Record<string, unknown>, creds: OAuthCredentials): void {
+  record.accessToken = creds.accessToken;
+  if (creds.expiresAt != null) record.expiresAt = creds.expiresAt;
+  if (creds.refreshToken) record.refreshToken = creds.refreshToken;
+  if (creds.profileIdentity) {
+    // A successful refresh proves same-account continuity; rebind legacy identity
+    // to the new token so it survives a credential-store reread.
+    record[OMC_USAGE_PROFILE_ID_FIELD] = creds.profileIdentity;
+    record[OMC_USAGE_PROFILE_TOKEN_HASH_FIELD] = hashCredentialIdentity(
+      creds.refreshToken ?? creds.accessToken,
+    );
+  }
+}
+
 /**
  * Persist refreshed credentials back to the credential store.
  * When the credentials originated from Keychain, writes back to Keychain.
  * When they originated from file, updates ~/.claude/.credentials.json.
  * Environment-provided credentials are process-owned and are never persisted.
- * Updates only the OAuth token fields, preserving other data.
+ * The profile marker is bound to the refreshed token to preserve legacy identity.
  */
 function writeBackCredentials(creds: OAuthCredentials): void {
   if (creds.source === 'keychain') {
@@ -1241,22 +1530,10 @@ function writeBackCredentials(creds: OAuthCredentials): void {
 
     // Update the nested structure
     if (parsed.claudeAiOauth) {
-      parsed.claudeAiOauth.accessToken = creds.accessToken;
-      if (creds.expiresAt != null) {
-        parsed.claudeAiOauth.expiresAt = creds.expiresAt;
-      }
-      if (creds.refreshToken) {
-        parsed.claudeAiOauth.refreshToken = creds.refreshToken;
-      }
+      updateStoredOAuthCredentialFields(parsed.claudeAiOauth, creds);
     } else {
       // Flat structure
-      parsed.accessToken = creds.accessToken;
-      if (creds.expiresAt != null) {
-        parsed.expiresAt = creds.expiresAt;
-      }
-      if (creds.refreshToken) {
-        parsed.refreshToken = creds.refreshToken;
-      }
+      updateStoredOAuthCredentialFields(parsed, creds);
     }
 
     // Atomic write: write to tmp file, then rename (atomic on POSIX, best-effort on Windows)
@@ -2093,6 +2370,48 @@ async function fetchAndCacheUsage<T>(opts: {
   return { rateLimits: usage };
 }
 
+/** Validate a fresh Anthropic cache by stable config metadata before a Keychain read. */
+function getWarmAnthropicUsageCache(
+  pollIntervalMs: number,
+  rateLimitIdentity: string,
+): UsageResult | undefined {
+  const baseUrl = process.env.ANTHROPIC_BASE_URL;
+  if (
+    process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim() ||
+    process.env.ANTHROPIC_AUTH_TOKEN?.trim() ||
+    process.env.MINIMAX_API_KEY?.trim() ||
+    process.env.KIMI_API_KEY?.trim() ||
+    process.env.ANTHROPIC_API_KEY?.trim() ||
+    (baseUrl != null && (isMinimaxHost(baseUrl) || isKimiHost(baseUrl) || isZaiHost(baseUrl)))
+  ) {
+    return undefined;
+  }
+
+  const profileIdentity = getOAuthAccountProfileIdentity({});
+  if (!profileIdentity) return undefined;
+
+  const credentialIdentity = hashCredentialIdentity(JSON.stringify([
+    'anthropic',
+    baseUrl ?? null,
+    profileIdentity,
+  ]));
+  migrateLegacyCache('anthropic');
+  const cache = readCache('anthropic');
+  const hasCacheOutcome =
+    !!cache?.data || cache?.error === true || getRateLimitBackoff(cache, rateLimitIdentity) !== null;
+  if (
+    !cache ||
+    !hasCacheOutcome ||
+    cache.source !== 'anthropic' ||
+    !isCacheForCredential(cache, credentialIdentity) ||
+    !isCacheValid(cache, pollIntervalMs, rateLimitIdentity)
+  ) {
+    return undefined;
+  }
+
+  return getCachedUsageResult(cache, rateLimitIdentity);
+}
+
 /**
  * Get usage data (with caching)
  *
@@ -2107,42 +2426,30 @@ async function fetchAndCacheUsage<T>(opts: {
  * @param opts.clientVersion Claude Code version for the usage API User-Agent
  *   (see buildUserAgent). Optional: callers without a statusline payload omit it
  *   and the header is left off rather than guessed.
+ * @param opts.skipWarmCache Skip metadata-only cache hits when credential identity
+ *   must be verified before using the returned usage data.
  */
-export async function getUsage(opts?: { clientVersion?: string }): Promise<UsageResult> {
-  const baseUrl = process.env.ANTHROPIC_BASE_URL;
-  const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
-  const isMinimax = baseUrl != null && isMinimaxHost(baseUrl);
-  const isKimi = baseUrl != null && isKimiHost(baseUrl);
-  const isZai = baseUrl != null && isZaiHost(baseUrl);
-  const minimaxApiKey = process.env.MINIMAX_API_KEY || authToken;
-  // Kimi For Coding documents `ANTHROPIC_BASE_URL=https://api.kimi.com/coding/`
-  // paired with `ANTHROPIC_API_KEY`; the Moonshot open platform and the
-  // kimi-code CLI use `ANTHROPIC_AUTH_TOKEN` instead. Both reach this branch,
-  // so try them in order of specificity to this host:
-  //   1. KIMI_API_KEY        — explicit, provider-scoped override
-  //   2. ANTHROPIC_API_KEY   — the documented credential for api.kimi.com
-  //   3. ANTHROPIC_AUTH_TOKEN — OAuth access tokens / platform-style setups
-  // (2) outranks (3) because Moonshot warns the two conflict and tells users on
-  // this endpoint to unset ANTHROPIC_AUTH_TOKEN — a leftover one must not mask
-  // the key the documented setup actually authenticates with.
-  const kimiApiKey =
-    process.env.KIMI_API_KEY || process.env.ANTHROPIC_API_KEY || authToken;
-  const currentSource: UsageSource =
-    isMinimax ? 'minimax' : isKimi ? 'kimi' : isZai && authToken ? 'zai' : 'anthropic';
-  const envToken = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
-  const credentialIdentity = currentSource === 'anthropic' && envToken
-    ? getCredentialCacheIdentity(envToken)
-    : undefined;
+export async function getUsage(opts?: { clientVersion?: string; skipWarmCache?: boolean }): Promise<UsageResult> {
   const pollIntervalMs = getUsagePollIntervalMs();
+  const anthropicRateLimitIdentity = buildUserAgent(opts?.clientVersion) ?? 'anonymous';
+  const warmCachedUsage = opts?.skipWarmCache
+    ? undefined
+    : getWarmAnthropicUsageCache(pollIntervalMs, anthropicRateLimitIdentity);
+  if (warmCachedUsage) return warmCachedUsage;
+
+  let profile = resolveUsageProfile();
+  const { currentSource, authToken, minimaxApiKey, kimiApiKey } = profile;
+  let credentials = profile.credentials;
+  let credentialIdentity = profile.credentialIdentity;
   const rateLimitIdentity = currentSource === 'anthropic'
-    ? buildUserAgent(opts?.clientVersion) ?? 'anonymous'
+    ? anthropicRateLimitIdentity
     : undefined;
 
   // Migrate legacy single-file cache to provider-specific file (one-shot, best-effort)
   migrateLegacyCache(currentSource);
 
   const initialCache = readCache(currentSource);
-  const initialMatchingCache = isCacheForCredential(initialCache, credentialIdentity)
+  let initialMatchingCache = isCacheForCredential(initialCache, credentialIdentity)
     ? initialCache
     : null;
   if (
@@ -2151,6 +2458,26 @@ export async function getUsage(opts?: { clientVersion?: string }): Promise<Usage
     initialMatchingCache.source === currentSource
   ) {
     return getCachedUsageResult(initialMatchingCache, rateLimitIdentity);
+  }
+
+  if (
+    currentSource === 'anthropic' &&
+    credentials?.source !== 'env' &&
+    !profile.storedCredentialsRead
+  ) {
+    profile = resolveUsageProfile(true, true);
+    credentials = profile.credentials;
+    credentialIdentity = profile.credentialIdentity;
+    initialMatchingCache = isCacheForCredential(initialCache, credentialIdentity)
+      ? initialCache
+      : null;
+    if (
+      initialMatchingCache &&
+      isCacheValid(initialMatchingCache, pollIntervalMs, rateLimitIdentity) &&
+      initialMatchingCache.source === currentSource
+    ) {
+      return getCachedUsageResult(initialMatchingCache, rateLimitIdentity);
+    }
   }
 
   try {
@@ -2166,9 +2493,9 @@ export async function getUsage(opts?: { clientVersion?: string }): Promise<Usage
       }
 
       // MiniMax path (must precede z.ai and OAuth checks)
-      if (isMinimax) {
+      if (currentSource === 'minimax') {
         if (!minimaxApiKey) {
-          writeCache({ data: null, error: true, source: 'minimax', errorReason: 'no_credentials' });
+          writeCache({ data: null, error: true, source: 'minimax', errorReason: 'no_credentials', credentialIdentity });
           return { rateLimits: null, error: 'no_credentials' };
         }
         return fetchAndCacheUsage({
@@ -2177,13 +2504,14 @@ export async function getUsage(opts?: { clientVersion?: string }): Promise<Usage
           parseFn: parseMinimaxResponse,
           cache: matchingCache,
           pollIntervalMs,
+          credentialIdentity,
         });
       }
 
       // Kimi path (must precede z.ai and OAuth checks)
-      if (isKimi) {
+      if (currentSource === 'kimi') {
         if (!kimiApiKey) {
-          writeCache({ data: null, error: true, source: 'kimi', errorReason: 'no_credentials' });
+          writeCache({ data: null, error: true, source: 'kimi', errorReason: 'no_credentials', credentialIdentity });
           return { rateLimits: null, error: 'no_credentials' };
         }
         return fetchAndCacheUsage({
@@ -2192,29 +2520,38 @@ export async function getUsage(opts?: { clientVersion?: string }): Promise<Usage
           parseFn: parseKimiResponse,
           cache: matchingCache,
           pollIntervalMs,
+          credentialIdentity,
         });
       }
 
       // z.ai path (must precede OAuth check to avoid stale Anthropic credentials)
-      if (isZai && authToken) {
+      if (currentSource === 'zai' && authToken) {
         return fetchAndCacheUsage({
           source: 'zai',
           fetchFn: () => fetchUsageFromZai(),
           parseFn: parseZaiResponse,
           cache: matchingCache,
           pollIntervalMs,
+          credentialIdentity,
         });
       }
 
       // Anthropic OAuth path (official Claude Code support)
-      let creds = getCredentials();
+      let creds = credentials;
       if (creds) {
         if (!validateCredentials(creds)) {
           if (creds.refreshToken) {
             const refreshed = await refreshAccessToken(creds.refreshToken);
             if (refreshed) {
-              creds = { ...creds, ...refreshed };
+              creds = {
+                ...creds,
+                ...refreshed,
+                profileIdentity: creds.profileIdentity ?? hashCredentialIdentity(
+                  creds.refreshToken ?? creds.accessToken,
+                ),
+              };
               writeBackCredentials(creds);
+              if (creds.source !== 'env') rememberStoredCredentials(creds);
             } else {
               writeCache({
                 data: null,

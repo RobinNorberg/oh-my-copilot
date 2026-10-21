@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { execFileSync, spawn } from 'node:child_process';
 import type { FileHandle } from 'fs/promises';
 
 import {
@@ -14,13 +15,12 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'fs';
-import { spawn } from 'child_process';
 import { dirname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { randomUUID } from 'crypto';
 import { getProcessStartIdentitySync } from '../../platform/process-utils.js';
 // @ts-expect-error Hook runtime source is intentionally JavaScript-only.
-import { acquireStateFileLockSync, isExclusiveStateLockingAvailable, isStateFileLockingSupported, releaseStateFileLockSync, withStateFileLockSync } from '../../../scripts/lib/atomic-write.mjs';
+import { acquireStateFileLockAtPathSync, acquireStateFileLockSync, getStateFileLockFailureKind, isExclusiveStateLockingAvailable, isStateFileLockingSupported, releaseStateFileLockSync, withStateFileLockAtPathSync, withStateFileLockSync } from '../../../scripts/lib/atomic-write.mjs';
 
 import { tmpdir } from 'os';
 
@@ -60,6 +60,16 @@ import {
   fileIdentityOf,
   sameFileIdentity,
 } from '../atomic-write.js';
+
+// SQLite's busy handler sums the sleeps it requests (about 75 ms of them here)
+// instead of watching a clock, so a loaded or virtualized runner stretches the
+// real wait: macOS CI runners were observed at 533 and 575 ms for 75 ms. The
+// ceiling stays well under the 2000 ms default busy timeout, so a lock call
+// that ignores the caller's value still fails, while the floor proves the
+// caller's value was waited on at all.
+const SQLITE_CONTENTION_BUSY_TIMEOUT_MS = 75;
+const SQLITE_CONTENTION_MIN_WAIT_MS = 50;
+const SQLITE_CONTENTION_RUNNER_MARGIN_MS = 1000;
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
@@ -336,6 +346,423 @@ describe('atomicWriteJson', () => {
 
     expect(withStateFileLockSync(filePath, () => 'written')).toEqual({ acquired: false, value: undefined });
     expect(existsSync(`${filePath}.mutation.lock`)).toBe(true);
+  });
+
+  it('reclaims an exact-path lock whose PID has been reused', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-reused-pid-'));
+    directories.push(directory);
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
+    const lockPath = join(directory, 'last-tool-error.json.lock');
+    writeFileSync(lockPath, JSON.stringify({
+      version: 1,
+      pid: process.pid,
+      processStart: 'previous-process-start',
+      createdAt: new Date().toISOString(),
+      nonce: randomUUID(),
+    }));
+
+    expect(withStateFileLockAtPathSync(lockPath, () => 'written')).toEqual({ acquired: true, value: 'written' });
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it('reclaims a legacy lock when its PID now belongs to a later process', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-legacy-'));
+    directories.push(directory);
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
+    const lockPath = join(directory, 'last-tool-error.json.lock');
+    writeFileSync(lockPath, JSON.stringify({ pid: process.pid, timestamp: 1 }));
+
+    expect(withStateFileLockAtPathSync(lockPath, () => 'written')).toEqual({ acquired: true, value: 'written' });
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it.skipIf(process.platform !== 'linux' && process.platform !== 'win32')('rejects a PID reused shortly after a legacy lock timestamp', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-legacy-reused-pid-'));
+    directories.push(directory);
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
+    const timestamp = Date.now() - 2200;
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        child.once('spawn', resolve);
+        child.once('error', reject);
+      });
+      if (typeof child.pid !== 'number') throw new Error('reused PID test child did not receive a PID');
+      const lockPath = join(directory, 'last-tool-error.json.lock');
+      writeFileSync(lockPath, JSON.stringify({ pid: child.pid, timestamp }));
+
+      expect(withStateFileLockAtPathSync(lockPath, () => 'written', false, 2)).toEqual({ acquired: true, value: 'written' });
+      expect(existsSync(lockPath)).toBe(false);
+    } finally {
+      child.kill();
+    }
+  });
+
+  it.skipIf(process.platform !== 'linux')('reclaims legacy locks when getconf is unavailable', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-no-getconf-'));
+    directories.push(directory);
+    const lockPath = join(directory, 'last-tool-error.json.lock');
+    const stateLockUrl = pathToFileURL(join(__dirname, '..', '..', '..', 'scripts', 'lib', 'state-lock.mjs')).href;
+    const script = `
+      import { existsSync, writeFileSync } from 'node:fs';
+      const { withStateFileLockAtPathSync } = await import(process.argv[1]);
+      const lockPath = process.argv[2];
+      writeFileSync(lockPath, JSON.stringify({ pid: process.pid, timestamp: 1 }));
+      const result = withStateFileLockAtPathSync(lockPath, () => 'written', false, 2);
+      process.stdout.write(JSON.stringify({ result, lockExists: existsSync(lockPath) }));
+    `;
+
+    const output = execFileSync(process.execPath, ['--input-type=module', '-e', script, stateLockUrl, lockPath], {
+      encoding: 'utf8',
+      env: { ...process.env, NODE_ENV: 'test', OMC_TEST_FLOCK_AVAILABLE: '0', PATH: '' },
+    });
+
+    expect(JSON.parse(output)).toEqual({ result: { acquired: true, value: 'written' }, lockExists: false });
+  });
+
+  it.skipIf(process.platform !== 'linux')('keeps live legacy owners stable across wall-clock corrections', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-clock-correction-'));
+    directories.push(directory);
+    const lockPath = join(directory, 'last-tool-error.json.lock');
+    const stateLockUrl = pathToFileURL(join(__dirname, '..', '..', '..', 'scripts', 'lib', 'state-lock.mjs')).href;
+    const script = `
+      import { existsSync, writeFileSync } from 'node:fs';
+      const lockPath = process.argv[2];
+      const realNow = Date.now.bind(Date);
+      writeFileSync(lockPath, JSON.stringify({ pid: process.pid, timestamp: realNow() }));
+      Date.now = () => realNow() + 60_000;
+      process.env.NODE_ENV = 'test';
+      process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
+      const { withStateFileLockAtPathSync } = await import(process.argv[1]);
+      const result = withStateFileLockAtPathSync(lockPath, () => 'written');
+      process.stdout.write(JSON.stringify({ result, lockExists: existsSync(lockPath) }));
+    `;
+
+    const output = execFileSync(process.execPath, ['--input-type=module', '-e', script, stateLockUrl, lockPath], {
+      encoding: 'utf8',
+      env: { ...process.env, NODE_ENV: 'test', OMC_TEST_FLOCK_AVAILABLE: '0' },
+    });
+
+    expect(JSON.parse(output)).toEqual({ result: { acquired: false }, lockExists: true });
+  });
+
+  it.skipIf(process.platform !== 'linux')('bounds Windows process-start probes by the supplied timeout', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-process-probe-timeout-'));
+    directories.push(directory);
+    const powershell = join(directory, 'powershell');
+    const stateLockUrl = pathToFileURL(join(__dirname, '..', '..', '..', 'scripts', 'lib', 'state-lock.mjs')).href;
+    writeFileSync(powershell, '#!/bin/sh\nwhile :; do :; done\n');
+    chmodSync(powershell, 0o755);
+    const script = `
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      const { processStartIdentity } = await import(process.argv[1]);
+      const startedAt = Date.now();
+      const identity = processStartIdentity(process.pid, 75);
+      process.stdout.write(JSON.stringify({ identity, elapsedMs: Date.now() - startedAt }));
+    `;
+
+    const output = execFileSync(process.execPath, ['--input-type=module', '-e', script, stateLockUrl], {
+      encoding: 'utf8',
+      env: { ...process.env, NODE_ENV: 'test', PATH: directory },
+      timeout: 1000,
+    });
+
+    expect(JSON.parse(output)).toMatchObject({ identity: null });
+    expect(JSON.parse(output).elapsedMs).toBeLessThan(500);
+  });
+
+  it.skipIf(process.platform !== 'linux')('shares one deadline across Windows lock-owner probes', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-shared-probe-deadline-'));
+    directories.push(directory);
+    const lockPath = join(directory, 'last-tool-error.json.lock');
+    const stateLockUrl = pathToFileURL(join(__dirname, '..', '..', '..', 'scripts', 'lib', 'state-lock.mjs')).href;
+    writeFileSync(lockPath, JSON.stringify({
+      version: 1,
+      pid: process.pid,
+      processStart: 'ticks:638933184000000001',
+      createdAt: new Date().toISOString(),
+      nonce: '123e4567-e89b-12d3-a456-426614174000',
+    }));
+    const script = `
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      process.env.NODE_ENV = 'test';
+      process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
+      const { acquireStateFileLockAtPathSync, getStateFileLockFailureKind } = await import(process.argv[1]);
+      let nowMs = 0;
+      const probeTimeouts = [];
+      const testHooks = {
+        nowMs: () => nowMs,
+        processStartIdentity(_pid, timeoutMs) {
+          probeTimeouts.push(timeoutMs);
+          if (probeTimeouts.length === 1) {
+            nowMs += 250;
+            return 'ticks:638933184000000001';
+          }
+          return timeoutMs >= 250 ? 'ticks:638933184000000001' : null;
+        },
+      };
+      const lock = acquireStateFileLockAtPathSync(process.argv[2], 1, true, false, 300, 300, Infinity, testHooks);
+      process.stdout.write(JSON.stringify({ lockAcquired: Boolean(lock), failure: getStateFileLockFailureKind(), probeTimeouts }));
+    `;
+
+    const output = execFileSync(process.execPath, ['--input-type=module', '-e', script, stateLockUrl, lockPath], {
+      encoding: 'utf8',
+      env: { ...process.env, NODE_ENV: 'test' },
+      timeout: 1500,
+    });
+    const result = JSON.parse(output) as { lockAcquired: boolean; failure: string; probeTimeouts: number[] };
+
+    expect(result.lockAcquired).toBe(false);
+    expect(result.failure).toBe('unverifiable');
+    expect(result.probeTimeouts).toEqual([300, 50]);
+  });
+
+  it('bounds SQLite lock contention by the caller-provided busy timeout', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-sqlite-timeout-'));
+    directories.push(directory);
+    const stateDirectory = join(directory, 'state');
+    mkdirSync(stateDirectory);
+    const lockPath = join(stateDirectory, 'last-tool-error.json.lock');
+    const databasePath = join(stateDirectory, '.state-mutation-locks.db');
+    const script = `
+      import Database from 'better-sqlite3';
+      const database = new Database(process.argv[1]);
+      database.pragma('journal_mode = WAL');
+      database.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
+      database.exec('BEGIN IMMEDIATE');
+      process.stdout.write('locked\\n');
+      process.stdin.once('end', () => { database.exec('ROLLBACK'); database.close(); });
+      process.stdin.resume();
+    `;
+    const holder = spawn(process.execPath, ['--input-type=module', '-e', script, databasePath], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let ready = false;
+    const readyPromise = new Promise<void>((resolve, reject) => {
+      holder.stdout?.on('data', chunk => {
+        if (String(chunk).includes('locked')) {
+          ready = true;
+          resolve();
+        }
+      });
+      holder.stderr?.on('data', chunk => {
+        if (!ready) reject(new Error(String(chunk)));
+      });
+      holder.once('error', reject);
+      holder.once('exit', code => {
+        if (!ready) reject(new Error(`SQLite lock holder exited before acquiring its transaction (${code})`));
+      });
+    });
+
+    try {
+      await readyPromise;
+      const startedAt = performance.now();
+      const lock = acquireStateFileLockAtPathSync(lockPath, 1, true, false, SQLITE_CONTENTION_BUSY_TIMEOUT_MS);
+      const elapsedMs = performance.now() - startedAt;
+      expect(lock).toBeNull();
+      expect(elapsedMs).toBeGreaterThanOrEqual(SQLITE_CONTENTION_MIN_WAIT_MS);
+      expect(elapsedMs).toBeLessThan(SQLITE_CONTENTION_BUSY_TIMEOUT_MS + SQLITE_CONTENTION_RUNNER_MARGIN_MS);
+      expect(getStateFileLockFailureKind()).toBe('contention');
+    } finally {
+      holder.stdin?.end();
+      if (holder.exitCode === null && holder.signalCode === null) {
+        await new Promise<void>(resolve => holder.once('exit', () => resolve()));
+      }
+    }
+  });
+
+  it('recovers SQLite lock release after contention', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-release-contention-'));
+    directories.push(directory);
+    const stateDirectory = join(directory, 'state');
+    mkdirSync(stateDirectory);
+    const lockPath = join(stateDirectory, 'last-tool-error.json.lock');
+    const contendedLockPath = join(stateDirectory, 'other-state.json.lock');
+    const databasePath = join(stateDirectory, '.state-mutation-locks.db');
+    const heldLock = acquireStateFileLockAtPathSync(lockPath, 1, true, false, 75);
+    expect(heldLock).not.toBeNull();
+    const script = `
+      import Database from 'better-sqlite3';
+      const database = new Database(process.argv[1]);
+      database.pragma('journal_mode = WAL');
+      database.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
+      database.exec('BEGIN IMMEDIATE');
+      process.stdout.write('locked\\n');
+      process.stdin.once('end', () => { database.exec('ROLLBACK'); database.close(); });
+      process.stdin.resume();
+    `;
+    const holder = spawn(process.execPath, ['--input-type=module', '-e', script, databasePath], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let releaseAttempted = false;
+    let ready = false;
+    const readyPromise = new Promise<void>((resolve, reject) => {
+      holder.stdout?.on('data', chunk => {
+        if (String(chunk).includes('locked')) {
+          ready = true;
+          resolve();
+        }
+      });
+      holder.stderr?.on('data', chunk => {
+        if (!ready) reject(new Error(String(chunk)));
+      });
+      holder.once('error', reject);
+      holder.once('exit', code => {
+        if (!ready) reject(new Error(`SQLite lock holder exited before acquiring its transaction (${code})`));
+      });
+    });
+
+    try {
+      await readyPromise;
+      const startedAt = performance.now();
+      const lock = acquireStateFileLockAtPathSync(contendedLockPath, 1, true, false, SQLITE_CONTENTION_BUSY_TIMEOUT_MS);
+      const elapsedMs = performance.now() - startedAt;
+      expect(lock).toBeNull();
+      expect(elapsedMs).toBeGreaterThanOrEqual(SQLITE_CONTENTION_MIN_WAIT_MS);
+      expect(elapsedMs).toBeLessThan(SQLITE_CONTENTION_BUSY_TIMEOUT_MS + SQLITE_CONTENTION_RUNNER_MARGIN_MS);
+      expect(getStateFileLockFailureKind()).toBe('contention');
+      releaseAttempted = true;
+      expect(releaseStateFileLockSync(heldLock)).toBe(false);
+      expect(existsSync(lockPath)).toBe(true);
+    } finally {
+      holder.stdin?.end();
+      if (holder.exitCode === null && holder.signalCode === null) {
+        await new Promise<void>(resolve => holder.once('exit', () => resolve()));
+      }
+      if (existsSync(lockPath)) {
+        if (releaseAttempted) {
+          const recoveredLock = acquireStateFileLockAtPathSync(lockPath, 1, true, false, 75);
+          if (recoveredLock) releaseStateFileLockSync(recoveredLock);
+        } else {
+          releaseStateFileLockSync(heldLock);
+        }
+      }
+    }
+
+    const recoveredLock = acquireStateFileLockAtPathSync(lockPath, 1, true, false, 75);
+    expect(recoveredLock).not.toBeNull();
+    expect(releaseStateFileLockSync(recoveredLock)).toBe(true);
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it.skipIf(process.platform !== 'linux')('shares the operation deadline with SQLite lock release', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-shared-deadline-'));
+    directories.push(directory);
+    const stateDirectory = join(directory, 'state');
+    mkdirSync(stateDirectory);
+    const lockPath = join(stateDirectory, 'last-tool-error.json.lock');
+    const databasePath = join(stateDirectory, '.state-mutation-locks.db');
+    const markerPath = join(directory, 'writer-locked');
+    const holderScript = `
+      import Database from 'better-sqlite3';
+      import { writeFileSync } from 'node:fs';
+      const database = new Database(process.argv[1]);
+      database.pragma('journal_mode = WAL');
+      database.exec('CREATE TABLE IF NOT EXISTS state_mutation_locks (lock_key TEXT PRIMARY KEY, version INTEGER NOT NULL, pid INTEGER NOT NULL, process_start TEXT NOT NULL, created_at TEXT NOT NULL, nonce TEXT NOT NULL)');
+      database.exec('BEGIN IMMEDIATE');
+      writeFileSync(process.argv[2], 'locked');
+      setTimeout(() => {
+        database.exec('ROLLBACK');
+        database.close();
+      }, 900);
+    `;
+    let holder: ReturnType<typeof spawn> | undefined;
+    const waitCell = new Int32Array(new SharedArrayBuffer(4));
+
+    try {
+      const startedAt = Date.now();
+      const result = withStateFileLockAtPathSync(lockPath, () => {
+        holder = spawn(process.execPath, ['--input-type=module', '-e', holderScript, databasePath, markerPath], {
+          stdio: ['ignore', 'ignore', 'ignore'],
+        });
+        const waitDeadline = Date.now() + 1000;
+        while (!existsSync(markerPath) && Date.now() < waitDeadline) {
+          Atomics.wait(waitCell, 0, 0, 5);
+        }
+        expect(existsSync(markerPath)).toBe(true);
+        return 'written';
+      }, false, 1, 1000, 1000, 300);
+      const elapsedMs = Date.now() - startedAt;
+
+      expect(result).toEqual({ acquired: false, value: undefined, callbackRan: true });
+      expect(getStateFileLockFailureKind()).toBe('contention');
+      expect(existsSync(lockPath)).toBe(true);
+      expect(elapsedMs).toBeLessThan(600);
+    } finally {
+      if (holder && holder.exitCode === null && holder.signalCode === null) {
+        await new Promise<void>(resolve => holder?.once('exit', () => resolve()));
+      }
+      if (existsSync(lockPath)) {
+        const retainedLock = acquireStateFileLockAtPathSync(lockPath, 1, true, false, 100);
+        if (retainedLock) releaseStateFileLockSync(retainedLock);
+      }
+    }
+  });
+
+  it('keeps a live legacy owner lock after thirty seconds', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-legacy-live-'));
+    directories.push(directory);
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
+    const lockPath = join(directory, 'last-tool-error.json.lock');
+    const timestamp = Date.now() + 10_000;
+    writeFileSync(lockPath, JSON.stringify({ pid: process.pid, timestamp }));
+    vi.useFakeTimers();
+    vi.setSystemTime(timestamp + 31_000);
+
+    try {
+      expect(withStateFileLockAtPathSync(lockPath, () => 'must not run', false, 1)).toEqual({ acquired: false, value: undefined });
+      expect(getStateFileLockFailureKind()).toBe('contention');
+      expect(existsSync(lockPath)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports malformed exact-path lock metadata as unverifiable', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-malformed-'));
+    directories.push(directory);
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
+    const lockPath = join(directory, 'last-tool-error.json.lock');
+    writeFileSync(lockPath, 'not-json');
+
+    expect(withStateFileLockAtPathSync(lockPath, () => 'must not run')).toEqual({ acquired: false, value: undefined });
+    expect(getStateFileLockFailureKind()).toBe('unverifiable');
+    expect(existsSync(lockPath)).toBe(true);
+  });
+
+  it('marks a callback as already run when lock release fails', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-release-'));
+    directories.push(directory);
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
+    const lockPath = join(directory, 'last-tool-error.json.lock');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let callbackCalls = 0;
+
+    try {
+      const result = withStateFileLockAtPathSync(lockPath, () => {
+        callbackCalls += 1;
+        writeFileSync(lockPath, JSON.stringify({
+          version: 1,
+          pid: process.pid,
+          processStart: 'replacement-owner',
+          createdAt: new Date().toISOString(),
+          nonce: randomUUID(),
+        }));
+      });
+
+      expect(result).toEqual({ acquired: false, value: undefined, callbackRan: true });
+      expect(callbackCalls).toBe(1);
+      expect(getStateFileLockFailureKind()).toBe('unverifiable');
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });
 

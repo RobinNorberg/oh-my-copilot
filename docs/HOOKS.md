@@ -62,7 +62,8 @@ Hook output is injected into Claude via `<system-reminder>` tags. Additional con
 - `exec` + `args` runs `node` without a shell. Copilot runs `command` hooks through PowerShell on Windows, which split the upstream `node "${CLAUDE_PLUGIN_ROOT}"/scripts/run.cjs ...` form so that node loaded the plugin directory and exited 0. Every hook was a silent no-op. With `args`, a plugin path containing spaces stays one argument, and each hook saves about 0.5 s of PowerShell startup.
 - The dispatcher argv is the event name, then one segment per hook: the script path and its extra arguments (`subagent-tracker.mjs stop`). A literal `--` separates the segments, so a hook argument can never be `--`; the generator throws on one.
 - `OMC_HOOK_EVENT` names the event for the adapter. `timeoutSec` is the sum of the group's upstream `timeout`s, because the hooks run one after another, each with its own timeout.
-- The group matcher is copied onto its entry, except `*` and empty matchers. Copilot applies it, so PreToolUse has two entries: all tools, and `Bash` for `git-guardrails.mjs`. `async` is dropped, because Copilot has no such field.
+- The group matcher is copied onto its entry, except `*` and empty matchers. Copilot applies it, so PreToolUse has two entries: all tools, and `Bash` for `git-guardrails.mjs`; PostToolUse has all tools, and `Read|Write|Edit|MultiEdit` for the rules and directory-context injectors. `async` is dropped, because Copilot has no such field.
+- Matchers keep Claude tool names. For PascalCase (Claude-format) hooks Copilot CLI matches, and puts into `tool_name`, the Claude name of its native tool: the 1.0.91 runtime (`prebuilds/win32-x64/runtime.node`, offset 91988385) maps `view`→`Read`, `create`→`Write`, `edit`→`Edit` (`str_replace_editor` and `apply_patch` sit in the same table entry), `grep`/`rg`→`Grep`, `glob`→`Glob`, `web_fetch`→`WebFetch`, `ask_user`→`AskUserQuestion`, `update_todo`→`TodoWrite`, `task`→`Agent`/`Task`, and `bash`→`Bash`. Changelog 1.0.62 (Claude-format matchers like `Bash` and `Read`, Claude tool names in payloads) and 1.0.63 (PostToolUse matchers honored).
 - The generator throws on a hook command form or field it does not recognise. An upstream change then fails the build instead of shipping a no-op.
 
 **Regenerate, never hand-edit.** Run `npm run build:copilot-hooks` (`node scripts/copilot/build-hooks.mjs --write`) after any change to `hooks/hooks.json`; `npm run build` includes it. `npm run verify:copilot-hooks` and `src/__tests__/copilot-hooks-manifest.test.ts` fail when the file drifts. The agents file set has the same rule: `npm run build:copilot-agents`.
@@ -114,9 +115,9 @@ Copilot runs one `node` process per entry. Before the [per-event dispatcher](#pe
 - Its script is in the `COPILOT_WORKER_HOOKS` list in `scripts/run.cjs`.
 - Its path is exactly `<trusted plugin root>/scripts/<name>`.
 - Its `hooks/hooks.json` entry, with the same extra arguments, belongs to the `OMC_HOOK_EVENT` event.
-- Its own manifest timeout is above `COPILOT_WORKER_MIN_TIMEOUT_MS` (3000 ms). A Worker cannot interrupt a hook blocked in a synchronous call: `worker.terminate()` only tears the Worker down once that call returns, and it does not reap any async grandchildren either. Several audited scripts (`context-guard-stop.mjs`, `workflow-drift-guard.mjs`, `code-simplifier.mjs`, and the shared `resolveToWorktreeRoot` git probes) make sync `spawnSync` git calls with their own ~2 s timeouts. The supervised child path's `taskkill /T` can still kill a blocked sync call and its children, so entries with a 3 s or tighter budget (`post-tool-directory-context-injector.mjs`, `post-tool-use-failure.mjs`, `subagent-tracker.mjs start`, `wiki-pre-compact.mjs`, `workflow-drift-guard.mjs`) stay on that child path instead of the Worker, even though they are in `COPILOT_WORKER_HOOKS`.
+- Its own manifest timeout is above `COPILOT_WORKER_MIN_TIMEOUT_MS` (3000 ms). A Worker cannot interrupt a hook blocked in a synchronous call: `worker.terminate()` only tears the Worker down once that call returns, and it does not reap any async grandchildren either. Several audited scripts (`context-guard-stop.mjs`, `workflow-drift-guard.mjs`, `code-simplifier.mjs`, and the shared `resolveToWorktreeRoot` git probes) make sync `spawnSync` git calls with their own ~2 s timeouts. The supervised child path's `taskkill /T` can still kill a blocked sync call and its children, so entries with a 3 s or tighter budget (`post-tool-use-failure.mjs`, `subagent-tracker.mjs start`, `wiki-pre-compact.mjs`, `workflow-drift-guard.mjs`) stay on that child path instead of the Worker, even though they are in `COPILOT_WORKER_HOOKS`.
 
-Everything else keeps the child path. The Worker gets the same timeout, `OMC_SESSION_OWNER_PID`, extra arguments (`subagent-tracker.mjs start`), stdin, exit code and fail-closed 124 as the child path. Stdout is forwarded before stderr. Each hook that still routes to a Worker saves about 90 ms on Windows; the five ≤3 s entries above trade that saving for a host timeout a hung sync call cannot overshoot:
+Everything else keeps the child path. The Worker gets the same timeout, `OMC_SESSION_OWNER_PID`, extra arguments (`subagent-tracker.mjs start`), stdin, exit code and fail-closed 124 as the child path. Stdout is forwarded before stderr. Each hook that still routes to a Worker saves about 90 ms on Windows; the four ≤3 s entries above trade that saving for a host timeout a hung sync call cannot overshoot:
 
 | Event (local bench, sum of medians) | Child path | Worker |
 |---|---|---|
@@ -126,7 +127,7 @@ Everything else keeps the child path. The Worker gets the same timeout, `OMC_SES
 | PostToolUse | 789 ms | 789 ms |
 | PermissionRequest | 189 ms | 93 ms |
 
-PostToolUse shows no saving: its one audited generic entry (`post-tool-directory-context-injector.mjs`) has a 3 s budget, so it now stays on the child path. `PostToolUseFailure` (`post-tool-use-failure.mjs`, 3 s) is the same: 188 ms either way.
+PostToolUse shows no saving: its one audited generic entry (`post-tool-directory-context-injector.mjs`) had a 3 s budget, so it stayed on the child path. It has since left `COPILOT_WORKER_HOOKS`: upstream now lists it in `TRUSTED_WORKER_HOOKS`, so it runs in the upstream trusted Worker on both hosts, like `post-tool-rules-injector.mjs`. `PostToolUseFailure` (`post-tool-use-failure.mjs`, 3 s) is the same: 188 ms either way.
 
 `OMC_COPILOT_HOOK_WORKER=0` turns the routing off. Before a new upstream hook joins the list, check that it does not call `process.chdir`, install signal handlers, branch on `isMainThread`, or start children that inherit stdio. `src/__tests__/run-cjs-copilot-worker-routing.test.ts` fails when the generic hooks of `copilot/hooks.json` and the list differ. It also runs every listed hook through both paths and compares stdout, stderr and the files each one wrote, and asserts the Worker-routed entries actually ran in a Worker.
 
@@ -276,9 +277,10 @@ Fires after a tool use completes.
 | `post-tool-verifier.mjs` | Verifies tool results and injects additional context | 5s |
 | `project-memory-posttool.mjs` | Updates project memory | 3s |
 | `post-tool-rules-injector.mjs` | Injects matching project rules | 3s |
+| `post-tool-directory-context-injector.mjs` | Injects the README.md and AGENTS.md files from the file's directory up to the working directory, for Read, Write, Edit, and MultiEdit | 3s |
 
 Injects additional guidance based on Read, Write, Edit, and Bash results. For example, after reading a file it may hint "consider using parallel reads."
-These exact canonical shipped scripts use the trusted Worker path without changing their manifest timeout budgets. The verifier retains statistics for the current session and the 99 most recently updated historical sessions so per-tool writes stay bounded. Disable all three with `DISABLE_OMC=1` (or `DISABLE_OMC=true`) or `OMC_SKIP_HOOKS=post-tool-use`; `project-memory-posttool` also accepts its script-specific token.
+These exact canonical shipped scripts use the trusted Worker path without changing their manifest timeout budgets. The verifier retains statistics for the current session and the 99 most recently updated historical sessions so per-tool writes stay bounded. Disable all four with `DISABLE_OMC=1` (or `DISABLE_OMC=true`) or `OMC_SKIP_HOOKS=post-tool-use`; `project-memory-posttool` also accepts its script-specific token.
 
 ### PostToolUseFailure
 
@@ -729,6 +731,7 @@ export OMC_JEV="point1,point2:active,all"
 | `OMC_JEV_ENDPOINT` | `https://api.typesafe.ai/v1/systemone` | Override for stub servers or tests. |
 | `OMC_JEV_LOG_DIR` | `.omg/state/jev` | Shadow-log directory override (test only). |
 | `OMC_JEV_QUIET` | (unset) | Set to `1` to silence the env-activation stderr warning. |
+| `OMC_JEV_PLAN_MODE` | (unset) | Behavior while Claude Code is in plan mode (`permission_mode: "plan"`): `shadow` runs every opted-in point in shadow, `off` disables every point. Unset or any other value changes nothing. See [Plan mode](#plan-mode). |
 | `OMC_JEV=off` | — | Master switch: disables every point regardless of key or other config. |
 
 #### Point Activation Syntax
@@ -753,6 +756,21 @@ export OMC_JEV="off"
 ```
 
 Unknown point names are ignored. Activation unions across sources: code-time `ACTIVATED_POINTS` (empty in every release) plus env `:active` suffix; either source activates a point.
+
+#### Plan mode
+
+`OMC_JEV` applies to every Claude Code permission mode. To keep Jev from deciding while Claude Code is in plan mode, set `OMC_JEV_PLAN_MODE`:
+
+```bash
+# Active outside plan mode; in plan mode Jev is still called and logged, but the heuristic decides
+export OMC_JEV="all:active"
+export OMC_JEV_PLAN_MODE="shadow"
+
+# No Jev requests at all while in plan mode
+export OMC_JEV_PLAN_MODE="off"
+```
+
+The plugin hook scripts read `permission_mode` from each hook payload and apply `OMC_JEV_PLAN_MODE` only when it is `plan`. It narrows existing `OMC_JEV` opt-ins and never enables a point. The TypeScript resolver behind `bridge.ts` receives no permission mode and ignores this variable.
 
 ### Shadow vs. Active Mode
 

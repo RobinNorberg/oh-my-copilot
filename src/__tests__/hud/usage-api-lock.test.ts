@@ -121,7 +121,14 @@ describe('getUsage lock failure fallback', () => {
       },
     }));
 
-    const { getUsage } = await import('../../hud/usage-api.js');
+    const { getUsage, getUsageCredentialIdentity } = await import('../../hud/usage-api.js');
+    const credentialIdentity = getUsageCredentialIdentity();
+    if (!credentialIdentity) throw new Error('expected z.ai test credentials');
+    const identityBoundCache = JSON.stringify({
+      ...JSON.parse(files.get(CACHE_PATH)!),
+      credentialIdentity,
+    });
+    files.set(CACHE_PATH, identityBoundCache);
     const httpsModule = await import('https') as unknown as { default: { request: ReturnType<typeof vi.fn> } };
 
     // Should NOT throw, should return stale data
@@ -134,7 +141,7 @@ describe('getUsage lock failure fallback', () => {
     // Should not have made any API call
     expect(httpsModule.default.request).not.toHaveBeenCalled();
     // Should not have modified the cache file (no race with lock holder)
-    expect(files.get(CACHE_PATH)).toBe(expiredCache);
+    expect(files.get(CACHE_PATH)).toBe(identityBoundCache);
 
     process.kill = originalKill;
   });

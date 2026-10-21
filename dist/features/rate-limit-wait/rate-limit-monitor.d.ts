@@ -20,14 +20,13 @@ export declare function formatTimeUntilReset(ms: number): string;
  */
 export declare function formatRateLimitStatus(status: RateLimitStatus): string;
 /**
- * Whether the underlying usage API is currently degraded by 429/stale-cache behavior.
+ * Whether the latest usage sample is stale or otherwise cannot confirm recovery.
  */
 export declare function isRateLimitStatusDegraded(status: RateLimitStatus | null): boolean;
 /**
  * Whether the daemon should actively scan for blocked panes.
- * Only confirmed quota exhaustion should enter the pane wait/resume path.
- * Degraded usage-api 429/stale-cache states remain visible to the user, but
- * they are intentionally excluded from daemon pane blocking behavior.
+ * A stale limited value carries the last known exhausted state; only a fresh
+ * all-clear can authorize resuming panes.
  */
 export declare function shouldMonitorBlockedPanes(status: RateLimitStatus | null): boolean;
 //# sourceMappingURL=rate-limit-monitor.d.ts.map

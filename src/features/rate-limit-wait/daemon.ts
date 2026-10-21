@@ -27,16 +27,22 @@ import {
 import {
   isTmuxAvailable,
   scanForBlockedPanes,
+  revalidateBlockedPanes,
   sendResumeSequence,
   formatBlockedPanesSummary,
 } from './tmux-detector.js';
-import type {
+import {
   DaemonState,
   DaemonConfig,
   DaemonResponse,
-  RateLimitStatus,
 } from './types.js';
 import { isProcessAlive } from '../../platform/index.js';
+import {
+  createInitialState,
+  getUsageProfileHash,
+  scopeStateToCurrentUsageProfile,
+  shouldResumeBlockedPanesOnStatusChange,
+} from './daemon-state.js';
 
 // ESM compatibility: __filename is not available in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -282,39 +288,7 @@ function log(message: string, config: Required<DaemonConfig>): void {
 }
 
 /**
- * Create initial daemon state
- */
-function createInitialState(): DaemonState {
-  return {
-    isRunning: true,
-    pid: process.pid,
-    startedAt: new Date(),
-    lastPollAt: null,
-    rateLimitStatus: null,
-    blockedPanes: [],
-    resumedPaneIds: [],
-    totalResumeAttempts: 0,
-    successfulResumes: 0,
-    errorCount: 0,
-  };
-}
-
-/**
- * Only a confirmed transition out of quota exhaustion should trigger pane resume.
- * Degraded/stale usage-api 429 responses are visible to users but must not act
- * like a real all-clear signal for blocked panes.
- */
-export function shouldResumeBlockedPanesOnStatusChange(
-  previousStatus: RateLimitStatus | null,
-  nextStatus: RateLimitStatus | null,
-): boolean {
-  const wasLimited = shouldMonitorBlockedPanes(previousStatus);
-  const isNowLimited = shouldMonitorBlockedPanes(nextStatus);
-  return wasLimited && !isNowLimited && !isRateLimitStatusDegraded(nextStatus);
-}
-
-/**
- * Register cleanup handlers for the daemon process.
+ * Register daemon cleanup handlers for the daemon process.
  * Ensures PID file and state are cleaned up on exit signals.
  */
 function registerDaemonCleanup(config: Required<DaemonConfig>): void {
@@ -348,6 +322,10 @@ async function pollLoop(config: Required<DaemonConfig>): Promise<void> {
   const state = readDaemonState(config) || createInitialState();
   state.isRunning = true;
   state.pid = process.pid;
+  state.startedAt = new Date();
+  let lastConfirmedLimited = typeof state.lastConfirmedLimited === 'boolean'
+    ? state.lastConfirmedLimited
+    : !!state.rateLimitStatus?.isLimited;
 
   // Register cleanup handlers so PID/state files are cleaned up on exit
   registerDaemonCleanup(config);
@@ -356,27 +334,69 @@ async function pollLoop(config: Required<DaemonConfig>): Promise<void> {
 
   while (state.isRunning) {
     try {
+      const previousProfileHash = state.usageProfileHash;
+      const usageProfileHash = getUsageProfileHash();
+      scopeStateToCurrentUsageProfile(state, usageProfileHash, dirname(config.stateFilePath));
+      if (usageProfileHash !== null && state.usageProfileHash !== previousProfileHash) {
+        lastConfirmedLimited = state.lastConfirmedLimited === true;
+        log('Claude usage profile changed; discarded saved quota and pane state', config);
+      }
+
       state.lastPollAt = new Date();
 
       // Check rate limit status with a 30s timeout to prevent poll loop stalls
-      const rateLimitStatus = await Promise.race([
-        checkRateLimitStatus(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('checkRateLimitStatus timed out after 30s')), 30_000)
-        ),
-      ]);
+      const rateLimitStatus = usageProfileHash === null
+        ? null
+        : await Promise.race([
+          checkRateLimitStatus(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('checkRateLimitStatus timed out after 30s')), 30_000)
+          ),
+        ]);
+      if (usageProfileHash !== null) {
+        const checkedUsageProfileHash = getUsageProfileHash();
+        if (checkedUsageProfileHash !== usageProfileHash) {
+          if (checkedUsageProfileHash !== null) {
+            scopeStateToCurrentUsageProfile(
+              state,
+              checkedUsageProfileHash,
+              dirname(config.stateFilePath),
+            );
+            lastConfirmedLimited = state.lastConfirmedLimited === true;
+            log('Claude usage profile changed during quota check; discarded saved quota and pane state', config);
+          } else {
+            log('Claude usage profile became unavailable during quota check; discarding quota sample', config);
+          }
+          writeDaemonState(state, config);
+          await new Promise((resolve) => setTimeout(resolve, config.pollIntervalMs));
+          continue;
+        }
+      }
       const isNowLimited = shouldMonitorBlockedPanes(rateLimitStatus);
+      const isConfirmedClear =
+        rateLimitStatus !== null && !isNowLimited && !isRateLimitStatusDegraded(rateLimitStatus);
       const shouldResumeBlockedPanes = shouldResumeBlockedPanesOnStatusChange(
-        state.rateLimitStatus,
+        { isLimited: lastConfirmedLimited },
         rateLimitStatus,
-      );
+      ) || (state.resumePending === true && isConfirmedClear);
 
       state.rateLimitStatus = rateLimitStatus;
+      if (rateLimitStatus?.isLimited) {
+        // Stale cached exhaustion can still carry a previously confirmed limit;
+        // a stale all-clear cannot confirm recovery.
+        lastConfirmedLimited = true;
+        state.resumePending = false;
+      } else if (rateLimitStatus && !isRateLimitStatusDegraded(rateLimitStatus)) {
+        lastConfirmedLimited = rateLimitStatus.isLimited;
+      }
+      state.lastConfirmedLimited = lastConfirmedLimited;
 
       if (rateLimitStatus) {
         log(`Rate limit status: ${formatRateLimitStatus(rateLimitStatus)}`, config);
+      } else if (usageProfileHash === null) {
+        log('Rate limit status unavailable (usage credential identity unknown)', config);
       } else {
-        log('Rate limit status unavailable (no OAuth credentials?)', config);
+        log('Rate limit status unavailable', config);
       }
 
       // If currently rate limited, scan for blocked panes
@@ -394,41 +414,60 @@ async function pollLoop(config: Required<DaemonConfig>): Promise<void> {
           }
         }
 
-        // Remove panes that are no longer blocked
-        state.blockedPanes = state.blockedPanes.filter((tracked) =>
-          blockedPanes.some((current) => current.id === tracked.id)
-        );
+        // Keep prior candidates across limited polls: the stateDir scan only
+        // returns panes with new output. Fresh pane capture authorizes resumes.
       }
 
       // If rate limit just cleared (was limited, now not), attempt resume
       if (shouldResumeBlockedPanes && state.blockedPanes.length > 0) {
         log('Rate limit cleared! Attempting to resume blocked panes', config);
+        const currentlyBlockedPanes = revalidateBlockedPanes(
+          state.blockedPanes,
+          config.paneLinesToCapture,
+        );
 
-        for (const pane of state.blockedPanes) {
-          if (state.resumedPaneIds.includes(pane.id)) {
-            log(`Skipping already resumed pane: ${pane.id}`, config);
-            continue;
+        if (currentlyBlockedPanes === null) {
+          state.resumePending = true;
+          log('Pane revalidation was inconclusive; retaining blocked panes for retry', config);
+        } else {
+          for (const pane of state.blockedPanes) {
+            if (state.resumedPaneIds.includes(pane.id)) {
+              log(`Skipping already resumed pane: ${pane.id}`, config);
+              continue;
+            }
+
+            const currentPane = currentlyBlockedPanes.find((current) =>
+              current.id === pane.id &&
+              current.session === pane.session &&
+              current.windowIndex === pane.windowIndex &&
+              current.paneIndex === pane.paneIndex
+            );
+            if (!currentPane) {
+              log(`Skipping pane no longer blocked at its saved location: ${pane.id}`, config);
+              continue;
+            }
+
+            state.totalResumeAttempts++;
+            log(`Attempting resume for pane: ${pane.id}`, config);
+
+            const success = sendResumeSequence(pane.id);
+            pane.resumeAttempted = true;
+            pane.resumeSuccessful = success;
+
+            if (success) {
+              state.successfulResumes++;
+              state.resumedPaneIds.push(pane.id);
+              log(`Successfully sent resume to pane: ${pane.id}`, config);
+            } else {
+              state.errorCount++;
+              log(`Failed to send resume to pane: ${pane.id}`, config);
+            }
           }
 
-          state.totalResumeAttempts++;
-          log(`Attempting resume for pane: ${pane.id}`, config);
-
-          const success = sendResumeSequence(pane.id);
-          pane.resumeAttempted = true;
-          pane.resumeSuccessful = success;
-
-          if (success) {
-            state.successfulResumes++;
-            state.resumedPaneIds.push(pane.id);
-            log(`Successfully sent resume to pane: ${pane.id}`, config);
-          } else {
-            state.errorCount++;
-            log(`Failed to send resume to pane: ${pane.id}`, config);
-          }
+          // Clear blocked panes after a conclusive revalidation and resume attempt.
+          state.blockedPanes = [];
+          state.resumePending = false;
         }
-
-        // Clear blocked panes after resume attempt
-        state.blockedPanes = [];
       }
 
       // If rate limit cleared and no blocked panes, clear resumed list
@@ -515,8 +554,15 @@ export function startDaemon(config?: DaemonConfig): DaemonResponse {
     if (pid) {
       writePidFile(pid, cfg);
 
-      const state = createInitialState();
+      // Detached children intentionally omit direct OAuth tokens from their environment.
+      const state = scopeStateToCurrentUsageProfile(
+        readDaemonState(cfg) || createInitialState(),
+        getUsageProfileHash(false),
+        dirname(cfg.stateFilePath),
+      );
+      state.isRunning = true;
       state.pid = pid;
+      state.startedAt = new Date();
       writeDaemonState(state, cfg);
 
       return {

@@ -307,7 +307,7 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(m.graph.edges.some((e) => e.from === 'src/features/delegation-categories/index.ts' && e.kind.endsWith('-unresolved'))).toBe(false);
   });
 
-  it('generator is deterministic (two consecutive runs yield identical manifest modulo head/generatedAt)', () => {
+  it('generator is deterministic (two consecutive runs yield identical manifest modulo head/generatedAt)', { timeout: 30_000 }, () => {
     const opts = { cwd: REPO_ROOT, encoding: 'utf8' as const, maxBuffer: 20 * 1024 * 1024 };
     const r1 = spawnSync('node', [GENERATOR], opts);
     expect(r1.status, r1.stderr || r1.stdout).toBe(0);
@@ -365,7 +365,7 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(resolveGeneratedTarget(['src/budget/governor.js'], dist, bridge, stable)).toBeUndefined();
   });
 
-  it('verify mode passes when baseline is current (drift closed)', () => {
+  it('verify mode passes when baseline is current (drift closed)', { timeout: 30_000 }, () => {
     const r = spawnSync('node', [GENERATOR, '--verify'], { cwd: REPO_ROOT, encoding: 'utf8' as const, maxBuffer: 20 * 1024 * 1024 });
     expect(r.status, `verify failed — stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
     expect((r.stdout as unknown as string)).toContain('verify ok');

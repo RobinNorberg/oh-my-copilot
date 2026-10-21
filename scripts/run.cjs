@@ -171,6 +171,7 @@ const TRUSTED_WORKER_HOOKS = new Map([
   ['post-tool-verifier.mjs', { event: 'PostToolUse' }],
   ['project-memory-posttool.mjs', { event: 'PostToolUse' }],
   ['post-tool-rules-injector.mjs', { event: 'PostToolUse' }],
+  ['post-tool-directory-context-injector.mjs', { event: 'PostToolUse' }],
 ]);
 
 function resolveTrustedWorkerTimeoutMs(targetPath, manifestHook) {
@@ -1038,7 +1039,6 @@ const COPILOT_WORKER_HOOKS = new Set([
   'stale-run-reporter.mjs',
   'runs-reconciler.mjs',
   'permission-handler.mjs',
-  'post-tool-directory-context-injector.mjs',
   'post-tool-use-failure.mjs',
   'subagent-tracker.mjs',
   'verify-deliverables.mjs',

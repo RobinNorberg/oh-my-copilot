@@ -11,11 +11,38 @@ Otherwise (initial setup wizard), use AskUserQuestion to prompt:
 
 **Options:**
 1. **Local (this project)** - Creates `.claude/CLAUDE.md` in current project directory. Best for project-specific configurations.
-2. **Global (all projects)** - Creates `~/.claude/CLAUDE.md` for all Claude Code sessions. Best for consistent behavior everywhere.
+2. **Global (all projects)** - Creates `${COPILOT_HOME:-~/.copilot}/CLAUDE.md` for all Copilot CLI sessions. Best for consistent behavior everywhere.
 
-Set `CONFIG_TARGET` to `local` or `global` based on user's choice.
+Set `CONFIG_TARGET` to `local` or `global` based on the user's choice.
 
-If `CONFIG_TARGET=global` and `~/.claude/CLAUDE.md` already exists without OMC markers, ask a second explicit question before running setup:
+## Check the Global Opt-Out Before Asking About Install Style
+
+Only when `CONFIG_TARGET=global`, run this probe before any overwrite/preserve question. It checks the same `.omc-config.json` used by the installer and respects `COPILOT_HOME`, including `~`, `~/...`, and `~\...` values:
+
+```bash
+node -e "
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+let configDir = (process.env.COPILOT_HOME || '').trim();
+if (configDir === '') configDir = path.join(os.homedir(), '.copilot');
+if (configDir === '~') configDir = os.homedir();
+else if (configDir.startsWith('~/') || configDir.startsWith('~' + String.fromCharCode(92))) {
+  configDir = path.join(os.homedir(), configDir.slice(2));
+}
+try {
+  const config = JSON.parse(fs.readFileSync(path.join(configDir, '.omc-config.json'), 'utf8'));
+  const disabled = Boolean(config && typeof config === 'object' && config.claudeMdEnabled === false);
+  console.log(disabled ? 'disabled' : 'enabled');
+} catch {
+  console.log('enabled');
+}
+"
+```
+
+If the probe prints `disabled`, do not ask the overwrite/preserve question; set `GLOBAL_INSTALL_STYLE=overwrite` and continue through the coordinator so it can report the skip. If it prints `enabled`, continue below. If the probe fails or prints neither status, stop before asking or running setup; do not assume management is enabled.
+
+If `CONFIG_TARGET=global`, the probe printed `enabled`, and `${COPILOT_HOME:-~/.copilot}/CLAUDE.md` already exists without OMC markers, ask a second explicit question before running setup:
 
 **Question:** "Global setup will change your base Claude config. Which behavior do you want?"
 
@@ -39,13 +66,13 @@ Replace `<CONFIG_TARGET>` with `local` or `global`. For local installs, omit the
 
 The coordinator exclusively performs all `CLAUDE.md`, `CLAUDE-omc.md`, managed-import, orphan-cleanup, backup, and rollback mutations. Do **not** hand-write, summarize, partially reconstruct, download, or repair either configuration file. It reports only the exact coordinator-created backup, failure, and rollback paths.
 
-After a successful local or global-overwrite install, verify the target file contains both markers. In global preserve mode, verify `CLAUDE-omc.md` contains both markers and the base `CLAUDE.md` contains exactly one managed import block. Stop and report a coordinator failure; never attempt a shell, downloaded-source, or fallback mutation.
+If the coordinator output contains the `Skipped CLAUDE.md (claudeMdEnabled is false ...)` note, the user opted out of global CLAUDE.md management in `.omc-config.json`: skip marker verification and report the skip as success. Otherwise, after a successful local or global-overwrite install, verify the target file contains both markers. In global preserve mode, verify `CLAUDE-omc.md` contains both markers and the base `CLAUDE.md` contains exactly one managed import block. Stop and report a coordinator failure; never attempt a shell, downloaded-source, or fallback mutation.
 
 For `local` installs inside a git repository, the script also seeds `.git/info/exclude` with an OMC block that re-includes `.omg/`, ignores local `.omg/*` artifacts by default, and preserves `.omg/skills/` for project skills you intend to commit.
 
 **Note**: Setup never downloads or merges CLAUDE.md in the shell. It uses only the handshake-verified canonical source bundled with the complete active plugin root.
 
-**Note**: Preserve mode installs OMC into a companion `CLAUDE-omc.md` with a small managed import block, and `omc` launch force-loads that companion config without changing plain `claude`.
+**Note**: Preserve mode installs OMC into a companion `CLAUDE-omc.md` with a small managed import block, and `omg` launch force-loads that companion config without changing plain `claude`.
 
 ## Report Success
 
@@ -64,12 +91,14 @@ Note: This configuration is project-specific and won't affect other projects or 
 ```
 
 If `CONFIG_TARGET` is `global`:
+If the coordinator reported the `claudeMdEnabled` skip, report `CLAUDE.md: Skipped (claudeMdEnabled is false; existing global files were left untouched)` instead of claiming an update, and omit the Companion line. Otherwise, use the report below.
+
 ```
 OMC Global Configuration Complete
-- CLAUDE.md: Updated at ~/.claude/CLAUDE.md, or preserved with explicit preserve mode
-- Companion: May install ~/.claude/CLAUDE-omc.md when preserve mode is chosen
+- CLAUDE.md: Updated at ${COPILOT_HOME:-~/.copilot}/CLAUDE.md, or preserved with explicit preserve mode
+- Companion: May install ${COPILOT_HOME:-~/.copilot}/CLAUDE-omc.md when preserve mode is chosen
 - Backup: Coordinator reported byte-identical backups only for global files that required mutation
-- Scope: GLOBAL - applies to all Claude Code sessions
+- Scope: GLOBAL - applies to all Copilot CLI sessions
 - Hooks: Provided by plugin (no manual installation needed)
 - Agents: 28+ available (base + tiered variants)
 - Model routing: Haiku/Sonnet/Opus based on task complexity

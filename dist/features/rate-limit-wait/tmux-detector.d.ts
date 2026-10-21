@@ -19,7 +19,7 @@ export declare function isTmuxAvailable(): boolean;
  */
 export declare function isInsideTmux(): boolean;
 /**
- * List all tmux panes across all sessions
+ * List all tmux panes across all sessions.
  */
 export declare function listTmuxPanes(): TmuxPane[];
 /**
@@ -34,12 +34,6 @@ export declare function listTmuxPanes(): TmuxPane[];
  * Intentionally synchronous so it can be used in fire-and-forget hook paths.
  */
 export declare function isPaneAlive(paneId: string): boolean;
-/**
- * Capture the content of a specific tmux pane
- *
- * @param paneId - The tmux pane ID (e.g., "%0")
- * @param lines - Number of lines to capture (default: 15)
- */
 export declare function capturePaneContent(paneId: string, lines?: number): string;
 /**
  * Analyze pane content to determine if it shows a rate-limited Claude Code session
@@ -56,6 +50,13 @@ export declare function analyzePaneContent(content: string): PaneAnalysisResult;
  *                   When omitted, falls back to a plain capturePaneContent call.
  */
 export declare function scanForBlockedPanes(lines?: number, stateDir?: string): BlockedPane[];
+/**
+ * Revalidate persisted pane candidates before sending resume keys.
+ * Returns null when tmux could not provide a complete scan, so callers can retry
+ * without discarding recovery state. A successful scan only returns panes whose
+ * current output still shows a rate-limit screen and a live first resume option.
+ */
+export declare function revalidateBlockedPanes(trackedPanes: BlockedPane[], lines?: number): BlockedPane[] | null;
 /**
  * Send resume sequence to a tmux pane
  *

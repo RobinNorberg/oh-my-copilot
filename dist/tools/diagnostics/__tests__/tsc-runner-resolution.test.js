@@ -2,90 +2,129 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-// fork deviation: tsc resolution order (project TypeScript, then PATH tsc via
-// cmd.exe on win32) and a distinct "tsc not found" result.
-const mocks = vi.hoisted(() => ({
-    execFileSync: vi.fn(),
-    resolveExecutable: vi.fn(),
-}));
-vi.mock('child_process', async (importOriginal) => ({
-    ...await importOriginal(),
-    execFileSync: mocks.execFileSync,
-}));
-vi.mock('../../../platform/executable-resolution.js', async (importOriginal) => ({
-    ...await importOriginal(),
-    resolveExecutable: mocks.resolveExecutable,
-}));
+vi.mock('child_process', async (importOriginal) => {
+    const actual = await importOriginal();
+    return { ...actual, execFileSync: vi.fn() };
+});
+import { execFileSync } from 'child_process';
 import { runTscDiagnostics } from '../tsc-runner.js';
-const TSC_ARGS = ['--noEmit', '--pretty', 'false'];
-let directory;
-function withLocalTypeScript() {
-    const bin = join(directory, 'node_modules', 'typescript', 'bin');
-    mkdirSync(bin, { recursive: true });
-    writeFileSync(join(bin, 'tsc'), '');
-    return join(bin, 'tsc');
+const execFileSyncMock = vi.mocked(execFileSync);
+const originalPlatform = process.platform;
+const originalComspec = process.env.COMSPEC;
+const fixtures = [];
+function project(withLocalTypescript) {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-tsc-resolution-'));
+    fixtures.push(directory);
+    writeFileSync(join(directory, 'tsconfig.json'), '{}');
+    if (withLocalTypescript) {
+        mkdirSync(join(directory, 'node_modules', 'typescript', 'bin'), { recursive: true });
+        writeFileSync(join(directory, 'node_modules', 'typescript', 'package.json'), '{"name":"typescript","version":"5.9.3"}');
+        writeFileSync(join(directory, 'node_modules', 'typescript', 'bin', 'tsc'), '');
+    }
+    return directory;
 }
-function enoent() {
-    return Object.assign(new Error('spawnSync tsc ENOENT'), { code: 'ENOENT' });
+function spawnError(code, extra = {}) {
+    return Object.assign(new Error(`spawnSync tsc ${code}`), { code, stdout: '', stderr: '', ...extra });
+}
+function setPlatform(platform) {
+    Object.defineProperty(process, 'platform', { value: platform, configurable: true });
 }
 beforeEach(() => {
-    directory = mkdtempSync(join(tmpdir(), 'omc-tsc-resolve-'));
-    writeFileSync(join(directory, 'tsconfig.json'), '{}');
-    mocks.execFileSync.mockReset().mockReturnValue('');
-    mocks.resolveExecutable.mockReset().mockReturnValue(undefined);
+    execFileSyncMock.mockReset();
 });
 afterEach(() => {
-    vi.restoreAllMocks();
-    rmSync(directory, { recursive: true, force: true });
+    setPlatform(originalPlatform);
+    if (originalComspec === undefined)
+        delete process.env.COMSPEC;
+    else
+        process.env.COMSPEC = originalComspec;
+    for (const directory of fixtures.splice(0))
+        rmSync(directory, { recursive: true, force: true });
 });
-describe('runTscDiagnostics compiler resolution', () => {
-    it.each(['win32', 'linux'])('prefers the project TypeScript run by this Node (%s)', platform => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue(platform);
-        const local = withLocalTypeScript();
-        expect(runTscDiagnostics(directory)).toMatchObject({ success: true, errorCount: 0 });
-        expect(mocks.execFileSync).toHaveBeenCalledTimes(1);
-        const [file, args, options] = mocks.execFileSync.mock.calls[0];
+describe('tsc executable resolution', () => {
+    it('runs the project-local TypeScript with node on win32, where a bare `tsc` (tsc.cmd) cannot be spawned', () => {
+        setPlatform('win32');
+        const directory = project(true);
+        // Node cannot spawn the tsc.cmd shim without a shell, so a bare `tsc` is ENOENT on win32.
+        execFileSyncMock.mockImplementation((file) => {
+            if (file === 'tsc')
+                throw spawnError('ENOENT');
+            return '';
+        });
+        const result = runTscDiagnostics(directory);
+        expect(result).toMatchObject({ success: true, errorCount: 0 });
+        expect(execFileSyncMock).toHaveBeenCalledTimes(1);
+        const [file, args, options] = execFileSyncMock.mock.calls[0];
         expect(file).toBe(process.execPath);
-        expect(args).toEqual([local, ...TSC_ARGS]);
-        expect(options).toMatchObject({ cwd: directory, shell: false });
-        expect(mocks.resolveExecutable).not.toHaveBeenCalled();
+        expect(args).toEqual([join(directory, 'node_modules', 'typescript', 'bin', 'tsc'), '--noEmit', '--pretty', 'false']);
+        expect(options).toMatchObject({ cwd: directory });
+        expect(options).not.toHaveProperty('shell');
     });
-    it('falls back to the PATH tsc shim through cmd.exe on win32', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
-        mocks.resolveExecutable.mockReturnValue('C:\\Program Files\\nodejs\\tsc.cmd');
-        expect(runTscDiagnostics(directory)).toMatchObject({ success: true });
-        expect(mocks.resolveExecutable).toHaveBeenCalledWith('tsc');
-        expect(mocks.execFileSync).toHaveBeenCalledWith('tsc --noEmit --pretty false', [], expect.objectContaining({ cwd: directory, shell: true }));
+    it('runs the project-local TypeScript with node on POSIX even when tsc is not on PATH', () => {
+        setPlatform('linux');
+        const directory = project(true);
+        execFileSyncMock.mockImplementation((file) => {
+            if (file === 'tsc')
+                throw spawnError('ENOENT');
+            return '';
+        });
+        expect(runTscDiagnostics(directory)).toMatchObject({ success: true, errorCount: 0 });
+        expect(execFileSyncMock.mock.calls[0][0]).toBe(process.execPath);
     });
-    it('falls back to the PATH tsc without a shell on POSIX', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
-        runTscDiagnostics(directory);
-        expect(mocks.execFileSync).toHaveBeenCalledWith('tsc', TSC_ARGS, expect.objectContaining({ shell: false }));
+    it('falls back to a PATH tsc through cmd.exe with a fixed command line on win32', () => {
+        setPlatform('win32');
+        process.env.COMSPEC = 'C:\\Windows\\System32\\cmd.exe';
+        const directory = project(false);
+        execFileSyncMock.mockReturnValue('');
+        expect(runTscDiagnostics(directory)).toMatchObject({ success: true, errorCount: 0 });
+        expect(execFileSyncMock.mock.calls[0].slice(0, 2)).toEqual(['where.exe', ['tsc']]);
+        const [file, args, options] = execFileSyncMock.mock.calls[1];
+        expect(file).toBe('C:\\Windows\\System32\\cmd.exe');
+        expect(args).toEqual(['/d', '/s', '/c', 'tsc --noEmit --pretty false']);
+        expect(options).toMatchObject({ cwd: directory, windowsVerbatimArguments: true });
     });
-    it('reports a missing win32 compiler as "tsc not found" without spawning', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
-        const result = runTscDiagnostics(directory);
-        expect(mocks.execFileSync).not.toHaveBeenCalled();
-        expect(result).toMatchObject({ success: false, diagnostics: [], errorCount: 1 });
-        expect(result.error).toMatch(/^tsc not found \(ENOENT\)/);
-    });
-    it('reports a POSIX spawn ENOENT as "tsc not found", not as clean', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
-        mocks.execFileSync.mockImplementation(() => { throw enoent(); });
-        const result = runTscDiagnostics(directory);
-        expect(result).toMatchObject({ success: false, diagnostics: [], errorCount: 1 });
-        expect(result.error).toContain('tsc not found (spawnSync tsc ENOENT)');
-    });
-    it('keeps a compiler invocation failure from reading as clean', () => {
-        vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
-        mocks.execFileSync.mockImplementation(() => {
-            throw Object.assign(new Error('Command failed'), { status: 2, stdout: 'error TS18003: No inputs were found.' });
+    it('reports tsc not found (not a clean project) when tsc is not on PATH on win32', () => {
+        setPlatform('win32');
+        const directory = project(false);
+        execFileSyncMock.mockImplementation((file) => {
+            // where.exe exits 1 when nothing matches; cmd.exe would also exit 1, indistinguishable from a type error.
+            if (file === 'where.exe')
+                throw Object.assign(new Error('Command failed: where.exe tsc'), { status: 1 });
+            throw new Error(`unexpected spawn: ${String(file)}`);
         });
         const result = runTscDiagnostics(directory);
         expect(result.success).toBe(false);
         expect(result.errorCount).toBe(1);
-        expect(result.error).toContain('TS18003');
-        expect(result.error).not.toContain('tsc not found');
+        expect(result.error).toContain('tsc not found');
+        expect(execFileSyncMock).toHaveBeenCalledTimes(1);
+    });
+    it('reports tsc not found when no local TypeScript exists and tsc is not on PATH on POSIX', () => {
+        setPlatform('linux');
+        const directory = project(false);
+        execFileSyncMock.mockImplementation(() => {
+            throw spawnError('ENOENT');
+        });
+        const result = runTscDiagnostics(directory);
+        expect(result.success).toBe(false);
+        expect(result.errorCount).toBe(1);
+        expect(result.error).toContain('tsc not found');
+        expect(result.error).toContain('ENOENT');
+    });
+    it('still parses file-position diagnostics from the local compiler', () => {
+        setPlatform('win32');
+        const directory = project(true);
+        execFileSyncMock.mockImplementation(() => {
+            throw Object.assign(new Error('Command failed'), {
+                status: 2,
+                stdout: "input.ts(1,7): error TS2322: Type 'string' is not assignable to type 'number'.\n",
+                stderr: '',
+            });
+        });
+        const result = runTscDiagnostics(directory);
+        expect(result.success).toBe(false);
+        expect(result.diagnostics).toEqual([
+            expect.objectContaining({ file: 'input.ts', line: 1, column: 7, code: 'TS2322' }),
+        ]);
     });
 });
 //# sourceMappingURL=tsc-runner-resolution.test.js.map

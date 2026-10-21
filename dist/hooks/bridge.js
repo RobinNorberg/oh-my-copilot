@@ -892,7 +892,7 @@ function getPromptText(input) {
     return "";
 }
 function isExplicitAskSlashInvocation(promptText) {
-    return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini|antigravity|agy|grok|cursor)\b/i.test(promptText);
+    return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini|antigravity|agy|grok|cursor|muse)\b/i.test(promptText);
 }
 function activateRalplanStartupState(directory, sessionId) {
     const now = new Date().toISOString();

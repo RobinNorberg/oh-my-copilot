@@ -22,6 +22,8 @@ import {
 
 export const ULTRAGOAL_HELP = `omg ultragoal - Durable repo-native multi-goal workflow with Claude Code /goal handoff
 
+Plugin-only installs where omc is not on PATH can use oh-my-copilot.js or node <plugin-root>/bin/oh-my-copilot.js instead.
+
 Usage:
   omg ultragoal create-goals [--brief <text> | --brief-file <path> | --from-stdin] [--goal <title::objective>] [--claude-goal-mode <aggregate|per-story>] [--force] [--plan-id <id> | --auto-plan-id] [--json]
   omg ultragoal complete-goals [<goal-id>] [--retry-failed] [--plan-id <id>] [--json]

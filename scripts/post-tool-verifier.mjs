@@ -19,6 +19,7 @@ import { readStdin } from './lib/stdin.mjs';
 import { resolveContextPercent } from './lib/context-usage.mjs';
 import { BOUNDED_GIT_TIMEOUT_MS } from './lib/bounded-git-timeout.mjs';
 import { recordJevShadow } from './lib/jev-shadow.mjs';
+import { initializeRalphStateForSkill } from './lib/ralph-startup.mjs';
 
 const SKIP_HOOKS = (process.env.OMC_SKIP_HOOKS || '').split(',').map(s => s.trim());
 const HOOK_DISABLED =
@@ -570,6 +571,7 @@ async function maybeBuildPreemptiveCompactionMessage(toolName, data, directory) 
     },
     questions: CONTEXT_PRUNING_QUESTIONS,
     heuristic: action,
+    permissionMode: data.permission_mode,
   });
   
   // In active mode, use Jev's action instead of heuristic
@@ -1140,10 +1142,22 @@ async function main() {
 
     if (toolName === 'Skill' || toolName === 'skill') {
       const skillName = getInvokedSkillName(toolInput);
-      const currentState = readSkillActiveState(directory, sessionId);
-      const completingSkill = (skillName ?? '')
+      const normalizedSkillName = (skillName ?? '')
         .toLowerCase()
         .replace(/^oh-my-copilot:/, '');
+
+      // Initialize ralph state with PRD mode when Skill(ralph) is invoked
+      if (normalizedSkillName === 'ralph') {
+        const omcRoot = resolveOmcRoot(directory);
+        const rawPrompt =
+          typeof data.prompt === 'string' && data.prompt.trim().length > 0
+            ? data.prompt
+            : 'Ralph loop activated via Skill tool';
+        initializeRalphStateForSkill(directory, omcRoot, sessionId, rawPrompt);
+      }
+
+      const currentState = readSkillActiveState(directory, sessionId);
+      const completingSkill = normalizedSkillName;
       if (!currentState || !currentState.active || currentState.skill_name === completingSkill) {
         clearSkillActiveState(directory, sessionId);
       }

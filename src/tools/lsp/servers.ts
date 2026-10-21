@@ -36,7 +36,7 @@ function getTypeScriptNativeBin(packageRoot: string): string {
   return join(workspaceRoot, 'node_modules', '.bin', executable);
 }
 
-function findTypeScriptPackageRoot(workspaceRoot: string): string | null {
+export function findTypeScriptPackageRoot(workspaceRoot: string): string | null {
   let dir = resolve(workspaceRoot);
 
   while (true) {

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { spawnSync } from 'child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
+import { tmpdir } from 'os';
 import { join } from 'path';
 import process from 'process';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
@@ -12,7 +14,15 @@ const PROVIDER_BINARIES = {
   antigravity: 'agy',
   grok: 'grok',
   cursor: 'cursor-agent',
+  muse: 'muse',
 };
+
+// muse and grok parse a prompt value that begins with `-` (e.g. the YAML
+// frontmatter `---` that every `--agent-prompt` role file starts with) as an
+// option and abort before calling the model, and grok reserves stdin for ACP
+// JSON-RPC. Both accept `--prompt-file`, so hand them the prompt in a private
+// temp file instead of argv or stdin.
+const PROMPT_FILE_PROVIDERS = new Set(['muse', 'grok']);
 const SHOULD_USE_WINDOWS_SHELL = process.platform === 'win32';
 
 // Antigravity (`agy`) headless print mode has a known upstream non-TTY bug
@@ -46,12 +56,14 @@ const ANTIGRAVITY_TIMEOUT_MS = (() => {
  * - gemini: `gemini -p <prompt> --yolo`
  * - antigravity: `agy --dangerously-skip-permissions -p <prompt>` (Antigravity CLI;
  *   `-p` takes the prompt as its value and cannot read it from stdin, so the
- *   prompt is always passed as an arg with approval flags first, like grok)
- * - grok: `grok -p <prompt> --always-approve` (headless mode takes the prompt
- *   as an arg; grok's stdin is reserved for ACP JSON-RPC, never the prompt)
+ *   prompt is always passed as an arg with approval flags first)
+ * - grok: `grok --prompt-file <file> --always-approve` (single-turn headless
+ *   mode; grok's stdin is reserved for ACP JSON-RPC, never the prompt)
  * - cursor: `cursor-agent --print --force --trust --sandbox disabled <prompt>`
+ * - muse: `muse exec --prompt-file <file> --approval-mode never --user-input-auto-resolve`
+ *   (headless; preserves Muse's configured sandbox behavior)
  */
-function buildProviderArgs(provider, prompt, { pipePromptViaStdin = false } = {}) {
+function buildProviderArgs(provider, prompt, { pipePromptViaStdin = false, promptFile } = {}) {
   if (provider === 'codex') {
     return ['exec', '--dangerously-bypass-approvals-and-sandbox', pipePromptViaStdin ? '-' : prompt];
   }
@@ -62,14 +74,17 @@ function buildProviderArgs(provider, prompt, { pipePromptViaStdin = false } = {}
     // Antigravity (`agy`): `-p`/`--print` takes the prompt as its VALUE (next
     // token), not as a boolean, and it does NOT read the prompt from stdin
     // (`agy -p` with no value errors "flag needs an argument"). So always pass
-    // the prompt as the `-p` value with approval flags first, like grok.
+    // the prompt as the `-p` value with approval flags first.
     // Verified on agy 1.0.10.
     return ['--dangerously-skip-permissions', '-p', prompt];
   }
   if (provider === 'grok') {
-    // Grok's headless mode always takes the prompt as a `-p` arg; its stdin is
-    // for ACP JSON-RPC, not the prompt, so it never uses the stdin pipe path.
-    return ['-p', prompt, '--always-approve'];
+    // Grok's stdin is for ACP JSON-RPC, not the prompt, and `-p <prompt>` rejects
+    // a dash-leading prompt, so the prompt always arrives via --prompt-file.
+    return ['--prompt-file', promptFile, '--always-approve'];
+  }
+  if (provider === 'muse') {
+    return ['exec', '--prompt-file', promptFile, '--approval-mode', 'never', '--user-input-auto-resolve'];
   }
   if (provider === 'cursor') {
     // Cursor Agent's print mode takes the prompt as a positional arg. Keep stdin
@@ -88,6 +103,7 @@ const ADVISOR_BYPASS_FLAGS = {
   antigravity: '--dangerously-skip-permissions',
   grok: '--always-approve',
   cursor: '--force --trust --sandbox disabled',
+  muse: '--approval-mode never --user-input-auto-resolve',
 };
 
 function shouldPipePromptViaStdin(provider, prompt) {
@@ -116,8 +132,8 @@ function shouldPipePromptViaStdin(provider, prompt) {
     return prompt.includes('\n') || prompt.length > 500 || /^\s*-/.test(prompt);
   }
 
-  // grok (ACP stdin), cursor-agent (interactive stdin), and any other provider
-  // never pipe the prompt.
+  // grok and muse (prompt file), cursor-agent (interactive stdin), and any other
+  // provider never pipe the prompt.
   return false;
 }
 
@@ -125,8 +141,8 @@ const ASK_ORIGINAL_TASK_ENV = 'OMC_ASK_ORIGINAL_TASK';
 const ASK_ORIGINAL_TASK_ENV_ALIAS = 'OMX_ASK_ORIGINAL_TASK';
 
 function usage() {
-  console.error('Usage: omg ask <claude|codex|gemini|antigravity|grok|cursor> "<prompt>"');
-  console.error('Legacy direct usage: node scripts/run-provider-advisor.js <claude|codex|gemini|antigravity|grok|cursor> <prompt...>');
+  console.error('Usage: omg ask <claude|codex|gemini|antigravity|grok|cursor|muse> "<prompt>"');
+  console.error('Legacy direct usage: node scripts/run-provider-advisor.js <claude|codex|gemini|antigravity|grok|cursor|muse> <prompt...>');
   console.error('                 or: node scripts/run-provider-advisor.js claude --print "<prompt>"');
   console.error('                 or: node scripts/run-provider-advisor.js gemini --prompt "<prompt>"');
 }
@@ -321,7 +337,6 @@ async function main() {
   ensureBinary(provider, binary);
 
   const pipePromptViaStdin = shouldPipePromptViaStdin(provider, prompt);
-  const providerArgs = buildProviderArgs(provider, prompt, { pipePromptViaStdin });
   const bypassFlags = ADVISOR_BYPASS_FLAGS[provider];
   if (bypassFlags) {
     console.error(`[ask-${provider}] runs with ${bypassFlags}; host --deny-tool / permissions.workerDenyTools are not applied`);
@@ -330,17 +345,36 @@ async function main() {
   // The `-p <prompt>` format is safe as a direct argv value when spawned without
   // shell preprocessing (agy is a real executable, not a shell function or alias).
   const useShell = provider === 'antigravity' ? false : SHOULD_USE_WINDOWS_SHELL;
-  const run = spawnSync(binary, providerArgs, {
-    encoding: 'utf8',
-    maxBuffer: 10 * 1024 * 1024,
-    env: buildProviderEnv(provider),
-    shell: useShell,
-    // Bound antigravity so an upstream non-TTY hang (#76) fails cleanly instead of
-    // blocking forever; agy's own --print-timeout does not work. SIGKILL (not a
-    // catchable SIGTERM) guarantees spawnSync returns even if agy traps signals.
-    ...(provider === 'antigravity' ? { timeout: ANTIGRAVITY_TIMEOUT_MS, killSignal: ANTIGRAVITY_TIMEOUT_KILL_SIGNAL } : {}),
-    ...(pipePromptViaStdin ? { input: prompt } : { stdio: ['ignore', 'pipe', 'pipe'] }),
-  });
+  const promptDir = PROMPT_FILE_PROVIDERS.has(provider) ? mkdtempSync(join(tmpdir(), 'omc-ask-')) : null;
+  let run;
+  try {
+    let promptFile;
+    if (promptDir) {
+      promptFile = join(promptDir, 'prompt.md');
+      writeFileSync(promptFile, prompt, { encoding: 'utf8', mode: 0o600 });
+      // A shell spawn joins argv with spaces unquoted, so quote the path in case
+      // the temp dir contains spaces (e.g. a Windows profile like "John Smith").
+      if (useShell) {
+        promptFile = `"${promptFile}"`;
+      }
+    }
+    const providerArgs = buildProviderArgs(provider, prompt, { pipePromptViaStdin, promptFile });
+    run = spawnSync(binary, providerArgs, {
+      encoding: 'utf8',
+      maxBuffer: 10 * 1024 * 1024,
+      env: buildProviderEnv(provider),
+      shell: useShell,
+      // Bound antigravity so an upstream non-TTY hang (#76) fails cleanly instead of
+      // blocking forever; agy's own --print-timeout does not work. SIGKILL (not a
+      // catchable SIGTERM) guarantees spawnSync returns even if agy traps signals.
+      ...(provider === 'antigravity' ? { timeout: ANTIGRAVITY_TIMEOUT_MS, killSignal: ANTIGRAVITY_TIMEOUT_KILL_SIGNAL } : {}),
+      ...(pipePromptViaStdin ? { input: prompt } : { stdio: ['ignore', 'pipe', 'pipe'] }),
+    });
+  } finally {
+    if (promptDir) {
+      rmSync(promptDir, { recursive: true, force: true });
+    }
+  }
 
   const stdout = run.stdout || '';
   const stderr = run.stderr || '';

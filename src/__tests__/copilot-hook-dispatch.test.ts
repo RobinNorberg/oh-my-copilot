@@ -543,7 +543,11 @@ describe('stdout parity with the per-hook path (real hooks)', () => {
     mkdirSync(home);
     execFileSync('git', ['init', '-q'], { cwd, windowsHide: true });
     writeFileSync(join(cwd, 'README.md'), 'x\n');
-    const env = cleanEnv({ HOME: home, USERPROFILE: home, COPILOT_HOME: home, CLAUDE_CONFIG_DIR: home, CLAUDE_PLUGIN_ROOT: REPO_ROOT });
+    // NODE_ENV=test keeps session-start.mjs from spawning its detached legacy
+    // tool-failure stabilizer, which holds a worker lock and the SQLite lock
+    // database under .omg/state for 30 s after the hook exits: its files would
+    // depend on timing, and on win32 it blocks removing the temp project.
+    const env = cleanEnv({ HOME: home, USERPROFILE: home, COPILOT_HOME: home, CLAUDE_CONFIG_DIR: home, CLAUDE_PLUGIN_ROOT: REPO_ROOT, NODE_ENV: 'test' });
     const normalise = (text: string) => text
       .split(cwd).join('<P>').split(cwd.replace(/\\/g, '\\\\')).join('<P>')
       .split(home).join('<H>').split(home.replace(/\\/g, '\\\\')).join('<H>')

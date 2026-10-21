@@ -31,6 +31,7 @@ import { readStdin } from './lib/stdin.mjs';
 import { resolveOmcStateRoot, resolveSessionStatePathsForHook } from './lib/state-root.mjs';
 import { parseWorkflowInvocation, selectWorkflowProfile, createWorkflowState, isValidWorkflowTrackingState, isWorkflowRuntimeSupported, resolveWorkflowStagePrompt, takeWorkflowTranscriptFailure } from './lib/workflow-profile-runtime.mjs';
 import { isJevShadowOptedIn, recordJevShadow } from './lib/jev-shadow.mjs';
+import { initializeRalphStateForSkill, createPrdScaffold } from './lib/ralph-startup.mjs';
 
 // Resolve OMC package root: CLAUDE_PLUGIN_ROOT (plugin system) or derive from this script's location
 const _omcRoot = process.env.CLAUDE_PLUGIN_ROOT ||
@@ -207,7 +208,7 @@ function isExplicitRalplanSlashInvocation(prompt) {
 }
 
 function isExplicitAskSlashInvocation(prompt) {
-  return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini|antigravity|agy|grok|cursor)\b/i.test(prompt);
+  return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini|antigravity|agy|grok|cursor|muse)\b/i.test(prompt);
 }
 
 function isRetiredSlashInvocation(prompt) {
@@ -1011,7 +1012,8 @@ async function activateState(directory, prompt, stateName, sessionId) {
       project_path: directory,
       awaiting_confirmation: true,
       awaiting_confirmation_set_at: now,
-      last_checked_at: now
+      last_checked_at: now,
+      prd_mode: true, // CRITICAL: Enable PRD mode for ralph (issue #4363)
     };
   } else if (stateName === 'ralplan') {
     // Ralplan needs active + session_id for stop-hook enforcement
@@ -1055,6 +1057,18 @@ async function activateState(directory, prompt, stateName, sessionId) {
   }
 
   const safeSessionId = sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId) ? sessionId : undefined;
+
+  // Initialize PRD scaffold for ralph state (issue #4363)
+  if (stateName === 'ralph') {
+    try {
+      const omcRoot = await resolveOmcStateRoot(directory);
+      createPrdScaffold(omcRoot, safeSessionId);
+    } catch (e) {
+      // PRD creation failure should not block ralph activation
+      if (process.env.OMC_DEBUG) console.error('[keyword-detector] PRD creation failed:', e.message);
+    }
+  }
+
   const { writePath } = await resolveSessionStatePathsForHook(directory, stateName, safeSessionId);
   try {
     mkdirSync(dirname(writePath), { recursive: true });
@@ -1945,12 +1959,14 @@ async function main() {
     // Resolve conflicts
     let resolved = resolveConflicts(uniqueMatches);
 
-    if (isJevShadowOptedIn('skill-trigger')) {
+    const permissionMode = data.permission_mode;
+    if (isJevShadowOptedIn('skill-trigger', process.env, permissionMode)) {
       const jevResult = recordJevShadow({
         point: 'skill-trigger',
         state: { prompt: cleanPrompt, source: 'user-prompt-submit' },
         questions: SKILL_TRIGGER_QUESTIONS,
         heuristic: resolved.map((match) => match.name),
+        permissionMode,
       });
       
       // In active mode, use Jev's skill choice
@@ -1966,17 +1982,18 @@ async function main() {
         }
       }
     }
-    if (isJevShadowOptedIn('intent')) {
+    if (isJevShadowOptedIn('intent', process.env, permissionMode)) {
       const jevResult = recordJevShadow({
         point: 'intent',
         state: { prompt: cleanPrompt, mode_name: 'intent' },
         questions: INTENT_QUESTIONS,
         heuristic: INTENT_SLASH_PATTERN.test(cleanPrompt),
+        permissionMode,
       });
       // In active mode, intent Jev answer could be used here if needed
       // Currently logging-only: resolved keywords come from skill-trigger
     }
-    if (isJevShadowOptedIn('task-size')) {
+    if (isJevShadowOptedIn('task-size', process.env, permissionMode)) {
       try {
         const { classifyTaskSize } = await import('../dist/hooks/task-size-detector/index.js');
         const jevResult = recordJevShadow({
@@ -1984,6 +2001,7 @@ async function main() {
           state: { prompt: cleanPrompt, source: 'user-prompt-submit' },
           questions: TASK_SIZE_QUESTIONS,
           heuristic: classifyTaskSize(cleanPrompt),
+          permissionMode,
         });
         // In active mode, task-size Jev answer could be used here if needed
         // Currently logging-only: task sizing is handled on TypeScript side

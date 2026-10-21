@@ -305,7 +305,9 @@ const TEAM_ACTIVE_PHASES = new Set([
  * Returns 0 for unlimited (only reachable outside strict mode).
  */
 function getHardMaxIterations() {
-  const configValue = readSecurityConfigValue("hardMaxIterations");
+  const raw = readSecurityConfigValue("hardMaxIterations");
+  // Mirror sanitizeSecurityOverrides(): only non-negative integers are honored.
+  const configValue = typeof raw === "number" && Number.isInteger(raw) && raw >= 0 ? raw : undefined;
   if (process.env.OMC_SECURITY === "strict") {
     return Math.min(200, typeof configValue === "number" && configValue > 0 ? configValue : 200);
   }
@@ -330,7 +332,7 @@ function readSecurityConfigValue(key) {
     try {
       if (!existsSync(p)) continue;
       const parsed = JSON.parse(stripJsoncComments(readFileSync(p, "utf-8")));
-      if (parsed?.security && typeof parsed.security === "object") {
+      if (parsed?.security && typeof parsed.security === "object" && !Array.isArray(parsed.security)) {
         return parsed.security[key];
       }
     } catch {
@@ -914,7 +916,7 @@ function getActiveSubagentCount(stateDir) {
  * Blocking these stops causes a deadlock: can't compact because can't stop,
  * can't continue because context is full.
  *
- * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
+ * See: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/213
  */
 function isContextLimitStop(data) {
   const reason = (data.stop_reason || data.stopReason || "").toLowerCase();
@@ -1058,7 +1060,7 @@ async function main() {
 
     // CRITICAL: Never block context-limit stops.
     // Blocking these causes a deadlock where Claude Code cannot compact.
-    // See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
+    // See: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/213
     if (isContextLimitStop(data)) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;

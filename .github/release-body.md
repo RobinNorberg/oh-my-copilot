@@ -1,44 +1,49 @@
-# oh-my-copilot v5.11.0
+# oh-my-copilot v5.12.0
 
-A minor release. The standalone MCP server gains five `copilot_run_*` tools
-that let Claude Code (or any MCP client) delegate a task to a headless Copilot
-session in its own git worktree. There is no upstream port in this release;
-upstream oh-my-claudecode `dev` stays ported through 7cb577e94.
+A minor release. It ports upstream oh-my-claudecode `dev` through faedfd200
+(7cb577e94..51bec397e and 51bec397e..faedfd200, 280 commits, upstream v5.7.0
+to v5.7.6) and binds the generated-artifact authorization check to the fork.
 
-Install with `npm install -g oh-my-copilot@5.11.0`, or from the plugin
+Install with `npm install -g oh-my-copilot@5.12.0`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
+
+## Breaking for MCP callers
+
+- The five retired `merge_readiness_*` MCP tools and their runtime are removed
+  (upstream #4422). The configured MCP server now exposes 56 tools. A client
+  that still calls one gets an unknown-tool error; use `/oh-my-copilot:review`
+  or `omg ship gates <pr>` instead. See the
+  [migration note](https://github.com/RobinNorberg/oh-my-copilot/blob/main/docs/MIGRATION.md#v5110--v5120-merge-readiness-mcp-tools-removed).
 
 ## Added
 
-### `copilot_run_*` MCP tools: delegate a task to Copilot
+- `omg ask muse`: a Muse advisor provider.
+- `claudeMdEnabled: false` in `~/.copilot/.omc-config.json` leaves your own
+  global `~/.copilot/CLAUDE.md` untouched on install, update, setup and doctor.
+- `OMC_JEV_PLAN_MODE` keeps Jev from deciding in plan mode.
+- A deadline-bounded state-lock API shared across acquire and release.
 
-- `copilot_run_start`, `copilot_run_status`, `copilot_run_wait`,
-  `copilot_run_cancel` and `copilot_run_cleanup` on the standalone MCP server
-  (`t`). A job runs a headless `@github/copilot-sdk` session on a prompt in the
-  background and reports the final assistant text, the session id, the premium
-  requests and AI credits spent, and the worktree path, branch and
-  `git diff --stat` to review.
-- Opt-in: `copilot_run_start` refuses unless `OMG_COPILOT_RUN_ALLOW=1` is set
-  in the MCP server env, and it passes the budget governor (the spend is
-  recorded as `copilot-run:<jobId>`). `OMC_DISABLE_TOOLS=copilot-run` hides
-  the tools.
-- Isolation: by default Copilot works in a new git worktree and branch, not in
-  the caller's tree. The write tool is confined to it and refused on the
-  `omg ship` merge-rule paths; the shell policy is a denylist, not a sandbox.
-- Limits: a timeout (15 min default), a credit cap, cancel and the server's
-  shutdown abort the session; at most 2 jobs run at once. The jobs' own
-  sessions and sdk team workers do not get the tools, and the Copilot
-  sessions omg starts never inherit the opt-in.
-- Cleanup never removes a worktree with uncommitted or unmerged work. Ignored
-  files go with it; symlinks and junctions in it are unlinked first, so a
-  linked `node_modules` target survives.
+## Changed
+
+- The rules and directory-context injectors run only for
+  `Read|Write|Edit|MultiEdit` (PostToolUse). Copilot CLI matches these Claude
+  tool names against its own `view`, `create` and `edit` tools.
+- Frontmatter in skills, commands, rules, agents and wiki accepts a UTF-8 BOM,
+  CRLF, YAML block scalars and quoted flow values; rule globs support `{a,b}`.
+- State-manager, learner and factcheck globs match literally; numeric CLI
+  options reject non-integer values.
+- Retired tiered agent names (`executor-low` and others) are gone; pass a
+  `model` instead.
 
 ## Fixed
 
-- `omg team` worker worktree removal unlinks untracked symlinks and junctions
-  before `git worktree remove`, so a junctioned `node_modules` target is no
-  longer emptied on Windows. A worktree with initialized submodules is refused
-  before any link is touched.
+- HUD plugin mode no longer imports Zod from the plugin cache; the stdin cache
+  is scoped per session; quota identity follows the stored OAuth account.
+- Team: stable cmux worker startup, validated shutdown acknowledgements, stale
+  Cursor verdicts quarantined.
+- Fork: the "Authorize generated artifacts" check now trusts
+  `RobinNorberg/oh-my-copilot`; fork repository links point at
+  `RobinNorberg/oh-my-copilot`; stale `dist/` outputs whose source is gone are
+  removed.
 
-See [REFERENCE.md](https://github.com/RobinNorberg/oh-my-copilot/blob/main/docs/REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot)
-and `CHANGELOG.md` for details.
+Fork deviations (kept and dropped) are listed in `CHANGELOG.md`.

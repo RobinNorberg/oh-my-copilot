@@ -114,17 +114,17 @@ describe('delegation-enforcement-levels', () => {
     }
 
     const extensionToAgent: [string, string][] = [
-      ['file.ts', 'executor-low (simple) or executor (complex)'],
-      ['file.tsx', 'designer-low (simple) or designer (complex UI)'],
-      ['file.js', 'executor-low'],
-      ['file.jsx', 'designer-low'],
-      ['file.py', 'executor-low (simple) or executor (complex)'],
+      ['file.ts', 'executor (use model="haiku" for simple changes)'],
+      ['file.tsx', 'designer (use model="haiku" for simple changes)'],
+      ['file.js', 'executor'],
+      ['file.jsx', 'designer'],
+      ['file.py', 'executor (use model="haiku" for simple changes)'],
       ['file.vue', 'designer'],
       ['file.svelte', 'designer'],
-      ['file.css', 'designer-low'],
-      ['file.scss', 'designer-low'],
-      ['file.md', 'writer (documentation)'],
-      ['file.json', 'executor-low'],
+      ['file.css', 'designer'],
+      ['file.scss', 'designer'],
+      ['file.md', 'writer'],
+      ['file.json', 'executor'],
     ];
 
     it.each(extensionToAgent)(
@@ -374,7 +374,7 @@ describe('delegation-enforcement-levels', () => {
         toolInput: { filePath: 'src/component.tsx' },
         directory: '/tmp/test-project',
       });
-      expect(result.message).toContain('Suggested agent: designer-low (simple) or designer (complex UI)');
+      expect(result.message).toContain('Suggested agent: designer (use model="haiku" for simple changes)');
     });
 
     it('handles filePath in different input keys', () => {

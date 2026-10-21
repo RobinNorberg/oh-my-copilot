@@ -6,14 +6,14 @@ import { basename, dirname, isAbsolute, join } from 'path';
 import { fileURLToPath } from 'url';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
 export const ASK_USAGE = [
-    'Usage: omg ask <claude|codex|gemini|antigravity|grok|cursor> <question or task>',
-    '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor> -p "<prompt>"',
-    '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor> --print "<prompt>"',
-    '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor> --prompt "<prompt>"',
-    '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor> --agent-prompt <role> "<prompt>"',
-    '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor> --agent-prompt=<role> --prompt "<prompt>"',
+    'Usage: omg ask <claude|codex|gemini|antigravity|grok|cursor|muse> <question or task>',
+    '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor|muse> -p "<prompt>"',
+    '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor|muse> --print "<prompt>"',
+    '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor|muse> --prompt "<prompt>"',
+    '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor|muse> --agent-prompt <role> "<prompt>"',
+    '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor|muse> --agent-prompt=<role> --prompt "<prompt>"',
 ].join('\n');
-const ASK_PROVIDERS = ['claude', 'codex', 'gemini', 'antigravity', 'grok', 'cursor'];
+const ASK_PROVIDERS = ['claude', 'codex', 'gemini', 'antigravity', 'grok', 'cursor', 'muse'];
 const ASK_PROVIDER_SET = new Set(ASK_PROVIDERS);
 const ASK_AGENT_PROMPT_FLAG = '--agent-prompt';
 const SAFE_ROLE_PATTERN = /^[a-z][a-z0-9-]*$/;

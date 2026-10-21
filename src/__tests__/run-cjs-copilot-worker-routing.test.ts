@@ -281,11 +281,14 @@ describe('run.cjs Copilot generic-hook Worker routing (fork)', () => {
         if (event === 'PreCompact') payload.trigger = 'auto';
         // fd 3 carries the --require marker's worker/child report so it
         // never touches the stdout/stderr the hook itself produces.
+        // NODE_ENV=test keeps session-start.mjs from spawning its detached
+        // 30 s legacy tool-failure stabilizer, which on win32 blocks removing
+        // the temp project.
         const result = spawnSync(NODE, ['--require', markerPath, ...args], {
           cwd: project,
           env: hostEnv({
             HOME: home, USERPROFILE: home, COPILOT_HOME: home, CLAUDE_CONFIG_DIR: home, CLAUDE_PLUGIN_ROOT: REPO_ROOT,
-            OMC_STATE_DIR: '', ...entry.env, ...extra,
+            OMC_STATE_DIR: '', NODE_ENV: 'test', ...entry.env, ...extra,
           }),
           input: JSON.stringify(payload),
           encoding: 'utf8',

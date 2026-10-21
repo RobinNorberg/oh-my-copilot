@@ -40,9 +40,9 @@ describe('prompt-injection', () => {
     describe('isValidAgentRoleName', () => {
         test('returns true for valid role names', () => {
             expect(isValidAgentRoleName('architect')).toBe(true);
-            expect(isValidAgentRoleName('executor-high')).toBe(true);
-            expect(isValidAgentRoleName('product-manager')).toBe(true);
+            expect(isValidAgentRoleName('executor')).toBe(true);
             expect(isValidAgentRoleName('code-reviewer')).toBe(true);
+            expect(isValidAgentRoleName('security-reviewer')).toBe(true);
             expect(isValidAgentRoleName('test123')).toBe(true);
         });
         test('returns false for invalid role names', () => {

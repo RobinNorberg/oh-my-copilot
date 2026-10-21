@@ -6,7 +6,9 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [v5.11.0 → v5.12.0: Merge-readiness MCP Tools Removed](#v5110--v5120-merge-readiness-mcp-tools-removed)
 - [v5.8.1 → v5.9.0: SDK Team Transport by Default](#v581--v590-sdk-team-transport-by-default)
+- [Unreleased: Rule Glob Brace Alternation](#unreleased-rule-glob-brace-alternation)
 - [Unreleased: Glossary File Rename (CONTEXT.md → GLOSSARY.md)](#unreleased-glossary-file-rename-contextmd--glossarymd)
 - [Unreleased: Shipyard Tracker Artifacts and Audit Contract v2](#unreleased-shipyard-tracker-artifacts-and-audit-contract-v2)
 - [Unreleased: SSRF Guard for IPv6 Literals](#unreleased-ssrf-guard-for-ipv6-literals)
@@ -31,6 +33,13 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ---
 
+## v5.11.0 → v5.12.0: Merge-readiness MCP Tools Removed
+
+The configured MCP server no longer registers the five retired merge-readiness tools (upstream #4422), so it now exposes 56 tools.
+
+- **Removed tools:** `merge_readiness_start`, `merge_readiness_set_content`, `merge_readiness_record_answer`, `merge_readiness_report` and `merge_readiness_cancel`, together with their runtime (`src/hooks/merge-readiness/`). A client, script or tool allowlist that still names one gets an unknown-tool error; remove those names.
+- **What to use instead:** `/oh-my-copilot:review` for an advisory review, and `omg ship gates <pr>` for the mechanical merge rule. The `merge-readiness` skill was already retired in v5.0.0 (see the removed-skills table under v4.x → v5.0). Release hard checks are unchanged.
+
 ## v5.8.1 → v5.9.0: SDK Team Transport by Default
 
 Under the Copilot CLI host, `omg team` without `--transport` now starts headless sdk workers instead of tmux/psmux panes. Under Claude Code nothing changes.
@@ -46,6 +55,21 @@ Under the Copilot CLI host, `omg team` without `--transport` now starts headless
 
 - **Launch concurrency.** SDK hosts start in parallel, 4 at a time by default (`team.sdk.launchConcurrency`, env `OMC_TEAM_SDK_LAUNCH_CONCURRENCY`; 1 restores serial launch).
 - **Worker worktrees.** Team shutdown no longer preserves a worker worktree whose only untracked files are its own `.omg/` runtime state, such as the SessionEnd job records a copilot worker leaves. Any other untracked or modified file still preserves the worktree.
+
+## Unreleased: Rule Glob Brace Alternation
+
+Rule frontmatter `globs` and Claude Code `paths` now treat unescaped `{a,b}`
+as alternation. Existing patterns that used comma-bearing braces to match a
+literal path must escape both braces and keep the pattern as one array item:
+
+```yaml
+globs:
+  - 'fixtures/\{a,b\}.json'
+```
+
+Use a quoted inline or block array item as shown; an unquoted comma-separated
+scalar still treats commas outside brace groups as pattern separators.
+
 ## Unreleased: Glossary File Rename (CONTEXT.md → GLOSSARY.md)
 
 The shipyard glossary surface is now `GLOSSARY.md` at the repository root. It holds the yard's terms and the `documentLanguage` frontmatter tag.
@@ -935,7 +959,7 @@ names no longer resolve. Use the replacement in the table below.
 | `swarm`                | `/oh-my-copilot:team`                 | Declared-only                                                 |
 | `pipeline`             | `/oh-my-copilot:execute`              | Declared-only                                                 |
 | `ultraqa`              | `/oh-my-copilot:verify`               |                                                               |
-| `merge-readiness`      | `/oh-my-copilot:review`               | Advisory review; release hard checks are unchanged            |
+| `merge-readiness`      | `/oh-my-copilot:review`               | MCP tools and runtime are removed; review stays advisory; release hard checks are unchanged |
 | `deep-dive`            | `/oh-my-copilot:research`             |                                                               |
 | `sciomc`               | `/oh-my-copilot:research`             |                                                               |
 | `ccg`                  | `/oh-my-copilot:ask` + `/team`        | Run `/ask codex` and `/ask antigravity`, then synthesize      |
@@ -1584,8 +1608,8 @@ Chain agents with data passing between stages:
 - `implement` - planner → executor → tdd-guide
 - `debug` - explore → architect → debugger
 - `research` - parallel(document-specialist, explore) → architect → writer
-- `refactor` - explore → architect-medium → executor-high → qa-tester
-- `security` - explore → security-reviewer → executor → security-reviewer-low
+- `refactor` - explore → architect → executor (with model="opus") → qa-tester
+- `security` - explore → security-reviewer → executor
 
 #### 4. Unified Cancel Command
 
@@ -1614,7 +1638,7 @@ Opus-powered architectural search for complex codebase exploration:
 
 ```typescript
 Task(
-  (subagent_type = "oh-my-copilot:explore-high"),
+  (subagent_type = "oh-my-copilot:explore"),
   (model = "opus"),
   (prompt = "Find all authentication-related code patterns..."),
 );

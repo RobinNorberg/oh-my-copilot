@@ -73,7 +73,7 @@ function encodePowerShell(source: string): string {
   return Buffer.from(source, 'utf16le').toString('base64');
 }
 const WINDOWS_RESERVED_ENV_KEYS = new Set([...WORKER_LAUNCH_INTERNAL_ENV_KEYS, 'SystemRoot'].map(key => key.toUpperCase()));
-const SAFE_BASELINE_ENV_KEYS = ['PATH', 'TEMP', 'TMP'] as const;
+const SAFE_BASELINE_ENV_KEYS = ['PATH', 'TEMP', 'TMP', 'TERM', 'COLORTERM'] as const;
 // Fork fix (win32): a fixed list of OS-identity variables every Windows program
 // assumes exist. Without them a provider expanded `%SystemDrive%` literally and
 // wrote `%SystemDrive%/ProgramData/...` into the project cwd. SystemRoot and
