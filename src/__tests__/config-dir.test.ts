@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'child_process';
-import { mkdirSync, writeFileSync, rmSync, mkdtempSync } from 'fs';
+import { mkdirSync, writeFileSync, rmSync, mkdtempSync, chmodSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { basename, join, normalize } from 'path';
 import { getCopilotConfigDir } from '../utils/config-dir.js'
@@ -139,6 +139,28 @@ describe('getCopilotConfigDir', () => {
     );
 
     expect(output).toBe('ok');
+  });
+
+  it.skipIf(process.platform === 'win32')('find-node.sh reads the default stored runtime for a whitespace-only config override', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'omc-find-node-blank-home-'));
+    try {
+      const configDir = join(homeDir, '.copilot');
+      mkdirSync(configDir, { recursive: true });
+      const configuredNode = join(homeDir, 'configured-node');
+      writeFileSync(configuredNode, '#!/bin/sh\nprintf "%s" "configured-runtime"\n');
+      chmodSync(configuredNode, 0o700);
+      writeFileSync(join(configDir, '.omc-config.json'), JSON.stringify({ nodeBinary: configuredNode }));
+      for (const override of ['', '   ', '\t\n  ']) {
+        const output = execFileSync('/bin/sh', [join(process.cwd(), 'scripts', 'find-node.sh')], {
+          cwd: process.cwd(),
+          env: { ...process.env, HOME: homeDir, PATH: '/bin:/usr/bin', COPILOT_HOME: override },
+          encoding: 'utf-8',
+        });
+        expect(output).toBe('configured-runtime');
+      }
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
   });
 
   it('shared shell helper expands a ~-prefixed COPILOT_HOME', () => {

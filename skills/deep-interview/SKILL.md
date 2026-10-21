@@ -1,7 +1,7 @@
 ---
 name: deep-interview
 description: Socratic deep interview with mathematical ambiguity gating before explicit execution approval
-argument-hint: "[--quick|--standard|--deep] [--autoresearch] <idea or vague description>"
+argument-hint: "[--frontier] [--autoresearch] <idea or vague description>"
 pipeline: [deep-interview, plan]
 handoff-policy: approval-required
 handoff: .omg/specs/deep-interview-{slug}.md

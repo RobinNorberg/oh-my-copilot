@@ -49,8 +49,18 @@ let lastLockFailureDetail = null;
 // in the same process is never mistaken for an orphan.
 const abandonedOwnNonces = new Set();
 
-function ownProcessStartIdentity(timeoutMs = 3000) {
-  if (ownIdentityCache === null) ownIdentityCache = processStartIdentity(process.pid, timeoutMs);
+function wallClockNowMs(testHooks) {
+  return typeof testHooks?.nowMs === 'function' ? testHooks.nowMs() : Date.now();
+}
+
+function startProcessIdentity(pid, timeoutMs, testHooks) {
+  return typeof testHooks?.processStartIdentity === 'function'
+    ? testHooks.processStartIdentity(pid, timeoutMs)
+    : processStartIdentity(pid, timeoutMs);
+}
+
+function ownProcessStartIdentity(timeoutMs = 3000, testHooks) {
+  if (ownIdentityCache === null) ownIdentityCache = startProcessIdentity(process.pid, timeoutMs, testHooks);
   return ownIdentityCache;
 }
 
@@ -150,9 +160,9 @@ function readOwner(path) {
   }
 }
 
-function ownerLive(owner, timeoutMs = 3000) {
+function ownerLive(owner, timeoutMs = 3000, testHooks) {
   if (owner.version === 0) {
-    const identity = processStartIdentity(owner.pid, timeoutMs);
+    const identity = startProcessIdentity(owner.pid, timeoutMs, testHooks);
     if (identity === 'absent') return false;
     if (identity === null) return null;
     const startedAt = processStartTimestamp(owner.pid, identity);
@@ -164,11 +174,11 @@ function ownerLive(owner, timeoutMs = 3000) {
     return startedAt - owner.timestamp <= uncertainty;
   }
   // Fork fix: an owner this module abandoned is orphaned-by-self (see abandonedOwnNonces).
-  if (owner.pid === process.pid && abandonedOwnNonces.has(owner.nonce) && owner.processStart === ownProcessStartIdentity(timeoutMs)) return false;
+  if (owner.pid === process.pid && abandonedOwnNonces.has(owner.nonce) && owner.processStart === ownProcessStartIdentity(timeoutMs, testHooks)) return false;
   // Fork fix: this process's identity is already cached; re-probing it costs a PowerShell
   // spawn per retry on win32, turning a 50-attempt contended acquire into a ~30s stall.
   const simulatedUnknown = process.env.NODE_ENV === 'test' && process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID === String(owner.pid);
-  const current = owner.pid === process.pid && !simulatedUnknown ? ownProcessStartIdentity(timeoutMs) : processStartIdentity(owner.pid, timeoutMs);
+  const current = owner.pid === process.pid && !simulatedUnknown ? ownProcessStartIdentity(timeoutMs, testHooks) : startProcessIdentity(owner.pid, timeoutMs, testHooks);
   return current === null ? null : current === 'absent' ? false : current === owner.processStart;
 }
 
@@ -411,13 +421,13 @@ function boundedBusyTimeoutMs(timeoutMs, operationDeadline) {
   return Math.min(configuredTimeoutMs, Math.floor(remainingOperationTimeoutMs(operationDeadline)));
 }
 
-function remainingProcessProbeMs(deadline, operationDeadline = null) {
-  return Math.max(0, Math.min(deadline - Date.now(), remainingOperationTimeoutMs(operationDeadline)));
+function remainingProcessProbeMs(deadline, operationDeadline = null, testHooks) {
+  return Math.max(0, Math.min(deadline - wallClockNowMs(testHooks), remainingOperationTimeoutMs(operationDeadline)));
 }
 
-function processProbeDeadlineAfter(timeoutMs) {
+function processProbeDeadlineAfter(timeoutMs, testHooks) {
   const durationMs = Number.isFinite(timeoutMs) ? Math.max(0, timeoutMs) : 3000;
-  return Date.now() + durationMs;
+  return wallClockNowMs(testHooks) + durationMs;
 }
 
 function operationDeadlineAfter(timeoutMs) {
@@ -425,12 +435,12 @@ function operationDeadlineAfter(timeoutMs) {
   return process.hrtime.bigint() + BigInt(Math.floor(Math.max(0, timeoutMs) * 1_000_000));
 }
 
-function acquireFileLock(lockPath, attempts, processProbeDeadline, operationDeadline) {
+function acquireFileLock(lockPath, attempts, processProbeDeadline, operationDeadline, testHooks) {
   // This publication is also checked by SQLite contenders, so mixed backend
   // processes still serialize on one exact owner artifact.
   lastLockFailureDetail = null;
   const key = canonicalKey(lockPath);
-  const processStart = ownProcessStartIdentity(remainingProcessProbeMs(processProbeDeadline, operationDeadline));
+  const processStart = ownProcessStartIdentity(remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks), testHooks);
   if (!processStart || processStart === 'absent') {
     recordFailure('unverifiable');
     return null;
@@ -498,7 +508,7 @@ function acquireFileLock(lockPath, attempts, processProbeDeadline, operationDead
       // Fork fix: on win32 each liveness probe is a PowerShell spawn, so re-probing the same
       // live owner on every retry turns a contended fallback into a hook timeout. An owner
       // already verified live in this loop is treated as still live (fail closed).
-      const live = sameOwner(existing, verifiedLiveOwner) ? true : ownerLive(existing, remainingProcessProbeMs(processProbeDeadline, operationDeadline));
+      const live = sameOwner(existing, verifiedLiveOwner) ? true : ownerLive(existing, remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks), testHooks);
       if (live === null) {
         recordFailure('unverifiable');
         return null;
@@ -525,19 +535,22 @@ function acquireFileLock(lockPath, attempts, processProbeDeadline, operationDead
   return null;
 }
 
-export function acquireStateFileLockSync(filePath, attempts = 50, requireExclusive = false, bypassTestOverride = false, busyTimeoutMs = 2000, processProbeTimeoutMs = 3000, overallTimeoutMs = Infinity) {
-  return acquireStateFileLockAtPathSync(`${filePath}.mutation.lock`, attempts, requireExclusive, bypassTestOverride, busyTimeoutMs, processProbeTimeoutMs, overallTimeoutMs);
+/** Optional deterministic probe hooks are honored only for NODE_ENV=test. */
+export function acquireStateFileLockSync(filePath, attempts = 50, requireExclusive = false, bypassTestOverride = false, busyTimeoutMs = 2000, processProbeTimeoutMs = 3000, overallTimeoutMs = Infinity, testHooks) {
+  return acquireStateFileLockAtPathSync(`${filePath}.mutation.lock`, attempts, requireExclusive, bypassTestOverride, busyTimeoutMs, processProbeTimeoutMs, overallTimeoutMs, testHooks);
 }
 
-export function acquireStateFileLockAtPathSync(lockPath, attempts = 50, requireExclusive = false, bypassTestOverride = false, busyTimeoutMs = 2000, processProbeTimeoutMs = 3000, overallTimeoutMs = Infinity) {
+export function acquireStateFileLockAtPathSync(lockPath, attempts = 50, requireExclusive = false, bypassTestOverride = false, busyTimeoutMs = 2000, processProbeTimeoutMs = 3000, overallTimeoutMs = Infinity, testHooks) {
+  const activeTestHooks = process.env.NODE_ENV === 'test' ? testHooks : undefined;
   return acquireStateFileLockAtPathWithDeadline(
     lockPath,
     attempts,
     requireExclusive,
     bypassTestOverride,
     busyTimeoutMs,
-    processProbeDeadlineAfter(processProbeTimeoutMs),
+    processProbeDeadlineAfter(processProbeTimeoutMs, activeTestHooks),
     operationDeadlineAfter(overallTimeoutMs),
+    activeTestHooks,
   );
 }
 
@@ -546,17 +559,17 @@ export function acquireStateFileLockAtPathSync(lockPath, attempts = 50, requireE
 // never revives; an abandoned nonce stays abandoned). Each liveness probe is a PowerShell spawn
 // on win32, so re-probing on all 50 attempts stalled for ~10 s. A cached live owner is treated as
 // still live (fail closed). `probe` false returns undefined for an owner with no cached verdict.
-function cachedOwnerLive(owner, verified, slot, probe, timeoutMs = 3000) {
+function cachedOwnerLive(owner, verified, slot, probe, timeoutMs = 3000, testHooks) {
   if (sameOwner(owner, verified[slot])) return true;
   if (verified.dead.some(dead => sameOwner(owner, dead))) return false;
   if (!probe) return undefined;
-  const live = ownerLive(owner, timeoutMs);
+  const live = ownerLive(owner, timeoutMs, testHooks);
   if (live) verified[slot] = owner;
   else if (live === false) verified.dead.push(owner);
   return live;
 }
 
-function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclusive, bypassTestOverride, busyTimeoutMs, processProbeDeadline, operationDeadline, verified = { row: null, artifact: null, dead: [] }) {
+function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclusive, bypassTestOverride, busyTimeoutMs, processProbeDeadline, operationDeadline, testHooks, verified = { row: null, artifact: null, dead: [] }) {
   lastLockFailureDetail = null;
   lastLockFailure = null;
   void requireExclusive;
@@ -586,6 +599,7 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
       busyTimeoutMs,
       processProbeDeadline,
       operationDeadline,
+      testHooks,
       verified,
     );
   };
@@ -594,13 +608,13 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
     if (process.env.OMC_TEST_BETTER_SQLITE3_LOAD_FAILURE === '1') {
       sqliteBindingLoadError = nativeBindingDiagnostic('simulated native binding load failure');
     }
-    return acquireFileLock(lockPath, attempts, processProbeDeadline, operationDeadline);
+    return acquireFileLock(lockPath, attempts, processProbeDeadline, operationDeadline, testHooks);
   }
 
   const db = openMutationDb(lockPath, bypassTestOverride, boundedBusyTimeoutMs(busyTimeoutMs, operationDeadline));
   if (!db) {
     if (lastLockFailure === 'contention') return null;
-    if (sqliteBindingLoadError) return acquireFileLock(lockPath, attempts, processProbeDeadline, operationDeadline);
+    if (sqliteBindingLoadError) return acquireFileLock(lockPath, attempts, processProbeDeadline, operationDeadline, testHooks);
     if (attempts <= 1) {
       recordFailure('unverifiable');
       return null;
@@ -608,7 +622,7 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
     return retryAcquisition();
   }
 
-  const processStart = ownProcessStartIdentity(remainingProcessProbeMs(processProbeDeadline, operationDeadline));
+  const processStart = ownProcessStartIdentity(remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks), testHooks);
   if (!processStart || processStart === 'absent') {
     try { db.close(); } catch {}
     if (attempts <= 1) {
@@ -634,10 +648,10 @@ function acquireStateFileLockAtPathWithDeadline(lockPath, attempts, requireExclu
   let preLive = false;
   try {
     const preRow = selectRow();
-    if (preRow && validRow(preRow)) preLive = cachedOwnerLive({ pid: preRow.pid, processStart: preRow.process_start, nonce: preRow.nonce }, verified, 'row', true, remainingProcessProbeMs(processProbeDeadline, operationDeadline));
+    if (preRow && validRow(preRow)) preLive = cachedOwnerLive({ pid: preRow.pid, processStart: preRow.process_start, nonce: preRow.nonce }, verified, 'row', true, remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks), testHooks);
     if (preLive === false) {
       const preArtifact = readOwner(lockPath);
-      if (preArtifact && preArtifact !== 'absent') preLive = cachedOwnerLive(preArtifact, verified, 'artifact', true, remainingProcessProbeMs(processProbeDeadline, operationDeadline));
+      if (preArtifact && preArtifact !== 'absent') preLive = cachedOwnerLive(preArtifact, verified, 'artifact', true, remainingProcessProbeMs(processProbeDeadline, operationDeadline, testHooks), testHooks);
     }
   } catch {
     preLive = false;

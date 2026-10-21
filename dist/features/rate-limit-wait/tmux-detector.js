@@ -53,7 +53,7 @@ const CLAUDE_CODE_PATTERNS = [
     /assistant/i,
 ];
 /** Anchored OMC HUD status line, not copied output embedded in logs/tests. */
-const OMC_HUD_STATUS_LINE_PATTERN = /^\s*\[OMC#[^\]\s]*\]\s*\|.*\b(?:Model:|ctx:|session:|5h:|wk:|thinking)\b/i;
+const OMC_HUD_STATUS_LINE_PATTERN = /^\s*\[OMC#[^\]\s]+\](?:\s*\|.*)?\s*$/i;
 /** OMC HUD mode/help line rendered in the captured UI footer. */
 const OMC_HUD_MODE_LINE_PATTERN = /^\s*⏵⏵\s+.*\(shift\+tab to cycle\)/i;
 /** Shell commands that print saved terminal transcripts rather than a live UI. */
@@ -138,6 +138,78 @@ const WAITING_PATTERNS = [
     /choice:/i,
     /enter to confirm/i,
 ];
+/** The first menu option must still offer an actionable continuation. */
+const LIVE_RESUME_OPTION_PATTERN = /^\s*(?:❯\s*)?(?:\[1\]|1[.)]?)\s+(?:continue|resume|retry|try again|stop and wait|wait and continue automatically)\b/im;
+const LIVE_CONFIRMATION_PROMPT_PATTERN = /^\s*(?:enter to confirm(?:\s*·\s*esc to cancel)?|enter choice:)\s*$/i;
+const LIVE_MENU_OPTION_PATTERN = /^\s*(?:❯\s*)?(?:\[\d+\]|\d+[.)]?)\s+/;
+const LIVE_MENU_QUESTION_PATTERN = /^\s*what (?:would you like|do you want) to do\?\s*$/i;
+const LIVE_MENU_DIVIDER_PATTERN = /^\s*[-─━═]+\s*$/;
+const LIVE_MENU_LABEL_PATTERN = /^\s*options:\s*$/i;
+function isLiveMenuContextSeparator(line) {
+    return LIVE_MENU_DIVIDER_PATTERN.test(line) || LIVE_MENU_LABEL_PATTERN.test(line);
+}
+function hasLiveResumeMenuPrompt(lines) {
+    const lastLine = lines.at(-1) ?? '';
+    const hasConfirmation = LIVE_CONFIRMATION_PROMPT_PATTERN.test(lastLine);
+    if (!hasConfirmation && !LIVE_RESUME_OPTION_PATTERN.test(lastLine))
+        return false;
+    let firstOptionIndex = lines.length - (hasConfirmation ? 2 : 1);
+    if (firstOptionIndex < 0 || !LIVE_MENU_OPTION_PATTERN.test(lines[firstOptionIndex] ?? '')) {
+        return false;
+    }
+    while (firstOptionIndex > 0 && LIVE_MENU_OPTION_PATTERN.test(lines[firstOptionIndex - 1] ?? '')) {
+        firstOptionIndex--;
+    }
+    if (!LIVE_RESUME_OPTION_PATTERN.test(lines[firstOptionIndex] ?? ''))
+        return false;
+    let contextIndex = firstOptionIndex - 1;
+    while (contextIndex >= 0 && isLiveMenuContextSeparator(lines[contextIndex] ?? '')) {
+        contextIndex--;
+    }
+    if (contextIndex >= 0 && RATE_LIMIT_PATTERNS.some((pattern) => pattern.test(lines[contextIndex] ?? ''))) {
+        return true;
+    }
+    if (contextIndex >= 0 && LIVE_MENU_QUESTION_PATTERN.test(lines[contextIndex] ?? '')) {
+        contextIndex--;
+        while (contextIndex >= 0 && isLiveMenuContextSeparator(lines[contextIndex] ?? '')) {
+            contextIndex--;
+        }
+        return contextIndex >= 0 && RATE_LIMIT_PATTERNS.some((pattern) => pattern.test(lines[contextIndex] ?? ''));
+    }
+    return false;
+}
+function hasLiveWaitAndContinuePrompt(lines) {
+    const promptIndex = lines.length - 1;
+    if ((lines[promptIndex] ?? '').trim() !== '>')
+        return false;
+    let firstOptionIndex = promptIndex - 1;
+    while (firstOptionIndex >= 0 && LIVE_MENU_OPTION_PATTERN.test(lines[firstOptionIndex] ?? '')) {
+        firstOptionIndex--;
+    }
+    firstOptionIndex++;
+    if (firstOptionIndex >= promptIndex ||
+        !LIVE_RESUME_OPTION_PATTERN.test(lines[firstOptionIndex] ?? '') ||
+        !lines.slice(firstOptionIndex, promptIndex).every((line) => LIVE_MENU_OPTION_PATTERN.test(line))) {
+        return false;
+    }
+    let questionIndex = firstOptionIndex - 1;
+    while (questionIndex >= 0 && isLiveMenuContextSeparator(lines[questionIndex] ?? '')) {
+        questionIndex--;
+    }
+    if (questionIndex < 0 || !LIVE_MENU_QUESTION_PATTERN.test(lines[questionIndex] ?? '')) {
+        return false;
+    }
+    let contextLinesChecked = 0;
+    for (let contextIndex = questionIndex - 1; contextIndex >= 0 && contextLinesChecked < 3; contextIndex--) {
+        const line = lines[contextIndex] ?? '';
+        if (isLiveMenuContextSeparator(line))
+            continue;
+        contextLinesChecked++;
+        if (RATE_LIMIT_PATTERNS.some((pattern) => pattern.test(line)))
+            return true;
+    }
+    return false;
+}
 /**
  * Check if tmux is installed and available.
  * On Windows, a tmux-compatible binary such as psmux may provide tmux.
@@ -157,12 +229,32 @@ export function isTmuxAvailable() {
 export function isInsideTmux() {
     return !!process.env.TMUX;
 }
-/**
- * List all tmux panes across all sessions
- */
-export function listTmuxPanes() {
+function parseTmuxPanes(result) {
+    const panes = [];
+    for (const line of result.trim().split('\n')) {
+        if (!line.trim())
+            continue;
+        const parts = line.split(' ');
+        if (parts.length < 4)
+            continue;
+        const [location, paneId, activeStr, windowName, ...titleParts] = parts;
+        const [sessionWindow, paneIndexStr] = location.split('.');
+        const [session, windowIndexStr] = sessionWindow.split(':');
+        panes.push({
+            id: paneId,
+            session,
+            windowIndex: parseInt(windowIndexStr, 10),
+            windowName,
+            paneIndex: parseInt(paneIndexStr, 10),
+            title: titleParts.join(' ') || undefined,
+            isActive: activeStr === '1',
+        });
+    }
+    return panes;
+}
+function listTmuxPanesStrict() {
     if (!isTmuxAvailable()) {
-        return [];
+        return null;
     }
     try {
         // Format: session_name:window_index.pane_index pane_id pane_active window_name pane_title
@@ -171,32 +263,18 @@ export function listTmuxPanes() {
             stripTmux: true,
             timeout: 5000,
         });
-        const panes = [];
-        for (const line of result.trim().split('\n')) {
-            if (!line.trim())
-                continue;
-            const parts = line.split(' ');
-            if (parts.length < 4)
-                continue;
-            const [location, paneId, activeStr, windowName, ...titleParts] = parts;
-            const [sessionWindow, paneIndexStr] = location.split('.');
-            const [session, windowIndexStr] = sessionWindow.split(':');
-            panes.push({
-                id: paneId,
-                session,
-                windowIndex: parseInt(windowIndexStr, 10),
-                windowName,
-                paneIndex: parseInt(paneIndexStr, 10),
-                title: titleParts.join(' ') || undefined,
-                isActive: activeStr === '1',
-            });
-        }
-        return panes;
+        return parseTmuxPanes(result);
     }
     catch (error) {
         console.error('[TmuxDetector] Error listing panes:', error);
-        return [];
+        return null;
     }
+}
+/**
+ * List all tmux panes across all sessions.
+ */
+export function listTmuxPanes() {
+    return listTmuxPanesStrict() ?? [];
 }
 /**
  * Check whether a tmux pane is alive (not in the dead/exited state).
@@ -231,14 +309,14 @@ export function isPaneAlive(paneId) {
  * @param paneId - The tmux pane ID (e.g., "%0")
  * @param lines - Number of lines to capture (default: 15)
  */
-export function capturePaneContent(paneId, lines = 15) {
+function capturePaneContentStrict(paneId, lines) {
     if (!isTmuxAvailable()) {
-        return '';
+        return null;
     }
     // Validate pane ID to prevent command injection
     if (!isValidPaneId(paneId)) {
         console.error(`[TmuxDetector] Invalid pane ID format: ${paneId}`);
-        return '';
+        return null;
     }
     // Validate lines is a reasonable positive integer
     const safeLines = Math.max(1, Math.min(100, Math.floor(lines)));
@@ -252,8 +330,11 @@ export function capturePaneContent(paneId, lines = 15) {
     }
     catch (error) {
         console.error(`[TmuxDetector] Error capturing pane ${paneId}:`, error);
-        return '';
+        return null;
     }
+}
+export function capturePaneContent(paneId, lines = 15) {
+    return capturePaneContentStrict(paneId, lines) ?? '';
 }
 /**
  * Analyze pane content to determine if it shows a rate-limited Claude Code session
@@ -350,6 +431,55 @@ export function scanForBlockedPanes(lines = 15, stateDir) {
         }
     }
     return blocked;
+}
+/**
+ * Revalidate persisted pane candidates before sending resume keys.
+ * Returns null when tmux could not provide a complete scan, so callers can retry
+ * without discarding recovery state. A successful scan only returns panes whose
+ * current output still shows a rate-limit screen and a live first resume option.
+ */
+export function revalidateBlockedPanes(trackedPanes, lines = 15) {
+    if (trackedPanes.length === 0)
+        return [];
+    const livePanes = listTmuxPanesStrict();
+    if (livePanes === null)
+        return null;
+    const resumable = [];
+    for (const tracked of trackedPanes) {
+        if (!isValidPaneId(tracked.id))
+            continue;
+        const current = livePanes.find((pane) => pane.id === tracked.id &&
+            pane.session === tracked.session &&
+            pane.windowIndex === tracked.windowIndex &&
+            pane.paneIndex === tracked.paneIndex);
+        if (!current)
+            continue;
+        const content = capturePaneContentStrict(current.id, lines);
+        if (content === null)
+            return null;
+        const analysis = analyzePaneContent(content);
+        const recentLines = content
+            .split(/\r?\n/)
+            .filter((line) => line.trim() &&
+            !OMC_HUD_STATUS_LINE_PATTERN.test(line) &&
+            !OMC_HUD_MODE_LINE_PATTERN.test(line))
+            .join('\n');
+        const recentLineList = recentLines.split('\n');
+        const hasLivePrompt = hasLiveResumeMenuPrompt(recentLineList) ||
+            hasLiveWaitAndContinuePrompt(recentLineList);
+        if (!analysis.isBlocked ||
+            !LIVE_RESUME_OPTION_PATTERN.test(recentLines) ||
+            !hasLivePrompt)
+            continue;
+        resumable.push({
+            ...current,
+            analysis,
+            firstDetectedAt: tracked.firstDetectedAt,
+            resumeAttempted: tracked.resumeAttempted,
+            resumeSuccessful: tracked.resumeSuccessful,
+        });
+    }
+    return resumable;
 }
 /**
  * Send resume sequence to a tmux pane

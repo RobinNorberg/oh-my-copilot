@@ -50,7 +50,7 @@ Supported formats:
 {
   "aliases": {
     "omc": {
-      "repo": "Yeachan-Heo/oh-my-copilot",
+      "repo": "RobinNorberg/oh-my-copilot",
       "local": "~/Workspace/oh-my-copilot",
       "default_base": "main"
     }
@@ -569,5 +569,5 @@ This creates `~/.psm/worktrees` and `~/.psm/logs`, then seeds `projects.json` an
 `sessions.json` only when they do not already exist:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),root=p.join(h,'.psm');f.mkdirSync(p.join(root,'worktrees'),{recursive:true});f.mkdirSync(p.join(root,'logs'),{recursive:true});const projects={aliases:{omc:{repo:'Yeachan-Heo/oh-my-copilot',local:'~/Workspace/oh-my-copilot',default_base:'main'}},defaults:{worktree_root:'~/.psm/worktrees',cleanup_after_days:14,auto_cleanup_merged:true}};const sessions={version:1,sessions:{},stats:{total_created:0,total_cleaned:0}};for(const[name,value]of [['projects.json',projects],['sessions.json',sessions]]){const t=p.join(root,name);if(f.existsSync(t)){console.log('Kept existing '+t)}else{f.writeFileSync(t,JSON.stringify(value,null,2));console.log('Created '+t)}}"
+node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),root=p.join(h,'.psm');f.mkdirSync(p.join(root,'worktrees'),{recursive:true});f.mkdirSync(p.join(root,'logs'),{recursive:true});const projects={aliases:{omc:{repo:'RobinNorberg/oh-my-copilot',local:'~/Workspace/oh-my-copilot',default_base:'main'}},defaults:{worktree_root:'~/.psm/worktrees',cleanup_after_days:14,auto_cleanup_merged:true}};const sessions={version:1,sessions:{},stats:{total_created:0,total_cleaned:0}};for(const[name,value]of [['projects.json',projects],['sessions.json',sessions]]){const t=p.join(root,name);if(f.existsSync(t)){console.log('Kept existing '+t)}else{f.writeFileSync(t,JSON.stringify(value,null,2));console.log('Created '+t)}}"
 ```

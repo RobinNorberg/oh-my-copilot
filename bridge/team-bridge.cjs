@@ -1313,6 +1313,207 @@ var import_path14 = require("path");
 var import_fs4 = require("fs");
 var import_path5 = require("path");
 var import_url2 = require("url");
+
+// scripts/lib/utf8-bom.mjs
+function stripLeadingUtf8Bom(content) {
+  return content.startsWith("\uFEFF") ? content.slice(1) : content;
+}
+
+// src/utils/frontmatter.ts
+function unquoteYamlScalar(value) {
+  if (value.startsWith('"') && value.endsWith('"')) return value.slice(1, -1);
+  if (value.startsWith("'") && value.endsWith("'"))
+    return value.slice(1, -1).replace(/''/g, "'");
+  return value;
+}
+function stripOptionalQuotes(value) {
+  const trimmed = value.trim();
+  return unquoteYamlScalar(trimmed).trim();
+}
+var BLOCK_SCALAR_HEADER = /^([|>])(?:(?:([+-])([1-9])?)|(?:([1-9])([+-])?))?(?:[ \t]+#.*)?$/;
+function parseBlockScalarHeader(rawValue) {
+  const match = BLOCK_SCALAR_HEADER.exec(rawValue);
+  if (!match) return null;
+  const chompingIndicator = match[2] ?? match[5];
+  const indentIndicator = match[3] ?? match[4];
+  return {
+    folded: match[1] === ">",
+    chomping: chompingIndicator === "+" ? "keep" : chompingIndicator === "-" ? "strip" : "clip",
+    ...indentIndicator ? { indentIndicator: Number(indentIndicator) } : {}
+  };
+}
+function countLeadingYamlSpaces(line) {
+  let count = 0;
+  while (line[count] === " ") count++;
+  return count;
+}
+function isBlankBlockScalarLine(line) {
+  return countLeadingYamlSpaces(line) === line.length;
+}
+function getBlockScalarContentIndent(lines, startIndex, parentIndent, header) {
+  if (header.indentIndicator !== void 0) {
+    return { value: parentIndent + header.indentIndicator, isDetermined: true };
+  }
+  let leadingBlankIndent = parentIndent;
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i];
+    const indent = countLeadingYamlSpaces(line);
+    if (isBlankBlockScalarLine(line)) {
+      leadingBlankIndent = Math.max(leadingBlankIndent, indent);
+      continue;
+    }
+    if (indent > parentIndent) {
+      if (line[indent] === "#" && indent < leadingBlankIndent) {
+        return { value: leadingBlankIndent, isDetermined: false };
+      }
+      return { value: indent, isDetermined: true };
+    }
+    break;
+  }
+  return { value: parentIndent + 1, isDetermined: false };
+}
+function readBlockScalar(blockLines, header, contentIndent) {
+  const rows = blockLines.map((line) => {
+    const indent = countLeadingYamlSpaces(line);
+    if (isBlankBlockScalarLine(line) && !contentIndent.isDetermined)
+      return { text: "", moreIndented: false };
+    const moreIndented = indent > contentIndent.value || line[contentIndent.value] === "	";
+    return {
+      text: line.slice(Math.min(contentIndent.value, indent)),
+      moreIndented
+    };
+  });
+  let value;
+  if (header.folded) {
+    value = foldBlockScalarRows(rows);
+  } else {
+    value = rows.map((row) => row.text).join("\n") + (rows.length > 0 ? "\n" : "");
+  }
+  if (header.chomping === "keep") return value;
+  const withoutTrailingBreaks = value.replace(/\n+$/, "");
+  if (header.chomping === "strip" || !rows.some((row) => row.text !== ""))
+    return withoutTrailingBreaks;
+  return `${withoutTrailingBreaks}
+`;
+}
+function foldBlockScalarRows(rows) {
+  let value = "";
+  let previous;
+  let pendingEmptyLines = 0;
+  for (const row of rows) {
+    if (row.text === "") {
+      pendingEmptyLines++;
+      continue;
+    }
+    if (!previous) {
+      value += "\n".repeat(pendingEmptyLines);
+    } else if (pendingEmptyLines > 0) {
+      const preservedBreak = previous.moreIndented || row.moreIndented ? 1 : 0;
+      value += "\n".repeat(pendingEmptyLines + preservedBreak);
+    } else {
+      value += previous.moreIndented || row.moreIndented ? "\n" : " ";
+    }
+    value += row.text;
+    previous = row;
+    pendingEmptyLines = 0;
+  }
+  return value + "\n".repeat(previous ? pendingEmptyLines + 1 : pendingEmptyLines);
+}
+function parseFrontmatter(content) {
+  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/;
+  const match = stripLeadingUtf8Bom(content).match(frontmatterRegex);
+  if (!match) {
+    return { metadata: {}, body: content };
+  }
+  const [, yamlContent, body] = match;
+  const metadata = {};
+  const lines = yamlContent.split(/\r?\n/);
+  const rootLine = lines.find((line) => {
+    const trimmed = line.trimStart();
+    return trimmed.length > 0 && !trimmed.startsWith("#") && trimmed.includes(":");
+  });
+  const rootIndent = rootLine === void 0 ? void 0 : rootLine.length - rootLine.trimStart().length;
+  let flowDepth = 0;
+  let quote = null;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex];
+    const trimmed = line.trimStart();
+    const indent = line.length - trimmed.length;
+    if (flowDepth === 0) {
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      if (indent !== rootIndent) continue;
+      const colonIndex = line.indexOf(":");
+      if (colonIndex === -1) continue;
+      const key = line.slice(0, colonIndex).trim();
+      const rawValue = line.slice(colonIndex + 1).trim();
+      const blockHeader = parseBlockScalarHeader(rawValue);
+      if (blockHeader) {
+        const contentIndent = getBlockScalarContentIndent(
+          lines,
+          lineIndex + 1,
+          rootIndent,
+          blockHeader
+        );
+        const blockLines = [];
+        while (lineIndex + 1 < lines.length) {
+          const nextLine = lines[lineIndex + 1];
+          const nextIndent = countLeadingYamlSpaces(nextLine);
+          if (!isBlankBlockScalarLine(nextLine) && nextIndent < contentIndent.value)
+            break;
+          blockLines.push(lines[++lineIndex]);
+        }
+        metadata[key] = readBlockScalar(blockLines, blockHeader, contentIndent);
+        continue;
+      }
+      metadata[key] = stripOptionalQuotes(rawValue);
+    } else {
+    }
+    let scanFrom = 0;
+    if (flowDepth === 0) {
+      const colonIndex = line.indexOf(":");
+      const valueStart = colonIndex === -1 ? -1 : line.slice(colonIndex + 1).search(/\S/);
+      if (colonIndex !== -1 && valueStart !== -1) {
+        const firstValueChar = line[colonIndex + 1 + valueStart];
+        if (firstValueChar === "{" || firstValueChar === "[") {
+          scanFrom = colonIndex + 1 + valueStart;
+        }
+      }
+      if (scanFrom === 0) continue;
+    }
+    for (let i = scanFrom; i < line.length; i++) {
+      const char = line[i];
+      if (quote) {
+        if (quote === '"' && char === "\\") {
+          i++;
+          continue;
+        }
+        if (char === quote) {
+          if (quote === "'" && line[i + 1] === "'") {
+            i++;
+            continue;
+          }
+          quote = null;
+        }
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        continue;
+      }
+      if (char === "#" && (i === 0 || line[i - 1] === " " || line[i - 1] === "	")) {
+        break;
+      }
+      if (char === "{" || char === "[") {
+        flowDepth++;
+      } else if ((char === "}" || char === "]") && flowDepth > 0) {
+        flowDepth--;
+      }
+    }
+  }
+  return { metadata, body };
+}
+
+// src/agents/utils.ts
 function getPackageDir() {
   if (typeof __dirname !== "undefined" && __dirname) {
     const currentDirName = (0, import_path5.basename)(__dirname);
@@ -1337,8 +1538,7 @@ function getPackageDir() {
   return process.cwd();
 }
 function stripFrontmatter(content) {
-  const match = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
-  return match ? match[1].trim() : content.trim();
+  return parseFrontmatter(content).body.trim();
 }
 function loadAgentPrompt(agentName) {
   if (!/^[a-z0-9-]+$/i.test(agentName)) {

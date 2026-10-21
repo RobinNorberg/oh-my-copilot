@@ -183,6 +183,7 @@ describe('HUD marketplace resolution', () => {
     const npmPrefix = join(configDir, 'global-prefix');
     mkdirSync(fakeHome, { recursive: true });
     mkdirSync(outsideCwd, { recursive: true });
+    writeFileSync(join(fakeHome, '.npmrc'), `prefix=${npmPrefix.replace(/\\/g, '/')}\n`);
 
     const sentinelPath = join(configDir, 'global-prefix-loaded.txt');
     const npmRoot = process.platform === 'win32'
@@ -216,7 +217,8 @@ describe('HUD marketplace resolution', () => {
         ...process.env,
         COPILOT_HOME: configDir,
         HOME: fakeHome,
-        npm_config_prefix: npmPrefix,
+        USERPROFILE: fakeHome,
+        PREFIX: '',
       },
       stdio: 'pipe',
     });
@@ -229,10 +231,17 @@ describe('HUD marketplace resolution', () => {
     tempDirs.push(configDir);
 
     const fakeHome = join(configDir, 'home');
+    const outsideCwd = join(configDir, 'outside-cwd');
+    const npmPrefix = join(configDir, 'global-prefix');
+    const npmRoot = process.platform === 'win32'
+      ? join(npmPrefix, 'node_modules')
+      : join(npmPrefix, 'lib', 'node_modules');
     mkdirSync(fakeHome, { recursive: true });
+    mkdirSync(outsideCwd, { recursive: true });
+    writeFileSync(join(fakeHome, '.npmrc'), `prefix=${npmPrefix.replace(/\\/g, '/')}\n`);
 
     const sentinelPath = join(configDir, 'npm-package-loaded.txt');
-    const npmPackageRoot = join(configDir, 'node_modules', 'oh-my-copilot');
+    const npmPackageRoot = join(npmRoot, 'oh-my-copilot');
     const npmHudDir = join(npmPackageRoot, 'dist', 'hud');
     mkdirSync(npmHudDir, { recursive: true });
     writeFileSync(join(npmPackageRoot, 'package.json'), '{"type":"module"}\n');
@@ -258,11 +267,13 @@ describe('HUD marketplace resolution', () => {
     expect(content).toContain('"oh-my-copilot/dist/hud/index.js"');
 
     execFileSync(process.execPath, [hudScriptPath], {
-      cwd: root,
+      cwd: outsideCwd,
       env: {
         ...process.env,
         COPILOT_HOME: configDir,
         HOME: fakeHome,
+        USERPROFILE: fakeHome,
+        PREFIX: '',
       },
       stdio: 'pipe',
     });

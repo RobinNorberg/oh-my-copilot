@@ -60,6 +60,23 @@ const STRICT_OVERRIDES: SecurityConfig = {
 /** Cached config to avoid re-reading files on every call */
 let cachedConfig: SecurityConfig | null = null;
 
+/** Ignore malformed fields individually; this module is loaded by the no-deps plugin HUD. */
+function sanitizeSecurityOverrides(raw: Record<string, unknown>): Partial<SecurityConfig> {
+  const result: Partial<SecurityConfig> = {};
+  if (typeof raw.restrictToolPaths === "boolean") result.restrictToolPaths = raw.restrictToolPaths;
+  if (typeof raw.pythonSandbox === "boolean") result.pythonSandbox = raw.pythonSandbox;
+  if (typeof raw.disableProjectSkills === "boolean") result.disableProjectSkills = raw.disableProjectSkills;
+  if (typeof raw.disableAutoUpdate === "boolean") result.disableAutoUpdate = raw.disableAutoUpdate;
+  if (typeof raw.disableRemoteMcp === "boolean") result.disableRemoteMcp = raw.disableRemoteMcp;
+  if (typeof raw.disableExternalLLM === "boolean") result.disableExternalLLM = raw.disableExternalLLM;
+
+  const hardMaxIterations = raw.hardMaxIterations;
+  if (typeof hardMaxIterations === "number" && Number.isInteger(hardMaxIterations) && hardMaxIterations >= 0) {
+    result.hardMaxIterations = hardMaxIterations;
+  }
+  return result;
+}
+
 /**
  * Load the security section from config files.
  * Checks project config first, then user config.
@@ -75,8 +92,8 @@ function loadSecurityFromConfigFiles(): Partial<SecurityConfig> {
     try {
       const content = readFileSync(configPath, "utf-8");
       const parsed = parseJsonc(content) as Record<string, unknown>;
-      if (parsed?.security && typeof parsed.security === "object") {
-        return parsed.security as Partial<SecurityConfig>;
+      if (parsed?.security && typeof parsed.security === "object" && !Array.isArray(parsed.security)) {
+        return sanitizeSecurityOverrides(parsed.security as Record<string, unknown>);
       }
     } catch {
       // Ignore parse errors

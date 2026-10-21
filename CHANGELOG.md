@@ -2,6 +2,126 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.12.0
+
+## [5.12.0] - 2026-10-21
+
+Fork **v5.12.0** (from v5.11.0) is a minor release. It ports upstream
+oh-my-claudecode `dev` through faedfd200 in two steps: 7cb577e94..51bec397e
+(183 commits, upstream v5.7.0 to v5.7.3) and 51bec397e..faedfd200 (97 commits,
+upstream v5.7.4 to v5.7.6). It also binds the generated-artifact authorization
+check to the fork. **Breaking for MCP callers:** the five retired
+`merge_readiness_*` MCP tools are removed, so the configured MCP server now
+exposes 56 tools (see Removed and the
+[migration note](docs/MIGRATION.md#v5110--v5120-merge-readiness-mcp-tools-removed)).
+
+### Added
+
+- **`omg ask muse`**: a Muse advisor provider (upstream v5.7.2). Grok role
+  prompts now go through a private prompt file.
+- **`claudeMdEnabled: false`** in `~/.copilot/.omc-config.json` opts out of
+  global CLAUDE.md management: install, update, setup, session-start drift and
+  doctor leave your own `~/.copilot/CLAUDE.md` untouched (upstream #4383). See
+  [REFERENCE.md](docs/REFERENCE.md).
+- **`OMC_JEV_PLAN_MODE`** keeps Jev from deciding in plan mode (upstream
+  #4395).
+- **State-lock deadline API (upstream #4322).** `scripts/lib/state-lock.mjs`
+  bounds lock work by the hook budget, with shared deadlines across acquire and
+  release, and adds `acquire/withStateFileLockAtPathSync`,
+  `getStateFileLockFailureKind` and support for legacy version-0 owners.
+
+### Removed
+
+- **The retired `merge_readiness_*` MCP tools and their runtime**
+  (`merge_readiness_start`, `merge_readiness_set_content`,
+  `merge_readiness_record_answer`, `merge_readiness_report`,
+  `merge_readiness_cancel`; `src/hooks/merge-readiness/`, upstream #4422). The
+  `merge-readiness` skill was already retired in 5.0.0; review stays advisory
+  and the release hard checks are unchanged. CI now asserts the bridge omits
+  them. A client that still calls one gets an unknown-tool error.
+- Retired tiered agent names (`executor-low`, `architect-low` and others) are
+  gone from docs, prompts and the CLI help; pass a `model` instead (upstream
+  #4345). `src/verification/tier-selector.ts` is deleted.
+
+### Changed: upstream port 7cb577e94..faedfd200
+
+- **File-context injectors run only for file tools (upstream #4373).** The
+  rules and directory-context injectors moved to the PostToolUse group
+  `Read|Write|Edit|MultiEdit`, copied as-is into `copilot/hooks.json`. Copilot
+  CLI matches Claude-format hooks against the Claude tool names (`view`→`Read`,
+  `create`→`Write`, `edit`→`Edit`); [HOOKS.md](docs/HOOKS.md) documents the
+  mapping.
+- **Frontmatter parsing** in skills, commands, rules, agents, wiki,
+  autoresearch and learner accepts a UTF-8 BOM, CRLF line endings, YAML block
+  scalars and quoted flow values (upstream #4392–#4411, #4451, #4452). The
+  rules injector supports `{a,b}` brace alternation and trailing comments
+  (#4403, #4407).
+- **Literal globs.** State-manager list/cleanup, learner triggers and
+  factcheck strict globs match literally (#4390, #4416, #4418).
+- **Integer CLI options.** `wait`, `session`, team, ralphthon,
+  featured-contributors, autoresearch and `factory listen --port` reject
+  non-integer values (#4409, #4420, #4439, #4441, #4442).
+- **pre-tool-enforcer** matches the cancel and ultragoal bootstrap commands
+  as a single `omg`/`omc`/`oh-my-copilot` CLI command, not as a substring.
+- SessionStart purges legacy tool-failure state and atomic temp files, defers
+  cleanup when the state is locked, and publishes plugin occupancy.
+  PostToolUseFailure state no longer stores tool input or error text (#4284).
+- Ralph started through the Skill tool gets PRD-mode state (#4363); plan
+  consensus runs Architect and Critic reviews in parallel when both are Claude
+  agents (#4355).
+- omc-doctor's legacy-hook cleanup checks provenance, events, plugin manifests
+  and managed policies and verifies fingerprints before removing anything.
+
+### Fixed: upstream port 7cb577e94..faedfd200
+
+- HUD: the npm fallback is restricted to global prefixes, cached load failures
+  are reported, the stdin cache is scoped per session (#4398), local API
+  records are excluded from the payload estimate (#4437), plugin mode no
+  longer imports Zod from the plugin cache (#4454), and quota identity is
+  scoped to the stored OAuth account.
+- Team: cmux worker startup is stable (#4413), startup ACK and shutdown
+  instructions agree (#4404), shutdown acknowledgements are validated before
+  they are consumed, and stale Cursor verdicts are quarantined (#4380).
+- Plugin cache repair links stale roots only to a real directory (#4375); the
+  installer logs "CLAUDE.md already up to date" (#4377); Jev request
+  directories are removed after use; empty `OMC_SKIP_HOOKS` entries are
+  ignored (#4417); `OMC_DAILY_CHAIN_LIMIT` no longer floors to zero (#4440);
+  slash-command parsing keeps the plugin namespace (#4450); blank config-dir
+  overrides fall back to the default; agent model JSONC allows trailing
+  commas.
+
+### Fixed (fork)
+
+- **Generated-artifact authorization is bound to the fork (#246).** The
+  verifier's owner is `RobinNorberg` and the base-owned manifest names
+  `RobinNorberg/oh-my-copilot`, so source-only PRs to `dev` pass the
+  "Authorize generated artifacts from base trust root" check. Release PRs that
+  commit `dist/`/`bridge/` still fail it by design.
+- **Fork repository links** point at `RobinNorberg/oh-my-copilot` instead of
+  the non-existent `Yeachan-Heo/oh-my-copilot` (omc-doctor, omc-setup, psm,
+  CONTRIBUTING, SECURITY); the drift leak scan now flags the wrong slug.
+- omc-setup phase 1 names `${COPILOT_HOME:-~/.copilot}` and "all Copilot CLI
+  sessions" in the global report.
+- The committed `dist/` drops outputs whose source is gone
+  (`dist/hooks/merge-readiness/` and three test outputs deleted in v5.5.0).
+
+### Fork deviations: upstream port 7cb577e94..faedfd200
+
+- **Dropped (now upstream):** `lsp_diagnostics_directory` running tsc on
+  Windows (#4336, ours) and the split-pane env-file discard (#4333, which
+  supersedes our #4335).
+- **Kept:** MSYS2/Cygwin tmux keeps the POSIX identity guard; the state-lock
+  win32 fixes (cached own process identity, abandoned-nonce recovery, the
+  verified liveness cache, the BUSY release retry capped by the operation
+  deadline) on top of upstream's deadline API and `testHooks`; the
+  `WINDOWS_BASELINE_ENV_KEYS` worker env; generated-artifact authorization
+  keep-ours; fork version stamps.
+- **New:** `post-tool-use-failure.mjs` uses a 1.4 s process-probe budget on
+  win32 instead of 0.9 s (the PowerShell probe takes 0.8–1.1 s); the total
+  1.8 s deadline is unchanged.
+- `node-hook-fingerprints.json` is kept as upstream ships it; renamed fork
+  templates do not match, so omc-doctor leaves them for manual review.
+
 # oh-my-copilot v5.11.0
 
 ## [5.11.0] - 2026-10-14

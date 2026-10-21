@@ -13,6 +13,7 @@ import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
+import { stripLeadingUtf8Bom } from './lib/utf8-bom.mjs';
 import { encodeProjectPath } from './lib/encode-project-path.mjs';
 import { evaluateAgentHeavyPreflight } from './lib/pre-tool-enforcer-preflight.mjs';
 import { evaluateForceAgentDelegation } from './lib/force-agent-delegation-preflight.mjs';
@@ -227,7 +228,7 @@ function agentDefinitionExists(agentType, directory, namespaced) {
  * lines in the skill body cannot create false matches.
  */
 function parseSkillFrontmatterIdentifiers(content) {
-  const fmMatch = content.match(/^---[\r\n]+([\s\S]*?)[\r\n]+---/);
+  const fmMatch = stripLeadingUtf8Bom(content).match(/^---[\r\n]+([\s\S]*?)[\r\n]+---/);
   if (!fmMatch) return { aliases: [], primary: null };
   const fm = fmMatch[1];
   const nameMatch = fm.match(/^name:\s*(\S+)/m);
@@ -579,12 +580,13 @@ const MODEL_ROUTING_QUESTIONS = {
   },
 };
 
-function recordSlopWarningShadow(toolName, toolInput, warned) {
+function recordSlopWarningShadow(toolName, toolInput, warned, permissionMode) {
   recordJevShadow({
     point: 'slop-warning',
     state: { toolName, toolInput },
     questions: SLOP_WARNING_QUESTIONS,
     heuristic: warned,
+    permissionMode,
   });
 }
 
@@ -603,8 +605,8 @@ function boundModelRoutingInput(toolInput) {
   return bounded;
 }
 
-function recordModelRoutingShadow(toolName, toolInput, updatedToolInput) {
-  if (!isJevShadowOptedIn('model-routing')) return;
+function recordModelRoutingShadow(toolName, toolInput, updatedToolInput, permissionMode) {
+  if (!isJevShadowOptedIn('model-routing', process.env, permissionMode)) return;
 
   const originalInput = boundModelRoutingInput(toolInput);
   const modifiedInput = boundModelRoutingInput(updatedToolInput || toolInput);
@@ -628,6 +630,7 @@ function recordModelRoutingShadow(toolName, toolInput, updatedToolInput) {
     },
     questions: MODEL_ROUTING_QUESTIONS,
     heuristic,
+    permissionMode,
   });
   
   // In active mode with valid answer, update the toolInput model to Jev's choice
@@ -655,7 +658,7 @@ function generateSlopWarning(data, toolName) {
     .concat(collectStringValues(promptLikeFields))
     .join('\n');
   const warned = shouldWarnForSlopFallbackLanguage(data, toolName, inspectedText);
-  recordSlopWarningShadow(toolName, data.toolInput || data.tool_input || {}, warned);
+  recordSlopWarningShadow(toolName, data.toolInput || data.tool_input || {}, warned, data.permission_mode);
   if (!warned) return '';
 
   return '[SLOP WARNING] Detected fallback/workaround language in this tool input. ' +
@@ -1277,6 +1280,16 @@ function isSingleShellCommand(command) {
     && !/[\n\r;&|`]|\$\(|<\(|>\(/.test(command);
 }
 
+const OMC_CLI_PREFIX_PATTERN = /^(?:(?:node|nodejs)\s+(?:"[^"\n]*[/\\]oh-my-copilot\.js"|'[^'\n]*[/\\]oh-my-copilot\.js'|[^\s;|&`]*[/\\]oh-my-copilot\.js)|(?:omg|omc|oh-my-copilot|oh-my-copilot\.js|gjc))\s+/;
+const CANCEL_CLI_SUBCOMMAND_PATTERN = /^(?:state\s+(?:clear|read|write|list-active|get-status)|cancel)(?:\s|$)/;
+const ULTRAGOAL_CLI_SUBCOMMAND_PATTERN = /^ultragoal\s+(?:create(?:-goals)?|complete(?:-goals)?|next|start-next|status|checkpoint|record-review-blockers|add-goal|list-plans)(?:\s|$)/;
+
+function matchesOmcCliSubcommand(command, subcommandPattern) {
+  if (!isSingleShellCommand(command)) return false;
+  const commandArgs = command.trim().replace(OMC_CLI_PREFIX_PATTERN, '');
+  return commandArgs !== command.trim() && subcommandPattern.test(commandArgs);
+}
+
 function isCancelSkillBootstrapTool(toolName, toolInput) {
   const skillName = extractSkillName(toolInput);
   if (toolName === 'Skill' && skillName === 'cancel') return true;
@@ -1297,23 +1310,19 @@ function isCancelSkillBootstrapTool(toolName, toolInput) {
 
   if (toolName !== 'Bash') return false;
   const command = typeof toolInput.command === 'string' ? toolInput.command : '';
-  if (!isSingleShellCommand(command)) return false;
-  // Bare CLI names (PATH installs) or trusted plugin entrypoint via node/nodejs.
-  // Basename is constrained to oh-my-copilot.js; arbitrary node scripts stay denied.
-  // isSingleShellCommand above rejects chaining/expansion so a recognized token cannot
-  // smuggle other commands past the guard (e.g. `... cancel && npm test`).
-  return /^(?:(?:node|nodejs)\s+(?:"[^"\n]*[/\\]oh-my-copilot\.js"|'[^'\n]*[/\\]oh-my-copilot\.js'|[^\s;|&`]*[/\\]oh-my-copilot\.js)\s+|(?:omg|omc|oh-my-copilot|gjc)\s+)(?:state\s+(?:clear|read|write|list-active|get-status)|cancel)\b/.test(command.trim());
+  // PATH commands may use the plugin's .js filename; node/nodejs is restricted
+  // to that exact entrypoint basename so arbitrary scripts remain denied.
+  return matchesOmcCliSubcommand(command, CANCEL_CLI_SUBCOMMAND_PATTERN);
 }
 
 function isUltragoalBootstrapTool(toolName, toolInput) {
   if (toolName === 'Skill' && extractSkillName(toolInput) === 'ultragoal') return true;
   if (toolName !== 'Bash') return false;
   const command = typeof toolInput.command === 'string' ? toolInput.command : '';
-  if (!isSingleShellCommand(command)) return false;
   // omg is the command the ultragoal artifacts now tell the agent to run; omc
   // and the long name stay accepted so a session resumed from pre-rename
   // guidance is not denied the bootstrap it was instructed to use.
-  return /^(?:omg|omc|oh-my-copilot)\s+ultragoal\s+(?:create(?:-goals)?|complete(?:-goals)?|next|start-next|status|checkpoint|record-review-blockers)\b/.test(command.trim());
+  return matchesOmcCliSubcommand(command, ULTRAGOAL_CLI_SUBCOMMAND_PATTERN);
 }
 
 function evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, data) {
@@ -1951,7 +1960,7 @@ async function main() {
 
     if (toolName === 'Task' || toolName === 'Agent') {
       const toolInput = data.toolInput || data.tool_input || {};
-      const jevUpdated = recordModelRoutingShadow(toolName, toolInput, updatedToolInput);
+      const jevUpdated = recordModelRoutingShadow(toolName, toolInput, updatedToolInput, data.permission_mode);
       // In active mode, Jev may override the model choice
       if (jevUpdated) updatedToolInput = jevUpdated;
     }

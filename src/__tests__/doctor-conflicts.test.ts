@@ -68,6 +68,7 @@ import {
   checkLegacySkills,
   checkWorkspaceMarker,
   checkWindowsUnsafePluginHooks,
+  checkEnvFlags,
   runConflictCheck,
   formatReport,
   doctorConflictsCommand,
@@ -361,6 +362,40 @@ describe('doctor-conflicts: hook ownership classification', () => {
     expect(report.mcpRegistrySync.claudeMissing).toEqual([]);
     expect(report.mcpRegistrySync.codexMissing).toEqual(['gitnexus']);
     expect(report.hasConflicts).toBe(true);
+
+    delete process.env.OMC_HOME;
+    delete process.env.CODEX_HOME;
+  });
+
+  it('recognizes a quoted Codex MCP table as present in doctor conflicts', () => {
+    const registryDir = join(TEST_CLAUDE_DIR, '..', '.omg');
+    const codexDir = join(TEST_CLAUDE_DIR, '..', '.codex');
+    mkdirSync(registryDir, { recursive: true });
+    mkdirSync(codexDir, { recursive: true });
+
+    writeFileSync(join(registryDir, 'mcp-registry.json'), JSON.stringify({
+      exa: { command: 'uvx', args: ['exa'] },
+    }));
+    writeFileSync(process.env.CLAUDE_MCP_CONFIG_PATH!, JSON.stringify({
+      mcpServers: {
+        exa: { command: 'uvx', args: ['exa'] },
+      },
+    }));
+    writeFileSync(join(codexDir, 'config.toml'), [
+      '[mcp_servers."exa"]',
+      'command = "uvx"',
+      'args = ["exa"]',
+      '',
+    ].join('\n'));
+
+    process.env.OMC_HOME = registryDir;
+    process.env.CODEX_HOME = codexDir;
+
+    const report = runConflictCheck();
+
+    expect(report.mcpRegistrySync.codexMissing).toEqual([]);
+    expect(report.mcpRegistrySync.codexMismatched).toEqual([]);
+    expect(report.hasConflicts).toBe(false);
 
     delete process.env.OMC_HOME;
     delete process.env.CODEX_HOME;
@@ -711,6 +746,85 @@ describe('doctor-conflicts: CLAUDE.md companion file detection (issue #1101)', (
     expect(status!.files.map(file => file.markerState)).toContain('symlink');
     expect(status!.files.map(file => file.markerState)).toContain('invalid-utf8');
     expect(runConflictCheck().hasConflicts).toBe(true);
+  });
+
+  it('warns about missing markers when claudeMdEnabled is absent or true', () => {
+    writeFileSync(join(TEST_CLAUDE_DIR, 'CLAUDE.md'), '# My custom config\n');
+
+    expect(checkClaudeMdStatus()!.managementDisabled).toBe(false);
+    expect(formatReport(runConflictCheck(), false)).toContain('Run /oh-my-copilot:omc-setup to add markers');
+
+    writeFileSync(join(TEST_CLAUDE_DIR, '.omc-config.json'), JSON.stringify({ claudeMdEnabled: true }));
+    expect(checkClaudeMdStatus()!.managementDisabled).toBe(false);
+    expect(formatReport(runConflictCheck(), false)).toContain('Run /oh-my-copilot:omc-setup to add markers');
+  });
+
+  it('does not ask for omc-setup when claudeMdEnabled is false', () => {
+    writeFileSync(join(TEST_CLAUDE_DIR, 'CLAUDE.md'), '# My custom config\n');
+    writeFileSync(join(TEST_CLAUDE_DIR, '.omc-config.json'), JSON.stringify({ claudeMdEnabled: false }));
+
+    const report = runConflictCheck();
+    const output = formatReport(report, false);
+
+    expect(report.claudeMdStatus!.managementDisabled).toBe(true);
+    expect(report.configIssues.unknownFields).toEqual([]);
+    expect(output).toContain('claudeMdEnabled is false in .omc-config.json');
+    expect(output).not.toContain('Run /oh-my-copilot:omc-setup to add markers');
+    expect(JSON.parse(formatReport(report, true)).claudeMdStatus.managementDisabled).toBe(true);
+  });
+
+  it('reports disabled management when OMC markers remain from a previous install', () => {
+    writeFileSync(join(TEST_CLAUDE_DIR, 'CLAUDE.md'), '<!-- OMC:START -->\n# OMC Config\n<!-- OMC:END -->\n');
+    writeFileSync(join(TEST_CLAUDE_DIR, '.omc-config.json'), JSON.stringify({ claudeMdEnabled: false }));
+
+    const report = runConflictCheck();
+    const output = formatReport(report, false);
+
+    expect(report.claudeMdStatus!.managementDisabled).toBe(true);
+    expect(output).toContain('OMC markers present');
+    expect(output).toContain('Global CLAUDE.md management is disabled (claudeMdEnabled is false in .omc-config.json)');
+  });
+
+  it('does not recommend omc-setup cleanup of an exact legacy guide when claudeMdEnabled is false', () => {
+    const mainPath = join(TEST_CLAUDE_DIR, 'CLAUDE.md');
+    writeFileSync(mainPath, Buffer.from(corpus.variants[0].dataBase64, 'base64'));
+    writeFileSync(join(TEST_CLAUDE_DIR, '.omc-config.json'), JSON.stringify({ claudeMdEnabled: false }));
+
+    const report = runConflictCheck();
+    const fullOutput = formatReport(report, false);
+    const output = fullOutput.slice(fullOutput.indexOf('CLAUDE.md Status'), fullOutput.indexOf('Environment Flags'));
+
+    expect(report.claudeMdStatus!.managementDisabled).toBe(true);
+    expect(report.claudeMdStatus!.exactLegacyPaths).toEqual([mainPath]);
+    expect(output).toContain(`Exact legacy guide content: ${mainPath}`);
+    expect(output).not.toContain('/oh-my-copilot:omc-setup');
+    expect(output).toContain('re-enable claudeMdEnabled');
+    expect(output).toContain('remove the legacy content manually');
+  });
+
+  it('reports the claudeMdEnabled opt-out when no CLAUDE*.md file exists', () => {
+    writeFileSync(join(TEST_CLAUDE_DIR, '.omc-config.json'), JSON.stringify({ claudeMdEnabled: false }));
+
+    const report = runConflictCheck();
+    const output = formatReport(report, false);
+
+    expect(report.claudeMdStatus).not.toBeNull();
+    expect(report.claudeMdStatus!.managementDisabled).toBe(true);
+    expect(report.claudeMdStatus!.files).toEqual([]);
+    expect(report.hasConflicts).toBe(false);
+    expect(output).toContain('claudeMdEnabled is false in .omc-config.json');
+    expect(output).not.toContain('No CLAUDE.md found');
+    expect(output).not.toContain('Run /oh-my-copilot:omc-setup to add markers');
+    expect(JSON.parse(formatReport(report, true)).claudeMdStatus.managementDisabled).toBe(true);
+  });
+
+  it('keeps reporting no CLAUDE.md when none exists and claudeMdEnabled is not false', () => {
+    expect(checkClaudeMdStatus()).toBeNull();
+    expect(formatReport(runConflictCheck(), false)).toContain('No CLAUDE.md found');
+
+    writeFileSync(join(TEST_CLAUDE_DIR, '.omc-config.json'), JSON.stringify({ claudeMdEnabled: true }));
+    expect(checkClaudeMdStatus()).toBeNull();
+    expect(formatReport(runConflictCheck(), false)).toContain('No CLAUDE.md found');
   });
 
 });
@@ -1126,5 +1240,24 @@ describe('doctor-conflicts: workspace marker check (Wave F.2)', () => {
     expect(typeof report.workspaceMarker.markerRoot).toBe('object'); // null is valid
     expect(typeof report.workspaceMarker.stateDirEnvSet).toBe('boolean');
     expect(typeof report.workspaceMarker.precedenceConflict).toBe('boolean');
+  });
+});
+
+describe('doctor-conflicts: OMC_SKIP_HOOKS parsing', () => {
+  const original = process.env.OMC_SKIP_HOOKS;
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.OMC_SKIP_HOOKS;
+    else process.env.OMC_SKIP_HOOKS = original;
+  });
+
+  it('ignores empty entries from stray commas and whitespace', () => {
+    process.env.OMC_SKIP_HOOKS = ' keyword-detector , ,persistent-mode,';
+    expect(checkEnvFlags().skipHooks).toEqual(['keyword-detector', 'persistent-mode']);
+  });
+
+  it('reports no skipped hooks when the value has no names', () => {
+    process.env.OMC_SKIP_HOOKS = ' , ';
+    expect(checkEnvFlags().skipHooks).toEqual([]);
   });
 });

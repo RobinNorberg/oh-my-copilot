@@ -8,6 +8,10 @@
  */
 import type { AgentConfig, AgentPromptMetadata, AvailableAgent, AgentOverrideConfig } from './types.js';
 /**
+ * Strip YAML frontmatter from markdown content.
+ */
+export declare function stripFrontmatter(content: string): string;
+/**
  * Load an agent prompt from /agents/{agentName}.md
  * Uses build-time embedded prompts when available (CJS bundles),
  * falls back to runtime file reads (dev/test environments).
@@ -54,6 +58,10 @@ export declare function validateAgentConfig(config: AgentConfig): string[];
  * Parse disallowedTools from agent markdown frontmatter
  */
 export declare function parseDisallowedTools(agentName: string): string[] | undefined;
+/**
+ * Read the comma-separated disallowedTools list from agent frontmatter.
+ */
+export declare function extractDisallowedTools(content: string): string[] | undefined;
 /**
  * Standard path for open questions file
  */

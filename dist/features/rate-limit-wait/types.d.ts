@@ -86,6 +86,12 @@ export interface DaemonState {
     lastPollAt: Date | null;
     /** Current rate limit status */
     rateLimitStatus: RateLimitStatus | null;
+    /** Last confirmed quota exhaustion; retained across unavailable/degraded observations */
+    lastConfirmedLimited?: boolean;
+    /** Fingerprint of the Claude profile associated with the saved quota state */
+    usageProfileHash?: string;
+    /** A confirmed clear is waiting for a conclusive pane revalidation */
+    resumePending?: boolean;
     /** Currently tracked blocked panes */
     blockedPanes: BlockedPane[];
     /** Panes that have been resumed (to avoid re-sending) */

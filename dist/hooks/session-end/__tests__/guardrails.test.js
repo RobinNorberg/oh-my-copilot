@@ -180,5 +180,31 @@ describe('dailyChainLimit', () => {
                 delete process.env.OMC_DAILY_CHAIN_LIMIT;
         }
     });
+    it.each(['0.5', '0', 'abc', ''])('never yields a zero cap for %j', (value) => {
+        const saved = process.env.OMC_DAILY_CHAIN_LIMIT;
+        process.env.OMC_DAILY_CHAIN_LIMIT = value;
+        try {
+            expect(dailyChainLimit()).toBe(DAILY_CHAIN_LIMIT);
+        }
+        finally {
+            if (saved !== undefined)
+                process.env.OMC_DAILY_CHAIN_LIMIT = saved;
+            else
+                delete process.env.OMC_DAILY_CHAIN_LIMIT;
+        }
+    });
+    it('floors a fractional override at or above 1', () => {
+        const saved = process.env.OMC_DAILY_CHAIN_LIMIT;
+        process.env.OMC_DAILY_CHAIN_LIMIT = '2.9';
+        try {
+            expect(dailyChainLimit()).toBe(2);
+        }
+        finally {
+            if (saved !== undefined)
+                process.env.OMC_DAILY_CHAIN_LIMIT = saved;
+            else
+                delete process.env.OMC_DAILY_CHAIN_LIMIT;
+        }
+    });
 });
 //# sourceMappingURL=guardrails.test.js.map

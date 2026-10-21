@@ -41,6 +41,13 @@ export interface SyncFeaturedContributorsResult {
     entries: FeaturedContributor[];
     readmePath: string;
 }
+export interface CliOptions {
+    dryRun: boolean;
+    help: boolean;
+    minStars?: number;
+    repoSlug?: string;
+    verify: boolean;
+}
 export declare function extractRepoSlug(repositoryUrl: string): string;
 export declare function loadRepoSlugFromPackageJson(projectRoot: string): string;
 export declare function formatStarCount(stars: number): string;
@@ -50,5 +57,6 @@ export declare function collectFeaturedContributors(repoSlug: string, minStars?:
 export declare function renderFeaturedContributorsSection(entries: FeaturedContributor[], minStars?: number): string;
 export declare function upsertFeaturedContributorsSection(readmeContent: string, featuredSection: string, anchor?: string): string;
 export declare function syncFeaturedContributorsReadme(options?: SyncFeaturedContributorsOptions): Promise<SyncFeaturedContributorsResult>;
+export declare function parseCliOptions(args: string[]): CliOptions;
 export declare function runFeaturedContributorsCli(args?: string[]): Promise<void>;
 //# sourceMappingURL=featured-contributors.d.ts.map

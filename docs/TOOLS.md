@@ -2,7 +2,7 @@
 
 > OMC provides MCP tools for state management, code intelligence, and data analysis.
 
-The configured MCP server exposes exactly 61 tools.
+The configured MCP server exposes exactly 56 tools.
 
 Unlike skills that users invoke directly, tools are used internally by agents during task execution.
 

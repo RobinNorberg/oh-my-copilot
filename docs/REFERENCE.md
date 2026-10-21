@@ -2,7 +2,7 @@
 
 Complete reference for oh-my-copilot. For quick start, see the main [README.md](../README.md).
 
-For v5.11.0, the plugin ships 20 agents, 63 skills, 21 command files, and one configured MCP server exposing exactly 61 tools.
+For v5.12.0, the plugin ships 20 agents, 63 skills, 21 command files, and one configured MCP server exposing exactly 56 tools.
 
 ---
 
@@ -96,6 +96,21 @@ Configure omc for all Claude Code sessions:
 - Configuration applies to all projects
 - **Default**: explicitly overwrites existing `~/.claude/CLAUDE.md`
 - **Optional preserve mode**: keeps the base file, writes OMC to `~/.claude/CLAUDE-omc.md`, and lets `omg` force-load that companion config at launch while plain `claude` stays unchanged
+
+#### Opt out of global CLAUDE.md management
+
+If you maintain your own `~/.copilot/CLAUDE.md` and do not want installs or updates to merge the OMC block into it, set `claudeMdEnabled` to `false` in `~/.copilot/.omc-config.json`:
+
+```json
+{ "claudeMdEnabled": false }
+```
+
+- Default is `true`; only an explicit `false` opts out
+- `omg install`, `omg update` and the global `/oh-my-copilot:omc-setup` step then leave `~/.copilot/CLAUDE.md` and `~/.copilot/CLAUDE-omc.md` untouched and log a skip line
+- `omg doctor` reports missing OMC markers as informational (legacy-guide and marker-structure warnings remain); SessionStart omits CLAUDE.md from its drift check, while other component drift notices still apply
+- A `CLAUDE-omc.md` left by an earlier preserve-mode install is still loaded by `omg` launch; delete it if you no longer want it
+- Project-scoped setup (`--local`) is unaffected
+- Removing the key (or setting it to `true`) restores the default merge behavior on the next install, update or setup
 
 ### What Configuration Enables
 

@@ -1,9 +1,9 @@
 # oh-my-copilot Quick Reference Card
-**v3.6.3 | github.com/Yeachan-Heo/oh-my-copilot**
+**v3.6.3 | github.com/RobinNorberg/oh-my-copilot**
 
 ## Install
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
 /oh-my-copilot:omc-setup
 ```
@@ -129,7 +129,7 @@ Before claiming completion:
 - **LSP diagnostics:** Full project type checking with `lsp_diagnostics_directory`
 
 ## Resources
-- **GitHub:** github.com/Yeachan-Heo/oh-my-copilot
+- **GitHub:** github.com/RobinNorberg/oh-my-copilot
 - **Docs:** /docs/REFERENCE.md
 - **Website:** yeachan-heo.github.io/oh-my-copilot-website
 - **NPM:** `npm i -g oh-my-copilot`

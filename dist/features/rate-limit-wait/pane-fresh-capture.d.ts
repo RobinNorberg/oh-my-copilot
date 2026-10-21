@@ -7,6 +7,8 @@
  *
  * Security: pane IDs are validated before use in shell commands.
  */
+/** Reset saved pane cursors so a new usage profile can recapture live prompts. */
+export declare function resetPaneTailPositions(stateDir: string): void;
 /**
  * Get the current scrollback history size for a tmux pane.
  * Returns null when the pane is dead, does not exist, or tmux is unavailable.

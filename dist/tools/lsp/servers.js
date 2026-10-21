@@ -21,7 +21,7 @@ function getTypeScriptNativeBin(packageRoot) {
     const executable = process.platform === 'win32' ? 'tsc.cmd' : 'tsc';
     return join(workspaceRoot, 'node_modules', '.bin', executable);
 }
-function findTypeScriptPackageRoot(workspaceRoot) {
+export function findTypeScriptPackageRoot(workspaceRoot) {
     let dir = resolve(workspaceRoot);
     while (true) {
         const packageJsonPath = join(dir, 'node_modules', 'typescript', 'package.json');

@@ -191,13 +191,13 @@ Ralph persistence is active. Delegate independent tasks to executor agents or a 
 
 \`\`\`
 // For simple tasks (single file, straightforward logic)
-Task(subagent_type="oh-my-copilot:executor-low", model="haiku", prompt="...")
+Task(subagent_type="oh-my-copilot:executor", model="haiku", prompt="...")
 
 // For standard implementation (feature, multiple methods)
 Task(subagent_type="oh-my-copilot:executor", model="sonnet", prompt="...")
 
 // For complex work (architecture, debugging, refactoring)
-Task(subagent_type="oh-my-copilot:executor-high", model="opus", prompt="...")
+Task(subagent_type="oh-my-copilot:executor", model="opus", prompt="...")
 \`\`\`
 
 ### Progress Tracking
@@ -247,7 +247,7 @@ For each failure:
 1. **Diagnose** - Understand the error
 \`\`\`
 Task(
-  subagent_type="oh-my-copilot:architect-low",
+  subagent_type="oh-my-copilot:architect",
   model="haiku",
   prompt="Diagnose this error and suggest fix: [ERROR]"
 )

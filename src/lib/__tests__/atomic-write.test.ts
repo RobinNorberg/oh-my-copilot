@@ -61,6 +61,16 @@ import {
   sameFileIdentity,
 } from '../atomic-write.js';
 
+// SQLite's busy handler sums the sleeps it requests (about 75 ms of them here)
+// instead of watching a clock, so a loaded or virtualized runner stretches the
+// real wait: macOS CI runners were observed at 533 and 575 ms for 75 ms. The
+// ceiling stays well under the 2000 ms default busy timeout, so a lock call
+// that ignores the caller's value still fails, while the floor proves the
+// caller's value was waited on at all.
+const SQLITE_CONTENTION_BUSY_TIMEOUT_MS = 75;
+const SQLITE_CONTENTION_MIN_WAIT_MS = 50;
+const SQLITE_CONTENTION_RUNNER_MARGIN_MS = 1000;
+
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
   return { promise: new Promise<void>(done => { resolve = done; }), resolve };
@@ -468,12 +478,8 @@ describe('atomicWriteJson', () => {
   it.skipIf(process.platform !== 'linux')('shares one deadline across Windows lock-owner probes', () => {
     const directory = mkdtempSync(join(tmpdir(), 'atomic-write-lock-shared-probe-deadline-'));
     directories.push(directory);
-    const powershell = join(directory, 'powershell');
-    const probeCountPath = join(directory, 'probe-count');
     const lockPath = join(directory, 'last-tool-error.json.lock');
     const stateLockUrl = pathToFileURL(join(__dirname, '..', '..', '..', 'scripts', 'lib', 'state-lock.mjs')).href;
-    writeFileSync(powershell, `#!/bin/sh\nprintf x >> '${probeCountPath}'\n/usr/bin/sleep 0.25\nprintf '638933184000000001\\n'\n`);
-    chmodSync(powershell, 0o755);
     writeFileSync(lockPath, JSON.stringify({
       version: 1,
       pid: process.pid,
@@ -486,22 +492,33 @@ describe('atomicWriteJson', () => {
       process.env.NODE_ENV = 'test';
       process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
       const { acquireStateFileLockAtPathSync, getStateFileLockFailureKind } = await import(process.argv[1]);
-      const startedAt = Date.now();
-      const lock = acquireStateFileLockAtPathSync(process.argv[2], 1, true, false, 300, 300);
-      process.stdout.write(JSON.stringify({ lockAcquired: Boolean(lock), failure: getStateFileLockFailureKind(), elapsedMs: Date.now() - startedAt }));
+      let nowMs = 0;
+      const probeTimeouts = [];
+      const testHooks = {
+        nowMs: () => nowMs,
+        processStartIdentity(_pid, timeoutMs) {
+          probeTimeouts.push(timeoutMs);
+          if (probeTimeouts.length === 1) {
+            nowMs += 250;
+            return 'ticks:638933184000000001';
+          }
+          return timeoutMs >= 250 ? 'ticks:638933184000000001' : null;
+        },
+      };
+      const lock = acquireStateFileLockAtPathSync(process.argv[2], 1, true, false, 300, 300, Infinity, testHooks);
+      process.stdout.write(JSON.stringify({ lockAcquired: Boolean(lock), failure: getStateFileLockFailureKind(), probeTimeouts }));
     `;
 
     const output = execFileSync(process.execPath, ['--input-type=module', '-e', script, stateLockUrl, lockPath], {
       encoding: 'utf8',
-      env: { ...process.env, NODE_ENV: 'test', PATH: directory },
+      env: { ...process.env, NODE_ENV: 'test' },
       timeout: 1500,
     });
-    const result = JSON.parse(output) as { lockAcquired: boolean; failure: string; elapsedMs: number };
+    const result = JSON.parse(output) as { lockAcquired: boolean; failure: string; probeTimeouts: number[] };
 
     expect(result.lockAcquired).toBe(false);
     expect(result.failure).toBe('unverifiable');
-    expect(readFileSync(probeCountPath, 'utf8')).toHaveLength(2);
-    expect(result.elapsedMs).toBeLessThan(450);
+    expect(result.probeTimeouts).toEqual([300, 50]);
   });
 
   it('bounds SQLite lock contention by the caller-provided busy timeout', async () => {
@@ -543,10 +560,12 @@ describe('atomicWriteJson', () => {
 
     try {
       await readyPromise;
-      const startedAt = Date.now();
-      const lock = acquireStateFileLockAtPathSync(lockPath, 1, true, false, 75);
+      const startedAt = performance.now();
+      const lock = acquireStateFileLockAtPathSync(lockPath, 1, true, false, SQLITE_CONTENTION_BUSY_TIMEOUT_MS);
+      const elapsedMs = performance.now() - startedAt;
       expect(lock).toBeNull();
-      expect(Date.now() - startedAt).toBeLessThan(500);
+      expect(elapsedMs).toBeGreaterThanOrEqual(SQLITE_CONTENTION_MIN_WAIT_MS);
+      expect(elapsedMs).toBeLessThan(SQLITE_CONTENTION_BUSY_TIMEOUT_MS + SQLITE_CONTENTION_RUNNER_MARGIN_MS);
       expect(getStateFileLockFailureKind()).toBe('contention');
     } finally {
       holder.stdin?.end();
@@ -599,10 +618,12 @@ describe('atomicWriteJson', () => {
 
     try {
       await readyPromise;
-      const startedAt = Date.now();
-      const lock = acquireStateFileLockAtPathSync(contendedLockPath, 1, true, false, 75);
+      const startedAt = performance.now();
+      const lock = acquireStateFileLockAtPathSync(contendedLockPath, 1, true, false, SQLITE_CONTENTION_BUSY_TIMEOUT_MS);
+      const elapsedMs = performance.now() - startedAt;
       expect(lock).toBeNull();
-      expect(Date.now() - startedAt).toBeLessThan(500);
+      expect(elapsedMs).toBeGreaterThanOrEqual(SQLITE_CONTENTION_MIN_WAIT_MS);
+      expect(elapsedMs).toBeLessThan(SQLITE_CONTENTION_BUSY_TIMEOUT_MS + SQLITE_CONTENTION_RUNNER_MARGIN_MS);
       expect(getStateFileLockFailureKind()).toBe('contention');
       releaseAttempted = true;
       expect(releaseStateFileLockSync(heldLock)).toBe(false);

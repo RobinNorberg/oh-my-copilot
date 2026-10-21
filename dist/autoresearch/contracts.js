@@ -2,6 +2,7 @@ import { execFileSync } from 'child_process';
 import { existsSync, realpathSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { basename, join, relative, resolve } from 'path';
+import { stripLeadingUtf8Bom, unquoteYamlScalar } from '../utils/frontmatter.js';
 function contractError(message) {
     return new Error(message);
 }
@@ -39,7 +40,8 @@ function ensurePathInside(parentPath, childPath) {
     throw contractError('mission-dir must be inside a git repository.');
 }
 function extractFrontmatter(content) {
-    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+    // A UTF-8 BOM (Windows editors) would otherwise hide the opening `---`.
+    const match = stripLeadingUtf8Bom(content).match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
     if (!match) {
         throw contractError('sandbox.md must start with YAML frontmatter containing evaluator.command and evaluator.format=json.');
     }
@@ -67,7 +69,7 @@ function parseSimpleYamlFrontmatter(frontmatter) {
             throw contractError(`Unsupported sandbox.md frontmatter line: ${trimmed}`);
         }
         const [, key, rawValue] = nestedMatch;
-        const value = rawValue.replace(/^['"]|['"]$/g, '');
+        const value = unquoteYamlScalar(rawValue);
         if (line.startsWith(' ') || line.startsWith('\t')) {
             if (!currentSection) {
                 throw contractError(`Nested sandbox.md frontmatter key requires a parent section: ${trimmed}`);

@@ -18,7 +18,7 @@ import { getRuntimePackageVersion } from '../lib/version.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { MIN_NODE_VERSION } from '../utils/node-version.js';
 import { resolveNodeBinary } from '../utils/resolve-node.js';
-import { parseFrontmatter } from '../utils/frontmatter.js';
+import { parseFrontmatter, stripLeadingUtf8Bom } from '../utils/frontmatter.js';
 import { isSkininthegamebrosUser } from '../utils/skininthegamebros-user.js';
 import { syncUnifiedMcpRegistryTargets } from './mcp-registry.js';
 import { OMC_CONFIG_FILE_REL } from '../lib/paths.js';
@@ -27,7 +27,7 @@ import { getOmcRoot } from '../lib/worktree-paths.js';
 import { syncOmcLearnedUserSkillsForClaudeCode } from '../utils/user-skill-compat.js';
 import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
 import { analyzeLegacyClaudeMd, OMC_END_MARKER, OMC_START_MARKER, parseClaudeMdMarkers, removeClaudeMdRanges } from './claude-md-analysis.js';
-import { executeClaudeMdTransaction } from './claude-md-transaction.js';
+import { executeClaudeMdTransaction, isClaudeMdEnabledInConfig } from './claude-md-transaction.js';
 import { HISTORICAL_AGENT_OWNERSHIP } from './historical-agent-ownership.js';
 import entitlementManifest from '../config/builtin-skill-entitlements.json' with { type: 'json' };
 /** Claude Code configuration directory */
@@ -822,9 +822,12 @@ export const isStateFileLockingSupported = canonical.isStateFileLockingSupported
 export const isExclusiveStateLockingAvailable = canonical.isExclusiveStateLockingAvailable;
 export const getStateFileLockDiagnostic = canonical.getStateFileLockDiagnostic;
 export const getStateFileLockFailureMessage = canonical.getStateFileLockFailureMessage;
+export const getStateFileLockFailureKind = canonical.getStateFileLockFailureKind;
 export const acquireStateFileLockSync = canonical.acquireStateFileLockSync;
+export const acquireStateFileLockAtPathSync = canonical.acquireStateFileLockAtPathSync;
 export const releaseStateFileLockSync = canonical.releaseStateFileLockSync;
 export const withStateFileLockSync = canonical.withStateFileLockSync;
+export const withStateFileLockAtPathSync = canonical.withStateFileLockAtPathSync;
 export const acquireRecoveryClaim = canonical.acquireRecoveryClaim;
 export const readRecoveryClaim = canonical.readRecoveryClaim;
 export const releaseRecoveryClaim = canonical.releaseRecoveryClaim;
@@ -1662,7 +1665,7 @@ function resolveBestPluginSyncSource(targetRoots) {
     return { sourceRoot: bestRoot, errors: bestRoot ? [] : errors };
 }
 function extractFrontmatterBlock(content) {
-    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    const match = stripLeadingUtf8Bom(content).match(/^---\r?\n([\s\S]*?)\r?\n---/);
     return match?.[1] ?? null;
 }
 function getFrontmatterStringValue(metadata, key) {
@@ -2377,7 +2380,12 @@ export function install(options = {}) {
         }
         // Keep the public installer on the same raw-byte transaction path as setup.
         // The public string merger remains exported for callers that use it directly.
-        if (!projectScoped) {
+        // claudeMdEnabled=false in .omc-config.json opts out of every global CLAUDE.md write.
+        const claudeMdDisabledByConfig = !projectScoped && !isClaudeMdEnabledInConfig(COPILOT_HOME);
+        if (claudeMdDisabledByConfig) {
+            log('Skipping CLAUDE.md (claudeMdEnabled is false in .omc-config.json)');
+        }
+        if (!projectScoped && !claudeMdDisabledByConfig) {
             const transaction = executeClaudeMdTransaction({
                 mode: 'global-overwrite',
                 root: COPILOT_HOME,
@@ -2389,9 +2397,14 @@ export function install(options = {}) {
                 throw new Error(transaction.error ?? 'CLAUDE.md transaction failed');
             for (const backupPath of transaction.backups)
                 log(`Backed up existing CLAUDE.md to ${backupPath}`);
-            log(transaction.operations.some(operation => operation.type === 'write' && operation.existedBefore && basename(operation.path) === 'CLAUDE.md')
-                ? 'Updated CLAUDE.md (merged with existing content)'
-                : 'Created CLAUDE.md');
+            // The transaction drops writes whose bytes already match, so a missing
+            // CLAUDE.md write op means the existing file was left untouched.
+            const claudeMdWrite = transaction.operations.find(operation => operation.type === 'write' && basename(operation.path) === 'CLAUDE.md');
+            log(!claudeMdWrite
+                ? 'CLAUDE.md already up to date'
+                : claudeMdWrite.existedBefore
+                    ? 'Updated CLAUDE.md (merged with existing content)'
+                    : 'Created CLAUDE.md');
         }
         // Install HUD statusline (skip for project-scoped plugins, skipHud option, or hudEnabled config)
         let hudScriptPath = null;

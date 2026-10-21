@@ -9787,9 +9787,11 @@ async function readShutdownAck(teamName, workerName, cwd, requestedAfter) {
   const ack = await readJsonSafe(
     absPath(cwd, TeamPaths.shutdownAck(teamName, workerName))
   );
-  if (!ack) return null;
-  if (requestedAfter && ack.updated_at) {
-    if (new Date(ack.updated_at).getTime() < new Date(requestedAfter).getTime()) {
+  if (!isRecord2(ack) || ack.status !== "accept" && ack.status !== "reject") return null;
+  if (ack.reason !== void 0 && typeof ack.reason !== "string" || ack.updated_at !== void 0 && !isTimestamp2(ack.updated_at)) return null;
+  if (requestedAfter !== void 0) {
+    if (!isTimestamp2(requestedAfter) || ack.updated_at === void 0) return null;
+    if (Date.parse(ack.updated_at) < Date.parse(requestedAfter)) {
       return null;
     }
   }
@@ -9938,6 +9940,217 @@ var init_phase_controller = __esm({
   }
 });
 
+// scripts/lib/utf8-bom.mjs
+function stripLeadingUtf8Bom(content) {
+  return content.startsWith("\uFEFF") ? content.slice(1) : content;
+}
+var init_utf8_bom = __esm({
+  "scripts/lib/utf8-bom.mjs"() {
+    "use strict";
+  }
+});
+
+// src/utils/frontmatter.ts
+function unquoteYamlScalar(value) {
+  if (value.startsWith('"') && value.endsWith('"')) return value.slice(1, -1);
+  if (value.startsWith("'") && value.endsWith("'"))
+    return value.slice(1, -1).replace(/''/g, "'");
+  return value;
+}
+function stripOptionalQuotes(value) {
+  const trimmed = value.trim();
+  return unquoteYamlScalar(trimmed).trim();
+}
+function parseBlockScalarHeader(rawValue) {
+  const match = BLOCK_SCALAR_HEADER.exec(rawValue);
+  if (!match) return null;
+  const chompingIndicator = match[2] ?? match[5];
+  const indentIndicator = match[3] ?? match[4];
+  return {
+    folded: match[1] === ">",
+    chomping: chompingIndicator === "+" ? "keep" : chompingIndicator === "-" ? "strip" : "clip",
+    ...indentIndicator ? { indentIndicator: Number(indentIndicator) } : {}
+  };
+}
+function countLeadingYamlSpaces(line) {
+  let count = 0;
+  while (line[count] === " ") count++;
+  return count;
+}
+function isBlankBlockScalarLine(line) {
+  return countLeadingYamlSpaces(line) === line.length;
+}
+function getBlockScalarContentIndent(lines, startIndex, parentIndent, header) {
+  if (header.indentIndicator !== void 0) {
+    return { value: parentIndent + header.indentIndicator, isDetermined: true };
+  }
+  let leadingBlankIndent = parentIndent;
+  for (let i = startIndex; i < lines.length; i++) {
+    const line = lines[i];
+    const indent = countLeadingYamlSpaces(line);
+    if (isBlankBlockScalarLine(line)) {
+      leadingBlankIndent = Math.max(leadingBlankIndent, indent);
+      continue;
+    }
+    if (indent > parentIndent) {
+      if (line[indent] === "#" && indent < leadingBlankIndent) {
+        return { value: leadingBlankIndent, isDetermined: false };
+      }
+      return { value: indent, isDetermined: true };
+    }
+    break;
+  }
+  return { value: parentIndent + 1, isDetermined: false };
+}
+function readBlockScalar(blockLines, header, contentIndent) {
+  const rows = blockLines.map((line) => {
+    const indent = countLeadingYamlSpaces(line);
+    if (isBlankBlockScalarLine(line) && !contentIndent.isDetermined)
+      return { text: "", moreIndented: false };
+    const moreIndented = indent > contentIndent.value || line[contentIndent.value] === "	";
+    return {
+      text: line.slice(Math.min(contentIndent.value, indent)),
+      moreIndented
+    };
+  });
+  let value;
+  if (header.folded) {
+    value = foldBlockScalarRows(rows);
+  } else {
+    value = rows.map((row) => row.text).join("\n") + (rows.length > 0 ? "\n" : "");
+  }
+  if (header.chomping === "keep") return value;
+  const withoutTrailingBreaks = value.replace(/\n+$/, "");
+  if (header.chomping === "strip" || !rows.some((row) => row.text !== ""))
+    return withoutTrailingBreaks;
+  return `${withoutTrailingBreaks}
+`;
+}
+function foldBlockScalarRows(rows) {
+  let value = "";
+  let previous;
+  let pendingEmptyLines = 0;
+  for (const row of rows) {
+    if (row.text === "") {
+      pendingEmptyLines++;
+      continue;
+    }
+    if (!previous) {
+      value += "\n".repeat(pendingEmptyLines);
+    } else if (pendingEmptyLines > 0) {
+      const preservedBreak = previous.moreIndented || row.moreIndented ? 1 : 0;
+      value += "\n".repeat(pendingEmptyLines + preservedBreak);
+    } else {
+      value += previous.moreIndented || row.moreIndented ? "\n" : " ";
+    }
+    value += row.text;
+    previous = row;
+    pendingEmptyLines = 0;
+  }
+  return value + "\n".repeat(previous ? pendingEmptyLines + 1 : pendingEmptyLines);
+}
+function parseFrontmatter(content) {
+  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/;
+  const match = stripLeadingUtf8Bom(content).match(frontmatterRegex);
+  if (!match) {
+    return { metadata: {}, body: content };
+  }
+  const [, yamlContent, body] = match;
+  const metadata = {};
+  const lines = yamlContent.split(/\r?\n/);
+  const rootLine = lines.find((line) => {
+    const trimmed = line.trimStart();
+    return trimmed.length > 0 && !trimmed.startsWith("#") && trimmed.includes(":");
+  });
+  const rootIndent = rootLine === void 0 ? void 0 : rootLine.length - rootLine.trimStart().length;
+  let flowDepth = 0;
+  let quote = null;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex];
+    const trimmed = line.trimStart();
+    const indent = line.length - trimmed.length;
+    if (flowDepth === 0) {
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      if (indent !== rootIndent) continue;
+      const colonIndex = line.indexOf(":");
+      if (colonIndex === -1) continue;
+      const key = line.slice(0, colonIndex).trim();
+      const rawValue = line.slice(colonIndex + 1).trim();
+      const blockHeader = parseBlockScalarHeader(rawValue);
+      if (blockHeader) {
+        const contentIndent = getBlockScalarContentIndent(
+          lines,
+          lineIndex + 1,
+          rootIndent,
+          blockHeader
+        );
+        const blockLines = [];
+        while (lineIndex + 1 < lines.length) {
+          const nextLine = lines[lineIndex + 1];
+          const nextIndent = countLeadingYamlSpaces(nextLine);
+          if (!isBlankBlockScalarLine(nextLine) && nextIndent < contentIndent.value)
+            break;
+          blockLines.push(lines[++lineIndex]);
+        }
+        metadata[key] = readBlockScalar(blockLines, blockHeader, contentIndent);
+        continue;
+      }
+      metadata[key] = stripOptionalQuotes(rawValue);
+    } else {
+    }
+    let scanFrom = 0;
+    if (flowDepth === 0) {
+      const colonIndex = line.indexOf(":");
+      const valueStart = colonIndex === -1 ? -1 : line.slice(colonIndex + 1).search(/\S/);
+      if (colonIndex !== -1 && valueStart !== -1) {
+        const firstValueChar = line[colonIndex + 1 + valueStart];
+        if (firstValueChar === "{" || firstValueChar === "[") {
+          scanFrom = colonIndex + 1 + valueStart;
+        }
+      }
+      if (scanFrom === 0) continue;
+    }
+    for (let i = scanFrom; i < line.length; i++) {
+      const char = line[i];
+      if (quote) {
+        if (quote === '"' && char === "\\") {
+          i++;
+          continue;
+        }
+        if (char === quote) {
+          if (quote === "'" && line[i + 1] === "'") {
+            i++;
+            continue;
+          }
+          quote = null;
+        }
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        continue;
+      }
+      if (char === "#" && (i === 0 || line[i - 1] === " " || line[i - 1] === "	")) {
+        break;
+      }
+      if (char === "{" || char === "[") {
+        flowDepth++;
+      } else if ((char === "}" || char === "]") && flowDepth > 0) {
+        flowDepth--;
+      }
+    }
+  }
+  return { metadata, body };
+}
+var BLOCK_SCALAR_HEADER;
+var init_frontmatter = __esm({
+  "src/utils/frontmatter.ts"() {
+    "use strict";
+    init_utf8_bom();
+    BLOCK_SCALAR_HEADER = /^([|>])(?:(?:([+-])([1-9])?)|(?:([1-9])([+-])?))?(?:[ \t]+#.*)?$/;
+  }
+});
+
 // src/agents/utils.ts
 function getPackageDir() {
   if (typeof __dirname !== "undefined" && __dirname) {
@@ -9963,8 +10176,7 @@ function getPackageDir() {
   return process.cwd();
 }
 function stripFrontmatter(content) {
-  const match = content.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
-  return match ? match[1].trim() : content.trim();
+  return parseFrontmatter(content).body.trim();
 }
 function loadAgentPrompt(agentName) {
   if (!/^[a-z0-9-]+$/i.test(agentName)) {
@@ -10003,6 +10215,7 @@ var init_utils = __esm({
     import_fs6 = require("fs");
     import_path8 = require("path");
     import_url2 = require("url");
+    init_frontmatter();
   }
 });
 
@@ -11008,13 +11221,6 @@ var init_definitions = __esm({
       model: "opus",
       defaultModel: "opus"
     };
-  }
-});
-
-// src/utils/frontmatter.ts
-var init_frontmatter = __esm({
-  "src/utils/frontmatter.ts"() {
-    "use strict";
   }
 });
 
@@ -13568,7 +13774,7 @@ var init_worker_launch_ack = __esm({
     WORKER_LAUNCH_AUTHORITY_PROTOCOL = "worker-launch-authority-v1";
     WINDOWS_SUPERVISOR_PROTOCOL = "worker-launch-windows-supervisor-v1";
     WINDOWS_RESERVED_ENV_KEYS = new Set([...WORKER_LAUNCH_INTERNAL_ENV_KEYS, "SystemRoot"].map((key) => key.toUpperCase()));
-    SAFE_BASELINE_ENV_KEYS = ["PATH", "TEMP", "TMP"];
+    SAFE_BASELINE_ENV_KEYS = ["PATH", "TEMP", "TMP", "TERM", "COLORTERM"];
     WINDOWS_BASELINE_ENV_KEYS = [
       "SystemDrive",
       "windir",
@@ -14210,6 +14416,11 @@ async function cmuxSendSurface(surfaceId, text) {
 function normalizeCmuxKey(key) {
   const normalized = key.trim();
   const lower = normalized.toLowerCase();
+  const controlKey = normalized.match(/^[Cc]-([A-Za-z])$/);
+  if (controlKey?.[1]) {
+    const character = controlKey[1].toLowerCase();
+    return character === "m" ? "enter" : `ctrl+${character}`;
+  }
   switch (lower) {
     case "enter":
     case "return":
@@ -14231,7 +14442,7 @@ async function cmuxSendSurfaceKey(surfaceId, key) {
   const normalizedKey = normalizeCmuxKey(key);
   await cmuxExecPrimaryWithLegacyFallback(
     ["send-key-surface", "--surface", surfaceId, normalizedKey],
-    ["send-key", "--surface", surfaceId, key]
+    ["send-key", "--surface", surfaceId, normalizedKey]
   );
 }
 async function cmuxCaptureSurface(surfaceId) {
@@ -14393,6 +14604,16 @@ async function verifyTeamTargetOwnership(target, dependencies = defaultMailboxTa
   } catch {
     return { kind: "unavailable" };
   }
+}
+async function verifyCmuxTargetOwnershipWithRetry(target, dependencies) {
+  let membership = await verifyTeamTargetOwnership(target, dependencies);
+  if (membership.kind === "owned" || membership.kind === "provider_mismatch") return membership;
+  for (let attempt = 1; attempt < CMUX_MEMBERSHIP_RETRY_ATTEMPTS; attempt++) {
+    await sleep3(CMUX_MEMBERSHIP_RETRY_INTERVAL_MS);
+    membership = await verifyTeamTargetOwnership(target, dependencies);
+    if (membership.kind === "owned" || membership.kind === "provider_mismatch") return membership;
+  }
+  return membership;
 }
 async function invokeDirectMailboxEffect(target, message, dependencies = defaultDirectMailboxEffectDependencies) {
   if (!target.paneId || !message) return { kind: "not_attempted", reason: "mailbox_target_missing" };
@@ -14687,7 +14908,7 @@ function workerPaneShellCommand() {
   const passthrough = Object.fromEntries(
     Object.entries(baseline).filter(([key, value]) => inline[key] !== value)
   );
-  const inheritedPaneEnvironment = ["TERM", "TMUX", "TMUX_PANE", "TMUX_TMPDIR", "LANG", "LC_ALL", "LC_CTYPE"].map((key) => `${key}="$${key}"`);
+  const inheritedPaneEnvironment = ["TERM", "COLORTERM", "TMUX", "TMUX_PANE", "TMUX_TMPDIR", "LANG", "LC_ALL", "LC_CTYPE"].map((key) => `${key}="$${key}"`);
   const inlineAssignments = Object.entries(inline).map(([key, value]) => `${key}=${shellQuote(value)}`);
   if (Object.keys(passthrough).length === 0) {
     const command2 = [
@@ -14946,14 +15167,15 @@ async function adoptWorkerPaneOwnership(input) {
     ...membershipDependencies,
     serverIdentityDependencies: input.serverIdentityDependencies
   } : membershipDependencies;
-  const membership = await verifyTeamTargetOwnership({
+  const target = {
     provider: input.provider,
     providerTarget: input.providerTarget,
     recipient: "worker",
     recipientRole: "worker",
     paneId: input.paneId,
     ...input.provider === "tmux" ? { tmuxServerIdentity: input.tmuxServerIdentity } : {}
-  }, dependenciesWithIdentityProbe);
+  };
+  const membership = input.provider === "cmux" ? await verifyCmuxTargetOwnershipWithRetry(target, dependenciesWithIdentityProbe) : await verifyTeamTargetOwnership(target, dependenciesWithIdentityProbe);
   if (membership.kind === "foreign") return { ok: false, reason: "pane_foreign" };
   if (membership.kind !== "owned") return { ok: false, reason: "pane_membership_unavailable" };
   return {
@@ -14962,14 +15184,15 @@ async function adoptWorkerPaneOwnership(input) {
   };
 }
 async function workerPaneBelongsToProviderTarget(input, dependencies = input.dependencies ?? defaultMailboxTargetOwnershipDependencies) {
-  const membership = await verifyTeamTargetOwnership({
+  const target = {
     provider: input.provider,
     providerTarget: input.providerTarget,
     recipient: "worker",
     recipientRole: "worker",
     paneId: input.paneId,
     ...input.provider === "tmux" ? { tmuxServerIdentity: input.tmuxServerIdentity } : {}
-  }, dependencies);
+  };
+  const membership = input.provider === "cmux" ? await verifyCmuxTargetOwnershipWithRetry(target, dependencies) : await verifyTeamTargetOwnership(target, dependencies);
   return membership.kind === "owned";
 }
 async function workerPaneBelongsToOwnedProviderTarget(input) {
@@ -16879,7 +17102,7 @@ async function killTeamSession(sessionName2, workerPaneIds, leaderPaneId, option
   if (result.outcome === "executed") return true;
   return await observeTmuxServerIdentity(identity) === "dead";
 }
-var import_fs24, import_crypto7, import_child_process7, import_util7, import_path26, import_os7, sleep3, execFileAsync2, TMUX_SESSION_PREFIX, TMUX_LIVENESS_SERVER_RECHECK_ATTEMPTS, TMUX_LIVENESS_SERVER_RECHECK_DELAY_MS, defaultTmuxServerIdentityDependencies, guardMarkerCounter, TMUX_MAILBOX_PANE_ID, TMUX_MAILBOX_TARGET, defaultMailboxTargetOwnershipDependencies, defaultDirectMailboxEffectDependencies, TeamSessionCreationError, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DANGEROUS_LAUNCH_BINARY_CHARS;
+var import_fs24, import_crypto7, import_child_process7, import_util7, import_path26, import_os7, sleep3, execFileAsync2, TMUX_SESSION_PREFIX, TMUX_LIVENESS_SERVER_RECHECK_ATTEMPTS, TMUX_LIVENESS_SERVER_RECHECK_DELAY_MS, CMUX_MEMBERSHIP_RETRY_ATTEMPTS, CMUX_MEMBERSHIP_RETRY_INTERVAL_MS, defaultTmuxServerIdentityDependencies, guardMarkerCounter, TMUX_MAILBOX_PANE_ID, TMUX_MAILBOX_TARGET, defaultMailboxTargetOwnershipDependencies, defaultDirectMailboxEffectDependencies, TeamSessionCreationError, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DANGEROUS_LAUNCH_BINARY_CHARS;
 var init_tmux_session = __esm({
   "src/team/tmux-session.ts"() {
     "use strict";
@@ -16903,6 +17126,8 @@ var init_tmux_session = __esm({
     TMUX_SESSION_PREFIX = "omc-team";
     TMUX_LIVENESS_SERVER_RECHECK_ATTEMPTS = 3;
     TMUX_LIVENESS_SERVER_RECHECK_DELAY_MS = 20;
+    CMUX_MEMBERSHIP_RETRY_ATTEMPTS = 20;
+    CMUX_MEMBERSHIP_RETRY_INTERVAL_MS = 50;
     defaultTmuxServerIdentityDependencies = {
       tmuxQuery: (args, options) => tmuxCmdAsync(args, options),
       processIdentity: currentStrictProcessStartIdentity,
@@ -18767,14 +18992,25 @@ async function shutdownTeamV2(teamName, cwd, options = {}) {
       shutdownRequestTimes.set(w.name, requestedAt);
       const shutdownRoot = workerInstructionStateRoot(cwd, sanitized);
       const shutdownAckPath = `${shutdownRoot}/workers/${w.name}/shutdown-ack.json`;
-      const shutdownInbox = `# Shutdown Request
+      const shutdownInbox = force ? `# Shutdown Request
 
-All tasks are complete. Please wrap up and respond with a shutdown acknowledgement.
+The leader requests forced shutdown. Please wrap up if possible and acknowledge promptly.
 
 Write your ack to: ${shutdownAckPath}
-Format: {"status":"accept","reason":"ok","updated_at":"<iso>"}
+Format:
+- Accept: {"status":"accept","reason":"ok","updated_at":"<iso>"}
 
-Then exit your session.
+This is a forced shutdown: a rejection does not veto termination. After acknowledging, exit your session; do not resume task work.
+` : `# Shutdown Request
+
+The leader requests shutdown. Please wrap up if possible and respond with your shutdown decision.
+
+Write your ack to: ${shutdownAckPath}
+Format:
+- Accept: {"status":"accept","reason":"ok","updated_at":"<iso>"}
+- Reject: {"status":"reject","reason":"still working","updated_at":"<iso>"}
+
+If you accept, exit your session. If you reject, remain active for task work and mailbox instructions; do not exit because of this request.
 `;
       await writeWorkerInbox(sanitized, w.name, shutdownInbox, cwd);
       if (isSdkTarget(w.pane_id)) ringDoorbell(teamStateRoot(cwd, sanitized), w.name, { kind: "shutdown", from: "leader-fixed" });

@@ -3,8 +3,9 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-// fork deviation: the split path must discard the private pane env file when the
-// guarded split is known not to have run or throws (upstream dropped the discard).
+// The split path must discard the private pane env file when the guarded split is
+// known not to have run or throws (upstream #4333). Kept because upstream's
+// tmux-session.pane-env.test.ts is skipped on win32; this one runs here.
 const state = vi.hoisted(() => ({
     envRoot: '',
     runtimeThrows: false,

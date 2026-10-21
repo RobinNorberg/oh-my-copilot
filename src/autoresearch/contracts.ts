@@ -2,6 +2,7 @@ import { execFileSync } from 'child_process';
 import { existsSync, realpathSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { basename, join, relative, resolve } from 'path';
+import { stripLeadingUtf8Bom, unquoteYamlScalar } from '../utils/frontmatter.js';
 
 export type AutoresearchKeepPolicy = 'score_improvement' | 'pass_only';
 
@@ -73,7 +74,8 @@ function ensurePathInside(parentPath: string, childPath: string): void {
 }
 
 function extractFrontmatter(content: string): { frontmatter: string; body: string } {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  // A UTF-8 BOM (Windows editors) would otherwise hide the opening `---`.
+  const match = stripLeadingUtf8Bom(content).match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!match) {
     throw contractError('sandbox.md must start with YAML frontmatter containing evaluator.command and evaluator.format=json.');
   }
@@ -105,7 +107,7 @@ function parseSimpleYamlFrontmatter(frontmatter: string): Record<string, unknown
     }
 
     const [, key, rawValue] = nestedMatch;
-    const value = rawValue.replace(/^['"]|['"]$/g, '');
+    const value = unquoteYamlScalar(rawValue);
     if (line.startsWith(' ') || line.startsWith('\t')) {
       if (!currentSection) {
         throw contractError(`Nested sandbox.md frontmatter key requires a parent section: ${trimmed}`);

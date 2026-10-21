@@ -18,7 +18,7 @@ This guide assumes you're comfortable with terminal commands and git branching.
 
 ## 2. Fork & Clone
 
-1. **Fork the repository** on GitHub by clicking the "Fork" button at https://github.com/Yeachan-Heo/oh-my-copilot
+1. **Fork the repository** on GitHub by clicking the "Fork" button at https://github.com/RobinNorberg/oh-my-copilot
 
 2. **Clone your fork**:
    ```bash
@@ -28,7 +28,7 @@ This guide assumes you're comfortable with terminal commands and git branching.
 
 3. **Add the upstream remote** so you can sync with the main repository:
    ```bash
-   git remote add upstream https://github.com/Yeachan-Heo/oh-my-copilot.git
+   git remote add upstream https://github.com/RobinNorberg/oh-my-copilot.git
    ```
 
 4. **Verify your remotes**:
@@ -36,8 +36,8 @@ This guide assumes you're comfortable with terminal commands and git branching.
    git remote -v
    # origin    https://github.com/<your-username>/oh-my-copilot.git (fetch)
    # origin    https://github.com/<your-username>/oh-my-copilot.git (push)
-   # upstream  https://github.com/Yeachan-Heo/oh-my-copilot.git (fetch)
-   # upstream  https://github.com/Yeachan-Heo/oh-my-copilot.git (push)
+   # upstream  https://github.com/RobinNorberg/oh-my-copilot.git (fetch)
+   # upstream  https://github.com/RobinNorberg/oh-my-copilot.git (push)
    ```
 
 5. **Check available branches**:
@@ -363,7 +363,7 @@ npm run test:run
    ```
 
 2. **Open a PR** on GitHub:
-   - Go to https://github.com/Yeachan-Heo/oh-my-copilot/pulls
+   - Go to https://github.com/RobinNorberg/oh-my-copilot/pulls
    - Click "New pull request"
    - Select your fork and branch
    - Fill in the PR title and description
@@ -468,7 +468,7 @@ Or check the troubleshooting sections in:
 - **Reference Docs**: [docs/REFERENCE.md](./docs/REFERENCE.md)
 - **Local Plugin Install**: [docs/LOCAL_PLUGIN_INSTALL.md](./docs/LOCAL_PLUGIN_INSTALL.md)
 - **Getting Started**: [docs/GETTING-STARTED.md](./docs/GETTING-STARTED.md)
-- **GitHub Issues**: https://github.com/Yeachan-Heo/oh-my-copilot/issues
+- **GitHub Issues**: https://github.com/RobinNorberg/oh-my-copilot/issues
 - **Discord Community**: https://discord.gg/wSyUQYfhAw
 
 Happy contributing!

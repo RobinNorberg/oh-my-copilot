@@ -28,6 +28,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 <br/>This work is based on [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) by Yeachan Heo, but with a Copilot CLI focus.
 
+> **v5.12.0** ports upstream `dev` through faedfd200 (upstream v5.7.0 to v5.7.6): `omg ask muse`, the `claudeMdEnabled` opt-out, PostToolUse file-context injectors only for file tools, and sturdier frontmatter and glob matching; the retired `merge_readiness_*` MCP tools are removed ([migration note](docs/MIGRATION.md#v5110--v5120-merge-readiness-mcp-tools-removed)).
 > **v5.11.0** adds five `copilot_run_*` MCP tools that delegate a task to a headless Copilot session in its own git worktree (opt-in with `OMG_COPILOT_RUN_ALLOW=1`; [reference](docs/REFERENCE.md#mcp-tools-copilot_run_-delegate-a-task-to-copilot)).
 > **v5.10.0** adds a premium-request budget governor (`omg budget`, warn-only by default), the `omg ship` merge-gate engine and skill, a Copilot `notification` hook for permission prompts and `ask_user`, opt-in in-process SDK tools for sdk team workers, and ports upstream `dev` through 7cb577e94 with narrower permission auto-approval ([changelog](CHANGELOG.md)).
 > **v5.9.0** runs `omg team` on headless SDK workers by default under the Copilot CLI, dispatches Copilot hooks per event (12 entries), reads `.copilot/omg.jsonc` everywhere, adds a daily upstream drift bot, and ports upstream `dev` through a720eabd0 ([migration note](docs/MIGRATION.md#v581--v590-sdk-team-transport-by-default)).

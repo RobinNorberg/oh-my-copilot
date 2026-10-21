@@ -13,6 +13,7 @@ export interface LspServerConfig {
     initializationOptions?: Record<string, unknown>;
     initializeTimeoutMs?: number;
 }
+export declare function findTypeScriptPackageRoot(workspaceRoot: string): string | null;
 export declare function getTypeScriptServerForWorkspace(workspaceRoot: string): LspServerConfig;
 /**
  * Known LSP servers and their configurations

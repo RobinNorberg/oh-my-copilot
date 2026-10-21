@@ -5,7 +5,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { readDaemonState, isDaemonRunning, getDaemonStatus, formatDaemonState, shouldResumeBlockedPanesOnStatusChange, } from '../../features/rate-limit-wait/daemon.js';
+import { readDaemonState, isDaemonRunning, getDaemonStatus, formatDaemonState, } from '../../features/rate-limit-wait/daemon.js';
+import { shouldResumeBlockedPanesOnStatusChange } from '../../features/rate-limit-wait/daemon-state.js';
 describe('daemon', () => {
     const testDir = join(tmpdir(), 'omc-daemon-test-' + Date.now());
     const testConfig = {

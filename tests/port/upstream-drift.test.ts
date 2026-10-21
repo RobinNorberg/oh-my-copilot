@@ -336,8 +336,11 @@ describe("upstream-drift leak scan", () => {
     );
     expect(drift(pair.fork, "--apply").status).toBe(0);
     // Simulate a hand edit that reintroduces the upstream name.
-    write(pair.fork, { "src/c.ts": `${read(pair.fork, "src/c.ts")}const leak = "oh-my-claudecode";\n` });
+    write(pair.fork, { "src/c.ts": `${read(pair.fork, "src/c.ts")}const leak = "oh-my-claudecode";\n// https://github.com/Yeachan-Heo/oh-my-copilot\n` });
     const report = JSON.parse(drift(pair.fork, "--report", "--base", pair.base).stdout);
-    expect(report.leaks).toEqual([{ path: "src/c.ts", line: 4, text: 'const leak = "oh-my-claudecode";' }]);
+    expect(report.leaks).toEqual([
+      { path: "src/c.ts", line: 4, text: 'const leak = "oh-my-claudecode";' },
+      { path: "src/c.ts", line: 5, text: "// https://github.com/Yeachan-Heo/oh-my-copilot" },
+    ]);
   });
 });

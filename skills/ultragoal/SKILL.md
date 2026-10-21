@@ -28,6 +28,10 @@ Claude Code `/goal` is a session-scoped Stop hook: it blocks the session from st
 
 <How_To_Use>
 
+On plugin-only installs where `omc` is not on `PATH`, replace the `omc` prefix in
+the commands below and in generated handoffs with `oh-my-copilot.js`, or use
+`node <plugin-root>/bin/oh-my-copilot.js`.
+
 1. Create a plan from a brief:
    ```
    omc ultragoal create-goals --brief-file plan.md

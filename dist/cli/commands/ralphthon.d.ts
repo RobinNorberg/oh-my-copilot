@@ -11,6 +11,9 @@
 import type { RalphthonCliOptions, RalphthonPlanningContext, RalphthonStory } from "../../ralphthon/types.js";
 /**
  * Parse ralphthon CLI arguments
+ *
+ * Throws when --max-waves or --poll-interval is not a positive whole number,
+ * rather than silently using the default (`5x` would otherwise parse as 5).
  */
 export declare function parseRalphthonArgs(args: string[]): RalphthonCliOptions;
 export declare function buildRalphthonPlanningContext(task: string): RalphthonPlanningContext;
