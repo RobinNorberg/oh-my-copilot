@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { posixOnly } from './helpers/platform.js';
 const REPO_ROOT = join(__dirname, '..', '..');
 const SCRIPT_PATH = join(REPO_ROOT, 'scripts', 'setup-progress.sh');
 const tempRoots = [];
@@ -39,7 +40,7 @@ describe('setup-progress.sh', () => {
         expect(config.setupVersion).toBe('v9.9.9');
         expect(config.setupCompleted).toBeTruthy();
     });
-    it('fails without jq and preserves existing setup config', () => {
+    it.skipIf(posixOnly('PATH of /usr/bin tool symlinks run by /bin/bash'))('fails without jq and preserves existing setup config', () => {
         const root = mkdtempSync(join(tmpdir(), 'omc-setup-progress-no-jq-'));
         tempRoots.push(root);
         const projectRoot = join(root, 'project');

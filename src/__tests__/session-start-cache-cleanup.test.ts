@@ -5,6 +5,7 @@ import { tmpdir } from 'os';
 import { execFileSync } from 'child_process';
 import { pathIdentity, publishCacheOccupancy, readOccupiedPluginRoots } from '../utils/cache-occupancy.js';
 import { purgeStalePluginCacheVersions } from '../utils/paths.js';
+import { IS_WIN } from './helpers/platform.js';
 
 const SCRIPT_PATH = join(__dirname, '..', '..', 'scripts', 'session-start.mjs');
 const NODE = process.execPath;
@@ -42,6 +43,18 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  /**
+   * The link session-start.mjs writes for a version: relative on POSIX, an
+   * absolute junction on win32 (junctions need no symlink privilege).
+   */
+  function linkTarget(version: string): string {
+    return IS_WIN ? join(fakeCacheBase, version) : version;
+  }
+
+  function linkVersion(version: string, linkPath: string): void {
+    symlinkSync(linkTarget(version), linkPath, IS_WIN ? 'junction' : undefined);
+  }
 
   function createFakeVersion(version: string) {
     const versionDir = join(fakeCacheBase, version);
@@ -148,7 +161,7 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
     expect(v1Stat.isSymbolicLink()).toBe(true);
 
     const target = readlinkSync(join(fakeCacheBase, '4.4.1'));
-    expect(target).toBe('4.4.3');
+    expect(target).toBe(linkTarget('4.4.3'));
   });
 
   it('with only 2 versions, no symlinks are created', () => {
@@ -193,10 +206,10 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
 
     // 4.4.1 and 4.4.0: symlinks to 4.4.3
     expect(lstatSync(join(fakeCacheBase, '4.4.1')).isSymbolicLink()).toBe(true);
-    expect(readlinkSync(join(fakeCacheBase, '4.4.1'))).toBe('4.4.3');
+    expect(readlinkSync(join(fakeCacheBase, '4.4.1'))).toBe(linkTarget('4.4.3'));
 
     expect(lstatSync(join(fakeCacheBase, '4.4.0')).isSymbolicLink()).toBe(true);
-    expect(readlinkSync(join(fakeCacheBase, '4.4.0'))).toBe('4.4.3');
+    expect(readlinkSync(join(fakeCacheBase, '4.4.0'))).toBe(linkTarget('4.4.3'));
   });
 
   it('ignores orphaned *.tmp~* directories when choosing versions (issue #4263)', () => {
@@ -221,7 +234,7 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
       expect(stat.isDirectory()).toBe(true);
     }
     expect(lstatSync(join(fakeCacheBase, '4.4.1')).isSymbolicLink()).toBe(true);
-    expect(readlinkSync(join(fakeCacheBase, '4.4.1'))).toBe('4.4.3');
+    expect(readlinkSync(join(fakeCacheBase, '4.4.1'))).toBe(linkTarget('4.4.3'));
     expect(existsSync(join(fakeCacheBase, '4.4.1', 'scripts', 'run.cjs'))).toBe(true);
   });
 
@@ -230,15 +243,14 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
     createFakeVersion('4.4.3');
 
     // Manually create a stale symlink: 4.4.1 -> 4.4.2 (not the latest 4.4.3)
-    const { symlinkSync } = require('fs');
-    symlinkSync('4.4.2', join(fakeCacheBase, '4.4.1'));
+    linkVersion('4.4.2', join(fakeCacheBase, '4.4.1'));
 
     runSessionStart();
 
     // 4.4.1 should now be a symlink to 4.4.3 (updated from 4.4.2)
     const v1Stat = lstatSync(join(fakeCacheBase, '4.4.1'));
     expect(v1Stat.isSymbolicLink()).toBe(true);
-    expect(readlinkSync(join(fakeCacheBase, '4.4.1'))).toBe('4.4.3');
+    expect(readlinkSync(join(fakeCacheBase, '4.4.1'))).toBe(linkTarget('4.4.3'));
 
     // 4.4.3 and 4.4.2 remain as real directories
     expect(lstatSync(join(fakeCacheBase, '4.4.3')).isSymbolicLink()).toBe(false);
@@ -257,7 +269,7 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
   it('does not link a stale plugin root into a cycle when the only cache entry is a dangling symlink', () => {
     // 4.14.2 -> 4.14.5 is dangling: the real 4.14.5 directory was removed.
     const danglingLink = join(fakeCacheBase, '4.14.2');
-    symlinkSync('4.14.5', danglingLink);
+    linkVersion('4.14.5', danglingLink);
     const staleRoot = join(fakeCacheBase, '4.14.5');
 
     runSessionStart({ CLAUDE_PLUGIN_ROOT: staleRoot });
@@ -266,13 +278,13 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
     expect(resolveErrorCode(staleRoot)).not.toBe('ELOOP');
     expect(resolveErrorCode(danglingLink)).not.toBe('ELOOP');
     expect(readdirSync(fakeCacheBase)).toEqual(['4.14.2']);
-    expect(readlinkSync(danglingLink)).toBe('4.14.5');
+    expect(readlinkSync(danglingLink)).toBe(linkTarget('4.14.5'));
   });
 
   it('points a stale plugin root at the real directory, not at a newer-named symlink', () => {
     // Downgrade shape: 4.14.5 is a symlink to the only real directory, 4.14.2.
     const realDir = createFakeVersion('4.14.2');
-    symlinkSync('4.14.2', join(fakeCacheBase, '4.14.5'));
+    linkVersion('4.14.2', join(fakeCacheBase, '4.14.5'));
     const staleRoot = join(fakeCacheBase, '4.14.4'); // removed version
 
     runSessionStart({ CLAUDE_PLUGIN_ROOT: staleRoot });
@@ -288,24 +300,24 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
     createFakeVersion('4.4.1');
     createFakeVersion('4.4.2');
     createFakeVersion('4.4.3');
-    symlinkSync('4.4.3', join(fakeCacheBase, '4.5.0'));
+    linkVersion('4.4.3', join(fakeCacheBase, '4.5.0'));
 
     runSessionStart();
 
     expect(lstatSync(join(fakeCacheBase, '4.4.3')).isSymbolicLink()).toBe(false);
     expect(lstatSync(join(fakeCacheBase, '4.5.0')).isSymbolicLink()).toBe(true);
-    expect(readlinkSync(join(fakeCacheBase, '4.5.0'))).toBe('4.4.3');
+    expect(readlinkSync(join(fakeCacheBase, '4.5.0'))).toBe(linkTarget('4.4.3'));
     for (const old of ['4.4.2', '4.4.1']) {
       expect(lstatSync(join(fakeCacheBase, old)).isSymbolicLink()).toBe(true);
-      expect(readlinkSync(join(fakeCacheBase, old))).toBe('4.4.3');
+      expect(readlinkSync(join(fakeCacheBase, old))).toBe(linkTarget('4.4.3'));
     }
     expect(existsSync(join(fakeCacheBase, '4.4.1', 'scripts', 'run.cjs'))).toBe(true);
   });
 
   it('never replaces the only real directory with a symlink when newer entries are symlinks', () => {
     createFakeVersion('4.4.3');
-    symlinkSync('4.4.3', join(fakeCacheBase, '5.0.0'));
-    symlinkSync('4.4.3', join(fakeCacheBase, '4.9.0'));
+    linkVersion('4.4.3', join(fakeCacheBase, '5.0.0'));
+    linkVersion('4.4.3', join(fakeCacheBase, '4.9.0'));
 
     runSessionStart({ CLAUDE_PLUGIN_ROOT: join(fakeCacheBase, '5.0.0') });
 

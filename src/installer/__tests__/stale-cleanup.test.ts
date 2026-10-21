@@ -24,6 +24,7 @@ vi.mock('fs', async () => {
 });
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'fs';
 import { join } from 'path';
+import { requiresSymlinks } from '../../__tests__/helpers/platform.js';
 import { tmpdir } from 'os';
 
 // We test the exported cleanup functions directly
@@ -408,7 +409,7 @@ describe('cleanupStaleAgents', () => {
     expect(existsSync(join(agentsDir, 'AGENTS.md'))).toBe(true);
   });
 
-  it('preserves symlinks and non-regular entries with authenticated filenames', async () => {
+  it.skipIf(requiresSymlinks())('preserves symlinks and non-regular entries with authenticated filenames', async () => {
     vi.resetModules();
     const { cleanupStaleAgents: cleanup, AGENTS_DIR: agentsDir } = await import('../index.js');
 
@@ -584,7 +585,8 @@ describe('cleanupStaleSkills', () => {
     const externalSkillDir = join(externalRoot, 'linked-skill');
     mkdirSync(externalSkillDir, { recursive: true });
     writeFileSync(join(externalSkillDir, 'SKILL.md'), '---\nname: linked-skill\ndescription: external\n---\n\n# linked-skill\n');
-    symlinkSync(externalSkillDir, join(skillsDir, 'linked-skill'), 'dir');
+    // A junction on Windows (no symlink privilege needed); a dir symlink elsewhere.
+    symlinkSync(externalSkillDir, join(skillsDir, 'linked-skill'), 'junction');
 
     try {
       const removed = cleanup(log);
@@ -905,7 +907,7 @@ describe('prunePluginDuplicateAgents', () => {
     }
   });
 
-  it('preserves a candidate that becomes non-regular during unlink revalidation', async () => {
+  it.skipIf(requiresSymlinks())('preserves a candidate that becomes non-regular during unlink revalidation', async () => {
     const { prunePluginDuplicateAgents: prune, AGENTS_DIR: agentsDir } =
       await withActivePluginAgents({ 'architect.agent.md': Buffer.from('active payload agent\n') });
     const actualFs = await vi.importActual<typeof import('fs')>('fs');

@@ -1,14 +1,18 @@
 /** Real-filesystem regressions for cache targets whose payload is symlinked. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, rmSync, existsSync, lstatSync, readdirSync, readlinkSync, utimesSync, } from 'fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, rmSync, existsSync, lstatSync, readdirSync, readlinkSync, realpathSync, utimesSync, } from 'fs';
 import { dirname, join, relative, sep } from 'path';
 import { tmpdir } from 'os';
 import { createServer } from 'net';
+import { requiresSymlinks } from './helpers/platform.js';
 let configDir;
 vi.mock('../utils/config-dir.js', () => ({
     getCopilotConfigDir: vi.fn(() => configDir),
 }));
 const { purgeStalePluginCacheVersions } = await import('../utils/paths.js');
+// Directory links use 'junction' (the product's link type on win32, no symlink
+// privilege needed; a plain dir symlink elsewhere). Tests that need file links
+// or relative link targets skip where the host cannot create symlinks.
 const PLUGIN = 'omc/oh-my-copilot';
 const STALE = '4.15.6';
 const ACTIVE = '4.15.10';
@@ -82,7 +86,7 @@ afterEach(() => {
     rmSync(configDir, { recursive: true, force: true });
 });
 describe('purgeStalePluginCacheVersions symlink payload validation', () => {
-    it('preserves OMC payload when a required entry point links into the stale tree', () => {
+    it.skipIf(requiresSymlinks())('preserves OMC payload when a required entry point links into the stale tree', () => {
         const stale = writeVersion(STALE);
         const staleScript = join(stale, 'payload', 'run.cjs');
         const active = join(pluginDir, ACTIVE);
@@ -106,7 +110,7 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         expect(existsSync(activeScript)).toBe(true);
         expect(readdirSync(pluginDir).filter((name) => name.includes('.omc-stale-'))).toEqual([]);
     });
-    it('preserves OMC payload when a non-entrypoint hook script links into the stale tree', () => {
+    it.skipIf(requiresSymlinks())('preserves OMC payload when a non-entrypoint hook script links into the stale tree', () => {
         const stale = writeVersion(STALE);
         const staleScript = join(stale, 'scripts', 'session-start.mjs');
         const active = join(pluginDir, ACTIVE);
@@ -151,14 +155,14 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         const docs = join(active, 'docs');
         const backLink = join(docs, 'back');
         mkdirSync(docs);
-        symlinkSync('..', backLink, 'dir');
+        symlinkSync(active, backLink, 'junction');
         makeStale(stale);
         installPath(active);
         const result = purgeStalePluginCacheVersions();
         expect(result.symlinked).toBe(1);
         expect(result.errors).toHaveLength(0);
         expect(lstatSync(stale).isSymbolicLink()).toBe(true);
-        expect(readlinkSync(stale)).toBe(active);
+        expect(realpathSync(stale)).toBe(realpathSync(active));
         expect(existsSync(join(stale, 'scripts', 'run.cjs'))).toBe(true);
     });
     it('rejects a generic target whose only entry is a directory cycle', () => {
@@ -167,7 +171,7 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         const stale = join(genericDir, STALE);
         const backLink = join(active, 'back');
         mkdirSync(active, { recursive: true });
-        symlinkSync('.', backLink, 'dir');
+        symlinkSync(active, backLink, 'junction');
         mkdirSync(stale, { recursive: true });
         writeFileSync(join(stale, 'README.md'), 'only stale payload');
         makeStale(stale);
@@ -180,7 +184,7 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         expect(result.errors).toHaveLength(1);
         expect(lstatSync(stale).isDirectory()).toBe(true);
         expect(readFileSync(join(stale, 'README.md'), 'utf8')).toBe('only stale payload');
-        expect(readlinkSync(backLink)).toBe('.');
+        expect(realpathSync(backLink)).toBe(realpathSync(active));
         expect(readdirSync(genericDir).filter((name) => name.includes('.omc-stale-'))).toEqual([]);
     });
     it('rejects a generic target containing only empty directories', () => {
@@ -202,7 +206,7 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         expect(readFileSync(join(stale, 'README.md'), 'utf8')).toBe('only stale payload');
         expect(readdirSync(genericDir).filter((name) => name.includes('.omc-stale-'))).toEqual([]);
     });
-    it('rejects a generic target containing only zero-byte files', () => {
+    it.skipIf(requiresSymlinks())('rejects a generic target containing only zero-byte files', () => {
         const genericDir = join(configDir, 'plugins', 'cache', 'official', 'hookify');
         const active = join(genericDir, ACTIVE);
         const stale = join(genericDir, STALE);
@@ -286,7 +290,7 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         mkdirSync(staleCommands, { recursive: true });
         writeFileSync(join(staleCommands, 'old-command.js'), 'old payload');
         writeFileSync(join(stale, 'README.md'), 'old generic payload');
-        symlinkSync(staleCommands, activeCommands, 'dir');
+        symlinkSync(staleCommands, activeCommands, 'junction');
         makeStale(stale);
         writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
@@ -313,7 +317,7 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         writeFileSync(join(stalePayload, 'legacy-command.js'), 'only stale payload');
         writeFileSync(join(active, 'README.md'), 'active generic payload');
         writeFileSync(join(stale, 'README.md'), 'old generic payload');
-        symlinkSync(stalePayload, legacyPayload, 'dir');
+        symlinkSync(stalePayload, legacyPayload, 'junction');
         makeStale(stale);
         writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
@@ -343,9 +347,9 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         mkdirSync(newRoot, { recursive: true });
         writeFileSync(join(newRoot, 'legacy-command.js'), 'new payload');
         mkdirSync(stale, { recursive: true });
-        symlinkSync(oldRoot, staleForward, 'dir');
-        symlinkSync(newRoot, activeForward, 'dir');
-        symlinkSync(staleForward, activeLegacy, 'dir');
+        symlinkSync(oldRoot, staleForward, 'junction');
+        symlinkSync(newRoot, activeForward, 'junction');
+        symlinkSync(staleForward, activeLegacy, 'junction');
         makeStale(stale);
         writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
@@ -378,7 +382,7 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         mkdirSync(join(active, 'forward'), { recursive: true });
         writeFileSync(activeFile, 'active counterpart');
         mkdirSync(outside, { recursive: true });
-        symlinkSync(staleSubdir, join(outside, 'pivot'), 'dir');
+        symlinkSync(staleSubdir, join(outside, 'pivot'), 'junction');
         symlinkSync(aliasTarget, activeAlias, 'file');
         writeFileSync(join(stale, 'README.md'), 'old generic payload');
         makeStale(stale);
@@ -394,7 +398,7 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         expect(readlinkSync(activeAlias)).toBe(aliasTarget);
         expect(readdirSync(genericDir).filter((name) => name.includes('.omc-stale-'))).toEqual([]);
     });
-    it('allows a generic payload link with a valid relative parent traversal', () => {
+    it.skipIf(requiresSymlinks())('allows a generic payload link with a valid relative parent traversal', () => {
         const genericDir = join(configDir, 'plugins', 'cache', 'official', 'hookify');
         const active = join(genericDir, ACTIVE);
         const stale = join(genericDir, STALE);
@@ -422,7 +426,7 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         expect(readlinkSync(stale)).toBe(active);
         expect(readFileSync(activeAlias, 'utf8')).toBe('shared generic payload');
     });
-    it('preserves generic payload when a directory symlink contains a stale-version link', () => {
+    it.skipIf(requiresSymlinks())('preserves generic payload when a directory symlink contains a stale-version link', () => {
         const genericDir = join(configDir, 'plugins', 'cache', 'official', 'hookify');
         const active = join(genericDir, ACTIVE);
         const stale = join(genericDir, STALE);
@@ -436,7 +440,7 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         writeFileSync(staleData, 'only old data');
         mkdirSync(externalPayload, { recursive: true });
         symlinkSync(staleData, externalChild, 'file');
-        symlinkSync(externalPayload, activePayload, 'dir');
+        symlinkSync(externalPayload, activePayload, 'junction');
         writeFileSync(join(stale, 'README.md'), 'old generic payload');
         makeStale(stale);
         writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
@@ -463,7 +467,7 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
             writeFileSync(join(redirectTarget, 'hooks', 'hooks.json'), '{}\n');
         }
         const redirect = join(pluginDir, LEGACY[0]);
-        symlinkSync(redirectTarget, redirect, 'dir');
+        symlinkSync(redirectTarget, redirect, 'junction');
         makeStale(stale);
         installPath(redirect);
         const result = purgeStalePluginCacheVersions();
@@ -482,9 +486,9 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         writeFileSync(join(externalRoot, 'scripts', 'run.cjs'), '// valid plugin root\n');
         mkdirSync(join(externalRoot, 'hooks'), { recursive: true });
         writeFileSync(join(externalRoot, 'hooks', 'hooks.json'), '{}\n');
-        symlinkSync(externalRoot, forward, 'dir');
+        symlinkSync(externalRoot, forward, 'junction');
         const active = join(pluginDir, LEGACY[0]);
-        symlinkSync(forward, active, 'dir');
+        symlinkSync(forward, active, 'junction');
         makeStale(stale);
         installPath(active);
         const result = purgeStalePluginCacheVersions();
@@ -520,7 +524,7 @@ describe('purgeStalePluginCacheVersions symlink payload validation', () => {
         const active = join(genericDir, ACTIVE);
         const stale = join(genericDir, STALE);
         mkdirSync(genericDir, { recursive: true });
-        symlinkSync(genericDir, active, 'dir');
+        symlinkSync(genericDir, active, 'junction');
         mkdirSync(stale);
         writeFileSync(join(stale, 'README.md'), 'old plugin payload');
         makeStale(stale);

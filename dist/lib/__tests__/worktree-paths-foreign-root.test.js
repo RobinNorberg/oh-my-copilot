@@ -270,7 +270,8 @@ process.stdout.write(JSON.stringify({
     });
     it('symlink foreign alias keeps the symlink label and hides the canonical target', () => {
         const symlinkAlias = join(tempDir, 'foreign-alias');
-        symlinkSync(foreignRepo, symlinkAlias);
+        // A junction on Windows (no symlink privilege needed); a dir symlink elsewhere.
+        symlinkSync(foreignRepo, symlinkAlias, 'junction');
         const resolution = resolveWorkingDirectoryOrLinkedWorktree(symlinkAlias);
         expect(resolution.status).toBe('foreign_repository');
         if (resolution.status !== 'foreign_repository')

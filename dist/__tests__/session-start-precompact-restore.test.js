@@ -9,9 +9,11 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, existsSync, readFileSync, linkSync, realpathSync, utimesSync } from 'node:fs';
 import * as nodeFs from 'fs';
+import { rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { requiresSymlinks } from './helpers/platform.js';
 vi.mock('fs', async () => {
     const actual = await vi.importActual('fs');
     return { ...actual };
@@ -82,7 +84,7 @@ fs.openSync = function(path, flags, mode) {
   if (!redirected && String(path) === checkpointPath) {
     redirected = true;
     fs.renameSync(statePath, stateBackupPath);
-    fs.symlinkSync(externalState, statePath, 'dir');
+    fs.symlinkSync(externalState, statePath, 'junction');
     try {
       return originalOpenSync.call(fs, path, flags, mode);
     } finally {
@@ -138,9 +140,11 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
         mkdirSync(home, { recursive: true });
         project = makeProject(tempDir);
     });
-    afterEach(() => {
+    afterEach(async () => {
         try {
-            rmSync(tempDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
+            // Detached hook helpers inherit the project cwd, which Windows locks until
+            // they exit. Async rm retries that EPERM; rmSync ignores maxRetries for it.
+            await rm(tempDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
         }
         catch (error) {
             if (process.platform !== 'win32' || error.code !== 'EBUSY')
@@ -587,7 +591,7 @@ process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_
             expect(parseContext(stdout)).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
         }
     });
-    it('installed SessionStart helper rejects an in-directory symlink to external JSON', () => {
+    it.skipIf(requiresSymlinks())('installed SessionStart helper rejects an in-directory symlink to external JSON', () => {
         const checkpointDir = join(project, '.omg', 'state', 'checkpoints');
         mkdirSync(checkpointDir, { recursive: true });
         const marker = 'EXTERNAL_INSTALLED_SYMLINK_CHECKPOINT_MARKER';
@@ -628,7 +632,7 @@ process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_
             wisdom_exported: false,
             plan_refs: { prd: { title: marker } },
         }), 'utf-8');
-        symlinkSync(externalState, statePath, 'dir');
+        symlinkSync(externalState, statePath, 'junction');
         const { stdout } = runHook({
             hook_event_name: 'SessionStart',
             source: 'compact',
@@ -701,7 +705,7 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
         expect(result).toBeNull();
         expect(existsSync('/tmp/escaped-3730-template-trav/restored.json')).toBe(false);
     });
-    it('rejects an in-directory symlink to external JSON without restoring or marking it', async () => {
+    it.skipIf(requiresSymlinks())('rejects an in-directory symlink to external JSON without restoring or marking it', async () => {
         const checkpointDir = join(project, '.omg', 'state', 'checkpoints');
         rmSync(join(checkpointDir, 'checkpoint-now.json'));
         const marker = 'EXTERNAL_TEMPLATE_SYMLINK_CHECKPOINT_MARKER';
@@ -751,7 +755,7 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
         const externalMarkerRoot = join(tempDir, 'external-parity-marker-root');
         mkdirSync(externalMarkerRoot, { recursive: true });
         rmSync(markerRoot, { recursive: true, force: true });
-        symlinkSync(externalMarkerRoot, markerRoot, 'dir');
+        symlinkSync(externalMarkerRoot, markerRoot, 'junction');
         for (const [helper, suffix] of [
             [TEMPLATE_HELPER, 'template-marker-parent-symlink'],
             [INSTALLED_HELPER, 'installed-marker-parent-symlink'],
@@ -764,7 +768,7 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
             expect(existsSync(join(externalMarkerRoot, suffix, 'restored.json'))).toBe(false);
         }
     });
-    it('does not read or overwrite an external file through a symlinked marker file', async () => {
+    it.skipIf(requiresSymlinks())('does not read or overwrite an external file through a symlinked marker file', async () => {
         const markerRoot = join(project, '.omg', 'state', 'checkpoints-restored');
         const externalMarkerDir = join(tempDir, 'external-parity-marker-file');
         mkdirSync(externalMarkerDir, { recursive: true });
@@ -866,7 +870,7 @@ syncBuiltinESMExports();
             wisdom_exported: false,
             plan_refs: { prd: { title: marker } },
         }), 'utf-8');
-        symlinkSync(externalState, statePath, 'dir');
+        symlinkSync(externalState, statePath, 'junction');
         const mod = await import(pathToFileURL(TEMPLATE_HELPER).href);
         const result = mod.restorePreCompactCheckpoint(omcRoot, 'template-state-symlink-session');
         expect(result).toBeNull();
@@ -897,7 +901,7 @@ syncBuiltinESMExports();
             if (!redirected && String(path) === checkpointPath) {
                 redirected = true;
                 renameSync(statePath, stateBackupPath);
-                symlinkSync(externalState, statePath, 'dir');
+                symlinkSync(externalState, statePath, 'junction');
                 try {
                     return originalOpenSync(path, flags, mode);
                 }

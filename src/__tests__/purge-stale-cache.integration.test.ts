@@ -32,6 +32,9 @@ vi.mock('../utils/config-dir.js', () => ({
 
 const { purgeStalePluginCacheVersions } = await import('../utils/paths.js');
 
+// Fixture links use 'junction': the product's own link type on win32, which
+// needs no symlink privilege there, and a plain dir symlink everywhere else.
+
 const PLUGIN = 'omc/oh-my-copilot';
 const STALE = '4.15.6';
 const ACTIVE = '4.15.10';
@@ -113,7 +116,7 @@ afterEach(() => {
 describe('purgeStalePluginCacheVersions on a real filesystem', () => {
   it.each(['missing', 'incomplete'])('preserves pinned paths when the registered active target is %s', (state) => {
     const stale = writeVersion(STALE);
-    for (const version of LEGACY) symlinkSync(stale, join(pluginDir, version), 'dir');
+    for (const version of LEGACY) symlinkSync(stale, join(pluginDir, version), 'junction');
     makeStale(stale);
     rmSync(join(pluginDir, ACTIVE), { recursive: true, force: true });
     if (state === 'incomplete') mkdirSync(join(pluginDir, ACTIVE));
@@ -196,7 +199,7 @@ describe('purgeStalePluginCacheVersions on a real filesystem', () => {
         target = pluginDir.replace('oh-my-copilot', 'OH-MY-COPILOT');
       }
       const redirect = join(pluginDir, LEGACY[0]);
-      symlinkSync(target, redirect, 'dir');
+      symlinkSync(target, redirect, 'junction');
       makeStale(stale);
       installedPlugins(redirect);
 
@@ -285,7 +288,7 @@ describe('purgeStalePluginCacheVersions on a real filesystem', () => {
 
   it('demotes a stale version to a redirect and keeps every pinned path resolving', () => {
     const stale = writeVersion(STALE);
-    for (const v of LEGACY) symlinkSync(stale, join(pluginDir, v), 'dir');
+    for (const v of LEGACY) symlinkSync(stale, join(pluginDir, v), 'junction');
     makeStale(stale);
 
     const result = purgeStalePluginCacheVersions();
@@ -325,7 +328,7 @@ describe('purgeStalePluginCacheVersions on a real filesystem', () => {
     const stale = writeVersion(STALE);
     const aside = `${stale}.omc-stale-999998`;
     renameSync(stale, aside);
-    symlinkSync(join(pluginDir, 'gone-away'), stale, 'dir');
+    symlinkSync(join(pluginDir, 'gone-away'), stale, 'junction');
     expect(existsSync(stale)).toBe(false); // follows the broken link
     expect(lstatSync(stale).isSymbolicLink()).toBe(true);
 
@@ -456,7 +459,7 @@ describe('purgeStalePluginCacheVersions on a real filesystem', () => {
     const stale = writeVersion(STALE);
     const aside = `${stale}.omc-stale-999993`;
     renameSync(stale, aside);
-    symlinkSync(elsewhere, stale, 'dir');
+    symlinkSync(elsewhere, stale, 'junction');
     expect(existsSync(stale)).toBe(true); // the link resolves…
     expect(hookResolves(STALE)).toBe(false); // …but it is not a root
     makeStale(aside);
@@ -473,7 +476,7 @@ describe('purgeStalePluginCacheVersions on a real filesystem', () => {
     const stale = writeVersion(STALE);
     const aside = `${stale}.omc-stale-999992`;
     renameSync(stale, aside);
-    symlinkSync(join(pluginDir, ACTIVE), stale, 'dir');
+    symlinkSync(join(pluginDir, ACTIVE), stale, 'junction');
     makeStale(aside);
 
     const result = purgeStalePluginCacheVersions();
@@ -544,8 +547,8 @@ describe('invariant across every cache shape', () => {
       mkdirSync(join(V, 'scripts'), { recursive: true });
       writeFileSync(join(V, 'scripts', 'partial.txt'), 'x');
     } else if (occupant === 'payload') writeVersion(STALE);
-    else if (occupant === 'live-symlink') symlinkSync(join(pluginDir, ACTIVE), V, 'dir');
-    else if (occupant === 'dangling-link') symlinkSync(join(pluginDir, 'gone-away'), V, 'dir');
+    else if (occupant === 'live-symlink') symlinkSync(join(pluginDir, ACTIVE), V, 'junction');
+    else if (occupant === 'dangling-link') symlinkSync(join(pluginDir, 'gone-away'), V, 'junction');
     else if (occupant === 'file') writeFileSync(V, 'not a directory');
 
     let aside: string | null = null;

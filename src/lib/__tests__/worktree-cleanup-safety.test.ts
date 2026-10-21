@@ -42,7 +42,8 @@ describe('validateWorktreeRemovalTarget', () => {
     const realTarget = join(root, 'real-worktree');
     const linkTarget = join(root, 'linked-worktree');
     mkdirSync(realTarget, { recursive: true });
-    symlinkSync(realTarget, linkTarget, 'dir');
+    // A junction on Windows (no symlink privilege needed); a dir symlink elsewhere.
+    symlinkSync(realTarget, linkTarget, 'junction');
 
     expect(() => validateWorktreeRemovalTarget({ candidatePath: linkTarget, expectedRoots: [root] })).toThrow(/symlink/);
     expect(existsSync(realTarget)).toBe(true);

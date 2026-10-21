@@ -41,3 +41,16 @@ Shared helpers live in `src/__tests__/helpers/platform.ts`. Import them; do not 
 The skip helpers return true when the test must skip, and the reason sits in the call or the test
 title. A gate must not hide a Linux run: check that the condition is false on Linux, because CI
 only runs Linux.
+
+## Known Windows product gaps
+
+Gated tests below hide a real product gap, not a host limit. Remove the gate when the gap is fixed.
+
+- **Deferred cleanup retry never schedules on a loaded Windows host.** The session-start hook
+  probes lock-owner liveness with PowerShell, which needs 1-5 s under load. That exceeds the
+  bounded probe budget, so the holder reads as "unverifiable" instead of "contended" and no
+  deferred retry is scheduled. Gated: `retries deferred cleanup after its own lock wait expires` in
+  `src/__tests__/session-start-script-context.test.ts` and
+  `src/installer/__tests__/session-start-template.test.ts`.
+  Fix options: (1) raise the probe budget on win32 so the PowerShell probe completes;
+  (2) schedule the deferred retry when the holder is unverifiable, with a bounded retry count.

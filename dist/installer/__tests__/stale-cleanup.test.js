@@ -21,6 +21,7 @@ vi.mock('fs', async () => {
 });
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'fs';
 import { join } from 'path';
+import { requiresSymlinks } from '../../__tests__/helpers/platform.js';
 import { tmpdir } from 'os';
 // We test the exported cleanup functions directly
 import { cleanupStaleAgents, cleanupStaleSkills, prunePluginDuplicateSkills, prunePluginDuplicateAgents } from '../index.js';
@@ -370,7 +371,7 @@ describe('cleanupStaleAgents', () => {
         expect(removed).not.toContain('AGENTS.md');
         expect(existsSync(join(agentsDir, 'AGENTS.md'))).toBe(true);
     });
-    it('preserves symlinks and non-regular entries with authenticated filenames', async () => {
+    it.skipIf(requiresSymlinks())('preserves symlinks and non-regular entries with authenticated filenames', async () => {
         vi.resetModules();
         const { cleanupStaleAgents: cleanup, AGENTS_DIR: agentsDir } = await import('../index.js');
         mkdirSync(agentsDir, { recursive: true });
@@ -505,7 +506,8 @@ describe('cleanupStaleSkills', () => {
         const externalSkillDir = join(externalRoot, 'linked-skill');
         mkdirSync(externalSkillDir, { recursive: true });
         writeFileSync(join(externalSkillDir, 'SKILL.md'), '---\nname: linked-skill\ndescription: external\n---\n\n# linked-skill\n');
-        symlinkSync(externalSkillDir, join(skillsDir, 'linked-skill'), 'dir');
+        // A junction on Windows (no symlink privilege needed); a dir symlink elsewhere.
+        symlinkSync(externalSkillDir, join(skillsDir, 'linked-skill'), 'junction');
         try {
             const removed = cleanup(log);
             expect(removed).not.toContain('linked-skill');
@@ -752,7 +754,7 @@ describe('prunePluginDuplicateAgents', () => {
                 process.env.CLAUDE_PLUGIN_ROOT = originalPluginRoot;
         }
     });
-    it('preserves a candidate that becomes non-regular during unlink revalidation', async () => {
+    it.skipIf(requiresSymlinks())('preserves a candidate that becomes non-regular during unlink revalidation', async () => {
         const { prunePluginDuplicateAgents: prune, AGENTS_DIR: agentsDir } = await withActivePluginAgents({ 'architect.agent.md': Buffer.from('active payload agent\n') });
         const actualFs = await vi.importActual('fs');
         mkdirSync(agentsDir, { recursive: true });

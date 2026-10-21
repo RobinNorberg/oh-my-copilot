@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { join } from 'path';
+import { join, sep } from 'path';
 
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
@@ -36,6 +36,7 @@ import {
 } from 'fs';
 import { purgeStalePluginCacheVersions } from '../utils/paths.js';
 import { pathRootForTraversal } from '../utils/plugin-cache-validation.js';
+import { posixOnly } from './helpers/platform.js';
 
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
@@ -102,7 +103,7 @@ describe('purgeStalePluginCacheVersions validation', () => {
   });
 
   it('handles multiple marketplaces and plugins', () => {
-    const cacheDir = '/mock/.claude/plugins/cache';
+    const cacheDir = join('/mock/.claude', 'plugins', 'cache');
     const active1 = join(cacheDir, 'official/hookify/aa11');
     const active2 = join(cacheDir, 'omc/oh-my-copilot/4.3.0');
     const stale1 = join(cacheDir, 'official/hookify/bb22');
@@ -146,7 +147,7 @@ describe('purgeStalePluginCacheVersions validation', () => {
   });
 
   it('preserves a stale version when registry casing aliases the same directory', () => {
-    const cacheDir = '/mock/.claude/plugins/cache';
+    const cacheDir = join('/mock/.claude', 'plugins', 'cache');
     const pluginDir = join(cacheDir, 'omc/oh-my-copilot');
     const activeVersion = join(pluginDir, '4.15.6-beta');
     const staleVersion = join(pluginDir, '4.15.6-BETA');
@@ -168,8 +169,8 @@ describe('purgeStalePluginCacheVersions validation', () => {
           ps === cacheDir ||
           ps === activeVersion ||
           ps === staleVersion ||
-          ps.startsWith(`${activeVersion}/`) ||
-          ps.startsWith(`${staleVersion}/`)
+          ps.startsWith(`${activeVersion}${sep}`) ||
+          ps.startsWith(`${staleVersion}${sep}`)
         );
       });
       mockedReadFileSync.mockReturnValue(
@@ -204,8 +205,9 @@ describe('purgeStalePluginCacheVersions validation', () => {
     }
   });
 
-  it('matches an active namespace with a case-aliased parent by filesystem identity', () => {
-    const cacheDir = '/mock/.claude/plugins/cache';
+  // Simulates darwin, which needs the host's POSIX path module underneath.
+  it.skipIf(posixOnly('fakes process.platform=darwin over the host path module'))('matches an active namespace with a case-aliased parent by filesystem identity', () => {
+    const cacheDir = join('/mock/.claude', 'plugins', 'cache');
     const marketDir = join(cacheDir, 'omc');
     const pluginDir = join(marketDir, 'Oh-My-Copilot');
     const aliasedPluginDir = join(marketDir, 'oh-my-copilot');
@@ -277,7 +279,7 @@ describe('purgeStalePluginCacheVersions validation', () => {
   });
 
   it('rolls back when a generic active root empties between validation scans', () => {
-    const cacheDir = '/mock/.claude/plugins/cache';
+    const cacheDir = join('/mock/.claude', 'plugins', 'cache');
     const active = join(cacheDir, 'official/hookify/aa11');
     const stale = join(cacheDir, 'official/hookify/bb22');
     const activeEntries = [[fileDirent('README.md')], [], [fileDirent('README.md')], [fileDirent('README.md')]];
@@ -312,7 +314,7 @@ describe('purgeStalePluginCacheVersions validation', () => {
   });
 
   it('does nothing when all cache versions are active', () => {
-    const cacheDir = '/mock/.claude/plugins/cache';
+    const cacheDir = join('/mock/.claude', 'plugins', 'cache');
     const active = join(cacheDir, 'omc/oh-my-copilot/4.3.0');
 
     mockedExistsSync.mockImplementation((p) => {
