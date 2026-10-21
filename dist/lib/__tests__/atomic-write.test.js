@@ -5,6 +5,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { randomUUID } from 'crypto';
 import { getProcessStartIdentitySync } from '../../platform/process-utils.js';
+import { posixOnly } from '../../__tests__/helpers/platform.js';
 // @ts-expect-error Hook runtime source is intentionally JavaScript-only.
 import { acquireStateFileLockAtPathSync, acquireStateFileLockSync, getStateFileLockFailureKind, isExclusiveStateLockingAvailable, isStateFileLockingSupported, releaseStateFileLockSync, withStateFileLockAtPathSync, withStateFileLockSync } from '../../../scripts/lib/atomic-write.mjs';
 import { tmpdir } from 'os';
@@ -137,12 +138,18 @@ describe('atomicWriteJson', () => {
         expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual(oldValue);
         expect(readdirSync(directory)).toEqual(['state.json']);
     });
-    it('creates missing parents and publishes owner-only replacement files', async () => {
+    it('creates missing parents and publishes replacement files', async () => {
         const directory = mkdtempSync(join(tmpdir(), 'atomic-write-parent-'));
         directories.push(directory);
         const filePath = join(directory, 'nested', 'state.json');
         await atomicWriteJson(filePath, { status: 'new' });
         expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({ status: 'new' });
+    });
+    it.skipIf(posixOnly('NTFS has no POSIX mode bits'))('publishes owner-only replacement files', async () => {
+        const directory = mkdtempSync(join(tmpdir(), 'atomic-write-mode-'));
+        directories.push(directory);
+        const filePath = join(directory, 'state.json');
+        await atomicWriteJson(filePath, { status: 'new' });
         expect(statSync(filePath).mode & 0o777).toBe(0o600);
     });
     it('publishes a normal atomic write under Windows stat semantics', async () => {
@@ -159,7 +166,8 @@ describe('atomicWriteJson', () => {
         }
         expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({ status: 'new' });
     });
-    it.each(['hardlink', 'special', 'replacement', 'permissions'])('rejects an untrusted temporary generation (%s) before rename', async (kind) => {
+    // win32 skips the temp mode check by design: NTFS has no POSIX mode bits.
+    it.each(['hardlink', 'special', 'replacement', ...(posixOnly('NTFS has no POSIX mode bits') ? [] : ['permissions'])])('rejects an untrusted temporary generation (%s) before rename', async (kind) => {
         const directory = mkdtempSync(join(tmpdir(), `atomic-write-${kind}-`));
         directories.push(directory);
         const filePath = join(directory, 'state.json');

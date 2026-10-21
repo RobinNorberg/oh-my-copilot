@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "851cafa1f7e35ac8d6e240ec82ad788051ed44b2",
-    "sourceSha256": "14cbc80f44ded268435fdc3cbdcc56b4e7e4871c51b9e8ade132be3a1598e4d3",
+    "head": "d4de647825d47a5c1a0fbdc35f09e0f90a897f78",
+    "sourceSha256": "e7f79c0fef17b859cda724d62519670c7072453bdd7810c6ea1e34d8bd9dffcf",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "851cafa1f7e35ac8d6e240ec82ad788051ed44b2",
-  "sourceSha256": "14cbc80f44ded268435fdc3cbdcc56b4e7e4871c51b9e8ade132be3a1598e4d3",
+  "head": "d4de647825d47a5c1a0fbdc35f09e0f90a897f78",
+  "sourceSha256": "e7f79c0fef17b859cda724d62519670c7072453bdd7810c6ea1e34d8bd9dffcf",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1622
     },
     "generated": {
-      "distFiles": 6139,
+      "distFiles": 6147,
       "bridgeFiles": 9,
-      "total": 6148
+      "total": 6156
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -1195,6 +1195,14 @@
       "dist/__tests__/goal-docs-contract.test.d.ts.map",
       "dist/__tests__/goal-docs-contract.test.js",
       "dist/__tests__/goal-docs-contract.test.js.map",
+      "dist/__tests__/helpers/platform.d.ts",
+      "dist/__tests__/helpers/platform.d.ts.map",
+      "dist/__tests__/helpers/platform.js",
+      "dist/__tests__/helpers/platform.js.map",
+      "dist/__tests__/helpers/platform.test.d.ts",
+      "dist/__tests__/helpers/platform.test.d.ts.map",
+      "dist/__tests__/helpers/platform.test.js",
+      "dist/__tests__/helpers/platform.test.js.map",
       "dist/__tests__/helpers/prompt-test-helpers.d.ts",
       "dist/__tests__/helpers/prompt-test-helpers.d.ts.map",
       "dist/__tests__/helpers/prompt-test-helpers.js",
@@ -9954,6 +9962,46 @@
         "id": "dist/__tests__/goal-docs-contract.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/goal-docs-contract.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.d.ts"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.js"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.js.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.test.js"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.test.js.map"
       },
       {
         "id": "dist/__tests__/helpers/prompt-test-helpers.d.ts",
@@ -97069,12 +97117,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8468,
+      "nodeCount": 8476,
       "edgeCount": 9407,
       "importEdgeCount": 7833,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "87eb780611a0f44b1334bd18cb68f2df64fd00577689c1e230220ed6e38968fd",
-  "manifestSha256": "8a202571cb5355cc0db0af099b813d110680952b03d7c78e49cde4d5398474c2"
+  "manifestSha256": "b25a82d9bd5d8daa78e4fb03c2eb4bb0f72f1508d78c9a7d6c24ea427ceccd09"
 }
