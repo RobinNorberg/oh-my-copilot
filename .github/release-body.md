@@ -1,11 +1,21 @@
-# oh-my-copilot v5.12.0
+# oh-my-copilot v5.12.1
 
-A minor release. It ports upstream oh-my-claudecode `dev` through faedfd200
+A patch release, and the first npm release of the v5.12.0 content: v5.12.0
+was tagged but never published to npm because its release job failed on the
+SessionStart parity test. Coming from 5.11.0, everything below is new.
+
+v5.12.0 ports upstream oh-my-claudecode `dev` through faedfd200
 (7cb577e94..51bec397e and 51bec397e..faedfd200, 280 commits, upstream v5.7.0
 to v5.7.6) and binds the generated-artifact authorization check to the fork.
 
-Install with `npm install -g oh-my-copilot@5.12.0`, or from the plugin
+Install with `npm install -g oh-my-copilot@5.12.1`, or from the plugin
 marketplace: `copilot plugin update oh-my-copilot@omc`.
+
+## Fixed in 5.12.1
+
+- The SessionStart hook writes `update-check.json` with a deterministic key
+  order, whichever registry answer lands first (#253).
+- The SessionStart parity test no longer reaches the live npm registry.
 
 ## Breaking for MCP callers
 
@@ -35,7 +45,7 @@ marketplace: `copilot plugin update oh-my-copilot@omc`.
 - Retired tiered agent names (`executor-low` and others) are gone; pass a
   `model` instead.
 
-## Fixed
+## Fixed in 5.12.0
 
 - HUD plugin mode no longer imports Zod from the plugin cache; the stdin cache
   is scoped per session; quota identity follows the stored OAuth account.
