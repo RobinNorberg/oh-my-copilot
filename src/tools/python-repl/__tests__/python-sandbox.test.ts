@@ -4,8 +4,11 @@ import { writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { fileURLToPath } from 'url';
-import { requiresExecutable } from '../../../__tests__/helpers/platform.js';
+import { resolveSystemPython } from '../bridge-manager.js';
 import { isPythonSandboxEnabled, clearSecurityConfigCache } from '../../../lib/security-config.js';
+
+// Resolved once: Windows may only provide `python` or the `py` launcher.
+const systemPython = await resolveSystemPython();
 
 describe('python-repl sandbox env propagation', () => {
   const originalSecurity = process.env.OMC_SECURITY;
@@ -47,13 +50,13 @@ function executeBridgeCode(code: string, sandboxEnv = false): { success: boolean
   ].join('\n');
   writeFileSync(tmpScript, script, 'utf-8');
   try {
-    return JSON.parse(execSync(`python3 ${tmpScript}`, { timeout: 10000 }).toString().trim());
+    return JSON.parse(execSync(`"${systemPython}" "${tmpScript}"`, { timeout: 10000 }).toString().trim());
   } finally {
     try { unlinkSync(tmpScript); } catch { /* ignore */ }
   }
 }
 
-describe.skipIf(requiresExecutable('python3'))('gyoshu bridge execution builtins hardening', () => {
+describe.skipIf(systemPython === null)('gyoshu bridge execution builtins hardening', () => {
   it('allows normal calculation, printing, and persistent variables', () => {
     const result = executeBridgeCode('x = sum(range(5))\nprint(f"x={x}")');
     expect(result.success).toBe(true);
@@ -223,13 +226,13 @@ function runBridgeLifecycle(seedCode: string): BridgeLifecycleResult {
   ].join('\n');
   writeFileSync(tmpScript, script, 'utf-8');
   try {
-    return JSON.parse(execSync(`python3 ${tmpScript}`, { timeout: 10000 }).toString().trim());
+    return JSON.parse(execSync(`"${systemPython}" "${tmpScript}"`, { timeout: 10000 }).toString().trim());
   } finally {
     try { unlinkSync(tmpScript); } catch { /* ignore */ }
   }
 }
 
-describe.skipIf(requiresExecutable('python3'))('gyoshu bridge advertised scientific modules (#3682)', () => {
+describe.skipIf(systemPython === null)('gyoshu bridge advertised scientific modules (#3682)', () => {
   it('never prebinds numpy, pandas, or matplotlib in the execution namespace', () => {
     const result = runBridgeLifecycle('total = sum([1, 2, 3])');
     expect(result.initialScientific).toEqual([]);

@@ -87,7 +87,11 @@ export function containerUriToHostUri(uri, context) {
         return uri;
     }
     // Container URIs are POSIX on every host; host fileURLToPath rejects them on win32.
-    const containerPath = decodeURIComponent(new URL(uri).pathname);
+    const url = new URL(uri);
+    if (url.host !== '' || /%2f/i.test(url.pathname)) {
+        throw new TypeError(`Invalid container file URI: ${uri}`);
+    }
+    const containerPath = decodeURIComponent(url.pathname);
     return pathToFileURL(containerPathToHostPath(containerPath, context)).href;
 }
 function resolveDevContainerConfigPath(workspaceRoot) {

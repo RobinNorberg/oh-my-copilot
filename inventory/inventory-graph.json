@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "3a3d6648424eb6cf27ef1b89aee243077bd2502e",
-    "sourceSha256": "992fb7e43cb23b96505b67d4a562c5d8224358fd8d9e7e458fab2d4f559536cd",
+    "head": "e220a664f43fdc34e422cdc94d47cfb94acf16fe",
+    "sourceSha256": "864b345c6332a175f66c48a3f2e4cde5b3ff4fd8e859958efab15f0251a7bf50",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "3a3d6648424eb6cf27ef1b89aee243077bd2502e",
-  "sourceSha256": "992fb7e43cb23b96505b67d4a562c5d8224358fd8d9e7e458fab2d4f559536cd",
+  "head": "e220a664f43fdc34e422cdc94d47cfb94acf16fe",
+  "sourceSha256": "864b345c6332a175f66c48a3f2e4cde5b3ff4fd8e859958efab15f0251a7bf50",
   "counts": {
     "public": {
       "skills": 63,
@@ -94126,12 +94126,12 @@
       },
       {
         "from": "src/tools/python-repl/__tests__/python-sandbox.test.ts",
-        "to": "src/__tests__/helpers/platform.ts",
+        "to": "src/lib/security-config.ts",
         "kind": "imports"
       },
       {
         "from": "src/tools/python-repl/__tests__/python-sandbox.test.ts",
-        "to": "src/lib/security-config.ts",
+        "to": "src/tools/python-repl/bridge-manager.ts",
         "kind": "imports"
       },
       {
@@ -97178,5 +97178,5 @@
     }
   },
   "inventorySha256": "8bc3fc1ff3f54e03cc9257ee0b60ba0358aea6d2d79c6946c91a3a3b2498bad6",
-  "manifestSha256": "c26e66745058c50d8ba44f6ed7b7d2b06907ba28477c0fb3fcfb67bd45ed0de1"
+  "manifestSha256": "453eee9f588ec5cf7183639982e2bc9bd689ff962f07c75401049242be115b01"
 }

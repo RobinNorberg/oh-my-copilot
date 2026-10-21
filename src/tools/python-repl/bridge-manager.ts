@@ -173,6 +173,24 @@ export async function resolveSystemPython(
   platform: NodeJS.Platform = process.platform,
   probe: PythonProbe = runPythonProbe,
 ): Promise<string | null> {
+  const useCache = platform === process.platform && probe === runPythonProbe;
+  if (useCache && systemPythonCache !== undefined) return systemPythonCache;
+  const resolved = await probeSystemPython(platform, probe);
+  if (useCache) systemPythonCache = resolved;
+  return resolved;
+}
+
+let systemPythonCache: string | null | undefined;
+
+/** Test-only: forget the memoized system Python lookup. */
+export function resetSystemPythonCache(): void {
+  systemPythonCache = undefined;
+}
+
+async function probeSystemPython(
+  platform: NodeJS.Platform,
+  probe: PythonProbe,
+): Promise<string | null> {
   const candidates: [string, ...string[]][] = platform === 'win32'
     ? [['python3'], ['python'], ['py', '-3']]
     : [['python3']];
@@ -209,7 +227,7 @@ async function ensurePythonEnvironment(projectRoot: string): Promise<PythonEnvIn
   }
 
   throw new Error(
-    'No Python environment found. Create a virtual environment first:\n' +
+    `No Python environment found (probed: ${process.platform === 'win32' ? 'python3, python, py -3' : 'python3'}). Create a virtual environment first:\n` +
       '  python -m venv .venv'
   );
 }

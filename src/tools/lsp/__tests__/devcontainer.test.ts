@@ -76,6 +76,9 @@ describe('devcontainer LSP helpers', () => {
     expect(mod.containerUriToHostUri('file:///workspaces/app/src/index.ts', context)).toBe(pathToFileURL(hostFile).href);
     expect(mod.containerUriToHostUri('file:///workspaces/app/src/my%20file.ts', context))
       .toBe(pathToFileURL(join(workspaceRoot, 'src', 'my file.ts')).href);
+    expect(() => mod.containerUriToHostUri('file://remote/workspaces/app/src/index.ts', context)).toThrow();
+    expect(() => mod.containerUriToHostUri('file:///workspaces/app/src%2Findex.ts', context)).toThrow();
+    expect(() => mod.containerUriToHostUri('file:///workspaces/app/src%2findex.ts', context)).toThrow();
   });
 
   it('matches running devcontainer by labels and nested mount', async () => {

@@ -49,6 +49,8 @@ type PythonProbe = (command: string, args: string[]) => Promise<string>;
  * interpreter path, or null when no candidate works.
  */
 export declare function resolveSystemPython(platform?: NodeJS.Platform, probe?: PythonProbe): Promise<string | null>;
+/** Test-only: forget the memoized system Python lookup. */
+export declare function resetSystemPythonCache(): void;
 /**
  * Verify that a bridge process is still running and is the same process
  * that was originally spawned (guards against PID reuse).

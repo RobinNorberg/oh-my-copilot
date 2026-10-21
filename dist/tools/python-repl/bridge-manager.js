@@ -111,6 +111,20 @@ const runPythonProbe = async (command, args) => (await execFileAsync(command, ar
  * interpreter path, or null when no candidate works.
  */
 export async function resolveSystemPython(platform = process.platform, probe = runPythonProbe) {
+    const useCache = platform === process.platform && probe === runPythonProbe;
+    if (useCache && systemPythonCache !== undefined)
+        return systemPythonCache;
+    const resolved = await probeSystemPython(platform, probe);
+    if (useCache)
+        systemPythonCache = resolved;
+    return resolved;
+}
+let systemPythonCache;
+/** Test-only: forget the memoized system Python lookup. */
+export function resetSystemPythonCache() {
+    systemPythonCache = undefined;
+}
+async function probeSystemPython(platform, probe) {
     const candidates = platform === 'win32'
         ? [['python3'], ['python'], ['py', '-3']]
         : [['python3']];
@@ -145,7 +159,7 @@ async function ensurePythonEnvironment(projectRoot) {
         // type is 'venv' because PythonEnvInfo only supports 'venv'; this is a system fallback
         return { pythonPath: systemPython, type: 'venv' };
     }
-    throw new Error('No Python environment found. Create a virtual environment first:\n' +
+    throw new Error(`No Python environment found (probed: ${process.platform === 'win32' ? 'python3, python, py -3' : 'python3'}). Create a virtual environment first:\n` +
         '  python -m venv .venv');
 }
 // =============================================================================
