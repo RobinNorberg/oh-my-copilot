@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import { mkdir, readFile, symlink, writeFile } from 'fs/promises';
-import { dirname, join, resolve } from 'path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'path';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { readModeState, writeModeState, } from '../lib/mode-state-io.js';
 import { isModeActiveInAnySession } from '../hooks/mode-registry/index.js';
@@ -166,9 +166,10 @@ function allowedBootstrapDirtyPaths(worktreePath, allowedDirtyPaths = []) {
     const normalizedWorktreePath = resolve(worktreePath);
     return new Set(allowedDirtyPaths
         .map((path) => {
-        const normalizedPath = resolve(path);
-        return normalizedPath.startsWith(`${normalizedWorktreePath}/`)
-            ? normalizedPath.slice(normalizedWorktreePath.length + 1)
+        // git status reports '/'-separated paths; resolve() yields '\' on win32.
+        const relativePath = relative(normalizedWorktreePath, resolve(path));
+        return relativePath && !relativePath.startsWith('..') && !isAbsolute(relativePath)
+            ? relativePath.split(sep).join('/')
             : null;
     })
         .filter((path) => Boolean(path)));
@@ -619,13 +620,24 @@ export function buildAutoresearchInstructions(contract, context) {
         '```',
     ].join('\n');
 }
+/**
+ * Leave a checked-out copy that differs only in line endings alone: with core.autocrlf=true
+ * (the Git for Windows default) rewriting it with LF makes git report it modified, which
+ * assertResetSafeWorktree then rejects.
+ */
+async function writeMissionFile(file, content) {
+    const existing = await readFile(file, 'utf-8').catch(() => null);
+    if (existing !== null && existing.replace(/\r\n/g, '\n') === content.replace(/\r\n/g, '\n'))
+        return;
+    await writeFile(file, content, 'utf-8');
+}
 export async function materializeAutoresearchMissionToWorktree(contract, worktreePath) {
     const missionDir = join(worktreePath, contract.missionRelativeDir);
     const missionFile = join(missionDir, 'mission.md');
     const sandboxFile = join(missionDir, 'sandbox.md');
     await mkdir(missionDir, { recursive: true });
-    await writeFile(missionFile, contract.missionContent, 'utf-8');
-    await writeFile(sandboxFile, contract.sandboxContent, 'utf-8');
+    await writeMissionFile(missionFile, contract.missionContent);
+    await writeMissionFile(sandboxFile, contract.sandboxContent);
     return {
         ...contract,
         missionDir,
