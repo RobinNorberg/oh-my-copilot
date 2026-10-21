@@ -154,7 +154,7 @@ export function phasePlan(id, v, opts) {
             ];
         case 'promote':
             return [
-                'require the release PR merged into dev (gh pr view); record its merge commit',
+                'require the release PR merged into dev (gh pr view); use the dev merge recorded by pr',
                 'gh pr create --base main --head dev (reused when one is open)',
                 'same CI gate and merge as pr, merged only when the PR head contains the dev merge; the main merge must contain it too; record it',
             ];
