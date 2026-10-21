@@ -47,6 +47,8 @@ when their report is processed.
    `bash scripts/sync-version.sh X` → sed the stamp in `docs/CLAUDE.md` and
    `tests/fixtures/prompt-projection/claude-managed-block.golden` →
    `npm run generate:prompt-projections` (reads `package.json`).
+   Steps 3 to 5 after the port commit are `omg release X` (resumable phases;
+   `omg-release-runbook.md` "Primary path"); the chain below is the fallback.
 4. **One gated chain (lead, background, every step `&&`):** port commit →
    tsc → `npm run build` → `verify:prompt-projections` → generators
    `--verify` → path gate → `git add -f dist bridge && git add -A` →
