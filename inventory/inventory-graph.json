@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "bb9cd122d27145f2dbe830479b7580f034c6190d",
-    "sourceSha256": "ff08a5dbee6b442ee6066d6cc10379a7466269bc56dec063711778aa0dc9edd8",
+    "head": "5ad400495aaf8a782399ae8043c17338a9ca4062",
+    "sourceSha256": "39c702d46a6e79a1d76f638269fa032471c14d5825a4b4150fc848a2678e07d5",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "bb9cd122d27145f2dbe830479b7580f034c6190d",
-  "sourceSha256": "ff08a5dbee6b442ee6066d6cc10379a7466269bc56dec063711778aa0dc9edd8",
+  "head": "5ad400495aaf8a782399ae8043c17338a9ca4062",
+  "sourceSha256": "39c702d46a6e79a1d76f638269fa032471c14d5825a4b4150fc848a2678e07d5",
   "counts": {
     "public": {
       "skills": 63,
@@ -26,15 +26,15 @@
       "hookFiles": 344,
       "featureFiles": 88,
       "toolFiles": 67,
-      "libFiles": 48,
+      "libFiles": 50,
       "templateHooks": 24,
-      "srcFiles": 1596,
-      "total": 1620
+      "srcFiles": 1600,
+      "total": 1624
     },
     "generated": {
-      "distFiles": 6139,
+      "distFiles": 6155,
       "bridgeFiles": 9,
-      "total": 6148
+      "total": 6164
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -676,6 +676,7 @@
       "src/tools/wiki-tools.ts"
     ],
     "libFiles": [
+      "src/lib/__tests__/agent-progress.test.ts",
       "src/lib/__tests__/atomic-write.test.ts",
       "src/lib/__tests__/host-load-gate.test.ts",
       "src/lib/__tests__/mode-state-io.test.ts",
@@ -700,6 +701,7 @@
       "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
       "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
       "src/lib/__tests__/worktree-paths.test.ts",
+      "src/lib/agent-progress.ts",
       "src/lib/atomic-write.ts",
       "src/lib/env-vars.ts",
       "src/lib/featured-contributors.ts",
@@ -2567,6 +2569,10 @@
       "dist/cli/commands/__tests__/intake.test.d.ts.map",
       "dist/cli/commands/__tests__/intake.test.js",
       "dist/cli/commands/__tests__/intake.test.js.map",
+      "dist/cli/commands/__tests__/progress-cli.test.d.ts",
+      "dist/cli/commands/__tests__/progress-cli.test.d.ts.map",
+      "dist/cli/commands/__tests__/progress-cli.test.js",
+      "dist/cli/commands/__tests__/progress-cli.test.js.map",
       "dist/cli/commands/__tests__/ship-cli.test.d.ts",
       "dist/cli/commands/__tests__/ship-cli.test.d.ts.map",
       "dist/cli/commands/__tests__/ship-cli.test.js",
@@ -2631,6 +2637,10 @@
       "dist/cli/commands/intake.d.ts.map",
       "dist/cli/commands/intake.js",
       "dist/cli/commands/intake.js.map",
+      "dist/cli/commands/progress.d.ts",
+      "dist/cli/commands/progress.d.ts.map",
+      "dist/cli/commands/progress.js",
+      "dist/cli/commands/progress.js.map",
       "dist/cli/commands/ralph.d.ts",
       "dist/cli/commands/ralph.d.ts.map",
       "dist/cli/commands/ralph.js",
@@ -5066,6 +5076,10 @@
       "dist/interop/shared-state.d.ts.map",
       "dist/interop/shared-state.js",
       "dist/interop/shared-state.js.map",
+      "dist/lib/__tests__/agent-progress.test.d.ts",
+      "dist/lib/__tests__/agent-progress.test.d.ts.map",
+      "dist/lib/__tests__/agent-progress.test.js",
+      "dist/lib/__tests__/agent-progress.test.js.map",
       "dist/lib/__tests__/atomic-write.test.d.ts",
       "dist/lib/__tests__/atomic-write.test.d.ts.map",
       "dist/lib/__tests__/atomic-write.test.js",
@@ -5162,6 +5176,10 @@
       "dist/lib/__tests__/worktree-paths.test.d.ts.map",
       "dist/lib/__tests__/worktree-paths.test.js",
       "dist/lib/__tests__/worktree-paths.test.js.map",
+      "dist/lib/agent-progress.d.ts",
+      "dist/lib/agent-progress.d.ts.map",
+      "dist/lib/agent-progress.js",
+      "dist/lib/agent-progress.js.map",
       "dist/lib/atomic-write.d.ts",
       "dist/lib/atomic-write.d.ts.map",
       "dist/lib/atomic-write.js",
@@ -7819,6 +7837,11 @@
         "id": ".omc/skills/README.md",
         "kind": "other",
         "path": ".omc/skills/README.md"
+      },
+      {
+        "id": ".omc/skills/agent-progress-events.md",
+        "kind": "other",
+        "path": ".omc/skills/agent-progress-events.md"
       },
       {
         "id": ".omc/skills/branching-strategy-expertise.md",
@@ -16811,6 +16834,26 @@
         "path": "dist/cli/commands/__tests__/intake.test.js.map"
       },
       {
+        "id": "dist/cli/commands/__tests__/progress-cli.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/progress-cli.test.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/progress-cli.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/progress-cli.test.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/progress-cli.test.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/progress-cli.test.js"
+      },
+      {
+        "id": "dist/cli/commands/__tests__/progress-cli.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/__tests__/progress-cli.test.js.map"
+      },
+      {
         "id": "dist/cli/commands/__tests__/ship-cli.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/commands/__tests__/ship-cli.test.d.ts"
@@ -17129,6 +17172,26 @@
         "id": "dist/cli/commands/intake.js.map",
         "kind": "generated-dist",
         "path": "dist/cli/commands/intake.js.map"
+      },
+      {
+        "id": "dist/cli/commands/progress.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/progress.d.ts"
+      },
+      {
+        "id": "dist/cli/commands/progress.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/progress.d.ts.map"
+      },
+      {
+        "id": "dist/cli/commands/progress.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/progress.js"
+      },
+      {
+        "id": "dist/cli/commands/progress.js.map",
+        "kind": "generated-dist",
+        "path": "dist/cli/commands/progress.js.map"
       },
       {
         "id": "dist/cli/commands/ralph.d.ts",
@@ -29306,6 +29369,26 @@
         "path": "dist/interop/shared-state.js.map"
       },
       {
+        "id": "dist/lib/__tests__/agent-progress.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress.test.d.ts"
+      },
+      {
+        "id": "dist/lib/__tests__/agent-progress.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress.test.d.ts.map"
+      },
+      {
+        "id": "dist/lib/__tests__/agent-progress.test.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress.test.js"
+      },
+      {
+        "id": "dist/lib/__tests__/agent-progress.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/__tests__/agent-progress.test.js.map"
+      },
+      {
         "id": "dist/lib/__tests__/atomic-write.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/atomic-write.test.d.ts"
@@ -29784,6 +29867,26 @@
         "id": "dist/lib/__tests__/worktree-paths.test.js.map",
         "kind": "generated-dist",
         "path": "dist/lib/__tests__/worktree-paths.test.js.map"
+      },
+      {
+        "id": "dist/lib/agent-progress.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/agent-progress.d.ts"
+      },
+      {
+        "id": "dist/lib/agent-progress.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/agent-progress.d.ts.map"
+      },
+      {
+        "id": "dist/lib/agent-progress.js",
+        "kind": "generated-dist",
+        "path": "dist/lib/agent-progress.js"
+      },
+      {
+        "id": "dist/lib/agent-progress.js.map",
+        "kind": "generated-dist",
+        "path": "dist/lib/agent-progress.js.map"
       },
       {
         "id": "dist/lib/atomic-write.d.ts",
@@ -43666,6 +43769,11 @@
         "path": "src/cli/commands/__tests__/intake.test.ts"
       },
       {
+        "id": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "kind": "src",
+        "path": "src/cli/commands/__tests__/progress-cli.test.ts"
+      },
+      {
         "id": "src/cli/commands/__tests__/ship-cli.test.ts",
         "kind": "src",
         "path": "src/cli/commands/__tests__/ship-cli.test.ts"
@@ -43744,6 +43852,11 @@
         "id": "src/cli/commands/intake.ts",
         "kind": "src",
         "path": "src/cli/commands/intake.ts"
+      },
+      {
+        "id": "src/cli/commands/progress.ts",
+        "kind": "src",
+        "path": "src/cli/commands/progress.ts"
       },
       {
         "id": "src/cli/commands/ralph.ts",
@@ -46896,6 +47009,11 @@
         "path": "src/interop/shared-state.ts"
       },
       {
+        "id": "src/lib/__tests__/agent-progress.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/agent-progress.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/atomic-write.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/atomic-write.test.ts"
@@ -47014,6 +47132,11 @@
         "id": "src/lib/__tests__/worktree-paths.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/worktree-paths.test.ts"
+      },
+      {
+        "id": "src/lib/agent-progress.ts",
+        "kind": "lib",
+        "path": "src/lib/agent-progress.ts"
       },
       {
         "id": "src/lib/atomic-write.ts",
@@ -63348,6 +63471,46 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "src/cli/commands/progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "src/cli/commands/progress.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/commands/__tests__/progress-cli.test.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/cli/commands/__tests__/ship-cli.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -63866,6 +64029,31 @@
         "from": "src/cli/commands/intake.ts",
         "to": "src/utils/host-detection.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/progress.ts",
+        "to": "external:commander",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/progress.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/progress.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/progress.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/commands/progress.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/cli/commands/ralph.ts",
@@ -64505,6 +64693,11 @@
       {
         "from": "src/cli/index.ts",
         "to": "src/cli/commands/intake.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/index.ts",
+        "to": "src/cli/commands/progress.ts",
         "kind": "imports"
       },
       {
@@ -79888,6 +80081,36 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/lib/__tests__/agent-progress.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress.test.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/agent-progress.test.ts",
+        "to": "src/lib/agent-progress.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/lib/__tests__/atomic-write.test.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -80564,6 +80787,21 @@
       },
       {
         "from": "src/lib/__tests__/worktree-paths.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/agent-progress.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/agent-progress.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/agent-progress.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -96969,12 +97207,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8465,
-      "edgeCount": 9390,
-      "importEdgeCount": 7816,
+      "nodeCount": 8486,
+      "edgeCount": 9413,
+      "importEdgeCount": 7836,
       "registerEdgeCount": 84
     }
   },
-  "inventorySha256": "ce33e9884d96c9483c31425cf7c74aed08084645aa864f694275bc9d8ffad0e5",
-  "manifestSha256": "a344cca106ba85e916990d619c299dc12521cea004ddcc242e41d0a6cd4996cb"
+  "inventorySha256": "c7de5652bab7a8fc7b824ded98764ebeae37f3f6cc9cf9fad1764854757817b4",
+  "manifestSha256": "dda53c952a0d643ef35fac53fa9c2b74a5afdfd4a4d82078bcbff53a54244aef"
 }
