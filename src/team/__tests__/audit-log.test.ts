@@ -4,6 +4,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { logAuditEvent, readAuditLog, rotateAuditLog } from '../audit-log.js';
 import type { AuditEvent } from '../audit-log.js';
+import { posixOnly } from '../../__tests__/helpers/platform.js';
 
 describe('audit-log', () => {
   let testDir: string;
@@ -32,7 +33,7 @@ describe('audit-log', () => {
   });
 
   describe('logAuditEvent', () => {
-    it('creates log file with 0o600 permissions', () => {
+    it.skipIf(posixOnly('NTFS has no POSIX mode bits'))('creates log file with 0o600 permissions', () => {
       const event: AuditEvent = {
         timestamp: new Date().toISOString(),
         eventType: 'bridge_start',
@@ -324,7 +325,7 @@ describe('audit-log', () => {
       expect(events[4].taskId).toBe('task9');
     });
 
-    it('maintains 0o600 permissions after rotation', () => {
+    it.skipIf(posixOnly('NTFS has no POSIX mode bits'))('maintains 0o600 permissions after rotation', () => {
       for (let i = 0; i < 10; i++) {
         const event: AuditEvent = {
           timestamp: `2026-01-01T00:${String(i).padStart(2, '0')}:00Z`,

@@ -5,4 +5,4 @@ Maintainer skills for developing this fork (oh-my-copilot) itself, sedimented fr
 - Upstream porting: `port-upstream`, `fork-porting-with-agents-expertise`, `upstream-merge-expertise`, `upstream-port-conflict-patterns-expertise`, `upstream-port-conflict-triage-expertise`, `merge-conflict-resolution-expertise`
 - Release and branching: `omg-release-runbook`, `version-bump-expertise`, `branching-strategy-expertise`, `stale-main-dependency-reintroduction-expertise`, `pr-review-branch-verification-workflow`
 - Adding agents/skills and installer contracts: `omc-new-agent-skill-checklist-expertise`, `sticky-installer-contract-test-expertise`
-- Testing and platform quirks: `learner-test-isolation-expertise`, `vitest-windows-defender-tmpdir-expertise`, `copilot-cli-statusline-windows-expertise`, `zod-v4-migration-expertise`
+- Testing and platform quirks: `learner-test-isolation-expertise`, `windows-test-conventions`, `vitest-windows-defender-tmpdir-expertise`, `copilot-cli-statusline-windows-expertise`, `zod-v4-migration-expertise`

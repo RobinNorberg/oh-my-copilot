@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
 import { provisionStandaloneStateLockBridge } from '../installer/index.js';
 import { clearWorktreeCache, getOmcRoot } from '../lib/worktree-paths.js';
+import { getProcessStartIdentitySync } from '../platform/process-utils.js';
 
 const ROOT = process.cwd();
 const NODE = process.execPath;
@@ -82,6 +83,8 @@ function hookEnvironment(cwd: string, configHome: string, extraEnv: Record<strin
     USERPROFILE: home,
     OMC_STATE_DIR: fixtureStateDir(cwd),
     XDG_CONFIG_HOME: configHome,
+    // The user config dir is %APPDATA% on win32 (getConfigDir), XDG elsewhere.
+    APPDATA: configHome,
     COPILOT_HOME: join(cwd, 'claude-config'),
     ...extraEnv,
   };
@@ -119,8 +122,9 @@ function runHookAsync(script: string, prompt: string, cwd: string, configHome: s
 }
 
 function processStartForTest() {
-  const stat = readFileSync(`/proc/${process.pid}/stat`, 'utf8');
-  return stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/)[19];
+  const identity = getProcessStartIdentitySync(process.pid);
+  if (identity === null) throw new Error('own process start identity unavailable');
+  return identity;
 }
 
 function liveLockOwner() {
