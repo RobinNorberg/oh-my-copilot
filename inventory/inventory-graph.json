@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "e220a664f43fdc34e422cdc94d47cfb94acf16fe",
-    "sourceSha256": "864b345c6332a175f66c48a3f2e4cde5b3ff4fd8e859958efab15f0251a7bf50",
+    "head": "86dc5a05e17e4cca31b60d0581994215cc05a8f2",
+    "sourceSha256": "79e8da14709ff8b747c38fbe5970e09503bd8124580ad0018b6769f85ac2e57b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "e220a664f43fdc34e422cdc94d47cfb94acf16fe",
-  "sourceSha256": "864b345c6332a175f66c48a3f2e4cde5b3ff4fd8e859958efab15f0251a7bf50",
+  "head": "86dc5a05e17e4cca31b60d0581994215cc05a8f2",
+  "sourceSha256": "79e8da14709ff8b747c38fbe5970e09503bd8124580ad0018b6769f85ac2e57b",
   "counts": {
     "public": {
       "skills": 63,
@@ -32,9 +32,9 @@
       "total": 1623
     },
     "generated": {
-      "distFiles": 6139,
+      "distFiles": 6151,
       "bridgeFiles": 9,
-      "total": 6148
+      "total": 6160
     },
     "prompt": {
       "promptLikeFiles": 61
@@ -1196,6 +1196,14 @@
       "dist/__tests__/goal-docs-contract.test.d.ts.map",
       "dist/__tests__/goal-docs-contract.test.js",
       "dist/__tests__/goal-docs-contract.test.js.map",
+      "dist/__tests__/helpers/platform.d.ts",
+      "dist/__tests__/helpers/platform.d.ts.map",
+      "dist/__tests__/helpers/platform.js",
+      "dist/__tests__/helpers/platform.js.map",
+      "dist/__tests__/helpers/platform.test.d.ts",
+      "dist/__tests__/helpers/platform.test.d.ts.map",
+      "dist/__tests__/helpers/platform.test.js",
+      "dist/__tests__/helpers/platform.test.js.map",
       "dist/__tests__/helpers/prompt-test-helpers.d.ts",
       "dist/__tests__/helpers/prompt-test-helpers.d.ts.map",
       "dist/__tests__/helpers/prompt-test-helpers.js",
@@ -6883,6 +6891,10 @@
       "dist/tools/python-repl/__tests__/shipped-artifact-parity.test.d.ts.map",
       "dist/tools/python-repl/__tests__/shipped-artifact-parity.test.js",
       "dist/tools/python-repl/__tests__/shipped-artifact-parity.test.js.map",
+      "dist/tools/python-repl/__tests__/system-python.test.d.ts",
+      "dist/tools/python-repl/__tests__/system-python.test.d.ts.map",
+      "dist/tools/python-repl/__tests__/system-python.test.js",
+      "dist/tools/python-repl/__tests__/system-python.test.js.map",
       "dist/tools/python-repl/__tests__/tcp-fallback.test.d.ts",
       "dist/tools/python-repl/__tests__/tcp-fallback.test.d.ts.map",
       "dist/tools/python-repl/__tests__/tcp-fallback.test.js",
@@ -9956,6 +9968,46 @@
         "id": "dist/__tests__/goal-docs-contract.test.js.map",
         "kind": "generated-dist",
         "path": "dist/__tests__/goal-docs-contract.test.js.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.d.ts"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.js"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.js.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.test.d.ts"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.test.d.ts.map"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.test.js",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.test.js"
+      },
+      {
+        "id": "dist/__tests__/helpers/platform.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/__tests__/helpers/platform.test.js.map"
       },
       {
         "id": "dist/__tests__/helpers/prompt-test-helpers.d.ts",
@@ -38391,6 +38443,26 @@
         "id": "dist/tools/python-repl/__tests__/shipped-artifact-parity.test.js.map",
         "kind": "generated-dist",
         "path": "dist/tools/python-repl/__tests__/shipped-artifact-parity.test.js.map"
+      },
+      {
+        "id": "dist/tools/python-repl/__tests__/system-python.test.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/tools/python-repl/__tests__/system-python.test.d.ts"
+      },
+      {
+        "id": "dist/tools/python-repl/__tests__/system-python.test.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/python-repl/__tests__/system-python.test.d.ts.map"
+      },
+      {
+        "id": "dist/tools/python-repl/__tests__/system-python.test.js",
+        "kind": "generated-dist",
+        "path": "dist/tools/python-repl/__tests__/system-python.test.js"
+      },
+      {
+        "id": "dist/tools/python-repl/__tests__/system-python.test.js.map",
+        "kind": "generated-dist",
+        "path": "dist/tools/python-repl/__tests__/system-python.test.js.map"
       },
       {
         "id": "dist/tools/python-repl/__tests__/tcp-fallback.test.d.ts",
@@ -97171,12 +97243,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 8469,
+      "nodeCount": 8481,
       "edgeCount": 9426,
       "importEdgeCount": 7852,
       "registerEdgeCount": 84
     }
   },
   "inventorySha256": "8bc3fc1ff3f54e03cc9257ee0b60ba0358aea6d2d79c6946c91a3a3b2498bad6",
-  "manifestSha256": "453eee9f588ec5cf7183639982e2bc9bd689ff962f07c75401049242be115b01"
+  "manifestSha256": "51842f1f025ddcb8a5f280a85796c5385088566b97c9c5d4251cf580f81a4d44"
 }

@@ -6,6 +6,7 @@ import { mkdirSync, mkdtempSync, realpathSync, linkSync, readFileSync, rmSync, s
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
+import { posixOnly } from "../../../__tests__/helpers/platform.js";
 import { computeJournalFingerprint, FileJournal, } from "../../runtime/journal.js";
 import { FileOwnershipFence } from "../../runtime/fence.js";
 import { JournalCorruptionError } from "../../runtime/types.js";
@@ -34,7 +35,7 @@ function makeRecord(seq) {
         journal_fingerprint: computeJournalFingerprint(record),
     };
 }
-describe("FileJournal", () => {
+describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"))("FileJournal", () => {
     const tempDirs = [];
     function makeRunsRoot() {
         const dir = mkdtempSync(join(realpathSync(tmpdir()), "omc-journal-test-"));

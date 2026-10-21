@@ -10,6 +10,7 @@ import { clearWorktreeCache, getOmcRoot, getProjectIdentifier } from '../worktre
 import { getProcessStartIdentitySync } from '../../platform/process-utils.js';
 import { pathToFileURL } from 'node:url';
 import { provisionStandaloneStateLockBridge } from '../../installer/index.js';
+import { posixOnly } from '../../__tests__/helpers/platform.js';
 async function installedAtomicHelper() {
     const hooks = join(tempDir, 'installed-hooks');
     cpSync(join(process.cwd(), 'templates', 'hooks'), hooks, { recursive: true });
@@ -111,7 +112,7 @@ describe('mode-state-io', () => {
             expect(existsSync(join(tempDir, '.omg', 'state', 'autopilot-state.json'))).toBe(true);
             expect(existsSync(join(nestedDir, '.omg', 'state', 'autopilot-state.json'))).toBe(false);
         });
-        it('should write file with 0o600 permissions', () => {
+        it.skipIf(posixOnly('NTFS has no POSIX mode bits'))('should write file with 0o600 permissions', () => {
             writeModeState('ralph', { active: true }, tempDir);
             const filePath = join(tempDir, '.omg', 'state', 'ralph-state.json');
             const { mode } = require('fs').statSync(filePath);

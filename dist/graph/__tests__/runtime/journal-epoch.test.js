@@ -7,6 +7,7 @@
  * - legitimately increasing epochs across takeovers (1 then 2) fold fine.
  */
 import { afterEach, describe, expect, it } from "vitest";
+import { posixOnly } from "../../../__tests__/helpers/platform.js";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, utimesSync, writeFileSync, } from "fs";
 import { spawnSync } from "child_process";
 import { tmpdir } from "os";
@@ -72,7 +73,7 @@ async function completeRunWithEpochs(runsRoot, epochForLine) {
     writeFileSync(journalPath, `${rewritten.join("\n")}\n`, "utf8");
     return { sealed, lines };
 }
-describe("journal epoch provenance (P1-4)", () => {
+describe.skipIf(posixOnly("graph runtime refuses the pathname fallback on win32"))("journal epoch provenance (P1-4)", () => {
     it.each(["missing", "empty"])("fails closed before executing work when an existing descriptor has a %s journal", async (journalState) => {
         const runsRoot = makeRunsRoot();
         const sealed = sealGraphDescriptor(loadFixture("simple-linear.json"));
