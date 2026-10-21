@@ -261,6 +261,19 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(result.phases[0].details).toContain('pr: the dev merge 666666666666 does not contain the release commit 111111111111 (--from pr)');
       expect(calls).toContain('git fetch origin dev');
     });
+
+    it('reports a git error from merge-base (missing object) as an error, never as "does not contain"', async () => {
+      seedState('pr', { devPr: 301, devMergeSha: DEVMERGE });
+      handlers.push((key) => {
+        if (key === 'git rev-parse HEAD') return ok(`${HEAD}\n`);
+        if (key === `git merge-base --is-ancestor ${HEAD} ${DEVMERGE}`) return no(`fatal: Not a valid commit name ${DEVMERGE}\n`, 128);
+        return undefined;
+      }, landed);
+      const result = await release({ from: 'promote', to: 'promote' });
+      expect(result.phases[0]).toMatchObject({ id: 'promote', status: 'blocked' });
+      expect(result.phases[0].details).toContain(`pr: git merge-base --is-ancestor ${HEAD} ${DEVMERGE} failed (exit 128): fatal: Not a valid commit name ${DEVMERGE}`);
+      expect(result.phases[0].details!.join('\n')).not.toMatch(/does not contain/);
+    });
   });
 
   describe('preflight refusals', () => {
@@ -513,27 +526,63 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(calls.some((c) => c.startsWith('git push'))).toBe(false);
     });
 
-    it('refuses an already-merged release PR whose merge does not contain local HEAD', async () => {
+    it('blocks on an already-merged release PR whose merge does not contain local HEAD, with a follow-up PR route', async () => {
       seedState('commit', { devPr: 301 });
       prState = 'MERGED';
       prHead = OTHER;
-      handlers.unshift((key) => (key === `git merge-base --is-ancestor ${HEAD} ${MERGE}` ? no('', 1) : undefined));
+      handlers.unshift((key) => (key === `git merge-base --is-ancestor ${HEAD} ${MERGE}` || key === `git merge-base --is-ancestor ${HEAD} refs/remotes/origin/dev` ? no('', 1) : undefined));
       const result = await release({ to: 'pr' });
-      expect(result.phases[0]).toMatchObject({ status: 'blocked', note: expect.stringMatching(/PR #301 was merged at 333333333333, which does not contain local HEAD 111111111111/) });
+      expect(result.phases[0]).toMatchObject({ status: 'blocked', note: expect.stringMatching(/The release PR #301 is merged at 333333333333 without commit\(s\) up to 111111111111\. Open a follow-up PR into dev for the extra commits and re-run omg release 5\.12\.2 --from pr after it merges/) });
+      expect(result.phases[0].note).not.toMatch(/--from preflight/);
       expect(calls).toContain('git fetch origin dev');
+      expect(calls.some((c) => c.startsWith('git push') || c.startsWith('gh pr merge') || c.startsWith('gh pr create'))).toBe(false);
       expect(readReleaseState(stateRoot, V)!.devMergeSha).toBeUndefined();
     });
 
-    it('does not reuse a merged PR of the branch whose head is not in local HEAD; opens a new one', async () => {
+    it('accepts the merged release PR once a follow-up PR into dev carried the missing commits: the dev tip is the dev merge', async () => {
+      seedState('commit', { devPr: 301 });
+      prState = 'MERGED';
       handlers.unshift((key) => {
-        if (key.startsWith('gh pr list --head release/v5.12.2 --base dev')) return ok(JSON.stringify([{ number: 250, state: 'MERGED', headRefOid: OTHER }]));
+        if (key === `git merge-base --is-ancestor ${HEAD} ${MERGE}`) return no('', 1);
+        if (key === 'git rev-parse refs/remotes/origin/dev') return ok(`${DEVMERGE}\n`);
+        return undefined;
+      });
+      const result = await release({ to: 'pr' });
+      expect(result.ok).toBe(true);
+      expect(calls).toContain(`git merge-base --is-ancestor ${HEAD} refs/remotes/origin/dev`);
+      expect(calls).toContain(`git merge-base --is-ancestor ${MERGE} refs/remotes/origin/dev`);
+      expect(calls.some((c) => c.startsWith('git push') || c.startsWith('gh pr merge'))).toBe(false);
+      expect(readReleaseState(stateRoot, V)!.devMergeSha).toBe(DEVMERGE);
+    });
+
+    it('reuses a merged PR of the branch only when its merge commit contains HEAD', async () => {
+      handlers.unshift((key) => {
+        if (key.startsWith('gh pr list --head release/v5.12.2 --base dev')) return ok(JSON.stringify([{ number: 250, state: 'MERGED', headRefOid: OTHER, mergeCommit: { oid: MERGE } }]));
+        if (key.startsWith('gh pr view 250 --json')) return ok(prJson(250, 'dev', 'MERGED', MERGE, OTHER));
+        // The PR head is not in HEAD (the old, reversed rule would refuse it); its merge contains HEAD.
         if (key === `git merge-base --is-ancestor ${OTHER} HEAD`) return no('', 1);
         return undefined;
       });
       const result = await release({ to: 'pr' });
       expect(result.ok).toBe(true);
-      expect(calls.some((c) => c.startsWith('gh pr create --base dev'))).toBe(true);
-      expect(readReleaseState(stateRoot, V)!.devPr).toBe(301);
+      expect(calls.find((c) => c.startsWith('gh pr list'))).toContain('--json number,state,headRefOid,mergeCommit');
+      expect(calls).toContain(`git merge-base --is-ancestor HEAD ${MERGE}`);
+      expect(calls.some((c) => c.startsWith('gh pr create'))).toBe(false);
+      expect(readReleaseState(stateRoot, V)).toMatchObject({ devPr: 250, devMergeSha: MERGE });
+    });
+
+    it('blocks instead of opening another PR when a merged PR of the branch does not contain HEAD', async () => {
+      handlers.unshift((key) => {
+        if (key.startsWith('gh pr list --head release/v5.12.2 --base dev')) return ok(JSON.stringify([{ number: 250, state: 'MERGED', headRefOid: OTHER, mergeCommit: { oid: MERGE } }]));
+        if (key.startsWith('gh pr view 250 --json')) return ok(prJson(250, 'dev', 'MERGED', MERGE, OTHER));
+        if (key === `git merge-base --is-ancestor HEAD ${MERGE}` || key === `git merge-base --is-ancestor ${HEAD} ${MERGE}`) return no('', 1);
+        if (key === `git merge-base --is-ancestor ${HEAD} refs/remotes/origin/dev`) return no('', 1);
+        return undefined;
+      });
+      const result = await release({ to: 'pr' });
+      expect(result.phases[0]).toMatchObject({ status: 'blocked', note: expect.stringMatching(/The release PR #250 is merged at 333333333333 without commit\(s\) up to 111111111111/) });
+      expect(calls.some((c) => c.startsWith('gh pr create') || c.startsWith('gh pr merge'))).toBe(false);
+      expect(readReleaseState(stateRoot, V)!.devMergeSha).toBeUndefined();
     });
 
     it('blocks after a bounded number of rounds when a merge never takes, even when the clock does not move', async () => {
@@ -571,6 +620,16 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       expect(result.ok).toBe(true);
       expect(calls).toContain(`git merge-base --is-ancestor ${DEVMERGE} ${MERGE}`);
       expect(readReleaseState(stateRoot, V)).toMatchObject({ mainPr: 302, mainMergeSha: MERGE, devMergeSha: DEVMERGE });
+    });
+
+    it('promotes the recorded follow-up dev merge, which contains the release PR merge, not the release PR merge itself', async () => {
+      seedState('pr', { devPr: 301, devMergeSha: OTHER });
+      const result = await release({ from: 'promote', to: 'promote' });
+      expect(result.ok).toBe(true);
+      expect(calls).toContain(`git merge-base --is-ancestor ${DEVMERGE} ${OTHER}`);
+      expect(calls).toContain(`git merge-base --is-ancestor ${HEAD} ${OTHER}`);
+      expect(calls).toContain(`git merge-base --is-ancestor ${OTHER} ${MERGE}`);
+      expect(readReleaseState(stateRoot, V)).toMatchObject({ devMergeSha: OTHER, mainMergeSha: MERGE });
     });
 
     it('refuses --from promote while the release PR is not merged', async () => {
@@ -675,6 +734,13 @@ describe('omg release engine (scripted git/gh/npm, no network)', () => {
       handlers.unshift((key) => (key.startsWith('git ls-remote --tags origin') ? ok(`${OTHER}\trefs/tags/v${V}\n`) : undefined));
       const result = await release({ to: 'tag', yes: true });
       expect(result.phases[0].note).toMatch(/exists on origin at 555555555555 \(lightweight\)/);
+    });
+
+    it('--from tag once main is merged does not read the working-tree package.json (the tag phase checks the main merge)', async () => {
+      write('package.json', JSON.stringify({ name: 'oh-my-copilot', version: '5.12.1' }));
+      const result = await release({ from: 'tag', to: 'tag', yes: true });
+      expect(result.ok).toBe(true);
+      expect(calls).toContain(`git show ${MERGE}:package.json`);
     });
 
     it('needs the promote phase merge commit', async () => {

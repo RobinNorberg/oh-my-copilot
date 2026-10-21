@@ -143225,7 +143225,7 @@ function phasePlan(id, v, opts) {
     case "pr":
       return [
         `git push origin HEAD:refs/heads/${branch} until the PR is merged (plain, never forced; a refused push blocks)`,
-        `gh pr create --base dev --head ${branch} (an open one is reused; a merged one only when its merge contains HEAD)`,
+        `gh pr create --base dev --head ${branch} (an open one is reused; a merged one when its merge contains HEAD, or the dev tip once a follow-up PR into dev carried HEAD; else blocks)`,
         "wait for CI under the ship merge rule (ship.advisoryChecks never block); one rerun of failed jobs, awaited until its new attempt starts",
         "gh pr merge --admin --merge --match-head-commit <head> when the PR head is local HEAD, ship.allowAdminMerge and dev is a trusted base, else print it"
       ];
@@ -143474,8 +143474,12 @@ ${r.stderr}`));
     this.save({ headSha: head });
     return { status: "ok", note: notes.length > 0 ? `${notes.join(" + ")} at ${head.slice(0, 12)}` : "nothing new to commit" };
   }
+  /** Exit 1 is "no"; any other non-zero exit (missing object, bad ref) is a git error, never a yes. */
   isAncestor(ancestor, descendant) {
-    return this.run("git", ["merge-base", "--is-ancestor", ancestor, descendant]).status === 0;
+    const r = this.run("git", ["merge-base", "--is-ancestor", ancestor, descendant]);
+    if (r.status === 0) return true;
+    if (r.status === 1) return false;
+    return fail6(`git merge-base --is-ancestor ${ancestor} ${descendant} failed (exit ${r.status}): ${r.stderr.trim() || "(no stderr)"}`);
   }
   viewPr(pr) {
     return JSON.parse(this.must("gh", ["pr", "view", String(pr), "--json", "number,state,isDraft,baseRefName,baseRefOid,headRefOid,url,mergeCommit"]));
@@ -143525,6 +143529,7 @@ ${r.stderr}`));
     if (status !== "ok" && status !== "skipped") return `has not passed (run it: --from ${id})`;
     switch (id) {
       case "bump": {
+        if (released) return null;
         const version3 = JSON.parse(this.file("package.json") ?? "{}").version;
         return version3 === this.v ? null : `package.json version is ${version3 ?? "missing"}, not ${this.v} (--from bump)`;
       }
@@ -143537,9 +143542,10 @@ ${r.stderr}`));
       case "pr": {
         if (s.devPr === void 0 || !s.devMergeSha) return "no merged release PR into dev recorded (--from pr)";
         const sha = this.mergedSha(s.devPr);
-        if (sha !== s.devMergeSha) return `PR #${s.devPr} is ${sha ? `merged at ${sha.slice(0, 12)}` : "not merged"}, not at the recorded ${s.devMergeSha.slice(0, 12)} (--from pr)`;
+        if (!sha) return `PR #${s.devPr} is not merged, not at the recorded ${s.devMergeSha.slice(0, 12)} (--from pr)`;
         if (!s.headSha) return "no release commit recorded (--from commit)";
         this.must("git", ["fetch", "origin", "dev"]);
+        if (sha !== s.devMergeSha && !this.isAncestor(sha, s.devMergeSha)) return `PR #${s.devPr} is merged at ${sha.slice(0, 12)}, which the recorded dev merge ${s.devMergeSha.slice(0, 12)} does not contain (--from pr)`;
         return this.isAncestor(s.headSha, s.devMergeSha) ? null : `the dev merge ${s.devMergeSha.slice(0, 12)} does not contain the release commit ${s.headSha.slice(0, 12)} (--from pr)`;
       }
       case "promote": {
@@ -143558,9 +143564,14 @@ ${r.stderr}`));
     }
   }
   findPr(head, base, states) {
-    const out = this.must("gh", ["pr", "list", "--head", head, "--base", base, "--state", states, "--json", "number,state,headRefOid", "--limit", "10"]);
+    const out = this.must("gh", ["pr", "list", "--head", head, "--base", base, "--state", states, "--json", "number,state,headRefOid,mergeCommit", "--limit", "10"]);
     const prs = JSON.parse(out || "[]");
-    return (prs.find((p) => p.state === "OPEN") ?? prs.find((p) => p.state === "MERGED" && !!p.headRefOid && this.isAncestor(p.headRefOid, "HEAD")))?.number;
+    const open9 = prs.find((p) => p.state === "OPEN");
+    if (open9) return open9.number;
+    const merged = prs.filter((p) => p.state === "MERGED" && FULL_SHA3.test(p.mergeCommit?.oid ?? ""));
+    if (merged.length === 0) return void 0;
+    this.must("git", ["fetch", "origin", base]);
+    return (merged.find((p) => this.isAncestor("HEAD", p.mergeCommit.oid)) ?? merged[0]).number;
   }
   createPr(base, head, title) {
     const out = this.must("gh", ["pr", "create", "--base", base, "--head", head, "--title", title, "--body-file", ".github/release-body.md"]);
@@ -143587,9 +143598,9 @@ ${r.stderr}`));
   async promote() {
     const devPr = this.state.devPr;
     if (devPr === void 0) fail6("no release PR into dev recorded; run the pr phase first");
-    const devMerge = this.mergedSha(devPr);
-    if (!devMerge) fail6(`release PR #${devPr} is not merged into dev; re-run omg release ${this.v} --from pr`);
-    this.save({ devMergeSha: devMerge });
+    if (!this.mergedSha(devPr)) fail6(`release PR #${devPr} is not merged into dev; re-run omg release ${this.v} --from pr`);
+    const devMerge = this.state.devMergeSha;
+    if (!devMerge || !FULL_SHA3.test(devMerge)) fail6(`no dev merge commit recorded; re-run omg release ${this.v} --from pr`);
     if (this.state.mainPr === void 0) {
       const pr = this.findPr("dev", "main", "open") ?? this.createPr("main", "dev", `Release v${this.v}`);
       this.save({ mainPr: pr });
@@ -143645,7 +143656,8 @@ ${r.stderr}`));
    * block; config from loadShipConfig: user config + the base's committed
    * config), rerun failed runs once, then admin-merge when the owner allows
    * it; with `expectedHead`, only when the PR head is that commit (an
-   * already-merged PR only when its merge contains it), with
+   * already-merged PR only when its merge, or the base tip after a follow-up
+   * PR, contains it), with
    * `requireAncestor`, only when the PR head contains that commit. Returns
    * the merge commit sha.
    */
@@ -143659,7 +143671,9 @@ ${r.stderr}`));
         if (expectedHead) {
           this.must("git", ["fetch", "origin", base]);
           if (!this.isAncestor(expectedHead, sha)) {
-            blocked(`PR #${pr} was merged at ${sha.slice(0, 12)}, which does not contain local HEAD ${expectedHead.slice(0, 12)}; open a new release PR for HEAD (--from preflight starts over)`);
+            const tip = `refs/remotes/origin/${base}`;
+            if (this.isAncestor(expectedHead, tip) && this.isAncestor(sha, tip)) return this.git("rev-parse", tip);
+            blocked(`The release PR #${pr} is merged at ${sha.slice(0, 12)} without commit(s) up to ${expectedHead.slice(0, 12)}. Open a follow-up PR into ${base} for the extra commits and re-run omg release ${this.v} --from ${phase} after it merges (the release then proceeds from the ${base} commit that contains HEAD).`);
           }
         }
         return sha;

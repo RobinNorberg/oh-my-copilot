@@ -148,7 +148,7 @@ export function phasePlan(id, v, opts) {
         case 'pr':
             return [
                 `git push origin HEAD:refs/heads/${branch} until the PR is merged (plain, never forced; a refused push blocks)`,
-                `gh pr create --base dev --head ${branch} (an open one is reused; a merged one only when its merge contains HEAD)`,
+                `gh pr create --base dev --head ${branch} (an open one is reused; a merged one when its merge contains HEAD, or the dev tip once a follow-up PR into dev carried HEAD; else blocks)`,
                 'wait for CI under the ship merge rule (ship.advisoryChecks never block); one rerun of failed jobs, awaited until its new attempt starts',
                 'gh pr merge --admin --merge --match-head-commit <head> when the PR head is local HEAD, ship.allowAdminMerge and dev is a trusted base, else print it',
             ];
@@ -432,8 +432,14 @@ class Release {
         this.save({ headSha: head });
         return { status: 'ok', note: notes.length > 0 ? `${notes.join(' + ')} at ${head.slice(0, 12)}` : 'nothing new to commit' };
     }
+    /** Exit 1 is "no"; any other non-zero exit (missing object, bad ref) is a git error, never a yes. */
     isAncestor(ancestor, descendant) {
-        return this.run('git', ['merge-base', '--is-ancestor', ancestor, descendant]).status === 0;
+        const r = this.run('git', ['merge-base', '--is-ancestor', ancestor, descendant]);
+        if (r.status === 0)
+            return true;
+        if (r.status === 1)
+            return false;
+        return fail(`git merge-base --is-ancestor ${ancestor} ${descendant} failed (exit ${r.status}): ${r.stderr.trim() || '(no stderr)'}`);
     }
     viewPr(pr) {
         return JSON.parse(this.must('gh', ['pr', 'view', String(pr), '--json', 'number,state,isDraft,baseRefName,baseRefOid,headRefOid,url,mergeCommit']));
@@ -489,6 +495,9 @@ class Release {
             return `has not passed (run it: --from ${id})`;
         switch (id) {
             case 'bump': {
+                // Once main is merged, the tag phase checks the version at the main merge instead.
+                if (released)
+                    return null;
                 const version = JSON.parse(this.file('package.json') ?? '{}').version;
                 return version === this.v ? null : `package.json version is ${version ?? 'missing'}, not ${this.v} (--from bump)`;
             }
@@ -504,11 +513,14 @@ class Release {
                 if (s.devPr === undefined || !s.devMergeSha)
                     return 'no merged release PR into dev recorded (--from pr)';
                 const sha = this.mergedSha(s.devPr);
-                if (sha !== s.devMergeSha)
-                    return `PR #${s.devPr} is ${sha ? `merged at ${sha.slice(0, 12)}` : 'not merged'}, not at the recorded ${s.devMergeSha.slice(0, 12)} (--from pr)`;
+                if (!sha)
+                    return `PR #${s.devPr} is not merged, not at the recorded ${s.devMergeSha.slice(0, 12)} (--from pr)`;
                 if (!s.headSha)
                     return 'no release commit recorded (--from commit)';
                 this.must('git', ['fetch', 'origin', 'dev']);
+                // The recorded dev merge is the PR's merge, or the dev commit of a follow-up PR that contains it (see land).
+                if (sha !== s.devMergeSha && !this.isAncestor(sha, s.devMergeSha))
+                    return `PR #${s.devPr} is merged at ${sha.slice(0, 12)}, which the recorded dev merge ${s.devMergeSha.slice(0, 12)} does not contain (--from pr)`;
                 return this.isAncestor(s.headSha, s.devMergeSha) ? null : `the dev merge ${s.devMergeSha.slice(0, 12)} does not contain the release commit ${s.headSha.slice(0, 12)} (--from pr)`;
             }
             case 'promote': {
@@ -529,11 +541,18 @@ class Release {
         }
     }
     findPr(head, base, states) {
-        const out = this.must('gh', ['pr', 'list', '--head', head, '--base', base, '--state', states, '--json', 'number,state,headRefOid', '--limit', '10']);
+        const out = this.must('gh', ['pr', 'list', '--head', head, '--base', base, '--state', states, '--json', 'number,state,headRefOid,mergeCommit', '--limit', '10']);
         const prs = JSON.parse(out || '[]');
-        // A merged PR counts only when its head is in local HEAD (an earlier attempt's PR on the same branch name does not).
-        return (prs.find((p) => p.state === 'OPEN')
-            ?? prs.find((p) => p.state === 'MERGED' && !!p.headRefOid && this.isAncestor(p.headRefOid, 'HEAD')))?.number;
+        const open = prs.find((p) => p.state === 'OPEN');
+        if (open)
+            return open.number;
+        const merged = prs.filter((p) => p.state === 'MERGED' && FULL_SHA.test(p.mergeCommit?.oid ?? ''));
+        if (merged.length === 0)
+            return undefined;
+        this.must('git', ['fetch', 'origin', base]);
+        // Reused as is when its merge contains HEAD; any other merged PR is returned too, so land() blocks on it
+        // (or accepts a follow-up merge into the base) instead of opening a second release PR.
+        return (merged.find((p) => this.isAncestor('HEAD', p.mergeCommit.oid)) ?? merged[0]).number;
     }
     createPr(base, head, title) {
         const out = this.must('gh', ['pr', 'create', '--base', base, '--head', head, '--title', title, '--body-file', '.github/release-body.md']);
@@ -563,10 +582,12 @@ class Release {
         const devPr = this.state.devPr;
         if (devPr === undefined)
             fail('no release PR into dev recorded; run the pr phase first');
-        const devMerge = this.mergedSha(devPr);
-        if (!devMerge)
+        if (!this.mergedSha(devPr))
             fail(`release PR #${devPr} is not merged into dev; re-run omg release ${this.v} --from pr`);
-        this.save({ devMergeSha: devMerge });
+        // Recorded by the pr phase: the release PR's merge, or the follow-up dev commit that contains it and HEAD.
+        const devMerge = this.state.devMergeSha;
+        if (!devMerge || !FULL_SHA.test(devMerge))
+            fail(`no dev merge commit recorded; re-run omg release ${this.v} --from pr`);
         if (this.state.mainPr === undefined) {
             const pr = this.findPr('dev', 'main', 'open') ?? this.createPr('main', 'dev', `Release v${this.v}`);
             this.save({ mainPr: pr });
@@ -625,7 +646,8 @@ class Release {
      * block; config from loadShipConfig: user config + the base's committed
      * config), rerun failed runs once, then admin-merge when the owner allows
      * it; with `expectedHead`, only when the PR head is that commit (an
-     * already-merged PR only when its merge contains it), with
+     * already-merged PR only when its merge, or the base tip after a follow-up
+     * PR, contains it), with
      * `requireAncestor`, only when the PR head contains that commit. Returns
      * the merge commit sha.
      */
@@ -641,7 +663,12 @@ class Release {
                 if (expectedHead) {
                     this.must('git', ['fetch', 'origin', base]);
                     if (!this.isAncestor(expectedHead, sha)) {
-                        blocked(`PR #${pr} was merged at ${sha.slice(0, 12)}, which does not contain local HEAD ${expectedHead.slice(0, 12)}; open a new release PR for HEAD (--from preflight starts over)`);
+                        // Follow-up rule: once a later PR into the base carried the missing commits, the base tip,
+                        // which contains both the release merge and HEAD, stands in for the release merge.
+                        const tip = `refs/remotes/origin/${base}`;
+                        if (this.isAncestor(expectedHead, tip) && this.isAncestor(sha, tip))
+                            return this.git('rev-parse', tip);
+                        blocked(`The release PR #${pr} is merged at ${sha.slice(0, 12)} without commit(s) up to ${expectedHead.slice(0, 12)}. Open a follow-up PR into ${base} for the extra commits and re-run omg release ${this.v} --from ${phase} after it merges (the release then proceeds from the ${base} commit that contains HEAD).`);
                     }
                 }
                 return sha;
